@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+name: ci
+on: [push, pull_request]
+jobs:
+  content-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: content guard
+        run: bash scripts/check-clean.sh
