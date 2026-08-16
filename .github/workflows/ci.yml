@@ -23,6 +23,121 @@ jobs:
         run: bash scripts/check-clean.sh
       - name: DCO check (every non-merge commit)
         run: bash scripts/check-dco.sh
+  # Every target, every push. The jobs deliberately run the same three
+  # commands a contributor runs locally — cmake --preset / --build --preset
+  # / ctest --preset — so a green matrix means the documented workflow
+  # works, not just some CI-only incantation.
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One broken target should not hide the state of the other four.
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-msvc
+            os: windows-latest
+            preset: windows-msvc
+          # No ccache here: the universal preset compiles with two -arch
+          # flags, which ccache does not cache — it would fall through to
+          # the compiler on every file for the cost of a cache step.
+          - name: macos-universal
+            os: macos-latest
+            preset: macos
+          - name: linux-gcc
+            os: ubuntu-latest
+            preset: linux-gcc
+            launcher: ccache
+          - name: linux-clang
+            os: ubuntu-latest
+            preset: linux-clang
+            launcher: ccache
+          - name: wasm
+            os: ubuntu-latest
+            preset: wasm
+            emscripten: true
+    env:
+      # CMake seeds CMAKE_<LANG>_COMPILER_LAUNCHER from the environment, so
+      # ccache attaches itself without CI having to pass flags the presets
+      # do not carry. Empty on the jobs that leave it out of the matrix.
+      CMAKE_C_COMPILER_LAUNCHER: ${{ matrix.launcher }}
+      CMAKE_CXX_COMPILER_LAUNCHER: ${{ matrix.launcher }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Same reasoning as the guards job: build the contributor's head
+          # commit, not GitHub's synthetic merge commit.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      # CMake, Ninja and node come with every runner image; only the SDL3
+      # backend headers and the compilers have to be arranged for.
+      #
+      # Without these, SDL3 still configures and links — it just quietly
+      # builds a desktop host with no video and no audio backend, which
+      # would make this job a green light for something nobody can run.
+      - name: SDL3 backend headers (X11, Wayland, ALSA, PulseAudio, KMS)
+        if: runner.os == 'Linux' && !matrix.emscripten
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libpulse-dev libudev-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxfixes-dev libxss-dev \
+            libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
+            libgl-dev libegl-dev libgles-dev libdrm-dev libgbm-dev
+      - name: MSVC developer environment (cl on PATH)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: x64
+
+      # The emsdk pin has one home, .emscripten-version, which README.md
+      # tells contributors to install locally — CI must not drift from it.
+      - name: Read the Emscripten pin
+        id: emsdk-pin
+        if: matrix.emscripten
+        run: echo "version=$(cat .emscripten-version)" >> "$GITHUB_OUTPUT"
+      - name: Emscripten ${{ steps.emsdk-pin.outputs.version }}
+        if: matrix.emscripten
+        uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 # v16
+        with:
+          version: ${{ steps.emsdk-pin.outputs.version }}
+          # The toolchain is a few hundred MB; caching it is most of this
+          # job's wall time.
+          actions-cache-folder: emsdk-${{ steps.emsdk-pin.outputs.version }}
+
+      - name: ccache
+        if: matrix.launcher == 'ccache'
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: ${{ matrix.name }}
+          # Enough for SDL3 plus our own objects, which is what dominates a
+          # cold build here.
+          max-size: 500M
+
+      # SDL3 is fetched at configure time (cmake/AmberfolioSDL3.cmake), and
+      # a shallow clone of it on every push is pure waste. Only the source
+      # and FetchContent's own bookkeeping are cached; the objects it
+      # builds from that source are ccache's job.
+      - name: Cache the SDL3 clone
+        if: '!matrix.emscripten'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/${{ matrix.preset }}/_deps/sdl3-src
+            build/${{ matrix.preset }}/_deps/sdl3-subbuild
+          key: sdl3-${{ matrix.name }}-${{ hashFiles('cmake/AmberfolioSDL3.cmake') }}
+
+      - name: configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: build
+        run: cmake --build --preset ${{ matrix.preset }}
+      # Smoke tests only so far: the SDL host runs headless and reports its
+      # versions; the wasm module loads under node and answers af_version().
+      # The real unit-test rig arrives with issue #4.
+      - name: test
+        run: ctest --preset ${{ matrix.preset }}
+
   acknowledgments:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

@@ -11,18 +11,26 @@ Radiance. **PLAN.md is the plan of record** — scope, architecture,
 milestones, and settled decisions live there; don't re-litigate them
 here or in PRs.
 
-**Status: pre-code.** There is nothing to build, run, or test yet. The
-only runnable check is the content guard below. When milestone M0 lands
-(CMake skeleton, CI build matrix, test rig), update this file with the
-real commands.
+**Status: M0 in progress.** The skeleton builds and is proven on all four
+targets in CI on every push — an empty core library, a stub SDL3 desktop
+host, and a wasm module that reports its version. There is no machine
+yet. Still open in M0: the unit-test rig and the format/lint/sanitizer
+gates; update this file as each lands.
 
 ## Commands
 
 ```sh
+cmake --preset linux-gcc      # or windows-msvc, macos, linux-clang, wasm
+cmake --build --preset linux-gcc
+ctest --preset linux-gcc      # smoke checks only, so far
+
 bash scripts/check-clean.sh   # content guard — run before every commit
 bash scripts/check-dco.sh     # DCO check — non-merge commits signed off
 bash scripts/test-guards.sh   # guard self-test — run after editing a guard
 ```
+
+The wasm preset needs an activated emsdk of the version pinned in
+`.emscripten-version`; README.md has the setup and the build layout.
 
 Both run in CI on every push. The content guard scans every commit in
 history plus the working tree for denylisted game-artifact filenames
