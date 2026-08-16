@@ -3,7 +3,8 @@
 A low-level emulator for the SSI Gold Box games.
 
 **Status: early development.** There is nothing to build or run yet — this
-repository currently holds the project's governance documents. Code follows.
+repository currently holds the project's governance documents and the
+[project plan](PLAN.md). Code follows.
 
 ## What this will be
 
