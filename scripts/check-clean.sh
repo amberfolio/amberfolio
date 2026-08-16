@@ -44,7 +44,18 @@ for rev in $(git rev-list HEAD); do
   scan "${rev:0:7}" < <(git ls-tree -r --format='%(objectsize)%x09%(path)' "$rev")
 done
 
-# 2) The working tree (tracked files), for local pre-commit use.
+# 2) The staged index — what a commit would actually record. The
+#    working tree alone is not enough: a staged blob survives replacing
+#    or deleting the file on disk.
+scan index < <(
+  git ls-files -s | while IFS=$'\t' read -r meta path; do
+    [ -n "$path" ] || continue
+    obj=$(cut -d' ' -f2 <<<"$meta")
+    printf '%s\t%s\n' "$(git cat-file -s "$obj")" "$path"
+  done
+)
+
+# 3) The working tree (tracked files), for local pre-commit use.
 scan worktree < <(
   while IFS= read -r f; do
     [ -f "$f" ] || continue

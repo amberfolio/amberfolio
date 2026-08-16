@@ -1,6 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 name: ci
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+    # "edited" is not a default activity type, but the acknowledgments
+    # job reads the PR body, which the author may fix after opening.
+    types: [opened, synchronize, reopened, edited]
 jobs:
   guards:
     runs-on: ubuntu-latest
@@ -12,9 +17,11 @@ jobs:
           # merge commit, which carries no Signed-off-by; guard the PR
           # head instead so the DCO check sees the contributor's commits.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - name: content guard (every commit + working tree)
+      - name: guard self-test (negative cases)
+        run: bash scripts/test-guards.sh
+      - name: content guard (every commit + index + working tree)
         run: bash scripts/check-clean.sh
-      - name: DCO check (every commit)
+      - name: DCO check (every non-merge commit)
         run: bash scripts/check-dco.sh
   acknowledgments:
     if: github.event_name == 'pull_request'
@@ -24,11 +31,22 @@ jobs:
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: |
-          body_lc=$(printf '%s' "$BODY" | tr '[:upper:]' '[:lower:]')
-          count=$(printf '%s\n' "$body_lc" | grep -c -- '- \[x\]' || true)
-          if [ "$count" -lt 2 ]; then
-            echo "FAIL: both acknowledgments in the pull-request template"
-            echo "must be checked ([x]) — see CONTRIBUTING.md."
+          # Normalize: lowercase, strip markdown bold, collapse whitespace.
+          norm=$(printf '%s' "$BODY" \
+            | tr '[:upper:]' '[:lower:]' | tr -d '*' | tr -s '[:space:]' ' ')
+          ok=1
+          for need in \
+            "- [x] i license this contribution under the apache license 2.0" \
+            "- [x] this contribution contains no material from the original games"
+          do
+            if ! printf '%s' "$norm" | grep -qF -- "$need"; then
+              echo "FAIL: missing checked acknowledgment: \"$need\""
+              ok=0
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "Both acknowledgments in the pull-request template must be"
+            echo "present and checked ([x]) — see CONTRIBUTING.md."
             exit 1
           fi
           echo "acknowledgments: OK"

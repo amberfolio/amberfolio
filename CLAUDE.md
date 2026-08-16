@@ -20,7 +20,8 @@ real commands.
 
 ```sh
 bash scripts/check-clean.sh   # content guard — run before every commit
-bash scripts/check-dco.sh     # DCO check — every commit signed off
+bash scripts/check-dco.sh     # DCO check — non-merge commits signed off
+bash scripts/test-guards.sh   # guard self-test — run after editing a guard
 ```
 
 Both run in CI on every push. The content guard scans every commit in
@@ -37,7 +38,8 @@ both guards must stay green on every commit, not just at the tip.
   code (original, disassembled, or translated), no game data or assets,
   no original byte sequences. *Facts* are fine — addresses, offsets,
   format descriptions, SHA fingerprints. Full rule: CONTRIBUTING.md.
-- **Every commit is DCO-signed**: `git commit -s`.
+- **Every non-merge commit is DCO-signed**: `git commit -s`. (Merge
+  commits are exempt; PRs merge through GitHub.)
 - **New source files start with** `// SPDX-License-Identifier: AGPL-3.0-only`.
 - **License compatibility.** Outbound is AGPL-3.0-only; inbound is
   Apache-2.0. Dependencies must be AGPL-3.0-compatible — zlib/MIT/BSD/

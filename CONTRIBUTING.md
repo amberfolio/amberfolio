@@ -14,10 +14,12 @@ short, but the licensing part is load-bearing — please read it once.
   project maintainer and to all recipients of the software. You keep your
   copyright. No CLA, no paperwork — the pull-request template asks you to
   acknowledge this in one checkbox.
-- **Sign-off**: every commit must carry a `Signed-off-by:` line
-  (`git commit -s`), certifying the
+- **Sign-off**: every commit you author must carry a `Signed-off-by:`
+  line (`git commit -s`), certifying the
   [Developer Certificate of Origin](https://developercertificate.org/) —
   that you wrote the change or otherwise have the right to submit it.
+  Merge commits are the one exemption: pull requests are merged through
+  GitHub, whose generated merge commits carry no sign-off.
 
 ### Why Apache-2.0 inbound — what it means, honestly
 

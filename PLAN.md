@@ -61,11 +61,15 @@ special handling beyond working DOS file I/O.
   cycle- or bus-level 8088 timing is a non-goal — this game family ran
   across a decade of PC hardware and does not depend on it. No
   performance concerns at this scale on any 64-bit host or browser.
-  Virtual time advances by a fixed cost per instruction — a deliberately
-  simple, deterministic model (per-opcode cycle counting is part of the
-  timing non-goal) — and a configurable speed governor scales that cost,
-  with period presets so pacing matches the machines the game was
-  designed for.
+  Virtual time advances by a fixed cost per scheduling step, where a
+  step is one ordinary instruction or **one iteration of a repeated
+  string operation** — REP runs are interruptible between iterations on
+  the real 8086, and treating a whole run as one step would stall the
+  virtual clock and block timer interrupts during large copies. A
+  deliberately simple, deterministic model (per-opcode cycle counting
+  is part of the timing non-goal); a configurable speed governor scales
+  the step cost, with period presets so pacing matches the machines the
+  game was designed for.
 - **Memory** — 1 MB real-mode address space, 640 KB conventional.
 - **Video** — EGA, 320×200 16-color planar graphics: the sequencer /
   graphics-controller register subset the game uses (map mask,
