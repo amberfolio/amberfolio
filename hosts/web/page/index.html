@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only
+
+     M0 placeholder page: it loads the wasm module and shows the core
+     version. No canvas, no audio, no persistence — those land with the
+     bare dev page in M2, and the reference shell (onboarding, toggle
+     panel) in M6.
+
+     ES modules need a real origin, so open it over HTTP, not file://:
+         cmake --build --preset wasm
+         python -m http.server -d build/wasm/hosts/web/Debug
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Amber Folio — wasm module check</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 2rem;
+        background: #14100c;
+        color: #e8d9bd;
+        font: 1rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      h1 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0 0 1rem;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      .failed {
+        color: #ff8a7a;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Amber Folio — wasm module check</h1>
+    <pre id="out">loading…</pre>
+
+    <script type="module">
+      import { loadAmberfolio, formatVersion } from './host.mjs';
+
+      const out = document.getElementById('out');
+
+      try {
+        const { version, output } = await loadAmberfolio();
+        out.textContent = [
+          ...output,
+          `af_version() reports ${formatVersion(version)}.`,
+        ].join('\n');
+      } catch (error) {
+        out.classList.add('failed');
+        out.textContent = `failed to load the wasm module: ${error}`;
+        throw error;
+      }
+    </script>
+  </body>
+</html>

@@ -39,16 +39,28 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(AMBERFOLIO_WERROR "Treat compiler warnings as errors" ON)
 
-# The SDL host is a desktop thing; the wasm target (issue #2) brings its own
-# hand-written JS host instead.
+# One host per target family, and they do not overlap: SDL3 on the desktop,
+# the hand-written JS host on wasm (PLAN.md §4 — deliberately not
+# SDL-through-Emscripten).
 if(EMSCRIPTEN)
   set(_amberfolio_sdl_host_default OFF)
+  set(_amberfolio_web_host_default ON)
 else()
   set(_amberfolio_sdl_host_default ON)
+  set(_amberfolio_web_host_default OFF)
 endif()
 set(AMBERFOLIO_BUILD_HOST_SDL ${_amberfolio_sdl_host_default}
   CACHE BOOL "Build the SDL3 desktop host")
+set(AMBERFOLIO_BUILD_HOST_WEB ${_amberfolio_web_host_default}
+  CACHE BOOL "Build the WebAssembly module and its JS host")
 unset(_amberfolio_sdl_host_default)
+unset(_amberfolio_web_host_default)
+
+if(AMBERFOLIO_BUILD_HOST_WEB AND NOT EMSCRIPTEN)
+  message(FATAL_ERROR
+    "AMBERFOLIO_BUILD_HOST_WEB needs the Emscripten toolchain; configure "
+    "with the 'wasm' preset (see README.md).")
+endif()
 
 include(AmberfolioCxxStandard)
 include(AmberfolioWarnings)
@@ -61,7 +73,12 @@ if(AMBERFOLIO_BUILD_HOST_SDL)
   add_subdirectory(hosts/sdl)
 endif()
 
+if(AMBERFOLIO_BUILD_HOST_WEB)
+  add_subdirectory(hosts/web)
+endif()
+
 message(STATUS "amberfolio ${PROJECT_VERSION}: "
   "C++${AMBERFOLIO_CXX_STANDARD_EFFECTIVE}, "
   "warnings-as-errors=${AMBERFOLIO_WERROR}, "
-  "sdl-host=${AMBERFOLIO_BUILD_HOST_SDL}")
+  "sdl-host=${AMBERFOLIO_BUILD_HOST_SDL}, "
+  "web-host=${AMBERFOLIO_BUILD_HOST_WEB}")

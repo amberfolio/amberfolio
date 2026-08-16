@@ -7,7 +7,8 @@
 # the point of this file. Everything the machine needs from the outside
 # world arrives through the narrow platform interface the hosts implement.
 #
-# M0 content is a placeholder: a version symbol and nothing else.
+# M0 content is a placeholder: a version symbol, the C ABI shim that
+# exposes it to a non-C++ host, and nothing else.
 
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/include/amberfolio/version.h.in"
@@ -15,6 +16,7 @@ configure_file(
   @ONLY)
 
 add_library(amberfolio-core STATIC
+  src/abi.cpp
   src/version.cpp)
 add_library(amberfolio::core ALIAS amberfolio-core)
 
