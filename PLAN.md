@@ -60,10 +60,12 @@ special handling beyond working DOS file I/O.
   **architectural correctness** (registers, flags, memory, interrupts);
   cycle- or bus-level 8088 timing is a non-goal — this game family ran
   across a decade of PC hardware and does not depend on it. No
-  performance concerns at this scale on any 64-bit host or browser. A
-  configurable speed governor (instructions-per-tick budget) with
-  period presets, so pacing matches the machines the game was designed
-  for.
+  performance concerns at this scale on any 64-bit host or browser.
+  Virtual time advances by a fixed cost per instruction — a deliberately
+  simple, deterministic model (per-opcode cycle counting is part of the
+  timing non-goal) — and a configurable speed governor scales that cost,
+  with period presets so pacing matches the machines the game was
+  designed for.
 - **Memory** — 1 MB real-mode address space, 640 KB conventional.
 - **Video** — EGA, 320×200 16-color planar graphics: the sequencer /
   graphics-controller register subset the game uses (map mask,
@@ -115,14 +117,16 @@ subtly wrong for decades.
   virtual filesystem, date/time access. Compiled to each native target
   and, via Emscripten, to wasm32 with a small C ABI for the JS host.
 - **Deterministic core.** All machine-visible time derives from the
-  emulated tick: the PIT, interrupt delivery, and audio synthesis run
-  on emulated cycles, never host time — host wall time only throttles
+  virtual clock (§3): the PIT, interrupt delivery, and audio synthesis
+  run on virtual time, never host time — host wall time only throttles
   presentation, outside machine state. Everything nondeterministic the
   machine consumes (input events with their timing, date/time reads)
   arrives through the platform interface and is therefore recordable
-  and injectable, so a replay is exact by construction. Replay goldens
-  hash a canonical, versioned machine-state serialization;
-  floating-point audio output is excluded from hashes.
+  and injectable; a replay that also captures the initial conditions —
+  VFS contents and ordering, configuration, active seam set, artifact
+  fingerprints — reproduces a run exactly. Replay goldens hash a
+  canonical, versioned machine-state serialization; floating-point
+  audio output is excluded from hashes.
 - **Desktop host** — one SDL3 (zlib-licensed) host for all three
   desktop platforms: window, scaling/aspect (with period-correct
   non-square-pixel option), audio callback, keyboard, config file, and
@@ -216,11 +220,12 @@ Design requirements:
 2. **Adventurer's Journal** — gated on a fingerprint-verified journal
    PDF. At onboarding, a fact-table (page regions and stream offsets
    keyed by the known PDF editions' fingerprints) locates each journal
-   entry's scan image directly in the player's own PDF — the images are
-   pulled straight from the file's embedded streams, so no general PDF
-   parsing or rendering is needed (unrecognized editions are already
-   rejected by the fingerprint gate) — decoded by the host's image
-   decoder, and the text extracted once by OCR (Tesseract). In-game, the established journal reader layout is
+   entry's scan image directly in the player's own PDF — an
+   edition-specific extractor (stream offsets, filters, and image
+   parameters are part of the fact-table), not a general-purpose PDF
+   parser or renderer; unrecognized editions are already rejected by
+   the fingerprint gate — decoded by the host's image decoder, and the
+   text extracted once by OCR (Tesseract). In-game, the established journal reader layout is
    rendered on the game's own screen, and a seam watches the game's
    text output to auto-open the right entry when the game cites one.
 3. **Automap** — an in-game map panel drawn by the seam directly into

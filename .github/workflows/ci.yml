@@ -8,7 +8,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # On pull_request the default checkout is GitHub's synthetic
+          # merge commit, which carries no Signed-off-by; guard the PR
+          # head instead so the DCO check sees the contributor's commits.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: content guard (every commit + working tree)
         run: bash scripts/check-clean.sh
       - name: DCO check (every commit)
         run: bash scripts/check-dco.sh
+  acknowledgments:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: PR template acknowledgments are checked
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          body_lc=$(printf '%s' "$BODY" | tr '[:upper:]' '[:lower:]')
+          count=$(printf '%s\n' "$body_lc" | grep -c -- '- \[x\]' || true)
+          if [ "$count" -lt 2 ]; then
+            echo "FAIL: both acknowledgments in the pull-request template"
+            echo "must be checked ([x]) — see CONTRIBUTING.md."
+            exit 1
+          fi
+          echo "acknowledgments: OK"

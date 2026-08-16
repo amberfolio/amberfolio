@@ -27,9 +27,9 @@ Both run in CI on every push. The content guard scans every commit in
 history plus the working tree for denylisted game-artifact filenames
 and files over 256 KiB — an auditable tripwire against obvious
 artifacts, not proof by itself; the deeper clean-content claim rests on
-the full public history being open to inspection. Public history is
-effectively unrewritable, so both guards must stay green on every
-commit, not just at the tip.
+the full public history being open to inspection. Public history must
+never be rewritten (branch protection blocks force pushes to main), so
+both guards must stay green on every commit, not just at the tip.
 
 ## Non-negotiable rules
 

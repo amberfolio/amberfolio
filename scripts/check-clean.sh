@@ -35,17 +35,22 @@ scan() { # $1 = label; stdin = "size<TAB>path" lines
   done
 }
 
+# scan must NOT sit on the right side of a pipeline: bash would run it
+# in a subshell and its fail=1 would be lost. Process substitution keeps
+# it in the parent shell.
+
 # 1) Every commit in history.
 for rev in $(git rev-list HEAD); do
-  git ls-tree -r --format='%(objectsize)%x09%(path)' "$rev" \
-    | scan "${rev:0:7}"
+  scan "${rev:0:7}" < <(git ls-tree -r --format='%(objectsize)%x09%(path)' "$rev")
 done
 
 # 2) The working tree (tracked files), for local pre-commit use.
-while IFS= read -r f; do
-  [ -f "$f" ] || continue
-  printf '%s\t%s\n' "$(wc -c < "$f")" "$f"
-done < <(git ls-files) | scan worktree
+scan worktree < <(
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    printf '%s\t%s\n' "$(wc -c < "$f")" "$f"
+  done < <(git ls-files)
+)
 
 if [ "$fail" -eq 0 ]; then
   echo "check-clean: OK ($(git rev-list --count HEAD) commits + worktree)"
