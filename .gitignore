@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# Build trees. The presets put every configuration under build/<preset>/;
+# the other names catch hand-rolled and IDE-driven builds.
+/build/
+/out/
+/cmake-build-*/
+
+# Per-developer preset overrides (compilers, paths, local SDL3 checkouts).
+CMakeUserPresets.json
+
+# Generated compilation database and tool caches.
+compile_commands.json
+/.cache/
+
+# Editors and OS droppings.
+.vs/
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Generated from version.h.in — edit the template, not the copy in the
+// build tree. The numbers have a single source of truth: the project() call
+// in the top-level CMakeLists.txt.
+//
+// <compare> is the only include, and it is part of the freestanding library
+// subset — the core stays honest about having no host dependencies.
+
+#pragma once
+
+#include <compare>
+
+namespace amberfolio {
+
+/// A semantic version triple: ordered, equality-comparable, and usable in
+/// constant expressions.
+struct version {
+  int major{};
+  int minor{};
+  int patch{};
+
+  friend constexpr auto operator<=>(const version&, const version&) = default;
+};
+
+/// The version in the headers the caller compiled against.
+inline constexpr version core_version{
+    @amberfolio_VERSION_MAJOR@,
+    @amberfolio_VERSION_MINOR@,
+    @amberfolio_VERSION_PATCH@};
+
+/// The version of the core that was actually linked in.
+///
+/// Out of line on purpose. Once the core is a wasm module behind a C ABI,
+/// the headers a host compiled against and the library it ends up talking to
+/// can disagree, and this is how the host finds out — the same reason SDL
+/// gives you both SDL_MAJOR_VERSION and SDL_GetVersion().
+[[nodiscard]] version linked_version() noexcept;
+
+}  // namespace amberfolio
