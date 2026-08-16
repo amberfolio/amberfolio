@@ -24,8 +24,8 @@ leaving the original bytes on disk untouched.
 - **Nothing derived ships.** No original code, no disassembly, no
   translated routines. The machine and the hooks are original work, and
   this repository's full public history — from its very first commit —
-  exists to make that verifiable by anyone. A content guard runs in CI on
-  every push.
+  exists to make that verifiable by anyone. A content guard scans every
+  commit of that history in CI on every push.
 - **Fidelity first.** The goal is the real machine, faithful to the
   original's behavior, with enhancements strictly opt-in.
 

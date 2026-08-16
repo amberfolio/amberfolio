@@ -20,17 +20,20 @@ real commands.
 
 ```sh
 bash scripts/check-clean.sh   # content guard — run before every commit
+bash scripts/check-dco.sh     # DCO check — every commit signed off
 ```
 
-The guard (also CI on every push) fails on committed game-artifact
-filenames and any file over 256 KiB. It has enforced from the first
-commit and must stay green on every commit — this repository's full
-public history is load-bearing proof that nothing tainted ever existed
-in it, and public history is effectively unrewritable.
+Both run in CI on every push. The content guard scans every commit in
+history plus the working tree for denylisted game-artifact filenames
+and files over 256 KiB — an auditable tripwire against obvious
+artifacts, not proof by itself; the deeper clean-content claim rests on
+the full public history being open to inspection. Public history is
+effectively unrewritable, so both guards must stay green on every
+commit, not just at the tip.
 
 ## Non-negotiable rules
 
-- **Clean room.** No material from the original games, ever: no game
+- **Clean content.** No material from the original games, ever: no game
   code (original, disassembled, or translated), no game data or assets,
   no original byte sequences. *Facts* are fine — addresses, offsets,
   format descriptions, SHA fingerprints. Full rule: CONTRIBUTING.md.

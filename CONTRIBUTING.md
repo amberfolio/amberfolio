@@ -10,9 +10,10 @@ short, but the licensing part is load-bearing — please read it once.
 - **Outbound**: Amber Folio is distributed under **AGPL-3.0-only**.
 - **Inbound**: by submitting a contribution (pull request, patch, or
   otherwise) you license your contribution under the
-  [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) to the
+  [Apache License 2.0](LICENSES/Apache-2.0.txt) to the
   project maintainer and to all recipients of the software. You keep your
-  copyright. No CLA, no paperwork.
+  copyright. No CLA, no paperwork — the pull-request template asks you to
+  acknowledge this in one checkbox.
 - **Sign-off**: every commit must carry a `Signed-off-by:` line
   (`git commit -s`), certifying the
   [Developer Certificate of Origin](https://developercertificate.org/) —
@@ -37,15 +38,18 @@ If that trade isn't acceptable to you, that's a legitimate position — in
 that case please don't submit code, but bug reports, testing, and ideas
 are just as valuable and carry no licensing terms.
 
-## The clean-room rule (non-negotiable)
+## The clean-content rule (non-negotiable)
 
 Amber Folio must contain **no material from the original games**: no game
 code — original, disassembled, or translated — no game data, no assets,
 no copyrighted byte sequences. Contributions may rely on *facts*
 (addresses, offsets, format descriptions, checksums) but never on
-*expression* from the games. A content guard runs in CI on every push;
-maintainers will reject anything that crosses this line, however useful
-it would be.
+*expression* from the games. A content guard scans every commit in the
+history in CI on every push — a tripwire for obvious artifacts, while the
+full public history keeps the deeper claim open to anyone's inspection.
+Maintainers will reject anything that crosses this line, however useful
+it would be. This applies beyond git, too: keep game files out of issues,
+CI logs, and screenshots.
 
 ## Practical bits
 

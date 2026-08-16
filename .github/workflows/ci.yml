@@ -2,9 +2,13 @@
 name: ci
 on: [push, pull_request]
 jobs:
-  content-guard:
+  guards:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: content guard
+        with:
+          fetch-depth: 0
+      - name: content guard (every commit + working tree)
         run: bash scripts/check-clean.sh
+      - name: DCO check (every commit)
+        run: bash scripts/check-dco.sh

@@ -3,7 +3,7 @@
 *v1 target: Pool of Radiance. Last revised 2026-08-16.*
 
 This is the engineering plan for the first release. Governance (license,
-contributions, clean-room rule, trademarks) is settled in the repository
+contributions, clean-content rule, trademarks) is settled in the repository
 root documents and is not restated here — but two of its rules shape
 everything below: the emulator ships **none of the original games'
 expression**, and enhancements are **strictly opt-in**.
@@ -25,7 +25,8 @@ falling back to C++20 where a platform toolchain lags), built with CMake.
 **Release gate:** the game is verifiably playable end-to-end — a real
 playthrough sweep across all major systems, not just a booting title
 screen — and the v1 enhancement set below works. Milestones are ordered
-by dependency, not calendar; v1 ships when the gate is green.
+by dependency, not calendar; **1.0** ships when the gate is green, with
+tagged 0.x pre-releases at milestone exits along the way (§7).
 
 ## 2. What the player supplies
 
@@ -55,10 +56,14 @@ unmodified — including its own runtime unpacker and overlay manager,
 which execute on the emulated CPU like everything else and need no
 special handling beyond working DOS file I/O.
 
-- **CPU** — Intel 8086, real mode, interpreter. No performance concerns
-  at this scale on any 64-bit host or browser. A configurable speed
-  governor (instructions-per-tick budget) with period presets, so pacing
-  matches the machines the game was designed for.
+- **CPU** — Intel 8086, real mode, interpreter. The target is
+  **architectural correctness** (registers, flags, memory, interrupts);
+  cycle- or bus-level 8088 timing is a non-goal — this game family ran
+  across a decade of PC hardware and does not depend on it. No
+  performance concerns at this scale on any 64-bit host or browser. A
+  configurable speed governor (instructions-per-tick budget) with
+  period presets, so pacing matches the machines the game was designed
+  for.
 - **Memory** — 1 MB real-mode address space, 640 KB conventional.
 - **Video** — EGA, 320×200 16-color planar graphics: the sequencer /
   graphics-controller register subset the game uses (map mask,
@@ -107,8 +112,17 @@ subtly wrong for decades.
 - **Core** — freestanding C++ library, no host dependencies. Exposes a
   narrow platform interface: present a frame (320×200 indexed + 16-color
   palette), pull audio samples, receive input events, read/write the
-  virtual filesystem, wall-clock access. Compiled to each native target
+  virtual filesystem, date/time access. Compiled to each native target
   and, via Emscripten, to wasm32 with a small C ABI for the JS host.
+- **Deterministic core.** All machine-visible time derives from the
+  emulated tick: the PIT, interrupt delivery, and audio synthesis run
+  on emulated cycles, never host time — host wall time only throttles
+  presentation, outside machine state. Everything nondeterministic the
+  machine consumes (input events with their timing, date/time reads)
+  arrives through the platform interface and is therefore recordable
+  and injectable, so a replay is exact by construction. Replay goldens
+  hash a canonical, versioned machine-state serialization;
+  floating-point audio output is excluded from hashes.
 - **Desktop host** — one SDL3 (zlib-licensed) host for all three
   desktop platforms: window, scaling/aspect (with period-correct
   non-square-pixel option), audio callback, keyboard, config file, and
@@ -154,7 +168,7 @@ fingerprint(s) it applies to, and a set of interception points
 (CS:IP breakpoints) with actions — register/memory surgery, synthetic
 input, or a call out to a host service. The knowledge of *where* to
 hook is a database of addresses and offsets: facts about the original
-program, per the clean-room rule.
+program, per the clean-content rule.
 
 Design requirements:
 
@@ -177,6 +191,14 @@ Design requirements:
   Encamp (F)ix seam makes the game's own routines do the work so game
   time passes authentically — but the orchestration around them is
   native code.
+- **Overlay-aware, fail-closed.** The original program swaps overlaid
+  code through shared memory, so a raw address does not identify code;
+  interception points are qualified by which module/overlay is
+  currently resident (the machine tracks this as the program loads
+  them). A seam whose preconditions aren't met stays inert and reports
+  why, rather than firing on the wrong code. The seam schema and any
+  seam-persisted data are versioned; disabling a seam restores
+  untouched behavior.
 - **Designs are settled, not reopened.** Each v1 enhancement
   re-expresses an already-proven design — screen layouts, integration
   points, behavior — as-is. The work in this project is carrying the
@@ -185,13 +207,20 @@ Design requirements:
 ### The v1 seam set
 
 1. **Code-wheel bypass** — gated on a fingerprint-verified code wheel
-   PDF. Once verified, the seam no-ops the protection challenge
-   entirely; the PDF serves as proof of ownership. (No OCR involved.)
+   PDF: a possession gate (it demonstrates the player holds the
+   document, no more). Once verified, the seam skips the challenge —
+   preferring to engage the program's own built-in skip (a launch
+   parameter long documented in the game's cheat lore) over patching
+   the check, so the unmodified program simply exercises its own
+   functionality. (No OCR involved.)
 2. **Adventurer's Journal** — gated on a fingerprint-verified journal
    PDF. At onboarding, a fact-table (page regions and stream offsets
    keyed by the known PDF editions' fingerprints) locates each journal
-   entry in the player's own PDF, and the text is extracted once by
-   OCR (Tesseract). In-game, the established journal reader layout is
+   entry's scan image directly in the player's own PDF — the images are
+   pulled straight from the file's embedded streams, so no general PDF
+   parsing or rendering is needed (unrecognized editions are already
+   rejected by the fingerprint gate) — decoded by the host's image
+   decoder, and the text extracted once by OCR (Tesseract). In-game, the established journal reader layout is
    rendered on the game's own screen, and a seam watches the game's
    text output to auto-open the right entry when the game cites one.
 3. **Automap** — an in-game map panel drawn by the seam directly into
@@ -238,13 +267,19 @@ that line:
 **Local, with the maintainer's own game copy:**
 
 - Boot and playthrough sweeps on all targets.
-- A replay harness: scripted key input plus frame/state *hashes* as
-  goldens — hashes are committable; screen content never is.
+- A replay harness: scripted input (with timing) plus recorded
+  date/time reads — every nondeterministic input the machine consumes —
+  and frame/state *hashes* as goldens. Hashes are committable; screen
+  content never is.
 - Emulator-vs-original behavior spot checks for anything suspicious.
 
 ## 7. Milestones
 
-Ordered by dependency; each has a crisp exit criterion.
+Ordered by dependency; each has a crisp exit criterion. From M3 on,
+every milestone exit is tagged as a **0.x pre-release** (M3 → 0.1
+"boots", M4 → 0.2 "playable", M5 → 0.3 "enhanced", M6 → 0.4
+"onboarded"), so there is always a current, runnable tag while the work
+converges on **1.0** — the release the gate in §1 defines.
 
 - **M0 — Bootstrap.** CMake + presets, CI matrix for all four targets,
   unit-test rig, format/lint/sanitizer gates, DCO check. *Exit: an
@@ -280,9 +315,9 @@ Ordered by dependency; each has a crisp exit criterion.
   goes from artifacts-in-hand to playing without reading source code,
   and the game is fully playable — including text entry — with only a
   gamepad in hand.*
-- **M7 — Release v0.1.0.** Versioning, GitHub Releases with prebuilt
+- **M7 — Release 1.0.** Versioning, GitHub Releases with prebuilt
   binaries for the three desktop targets + the wasm bundle, README/docs
-  refresh, a short "supplying your artifacts" guide. *Exit: tagged
+  refresh, a short "supplying your artifacts" guide. *Exit: tagged 1.0
   release, binaries downloadable, release gate (§1) green.*
 
 ## 8. Risks and mitigations
@@ -299,11 +334,11 @@ Ordered by dependency; each has a crisp exit criterion.
   supporting the currently sold editions first, a friendly
   unrecognized-artifact message, and a process for adding editions.
 - **macOS distribution.** Signing/notarization needs an Apple developer
-  account; an unsigned build with instructions is the fallback for
-  v0.1.0. Open question below.
+  account; unsigned builds with instructions are acceptable for the
+  0.x pre-releases. Open question below for 1.0.
 - **Scope creep toward the family.** Sibling titles are tempting and
   the machine is family-shaped by design — but v1 is Pool of Radiance
-  only; family work starts after v0.1.0 ships.
+  only; family work starts after 1.0 ships.
 
 ## 9. Out of scope for v1
 
@@ -317,7 +352,7 @@ Ordered by dependency; each has a crisp exit criterion.
 
 ## 10. Open questions
 
-- macOS signing/notarization for v0.1.0: acquire the developer account
-  now, or ship unsigned with instructions first?
+- macOS signing/notarization for 1.0: acquire the developer account
+  during the 0.x run, or ship 1.0 unsigned with instructions too?
 - Which game-binary editions to fingerprint at launch (the currently
   sold archive release is the baseline — which others?).
