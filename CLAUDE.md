@@ -1,0 +1,71 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+Amber Folio: a purpose-built low-level emulator for the machine the SSI
+Gold Box CRPGs ran on (real-mode 8086, EGA, PC speaker), targeting
+Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
+Radiance. **PLAN.md is the plan of record** — scope, architecture,
+milestones, and settled decisions live there; don't re-litigate them
+here or in PRs.
+
+**Status: pre-code.** There is nothing to build, run, or test yet. The
+only runnable check is the content guard below. When milestone M0 lands
+(CMake skeleton, CI build matrix, test rig), update this file with the
+real commands.
+
+## Commands
+
+```sh
+bash scripts/check-clean.sh   # content guard — run before every commit
+```
+
+The guard (also CI on every push) fails on committed game-artifact
+filenames and any file over 256 KiB. It has enforced from the first
+commit and must stay green on every commit — this repository's full
+public history is load-bearing proof that nothing tainted ever existed
+in it, and public history is effectively unrewritable.
+
+## Non-negotiable rules
+
+- **Clean room.** No material from the original games, ever: no game
+  code (original, disassembled, or translated), no game data or assets,
+  no original byte sequences. *Facts* are fine — addresses, offsets,
+  format descriptions, SHA fingerprints. Full rule: CONTRIBUTING.md.
+- **Every commit is DCO-signed**: `git commit -s`.
+- **New source files start with** `// SPDX-License-Identifier: AGPL-3.0-only`.
+- **License compatibility.** Outbound is AGPL-3.0-only; inbound is
+  Apache-2.0. Dependencies must be AGPL-3.0-compatible — zlib/MIT/BSD/
+  Apache-2.0 are fine; GPL-2.0-only is not.
+- **Naming.** Game and franchise titles appear only nominatively (to
+  describe compatibility), per TRADEMARK.md.
+
+## Architecture (see PLAN.md for the full picture)
+
+- **Targeted LLE.** Hardware the game touches is emulated at register
+  level (8086 interpreter, EGA planar subset, 8253 PIT, speaker); the
+  thin DOS/BIOS service layer beneath it (small INT 21h/16h/10h
+  subsets) is provided over a virtual filesystem. The original program
+  runs unmodified — its own unpacker and overlay manager execute on the
+  emulated CPU.
+- **Core/host split.** A freestanding C++23 core exposes a narrow
+  platform interface (frame out, audio pull, input in, VFS, clock).
+  Two hosts: one SDL3 host for all desktop targets, and a hand-written
+  JS host (canvas/WebAudio/IndexedDB) for wasm — deliberately not
+  SDL-through-Emscripten.
+- **Seams** are the only enhancement mechanism: opt-in runtime patches
+  (CS:IP breakpoints + memory/register surgery + host services) keyed
+  by binary SHA-256 fingerprint. Seam handlers are native C++ compiled
+  into the emulator — never code injected into the emulated machine.
+  Every seam is individually toggleable and **off by default**; with
+  all seams off, the core is a plain machine running an unmodified
+  program, and nothing else may mutate machine state.
+- **Log, don't fake.** An unimplemented service, register, or port is
+  a loud log line and a clean stop — never a silently guessed answer.
+- **Enhancement designs are settled.** The v1 enhancements (automap
+  panel drawn into the emulated EGA planes, journal with OCR at
+  ingestion + in-game reader, Encamp Fix, code-wheel bypass, save
+  management, debug cheats) re-express proven designs as-is; implement
+  the mechanism, don't redesign the feature.
