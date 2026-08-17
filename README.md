@@ -59,6 +59,11 @@ ctest --preset linux-gcc -R '^Version\.'    # by name
 GoogleTest fetch. They are a native-target thing: the wasm build has its
 own check, below.
 
+Formatting (`clang-format`), static analysis (`clang-tidy`) and shell
+linting (`shellcheck`) are gates in CI too; the configs are in the repo
+root and the commands are in
+[CONTRIBUTING.md](CONTRIBUTING.md#formatting-and-linting).
+
 ### WebAssembly
 
 The wasm build needs an activated [emsdk](https://emscripten.org/), pinned

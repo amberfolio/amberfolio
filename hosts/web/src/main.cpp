@@ -20,8 +20,8 @@
 int main() {
   const uint32_t v = af_version();
 
-  std::printf("amberfolio %u.%u.%u\n", AF_VERSION_MAJOR(v),
-              AF_VERSION_MINOR(v), AF_VERSION_PATCH(v));
+  std::printf("amberfolio %u.%u.%u\n", AF_VERSION_MAJOR(v), AF_VERSION_MINOR(v),
+              AF_VERSION_PATCH(v));
   std::printf("  wasm module - no machine yet, this is the M0 skeleton.\n");
 
   return 0;

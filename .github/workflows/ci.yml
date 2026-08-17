@@ -17,12 +17,77 @@ jobs:
           # merge commit, which carries no Signed-off-by; guard the PR
           # head instead so the DCO check sees the contributor's commits.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # clang-format is pinned so CI and a contributor's machine reach the
+      # same verdict; the wheel is the one install that works identically
+      # on all three desktop platforms, which is what CONTRIBUTING.md
+      # tells people to use. shellcheck comes with the runner image.
+      #
+      # setup-python rather than the system one: Ubuntu's is marked
+      # externally-managed (PEP 668) and refuses a plain pip install.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: clang-format (pinned by .llvm-version)
+        run: pip install "clang-format==$(cat .llvm-version)"
+      # Before the gates themselves, because a gate that cannot fail is
+      # worse than no gate: this asserts each one rejects what it exists
+      # to reject.
       - name: guard self-test (negative cases)
         run: bash scripts/test-guards.sh
       - name: content guard (every commit + index + working tree)
         run: bash scripts/check-clean.sh
       - name: DCO check (every non-merge commit)
         run: bash scripts/check-dco.sh
+      - name: format check (clang-format over tracked C++)
+        run: bash scripts/check-format.sh
+      - name: shell lint (shellcheck over scripts/)
+        run: bash scripts/check-shell.sh
+
+  # Separate from the guards job because it is the only gate that needs a
+  # configured build tree — clang-tidy reads the compile database and the
+  # generated headers. Configure only: `cmake --preset` fetches the
+  # dependencies and runs configure_file, which is everything tidy needs,
+  # so this job never compiles a translation unit.
+  tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: SDL3 backend headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libjack-jackd2-dev libsndio-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxfixes-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libgl-dev libegl-dev libgles-dev libdrm-dev libgbm-dev \
+            libudev-dev libdbus-1-dev libibus-1.0-dev liburing-dev
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - name: clang-tidy (pinned by .llvm-version)
+        run: pip install "clang-tidy==$(cat .llvm-version)"
+      - name: Cache the SDL3 clone
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/linux-clang/_deps/sdl3-src
+            build/linux-clang/_deps/sdl3-subbuild
+          key: sdl3-tidy-${{ hashFiles('cmake/AmberfolioSDL3.cmake') }}
+      - name: Cache the GoogleTest clone
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/linux-clang/_deps/googletest-src
+            build/linux-clang/_deps/googletest-subbuild
+          key: gtest-tidy-${{ hashFiles('cmake/AmberfolioGoogleTest.cmake') }}
+      - name: configure (for the compile database)
+        run: cmake --preset linux-clang
+      - name: clang-tidy
+        run: bash scripts/check-tidy.sh build/linux-clang
   # Every target, every push. The jobs deliberately run the same three
   # commands a contributor runs locally — cmake --preset / --build --preset
   # / ctest --preset — so a green matrix means the documented workflow

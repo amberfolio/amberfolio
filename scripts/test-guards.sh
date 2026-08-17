@@ -26,7 +26,10 @@ expect() { # expect <description> <wanted-exit: 0|nonzero> <command...>
 mkrepo() { # mkrepo <name> -> prints repo path
   local d="$tmp/$1"
   mkdir -p "$d/scripts"
-  cp "$here/check-clean.sh" "$here/check-dco.sh" "$d/scripts/"
+  cp "$here"/check-*.sh "$d/scripts/"
+  # The gates that read configuration need it; the ones that do not are
+  # unaffected by the extra files.
+  cp "$here/../.clang-format" "$here/../.llvm-version" "$d/"
   git -C "$d" init -q -b main
   git -C "$d" config user.email test@example.com
   git -C "$d" config user.name "Guard Test"
@@ -73,6 +76,48 @@ git -C "$r" commit -q -s -m "side change"
 git -C "$r" checkout -q main
 git -C "$r" merge -q --no-ff --no-edit side
 expect "unsigned merge commit is exempt from dco" 0 bash "$r/scripts/check-dco.sh"
+
+# The format and shell gates need their tools. Skipping is announced, not
+# silent: a self-test that reports OK for a case it never ran is worse
+# than one that does not run at all.
+if command -v "${CLANG_FORMAT:-clang-format}" >/dev/null 2>&1; then
+  r=$(mkrepo format)
+  printf 'int formatted(int x) { return x; }\n' > "$r/ok.cpp"
+  git -C "$r" add -A
+  expect "formatted source passes format gate" 0 \
+    bash "$r/scripts/check-format.sh"
+  printf 'int   bad ( int  x ){return x ;}\n' > "$r/bad.cpp"
+  git -C "$r" add -A
+  expect "unformatted source fails format gate" 1 \
+    bash "$r/scripts/check-format.sh"
+  # Untracked is not exempt-by-accident: the gate walks git ls-files, so a
+  # file has to be staged to be seen. Pin that, or a reviewer could read
+  # the gate as covering the working tree.
+  git -C "$r" rm -q --cached bad.cpp
+  expect "unstaged file is outside the format gate" 0 \
+    bash "$r/scripts/check-format.sh"
+else
+  echo "skip: clang-format not installed (format gate not self-tested)"
+fi
+
+if command -v "${SHELLCHECK:-shellcheck}" >/dev/null 2>&1; then
+  r=$(mkrepo shell)
+  expect "the guards' own scripts pass shellcheck" 0 \
+    bash "$r/scripts/check-shell.sh"
+  # Literal, unexpanded: the whole point is that $f reaches the generated
+  # script intact, so shellcheck has something to object to.
+  # shellcheck disable=SC2016
+  printf '#!/usr/bin/env bash\nf=$1\nls $f\n' > "$r/scripts/unquoted.sh"
+  git -C "$r" add -A
+  expect "unquoted expansion fails the shell gate" 1 \
+    bash "$r/scripts/check-shell.sh"
+else
+  echo "skip: shellcheck not installed (shell gate not self-tested)"
+fi
+
+# check-tidy.sh is not self-tested here: it needs a configured CMake build
+# tree, which is minutes of SDL3 and GoogleTest, not a throwaway repo. The
+# tidy CI job runs it against the real one.
 
 if [ "$fail" -eq 0 ]; then
   echo "test-guards: OK"

@@ -23,6 +23,13 @@ void PrintTo(const version& v, std::ostream* os) {
 
 namespace {
 
+// A version literal that reads like a version. The braces also keep the
+// commas out of the EXPECT_* macros' argument list, which a plain
+// aggregate initialiser would need an extra pair of parentheses for.
+constexpr amberfolio::version v(int major, int minor, int patch) {
+  return {.major = major, .minor = minor, .patch = patch};
+}
+
 // The headers this test compiled against and the library it linked to are
 // built from the same project() call, so they must agree. Once the core is
 // a wasm module behind the C ABI they can genuinely diverge — this is the
@@ -32,27 +39,24 @@ TEST(Version, LinkedVersionMatchesTheHeaders) {
 }
 
 TEST(Version, LinkedVersionIsNotAllZeroes) {
-  const amberfolio::version v = amberfolio::linked_version();
-  EXPECT_GT(v, (amberfolio::version{0, 0, 0}));
+  EXPECT_GT(amberfolio::linked_version(), v(0, 0, 0));
 }
 
 // The defaulted operator<=> is a promise the header makes ("ordered"), and
 // member order is what implements it. Reordering the members would silently
 // change the ordering, so pin it: major dominates minor dominates patch.
 TEST(Version, OrdersMajorThenMinorThenPatch) {
-  constexpr amberfolio::version low{1, 2, 3};
-
-  EXPECT_LT(low, (amberfolio::version{1, 2, 4}));
-  EXPECT_LT(low, (amberfolio::version{1, 3, 0}));
-  EXPECT_LT(low, (amberfolio::version{2, 0, 0}));
-  EXPECT_EQ(low, (amberfolio::version{1, 2, 3}));
+  EXPECT_LT(v(1, 2, 3), v(1, 2, 4));
+  EXPECT_LT(v(1, 2, 3), v(1, 3, 0));
+  EXPECT_LT(v(1, 2, 3), v(2, 0, 0));
+  EXPECT_EQ(v(1, 2, 3), v(1, 2, 3));
 }
 
 TEST(Version, IsUsableInConstantExpressions) {
   // A runtime EXPECT would pass even if these stopped being constexpr; the
   // static_asserts are the real assertion, and the case exists so the
   // requirement is visible in the test list.
-  static_assert(amberfolio::version{1, 0, 0} > amberfolio::version{0, 9, 9});
+  static_assert(v(1, 0, 0) > v(0, 9, 9));
   static_assert(amberfolio::core_version == amberfolio::core_version);
   SUCCEED();
 }

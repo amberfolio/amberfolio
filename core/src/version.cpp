@@ -7,8 +7,6 @@
 
 namespace amberfolio {
 
-version linked_version() noexcept {
-  return core_version;
-}
+version linked_version() noexcept { return core_version; }
 
 }  // namespace amberfolio
