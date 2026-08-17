@@ -76,6 +76,17 @@
     },
 
     {
+      "name": "linux-asan-ubsan",
+      "displayName": "Linux (Clang, ASan + UBSan)",
+      "description": "The test suite under AddressSanitizer and UndefinedBehaviorSanitizer. Builds no host: the sanitizers cover the core and its tests, and instrumenting all of SDL3 would put a third-party project's findings in front of ours.",
+      "inherits": "linux-clang",
+      "cacheVariables": {
+        "AMBERFOLIO_SANITIZE": "address,undefined",
+        "AMBERFOLIO_BUILD_HOST_SDL": "OFF"
+      }
+    },
+
+    {
       "name": "wasm",
       "displayName": "WebAssembly (Emscripten, wasm32)",
       "description": "Needs an activated emsdk (source emsdk_env), whose version README.md pins.",
@@ -153,6 +164,23 @@
       "configuration": "Release"
     },
 
+    {
+      "name": "linux-asan-ubsan",
+      "configurePreset": "linux-asan-ubsan",
+      "configuration": "Debug"
+    },
+    {
+      "name": "linux-asan-ubsan-debug",
+      "configurePreset": "linux-asan-ubsan",
+      "configuration": "Debug"
+    },
+    {
+      "name": "linux-asan-ubsan-release",
+      "description": "Sanitizers with optimisation on. Reaches code a Debug build's assertions cut short; the module forces -g, so reports still carry line numbers.",
+      "configurePreset": "linux-asan-ubsan",
+      "configuration": "Release"
+    },
+
     { "name": "wasm", "configurePreset": "wasm", "configuration": "Debug" },
     {
       "name": "wasm-debug",
@@ -170,8 +198,23 @@
     {
       "name": "test-base",
       "hidden": true,
+      "description": "A test that hangs must fail, and soon: CTest's default is 1500 seconds, which on Windows is what a crashed test's modal abort dialog costs a CI job. Nothing here takes a second; raise this the day something legitimately needs to.",
       "output": { "outputOnFailure": true },
-      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false,
+        "timeout": 120
+      }
+    },
+
+    {
+      "name": "sanitizer-env",
+      "hidden": true,
+      "description": "Runtime options for the sanitizer presets. Deliberately no log_path: the default is stderr, which is what outputOnFailure puts in front of whoever is reading the failure.",
+      "environment": {
+        "ASAN_OPTIONS": "halt_on_error=1:detect_leaks=1:detect_stack_use_after_return=1:strict_string_checks=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      }
     },
 
     {
@@ -247,6 +290,25 @@
       "name": "linux-clang-release",
       "inherits": "test-base",
       "configurePreset": "linux-clang",
+      "configuration": "Release"
+    },
+
+    {
+      "name": "linux-asan-ubsan",
+      "inherits": ["test-base", "sanitizer-env"],
+      "configurePreset": "linux-asan-ubsan",
+      "configuration": "Debug"
+    },
+    {
+      "name": "linux-asan-ubsan-debug",
+      "inherits": ["test-base", "sanitizer-env"],
+      "configurePreset": "linux-asan-ubsan",
+      "configuration": "Debug"
+    },
+    {
+      "name": "linux-asan-ubsan-release",
+      "inherits": ["test-base", "sanitizer-env"],
+      "configurePreset": "linux-asan-ubsan",
       "configuration": "Release"
     },
 

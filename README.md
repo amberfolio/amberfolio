@@ -59,6 +59,18 @@ ctest --preset linux-gcc -R '^Version\.'    # by name
 GoogleTest fetch. They are a native-target thing: the wasm build has its
 own check, below.
 
+On Linux with Clang there is a sanitizer preset — AddressSanitizer and
+UndefinedBehaviorSanitizer over the same tests, with every finding fatal:
+
+```sh
+cmake --preset linux-asan-ubsan
+cmake --build --preset linux-asan-ubsan
+ctest --preset linux-asan-ubsan
+```
+
+It builds the core and the tests but no host, so nothing in the report
+comes from SDL3. CI runs it on every push.
+
 Formatting (`clang-format`), static analysis (`clang-tidy`) and shell
 linting (`shellcheck`) are gates in CI too; the configs are in the repo
 root and the commands are in
