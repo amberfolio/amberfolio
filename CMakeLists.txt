@@ -88,6 +88,19 @@ set(AMBERFOLIO_BUILD_TESTS ${_amberfolio_tests_default}
   CACHE BOOL "Build the unit tests (fetches GoogleTest)")
 unset(_amberfolio_tests_default)
 
+# The CPU conformance suite (issue #14) rides on the same rig but costs
+# two more fetched dependencies at configure time and, on a full run, a
+# 200 MB vector cache. On by default because it is M1's exit criterion;
+# off is for someone who wants only the unit tests.
+set(AMBERFOLIO_BUILD_CONFORMANCE ${AMBERFOLIO_BUILD_TESTS}
+  CACHE BOOL "Build the CPU conformance suite (fetches simdjson, libdeflate)")
+
+if(AMBERFOLIO_BUILD_CONFORMANCE AND NOT AMBERFOLIO_BUILD_TESTS)
+  message(FATAL_ERROR
+    "AMBERFOLIO_BUILD_CONFORMANCE needs AMBERFOLIO_BUILD_TESTS: the "
+    "conformance suite is part of the test rig.")
+endif()
+
 if(AMBERFOLIO_BUILD_TESTS AND EMSCRIPTEN)
   message(FATAL_ERROR
     "AMBERFOLIO_BUILD_TESTS is not wired up for the Emscripten toolchain: "
@@ -130,5 +143,6 @@ message(STATUS "amberfolio ${PROJECT_VERSION}: "
   "sdl-host=${AMBERFOLIO_BUILD_HOST_SDL}, "
   "web-host=${AMBERFOLIO_BUILD_HOST_WEB}, "
   "tests=${AMBERFOLIO_BUILD_TESTS}, "
+  "conformance=${AMBERFOLIO_BUILD_CONFORMANCE}, "
   "sanitizers=${_amberfolio_sanitize_summary}")
 unset(_amberfolio_sanitize_summary)

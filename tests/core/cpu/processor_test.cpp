@@ -273,5 +273,70 @@ TEST(Processor, FetchAtTheTopOfASegmentStaysInIt) {
   EXPECT_EQ(mem.accesses.front().address, 0x2FFFFu);
 }
 
+// The step model, made observable. PLAN.md §3 says one step is one
+// instruction *or one iteration of a repeated string instruction*, and
+// something has to be able to tell those apart: a caller that cannot
+// distinguish "still repeating" from "retired" cannot know when an
+// instruction is over. The string family (M1-I13) is what will call
+// keep_repeating(); this pins the contract it will call into.
+namespace {
+
+/// Stands in for a repeated string instruction: three iterations, each
+/// rewinding IP to the instruction the way a real REP does, then a fourth
+/// step that retires.
+int iterations_left = 0;
+
+void repeat_three_times(processor& cpu) {
+  if (iterations_left > 0) {
+    --iterations_left;
+    cpu.regs().ip = cpu.current().start_ip;
+    cpu.keep_repeating();
+  }
+}
+
+}  // namespace
+
+TEST(Processor, ARepeatedInstructionReportsEachIterationSeparately) {
+  test_bus mem;
+  dispatch_table table{};
+  table.primary[some_opcode] = &repeat_three_times;
+  processor repeating(mem, nullptr, table);
+
+  repeating.regs()[sreg::cs] = 0x2000;
+  repeating.regs().ip = 0x0100;
+  mem.poke(0x2000, 0x0100, {some_opcode});
+
+  iterations_left = 3;
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(repeating.step(), step_status::repeating);
+    // Rewound, so the next step re-enters the same instruction.
+    EXPECT_EQ(repeating.regs().ip, 0x0100);
+  }
+
+  // The count has run out: this one retires.
+  EXPECT_EQ(repeating.step(), step_status::ran);
+  EXPECT_EQ(repeating.regs().ip, 0x0101);
+}
+
+// The flag belongs to the step that set it and to no other — otherwise a
+// REP that ends would leave the next instruction reporting `repeating`
+// forever.
+TEST(Processor, TheRepeatFlagDoesNotLeakIntoTheNextInstruction) {
+  test_bus mem;
+
+  dispatch_table table{};
+  table.primary[some_opcode] = &repeat_three_times;
+  processor cpu(mem, nullptr, table);
+
+  cpu.regs()[sreg::cs] = 0x2000;
+  cpu.regs().ip = 0x0100;
+  mem.poke(0x2000, 0x0100, {some_opcode, some_opcode});
+
+  iterations_left = 1;
+  EXPECT_EQ(cpu.step(), step_status::repeating);
+  EXPECT_EQ(cpu.step(), step_status::ran);
+  EXPECT_EQ(cpu.step(), step_status::ran);
+}
+
 }  // namespace
 }  // namespace amberfolio::cpu

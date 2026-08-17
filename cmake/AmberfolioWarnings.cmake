@@ -38,6 +38,15 @@ else()
   endif()
 endif()
 
+# A note for whoever hits this next. -isystem genuinely silences a
+# third-party header on GCC and Clang; MSVC's equivalent does not always,
+# even with the /external:I and /external:W0 that CMake passes for a
+# SYSTEM include directory — a warning raised inside a header-only
+# template is still blamed on the code that instantiated it, and
+# /external:templates- does not rescue every case. Where that bites, the
+# suppression belongs on the target that includes the header (see
+# tests/CMakeLists.txt), not on this baseline.
+
 # Deliberately absent: -Wconversion / -Wsign-conversion. The 8086 core is
 # built out of 8- and 16-bit arithmetic that is *meant* to wrap and narrow,
 # and blanket conversion warnings there produce casts that hide real bugs

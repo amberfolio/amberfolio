@@ -99,6 +99,43 @@ ctest --preset linux-asan-ubsan
 It builds the core and the tests but no host, so nothing in the report
 comes from SDL3. CI runs it on every push.
 
+### CPU conformance
+
+The 8086 interpreter is checked against
+[SingleStepTests/8088](https://github.com/SingleStepTests/8088) — MIT-licensed
+test vectors captured from real silicon, one file per opcode, around ten
+thousand cases in each. Registers, flags (bit for bit, undefined behaviour
+included) and every byte of memory are compared after each instruction.
+
+The vectors are 726 MB and are never committed here. Fetch them once; the
+script strips the per-cycle bus trace this emulator has no use for, which
+takes the set down to about 200 MB, and caches the result outside the
+source tree:
+
+```sh
+python3 scripts/fetch-conformance-vectors.py     # ~726 MB, once
+ctest --preset linux-gcc -L conformance
+```
+
+Without them every conformance case reports SKIPPED rather than failing,
+so `ctest` stays green if you have not run the script. Useful knobs:
+
+| Variable | What it does |
+| --- | --- |
+| `AMBERFOLIO_CONFORMANCE_VECTORS` | where the condensed vectors live (default: your per-user cache directory; `--print-dir` says where) |
+| `AMBERFOLIO_CONFORMANCE_LIMIT` | run only the first N vectors of each file |
+| `AMBERFOLIO_CONFORMANCE_REQUIRED` | missing vectors are a failure, not a skip — what CI sets |
+
+`--stems 00 90 80.0` fetches just the files you need, and
+`-DAMBERFOLIO_BUILD_CONFORMANCE=OFF` drops the suite and the two libraries
+it fetches (simdjson, libdeflate) from the build entirely.
+
+A file is only run once its instructions are implemented: which ones those
+are is the list in
+[`tests/conformance/registry.cpp`](tests/conformance/registry.cpp), and
+everything else registers as a skip, so `ctest` is also the milestone's
+progress report.
+
 Formatting (`clang-format`), static analysis (`clang-tidy`), shell linting
 (`shellcheck`), the content guard and the DCO check are gates in CI too,
 each a script you can run yourself before pushing:

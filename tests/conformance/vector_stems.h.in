@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// GENERATED at configure time from tests/conformance/vector-files.txt.
+// Do not edit: edit the manifest, which the fetch script reads too — one
+// list, two readers, no chance of them disagreeing about what the pinned
+// suite contains.
+
+#pragma once
+
+#include <array>
+#include <string_view>
+
+namespace amberfolio::conformance {
+
+/// Every vector file of the pinned suite, by stem.
+inline constexpr std::array<std::string_view, @AMBERFOLIO_CONFORMANCE_STEM_COUNT@>
+    vector_stems = {
+@AMBERFOLIO_CONFORMANCE_STEMS@};
+
+}  // namespace amberfolio::conformance

@@ -46,3 +46,108 @@ target_link_libraries(amberfolio-core-tests PRIVATE
 gtest_discover_tests(amberfolio-core-tests
   DISCOVERY_MODE PRE_TEST
   PROPERTIES LABELS unit)
+
+# --- The CPU conformance suite (issue #14) -----------------------------
+#
+# Its own binary, not another source file in the one above: it links two
+# more third-party libraries, its cases are registered at run time rather
+# than by TEST() macros, and it carries the `conformance` label so that
+# `ctest -L unit` stays the fast answer and `ctest -L conformance` is the
+# slow, thorough one.
+#
+# The vectors themselves are never here. They are fetched and condensed
+# into a cache outside the source tree by
+# scripts/fetch-conformance-vectors.py; without them every case reports
+# SKIPPED rather than failing, so a contributor who has not run the script
+# still gets a green `ctest`.
+
+if(AMBERFOLIO_BUILD_CONFORMANCE)
+  include(AmberfolioConformance)
+
+  # One list, two readers. The manifest is what the fetch script
+  # downloads; this turns the same file into the harness's registry, so
+  # the two cannot disagree about what the pinned suite contains.
+  set(_amberfolio_manifest
+    "${CMAKE_CURRENT_SOURCE_DIR}/conformance/vector-files.txt")
+  set_property(DIRECTORY APPEND PROPERTY
+    CMAKE_CONFIGURE_DEPENDS "${_amberfolio_manifest}")
+
+  # Matched positively rather than by skipping "#" lines: file(STRINGS)
+  # splits on any non-ASCII byte, so an em dash in a comment arrives here
+  # as two fragments and the second one has no "#" on it. A stem is two
+  # hex digits with an optional ".0"-".7" group suffix, and nothing else
+  # in the file looks like that.
+  file(STRINGS "${_amberfolio_manifest}" _amberfolio_manifest_lines)
+  set(AMBERFOLIO_CONFORMANCE_STEMS "")
+  set(AMBERFOLIO_CONFORMANCE_STEM_COUNT 0)
+  foreach(_line IN LISTS _amberfolio_manifest_lines)
+    if(_line MATCHES "^[0-9A-F][0-9A-F](\\.[0-7])?$")
+      string(APPEND AMBERFOLIO_CONFORMANCE_STEMS "        \"${_line}\",\n")
+      math(EXPR AMBERFOLIO_CONFORMANCE_STEM_COUNT
+        "${AMBERFOLIO_CONFORMANCE_STEM_COUNT} + 1")
+    endif()
+  endforeach()
+
+  if(AMBERFOLIO_CONFORMANCE_STEM_COUNT EQUAL 0)
+    message(FATAL_ERROR
+      "no vector stems in ${_amberfolio_manifest}: the conformance suite "
+      "would register no cases at all, which is worse than failing here.")
+  endif()
+
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/conformance/vector_stems.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/vector_stems.h"
+    @ONLY)
+
+  add_executable(amberfolio-conformance-tests
+    conformance/conformance_test.cpp
+    conformance/machine.cpp
+    conformance/machine_test.cpp
+    conformance/registry.cpp
+    conformance/vectors.cpp)
+
+  target_include_directories(amberfolio-conformance-tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/conformance"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
+  # GTest::gmock rather than gmock_main: this binary registers its cases
+  # instead of declaring them, so it has a main() of its own
+  # (conformance_test.cpp).
+  target_link_libraries(amberfolio-conformance-tests PRIVATE
+    amberfolio::core
+    amberfolio::warnings
+    GTest::gmock
+    libdeflate::libdeflate_static
+    simdjson::simdjson)
+
+  # std::getenv is how the harness is configured (cache location, test
+  # limit), and MSVC deprecates it in favour of a Microsoft-only
+  # alternative. Silenced here rather than in the source, because the
+  # source is portable and the objection is not.
+  target_compile_definitions(amberfolio-conformance-tests PRIVATE
+    $<$<BOOL:${MSVC}>:_CRT_SECURE_NO_WARNINGS>)
+
+  # C4706, assignment within a conditional expression: simdjson's
+  # iterators are written that way, and MSVC blames the instantiation
+  # rather than the definition however hard it is told the header is
+  # external (see cmake/AmberfolioWarnings.cmake). Narrowed to the one
+  # target that includes simdjson; GCC and Clang need nothing, because
+  # -isystem does what it says.
+  target_compile_options(amberfolio-conformance-tests PRIVATE
+    $<$<BOOL:${MSVC}>:/wd4706>)
+
+  # TIMEOUT: the biggest files hold ten thousand vectors each, and the
+  # preset's two-minute default exists to catch a hung unit test, not to
+  # bound this.
+  #
+  # SKIP_REGULAR_EXPRESSION: GoogleTest exits 0 for a skipped test, so
+  # without this CTest would report the whole un-implemented milestone as
+  # passing. The skips are the milestone's burn-down chart; they have to
+  # read as skips.
+  gtest_discover_tests(amberfolio-conformance-tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES
+      LABELS conformance
+      TIMEOUT 900
+      SKIP_REGULAR_EXPRESSION "\\[ +SKIPPED +\\]")
+endif()

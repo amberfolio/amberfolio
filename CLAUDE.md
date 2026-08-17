@@ -21,6 +21,10 @@ What M0 left in place, all of it running in CI on every push:
 
 - The unit-test rig — GoogleTest (fetched, never vendored) under CTest,
   tests in `tests/`, one CTest case per test, on the native targets.
+  M1 added the CPU conformance suite beside it under the `conformance`
+  label: one CTest case per SingleStepTests/8088 vector file, fetched and
+  condensed into a cache outside the tree, skipping until its instruction
+  family lands (`tests/conformance/registry.cpp` is the enabled list).
 - The format and lint gates — clang-format, clang-tidy and shellcheck,
   with the clang tools pinned in `.llvm-version`.
 - An ASan+UBSan job on the `linux-asan-ubsan` preset.
@@ -38,6 +42,9 @@ cmake --build --preset linux-gcc
 ctest --preset linux-gcc      # unit tests (-L unit) + host smoke checks
 
 cmake --preset linux-asan-ubsan   # the tests under ASan + UBSan, no host
+
+python3 scripts/fetch-conformance-vectors.py   # the CPU oracle, ~726 MB once
+ctest --preset linux-gcc -L conformance        # the 8088 vector suite
 
 bash scripts/check-clean.sh   # content guard — run before every commit
 bash scripts/check-dco.sh     # DCO check — non-merge commits signed off

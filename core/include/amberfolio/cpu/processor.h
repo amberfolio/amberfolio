@@ -25,8 +25,20 @@ namespace amberfolio::cpu {
 
 /// What one call to `step()` did.
 enum class step_status : std::uint8_t {
-  /// One scheduling step of work happened.
+  /// One instruction ran to completion.
   ran,
+  /// One iteration of a repeated string instruction ran, and the
+  /// instruction has *not* retired: IP is back at the instruction (or at
+  /// its last prefix — see prefix_state::last_prefix_ip) and the next
+  /// `step()` continues the run.
+  ///
+  /// This is the observable half of the step model PLAN.md §3 states: a
+  /// REP run is many steps so that it stays interruptible between
+  /// iterations. Without it a caller cannot tell "the instruction is
+  /// still going" from "the instruction jumped to itself", which is a
+  /// distinction the conformance harness (M1-F4) has to make on every
+  /// string vector.
+  repeating,
   /// The processor is halted (HLT) and consumed nothing. It leaves this
   /// state when an interrupt is delivered — M1-F7.
   halted,
@@ -91,6 +103,16 @@ class processor {
   [[nodiscard]] bool halted() const noexcept { return halted_; }
   void halt() noexcept { halted_ = true; }
   void resume() noexcept { halted_ = false; }
+
+  /// What a repeated string instruction's handler calls when it has run
+  /// one iteration and the repeat count has not run out: the step returns
+  /// `step_status::repeating` instead of `ran`. The handler is still the
+  /// one that rewinds IP — this only changes what the step loop reports.
+  ///
+  /// Cleared at the top of every `step()`, so it cannot leak from one
+  /// instruction into the next. (The string family — issue #30 — is what
+  /// will call it; nothing does yet.)
+  void keep_repeating() noexcept { repeating_ = true; }
 
   // --- Memory, addressed the way the program addresses it -------------
   //
@@ -162,6 +184,7 @@ class processor {
   instruction current_{};
   stop_record stop_{};
   bool halted_{false};
+  bool repeating_{false};
 };
 
 }  // namespace amberfolio::cpu

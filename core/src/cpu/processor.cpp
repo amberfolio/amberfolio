@@ -41,6 +41,7 @@ void processor::reset() noexcept {
   current_ = instruction{};
   stop_ = stop_record{};
   halted_ = false;
+  repeating_ = false;
 }
 
 // --- Memory -----------------------------------------------------------
@@ -279,6 +280,9 @@ step_status processor::step() {
 
   current_ = instruction{};
   current_.start_ip = regs_.ip;
+  // Cleared here rather than after the handler, so that a handler which
+  // sets it is the only thing that can make this step report `repeating`.
+  repeating_ = false;
 
   current_.opcode = fetch_opcode();
   if (stopped()) {
@@ -305,7 +309,7 @@ step_status processor::step() {
   }
 
   run(*this);
-  return step_status::ran;
+  return repeating_ ? step_status::repeating : step_status::ran;
 }
 
 }  // namespace amberfolio::cpu
