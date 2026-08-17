@@ -11,18 +11,24 @@ Radiance. **PLAN.md is the plan of record** — scope, architecture,
 milestones, and settled decisions live there; don't re-litigate them
 here or in PRs.
 
-**Status: M0 in progress.** The skeleton builds and is proven on all four
-targets in CI on every push — an empty core library, a stub SDL3 desktop
-host, and a wasm module that reports its version. There is no machine
-yet. The unit-test rig is in place: GoogleTest (fetched, never vendored)
-under CTest, tests in `tests/`, running on the native targets in CI. So
-are the format and lint gates: clang-format, clang-tidy and shellcheck,
-with the clang tools pinned in `.llvm-version`, and an ASan+UBSan job on
-the `linux-asan-ubsan` preset. That is M0's gate work complete; the
-machine itself starts in M1. The wasm host is deployed to
-https://amberfolio.vercel.app on every push to `main` (and to a preview
-URL for every same-repo PR) by the `deploy` job — built in Actions with
-the pinned emsdk, shipped prebuilt; see `deploy/vercel/README.md`.
+**Status: M0 complete. M1 — the CPU core — is the current milestone.**
+The skeleton builds and is proven on all four targets in CI on every
+push — an empty core library, a stub SDL3 desktop host, and a wasm
+module that reports its version. There is no machine yet: M1 is where
+the 8086 interpreter starts.
+
+What M0 left in place, all of it running in CI on every push:
+
+- The unit-test rig — GoogleTest (fetched, never vendored) under CTest,
+  tests in `tests/`, one CTest case per test, on the native targets.
+- The format and lint gates — clang-format, clang-tidy and shellcheck,
+  with the clang tools pinned in `.llvm-version`.
+- An ASan+UBSan job on the `linux-asan-ubsan` preset.
+- The content guard and the DCO check, over every commit in history.
+- Deployment of the wasm host to https://amberfolio.vercel.app on every
+  push to `main` (and to a preview URL for every same-repo PR) by the
+  `deploy` job — built in Actions with the pinned emsdk, shipped
+  prebuilt; see `deploy/vercel/README.md`.
 
 ## Commands
 
@@ -49,8 +55,14 @@ in review — don't argue formatting in prose, change the config.
 The wasm preset needs an activated emsdk of the version pinned in
 `.emscripten-version`; README.md has the setup and the build layout.
 
-Both run in CI on every push. The content guard scans every commit in
-history plus the working tree for denylisted game-artifact filenames
+Windows: build from a VS developer shell, and keep the checkout on a short
+path — the fetched dependencies nest deeply enough that a long one trips
+the 260-character limit while configuring. README.md has the per-platform
+prerequisites.
+
+The two guards run in CI on every push, and nothing deploys unless they
+pass. The content guard scans every commit in history plus the working
+tree for denylisted game-artifact filenames
 and files over 256 KiB — an auditable tripwire against obvious
 artifacts, not proof by itself; the deeper clean-content claim rests on
 the full public history being open to inspection. Public history must

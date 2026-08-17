@@ -137,11 +137,13 @@ jobs:
       # CMake, Ninja and node come with every runner image; only the SDL3
       # backend headers and the compilers have to be arranged for.
       #
-      # SDL3's own README-linux dependency list, which is not optional: a
-      # backend SDL wants and cannot find its headers for is a hard
-      # configure error, not a silently dropped feature. Build the desktop
-      # host with every backend a Linux player might need, or the green
-      # light here means nothing.
+      # SDL3's own README-linux dependency list, which is not optional. A
+      # partly-installed backend is a hard configure error (SDL's
+      # SDL_missing_dependency is FATAL_ERROR on Linux); a wholly absent one
+      # is dropped without a word, which is the worse case — it builds green
+      # on a host that cannot open a window. Install the lot: the desktop
+      # host has to carry every backend a Linux player might need, or the
+      # green light here means nothing.
       - name: SDL3 backend headers (X11, Wayland, audio, KMS, udev, D-Bus)
         if: runner.os == 'Linux' && !matrix.emscripten
         run: |

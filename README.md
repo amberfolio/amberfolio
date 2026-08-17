@@ -4,8 +4,10 @@ A low-level emulator for the SSI Gold Box games.
 
 **Status: early development.** There is no emulator yet. What builds today
 is the skeleton — an empty core library, a stub desktop host, and a wasm
-module that reports its version — on all four targets. The shape of the
-work is in the [project plan](PLAN.md).
+module that reports its version — on all four targets, with the test rig,
+the gates and the deployment pipeline around it. That was milestone M0,
+and it is done; the CPU core is next. The shape of the work is in the
+[project plan](PLAN.md).
 
 **Try it in a browser:** <https://amberfolio.vercel.app> — the wasm host,
 published automatically from `main` on every push. Today it reports the
@@ -22,13 +24,15 @@ emulator runs the unmodified original program. Quality-of-life enhancements
 are applied as opt-in runtime patches to the machine's memory ("seams"),
 leaving the original bytes on disk untouched.
 
-## Building
+## Building from source
 
-CMake 3.25+, Ninja, and a compiler with C++23 (C++20 is accepted as a
+CMake 3.25+, Ninja, git, and a compiler with C++23 (C++20 is accepted as a
 fallback for lagging toolchains). Every target is a preset, and those
 presets are exactly what CI runs — nothing here is a CI-only incantation.
 
 ```sh
+git clone https://github.com/amberfolio/amberfolio.git
+cd amberfolio
 cmake --preset linux-gcc          # or linux-clang, macos, windows-msvc
 cmake --build --preset linux-gcc
 ctest --preset linux-gcc          # unit tests + host smoke checks
@@ -37,15 +41,34 @@ ctest --preset linux-gcc          # unit tests + host smoke checks
 Each preset also has `-debug` and `-release` build and test variants; the
 bare name is Debug. Build trees land in `build/<preset>/`.
 
-- **Windows**: run from a Visual Studio developer shell so `cl` and `ninja`
-  are on `PATH`.
-- **macOS**: the `macos` preset builds a universal binary (arm64 +
-  x86_64) in one pass.
-- **SDL3** is fetched and built at configure time — nothing third-party is
-  committed here. `-DAMBERFOLIO_USE_SYSTEM_SDL3=ON` uses an installed one
-  instead. On Linux, install the X11/Wayland/ALSA/PulseAudio development
-  headers first (see the `build` job in `.github/workflows/ci.yml` for the
-  exact package list), or SDL3 will build without those backends.
+### Per platform
+
+- **Windows**: Visual Studio 2022 or later with the *Desktop development
+  with C++* workload, which brings MSVC, CMake and Ninja along with it; run
+  the commands from a developer shell so `cl` and `ninja` are on `PATH`.
+  Clone somewhere short, near the drive root — the fetched dependencies
+  build in deeply nested directories, and a long clone path pushes them
+  past Windows' 260-character limit, which surfaces as
+  `Filename longer than 260 characters` during configure.
+- **macOS**: `xcode-select --install` for the toolchain, then
+  `brew install cmake ninja`. The `macos` preset builds a universal binary
+  (arm64 + x86_64) in one pass.
+- **Linux**: `cmake`, `ninja-build`, and GCC or Clang from your package
+  manager, plus SDL3's backend development headers — see below.
+
+**SDL3** is fetched and built at configure time — nothing third-party is
+committed here. `-DAMBERFOLIO_USE_SYSTEM_SDL3=ON` uses an installed one
+instead. On Linux that fetched build needs the X11/Wayland/ALSA/PulseAudio
+development headers present first; the `build` job in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) has the exact
+package list, which is SDL3's own
+([README-linux](https://wiki.libsdl.org/SDL3/README-linux#build-dependencies))
+and worth installing in full. Skip them and you get one of two bad
+outcomes rather than a warning: a backend whose main library is present
+but whose extension headers are not fails configure outright
+(`Couldn't find dependency package for ...`), and one that is missing
+altogether is dropped silently — leaving a host that builds green here
+and cannot open a window on someone else's machine.
 
 ### Tests
 
@@ -76,10 +99,11 @@ ctest --preset linux-asan-ubsan
 It builds the core and the tests but no host, so nothing in the report
 comes from SDL3. CI runs it on every push.
 
-Formatting (`clang-format`), static analysis (`clang-tidy`) and shell
-linting (`shellcheck`) are gates in CI too; the configs are in the repo
-root and the commands are in
-[CONTRIBUTING.md](CONTRIBUTING.md#formatting-and-linting).
+Formatting (`clang-format`), static analysis (`clang-tidy`), shell linting
+(`shellcheck`), the content guard and the DCO check are gates in CI too,
+each a script you can run yourself before pushing:
+[CONTRIBUTING.md](CONTRIBUTING.md#checks-and-gates) has the five commands
+and how to install what they need.
 
 ### WebAssembly
 

@@ -46,19 +46,42 @@ Amber Folio must contain **no material from the original games**: no game
 code — original, disassembled, or translated — no game data, no assets,
 no copyrighted byte sequences. Contributions may rely on *facts*
 (addresses, offsets, format descriptions, checksums) but never on
-*expression* from the games. A content guard scans every commit in the
-history in CI on every push — a tripwire for obvious artifacts, while the
+*expression* from the games. A content guard
+([`scripts/check-clean.sh`](scripts/check-clean.sh), run it yourself before
+you push) scans every commit in the history in CI on every push — a
+tripwire for obvious artifacts, while the
 full public history keeps the deeper claim open to anyone's inspection.
 Maintainers will reject anything that crosses this line, however useful
 it would be. This applies beyond git, too: keep game files out of issues,
 CI logs, and screenshots.
 
-## Formatting and linting
+## Checks and gates
+
+Beside the build-and-test matrix, five scripted checks gate every push,
+and each is a script in [`scripts/`](scripts) you can run yourself. CI runs
+exactly these scripts — no CI-only variant, no extra flags — so a green run
+locally is a green run there:
+
+```sh
+bash scripts/check-clean.sh   # content guard: every commit, index, worktree
+bash scripts/check-dco.sh     # every non-merge commit carries a sign-off
+bash scripts/check-format.sh  # clang-format over tracked C++
+bash scripts/check-tidy.sh    # clang-tidy; needs a configured build tree
+bash scripts/check-shell.sh   # shellcheck over scripts/
+```
+
+The first two look at **history**, not just your tip commit — an artifact
+or a missing sign-off four commits back fails the push even if the tree is
+clean now, and the public history is never rewritten to paper over it
+(force pushes to `main` are blocked). Fix it before it lands: `git commit
+-s` from the start, and `git rebase --signoff` if you forgot.
+
+### Formatting and linting
 
 Style is not a review topic here — it is settled by
 [`.clang-format`](.clang-format), and the check set in
-[`.clang-tidy`](.clang-tidy) is settled the same way. CI runs exactly the
-scripts below, so a green run locally is a green run there.
+[`.clang-tidy`](.clang-tidy) is settled the same way — don't argue
+formatting in prose, change the config.
 
 Both clang tools are pinned in [`.llvm-version`](.llvm-version), because
 they disagree with themselves across major versions and a gate whose
@@ -74,12 +97,6 @@ distributions mark the system Python as externally managed.) `shellcheck`
 comes from your package manager: `apt install shellcheck`,
 `brew install shellcheck`.
 
-```sh
-bash scripts/check-format.sh            # clang-format over tracked C++
-bash scripts/check-tidy.sh              # clang-tidy, needs a configured tree
-bash scripts/check-shell.sh             # shellcheck over scripts/
-```
-
 To fix formatting rather than just be told about it, run `clang-format -i`
 over the files the gate names. `check-tidy.sh` reads the compile database
 from `build/linux-clang` by default — `cmake --preset linux-clang` is
@@ -93,6 +110,9 @@ after editing one.
 
 ## Practical bits
 
+- Building and running the tests: [README.md](README.md#building-from-source)
+  has the prerequisites per platform and the preset commands. The four
+  targets and the sanitizer preset are all one `cmake --preset` away.
 - Use `git commit -s` (DCO sign-off, see above).
 - New source files start with `// SPDX-License-Identifier: AGPL-3.0-only`.
 - Early days: please open an issue before starting large changes — the
