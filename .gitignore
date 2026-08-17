@@ -9,6 +9,13 @@
 # Per-developer preset overrides (compilers, paths, local SDL3 checkouts).
 CMakeUserPresets.json
 
+# Deployment staging. CI assembles the wasm host here before pushing it
+# (deploy/vercel/README.md); `vercel link` drops project IDs in it and a
+# short-lived OIDC token in .env.local beside it. None of that is ours to
+# commit — the deployment's only input is the build tree.
+.vercel/
+.env*
+
 # Generated compilation database and tool caches.
 compile_commands.json
 /.cache/

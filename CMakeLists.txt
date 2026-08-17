@@ -19,8 +19,22 @@ endif()
 project(amberfolio
   VERSION 0.0.1
   DESCRIPTION "A purpose-built low-level emulator for the Gold Box machine"
-  HOMEPAGE_URL "https://github.com/BussardRamjet/amberfolio"
+  HOMEPAGE_URL "https://github.com/amberfolio/amberfolio"
   LANGUAGES CXX)
+
+# The web host serves the program over a network, and AGPL-3.0-only §13
+# answers that with an obligation: its users must be offered the
+# Corresponding Source. The page carries that offer as a link, and a link
+# to "the repository" does not discharge it — the offer has to name the
+# version being served, so whatever builds the page has to say where its
+# source is. CI passes a URL pinned to the commit it deployed
+# (.github/workflows/ci.yml); a local build points at the repository.
+#
+# Declared here rather than in hosts/web so every preset accepts the
+# flag and CI can pass it from one shared configure step; only the web
+# host reads it.
+set(AMBERFOLIO_SOURCE_URL "${PROJECT_HOMEPAGE_URL}" CACHE STRING
+  "URL of the source this build was made from (AGPL-3.0-only §13 offer)")
 
 # SDL3 is a C project and enables C (and Objective-C on Apple) itself when
 # it is added as a subdirectory; we deliberately do not enable them here.

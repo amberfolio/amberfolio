@@ -1,0 +1,15 @@
+{
+  "version": 3,
+  "routes": [
+    {
+      "src": "/(.*)",
+      "headers": { "Cache-Control": "no-store" },
+      "continue": true
+    }
+  ],
+  "overrides": {
+    "amberfolio.wasm": { "contentType": "application/wasm" },
+    "amberfolio.mjs": { "contentType": "text/javascript" },
+    "host.mjs": { "contentType": "text/javascript" }
+  }
+}

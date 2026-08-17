@@ -291,8 +291,10 @@ every milestone exit is tagged as a **0.x pre-release** (M3 → 0.1
 converges on **1.0** — the release the gate in §1 defines.
 
 - **M0 — Bootstrap.** CMake + presets, CI matrix for all four targets,
-  unit-test rig, format/lint/sanitizer gates, DCO check. *Exit: an
-  empty core library + hosts build green on all targets in CI.*
+  unit-test rig, format/lint/sanitizer gates, DCO check, and automatic
+  deployment of the wasm host to a public URL on every push. *Exit: an
+  empty core library + hosts build green on all targets in CI, and the
+  wasm host is published from `main` with no human step.*
 - **M1 — CPU core.** 8086 interpreter with exact flag semantics and
   interrupt delivery. *Exit: public single-step conformance suite
   passes in CI.*

@@ -44,11 +44,24 @@ target_link_options(amberfolio-web PRIVATE
   # must survive the link — see the comment in src/main.cpp.
   "-sEXPORTED_FUNCTIONS=_main,_af_version")
 
+# The page is generated rather than copied: it carries the AGPL-3.0-only
+# §13 source offer, which has to name the commit this build came from,
+# and only the thing doing the building knows that (AMBERFOLIO_SOURCE_URL
+# in the top-level CMakeLists). @ONLY because the page's script is full of
+# JS ${...} that CMake must keep its hands off.
+#
+# Configured into a private directory rather than straight into the served
+# one because configure_file runs at configure time and so cannot write
+# through the $<CONFIG> genex in AMBERFOLIO_WEB_OUTPUT_DIR; the copy rules
+# below carry it the last step, same as the hand-written files.
+set(_amberfolio_web_index "${CMAKE_CURRENT_BINARY_DIR}/generated/index.html")
+configure_file(page/index.html.in "${_amberfolio_web_index}" @ONLY)
+
 # The JS and the page are not compiled, they are placed: they have to sit
 # beside the generated glue to import it. Listed one by one rather than
 # globbed so a new file is a deliberate act.
 set(_amberfolio_web_files
-  "${CMAKE_CURRENT_SOURCE_DIR}/page/index.html"
+  "${_amberfolio_web_index}"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/host.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke.mjs")
 
@@ -95,6 +108,7 @@ else()
     "$ENV{EMSDK}/node).")
 endif()
 
+unset(_amberfolio_web_index)
 unset(_amberfolio_web_files)
 unset(_amberfolio_web_copies)
 unset(_amberfolio_web_file)

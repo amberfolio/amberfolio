@@ -9,6 +9,12 @@
      ES modules need a real origin, so open it over HTTP, not file://:
          cmake --build --preset wasm
          python3 scripts/serve-web.py
+
+     A template, not a plain page: CMake substitutes
+     AMBERFOLIO_SOURCE_URL into the source offer at the bottom (see
+     hosts/web/CMakeLists.txt) — spelled without its at-signs here, or
+     this comment would be substituted too. Nothing else is: the rule is
+     @ONLY, so the ${...} in the script below is JS, not CMake.
 -->
 <html lang="en">
   <head>
@@ -34,6 +40,16 @@
       }
       .failed {
         color: #ff8a7a;
+      }
+      footer {
+        margin: 2rem 0 0;
+        padding: 1rem 0 0;
+        border-top: 1px solid #3a2f22;
+        font-size: 0.875rem;
+        color: #b3a58c;
+      }
+      footer a {
+        color: #e0a33c;
       }
     </style>
   </head>
@@ -70,5 +86,16 @@
         throw error;
       }
     </script>
+
+    <!-- Not decoration. AGPL-3.0-only §13: serving this program over a
+         network obliges us to offer its users the Corresponding Source,
+         and "the project is on GitHub somewhere" does not discharge
+         that — the offer has to be reachable from the page, and it has
+         to name the version being served. CI pins the URL to the commit
+         it deployed; a local build points at the repository. -->
+    <footer>
+      Amber Folio is free software under AGPL-3.0-only.
+      <a href="@AMBERFOLIO_SOURCE_URL@">Source code for this build</a>.
+    </footer>
   </body>
 </html>

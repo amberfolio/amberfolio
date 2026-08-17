@@ -19,7 +19,10 @@ under CTest, tests in `tests/`, running on the native targets in CI. So
 are the format and lint gates: clang-format, clang-tidy and shellcheck,
 with the clang tools pinned in `.llvm-version`, and an ASan+UBSan job on
 the `linux-asan-ubsan` preset. That is M0's gate work complete; the
-machine itself starts in M1.
+machine itself starts in M1. The wasm host is deployed to
+https://amberfolio.vercel.app on every push to `main` (and to a preview
+URL for every same-repo PR) by the `deploy` job — built in Actions with
+the pinned emsdk, shipped prebuilt; see `deploy/vercel/README.md`.
 
 ## Commands
 

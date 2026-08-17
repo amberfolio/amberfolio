@@ -7,6 +7,11 @@ is the skeleton — an empty core library, a stub desktop host, and a wasm
 module that reports its version — on all four targets. The shape of the
 work is in the [project plan](PLAN.md).
 
+**Try it in a browser:** <https://amberfolio.vercel.app> — the wasm host,
+published automatically from `main` on every push. Today it reports the
+core version and nothing more; that is the point of having the pipeline
+in place before there is anything to see.
+
 ## What this will be
 
 Amber Folio is a purpose-built, low-level emulator for the machine the SSI
@@ -116,6 +121,15 @@ defaults are wrong.
 The placeholder page prints the core version to the page and the console.
 It is scaffolding: canvas, audio, input and persistence arrive in M2, and
 the reference shell in M6.
+
+The same page is deployed to <https://amberfolio.vercel.app> by CI on
+every push to `main`, and to a preview URL for every pull request from
+this repository — built by the wasm job with the pinned emsdk, never on
+the deployment host. [`deploy/vercel/README.md`](deploy/vercel/README.md)
+has the details. The page carries a link to the source it was built from,
+pinned to that commit: serving the program over a network is what
+AGPL-3.0-only §13 attaches the source offer to, and the offer has to be
+reachable from the page.
 
 ## Principles
 
