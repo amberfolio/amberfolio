@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Static-analysis gate. CI runs this over the linux-clang compile database
+# (see the `tidy` job in .github/workflows/ci.yml); `bash
+# scripts/check-tidy.sh` is the same run, locally.
+#
+# Deliberately a focused set, not everything-on: a check list nobody reads
+# gets suppressed line by line until it means nothing. bugprone-*,
+# performance-* and modernize-* are the three families that pay for
+# themselves on a codebase like this, and the exclusions below each have a
+# reason. Expand it deliberately — a new family is a decision, not a
+# default.
+#
+# clang-tidy is pinned in .llvm-version alongside clang-format, for the
+# same reason: findings differ across major versions.
+
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  -bugprone-easily-swappable-parameters,
+  -modernize-use-trailing-return-type,
+  -modernize-use-std-print,
+  -modernize-deprecated-headers,
+  -modernize-avoid-c-arrays
+
+# Every finding fails the gate. There is no "warning" tier here: with a
+# check set this small, anything it reports is either worth fixing or
+# worth removing from the list above.
+WarningsAsErrors: '*'
+
+# Our headers only. Third-party headers arrive through -isystem (the
+# SYSTEM flag on the FetchContent declarations), so they are already out;
+# this keeps the net tight anyway, and lets the generated version.h in the
+# build tree be checked like the template it comes from.
+#
+# Both separators: the build tree's headers are named with backslashes on
+# Windows, and a '/'-only regex would quietly give a Windows contributor a
+# weaker check than CI runs.
+HeaderFilterRegex: '(^|[/\\])(core|hosts|tests)[/\\]'
+
+# Exclusions, each with its reason:
+#
+# bugprone-easily-swappable-parameters
+#   Fires on any two adjacent same-typed parameters. The 8086 core is
+#   about to be full of (segment, offset) and (port, value) pairs where
+#   that is the natural signature.
+#
+# modernize-use-trailing-return-type
+#   Pure style, and the opposite of the style the codebase is written in.
+#
+# modernize-use-std-print
+#   The hosts use std::printf on purpose — libc++ gates std::format's
+#   floating-point path behind macOS 13.3 availability, which the macos
+#   preset's 11.0 deployment target does not clear, and the wasm host
+#   avoids <format> for bundle size. See hosts/sdl/src/main.cpp.
+#
+# modernize-deprecated-headers
+#   core/include/amberfolio/abi.h includes <stdint.h> rather than
+#   <cstdint> because it has to compile as C — it is the ABI header a
+#   non-C++ host consumes.
+#
+# modernize-avoid-c-arrays
+#   The machine's memory, EGA planes and register files are fixed-size
+#   byte arrays; std::array is the right call in some of those and not in
+#   others, and a blanket check cannot tell the difference. Revisit once
+#   there is code to judge.

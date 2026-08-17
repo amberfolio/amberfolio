@@ -15,9 +15,10 @@ here or in PRs.
 targets in CI on every push — an empty core library, a stub SDL3 desktop
 host, and a wasm module that reports its version. There is no machine
 yet. The unit-test rig is in place: GoogleTest (fetched, never vendored)
-under CTest, tests in `tests/`, running on the native targets in CI.
-Still open in M0: the format/lint/sanitizer gates; update this file as
-they land.
+under CTest, tests in `tests/`, running on the native targets in CI. So
+are the format and lint gates: clang-format, clang-tidy and shellcheck,
+with the clang tools pinned in `.llvm-version`. Still open in M0: the
+sanitizer job; update this file as it lands.
 
 ## Commands
 
@@ -28,8 +29,16 @@ ctest --preset linux-gcc      # unit tests (-L unit) + host smoke checks
 
 bash scripts/check-clean.sh   # content guard — run before every commit
 bash scripts/check-dco.sh     # DCO check — non-merge commits signed off
+bash scripts/check-format.sh  # clang-format over tracked C++
+bash scripts/check-tidy.sh    # clang-tidy; needs a configured build tree
+bash scripts/check-shell.sh   # shellcheck over scripts/
 bash scripts/test-guards.sh   # guard self-test — run after editing a guard
 ```
+
+The clang tools are pinned in `.llvm-version` and installed from PyPI
+(`pip install "clang-format==$(cat .llvm-version)"`); CONTRIBUTING.md has
+the details. Style is decided by `.clang-format` and `.clang-tidy`, not
+in review — don't argue formatting in prose, change the config.
 
 The wasm preset needs an activated emsdk of the version pinned in
 `.emscripten-version`; README.md has the setup and the build layout.

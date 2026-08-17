@@ -53,6 +53,44 @@ Maintainers will reject anything that crosses this line, however useful
 it would be. This applies beyond git, too: keep game files out of issues,
 CI logs, and screenshots.
 
+## Formatting and linting
+
+Style is not a review topic here — it is settled by
+[`.clang-format`](.clang-format), and the check set in
+[`.clang-tidy`](.clang-tidy) is settled the same way. CI runs exactly the
+scripts below, so a green run locally is a green run there.
+
+Both clang tools are pinned in [`.llvm-version`](.llvm-version), because
+they disagree with themselves across major versions and a gate whose
+verdict depends on which one you installed is not a gate. Install that
+exact version:
+
+```sh
+pip install "clang-format==$(cat .llvm-version)" "clang-tidy==$(cat .llvm-version)"
+```
+
+(A virtualenv or `pipx` is fine, and on Linux may be necessary — many
+distributions mark the system Python as externally managed.) `shellcheck`
+comes from your package manager: `apt install shellcheck`,
+`brew install shellcheck`.
+
+```sh
+bash scripts/check-format.sh            # clang-format over tracked C++
+bash scripts/check-tidy.sh              # clang-tidy, needs a configured tree
+bash scripts/check-shell.sh             # shellcheck over scripts/
+```
+
+To fix formatting rather than just be told about it, run `clang-format -i`
+over the files the gate names. `check-tidy.sh` reads the compile database
+from `build/linux-clang` by default — `cmake --preset linux-clang` is
+enough to produce one, no build needed — and takes another build directory
+as its argument. It says which files a given build tree does not cover
+rather than passing over them quietly.
+
+The scripts are checked by [`scripts/test-guards.sh`](scripts/test-guards.sh),
+which asserts each gate *fails* on the violation it exists to catch. Run it
+after editing one.
+
 ## Practical bits
 
 - Use `git commit -s` (DCO sign-off, see above).

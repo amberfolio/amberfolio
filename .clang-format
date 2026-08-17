@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# The style is this file, not prose: `clang-format` settles it, and CI
+# checks it (see the `format` job in .github/workflows/ci.yml).
+#
+# Base: Google, at 80 columns — which is what the code written before this
+# file already was, so adopting it reformats nothing. (Issue #5 floated
+# LLVM at 100; that would have churned every existing file to no benefit,
+# and 80 keeps a side-by-side diff readable, which matters for a codebase
+# whose diffs get read against hardware documentation.)
+#
+# clang-format is pinned in .llvm-version, because formatters disagree
+# across major versions and a gate that depends on which one you happen to
+# have installed is not a gate. CONTRIBUTING.md has the install line.
+#
+# C++ only. CMake files and shell scripts are reviewed by eye and, for the
+# scripts, by shellcheck; JSON is left alone so CMakePresets.json can keep
+# the blank lines that make it readable.
+
+Language: Cpp
+BasedOnStyle: Google
+ColumnLimit: 80
+
+# Comments carry most of the reasoning in this codebase, and they are
+# hand-wrapped to sit well under the limit. Reflowing them would rewrite
+# paragraphs the author shaped deliberately; the column limit still
+# applies to them, it is just not enforced by re-breaking prose.
+ReflowComments: false

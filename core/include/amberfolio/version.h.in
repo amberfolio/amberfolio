@@ -25,9 +25,9 @@ struct version {
 
 /// The version in the headers the caller compiled against.
 inline constexpr version core_version{
-    @amberfolio_VERSION_MAJOR@,
-    @amberfolio_VERSION_MINOR@,
-    @amberfolio_VERSION_PATCH@};
+    .major = @amberfolio_VERSION_MAJOR@,
+    .minor = @amberfolio_VERSION_MINOR@,
+    .patch = @amberfolio_VERSION_PATCH@};
 
 /// The version of the core that was actually linked in.
 ///
