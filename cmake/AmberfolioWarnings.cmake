@@ -2,10 +2,10 @@
 #
 # amberfolio::warnings — an INTERFACE target carrying the warning baseline.
 #
-# It is linked by *our* targets only. Vendored third-party code (SDL3, and
-# later GoogleTest and Tesseract) keeps its own settings and can never trip
-# our -Werror; its headers are pulled in as SYSTEM includes for the same
-# reason.
+# It is linked by *our* targets only — including the tests, which are our
+# code. Third-party code (SDL3, GoogleTest, and later Tesseract) keeps its
+# own settings and can never trip our -Werror; its headers are pulled in as
+# SYSTEM includes for the same reason.
 
 add_library(amberfolio-warnings INTERFACE)
 add_library(amberfolio::warnings ALIAS amberfolio-warnings)

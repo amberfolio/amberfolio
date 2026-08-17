@@ -14,15 +14,17 @@ here or in PRs.
 **Status: M0 in progress.** The skeleton builds and is proven on all four
 targets in CI on every push — an empty core library, a stub SDL3 desktop
 host, and a wasm module that reports its version. There is no machine
-yet. Still open in M0: the unit-test rig and the format/lint/sanitizer
-gates; update this file as each lands.
+yet. The unit-test rig is in place: GoogleTest (fetched, never vendored)
+under CTest, tests in `tests/`, running on the native targets in CI.
+Still open in M0: the format/lint/sanitizer gates; update this file as
+they land.
 
 ## Commands
 
 ```sh
 cmake --preset linux-gcc      # or windows-msvc, macos, linux-clang, wasm
 cmake --build --preset linux-gcc
-ctest --preset linux-gcc      # smoke checks only, so far
+ctest --preset linux-gcc      # unit tests (-L unit) + host smoke checks
 
 bash scripts/check-clean.sh   # content guard — run before every commit
 bash scripts/check-dco.sh     # DCO check — non-merge commits signed off

@@ -31,6 +31,7 @@ if(WIN32)
 endif()
 
 # The stub asks SDL for no subsystems, so this runs on a headless CI box.
-# It is a smoke test, not the unit-test rig — that arrives in issue #4.
+# It is a smoke test — that the host starts, links and exits cleanly — and
+# stays separate from the unit tests in tests/, which never link a host.
 add_test(NAME sdl-host-smoke COMMAND amberfolio-sdl)
 set_tests_properties(sdl-host-smoke PROPERTIES LABELS smoke)

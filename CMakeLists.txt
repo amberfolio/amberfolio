@@ -62,6 +62,25 @@ if(AMBERFOLIO_BUILD_HOST_WEB AND NOT EMSCRIPTEN)
     "with the 'wasm' preset (see README.md).")
 endif()
 
+# The unit-test rig runs on the native targets. Wasm-side test execution is
+# out of scope (PLAN.md §6: the conformance suite runs on native CI); what
+# covers the wasm target is its build plus the module smoke check.
+if(EMSCRIPTEN)
+  set(_amberfolio_tests_default OFF)
+else()
+  set(_amberfolio_tests_default ON)
+endif()
+set(AMBERFOLIO_BUILD_TESTS ${_amberfolio_tests_default}
+  CACHE BOOL "Build the unit tests (fetches GoogleTest)")
+unset(_amberfolio_tests_default)
+
+if(AMBERFOLIO_BUILD_TESTS AND EMSCRIPTEN)
+  message(FATAL_ERROR
+    "AMBERFOLIO_BUILD_TESTS is not wired up for the Emscripten toolchain: "
+    "the test binaries would need node to run them and CTest does not know "
+    "that. The wasm target's check is the module smoke test.")
+endif()
+
 include(AmberfolioCxxStandard)
 include(AmberfolioWarnings)
 
@@ -77,8 +96,13 @@ if(AMBERFOLIO_BUILD_HOST_WEB)
   add_subdirectory(hosts/web)
 endif()
 
+if(AMBERFOLIO_BUILD_TESTS)
+  add_subdirectory(tests)
+endif()
+
 message(STATUS "amberfolio ${PROJECT_VERSION}: "
   "C++${AMBERFOLIO_CXX_STANDARD_EFFECTIVE}, "
   "warnings-as-errors=${AMBERFOLIO_WERROR}, "
   "sdl-host=${AMBERFOLIO_BUILD_HOST_SDL}, "
-  "web-host=${AMBERFOLIO_BUILD_HOST_WEB}")
+  "web-host=${AMBERFOLIO_BUILD_HOST_WEB}, "
+  "tests=${AMBERFOLIO_BUILD_TESTS}")

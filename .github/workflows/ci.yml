@@ -132,13 +132,27 @@ jobs:
             build/${{ matrix.preset }}/_deps/sdl3-subbuild
           key: sdl3-${{ matrix.name }}-${{ hashFiles('cmake/AmberfolioSDL3.cmake') }}
 
+      # Same deal for GoogleTest (cmake/AmberfolioGoogleTest.cmake). Kept a
+      # separate entry from SDL3's so bumping one pin does not re-clone the
+      # other. The wasm job does not build the tests, so it needs neither.
+      - name: Cache the GoogleTest clone
+        if: '!matrix.emscripten'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/${{ matrix.preset }}/_deps/googletest-src
+            build/${{ matrix.preset }}/_deps/googletest-subbuild
+          key: gtest-${{ matrix.name }}-${{ hashFiles('cmake/AmberfolioGoogleTest.cmake') }}
+
       - name: configure
         run: cmake --preset ${{ matrix.preset }}
       - name: build
         run: cmake --build --preset ${{ matrix.preset }}
-      # Smoke tests only so far: the SDL host runs headless and reports its
-      # versions; the wasm module loads under node and answers af_version().
-      # The real unit-test rig arrives with issue #4.
+      # On the native targets this is the GoogleTest suite (one CTest case
+      # per test) plus the SDL host smoke check; on wasm it is the module
+      # smoke check, which loads the module under node and asks it for its
+      # version. A failing test fails the job — the presets set
+      # outputOnFailure, so the assertion lands in the log.
       - name: test
         run: ctest --preset ${{ matrix.preset }}
 
