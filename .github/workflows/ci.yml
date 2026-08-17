@@ -84,16 +84,153 @@ jobs:
             build/linux-clang/_deps/googletest-src
             build/linux-clang/_deps/googletest-subbuild
           key: gtest-tidy-${{ hashFiles('cmake/AmberfolioGoogleTest.cmake') }}
+      - name: Cache the conformance dependency clones
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/linux-clang/_deps/simdjson-src
+            build/linux-clang/_deps/simdjson-subbuild
+            build/linux-clang/_deps/libdeflate-src
+            build/linux-clang/_deps/libdeflate-subbuild
+          key: conformance-deps-tidy-${{ hashFiles('cmake/AmberfolioConformance.cmake') }}
       - name: configure (for the compile database)
         run: cmake --preset linux-clang
       - name: clang-tidy
         run: bash scripts/check-tidy.sh build/linux-clang
+
+  # The CPU conformance oracle (issue #14), acquired once per run rather
+  # than once per job. SingleStepTests/8088 is 726 MB at the pinned
+  # commit; the fetch script condenses it to roughly 200 MB on the way in,
+  # and that is what gets cached — keyed on the suite commit and the
+  # condenser version together, so changing either is a new cache rather
+  # than a stale one silently reused.
+  #
+  # Every job that runs conformance vectors depends on this one, which
+  # costs the matrix the half-minute this takes on a cache hit. The
+  # alternative — each job fetching for itself — turns one cold-cache
+  # download and condense into five, on three operating systems.
+  vectors:
+    name: conformance vectors
+    runs-on: ubuntu-latest
+    outputs:
+      key: ${{ steps.pin.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      # The script is the single source of truth for the pin and for the
+      # condensed layout, so it is also the source of the cache key. CI
+      # asking it rather than repeating the commit here is what keeps the
+      # two from drifting.
+      - name: Read the suite pin
+        id: pin
+        run: |
+          key=$(python3 scripts/fetch-conformance-vectors.py --print-key)
+          echo "key=conformance-$key" >> "$GITHUB_OUTPUT"
+          echo "cache key: conformance-$key"
+      - name: Where the vectors go
+        run: |
+          echo "AMBERFOLIO_CONFORMANCE_VECTORS=$RUNNER_TEMP/conformance-vectors" \
+            >> "$GITHUB_ENV"
+      # lookup-only: this job only has to know whether the cache exists.
+      # Downloading 200 MB to find out, on every push, for a job whose
+      # only output is a cache key, would be most of its wall time.
+      - name: Is the condensed set already cached?
+        id: probe
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/conformance-vectors
+          key: ${{ steps.pin.outputs.key }}
+          lookup-only: true
+      - name: Fetch and condense
+        if: steps.probe.outputs.cache-hit != 'true'
+        run: python3 scripts/fetch-conformance-vectors.py
+      - name: Cache the condensed set
+        if: steps.probe.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/conformance-vectors
+          key: ${{ steps.pin.outputs.key }}
+
+  # The milestone's exit criterion (PLAN.md §7): the whole suite, every
+  # vector of every enabled file, on every push. Its own job rather than a
+  # row in the build matrix because it is the one run with nothing capped,
+  # and because a conformance failure deserves to read as itself rather
+  # than as "linux is broken".
+  #
+  # No SDL host here: this job builds the core and the test binaries and
+  # nothing else, which saves it the whole backend-header apparatus the
+  # matrix job needs.
+  conformance:
+    name: conformance (full suite)
+    needs: [vectors]
+    runs-on: ubuntu-latest
+    env:
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: conformance
+          max-size: 300M
+      - name: Cache the GoogleTest clone
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/linux-gcc/_deps/googletest-src
+            build/linux-gcc/_deps/googletest-subbuild
+          key: gtest-conformance-${{ hashFiles('cmake/AmberfolioGoogleTest.cmake') }}
+      - name: Cache the conformance dependency clones
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/linux-gcc/_deps/simdjson-src
+            build/linux-gcc/_deps/simdjson-subbuild
+            build/linux-gcc/_deps/libdeflate-src
+            build/linux-gcc/_deps/libdeflate-subbuild
+          key: conformance-deps-${{ hashFiles('cmake/AmberfolioConformance.cmake') }}
+      - name: Where the vectors are
+        run: |
+          echo "AMBERFOLIO_CONFORMANCE_VECTORS=$RUNNER_TEMP/conformance-vectors" \
+            >> "$GITHUB_ENV"
+      # fail-on-cache-miss: without the vectors the suite reports every
+      # file as skipped and exits 0, which is precisely the silent pass
+      # this job exists to prevent. (AMBERFOLIO_CONFORMANCE_REQUIRED below
+      # is the same argument one level down, for a cache that restored
+      # something incomplete.)
+      - name: Restore the condensed vectors
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/conformance-vectors
+          key: ${{ needs.vectors.outputs.key }}
+          fail-on-cache-miss: true
+      - name: configure
+        run: cmake --preset linux-gcc -DAMBERFOLIO_BUILD_HOST_SDL=OFF
+      - name: build
+        run: cmake --build --preset linux-gcc
+      - name: conformance suite
+        env:
+          AMBERFOLIO_CONFORMANCE_REQUIRED: '1'
+        run: ctest --preset linux-gcc -L conformance
   # Every target, every push. The jobs deliberately run the same three
   # commands a contributor runs locally — cmake --preset / --build --preset
   # / ctest --preset — so a green matrix means the documented workflow
   # works, not just some CI-only incantation.
   build:
     name: build (${{ matrix.name }})
+    # For the conformance vectors: the native rows run a capped subset of
+    # the suite, so a family that only breaks under a different compiler
+    # is caught here rather than by the linux-gcc job alone. The wasm row
+    # needs nothing from it and waits anyway, which is the price of a
+    # job-level dependency.
+    needs: [vectors]
     runs-on: ${{ matrix.os }}
     strategy:
       # One broken target should not hide the state of the other four.
@@ -211,6 +348,39 @@ jobs:
             build/${{ matrix.preset }}/_deps/googletest-subbuild
           key: gtest-${{ matrix.name }}-${{ hashFiles('cmake/AmberfolioGoogleTest.cmake') }}
 
+      # The conformance harness's two libraries (issue #14). One entry for
+      # both: they are pinned in one file, so one hash decides both.
+      - name: Cache the conformance dependency clones
+        if: '!matrix.emscripten'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/${{ matrix.preset }}/_deps/simdjson-src
+            build/${{ matrix.preset }}/_deps/simdjson-subbuild
+            build/${{ matrix.preset }}/_deps/libdeflate-src
+            build/${{ matrix.preset }}/_deps/libdeflate-subbuild
+          key: conformance-deps-${{ matrix.name }}-${{ hashFiles('cmake/AmberfolioConformance.cmake') }}
+
+      # A capped subset on the native targets: enough to catch a family
+      # that behaves differently under another compiler, far short of the
+      # eight minutes the full set would cost four more times. The
+      # uncapped run is the `conformance` job. wasm builds no tests at all
+      # (PLAN.md §6 — the conformance suite runs on native CI), so it
+      # takes neither the vectors nor the cap.
+      - name: Where the vectors are
+        if: '!matrix.emscripten'
+        shell: bash
+        run: |
+          echo "AMBERFOLIO_CONFORMANCE_VECTORS=$RUNNER_TEMP/conformance-vectors" \
+            >> "$GITHUB_ENV"
+      - name: Restore the condensed vectors
+        if: '!matrix.emscripten'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/conformance-vectors
+          key: ${{ needs.vectors.outputs.key }}
+          fail-on-cache-miss: true
+
       # AMBERFOLIO_SOURCE_URL is the AGPL-3.0-only §13 source offer the web
       # page carries, pinned to the commit this build came from rather
       # than to a branch that will have moved on by the time anyone
@@ -228,6 +398,9 @@ jobs:
       # version. A failing test fails the job — the presets set
       # outputOnFailure, so the assertion lands in the log.
       - name: test
+        env:
+          AMBERFOLIO_CONFORMANCE_LIMIT: '500'
+          AMBERFOLIO_CONFORMANCE_REQUIRED: ${{ matrix.emscripten && '' || '1' }}
         run: ctest --preset ${{ matrix.preset }}
 
       # What the deploy job ships (deploy/vercel/README.md). Uploaded on
@@ -252,6 +425,7 @@ jobs:
   # its own signal rather than as "linux is broken".
   sanitizers:
     name: sanitizers (ASan + UBSan)
+    needs: [vectors]
     runs-on: ubuntu-latest
     env:
       CMAKE_C_COMPILER_LAUNCHER: ccache
@@ -274,6 +448,25 @@ jobs:
             build/linux-asan-ubsan/_deps/googletest-src
             build/linux-asan-ubsan/_deps/googletest-subbuild
           key: gtest-asan-${{ hashFiles('cmake/AmberfolioGoogleTest.cmake') }}
+      - name: Cache the conformance dependency clones
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/linux-asan-ubsan/_deps/simdjson-src
+            build/linux-asan-ubsan/_deps/simdjson-subbuild
+            build/linux-asan-ubsan/_deps/libdeflate-src
+            build/linux-asan-ubsan/_deps/libdeflate-subbuild
+          key: conformance-deps-asan-${{ hashFiles('cmake/AmberfolioConformance.cmake') }}
+      - name: Where the vectors are
+        run: |
+          echo "AMBERFOLIO_CONFORMANCE_VECTORS=$RUNNER_TEMP/conformance-vectors" \
+            >> "$GITHUB_ENV"
+      - name: Restore the condensed vectors
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/conformance-vectors
+          key: ${{ needs.vectors.outputs.key }}
+          fail-on-cache-miss: true
       - name: configure
         run: cmake --preset linux-asan-ubsan
       - name: build
@@ -282,7 +475,15 @@ jobs:
       # here, so a contributor running `ctest --preset linux-asan-ubsan`
       # gets the run CI got — including -fno-sanitize-recover, which is
       # what stops a real finding from printing and exiting 0.
+      #
+      # A hundred vectors per file rather than five hundred: instrumented
+      # code is an order of magnitude slower, and what this job is looking
+      # for — a bad index, an uninitialised read — shows up in the first
+      # hundred or not at all.
       - name: test
+        env:
+          AMBERFOLIO_CONFORMANCE_LIMIT: '100'
+          AMBERFOLIO_CONFORMANCE_REQUIRED: '1'
         run: ctest --preset linux-asan-ubsan
 
   # Publish the wasm host. Built in Actions and deployed prebuilt: the
@@ -292,10 +493,10 @@ jobs:
   # the reasoning and the one-time project setup.
   deploy:
     name: deploy (wasm host)
-    # Nothing ships past a red gate — including a red sanitizer run and a
-    # target other than wasm: a module published while linux is broken is
-    # not a state worth putting a public URL on.
-    needs: [guards, tidy, build, sanitizers]
+    # Nothing ships past a red gate — including a red sanitizer run, a red
+    # conformance run, and a target other than wasm: a module published
+    # while linux is broken is not a state worth putting a public URL on.
+    needs: [guards, tidy, build, sanitizers, conformance]
     runs-on: ubuntu-latest
     # Two pushes in quick succession should leave the later one live
     # rather than race for it.
