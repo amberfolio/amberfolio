@@ -198,8 +198,13 @@
     {
       "name": "test-base",
       "hidden": true,
+      "description": "A test that hangs must fail, and soon: CTest's default is 1500 seconds, which on Windows is what a crashed test's modal abort dialog costs a CI job. Nothing here takes a second; raise this the day something legitimately needs to.",
       "output": { "outputOnFailure": true },
-      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false,
+        "timeout": 120
+      }
     },
 
     {
