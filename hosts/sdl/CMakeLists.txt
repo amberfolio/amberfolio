@@ -9,7 +9,7 @@ include(AmberfolioSDL3)
 add_executable(amberfolio-sdl src/main.cpp)
 
 # The binary players run is just "amberfolio"; the target name distinguishes
-# it from the web host that lands in issue #2.
+# it from the web host's module, which is called amberfolio too.
 set_target_properties(amberfolio-sdl PROPERTIES OUTPUT_NAME amberfolio)
 
 target_link_libraries(amberfolio-sdl PRIVATE

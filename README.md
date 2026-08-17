@@ -2,9 +2,10 @@
 
 A low-level emulator for the SSI Gold Box games.
 
-**Status: early development.** There is nothing to build or run yet — this
-repository currently holds the project's governance documents and the
-[project plan](PLAN.md). Code follows.
+**Status: early development.** There is no emulator yet. What builds today
+is the skeleton — an empty core library, a stub desktop host, and a wasm
+module that reports its version — on all four targets. The shape of the
+work is in the [project plan](PLAN.md).
 
 ## What this will be
 
@@ -15,6 +16,63 @@ natively on desktop. You bring your own legally-owned copy of a game; the
 emulator runs the unmodified original program. Quality-of-life enhancements
 are applied as opt-in runtime patches to the machine's memory ("seams"),
 leaving the original bytes on disk untouched.
+
+## Building
+
+CMake 3.25+, Ninja, and a compiler with C++23 (C++20 is accepted as a
+fallback for lagging toolchains). Every target is a preset, and those
+presets are exactly what CI runs — nothing here is a CI-only incantation.
+
+```sh
+cmake --preset linux-gcc          # or linux-clang, macos, windows-msvc
+cmake --build --preset linux-gcc
+ctest --preset linux-gcc          # smoke checks; the real rig lands with M0
+```
+
+Each preset also has `-debug` and `-release` build and test variants; the
+bare name is Debug. Build trees land in `build/<preset>/`.
+
+- **Windows**: run from a Visual Studio developer shell so `cl` and `ninja`
+  are on `PATH`.
+- **macOS**: the `macos` preset builds a universal binary (arm64 +
+  x86_64) in one pass.
+- **SDL3** is fetched and built at configure time — nothing third-party is
+  committed here. `-DAMBERFOLIO_USE_SYSTEM_SDL3=ON` uses an installed one
+  instead. On Linux, install the X11/Wayland/ALSA/PulseAudio development
+  headers first (see the `build` job in `.github/workflows/ci.yml` for the
+  exact package list), or SDL3 will build without those backends.
+
+### WebAssembly
+
+The wasm build needs an activated [emsdk](https://emscripten.org/), pinned
+in [`.emscripten-version`](.emscripten-version) so a given commit builds
+with a known toolchain. Install that exact version:
+
+```sh
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+./emsdk install  "$(cat /path/to/amberfolio/.emscripten-version)"
+./emsdk activate "$(cat /path/to/amberfolio/.emscripten-version)"
+source ./emsdk_env.sh        # sets EMSDK, which the wasm preset needs
+```
+
+```sh
+cmake --preset wasm
+cmake --build --preset wasm
+ctest --preset wasm          # loads the module under node, checks its ABI
+```
+
+That leaves the module, its glue, and the JS host together in
+`build/wasm/hosts/web/Debug/`. ES modules need a real origin, so serve the
+directory rather than opening the file:
+
+```sh
+python3 -m http.server -d build/wasm/hosts/web/Debug
+```
+
+The placeholder page prints the core version to the page and the console.
+It is scaffolding: canvas, audio, input and persistence arrive in M2, and
+the reference shell in M6.
 
 ## Principles
 

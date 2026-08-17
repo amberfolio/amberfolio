@@ -8,35 +8,35 @@
 
 #include <SDL3/SDL.h>
 
+#include <cstdio>
 #include <cstdlib>
-#include <format>
-#include <iostream>
 
 #include "amberfolio/version.h"
 
-// std::print is the C++23 spelling of what follows, but <print> is missing
-// from every standard library old enough to need the C++20 language fallback
-// the build still allows; <format> is not. Collapse this into std::println
-// the day that fallback goes.
+// <cstdio> rather than std::format/std::print, and not only for the wasm
+// host's reason (bundle size). libc++ gates std::format's floating-point
+// path behind macOS 13.3 availability, so *any* std::format call fails to
+// compile against a deployment target of 11.0 — which is what the macos
+// preset asks for, and which is worth more here than nicer formatting.
+// Revisit if that floor ever rises.
 
 int main() {
   if (!SDL_Init(0)) {
-    std::cerr << std::format("SDL_Init failed: {}\n", SDL_GetError());
+    std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
     return EXIT_FAILURE;
   }
 
-  const auto core = amberfolio::linked_version();
+  const amberfolio::version core = amberfolio::linked_version();
   const int sdl = SDL_GetVersion();
 
-  std::cout << std::format("amberfolio {}.{}.{}\n",
-                           core.major, core.minor, core.patch)
-            << std::format("  SDL {}.{}.{} (built against {}.{}.{})\n",
-                           SDL_VERSIONNUM_MAJOR(sdl), SDL_VERSIONNUM_MINOR(sdl),
-                           SDL_VERSIONNUM_MICRO(sdl), SDL_MAJOR_VERSION,
-                           SDL_MINOR_VERSION, SDL_MICRO_VERSION)
-            // ASCII only: this goes to consoles and CI logs whose code page
-            // we do not control.
-            << "  no machine yet - this is the M0 skeleton.\n";
+  std::printf("amberfolio %d.%d.%d\n", core.major, core.minor, core.patch);
+  std::printf("  SDL %d.%d.%d (built against %d.%d.%d)\n",
+              SDL_VERSIONNUM_MAJOR(sdl), SDL_VERSIONNUM_MINOR(sdl),
+              SDL_VERSIONNUM_MICRO(sdl), SDL_MAJOR_VERSION, SDL_MINOR_VERSION,
+              SDL_MICRO_VERSION);
+  // ASCII only: this goes to consoles and CI logs whose code page we do
+  // not control.
+  std::printf("  no machine yet - this is the M0 skeleton.\n");
 
   SDL_Quit();
   return EXIT_SUCCESS;

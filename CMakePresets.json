@@ -73,6 +73,21 @@
         "CMAKE_C_COMPILER": "clang",
         "CMAKE_CXX_COMPILER": "clang++"
       }
+    },
+
+    {
+      "name": "wasm",
+      "displayName": "WebAssembly (Emscripten, wasm32)",
+      "description": "Needs an activated emsdk (source emsdk_env), whose version README.md pins.",
+      "inherits": "base",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "$env{EMSDK}",
+        "rhs": ""
+      },
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+      }
     }
   ],
 
@@ -135,6 +150,18 @@
     {
       "name": "linux-clang-release",
       "configurePreset": "linux-clang",
+      "configuration": "Release"
+    },
+
+    { "name": "wasm", "configurePreset": "wasm", "configuration": "Debug" },
+    {
+      "name": "wasm-debug",
+      "configurePreset": "wasm",
+      "configuration": "Debug"
+    },
+    {
+      "name": "wasm-release",
+      "configurePreset": "wasm",
       "configuration": "Release"
     }
   ],
@@ -220,6 +247,25 @@
       "name": "linux-clang-release",
       "inherits": "test-base",
       "configurePreset": "linux-clang",
+      "configuration": "Release"
+    },
+
+    {
+      "name": "wasm",
+      "inherits": "test-base",
+      "configurePreset": "wasm",
+      "configuration": "Debug"
+    },
+    {
+      "name": "wasm-debug",
+      "inherits": "test-base",
+      "configurePreset": "wasm",
+      "configuration": "Debug"
+    },
+    {
+      "name": "wasm-release",
+      "inherits": "test-base",
+      "configurePreset": "wasm",
       "configuration": "Release"
     }
   ]
