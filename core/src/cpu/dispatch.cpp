@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+//
+//                    HOW TO ADD AN INSTRUCTION FAMILY
+//                    ================================
+//
+// This file is the one place sixteen parallel pull requests all touch, so
+// it has a rule, and the rule is the reason the wide phase of M1 can be
+// worked on by sixteen people at once:
+//
+//     Adding a family touches exactly two things:
+//       (a) that family's own source file under src/cpu/instructions/,
+//           which nobody else has any reason to open, and
+//       (b) ONE LINE PER OPCODE in the tables below.
+//
+// Not a block, not a loop, not a helper that fills a range: one line,
+// with the opcode in it, sorted by opcode. Two families adding adjacent
+// opcodes then produce a conflict git resolves by keeping both lines,
+// instead of a conflict a human has to think about. A `for` loop that
+// fills 00-03 saves three lines and costs the next fifteen pull requests
+// a merge each.
+//
+// Declare the handler in include/amberfolio/cpu/instructions.h, in your
+// family's own block, and define it in your own source file. Do not add
+// an include to this file: it includes instructions.h and nothing else,
+// so the include list is not a shared line either.
+//
+// A group opcode (80-83, D0-D3, F6/F7, FE/FF — see dispatch.h) goes in
+// the group table instead, still one line per entry, because its eight
+// entries belong to as many as four different families.
+//
+// Leave an opcode you do not implement alone. A null entry is not a gap
+// to be tidied up: it is what stops the machine loudly instead of
+// silently doing nothing (diagnostics.h), and it is how the milestone
+// knows what is left.
+
+#include "amberfolio/cpu/dispatch.h"
+
+#include <cstdint>
+
+#include "amberfolio/cpu/instructions.h"
+
+namespace amberfolio::cpu {
+namespace {
+
+constexpr dispatch_table build_instruction_set() {
+  dispatch_table t{};
+
+  // --- Primary table. One line per opcode, sorted. -------------------
+  //
+  // (M1-F3 leaves it empty: there are no instructions yet, and every
+  // opcode therefore stops the machine with a diagnostic naming it. The
+  // wide phase fills it family by family; M1-C1 is done when nothing
+  // here is null.)
+
+  // --- Group tables. One line per (opcode, reg) entry. ---------------
+
+  return t;
+}
+
+constexpr dispatch_table the_instruction_set = build_instruction_set();
+
+}  // namespace
+
+handler dispatch_table::find(std::uint8_t opcode,
+                             std::uint8_t extension) const noexcept {
+  const std::size_t slot = group_slot(opcode);
+  if (slot != not_a_group) {
+    return group[slot][extension & 7u];
+  }
+  return primary[opcode];
+}
+
+const dispatch_table& instruction_set() noexcept { return the_instruction_set; }
+
+}  // namespace amberfolio::cpu

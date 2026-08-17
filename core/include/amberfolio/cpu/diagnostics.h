@@ -36,9 +36,24 @@ namespace amberfolio::cpu {
 enum class stop_reason : std::uint8_t {
   /// Nothing has gone wrong; the processor is running.
   none,
-  /// An opcode with no handler in the dispatch table.
+  /// An opcode with no handler in the dispatch table — or, for a group
+  /// opcode, no handler for that ModRM `reg` field.
   unimplemented_opcode,
+  /// An instruction made of more prefix bytes than any real one has.
+  ///
+  /// The one place this machine knowingly declines to do what the part
+  /// does. A real 8086 fed an unbroken run of prefix bytes fetches them
+  /// forever and never executes anything — it is a hang, and reproducing
+  /// a hang faithfully means hanging. A bounded refusal is the honest
+  /// alternative: nothing is invented, and the caller is told exactly
+  /// where the run started. No real instruction, and no conformance
+  /// vector, comes anywhere near the limit.
+  prefix_chain_too_long,
 };
+
+/// `stop_record::extension` when the opcode is not a group opcode, and so
+/// has no ModRM `reg` field selecting which instruction it is.
+inline constexpr std::uint8_t no_extension = 0xFF;
 
 /// Everything a human needs to identify the instruction we refused.
 ///
@@ -50,6 +65,11 @@ enum class stop_reason : std::uint8_t {
 struct stop_record {
   stop_reason reason{stop_reason::none};
   std::uint8_t opcode{};
+  /// For a group opcode, the ModRM `reg` field that picked the entry
+  /// there was no handler for. `no_extension` otherwise — without it,
+  /// "opcode FF is unimplemented" would not say which of five
+  /// instructions was actually wanted.
+  std::uint8_t extension{no_extension};
   std::uint16_t cs{};
   std::uint16_t ip{};
 
@@ -72,8 +92,10 @@ class diagnostics {
 
   /// Called once, at the moment the processor gives up on an instruction.
   /// Not called again while it stays stopped — a stop is an event, not a
-  /// state to be re-reported on every step.
-  virtual void unimplemented_opcode(const stop_record& stop) = 0;
+  /// state to be re-reported on every step. One method rather than one
+  /// per reason: the record says which, and the list of reasons is going
+  /// to grow.
+  virtual void report(const stop_record& stop) = 0;
 
  protected:
   // See bus.h: held by reference, never deleted through this type.
