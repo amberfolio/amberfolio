@@ -132,9 +132,7 @@ class test_bus final : public bus {
 /// A diagnostics sink that keeps what it was told.
 class recording_diagnostics final : public diagnostics {
  public:
-  void unimplemented_opcode(const stop_record& stop) override {
-    reports.push_back(stop);
-  }
+  void report(const stop_record& stop) override { reports.push_back(stop); }
 
   std::vector<stop_record> reports;
 };

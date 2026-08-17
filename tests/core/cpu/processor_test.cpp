@@ -21,6 +21,7 @@
 #include "amberfolio/cpu/diagnostics.h"
 #include "amberfolio/cpu/registers.h"
 #include "cpu/test_bus.h"
+#include "cpu/test_dispatch.h"
 
 namespace amberfolio::cpu {
 namespace {
@@ -28,16 +29,24 @@ namespace {
 using test::recording_diagnostics;
 using test::test_bus;
 
-// 0F is not an opcode on an 8086 — the 286 made it the two-byte escape,
-// but here it is simply unassigned, and SingleStepTests has no vectors for
-// it (issue #33 covers it as an unvectored unit-test case). That makes it
-// a stable stand-in for "an opcode the table does not fill", which is what
-// these tests need and which every real opcode will stop being.
-constexpr std::uint8_t unassigned_opcode = 0x0F;
+// Every opcode on an 8086 does something — even the ones Intel never
+// documented — so there is no byte that is permanently a hole in the
+// table. These tests hand the processor an empty table of their own
+// instead (test_dispatch.h), which keeps them true after the wide phase
+// has filled the real one. 0x90 is NOP, chosen because a reader who sees
+// it in a memory dump below will not go looking for a meaning it does not
+// have here.
+constexpr std::uint8_t some_opcode = 0x90;
+
+/// A processor whose instruction set is empty: nothing is implemented.
+const dispatch_table& no_instructions() {
+  static const dispatch_table table = test::nothing();
+  return table;
+}
 
 TEST(Processor, ResetIsTheRealPowerOnState) {
   test_bus mem;
-  processor cpu(mem);
+  processor cpu(mem, nullptr, no_instructions());
 
   // Execution begins at FFFF:0000 — sixteen bytes below the top of the
   // address space, which is why a PC's ROM starts there with a jump.
@@ -62,7 +71,7 @@ TEST(Processor, ResetIsTheRealPowerOnState) {
 
 TEST(Processor, ResetClearsAHaltAndAStop) {
   test_bus mem;
-  processor cpu(mem);
+  processor cpu(mem, nullptr, no_instructions());
 
   cpu.regs()[sreg::cs] = 0x1234;
   cpu.regs().ip = 0x5678;
@@ -73,7 +82,7 @@ TEST(Processor, ResetClearsAHaltAndAStop) {
   EXPECT_FALSE(cpu.halted());
   EXPECT_EQ(cpu.regs()[sreg::cs], 0xFFFF);
 
-  mem.poke(0xFFFF, 0x0000, {unassigned_opcode});
+  mem.poke(0xFFFF, 0x0000, {some_opcode});
   EXPECT_EQ(cpu.step(), step_status::stopped);
   ASSERT_TRUE(cpu.stopped());
 
@@ -108,7 +117,7 @@ TEST(Address, PhysicalAddressWrapsAtOneMegabyte) {
 
 TEST(Processor, ByteAccessGoesThroughTheBusAtThePhysicalAddress) {
   test_bus mem;
-  processor cpu(mem);
+  processor cpu(mem, nullptr, no_instructions());
 
   mem.poke(0x179B8, {0x5A});
   EXPECT_EQ(cpu.read_byte(0x1234, 0x5678), 0x5A);
@@ -119,7 +128,7 @@ TEST(Processor, ByteAccessGoesThroughTheBusAtThePhysicalAddress) {
 
 TEST(Processor, ByteAccessWrapsWithThePhysicalAddress) {
   test_bus mem;
-  processor cpu(mem);
+  processor cpu(mem, nullptr, no_instructions());
 
   mem.poke(0x00000, {0x77});
   EXPECT_EQ(cpu.read_byte(0xFFFF, 0x0010), 0x77);
@@ -131,18 +140,20 @@ TEST(Processor, ByteAccessWrapsWithThePhysicalAddress) {
 TEST(Processor, AnOpcodeWithNoHandlerStopsAndSaysWhich) {
   test_bus mem;
   recording_diagnostics log;
-  processor cpu(mem, &log);
+  processor cpu(mem, &log, no_instructions());
 
   cpu.regs()[sreg::cs] = 0x2000;
   cpu.regs().ip = 0x0100;
-  mem.poke(0x2000, 0x0100, {unassigned_opcode});
+  mem.poke(0x2000, 0x0100, {some_opcode});
 
   EXPECT_EQ(cpu.step(), step_status::stopped);
   EXPECT_TRUE(cpu.stopped());
   EXPECT_EQ(cpu.stop().reason, stop_reason::unimplemented_opcode);
-  EXPECT_EQ(cpu.stop().opcode, unassigned_opcode);
+  EXPECT_EQ(cpu.stop().opcode, some_opcode);
   EXPECT_EQ(cpu.stop().cs, 0x2000);
   EXPECT_EQ(cpu.stop().ip, 0x0100);
+  // 0x90 is not a group opcode, so there is no ModRM reg field to name.
+  EXPECT_EQ(cpu.stop().extension, no_extension);
 
   ASSERT_EQ(log.reports.size(), 1u);
   EXPECT_EQ(log.reports.front(), cpu.stop());
@@ -153,11 +164,11 @@ TEST(Processor, AnOpcodeWithNoHandlerStopsAndSaysWhich) {
 // must not be left pointing past a byte we did not execute.
 TEST(Processor, AStopRewindsIpToTheInstructionItRefused) {
   test_bus mem;
-  processor cpu(mem);
+  processor cpu(mem, nullptr, no_instructions());
 
   cpu.regs()[sreg::cs] = 0x2000;
   cpu.regs().ip = 0x0100;
-  mem.poke(0x2000, 0x0100, {unassigned_opcode});
+  mem.poke(0x2000, 0x0100, {some_opcode});
 
   EXPECT_EQ(cpu.step(), step_status::stopped);
   EXPECT_EQ(cpu.regs().ip, 0x0100);
@@ -166,17 +177,17 @@ TEST(Processor, AStopRewindsIpToTheInstructionItRefused) {
 TEST(Processor, StoppedIsStickyAndReportedOnce) {
   test_bus mem;
   recording_diagnostics log;
-  processor cpu(mem, &log);
+  processor cpu(mem, &log, no_instructions());
 
   cpu.regs()[sreg::cs] = 0x2000;
   cpu.regs().ip = 0x0100;
-  mem.poke(0x2000, 0x0100, {unassigned_opcode});
+  mem.poke(0x2000, 0x0100, {some_opcode});
 
   EXPECT_EQ(cpu.step(), step_status::stopped);
   const stop_record first = cpu.stop();
 
   // Put a different byte there. A stopped processor must not fetch it.
-  mem.poke(0x2000, 0x0100, {0x90});
+  mem.poke(0x2000, 0x0100, {0xEB});
 
   EXPECT_EQ(cpu.step(), step_status::stopped);
   EXPECT_EQ(cpu.step(), step_status::stopped);
@@ -188,23 +199,23 @@ TEST(Processor, StoppedIsStickyAndReportedOnce) {
 // the caller still gets `stopped` and the record is still there to read.
 TEST(Processor, StopsWithoutASinkJustAsLoudly) {
   test_bus mem;
-  processor cpu(mem);
+  processor cpu(mem, nullptr, no_instructions());
 
-  mem.poke(0xFFFF, 0x0000, {unassigned_opcode});
+  mem.poke(0xFFFF, 0x0000, {some_opcode});
 
   EXPECT_EQ(cpu.step(), step_status::stopped);
   EXPECT_EQ(cpu.stop().reason, stop_reason::unimplemented_opcode);
-  EXPECT_EQ(cpu.stop().opcode, unassigned_opcode);
+  EXPECT_EQ(cpu.stop().opcode, some_opcode);
 }
 
 TEST(Processor, AHaltedProcessorConsumesNothingUntilItResumes) {
   test_bus mem;
   recording_diagnostics log;
-  processor cpu(mem, &log);
+  processor cpu(mem, &log, no_instructions());
 
   cpu.regs()[sreg::cs] = 0x2000;
   cpu.regs().ip = 0x0100;
-  mem.poke(0x2000, 0x0100, {unassigned_opcode});
+  mem.poke(0x2000, 0x0100, {some_opcode});
 
   cpu.halt();
   EXPECT_TRUE(cpu.halted());
@@ -225,11 +236,11 @@ TEST(Processor, AHaltedProcessorConsumesNothingUntilItResumes) {
 // the bus.
 TEST(Processor, FetchIsOneBusReadAtCsIp) {
   test_bus mem;
-  processor cpu(mem);
+  processor cpu(mem, nullptr, no_instructions());
 
   cpu.regs()[sreg::cs] = 0x2000;
   cpu.regs().ip = 0x0100;
-  mem.poke(0x20100, {unassigned_opcode});
+  mem.poke(0x20100, {some_opcode});
 
   EXPECT_EQ(cpu.step(), step_status::stopped);
 
@@ -237,7 +248,7 @@ TEST(Processor, FetchIsOneBusReadAtCsIp) {
   EXPECT_EQ(mem.accesses.front(),
             (test::memory_access{.what = test::memory_access::kind::read,
                                  .address = 0x20100u,
-                                 .value = unassigned_opcode}));
+                                 .value = some_opcode}));
 }
 
 // A code segment's offsets wrap in sixteen bits like any other: an
@@ -248,14 +259,14 @@ TEST(Processor, FetchIsOneBusReadAtCsIp) {
 // where the IP advance across that boundary gets exercised.
 TEST(Processor, FetchAtTheTopOfASegmentStaysInIt) {
   test_bus mem;
-  processor cpu(mem);
+  processor cpu(mem, nullptr, no_instructions());
 
   cpu.regs()[sreg::cs] = 0x2000;
   cpu.regs().ip = 0xFFFF;
-  mem.poke(0x2FFFF, {unassigned_opcode});
+  mem.poke(0x2FFFF, {some_opcode});
 
   EXPECT_EQ(cpu.step(), step_status::stopped);
-  EXPECT_EQ(cpu.stop().opcode, unassigned_opcode);
+  EXPECT_EQ(cpu.stop().opcode, some_opcode);
   EXPECT_EQ(cpu.stop().ip, 0xFFFF);
 
   ASSERT_EQ(mem.accesses.size(), 1u);
