@@ -72,19 +72,23 @@ jobs:
       # CMake, Ninja and node come with every runner image; only the SDL3
       # backend headers and the compilers have to be arranged for.
       #
-      # Without these, SDL3 still configures and links — it just quietly
-      # builds a desktop host with no video and no audio backend, which
-      # would make this job a green light for something nobody can run.
-      - name: SDL3 backend headers (X11, Wayland, ALSA, PulseAudio, KMS)
+      # SDL3's own README-linux dependency list, which is not optional: a
+      # backend SDL wants and cannot find its headers for is a hard
+      # configure error, not a silently dropped feature. Build the desktop
+      # host with every backend a Linux player might need, or the green
+      # light here means nothing.
+      - name: SDL3 backend headers (X11, Wayland, audio, KMS, udev, D-Bus)
         if: runner.os == 'Linux' && !matrix.emscripten
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libasound2-dev libpulse-dev libudev-dev \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev \
+            libjack-jackd2-dev libsndio-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-            libxi-dev libxfixes-dev libxss-dev \
-            libwayland-dev wayland-protocols libxkbcommon-dev libdecor-0-dev \
-            libgl-dev libegl-dev libgles-dev libdrm-dev libgbm-dev
+            libxi-dev libxfixes-dev libxss-dev libxtst-dev libxkbcommon-dev \
+            libwayland-dev wayland-protocols libdecor-0-dev \
+            libgl-dev libegl-dev libgles-dev libdrm-dev libgbm-dev \
+            libudev-dev libdbus-1-dev libibus-1.0-dev liburing-dev
       - name: MSVC developer environment (cl on PATH)
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0

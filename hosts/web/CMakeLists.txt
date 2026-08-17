@@ -11,11 +11,20 @@
 
 add_executable(amberfolio-web src/main.cpp)
 
+# The one directory the module, its glue, the JS and the page share — the
+# thing that gets served. Spelled out rather than left to the generator's
+# default because the copy rules below need to name it, and a custom
+# command's OUTPUT may not contain a target-dependent generator
+# expression. $<CONFIG> is fine there, and a genex in this property is
+# also what stops a multi-config generator appending the config twice.
+set(AMBERFOLIO_WEB_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>")
+
 # amberfolio.mjs, not amberfolio.js: EXPORT_ES6 emits an ES module, and
 # node only treats a .js file as one when a package.json says so.
 set_target_properties(amberfolio-web PROPERTIES
   OUTPUT_NAME amberfolio
-  SUFFIX ".mjs")
+  SUFFIX ".mjs"
+  RUNTIME_OUTPUT_DIRECTORY "${AMBERFOLIO_WEB_OUTPUT_DIR}")
 
 target_link_libraries(amberfolio-web PRIVATE
   amberfolio::core
@@ -50,7 +59,7 @@ set(_amberfolio_web_copies "")
 foreach(_amberfolio_web_file IN LISTS _amberfolio_web_files)
   get_filename_component(_amberfolio_web_name "${_amberfolio_web_file}" NAME)
   set(_amberfolio_web_copy
-    "$<TARGET_FILE_DIR:amberfolio-web>/${_amberfolio_web_name}")
+    "${AMBERFOLIO_WEB_OUTPUT_DIR}/${_amberfolio_web_name}")
   add_custom_command(OUTPUT "${_amberfolio_web_copy}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
       "${_amberfolio_web_file}" "${_amberfolio_web_copy}"
@@ -72,7 +81,7 @@ find_program(AMBERFOLIO_NODE NAMES node nodejs
 if(AMBERFOLIO_NODE)
   add_test(NAME wasm-module-smoke
     COMMAND "${AMBERFOLIO_NODE}"
-      "$<TARGET_FILE_DIR:amberfolio-web>/smoke.mjs"
+      "${AMBERFOLIO_WEB_OUTPUT_DIR}/smoke.mjs"
       --expect "${PROJECT_VERSION}")
   set_tests_properties(wasm-module-smoke PROPERTIES LABELS smoke)
 else()
