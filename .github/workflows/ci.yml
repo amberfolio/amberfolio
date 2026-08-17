@@ -6,6 +6,17 @@ on:
     # "edited" is not a default activity type, but the acknowledgments
     # job reads the PR body, which the author may fix after opening.
     types: [opened, synchronize, reopened, edited]
+
+# The conformance vector cache (issue #14). Written out here rather than
+# taken from a job output because every job that restores it needs it,
+# and threading one string through the job graph is more machinery than
+# the string is worth. It must equal what the fetch script computes from
+# the suite pin and the condenser version — the `vectors` job asserts
+# exactly that and fails loudly if the two ever drift, so the literal
+# cannot go stale unnoticed.
+env:
+  CONFORMANCE_CACHE_KEY: conformance-v2-aea84484abc7-c1
+
 jobs:
   guards:
     runs-on: ubuntu-latest
@@ -98,62 +109,79 @@ jobs:
       - name: clang-tidy
         run: bash scripts/check-tidy.sh build/linux-clang
 
-  # The CPU conformance oracle (issue #14), acquired once per run rather
-  # than once per job. SingleStepTests/8088 is 726 MB at the pinned
-  # commit; the fetch script condenses it to roughly 200 MB on the way in,
-  # and that is what gets cached — keyed on the suite commit and the
+  # The CPU conformance oracle (issue #14). SingleStepTests/8088 is
+  # 726 MB at the pinned commit; the fetch script takes it in one sparse
+  # partial clone and condenses it to about 300 MB on the way in, and
+  # that is what gets cached — keyed on the suite commit and the
   # condenser version together, so changing either is a new cache rather
   # than a stale one silently reused.
   #
-  # Every job that runs conformance vectors depends on this one, which
-  # costs the matrix the half-minute this takes on a cache hit. The
-  # alternative — each job fetching for itself — turns one cold-cache
-  # download and condense into five, on three operating systems.
+  # Once per operating system, not once per job: an Actions cache cannot
+  # be restored on an OS other than the one that saved it, so a single
+  # Linux job cannot supply the Windows and macOS builds however much one
+  # would like it to. Three legs here is still far better than the six
+  # jobs that would otherwise each fetch and condense for themselves.
+  #
+  # Every job that runs vectors depends on this one, which costs them the
+  # half-minute a cache hit takes.
   vectors:
-    name: conformance vectors
-    runs-on: ubuntu-latest
-    outputs:
-      key: ${{ steps.pin.outputs.key }}
+    name: conformance vectors (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    defaults:
+      run:
+        # Git Bash on the Windows leg, so these steps are one script
+        # rather than one per shell.
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # For the fetch script, and so that `python` means the same thing
+      # on all three runners.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.12'
-      # The script is the single source of truth for the pin and for the
-      # condensed layout, so it is also the source of the cache key. CI
-      # asking it rather than repeating the commit here is what keeps the
-      # two from drifting.
-      - name: Read the suite pin
-        id: pin
+      # The script is the single source of truth for the suite pin and
+      # the condensed layout. The workflow repeats its cache key at the
+      # top of this file because every job needs it; this is what stops
+      # the copy from drifting away from the original.
+      - name: The cache key still matches the pin
         run: |
-          key=$(python3 scripts/fetch-conformance-vectors.py --print-key)
-          echo "key=conformance-$key" >> "$GITHUB_OUTPUT"
-          echo "cache key: conformance-$key"
+          want="conformance-$(python scripts/fetch-conformance-vectors.py --print-key)"
+          if [ "$want" != "$CONFORMANCE_CACHE_KEY" ]; then
+            echo "the workflow's CONFORMANCE_CACHE_KEY is $CONFORMANCE_CACHE_KEY,"
+            echo "but scripts/fetch-conformance-vectors.py says $want."
+            echo "Update the env: block at the top of this file."
+            exit 1
+          fi
+          echo "cache key: $CONFORMANCE_CACHE_KEY"
       - name: Where the vectors go
         run: |
           echo "AMBERFOLIO_CONFORMANCE_VECTORS=$RUNNER_TEMP/conformance-vectors" \
             >> "$GITHUB_ENV"
       # lookup-only: this job only has to know whether the cache exists.
-      # Downloading 200 MB to find out, on every push, for a job whose
-      # only output is a cache key, would be most of its wall time.
+      # Downloading 300 MB to find that out, on every push, would be most
+      # of its wall time on the path that has nothing to do.
       - name: Is the condensed set already cached?
         id: probe
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/conformance-vectors
-          key: ${{ steps.pin.outputs.key }}
+          key: ${{ env.CONFORMANCE_CACHE_KEY }}
           lookup-only: true
       - name: Fetch and condense
         if: steps.probe.outputs.cache-hit != 'true'
-        run: python3 scripts/fetch-conformance-vectors.py
+        run: python scripts/fetch-conformance-vectors.py
       - name: Cache the condensed set
         if: steps.probe.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/conformance-vectors
-          key: ${{ steps.pin.outputs.key }}
+          key: ${{ env.CONFORMANCE_CACHE_KEY }}
 
   # The milestone's exit criterion (PLAN.md §7): the whole suite, every
   # vector of every enabled file, on every push. Its own job rather than a
@@ -209,7 +237,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/conformance-vectors
-          key: ${{ needs.vectors.outputs.key }}
+          key: ${{ env.CONFORMANCE_CACHE_KEY }}
           fail-on-cache-miss: true
       - name: configure
         run: cmake --preset linux-gcc -DAMBERFOLIO_BUILD_HOST_SDL=OFF
@@ -378,7 +406,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/conformance-vectors
-          key: ${{ needs.vectors.outputs.key }}
+          key: ${{ env.CONFORMANCE_CACHE_KEY }}
           fail-on-cache-miss: true
 
       # AMBERFOLIO_SOURCE_URL is the AGPL-3.0-only §13 source offer the web
@@ -465,7 +493,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/conformance-vectors
-          key: ${{ needs.vectors.outputs.key }}
+          key: ${{ env.CONFORMANCE_CACHE_KEY }}
           fail-on-cache-miss: true
       - name: configure
         run: cmake --preset linux-asan-ubsan
