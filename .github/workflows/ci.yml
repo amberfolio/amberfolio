@@ -221,6 +221,45 @@ jobs:
       - name: test
         run: ctest --preset ${{ matrix.preset }}
 
+  # ASan + UBSan over the test suite (PLAN.md §6). Its own job rather than
+  # another row in the matrix above: it builds no host, so it needs none of
+  # that job's SDL3 apparatus, and a sanitizer finding deserves to read as
+  # its own signal rather than as "linux is broken".
+  sanitizers:
+    name: sanitizers (ASan + UBSan)
+    runs-on: ubuntu-latest
+    env:
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
+        with:
+          key: linux-asan-ubsan
+          # Smaller than the matrix jobs': no SDL3 in this build tree, so
+          # it is our objects plus GoogleTest's.
+          max-size: 200M
+      - name: Cache the GoogleTest clone
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            build/linux-asan-ubsan/_deps/googletest-src
+            build/linux-asan-ubsan/_deps/googletest-subbuild
+          key: gtest-asan-${{ hashFiles('cmake/AmberfolioGoogleTest.cmake') }}
+      - name: configure
+        run: cmake --preset linux-asan-ubsan
+      - name: build
+        run: cmake --build --preset linux-asan-ubsan
+      # ASAN_OPTIONS and UBSAN_OPTIONS live in the test preset rather than
+      # here, so a contributor running `ctest --preset linux-asan-ubsan`
+      # gets the run CI got — including -fno-sanitize-recover, which is
+      # what stops a real finding from printing and exiting 0.
+      - name: test
+        run: ctest --preset linux-asan-ubsan
+
   acknowledgments:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

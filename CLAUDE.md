@@ -17,8 +17,9 @@ host, and a wasm module that reports its version. There is no machine
 yet. The unit-test rig is in place: GoogleTest (fetched, never vendored)
 under CTest, tests in `tests/`, running on the native targets in CI. So
 are the format and lint gates: clang-format, clang-tidy and shellcheck,
-with the clang tools pinned in `.llvm-version`. Still open in M0: the
-sanitizer job; update this file as it lands.
+with the clang tools pinned in `.llvm-version`, and an ASan+UBSan job on
+the `linux-asan-ubsan` preset. That is M0's gate work complete; the
+machine itself starts in M1.
 
 ## Commands
 
@@ -26,6 +27,8 @@ sanitizer job; update this file as it lands.
 cmake --preset linux-gcc      # or windows-msvc, macos, linux-clang, wasm
 cmake --build --preset linux-gcc
 ctest --preset linux-gcc      # unit tests (-L unit) + host smoke checks
+
+cmake --preset linux-asan-ubsan   # the tests under ASan + UBSan, no host
 
 bash scripts/check-clean.sh   # content guard — run before every commit
 bash scripts/check-dco.sh     # DCO check — non-merge commits signed off

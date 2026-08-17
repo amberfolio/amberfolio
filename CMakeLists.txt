@@ -83,6 +83,16 @@ endif()
 
 include(AmberfolioCxxStandard)
 include(AmberfolioWarnings)
+# Before the first add_subdirectory(): the flags it sets are inherited by
+# targets created after it, and instrumenting the third-party code too is
+# the point (see the module).
+include(AmberfolioSanitizers)
+
+if(AMBERFOLIO_SANITIZE STREQUAL "")
+  set(_amberfolio_sanitize_summary "none")
+else()
+  set(_amberfolio_sanitize_summary "${AMBERFOLIO_SANITIZE}")
+endif()
 
 enable_testing()
 
@@ -105,4 +115,6 @@ message(STATUS "amberfolio ${PROJECT_VERSION}: "
   "warnings-as-errors=${AMBERFOLIO_WERROR}, "
   "sdl-host=${AMBERFOLIO_BUILD_HOST_SDL}, "
   "web-host=${AMBERFOLIO_BUILD_HOST_WEB}, "
-  "tests=${AMBERFOLIO_BUILD_TESTS}")
+  "tests=${AMBERFOLIO_BUILD_TESTS}, "
+  "sanitizers=${_amberfolio_sanitize_summary}")
+unset(_amberfolio_sanitize_summary)
