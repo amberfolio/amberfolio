@@ -107,10 +107,11 @@ test vectors captured from real silicon, one file per opcode, around ten
 thousand cases in each. Registers, flags (bit for bit, undefined behaviour
 included) and every byte of memory are compared after each instruction.
 
-The vectors are 726 MB and are never committed here. Fetch them once; the
-script strips the per-cycle bus trace this emulator has no use for, which
-takes the set down to about 200 MB, and caches the result outside the
-source tree:
+The vectors are 726 MB and are never committed here. Fetch them once — the
+script takes them in a single sparse partial clone of the pinned commit,
+so it needs `git` on PATH — and it strips the per-cycle bus trace this
+emulator has no use for on the way in, which takes the set down to about
+200 MB in a cache outside the source tree:
 
 ```sh
 python3 scripts/fetch-conformance-vectors.py     # ~726 MB, once
