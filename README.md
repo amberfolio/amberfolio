@@ -137,6 +137,11 @@ are is the list in
 everything else registers as a skip, so `ctest` is also the milestone's
 progress report.
 
+Adding one of those instruction families is what M1's open issues are:
+[`docs/cpu-implementation.md`](docs/cpu-implementation.md) is the
+playbook — the architecture tour, the workflow, the commands, and how to
+read a failing vector.
+
 Formatting (`clang-format`), static analysis (`clang-tidy`), shell linting
 (`shellcheck`), the content guard and the DCO check are gates in CI too,
 each a script you can run yourself before pushing:
