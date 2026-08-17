@@ -17,6 +17,7 @@ include(GoogleTest)  # gtest_discover_tests, shipped with CMake itself
 
 add_executable(amberfolio-core-tests
   core/abi_test.cpp
+  core/cpu/alu_test.cpp
   core/cpu/processor_test.cpp
   core/cpu/registers_test.cpp
   core/version_test.cpp)

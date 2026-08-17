@@ -32,6 +32,30 @@ enum class reg8 : std::uint8_t { al, cl, dl, bl, ah, ch, dh, bh };
 /// the encoding (and the 26/2E/36/3E prefixes) numbers them.
 enum class sreg : std::uint8_t { es, cs, ss, ds };
 
+/// The two operand widths this machine has — the same distinction reg8
+/// and reg16 make, in the form an instruction carries it. Most opcodes
+/// have a `w` bit that picks between them, and almost everything below
+/// the decoder is written once and parameterized by this.
+///
+/// Values are carried in a std::uint16_t whatever the width, with a byte
+/// value living in the low eight bits. `truncate` is what keeps that
+/// honest.
+enum class width : std::uint8_t { byte, word };
+
+[[nodiscard]] constexpr std::uint16_t value_mask(width w) noexcept {
+  return w == width::byte ? std::uint16_t{0x00FF} : std::uint16_t{0xFFFF};
+}
+
+/// The sign bit at this width: bit 7 for a byte, bit 15 for a word.
+[[nodiscard]] constexpr std::uint16_t sign_bit(width w) noexcept {
+  return w == width::byte ? std::uint16_t{0x0080} : std::uint16_t{0x8000};
+}
+
+[[nodiscard]] constexpr std::uint16_t truncate(width w,
+                                               std::uint16_t value) noexcept {
+  return static_cast<std::uint16_t>(value & value_mask(w));
+}
+
 /// The FLAGS bits.
 ///
 /// Nine bits mean something on an 8086; the rest are hardwired. Bit 1 and
@@ -71,6 +95,16 @@ inline constexpr std::uint16_t fixed_ones = 0xF002;
 
 /// FLAGS after reset: nothing set, which still reads back as 0xF002.
 inline constexpr std::uint16_t reset_value = normalize(0);
+
+/// `flags` with every bit in `mask` set to `value`, and nothing else
+/// touched. The building block the ALU kernel and the instruction
+/// families compose flag updates out of; `registers::set_flag` is the
+/// same thing applied in place.
+[[nodiscard]] constexpr std::uint16_t with(std::uint16_t flags,
+                                           std::uint16_t mask,
+                                           bool value) noexcept {
+  return static_cast<std::uint16_t>(value ? (flags | mask) : (flags & ~mask));
+}
 
 }  // namespace flag
 
@@ -126,8 +160,7 @@ struct registers {
   }
 
   constexpr void set_flag(std::uint16_t mask, bool value) noexcept {
-    flags =
-        static_cast<std::uint16_t>(value ? (flags | mask) : (flags & ~mask));
+    flags = flag::with(flags, mask, value);
   }
 
   /// Write the whole flag word from a value the program produced.

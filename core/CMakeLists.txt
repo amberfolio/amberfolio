@@ -18,6 +18,7 @@ configure_file(
 
 add_library(amberfolio-core STATIC
   src/abi.cpp
+  src/cpu/alu.cpp
   src/cpu/processor.cpp
   src/version.cpp)
 add_library(amberfolio::core ALIAS amberfolio-core)
