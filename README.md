@@ -26,7 +26,7 @@ presets are exactly what CI runs — nothing here is a CI-only incantation.
 ```sh
 cmake --preset linux-gcc          # or linux-clang, macos, windows-msvc
 cmake --build --preset linux-gcc
-ctest --preset linux-gcc          # smoke checks; the real rig lands with M0
+ctest --preset linux-gcc          # unit tests + host smoke checks
 ```
 
 Each preset also has `-debug` and `-release` build and test variants; the
@@ -41,6 +41,23 @@ bare name is Debug. Build trees land in `build/<preset>/`.
   instead. On Linux, install the X11/Wayland/ALSA/PulseAudio development
   headers first (see the `build` job in `.github/workflows/ci.yml` for the
   exact package list), or SDL3 will build without those backends.
+
+### Tests
+
+The unit tests live in [`tests/`](tests) and run under GoogleTest, which is
+fetched at configure time like SDL3 (`-DAMBERFOLIO_USE_SYSTEM_GTEST=ON`
+uses an installed one). Each test is registered with CTest individually, so
+`ctest` names the ones that fail:
+
+```sh
+ctest --preset linux-gcc                    # everything
+ctest --preset linux-gcc -L unit            # unit tests only
+ctest --preset linux-gcc -R '^Version\.'    # by name
+```
+
+`-DAMBERFOLIO_BUILD_TESTS=OFF` skips the tests, and with them the
+GoogleTest fetch. They are a native-target thing: the wasm build has its
+own check, below.
 
 ### WebAssembly
 
@@ -60,6 +77,7 @@ source ./emsdk_env.sh        # sets EMSDK, which the wasm preset needs
 cmake --preset wasm
 cmake --build --preset wasm
 ctest --preset wasm          # loads the module under node, checks its ABI
+                             # (the unit tests are native-only)
 ```
 
 That leaves the module, its glue, and the JS host together in
