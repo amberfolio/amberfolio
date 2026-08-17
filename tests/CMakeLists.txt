@@ -144,10 +144,20 @@ if(AMBERFOLIO_BUILD_CONFORMANCE)
   # without this CTest would report the whole un-implemented milestone as
   # passing. The skips are the milestone's burn-down chart; they have to
   # read as skips.
+  #
+  # The obvious value here is GoogleTest's own banner, "\[ +SKIPPED +\]".
+  # Do not use it. gtest_discover_tests writes each property into a
+  # generated CMake script, and some versions wrap the value in [[...]] —
+  # which a value *ending in* ] closes early, leaving a stray bracket and
+  # a syntax error in a file nobody wrote by hand. (Newer CMake wraps in
+  # [==[...]==] and sets this very property itself, which is why the
+  # breakage showed up on two runners and not the others.) A bare word
+  # matches nothing that a passing or failing test prints, needs no
+  # quoting anywhere, and cannot come apart.
   gtest_discover_tests(amberfolio-conformance-tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES
       LABELS conformance
       TIMEOUT 900
-      SKIP_REGULAR_EXPRESSION "\\[ +SKIPPED +\\]")
+      SKIP_REGULAR_EXPRESSION SKIPPED)
 endif()
