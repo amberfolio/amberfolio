@@ -102,8 +102,16 @@ That leaves the module, its glue, and the JS host together in
 directory rather than opening the file:
 
 ```sh
-python3 -m http.server -d build/wasm/hosts/web/Debug
+python3 scripts/serve-web.py        # then open http://localhost:8000/
 ```
+
+Use that rather than `python3 -m http.server`: browsers apply a strict
+MIME check to module scripts, and on Windows the standard library takes
+its MIME types from the registry, where `.mjs` is commonly `text/plain` —
+which a browser refuses to execute, leaving the page stuck on "loading…".
+The script sets the types itself, so one command behaves the same on all
+three platforms. `--config`, `--port` and `--build-dir` are there when the
+defaults are wrong.
 
 The placeholder page prints the core version to the page and the console.
 It is scaffolding: canvas, audio, input and persistence arrive in M2, and

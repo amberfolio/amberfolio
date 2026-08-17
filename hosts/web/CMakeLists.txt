@@ -6,8 +6,9 @@
 #
 # The build tree layout this produces is also the layout the page is
 # served from: the module, its glue, and the JS all end up in one
-# directory, so `python -m http.server -d <that directory>` is the whole
-# local web setup.
+# directory, and scripts/serve-web.py serves exactly that directory. It
+# exists rather than a bare `python -m http.server` because the MIME type
+# a browser needs for an ES module is not the one Windows reports.
 
 add_executable(amberfolio-web src/main.cpp)
 

@@ -12,6 +12,8 @@ CMakeUserPresets.json
 # Generated compilation database and tool caches.
 compile_commands.json
 /.cache/
+__pycache__/
+*.py[cod]
 
 # Editors and OS droppings.
 .vs/

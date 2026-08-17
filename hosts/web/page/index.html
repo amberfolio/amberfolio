@@ -8,7 +8,7 @@
 
      ES modules need a real origin, so open it over HTTP, not file://:
          cmake --build --preset wasm
-         python -m http.server -d build/wasm/hosts/web/Debug
+         python3 scripts/serve-web.py
 -->
 <html lang="en">
   <head>
@@ -42,11 +42,17 @@
     <pre id="out">loading…</pre>
 
     <script type="module">
-      import { loadAmberfolio, formatVersion } from './host.mjs';
-
       const out = document.getElementById('out');
 
+      // Imported dynamically, inside the try, rather than with a static
+      // import at the top: a static one that fails takes the whole module
+      // script with it, so the catch below never runs and the page sits on
+      // "loading…" saying nothing. That is exactly the case worth
+      // reporting — a server that sends host.mjs as text/plain, which
+      // browsers refuse to execute as a module, is the usual way this
+      // page fails on a fresh machine.
       try {
+        const { loadAmberfolio, formatVersion } = await import('./host.mjs');
         const { version, output } = await loadAmberfolio();
         out.textContent = [
           ...output,
@@ -54,7 +60,13 @@
         ].join('\n');
       } catch (error) {
         out.classList.add('failed');
-        out.textContent = `failed to load the wasm module: ${error}`;
+        out.textContent = [
+          `failed to load the wasm module: ${error}`,
+          '',
+          'The browser console has the underlying error. If it mentions a',
+          'MIME type, the server is the problem, not the build — serve the',
+          'directory with scripts/serve-web.py, which sets them correctly.',
+        ].join('\n');
         throw error;
       }
     </script>
