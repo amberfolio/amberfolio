@@ -188,7 +188,11 @@ constexpr dispatch_table build_instruction_set() {
   t.group[group_slot(0xD3)][6] = &shift_rotate_rm16_cl;
   t.group[group_slot(0xD3)][7] = &shift_rotate_rm16_cl;
   t.group[group_slot(0xF6)][3] = &neg_rm8;
+  t.group[group_slot(0xF6)][6] = &div_rm8;
+  t.group[group_slot(0xF6)][7] = &idiv_rm8;
   t.group[group_slot(0xF7)][3] = &neg_rm16;
+  t.group[group_slot(0xF7)][6] = &div_rm16;
+  t.group[group_slot(0xF7)][7] = &idiv_rm16;
 
   return t;
 }

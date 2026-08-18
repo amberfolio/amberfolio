@@ -132,6 +132,13 @@ void shift_rotate_rm16_1(processor& cpu);
 void shift_rotate_rm8_cl(processor& cpu);
 void shift_rotate_rm16_cl(processor& cpu);
 
+// --- #26: DIV/IDIV -----------------------------------------------------
+
+void div_rm8(processor& cpu);
+void div_rm16(processor& cpu);
+void idiv_rm8(processor& cpu);
+void idiv_rm16(processor& cpu);
+
 // --- #30: MOVS/CMPS/STOS/LODS/SCAS + REP ------------------------------
 
 void movsb(processor& cpu);

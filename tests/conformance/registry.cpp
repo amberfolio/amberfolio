@@ -176,7 +176,11 @@ bool stem_is_enabled(std::string_view stem) {
       "D3.6",
       "D3.7",
       "F6.3",
+      "F6.6",
+      "F6.7",
       "F7.3",
+      "F7.6",
+      "F7.7",
   };
   // clang-format on
   return enabled.contains(stem);
