@@ -21,7 +21,29 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #22: INC/DEC ------------------------------------------------------
+
+void inc_ax(processor& cpu);
+void inc_cx(processor& cpu);
+void inc_dx(processor& cpu);
+void inc_bx(processor& cpu);
+void inc_sp(processor& cpu);
+void inc_bp(processor& cpu);
+void inc_si(processor& cpu);
+void inc_di(processor& cpu);
+
+void dec_ax(processor& cpu);
+void dec_cx(processor& cpu);
+void dec_dx(processor& cpu);
+void dec_bx(processor& cpu);
+void dec_sp(processor& cpu);
+void dec_bp(processor& cpu);
+void dec_si(processor& cpu);
+void dec_di(processor& cpu);
+
+void inc_rm8(processor& cpu);
+void dec_rm8(processor& cpu);
+void inc_rm16(processor& cpu);
+void dec_rm16(processor& cpu);
 
 }  // namespace amberfolio::cpu
