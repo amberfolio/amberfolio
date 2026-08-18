@@ -8,10 +8,7 @@
 // it has a rule, and the rule is the reason the wide phase of M1 can be
 // worked on by sixteen people at once:
 //
-//     Adding a family touches exactly two things:
-//       (a) that family's own source file under src/cpu/instructions/,
-//           which nobody else has any reason to open, and
-//       (b) ONE LINE PER OPCODE in the tables below.
+//     ONE LINE PER OPCODE in the tables below.
 //
 // Not a block, not a loop, not a helper that fills a range: one line,
 // with the opcode in it, sorted by opcode. Two families adding adjacent
@@ -20,19 +17,28 @@
 // fills 00-03 saves three lines and costs the next fifteen pull requests
 // a merge each.
 //
-// Declare the handler in include/amberfolio/cpu/instructions.h, in your
-// family's own block, and define it in your own source file. Do not add
-// an include to this file: it includes instructions.h and nothing else,
-// so the include list is not a shared line either.
-//
 // A group opcode (80-83, D0-D3, F6/F7, FE/FF — see dispatch.h) goes in
 // the group table instead, still one line per entry, because its eight
 // entries belong to as many as four different families.
+//
+// The same rule holds in the three other shared files a family has to
+// touch: one sorted line in the source list in core/CMakeLists.txt, that
+// family's own declaration block in
+// include/amberfolio/cpu/instructions.h, and one line per vector file in
+// tests/conformance/registry.cpp. Five files in all — and everything
+// that is actual work goes in the fifth, the family's own source file
+// under src/cpu/instructions/, which nobody else has any reason to open.
+//
+// Do not add an include to this file: it includes instructions.h and
+// nothing else, so the include list is not a shared line either.
 //
 // Leave an opcode you do not implement alone. A null entry is not a gap
 // to be tidied up: it is what stops the machine loudly instead of
 // silently doing nothing (diagnostics.h), and it is how the milestone
 // knows what is left.
+//
+// docs/cpu-implementation.md is the full playbook: the workflow, a worked
+// example, the exact commands, and how to read a failing vector.
 
 #include "amberfolio/cpu/dispatch.h"
 
