@@ -248,6 +248,15 @@ void div_rm16(processor& cpu);
 void idiv_rm8(processor& cpu);
 void idiv_rm16(processor& cpu);
 
+// --- #27: BCD adjust — DAA/DAS/AAA/AAS/AAM/AAD ------------------------
+
+void daa(processor& cpu);
+void das(processor& cpu);
+void aaa(processor& cpu);
+void aas(processor& cpu);
+void aam(processor& cpu);
+void aad(processor& cpu);
+
 // --- #28: Conditional jumps and LOOP family ---------------------------
 
 void jo(processor& cpu);

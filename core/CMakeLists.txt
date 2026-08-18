@@ -23,6 +23,7 @@ add_library(amberfolio-core STATIC
   src/cpu/dispatch.cpp
   src/cpu/instructions/add.cpp
   src/cpu/instructions/address.cpp
+  src/cpu/instructions/bcd.cpp
   src/cpu/instructions/call.cpp
   src/cpu/instructions/div.cpp
   src/cpu/instructions/incdec.cpp
