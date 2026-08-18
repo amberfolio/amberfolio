@@ -19,6 +19,7 @@ add_executable(amberfolio-core-tests
   core/abi_test.cpp
   core/cpu/alu_test.cpp
   core/cpu/decoder_test.cpp
+  core/cpu/interrupts_test.cpp
   core/cpu/processor_test.cpp
   core/cpu/registers_test.cpp
   core/version_test.cpp)

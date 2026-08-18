@@ -30,9 +30,9 @@ The short version:
 
 ## 1. The architecture in ten minutes
 
-Five headers, and you will use four of them. All of them are commented
-at length — this section is the map, not a substitute for reading the
-one you are about to call into.
+Six headers, and most families use four of them. All of them are
+commented at length — this section is the map, not a substitute for
+reading the one you are about to call into.
 
 ### The register file — `core/include/amberfolio/cpu/registers.h`
 
@@ -140,6 +140,8 @@ What is left is the immediates, and those are yours to fetch:
 | `cpu.read(w, addr)` / `cpu.write(w, addr, v)` | memory at an address you formed yourself |
 | `cpu.regs()` | the register file, flags included |
 | `cpu.current()` | what the decoder worked out — prefixes, ModRM, `ea`, `start_ip` |
+| `cpu.push_word(v)` / `cpu.pop_word()` | the stack: SP moves first on a push, last on a pop, and wraps in 16 bits |
+| `cpu.deliver_interrupt(n)` | the interrupt sequence — see below |
 
 Two things the decoder does *not* do for you, because they are per-family:
 
@@ -162,6 +164,42 @@ than an operand — are `80 81 82 83 D0 D1 D2 D3 F6 F7 FE FF`, and they
 live in a second table indexed `[group_slot(opcode)][reg]`. `8F`, `C6`
 and `C7` are *not* groups: the 8086 ignores their reg field rather than
 decoding it, so they get one handler each like any other opcode.
+
+### Interrupts — `interrupts.h`
+
+Three families need this and the rest can skip the section.
+
+Everything that interrupts this machine goes through one sequence —
+push FLAGS, clear IF and TF, push CS, push IP, load CS:IP from the
+vector table entry at `vector * 4` — and that sequence is
+`cpu.deliver_interrupt(n)`. **Call it; do not restate it.** INT / INT3 /
+INTO (#31) and the divide error (#26) are the callers.
+
+The address it pushes is IP *as you leave it*, which is what gives the
+8086 its "return past the instruction" behaviour for a software
+interrupt and for a divide error alike — fetch your immediate first and
+you get it for nothing. It also ends a halt and abandons a repeated
+string instruction that had not retired, so a handler does not have to
+think about either.
+
+Three entry points the framework owns and three families call:
+
+| You call | When |
+| --- | --- |
+| `cpu.deliver_interrupt(n)` | INT n, INT3, INTO (#31); divide error (#26) |
+| `cpu.inhibit_interrupts()` | STI (#33); `MOV Sreg, r/m` (#18); `POP Sreg` (#23) — recognition is held off until after the next instruction |
+| `cpu.halt()` | HLT (#33). The step loop reports `halted` until an interrupt ends it |
+
+IRET (#31) is the one that goes the other way: `pop_word()` three times,
+IP then CS then FLAGS, and the flag word goes through
+`regs().load_flags()` because it came from the program.
+
+What you do **not** have to do is arrange for TF, IF, the STI window or
+an interrupted REP to behave. That is `processor::step()` and
+interrupts.cpp, it is unit-tested in `tests/core/cpu/interrupts_test.cpp`,
+and none of it is visible to a handler. Read interrupts.h's header
+comment before you touch any of it anyway — the vectors cannot check a
+single one of those behaviours, so the comment is the specification.
 
 ### The conformance harness — `tests/conformance/`
 

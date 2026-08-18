@@ -42,6 +42,16 @@ void processor::reset() noexcept {
   stop_ = stop_record{};
   halted_ = false;
   repeating_ = false;
+
+  // A RESET pin drops the NMI latch too, and nothing that was pending
+  // across it means anything afterwards.
+  nmi_latched_ = false;
+  intr_asserted_ = false;
+  intr_vector_ = 0;
+  inhibited_ = false;
+  trap_pending_ = false;
+  suspended_ = false;
+  resume_ip_ = 0;
 }
 
 // --- Memory -----------------------------------------------------------
@@ -80,6 +90,19 @@ void processor::write(width w, address at, std::uint16_t value) {
   } else {
     write_word(at.segment, at.offset, value);
   }
+}
+
+// --- The stack --------------------------------------------------------
+
+void processor::push_word(std::uint16_t value) {
+  regs_[reg16::sp] = wrap(regs_[reg16::sp] - 2u);
+  write_word(regs_[sreg::ss], regs_[reg16::sp], value);
+}
+
+std::uint16_t processor::pop_word() {
+  const std::uint16_t value = read_word(regs_[sreg::ss], regs_[reg16::sp]);
+  regs_[reg16::sp] = wrap(regs_[reg16::sp] + 2u);
+  return value;
 }
 
 // --- The instruction stream -------------------------------------------
@@ -268,12 +291,21 @@ step_status processor::stop_with(stop_reason reason, std::uint8_t extension) {
 // --- The step loop ----------------------------------------------------
 
 step_status processor::step() {
-  // Both checked before anything is fetched, so neither state can be
-  // walked out of by accident: a stopped processor touches no bus, and a
-  // halted one consumes no instruction.
+  // First, and before anything is fetched: a stopped processor touches no
+  // bus, and the state it stopped in is the one a human is looking at.
   if (stopped()) {
     return step_status::stopped;
   }
+
+  // The instruction boundary. Everything about *when* an interrupt is
+  // taken is in service_interrupt() and in interrupts.h; what matters
+  // here is that it happens before the fetch, so an interrupt the machine
+  // raised between steps is taken before the next instruction rather than
+  // after it, and that it is the only thing that ends a halt.
+  if (service_interrupt()) {
+    return step_status::serviced;
+  }
+
   if (halted_) {
     return step_status::halted;
   }
@@ -283,6 +315,13 @@ step_status processor::step() {
   // Cleared here rather than after the handler, so that a handler which
   // sets it is the only thing that can make this step report `repeating`.
   repeating_ = false;
+  suspended_ = false;
+
+  // TF is sampled at the *start* of the instruction and the trap it owes
+  // is delivered at the boundary after it. That one line is the whole of
+  // why POPF and IRET can turn single-stepping back on without trapping
+  // on themselves — see interrupts.h.
+  const bool trap_armed = regs_.flag_set(flag::tf);
 
   current_.opcode = fetch_opcode();
   if (stopped()) {
@@ -309,7 +348,28 @@ step_status processor::step() {
   }
 
   run(*this);
-  return repeating_ ? step_status::repeating : step_status::ran;
+
+  // An instruction that ran owes a trap if it began with TF set — even if
+  // it was an INT, whose own delivery has since cleared TF. That is why
+  // tracing over an `INT 21h` lands a debugger on the first instruction
+  // of the handler rather than on the instruction after the INT.
+  if (trap_armed) {
+    trap_pending_ = true;
+  }
+
+  if (!repeating_) {
+    return step_status::ran;
+  }
+
+  // The instruction has not retired. The handler has rewound IP to the
+  // instruction's first byte so the next step re-enters it whole, but an
+  // interrupt taken at this boundary does not resume there — the 8086
+  // backs up only as far as the last prefix, and the earlier ones are
+  // lost. interrupts.h has the two encodings that make that visible.
+  suspended_ = true;
+  resume_ip_ =
+      current_.prefixes.count > 0 ? current_.prefixes.last_prefix_ip : regs_.ip;
+  return step_status::repeating;
 }
 
 }  // namespace amberfolio::cpu
