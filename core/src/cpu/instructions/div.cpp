@@ -16,15 +16,14 @@
 // run the same shift-and-subtract loop the microcode runs and keep
 // whatever it last set.
 //
-// The loop below is a direct translation of the 8086/8088 divide
-// microcode's CORD, PREIDIV/CORNEGATE and POSTIDIV routines (the names are
-// Intel's; the reference used to translate them was the microcode
-// disassembly cross-checked against a working, vector-validated 8088
-// emulator (MartyPC, github.com/dbalsom/martypc, MIT — its
-// crates/marty_core/src/cpu_808x/muldiv.rs was the source read while
-// writing this, not copied from — the routines are the manufacturer's
-// facts about the silicon, expressed here as plain C++ over this file's
-// own `rcl1`/`cord`/`cor_negate` rather than any borrowed code):
+// The loop below follows the 8086/8088 divide microcode's CORD,
+// PREIDIV/CORNEGATE and POSTIDIV routines; the names are Intel's. What
+// those routines do is a fact about the silicon, and it is written here
+// as plain C++ over this file's own `rcl1`, `cord` and `cor_negate`.
+// MartyPC's crates/marty_core/src/cpu_808x/muldiv.rs was read as a
+// cross-check while working it out — acknowledged in NOTICE.md, along
+// with why reading a working implementation to understand a mechanism is
+// worth naming even when the licence does not compel it.
 //
 //   - CORD repeatedly rotates the dividend/quotient pair left through
 //     carry and conditionally subtracts the divisor, exactly like a

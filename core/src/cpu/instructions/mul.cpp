@@ -19,15 +19,16 @@
 //
 // They are not arbitrary. Ken Shirriff's reverse-engineering of the 8086's
 // multiply microcode from the die ("Reverse-engineering the multiplication
-// algorithm in the Intel 8086 processor", righto.com, 2023) traces the
-// whole instruction: a shift-and-add loop (CORX) builds the product one
-// multiplier bit at a time into a pair of temporary registers, tmpA (the
-// high half) and tmpC (the low half). For IMUL, the operands are first
-// converted to their magnitudes (PREIMUL negates whichever operand is
-// negative and remembers how many times it did, in the single-bit flag the
-// part also uses for REP), the unsigned magnitude product is formed by the
-// same CORX loop MUL uses, and then NEGATE two's-complements tmpA:tmpC back
-// to the true sign if the remembered count was odd.
+// algorithm in the Intel 8086 processor", righto.com, 2023 — see
+// NOTICE.md) traces the whole instruction: a shift-and-add loop (CORX)
+// builds the product one multiplier bit at a time into a pair of temporary
+// registers, tmpA (the high half) and tmpC (the low half). For IMUL, the
+// operands are first converted to their magnitudes (PREIMUL negates
+// whichever operand is negative and remembers how many times it did, in
+// the single-bit flag the part also uses for REP), the unsigned magnitude
+// product is formed by the same CORX loop MUL uses, and then NEGATE
+// two's-complements tmpA:tmpC back to the true sign if the remembered
+// count was odd.
 //
 // Either way, once tmpA:tmpC holds the real, final DX:AX, the part still
 // has to compute CF and OF, and it does that with one more visible ALU

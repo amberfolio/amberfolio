@@ -40,6 +40,23 @@ If that trade isn't acceptable to you, that's a legitimate position — in
 that case please don't submit code, but bug reports, testing, and ideas
 are just as valuable and carry no licensing terms.
 
+### Third-party work
+
+Dependencies must be compatible with AGPL-3.0-only outbound — zlib, MIT,
+BSD and Apache-2.0 are fine, GPL-2.0-only is not — and nothing
+third-party is committed to this repository: it is fetched at build time
+instead. [NOTICE.md](NOTICE.md) lists what the project depends on and
+under which licence.
+
+It also acknowledges published reverse-engineering work the CPU core has
+learned from, which is a distinction worth being clear about. Taking a
+*fact* about the 8086 from somebody's article or emulator — what the
+divide microcode's loop does to the flags, say — is fine, and is how the
+undefined-flag behaviour in `core/src/cpu/instructions/` was arrived at.
+Copying their *expression* is not. If you rely on such a source, say so in
+the file's header comment and add it to NOTICE.md in the same pull
+request.
+
 ## The clean-content rule (non-negotiable)
 
 Amber Folio must contain **no material from the original games**: no game

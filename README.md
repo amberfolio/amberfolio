@@ -222,6 +222,10 @@ version 3.0 only** (`AGPL-3.0-only`) — see [LICENSE](LICENSE).
   [COMMERCIAL.md](COMMERCIAL.md).
 - The project's releases will always remain available under an OSI-approved
   open-source license.
+- Third-party dependencies, the CPU conformance oracle, and the published
+  reverse-engineering work this project has learned from are acknowledged
+  in [NOTICE.md](NOTICE.md). Nothing third-party is committed here; it is
+  all fetched at build time.
 
 ## Trademarks
 
