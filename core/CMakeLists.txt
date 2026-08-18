@@ -21,6 +21,7 @@ add_library(amberfolio-core STATIC
   src/cpu/alu.cpp
   src/cpu/decoder.cpp
   src/cpu/dispatch.cpp
+  src/cpu/instructions/logic.cpp
   src/cpu/interrupts.cpp
   src/cpu/processor.cpp
   src/version.cpp)

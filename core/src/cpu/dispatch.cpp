@@ -53,13 +53,50 @@ constexpr dispatch_table build_instruction_set() {
   dispatch_table t{};
 
   // --- Primary table. One line per opcode, sorted. -------------------
-  //
-  // (M1-F3 leaves it empty: there are no instructions yet, and every
-  // opcode therefore stops the machine with a diagnostic naming it. The
-  // wide phase fills it family by family; M1-C1 is done when nothing
-  // here is null.)
+
+  t.primary[0x08] = &or_rm8_r8;
+  t.primary[0x09] = &or_rm16_r16;
+  t.primary[0x0A] = &or_r8_rm8;
+  t.primary[0x0B] = &or_r16_rm16;
+  t.primary[0x0C] = &or_al_imm8;
+  t.primary[0x0D] = &or_ax_imm16;
+  t.primary[0x20] = &and_rm8_r8;
+  t.primary[0x21] = &and_rm16_r16;
+  t.primary[0x22] = &and_r8_rm8;
+  t.primary[0x23] = &and_r16_rm16;
+  t.primary[0x24] = &and_al_imm8;
+  t.primary[0x25] = &and_ax_imm16;
+  t.primary[0x30] = &xor_rm8_r8;
+  t.primary[0x31] = &xor_rm16_r16;
+  t.primary[0x32] = &xor_r8_rm8;
+  t.primary[0x33] = &xor_r16_rm16;
+  t.primary[0x34] = &xor_al_imm8;
+  t.primary[0x35] = &xor_ax_imm16;
+  t.primary[0x84] = &test_rm8_r8;
+  t.primary[0x85] = &test_rm16_r16;
+  t.primary[0xA8] = &test_al_imm8;
+  t.primary[0xA9] = &test_ax_imm16;
 
   // --- Group tables. One line per (opcode, reg) entry. ---------------
+
+  t.group[group_slot(0x80)][1] = &or_rm8_imm8;
+  t.group[group_slot(0x80)][4] = &and_rm8_imm8;
+  t.group[group_slot(0x80)][6] = &xor_rm8_imm8;
+  t.group[group_slot(0x81)][1] = &or_rm16_imm16;
+  t.group[group_slot(0x81)][4] = &and_rm16_imm16;
+  t.group[group_slot(0x81)][6] = &xor_rm16_imm16;
+  t.group[group_slot(0x82)][1] = &or_rm8_imm8;
+  t.group[group_slot(0x82)][4] = &and_rm8_imm8;
+  t.group[group_slot(0x82)][6] = &xor_rm8_imm8;
+  t.group[group_slot(0x83)][1] = &or_rm16_imm8;
+  t.group[group_slot(0x83)][4] = &and_rm16_imm8;
+  t.group[group_slot(0x83)][6] = &xor_rm16_imm8;
+  t.group[group_slot(0xF6)][0] = &test_rm8_imm8;
+  t.group[group_slot(0xF6)][1] = &test_rm8_imm8;
+  t.group[group_slot(0xF6)][2] = &not_rm8;
+  t.group[group_slot(0xF7)][0] = &test_rm16_imm16;
+  t.group[group_slot(0xF7)][1] = &test_rm16_imm16;
+  t.group[group_slot(0xF7)][2] = &not_rm16;
 
   return t;
 }
