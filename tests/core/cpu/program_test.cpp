@@ -50,10 +50,15 @@ TEST_P(self_written_program, runs_to_a_halt_with_the_right_answer) {
   EXPECT_EQ(r.steps, p.steps);
 }
 
+// `entry`, not the `info` this parameter is conventionally called:
+// INSTANTIATE_TEST_SUITE_P expands to a function with a parameter of that
+// name, and the lambda would shadow it. GCC says so under -Wshadow, which
+// is in the warning baseline; Clang and MSVC do not, so this reads as a
+// pointless rename until you build it with GCC.
 INSTANTIATE_TEST_SUITE_P(programs, self_written_program,
                          ::testing::ValuesIn(all_programs()),
-                         [](const ::testing::TestParamInfo<program>& info) {
-                           return std::string(info.param.name);
+                         [](const ::testing::TestParamInfo<program>& entry) {
+                           return std::string(entry.param.name);
                          });
 
 }  // namespace
