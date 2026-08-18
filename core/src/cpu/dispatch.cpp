@@ -53,11 +53,45 @@ constexpr dispatch_table build_instruction_set() {
   dispatch_table t{};
 
   // --- Primary table. One line per opcode, sorted. -------------------
-  //
-  // (M1-F3 leaves it empty: there are no instructions yet, and every
-  // opcode therefore stops the machine with a diagnostic naming it. The
-  // wide phase fills it family by family; M1-C1 is done when nothing
-  // here is null.)
+
+  t.primary[0x86] = &xchg_rm8_r8;
+  t.primary[0x87] = &xchg_rm16_r16;
+  t.primary[0x88] = &mov_rm8_r8;
+  t.primary[0x89] = &mov_rm16_r16;
+  t.primary[0x8A] = &mov_r8_rm8;
+  t.primary[0x8B] = &mov_r16_rm16;
+  t.primary[0x8C] = &mov_rm16_sreg;
+  t.primary[0x8E] = &mov_sreg_rm16;
+  t.primary[0x90] = &xchg_ax_ax;
+  t.primary[0x91] = &xchg_ax_cx;
+  t.primary[0x92] = &xchg_ax_dx;
+  t.primary[0x93] = &xchg_ax_bx;
+  t.primary[0x94] = &xchg_ax_sp;
+  t.primary[0x95] = &xchg_ax_bp;
+  t.primary[0x96] = &xchg_ax_si;
+  t.primary[0x97] = &xchg_ax_di;
+  t.primary[0xA0] = &mov_al_moffs8;
+  t.primary[0xA1] = &mov_ax_moffs16;
+  t.primary[0xA2] = &mov_moffs8_al;
+  t.primary[0xA3] = &mov_moffs16_ax;
+  t.primary[0xB0] = &mov_al_imm8;
+  t.primary[0xB1] = &mov_cl_imm8;
+  t.primary[0xB2] = &mov_dl_imm8;
+  t.primary[0xB3] = &mov_bl_imm8;
+  t.primary[0xB4] = &mov_ah_imm8;
+  t.primary[0xB5] = &mov_ch_imm8;
+  t.primary[0xB6] = &mov_dh_imm8;
+  t.primary[0xB7] = &mov_bh_imm8;
+  t.primary[0xB8] = &mov_ax_imm16;
+  t.primary[0xB9] = &mov_cx_imm16;
+  t.primary[0xBA] = &mov_dx_imm16;
+  t.primary[0xBB] = &mov_bx_imm16;
+  t.primary[0xBC] = &mov_sp_imm16;
+  t.primary[0xBD] = &mov_bp_imm16;
+  t.primary[0xBE] = &mov_si_imm16;
+  t.primary[0xBF] = &mov_di_imm16;
+  t.primary[0xC6] = &mov_rm8_imm8;
+  t.primary[0xC7] = &mov_rm16_imm16;
 
   // --- Group tables. One line per (opcode, reg) entry. ---------------
 
