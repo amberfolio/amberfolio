@@ -125,6 +125,38 @@ constexpr dispatch_table build_instruction_set() {
   t.group[group_slot(0x82)][2] = &adc_rm8_imm8;
   t.group[group_slot(0x83)][0] = &add_rm16_imm8;
   t.group[group_slot(0x83)][2] = &adc_rm16_imm8;
+  t.group[group_slot(0xD0)][0] = &shift_rotate_rm8_1;
+  t.group[group_slot(0xD0)][1] = &shift_rotate_rm8_1;
+  t.group[group_slot(0xD0)][2] = &shift_rotate_rm8_1;
+  t.group[group_slot(0xD0)][3] = &shift_rotate_rm8_1;
+  t.group[group_slot(0xD0)][4] = &shift_rotate_rm8_1;
+  t.group[group_slot(0xD0)][5] = &shift_rotate_rm8_1;
+  t.group[group_slot(0xD0)][6] = &shift_rotate_rm8_1;
+  t.group[group_slot(0xD0)][7] = &shift_rotate_rm8_1;
+  t.group[group_slot(0xD1)][0] = &shift_rotate_rm16_1;
+  t.group[group_slot(0xD1)][1] = &shift_rotate_rm16_1;
+  t.group[group_slot(0xD1)][2] = &shift_rotate_rm16_1;
+  t.group[group_slot(0xD1)][3] = &shift_rotate_rm16_1;
+  t.group[group_slot(0xD1)][4] = &shift_rotate_rm16_1;
+  t.group[group_slot(0xD1)][5] = &shift_rotate_rm16_1;
+  t.group[group_slot(0xD1)][6] = &shift_rotate_rm16_1;
+  t.group[group_slot(0xD1)][7] = &shift_rotate_rm16_1;
+  t.group[group_slot(0xD2)][0] = &shift_rotate_rm8_cl;
+  t.group[group_slot(0xD2)][1] = &shift_rotate_rm8_cl;
+  t.group[group_slot(0xD2)][2] = &shift_rotate_rm8_cl;
+  t.group[group_slot(0xD2)][3] = &shift_rotate_rm8_cl;
+  t.group[group_slot(0xD2)][4] = &shift_rotate_rm8_cl;
+  t.group[group_slot(0xD2)][5] = &shift_rotate_rm8_cl;
+  t.group[group_slot(0xD2)][6] = &shift_rotate_rm8_cl;
+  t.group[group_slot(0xD2)][7] = &shift_rotate_rm8_cl;
+  t.group[group_slot(0xD3)][0] = &shift_rotate_rm16_cl;
+  t.group[group_slot(0xD3)][1] = &shift_rotate_rm16_cl;
+  t.group[group_slot(0xD3)][2] = &shift_rotate_rm16_cl;
+  t.group[group_slot(0xD3)][3] = &shift_rotate_rm16_cl;
+  t.group[group_slot(0xD3)][4] = &shift_rotate_rm16_cl;
+  t.group[group_slot(0xD3)][5] = &shift_rotate_rm16_cl;
+  t.group[group_slot(0xD3)][6] = &shift_rotate_rm16_cl;
+  t.group[group_slot(0xD3)][7] = &shift_rotate_rm16_cl;
 
   return t;
 }
