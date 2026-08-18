@@ -35,13 +35,43 @@ namespace amberfolio::conformance {
 std::span<const std::string_view> all_stems() noexcept { return vector_stems; }
 
 bool stem_is_enabled(std::string_view stem) {
+  // clang-format off
   static const std::set<std::string_view, std::less<>> enabled = {
       // --- One line per stem, sorted. ---------------------------------
-      //
-      // Empty on purpose. The dispatch table is empty too (M1-F3 left it
-      // that way), so every opcode currently stops the machine and no
-      // vector file can pass. The M1 wide-phase issues fill both.
+      "18",
+      "19",
+      "1A",
+      "1B",
+      "1C",
+      "1D",
+      "28",
+      "29",
+      "2A",
+      "2B",
+      "2C",
+      "2D",
+      "38",
+      "39",
+      "3A",
+      "3B",
+      "3C",
+      "3D",
+      "80.3",
+      "80.5",
+      "80.7",
+      "81.3",
+      "81.5",
+      "81.7",
+      "82.3",
+      "82.5",
+      "82.7",
+      "83.3",
+      "83.5",
+      "83.7",
+      "F6.3",
+      "F7.3",
   };
+  // clang-format on
   return enabled.contains(stem);
 }
 

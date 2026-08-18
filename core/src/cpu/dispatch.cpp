@@ -59,7 +59,42 @@ constexpr dispatch_table build_instruction_set() {
   // wide phase fills it family by family; M1-C1 is done when nothing
   // here is null.)
 
+  t.primary[0x18] = &sbb_rm8_r8;
+  t.primary[0x19] = &sbb_rm16_r16;
+  t.primary[0x1A] = &sbb_r8_rm8;
+  t.primary[0x1B] = &sbb_r16_rm16;
+  t.primary[0x1C] = &sbb_al_imm8;
+  t.primary[0x1D] = &sbb_ax_imm16;
+  t.primary[0x28] = &sub_rm8_r8;
+  t.primary[0x29] = &sub_rm16_r16;
+  t.primary[0x2A] = &sub_r8_rm8;
+  t.primary[0x2B] = &sub_r16_rm16;
+  t.primary[0x2C] = &sub_al_imm8;
+  t.primary[0x2D] = &sub_ax_imm16;
+  t.primary[0x38] = &cmp_rm8_r8;
+  t.primary[0x39] = &cmp_rm16_r16;
+  t.primary[0x3A] = &cmp_r8_rm8;
+  t.primary[0x3B] = &cmp_r16_rm16;
+  t.primary[0x3C] = &cmp_al_imm8;
+  t.primary[0x3D] = &cmp_ax_imm16;
+
   // --- Group tables. One line per (opcode, reg) entry. ---------------
+
+  t.group[group_slot(0x80)][3] = &sbb_rm8_imm8;
+  t.group[group_slot(0x80)][5] = &sub_rm8_imm8;
+  t.group[group_slot(0x80)][7] = &cmp_rm8_imm8;
+  t.group[group_slot(0x81)][3] = &sbb_rm16_imm16;
+  t.group[group_slot(0x81)][5] = &sub_rm16_imm16;
+  t.group[group_slot(0x81)][7] = &cmp_rm16_imm16;
+  // 82 aliases 80 on the 8086: same byte operand, same byte immediate.
+  t.group[group_slot(0x82)][3] = &sbb_rm8_imm8;
+  t.group[group_slot(0x82)][5] = &sub_rm8_imm8;
+  t.group[group_slot(0x82)][7] = &cmp_rm8_imm8;
+  t.group[group_slot(0x83)][3] = &sbb_rm16_imm8;
+  t.group[group_slot(0x83)][5] = &sub_rm16_imm8;
+  t.group[group_slot(0x83)][7] = &cmp_rm16_imm8;
+  t.group[group_slot(0xF6)][3] = &neg_rm8;
+  t.group[group_slot(0xF7)][3] = &neg_rm16;
 
   return t;
 }

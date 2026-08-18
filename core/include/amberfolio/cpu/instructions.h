@@ -21,7 +21,39 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #20: SUB/SBB/CMP/NEG ----------------------------------------------
+
+void sub_rm8_r8(processor& cpu);
+void sub_rm16_r16(processor& cpu);
+void sub_r8_rm8(processor& cpu);
+void sub_r16_rm16(processor& cpu);
+void sub_al_imm8(processor& cpu);
+void sub_ax_imm16(processor& cpu);
+void sub_rm8_imm8(processor& cpu);
+void sub_rm16_imm16(processor& cpu);
+void sub_rm16_imm8(processor& cpu);
+
+void sbb_rm8_r8(processor& cpu);
+void sbb_rm16_r16(processor& cpu);
+void sbb_r8_rm8(processor& cpu);
+void sbb_r16_rm16(processor& cpu);
+void sbb_al_imm8(processor& cpu);
+void sbb_ax_imm16(processor& cpu);
+void sbb_rm8_imm8(processor& cpu);
+void sbb_rm16_imm16(processor& cpu);
+void sbb_rm16_imm8(processor& cpu);
+
+void cmp_rm8_r8(processor& cpu);
+void cmp_rm16_r16(processor& cpu);
+void cmp_r8_rm8(processor& cpu);
+void cmp_r16_rm16(processor& cpu);
+void cmp_al_imm8(processor& cpu);
+void cmp_ax_imm16(processor& cpu);
+void cmp_rm8_imm8(processor& cpu);
+void cmp_rm16_imm16(processor& cpu);
+void cmp_rm16_imm8(processor& cpu);
+
+void neg_rm8(processor& cpu);
+void neg_rm16(processor& cpu);
 
 }  // namespace amberfolio::cpu
