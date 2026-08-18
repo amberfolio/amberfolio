@@ -65,7 +65,9 @@ from pathlib import Path
 
 # The pin. Suite version 2.0.1; the v2 set, not v1 (superseded), not
 # v2_binary (carries the cycles too, so no win) and not v2_undefined
-# (out of M1 scope — see issue #35).
+# (undefined instruction forms, out of M1 scope by decision; issue #40
+# is the standing stretch target and says which of them are passable at
+# all).
 SUITE_REPO = "SingleStepTests/8088"
 SUITE_SHA = "aea84484abc79d09639d855b7b0ab32bc9e4dbeb"
 SUITE_SET = "v2"
