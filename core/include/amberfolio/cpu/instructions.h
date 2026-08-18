@@ -21,7 +21,17 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #30: MOVS/CMPS/STOS/LODS/SCAS + REP ------------------------------
+
+void movsb(processor& cpu);
+void movsw(processor& cpu);
+void cmpsb(processor& cpu);
+void cmpsw(processor& cpu);
+void stosb(processor& cpu);
+void stosw(processor& cpu);
+void lodsb(processor& cpu);
+void lodsw(processor& cpu);
+void scasb(processor& cpu);
+void scasw(processor& cpu);
 
 }  // namespace amberfolio::cpu
