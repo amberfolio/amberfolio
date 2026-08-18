@@ -61,6 +61,11 @@ constexpr dispatch_table build_instruction_set() {
 
   // --- Group tables. One line per (opcode, reg) entry. ---------------
 
+  t.group[group_slot(0xF6)][4] = &mul_al_rm8;
+  t.group[group_slot(0xF6)][5] = &imul_al_rm8;
+  t.group[group_slot(0xF7)][4] = &mul_ax_rm16;
+  t.group[group_slot(0xF7)][5] = &imul_ax_rm16;
+
   return t;
 }
 

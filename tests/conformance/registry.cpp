@@ -41,6 +41,10 @@ bool stem_is_enabled(std::string_view stem) {
       // Empty on purpose. The dispatch table is empty too (M1-F3 left it
       // that way), so every opcode currently stops the machine and no
       // vector file can pass. The M1 wide-phase issues fill both.
+      "F6.4",
+      "F6.5",
+      "F7.4",
+      "F7.5",
   };
   return enabled.contains(stem);
 }
