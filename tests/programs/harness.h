@@ -4,7 +4,7 @@
 // a flat megabyte of RAM, no devices, and a loop that steps the
 // interpreter until it halts.
 //
-// This is deliberately not the M2 machine, and it is not the conformance
+// This is deliberately not the machine, and it is not the conformance
 // harness either. The conformance suite proves each instruction from a
 // fresh state, one at a time; nothing there proves that thousands of them
 // compose — that IP threads through a backward branch a million times,
@@ -16,6 +16,11 @@
 // Emscripten, which is why it lives outside the GoogleTest rig: the
 // benchmark it feeds is what exercises the interpreter on the target a
 // browser gets.
+//
+// Since M2-F1 there is a second runner beside it, `run_on_machine()`,
+// which puts the same programs through the real machine with a flat RAM
+// map. The bare bus below stays, and stays first, because the point of
+// the machine runner is that the two agree.
 
 #pragma once
 
@@ -84,6 +89,13 @@ struct outcome {
   cpu::registers regs{};
   cpu::stop_record stop{};
 
+  /// How many times something was asked of an address or a port that
+  /// nothing answers for. Always zero from `run()`, whose bus has RAM
+  /// everywhere and answers every port itself; from `run_on_machine()` it
+  /// is a real assertion, because a flat machine has no unmapped memory
+  /// but does have an empty port map.
+  std::uint64_t notices{};
+
   /// The program reached HLT.
   bool halted{false};
 
@@ -104,5 +116,18 @@ struct outcome {
 /// finishes.
 [[nodiscard]] outcome run(std::span<const std::uint8_t> code,
                           std::uint64_t step_cap);
+
+/// The same program, the same way, on the M2 machine
+/// (`amberfolio::machine::machine`) with a flat RAM map.
+///
+/// This is M2-F1's exit criterion made runnable. The machine puts a
+/// memory map, a port map and a device list between the interpreter and
+/// its bytes; the claim is that none of that is visible from inside the
+/// program. Two runners rather than one replacement, because the claim is
+/// a *comparison* — the answers and the step counts have to match the
+/// harness above, and a harness that had been replaced could not be
+/// compared with.
+[[nodiscard]] outcome run_on_machine(std::span<const std::uint8_t> code,
+                                     std::uint64_t step_cap);
 
 }  // namespace amberfolio::programs
