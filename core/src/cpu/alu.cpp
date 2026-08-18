@@ -75,12 +75,16 @@ namespace {
 /// AF is the interesting one. Intel documents it as *undefined* after a
 /// logical operation, and this kernel does not get to leave a bit
 /// undefined — the conformance vectors are real silicon and the harness
-/// compares every bit. Clearing it is what an 8086 is reported to do and
-/// what emulators validated against these vectors do, but it is the one
-/// value in this file that has not been checked against the vectors
-/// themselves, because they do not exist in the tree until M1-F4. Issue
-/// #21 (AND/OR/XOR/TEST/NOT) is where it gets confirmed or corrected;
-/// this comment is the marker for whoever picks that up.
+/// compares every bit. Clearing it was written here as the thing an 8086
+/// is reported to do, with a note that it was the one value in this file
+/// no vector had yet checked.
+///
+/// It has been checked. Issue #21 enabled the forty vector files of the
+/// logic family — 08-0D, 20-25, 30-35, 84, 85, A8, A9, the twelve group-1
+/// entries and F6/F7 regs 0-2 — and every one of them passes with AF
+/// clear. On this part AF after a logical operation is not undefined in
+/// any sense that matters: it is zero, on every operand pair the suite
+/// tries. The line below is a fact now, not a report of one.
 [[nodiscard]] result logic(width w, std::uint16_t value,
                            std::uint16_t flags) noexcept {
   const std::uint16_t v = truncate(w, value);
