@@ -241,6 +241,29 @@ void div_rm16(processor& cpu);
 void idiv_rm8(processor& cpu);
 void idiv_rm16(processor& cpu);
 
+// --- #28: Conditional jumps and LOOP family ---------------------------
+
+void jo(processor& cpu);
+void jno(processor& cpu);
+void jb(processor& cpu);
+void jnb(processor& cpu);
+void jz(processor& cpu);
+void jnz(processor& cpu);
+void jbe(processor& cpu);
+void ja(processor& cpu);
+void js(processor& cpu);
+void jns(processor& cpu);
+void jp(processor& cpu);
+void jnp(processor& cpu);
+void jl(processor& cpu);
+void jge(processor& cpu);
+void jle(processor& cpu);
+void jg(processor& cpu);
+void loopnz(processor& cpu);
+void loopz(processor& cpu);
+void loop(processor& cpu);
+void jcxz(processor& cpu);
+
 // --- #29: CALL/JMP/RET -------------------------------------------------
 
 void call_rel16(processor& cpu);
