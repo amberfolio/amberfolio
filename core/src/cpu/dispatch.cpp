@@ -53,13 +53,30 @@ constexpr dispatch_table build_instruction_set() {
   dispatch_table t{};
 
   // --- Primary table. One line per opcode, sorted. -------------------
-  //
-  // (M1-F3 leaves it empty: there are no instructions yet, and every
-  // opcode therefore stops the machine with a diagnostic naming it. The
-  // wide phase fills it family by family; M1-C1 is done when nothing
-  // here is null.)
+
+  t.primary[0x00] = &add_rm8_r8;
+  t.primary[0x01] = &add_rm16_r16;
+  t.primary[0x02] = &add_r8_rm8;
+  t.primary[0x03] = &add_r16_rm16;
+  t.primary[0x04] = &add_al_imm8;
+  t.primary[0x05] = &add_ax_imm16;
+  t.primary[0x10] = &adc_rm8_r8;
+  t.primary[0x11] = &adc_rm16_r16;
+  t.primary[0x12] = &adc_r8_rm8;
+  t.primary[0x13] = &adc_r16_rm16;
+  t.primary[0x14] = &adc_al_imm8;
+  t.primary[0x15] = &adc_ax_imm16;
 
   // --- Group tables. One line per (opcode, reg) entry. ---------------
+
+  t.group[group_slot(0x80)][0] = &add_rm8_imm8;
+  t.group[group_slot(0x80)][2] = &adc_rm8_imm8;
+  t.group[group_slot(0x81)][0] = &add_rm16_imm16;
+  t.group[group_slot(0x81)][2] = &adc_rm16_imm16;
+  t.group[group_slot(0x82)][0] = &add_rm8_imm8;
+  t.group[group_slot(0x82)][2] = &adc_rm8_imm8;
+  t.group[group_slot(0x83)][0] = &add_rm16_imm8;
+  t.group[group_slot(0x83)][2] = &adc_rm16_imm8;
 
   return t;
 }
