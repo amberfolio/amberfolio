@@ -21,7 +21,13 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #27: BCD adjust — DAA/DAS/AAA/AAS/AAM/AAD ------------------------
+
+void daa(processor& cpu);
+void das(processor& cpu);
+void aaa(processor& cpu);
+void aas(processor& cpu);
+void aam(processor& cpu);
+void aad(processor& cpu);
 
 }  // namespace amberfolio::cpu
