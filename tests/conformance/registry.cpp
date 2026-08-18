@@ -37,10 +37,27 @@ std::span<const std::string_view> all_stems() noexcept { return vector_stems; }
 bool stem_is_enabled(std::string_view stem) {
   static const std::set<std::string_view, std::less<>> enabled = {
       // --- One line per stem, sorted. ---------------------------------
-      //
-      // Empty on purpose. The dispatch table is empty too (M1-F3 left it
-      // that way), so every opcode currently stops the machine and no
-      // vector file can pass. The M1 wide-phase issues fill both.
+      // clang-format off
+
+      // #29: CALL/JMP/RET
+      "9A",
+      "C0",
+      "C1",
+      "C2",
+      "C3",
+      "C8",
+      "C9",
+      "CA",
+      "CB",
+      "E8",
+      "E9",
+      "EA",
+      "EB",
+      "FF.2",
+      "FF.3",
+      "FF.4",
+      "FF.5",
+      // clang-format on
   };
   return enabled.contains(stem);
 }
