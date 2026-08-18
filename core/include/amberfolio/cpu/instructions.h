@@ -119,6 +119,48 @@ void cmp_rm16_imm8(processor& cpu);
 void neg_rm8(processor& cpu);
 void neg_rm16(processor& cpu);
 
+// --- #21: AND/OR/XOR/TEST/NOT ------------------------------------------
+
+void or_rm8_r8(processor& cpu);
+void or_rm16_r16(processor& cpu);
+void or_r8_rm8(processor& cpu);
+void or_r16_rm16(processor& cpu);
+void or_al_imm8(processor& cpu);
+void or_ax_imm16(processor& cpu);
+void or_rm8_imm8(processor& cpu);
+void or_rm16_imm16(processor& cpu);
+void or_rm16_imm8(processor& cpu);
+
+void and_rm8_r8(processor& cpu);
+void and_rm16_r16(processor& cpu);
+void and_r8_rm8(processor& cpu);
+void and_r16_rm16(processor& cpu);
+void and_al_imm8(processor& cpu);
+void and_ax_imm16(processor& cpu);
+void and_rm8_imm8(processor& cpu);
+void and_rm16_imm16(processor& cpu);
+void and_rm16_imm8(processor& cpu);
+
+void xor_rm8_r8(processor& cpu);
+void xor_rm16_r16(processor& cpu);
+void xor_r8_rm8(processor& cpu);
+void xor_r16_rm16(processor& cpu);
+void xor_al_imm8(processor& cpu);
+void xor_ax_imm16(processor& cpu);
+void xor_rm8_imm8(processor& cpu);
+void xor_rm16_imm16(processor& cpu);
+void xor_rm16_imm8(processor& cpu);
+
+void test_rm8_r8(processor& cpu);
+void test_rm16_r16(processor& cpu);
+void test_al_imm8(processor& cpu);
+void test_ax_imm16(processor& cpu);
+void test_rm8_imm8(processor& cpu);
+void test_rm16_imm16(processor& cpu);
+
+void not_rm8(processor& cpu);
+void not_rm16(processor& cpu);
+
 // --- #24: Shift and rotate group (D0-D3) ------------------------------
 //
 // One handler per encoding, not per operation: which of ROL, ROR, RCL,
