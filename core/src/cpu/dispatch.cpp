@@ -59,6 +59,43 @@ constexpr dispatch_table build_instruction_set() {
   // wide phase fills it family by family; M1-C1 is done when nothing
   // here is null.)
 
+  t.primary[0x60] = &jo;
+  t.primary[0x61] = &jno;
+  t.primary[0x62] = &jb;
+  t.primary[0x63] = &jnb;
+  t.primary[0x64] = &jz;
+  t.primary[0x65] = &jnz;
+  t.primary[0x66] = &jbe;
+  t.primary[0x67] = &ja;
+  t.primary[0x68] = &js;
+  t.primary[0x69] = &jns;
+  t.primary[0x6A] = &jp;
+  t.primary[0x6B] = &jnp;
+  t.primary[0x6C] = &jl;
+  t.primary[0x6D] = &jge;
+  t.primary[0x6E] = &jle;
+  t.primary[0x6F] = &jg;
+  t.primary[0x70] = &jo;
+  t.primary[0x71] = &jno;
+  t.primary[0x72] = &jb;
+  t.primary[0x73] = &jnb;
+  t.primary[0x74] = &jz;
+  t.primary[0x75] = &jnz;
+  t.primary[0x76] = &jbe;
+  t.primary[0x77] = &ja;
+  t.primary[0x78] = &js;
+  t.primary[0x79] = &jns;
+  t.primary[0x7A] = &jp;
+  t.primary[0x7B] = &jnp;
+  t.primary[0x7C] = &jl;
+  t.primary[0x7D] = &jge;
+  t.primary[0x7E] = &jle;
+  t.primary[0x7F] = &jg;
+  t.primary[0xE0] = &loopnz;
+  t.primary[0xE1] = &loopz;
+  t.primary[0xE2] = &loop;
+  t.primary[0xE3] = &jcxz;
+
   // --- Group tables. One line per (opcode, reg) entry. ---------------
 
   return t;

@@ -21,7 +21,27 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #28: Conditional jumps and LOOP family ---------------------------
+
+void jo(processor& cpu);
+void jno(processor& cpu);
+void jb(processor& cpu);
+void jnb(processor& cpu);
+void jz(processor& cpu);
+void jnz(processor& cpu);
+void jbe(processor& cpu);
+void ja(processor& cpu);
+void js(processor& cpu);
+void jns(processor& cpu);
+void jp(processor& cpu);
+void jnp(processor& cpu);
+void jl(processor& cpu);
+void jge(processor& cpu);
+void jle(processor& cpu);
+void jg(processor& cpu);
+void loopnz(processor& cpu);
+void loopz(processor& cpu);
+void loop(processor& cpu);
+void jcxz(processor& cpu);
 
 }  // namespace amberfolio::cpu
