@@ -22,6 +22,7 @@ add_library(amberfolio-core STATIC
   src/cpu/decoder.cpp
   src/cpu/dispatch.cpp
   src/cpu/instructions/add.cpp
+  src/cpu/instructions/call.cpp
   src/cpu/instructions/div.cpp
   src/cpu/instructions/mov.cpp
   src/cpu/instructions/shift.cpp

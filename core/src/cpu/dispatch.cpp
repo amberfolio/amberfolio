@@ -100,6 +100,7 @@ constexpr dispatch_table build_instruction_set() {
   t.primary[0x95] = &xchg_ax_bp;
   t.primary[0x96] = &xchg_ax_si;
   t.primary[0x97] = &xchg_ax_di;
+  t.primary[0x9A] = &call_ptr16_16;
   t.primary[0xA0] = &mov_al_moffs8;
   t.primary[0xA1] = &mov_ax_moffs16;
   t.primary[0xA2] = &mov_moffs8_al;
@@ -130,8 +131,20 @@ constexpr dispatch_table build_instruction_set() {
   t.primary[0xBD] = &mov_bp_imm16;
   t.primary[0xBE] = &mov_si_imm16;
   t.primary[0xBF] = &mov_di_imm16;
+  t.primary[0xC0] = &ret_near_imm16;  // undocumented alias of C2
+  t.primary[0xC1] = &ret_near;        // undocumented alias of C3
+  t.primary[0xC2] = &ret_near_imm16;
+  t.primary[0xC3] = &ret_near;
   t.primary[0xC6] = &mov_rm8_imm8;
   t.primary[0xC7] = &mov_rm16_imm16;
+  t.primary[0xC8] = &ret_far_imm16;  // undocumented alias of CA
+  t.primary[0xC9] = &ret_far;        // undocumented alias of CB
+  t.primary[0xCA] = &ret_far_imm16;
+  t.primary[0xCB] = &ret_far;
+  t.primary[0xE8] = &call_rel16;
+  t.primary[0xE9] = &jmp_rel16;
+  t.primary[0xEA] = &jmp_ptr16_16;
+  t.primary[0xEB] = &jmp_rel8;
 
   // --- Group tables. One line per (opcode, reg) entry. ---------------
 
@@ -193,6 +206,10 @@ constexpr dispatch_table build_instruction_set() {
   t.group[group_slot(0xF7)][3] = &neg_rm16;
   t.group[group_slot(0xF7)][6] = &div_rm16;
   t.group[group_slot(0xF7)][7] = &idiv_rm16;
+  t.group[group_slot(0xFF)][2] = &call_rm16;
+  t.group[group_slot(0xFF)][3] = &call_m16_16;
+  t.group[group_slot(0xFF)][4] = &jmp_rm16;
+  t.group[group_slot(0xFF)][5] = &jmp_m16_16;
 
   return t;
 }

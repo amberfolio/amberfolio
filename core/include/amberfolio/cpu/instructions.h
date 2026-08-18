@@ -139,6 +139,24 @@ void div_rm16(processor& cpu);
 void idiv_rm8(processor& cpu);
 void idiv_rm16(processor& cpu);
 
+// --- #29: CALL/JMP/RET -------------------------------------------------
+
+void call_rel16(processor& cpu);
+void call_ptr16_16(processor& cpu);
+void call_rm16(processor& cpu);
+void call_m16_16(processor& cpu);
+
+void jmp_rel16(processor& cpu);
+void jmp_rel8(processor& cpu);
+void jmp_ptr16_16(processor& cpu);
+void jmp_rm16(processor& cpu);
+void jmp_m16_16(processor& cpu);
+
+void ret_near(processor& cpu);
+void ret_near_imm16(processor& cpu);
+void ret_far(processor& cpu);
+void ret_far_imm16(processor& cpu);
+
 // --- #30: MOVS/CMPS/STOS/LODS/SCAS + REP ------------------------------
 
 void movsb(processor& cpu);
