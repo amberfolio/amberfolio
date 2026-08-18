@@ -21,7 +21,11 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #26: DIV/IDIV -----------------------------------------------------
+
+void div_rm8(processor& cpu);
+void div_rm16(processor& cpu);
+void idiv_rm8(processor& cpu);
+void idiv_rm16(processor& cpu);
 
 }  // namespace amberfolio::cpu
