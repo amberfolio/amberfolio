@@ -234,6 +234,13 @@ void shift_rotate_rm16_1(processor& cpu);
 void shift_rotate_rm8_cl(processor& cpu);
 void shift_rotate_rm16_cl(processor& cpu);
 
+// --- #25: MUL/IMUL -----------------------------------------------------
+
+void mul_al_rm8(processor& cpu);
+void mul_ax_rm16(processor& cpu);
+void imul_al_rm8(processor& cpu);
+void imul_ax_rm16(processor& cpu);
+
 // --- #26: DIV/IDIV -----------------------------------------------------
 
 void div_rm8(processor& cpu);
@@ -295,11 +302,11 @@ void lodsw(processor& cpu);
 void scasb(processor& cpu);
 void scasw(processor& cpu);
 
-// --- #25: MUL/IMUL -----------------------------------------------------
+// --- #31: Software interrupts — INT3/INT imm8/INTO/IRET ---------------
 
-void mul_al_rm8(processor& cpu);
-void mul_ax_rm16(processor& cpu);
-void imul_al_rm8(processor& cpu);
-void imul_ax_rm16(processor& cpu);
+void int3(processor& cpu);
+void int_imm8(processor& cpu);
+void into(processor& cpu);
+void iret(processor& cpu);
 
 }  // namespace amberfolio::cpu

@@ -247,6 +247,11 @@ constexpr dispatch_table build_instruction_set() {
   t.primary[0xE2] = &loop;
   t.primary[0xE3] = &jcxz;
 
+  t.primary[0xCC] = &int3;
+  t.primary[0xCD] = &int_imm8;
+  t.primary[0xCE] = &into;
+  t.primary[0xCF] = &iret;
+
   // --- Group tables. One line per (opcode, reg) entry. ---------------
 
   t.group[group_slot(0x80)][0] = &add_rm8_imm8;
