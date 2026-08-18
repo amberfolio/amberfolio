@@ -11,32 +11,58 @@ Radiance. **PLAN.md is the plan of record** — scope, architecture,
 milestones, and settled decisions live there; don't re-litigate them
 here or in PRs.
 
-**Status: M0 complete. M1 — the CPU core — is the current milestone.**
-The skeleton builds and is proven on all four targets in CI on every
-push — an empty core library, a stub SDL3 desktop host, and a wasm
-module that reports its version. There is no machine yet: M1 is where
-the 8086 interpreter starts.
+**Status: M1 complete. M2 — the machine — is the current milestone.**
+The 8086 interpreter is in the tree and it is exact: all 323 vector
+files of the pinned SingleStepTests/8088 v2 set pass in full in CI on
+every push, undefined flag behaviour included, nothing masked and
+nothing capped. That is PLAN.md §7's M1 exit criterion, met.
+
+There is still no *machine* around the CPU — no memory map, no MZ
+loader, no PIT, no EGA, no speaker, no DOS/BIOS service layer. That is
+M2, and PLAN.md §7 has its exit criterion.
+
+What M1 left in place:
+
+- The CPU core — `core/include/amberfolio/cpu/` and `core/src/cpu/`.
+  A register file with normalized flags, one ALU kernel that owns flag
+  semantics, a decoder (prefixes, ModRM, effective addresses), the
+  dispatch tables (236 primary handlers — 256 less the prefixes and the
+  group opcodes — and 90 group entries, one sorted line each), sixteen
+  instruction files under `instructions/`, and interrupt delivery: one
+  sequence for all four sources, plus the three timing windows a vector
+  suite cannot catch (TF fires one instruction late, STI takes effect
+  one instruction late, a segment-register load holds recognition off).
+  `step()` runs one instruction or one REP iteration; there is no
+  prefetch queue and no cycle counting, by decision (PLAN.md §3).
+- The conformance suite, under the `conformance` label — one CTest case
+  per vector file, fetched and condensed into a cache outside the tree.
+  It is exhaustive: every stem the pin has runs and is expected to pass,
+  the manifest's length is checked against the pin at configure time,
+  and the only skip left is "the vectors are not on this machine",
+  which CI turns into a failure. Adding an instruction now means
+  keeping 323 green files green.
+- `tests/programs` — self-written 8086 programs (a counted loop, a sieve
+  of Eratosthenes to 100,000, and the string instructions over two
+  32 KiB buffers) run to HLT against a flat megabyte of RAM. Their
+  answers and their exact step counts are asserted case by case in the
+  unit suite; `amberfolio-bench` runs the same list and times it, under
+  the `bench` label. It is the one piece of test apparatus that builds
+  under Emscripten, so `ctest --preset wasm` runs the interpreter rather
+  than only building it.
+- `docs/cpu-implementation.md` — the architecture tour and the
+  house style for an instruction handler, written for M1's wide phase
+  and still the guide for touching CPU code.
 
 What M0 left in place, all of it running in CI on every push:
 
 - The unit-test rig — GoogleTest (fetched, never vendored) under CTest,
   tests in `tests/`, one CTest case per test, on the native targets.
-  M1 added the CPU conformance suite beside it under the `conformance`
-  label: one CTest case per SingleStepTests/8088 vector file, fetched and
-  condensed into a cache outside the tree, skipping until its instruction
-  family lands (`tests/conformance/registry.cpp` is the enabled list).
-  M1 also added `tests/programs` — self-written 8086 programs (a counted
-  loop, a sieve of Eratosthenes to 100,000, and the string instructions
-  over two 32 KiB buffers) run to HLT against a flat megabyte of RAM.
-  Their answers and their exact step counts are asserted case by case in
-  the unit suite; `amberfolio-bench` runs the same list and times it,
-  under the `bench` label. It is the one piece of test apparatus that
-  builds under Emscripten, so `ctest --preset wasm` now runs the
-  interpreter rather than only building it.
 - The format and lint gates — clang-format, clang-tidy and shellcheck,
   with the clang tools pinned in `.llvm-version`.
 - An ASan+UBSan job on the `linux-asan-ubsan` preset.
 - The content guard and the DCO check, over every commit in history.
+- The skeleton on all four targets: the core library, a stub SDL3
+  desktop host, and a wasm module that reports its version.
 - Deployment of the wasm host to https://amberfolio.vercel.app on every
   push to `main` (and to a preview URL for every same-repo PR) by the
   `deploy` job — built in Actions with the pinned emsdk, shipped

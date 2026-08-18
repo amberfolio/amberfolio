@@ -1,10 +1,10 @@
 # Implementing an instruction family
 
-This is the playbook for M1's wide phase: sixteen instruction-family
-issues (#18–#33), implemented in parallel, against a framework that is
-already in the tree. Each of those issues is deliberately terse — it
-lists opcodes, vector files and the quirks peculiar to that family, and
-defers everything else to this document.
+This was written for M1's wide phase: sixteen instruction-family issues
+(#18–#33), implemented in parallel against a framework already in the
+tree. That phase is over — all sixteen families are in, and all 323
+vector files pass — but the architecture tour and the house style are
+what they were, so this stays the guide for touching CPU code.
 
 Read this once before you write code. It assumes you know what an 8086
 is and nothing whatsoever about this repository.
@@ -12,10 +12,16 @@ is and nothing whatsoever about this repository.
 The short version:
 
 > A family is a new source file under `core/src/cpu/instructions/`, a
-> handler per encoding written as thin wiring over the ALU kernel, one
-> line per opcode in the dispatch table, one line per vector file in the
-> conformance registry — and then the vectors say whether you are right.
-> They are the authority, not the Intel manual.
+> handler per encoding written as thin wiring over the ALU kernel, and
+> one line per opcode in the dispatch table — and then the vectors say
+> whether you are right. They are the authority, not the Intel manual.
+
+**What has changed since the wide phase (#34).** The conformance
+registry used to carry a second list, the *enabled* set, and a family
+landed by adding its stems to it. That list is gone: every file of the
+pin now runs and is expected to pass. Where a step below says to enable
+a stem, there is nothing to do — and where it says no previously enabled
+stem may regress, the bar is now all 323 of them.
 
 - [1. The architecture in ten minutes](#1-the-architecture-in-ten-minutes)
 - [2. The workflow](#2-the-workflow)
@@ -213,9 +219,10 @@ in.
 
 Four pieces you will touch or read:
 
-- **`registry.cpp`** — the enabled list. One line per stem. A stem not
-  in it still registers as a CTest case and reports SKIPPED, which is
-  what makes the milestone's remaining work visible in every run.
+- **`vector-files.txt` / `registry.cpp`** — which files the pin has, and
+  the case names built from them. The manifest is generated into the
+  harness at configure time and its length is checked against the pin,
+  so the suite is exhaustive and cannot quietly shrink.
 - **`vectors.h/.cpp`** — the reader. It folds each vector's recorded
   changes onto its before-state at load time, so `test.after` is a
   *complete* register file rather than a list of what was mentioned.
@@ -323,20 +330,12 @@ merge each.
 to be tidied up — it is what stops the machine loudly (§6), and it is
 how the milestone knows what is left.
 
-### 5. Enable the vector files
+### 5. The vector files — nothing to enable
 
-`tests/conformance/registry.cpp`, in the `enabled` set. Same rule, same
-reason: **one line per stem, sorted**.
-
-```cpp
-      "00",
-      "01",
-      "80.0",
-```
-
-A stem belongs here once its family is implemented and its file passes
-**in full**. Adding one that does not pass turns the build red, which is
-the point.
+Nothing to do since #34: every stem the pin has is already registered
+and already expected to pass. Your family's files were red before you
+started and have to be green when you finish — that is the whole of the
+step now.
 
 ### 6. Run your family's vectors
 
@@ -350,16 +349,15 @@ Iterate here. `AMBERFOLIO_CONFORMANCE_LIMIT` (§4) makes the loop fast
 while you are still failing thousands; drop it before you believe the
 result.
 
-### 7. Run the full enabled set
+### 7. Run the whole suite
 
 ```sh
 ctest --preset linux-gcc -L conformance
 ```
 
-No previously enabled stem may regress. This is an explicit acceptance
-criterion on every family issue, and it is not hypothetical — a shared
-helper that looked like an improvement is exactly how one family breaks
-another.
+All 323 files, and none of them may regress. This is not hypothetical —
+a shared helper that looked like an improvement is exactly how one
+family breaks another.
 
 ### 8. Format, tidy, guards
 
@@ -379,7 +377,7 @@ CI fails the PR otherwise.
 
 ### What a family touches, in full
 
-Five files, and four of them take one sorted line each:
+Four files, and three of them take one sorted line each:
 
 | File | What you add |
 | --- | --- |
@@ -387,9 +385,10 @@ Five files, and four of them take one sorted line each:
 | `core/CMakeLists.txt` | one line in the source list, sorted |
 | `core/include/amberfolio/cpu/instructions.h` | your own declaration block |
 | `core/src/cpu/dispatch.cpp` | one line per opcode, sorted |
-| `tests/conformance/registry.cpp` | one line per stem, sorted |
 
-(Plus `tests/CMakeLists.txt` if you add a unit-test source — see §3.)
+(Plus `tests/CMakeLists.txt` if you add a unit-test source — see §3.
+`tests/conformance/vector-files.txt` is a fact of the pin, not a place to
+add anything: it changes when the pin changes and never otherwise.)
 
 Anything else you find yourself editing, stop and ask on the issue. It
 is not necessarily wrong, but it is the kind of change that wants to be
@@ -486,15 +485,6 @@ Wired in `dispatch.cpp`:
   t.primary[0x05] = &add_ax_imm16;
 ```
 
-Enabled in `registry.cpp`:
-
-```cpp
-      "00",
-      "01",
-      "04",
-      "05",
-```
-
 Handler names follow the mnemonic and its Intel-notation operands —
 which is also how the vectors' own disassembly reads, so a failing
 `test 4211 "add al, 1Bh"` points straight at `add_al_imm8`. The
@@ -544,7 +534,7 @@ Selecting cases:
 
 ```sh
 ctest --preset linux-gcc -L unit                    # the fast suite
-ctest --preset linux-gcc -L conformance             # every enabled stem
+ctest --preset linux-gcc -L conformance             # all 323 files
 ctest --preset linux-gcc -R "conformance\.op_00$"   # one opcode
 ctest --preset linux-gcc -R "conformance\.op_D0_[0-7]$"   # a group
 ctest --preset linux-gcc -R "conformance\.op_(00|01|04|05)$"  # a family
@@ -718,8 +708,8 @@ Four other reports mean something specific:
   stopped at F000:0100 on opcode FF /3 — no handler for it in the dispatch table
 ```
 
-You enabled a stem whose handler is not wired, or the group entry index
-is wrong. The `/3` is the ModRM `reg` field.
+The opcode has no handler in the dispatch table, or the group entry
+index is wrong. The `/3` is the ModRM `reg` field.
 
 ```
   the instruction had not retired after 200 iterations
@@ -808,12 +798,12 @@ In roughly the order they bite:
 
 Before you open it:
 
-- [ ] Every stem listed on the issue is enabled in `registry.cpp` and
-      passes **in full** — no `AMBERFOLIO_CONFORMANCE_LIMIT` set.
-- [ ] `ctest --preset linux-gcc -L conformance` is green: no previously
-      enabled stem regressed.
+- [ ] Every stem listed on the issue passes **in full** — no
+      `AMBERFOLIO_CONFORMANCE_LIMIT` set.
+- [ ] `ctest --preset linux-gcc -L conformance` is green: all 323 files,
+      nothing regressed.
 - [ ] `ctest --preset linux-gcc -L unit` is green.
-- [ ] Only the five files of §2 are touched, and the four shared ones
+- [ ] Only the four files of §2 are touched, and the three shared ones
       only by sorted one-liners.
 - [ ] New source files carry `// SPDX-License-Identifier: AGPL-3.0-only`.
 - [ ] `check-format.sh`, `check-tidy.sh`, `check-clean.sh`,
@@ -831,7 +821,7 @@ What must be green in CI:
 | `guards` | the guard self-test, content guard, DCO, clang-format, shellcheck |
 | `tidy` | clang-tidy against a configured `linux-clang` tree |
 | `vectors` | fetches/caches the condensed vectors per OS; everything below depends on it |
-| `conformance (full suite)` | every vector of every enabled file, nothing capped — the milestone's exit criterion |
+| `conformance (full suite)` | every vector of all 323 files, nothing capped — M1's exit criterion, kept |
 | `build (×5)` | windows-msvc, macos-universal, linux-gcc, linux-clang, wasm — each building and testing, with the conformance suite capped at 500 vectors per file on the four native rows |
 | `sanitizers` | ASan + UBSan over the tests, 100 vectors per file |
 | `acknowledgments` | the two checked boxes in the PR template |

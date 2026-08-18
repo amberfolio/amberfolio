@@ -2,11 +2,16 @@
 
 A low-level emulator for the SSI Gold Box games.
 
-**Status: early development.** There is no emulator yet. What builds today
-is the skeleton — an empty core library, a stub desktop host, and a wasm
-module that reports its version — on all four targets, with the test rig,
-the gates and the deployment pipeline around it. That was milestone M0,
-and it is done; the CPU core is next. The shape of the work is in the
+**Status: early development.** There is nothing to play yet. What exists
+is the 8086 CPU core, and it is exact: all 323 vector files of the
+[SingleStepTests/8088](https://github.com/SingleStepTests/8088) v2 set —
+captured from real silicon — pass in full in CI on every push, undefined
+flag behaviour included. It sits inside the skeleton the first milestone
+built: the core library, a stub desktop host and a wasm module, on all
+four targets, with the test rig, the gates and the deployment pipeline
+around them. That is M0 and M1, both done. Next is M2 — the machine the
+CPU runs inside: memory map, MZ loader, PIT, EGA, speaker, and the
+DOS/BIOS service layer. The shape of the work is in the
 [project plan](PLAN.md).
 
 **Try it in a browser:** <https://amberfolio.vercel.app> — the wasm host,
@@ -158,16 +163,15 @@ so `ctest` stays green if you have not run the script. Useful knobs:
 `-DAMBERFOLIO_BUILD_CONFORMANCE=OFF` drops the suite and the two libraries
 it fetches (simdjson, libdeflate) from the build entirely.
 
-A file is only run once its instructions are implemented: which ones those
-are is the list in
-[`tests/conformance/registry.cpp`](tests/conformance/registry.cpp), and
-everything else registers as a skip, so `ctest` is also the milestone's
-progress report.
+Every file of the pin runs — the suite is exhaustive, and the manifest it
+is generated from
+([`tests/conformance/vector-files.txt`](tests/conformance/vector-files.txt))
+is checked against the pin at configure time. A suite that lost a file
+fails the build rather than reporting 100% of a smaller number.
 
-Adding one of those instruction families is what M1's open issues are:
-[`docs/cpu-implementation.md`](docs/cpu-implementation.md) is the
-playbook — the architecture tour, the workflow, the commands, and how to
-read a failing vector.
+[`docs/cpu-implementation.md`](docs/cpu-implementation.md) is the CPU
+playbook — the architecture tour, the house style for an instruction
+handler, the commands, and how to read a failing vector.
 
 Formatting (`clang-format`), static analysis (`clang-tidy`), shell linting
 (`shellcheck`), the content guard and the DCO check are gates in CI too,
