@@ -29,6 +29,7 @@ add_library(amberfolio-core STATIC
   src/cpu/instructions/interrupt.cpp
   src/cpu/instructions/jump.cpp
   src/cpu/instructions/logic.cpp
+  src/cpu/instructions/misc.cpp
   src/cpu/instructions/mov.cpp
   src/cpu/instructions/mul.cpp
   src/cpu/instructions/shift.cpp
