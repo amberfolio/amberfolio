@@ -423,8 +423,11 @@ jobs:
       # On the native targets this is the GoogleTest suite (one CTest case
       # per test) plus the SDL host smoke check; on wasm it is the module
       # smoke check, which loads the module under node and asks it for its
-      # version. A failing test fails the job — the presets set
-      # outputOnFailure, so the assertion lands in the log.
+      # version. Both also run the self-written 8086 programs
+      # (tests/programs), which is the only thing that runs the
+      # interpreter on the wasm target rather than only building it. A
+      # failing test fails the job — the presets set outputOnFailure, so
+      # the assertion lands in the log.
       - name: test
         env:
           AMBERFOLIO_CONFORMANCE_LIMIT: '500'

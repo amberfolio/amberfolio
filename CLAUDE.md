@@ -25,6 +25,14 @@ What M0 left in place, all of it running in CI on every push:
   label: one CTest case per SingleStepTests/8088 vector file, fetched and
   condensed into a cache outside the tree, skipping until its instruction
   family lands (`tests/conformance/registry.cpp` is the enabled list).
+  M1 also added `tests/programs` — self-written 8086 programs (a counted
+  loop, a sieve of Eratosthenes to 100,000, and the string instructions
+  over two 32 KiB buffers) run to HLT against a flat megabyte of RAM.
+  Their answers and their exact step counts are asserted case by case in
+  the unit suite; `amberfolio-bench` runs the same list and times it,
+  under the `bench` label. It is the one piece of test apparatus that
+  builds under Emscripten, so `ctest --preset wasm` now runs the
+  interpreter rather than only building it.
 - The format and lint gates — clang-format, clang-tidy and shellcheck,
   with the clang tools pinned in `.llvm-version`.
 - An ASan+UBSan job on the `linux-asan-ubsan` preset.
@@ -39,7 +47,8 @@ What M0 left in place, all of it running in CI on every push:
 ```sh
 cmake --preset linux-gcc      # or windows-msvc, macos, linux-clang, wasm
 cmake --build --preset linux-gcc
-ctest --preset linux-gcc      # unit tests (-L unit) + host smoke checks
+ctest --preset linux-gcc      # unit + programs + host smoke checks
+ctest --preset linux-gcc -L bench   # just the 8086 programs, timed
 
 cmake --preset linux-asan-ubsan   # the tests under ASan + UBSan, no host
 

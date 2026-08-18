@@ -35,7 +35,7 @@ git clone https://github.com/amberfolio/amberfolio.git
 cd amberfolio
 cmake --preset linux-gcc          # or linux-clang, macos, windows-msvc
 cmake --build --preset linux-gcc
-ctest --preset linux-gcc          # unit tests + host smoke checks
+ctest --preset linux-gcc          # unit tests + programs + host smoke checks
 ```
 
 Each preset also has `-debug` and `-release` build and test variants; the
@@ -80,12 +80,39 @@ uses an installed one). Each test is registered with CTest individually, so
 ```sh
 ctest --preset linux-gcc                    # everything
 ctest --preset linux-gcc -L unit            # unit tests only
+ctest --preset linux-gcc -L bench           # the 8086 programs, timed
 ctest --preset linux-gcc -R '^Version\.'    # by name
 ```
 
 `-DAMBERFOLIO_BUILD_TESTS=OFF` skips the tests, and with them the
 GoogleTest fetch. They are a native-target thing: the wasm build has its
 own check, below.
+
+### Programs
+
+[`tests/programs/`](tests/programs) is a different question from the rest
+of the suite. Everything else asks whether one instruction, from a given
+state, produces a given state; nothing there asks whether a thousand
+instructions in a row still add up. So it holds three short 8086 programs,
+written here and hand-encoded — a counted loop, a sieve of Eratosthenes to
+100,000, and the string instructions over two 32 KiB buffers — run to HLT
+against a flat megabyte of RAM.
+
+Each one's answer is a fact about arithmetic rather than about this
+emulator, which is what makes it worth asserting; so is its exact step
+count, which is the only thing in the suite that would notice a change to
+the step model itself. The unit suite asserts both, case by case.
+`amberfolio-bench` runs the same list and times it:
+
+```sh
+cmake --build --preset linux-gcc-release
+./build/linux-gcc/tests/programs/Release/amberfolio-bench
+```
+
+It needs neither GoogleTest nor a fetched anything, so unlike the rest of
+the suite it builds under Emscripten too — `ctest --preset wasm` runs it
+under node, which is what exercises the interpreter on the target a
+browser gets rather than only compiling it for that target.
 
 On Linux with Clang there is a sanitizer preset — AddressSanitizer and
 UndefinedBehaviorSanitizer over the same tests, with every finding fatal:
@@ -165,8 +192,9 @@ source ./emsdk_env.sh        # sets EMSDK, which the wasm preset needs
 ```sh
 cmake --preset wasm
 cmake --build --preset wasm
-ctest --preset wasm          # loads the module under node, checks its ABI
-                             # (the unit tests are native-only)
+ctest --preset wasm          # loads the module under node, checks its ABI,
+                             # and runs the 8086 programs (the GoogleTest
+                             # suite is native-only)
 ```
 
 That leaves the module, its glue, and the JS host together in

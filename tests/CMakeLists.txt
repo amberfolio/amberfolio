@@ -12,6 +12,17 @@
 # public/MIT-licensed vectors only — the content guard applies to test
 # data exactly as it does to everything else (PLAN.md §6).
 
+# The self-written 8086 programs, the machine that runs them, and their
+# benchmark. Added before the guard below and not inside it: they fetch
+# nothing, they link nothing but the core, and they are the only test
+# apparatus that builds under Emscripten. See programs/CMakeLists.txt.
+add_subdirectory(programs)
+
+# Everything past here is the GoogleTest rig, which needs GoogleTest.
+if(NOT AMBERFOLIO_BUILD_TESTS)
+  return()
+endif()
+
 include(AmberfolioGoogleTest)
 include(GoogleTest)  # gtest_discover_tests, shipped with CMake itself
 
@@ -22,6 +33,7 @@ add_executable(amberfolio-core-tests
   core/cpu/interrupts_test.cpp
   core/cpu/misc_test.cpp
   core/cpu/processor_test.cpp
+  core/cpu/program_test.cpp
   core/cpu/registers_test.cpp
   core/version_test.cpp)
 
@@ -37,6 +49,7 @@ target_include_directories(amberfolio-core-tests PRIVATE
 # warning baseline applies — test code is our code.
 target_link_libraries(amberfolio-core-tests PRIVATE
   amberfolio::core
+  amberfolio::programs
   amberfolio::warnings
   GTest::gmock_main)
 

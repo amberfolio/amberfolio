@@ -76,9 +76,11 @@ if(AMBERFOLIO_BUILD_HOST_WEB AND NOT EMSCRIPTEN)
     "with the 'wasm' preset (see README.md).")
 endif()
 
-# The unit-test rig runs on the native targets. Wasm-side test execution is
-# out of scope (PLAN.md §6: the conformance suite runs on native CI); what
-# covers the wasm target is its build plus the module smoke check.
+# The GoogleTest rig runs on the native targets; the conformance suite
+# runs on native CI (PLAN.md §6). What the wasm target gets is its build,
+# the module smoke check, and — since it needs no framework — the
+# self-written programs in tests/programs, which is the one thing that
+# runs the interpreter itself there rather than merely compiling it.
 if(EMSCRIPTEN)
   set(_amberfolio_tests_default OFF)
 else()
@@ -133,9 +135,10 @@ if(AMBERFOLIO_BUILD_HOST_WEB)
   add_subdirectory(hosts/web)
 endif()
 
-if(AMBERFOLIO_BUILD_TESTS)
-  add_subdirectory(tests)
-endif()
+# Unconditional, and the guard is inside: tests/programs builds on every
+# target including wasm, and only the GoogleTest rig beneath it depends on
+# AMBERFOLIO_BUILD_TESTS.
+add_subdirectory(tests)
 
 message(STATUS "amberfolio ${PROJECT_VERSION}: "
   "C++${AMBERFOLIO_CXX_STANDARD_EFFECTIVE}, "
