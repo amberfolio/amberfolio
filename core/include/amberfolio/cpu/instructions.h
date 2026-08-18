@@ -21,7 +21,17 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #24: Shift and rotate group (D0-D3) ------------------------------
+//
+// One handler per encoding, not per operation: which of ROL, ROR, RCL,
+// RCR, SHL/SAL, SHR, the undocumented reg-6 operation, or SAR runs is
+// read from the ModRM reg field at call time. See
+// src/cpu/instructions/shift.cpp for why that is the natural shape here
+// rather than eight handlers each.
+
+void shift_rotate_rm8_1(processor& cpu);
+void shift_rotate_rm16_1(processor& cpu);
+void shift_rotate_rm8_cl(processor& cpu);
+void shift_rotate_rm16_cl(processor& cpu);
 
 }  // namespace amberfolio::cpu
