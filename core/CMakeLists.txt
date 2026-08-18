@@ -28,6 +28,7 @@ add_library(amberfolio-core STATIC
   src/cpu/instructions/jump.cpp
   src/cpu/instructions/logic.cpp
   src/cpu/instructions/mov.cpp
+  src/cpu/instructions/mul.cpp
   src/cpu/instructions/shift.cpp
   src/cpu/instructions/stack.cpp
   src/cpu/instructions/string.cpp

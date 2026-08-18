@@ -295,4 +295,11 @@ void lodsw(processor& cpu);
 void scasb(processor& cpu);
 void scasw(processor& cpu);
 
+// --- #25: MUL/IMUL -----------------------------------------------------
+
+void mul_al_rm8(processor& cpu);
+void mul_ax_rm16(processor& cpu);
+void imul_al_rm8(processor& cpu);
+void imul_ax_rm16(processor& cpu);
+
 }  // namespace amberfolio::cpu

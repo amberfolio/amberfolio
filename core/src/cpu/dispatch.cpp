@@ -317,12 +317,16 @@ constexpr dispatch_table build_instruction_set() {
   t.group[group_slot(0xF6)][1] = &test_rm8_imm8;
   t.group[group_slot(0xF6)][2] = &not_rm8;
   t.group[group_slot(0xF6)][3] = &neg_rm8;
+  t.group[group_slot(0xF6)][4] = &mul_al_rm8;
+  t.group[group_slot(0xF6)][5] = &imul_al_rm8;
   t.group[group_slot(0xF6)][6] = &div_rm8;
   t.group[group_slot(0xF6)][7] = &idiv_rm8;
   t.group[group_slot(0xF7)][0] = &test_rm16_imm16;
   t.group[group_slot(0xF7)][1] = &test_rm16_imm16;
   t.group[group_slot(0xF7)][2] = &not_rm16;
   t.group[group_slot(0xF7)][3] = &neg_rm16;
+  t.group[group_slot(0xF7)][4] = &mul_ax_rm16;
+  t.group[group_slot(0xF7)][5] = &imul_ax_rm16;
   t.group[group_slot(0xF7)][6] = &div_rm16;
   t.group[group_slot(0xF7)][7] = &idiv_rm16;
   t.group[group_slot(0xFE)][0] = &inc_rm8;
