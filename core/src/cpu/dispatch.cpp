@@ -59,6 +59,34 @@ constexpr dispatch_table build_instruction_set() {
   // wide phase fills it family by family; M1-C1 is done when nothing
   // here is null.)
 
+  t.primary[0x0F] = &pop_cs;
+  t.primary[0x9B] = &wait;
+  t.primary[0xD6] = &salc;
+  t.primary[0xD8] = &escape;
+  t.primary[0xD9] = &escape;
+  t.primary[0xDA] = &escape;
+  t.primary[0xDB] = &escape;
+  t.primary[0xDC] = &escape;
+  t.primary[0xDD] = &escape;
+  t.primary[0xDE] = &escape;
+  t.primary[0xDF] = &escape;
+  t.primary[0xE4] = &in_al_imm8;
+  t.primary[0xE5] = &in_ax_imm8;
+  t.primary[0xE6] = &out_imm8_al;
+  t.primary[0xE7] = &out_imm8_ax;
+  t.primary[0xEC] = &in_al_dx;
+  t.primary[0xED] = &in_ax_dx;
+  t.primary[0xEE] = &out_dx_al;
+  t.primary[0xEF] = &out_dx_ax;
+  t.primary[0xF4] = &hlt;
+  t.primary[0xF5] = &complement_carry;
+  t.primary[0xF8] = &clear_carry;
+  t.primary[0xF9] = &set_carry;
+  t.primary[0xFA] = &clear_interrupt_flag;
+  t.primary[0xFB] = &set_interrupt_flag;
+  t.primary[0xFC] = &clear_direction_flag;
+  t.primary[0xFD] = &set_direction_flag;
+
   // --- Group tables. One line per (opcode, reg) entry. ---------------
 
   return t;
