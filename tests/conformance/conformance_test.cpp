@@ -1,28 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The conformance suite as CTest sees it (issue #14): one case per vector
-// file of the pinned SingleStepTests/8088 v2 set, registered whether or
-// not this build can pass it.
+// The conformance suite as CTest sees it (issues #14, #34): one case per
+// vector file of the pinned SingleStepTests/8088 v2 set, all of them
+// expected to pass.
 //
 // Registered dynamically rather than written out as 323 TEST() macros —
 // which is the reason GoogleTest was chosen for this project in the first
 // place (cmake/AmberfolioGoogleTest.cmake). The list comes from the
-// generated manifest, so a case exists for every file the pin has, and a
-// file this build does not claim yet reports SKIPPED instead of silently
-// not existing. "323 cases, 4 passing, 319 skipped" is a milestone
-// burn-down chart that maintains itself.
+// generated manifest, so a case exists for every file the pin has, and
+// the manifest's length is checked against the pin at configure time. A
+// suite that runs 322 files cannot report itself as a passing one.
 //
-// Three ways a case can end up skipped, and only one of them is allowed
-// to happen in CI:
-//
-//   * the stem is not in the enabled list (registry.cpp) — the normal
-//     state of most of them during M1's wide phase;
-//   * the vectors are not on this machine at all — the normal state for
-//     a contributor who has not run the fetch script, and the reason
-//     `ctest` is green for them rather than 323 shades of red;
-//   * ...which in CI would be a silently unrun suite, so CI sets
-//     AMBERFOLIO_CONFORMANCE_REQUIRED and that second case becomes a
-//     failure instead.
+// One way is left for a case to be skipped, and it is not allowed to
+// happen in CI: the vectors are not on this machine at all. That is the
+// normal state for a contributor who has not run the fetch script, and
+// the reason `ctest` is green for them rather than 323 shades of red —
+// but in CI it would be a silently unrun suite, so CI sets
+// AMBERFOLIO_CONFORMANCE_REQUIRED and the skip becomes a failure.
 //
 // Unlike the unit-test binary this one has a main() of its own, at the
 // bottom: cases that are registered rather than declared need somewhere
@@ -63,12 +57,6 @@ class vector_case : public ::testing::Test {
 
  private:
   void TestBody() override {
-    if (!stem_is_enabled(stem_)) {
-      GTEST_SKIP() << stem_
-                   << " is not enabled yet — see tests/conformance/"
-                      "registry.cpp";
-    }
-
     const std::filesystem::path path = vector_path(stem_);
     if (!std::filesystem::exists(path)) {
       const std::string missing =

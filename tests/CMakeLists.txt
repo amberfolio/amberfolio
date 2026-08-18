@@ -84,6 +84,16 @@ if(AMBERFOLIO_BUILD_CONFORMANCE)
   # the two cannot disagree about what the pinned suite contains.
   set(_amberfolio_manifest
     "${CMAKE_CURRENT_SOURCE_DIR}/conformance/vector-files.txt")
+
+  # How many files the pin has. A fact of commit
+  # aea84484abc79d09639d855b7b0ab32bc9e4dbeb, stated a second time here
+  # on purpose (#34): since M1's closeout every stem in the manifest runs
+  # and is expected to pass, so the manifest is the one place left where
+  # the suite could get smaller — and a suite that quietly lost a file
+  # reports exactly what a whole one does, "100% tests passed". Deleting
+  # a line now fails the configure instead. The number changes when the
+  # pin changes, and only then.
+  set(_amberfolio_pinned_stem_count 323)
   set_property(DIRECTORY APPEND PROPERTY
     CMAKE_CONFIGURE_DEPENDS "${_amberfolio_manifest}")
 
@@ -103,10 +113,15 @@ if(AMBERFOLIO_BUILD_CONFORMANCE)
     endif()
   endforeach()
 
-  if(AMBERFOLIO_CONFORMANCE_STEM_COUNT EQUAL 0)
+  if(NOT AMBERFOLIO_CONFORMANCE_STEM_COUNT EQUAL _amberfolio_pinned_stem_count)
     message(FATAL_ERROR
-      "no vector stems in ${_amberfolio_manifest}: the conformance suite "
-      "would register no cases at all, which is worse than failing here.")
+      "${_amberfolio_manifest} lists ${AMBERFOLIO_CONFORMANCE_STEM_COUNT} "
+      "vector stems; the pinned suite has ${_amberfolio_pinned_stem_count}. "
+      "Either a line was lost — which would shrink the conformance suite "
+      "without turning anything red, and is the whole reason this check "
+      "exists — or the pin moved, in which case update "
+      "_amberfolio_pinned_stem_count above together with "
+      "scripts/fetch-conformance-vectors.py.")
   endif()
 
   configure_file(
@@ -156,9 +171,10 @@ if(AMBERFOLIO_BUILD_CONFORMANCE)
   # bound this.
   #
   # SKIP_REGULAR_EXPRESSION: GoogleTest exits 0 for a skipped test, so
-  # without this CTest would report the whole un-implemented milestone as
-  # passing. The skips are the milestone's burn-down chart; they have to
-  # read as skips.
+  # without this a suite that opened no vectors at all would report itself
+  # as passing. One skip is left since M1's closeout — the vectors are not
+  # on this machine — and it has to read as a skip, because that is what
+  # lets CI tell "323 files pass" from "323 files were never run".
   #
   # The obvious value here is GoogleTest's own banner, "\[ +SKIPPED +\]".
   # Do not use it. gtest_discover_tests writes each property into a
