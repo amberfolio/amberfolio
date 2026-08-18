@@ -35,10 +35,21 @@ namespace amberfolio::conformance {
 std::span<const std::string_view> all_stems() noexcept { return vector_stems; }
 
 bool stem_is_enabled(std::string_view stem) {
+  // clang-format off
   static const std::set<std::string_view, std::less<>> enabled = {
       // --- One line per stem, sorted. ---------------------------------
-      "A4", "A5", "A6", "A7", "AA", "AB", "AC", "AD", "AE", "AF",
+      "A4",
+      "A5",
+      "A6",
+      "A7",
+      "AA",
+      "AB",
+      "AC",
+      "AD",
+      "AE",
+      "AF",
   };
+  // clang-format on
   return enabled.contains(stem);
 }
 
