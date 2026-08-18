@@ -59,6 +59,11 @@ constexpr dispatch_table build_instruction_set() {
   // wide phase fills it family by family; M1-C1 is done when nothing
   // here is null.)
 
+  t.primary[0xCC] = &int3;
+  t.primary[0xCD] = &int_imm8;
+  t.primary[0xCE] = &into;
+  t.primary[0xCF] = &iret;
+
   // --- Group tables. One line per (opcode, reg) entry. ---------------
 
   return t;

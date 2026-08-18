@@ -21,7 +21,11 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #31: Software interrupts — INT3/INT imm8/INTO/IRET ---------------
+
+void int3(processor& cpu);
+void int_imm8(processor& cpu);
+void into(processor& cpu);
+void iret(processor& cpu);
 
 }  // namespace amberfolio::cpu
