@@ -59,7 +59,37 @@ constexpr dispatch_table build_instruction_set() {
   // wide phase fills it family by family; M1-C1 is done when nothing
   // here is null.)
 
+  t.primary[0x06] = &push_es;
+  t.primary[0x07] = &pop_es;
+  t.primary[0x0E] = &push_cs;
+  t.primary[0x16] = &push_ss;
+  t.primary[0x17] = &pop_ss;
+  t.primary[0x1E] = &push_ds;
+  t.primary[0x1F] = &pop_ds;
+  t.primary[0x50] = &push_ax;
+  t.primary[0x51] = &push_cx;
+  t.primary[0x52] = &push_dx;
+  t.primary[0x53] = &push_bx;
+  t.primary[0x54] = &push_sp;
+  t.primary[0x55] = &push_bp;
+  t.primary[0x56] = &push_si;
+  t.primary[0x57] = &push_di;
+  t.primary[0x58] = &pop_ax;
+  t.primary[0x59] = &pop_cx;
+  t.primary[0x5A] = &pop_dx;
+  t.primary[0x5B] = &pop_bx;
+  t.primary[0x5C] = &pop_sp;
+  t.primary[0x5D] = &pop_bp;
+  t.primary[0x5E] = &pop_si;
+  t.primary[0x5F] = &pop_di;
+  t.primary[0x8F] = &pop_rm16;
+  t.primary[0x9C] = &pushf;
+  t.primary[0x9D] = &popf;
+
   // --- Group tables. One line per (opcode, reg) entry. ---------------
+
+  t.group[group_slot(0xFF)][6] = &push_rm16;
+  t.group[group_slot(0xFF)][7] = &push_rm16;
 
   return t;
 }

@@ -21,7 +21,39 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #23: Stack — PUSH/POP/PUSHF/POPF ---------------------------------
+
+void push_ax(processor& cpu);
+void push_cx(processor& cpu);
+void push_dx(processor& cpu);
+void push_bx(processor& cpu);
+void push_sp(processor& cpu);
+void push_bp(processor& cpu);
+void push_si(processor& cpu);
+void push_di(processor& cpu);
+
+void pop_ax(processor& cpu);
+void pop_cx(processor& cpu);
+void pop_dx(processor& cpu);
+void pop_bx(processor& cpu);
+void pop_sp(processor& cpu);
+void pop_bp(processor& cpu);
+void pop_si(processor& cpu);
+void pop_di(processor& cpu);
+
+void push_es(processor& cpu);
+void push_cs(processor& cpu);
+void push_ss(processor& cpu);
+void push_ds(processor& cpu);
+
+void pop_es(processor& cpu);
+void pop_ss(processor& cpu);
+void pop_ds(processor& cpu);
+
+void push_rm16(processor& cpu);
+void pop_rm16(processor& cpu);
+
+void pushf(processor& cpu);
+void popf(processor& cpu);
 
 }  // namespace amberfolio::cpu
