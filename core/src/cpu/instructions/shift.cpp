@@ -101,7 +101,7 @@ struct step_result {
     }
     case 1: {  // ROR: LSB out, wraps around to the MSB.
       const bool out = (value & 1u) != 0;
-      std::uint16_t v = static_cast<std::uint16_t>(value >> 1u);
+      auto v = static_cast<std::uint16_t>(value >> 1u);
       v = static_cast<std::uint16_t>(v | (out ? top : 0u));
       return {.value = v, .carry_out = out};
     }
@@ -113,7 +113,7 @@ struct step_result {
     }
     case 3: {  // RCR: LSB out, CF comes in at the MSB.
       const bool out = (value & 1u) != 0;
-      std::uint16_t v = static_cast<std::uint16_t>(value >> 1u);
+      auto v = static_cast<std::uint16_t>(value >> 1u);
       v = static_cast<std::uint16_t>(v | (carry_in ? top : 0u));
       return {.value = v, .carry_out = out};
     }
@@ -126,13 +126,13 @@ struct step_result {
     }
     case 5: {  // SHR: zero shifted into the MSB.
       const bool out = (value & 1u) != 0;
-      const std::uint16_t v = static_cast<std::uint16_t>(value >> 1u);
+      const auto v = static_cast<std::uint16_t>(value >> 1u);
       return {.value = v, .carry_out = out};
     }
     default: {  // SAR (7): the sign bit shifted into the MSB.
       const bool out = (value & 1u) != 0;
       const std::uint16_t sign = value & top;
-      std::uint16_t v = static_cast<std::uint16_t>(value >> 1u);
+      auto v = static_cast<std::uint16_t>(value >> 1u);
       v = static_cast<std::uint16_t>(v | sign);
       return {.value = v, .carry_out = out};
     }

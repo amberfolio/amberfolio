@@ -26,7 +26,7 @@ namespace {
 /// having to know which register is being pushed.
 void push_reg16(processor& cpu, reg16 r) {
   if (r == reg16::sp) {
-    const std::uint16_t decremented =
+    const auto decremented =
         static_cast<std::uint16_t>(cpu.regs()[reg16::sp] - 2);
     cpu.push_word(decremented);
   } else {

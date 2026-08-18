@@ -23,6 +23,15 @@
 namespace amberfolio::cpu {
 namespace {
 
+/// Sign-extend a displacement or immediate byte, the way the encoding
+/// means it. Spelled as a function over a named parameter rather than a
+/// cast applied to a call's result, which is how processor.cpp writes the
+/// same conversion and what keeps clang-tidy from reading it as the
+/// accidental kind of signed-char widening.
+[[nodiscard]] constexpr std::uint16_t sign_extend(std::uint8_t byte) noexcept {
+  return static_cast<std::uint16_t>(static_cast<std::int8_t>(byte));
+}
+
 /// A 32-bit far pointer: offset first, segment second — the order
 /// ptr16:16 is encoded in (9A, EA) and the order the far indirect forms
 /// (FF /3, FF /5) store it in memory.
@@ -123,10 +132,10 @@ void jmp_rel16(processor& cpu) {
 }
 
 void jmp_rel8(processor& cpu) {
-  // Sign-extend through int8_t, not a bare cast, then widen again to feed
-  // relative_target the same signed 16-bit displacement E9 uses.
+  // Sign-extended, then widened again, so relative_target sees the same
+  // signed 16-bit displacement E9 hands it.
   const auto displacement =
-      static_cast<std::int16_t>(static_cast<std::int8_t>(cpu.fetch_byte()));
+      static_cast<std::int16_t>(sign_extend(cpu.fetch_byte()));
   cpu.regs().ip = relative_target(cpu, displacement);
 }
 

@@ -43,6 +43,15 @@
 namespace amberfolio::cpu {
 namespace {
 
+/// Sign-extend a displacement or immediate byte, the way the encoding
+/// means it. Spelled as a function over a named parameter rather than a
+/// cast applied to a call's result, which is how processor.cpp writes the
+/// same conversion and what keeps clang-tidy from reading it as the
+/// accidental kind of signed-char widening.
+[[nodiscard]] constexpr std::uint16_t sign_extend(std::uint8_t byte) noexcept {
+  return static_cast<std::uint16_t>(static_cast<std::int8_t>(byte));
+}
+
 /// The signature `alu::bit_and`, `alu::bit_or` and `alu::bit_xor` share,
 /// so the three shapes below take the operation as a parameter instead of
 /// being written three times over.
@@ -121,8 +130,7 @@ void logic_rm_imm16(processor& cpu, logic_op op) {
 /// AND/OR/XOR specifically, but real: the sign-extension is a property of
 /// the 83 encoding itself, not of which reg value rides on it.
 void logic_rm_simm8(processor& cpu, logic_op op) {
-  const auto raw = cpu.fetch_byte();
-  const auto imm = static_cast<std::uint16_t>(static_cast<std::int8_t>(raw));
+  const std::uint16_t imm = sign_extend(cpu.fetch_byte());
   const std::uint16_t dst = cpu.read_rm(width::word);
 
   const alu::result r = op(width::word, dst, imm, cpu.regs().flags);
