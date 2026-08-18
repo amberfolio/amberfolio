@@ -35,6 +35,14 @@ namespace amberfolio::conformance {
 std::span<const std::string_view> all_stems() noexcept { return vector_stems; }
 
 bool stem_is_enabled(std::string_view stem) {
+  // clang-format off
+  //
+  // The one guarded block in the project, and the rule above is why: left
+  // to itself clang-format packs a list of short string literals as many
+  // to a line as fit, which is precisely the layout the one-line-per-stem
+  // rule exists to prevent. A trailing comma does not hold it — this was
+  // measured, not assumed. So the formatter is told to keep its hands off
+  // the list, and only the list.
   static const std::set<std::string_view, std::less<>> enabled = {
       // --- One line per stem, sorted. ---------------------------------
       //
@@ -42,6 +50,7 @@ bool stem_is_enabled(std::string_view stem) {
       // that way), so every opcode currently stops the machine and no
       // vector file can pass. The M1 wide-phase issues fill both.
   };
+  // clang-format on
   return enabled.contains(stem);
 }
 
