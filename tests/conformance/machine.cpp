@@ -360,6 +360,16 @@ std::string vector_machine::run(const vector_test& test) {
       report += " — " + reason_text(stop.reason) + "\n";
       break;
     }
+    if (status == cpu::step_status::serviced) {
+      // The suite never sets TF or IF and never raises a line, so nothing
+      // it contains can ask for an interrupt at a step boundary. Reaching
+      // here means the interpreter invented one — most likely by arming
+      // the single-step trap off a flag word it should not have written.
+      report +=
+          "  an interrupt was delivered at a step boundary, which no "
+          "vector asks for\n";
+      break;
+    }
     report += "  the processor halted, which no vector asks it to\n";
     break;
   }

@@ -19,6 +19,7 @@
 #include "amberfolio/cpu/decoder.h"
 #include "amberfolio/cpu/diagnostics.h"
 #include "amberfolio/cpu/dispatch.h"
+#include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/registers.h"
 
 namespace amberfolio::cpu {
@@ -39,8 +40,20 @@ enum class step_status : std::uint8_t {
   /// distinction the conformance harness (M1-F4) has to make on every
   /// string vector.
   repeating,
+  /// No instruction ran: an interrupt was recognized at the step boundary
+  /// and delivered, and the step ends at the first instruction of its
+  /// handler.
+  ///
+  /// Its own status rather than `ran` because it is its own thing — a
+  /// caller charging virtual time wants to charge for it, and a caller
+  /// showing a human what the machine just did would be lying to call it
+  /// an instruction. It is also the only status a conformance vector can
+  /// never legitimately produce, which makes it a useful thing to be able
+  /// to name.
+  serviced,
   /// The processor is halted (HLT) and consumed nothing. It leaves this
-  /// state when an interrupt is delivered — M1-F7.
+  /// state the moment an interrupt is delivered — the next `step()` then
+  /// reports `serviced`, not `halted`.
   halted,
   /// The processor stopped rather than invent behaviour it does not have.
   /// See `processor::stop()`; the machine is inspectable and unchanged.
@@ -77,6 +90,10 @@ class processor {
   /// interruptible between iterations, so it cannot be one step). What a
   /// step *costs* in virtual time is the M2 scheduler's business, not
   /// this function's.
+  ///
+  /// A step begins at an instruction boundary, which is where interrupts
+  /// are recognized: if one is due, this delivers it and returns
+  /// `serviced` without running an instruction at all.
   step_status step();
 
   [[nodiscard]] registers& regs() noexcept { return regs_; }
@@ -114,6 +131,52 @@ class processor {
   /// will call it; nothing does yet.)
   void keep_repeating() noexcept { repeating_ = true; }
 
+  // --- Interrupts ------------------------------------------------------
+  //
+  // interrupts.h is the model: the sequence, which source wins, and the
+  // three timing windows. What follows is the surface.
+
+  /// The delivery sequence, and the only one: push FLAGS, clear IF and
+  /// TF, push CS, push IP, load CS:IP from the vector table entry at
+  /// `vector * 4`. INT n / INT3 / INTO (#31) and the divide error (#26)
+  /// call this instead of restating it.
+  ///
+  /// The address pushed is IP as the caller leaves it, so a handler that
+  /// has already fetched its own immediate gets the 8086's "return past
+  /// the instruction" behaviour without doing anything. Delivery also
+  /// ends a halt, and abandons a repeated string instruction that had not
+  /// retired.
+  void deliver_interrupt(std::uint8_t vector);
+
+  /// The external lines, for the machine (M2) to drive.
+  ///
+  /// NMI is an edge: `raise_nmi()` latches a request that survives until
+  /// it is delivered, and IF does not gate it. INTR is a level with the
+  /// vector the interrupt controller would put on the bus, sampled at the
+  /// step boundary and gated on IF; delivering it drops the level, which
+  /// is this machine's whole model of the acknowledge cycle. `clear_intr`
+  /// withdraws a request that has not been taken yet.
+  void raise_nmi() noexcept;
+  void raise_intr(std::uint8_t vector) noexcept;
+  void clear_intr() noexcept;
+
+  [[nodiscard]] bool nmi_pending() const noexcept { return nmi_latched_; }
+  [[nodiscard]] bool intr_pending() const noexcept { return intr_asserted_; }
+
+  /// True when an instruction that began with TF set has finished and the
+  /// single-step trap it owes has not been delivered yet.
+  [[nodiscard]] bool trap_pending() const noexcept { return trap_pending_; }
+
+  /// Hold external interrupt recognition off until after the next
+  /// instruction. STI (#33), `MOV Sreg, r/m` (#18) and `POP Sreg` (#23)
+  /// call this — one window, one flag, for the reasons interrupts.h
+  /// gives. The single-step trap is not held off.
+  void inhibit_interrupts() noexcept { inhibited_ = true; }
+
+  [[nodiscard]] bool interrupts_inhibited() const noexcept {
+    return inhibited_;
+  }
+
   // --- Memory, addressed the way the program addresses it -------------
   //
   // Offsets are segment-relative and wrap at 64 KiB *within the segment*:
@@ -135,6 +198,19 @@ class processor {
 
   [[nodiscard]] std::uint16_t read(width w, address at);
   void write(width w, address at, std::uint16_t value);
+
+  // --- The stack -------------------------------------------------------
+  //
+  // SP moves first on a push and last on a pop, and its offset wraps in
+  // 16 bits like any other: pushing with SP=0000 writes at SS:FFFE. Here
+  // rather than in the stack family (#23) because interrupt delivery has
+  // to push three words long before PUSH exists; #23 and IRET (#31) are
+  // the other callers. Doing it in this order is also what gives `PUSH
+  // SP` the value the 8086 pushes — the already-decremented one, where
+  // every processor after it pushes the original.
+
+  void push_word(std::uint16_t value);
+  [[nodiscard]] std::uint16_t pop_word();
 
   // --- The instruction stream -----------------------------------------
 
@@ -177,6 +253,20 @@ class processor {
   /// tell the sink. Returns `stopped` so a caller can `return` it.
   step_status stop_with(stop_reason reason, std::uint8_t extension);
 
+  /// The step boundary: recognize one interrupt, if any is due, and
+  /// deliver it. True if it did, in which case no instruction runs this
+  /// step. Called before anything is fetched, so that an interrupt the
+  /// machine raised while the last step was returning is taken *before*
+  /// the next instruction rather than after it.
+  bool service_interrupt();
+
+  /// Where an interrupt taken at this boundary has to return to. IP,
+  /// except while a repeated string instruction is suspended between
+  /// iterations — see interrupts.h on the prefix the 8086 forgets.
+  [[nodiscard]] std::uint16_t interrupt_return_ip() const noexcept {
+    return suspended_ ? resume_ip_ : regs_.ip;
+  }
+
   registers regs_{};
   bus* bus_;
   diagnostics* log_;
@@ -185,6 +275,29 @@ class processor {
   stop_record stop_{};
   bool halted_{false};
   bool repeating_{false};
+
+  // --- Interrupt state -------------------------------------------------
+
+  /// The NMI edge, latched until it is delivered.
+  bool nmi_latched_{false};
+
+  /// The INTR level and the vector the controller is holding up with it.
+  bool intr_asserted_{false};
+  std::uint8_t intr_vector_{};
+
+  /// Set by STI and by a segment-register load; consumed at the next step
+  /// boundary, which is the one that does not get to recognize anything.
+  bool inhibited_{false};
+
+  /// An instruction began with TF set and has finished. The trap is owed
+  /// at the next boundary.
+  bool trap_pending_{false};
+
+  /// A repeated string instruction has run an iteration and not retired.
+  /// `resume_ip_` is where an interrupt taken now must return to: the
+  /// instruction's last prefix byte, not its first.
+  bool suspended_{false};
+  std::uint16_t resume_ip_{};
 };
 
 }  // namespace amberfolio::cpu
