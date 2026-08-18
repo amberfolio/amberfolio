@@ -21,7 +21,26 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #19: ADD/ADC ------------------------------------------------------
+
+void add_rm8_r8(processor& cpu);
+void add_rm16_r16(processor& cpu);
+void add_r8_rm8(processor& cpu);
+void add_r16_rm16(processor& cpu);
+void add_al_imm8(processor& cpu);
+void add_ax_imm16(processor& cpu);
+void add_rm8_imm8(processor& cpu);
+void add_rm16_imm16(processor& cpu);
+void add_rm16_imm8(processor& cpu);
+
+void adc_rm8_r8(processor& cpu);
+void adc_rm16_r16(processor& cpu);
+void adc_r8_rm8(processor& cpu);
+void adc_r16_rm16(processor& cpu);
+void adc_al_imm8(processor& cpu);
+void adc_ax_imm16(processor& cpu);
+void adc_rm8_imm8(processor& cpu);
+void adc_rm16_imm16(processor& cpu);
+void adc_rm16_imm8(processor& cpu);
 
 }  // namespace amberfolio::cpu
