@@ -527,45 +527,57 @@ TEST(Dispatch, TheShippedInstructionSetIsWhatTheProcessorRunsByDefault) {
   // by instruction_set(), not by some other table.
   //
   // It is provable from the un-implemented side, which is the side that
-  // has an observable answer for any table: an opcode the shipped table
-  // has no handler for must stop a default-constructed processor, naming
-  // that same opcode. Once M1-C1 has filled the table there is no such
-  // opcode left and the test says so rather than quietly passing.
+  // has an observable answer whatever the table holds: an entry with no
+  // handler must stop a default-constructed processor, and the stop
+  // record must name that entry.
+  //
+  // The group tables are where that stays true forever. FE's reg fields
+  // 2-7 are not instructions on an 8086 at all, so they are null now and
+  // will still be null when M1-C1 has filled everything that is real —
+  // which is what keeps this from quietly becoming a test of nothing.
   const dispatch_table& shipped = instruction_set();
 
-  int unimplemented = 0;
+  constexpr std::uint8_t group_opcode = 0xFE;
+  constexpr std::uint8_t undefined_extension = 2;
+  ASSERT_EQ(shipped.group[group_slot(group_opcode)][undefined_extension],
+            nullptr)
+      << "FE /2 is not an 8086 instruction and nothing should have wired it";
+
+  {
+    test_bus mem;
+    processor cpu(mem);  // no table argument: the point of the test
+    cpu.regs()[sreg::cs] = code_segment;
+    cpu.regs().ip = code_offset;
+    mem.poke(code_segment, code_offset,
+             {group_opcode, modrm_byte(3, undefined_extension, 0)});
+
+    EXPECT_EQ(cpu.step(), step_status::stopped);
+    EXPECT_EQ(cpu.stop().reason, stop_reason::unimplemented_opcode);
+    EXPECT_EQ(cpu.stop().opcode, group_opcode);
+    EXPECT_EQ(cpu.stop().extension, undefined_extension);
+  }
+
+  // And the same from the primary table, for as long as the wide phase
+  // leaves anything in it — a prefix byte does not count, because it is
+  // consumed before dispatch and so has no handler by construction.
   for (int opcode = 0; opcode < 256; ++opcode) {
     const auto byte = static_cast<std::uint8_t>(opcode);
-    if (group_slot(byte) != not_a_group) {
-      // A group opcode is eight instructions; "has no handler" is a
-      // question about an entry, not about the opcode, and the extension
-      // the stop record carries is checked by the tests above.
+    if (group_slot(byte) != not_a_group || is_prefix(byte) ||
+        shipped.primary[static_cast<std::size_t>(opcode)] != nullptr) {
       continue;
-    }
-    if (shipped.primary[static_cast<std::size_t>(opcode)] != nullptr) {
-      continue;
-    }
-    ++unimplemented;
-    if (unimplemented > 1) {
-      continue;  // one is enough to run; the rest are only counted
     }
 
     test_bus mem;
-    processor cpu(mem);  // no table argument: the point of the test
+    processor cpu(mem);
     cpu.regs()[sreg::cs] = code_segment;
     cpu.regs().ip = code_offset;
     // Five zero bytes behind it, so an opcode that carries a ModRM byte
     // and a displacement still has something to decode before it stops.
     mem.poke(code_segment, code_offset, {byte, 0x00, 0x00, 0x00, 0x00, 0x00});
 
-    EXPECT_EQ(cpu.step(), step_status::stopped);
+    EXPECT_EQ(cpu.step(), step_status::stopped) << "opcode " << opcode;
     EXPECT_EQ(cpu.stop().reason, stop_reason::unimplemented_opcode);
     EXPECT_EQ(cpu.stop().opcode, byte);
-  }
-
-  if (unimplemented == 0) {
-    GTEST_SKIP() << "every primary opcode is implemented — M1-C1 is done, "
-                    "and this test has nothing left to reach for";
   }
 }
 
