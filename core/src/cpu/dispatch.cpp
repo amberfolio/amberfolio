@@ -53,11 +53,15 @@ constexpr dispatch_table build_instruction_set() {
   dispatch_table t{};
 
   // --- Primary table. One line per opcode, sorted. -------------------
-  //
-  // (M1-F3 leaves it empty: there are no instructions yet, and every
-  // opcode therefore stops the machine with a diagnostic naming it. The
-  // wide phase fills it family by family; M1-C1 is done when nothing
-  // here is null.)
+
+  t.primary[0x8D] = &lea_r16_m;
+  t.primary[0x98] = &cbw;
+  t.primary[0x99] = &cwd;
+  t.primary[0x9E] = &sahf;
+  t.primary[0x9F] = &lahf;
+  t.primary[0xC4] = &les_r16_m32;
+  t.primary[0xC5] = &lds_r16_m32;
+  t.primary[0xD7] = &xlat;
 
   // --- Group tables. One line per (opcode, reg) entry. ---------------
 

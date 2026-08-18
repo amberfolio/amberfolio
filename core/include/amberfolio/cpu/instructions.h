@@ -21,7 +21,15 @@
 
 namespace amberfolio::cpu {
 
-// M1-F3 declares none: the wide phase has not started. The first family
-// to land adds its heading and its handlers here.
+// --- #32: address and convert — LEA/LES/LDS/XLAT/CBW/CWD/SAHF/LAHF -----
+
+void lea_r16_m(processor& cpu);
+void les_r16_m32(processor& cpu);
+void lds_r16_m32(processor& cpu);
+void xlat(processor& cpu);
+void cbw(processor& cpu);
+void cwd(processor& cpu);
+void sahf(processor& cpu);
+void lahf(processor& cpu);
 
 }  // namespace amberfolio::cpu
