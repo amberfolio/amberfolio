@@ -9,9 +9,11 @@
 # source of truth for two readers who must agree: the fetch/condense
 # script (scripts/fetch-conformance-vectors.py), which downloads exactly
 # these, and the harness, whose registry is generated from this file at
-# configure time so that every stem shows up in CTest as a case, enabled
-# or skipped. Which of them are enabled is a separate list, in
-# registry.cpp.
+# configure time so that every stem shows up in CTest as a case. Every
+# one of them is expected to pass; there is no second list of which ones
+# count. Deleting a line here is therefore how the suite could quietly
+# get smaller, so tests/CMakeLists.txt checks the length of this file
+# against the pin and fails the configure if it has changed (#34).
 #
 # The eleven opcodes with no file here — 0F, the four segment-override
 # prefixes, 9B, F0, F1, F2, F3 and F4 — are prefixes or have no

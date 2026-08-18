@@ -183,8 +183,8 @@ jobs:
           path: ${{ runner.temp }}/conformance-vectors
           key: ${{ env.CONFORMANCE_CACHE_KEY }}
 
-  # The milestone's exit criterion (PLAN.md §7): the whole suite, every
-  # vector of every enabled file, on every push. Its own job rather than a
+  # M1's exit criterion (PLAN.md §7), and now the thing that keeps it
+  # true: the whole suite, every vector of all 323 files, on every push. Its own job rather than a
   # row in the build matrix because it is the one run with nothing capped,
   # and because a conformance failure deserves to read as itself rather
   # than as "linux is broken".
