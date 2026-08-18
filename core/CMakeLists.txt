@@ -23,6 +23,7 @@ add_library(amberfolio-core STATIC
   src/cpu/dispatch.cpp
   src/cpu/instructions/add.cpp
   src/cpu/instructions/mov.cpp
+  src/cpu/instructions/string.cpp
   src/cpu/interrupts.cpp
   src/cpu/processor.cpp
   src/version.cpp)

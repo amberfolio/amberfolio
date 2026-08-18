@@ -81,4 +81,17 @@ void adc_rm8_imm8(processor& cpu);
 void adc_rm16_imm16(processor& cpu);
 void adc_rm16_imm8(processor& cpu);
 
+// --- #30: MOVS/CMPS/STOS/LODS/SCAS + REP ------------------------------
+
+void movsb(processor& cpu);
+void movsw(processor& cpu);
+void cmpsb(processor& cpu);
+void cmpsw(processor& cpu);
+void stosb(processor& cpu);
+void stosw(processor& cpu);
+void lodsb(processor& cpu);
+void lodsw(processor& cpu);
+void scasb(processor& cpu);
+void scasw(processor& cpu);
+
 }  // namespace amberfolio::cpu

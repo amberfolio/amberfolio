@@ -86,6 +86,16 @@ constexpr dispatch_table build_instruction_set() {
   t.primary[0xA1] = &mov_ax_moffs16;
   t.primary[0xA2] = &mov_moffs8_al;
   t.primary[0xA3] = &mov_moffs16_ax;
+  t.primary[0xA4] = &movsb;
+  t.primary[0xA5] = &movsw;
+  t.primary[0xA6] = &cmpsb;
+  t.primary[0xA7] = &cmpsw;
+  t.primary[0xAA] = &stosb;
+  t.primary[0xAB] = &stosw;
+  t.primary[0xAC] = &lodsb;
+  t.primary[0xAD] = &lodsw;
+  t.primary[0xAE] = &scasb;
+  t.primary[0xAF] = &scasw;
   t.primary[0xB0] = &mov_al_imm8;
   t.primary[0xB1] = &mov_cl_imm8;
   t.primary[0xB2] = &mov_dl_imm8;
