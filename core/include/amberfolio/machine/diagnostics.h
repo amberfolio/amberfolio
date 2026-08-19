@@ -23,6 +23,11 @@
 //     makes the service floor traceable when a host wants to trace it and
 //     silent when it does not — the choice is the sink's, not the
 //     machine's, exactly as it is for notices.
+//   * A **device stop**. A device refused a configuration it does not
+//     implement (device.h's `device_fault`, #65) — a stop, not a notice,
+//     because there was something to invent and the device declined to.
+//     `machine` is what turns it into one: a device has no channel back
+//     here to report anything itself.
 //
 // One sink takes all of it, including the processor's own stops, so a
 // host wires up one object rather than three. The core stays free of host
@@ -64,6 +69,18 @@ enum class stop_reason : std::uint8_t {
   /// is made rather than surfacing later as a device that mysteriously
   /// never answers.
   conflicting_claim,
+  /// A device was asked for a configuration it does not implement — a
+  /// PIT mode, a PIC init sequence, an access pattern the hardware
+  /// family this project targets has never been seen to use.
+  ///
+  /// One layer further out than `unimplemented_service`: that one is the
+  /// BIOS/DOS call surface, this one is a register a device answers for
+  /// at all but refuses part of the behaviour of, exactly as
+  /// `unimplemented_service` refuses part of the call surface. `at` is
+  /// the port or address `device::fault()` named — device.h's
+  /// `device_fault`, which is how a device reaches this without a
+  /// reference back to the machine (#65).
+  unimplemented_device,
 };
 
 struct stop_record {
@@ -105,6 +122,24 @@ struct notice {
   std::uint16_t ip{};
 
   friend constexpr bool operator==(const notice&, const notice&) = default;
+};
+
+/// A device's own fault (device.h's `device_fault`), enriched with where
+/// the program was — the one fact a device cannot know about itself,
+/// added here the way `notice_memory`/`notice_port` add it for a touch
+/// of nothing nobody answers for.
+struct device_stop {
+  /// The port or physical address `device::report_fault()` named.
+  std::uint32_t at{};
+
+  /// Whatever one byte the device chose to say about it (device.h).
+  std::uint8_t detail{};
+
+  std::uint16_t cs{};
+  std::uint16_t ip{};
+
+  friend constexpr bool operator==(const device_stop&,
+                                   const device_stop&) = default;
 };
 
 /// How a call into the service floor ended.
@@ -190,6 +225,12 @@ class diagnostics {
   /// One report per stop, not two: this is the line that says what
   /// happened, and the machine's own record is there to be inspected.
   virtual void report(const cpu::stop_record& stop) = 0;
+
+  /// A device refused something (device.h, #65). The same "one report
+  /// per stop" rule as the processor's: `machine::stop()` already reads
+  /// `stop_reason::unimplemented_device` and the port or address from
+  /// the same moment, so this is the line that names what happened.
+  virtual void report(const device_stop& stop) = 0;
 
  protected:
   // See cpu/bus.h: held by reference, never deleted through this type.

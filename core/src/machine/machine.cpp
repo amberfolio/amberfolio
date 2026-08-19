@@ -92,6 +92,7 @@ void machine::reset() {
   cpu_.reset();
   for (std::size_t i = 0; i < attached_; ++i) {
     devices_[i]->reset();
+    devices_[i]->clear_fault();
   }
 
   // RAM survives the line, but the ROM code that runs after it does not
@@ -208,8 +209,12 @@ std::uint8_t machine::read_memory(std::uint32_t address) {
     case region::ram:
     case region::rom:
       return memory_.ram()[address];
-    case region::device:
-      return memory_.owner(address)->read_memory(address);
+    case region::device: {
+      device& dev = *memory_.owner(address);
+      const std::uint8_t value = dev.read_memory(address);
+      note_device_fault(dev);
+      return value;
+    }
     case region::open_bus:
       break;
   }
@@ -223,9 +228,12 @@ void machine::write_memory(std::uint32_t address, std::uint8_t value) {
     case region::ram:
       memory_.ram()[address] = value;
       return;
-    case region::device:
-      memory_.owner(address)->write_memory(address, value);
+    case region::device: {
+      device& dev = *memory_.owner(address);
+      dev.write_memory(address, value);
+      note_device_fault(dev);
       return;
+    }
     case region::rom:
       notice_memory(notice_kind::rom_write, address, value);
       return;
@@ -238,7 +246,9 @@ void machine::write_memory(std::uint32_t address, std::uint8_t value) {
 
 std::uint8_t machine::read_port8(std::uint16_t port) {
   if (device* dev = ports_.owner(port); dev != nullptr) {
-    return dev->read_port(port);
+    const std::uint8_t value = dev->read_port(port);
+    note_device_fault(*dev);
+    return value;
   }
 
   notice_port(notice_kind::unclaimed_port_read, port, 0);
@@ -248,6 +258,7 @@ std::uint8_t machine::read_port8(std::uint16_t port) {
 void machine::write_port8(std::uint16_t port, std::uint8_t value) {
   if (device* dev = ports_.owner(port); dev != nullptr) {
     dev->write_port(port, value);
+    note_device_fault(*dev);
     return;
   }
 
@@ -352,6 +363,29 @@ void machine::notice_port(notice_kind what, std::uint16_t port,
                 .value = value,
                 .cs = cpu_.regs()[cpu::sreg::cs],
                 .ip = cpu_.current().start_ip});
+}
+
+void machine::note_device_fault(device& dev) {
+  // Already stopped is the common case for every cycle a caller takes
+  // past the first fault (device.h, #65) — the same guard `step()` gives
+  // a processor stop, so a fault does not clobber whatever stop already
+  // explains why the machine is not running.
+  if (stopped() || !dev.faulted()) {
+    return;
+  }
+
+  const device_fault& fault = dev.fault();
+  if (log_ != nullptr) {
+    // The detailed record first, same order dispatch_services() reports
+    // an unimplemented service before stop_with()'s generic line: this
+    // one names the port or address and the byte the device chose to say
+    // about it, which the generic stop_record cannot.
+    log_->report(device_stop{.at = fault.at,
+                             .detail = fault.detail,
+                             .cs = cpu_.regs()[cpu::sreg::cs],
+                             .ip = cpu_.current().start_ip});
+  }
+  stop_with(stop_reason::unimplemented_device, fault.at);
 }
 
 }  // namespace amberfolio::machine

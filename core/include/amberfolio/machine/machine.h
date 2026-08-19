@@ -134,8 +134,11 @@ class machine final : public cpu::bus {
   /// The RESET line: the processor and every attached device go to
   /// power-on state, the recorded stop is cleared, the virtual clock goes
   /// back to zero with every deadline disarmed, the BIOS lays its vector
-  /// table, stubs and data area back down, and the maps start
-  /// noticing untouched pages and ports again.
+  /// table, stubs and data area back down, the maps start noticing
+  /// untouched pages and ports again, and every device's fault clears
+  /// with everything else (device.h's `clear_fault()`, #65) — a fault is
+  /// a device's own bus-cycle state, not part of what "attached" means,
+  /// the same distinction this line already draws for what it claimed.
   ///
   /// Memory keeps what it held. That is what the line does — RESET on a
   /// PC does not clear RAM, which is how a warm boot can be told from a
@@ -376,6 +379,14 @@ class machine final : public cpu::bus {
   void notice_memory(notice_kind what, std::uint32_t address,
                      std::uint8_t value);
   void notice_port(notice_kind what, std::uint16_t port, std::uint8_t value);
+
+  /// Checked right after every dispatch to `dev` (device.h, #65): if it
+  /// just faulted, turn that into a real stop and a `device_stop` report,
+  /// exactly as `notice_memory`/`notice_port` turn a touch of nothing
+  /// into a `notice`. A no-op — one `bool` read — the rest of the time,
+  /// which is what makes it cheap enough to call unconditionally rather
+  /// than only where a device happens to be known to refuse things.
+  void note_device_fault(device& dev);
 
   memory_map memory_;
   port_map ports_;

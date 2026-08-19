@@ -81,6 +81,15 @@ class recording_device final : public device {
         {.what = device_access::kind::write_port, .at = port, .value = value});
   }
 
+  /// A test's way to make this device refuse something (device.h,
+  /// #65) — `report_fault()` is protected, reachable only from a
+  /// `device` override, so this is the public door a test calls instead
+  /// of writing a whole fake device just to exercise `machine`'s side of
+  /// the mechanism.
+  void fault_now(std::uint32_t at, std::uint8_t detail = 0) noexcept {
+    report_fault(at, detail);
+  }
+
   /// What every read of this device answers. Not FF, so that a test can
   /// tell the device's answer from open bus.
   std::uint8_t answer{0x5A};
@@ -147,11 +156,15 @@ class recording_diagnostics final : public diagnostics {
   void report(const cpu::stop_record& stop) override {
     processor_stops.push_back(stop);
   }
+  void report(const device_stop& stop) override {
+    device_stops.push_back(stop);
+  }
 
   std::vector<notice> notices;
   std::vector<service_call> calls;
   std::vector<stop_record> stops;
   std::vector<cpu::stop_record> processor_stops;
+  std::vector<device_stop> device_stops;
 };
 
 }  // namespace amberfolio::machine::test

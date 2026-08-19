@@ -15,6 +15,22 @@
 // This header is also the machine's bus vocabulary — the range types and
 // the value an unanswered cycle reads back as — because both maps and
 // every device need them.
+//
+// A device also has no way back to the machine's own stop() — no
+// diagnostics pointer, no back-reference, nothing a read_port or
+// write_port override can call — which is deliberate (#42) but leaves
+// "log, don't fake" weaker here than everywhere else in the tree: the
+// CPU records its own stop_record, the machine records its own, the
+// service floor stops on an unbacked vector, and a device had nothing
+// until this issue (#65, closed by #46 — the PIT and the 8259 needed an
+// identical mechanism, so it was worth building once rather than
+// letting every device invent its own). The shape below is the one #65
+// settled on: the fault lives on `device` itself rather than on a
+// channel back to the machine, so the base class stays exactly as free
+// of back-references as #42 left it. `machine` already routes every bus
+// cycle through itself, so it is the one place that has to look —
+// `faulted()`, checked right after every dispatch to a device, is cheap
+// enough to pay for on every cycle rather than guard.
 
 #pragma once
 
@@ -85,6 +101,24 @@ struct claims {
   std::span<const port_range> ports{};
 };
 
+/// What a device refused, if anything — device.h's top comment (#65).
+///
+/// `at` is the port or physical address the cycle was on; `detail` is
+/// whatever one byte the device wants the log line to carry (the mode or
+/// value it would not honour, say — PIT and PIC both use it that way).
+/// Nothing here says *why* in more depth than that, because every fault
+/// this tree has ever raised is the same why: a configuration the
+/// hardware family is not known to use, met at the one register that
+/// asked for it.
+struct device_fault {
+  bool present{false};
+  std::uint32_t at{};
+  std::uint8_t detail{};
+
+  friend constexpr bool operator==(const device_fault&,
+                                   const device_fault&) = default;
+};
+
 class device {
  public:
   device() = default;
@@ -99,6 +133,11 @@ class device {
   /// The RESET line: back to power-on state. What that means for memory
   /// the device owns — an EGA's planes, say — is the device's business,
   /// exactly as the machine's RAM is the machine's (see machine::reset()).
+  ///
+  /// Not where the fault clears — see `clear_fault()` — because a device
+  /// resetting itself back to power-on state and the machine clearing
+  /// what a device said about itself are two different things, the same
+  /// way `machine::reset()` draws that line for its own stop record.
   virtual void reset() = 0;
 
   /// A bus cycle inside one of this device's memory windows. `address` is
@@ -118,11 +157,39 @@ class device {
   [[nodiscard]] virtual std::uint8_t read_port(std::uint16_t port);
   virtual void write_port(std::uint16_t port, std::uint8_t value);
 
+  /// Whether this device has refused something since the last
+  /// `clear_fault()`. `machine` checks this after every dispatch to a
+  /// device and turns a true answer into a real stop plus a diagnostics
+  /// report (device.h's top comment) — the device does not know or care
+  /// that any of that happens.
+  [[nodiscard]] bool faulted() const noexcept { return fault_.present; }
+  [[nodiscard]] const device_fault& fault() const noexcept { return fault_; }
+
+  /// What `machine::reset()` calls, alongside the virtual `reset()`
+  /// every device already has: a fault is something a device said about
+  /// a bus cycle, not part of its power-on state, so it is cleared here
+  /// rather than left to every override to remember.
+  void clear_fault() noexcept { fault_ = {}; }
+
  protected:
   // See cpu/bus.h: a device is held by reference by the machine and never
   // owned or deleted through this type, so it pays for no vtable slot it
   // does not need.
   ~device() = default;
+
+  /// What an overridden read_port/write_port/read_memory/write_memory
+  /// calls instead of inventing an answer. Only the first fault survives
+  /// until `clear_fault()` — the point is what tripped first, not
+  /// piling on whatever a device already-faulted keeps producing before
+  /// the machine gets around to stopping it.
+  void report_fault(std::uint32_t at, std::uint8_t detail = 0) noexcept {
+    if (!fault_.present) {
+      fault_ = {.present = true, .at = at, .detail = detail};
+    }
+  }
+
+ private:
+  device_fault fault_{};
 };
 
 }  // namespace amberfolio::machine
