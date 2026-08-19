@@ -116,6 +116,7 @@ class memory_filesystem final : public filesystem {
   [[nodiscard]] vfs_result<std::uint32_t> seek(file_handle handle,
                                                seek_origin origin,
                                                std::int32_t offset) override;
+  vfs_error truncate(file_handle handle) override;
   vfs_error close(file_handle handle) override;
   vfs_error unlink(const dos_path& path) override;
   vfs_error mkdir(const dos_path& path) override;

@@ -251,6 +251,29 @@ vfs_result<std::uint32_t> memory_filesystem::seek(file_handle handle,
   return {.value = h.position, .error = vfs_error::none};
 }
 
+vfs_error memory_filesystem::truncate(file_handle handle) {
+  if (handle.slot >= max_open_handles || !handles_[handle.slot].in_use) {
+    return vfs_error::invalid_handle;
+  }
+  open_file& h = handles_[handle.slot];
+  if (h.mode == open_mode::read_only) {
+    return vfs_error::access_denied;
+  }
+
+  entry& e = entries_[h.entry_index];
+  if (h.position > e.length) {
+    // The same gap rule write() uses for a seek past the old end of
+    // file: a later read of the extended region must see defined zero
+    // bytes, never whatever a previous occupant of this slot left behind.
+    for (std::uint32_t i = e.length; i < h.position; ++i) {
+      e.data[i] = 0;
+    }
+  }
+  e.length = h.position;
+
+  return vfs_error::none;
+}
+
 vfs_error memory_filesystem::close(file_handle handle) {
   if (handle.slot >= max_open_handles || !handles_[handle.slot].in_use) {
     return vfs_error::invalid_handle;
