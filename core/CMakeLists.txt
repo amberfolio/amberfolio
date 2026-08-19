@@ -44,6 +44,7 @@ add_library(amberfolio-core STATIC
   src/machine/device.cpp
   src/machine/machine.cpp
   src/machine/memory_map.cpp
+  src/machine/platform.cpp
   src/machine/port_map.cpp
   src/machine/scheduler.cpp
   src/machine/service_floor.cpp
