@@ -160,6 +160,19 @@ class processor {
   void raise_intr(std::uint8_t vector) noexcept;
   void clear_intr() noexcept;
 
+  /// Whether the next step boundary would deliver an interrupt rather
+  /// than execute an instruction — the same question `step()` asks
+  /// itself, asked from outside and consuming nothing.
+  ///
+  /// The machine's service layer needs it. A native handler runs at a
+  /// step boundary, immediately before the CPU executes the stub's IRET,
+  /// and those two have to be one thing: if an interrupt is delivered in
+  /// between, the IRET that eventually returns to the stub would arrive
+  /// at a boundary that runs the handler all over again. So the service
+  /// layer defers to the interrupt and dispatches when the boundary is
+  /// clear (machine/service_floor.h).
+  [[nodiscard]] bool interrupt_due() const noexcept;
+
   [[nodiscard]] bool nmi_pending() const noexcept { return nmi_latched_; }
   [[nodiscard]] bool intr_pending() const noexcept { return intr_asserted_; }
 
@@ -252,6 +265,14 @@ class processor {
   /// Rewind IP to the instruction's first byte, record the stop, and
   /// tell the sink. Returns `stopped` so a caller can `return` it.
   step_status stop_with(stop_reason reason, std::uint8_t extension);
+
+  /// Which source wins at a boundary reached with `inhibited` in force,
+  /// or `interrupt_source::none`. Const, and it consumes nothing: the NMI
+  /// latch and the INTR level are dropped by whoever acts on the answer.
+  /// One function so that the priority interrupts.h states — NMI, then
+  /// INTR, then the owed trap — exists once, whether it is being asked
+  /// in order to deliver or in order to stay out of the way.
+  [[nodiscard]] interrupt_source pending_source(bool inhibited) const noexcept;
 
   /// The step boundary: recognize one interrupt, if any is due, and
   /// deliver it. True if it did, in which case no instruction runs this

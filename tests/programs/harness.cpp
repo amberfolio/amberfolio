@@ -53,6 +53,7 @@ void drive(outcome& result, std::uint64_t step_cap, Step step) {
 class machine_log final : public machine::diagnostics {
  public:
   void report(const machine::notice& /*what*/) override { ++notices; }
+  void report(const machine::service_call& /*call*/) override {}
   void report(const machine::stop_record& /*stop*/) override {}
   void report(const cpu::stop_record& stop) override { record = stop; }
 

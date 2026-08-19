@@ -46,6 +46,7 @@ add_library(amberfolio-core STATIC
   src/machine/memory_map.cpp
   src/machine/port_map.cpp
   src/machine/scheduler.cpp
+  src/machine/service_floor.cpp
   src/version.cpp)
 add_library(amberfolio::core ALIAS amberfolio-core)
 
