@@ -125,20 +125,31 @@ jobs:
           # sources in deb822 and older images use sources.list.
           sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'             /etc/apt/sources.list /etc/apt/sources.list.d/*.list             /etc/apt/sources.list.d/*.sources 2>/dev/null || true
 
+          # $1 is the timeout in seconds; the rest is apt's own argv.
+          # `update` and `install` get very different budgets: fetching
+          # index files is quick and is where the stalls happen, while
+          # unpacking two dozen -dev packages legitimately takes minutes.
+          # An earlier version of this used one 120s budget for both and
+          # killed `install` mid-unpack, which left dpkg interrupted and
+          # made every retry fail on that rather than on the network —
+          # hence the repair below, which is a no-op when nothing broke.
           apt_try() {
+            budget=$1
+            shift
             for attempt in 1 2 3; do
-              if sudo timeout 120 apt-get $APT_TIMEOUTS "$@"; then
+              if sudo timeout "$budget" apt-get $APT_TIMEOUTS "$@"; then
                 return 0
               fi
               echo "::warning::apt-get $1 stalled (attempt $attempt/3)"
               sudo pkill -9 -x apt-get || true
               sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock
+              sudo dpkg --configure -a || true
               sleep 5
             done
             return 1
           }
-          apt_try update
-          apt_try install -y --no-install-recommends \
+          apt_try 120 update
+          apt_try 600 install -y --no-install-recommends \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libjack-jackd2-dev libsndio-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
@@ -406,20 +417,31 @@ jobs:
           # sources in deb822 and older images use sources.list.
           sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'             /etc/apt/sources.list /etc/apt/sources.list.d/*.list             /etc/apt/sources.list.d/*.sources 2>/dev/null || true
 
+          # $1 is the timeout in seconds; the rest is apt's own argv.
+          # `update` and `install` get very different budgets: fetching
+          # index files is quick and is where the stalls happen, while
+          # unpacking two dozen -dev packages legitimately takes minutes.
+          # An earlier version of this used one 120s budget for both and
+          # killed `install` mid-unpack, which left dpkg interrupted and
+          # made every retry fail on that rather than on the network —
+          # hence the repair below, which is a no-op when nothing broke.
           apt_try() {
+            budget=$1
+            shift
             for attempt in 1 2 3; do
-              if sudo timeout 120 apt-get $APT_TIMEOUTS "$@"; then
+              if sudo timeout "$budget" apt-get $APT_TIMEOUTS "$@"; then
                 return 0
               fi
               echo "::warning::apt-get $1 stalled (attempt $attempt/3)"
               sudo pkill -9 -x apt-get || true
               sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock
+              sudo dpkg --configure -a || true
               sleep 5
             done
             return 1
           }
-          apt_try update
-          apt_try install -y --no-install-recommends \
+          apt_try 120 update
+          apt_try 600 install -y --no-install-recommends \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libjack-jackd2-dev libsndio-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
