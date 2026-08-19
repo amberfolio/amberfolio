@@ -53,11 +53,13 @@
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/keyboard.h"
+#include "amberfolio/machine/dos.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/port_map.h"
 #include "amberfolio/machine/scheduler.h"
 #include "amberfolio/machine/service_floor.h"
+#include "amberfolio/machine/vfs.h"
 
 namespace amberfolio::machine {
 
@@ -282,6 +284,25 @@ class machine final : public cpu::bus {
   /// the same value `dispatch_services()` would have used had the floor
   /// caught this itself.
   bool stop_unimplemented_service(std::uint32_t at);
+  /// The DOS handle table and exit state INT 21h's handlers use
+  /// (dos.h, M2-D7, #52) — present whether or not a program ever calls
+  /// INT 21h, the same as the platform-interface members below.
+  [[nodiscard]] dos_services& dos() noexcept { return dos_; }
+  [[nodiscard]] const dos_services& dos() const noexcept { return dos_; }
+
+  /// The filesystem INT 21h's file functions operate over. Null until a
+  /// host or a test calls `set_filesystem()` — a machine with no
+  /// filesystem attached is a real, testable state (a program that never
+  /// touches a file behaves identically either way), not an error.
+  [[nodiscard]] filesystem* vfs() noexcept { return vfs_; }
+  [[nodiscard]] const filesystem* vfs() const noexcept { return vfs_; }
+
+  /// Attach `fs`, which must outlive this. Nullable and settable rather
+  /// than a constructor argument because a test builds a `machine` and a
+  /// `memory_filesystem` from two different places (the latter heap
+  /// allocated — memory_vfs.h says why) and wants to attach it once both
+  /// exist, the same shape `attach(device&)` already has.
+  void set_filesystem(filesystem& fs) noexcept { vfs_ = &fs; }
 
   // --- The platform interface -----------------------------------------
   //
@@ -417,6 +438,21 @@ class machine final : public cpu::bus {
     return stop_with(stop_reason::unsupported_request, at);
   }
 
+  /// Stop because a service handler discovered, mid-body, that the
+  /// particular sub-function it was asked to perform is not implemented —
+  /// finer grain than `dispatch_services()`'s own detection, which only
+  /// sees whole vectors. INT 21h is one vector serving many AH values
+  /// (dos.h, M2-D7, #52), and an unbacked one has to refuse exactly as an
+  /// unbacked vector would (PLAN.md §3) rather than silently returning.
+  /// `at` is the caller's CS:IP as a physical address — where the log line
+  /// this stop goes with points.
+  void stop_unimplemented_function(std::uint32_t at) noexcept {
+    stop_with(stop_reason::unimplemented_service, at);
+  }
+
+  /// Stop because the program terminated itself: INT 21h AH=4Ch or
+  /// INT 20h (dos.h, M2-D7, #52; diagnostics.h's `stop_reason::
+  
   // --- cpu::bus -------------------------------------------------------
   //
   // The routing, and the only place an address or a port becomes a
@@ -489,6 +525,11 @@ class machine final : public cpu::bus {
   /// The video BIOS's own bookkeeping — see "Video mode discipline"
   /// above.
   bool video_mode_set_{false};
+  /// The DOS layer's own state (dos.h, M2-D7, #52) and the filesystem its
+  /// file functions reach through `vfs()` — host- or test-attached, null
+  /// until then.
+  dos_services dos_;
+  filesystem* vfs_{};
 
   /// The platform interface (platform.h). Members rather than something
   /// a host supplies, because the buffers have to outlive every pull and

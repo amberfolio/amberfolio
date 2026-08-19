@@ -111,6 +111,11 @@ void machine::reset() {
   // memory, which `services_.reset()` just rewrote, but the private
   // state that decides whether a lock key's next press is a fresh one.
   keyboard_.reset();
+  // The DOS handle table is the running program's state, not wiring —
+  // unlike the handlers `install_dos_services()` installed, which
+  // `services_.reset()` just proved it leaves alone. A warm boot gets the
+  // same five standard handles a cold one does.
+  dos_.reset();
 
   stop_ = {};
   pages_noticed_ = {};

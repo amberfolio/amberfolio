@@ -42,6 +42,7 @@ add_library(amberfolio-core STATIC
   src/cpu/interrupts.cpp
   src/cpu/processor.cpp
   src/machine/device.cpp
+  src/machine/dos.cpp
   src/machine/ega.cpp
   src/machine/int10.cpp
   src/machine/keyboard.cpp

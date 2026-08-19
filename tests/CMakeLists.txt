@@ -36,6 +36,7 @@ add_executable(amberfolio-core-tests
   core/cpu/program_test.cpp
   core/cpu/registers_test.cpp
   core/machine/clock_test.cpp
+  core/machine/dos_test.cpp
   core/machine/ega_test.cpp
   core/machine/int10_test.cpp
   core/machine/keyboard_test.cpp
