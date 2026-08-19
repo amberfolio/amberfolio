@@ -116,6 +116,15 @@ jobs:
           # and has to word-split. (scripts/check-shell.sh does not read
           # workflow files, so there is no linter to appease here — the
           # note is for whoever edits this next.)
+          # The runner's configured mirror is dead: every
+          # azure.archive.ubuntu.com line in a failing log comes back
+          # `Ign:`, apt falls back to the public archive, and it is that
+          # fallback which stalls fetching package indices. Point the
+          # sources straight at the host that answers, so there is no
+          # fallback to stall in. Both layouts, because noble keeps its
+          # sources in deb822 and older images use sources.list.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'             /etc/apt/sources.list /etc/apt/sources.list.d/*.list             /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+
           apt_try() {
             for attempt in 1 2 3; do
               if sudo timeout 120 apt-get $APT_TIMEOUTS "$@"; then
@@ -388,6 +397,15 @@ jobs:
           # and has to word-split. (scripts/check-shell.sh does not read
           # workflow files, so there is no linter to appease here — the
           # note is for whoever edits this next.)
+          # The runner's configured mirror is dead: every
+          # azure.archive.ubuntu.com line in a failing log comes back
+          # `Ign:`, apt falls back to the public archive, and it is that
+          # fallback which stalls fetching package indices. Point the
+          # sources straight at the host that answers, so there is no
+          # fallback to stall in. Both layouts, because noble keeps its
+          # sources in deb822 and older images use sources.list.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'             /etc/apt/sources.list /etc/apt/sources.list.d/*.list             /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+
           apt_try() {
             for attempt in 1 2 3; do
               if sudo timeout 120 apt-get $APT_TIMEOUTS "$@"; then
