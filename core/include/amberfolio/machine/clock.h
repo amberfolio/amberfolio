@@ -1,0 +1,127 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Virtual time: the currency everything machine-visible is counted in,
+// and the governor that says what one scheduling step of it costs.
+//
+// PLAN.md §4 states the rule this header exists to make possible: "all
+// machine-visible time derives from the virtual clock — the PIT,
+// interrupt delivery, and audio synthesis run on virtual time, never host
+// time. Host wall time only throttles presentation, outside machine
+// state." That is what makes a run recordable and replayable, and it is
+// why nothing under core/ may include <chrono> or call anything that asks
+// the host what time it is. There is no clock here to read the host with;
+// the machine owns the counter and it moves only when the machine steps.
+//
+// **The unit is one tick of the PIT input clock**, 1,193,182 Hz. Not
+// microseconds and not CPU clocks: the PIT counts in exactly this unit,
+// its channel 2 output is what the speaker plays, and audio synthesis
+// integrates that square wave — so counting in anything else would mean
+// rounding at the one place in the machine where the arithmetic has to
+// be exact. Everything else in the machine can afford the conversion;
+// the timer and the speaker cannot.
+//
+// The counter is 64-bit and unsigned. At 1,193,182 ticks a second, 2^64
+// ticks is about 1.55e13 seconds — roughly 490,000 years of emulated
+// runtime — so it will not wrap, and no code in the tree needs to handle
+// the case. A 32-bit counter would have wrapped in an hour, which is
+// well inside one session of the game this emulator is for; that is the
+// whole argument for the width.
+//
+// What is deliberately not here: any notion of a *rate* the machine runs
+// at in real seconds. Matching virtual time to wall time is the host's
+// job and is done outside machine state (M2-H*). The core does not know
+// and must not care how fast the wall is turning.
+
+#pragma once
+
+#include <cstdint>
+
+namespace amberfolio::machine {
+
+/// A count of PIT input clocks since the machine was reset, or a duration
+/// measured in them. Monotonic and never negative, which is why it is
+/// unsigned: virtual time only ever moves forward.
+using ticks = std::uint64_t;
+
+/// The PIT input clock, 1,193,182 Hz.
+///
+/// The real number is 14.31818 MHz / 12 = 1,193,181.6..., a third of the
+/// PC's 4.77 MHz CPU clock and a twelfth of the colour-burst crystal
+/// everything on the board is divided from. It is rounded to the integer
+/// here because the unit of account has to be an integer for the clock to
+/// be exact, and because 0.6 of a tick in 1.19 million is four orders of
+/// magnitude below anything this emulator can be wrong about.
+inline constexpr ticks pit_input_hz = 1'193'182;
+
+/// "No deadline." The largest tick there is, used as the answer when the
+/// scheduler has nothing armed, so that "the next deadline is far away"
+/// and "there is no next deadline" are the same comparison at every call
+/// site rather than a null check at each of them.
+inline constexpr ticks never = UINT64_MAX;
+
+/// The speed governor: how much virtual time one scheduling step costs.
+///
+/// PLAN.md §3 settles the model — "virtual time advances by a fixed cost
+/// per scheduling step", with per-opcode cycle counting an explicit
+/// non-goal. This game family ran across a decade of PC hardware and does
+/// not depend on instruction timing; what it does depend on is that the
+/// timer interrupt arrives at a plausible rate relative to how fast the
+/// program is getting through its work. One number decides that, and this
+/// is the number.
+///
+/// **These are ratios, not measurements, and M4's playtests are where
+/// they get tuned.** PLAN.md §9 lists pacing feel as a known risk for
+/// exactly this reason. They are deliberately one knob so that retuning
+/// is a changed constant and not a changed design.
+enum class speed_preset : std::uint8_t {
+  /// The 4.77 MHz 8088 the game was written for: 4 ticks per step, about
+  /// 298,000 steps a second.
+  ///
+  /// Four PIT ticks is exactly sixteen CPU clocks on that machine — the
+  /// PIT input and the 8088 clock are the same crystal divided by 12 and
+  /// by 3 — and sixteen clocks is a fair average for an 8088 instruction
+  /// once its 4-clock bus and its permanently starved prefetch queue are
+  /// paid for. The figure it lands on, a third of a MIPS, is the one the
+  /// XT is remembered by.
+  pc_xt,
+  /// The 8-10 MHz "turbo" XT clones: 2 ticks per step, about 597,000
+  /// steps a second. Roughly twice an XT, which is roughly what they
+  /// were.
+  turbo_xt,
+  /// An AT-class machine: 1 tick per step, about 1.19 million steps a
+  /// second, some four times an XT.
+  ///
+  /// This is the fastest preset there can be, because the unit of account
+  /// is the tick and a step cannot cost less than one of them. Going
+  /// faster would mean a finer currency than the PIT's own resolution,
+  /// which would buy nothing the timer or the speaker can hear and would
+  /// cost the exactness that is the point of the unit. If a later
+  /// milestone genuinely wants a 386-speed preset, the honest change is
+  /// to count in a fraction of a tick everywhere, deliberately, not to
+  /// let this enum grow a zero.
+  at,
+};
+
+/// The step cost `preset` names, in ticks.
+///
+/// Spelled `ticks_per_step` and not `step_cost` because `machine` has a
+/// `step_cost()` accessor for the value it is currently running at, and a
+/// member of that name would hide this one inside the very class that
+/// needs to call it.
+[[nodiscard]] constexpr ticks ticks_per_step(speed_preset preset) noexcept {
+  switch (preset) {
+    case speed_preset::turbo_xt:
+      return 2;
+    case speed_preset::at:
+      return 1;
+    case speed_preset::pc_xt:
+      break;
+  }
+  return 4;
+}
+
+/// The preset a machine starts on. The game was written for an XT, so a
+/// machine nobody has configured is one.
+inline constexpr speed_preset default_speed = speed_preset::pc_xt;
+
+}  // namespace amberfolio::machine
