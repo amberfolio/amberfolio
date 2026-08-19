@@ -10,12 +10,15 @@
 // `read_memory` here, gets classified by the memory map, and goes to RAM,
 // to a device, or nowhere.
 //
+// The machine also owns the virtual clock, because time is machine state
+// and nothing else in the tree is allowed to have any (clock.h). A step
+// costs a fixed number of ticks, the scheduler wakes whatever is due at
+// the boundary before each step, and `run()` is the loop over the two.
+// Nothing here reads the host's clock, ever: that is what makes a run
+// replayable (PLAN.md §4).
+//
 // What is deliberately not here yet:
 //
-//   * **Time.** `step()` is a passthrough. Virtual time, the step cost, a
-//     device deadline queue and the paced `run()` loop are M2-F2 (#43);
-//     the machine is where they will live, and nothing here presumes
-//     their shape.
 //   * **The BIOS.** The map reserves and backs F0000-FFFFF; what goes in
 //     it — the vector table, the callout stubs, the BDA — is M2-F3 (#44).
 //   * **Devices.** Every one of them is an M2-D issue. This layer knows
@@ -33,12 +36,34 @@
 
 #include "amberfolio/cpu/bus.h"
 #include "amberfolio/cpu/processor.h"
+#include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/port_map.h"
+#include "amberfolio/machine/scheduler.h"
 
 namespace amberfolio::machine {
+
+/// What one call to `machine::run()` did.
+///
+/// Why it came back is not in here, because there are exactly two
+/// reasons and one of them is already recorded, sticky and inspectable:
+/// either virtual time reached `until`, or the machine stopped and
+/// `stopped()` says so. Restating that as a third field would only be
+/// able to disagree with it — the same discipline `attach()` follows.
+struct run_result {
+  /// Virtual time the run consumed. `machine::time()` is where it left
+  /// the clock; this is the difference, which is the number a caller
+  /// pacing itself against wall time actually wants.
+  ticks elapsed{};
+
+  /// Scheduling steps taken. Steps and elapsed ticks are the same fact
+  /// twice while the governor is left alone — `elapsed == steps *
+  /// step_cost()` — and it is the pair that makes a step-cost test able
+  /// to say which of the two went wrong.
+  std::uint64_t steps{};
+};
 
 class machine final : public cpu::bus {
  public:
@@ -65,29 +90,135 @@ class machine final : public cpu::bus {
   /// same discipline the processor's own stops follow.
   bool attach(device& dev);
 
+  /// Register `who` with the scheduler, so that it can post deadlines and
+  /// be woken at them (scheduler.h).
+  ///
+  /// A second, separate thing to be — device.h said it would arrive this
+  /// way and not as another virtual on `device`, and the two halves are
+  /// independent: most devices are never scheduled, the renderer and the
+  /// audio mixer will be scheduled and answer no bus cycles at all, and
+  /// the PIT will be both, attached and scheduled.
+  ///
+  /// Its own name rather than a second `attach()` overload, precisely
+  /// because of that last case: a class deriving from both `device` and
+  /// `scheduled` converts to each base equally well, so `attach(pit)`
+  /// would be ambiguous and every caller would have to cast. Two names
+  /// for two wirings costs nothing and reads as what it is —
+  /// `pc.attach(pit); pc.schedule(pit);`
+  ///
+  /// Registration order is the scheduler's tie-break, so this is also
+  /// where "which of two devices due on the same tick goes first" is
+  /// decided: it is decided by how the machine is wired up.
+  ///
+  /// False, and the machine stopped with `stop_reason::conflicting_claim`,
+  /// if there is no room left or `who` is already registered — the same
+  /// answer and the same discipline `attach()` gives, because it is the
+  /// same kind of mistake.
+  bool schedule(scheduled& who);
+
   /// The RESET line: the processor and every attached device go to
-  /// power-on state, the recorded stop is cleared, and the maps start
+  /// power-on state, the recorded stop is cleared, the virtual clock goes
+  /// back to zero with every deadline disarmed, and the maps start
   /// noticing untouched pages and ports again.
   ///
   /// Memory keeps what it held. That is what the line does — RESET on a
   /// PC does not clear RAM, which is how a warm boot can be told from a
   /// cold one — and a machine that must start from nothing is
   /// constructed, not reset. Attached devices stay attached: what they
-  /// claimed is how the machine is wired, not part of its state.
+  /// claimed is how the machine is wired, not part of its state. So does
+  /// the speed governor, for the same reason — it is a setting, not
+  /// something the machine arrived at.
+  ///
+  /// The clock does go back to zero, and every deadline with it. RESET on
+  /// a real PC has no clock to zero, but this one is the time base a run
+  /// is recorded against, and a replay wants the run to start at tick 0
+  /// at the same moment every time. A deadline is something a device
+  /// posted while running, so none of them can survive the line either;
+  /// a device that wants one from power-on arms it in its own `reset()`,
+  /// which this calls.
   void reset();
 
-  /// One scheduling step of the processor: one instruction, one iteration
-  /// of a repeated string instruction, or one interrupt delivery
-  /// (cpu::step_status).
+  /// One scheduling step: the deadlines due at this moment, then one step
+  /// of the processor — one instruction, one iteration of a repeated
+  /// string instruction, or one interrupt delivery (cpu::step_status) —
+  /// then `step_cost()` ticks on the virtual clock.
   ///
-  /// Nothing else happens here. What a step costs in virtual time and
-  /// which device deadlines fall due while it runs is the scheduler's
-  /// business (M2-F2, #43), and this function deliberately does not know.
+  /// Deadlines first, and at a step boundary, because that boundary is
+  /// also where the processor recognizes interrupts: a device that raises
+  /// a line from `on_deadline` has it seen by the instruction this very
+  /// call goes on to run, and no device ever observes the CPU partway
+  /// through one.
   ///
-  /// A stopped machine keeps answering `stopped` and touches neither the
-  /// bus nor the devices, so a caller that does not check can loop
-  /// harmlessly rather than execute past the thing it was told about.
+  /// The clock advances by the same amount whatever the step did,
+  /// including a `halted` one where the processor consumed nothing. That
+  /// is the point of a halted machine: it is burning time waiting for an
+  /// interrupt, and the only thing that can produce one is a deadline
+  /// arriving, which needs the clock to keep moving. (A machine that
+  /// spent whole seconds halted could skip the clock straight to
+  /// `deadlines().next_deadline()` instead of stepping through it; that
+  /// is an optimization with the same observable behaviour, and it is not
+  /// worth writing before a profile asks for it.)
+  ///
+  /// A stopped machine keeps answering `stopped`, touches neither the bus
+  /// nor the devices, and costs no time — so a caller that does not check
+  /// can loop harmlessly rather than execute past the thing it was told
+  /// about, and the clock does not run away while it does.
   cpu::step_status step();
+
+  /// Step until the virtual clock reaches `until`, or until the machine
+  /// stops.
+  ///
+  /// `until` is an absolute tick, not a duration: a caller pacing a frame
+  /// says `run(pc.time() + ticks_per_frame)` and, better, a caller pacing
+  /// a whole run keeps its own schedule and passes points on it, which is
+  /// what keeps the pacing from drifting.
+  ///
+  /// The clock may end up slightly *past* `until` — by less than one step
+  /// cost — because a step is indivisible and stopping short of `until`
+  /// would mean a `run()` that never advanced at all whenever the
+  /// remaining time was smaller than a step. The overshoot costs nothing:
+  /// a deadline still fires at exactly the tick it was armed for, and the
+  /// caller's next `until` is a point on its own schedule rather than
+  /// this one, so the overshoot does not accumulate.
+  ///
+  /// A machine that stops midway returns early with what it did up to
+  /// that point, and leaves the reason in `stop()` — the stop is sticky
+  /// and inspectable, so `run()` does not restate it (see `run_result`).
+  /// Calling `run()` on an already-stopped machine takes no steps and
+  /// costs no time.
+  run_result run(ticks until);
+
+  /// The virtual clock: ticks of the PIT input clock since the last
+  /// reset. All machine-visible time is this (clock.h).
+  [[nodiscard]] ticks time() const noexcept { return now_; }
+
+  /// What one step costs, in ticks. The speed governor is this one
+  /// number, and the presets are names for values of it.
+  [[nodiscard]] ticks step_cost() const noexcept { return step_cost_; }
+
+  /// Put the governor on a named preset (clock.h).
+  void set_speed(speed_preset preset) noexcept {
+    step_cost_ = ticks_per_step(preset);
+  }
+
+  /// Set the step cost directly, for a calibration run or a test that
+  /// wants round numbers. False, and nothing changed, for zero: a step
+  /// that costs no time is a machine whose clock never moves, whose
+  /// deadlines therefore never arrive, and whose `run()` would never
+  /// return.
+  ///
+  /// There is no accessor for "which preset is set", because after this
+  /// call there might not be one. The step cost is the state; a preset is
+  /// a way of writing a value of it down.
+  bool set_step_cost(ticks cost) noexcept;
+
+  /// The deadline queue. `pc.deadlines().arm(dev, when)` is how a device
+  /// posts its next moment; `schedule()` is how it earns the
+  /// right to.
+  [[nodiscard]] scheduler& deadlines() noexcept { return deadlines_; }
+  [[nodiscard]] const scheduler& deadlines() const noexcept {
+    return deadlines_;
+  }
 
   /// The processor. Spelled `processor()` and not `cpu()` because
   /// `cpu::processor` is the type: a member named `cpu` would hide the
@@ -147,6 +278,15 @@ class machine final : public cpu::bus {
 
   std::array<device*, max_devices> devices_{};
   std::size_t attached_{};
+
+  scheduler deadlines_;
+
+  /// The virtual clock, and the one number the speed governor is. Plain
+  /// members rather than a `clock` object: a class here would be one
+  /// integer with a getter and an adder, and the only code allowed to
+  /// move it is in this file anyway.
+  ticks now_{};
+  ticks step_cost_{ticks_per_step(default_speed)};
 
   cpu::processor cpu_;
   stop_record stop_{};
