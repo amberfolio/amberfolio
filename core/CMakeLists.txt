@@ -43,6 +43,7 @@ add_library(amberfolio-core STATIC
   src/cpu/processor.cpp
   src/machine/device.cpp
   src/machine/ega.cpp
+  src/machine/keyboard.cpp
   src/machine/machine.cpp
   src/machine/memory_map.cpp
   src/machine/memory_vfs.cpp
