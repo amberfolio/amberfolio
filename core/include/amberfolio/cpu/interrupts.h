@@ -187,6 +187,27 @@ inline constexpr std::uint8_t overflow = 4;
 
 }  // namespace interrupt_vector
 
+/// Which of the three step-boundary sources an interrupt is coming from,
+/// or `none`. Named because the boundary has to answer two different
+/// questions about it — "is one due?" and "which one wins?" — and the
+/// priority rule above is worth stating in exactly one place.
+///
+/// The machine's service layer asks the first question: a native BIOS
+/// handler must not run at a boundary that is about to deliver an
+/// interrupt instead of executing the stub's IRET, or the return from
+/// that interrupt would land on the stub a second time and run the
+/// handler twice (machine/service_floor.h).
+enum class interrupt_source : std::uint8_t {
+  /// Nothing is due at this boundary.
+  none,
+  /// The non-maskable line, latched on its edge.
+  nmi,
+  /// The maskable line, with the vector the controller is holding up.
+  intr,
+  /// The trap owed by an instruction that began with TF set.
+  single_step,
+};
+
 /// One vector table entry: the offset, then the segment. Four bytes.
 inline constexpr std::uint16_t vector_entry_size = 4;
 

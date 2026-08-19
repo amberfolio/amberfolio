@@ -73,6 +73,29 @@ void processor::deliver_interrupt(std::uint8_t vector) {
 
 // --- The boundary -----------------------------------------------------
 
+interrupt_source processor::pending_source(bool inhibited) const noexcept {
+  if (!inhibited && nmi_latched_) {
+    // Ungated: IF has nothing to say about the non-maskable line, which
+    // is the entire point of it.
+    return interrupt_source::nmi;
+  }
+  if (!inhibited && intr_asserted_ && regs_.flag_set(flag::if_)) {
+    return interrupt_source::intr;
+  }
+  if (trap_pending_) {
+    // Last, because Intel puts single-step last. Not gated on
+    // `inhibited`: the window a segment load opens is about external
+    // interrupts, and this part is not the 286 that closed it against
+    // traps too.
+    return interrupt_source::single_step;
+  }
+  return interrupt_source::none;
+}
+
+bool processor::interrupt_due() const noexcept {
+  return pending_source(inhibited_) != interrupt_source::none;
+}
+
 bool processor::service_interrupt() {
   // Consumed whether or not anything was pending: the window is one
   // instruction wide, and this is that instruction's boundary. Taking it
@@ -82,34 +105,26 @@ bool processor::service_interrupt() {
   inhibited_ = false;
 
   std::uint8_t vector = 0;
-  bool due = false;
-
-  if (!inhibited && nmi_latched_) {
-    // Ungated: IF has nothing to say about the non-maskable line, which
-    // is the entire point of it. The latch is the edge, so it is consumed
-    // here whether or not the machine is still holding the pin down.
-    nmi_latched_ = false;
-    vector = interrupt_vector::nmi;
-    due = true;
-  } else if (!inhibited && intr_asserted_ && regs_.flag_set(flag::if_)) {
-    vector = intr_vector_;
-    // The acknowledge cycle, such as this machine has one: a real 8259
-    // drops INTR when the processor takes the vector off the bus, and
-    // raises it again straight away if it has another request waiting.
-    // M2's controller does the raising; this is the dropping.
-    intr_asserted_ = false;
-    due = true;
-  } else if (trap_pending_) {
-    // Last, because Intel puts single-step last. Not gated on
-    // `inhibited`: the window a segment load opens is about external
-    // interrupts, and this part is not the 286 that closed it against
-    // traps too.
-    vector = interrupt_vector::single_step;
-    due = true;
-  }
-
-  if (!due) {
-    return false;
+  switch (pending_source(inhibited)) {
+    case interrupt_source::none:
+      return false;
+    case interrupt_source::nmi:
+      // The latch is the edge, so it is consumed here whether or not the
+      // machine is still holding the pin down.
+      nmi_latched_ = false;
+      vector = interrupt_vector::nmi;
+      break;
+    case interrupt_source::intr:
+      vector = intr_vector_;
+      // The acknowledge cycle, such as this machine has one: a real 8259
+      // drops INTR when the processor takes the vector off the bus, and
+      // raises it again straight away if it has another request waiting.
+      // M2's controller does the raising; this is the dropping.
+      intr_asserted_ = false;
+      break;
+    case interrupt_source::single_step:
+      vector = interrupt_vector::single_step;
+      break;
   }
 
   // An owed trap does not survive a boundary that something else took.
