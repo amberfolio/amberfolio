@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# The pull-request template's two acknowledgments, on their own.
+#
+# It lived in ci.yml, which meant `edited` had to be one of that
+# workflow's activity types — an author who opens a pull request with the
+# template unchecked has to be able to fix the body and see the check go
+# green, and without `edited` nothing re-runs when they do. The cost was
+# that correcting a typo in a description re-ran four build targets, 323
+# conformance files and every sanitizer (#61).
+#
+# This job needs none of that. It reads the event payload: no checkout, no
+# toolchain, no build, four seconds. Given its own workflow it can listen
+# for `edited` while ci.yml does not, and a description edit stops costing
+# a matrix run.
+#
+# The check keeps its name, `acknowledgments`, so nothing that refers to
+# it by name has to change. It is not among branch protection's required
+# checks and was not before this moved.
+name: acknowledgments
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  acknowledgments:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: PR template acknowledgments are checked
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Normalize: lowercase, strip markdown bold, collapse whitespace.
+          norm=$(printf '%s' "$BODY" \
+            | tr '[:upper:]' '[:lower:]' | tr -d '*' | tr -s '[:space:]' ' ')
+          ok=1
+          for need in \
+            "- [x] i license this contribution under the apache license 2.0" \
+            "- [x] this contribution contains no material from the original games"
+          do
+            if ! printf '%s' "$norm" | grep -qF -- "$need"; then
+              echo "FAIL: missing checked acknowledgment: \"$need\""
+              ok=0
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "Both acknowledgments in the pull-request template must be"
+            echo "present and checked ([x]) — see CONTRIBUTING.md."
+            exit 1
+          fi
+          echo "acknowledgments: OK"

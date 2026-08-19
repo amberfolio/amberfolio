@@ -1,11 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 name: ci
 on:
+  # main only. An unrestricted `push:` runs this whole workflow a second
+  # time for every push to a branch that already has a pull request open —
+  # same tree, same four targets, same 323 vector files — and a duplicate
+  # run reports the same check names, so its in-progress copies can block
+  # a merge whose checks have all already passed on that very commit (#61).
+  # A branch pushed without a pull request now gets no run until one is
+  # opened, which is the intended trade: work that is not up for review
+  # does not need four targets built.
   push:
+    branches: [main]
   pull_request:
-    # "edited" is not a default activity type, but the acknowledgments
-    # job reads the PR body, which the author may fix after opening.
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
 
 # The conformance vector cache (issue #14). Written out here rather than
 # taken from a job output because every job that restores it needs it,
@@ -80,14 +87,34 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: SDL3 backend headers
-        # DEBIAN_FRONTEND: -y answers apt's own questions, not debconf's.
-        # A package whose postinst asks one blocks forever on a runner
-        # with no tty, which is what a job that hangs here looks like.
+        # Acquire::* is the one that matters. apt will wait on a stalled
+        # connection indefinitely: three jobs hung here for the full six
+        # hours of the Actions default, and the log ends mid-fetch —
+        # "Get:5 https://archive.ubuntu.com/ubuntu noble-security
+        # InRelease" and then nothing for six hours. A timeout turns that
+        # into a failed fetch, and the retries turn a failed fetch back
+        # into a working one. (The runner's azure.archive mirror entries
+        # come back Ign:, so this falls through to the public host, which
+        # is the one that stalls.)
+        #
+        # DEBIAN_FRONTEND is not that fix and is not claimed to be: -y
+        # answers apt's own questions and not debconf's, so an install
+        # whose postinst asks something would hang too. That has not been
+        # observed here — every hang was in `update`, before any package
+        # was unpacked — but an unattended install should set it anyway.
         env:
           DEBIAN_FRONTEND: noninteractive
+          APT_TIMEOUTS: >-
+            -o Acquire::Retries=3
+            -o Acquire::http::Timeout=30
+            -o Acquire::https::Timeout=30
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          # Unquoted on purpose: APT_TIMEOUTS is a list of flags and
+          # has to word-split. (scripts/check-shell.sh does not read
+          # workflow files, so there is no linter to appease here — the
+          # note is for whoever edits this next.)
+          sudo apt-get $APT_TIMEOUTS update
+          sudo apt-get $APT_TIMEOUTS install -y --no-install-recommends \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libjack-jackd2-dev libsndio-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
@@ -333,12 +360,21 @@ jobs:
       # green light here means nothing.
       - name: SDL3 backend headers (X11, Wayland, audio, KMS, udev, D-Bus)
         if: runner.os == 'Linux' && !matrix.emscripten
-        # See the tidy job's copy of this step.
+        # See the tidy job's copy of this step for why the Acquire
+        # options are here.
         env:
           DEBIAN_FRONTEND: noninteractive
+          APT_TIMEOUTS: >-
+            -o Acquire::Retries=3
+            -o Acquire::http::Timeout=30
+            -o Acquire::https::Timeout=30
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          # Unquoted on purpose: APT_TIMEOUTS is a list of flags and
+          # has to word-split. (scripts/check-shell.sh does not read
+          # workflow files, so there is no linter to appease here — the
+          # note is for whoever edits this next.)
+          sudo apt-get $APT_TIMEOUTS update
+          sudo apt-get $APT_TIMEOUTS install -y --no-install-recommends \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libjack-jackd2-dev libsndio-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
@@ -677,32 +713,3 @@ jobs:
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
-  acknowledgments:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: PR template acknowledgments are checked
-        env:
-          BODY: ${{ github.event.pull_request.body }}
-        run: |
-          # Normalize: lowercase, strip markdown bold, collapse whitespace.
-          norm=$(printf '%s' "$BODY" \
-            | tr '[:upper:]' '[:lower:]' | tr -d '*' | tr -s '[:space:]' ' ')
-          ok=1
-          for need in \
-            "- [x] i license this contribution under the apache license 2.0" \
-            "- [x] this contribution contains no material from the original games"
-          do
-            if ! printf '%s' "$norm" | grep -qF -- "$need"; then
-              echo "FAIL: missing checked acknowledgment: \"$need\""
-              ok=0
-            fi
-          done
-          if [ "$ok" -ne 1 ]; then
-            echo "Both acknowledgments in the pull-request template must be"
-            echo "present and checked ([x]) — see CONTRIBUTING.md."
-            exit 1
-          fi
-          echo "acknowledgments: OK"
