@@ -80,6 +80,11 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: SDL3 backend headers
+        # DEBIAN_FRONTEND: -y answers apt's own questions, not debconf's.
+        # A package whose postinst asks one blocks forever on a runner
+        # with no tty, which is what a job that hangs here looks like.
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -328,6 +333,9 @@ jobs:
       # green light here means nothing.
       - name: SDL3 backend headers (X11, Wayland, audio, KMS, udev, D-Bus)
         if: runner.os == 'Linux' && !matrix.emscripten
+        # See the tidy job's copy of this step.
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
