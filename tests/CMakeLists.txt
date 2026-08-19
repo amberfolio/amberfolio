@@ -42,6 +42,7 @@ add_executable(amberfolio-core-tests
   core/machine/platform_test.cpp
   core/machine/scheduler_test.cpp
   core/machine/service_floor_test.cpp
+  core/machine/vfs_test.cpp
   core/version_test.cpp)
 
 # So a test can say #include "cpu/test_bus.h" or "machine/test_device.h" —
