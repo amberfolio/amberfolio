@@ -233,6 +233,13 @@ inline constexpr std::uint16_t size = 6;
 /// this file's one real handler backs.
 inline constexpr std::uint8_t timer_vector = 0x08;
 
+/// The video BIOS: PLAN.md §3's INT 10h subset, "mode set, palette
+/// register set" (M2-D3, #48, int10.h). Named here alongside
+/// `timer_vector` because both are facts about which vector a service
+/// answers, even though — unlike the timer — this file installs no
+/// handler for it; `install_int10` does that from its own file.
+inline constexpr std::uint8_t video_vector = 0x10;
+
 /// The user tick vector the timer handler calls. Its default body is an
 /// IRET and nothing else, which is what makes it the era's standard place
 /// to hang a periodic routine — and Gold Box code does.

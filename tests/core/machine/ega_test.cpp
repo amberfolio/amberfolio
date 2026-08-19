@@ -30,6 +30,9 @@ constexpr std::uint16_t seq_index_port = 0x3C4;
 constexpr std::uint16_t seq_data_port = 0x3C5;
 constexpr std::uint16_t gc_index_port = 0x3CE;
 constexpr std::uint16_t gc_data_port = 0x3CF;
+constexpr std::uint16_t attribute_port = 0x3C0;
+constexpr std::uint16_t attribute_data_read_port = 0x3C1;
+constexpr std::uint16_t status_port = 0x3DA;
 
 constexpr std::uint32_t vram_first = 0xA0000;
 constexpr std::uint32_t vram_last = 0xAFFFF;
@@ -61,6 +64,15 @@ struct rig {
     dev->write_port(gc_data_port, value);
   }
 
+  /// The attribute controller's index/data protocol: a status read resets
+  /// the flip-flop, then two writes to the one port load the index and
+  /// the data — ega.h's "The attribute controller."
+  void set_attribute(std::uint8_t index, std::uint8_t value) const {
+    static_cast<void>(dev->read_port(status_port));
+    dev->write_port(attribute_port, index);
+    dev->write_port(attribute_port, value);
+  }
+
   /// Land `value` on exactly one plane at `at`, using the pipeline at its
   /// power-on defaults (write mode 0, copy, no rotate, no substitution,
   /// bit mask FF) — which is what lets this be "the byte that ends up
@@ -83,9 +95,11 @@ TEST(ega_claims, claims_a0000_affff_and_not_the_b_series) {
   EXPECT_EQ(c.memory[0],
             (memory_window{.first = vram_first, .last = vram_last}));
 
-  ASSERT_EQ(c.ports.size(), 2u);
+  ASSERT_EQ(c.ports.size(), 4u);
   EXPECT_EQ(c.ports[0], (port_range{.first = 0x3C4, .last = 0x3C5}));
   EXPECT_EQ(c.ports[1], (port_range{.first = 0x3CE, .last = 0x3CF}));
+  EXPECT_EQ(c.ports[2], (port_range{.first = 0x3C0, .last = 0x3C1}));
+  EXPECT_EQ(c.ports[3], (port_range{.first = 0x3DA, .last = 0x3DA}));
 }
 
 // --- Write mode 0: rotate ------------------------------------------------
@@ -503,6 +517,114 @@ TEST(ega_graphics_controller, misc_register_is_stored_but_never_consulted) {
   EXPECT_FALSE(r.video().halted());
 }
 
+// --- The attribute controller: the flip-flop, the palette, overscan ------
+
+TEST(ega_attribute_controller, a_status_read_then_two_writes_load_a_register) {
+  const rig r;
+  r.set_attribute(0x03, 0x2A);  // palette register 3.
+
+  EXPECT_EQ(r.video().palette_register(3), 0x2A);
+}
+
+TEST(ega_attribute_controller,
+     without_the_status_read_first_the_second_write_is_the_data) {
+  const rig r;
+  // No status read: the flip-flop is wherever the last operation left it.
+  // A fresh device starts "expecting an index" (power-on state), so the
+  // first write below is the index and the second is the data — the same
+  // as set_attribute() does, just without the explicit reset.
+  r.video().write_port(attribute_port, 0x05);
+  r.video().write_port(attribute_port, 0x15);
+
+  EXPECT_EQ(r.video().palette_register(5), 0x15);
+}
+
+TEST(ega_attribute_controller, a_status_read_resets_the_flip_flop_mid_write) {
+  const rig r;
+  // Leave the flip-flop in "expect data" for register 1, then read the
+  // status port — which must make the *next* write an index again rather
+  // than the data register 1 was waiting for.
+  r.video().write_port(attribute_port, 0x01);
+  static_cast<void>(r.video().read_port(status_port));
+  r.video().write_port(attribute_port, 0x07);  // now an index: register 7.
+  r.video().write_port(attribute_port, 0x11);  // and its data.
+
+  EXPECT_EQ(r.video().palette_register(7), 0x11);
+  // Register 1 was never given data — the reset flip-flop discarded that
+  // half-finished write, which is the entire point of the reset existing.
+  EXPECT_EQ(r.video().palette_register(1), 0x00);
+}
+
+TEST(ega_attribute_controller, palette_registers_mask_to_six_bits) {
+  const rig r;
+  r.set_attribute(0x00, 0xFF);
+
+  EXPECT_EQ(r.video().palette_register(0), 0x3F);
+}
+
+TEST(ega_attribute_controller,
+     every_palette_register_is_independently_addressable) {
+  const rig r;
+  for (unsigned reg = 0; reg < 16; ++reg) {
+    r.set_attribute(static_cast<std::uint8_t>(reg),
+                    static_cast<std::uint8_t>(reg * 3));
+  }
+  for (unsigned reg = 0; reg < 16; ++reg) {
+    EXPECT_EQ(r.video().palette_register(reg),
+              static_cast<std::uint8_t>(reg * 3))
+        << "register " << reg;
+  }
+}
+
+TEST(ega_attribute_controller, overscan_is_stored_and_reads_back) {
+  const rig r;
+  r.set_attribute(0x11, 0x3F);
+
+  EXPECT_EQ(r.video().overscan_register(), 0x3F);
+}
+
+TEST(ega_attribute_controller, data_read_port_answers_the_indexed_register) {
+  const rig r;
+  r.set_attribute(0x09, 0x2C);
+
+  // Select register 9 again (a plain write leaves the flip-flop expecting
+  // data; a status read puts it back to "expect index" first) and read it
+  // back through 3C1h, which never participates in the flip-flop.
+  static_cast<void>(r.video().read_port(status_port));
+  r.video().write_port(attribute_port, 0x09);
+  EXPECT_EQ(r.video().read_port(attribute_data_read_port), 0x2C);
+}
+
+TEST(ega_attribute_controller, halts_on_an_index_past_the_implemented_subset) {
+  const rig r;
+  static_cast<void>(r.video().read_port(status_port));
+  r.video().write_port(attribute_port, 0x10);  // Mode Control: not ours.
+  r.video().write_port(attribute_port, 0x00);
+
+  ASSERT_TRUE(r.video().halted());
+  EXPECT_EQ(r.video().halt(),
+            (ega::halt_record{.reason = ega::halt_reason::attribute_index,
+                              .port = attribute_port,
+                              .value = 0x10}));
+}
+
+TEST(ega_attribute_controller,
+     ega_color_table_reproduces_the_standard_16_palette) {
+  // A handful of the well-known standard EGA/CGA-compatible 16-colour
+  // values (int10.h's default palette), spot-checked against the
+  // documented DAC bit layout ega.h describes — a fact, not a game
+  // asset, and cross-checked here from the table's own logic rather than
+  // trusted blindly.
+  EXPECT_EQ(ega_color_table[0], (rgb{0x00, 0x00, 0x00}));   // black
+  EXPECT_EQ(ega_color_table[4], (rgb{0xAA, 0x00, 0x00}));   // red
+  EXPECT_EQ(ega_color_table[2], (rgb{0x00, 0xAA, 0x00}));   // green
+  EXPECT_EQ(ega_color_table[1], (rgb{0x00, 0x00, 0xAA}));   // blue
+  EXPECT_EQ(ega_color_table[7], (rgb{0xAA, 0xAA, 0xAA}));   // light gray
+  EXPECT_EQ(ega_color_table[56], (rgb{0x55, 0x55, 0x55}));  // dark gray
+  EXPECT_EQ(ega_color_table[63], (rgb{0xFF, 0xFF, 0xFF}));  // white
+  EXPECT_EQ(ega_color_table[20], (rgb{0xAA, 0x55, 0x00}));  // brown
+}
+
 // --- Halting: a clean stop, not a crash ------------------------------------
 
 TEST(ega_halt, stays_on_the_first_fault_and_ignores_later_ones) {
@@ -530,6 +652,7 @@ TEST(ega_reset, clears_registers_latches_and_the_halt_but_keeps_vram) {
   const rig r;
   r.seed_plane(0, addr(0x1000), 0x42);
   r.set_map_mask(0b1010);
+  r.set_attribute(0x00, 0x2A);
   r.set_seq(0x05, 0x00);  // halt it.
   ASSERT_TRUE(r.video().halted());
 
@@ -537,6 +660,8 @@ TEST(ega_reset, clears_registers_latches_and_the_halt_but_keeps_vram) {
 
   EXPECT_FALSE(r.video().halted());
   EXPECT_EQ(r.video().map_mask(), 0x00);
+  EXPECT_EQ(r.video().palette_register(0), 0x00);
+  EXPECT_EQ(r.video().overscan_register(), 0x00);
   EXPECT_EQ(r.video().latches(),
             (std::array<std::uint8_t, 4>{0x00, 0x00, 0x00, 0x00}));
 

@@ -115,6 +115,11 @@ void machine::reset() {
   stop_ = {};
   pages_noticed_ = {};
   ports_noticed_ = {};
+
+  // The video BIOS's bookkeeping goes back to power-on state along with
+  // everything else here: a reset machine has no mode set, exactly as a
+  // freshly powered-on one does not.
+  video_mode_set_ = false;
 }
 
 bool machine::set_step_cost(ticks cost) noexcept {
@@ -248,6 +253,15 @@ void machine::write_memory(std::uint32_t address, std::uint8_t value) {
       memory_.ram()[address] = value;
       return;
     case region::device: {
+      // Mode discipline (see "Video mode discipline" in machine.h):
+      // a write still lands whether or not AH=00h has run — the pipeline
+      // does not know or care — but a program drawing into the video
+      // window before it asked for a mode is running off-plan, and this
+      // is the one place that can be noticed, before the write is
+      // forwarded to whichever device answers the window.
+      if (!video_mode_set_ && video_window.contains(address)) {
+        notice_memory(notice_kind::video_write_before_mode_set, address, value);
+      }
       device& dev = *memory_.owner(address);
       dev.write_memory(address, value);
       note_device_fault(dev);

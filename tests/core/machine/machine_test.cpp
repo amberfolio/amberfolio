@@ -145,6 +145,16 @@ TEST(machine_memory, reads_the_bios_region_and_refuses_writes_to_it) {
 
 TEST(machine_memory, hands_a_claimed_window_to_its_device) {
   const rig r;
+  // A mode is "set" here purely to keep this generic-routing test's own
+  // claim — "nothing to report: a device answered" — decoupled from the
+  // unrelated mode-discipline notice M2-D3 (#48) added for this exact
+  // window (machine.h, "Video mode discipline"): this stand-in device
+  // occupies the real EGA's future address range on purpose, to set up
+  // the claimed-vs-unclaimed-remainder check below, and without this a
+  // program (or a stand-in) writing there before a mode is programmed is
+  // now legitimately something to report.
+  r.pc().note_video_mode_set();
+
   recording_device ega;
   ega.wants(memory_window{.first = 0xA0000, .last = 0xAFFFF});
   ASSERT_TRUE(r.pc().attach(ega));
