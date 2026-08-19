@@ -67,11 +67,27 @@ bool machine::schedule(scheduled& who) {
 }
 
 void machine::reset() {
+  // The wall clock before the virtual one, because it is measured
+  // against it: `rebase()` needs the tick the machine is leaving in order
+  // to carry the instant across (platform.h). The date does not restart
+  // — a wall clock does not — but the tick it is anchored to must.
+  wall_.rebase(now_);
+
   // The clock first, so that a device arming a deadline from its own
   // reset() arms it against the time base the run is about to start on
   // rather than against the one that just ended.
   now_ = 0;
   deadlines_.disarm_all();
+
+  // The platform interface. The frame is blanked and republished so that
+  // a host stops showing the previous run's last picture; the audio
+  // timeline restarts at tick 0; the input queue and the console ring are
+  // in-flight traffic belonging to the run that just ended, stamped
+  // against a clock that no longer exists, so they go.
+  display_.reset();
+  audio_.restart();
+  input_.clear();
+  console_.clear();
 
   cpu_.reset();
   for (std::size_t i = 0; i < attached_; ++i) {
@@ -174,6 +190,14 @@ run_result machine::run(ticks until) {
     }
     ++result.steps;
   }
+
+  // Publish the audio horizon: everything up to here is settled, so an
+  // audio thread may integrate it (platform.h). Here rather than in
+  // `step()` because this is the boundary a host runs to — a
+  // single-stepping caller has no audio thread to serve, and paying an
+  // atomic store per instruction for it would be a cost on the hot path
+  // for nobody.
+  audio_.advance(now_);
 
   result.elapsed = now_ - started;
   return result;

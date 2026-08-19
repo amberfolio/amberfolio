@@ -31,6 +31,60 @@ target_link_libraries(amberfolio-web PRIVATE
   amberfolio::core
   amberfolio::warnings)
 
+# The export list is the ABI's guest list, and it lives on this side of the
+# boundary on purpose: core/include/amberfolio/abi.h says what may be
+# called, the host says what a browser can reach. Every name here must
+# survive the link — see the comment in src/main.cpp.
+#
+# M2-F4 (#45) grew this from two names to the whole platform interface.
+# The failure mode that introduces is quiet: a function added to abi.h and
+# not added here is simply absent from the module, and nothing in the
+# build says so. tests/smoke.mjs therefore asserts the list, so the guard
+# is a red test rather than a puzzled host author.
+#
+# _malloc and _free are on the list deliberately. A JS host needs a buffer
+# in linear memory to pull audio into and to hand a program image out of;
+# giving it the allocator is how it makes one, and it frees its own —
+# which is each side keeping its own, not ownership crossing the boundary
+# (abi.h's rule).
+#
+# A list joined into the flag rather than one long quoted string: a
+# backslash-continued string would put the guest list one escaping
+# question away from being wrong, and a list is what this is.
+set(_amberfolio_web_export_names
+  _main
+  _malloc
+  _free
+  _af_version
+  _af_ticks_per_second
+  _af_frame_width
+  _af_frame_height
+  _af_palette_entries
+  _af_machine_create
+  _af_machine_destroy
+  _af_machine_reset
+  _af_machine_run_until
+  _af_machine_time
+  _af_machine_stopped
+  _af_machine_stop_reason
+  _af_machine_set_speed
+  _af_machine_framebuffer
+  _af_machine_palette
+  _af_machine_frame_generation
+  _af_machine_render_audio
+  _af_machine_audio_underruns
+  _af_machine_audio_resyncs
+  _af_machine_post_key
+  _af_machine_set_wall_clock
+  _af_machine_read_console
+  _af_machine_console_pending
+  _af_machine_console_dropped
+  _af_machine_load_program
+  _af_machine_write_memory
+  _af_machine_read_memory
+  _af_machine_set_entry)
+list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
+
 target_link_options(amberfolio-web PRIVATE
   # A factory function instead of a module that grabs the global scope,
   # exported as ESM so index.html and the node check import it the same
@@ -38,11 +92,14 @@ target_link_options(amberfolio-web PRIVATE
   "-sMODULARIZE=1"
   "-sEXPORT_ES6=1"
   "-sENVIRONMENT=web,node"
-  # The export list is the ABI's guest list, and it lives on this side of
-  # the boundary on purpose: core/include/amberfolio/abi.h says what may
-  # be called, the host says what a browser can reach. Every name here
-  # must survive the link — see the comment in src/main.cpp.
-  "-sEXPORTED_FUNCTIONS=_main,_af_version")
+  "-sEXPORTED_FUNCTIONS=${AMBERFOLIO_WEB_EXPORTS}"
+  # The typed-array views over linear memory. A JS host reads the
+  # framebuffer through HEAPU8 and writes sample buffers through HEAPF32,
+  # and recent Emscripten only attaches them to the module object when
+  # they are asked for by name. Note the trap abi.h states: a view is
+  # detached when memory grows, so a host re-derives it rather than
+  # caching one.
+  "-sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPF32")
 
 # The page is generated rather than copied: it carries the AGPL-3.0-only
 # §13 source offer, which has to name the commit this build came from,
@@ -108,6 +165,7 @@ else()
     "$ENV{EMSDK}/node).")
 endif()
 
+unset(_amberfolio_web_export_names)
 unset(_amberfolio_web_index)
 unset(_amberfolio_web_files)
 unset(_amberfolio_web_copies)

@@ -17,6 +17,15 @@
 // Nothing here reads the host's clock, ever: that is what makes a run
 // replayable (PLAN.md §4).
 //
+// The machine is also where the narrow platform interface lives
+// (platform.h): the framebuffer a host presents, the audio timeline it
+// pulls, the key events it pushes, the wall clock it seeds, and the
+// console bytes it drains. They are members rather than a separate
+// object, because each of them is either machine state or a buffer whose
+// lifetime is exactly this one's. Read platform.h's top comment before
+// writing a host; it is the design document for M2-H1 (#54) and M2-H2
+// (#55).
+//
 // What is deliberately not here yet:
 //
 //   * **The services.** The BIOS is here — the vector table, the callout
@@ -44,6 +53,7 @@
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/port_map.h"
 #include "amberfolio/machine/scheduler.h"
 #include "amberfolio/machine/service_floor.h"
@@ -257,6 +267,74 @@ class machine final : public cpu::bus {
   /// handlers, and where the vector table and the BDA came from.
   [[nodiscard]] service_floor& services() noexcept { return services_; }
 
+  // --- The platform interface -----------------------------------------
+  //
+  // The five things a host talks to, and the whole of what crosses the
+  // core/host boundary (platform.h — read its top comment before writing
+  // a host). They are members of the machine and not a separate object a
+  // host has to be handed, because every one of them is either machine
+  // state or a buffer whose lifetime is the machine's, and a host that
+  // has a `machine&` should not need a second reference to do anything.
+  //
+  // Everything here is machine-thread only, with exactly one exception:
+  // `audio().render()`, which is the audio thread's and is the reason
+  // platform.h has a threading contract at all.
+
+  /// The completed frame the host presents, and the generation counter
+  /// that says whether it is a new one. The renderer (M2-D3, #48) is the
+  /// writer.
+  [[nodiscard]] framebuffer& display() noexcept { return display_; }
+  [[nodiscard]] const framebuffer& display() const noexcept { return display_; }
+
+  /// The speaker's edge list, and the pull that turns it into samples.
+  /// The speaker (M2-D4, #49) publishes into it; `run()` publishes the
+  /// horizon.
+  [[nodiscard]] audio_timeline& audio() noexcept { return audio_; }
+  /// The const view is the counters and nothing else — `render()` moves
+  /// the consumer's cursor and so cannot be const, which is exactly the
+  /// distinction worth having here: a host reporting underruns is not
+  /// pulling audio.
+  [[nodiscard]] const audio_timeline& audio() const noexcept { return audio_; }
+
+  /// Key events waiting for the keyboard service (M2-D8, #53) to drain
+  /// them. Use `post_key()` to put one in — see below.
+  [[nodiscard]] input_queue& input() noexcept { return input_; }
+
+  /// The date and time DOS 2Ah/2Ch report (M2-D7, #52). Seeded through
+  /// `set_wall_time()`; read with `wall().at(time())`.
+  [[nodiscard]] wall_clock& wall() noexcept { return wall_; }
+  [[nodiscard]] const wall_clock& wall() const noexcept { return wall_; }
+
+  /// DOS console output, as bytes the host drains. There is no text-mode
+  /// video in this machine and none is planned.
+  [[nodiscard]] console_output& console() noexcept { return console_; }
+  [[nodiscard]] const console_output& console() const noexcept {
+    return console_;
+  }
+
+  /// Inject a key event at the machine's current position in virtual
+  /// time, which is the tick `time()` is standing on.
+  ///
+  /// On the machine and not on `input_queue` because the timestamp is the
+  /// determinism guarantee: it has to be the machine's own clock, and the
+  /// only object that can say what that reads is this one. A host calling
+  /// `input().post(...)` with a tick of its own choosing would be forging
+  /// the one field a replay depends on.
+  ///
+  /// False if the queue is full; `input().dropped()` counts it.
+  bool post_key(std::uint8_t scancode, key_action action) noexcept {
+    return input_.post(scancode, action, now_);
+  }
+
+  /// Seed the wall clock: at this moment in virtual time, the date and
+  /// time out in the world are `when`. Every later 2Ah/2Ch read is this
+  /// instant plus the virtual time since (platform.h).
+  ///
+  /// False, and nothing changed, if `when` is not a real date and time.
+  bool set_wall_time(const wall_time& when) noexcept {
+    return wall_.set(when, now_);
+  }
+
   /// True once the machine has stopped, for its own reason or because the
   /// processor did. Sticky until `reset()`.
   [[nodiscard]] bool stopped() const noexcept {
@@ -318,6 +396,15 @@ class machine final : public cpu::bus {
   cpu::processor cpu_;
   service_floor services_;
   stop_record stop_{};
+
+  /// The platform interface (platform.h). Members rather than something
+  /// a host supplies, because the buffers have to outlive every pull and
+  /// the machine is the only thing that knows how long that is.
+  framebuffer display_;
+  audio_timeline audio_;
+  input_queue input_;
+  wall_clock wall_;
+  console_output console_;
 
   /// How much of the address space one notice speaks for. Fine enough
   /// that two different absent things do not share a line, coarse enough
