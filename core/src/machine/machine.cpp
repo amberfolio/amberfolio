@@ -22,7 +22,14 @@ bool first_touch(std::span<std::uint64_t> bits, std::uint32_t index) {
 }  // namespace
 
 machine::machine(memory_layout layout, diagnostics* log)
-    : memory_(layout), log_(log), cpu_(*this) {}
+    : memory_(layout), log_(log), cpu_(*this), services_(*this, log) {
+  // Power-on, and the self test with it: the vector table, the callout
+  // stubs and the BDA are memory, and memory does not lay itself out.
+  // In the constructor body rather than in the service floor's own
+  // constructor, because that one runs while this object is still being
+  // built and has no business reading it.
+  services_.reset();
+}
 
 bool machine::attach(device& dev) {
   if (attached_ == max_devices) {
@@ -71,6 +78,13 @@ void machine::reset() {
     devices_[i]->reset();
   }
 
+  // RAM survives the line, but the ROM code that runs after it does not
+  // leave the low kilobyte as it found it: the vectors and the BDA are
+  // written again, exactly as a real machine's self test writes them.
+  // The handler table is untouched, because what a service layer
+  // installed is wiring, like an attached device, and not state.
+  services_.reset();
+
   stop_ = {};
   pages_noticed_ = {};
   ports_noticed_ = {};
@@ -89,9 +103,40 @@ cpu::step_status machine::step() {
     return cpu::step_status::stopped;
   }
 
-  // Before the instruction, not after: this is the step boundary, and the
-  // interrupt a device raises here is recognized by the very step below.
+  // Two things happen at this boundary, and the order is load-bearing.
+  //
+  // Deadlines first. A device woken here may raise a line — the PIT
+  // raising IRQ0 is the whole reason the queue exists — and the callout
+  // below has to be able to see that it did.
   deadlines_.dispatch_due(now_);
+
+  // Then the BIOS callout, and the whole of what it costs a step that is
+  // not one: a single compare of CS against the segment the stubs live
+  // in.
+  //
+  // Here — at the step boundary, before `cpu_.step()` and therefore
+  // before any byte is fetched — because the native handler *is* the
+  // service. The processor is about to execute the IRET that ends it, so
+  // the body has to have run by now; and the boundary is also the only
+  // place where CS is settled, which is what makes one comparison enough
+  // to decide.
+  //
+  // It has to come second for the reason `dispatch_services()` defers to
+  // a due interrupt at all. Run it first and a deadline could raise INTR
+  // *after* the handler body has run but before its IRET: `cpu_.step()`
+  // would then deliver the interrupt instead, pushing a return address
+  // that points at the stub, and the IRET that eventually comes back
+  // would arrive here at a boundary that runs the same handler a second
+  // time. Dispatching deadlines first means any line they raise is
+  // already up when the callout asks whether one is, so it defers, and
+  // the interrupt's return lands on the stub at a boundary that is
+  // finally clear.
+  if (cpu_.regs()[cpu::sreg::cs] == service::stub_segment) {
+    dispatch_services();
+    if (stopped()) {
+      return cpu::step_status::stopped;
+    }
+  }
 
   const cpu::step_status status = cpu_.step();
   if (status != cpu::step_status::stopped) {
@@ -183,6 +228,64 @@ void machine::write_port8(std::uint16_t port, std::uint8_t value) {
   }
 
   notice_port(notice_kind::unclaimed_port_write, port, value);
+}
+
+void machine::dispatch_services() {
+  if (!services_.enabled()) {
+    // A flat machine has no BIOS region, so nothing was put at F000 and
+    // a program executing there is executing its own code. See
+    // service_floor::reset().
+    return;
+  }
+
+  // Not at a boundary that owes an interrupt. The handler and the stub's
+  // IRET are one thing: deliver an interrupt between them and the IRET
+  // that eventually returns to the stub arrives at this test again and
+  // runs the handler a second time. Deferring costs nothing — the
+  // interrupt goes first and its return lands back on the stub at a
+  // boundary that is finally clear. The reachable case is a program being
+  // single-stepped over an INT, where the trap is owed by the INT
+  // instruction itself and falls due inside the service it called.
+  if (cpu_.interrupt_due()) {
+    return;
+  }
+
+  // A loop rather than one dispatch, because a handler may hand control
+  // to another stub — the default timer's chain into an unhooked INT 1Ch
+  // does exactly that — and the second stub's handler has to run before
+  // its IRET does. It ends three ways: the processor has left the
+  // segment, it is somewhere in the segment that is not a stub, or the
+  // dispatch left CS:IP where it found them, which is a handler that has
+  // finished and now wants its IRET executed. The bound is not part of
+  // that argument; it is what a cycle between two handlers costs instead
+  // of hanging the emulator.
+  for (unsigned pass = 0; pass < service::max_chain; ++pass) {
+    if (cpu_.regs()[cpu::sreg::cs] != service::stub_segment) {
+      return;
+    }
+
+    const std::uint16_t at = cpu_.regs().ip;
+    const unsigned slot = service::stub_index(at);
+    if (slot == service::not_a_stub) {
+      // In the BIOS region but not at a stub. Nothing is faked and
+      // nothing is refused: it is ROM, it reads back what is in it, and
+      // the processor is welcome to execute it.
+      return;
+    }
+
+    if (services_.call(slot) == service_outcome::unimplemented) {
+      // The service floor reported which service and from where; this is
+      // the stop that goes with it (PLAN.md §3).
+      stop_with(stop_reason::unimplemented_service,
+                cpu::physical_address(service::stub_segment, at));
+      return;
+    }
+
+    if (cpu_.regs()[cpu::sreg::cs] == service::stub_segment &&
+        cpu_.regs().ip == at) {
+      return;
+    }
+  }
 }
 
 bool machine::stop_with(stop_reason reason, std::uint32_t at) {

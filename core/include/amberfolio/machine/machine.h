@@ -19,8 +19,12 @@
 //
 // What is deliberately not here yet:
 //
-//   * **The BIOS.** The map reserves and backs F0000-FFFFF; what goes in
-//     it — the vector table, the callout stubs, the BDA — is M2-F3 (#44).
+//   * **The services.** The BIOS is here — the vector table, the callout
+//     stubs and the BDA, all of it real memory in the region the map
+//     reserves (service_floor.h) — but the only body behind it is the
+//     default timer tick. INT 21h is M2-D7, the keyboard is M2-D8, INT
+//     10h is M2-D3, and each of them is a handler installed into the
+//     floor rather than a change to this file.
 //   * **Devices.** Every one of them is an M2-D issue. This layer knows
 //     the contract (device.h) and nothing about any implementation.
 //
@@ -42,6 +46,7 @@
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/port_map.h"
 #include "amberfolio/machine/scheduler.h"
+#include "amberfolio/machine/service_floor.h"
 
 namespace amberfolio::machine {
 
@@ -118,7 +123,8 @@ class machine final : public cpu::bus {
 
   /// The RESET line: the processor and every attached device go to
   /// power-on state, the recorded stop is cleared, the virtual clock goes
-  /// back to zero with every deadline disarmed, and the maps start
+  /// back to zero with every deadline disarmed, the BIOS lays its vector
+  /// table, stubs and data area back down, and the maps start
   /// noticing untouched pages and ports again.
   ///
   /// Memory keeps what it held. That is what the line does — RESET on a
@@ -148,6 +154,17 @@ class machine final : public cpu::bus {
   /// a line from `on_deadline` has it seen by the instruction this very
   /// call goes on to run, and no device ever observes the CPU partway
   /// through one.
+  ///
+  /// Then, still before an instruction is fetched, the machine compares
+  /// CS against the segment the BIOS callout stubs live in, and when it
+  /// matches runs the native handler the program's interrupt reached
+  /// (service_floor.h). That comparison is the entire cost of the service
+  /// floor on a step that is not a service call.
+  ///
+  /// That order is not arbitrary. A deadline handler may raise a line,
+  /// and the callout defers to an interrupt that is due precisely so a
+  /// handler and its stub's IRET are never split by one. Waking devices
+  /// first is what puts the line up before the callout asks.
   ///
   /// The clock advances by the same amount whatever the step did,
   /// including a `halted` one where the processor consumed nothing. That
@@ -236,6 +253,10 @@ class machine final : public cpu::bus {
 
   [[nodiscard]] const port_map& ports() const noexcept { return ports_; }
 
+  /// The BIOS/DOS service floor: where a service layer installs its
+  /// handlers, and where the vector table and the BDA came from.
+  [[nodiscard]] service_floor& services() noexcept { return services_; }
+
   /// True once the machine has stopped, for its own reason or because the
   /// processor did. Sticky until `reset()`.
   [[nodiscard]] bool stopped() const noexcept {
@@ -261,6 +282,12 @@ class machine final : public cpu::bus {
   // access pattern a 16-bit device would eventually have to override.
 
  private:
+  /// The cold half of the step-boundary service check: CS is already the
+  /// stub segment, so work out whether this is really a stub and run what
+  /// is behind it. Out of line and out of `step()` because none of it is
+  /// on the hot path — reaching it means the program called the BIOS.
+  void dispatch_services();
+
   /// Record a stop, tell the sink once, and answer false so that
   /// `attach()` can `return` it.
   bool stop_with(stop_reason reason, std::uint32_t at);
@@ -289,6 +316,7 @@ class machine final : public cpu::bus {
   ticks step_cost_{ticks_per_step(default_speed)};
 
   cpu::processor cpu_;
+  service_floor services_;
   stop_record stop_{};
 
   /// How much of the address space one notice speaks for. Fine enough
