@@ -142,12 +142,14 @@ class recording_participant final : public scheduled {
 class recording_diagnostics final : public diagnostics {
  public:
   void report(const notice& what) override { notices.push_back(what); }
+  void report(const service_call& call) override { calls.push_back(call); }
   void report(const stop_record& stop) override { stops.push_back(stop); }
   void report(const cpu::stop_record& stop) override {
     processor_stops.push_back(stop);
   }
 
   std::vector<notice> notices;
+  std::vector<service_call> calls;
   std::vector<stop_record> stops;
   std::vector<cpu::stop_record> processor_stops;
 };

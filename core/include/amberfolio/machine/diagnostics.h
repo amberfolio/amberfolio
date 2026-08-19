@@ -4,8 +4,8 @@
 //
 // cpu/diagnostics.h states the rule and its two halves — a record the
 // caller cannot ignore, and a sink a host can render — and this is the
-// same shape one level up. What is different is that the machine has two
-// kinds of thing to say, not one:
+// same shape one level up. What is different is that the machine has
+// three kinds of thing to say, not one:
 //
 //   * A **stop**. The machine gave up, the way the processor does when it
 //     will not invent an instruction. Sticky, inspectable, cleared by
@@ -17,6 +17,12 @@
 //     asks for the log line here — "ignored (logged, not faked)" — not
 //     for the machine to halt every time a program probes for a card that
 //     is not fitted.
+//   * A **service call**. The program asked the BIOS/DOS layer for
+//     something, and a native handler answered it or nothing did
+//     (service_floor.h). Every one of them is reported, which is what
+//     makes the service floor traceable when a host wants to trace it and
+//     silent when it does not — the choice is the sink's, not the
+//     machine's, exactly as it is for notices.
 //
 // One sink takes all of it, including the processor's own stops, so a
 // host wires up one object rather than three. The core stays free of host
@@ -41,6 +47,15 @@ enum class stop_reason : std::uint8_t {
   /// invent is in `machine::processor().stop()` — a machine-level record
   /// that restated it would only be able to get it wrong.
   processor,
+  /// An interrupt reached a service stub that no native handler backs.
+  ///
+  /// PLAN.md §3's discipline rule, at the layer where it bites hardest:
+  /// the DOS and BIOS call surfaces are wide, we implement the part of
+  /// them this game uses, and a program that asks for the rest has to
+  /// find out rather than be handed a plausible answer. The
+  /// `service_call` reported alongside says which service, with what in
+  /// AX, from where.
+  unimplemented_service,
   /// Two devices claimed the same ports or overlapping memory windows, or
   /// more claims arrived than the machine has room for.
   ///
@@ -92,6 +107,52 @@ struct notice {
   friend constexpr bool operator==(const notice&, const notice&) = default;
 };
 
+/// How a call into the service floor ended.
+enum class service_outcome : std::uint8_t {
+  /// A native handler ran. The stub's IRET returns to the caller.
+  handled,
+  /// Nothing implements this vector, and the machine stops
+  /// (stop_reason::unimplemented_service). The handler never runs and the
+  /// IRET is never reached: a program that asked for a service we do not
+  /// have gets no answer at all, which is the only honest one.
+  unimplemented,
+};
+
+/// One call into the native BIOS/DOS layer, recorded as the stub is
+/// reached and before the handler runs.
+///
+/// A trace record, not a problem report — `outcome` is what tells the two
+/// apart, and a sink that only wants failures filters on it. Built on
+/// every call whether or not anything is listening, for the same reason
+/// the notice bookkeeping is: what the machine does must not depend on
+/// who is watching.
+struct service_call {
+  /// The interrupt number the program used.
+  std::uint8_t vector{};
+
+  /// AX as the caller left it. AH selects the function in every service
+  /// this layer provides, so `function()` is what a log line wants; the
+  /// whole register is kept because the rest of it is the argument in
+  /// about half of them.
+  std::uint16_t ax{};
+
+  /// Where the call came from: CS:IP as interrupt delivery pushed them,
+  /// read back off the caller's stack rather than guessed. It is the
+  /// return address — the instruction *after* the INT — because that is
+  /// what the 8086 pushes (cpu/interrupts.h).
+  std::uint16_t caller_cs{};
+  std::uint16_t caller_ip{};
+
+  service_outcome outcome{};
+
+  [[nodiscard]] constexpr std::uint8_t function() const noexcept {
+    return static_cast<std::uint8_t>(ax >> 8u);
+  }
+
+  friend constexpr bool operator==(const service_call&,
+                                   const service_call&) = default;
+};
+
 class diagnostics {
  public:
   diagnostics() = default;
@@ -108,6 +169,16 @@ class diagnostics {
   /// told you something — and the first touch is the one that says where
   /// the program was when it started.
   virtual void report(const notice& what) = 0;
+
+  /// The program called the BIOS/DOS layer.
+  ///
+  /// Every call, with none of the first-touch filtering notices get: a
+  /// service call is something the program *did*, not a symptom of
+  /// something absent, and the point of the channel is that a run can be
+  /// read back as the list of what the program asked its operating system
+  /// for. A sink that does not want the volume drops them here, where it
+  /// costs one branch, rather than the machine deciding for it.
+  virtual void report(const service_call& call) = 0;
 
   /// The machine layer gave up.
   virtual void report(const stop_record& stop) = 0;
