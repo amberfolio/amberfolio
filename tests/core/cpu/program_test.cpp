@@ -14,7 +14,10 @@
 // expectation.
 //
 // One case per program, named after it. The programs and their answers
-// are in tests/programs; this file only runs them.
+// are in tests/programs; this file only runs them — twice since M2-F1,
+// once against the bare bus and once against the machine, because
+// "the machine's bus is transparent to the CPU" is a claim only the
+// comparison can make.
 
 #include <cstdint>
 #include <ostream>
@@ -48,6 +51,39 @@ TEST_P(self_written_program, runs_to_a_halt_with_the_right_answer) {
 
   // The step model, not the answer — see program::steps.
   EXPECT_EQ(r.steps, p.steps);
+}
+
+// The same programs, on the machine (M2-F1, #42). Its exit criterion,
+// stated as a test: a machine with a flat RAM map runs these to the same
+// answers and the same step counts as the M1 harness. Everything is
+// compared, not just the answer — the step count catches a machine that
+// changed the step model, and the whole register file catches one that
+// lost a byte somewhere the answer does not look.
+TEST_P(self_written_program, runs_the_same_on_the_machine) {
+  const program& p = GetParam();
+  const outcome bare = run(p.code, p.step_cap);
+  const outcome on_machine = run_on_machine(p.code, p.step_cap);
+
+  EXPECT_EQ(on_machine.stop.reason, cpu::stop_reason::none)
+      << "stopped on opcode " << std::hex << unsigned{on_machine.stop.opcode}
+      << " at " << on_machine.stop.cs << ":" << on_machine.stop.ip;
+  EXPECT_FALSE(on_machine.capped);
+  EXPECT_TRUE(on_machine.halted);
+
+  EXPECT_EQ(on_machine.regs[p.answer], p.expected);
+  EXPECT_EQ(on_machine.steps, p.steps);
+
+  // Against the other harness rather than only against the expectations:
+  // the expectations are three numbers, and this is every register and
+  // every flag.
+  EXPECT_EQ(on_machine.regs, bare.regs);
+  EXPECT_EQ(on_machine.steps, bare.steps);
+  EXPECT_EQ(on_machine.halted, bare.halted);
+
+  // A flat map has no unmapped memory at all, so this is a statement
+  // about ports: these programs touch none, and the machine would have
+  // said so if they had.
+  EXPECT_EQ(on_machine.notices, 0u);
 }
 
 // `entry`, not the `info` this parameter is conventionally called:

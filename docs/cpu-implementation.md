@@ -73,9 +73,9 @@ because it only ever writes bits in `flag::defined`.
 ### The bus and addresses — `bus.h`, `address.h`
 
 `bus` is an abstract byte-wide memory and a port interface. The
-conformance harness implements it over a vector's sparse memory; M2 will
-implement it over real RAM and the device map. Your handler never sees
-it directly — it goes through `processor`.
+conformance harness implements it over a vector's sparse memory; the
+machine implements it over real RAM and the device map (M2-F1). Your
+handler never sees it directly — it goes through `processor`.
 
 `address` is a `{segment, offset}` pair, kept unfolded on purpose:
 offsets wrap at 64 KiB *inside* the segment and never carry into the

@@ -10,6 +10,8 @@
 # M0 content was a placeholder: a version symbol and the C ABI shim that
 # exposes it to a non-C++ host. M1 adds the first real component, the 8086
 # interpreter, under src/cpu with its headers in include/amberfolio/cpu.
+# M2 adds the machine around it, under src/machine — the memory map, the
+# port map, the device contract and the wiring that holds them together.
 
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/include/amberfolio/version.h.in"
@@ -39,6 +41,10 @@ add_library(amberfolio-core STATIC
   src/cpu/instructions/sub.cpp
   src/cpu/interrupts.cpp
   src/cpu/processor.cpp
+  src/machine/device.cpp
+  src/machine/machine.cpp
+  src/machine/memory_map.cpp
+  src/machine/port_map.cpp
   src/version.cpp)
 add_library(amberfolio::core ALIAS amberfolio-core)
 

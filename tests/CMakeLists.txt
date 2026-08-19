@@ -35,12 +35,14 @@ add_executable(amberfolio-core-tests
   core/cpu/processor_test.cpp
   core/cpu/program_test.cpp
   core/cpu/registers_test.cpp
+  core/machine/machine_test.cpp
+  core/machine/memory_map_test.cpp
   core/version_test.cpp)
 
-# So a test can say #include "cpu/test_bus.h" — shared test apparatus is
-# included by its path under tests/core/, the same way core headers are
-# included by their path under include/. Not PUBLIC on anything: nothing
-# outside this directory has any business seeing it.
+# So a test can say #include "cpu/test_bus.h" or "machine/test_device.h" —
+# shared test apparatus is included by its path under tests/core/, the same
+# way core headers are included by their path under include/. Not PUBLIC on
+# anything: nothing outside this directory has any business seeing it.
 target_include_directories(amberfolio-core-tests PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/core")
 
