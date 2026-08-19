@@ -52,6 +52,7 @@
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/diagnostics.h"
+#include "amberfolio/machine/keyboard.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/port_map.h"
@@ -270,6 +271,18 @@ class machine final : public cpu::bus {
   /// handlers, and where the vector table and the BDA came from.
   [[nodiscard]] service_floor& services() noexcept { return services_; }
 
+  /// A service handler's own "unimplemented," one level finer than the
+  /// floor's: INT 16h (keyboard.h, M2-D8) and INT 21h (M2-D7) each answer
+  /// for one vector but dispatch several functions inside it by AH,
+  /// where `service_floor`'s null-handler check (service_floor.h) cannot
+  /// see the difference between a vector with nothing behind it and a
+  /// function an installed handler does not recognize. Same stop
+  /// (`stop_reason::unimplemented_service`), same discipline (PLAN.md
+  /// §3) — `at` is the physical address of the stub the call reached,
+  /// the same value `dispatch_services()` would have used had the floor
+  /// caught this itself.
+  bool stop_unimplemented_service(std::uint32_t at);
+
   // --- The platform interface -----------------------------------------
   //
   // The five things a host talks to, and the whole of what crosses the
@@ -406,6 +419,13 @@ class machine final : public cpu::bus {
 
   cpu::processor cpu_;
   service_floor services_;
+
+  /// INT 16h, the BDA keystroke buffer, and Ctrl-Break (keyboard.h,
+  /// M2-D8). A member and not wiring installed from outside, unlike a
+  /// device: it is the machine's own BIOS layer, always present, exactly
+  /// as `services_` is.
+  keyboard_service keyboard_;
+
   stop_record stop_{};
 
   /// The platform interface (platform.h). Members rather than something
