@@ -40,6 +40,7 @@ add_executable(amberfolio-core-tests
   core/machine/machine_test.cpp
   core/machine/memory_map_test.cpp
   core/machine/memory_vfs_test.cpp
+  core/machine/pic_test.cpp
   core/machine/platform_test.cpp
   core/machine/scheduler_test.cpp
   core/machine/service_floor_test.cpp
