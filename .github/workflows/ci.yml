@@ -116,14 +116,28 @@ jobs:
           # and has to word-split. (scripts/check-shell.sh does not read
           # workflow files, so there is no linter to appease here — the
           # note is for whoever edits this next.)
-          # The runner's configured mirror is dead: every
+          # The runner's primary mirror is dead: every
           # azure.archive.ubuntu.com line in a failing log comes back
-          # `Ign:`, apt falls back to the public archive, and it is that
-          # fallback which stalls fetching package indices. Point the
-          # sources straight at the host that answers, so there is no
-          # fallback to stall in. Both layouts, because noble keeps its
-          # sources in deb822 and older images use sources.list.
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'             /etc/apt/sources.list /etc/apt/sources.list.d/*.list             /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+          # `Ign:`, apt falls back to the public archive, and the fetch
+          # of the package indices through that fallback is what stalls.
+          #
+          # The mirror is not configured in sources.list. These images use
+          # `mirror+file:/etc/apt/apt-mirrors.txt`, a preference-ordered
+          # list with Azure first and the public archive behind it — which
+          # is why an earlier version of this step rewrote the sources
+          # files and changed precisely nothing, azure lines and all. Drop
+          # the dead host from the list apt actually reads, leaving the
+          # one that answers, so there is no fallback left to stall in.
+          # The sources rewrite stays for images that do point there
+          # directly.
+          sudo sed -i '/azure.archive.ubuntu.com/d' \
+            /etc/apt/apt-mirrors.txt 2>/dev/null || true
+          sudo sed -i \
+            's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+            /etc/apt/sources.list /etc/apt/sources.list.d/*.list \
+            /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+          echo "apt mirrors in use:"
+          cat /etc/apt/apt-mirrors.txt 2>/dev/null || echo "  (no apt-mirrors.txt)"
 
           # $1 is the timeout in seconds; the rest is apt's own argv.
           # `update` and `install` get very different budgets: fetching
@@ -136,11 +150,11 @@ jobs:
           apt_try() {
             budget=$1
             shift
-            for attempt in 1 2 3; do
+            for attempt in 1 2 3 4 5; do
               if sudo timeout "$budget" apt-get $APT_TIMEOUTS "$@"; then
                 return 0
               fi
-              echo "::warning::apt-get $1 stalled (attempt $attempt/3)"
+              echo "::warning::apt-get $1 stalled (attempt $attempt/5)"
               sudo pkill -9 -x apt-get || true
               sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock
               sudo dpkg --configure -a || true
@@ -148,7 +162,7 @@ jobs:
             done
             return 1
           }
-          apt_try 120 update
+          apt_try 180 update
           apt_try 600 install -y --no-install-recommends \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libjack-jackd2-dev libsndio-dev \
@@ -408,14 +422,28 @@ jobs:
           # and has to word-split. (scripts/check-shell.sh does not read
           # workflow files, so there is no linter to appease here — the
           # note is for whoever edits this next.)
-          # The runner's configured mirror is dead: every
+          # The runner's primary mirror is dead: every
           # azure.archive.ubuntu.com line in a failing log comes back
-          # `Ign:`, apt falls back to the public archive, and it is that
-          # fallback which stalls fetching package indices. Point the
-          # sources straight at the host that answers, so there is no
-          # fallback to stall in. Both layouts, because noble keeps its
-          # sources in deb822 and older images use sources.list.
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g'             /etc/apt/sources.list /etc/apt/sources.list.d/*.list             /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+          # `Ign:`, apt falls back to the public archive, and the fetch
+          # of the package indices through that fallback is what stalls.
+          #
+          # The mirror is not configured in sources.list. These images use
+          # `mirror+file:/etc/apt/apt-mirrors.txt`, a preference-ordered
+          # list with Azure first and the public archive behind it — which
+          # is why an earlier version of this step rewrote the sources
+          # files and changed precisely nothing, azure lines and all. Drop
+          # the dead host from the list apt actually reads, leaving the
+          # one that answers, so there is no fallback left to stall in.
+          # The sources rewrite stays for images that do point there
+          # directly.
+          sudo sed -i '/azure.archive.ubuntu.com/d' \
+            /etc/apt/apt-mirrors.txt 2>/dev/null || true
+          sudo sed -i \
+            's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' \
+            /etc/apt/sources.list /etc/apt/sources.list.d/*.list \
+            /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+          echo "apt mirrors in use:"
+          cat /etc/apt/apt-mirrors.txt 2>/dev/null || echo "  (no apt-mirrors.txt)"
 
           # $1 is the timeout in seconds; the rest is apt's own argv.
           # `update` and `install` get very different budgets: fetching
@@ -428,11 +456,11 @@ jobs:
           apt_try() {
             budget=$1
             shift
-            for attempt in 1 2 3; do
+            for attempt in 1 2 3 4 5; do
               if sudo timeout "$budget" apt-get $APT_TIMEOUTS "$@"; then
                 return 0
               fi
-              echo "::warning::apt-get $1 stalled (attempt $attempt/3)"
+              echo "::warning::apt-get $1 stalled (attempt $attempt/5)"
               sudo pkill -9 -x apt-get || true
               sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock
               sudo dpkg --configure -a || true
@@ -440,7 +468,7 @@ jobs:
             done
             return 1
           }
-          apt_try 120 update
+          apt_try 180 update
           apt_try 600 install -y --no-install-recommends \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libjack-jackd2-dev libsndio-dev \
