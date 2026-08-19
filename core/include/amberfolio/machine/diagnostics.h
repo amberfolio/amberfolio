@@ -81,6 +81,13 @@ enum class stop_reason : std::uint8_t {
   /// `device_fault`, which is how a device reaches this without a
   /// reference back to the machine (#65).
   unimplemented_device,
+  /// The program terminated itself: the PSP's INT 20h (M2-D6, #51) or
+  /// INT 21h AH=4Ch (M2-D7, #52) ran. Not a failure — it is the normal,
+  /// expected way a DOS program ends — but it still stops the machine,
+  /// because there is no resident DOS underneath to hand control back to
+  /// (this is a single-program machine, PLAN.md §3): `stop_record::
+  /// exit_code` is the answer the harness and every host are waiting for.
+  program_exited,
 };
 
 struct stop_record {
@@ -89,6 +96,13 @@ struct stop_record {
   /// The physical address or the port the reason is about; zero when it
   /// is about neither.
   std::uint32_t at{};
+
+  /// The program's exit code, meaningful only when
+  /// `reason == program_exited`. INT 20h has none of its own — DOS
+  /// reports 0 for it, the value every `COMMAND.COM ERRORLEVEL` check of
+  /// the era treats as "ran fine" — and AH=4Ch's is whatever the program
+  /// left in AL.
+  std::uint8_t exit_code{};
 
   friend constexpr bool operator==(const stop_record&,
                                    const stop_record&) = default;

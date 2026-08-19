@@ -359,6 +359,21 @@ class machine final : public cpu::bus {
 
   [[nodiscard]] const stop_record& stop() const noexcept { return stop_; }
 
+  /// The program terminated itself. Records
+  /// `stop_reason::program_exited` with `code` and tells the sink, the
+  /// same way any other stop does; `stopped()` is true from here on and
+  /// `step()`/`run()` go inert exactly as they do for any other stop.
+  ///
+  /// The PSP's INT 20h (M2-D6, #51 — always code 0, see diagnostics.h)
+  /// and INT 21h AH=4Ch (M2-D7, #52 — AL) both call this rather than
+  /// each recording their own stop, so a program that exits either way
+  /// is reported identically and a caller watching for the end of a run
+  /// has exactly one thing to check. Public, not something only the
+  /// service floor reaches, because #52's handler is not written by this
+  /// issue and needs a stable entry point to call into (its own header's
+  /// coordination note says so).
+  void exit_program(std::uint8_t code);
+
   // --- cpu::bus -------------------------------------------------------
   //
   // The routing, and the only place an address or a port becomes a
