@@ -52,8 +52,8 @@
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/diagnostics.h"
-#include "amberfolio/machine/keyboard.h"
 #include "amberfolio/machine/dos.h"
+#include "amberfolio/machine/keyboard.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/port_map.h"
@@ -450,9 +450,6 @@ class machine final : public cpu::bus {
     stop_with(stop_reason::unimplemented_service, at);
   }
 
-  /// Stop because the program terminated itself: INT 21h AH=4Ch or
-  /// INT 20h (dos.h, M2-D7, #52; diagnostics.h's `stop_reason::
-  
   // --- cpu::bus -------------------------------------------------------
   //
   // The routing, and the only place an address or a port becomes a
