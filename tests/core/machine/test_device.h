@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The device and the diagnostics sink the machine tests wire up: one that
-// claims whatever it is told to and remembers every cycle it was given,
-// and one that keeps everything it was told rather than printing it.
+// The device, the scheduler participant and the diagnostics sink the
+// machine tests wire up: one that claims whatever it is told to and
+// remembers every cycle it was given, one that remembers every deadline
+// it was woken at, and one that keeps everything it was told rather than
+// printing it.
 //
 // There is no real device in the tree yet — every one of them is an M2-D
 // issue — so what these tests can check about routing is that a cycle
@@ -19,8 +21,10 @@
 #include <vector>
 
 #include "amberfolio/cpu/diagnostics.h"
+#include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/diagnostics.h"
+#include "amberfolio/machine/scheduler.h"
 
 namespace amberfolio::machine::test {
 
@@ -87,6 +91,51 @@ class recording_device final : public device {
  private:
   std::vector<memory_window> windows_;
   std::vector<port_range> ports_;
+};
+
+/// One wake-up: which participant was woken, and the tick it was handed.
+struct deadline_fired {
+  int who{};
+  ticks due{};
+
+  friend bool operator==(const deadline_fired&,
+                         const deadline_fired&) = default;
+};
+
+/// A scheduler participant that writes every deadline it is handed into a
+/// log it shares with its siblings.
+///
+/// Shared rather than one vector each, because most of what there is to
+/// check about a scheduler is the order *between* participants: which of
+/// two due on the same tick went first, and whether an earlier deadline
+/// registered later still beat a later one.
+class recording_participant final : public scheduled {
+ public:
+  recording_participant(int id, std::vector<deadline_fired>& log)
+      : id_(id), log_(&log) {}
+
+  void on_deadline(ticks due) override {
+    log_->push_back({.who = id_, .due = due});
+    if (queue == nullptr || rearms == 0) {
+      return;
+    }
+    --rearms;
+    rearmed = queue->arm(*this, due + period);
+  }
+
+  /// Set all three to make this periodic: it re-arms at `due + period`,
+  /// `rearms` more times. `period` of zero is the re-arm the scheduler
+  /// has to refuse — see scheduler::arm.
+  scheduler* queue{};
+  ticks period{1};
+  unsigned rearms{};
+
+  /// What the last re-arm answered.
+  bool rearmed{true};
+
+ private:
+  int id_;
+  std::vector<deadline_fired>* log_;
 };
 
 /// The machine's one sink, keeping all three kinds of thing it is told.
