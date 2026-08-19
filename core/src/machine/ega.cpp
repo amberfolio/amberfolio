@@ -56,6 +56,11 @@ void ega::reset() {
   color_dont_care_ = 0;
   bit_mask_ = 0xFF;
 
+  attr_index_ = 0;
+  attr_expect_data_ = false;
+  palette_.fill(0);
+  overscan_ = 0;
+
   latches_.fill(0);
   halt_ = {};
 }
@@ -89,6 +94,20 @@ std::uint8_t ega::read_port(std::uint16_t port) {
       return gc_index_;
     case graphics_data_port:
       return read_graphics_data();
+    case attribute_port:
+      // Real hardware's answer here is the index register, with a bit
+      // this subset does not track (the palette address source). Nothing
+      // in v1's scope reads it back; the index is the honest half.
+      return attr_index_;
+    case attribute_data_read_port:
+      return read_attribute_data();
+    case status_port:
+      // The flip-flop reset this file's top comment describes, plus the
+      // stub status byte: always "not in retrace," because this device
+      // has no raster to report one from. See "The attribute controller"
+      // above for why that is the honest answer rather than a guess.
+      attr_expect_data_ = false;
+      return 0;
     default:
       // machine::read_port8 only ever calls this with a port from
       // claimed().ports (device.h), so this is unreachable in practice —
@@ -114,7 +133,18 @@ void ega::write_port(std::uint16_t port, std::uint8_t value) {
     case graphics_data_port:
       write_graphics_data(value);
       return;
+    case attribute_port:
+      write_attribute_port(value);
+      return;
     default:
+      // Covers 3C1h and 3DAh along with every other unclaimed value: 3C1h
+      // is documented read-only on real hardware, and a write to the
+      // status port at 3DAh (a read-only register on this subset — the
+      // Feature Control register some clones put on the same address is
+      // out of scope) means nothing here. Neither is a program asking for
+      // a register this device does not have — it is a program writing
+      // where nothing reads — so this is silence, not a refusal, and the
+      // same silence the port map's own default already is.
       return;
   }
 }
@@ -324,6 +354,49 @@ std::uint8_t ega::read_graphics_data() {
     default:
       return open_bus_value;  // Unreachable: guarded above.
   }
+}
+
+// --- Attribute controller (3C0h index+data / 3C1h data / 3DAh reset) -----
+//
+// See this file's top comment, "The attribute controller," for the
+// flip-flop protocol this pair of functions implements.
+
+void ega::write_attribute_port(std::uint8_t value) {
+  if (!attr_expect_data_) {
+    // The address register is five bits wide on real hardware (the sixth
+    // bit of the byte selects the palette address source, which this
+    // subset does not track); masking it here is the same hardware-width
+    // truncation the map mask and the palette below apply to their own
+    // registers, not a guess at what the program meant.
+    attr_index_ = value & 0x1Fu;
+    attr_expect_data_ = true;
+    return;
+  }
+  attr_expect_data_ = false;
+
+  if (attr_index_ < palette_register_count) {
+    // 6-bit register; the top two bits of the byte the program wrote
+    // never latch, which is what a real attribute controller does with
+    // them.
+    palette_[attr_index_] = value & 0x3Fu;
+    return;
+  }
+  if (attr_index_ == attribute_overscan_index) {
+    overscan_ = value & 0x3Fu;
+    return;
+  }
+  halt_now(halt_reason::attribute_index, attribute_port, attr_index_);
+}
+
+std::uint8_t ega::read_attribute_data() {
+  if (attr_index_ < palette_register_count) {
+    return palette_[attr_index_];
+  }
+  if (attr_index_ == attribute_overscan_index) {
+    return overscan_;
+  }
+  halt_now(halt_reason::attribute_index, attribute_data_read_port, attr_index_);
+  return open_bus_value;
 }
 
 void ega::halt_now(halt_reason reason, std::uint16_t port,

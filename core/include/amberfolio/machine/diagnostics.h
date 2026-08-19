@@ -88,6 +88,13 @@ enum class stop_reason : std::uint8_t {
   /// (this is a single-program machine, PLAN.md §3): `stop_record::
   /// exit_code` is the answer the harness and every host are waiting for.
   program_exited,
+  /// A native service handler understood what was asked and declined it —
+  /// INT 10h asked for a video mode, or an INT 10h AH=10h sub-function,
+  /// this machine does not have (M2-D3, #48). Distinct from
+  /// `unimplemented_service`: the vector *has* a handler and it ran; this
+  /// is the handler's own "no" to the specific request, PLAN.md §3's rule
+  /// applied at the granularity of one call rather than one vector.
+  unsupported_request,
 };
 
 struct stop_record {
@@ -118,6 +125,13 @@ enum class notice_kind : std::uint8_t {
   /// A port no device claims.
   unclaimed_port_read,
   unclaimed_port_write,
+  /// A write into the video window before INT 10h AH=00h has programmed a
+  /// mode (M2-D3, #48). The write still lands — the write pipeline does
+  /// not know or care whether a mode is active, which is the true
+  /// hardware answer (ega.h) — but a program drawing before it asked for
+  /// a mode is running off-plan, and PLAN.md §3 wants that said once
+  /// rather than silently accommodated.
+  video_write_before_mode_set,
 };
 
 struct notice {

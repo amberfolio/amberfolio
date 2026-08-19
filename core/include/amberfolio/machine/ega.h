@@ -24,10 +24,87 @@
 // ourselves would be the same behaviour written twice.
 //
 // What is in scope is the register subset PLAN.md §3 names, and nothing
-// past it. Palette, the attribute controller, the CRTC, text modes and
-// every resolution but 320x200x16, rendering to a framebuffer, and INT
-// 10h are M2-D3 (#48) or explicitly out of v1 (PLAN.md §9) — this device
-// answers bus cycles into planar VRAM and nothing else.
+// past it. The CRTC, text modes and every resolution but 320x200x16 stay
+// out (PLAN.md §9); rendering to a framebuffer and INT 10h are their own
+// files (renderer.h, int10.h) that read this device rather than becoming
+// part of it. The palette and the attribute controller *are* this file's
+// business, though, and the rest of this comment explains why, alongside
+// the write pipeline the device was first built for.
+//
+//
+// The attribute controller (3C0h/3C1h, and 3DAh for the flip-flop)
+// --------------------------------------------------------------------
+//
+// This is a second chip on a real EGA card — the write pipeline above
+// belongs to the sequencer and the graphics controller, and the palette
+// belongs to the attribute controller, a genuinely different piece of
+// silicon with its own index/data protocol. It lives in this file anyway,
+// on M2-D3's (#48) own instruction: "you are extending this device, not
+// writing a second one." A second `device` subclass here would answer
+// bus cycles for what is, from the machine's point of view, the same
+// card, and would buy nothing but a second claims() list and a second
+// reset() to keep in step with the first.
+//
+// 3C0h is one port with two roles, told apart by an internal flip-flop
+// rather than by which port is touched: the first write after the
+// flip-flop resets loads the **index** register (which of the
+// controller's internal registers the next write means) and flips to
+// "expect data"; the next write loads that register and flips back to
+// "expect index". Two writes, one port, and the flip-flop is the only
+// thing that says which write means which — real hardware, not a
+// simplification. 3C1h is a second, always-data port for reading back
+// whichever register the index currently names, and does not touch the
+// flip-flop at all.
+//
+// The flip-flop's reset is a *read* of 3DAh (the input status register),
+// and only that: nothing else in this subset resets it, which is exactly
+// what M2-D3 asks this file to implement. The status byte itself reports
+// display-enable and retrace timing on real hardware; this device has no
+// raster to report them from, so 3DAh always answers "not in retrace" —
+// a stub, not a simulation, and the honest thing to do with it until some
+// later issue actually needs a program to be able to wait on vertical
+// retrace (nothing in v1's scope polls for it). That is the "may log
+// until something needs them" the issue text allows, spelled out here
+// instead of at a call site, because there is no call site — there is
+// nothing to log about a constant.
+//
+// Sixteen palette registers, index 00h-0Fh, each a 6-bit EGA colour code
+// (masked on the way in, because the real register is six bits wide and
+// that is a hardware fact, not a guess). Overscan (index 11h) is stored
+// alongside them because AH=10h AL=01h and the mode-set path both want
+// somewhere to put it, but nothing reads it back out: straight planar
+// composition for mode 0Dh has no border to draw (the renderer's own
+// comment says so), so it is exactly as inert as the graphics
+// controller's Miscellaneous register above — present because a real
+// program can set it, consulted by nothing because nothing in this
+// machine's mode 0Dh needs it consulted. Every other attribute-controller
+// index (10h Mode Control, 12h Color Plane Enable, 13h Horizontal Pixel
+// Panning, 14h Color Select) is exactly the CRTC-adjacent hardware this
+// issue rules out — "no CRTC, no panning, no split screen" — and gets
+// the same device-local halt the sequencer and graphics controller give
+// an index past their own range, for the reason given below under
+// "Registers this device does not implement": there, and not here,
+// because it is one mechanism, not two.
+//
+//
+// The 64-colour EGA palette, mapped to RGB once
+// -----------------------------------------------
+//
+// `ega_color_table` is PLAN.md §4's "indexed framebuffer plus a 16-entry
+// RGB palette" one step upstream: the renderer looks up each of the
+// sixteen *palette registers'* 6-bit values in this 64-entry table to
+// fill the framebuffer's own palette, once a frame. The table is a
+// settled fact about the hardware, computed once as `constexpr` rather
+// than carried as 64 magic numbers: the EGA DAC treats each 6-bit colour
+// code as two bits per channel — a "primary" bit and a "secondary"
+// (intensity) bit for red, green and blue, bits 2/1/0 and 5/4/3
+// respectively — and drives each channel to 0x00 with neither bit set,
+// 0x55 or 0xAA with one, and 0xFF with both. That two-level-per-bit
+// scheme, not a linear ramp, is why 64 codes make sixteen visually
+// distinct "bright" and "dark" pairs instead of 64 evenly spaced shades,
+// and it is documented, published EGA hardware behaviour — a fact this
+// project's clean-content rule explicitly allows (CONTRIBUTING.md; the
+// issue text says so again for this exact table).
 //
 //
 // The write pipeline
@@ -146,9 +223,18 @@
 // 0-2, and a program that asks for the VGA's fourth mode is asking for
 // hardware this machine does not have.
 //
-// Both refusals are "unimplemented register, loud log line, clean stop" —
-// PLAN.md §3's rule and CLAUDE.md's non-negotiable one, "an unimplemented
-// service, register, or port is a loud log line and a clean stop." What
+// The attribute controller gives real behaviour to indices 00h-0Fh (the
+// palette) and stores 11h (overscan) inertly, for the reasons given
+// above; every other index — 10h, 12h, 13h, 14h — gets the third member
+// of the same refusal `halt_reason` gives the sequencer and the graphics
+// controller, because it is the identical situation: a program asking
+// this card to do something a real EGA's attribute controller could do
+// but this issue's scope (and PLAN.md §9) does not cover.
+//
+// All three refusals are "unimplemented register, loud log line, clean
+// stop" — PLAN.md §3's rule and CLAUDE.md's non-negotiable one, "an
+// unimplemented service, register, or port is a loud log line and a
+// clean stop." What
 // that means concretely here is narrower than it sounds, and the gap is
 // worth being honest about: `device.h` (#42, settled) gives a device no
 // channel back to the machine's own `stop()` from inside a bus cycle — no
@@ -198,12 +284,55 @@
 #include <span>
 
 #include "amberfolio/machine/device.h"
+#include "amberfolio/machine/platform.h"
 
 namespace amberfolio::machine {
 
+/// One channel of an EGA colour code's RGB translation: 0x00 with neither
+/// the primary nor the secondary (intensity) bit set, 0xAA or 0x55 with
+/// one, 0xFF with both. See this file's top comment, "The 64-colour EGA
+/// palette, mapped to RGB once."
+[[nodiscard]] constexpr std::uint8_t ega_channel(bool primary,
+                                                 bool secondary) noexcept {
+  std::uint8_t value = 0;
+  if (primary) {
+    value = static_cast<std::uint8_t>(value + 0xAAu);
+  }
+  if (secondary) {
+    value = static_cast<std::uint8_t>(value + 0x55u);
+  }
+  return value;
+}
+
+/// One 6-bit EGA colour code, translated to RGB. Bits 2/1/0 are the
+/// primary red/green/blue bits, bits 5/4/3 their secondary (intensity)
+/// counterparts — the documented EGA DAC bit layout this file's top
+/// comment names.
+[[nodiscard]] constexpr rgb ega_color(std::uint8_t code) noexcept {
+  return rgb{
+      .red = ega_channel((code & 0x04u) != 0, (code & 0x20u) != 0),
+      .green = ega_channel((code & 0x02u) != 0, (code & 0x10u) != 0),
+      .blue = ega_channel((code & 0x01u) != 0, (code & 0x08u) != 0),
+  };
+}
+
+/// Every one of the 64 codes, translated once. "Map the 64-colour EGA
+/// space to RGB once, as the settled fact table it is" — the issue's own
+/// words for exactly this.
+[[nodiscard]] constexpr std::array<rgb, 64> make_ega_color_table() noexcept {
+  std::array<rgb, 64> table{};
+  for (unsigned code = 0; code < table.size(); ++code) {
+    table[code] = ega_color(static_cast<std::uint8_t>(code));
+  }
+  return table;
+}
+
+inline constexpr std::array<rgb, 64> ega_color_table = make_ega_color_table();
+
 /// The EGA video device: planar VRAM behind the sequencer and graphics
-/// controller register subset PLAN.md §3 names. See this file's top
-/// comment for the write pipeline, the read/latch behaviour and what is
+/// controller register subset PLAN.md §3 names, plus the attribute
+/// controller's palette (M2-D3, #48). See this file's top comment for the
+/// write pipeline, the palette, the read/latch behaviour and what is
 /// deliberately unimplemented.
 class ega final : public device {
  public:
@@ -212,6 +341,13 @@ class ega final : public device {
   /// address 16 colors per pixel, one bit per plane.
   static constexpr std::size_t plane_count = 4;
   static constexpr std::size_t plane_size = 0x10000;  // 64 KiB.
+
+  /// Sixteen palette registers — mode 0Dh addresses 16 colors per pixel,
+  /// one per combination of the four planes' bits (renderer.h).
+  static constexpr unsigned palette_register_count = 16;
+
+  /// The attribute controller index that names the overscan register.
+  static constexpr unsigned attribute_overscan_index = 0x11;
 
   ega() = default;
 
@@ -249,6 +385,21 @@ class ega final : public device {
     return seq_regs_[sequencer_map_mask_index] & 0x0Fu;
   }
 
+  /// Palette register `index`'s live 6-bit EGA colour code (0-63), masked
+  /// to the low four bits of `index` the same way the pipeline masks the
+  /// map mask above — the attribute controller only has sixteen of them.
+  /// What the renderer looks up in `ega_color_table`.
+  [[nodiscard]] std::uint8_t palette_register(unsigned index) const noexcept {
+    return palette_[index & (palette_register_count - 1u)];
+  }
+
+  /// The overscan register's live value. Stored, not consulted — see this
+  /// file's top comment — and exposed for the same reason `mode_set`
+  /// leaves the documented state a test can check.
+  [[nodiscard]] std::uint8_t overscan_register() const noexcept {
+    return overscan_;
+  }
+
   // --- The halt record -----------------------------------------------
   //
   // See this file's top comment, "Registers this device does not
@@ -265,6 +416,11 @@ class ega final : public device {
     /// The Mode register (GC index 05h) asked for write mode 3, which
     /// this device — an EGA, not a VGA — does not have.
     write_mode,
+    /// An attribute-controller cycle (3C0h write or 3C1h) named an index
+    /// this subset does not implement — anything but 00h-0Fh (palette)
+    /// and 11h (overscan). CRTC-adjacent registers (Mode Control, Color
+    /// Plane Enable, Pixel Panning, Color Select) land here.
+    attribute_index,
   };
 
   struct halt_record {
@@ -293,14 +449,28 @@ class ega final : public device {
   static constexpr std::uint16_t graphics_index_port = 0x3CE;
   static constexpr std::uint16_t graphics_data_port = 0x3CF;
 
+  /// One port, two roles told apart by the flip-flop — see this file's
+  /// top comment. `attribute_data_read_port` is the second, always-data
+  /// port real hardware answers 3C1h with; nothing ever writes it.
+  static constexpr std::uint16_t attribute_port = 0x3C0;
+  static constexpr std::uint16_t attribute_data_read_port = 0x3C1;
+
+  /// The input status register. A read resets the attribute controller's
+  /// flip-flop; nothing else in this subset does.
+  static constexpr std::uint16_t status_port = 0x3DA;
+
   static constexpr port_range sequencer_ports{.first = sequencer_index_port,
                                               .last = sequencer_data_port};
   static constexpr port_range graphics_ports{.first = graphics_index_port,
                                              .last = graphics_data_port};
+  static constexpr port_range attribute_ports{.first = attribute_port,
+                                              .last = attribute_data_read_port};
+  static constexpr port_range status_ports{.first = status_port,
+                                           .last = status_port};
 
   static constexpr std::array<memory_window, 1> windows_{vram_window};
-  static constexpr std::array<port_range, 2> ports_{sequencer_ports,
-                                                    graphics_ports};
+  static constexpr std::array<port_range, 4> ports_{
+      sequencer_ports, graphics_ports, attribute_ports, status_ports};
 
   // --- Sequencer (3C4h index / 3C5h data) -----------------------------
 
@@ -331,6 +501,17 @@ class ega final : public device {
   std::uint8_t color_dont_care_{};   // 07h.
   std::uint8_t bit_mask_{0xFF};      // 08h.
 
+  // --- Attribute controller (3C0h index+data / 3C1h data / 3DAh reset) --
+
+  std::uint8_t attr_index_{};
+  /// The flip-flop: false means the next 3C0h write is an index, true
+  /// means it is data for the register that index named. A 3DAh read
+  /// forces this back to false — see this file's top comment.
+  bool attr_expect_data_{false};
+
+  std::array<std::uint8_t, palette_register_count> palette_{};
+  std::uint8_t overscan_{};
+
   // --- VRAM and the latches --------------------------------------------
 
   /// 256 KiB. See this file's top comment, "Memory footprint."
@@ -349,6 +530,9 @@ class ega final : public device {
   [[nodiscard]] std::uint8_t read_sequencer_data();
   void write_graphics_data(std::uint8_t value);
   [[nodiscard]] std::uint8_t read_graphics_data();
+
+  void write_attribute_port(std::uint8_t value);
+  [[nodiscard]] std::uint8_t read_attribute_data();
 
   void halt_now(halt_reason reason, std::uint16_t port,
                 std::uint8_t value) noexcept;

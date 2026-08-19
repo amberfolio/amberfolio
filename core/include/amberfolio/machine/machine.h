@@ -373,6 +373,49 @@ class machine final : public cpu::bus {
   /// issue and needs a stable entry point to call into (its own header's
   /// coordination note says so).
   void exit_program(std::uint8_t code);
+  // --- Video mode discipline -------------------------------------------
+  //
+  // Bookkeeping for the video BIOS (INT 10h, M2-D3, #48): has AH=00h
+  // programmed a mode yet? It lives here, on the machine, rather than on
+  // the EGA device that answers the video window, for the same reason a
+  // native handler reaches `input()`, `wall()` and `console()` through
+  // the machine instead of through a device pointer of its own:
+  // `service_handler` is a plain function pointer with nowhere to keep
+  // one (service_floor.h), so a handler's only way at machine state is
+  // what `machine` itself hands out. Attached devices are held
+  // generically (`device&`, never a concrete type — this file's own
+  // "what is deliberately not here yet" note above), so there is no
+  // `ega&` to be given even if the pointer type were not the problem.
+  //
+  // The flag gates nothing in the write pipeline — a plane takes a byte
+  // the same way whether or not a mode has been set, which is the true
+  // hardware answer (device.h, ega.h). What it gates is the notice
+  // `write_memory` reports: a program that writes into the video window
+  // before AH=00h has run is not stopped, but PLAN.md §3 wants it said
+  // once rather than silently accommodated.
+
+  /// AH=00h calls this once it has programmed mode 0Dh. Nothing else ever
+  /// sets it; `reset()` clears it, because a reset video card has
+  /// forgotten its mode exactly as it forgot every register the EGA
+  /// itself owns.
+  void note_video_mode_set() noexcept { video_mode_set_ = true; }
+
+  [[nodiscard]] bool video_mode_set() const noexcept { return video_mode_set_; }
+
+  /// A native service handler's own refusal: it understood the request
+  /// and does not support it — an INT 10h video mode this machine does
+  /// not have, say. PLAN.md §3's "loud log line and a clean stop," at the
+  /// granularity of one call rather than one vector, which is what
+  /// `stop_reason::unimplemented_service` already covers for a vector
+  /// with no handler at all. `at` is whatever the handler wants
+  /// remembered about the call — often the caller's AX.
+  ///
+  /// Public, unlike `stop_with`, because a handler calls it from outside
+  /// this class — `floor.box().stop_unsupported_request(...)` — the same
+  /// way it reaches every other piece of machine state above.
+  bool stop_unsupported_request(std::uint32_t at) {
+    return stop_with(stop_reason::unsupported_request, at);
+  }
 
   // --- cpu::bus -------------------------------------------------------
   //
@@ -442,6 +485,10 @@ class machine final : public cpu::bus {
   keyboard_service keyboard_;
 
   stop_record stop_{};
+
+  /// The video BIOS's own bookkeeping — see "Video mode discipline"
+  /// above.
+  bool video_mode_set_{false};
 
   /// The platform interface (platform.h). Members rather than something
   /// a host supplies, because the buffers have to outlive every pull and
