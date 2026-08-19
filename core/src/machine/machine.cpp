@@ -52,7 +52,20 @@ bool machine::attach(device& dev) {
   return true;
 }
 
+bool machine::attach(scheduled& who) {
+  if (!deadlines_.add(who)) {
+    return stop_with(stop_reason::conflicting_claim, 0);
+  }
+  return true;
+}
+
 void machine::reset() {
+  // The clock first, so that a device arming a deadline from its own
+  // reset() arms it against the time base the run is about to start on
+  // rather than against the one that just ended.
+  now_ = 0;
+  deadlines_.disarm_all();
+
   cpu_.reset();
   for (std::size_t i = 0; i < attached_; ++i) {
     devices_[i]->reset();
@@ -63,13 +76,33 @@ void machine::reset() {
   ports_noticed_ = {};
 }
 
+bool machine::set_step_cost(ticks cost) noexcept {
+  if (cost == 0) {
+    return false;
+  }
+  step_cost_ = cost;
+  return true;
+}
+
 cpu::step_status machine::step() {
   if (stopped()) {
     return cpu::step_status::stopped;
   }
 
+  // Before the instruction, not after: this is the step boundary, and the
+  // interrupt a device raises here is recognized by the very step below.
+  deadlines_.dispatch_due(now_);
+
   const cpu::step_status status = cpu_.step();
-  if (status == cpu::step_status::stopped) {
+  if (status != cpu::step_status::stopped) {
+    // Charged for every status the processor can report, `halted`
+    // included: a halted machine is waiting for an interrupt, and the
+    // only thing that can bring one is a deadline, which needs the clock
+    // to keep moving. A stop is the one thing that costs nothing —
+    // nothing happened, and a caller looping past it must not be able to
+    // run the clock away.
+    now_ += step_cost_;
+  } else {
     const cpu::stop_record& refused = cpu_.stop();
     stop_ = {.reason = stop_reason::processor,
              .at = cpu::physical_address(refused.cs, refused.ip)};
@@ -82,6 +115,23 @@ cpu::step_status machine::step() {
     }
   }
   return status;
+}
+
+run_result machine::run(ticks until) {
+  const ticks started = now_;
+  run_result result{};
+
+  // `<`, so a machine already at or past `until` does nothing at all and
+  // the overshoot of one run does not turn into a stall in the next.
+  while (now_ < until) {
+    if (step() == cpu::step_status::stopped) {
+      break;
+    }
+    ++result.steps;
+  }
+
+  result.elapsed = now_ - started;
+  return result;
 }
 
 std::uint8_t machine::read_memory(std::uint32_t address) {
