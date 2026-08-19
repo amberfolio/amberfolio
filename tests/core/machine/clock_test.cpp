@@ -101,7 +101,7 @@ std::vector<deadline_fired> deadlines_of(
   ticker.queue = &r.pc().deadlines();
   ticker.period = period;
   ticker.rearms = 10000;
-  EXPECT_TRUE(r.pc().attach(ticker));
+  EXPECT_TRUE(r.pc().schedule(ticker));
   EXPECT_TRUE(r.pc().deadlines().arm(ticker, 0));
 
   const run_result done = r.pc().run(until);
@@ -174,7 +174,7 @@ TEST(machine_clock, charges_an_interrupt_delivery) {
   r.pc().processor().regs().set_flag(cpu::flag::if_, true);
 
   interrupting_participant timer{r.pc()};
-  ASSERT_TRUE(r.pc().attach(timer));
+  ASSERT_TRUE(r.pc().schedule(timer));
   ASSERT_TRUE(r.pc().deadlines().arm(timer, 4));
 
   ASSERT_EQ(r.pc().step(), cpu::step_status::ran);
@@ -378,7 +378,7 @@ TEST(machine_deadlines, are_taken_by_the_instruction_at_the_same_boundary) {
   r.pc().processor().regs().set_flag(cpu::flag::if_, true);
 
   interrupting_participant timer{r.pc()};
-  ASSERT_TRUE(r.pc().attach(timer));
+  ASSERT_TRUE(r.pc().schedule(timer));
   ASSERT_TRUE(r.pc().deadlines().arm(timer, 0));
 
   // Deadlines are dispatched at the top of the step, which is where the
@@ -395,7 +395,7 @@ TEST(machine_deadlines, do_not_fire_partway_through_a_repeated_string_move) {
 
   std::vector<deadline_fired> fired;
   recording_participant ticker{0, fired};
-  ASSERT_TRUE(r.pc().attach(ticker));
+  ASSERT_TRUE(r.pc().schedule(ticker));
   ASSERT_TRUE(r.pc().deadlines().arm(ticker, 2500));
 
   // 2500 falls inside the third step. It is not delivered until the
@@ -410,7 +410,7 @@ TEST(machine_deadlines, do_not_fire_partway_through_a_repeated_string_move) {
   EXPECT_EQ(fired, (std::vector<deadline_fired>{{.who = 0, .due = 2500}}));
 }
 
-TEST(machine_attach, refuses_more_participants_than_the_scheduler_holds) {
+TEST(machine_schedule, refuses_more_participants_than_the_scheduler_holds) {
   const rig r;
   std::vector<deadline_fired> fired;
   std::vector<std::unique_ptr<recording_participant>> participants;
@@ -418,14 +418,14 @@ TEST(machine_attach, refuses_more_participants_than_the_scheduler_holds) {
   for (std::size_t i = 0; i < scheduler::max_participants; ++i) {
     participants.push_back(
         std::make_unique<recording_participant>(static_cast<int>(i), fired));
-    EXPECT_TRUE(r.pc().attach(*participants.back()));
+    EXPECT_TRUE(r.pc().schedule(*participants.back()));
   }
 
   recording_participant spare{99, fired};
-  EXPECT_FALSE(r.pc().attach(spare));
+  EXPECT_FALSE(r.pc().schedule(spare));
 
-  // A wiring mistake, caught where it is made — the same answer the
-  // device overload gives for the same kind of mistake.
+  // A wiring mistake, caught where it is made — the same answer
+  // attach() gives for the same kind of mistake.
   EXPECT_TRUE(r.pc().stopped());
   EXPECT_EQ(r.pc().stop().reason, stop_reason::conflicting_claim);
   ASSERT_EQ(r.log.stops.size(), 1u);
@@ -439,7 +439,7 @@ TEST(machine_reset, puts_the_clock_back_to_zero_and_disarms_every_deadline) {
 
   std::vector<deadline_fired> fired;
   recording_participant ticker{0, fired};
-  ASSERT_TRUE(r.pc().attach(ticker));
+  ASSERT_TRUE(r.pc().schedule(ticker));
   ASSERT_TRUE(r.pc().deadlines().arm(ticker, 500));
   ASSERT_EQ(r.pc().run(100).elapsed, 100u);
   ASSERT_TRUE(fired.empty());

@@ -96,8 +96,15 @@ class machine final : public cpu::bus {
   /// A second, separate thing to be — device.h said it would arrive this
   /// way and not as another virtual on `device`, and the two halves are
   /// independent: most devices are never scheduled, the renderer and the
-  /// audio mixer are scheduled and answer no bus cycles at all, and the
-  /// PIT is both and is attached twice.
+  /// audio mixer will be scheduled and answer no bus cycles at all, and
+  /// the PIT will be both, attached and scheduled.
+  ///
+  /// Its own name rather than a second `attach()` overload, precisely
+  /// because of that last case: a class deriving from both `device` and
+  /// `scheduled` converts to each base equally well, so `attach(pit)`
+  /// would be ambiguous and every caller would have to cast. Two names
+  /// for two wirings costs nothing and reads as what it is —
+  /// `pc.attach(pit); pc.schedule(pit);`
   ///
   /// Registration order is the scheduler's tie-break, so this is also
   /// where "which of two devices due on the same tick goes first" is
@@ -105,9 +112,9 @@ class machine final : public cpu::bus {
   ///
   /// False, and the machine stopped with `stop_reason::conflicting_claim`,
   /// if there is no room left or `who` is already registered — the same
-  /// answer and the same discipline as the device overload, because it is
-  /// the same kind of mistake.
-  bool attach(scheduled& who);
+  /// answer and the same discipline `attach()` gives, because it is the
+  /// same kind of mistake.
+  bool schedule(scheduled& who);
 
   /// The RESET line: the processor and every attached device go to
   /// power-on state, the recorded stop is cleared, the virtual clock goes
@@ -206,7 +213,7 @@ class machine final : public cpu::bus {
   bool set_step_cost(ticks cost) noexcept;
 
   /// The deadline queue. `pc.deadlines().arm(dev, when)` is how a device
-  /// posts its next moment; `attach(scheduled&)` is how it earns the
+  /// posts its next moment; `schedule()` is how it earns the
   /// right to.
   [[nodiscard]] scheduler& deadlines() noexcept { return deadlines_; }
   [[nodiscard]] const scheduler& deadlines() const noexcept {

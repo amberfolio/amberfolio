@@ -52,7 +52,7 @@ bool machine::attach(device& dev) {
   return true;
 }
 
-bool machine::attach(scheduled& who) {
+bool machine::schedule(scheduled& who) {
   if (!deadlines_.add(who)) {
     return stop_with(stop_reason::conflicting_claim, 0);
   }
