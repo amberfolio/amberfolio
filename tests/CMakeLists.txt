@@ -38,6 +38,7 @@ add_executable(amberfolio-core-tests
   core/machine/clock_test.cpp
   core/machine/machine_test.cpp
   core/machine/memory_map_test.cpp
+  core/machine/platform_test.cpp
   core/machine/scheduler_test.cpp
   core/machine/service_floor_test.cpp
   core/version_test.cpp)
