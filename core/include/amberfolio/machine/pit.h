@@ -39,12 +39,13 @@
 // channel 0 and channel 2 each arm one deadline for their own next
 // output edge and recompute it — never re-derive it from scratch, never
 // walk ticks — every time a write, a gate edge, or the deadline itself
-// changes what that edge would be. Channel 2 has no consumer yet
-// (M2-D4/#49 is the speaker), but scheduler.h's own design commentary
+// changes what that edge would be. Channel 2 had no consumer at the time
+// its own deadline was wired up, but scheduler.h's own design commentary
 // names "the PIT running channel 0 and channel 2 on different divisors"
 // as the reason a participant can want a second, independent deadline,
-// so channel 2 is wired up now rather than reopening this file to add it
-// later.
+// so channel 2 was wired up before reopening this file to add its
+// consumer — `output()`, `next_output_change()` and
+// `pit_channel_observer` below, for M2-D4/#49's speaker.
 //
 // Channel 1 gets neither a controller to notify nor a scheduler
 // registration — "cheaper and truer than special-casing it away," per
@@ -175,6 +176,63 @@
 // reference tick at the moment the gate went low rather than at `now`,
 // so a read while gated answers the frozen value for as long as the
 // gate stays low, however long that is.
+//
+//
+// Channel 2's OUT line: `output()`, `next_output_change()`, and the
+// reprogram observer
+// ------------------------------------------------------------------------
+//
+// Nothing before M2-D4/#49 ever needed to know channel 2's OUT *level* —
+// `on_deadline()` exists to raise an IRQ, which is edge-triggered and
+// level-blind, so channel 0 never needed this either. The speaker does:
+// it gates this line against port 61h bit 1, and platform.h's
+// `audio_timeline` needs the exact tick every transition happens at, not
+// a level sampled after the fact.
+//
+// `output(at)` is that level, computed the same way `live_count()` is —
+// a pure function of the state already here, nothing new to keep
+// current. Mode 0 answers the datasheet's own rule: low until the
+// terminal count, high and pinned there ever after. Modes 2 and 3 answer
+// with **a 50%-duty square wave, full period `active_divisor_` ticks** —
+// the real mode 3 waveform (Intel 8253 datasheet: high for
+// `ceil(divisor/2)`, low for the rest), used for mode 2 as well for the
+// identical reason `on_deadline()`'s timing already is shared between
+// them (this file's second section, above): the two only differ in a
+// shape this project does not model, and mode 3's shape already *is* the
+// symmetric wave a tone needs. This is what turns a programmed divisor
+// into a tone at exactly `pit_input_hz / active_divisor_` — the fact
+// every BIOS beep and every era sound routine already assumes, and the
+// fact M2-D4/#49's exit criterion checks. GATE low forcing the output
+// high (the rule two paragraphs up) falls out of the same function: it
+// is the direct-drive path M2-D4/#49 uses for sampled effects, because
+// with GATE held low this is a constant true and the speaker's output is
+// then whatever port 61h bit 1 says, toggled by software.
+//
+// `next_output_change(at)` is `output()`'s companion: the next tick at
+// which it would answer differently. The speaker is a `scheduled`
+// participant that arms itself here rather than walking ticks or
+// re-deriving the divisor arithmetic a second time — exactly the
+// division of labour `on_deadline()`'s own doc comment describes for
+// channel 0's IRQ.
+//
+// Both are pure functions of `at`, which is exact only if the state they
+// read is current as of `at` — true whenever `at` is "now" and a write or
+// a gate edge to *this* channel triggered the query, because every path
+// that can change either answer already runs `catch_up()` or
+// `start_cycle()` first. It is not automatically true when something
+// *else* changes what the answer would have been — reprogramming channel
+// 2 while the speaker's already-armed deadline is still ticking down to
+// the *old* divisor's boundary — which is what `pit_channel_observer`
+// exists to close: `write_control()`, `write_data()` and `set_gate()`
+// each notify it, unconditionally, at their one true exit point,
+// whether or not the write actually changed anything observable right
+// now (a deferred reload, for instance, does not — `next_output_change()`
+// already accounts for `has_pending_` on its own, so the observer finding
+// nothing to do there is the common case, not a bug). Only channel 2 is
+// ever given one; the parallel with `irq_` — channel 0's own one-listener
+// door — is deliberate, and the reason this is not folded into `irq_`
+// itself is that an edge-triggered IRQ and a level query are different
+// contracts answering different questions.
 
 #pragma once
 
@@ -211,6 +269,25 @@ enum class pit_mode : std::uint8_t { none, mode0, mode2, mode3 };
 /// always sets one of the other three.
 enum class pit_access : std::uint8_t { none, lsb, msb, both };
 
+/// Something that wants to know when channel 2's programming or gate
+/// state changed — port 61h's speaker (M2-D4/#49), and this file's own
+/// top comment ("Channel 2's OUT line") for why a query alone is not
+/// enough. Never called for channels 0 or 1.
+class pit_channel_observer {
+ public:
+  /// Channel 2's control word, its divisor, or its gate line just moved,
+  /// as of `at` — always `box_->time()`, the tick the write or gate edge
+  /// happened at. `output()` and `next_output_change()` may or may not
+  /// disagree with what they last answered; finding out is this
+  /// listener's job, not this channel's.
+  virtual void on_channel2_changed(ticks at) noexcept = 0;
+
+ protected:
+  // See cpu/bus.h: held by pointer, never owned or deleted through this
+  // type.
+  ~pit_channel_observer() = default;
+};
+
 /// One 8253 counter. `pit` instantiates this three times (this file's
 /// top comment); nothing about the type says which channel it is,
 /// because nothing about the 8253's counting logic differs by channel —
@@ -219,8 +296,10 @@ class pit_channel final : public scheduled {
  public:
   /// `box` must outlive this. `irq` is the controller to notify of an
   /// output edge — only channel 0 is ever given one; null means "this
-  /// channel's output goes nowhere," which is channels 1 and 2 (channel
-  /// 2's edges have no consumer until M2-D4/#49).
+  /// channel's output reaches no IRQ line," which is channels 1 and 2
+  /// (channel 2's edges reach the speaker instead, through `output()` and
+  /// `pit_channel_observer` — an edge-triggered IRQ and a level query are
+  /// different contracts, so channel 2 does not share `irq`'s door).
   pit_channel(machine& box, pic::controller* irq) noexcept
       : box_(&box), irq_(irq) {}
 
@@ -250,9 +329,42 @@ class pit_channel final : public scheduled {
   /// to build and never see a call.
   void set_gate(bool level) noexcept;
 
+  /// Channel 2's OUT line at tick `at`, and the next tick it will change
+  /// on its own. See this file's top comment, "Channel 2's OUT line."
+  [[nodiscard]] bool output(ticks at) const noexcept;
+  [[nodiscard]] ticks next_output_change(ticks at) const noexcept;
+
+  /// Only ever called by `pit::set_channel2_observer()` — see
+  /// `pit_channel_observer` above.
+  void set_observer(pit_channel_observer& observer) noexcept {
+    observer_ = &observer;
+  }
+
   void on_deadline(ticks due) override;
 
  private:
+  /// `write_control()`, `write_data()` and `set_gate()`'s shared exit
+  /// notification (this file's top comment). A no-op for channels 0 and
+  /// 1, whose `observer_` is never set.
+  void notify_observer() const noexcept {
+    if (observer_ != nullptr) {
+      observer_->on_channel2_changed(now());
+    }
+  }
+
+  /// The cycle `output()`/`next_output_change()` are really answering
+  /// about as of `at`: `active_since_`/`active_divisor_`, folding in the
+  /// one pending reload if its boundary has already passed `at` — the
+  /// same lookahead `catch_up()` performs, restated as a pure query so a
+  /// level or a next-change tick can be answered without mutating
+  /// anything (a caller may ask about a tick more than once, and about
+  /// ticks it has already passed).
+  struct effective_cycle {
+    ticks since;
+    std::uint32_t divisor;
+  };
+  [[nodiscard]] effective_cycle cycle_at(ticks at) const noexcept;
+
   [[nodiscard]] ticks now() const noexcept;
 
   /// The 0-means-65536 rule (clock.h's sibling fact for the PIT: a
@@ -289,6 +401,8 @@ class pit_channel final : public scheduled {
 
   machine* box_;
   pic::controller* irq_;
+  /// Only ever non-null for channel 2 (`pit::set_channel2_observer()`).
+  pit_channel_observer* observer_{nullptr};
 
   pit_mode mode_{pit_mode::none};
   pit_access access_{pit_access::none};
@@ -338,6 +452,25 @@ class pit final : public device {
   /// The channel-2 gate line (this file's top comment); M2-D4/#49's port
   /// 61h bit 0 drives it.
   void set_gate2(bool level) noexcept { channel2_.set_gate(level); }
+
+  /// Channel 2's OUT line, and when it will next change on its own — the
+  /// speaker's whole read-side interface to this device (this file's top
+  /// comment, "Channel 2's OUT line"). Neither is `channel2_`'s own
+  /// business past this point; nothing outside `pit_channel` ever touches
+  /// its private state directly.
+  [[nodiscard]] bool channel2_output(ticks at) const noexcept {
+    return channel2_.output(at);
+  }
+  [[nodiscard]] ticks channel2_next_output_change(ticks at) const noexcept {
+    return channel2_.next_output_change(at);
+  }
+
+  /// The one listener a reprogram of channel 2 notifies — see
+  /// `pit_channel_observer`. M2-D4/#49's speaker is the only caller this
+  /// machine has.
+  void set_channel2_observer(pit_channel_observer& observer) noexcept {
+    channel2_.set_observer(observer);
+  }
 
   /// The scheduler participants channels 0 and 2 are. Registering them
   /// is the wiring code's job, the same way attaching this device for

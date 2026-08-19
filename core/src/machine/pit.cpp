@@ -54,6 +54,7 @@ void pit_channel::write_control(pit_access access, pit_mode mode) noexcept {
   active_divisor_ = 0;
   has_pending_ = false;
   box_->deadlines().disarm(*this);
+  notify_observer();
 }
 
 void pit_channel::latch() noexcept {
@@ -149,6 +150,7 @@ void pit_channel::write_data(std::uint8_t byte) noexcept {
   if (mode_ == pit_mode::mode0) {
     // A new count always restarts immediately, whatever was in flight.
     start_cycle(at, divisor);
+    notify_observer();
     return;
   }
 
@@ -162,6 +164,7 @@ void pit_channel::write_data(std::uint8_t byte) noexcept {
     pending_divisor_ = divisor;
     has_pending_ = true;
   }
+  notify_observer();
 }
 
 void pit_channel::set_gate(bool level) noexcept {
@@ -179,6 +182,7 @@ void pit_channel::set_gate(bool level) noexcept {
     gate_ = false;
     gate_paused_at_ = at;
     box_->deadlines().disarm(*this);
+    notify_observer();
     return;
   }
 
@@ -192,6 +196,7 @@ void pit_channel::set_gate(bool level) noexcept {
     if (active_divisor_ != 0) {
       box_->deadlines().arm(*this, active_since_ + active_divisor_);
     }
+    notify_observer();
     return;
   }
 
@@ -200,6 +205,7 @@ void pit_channel::set_gate(bool level) noexcept {
   if (active_divisor_ != 0) {
     start_cycle(at, has_pending_ ? pending_divisor_ : active_divisor_);
   }
+  notify_observer();
 }
 
 void pit_channel::on_deadline(ticks due) {
@@ -277,6 +283,89 @@ std::uint32_t pit_channel::live_count(ticks at) const noexcept {
   }
   const std::uint64_t past = elapsed - active_divisor_;
   return (0x10000u - static_cast<std::uint32_t>(past % 0x10000u)) % 0x10000u;
+}
+
+pit_channel::effective_cycle pit_channel::cycle_at(ticks at) const noexcept {
+  // Modes 2 and 3 only: mode 0's cycle never reloads itself, so there is
+  // nothing to look ahead to (`output()`'s mode-0 branch never calls
+  // this).
+  ticks since = active_since_;
+  std::uint32_t divisor = active_divisor_;
+  const ticks boundary = since + divisor;
+  if (has_pending_ && at >= boundary) {
+    // The exact condition `catch_up()` uses to decide the same question,
+    // restated without mutating anything (this file's top comment).
+    since = boundary;
+    divisor = pending_divisor_;
+  }
+  return {.since = since, .divisor = divisor};
+}
+
+bool pit_channel::output(ticks at) const noexcept {
+  if (mode_ == pit_mode::mode0) {
+    if (active_divisor_ == 0) {
+      return false;  // No control word has ever loaded a count.
+    }
+    // Low until the terminal count, high and pinned there ever after
+    // (Intel 8253 datasheet) — `live_count()`'s own one-shot arithmetic,
+    // asked only whether the count has crossed zero yet.
+    return (reference_tick(at) - active_since_) >= active_divisor_;
+  }
+
+  if (mode_ != pit_mode::mode2 && mode_ != pit_mode::mode3) {
+    return false;  // No control word has selected this channel at all.
+  }
+  if (!gate_) {
+    // GATE low forces the output high (this file's "channel-2 gate line"
+    // section) — the direct-drive path M2-D4/#49 needs.
+    return true;
+  }
+  if (active_divisor_ == 0) {
+    // A mode 2/3 control word forces OUT high immediately, before any
+    // count is even loaded (Intel 8253 datasheet) — the same fact that
+    // makes a fresh divisor load also start high, below, restated for
+    // the one tick before that first load has happened yet.
+    return true;
+  }
+
+  const effective_cycle cycle = cycle_at(at);
+  // `gate_` is true here, so `reference_tick(at) == at`.
+  const auto elapsed =
+      static_cast<std::uint32_t>((at - cycle.since) % cycle.divisor);
+  // A 50%-duty square wave, high first: `ceil(divisor / 2)` ticks high,
+  // the rest low (this file's top comment, "Channel 2's OUT line").
+  const std::uint32_t half = (cycle.divisor + 1) / 2;
+  return elapsed < half;
+}
+
+ticks pit_channel::next_output_change(ticks at) const noexcept {
+  if (mode_ == pit_mode::mode0) {
+    if (active_divisor_ == 0) {
+      return never;
+    }
+    const ticks boundary = active_since_ + active_divisor_;
+    // One edge, ever (mode 0 never reloads itself): nothing changes again
+    // past it.
+    return at < boundary ? boundary : never;
+  }
+
+  if (mode_ != pit_mode::mode2 && mode_ != pit_mode::mode3) {
+    return never;
+  }
+  if (!gate_ || active_divisor_ == 0) {
+    // Gated off: pinned high until the gate moves, which is not a tick
+    // this channel can name. Gated on with nothing loaded: nothing to
+    // count down from.
+    return never;
+  }
+
+  const effective_cycle cycle = cycle_at(at);
+  const auto elapsed =
+      static_cast<std::uint32_t>((at - cycle.since) % cycle.divisor);
+  const std::uint32_t half = (cycle.divisor + 1) / 2;
+  const std::uint32_t remaining =
+      elapsed < half ? half - elapsed : cycle.divisor - elapsed;
+  return at + remaining;
 }
 
 // --- pit -------------------------------------------------------------------

@@ -49,6 +49,7 @@ add_executable(amberfolio-core-tests
   core/machine/renderer_test.cpp
   core/machine/scheduler_test.cpp
   core/machine/service_floor_test.cpp
+  core/machine/speaker_test.cpp
   core/machine/vfs_test.cpp
   core/version_test.cpp)
 
