@@ -17,9 +17,22 @@ on:
 env:
   CONFORMANCE_CACHE_KEY: conformance-v2-aea84484abc7-c1
 
+# Every job below carries a `timeout-minutes:`. GitHub's default is 360,
+# which is less a timeout than an afternoon: a step that hangs — and the
+# apt install of SDL3's backend headers has, on three separate runs —
+# leaves a job that looks alive for six hours and then fails with nothing
+# in the log to explain it, long after whoever pushed has stopped
+# watching. The numbers are several times the slowest healthy run of each
+# job, cold caches included, so they cannot fire on a slow day; they exist
+# to turn a hung runner into a red mark that can be re-run in a minute.
+#
+# Deliberately per job rather than one number: the jobs differ by an order
+# of magnitude, and a single value generous enough for the build matrix
+# would let the four-second acknowledgments job hang all morning.
 jobs:
   guards:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,11 +74,17 @@ jobs:
   # so this job never compiles a translation unit.
   tidy:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: SDL3 backend headers
+        # DEBIAN_FRONTEND: -y answers apt's own questions, not debconf's.
+        # A package whose postinst asks one blocks forever on a runner
+        # with no tty, which is what a job that hangs here looks like.
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -127,6 +146,7 @@ jobs:
   vectors:
     name: conformance vectors (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -196,6 +216,7 @@ jobs:
     name: conformance (full suite)
     needs: [vectors]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -260,6 +281,7 @@ jobs:
     # job-level dependency.
     needs: [vectors]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       # One broken target should not hide the state of the other four.
       fail-fast: false
@@ -311,6 +333,9 @@ jobs:
       # green light here means nothing.
       - name: SDL3 backend headers (X11, Wayland, audio, KMS, udev, D-Bus)
         if: runner.os == 'Linux' && !matrix.emscripten
+        # See the tidy job's copy of this step.
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -458,6 +483,7 @@ jobs:
     name: sanitizers (ASan + UBSan)
     needs: [vectors]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       CMAKE_C_COMPILER_LAUNCHER: ccache
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
@@ -529,6 +555,7 @@ jobs:
     # while linux is broken is not a state worth putting a public URL on.
     needs: [guards, tidy, build, sanitizers, conformance]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Two pushes in quick succession should leave the later one live
     # rather than race for it.
     concurrency:
@@ -654,6 +681,7 @@ jobs:
   acknowledgments:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: PR template acknowledgments are checked
         env:
