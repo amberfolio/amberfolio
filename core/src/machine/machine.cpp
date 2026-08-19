@@ -346,6 +346,13 @@ bool machine::stop_unimplemented_service(std::uint32_t at) {
   return stop_with(stop_reason::unimplemented_service, at);
 }
 
+void machine::exit_program(std::uint8_t code) {
+  stop_ = {.reason = stop_reason::program_exited, .exit_code = code};
+  if (log_ != nullptr) {
+    log_->report(stop_);
+  }
+}
+
 bool machine::stop_with(stop_reason reason, std::uint32_t at) {
   stop_ = {.reason = reason, .at = at};
   if (log_ != nullptr) {
