@@ -212,6 +212,58 @@ TEST(memory_vfs_write, a_short_write_at_capacity_is_not_an_error) {
   EXPECT_EQ(wrote.value, 1u);
 }
 
+// --- truncate --------------------------------------------------------------
+
+TEST(memory_vfs_truncate, shrinks_to_the_current_position) {
+  const auto fs = make();
+  const auto handle = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(handle.ok());
+  const std::uint8_t data[] = {1, 2, 3, 4, 5};
+  ASSERT_TRUE(fs->write(handle.value, data).ok());
+
+  ASSERT_TRUE(fs->seek(handle.value, seek_origin::begin, 2).ok());
+  EXPECT_EQ(fs->truncate(handle.value), vfs_error::none);
+
+  const auto info = fs->stat(path({"GAME.DAT"}));
+  ASSERT_TRUE(info.ok());
+  EXPECT_EQ(info.value.size, 2u);
+}
+
+TEST(memory_vfs_truncate, extends_with_zero_fill_past_the_old_end) {
+  const auto fs = make();
+  const auto handle = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(handle.ok());
+  const std::uint8_t data[] = {1, 2, 3};
+  ASSERT_TRUE(fs->write(handle.value, data).ok());
+
+  ASSERT_TRUE(fs->seek(handle.value, seek_origin::begin, 5).ok());
+  EXPECT_EQ(fs->truncate(handle.value), vfs_error::none);
+
+  ASSERT_TRUE(fs->seek(handle.value, seek_origin::begin, 0).ok());
+  std::uint8_t all[5] = {};
+  const auto got = fs->read(handle.value, all);
+  ASSERT_TRUE(got.ok());
+  ASSERT_EQ(got.value, 5u);
+  const std::uint8_t expected[] = {1, 2, 3, 0, 0};
+  EXPECT_TRUE(bytes_equal(all, expected));
+}
+
+TEST(memory_vfs_truncate, refuses_a_handle_opened_read_only) {
+  const auto fs = make();
+  const auto handle = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(handle.ok());
+  ASSERT_EQ(fs->close(handle.value), vfs_error::none);
+
+  const auto ro = fs->open(path({"GAME.DAT"}), open_mode::read_only);
+  ASSERT_TRUE(ro.ok());
+  EXPECT_EQ(fs->truncate(ro.value), vfs_error::access_denied);
+}
+
+TEST(memory_vfs_truncate, reports_invalid_handle_for_a_handle_never_opened) {
+  const auto fs = make();
+  EXPECT_EQ(fs->truncate(file_handle{.slot = 0}), vfs_error::invalid_handle);
+}
+
 // --- seek ----------------------------------------------------------------
 
 TEST(memory_vfs_seek, clamps_below_zero_to_zero) {

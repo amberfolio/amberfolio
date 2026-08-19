@@ -315,6 +315,22 @@ inline constexpr std::uint16_t keyboard_buffer_end =
 /// (M2-D7, #52) reads this rather than re-deriving it.
 inline constexpr std::uint16_t keyboard_break_flag = 0x0071;
 inline constexpr std::uint8_t keyboard_break_flag_set = 0x80;
+/// 40:71 — the Ctrl-Break flag: bit 7 set means Ctrl-Break has been seen
+/// and not yet acted on. A real, documented BIOS Data Area byte (Ralf
+/// Brown's Interrupt List and any BIOS technical reference describe it at
+/// this address; nothing about the address or the bit comes from a Gold
+/// Box binary).
+///
+/// M2-D8 (#53) is what ever sets it — the translated Ctrl-Break key event
+/// raises INT 1Bh and sets this flag, on its own schedule. Until #53
+/// lands nothing sets it, so the check M2-D7 (#52) makes against it is
+/// dormant, and that is the honest state of a machine with no keyboard
+/// service yet: the mechanism is real, the flag is just never raised.
+inline constexpr std::uint16_t break_flag = 0x0071;
+
+/// The bit `break_flag` actually uses. The other seven are unused by
+/// anything this machine implements.
+inline constexpr std::uint8_t break_flag_bit = 0x80;
 
 }  // namespace bda
 

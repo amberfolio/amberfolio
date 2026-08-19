@@ -530,6 +530,15 @@ class filesystem {
   virtual vfs_result<std::uint32_t> seek(file_handle handle, seek_origin origin,
                                          std::int32_t offset) = 0;
 
+  /// Set the file's length to the handle's current position — DOS's own
+  /// AH=40h write-with-CX=0000h convention (M2-D7, #52): shrinks if the
+  /// position is behind the old end, extends with zero fill (`write()`'s
+  /// own gap rule, above) if it is ahead. `vfs_error::invalid_handle` if
+  /// `handle` is not open, `vfs_error::access_denied` for a handle opened
+  /// `read_only` — the same guard `write()` has, because DOS counts this
+  /// as a write.
+  virtual vfs_error truncate(file_handle handle) = 0;
+
   /// Release the handle. `vfs_error::invalid_handle` if it was not open.
   virtual vfs_error close(file_handle handle) = 0;
 
