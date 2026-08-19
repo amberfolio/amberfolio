@@ -112,17 +112,18 @@
 // Deliberately not here yet
 // ------------------------
 //
-//   * **The services themselves.** INT 21h is M2-D7, the keyboard is
-//     M2-D8, INT 10h is M2-D3. The only handler in this file is the
-//     default timer tick, which is here as the proof that the mechanism
-//     works end to end.
+//   * **The services themselves.** INT 21h is M2-D7, INT 10h is M2-D3.
+//     The keyboard (INT 16h, the BDA buffer, Ctrl-Break) is M2-D8 and
+//     lives in keyboard.h — its handlers are `provide()`d there rather
+//     than here, but the addresses they maintain are laid out in this
+//     file's `bda` namespace, alongside the timer's, because this is the
+//     one home the BDA has. The default timer tick is the only handler
+//     installed *by this file*, kept as the proof the mechanism works
+//     end to end.
 //   * **The PIC.** M2-D1 (#46). The timer handler ends with a real EOI
 //     write to port 20h; with no controller attached the port map finds
 //     nothing there and says so once, which is the honest answer and
 //     needs no edit when the 8259 arrives to claim the port.
-//   * **The rest of the BDA.** The keyboard buffer, its head and tail
-//     pointers and the shift-flag bytes are M2-D8's to maintain, at their
-//     real addresses in the same 256 bytes this file lays out.
 //   * **A chain into a service with a native body.** A handler that
 //     hands control to another stub gets that stub dispatched in the same
 //     step, up to `service::max_chain` deep; the loop is in
@@ -275,6 +276,38 @@ inline constexpr std::uint16_t timer_rollover = 0x0070;
 /// rounds it, and it is quoted here as the constant the BIOS compares
 /// against rather than recomputed.
 inline constexpr std::uint32_t ticks_per_day = 0x1800B0;
+
+/// 40:17 — the shift/lock status byte the keyboard service (M2-D8, #53)
+/// maintains: which of shift/ctrl/alt are currently held and which of
+/// caps/num/scroll lock are latched. Real memory, not a value INT 16h
+/// AH=02h computes on demand, because programs of the era read this byte
+/// directly instead of paying for the INT.
+inline constexpr std::uint16_t keyboard_shift_flags = 0x0017;
+
+/// 40:1A / 40:1C — the circular keystroke buffer's read and write
+/// pointers, and 40:1E — the buffer itself: sixteen words running to
+/// 40:3E, AL (ASCII, or 0) in the low byte and AH (scan code) in the
+/// high one. The pointers are segment offsets, not slot indices — a
+/// program that walks the buffer by hand, and some did, expects to find
+/// an address there, not a count.
+///
+/// Sixteen slots hold fifteen keystrokes: head == tail has to mean
+/// "empty" rather than be ambiguous with "full", so one slot is always
+/// kept open. That is not this emulator rationing itself — the real
+/// BIOS's buffer has exactly the same limit for exactly the same reason.
+inline constexpr std::uint16_t keyboard_buffer_head = 0x001A;
+inline constexpr std::uint16_t keyboard_buffer_tail = 0x001C;
+inline constexpr std::uint16_t keyboard_buffer = 0x001E;
+inline constexpr unsigned keyboard_buffer_slots = 16;
+inline constexpr std::uint16_t keyboard_buffer_end =
+    static_cast<std::uint16_t>(keyboard_buffer + keyboard_buffer_slots * 2u);
+
+/// 40:71 — the Ctrl-Break flag. Bit 7 set is the keyboard service's own
+/// record that Ctrl-Break happened, independent of what INT 1Bh's
+/// handler (hooked or default) does about it; DOS's Ctrl-Break checking
+/// (M2-D7, #52) reads this rather than re-deriving it.
+inline constexpr std::uint16_t keyboard_break_flag = 0x0071;
+inline constexpr std::uint8_t keyboard_break_flag_set = 0x80;
 
 }  // namespace bda
 

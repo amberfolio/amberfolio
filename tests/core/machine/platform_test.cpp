@@ -528,14 +528,20 @@ TEST(MachinePlatform, AKeyEventIsStampedWithTheMachinesOwnClock) {
   EXPECT_EQ(first->at, it.pc().time());
   EXPECT_EQ(first->at, 0u);
 
+  // The down event above does not survive the run: draining it into BDA
+  // state at a step boundary is exactly the documented fate platform.h
+  // promises the keyboard service (keyboard.h, M2-D8), which is now in
+  // the tree. What the determinism claim still says, and what is still
+  // checkable here without depending on M2-D8's own internals, is that a
+  // *fresh* event posted after the run is stamped with the machine's
+  // position now, not with anything the host could have influenced.
   it.pc().run(10'000);
   ASSERT_TRUE(it.pc().post_key(0x1E, key_action::up));
 
-  key_event event{};
-  ASSERT_TRUE(it.pc().input().take(event));
-  ASSERT_TRUE(it.pc().input().take(event));
-  EXPECT_EQ(event.at, it.pc().time());
-  EXPECT_GE(event.at, 10'000u);
+  const key_event* second = it.pc().input().peek();
+  ASSERT_NE(second, nullptr);
+  EXPECT_EQ(second->at, it.pc().time());
+  EXPECT_GE(second->at, 10'000u);
 }
 
 TEST(MachinePlatform, RunPublishesTheAudioHorizonAndStepDoesNot) {

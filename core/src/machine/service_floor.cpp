@@ -193,6 +193,19 @@ void service_floor::reset() {
   const auto kb = static_cast<std::uint16_t>(conventional_ram_size / 1024u);
   ram[area + bda::memory_size_kb] = static_cast<std::uint8_t>(kb);
   ram[area + bda::memory_size_kb + 1] = static_cast<std::uint8_t>(kb >> 8u);
+
+  // The keyboard buffer starts empty at its own first slot, not at zero.
+  // A real BIOS's self test does the same, and 40:1A/40:1C are offsets a
+  // program may walk directly (keyboard.h, M2-D8) — zero is not an offset
+  // any real machine's pointers ever hold, only 001Eh through 003Eh are.
+  ram[area + bda::keyboard_buffer_head] =
+      static_cast<std::uint8_t>(bda::keyboard_buffer);
+  ram[area + bda::keyboard_buffer_head + 1] =
+      static_cast<std::uint8_t>(bda::keyboard_buffer >> 8u);
+  ram[area + bda::keyboard_buffer_tail] =
+      static_cast<std::uint8_t>(bda::keyboard_buffer);
+  ram[area + bda::keyboard_buffer_tail + 1] =
+      static_cast<std::uint8_t>(bda::keyboard_buffer >> 8u);
 }
 
 service_outcome service_floor::call(unsigned slot) {

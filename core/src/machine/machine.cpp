@@ -29,6 +29,11 @@ machine::machine(memory_layout layout, diagnostics* log)
   // constructor, because that one runs while this object is still being
   // built and has no business reading it.
   services_.reset();
+
+  // INT 16h and the default Ctrl-Break hook, installed into the floor
+  // `reset()` just laid the stubs down for. Wiring, like the timer
+  // handlers the floor installs itself — see keyboard.h.
+  keyboard_.install(services_);
 }
 
 bool machine::attach(device& dev) {
@@ -102,6 +107,11 @@ void machine::reset() {
   // installed is wiring, like an attached device, and not state.
   services_.reset();
 
+  // The keyboard's own auto-repeat bookkeeping (keyboard.h) — not BDA
+  // memory, which `services_.reset()` just rewrote, but the private
+  // state that decides whether a lock key's next press is a fresh one.
+  keyboard_.reset();
+
   stop_ = {};
   pages_noticed_ = {};
   ports_noticed_ = {};
@@ -126,6 +136,15 @@ cpu::step_status machine::step() {
   // raising IRQ0 is the whole reason the queue exists — and the callout
   // below has to be able to see that it did.
   deadlines_.dispatch_due(now_);
+
+  // Then host key events, turned into BDA state before anything asks for
+  // it: a program that reads 40:1E directly, and a blocking AH=00h
+  // re-entering the INT 16h stub below, both need the buffer already
+  // settled (keyboard.h's module comment has the whole argument). A
+  // Ctrl-Break event may itself raise INT 1Bh here, which is why this
+  // has to run before the CS check that follows — its own delivery can
+  // be exactly what makes that check true.
+  keyboard_.drain(*this);
 
   // Then the BIOS callout, and the whole of what it costs a step that is
   // not one: a single compare of CS against the segment the stubs live
@@ -321,6 +340,10 @@ void machine::dispatch_services() {
       return;
     }
   }
+}
+
+bool machine::stop_unimplemented_service(std::uint32_t at) {
+  return stop_with(stop_reason::unimplemented_service, at);
 }
 
 bool machine::stop_with(stop_reason reason, std::uint32_t at) {

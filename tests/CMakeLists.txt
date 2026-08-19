@@ -37,6 +37,7 @@ add_executable(amberfolio-core-tests
   core/cpu/registers_test.cpp
   core/machine/clock_test.cpp
   core/machine/ega_test.cpp
+  core/machine/keyboard_test.cpp
   core/machine/machine_test.cpp
   core/machine/memory_map_test.cpp
   core/machine/memory_vfs_test.cpp
