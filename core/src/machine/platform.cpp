@@ -76,10 +76,17 @@ static_assert(days_from_civil(1980, 1, 1) == dos_epoch_days);
 /// in the header can state it: 1980-01-01 was a Tuesday.
 static_assert((dos_epoch_days + 4) % 7 == 2);
 
+// Each built from the one before it rather than from a fresh product of
+// literals: the products are done in the type they are stored in, so
+// there is no `int` multiplication being widened afterwards, and the
+// arithmetic reads as the conversion it is.
 inline constexpr std::uint64_t centiseconds_per_second = 100;
-inline constexpr std::uint64_t centiseconds_per_minute = 60 * 100;
-inline constexpr std::uint64_t centiseconds_per_hour = 60 * 60 * 100;
-inline constexpr std::uint64_t centiseconds_per_day = 24 * 60 * 60 * 100;
+inline constexpr std::uint64_t centiseconds_per_minute =
+    60 * centiseconds_per_second;
+inline constexpr std::uint64_t centiseconds_per_hour =
+    60 * centiseconds_per_minute;
+inline constexpr std::uint64_t centiseconds_per_day =
+    24 * centiseconds_per_hour;
 
 constexpr bool is_leap_year(unsigned year) noexcept {
   return (year % 4u == 0 && year % 100u != 0) || year % 400u == 0;
