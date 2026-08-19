@@ -56,6 +56,7 @@ class machine_log final : public machine::diagnostics {
   void report(const machine::service_call& /*call*/) override {}
   void report(const machine::stop_record& /*stop*/) override {}
   void report(const cpu::stop_record& stop) override { record = stop; }
+  void report(const machine::device_stop& /*stop*/) override {}
 
   cpu::stop_record record{};
   std::uint64_t notices{};
