@@ -87,21 +87,24 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: SDL3 backend headers
-        # Acquire::* is the one that matters. apt will wait on a stalled
-        # connection indefinitely: three jobs hung here for the full six
-        # hours of the Actions default, and the log ends mid-fetch —
-        # "Get:5 https://archive.ubuntu.com/ubuntu noble-security
-        # InRelease" and then nothing for six hours. A timeout turns that
-        # into a failed fetch, and the retries turn a failed fetch back
-        # into a working one. (The runner's azure.archive mirror entries
-        # come back Ign:, so this falls through to the public host, which
-        # is the one that stalls.)
+        # apt on these runners stalls mid-fetch and never comes back.
+        # Two guesses at the cause have now been wrong: it is not a
+        # debconf prompt (every hang was in `update`, before a package is
+        # unpacked), and `Acquire::*::Timeout` does not catch it either —
+        # the run after that fix went in stalled for ten minutes on this
+        # very step, and the two after that died at the job timeout.
         #
-        # DEBIAN_FRONTEND is not that fix and is not claimed to be: -y
-        # answers apt's own questions and not debconf's, so an install
-        # whose postinst asks something would hang too. That has not been
-        # observed here — every hang was in `update`, before any package
-        # was unpacked — but an unattended install should set it anyway.
+        # So the timeout is imposed from outside, where apt cannot
+        # decline it. `timeout` sends SIGTERM to the whole thing at two
+        # minutes, which is roughly twice a healthy run of both commands
+        # together, and the loop tries again. That turns an afternoon
+        # into at worst six minutes and, in every stall observed so far,
+        # into a second attempt that simply works.
+        #
+        # The Acquire options stay: they cost nothing and they are right
+        # for the ordinary case of one slow mirror among several.
+        # DEBIAN_FRONTEND stays for the same reason — an unattended
+        # install should set it, whether or not it was ever the cause.
         env:
           DEBIAN_FRONTEND: noninteractive
           APT_TIMEOUTS: >-
@@ -109,12 +112,24 @@ jobs:
             -o Acquire::http::Timeout=30
             -o Acquire::https::Timeout=30
         run: |
-          # Unquoted on purpose: APT_TIMEOUTS is a list of flags and
-          # has to word-split. (scripts/check-shell.sh does not read
+          # $APT_TIMEOUTS is unquoted on purpose: it is a list of flags
+          # and has to word-split. (scripts/check-shell.sh does not read
           # workflow files, so there is no linter to appease here — the
           # note is for whoever edits this next.)
-          sudo apt-get $APT_TIMEOUTS update
-          sudo apt-get $APT_TIMEOUTS install -y --no-install-recommends \
+          apt_try() {
+            for attempt in 1 2 3; do
+              if sudo timeout 120 apt-get $APT_TIMEOUTS "$@"; then
+                return 0
+              fi
+              echo "::warning::apt-get $1 stalled (attempt $attempt/3)"
+              sudo pkill -9 -x apt-get || true
+              sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock
+              sleep 5
+            done
+            return 1
+          }
+          apt_try update
+          apt_try install -y --no-install-recommends \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libjack-jackd2-dev libsndio-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
@@ -360,8 +375,8 @@ jobs:
       # green light here means nothing.
       - name: SDL3 backend headers (X11, Wayland, audio, KMS, udev, D-Bus)
         if: runner.os == 'Linux' && !matrix.emscripten
-        # See the tidy job's copy of this step for why the Acquire
-        # options are here.
+        # See the tidy job's copy of this step for why apt is run under
+        # an external timeout.
         env:
           DEBIAN_FRONTEND: noninteractive
           APT_TIMEOUTS: >-
@@ -369,12 +384,24 @@ jobs:
             -o Acquire::http::Timeout=30
             -o Acquire::https::Timeout=30
         run: |
-          # Unquoted on purpose: APT_TIMEOUTS is a list of flags and
-          # has to word-split. (scripts/check-shell.sh does not read
+          # $APT_TIMEOUTS is unquoted on purpose: it is a list of flags
+          # and has to word-split. (scripts/check-shell.sh does not read
           # workflow files, so there is no linter to appease here — the
           # note is for whoever edits this next.)
-          sudo apt-get $APT_TIMEOUTS update
-          sudo apt-get $APT_TIMEOUTS install -y --no-install-recommends \
+          apt_try() {
+            for attempt in 1 2 3; do
+              if sudo timeout 120 apt-get $APT_TIMEOUTS "$@"; then
+                return 0
+              fi
+              echo "::warning::apt-get $1 stalled (attempt $attempt/3)"
+              sudo pkill -9 -x apt-get || true
+              sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock
+              sleep 5
+            done
+            return 1
+          }
+          apt_try update
+          apt_try install -y --no-install-recommends \
             libasound2-dev libpulse-dev libpipewire-0.3-dev \
             libjack-jackd2-dev libsndio-dev \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
