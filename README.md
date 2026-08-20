@@ -182,6 +182,10 @@ fails the build rather than reporting 100% of a smaller number.
 [`docs/cpu-implementation.md`](docs/cpu-implementation.md) is the CPU
 playbook — the architecture tour, the house style for an instruction
 handler, the commands, and how to read a failing vector.
+[`docs/hosts.md`](docs/hosts.md) is the other end: what the hosts' smoke
+checks settle, the windowed and audio paths included, and the two things
+about a host that only a person in front of a display and a speaker can
+ever confirm.
 
 Formatting (`clang-format`), static analysis (`clang-tidy`), shell linting
 (`shellcheck`), the content guard and the DCO check are gates in CI too,

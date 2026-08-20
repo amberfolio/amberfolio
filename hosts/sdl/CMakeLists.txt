@@ -10,6 +10,7 @@ include(AmberfolioSDL3)
 
 add_executable(amberfolio-sdl
   src/directory_vfs.cpp
+  src/keymap.cpp
   src/main.cpp)
 
 # The binary players run is just "amberfolio"; the target name distinguishes
@@ -34,8 +35,9 @@ if(WIN32)
     VERBATIM)
 endif()
 
-# Two smoke tests, both headless so they run on a CI box with no display
-# and no audio device.
+# The smoke tests. The first three are headless, so they run on a CI box
+# with no display and no audio device; the fourth is not, and that is the
+# point of it (#80).
 #
 # The first is the M0 check kept alive: invoked with no arguments the host
 # prints usage and fails, which proves it starts, links and can talk. The
@@ -76,3 +78,99 @@ add_test(NAME sdl-host-runs-a-program
 set_tests_properties(sdl-host-runs-a-program PROPERTIES
   LABELS smoke
   FIXTURES_REQUIRED sdl_smoke_disk)
+
+# --- The windowed check (#80) ------------------------------------------
+#
+# Everything above this line runs with `--headless`, which is what makes
+# it meaningful on a runner. What that leaves untouched is everything at
+# the window: the texture upload, the integer scaling, SDL's audio stream
+# and the callback that calls `audio_timeline::render()` off the machine
+# thread, and the step from an SDL key event to a posted XT scan code.
+# All of it had been compiled on three desktop targets and run on none.
+#
+# So: a second disk, holding M2-T1's composite program and a demo program
+# for a person to look at and listen to, and one more case that runs the
+# composite with a real window and a real audio device — under SDL's
+# `dummy` video and audio drivers, which is what a runner has.
+# cmake/run-verify-program.cmake says what it asserts and why.
+#
+# The generator links amberfolio::programs, which is how it gets the
+# composite byte for byte rather than building a second one that would
+# drift. That library fetches nothing and links nothing but the core
+# (tests/programs/CMakeLists.txt), and the web host already links it for
+# the same reason, so this is a dependency the tree already has.
+add_executable(amberfolio-sdl-demo-disk tests/make_demo_disk.cpp)
+target_link_libraries(amberfolio-sdl-demo-disk PRIVATE
+  amberfolio::programs
+  amberfolio::warnings)
+
+add_test(NAME sdl-host-demo-disk
+  COMMAND amberfolio-sdl-demo-disk
+    "${CMAKE_CURRENT_BINARY_DIR}/demo-disk")
+set_tests_properties(sdl-host-demo-disk PROPERTIES
+  LABELS smoke
+  FIXTURES_SETUP sdl_demo_disk)
+
+# Two runs of the same script over the same disk, because the two
+# programs answer different halves of the question. The composite draws a
+# picture derived pixel by pixel in #56, echoes the keystroke this host
+# posts and exits with a code it chose — the video, keyboard and exit
+# paths. The demo plays continuously, so it is the one that can be asked
+# whether what reached the audio device was a tone rather than a
+# well-plumbed silence.
+add_test(NAME sdl-host-presents-a-frame
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/demo-disk"
+    "-DPROGRAM=COMPOSIT.EXE"
+    "-DPRESS=A@60"
+    "-DEXPECT_CODE=90"
+    "-DEXPECT_CONSOLE=aDONE"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-verify-program.cmake")
+set_tests_properties(sdl-host-presents-a-frame PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_demo_disk)
+
+add_test(NAME sdl-host-sounds-a-tone
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/demo-disk"
+    "-DPROGRAM=DEMO.EXE"
+    "-DPRESS=Escape@60"
+    "-DEXPECT_CODE=0"
+    "-DEXPECT_SOUND=ON"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-verify-program.cmake")
+set_tests_properties(sdl-host-sounds-a-tone PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_demo_disk)
+
+# --- The mapping table, on its own (#80) -------------------------------
+#
+# The check above posts one key. The table has eighty-odd rows, and a
+# table like that is exactly the kind of thing that is wrong in one row
+# and right in every other — which is a bug a player finds, in a game,
+# on the one key nobody pressed here.
+#
+# So src/keymap.cpp is its own translation unit and this asserts it
+# against core's `xt_keyboard::xt_table`, which was written from the same
+# hardware facts by different hands on a different day. tests/keymap_test.cpp
+# says what the three claims are.
+if(AMBERFOLIO_BUILD_TESTS)
+  include(AmberfolioGoogleTest)
+  include(GoogleTest)
+
+  add_executable(amberfolio-sdl-tests
+    src/keymap.cpp
+    tests/keymap_test.cpp)
+  target_include_directories(amberfolio-sdl-tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src")
+  target_link_libraries(amberfolio-sdl-tests PRIVATE
+    amberfolio::core
+    amberfolio::warnings
+    SDL3::SDL3
+    GTest::gmock_main)
+
+  gtest_discover_tests(amberfolio-sdl-tests
+    DISCOVERY_MODE PRE_TEST
+    PROPERTIES LABELS unit)
+endif()
