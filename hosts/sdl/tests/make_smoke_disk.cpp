@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Writes the directory the SDL host's M2 smoke test runs against: one
-// self-written MZ program that prints a known string and exits with a
-// known code.
+// Writes the directory the SDL host's headless smoke tests run against:
+// two self-written MZ programs, one that finishes and one that does not.
 //
 // A generator rather than a committed binary, because a checked-in .EXE
 // is exactly the kind of opaque blob the content guard exists to keep out
@@ -19,19 +18,23 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <span>
+#include <string>
 #include <system_error>
 #include <vector>
 
 namespace {
 
-/// The program. DS points at the PSP and the image is loaded at PSP+10h,
-/// so an offset into the image is 0x100 further on in DS terms — which is
-/// why the string's address below is its image offset plus 0x100. The
-/// string begins immediately after these twelve instruction bytes, at
-/// image offset 0x0C, hence 0x010C: an address four bytes past that
-/// prints a message missing its first four characters, which is how this
-/// was got wrong the first time and how it was caught.
-constexpr std::array<std::uint8_t, 12> program = {
+/// HELLO.EXE, the M2 check: print a known string, exit with a known code.
+///
+/// DS points at the PSP and the image is loaded at PSP+10h, so an offset
+/// into the image is 0x100 further on in DS terms — which is why the
+/// string's address below is its image offset plus 0x100. The string
+/// begins immediately after these twelve instruction bytes, at image
+/// offset 0x0C, hence 0x010C: an address four bytes past that prints a
+/// message missing its first four characters, which is how this was got
+/// wrong the first time and how it was caught.
+constexpr std::array<std::uint8_t, 12> hello_program = {
     0xBA, 0x0C, 0x01,  // MOV DX, 010Ch   ; DS:DX -> the string
     0xB4, 0x09,        // MOV AH, 09h     ; print $-terminated
     0xCD, 0x21,        // INT 21h
@@ -39,32 +42,36 @@ constexpr std::array<std::uint8_t, 12> program = {
     0xCD, 0x21,        // INT 21h
 };
 
-constexpr const char* text = "amberfolio host says hello\r\n$";
+constexpr const char* hello_text = "amberfolio host says hello\r\n$";
 
-}  // namespace
+/// STOPPER.EXE, the M3-F1 check (#83): ask the BIOS/DOS layer for a
+/// service that is not there, and let the machine refuse.
+///
+/// INT 63h, and the vector is the point. The service floor lays a stub
+/// for all 256 vectors and backs the ones PLAN.md §3 scopes; 63h is
+/// backed by nothing, is not part of any interface this emulator will
+/// ever provide, and so cannot quietly become implemented and turn this
+/// test green for the wrong reason. AH is loaded first only so that the
+/// report has a value to name — the refusal happens at the vector, before
+/// any handler could look at it.
+///
+/// There is no exit path after the INT. There does not need to be one:
+/// an unbacked vector never returns to its caller, which is the whole
+/// shape of "log, don't fake" at this layer (diagnostics.h). The HLT is
+/// there so that a run which somehow *did* return has somewhere defined
+/// to end up rather than executing whatever follows in memory.
+constexpr std::array<std::uint8_t, 5> stopper_program = {
+    0xB4, 0x77,  // MOV AH, 77h     ; something for the report to name
+    0xCD, 0x63,  // INT 63h         ; nothing backs this vector
+    0xF4,        // HLT             ; unreachable; see above
+};
 
-int main(int argc, char** argv) try {
-  if (argc != 2) {
-    std::fprintf(stderr, "usage: make_smoke_disk <dir>\n");
-    return EXIT_FAILURE;
-  }
-
-  std::error_code ec;
-  const std::filesystem::path root(argv[1]);
-  std::filesystem::create_directories(root, ec);
-  if (ec) {
-    std::fprintf(stderr, "cannot create %s\n", root.string().c_str());
-    return EXIT_FAILURE;
-  }
-
-  std::vector<std::uint8_t> image(program.begin(), program.end());
-  for (const char* c = text; *c != '\0'; ++c) {
-    image.push_back(static_cast<std::uint8_t>(*c));
-  }
-
-  // A 32-byte (two-paragraph) header with no relocations. CS:IP is
-  // 0000:0000 and SS:SP is 0000:0100, both relative to the load segment
-  // the loader picks.
+/// Wrap `image` in a 32-byte (two-paragraph) MZ header with no
+/// relocations and write it to `root/name`. CS:IP is 0000:0000 and SS:SP
+/// is 0000:0100, both relative to the load segment the loader picks.
+[[nodiscard]] bool write_exe(const std::filesystem::path& root,
+                             const char* name,
+                             std::span<const std::uint8_t> image) {
   constexpr std::uint16_t header_paragraphs = 2;
   // Sized in the type it is used in, so the products below are not an
   // `unsigned` multiplication widened after the fact — the habit
@@ -96,11 +103,39 @@ int main(int argc, char** argv) try {
 
   file.insert(file.end(), image.begin(), image.end());
 
-  std::ofstream out(root / "HELLO.EXE", std::ios::binary | std::ios::trunc);
+  std::ofstream out(root / name, std::ios::binary | std::ios::trunc);
   out.write(reinterpret_cast<const char*>(file.data()),
             static_cast<std::streamsize>(file.size()));
-  if (!out) {
+  return static_cast<bool>(out);
+}
+
+}  // namespace
+
+int main(int argc, char** argv) try {
+  if (argc != 2) {
+    std::fprintf(stderr, "usage: make_smoke_disk <dir>\n");
+    return EXIT_FAILURE;
+  }
+
+  std::error_code ec;
+  const std::filesystem::path root(argv[1]);
+  std::filesystem::create_directories(root, ec);
+  if (ec) {
+    std::fprintf(stderr, "cannot create %s\n", root.string().c_str());
+    return EXIT_FAILURE;
+  }
+
+  std::vector<std::uint8_t> hello(hello_program.begin(), hello_program.end());
+  for (const char* c = hello_text; *c != '\0'; ++c) {
+    hello.push_back(static_cast<std::uint8_t>(*c));
+  }
+
+  if (!write_exe(root, "HELLO.EXE", hello)) {
     std::fprintf(stderr, "cannot write HELLO.EXE\n");
+    return EXIT_FAILURE;
+  }
+  if (!write_exe(root, "STOPPER.EXE", stopper_program)) {
+    std::fprintf(stderr, "cannot write STOPPER.EXE\n");
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

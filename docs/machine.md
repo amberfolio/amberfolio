@@ -215,6 +215,41 @@ closed by the fault channel in #46, and the EGA joined it at closeout. If
 you find yourself inventing a private way to say no, that is the signal
 to fix the shared one instead.
 
+### The refusal a reader actually sees
+
+A stop is only half of "log, don't fake"; the other half is that the line
+it produces has to be worth reading. `machine/report.h` is that line, and
+it is formatted **in core** rather than in each host, because M3's exit
+criterion is desktop *and* web and the two have to print the same
+sentence at the same step for the comparison to mean anything (#84).
+
+```
+amberfolio: stop reason=unimplemented_service steps=99172 ticks=396688 frames=20 cs=F000 ip=0121 at=0B5D2
+amberfolio: stop call=INT21 ah=35 al=00 ax=3500 from=0B58:0052 outcome=handled
+amberfolio: stop next=INT 21h AH=35h AL=00h
+```
+
+Three things follow from that shape, and they are the whole reason the
+machine keeps anything beyond `stop_record`:
+
+- **`machine::steps()`.** Ticks and steps are the same fact twice only
+  while the speed governor is left alone; the step count is what stays
+  comparable between two runs, and it is what "at the same step" means.
+- **`machine::last_service_call()` and `last_device_stop()`.** Kept
+  unconditionally, because they are what turn `reason=... at=0B5D2` into
+  a worklist entry. `outcome=` is the field that tells the two refusals
+  above apart: `unimplemented` is a vector nothing backs,
+  `handled` with a service-shaped stop is a handler that ran and said no
+  to this AH.
+- **`machine::trace()`.** The last 256 instructions and 64 service calls,
+  in a fixed ring, **off unless a caller asks** — one branch per step
+  when it is off (`machine/trace.h`). It answers the question a bare
+  address cannot: how the program got there.
+
+The `next=` line is the M3 method in one sentence: it names the one
+service, register or opcode to widen, so the worklist is written by the
+machine rather than inferred by whoever is reading the log.
+
 ---
 
 ## 6. Talking to a host
