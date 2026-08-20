@@ -20,8 +20,16 @@
 
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/clock.h"
+#include "amberfolio/machine/dos.h"
+#include "amberfolio/machine/ega.h"
+#include "amberfolio/machine/int10.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/memory_vfs.h"
+#include "amberfolio/machine/pic.h"
+#include "amberfolio/machine/pit.h"
 #include "amberfolio/machine/platform.h"
+#include "amberfolio/machine/renderer.h"
+#include "amberfolio/machine/speaker.h"
 #include "amberfolio/version.h"
 
 /// The handle's definition, which is a machine and nothing else.
@@ -29,6 +37,18 @@
 /// A wrapper struct rather than `typedef machine af_machine`, because the
 /// C header declares `struct af_machine` and C has no idea what a
 /// namespace is; this is the one place the two spellings meet.
+///
+/// **Deliberately bare.** The M2 devices (#46-#53) all landed as classes
+/// a caller wires up with `machine::attach()`/`schedule()`, and nothing
+/// here does that on `af_machine_create()`'s behalf — a fresh machine is
+/// CPU and RAM, exactly as `tests/core/abi_test.cpp`'s
+/// `AStoppedMachineStillAnswersEveryPull` depends on: it posts a plain
+/// `INT 21h` and asserts the machine *stops*, because nothing backs the
+/// vector. That is PLAN.md §3's "log, don't fake" rule, demonstrated at
+/// the ABI boundary, and it would go silently false the moment this
+/// struct grew a DOS handler by default. A host that wants the M2
+/// device set — the wasm dev page (#55) does — asks for it explicitly,
+/// below.
 struct af_machine {
   amberfolio::machine::machine box;
 };
@@ -92,6 +112,107 @@ const machine* box_of(const af_machine* handle) noexcept {
   return handle == nullptr ? nullptr : &handle->box;
 }
 
+// --- The reference device set (M2-H2, #55) -----------------------------
+//
+// PLAN.md §3's whole device list — PIT, 8259, EGA, its renderer, the
+// speaker — plus the video and DOS service handlers, wired up exactly the
+// way every device test's own `rig` wires it by hand
+// (int10_test.cpp, dos_test.cpp, pit_test.cpp...). Nothing below is new
+// machinery; it is `machine::attach()`/`schedule()` and two `install_*()`
+// calls, composed once.
+//
+// This is **opt-in**, through `af_machine_attach_reference_devices()`
+// below, and not something `af_machine_create()` does automatically —
+// `af_machine`'s own comment says why: a bare machine with an unbacked
+// INT 21h is a documented, tested fact
+// (`abi_test.cpp::AStoppedMachineStillAnswersEveryPull`), and folding
+// device wiring into `create()` would make it false for every caller,
+// not only the ones that want a full PC. The wasm dev page (#55) is the
+// first caller that does; a native host wanting the same shape through
+// the ABI (rather than linking `amberfolio::core` directly, as
+// `hosts/sdl` does) would call the identical function.
+struct reference_devices {
+  /// "The M2 dev page's backend until #55 lands IndexedDB" — memory_vfs.h
+  /// describes this exact class for this exact purpose, written before
+  /// this file used it. The embedded demo program does no file I/O, so
+  /// this starts and stays empty; it exists so INT 21h's file functions
+  /// have a real (if empty) filesystem to answer over instead of a null
+  /// one, on the chance a future demo program opens a file.
+  amberfolio::machine::memory_filesystem fs;
+
+  /// The minimal 8259: exists only so PIT channel 0's IRQ0 has somewhere
+  /// to go (pic.h). The M2-H2 demo program never touches it — its tone
+  /// drives PIT channel 2 directly — but a program that does is not
+  /// stopped for touching hardware the rest of this set assumes is
+  /// there.
+  amberfolio::machine::pic::controller pic_ctrl;
+
+  /// Channels 0 (system tick) and 2 (speaker tone), per PLAN.md §3.
+  amberfolio::machine::pit pit_dev;
+
+  /// 320x200x16 planar VRAM and its registers (ega.h).
+  amberfolio::machine::ega video;
+
+  /// Composes `video`'s planes into the machine's framebuffer on ega.h's
+  /// 60 Hz virtual-time deadline. Not a `device` (renderer.h's own top
+  /// comment) — it answers no bus cycle — so it is `schedule()`d, not
+  /// `attach()`ed, and its `reset()` has to be called by hand, both here
+  /// and after every `af_machine_reset()` on a machine this is attached
+  /// to (see that function below).
+  amberfolio::machine::renderer render;
+
+  /// Port 61h, PIT channel 2's gate and tone, box-filtered into the
+  /// machine's audio timeline (speaker.h).
+  amberfolio::machine::speaker spk;
+
+  /// Construction order is declaration order, not this list's order —
+  /// worth stating because every later member's constructor takes a
+  /// reference to an earlier one: `pic_ctrl` before `pit_dev` (the PIT
+  /// raises IRQ0 through it), `pit_dev` before `spk` (the speaker reads
+  /// channel 2 through it and registers as its one reprogram listener),
+  /// `video` before `render` (the renderer reads its planes). `fs` has
+  /// no dependents and sits wherever is convenient.
+  explicit reference_devices(machine& box) noexcept
+      : fs(),
+        pic_ctrl(box),
+        pit_dev(box, pic_ctrl),
+        video(),
+        render(box, video),
+        spk(box, pit_dev) {
+    // Every attach() here claims a distinct, non-overlapping memory
+    // window or port range (ega.h's 0xA0000 window; pic.h's 20h-21h;
+    // pit.h's 40h-43h; speaker.h's 61h), so none of these can fail on a
+    // freshly created machine — but the calls still report through
+    // `machine::attach()`'s own
+    // `stop_with(stop_reason::conflicting_claim, ...)` if that ever
+    // stops being true, rather than being asserted away.
+    box.set_filesystem(fs);
+    box.attach(pic_ctrl);
+    box.attach(pit_dev);
+    box.attach(video);
+    box.attach(spk);
+    box.schedule(pit_dev.channel0_deadline());
+    box.schedule(pit_dev.channel2_deadline());
+    box.schedule(spk);
+
+    // "Call once after construction and again after every
+    // machine::reset()" (renderer.h). af_machine_reset() below is the
+    // second half of that promise.
+    render.reset();
+
+    amberfolio::machine::install_int10(box.services());
+    amberfolio::machine::install_dos_services(box.services());
+  }
+};
+
+/// At most one reference device set, tied to the one machine
+/// `af_machine_create()` can produce — the same "one of these, in static
+/// storage, placement-new'd on demand" shape `storage`/`live` above uses,
+/// for the same reason (PLAN.md §4: core does not allocate).
+alignas(reference_devices)
+    std::array<std::byte, sizeof(reference_devices)> devices_storage;
+reference_devices* devices_live = nullptr;
+
 }  // namespace
 
 extern "C" {
@@ -127,8 +248,33 @@ void af_machine_destroy(af_machine* handle) {
   if (handle == nullptr || handle != live) {
     return;
   }
+  // The reference device set, if this machine has one, is this handle's
+  // own state exactly as `live` itself is — nothing ties its lifetime to
+  // anything else, so nothing but this call is in a position to end it.
+  // Torn down before the machine it points into, for the ordinary reason
+  // a device must not outlive what it was given a reference to.
+  if (devices_live != nullptr) {
+    devices_live->~reference_devices();
+    devices_live = nullptr;
+  }
   live->~af_machine();
   live = nullptr;
+}
+
+uint32_t af_machine_attach_reference_devices(af_machine* handle) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  // Idempotent rather than an error: a host that attaches once at
+  // startup and again defensively after a code path it is not sure ran
+  // should not have to track whether it already did this, and there is
+  // only ever one machine for this to be attached to twice over.
+  if (devices_live == nullptr) {
+    devices_live = ::new (static_cast<void*>(devices_storage.data()))
+        reference_devices(*box);
+  }
+  return AF_OK;
 }
 
 uint32_t af_machine_reset(af_machine* handle) {
@@ -137,6 +283,15 @@ uint32_t af_machine_reset(af_machine* handle) {
     return AF_NO_MACHINE;
   }
   box->reset();
+  // machine::reset() walks every *attached* device (machine.h), and the
+  // renderer is deliberately not one (renderer.h's own top comment) — so
+  // it does not know to re-arm the renderer's frame deadline, and
+  // nothing else will if this does not. Only relevant once
+  // af_machine_attach_reference_devices() has been called; on a bare
+  // machine there is no renderer to re-arm.
+  if (devices_live != nullptr) {
+    devices_live->render.reset();
+  }
   return AF_OK;
 }
 

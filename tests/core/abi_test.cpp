@@ -104,6 +104,7 @@ TEST(Abi, ReportsTheFactsAHostWouldOtherwiseGuess) {
 // the middle of its render loop. Every entry point, so that the promise is
 // checked and not merely stated.
 TEST(Abi, EveryCallToleratesANullHandle) {
+  EXPECT_EQ(af_machine_attach_reference_devices(nullptr), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_reset(nullptr), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_run_until(nullptr, 10.0), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_time(nullptr), 0.0);
@@ -331,6 +332,54 @@ TEST(Abi, AStoppedMachineStillAnswersEveryPull) {
 
   // And the RESET line clears it, which is the way out.
   EXPECT_EQ(af_machine_reset(box.get()), AF_OK);
+  EXPECT_EQ(af_machine_stopped(box.get()), 0);
+}
+
+// M2-H2 (#55): the opt-in reference device set. The test above proves a
+// *bare* machine's INT 21h stops; this is the other half — attaching the
+// reference set turns that same vector into something real, which is
+// what lets the wasm dev page (and this test) tell "the ABI's device
+// wiring is present and correct" from "a bare machine happens to answer
+// something."
+TEST(Abi, AttachReferenceDevicesUnlocksTheDeviceSetAndIsIdempotent) {
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+
+  EXPECT_EQ(af_machine_attach_reference_devices(box.get()), AF_OK);
+  // Idempotent: a second call must not fault, leak, or disturb the first
+  // one's wiring (abi.h's own documented contract for this call).
+  EXPECT_EQ(af_machine_attach_reference_devices(box.get()), AF_OK);
+
+  // mov ax, 0x000D ; int 10h ; hlt — sets video mode 0Dh. On a bare
+  // machine this is exactly the shape of program
+  // AStoppedMachineStillAnswersEveryPull uses to prove a vector with no
+  // handler stops the machine; here it must not, because
+  // install_int10() is part of what attach() just did.
+  const std::array<std::uint8_t, 6> set_mode{0xB8, 0x0D, 0x00, 0xCD, 0x10, 0xF4};
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, set_mode.data(),
+                                    static_cast<std::uint32_t>(set_mode.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+
+  EXPECT_EQ(af_machine_run_until(box.get(), 10'000.0), AF_OK);
+  EXPECT_EQ(af_machine_stopped(box.get()), 0);
+  EXPECT_EQ(af_machine_stop_reason(box.get()), AF_OK);
+
+  // The renderer (attached by this call, not by af_machine_create()) has
+  // had its own 60 Hz virtual-time deadline armed and had time to fire
+  // at least once, so the frame generation has moved off zero.
+  EXPECT_GT(af_machine_frame_generation(box.get()), 0.0);
+
+  // reset() clears the stop and the mode, exactly as the RESET line does
+  // on a real machine; the device set itself stays attached (it is
+  // wiring, not run state — machine.h's own distinction), so the same
+  // program runs clean a second time.
+  EXPECT_EQ(af_machine_reset(box.get()), AF_OK);
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, set_mode.data(),
+                                    static_cast<std::uint32_t>(set_mode.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  EXPECT_EQ(af_machine_run_until(box.get(), 10'000.0), AF_OK);
   EXPECT_EQ(af_machine_stopped(box.get()), 0);
 }
 
