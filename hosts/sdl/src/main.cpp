@@ -6,6 +6,9 @@
 //
 //     amberfolio <dir> <program.exe> [--headless] [--scale N]
 //                                     [--verify] [--press KEY@FRAME]
+//                                     [--steps N] [--until TICKS]
+//                                     [--dump PREFIX] [--trace]
+//                                     [-- ARGUMENTS...]
 //
 // `--headless` opens no window and no audio device. That is what keeps
 // the CI smoke test meaningful on a runner with neither, and it is the
@@ -14,6 +17,55 @@
 // `--verify` and `--press` are the opposite: they exist so the *windowed*
 // path can be run without a person in front of it. See "Checking the
 // paths a headless run cannot" below.
+//
+// The rest arrived with M3-F1 (#83) and are the subject of the next
+// section.
+//
+//
+// The boot driver
+// ---------------
+//
+// M3 boots the player's own copy, and the method (#94) is a loop: run it,
+// read the line it stopped on, widen the one service that line names,
+// run it again. Everything in this file that is not M2's host loop is in
+// service of making that line worth reading.
+//
+//   --steps N        stop after N scheduling steps, wherever the program
+//   --until TICKS    stop at TICKS of virtual time
+//
+//     A hang is otherwise the one failure this host cannot report: the
+//     machine is running, nothing has refused anything, and the process
+//     sits there. A budget turns it into an ending with a CS:IP, a step
+//     count and a trace on it — which is a worklist entry, where a
+//     hung process is not. The budget is clamped into the run slice
+//     rather than checked after it, so the run ends on the step asked
+//     for and not somewhere inside the frame after it: a stop you cannot
+//     reproduce exactly is not a worklist entry either.
+//
+//   --dump PREFIX    write PREFIX.ppm and PREFIX.wav when the run ends
+//
+//     The frame the machine composed and the sound it made, in two
+//     formats every viewer opens (dump.h). docs/machine.md §7's warning
+//     about goldens is the argument: "the title renders" is a claim to
+//     look at, and no test in this repository will ever run the file
+//     that produces it.
+//
+//   --trace          keep the trace ring, and print it with the report
+//
+//     Off by default, in the machine, at a cost of one branch per step
+//     (machine/trace.h). What it answers is the question a bare address
+//     cannot: how the program got there.
+//
+//   -- ARGUMENTS     everything after `--` becomes the command tail
+//
+//     Passed to the loader verbatim, with the single leading space DOS's
+//     own command-line parsing leaves in front of a tail. The PSP half of
+//     this — what a program that parses its tail actually finds — is #89.
+//
+// The report itself is formatted in core, not here
+// (machine/report.h), because M3's exit criterion is desktop *and* web
+// and the two hosts have to print the same sentence at the same step for
+// that comparison to mean anything (#84).
 //
 //
 // The loop, and the one rule it exists to honour
@@ -120,6 +172,7 @@
 #include <cstring>
 #include <exception>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
@@ -130,6 +183,7 @@
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/dos.h"
 #include "amberfolio/machine/ega.h"
+#include "amberfolio/machine/fingerprint.h"
 #include "amberfolio/machine/int10.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
@@ -137,9 +191,13 @@
 #include "amberfolio/machine/pit.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/renderer.h"
+#include "amberfolio/machine/report.h"
 #include "amberfolio/machine/speaker.h"
+#include "amberfolio/machine/trace.h"
+#include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
 #include "directory_vfs.h"
+#include "dump.h"
 #include "keymap.h"
 
 // <cstdio> rather than std::format/std::print, and not only for the wasm
@@ -154,6 +212,13 @@ using namespace amberfolio;
 
 constexpr unsigned default_scale = 3;
 constexpr unsigned audio_sample_rate = 48000;
+
+/// How much of a run `--dump` keeps sound for, in seconds of virtual
+/// time. Long enough to hear a title sequence through; short enough that
+/// the buffer it reserves is measured in megabytes rather than
+/// gigabytes, which matters because the audio thread appends to it and
+/// so it can never be grown.
+constexpr unsigned dump_audio_seconds = 60;
 
 /// Everything the machine is made of, in one place so its construction
 /// order is visible: the PIC exists before the PIT that raises IRQ0
@@ -197,9 +262,22 @@ struct wired_machine {
 /// (machine/diagnostics.h).
 class stderr_diagnostics final : public machine::diagnostics {
  public:
+  /// Whether to print every service call as it is made. Off by default,
+  /// for the reason diagnostics.h gives: a call is something the program
+  /// *did*, not a symptom of anything, and a boot makes tens of thousands
+  /// of them. `--trace` turns it on, so that the live stream and the ring
+  /// dumped at the end are one facility asked for once.
+  void set_tracing(bool on) noexcept { tracing_ = on; }
+
   void report(const machine::notice& what) override {
-    std::fprintf(stderr, "amberfolio: nothing answers at %05X (kind %u)\n",
-                 what.at, static_cast<unsigned>(what.what));
+    // Named rather than numbered (machine/report.h), and with the byte and
+    // the caller it used to leave out. A number is a thing the reader has
+    // to go and look up, on the one line whose whole purpose is to be
+    // read.
+    std::fprintf(stderr,
+                 "amberfolio: notice %s at %05X value=%02X from=%04X:%04X\n",
+                 machine::notice_kind_name(what.what), what.at, what.value,
+                 what.cs, what.ip);
   }
 
   void report(const machine::stop_record& stop) override {
@@ -210,8 +288,11 @@ class stderr_diagnostics final : public machine::diagnostics {
     if (stop.reason == machine::stop_reason::program_exited) {
       return;
     }
-    std::fprintf(stderr, "amberfolio: machine stopped, reason %u at %05X\n",
-                 static_cast<unsigned>(stop.reason), stop.at);
+    // Deliberately terse: the full account is the stop report main()
+    // prints once the run has ended, and the same fact printed twice in
+    // two shapes is how a reader comes to trust the wrong one.
+    std::fprintf(stderr, "amberfolio: machine stopped, %s at %05X\n",
+                 machine::stop_reason_name(stop.reason), stop.at);
   }
 
   void report(const cpu::stop_record& stop) override {
@@ -221,12 +302,24 @@ class stderr_diagnostics final : public machine::diagnostics {
   }
 
   void report(const machine::device_stop& stop) override {
-    std::fprintf(stderr, "amberfolio: device declined %04X\n", stop.at);
+    std::fprintf(
+        stderr, "amberfolio: device declined %05X detail=%02X from=%04X:%04X\n",
+        stop.at, stop.detail, stop.cs, stop.ip);
   }
 
   void report(const machine::service_call& call) override {
-    (void)call;  // Traced only when someone asks; silent by default.
+    if (!tracing_) {
+      return;
+    }
+    std::fprintf(stderr, "amberfolio: call INT%02X ax=%04X from=%04X:%04X %s\n",
+                 call.vector, call.ax, call.caller_cs, call.caller_ip,
+                 call.outcome == machine::service_outcome::handled
+                     ? "handled"
+                     : "unimplemented");
   }
+
+ private:
+  bool tracing_{false};
 };
 
 /// Drain whatever DOS console output has accumulated to stdout.
@@ -268,13 +361,45 @@ void drain_console(machine::machine& box) {
 /// answering silence is a correct answer to most of any run. Counting
 /// the samples that were not zero is what tells a tone that reached
 /// SDL's stream from a tone that was only ever in the edge list.
+/// `capture` is `--dump`'s: a buffer sized once, before the stream is
+/// opened, and filled by whichever thread does the pulling — the audio
+/// callback when there is a device, the machine thread when there is
+/// not. It is never grown while a callback might be running, which is
+/// what makes appending to it from the audio thread legitimate; when it
+/// is full it stops taking samples and `truncated` says so, rather than
+/// allocating on the one thread that must not.
 struct audio_bridge {
   machine::machine* box{};
   std::vector<float> scratch;
   std::atomic<std::uint64_t> callbacks{0};
   std::atomic<std::uint64_t> samples{0};
   std::atomic<std::uint64_t> sounded{0};
+  std::vector<float> capture;
+  std::atomic<std::size_t> captured{0};
+  std::atomic<bool> truncated{false};
 };
+
+/// Append what was just pulled to the capture buffer, if there is one.
+///
+/// Called from the audio thread when a device is open and from the
+/// machine thread when one is not; in both cases it is the *only* writer,
+/// which is the whole of what the counters' relaxed ordering rests on
+/// (the main thread reads them after the stream has been destroyed).
+void capture_samples(audio_bridge& bridge, std::span<const float> pulled) {
+  if (bridge.capture.empty()) {
+    return;
+  }
+  const std::size_t at = bridge.captured.load(std::memory_order_relaxed);
+  const std::size_t room = bridge.capture.size() - at;
+  const std::size_t count = pulled.size() < room ? pulled.size() : room;
+  for (std::size_t i = 0; i < count; ++i) {
+    bridge.capture[at + i] = pulled[i];
+  }
+  bridge.captured.store(at + count, std::memory_order_relaxed);
+  if (count < pulled.size()) {
+    bridge.truncated.store(true, std::memory_order_relaxed);
+  }
+}
 
 void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
                         int /*total*/) {
@@ -306,6 +431,8 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
   bridge->callbacks.fetch_add(1, std::memory_order_relaxed);
   bridge->samples.fetch_add(wanted, std::memory_order_relaxed);
   bridge->sounded.fetch_add(sounded, std::memory_order_relaxed);
+
+  capture_samples(*bridge, out);
 }
 
 /// A keystroke the host gives itself: which key, and which frame of the
@@ -430,6 +557,45 @@ void verify_target(SDL_Renderer* renderer, std::span<const std::uint32_t> src,
   report.mismatched += wrong;
 }
 
+/// Where this run slice has to stop: the next frame boundary, or a
+/// budget, whichever comes first.
+///
+/// Clamping the slice rather than checking after it is what makes
+/// `--steps N` end on step N rather than somewhere inside frame N+1. A
+/// step budget becomes a tick budget by the identity `run_result` states
+/// — a step costs `step_cost()` ticks, and `run()` steps while the clock
+/// is short of its target — so `now + remaining * cost` is exactly
+/// `remaining` more steps, provided nothing changes the governor
+/// mid-run, which nothing in this host does.
+[[nodiscard]] machine::ticks slice_end(const machine::machine& box,
+                                       machine::ticks frame_ticks,
+                                       std::uint64_t step_budget,
+                                       machine::ticks tick_budget) {
+  machine::ticks target = box.time() + frame_ticks;
+
+  if (tick_budget != 0 && tick_budget < target) {
+    target = tick_budget;
+  }
+
+  if (step_budget != 0 && box.steps() < step_budget) {
+    const std::uint64_t remaining = step_budget - box.steps();
+    const machine::ticks cost = box.step_cost();
+    // Only when the product cannot run off the end of the type. A budget
+    // big enough to overflow is one this run will not reach anyway, so
+    // leaving the frame boundary alone is both safe and right.
+    const machine::ticks headroom =
+        (std::numeric_limits<machine::ticks>::max() - box.time()) / cost;
+    if (remaining <= headroom) {
+      const machine::ticks by_steps = box.time() + (remaining * cost);
+      if (by_steps < target) {
+        target = by_steps;
+      }
+    }
+  }
+
+  return target;
+}
+
 struct options {
   std::filesystem::path root;
   std::string program;
@@ -437,8 +603,45 @@ struct options {
   unsigned scale{default_scale};
   bool verify{false};
   std::vector<scripted_press> presses;
+
+  /// Zero means "no budget" for both. Zero is not a budget anyone can
+  /// want — a run of no steps observes nothing — so it is free to be the
+  /// sentinel, and a caller does not have to say `--steps 0` to mean
+  /// "unlimited".
+  std::uint64_t step_budget{0};
+  machine::ticks tick_budget{0};
+
+  /// Where `--dump` writes. Empty when it was not asked for; the two
+  /// files are this plus `.ppm` and `.wav`.
+  std::string dump_prefix;
+
+  bool trace{false};
+
+  /// Everything after `--`, joined with single spaces and with the one
+  /// leading space DOS leaves in front of a command tail. Empty when
+  /// there was no `--`, which is a program invoked with no arguments
+  /// rather than one invoked with an empty argument.
+  std::string command_tail;
+
   bool valid{false};
 };
+
+/// A non-negative integer argument, or false for anything that is not
+/// one. `strtoull` rather than `atoi` for the reason `--scale` already
+/// gives: it can tell "0" from "not a number", and here the difference
+/// decides whether a budget exists at all.
+[[nodiscard]] bool parse_count(const char* text, std::uint64_t& out) {
+  if (text == nullptr || *text == '\0' || *text == '-') {
+    return false;
+  }
+  char* end = nullptr;
+  const unsigned long long value = std::strtoull(text, &end, 10);
+  if (end == nullptr || *end != '\0') {
+    return false;
+  }
+  out = static_cast<std::uint64_t>(value);
+  return true;
+}
 
 /// `KEY@FRAME`, into a press. False on anything that is not that.
 ///
@@ -474,6 +677,18 @@ struct options {
   std::vector<std::string_view> positional;
   for (int i = 1; i < argc; ++i) {
     const std::string_view arg = argv[i];
+    if (arg == "--") {
+      // Everything past here belongs to the program, not to this host —
+      // including anything that looks like one of our own options, which
+      // is the entire point of the separator. The leading space is what
+      // COMMAND.COM leaves between the program name and its tail, and a
+      // program that counts characters at PSP:80h expects it.
+      for (int j = i + 1; j < argc; ++j) {
+        opts.command_tail += ' ';
+        opts.command_tail += argv[j];
+      }
+      break;
+    }
     if (arg == "--headless") {
       opts.headless = true;
     } else if (arg == "--verify") {
@@ -486,6 +701,22 @@ struct options {
         return opts;
       }
       opts.presses.push_back(std::move(press));
+    } else if (arg == "--trace") {
+      opts.trace = true;
+    } else if (arg == "--dump" && i + 1 < argc) {
+      opts.dump_prefix = argv[++i];
+    } else if (arg == "--steps" && i + 1 < argc) {
+      if (!parse_count(argv[++i], opts.step_budget) || opts.step_budget == 0) {
+        std::fprintf(stderr, "amberfolio: --steps wants a positive count\n");
+        return opts;
+      }
+    } else if (arg == "--until" && i + 1 < argc) {
+      std::uint64_t ticks = 0;
+      if (!parse_count(argv[++i], ticks) || ticks == 0) {
+        std::fprintf(stderr, "amberfolio: --until wants a positive tick\n");
+        return opts;
+      }
+      opts.tick_budget = static_cast<machine::ticks>(ticks);
     } else if (arg == "--scale" && i + 1 < argc) {
       // strtol rather than atoi, which cannot tell "0" from "not a
       // number" - a distinction worth having when the answer decides
@@ -507,8 +738,10 @@ struct options {
   if (positional.size() != 2) {
     std::fprintf(stderr,
                  "usage: amberfolio <dir> <program.exe> [--headless]"
-                 " [--scale N] [--verify]"
-                 " [--press KEY@FRAME]\n");
+                 " [--scale N] [--verify] [--press KEY@FRAME]\n"
+                 "                                      [--steps N]"
+                 " [--until TICKS] [--dump PREFIX] [--trace]\n"
+                 "                                      [-- ARGUMENTS...]\n");
     return opts;
   }
 
@@ -557,13 +790,49 @@ int main(int argc, char** argv) try {
     return EXIT_FAILURE;
   }
 
+  // The identity of the player's file, printed before anything runs.
+  //
+  // A fact about the file, not content from it (CONTRIBUTING.md), and the
+  // one M4's fingerprint table will key its seams on (PLAN.md §2, §5). It
+  // is printed even when the load then fails, because "which file was
+  // this" is the first question anybody asks of a boot log and a load
+  // that failed is exactly when it matters.
+  const machine::vfs_result<sha256_digest> identity =
+      machine::fingerprint_file(files, where.value);
+  if (identity.ok()) {
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(identity.value, hex));
+    std::fprintf(stderr, "amberfolio: load %s sha256=%s\n",
+                 opts.program.c_str(), hex.data());
+  } else {
+    std::fprintf(stderr,
+                 "amberfolio: load %s could not be fingerprinted"
+                 " (vfs error %u)\n",
+                 opts.program.c_str(), static_cast<unsigned>(identity.error));
+  }
+
+  // Asked for before the program is loaded, so that the ring covers the
+  // whole run rather than starting a few instructions into it. It is a
+  // setting on the machine and survives every reset (trace.h).
+  box.trace().enable(opts.trace);
+  log.set_tracing(opts.trace);
+
   const machine::loader_result<machine::loaded_program> loaded =
-      machine::load_program(box, files, where.value);
+      machine::load_program(box, files, where.value,
+                            std::span<const char>(opts.command_tail.data(),
+                                                  opts.command_tail.size()));
   if (!loaded.ok()) {
     std::fprintf(stderr, "amberfolio: cannot load %s (loader error %u)\n",
                  opts.program.c_str(), static_cast<unsigned>(loaded.error));
     return EXIT_FAILURE;
   }
+  std::fprintf(stderr,
+               "amberfolio: load psp=%04X image=%04X entry=%04X:%04X"
+               " stack=%04X:%04X tail=%zu\n",
+               loaded.value.psp_segment, loaded.value.load_segment,
+               loaded.value.entry_cs, loaded.value.entry_ip,
+               loaded.value.entry_ss, loaded.value.entry_sp,
+               opts.command_tail.size());
 
   const std::uint32_t init_flags =
       opts.headless ? 0U : (SDL_INIT_VIDEO | SDL_INIT_AUDIO);
@@ -581,6 +850,18 @@ int main(int argc, char** argv) try {
   SDL_Texture* texture = nullptr;
   SDL_AudioStream* audio = nullptr;
   audio_bridge bridge;
+  bridge.box = &box;
+
+  // `--dump`'s WAV, sized once and never resized: the audio thread
+  // appends to it and must not allocate. A minute of virtual time is
+  // enough to hear a title sequence through and small enough to be free
+  // on any machine that can run this at all; a run past it keeps going
+  // and the file simply ends where the buffer did, which is said out
+  // loud rather than left to be noticed.
+  if (!opts.dump_prefix.empty()) {
+    bridge.capture.assign(std::size_t{audio_sample_rate} * dump_audio_seconds,
+                          0.0F);
+  }
 
   if (!opts.headless) {
     const int w = static_cast<int>(machine::frame_width * opts.scale);
@@ -631,7 +912,34 @@ int main(int argc, char** argv) try {
   std::vector<std::uint32_t> argb(machine::frame_pixels);
   bool quit = false;
 
-  while (!quit && !box.stopped()) {
+  // How much of the speaker's timeline one frame of virtual time is
+  // worth, in samples. Only pulled when there is no audio device doing
+  // the pulling — see the call site.
+  const auto frame_samples = static_cast<std::size_t>(
+      (static_cast<std::uint64_t>(audio_sample_rate) * frame_ticks) /
+      machine::pit_input_hz);
+  std::vector<float> headless_audio(frame_samples);
+
+  machine::run_end ended = machine::run_end::stopped;
+
+  for (;;) {
+    if (box.stopped()) {
+      ended = machine::run_end::stopped;
+      break;
+    }
+    if (quit) {
+      ended = machine::run_end::host_quit;
+      break;
+    }
+    if (opts.step_budget != 0 && box.steps() >= opts.step_budget) {
+      ended = machine::run_end::step_budget;
+      break;
+    }
+    if (opts.tick_budget != 0 && box.time() >= opts.tick_budget) {
+      ended = machine::run_end::tick_budget;
+      break;
+    }
+
     const auto frame_started = std::chrono::steady_clock::now();
 
     if (!opts.headless) {
@@ -665,9 +973,20 @@ int main(int argc, char** argv) try {
 
     // Virtual time first, and to a boundary the machine chose. Nothing
     // about how long the last frame took on the wall gets to influence
-    // how much machine time passes here.
-    box.run(box.time() + frame_ticks);
+    // how much machine time passes here. A budget may bring the boundary
+    // closer; nothing may push it further out.
+    box.run(slice_end(box, frame_ticks, opts.step_budget, opts.tick_budget));
     drain_console(box);
+
+    // With no audio device there is nobody pulling the speaker, so a
+    // `--dump` run has to pull it here, on the machine thread — which the
+    // threading contract permits ("exactly one thread", and this is it).
+    // Not done when a device is open: two consumers of one timeline would
+    // each get half the samples (platform.h).
+    if (audio == nullptr && !bridge.capture.empty()) {
+      static_cast<void>(box.audio().render(headless_audio, audio_sample_rate));
+      capture_samples(bridge, headless_audio);
+    }
 
     if (!opts.headless && box.display().generation() != presented) {
       presented = box.display().generation();
@@ -726,6 +1045,59 @@ int main(int argc, char** argv) try {
   }
   SDL_Quit();
 
+  // The stop report: the whole point of this host in M3, formatted in
+  // core so that the browser prints the same sentence (machine/report.h).
+  // After SDL is down, so that nothing SDL writes on its way out can land
+  // in the middle of it.
+  {
+    std::array<char, machine::stop_report_capacity> text{};
+    machine::format_stop_report(box, ended, text);
+    std::fputs(text.data(), stderr);
+  }
+  if (opts.trace) {
+    std::vector<char> text(machine::trace_report_capacity);
+    machine::format_trace_report(box, text);
+    std::fputs(text.data(), stderr);
+  }
+
+  if (!opts.dump_prefix.empty()) {
+    const std::filesystem::path ppm(opts.dump_prefix + ".ppm");
+    if (sdl::write_ppm(ppm, box.display().pixels(), box.display().palette())) {
+      std::fprintf(stderr, "amberfolio: dump frame=%s generation=%llu\n",
+                   ppm.string().c_str(),
+                   static_cast<unsigned long long>(box.display().generation()));
+    } else {
+      std::fprintf(stderr, "amberfolio: dump could not write %s\n",
+                   ppm.string().c_str());
+    }
+
+    // Whatever the one consumer managed to put there, whichever thread it
+    // was; the stream is destroyed by now, so the callback cannot still
+    // be writing.
+    const std::size_t captured =
+        bridge.captured.load(std::memory_order_relaxed);
+    const std::filesystem::path wav(opts.dump_prefix + ".wav");
+    if (captured == 0) {
+      // Told apart from a failed write on purpose: "the speaker made no
+      // sound this run" and "this file could not be created" are two
+      // different findings, and only one of them is about the machine.
+      std::fprintf(stderr,
+                   "amberfolio: dump no audio was captured (nothing pulled"
+                   " the speaker)\n");
+    } else if (sdl::write_wav(
+                   wav, std::span<const float>(bridge.capture.data(), captured),
+                   audio_sample_rate)) {
+      std::fprintf(stderr, "amberfolio: dump audio=%s samples=%zu%s\n",
+                   wav.string().c_str(), captured,
+                   bridge.truncated.load(std::memory_order_relaxed)
+                       ? " (truncated)"
+                       : "");
+    } else {
+      std::fprintf(stderr, "amberfolio: dump could not write %s\n",
+                   wav.string().c_str());
+    }
+  }
+
   if (opts.verify) {
     report.composed = box.display().generation();
     std::fprintf(stderr,
@@ -774,16 +1146,21 @@ int main(int argc, char** argv) try {
   }
 
   const machine::stop_record& stop = box.stop();
-  if (stop.reason == machine::stop_reason::program_exited) {
+  if (ended == machine::run_end::stopped &&
+      stop.reason == machine::stop_reason::program_exited) {
     std::fflush(stdout);
     return static_cast<int>(stop.exit_code);
   }
-  if (quit) {
+  if (ended == machine::run_end::host_quit) {
     return EXIT_SUCCESS;
   }
 
-  std::fprintf(stderr, "amberfolio: stopped without exiting (reason %u)\n",
-               static_cast<unsigned>(stop.reason));
+  // Everything else is a run that did not finish: a machine that refused
+  // something, or a budget that ran out with the program still going.
+  // The report above has already said which and where; this is only the
+  // process's answer, and it is failure either way because in neither
+  // case did the program get to choose one.
+  std::fflush(stdout);
   return EXIT_FAILURE;
 } catch (const std::exception& e) {
   // A function-try-block on main, because everything above allocates -

@@ -121,6 +121,15 @@ void machine::reset() {
   pages_noticed_ = {};
   ports_noticed_ = {};
 
+  // The run's own bookkeeping. `trace_.clear()` forgets what was
+  // recorded and deliberately leaves `enabled()` alone: whether anything
+  // is being recorded is a setting, like the speed governor above, and
+  // not something the machine arrived at (trace.h).
+  steps_ = 0;
+  trace_.clear();
+  have_service_call_ = false;
+  have_device_stop_ = false;
+
   // The video BIOS's bookkeeping goes back to power-on state along with
   // everything else here: a reset machine has no mode set, exactly as a
   // freshly powered-on one does not.
@@ -184,8 +193,16 @@ cpu::step_status machine::step() {
     }
   }
 
+  // Last thing before the instruction, so that what is recorded is where
+  // the processor actually stood when it ran one: after the deadlines,
+  // after the keyboard drain, and after any service handler the callout
+  // above ran. One branch when the ring is off (trace.h).
+  trace_.record(
+      trace_step{.cs = cpu_.regs()[cpu::sreg::cs], .ip = cpu_.regs().ip});
+
   const cpu::step_status status = cpu_.step();
   if (status != cpu::step_status::stopped) {
+    ++steps_;
     // Charged for every status the processor can report, `halted`
     // included: a halted machine is waiting for an interrupt, and the
     // only thing that can bring one is a deadline, which needs the clock
@@ -361,6 +378,12 @@ void machine::dispatch_services() {
   }
 }
 
+void machine::note_service_call(const service_call& call) noexcept {
+  last_service_call_ = call;
+  have_service_call_ = true;
+  trace_.record(call);
+}
+
 bool machine::stop_unimplemented_service(std::uint32_t at) {
   return stop_with(stop_reason::unimplemented_service, at);
 }
@@ -424,15 +447,21 @@ void machine::note_device_fault(device& dev) {
   }
 
   const device_fault& fault = dev.fault();
+  // Built and kept whether or not a sink is listening, for the reason
+  // `service_floor::call()` builds its record before the branch: what the
+  // machine remembers about why it stopped must not depend on who was
+  // watching when it did.
+  last_device_stop_ = device_stop{.at = fault.at,
+                                  .detail = fault.detail,
+                                  .cs = cpu_.regs()[cpu::sreg::cs],
+                                  .ip = cpu_.current().start_ip};
+  have_device_stop_ = true;
   if (log_ != nullptr) {
     // The detailed record first, same order dispatch_services() reports
     // an unimplemented service before stop_with()'s generic line: this
     // one names the port or address and the byte the device chose to say
     // about it, which the generic stop_record cannot.
-    log_->report(device_stop{.at = fault.at,
-                             .detail = fault.detail,
-                             .cs = cpu_.regs()[cpu::sreg::cs],
-                             .ip = cpu_.current().start_ip});
+    log_->report(last_device_stop_);
   }
   stop_with(stop_reason::unimplemented_device, fault.at);
 }

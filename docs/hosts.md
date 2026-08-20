@@ -23,14 +23,15 @@ what a person still has to do.
 
 ## 1. What CI checks now
 
-`ctest -L smoke` on any desktop preset runs six cases. Three are headless
-and were there before; three are not.
+`ctest -L smoke` on any desktop preset runs seven cases. Four are
+headless; three are not.
 
 | case | what it settles |
 | --- | --- |
 | `sdl-host-usage` | the binary starts, links and can talk |
-| `sdl-host-smoke-disk` | the smoke disk's program is written |
+| `sdl-host-smoke-disk` | the smoke disk's two programs are written |
 | `sdl-host-runs-a-program` | headless: loader, CPU, DOS, console, exit code |
+| `sdl-host-reports-a-stop` | headless: the stop report's shape, a bounded hang, a dumped frame |
 | `sdl-host-demo-disk` | the demo disk's two programs are written |
 | `sdl-host-presents-a-frame` | windowed: the picture that reached the render target, and a keystroke that reached the program |
 | `sdl-host-sounds-a-tone` | windowed: what reached the audio device was a tone |
@@ -80,7 +81,70 @@ driver, the two windowed cases fail at window creation and say so.
 
 ---
 
-## 2. What a person still has to check
+## 2. The boot driver
+
+M3 points this host at the player's own copy (#83). The method (#94) is a
+loop — run it, read the line it stopped on, widen the one service that
+line names, run it again — so most of what was added is in service of
+making that line worth reading.
+
+```sh
+amberfolio <dir> <program.exe> [--headless] [--scale N] [--verify]
+                               [--press KEY@FRAME] [--steps N]
+                               [--until TICKS] [--dump PREFIX] [--trace]
+                               [-- ARGUMENTS...]
+```
+
+A run prints the identity of the file before anything executes, and a
+report when the run ends:
+
+```
+amberfolio: load START.EXE sha256=<64 hex characters>
+amberfolio: load psp=0050 image=0060 entry=0FD2:0012 stack=117A:0080 tail=0
+...
+amberfolio: stop reason=unimplemented_service steps=99172 ticks=396688 frames=20 cs=F000 ip=0121 at=0B5D2
+amberfolio: stop call=INT21 ah=35 al=00 ax=3500 from=0B58:0052 outcome=handled
+amberfolio: stop next=INT 21h AH=35h AL=00h
+```
+
+Every line of the report begins `amberfolio: stop `, so the whole block
+is one `grep` away in a log with other things in it, and the format is
+fixed rather than approximate — `docs/machine.md` §5 has the reasoning
+and `machine/report.h` is the authority. The last line is the worklist
+entry: the one thing to widen next, named by the machine.
+
+The SHA-256 is a *fact about the player's file* (PLAN.md §2), not
+anything out of it, and it is the key M4's seam table will look a
+fingerprint up by (PLAN.md §5).
+
+| option | what it is for |
+| --- | --- |
+| `--steps N`, `--until TICKS` | bound the run. A hang is otherwise the one failure this host cannot report — the machine is running, nothing has refused anything, and the process just sits there. The budget is clamped into the run slice, so `--steps N` ends on step N exactly and the stop can be reproduced. |
+| `--trace` | keep the last 256 instructions and 64 service calls, and print them with the report. Off by default, at a cost of one branch per step. |
+| `--dump PREFIX` | write `PREFIX.ppm` (the composed frame) and `PREFIX.wav` (the speaker) when the run ends. |
+| `-- ARGUMENTS` | everything after `--` becomes the program's command tail, with the leading space DOS leaves in front of one. |
+
+`--dump` is the one to reach for when the claim is *"the title renders"*.
+`docs/machine.md` §7 says why a golden is the wrong instrument for that,
+and the answer is the same one `amberfolio-dump` gives for a self-written
+program: produce the file and look at it.
+
+A note on `--dump` and sound. Exactly one consumer may pull the speaker's
+timeline (`platform.h`), so the capture follows whoever that is — SDL's
+audio thread when a device is open, the machine thread when the run is
+headless. It holds a minute of virtual time and says `(truncated)` if the
+run outlasts it.
+
+**No test in this repository ever runs the game.** CI's proof of all of
+the above is the synthetic program on the smoke disk
+(`hosts/sdl/tests/make_smoke_disk.cpp`) and the checks in
+`cmake/run-stop-report.cmake`; the exit criterion itself is verified
+locally against the maintainer's own copy and written down as a
+procedure (#92).
+
+---
+
+## 3. What a person still has to check
 
 Two things, and no runner anywhere can check either: **that a photon left
 a display, and that a pressure wave left a speaker.** Everything up to the
@@ -174,7 +238,7 @@ green runners, because it is the only claim any of them cannot make.
 
 ---
 
-## 3. The wasm host
+## 4. The wasm host
 
 `ctest --preset wasm` runs the module under node, headless, and asserts the
 same program's console output and the ABI's export list. The browser half

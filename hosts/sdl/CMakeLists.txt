@@ -10,6 +10,7 @@ include(AmberfolioSDL3)
 
 add_executable(amberfolio-sdl
   src/directory_vfs.cpp
+  src/dump.cpp
   src/keymap.cpp
   src/main.cpp)
 
@@ -76,6 +77,26 @@ add_test(NAME sdl-host-runs-a-program
     "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/smoke-disk"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-smoke-program.cmake")
 set_tests_properties(sdl-host-runs-a-program PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_smoke_disk)
+
+# --- The boot driver's report (#83) ------------------------------------
+#
+# The same disk, and the other program on it: one that asks for a service
+# nothing backs and lets the machine refuse. What this asserts is the
+# *shape* of what comes back — the fingerprint at load, the fixed stop
+# line, the service named alongside it, the worklist line, a bounded hang,
+# and a dumped frame. tests/core/machine/report_test.cpp checks the
+# formatting field by field; this checks that the shape survives a real
+# host, a real directory and a real MZ load, which is the only way the
+# browser's copy of the same line (#84) can be compared against anything.
+add_test(NAME sdl-host-reports-a-stop
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/smoke-disk"
+    "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/smoke-dump"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-stop-report.cmake")
+set_tests_properties(sdl-host-reports-a-stop PROPERTIES
   LABELS smoke
   FIXTURES_REQUIRED sdl_smoke_disk)
 

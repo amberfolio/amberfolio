@@ -44,6 +44,7 @@ add_library(amberfolio-core STATIC
   src/machine/device.cpp
   src/machine/dos.cpp
   src/machine/ega.cpp
+  src/machine/fingerprint.cpp
   src/machine/int10.cpp
   src/machine/keyboard.cpp
   src/machine/loader.cpp
@@ -55,10 +56,13 @@ add_library(amberfolio-core STATIC
   src/machine/platform.cpp
   src/machine/port_map.cpp
   src/machine/renderer.cpp
+  src/machine/report.cpp
   src/machine/scheduler.cpp
   src/machine/service_floor.cpp
   src/machine/speaker.cpp
+  src/machine/trace.cpp
   src/machine/vfs.cpp
+  src/sha256.cpp
   src/version.cpp)
 add_library(amberfolio::core ALIAS amberfolio-core)
 
