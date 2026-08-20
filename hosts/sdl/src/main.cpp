@@ -5,10 +5,15 @@
 // program, and gives it a screen, a speaker and a keyboard.
 //
 //     amberfolio <dir> <program.exe> [--headless] [--scale N]
+//                                     [--verify] [--press KEY@FRAME]
 //
 // `--headless` opens no window and no audio device. That is what keeps
 // the CI smoke test meaningful on a runner with neither, and it is the
 // path M2-T1's host checks take.
+//
+// `--verify` and `--press` are the opposite: they exist so the *windowed*
+// path can be run without a person in front of it. See "Checking the
+// paths a headless run cannot" below.
 //
 //
 // The loop, and the one rule it exists to honour
@@ -49,6 +54,52 @@
 // canonical state rather than the samples.
 //
 //
+// Checking the paths a headless run cannot
+// ----------------------------------------
+//
+// Everything above the window — the machine, the VFS, the loader, the
+// console, the exit code — is what `--headless` exercises and what CI has
+// checked since M2-H1. Everything at the window was compiled and never
+// run (#80): the texture upload, the integer scaling, the audio callback,
+// and the step from an SDL key event to a posted XT scan code. "It
+// compiles" is not the same claim as "it works", and the difference was
+// due to be discovered by a game that has its own problems.
+//
+// So two options, and neither of them fakes anything:
+//
+//   --verify           after each frame is drawn and before it is
+//                      presented, read the render target back and compare
+//                      every pixel of it against the bytes this host
+//                      uploaded. Count what the audio callback did on its
+//                      own thread. Report all of it on stderr at exit,
+//                      and fail the process if the picture did not match
+//                      or if nothing was ever presented.
+//
+//   --press KEY@FRAME  push a real SDL keyboard event — down and up — into
+//                      SDL's own queue at frame FRAME, so it comes back
+//                      out of SDL_PollEvent and travels the same path a
+//                      typed key does, mapping table included. KEY is
+//                      whatever SDL_GetScancodeFromName accepts: `A`,
+//                      `Escape`, `Left`, `Keypad 5`.
+//
+// Together they let one CTest case run the M2-T1 composite program in a
+// real window, with a real audio device, on every desktop target — under
+// SDL's `offscreen` video driver and `dummy` audio driver, which are
+// still the real SDL code paths, only pointed at no hardware. What that
+// cannot check is the last inch: a photon leaving a display, a pressure
+// wave leaving a speaker. docs/hosts.md says how a person checks those,
+// and that is the part of #80 no runner can close.
+//
+// A note on the readback, since it is the load-bearing half. It happens
+// *before* SDL_RenderPresent, because on an accelerated backend the
+// contents of the back buffer after a present are undefined; before it,
+// the target still holds what was drawn on every backend. And it derives
+// its expectation rather than pinning a hash: each target pixel must
+// equal the source pixel at (x/scale, y/scale), which is the definition
+// of nearest-neighbour integer scaling and not a golden of whatever this
+// machine happened to produce.
+//
+//
 // What is deliberately not here
 // -----------------------------
 //
@@ -61,6 +112,8 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -87,6 +140,7 @@
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/version.h"
 #include "directory_vfs.h"
+#include "keymap.h"
 
 // <cstdio> rather than std::format/std::print, and not only for the wasm
 // host's reason (bundle size). libc++ gates std::format's floating-point
@@ -189,184 +243,37 @@ void drain_console(machine::machine& box) {
       return;
     }
     std::fwrite(buffer.data(), 1, got, stdout);
-  }
-}
-
-/// SDL scancode → the raw XT make/break code the core's translation table
-/// expects. The table itself lives in core (machine/keyboard.h) because
-/// programs read the BDA shift flags directly; this is only the mapping
-/// from the host's own event vocabulary onto the wire the machine has.
-[[nodiscard]] std::uint8_t xt_scancode(SDL_Scancode code) {
-  switch (code) {
-    case SDL_SCANCODE_ESCAPE:
-      return 0x01;
-    case SDL_SCANCODE_1:
-      return 0x02;
-    case SDL_SCANCODE_2:
-      return 0x03;
-    case SDL_SCANCODE_3:
-      return 0x04;
-    case SDL_SCANCODE_4:
-      return 0x05;
-    case SDL_SCANCODE_5:
-      return 0x06;
-    case SDL_SCANCODE_6:
-      return 0x07;
-    case SDL_SCANCODE_7:
-      return 0x08;
-    case SDL_SCANCODE_8:
-      return 0x09;
-    case SDL_SCANCODE_9:
-      return 0x0A;
-    case SDL_SCANCODE_0:
-      return 0x0B;
-    case SDL_SCANCODE_MINUS:
-      return 0x0C;
-    case SDL_SCANCODE_EQUALS:
-      return 0x0D;
-    case SDL_SCANCODE_BACKSPACE:
-      return 0x0E;
-    case SDL_SCANCODE_TAB:
-      return 0x0F;
-    case SDL_SCANCODE_Q:
-      return 0x10;
-    case SDL_SCANCODE_W:
-      return 0x11;
-    case SDL_SCANCODE_E:
-      return 0x12;
-    case SDL_SCANCODE_R:
-      return 0x13;
-    case SDL_SCANCODE_T:
-      return 0x14;
-    case SDL_SCANCODE_Y:
-      return 0x15;
-    case SDL_SCANCODE_U:
-      return 0x16;
-    case SDL_SCANCODE_I:
-      return 0x17;
-    case SDL_SCANCODE_O:
-      return 0x18;
-    case SDL_SCANCODE_P:
-      return 0x19;
-    case SDL_SCANCODE_LEFTBRACKET:
-      return 0x1A;
-    case SDL_SCANCODE_RIGHTBRACKET:
-      return 0x1B;
-    case SDL_SCANCODE_RETURN:
-      return 0x1C;
-    case SDL_SCANCODE_LCTRL:
-      return 0x1D;
-    case SDL_SCANCODE_A:
-      return 0x1E;
-    case SDL_SCANCODE_S:
-      return 0x1F;
-    case SDL_SCANCODE_D:
-      return 0x20;
-    case SDL_SCANCODE_F:
-      return 0x21;
-    case SDL_SCANCODE_G:
-      return 0x22;
-    case SDL_SCANCODE_H:
-      return 0x23;
-    case SDL_SCANCODE_J:
-      return 0x24;
-    case SDL_SCANCODE_K:
-      return 0x25;
-    case SDL_SCANCODE_L:
-      return 0x26;
-    case SDL_SCANCODE_SEMICOLON:
-      return 0x27;
-    case SDL_SCANCODE_APOSTROPHE:
-      return 0x28;
-    case SDL_SCANCODE_GRAVE:
-      return 0x29;
-    case SDL_SCANCODE_LSHIFT:
-      return 0x2A;
-    case SDL_SCANCODE_BACKSLASH:
-      return 0x2B;
-    case SDL_SCANCODE_Z:
-      return 0x2C;
-    case SDL_SCANCODE_X:
-      return 0x2D;
-    case SDL_SCANCODE_C:
-      return 0x2E;
-    case SDL_SCANCODE_V:
-      return 0x2F;
-    case SDL_SCANCODE_B:
-      return 0x30;
-    case SDL_SCANCODE_N:
-      return 0x31;
-    case SDL_SCANCODE_M:
-      return 0x32;
-    case SDL_SCANCODE_COMMA:
-      return 0x33;
-    case SDL_SCANCODE_PERIOD:
-      return 0x34;
-    case SDL_SCANCODE_SLASH:
-      return 0x35;
-    case SDL_SCANCODE_RSHIFT:
-      return 0x36;
-    case SDL_SCANCODE_LALT:
-      return 0x38;
-    case SDL_SCANCODE_SPACE:
-      return 0x39;
-    case SDL_SCANCODE_CAPSLOCK:
-      return 0x3A;
-    case SDL_SCANCODE_F1:
-      return 0x3B;
-    case SDL_SCANCODE_F2:
-      return 0x3C;
-    case SDL_SCANCODE_F3:
-      return 0x3D;
-    case SDL_SCANCODE_F4:
-      return 0x3E;
-    case SDL_SCANCODE_F5:
-      return 0x3F;
-    case SDL_SCANCODE_F6:
-      return 0x40;
-    case SDL_SCANCODE_F7:
-      return 0x41;
-    case SDL_SCANCODE_F8:
-      return 0x42;
-    case SDL_SCANCODE_F9:
-      return 0x43;
-    case SDL_SCANCODE_F10:
-      return 0x44;
-    case SDL_SCANCODE_NUMLOCKCLEAR:
-      return 0x45;
-    case SDL_SCANCODE_SCROLLLOCK:
-      return 0x46;
-    case SDL_SCANCODE_HOME:
-      return 0x47;
-    case SDL_SCANCODE_UP:
-      return 0x48;
-    case SDL_SCANCODE_PAGEUP:
-      return 0x49;
-    case SDL_SCANCODE_LEFT:
-      return 0x4B;
-    case SDL_SCANCODE_RIGHT:
-      return 0x4D;
-    case SDL_SCANCODE_END:
-      return 0x4F;
-    case SDL_SCANCODE_DOWN:
-      return 0x50;
-    case SDL_SCANCODE_PAGEDOWN:
-      return 0x51;
-    case SDL_SCANCODE_INSERT:
-      return 0x52;
-    case SDL_SCANCODE_DELETE:
-      return 0x53;
-    default:
-      return 0;
+    // Flushed here rather than left to exit. A terminal would line-buffer
+    // this and a pipe will not, so without it a program that echoes what
+    // you type shows nothing at all until it ends - which is exactly the
+    // shape of the check docs/hosts.md asks a person to make, and it
+    // would look like the keyboard was dead.
+    std::fflush(stdout);
   }
 }
 
 /// The audio callback's shared state. `box` is only ever read for its
 /// `audio()`, and `render()` is the one core call the contract allows off
 /// the machine thread.
+///
+/// The three counters are the only things the main thread reads back out,
+/// and they are atomic for that reason alone: the audio thread writes
+/// them, `--verify`'s report reads them once the stream is destroyed and
+/// the callback can no longer be running. Relaxed ordering, because they
+/// order nothing — they are a tally, not a handshake.
+///
+/// `sounded` is the one that says something the other two cannot. A
+/// callback that ran and a buffer that was filled prove the plumbing;
+/// they do not distinguish a speaker from a silence, because `render()`
+/// answering silence is a correct answer to most of any run. Counting
+/// the samples that were not zero is what tells a tone that reached
+/// SDL's stream from a tone that was only ever in the edge list.
 struct audio_bridge {
   machine::machine* box{};
   std::vector<float> scratch;
+  std::atomic<std::uint64_t> callbacks{0};
+  std::atomic<std::uint64_t> samples{0};
+  std::atomic<std::uint64_t> sounded{0};
 };
 
 void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
@@ -388,6 +295,139 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
   bridge->box->audio().render(out, audio_sample_rate);
   SDL_PutAudioStreamData(stream, out.data(),
                          static_cast<int>(wanted * sizeof(float)));
+
+  std::uint64_t sounded = 0;
+  for (const float sample : out) {
+    if (sample != 0.0F) {
+      ++sounded;
+    }
+  }
+
+  bridge->callbacks.fetch_add(1, std::memory_order_relaxed);
+  bridge->samples.fetch_add(wanted, std::memory_order_relaxed);
+  bridge->sounded.fetch_add(sounded, std::memory_order_relaxed);
+}
+
+/// A keystroke the host gives itself: which key, and which frame of the
+/// loop to push it on.
+///
+/// The key is kept as SDL's own name until SDL is up, because
+/// `SDL_GetScancodeFromName` is a question about SDL's tables and asking
+/// it before SDL_Init is asking it early. Frame numbers count iterations
+/// of the loop below, which are virtual frame periods — the same unit
+/// machine_harness.h's `scripted_key` counts in, one layer further out.
+struct scripted_press {
+  std::string key;
+  std::uint64_t frame{};
+  SDL_Scancode code{SDL_SCANCODE_UNKNOWN};
+  bool done{false};
+};
+
+/// Everything `--verify` has to say at the end of a run.
+struct verify_report {
+  std::uint64_t composed{};    ///< Frames the renderer finished.
+  std::uint64_t presented{};   ///< Frames this host uploaded and presented.
+  std::uint64_t checked{};     ///< Presented frames read back and compared.
+  std::uint64_t mismatched{};  ///< Pixels that came back wrong, in total.
+  std::uint64_t unreadable{};  ///< Presents whose target would not read back.
+  std::uint64_t odd_size{};    ///< Presents whose target was not a whole
+                               ///< multiple of the frame (a HiDPI backing
+                               ///< store, say) and so was not compared.
+  std::uint64_t keys{};        ///< Key events this host posted to the machine.
+};
+
+/// Push one SDL key event, as though a keyboard had sent it.
+///
+/// `SDL_PushEvent` puts it on the same queue a device driver's events go
+/// on, so it comes back out of the `SDL_PollEvent` loop below and is
+/// mapped, filtered and posted by exactly the code a typed key meets.
+/// An event this host synthesized and then handled itself would prove
+/// nothing about that code, which is the whole point.
+void push_key_event(SDL_Window* window, SDL_Scancode code, bool down) {
+  SDL_Event event{};
+  event.key.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+  event.key.timestamp = SDL_GetTicksNS();
+  event.key.windowID = window != nullptr ? SDL_GetWindowID(window) : 0;
+  event.key.scancode = code;
+  event.key.key = SDL_GetKeyFromScancode(code, SDL_KMOD_NONE, false);
+  event.key.mod = SDL_KMOD_NONE;
+  event.key.down = down;
+  event.key.repeat = false;
+  SDL_PushEvent(&event);
+}
+
+/// Read the render target back and compare it, pixel for pixel, with the
+/// buffer this host uploaded.
+///
+/// The expectation is derived, not stored: nearest-neighbour scaling by
+/// an integer factor means target pixel (x, y) is source pixel
+/// (x / scale, y / scale), and nothing else. So this checks the upload,
+/// the scaling and the draw in one pass over the whole target, without a
+/// golden anywhere — a wrong stride, a swapped colour channel, a texture
+/// that never got the new frame and a scale that is not integer all show
+/// up as a mismatch count rather than as a picture nobody looked at.
+///
+/// Called before `SDL_RenderPresent`: after it, an accelerated backend's
+/// back buffer holds whatever the driver left there.
+void verify_target(SDL_Renderer* renderer, std::span<const std::uint32_t> src,
+                   verify_report& report) {
+  SDL_Surface* shot = SDL_RenderReadPixels(renderer, nullptr);
+  if (shot == nullptr) {
+    ++report.unreadable;
+    return;
+  }
+
+  SDL_Surface* rgb = SDL_ConvertSurface(shot, SDL_PIXELFORMAT_XRGB8888);
+  SDL_DestroySurface(shot);
+  if (rgb == nullptr) {
+    ++report.unreadable;
+    return;
+  }
+
+  // Whole multiples only. A HiDPI backing store makes the target a larger
+  // multiple than `--scale` asked for, which is still exact and still
+  // checkable; anything that is not a multiple at all is a target this
+  // function has no derivation for, and it says so rather than guessing.
+  const auto width = static_cast<unsigned>(rgb->w);
+  const auto height = static_cast<unsigned>(rgb->h);
+  const unsigned scale_x = width / machine::frame_width;
+  const unsigned scale_y = height / machine::frame_height;
+  if (scale_x == 0 || scale_y == 0 || width != machine::frame_width * scale_x ||
+      height != machine::frame_height * scale_y) {
+    ++report.odd_size;
+    SDL_DestroySurface(rgb);
+    return;
+  }
+
+  const bool lock = SDL_MUSTLOCK(rgb);
+  if (lock && !SDL_LockSurface(rgb)) {
+    ++report.unreadable;
+    SDL_DestroySurface(rgb);
+    return;
+  }
+
+  const auto* base = static_cast<const std::uint8_t*>(rgb->pixels);
+  const auto pitch = static_cast<std::size_t>(rgb->pitch);
+  std::uint64_t wrong = 0;
+  for (unsigned y = 0; y < height; ++y) {
+    const auto* row = reinterpret_cast<const std::uint32_t*>(base + y * pitch);
+    const std::size_t source_row =
+        static_cast<std::size_t>(y / scale_y) * machine::frame_width;
+    for (unsigned x = 0; x < width; ++x) {
+      // The top eight bits are the X of XRGB8888 and belong to nobody.
+      if ((row[x] & 0x00FFFFFFU) != src[source_row + (x / scale_x)]) {
+        ++wrong;
+      }
+    }
+  }
+
+  if (lock) {
+    SDL_UnlockSurface(rgb);
+  }
+  SDL_DestroySurface(rgb);
+
+  ++report.checked;
+  report.mismatched += wrong;
 }
 
 struct options {
@@ -395,8 +435,39 @@ struct options {
   std::string program;
   bool headless{false};
   unsigned scale{default_scale};
+  bool verify{false};
+  std::vector<scripted_press> presses;
   bool valid{false};
 };
+
+/// `KEY@FRAME`, into a press. False on anything that is not that.
+///
+/// Split on the *last* `@`, because SDL names a key by the legend printed
+/// on it and some legends are punctuation. There is no `@` key on a US
+/// board, but splitting on the last one costs nothing and stops that from
+/// being a fact this parser quietly depends on.
+[[nodiscard]] bool parse_press(std::string_view spec, scripted_press& out) {
+  const std::size_t at = spec.rfind('@');
+  if (at == std::string_view::npos || at == 0 || at + 1 == spec.size()) {
+    return false;
+  }
+  const std::string_view digits = spec.substr(at + 1);
+  std::uint64_t frame = 0;
+  // Both ends named before the call. `from_chars` is given the length —
+  // that is what the second pointer is — but clang-tidy reads a bare
+  // `.data()` in an argument list as a string handed over without one,
+  // and it is right to, often enough that hoisting is cheaper than an
+  // exemption.
+  const char* const first = digits.data();
+  const char* const last = first + digits.size();
+  const std::from_chars_result parsed = std::from_chars(first, last, frame);
+  if (parsed.ec != std::errc{} || parsed.ptr != last) {
+    return false;
+  }
+  out.key = std::string(spec.substr(0, at));
+  out.frame = frame;
+  return true;
+}
 
 [[nodiscard]] options parse(int argc, char** argv) {
   options opts;
@@ -405,6 +476,16 @@ struct options {
     const std::string_view arg = argv[i];
     if (arg == "--headless") {
       opts.headless = true;
+    } else if (arg == "--verify") {
+      opts.verify = true;
+    } else if (arg == "--press" && i + 1 < argc) {
+      scripted_press press;
+      if (!parse_press(argv[++i], press)) {
+        std::fprintf(stderr,
+                     "amberfolio: --press wants KEY@FRAME, as in A@60\n");
+        return opts;
+      }
+      opts.presses.push_back(std::move(press));
     } else if (arg == "--scale" && i + 1 < argc) {
       // strtol rather than atoi, which cannot tell "0" from "not a
       // number" - a distinction worth having when the answer decides
@@ -426,7 +507,19 @@ struct options {
   if (positional.size() != 2) {
     std::fprintf(stderr,
                  "usage: amberfolio <dir> <program.exe> [--headless]"
-                 " [--scale N]\n");
+                 " [--scale N] [--verify]"
+                 " [--press KEY@FRAME]\n");
+    return opts;
+  }
+
+  // Both diagnostics need the window and the event queue that
+  // `--headless` is defined as not opening. Refused rather than
+  // quietly ignored: a check that reports nothing because its own
+  // arguments cancelled out is worse than one that never ran.
+  if (opts.headless && (opts.verify || !opts.presses.empty())) {
+    std::fprintf(stderr,
+                 "amberfolio: --verify and --press need a window;"
+                 " they cannot be combined with --headless\n");
     return opts;
   }
   opts.root = std::filesystem::path(positional[0]);
@@ -479,6 +572,10 @@ int main(int argc, char** argv) try {
     return EXIT_FAILURE;
   }
 
+  // The parsed presses, with room to record which have gone. `opts` is
+  // what the command line said and stays that way.
+  std::vector<scripted_press> presses = opts.presses;
+
   SDL_Window* window = nullptr;
   SDL_Renderer* renderer = nullptr;
   SDL_Texture* texture = nullptr;
@@ -495,6 +592,19 @@ int main(int argc, char** argv) try {
       SDL_Quit();
       return EXIT_FAILURE;
     }
+    // Now, and not at parse time: what SDL calls a key is a question
+    // about SDL's own tables, and asking it before SDL_Init is asking it
+    // early.
+    for (scripted_press& press : presses) {
+      press.code = SDL_GetScancodeFromName(press.key.c_str());
+      if (press.code == SDL_SCANCODE_UNKNOWN) {
+        std::fprintf(stderr, "amberfolio: SDL has no key called '%s'\n",
+                     press.key.c_str());
+        SDL_Quit();
+        return EXIT_FAILURE;
+      }
+    }
+
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_XRGB8888,
                                 SDL_TEXTUREACCESS_STREAMING,
                                 static_cast<int>(machine::frame_width),
@@ -516,6 +626,8 @@ int main(int argc, char** argv) try {
   // renderer agree by construction rather than by two constants matching.
   const machine::ticks frame_ticks = machine::renderer::frame_period;
   std::uint64_t presented = 0;
+  std::uint64_t frame_index = 0;
+  verify_report report;
   std::vector<std::uint32_t> argb(machine::frame_pixels);
   bool quit = false;
 
@@ -523,17 +635,29 @@ int main(int argc, char** argv) try {
     const auto frame_started = std::chrono::steady_clock::now();
 
     if (!opts.headless) {
+      // Pushed before the poll, so the events this frame owes are on the
+      // queue by the time the queue is read - one loop iteration, not
+      // two.
+      for (scripted_press& press : presses) {
+        if (!press.done && press.frame == frame_index) {
+          push_key_event(window, press.code, true);
+          push_key_event(window, press.code, false);
+          press.done = true;
+        }
+      }
+
       SDL_Event event;
       while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
           quit = true;
         } else if (event.type == SDL_EVENT_KEY_DOWN ||
                    event.type == SDL_EVENT_KEY_UP) {
-          const std::uint8_t code = xt_scancode(event.key.scancode);
+          const std::uint8_t code = sdl::xt_scancode(event.key.scancode);
           if (code != 0 && !event.key.repeat) {
             box.post_key(code, event.type == SDL_EVENT_KEY_DOWN
                                    ? machine::key_action::down
                                    : machine::key_action::up);
+            ++report.keys;
           }
         }
       }
@@ -560,7 +684,11 @@ int main(int argc, char** argv) try {
           static_cast<int>(machine::frame_width * sizeof(std::uint32_t)));
       SDL_RenderClear(renderer);
       SDL_RenderTexture(renderer, texture, nullptr, nullptr);
+      if (opts.verify) {
+        verify_target(renderer, argb, report);
+      }
       SDL_RenderPresent(renderer);
+      ++report.presented;
     }
 
     if (!opts.headless) {
@@ -577,8 +705,13 @@ int main(int argc, char** argv) try {
         std::this_thread::sleep_for(left);
       }
     }
+
+    ++frame_index;
   }
 
+  // The audio stream first, and before the counters below are read: it is
+  // what stops the callback thread, and until it has returned the two
+  // tallies are still being written to.
   if (audio != nullptr) {
     SDL_DestroyAudioStream(audio);
   }
@@ -592,6 +725,53 @@ int main(int argc, char** argv) try {
     SDL_DestroyWindow(window);
   }
   SDL_Quit();
+
+  if (opts.verify) {
+    report.composed = box.display().generation();
+    std::fprintf(stderr,
+                 "amberfolio: verify - composed %llu, presented %llu,"
+                 " checked %llu, mismatched pixels %llu\n",
+                 static_cast<unsigned long long>(report.composed),
+                 static_cast<unsigned long long>(report.presented),
+                 static_cast<unsigned long long>(report.checked),
+                 static_cast<unsigned long long>(report.mismatched));
+    std::fprintf(stderr,
+                 "amberfolio: verify - audio callbacks %llu, audio samples"
+                 " %llu, sounded %llu, keys posted %llu\n",
+                 static_cast<unsigned long long>(
+                     bridge.callbacks.load(std::memory_order_relaxed)),
+                 static_cast<unsigned long long>(
+                     bridge.samples.load(std::memory_order_relaxed)),
+                 static_cast<unsigned long long>(
+                     bridge.sounded.load(std::memory_order_relaxed)),
+                 static_cast<unsigned long long>(report.keys));
+    if (report.unreadable != 0 || report.odd_size != 0) {
+      std::fprintf(stderr,
+                   "amberfolio: verify - %llu targets would not read back,"
+                   " %llu were not a whole multiple of the frame\n",
+                   static_cast<unsigned long long>(report.unreadable),
+                   static_cast<unsigned long long>(report.odd_size));
+    }
+
+    // What makes this a check rather than a printout. A run that
+    // presented nothing proves nothing, and neither does one whose every
+    // present was unreadable - so both are failures, in the same breath
+    // as a picture that came back wrong.
+    const char* wrong = nullptr;
+    if (report.presented == 0) {
+      wrong = "nothing was ever presented";
+    } else if (report.checked == 0) {
+      wrong = "no presented frame could be read back and compared";
+    } else if (report.mismatched != 0) {
+      wrong = "the presented picture is not the one that was uploaded";
+    }
+    if (wrong != nullptr) {
+      std::fprintf(stderr, "amberfolio: verify FAILED - %s\n", wrong);
+      std::fflush(stdout);
+      return EXIT_FAILURE;
+    }
+    std::fprintf(stderr, "amberfolio: verify OK\n");
+  }
 
   const machine::stop_record& stop = box.stop();
   if (stop.reason == machine::stop_reason::program_exited) {

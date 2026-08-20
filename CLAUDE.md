@@ -48,7 +48,13 @@ What M2 left in place:
   program and returns the exit code the program chose; `--headless`
   makes that checkable in CI. The wasm dev page puts it in a browser —
   canvas, AudioWorklet, keyboard — with a headless smoke test asserting
-  the same run.
+  the same run. Since #80 the *windowed* path is checked too, on all
+  three desktop targets: `--verify` reads each presented frame back off
+  the render target and compares it pixel for pixel with what was
+  uploaded, `--press KEY@FRAME` puts a real SDL key event through the
+  real mapping, and both run under SDL's `offscreen` and `dummy`
+  drivers. `docs/hosts.md` says what that settles and what is left for
+  a person with a display and a speaker.
 - The exit-criterion suite — seven self-written programs under
   `tests/programs`, driven through the whole machine, answers asserted
   case by case. The M1 flat-bus programs still run beside them
