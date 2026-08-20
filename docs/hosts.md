@@ -36,7 +36,7 @@ and were there before; three are not.
 | `sdl-host-sounds-a-tone` | windowed: what reached the audio device was a tone |
 
 The last two run the host **without** `--headless`, under SDL's
-`offscreen` video driver and `dummy` audio driver. Those are not stubs of
+`dummy` video and audio drivers. Those are not stubs of
 ours and they are not a different code path: SDL's window, renderer,
 texture, audio stream, audio thread and event queue are all the real ones,
 pointed at no hardware. `SDL_RENDER_DRIVER=software` is asked for as well,
@@ -69,8 +69,14 @@ restates the table; it derives three claims about it. That is the check
 that would catch one transposed row, which is the failure a single
 scripted keystroke never would.
 
-If a build uses a system SDL3 compiled without the `offscreen` or `dummy`
-drivers, the two windowed cases fail at `SDL_Init` and say so.
+`dummy` and not `offscreen`, which is the other headless video driver:
+offscreen creates its windows through EGL, and a macOS runner has no EGL,
+so window creation fails there before anything can be checked. `dummy`
+wants no graphics library at all, which is what a software renderer
+reading its own target back needs.
+
+If a build uses a system SDL3 compiled without the `dummy` video or audio
+driver, the two windowed cases fail at window creation and say so.
 
 ---
 

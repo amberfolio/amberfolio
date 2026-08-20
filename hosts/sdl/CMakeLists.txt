@@ -91,7 +91,7 @@ set_tests_properties(sdl-host-runs-a-program PROPERTIES
 # So: a second disk, holding M2-T1's composite program and a demo program
 # for a person to look at and listen to, and one more case that runs the
 # composite with a real window and a real audio device — under SDL's
-# `offscreen` and `dummy` drivers, which is what a runner has.
+# `dummy` video and audio drivers, which is what a runner has.
 # cmake/run-verify-program.cmake says what it asserts and why.
 #
 # The generator links amberfolio::programs, which is how it gets the

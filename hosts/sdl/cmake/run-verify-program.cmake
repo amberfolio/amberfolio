@@ -10,8 +10,18 @@
 # sound card, so this points SDL at the drivers it ships for exactly that
 # situation. They are not stubs of ours and they are not a different code
 # path — SDL's window, renderer, texture, audio stream and event queue are
-# all the real ones; `offscreen` gives them a surface nobody sees and
-# `dummy` gives them a device nobody hears.
+# all the real ones; `dummy` gives them a surface nobody sees and a device
+# nobody hears.
+#
+# `dummy` and not `offscreen`, which is the other headless video driver and
+# was the first choice here. It is the better-sounding one and it does not
+# work: offscreen creates its windows through EGL, and a macOS runner has
+# no EGL, so `SDL_CreateWindowAndRenderer` fails there with "Could not
+# initialize OpenGL / GLES library" before any of this can be asked.
+# `dummy` allocates a plain framebuffer and wants no graphics library at
+# all, which is exactly what a software renderer reading its own target
+# back needs. Learned from a red macOS leg, and written down so the
+# better-sounding name does not get chosen again.
 #
 # `software` for the renderer is not about availability but about being
 # able to say what happened: the host's `--verify` reads the render target
@@ -32,7 +42,7 @@ if(NOT HOST OR NOT DISK OR NOT PROGRAM OR NOT DEFINED EXPECT_CODE)
     " -DEXPECT_CODE=")
 endif()
 
-set(ENV{SDL_VIDEODRIVER} "offscreen")
+set(ENV{SDL_VIDEODRIVER} "dummy")
 set(ENV{SDL_AUDIODRIVER} "dummy")
 set(ENV{SDL_RENDER_DRIVER} "software")
 

@@ -52,7 +52,7 @@ What M2 left in place:
   three desktop targets: `--verify` reads each presented frame back off
   the render target and compares it pixel for pixel with what was
   uploaded, `--press KEY@FRAME` puts a real SDL key event through the
-  real mapping, and both run under SDL's `offscreen` and `dummy`
+  real mapping, and both run under SDL's `dummy` video and audio
   drivers. `docs/hosts.md` says what that settles and what is left for
   a person with a display and a speaker.
 - The exit-criterion suite — seven self-written programs under

@@ -84,8 +84,8 @@
 //
 // Together they let one CTest case run the M2-T1 composite program in a
 // real window, with a real audio device, on every desktop target — under
-// SDL's `offscreen` video driver and `dummy` audio driver, which are
-// still the real SDL code paths, only pointed at no hardware. What that
+// SDL's `dummy` video and audio drivers, which are still the real SDL
+// code paths, only pointed at no hardware. What that
 // cannot check is the last inch: a photon leaving a display, a pressure
 // wave leaving a speaker. docs/hosts.md says how a person checks those,
 // and that is the part of #80 no runner can close.
