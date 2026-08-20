@@ -34,3 +34,9 @@ __pycache__/
 # repositories. Ignored rather than the whole of .claude/, because
 # anything a human puts there deliberately should still be trackable.
 /.claude/worktrees/
+
+# The maintainer's own game copy, for local boot and sweep runs only
+# (PLAN.md §2: the player supplies it; §6: CI never sees it). Ignored so
+# that no `git add` can ever stage it — the content guard would refuse the
+# commit, but the right number of chances to take is zero.
+/games/
