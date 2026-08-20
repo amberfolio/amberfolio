@@ -27,3 +27,10 @@ __pycache__/
 .vscode/
 .idea/
 .DS_Store
+
+# Agent worktrees. The Claude Code harness makes a git worktree per
+# background agent under here; each is a checkout of this repository, so
+# `git add -A` at the root would otherwise stage a dozen embedded
+# repositories. Ignored rather than the whole of .claude/, because
+# anything a human puts there deliberately should still be trackable.
+/.claude/worktrees/
