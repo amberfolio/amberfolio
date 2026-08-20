@@ -128,8 +128,21 @@ void framebuffer::complete(ticks at) noexcept {
 }
 
 void framebuffer::reset() noexcept {
-  pixels_ = {};
-  palette_ = {};
+  // Filled in place, not `pixels_ = {}`.
+  //
+  // Assigning a freshly value-initialized array materializes a whole
+  // frame — 64,000 bytes — as a temporary and copies it over. An
+  // optimizing build folds that into a memset and nothing is visible; an
+  // unoptimized one puts it on the stack, and Emscripten's default stack
+  // is smaller than one frame, so this trapped with "memory access out of
+  // bounds" the first time anything pulled RESET in a wasm build (M3-F2,
+  // #84 — until then no host had). Relying on the optimizer for stack
+  // safety is not a guarantee.
+  //
+  // `ega::reset()` and `memory_filesystem::clear()` already avoid the
+  // same trap for the same reason; this is the one place that did not.
+  pixels_.fill(0);
+  palette_.fill(rgb{});
   complete(0);
 }
 

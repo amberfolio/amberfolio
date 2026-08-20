@@ -677,7 +677,10 @@ TEST(memory_vfs_arena, holds_a_whole_game_directorys_worth_of_files) {
   // resizes.
   const auto fs = make();
   constexpr std::size_t files = 150;
-  constexpr std::size_t each = 16 * 1024;
+  // Sized in the type it is used in: `16 * 1024` alone is an `int`
+  // multiplication widened afterwards, which is the habit
+  // bugprone-implicit-widening-of-multiplication-result exists to break.
+  constexpr std::size_t each = std::size_t{16} * 1024;
 
   for (std::size_t i = 0; i < files; ++i) {
     const std::string leaf = "F" + std::to_string(i) + ".DAT";

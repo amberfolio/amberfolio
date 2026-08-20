@@ -118,8 +118,12 @@ void machine::reset() {
   dos_.reset();
 
   stop_ = {};
-  pages_noticed_ = {};
-  ports_noticed_ = {};
+  // Filled in place rather than assigned an empty one, for the reason
+  // `framebuffer::reset()` spells out: the port table is eight kilobytes
+  // and an unoptimized build would put a copy of it on the stack to
+  // clear it. `stop_` above is a handful of bytes and is left as it is.
+  pages_noticed_.fill(0);
+  ports_noticed_.fill(0);
 
   // The run's own bookkeeping. `trace_.clear()` forgets what was
   // recorded and deliberately leaves `enabled()` alone: whether anything
