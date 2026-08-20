@@ -40,11 +40,22 @@
 // what makes the whole report one `grep` away in a log that has other
 // things in it.
 //
-//     amberfolio: stop reason=unimplemented_service steps=8412006 \
-//         ticks=33648024 frames=101 cs=F000 ip=0342 at=F0342
-//     amberfolio: stop call=INT21 ah=48 al=00 ax=4800 \
-//         from=1A2B:00C6 outcome=unimplemented
-//     amberfolio: stop next=INT 21h AH=48h
+// A real report, from the first boot this was written for. **Each entry
+// is one line**; the first two are shown wrapped because they do not fit
+// in eighty columns. (Not wrapped with a trailing `\`, which inside a
+// `//` comment continues the comment rather than the example — GCC warns
+// about it and this file earned that warning once already.)
+//
+//     amberfolio: stop reason=unimplemented_service steps=99172
+//         ticks=396688 frames=20 cs=F000 ip=0121 at=0B5D2
+//     amberfolio: stop call=INT21 ah=35 al=00 ax=3500
+//         from=0B58:0052 outcome=handled
+//     amberfolio: stop next=INT 21h AH=35h AL=00h
+//
+// `outcome=handled` beside a service-shaped stop is not a contradiction:
+// the vector *has* a handler and it ran, and this is that handler's own
+// refusal of one AH. `outcome=unimplemented` is the other case — a
+// vector nothing backs at all.
 //
 // The last line is the worklist entry #83 asks for: the one thing to
 // widen next, named by the machine rather than inferred by a reader. It
