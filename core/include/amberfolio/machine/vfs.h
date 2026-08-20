@@ -172,13 +172,17 @@ enum class vfs_error : std::uint8_t {
   /// `entry_count()`.
   no_more_files,
   /// DOS 52h, "cannot make directory entry". `create()`/`mkdir()` could
-  /// not find a free slot in this backend's fixed-size entry table — see
-  /// `memory_vfs.h::max_entries`. Deliberately not "disk full" (DOS 27h):
-  /// this backend never runs out of bytes without also running out of
-  /// entries first, because it caps a file at
-  /// `memory_vfs::max_file_size` rather than sharing one pool across
-  /// files (see that header), so the entry table is the only capacity a
-  /// caller of this backend can ever actually hit.
+  /// not find a free slot in a backend's fixed-size entry table — see
+  /// `memory_vfs.h::max_entries`.
+  ///
+  /// Deliberately not "disk full" (DOS 27h), and there is no code here
+  /// for that at all. A backend that runs out of *bytes* — the in-memory
+  /// one shares one arena between files, so it can — answers a short
+  /// count from `write()` rather than an error, which is what DOS's own
+  /// AH=40h does on a full disk and what `write()` already did at a
+  /// file's size cap. Running out of entries is the only capacity that
+  /// has to be reported as a failed operation, because there is no
+  /// partial answer to "create this file".
   directory_full,
 };
 

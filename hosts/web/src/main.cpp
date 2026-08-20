@@ -15,6 +15,12 @@
 // and the keyboard. tests/smoke.mjs drives the identical sequence
 // headlessly.
 //
+// M3-F2 (#84) gave the page a second thing to run: a directory of the
+// player's own, put into the machine's filesystem one file at a time
+// (af_machine_vfs_put) and booted from there (af_machine_load_from_vfs).
+// The embedded program below did not change and is not going anywhere —
+// it is what proves the boundary works without anybody having a game.
+//
 // <cstdio> rather than <iostream>/<format>: this is the one target where
 // the standard library we pull in becomes bytes the player downloads
 // (PLAN.md §4 — keeping the wasm bundle lean is why there is a hand-written

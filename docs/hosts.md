@@ -240,9 +240,71 @@ green runners, because it is the only claim any of them cannot make.
 
 ## 4. The wasm host
 
-`ctest --preset wasm` runs the module under node, headless, and asserts the
-same program's console output and the ABI's export list. The browser half
-— canvas, AudioWorklet, keyboard — has the same shape of gap the desktop
-host had, and `scripts/serve-web.py` plus a browser is how a person closes
-it. The dev page embeds a demo program with a continuous tone and an echo
-loop for exactly the reason `DEMO.EXE` has both.
+`ctest --preset wasm` runs the module under node, headless. It asserts the
+ABI's export list, the embedded demo program's framebuffer hash and key
+echo, and — since M3-F2 (#84) — the filesystem path a player's directory
+travels. The browser half (canvas, AudioWorklet, keyboard) has the same
+shape of gap the desktop host had, and `scripts/serve-web.py` plus a
+browser is how a person closes it.
+
+```sh
+cmake --build --preset wasm
+python3 scripts/serve-web.py
+```
+
+### Running your own copy in a browser
+
+The page has two halves. **start** runs the embedded demo program — a
+continuous tone and an echo loop, for exactly the reason `DEMO.EXE` has
+both. **run your own copy** is #84's: choose or drop a directory, pick a
+program, press **boot**.
+
+Nothing is persisted. The files live in the machine's own in-memory
+filesystem for as long as the page is open, a reload starts from empty,
+and nothing leaves the browser. Onboarding, fingerprint UX and IndexedDB
+are M6's reference shell; this is a dev-page affordance and is not trying
+to be more.
+
+Three things are worth knowing about what it does:
+
+- **Names are decided in core, not by the page.** Every name goes across
+  the ABI as the player's own text and is canonicalized by
+  `machine::canonicalize()` — the one implementation of DOS short-name
+  rules. A name no DOS 8.3 name can equal is refused and listed as
+  skipped, which is how a boxed copy's PDF ends up outside the machine
+  without the page ever having looked at a file extension.
+- **The stop report is the same text the desktop host prints**, because
+  it is formatted in core (`machine/report.h`) rather than by either
+  host. That is what makes the comparison below possible at all.
+- **The cursor keys work.** On an 83-key XT board the arrows, Home/End,
+  Page and Insert/Delete *are* the keypad, and they now map onto the same
+  scancodes. They were simply absent until #84, which made a
+  keyboard-driven game unplayable in a browser while the desktop host had
+  had them since M2-H1; `hosts/web/tests/smoke.mjs` checks the rows.
+
+### The comparison M3's exit criterion rests on
+
+PLAN.md §7 asks for first light "verified locally on desktop **and** web",
+and #84 states the test: a player's directory boots in the browser to the
+same stop line the desktop host reports, **at the same step**. Both halves
+of that are one command each, and the two outputs are compared by eye:
+
+```sh
+./build/<preset>/hosts/sdl/<config>/amberfolio <dir> <PROGRAM.EXE> --headless
+```
+
+against the page's console after **boot**. The `amberfolio: stop ...`
+lines should be identical, field for field.
+
+If `frames=` disagrees and nothing else does, the two machines were not
+powered on the same way rather than not run the same way: `reset()` blanks
+and republishes the frame, which advances the generation counter, so a
+machine that was reset and one that was not stay one frame apart forever.
+Both hosts pull the line — `wired_machine`'s constructor on the desktop
+side, `ensureMachine()` in `app.mjs` on this one — and that is why.
+
+**No test in this repository ever runs the game**, here or on the desktop
+side. What CI proves is the path: `smoke.mjs` puts a self-written program
+into the filesystem through the same ABI the picker uses, loads it from
+there, runs it, and reads the report. The comparison above is a procedure
+a person carries out against their own copy (#92).

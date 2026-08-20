@@ -74,9 +74,13 @@ set(_amberfolio_web_export_names
   _af_machine_reset
   _af_machine_run_until
   _af_machine_time
+  _af_machine_steps
   _af_machine_stopped
   _af_machine_stop_reason
   _af_machine_set_speed
+  _af_machine_set_trace
+  _af_machine_stop_report
+  _af_machine_trace_report
   _af_machine_framebuffer
   _af_machine_palette
   _af_machine_frame_generation
@@ -88,7 +92,15 @@ set(_amberfolio_web_export_names
   _af_machine_read_console
   _af_machine_console_pending
   _af_machine_console_dropped
-  _af_machine_load_program
+  _af_machine_vfs_clear
+  _af_machine_vfs_put
+  _af_machine_vfs_count
+  _af_machine_vfs_name_at
+  _af_machine_vfs_size_at
+  _af_machine_vfs_bytes_used
+  _af_machine_vfs_fingerprint
+  _af_machine_load_from_vfs
+  _af_machine_load_error
   _af_machine_write_memory
   _af_machine_read_memory
   _af_machine_set_entry
@@ -122,6 +134,11 @@ target_link_options(amberfolio-web PRIVATE
   # initial heap is smaller than that; growth is what tests/programs'
   # own amberfolio-bench already asks for on this toolchain, for the same
   # reason (its CMakeLists.txt says so).
+  #
+  # M3-F2 (#84) is what puts a player's whole directory in that 8 MiB —
+  # a hundred and twenty-odd files sharing one arena rather than each
+  # holding a fixed 256 KiB, which is why the number did not have to grow
+  # with the file count (core/include/amberfolio/machine/memory_vfs.h).
   "-sALLOW_MEMORY_GROWTH=1")
 
 # The page is generated rather than copied: it carries the AGPL-3.0-only
@@ -145,6 +162,7 @@ set(_amberfolio_web_files
   "${CMAKE_CURRENT_SOURCE_DIR}/page/host.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/app.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/audio-worklet.mjs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/page/picker.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke.mjs")
 
 # A file-level rule per copy, rather than one POST_BUILD command on the

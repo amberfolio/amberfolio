@@ -10,7 +10,7 @@
 //
 // Usable by hand too: pass no --expect and it just reports what it found.
 //
-// Four checks now, not one (M2-F4 #45, M2-H2 #55):
+// Five checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84):
 //
 //   1. The version the module reports is the version CMake built.
 //   2. **Every name in the export list is actually exported.** This is
@@ -22,8 +22,8 @@
 //      is a separate one — two lists that must agree, checked.
 //   3. The ABI boundary answers correctly in isolation: a bare machine
 //      (no reference devices attached) refuses on its own — memory,
-//      audio, input, clock and console all cross into wasm, and
-//      load_program is still the reserved stub it says it is.
+//      audio, input, clock and console all cross into wasm, and a
+//      filesystem call says there is no filesystem rather than pretending.
 //   4. **The actual thing the page runs.** Create a machine, attach the
 //      reference device set, load the embedded demo program
 //      (hosts/web/src/demo_program.cpp) through host.mjs's own
@@ -33,6 +33,14 @@
 //      observed. This is the wasm quarter of the M2 exit criterion
 //      (PLAN.md §7): the machine runs correctly on this target, not
 //      merely that it compiles for it.
+//   5. **The VFS path M3-F2 (#84) added**, which is how a player's
+//      directory gets into a browser at all: put a self-written program
+//      into the machine's filesystem, list it back, fingerprint it, load
+//      it *from there*, run it, and read the stop report. That is the
+//      whole of what the dev page's picker does, minus the DOM — and the
+//      stop report is the thing the desktop host has to agree with at the
+//      same step, so a check that it is produced at all belongs in CI
+//      even though the comparison itself is a local procedure (#92).
 
 import {
   loadAmberfolio,
@@ -40,9 +48,13 @@ import {
   Machine,
   loadDemoProgram,
   decodeConsoleBytes,
+  scancodeFor,
   AF_OK,
+  AF_INVALID,
+  AF_NO_FILESYSTEM,
   AF_KEY_DOWN,
   AF_KEY_UP,
+  AF_RUN_END_STOPPED,
 } from './host.mjs';
 
 /// The ABI's guest list, as hosts/web/CMakeLists.txt sets it. Keep the
@@ -61,9 +73,13 @@ const EXPECTED_EXPORTS = [
   '_af_machine_reset',
   '_af_machine_run_until',
   '_af_machine_time',
+  '_af_machine_steps',
   '_af_machine_stopped',
   '_af_machine_stop_reason',
   '_af_machine_set_speed',
+  '_af_machine_set_trace',
+  '_af_machine_stop_report',
+  '_af_machine_trace_report',
   '_af_machine_framebuffer',
   '_af_machine_palette',
   '_af_machine_frame_generation',
@@ -75,7 +91,15 @@ const EXPECTED_EXPORTS = [
   '_af_machine_read_console',
   '_af_machine_console_pending',
   '_af_machine_console_dropped',
-  '_af_machine_load_program',
+  '_af_machine_vfs_clear',
+  '_af_machine_vfs_put',
+  '_af_machine_vfs_count',
+  '_af_machine_vfs_name_at',
+  '_af_machine_vfs_size_at',
+  '_af_machine_vfs_bytes_used',
+  '_af_machine_vfs_fingerprint',
+  '_af_machine_load_from_vfs',
+  '_af_machine_load_error',
   '_af_machine_write_memory',
   '_af_machine_read_memory',
   '_af_machine_set_entry',
@@ -86,11 +110,6 @@ const EXPECTED_EXPORTS = [
   '_af_web_demo_program_bytes',
   '_af_web_demo_program_size',
 ];
-
-// The status codes from abi.h. AF_OK is imported from host.mjs, which
-// already has to restate it (a JS host has no headers); AF_UNIMPLEMENTED
-// is not something host.mjs has any use for, so it stays local.
-const AF_UNIMPLEMENTED = 4;
 
 /// FNV-1a, 32-bit. No third-party dependency (PLAN.md §4's house style,
 /// applied to the one leaf test script that runs under plain node rather
@@ -218,9 +237,16 @@ if (missing.length === 0) {
     );
     module._free(scratch);
 
+    // A machine exists; a filesystem does not, because the reference
+    // device set was never attached. AF_NO_MACHINE would be a lie about
+    // the first, which is why AF_NO_FILESYSTEM has its own number.
     check(
-      module._af_machine_load_program(box, 1, 1) === AF_UNIMPLEMENTED,
-      'af_machine_load_program() should answer AF_UNIMPLEMENTED until #51',
+      module._af_machine_load_from_vfs(box, 0, 0) === AF_NO_FILESYSTEM,
+      'a bare machine should say it has no filesystem, not that it has no machine',
+    );
+    check(
+      module._af_machine_vfs_count(box) === 0,
+      'a bare machine listed files it does not have',
     );
 
     check(
@@ -432,6 +458,196 @@ if (missing.length === 0) {
   console.log(
     'smoke: the demo program drew a frame, played a tone, and echoed a key',
   );
+}
+
+// --- The filesystem, and a program loaded off it (M3-F2, #84) -----------
+//
+// The dev page's picker reads a player's files in the browser and puts
+// them in the machine one at a time; everything after that — the names,
+// the listing order, the fingerprint, the load — is core's. This drives
+// exactly that path with a program of our own, so the ABI surface a
+// browser depends on is asserted here rather than only in a browser
+// nobody can run in CI.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  check(
+    machine.attachReferenceDevices() === AF_OK,
+    'attaching the reference devices failed',
+  );
+  // The RESET line, as app.mjs pulls it and as the SDL host's own wiring
+  // does: it is part of powering the machine on, and skipping it leaves
+  // the frame generation one behind a desktop run of the same program
+  // (see app.mjs for the whole argument).
+  machine.reset();
+
+  // A self-written MZ program: a two-paragraph header, no relocations,
+  // and an image that writes 'H' to the console through INT 21h AH=02h
+  // and exits with code 11. Every byte is ours (CONTRIBUTING.md); the
+  // listing beside it is what makes that checkable by eye.
+  const image = new Uint8Array([
+    0xb2, 0x48, // MOV DL, 'H'
+    0xb4, 0x02, // MOV AH, 02h    ; console output
+    0xcd, 0x21, // INT 21h
+    0xb8, 0x0b, 0x4c, // MOV AX, 4C0Bh  ; exit, code 11
+    0xcd, 0x21, // INT 21h
+  ]);
+  const header = new Uint8Array(32);
+  const put16 = (at, value) => {
+    header[at] = value & 0xff;
+    header[at + 1] = (value >> 8) & 0xff;
+  };
+  header[0] = 0x4d; // 'M'
+  header[1] = 0x5a; // 'Z'
+  put16(2, header.length + image.length); // bytes in the last page
+  put16(4, 1); // pages
+  put16(6, 0); // relocations
+  put16(8, 2); // header paragraphs
+  put16(10, 0x0010); // MINALLOC
+  put16(12, 0xffff); // MAXALLOC
+  put16(16, 0x0100); // initial SP
+  put16(24, 0x001c); // relocation table offset
+  const exe = new Uint8Array(header.length + image.length);
+  exe.set(header, 0);
+  exe.set(image, header.length);
+
+  check(machine.vfsPut('HELLO.EXE', exe) === AF_OK, 'putting HELLO.EXE failed');
+
+  // Lower case in, upper case out: the page does no name logic and core
+  // canonicalizes (abi.h). And a name no DOS short name can equal is
+  // refused rather than mangled, which is how a page gets its "skipped"
+  // list for the files a boxed copy carries.
+  check(machine.vfsPut('notes.txt', new Uint8Array([1])) === AF_OK,
+        'putting a lower-case name failed');
+  check(
+    machine.vfsPut('code wheel.pdf', new Uint8Array([1])) === AF_INVALID,
+    'a name with a space in it was accepted as a DOS short name',
+  );
+
+  const listing = machine.vfsList();
+  check(listing.length === 2, `expected 2 files, got ${listing.length}`);
+  // Pinned name order (machine/vfs.h), so a listing is the same on every
+  // host and in every run.
+  check(
+    listing[0]?.name === 'HELLO.EXE' && listing[1]?.name === 'NOTES.TXT',
+    `listing is ${JSON.stringify(listing.map((e) => e.name))}, expected ` +
+      "['HELLO.EXE', 'NOTES.TXT'] in pinned name order",
+  );
+  check(
+    listing[0]?.size === exe.length,
+    `HELLO.EXE is ${listing[0]?.size} bytes, expected ${exe.length}`,
+  );
+  check(
+    machine.vfsBytesUsed() === exe.length + 1,
+    `the filesystem holds ${machine.vfsBytesUsed()} bytes, expected ${exe.length + 1}`,
+  );
+
+  // The identity of the file — a fact about it, and the same digest the
+  // desktop host prints at load.
+  const digest = machine.vfsFingerprint('HELLO.EXE');
+  check(
+    typeof digest === 'string' && /^[0-9a-f]{64}$/.test(digest),
+    `the fingerprint of HELLO.EXE is ${JSON.stringify(digest)}`,
+  );
+  check(
+    machine.vfsFingerprint('GONE.DAT') === null,
+    'a file that is not there was fingerprinted anyway',
+  );
+
+  const loadStatus = machine.loadFromVfs('HELLO.EXE', ' ARG');
+  check(
+    loadStatus === AF_OK,
+    `loading HELLO.EXE off the filesystem answered ${loadStatus} ` +
+      `(loader error ${machine.loadError()})`,
+  );
+
+  // Run it to its own exit, and read what it said.
+  let text = '';
+  for (let frame = 0; frame < 60 && !machine.stopped(); ++frame) {
+    machine.runUntil(machine.ticksPerSecond() * ((frame + 1) / 60));
+    const bytes = machine.readConsole();
+    if (bytes.length > 0) text += decodeConsoleBytes(bytes);
+  }
+  check(text === 'H', `the program printed ${JSON.stringify(text)}, expected "H"`);
+  check(machine.stopped(), 'the program never exited');
+  check(machine.steps() > 0, 'the machine took no steps');
+
+  // And the report: the same fixed lines the desktop host prints,
+  // formatted in core so the two cannot drift (machine/report.h).
+  const report = machine.stopReport(AF_RUN_END_STOPPED);
+  check(
+    report.includes('amberfolio: stop reason=program_exited '),
+    `the stop report does not say the program exited:\n${report}`,
+  );
+  check(
+    report.includes('amberfolio: stop exit=11'),
+    `the stop report does not carry the exit code the program chose:\n${report}`,
+  );
+  check(
+    !report.includes('next='),
+    `a program that exited was given a worklist line:\n${report}`,
+  );
+
+  console.log(
+    `smoke: a program loaded off the filesystem printed "H", exited 11, and ` +
+      'reported its stop',
+  );
+
+  machine.destroy();
+}
+
+// --- The keys a keyboard-driven game needs (#84) -------------------------
+//
+// The table itself is a pure function and needs no module, so this runs
+// whatever else did. It is here because the arrows and the Page keys were
+// simply absent until #84 — a gap that made a keyboard-driven game
+// unplayable in a browser while the desktop host had had them all along,
+// and exactly the kind of thing that is wrong in one row and right in
+// every other.
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  // On an 83-key board the cursor keys *are* the keypad, so these share
+  // their scancodes — which is what a real XT keyboard does, not an
+  // approximation.
+  const expected = {
+    ArrowUp: 0x48,
+    ArrowDown: 0x50,
+    ArrowLeft: 0x4b,
+    ArrowRight: 0x4d,
+    Home: 0x47,
+    End: 0x4f,
+    PageUp: 0x49,
+    PageDown: 0x51,
+    Insert: 0x52,
+    Delete: 0x53,
+    Escape: 0x01,
+    Enter: 0x1c,
+    F1: 0x3b,
+    F10: 0x44,
+  };
+  for (const [code, scancode] of Object.entries(expected)) {
+    check(
+      scancodeFor(code) === scancode,
+      `${code} maps to ${scancodeFor(code)}, expected 0x${scancode.toString(16)}`,
+    );
+  }
+  // And keys the 83-key board never had stay absent, so the browser keeps
+  // its own shortcuts for them (app.mjs only calls preventDefault on keys
+  // the machine claims).
+  for (const code of ['F11', 'F12', 'MetaLeft', 'ContextMenu']) {
+    check(
+      scancodeFor(code) === undefined,
+      `${code} was mapped to a scancode the 83-key board does not have`,
+    );
+  }
+  console.log(`smoke: ${Object.keys(expected).length} keyboard rows check out`);
 }
 
 if (problems.length > 0) {

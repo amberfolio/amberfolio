@@ -9,6 +9,7 @@
 #include "amberfolio/machine/memory_vfs.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -16,6 +17,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "gtest/gtest.h"
 
@@ -521,6 +523,220 @@ TEST(memory_vfs_entry_count, refuses_a_file) {
             vfs_error::access_denied);
 }
 
+// --- The arena (#84) --------------------------------------------------------
+//
+// One pool of bytes shared between files, kept packed, with no holes
+// (memory_vfs.h). Everything above this line is about the interface and
+// would read the same whatever the storage was; these cases are about the
+// storage, and every one of them is a way the packing could be wrong
+// while every test above stayed green.
+
+/// Fill `name` with `count` bytes derived from `seed`, through the
+/// ordinary create/write/close path.
+void put(memory_filesystem& fs, std::string_view leaf, std::size_t count,
+         std::uint8_t seed) {
+  const auto made = fs.create(path({leaf}));
+  ASSERT_TRUE(made.ok());
+  std::vector<std::uint8_t> bytes(count);
+  for (std::size_t i = 0; i < count; ++i) {
+    bytes[i] = static_cast<std::uint8_t>(seed + i);
+  }
+  const auto wrote = fs.write(made.value, bytes);
+  ASSERT_TRUE(wrote.ok());
+  ASSERT_EQ(wrote.value, count);
+  ASSERT_EQ(fs.close(made.value), vfs_error::none);
+}
+
+/// Every byte of `leaf`, read back through the ordinary path.
+[[nodiscard]] std::vector<std::uint8_t> get(memory_filesystem& fs,
+                                            std::string_view leaf) {
+  const auto opened = fs.open(path({leaf}), open_mode::read_only);
+  EXPECT_TRUE(opened.ok());
+  std::vector<std::uint8_t> bytes(memory_filesystem::max_file_size);
+  const auto read = fs.read(opened.value, bytes);
+  EXPECT_TRUE(read.ok());
+  bytes.resize(read.value);
+  EXPECT_EQ(fs.close(opened.value), vfs_error::none);
+  return bytes;
+}
+
+/// What `put()` would have written, for comparison.
+[[nodiscard]] std::vector<std::uint8_t> expected(std::size_t count,
+                                                 std::uint8_t seed) {
+  std::vector<std::uint8_t> bytes(count);
+  for (std::size_t i = 0; i < count; ++i) {
+    bytes[i] = static_cast<std::uint8_t>(seed + i);
+  }
+  return bytes;
+}
+
+TEST(memory_vfs_arena, accounts_for_exactly_what_the_files_hold) {
+  const auto fs = make();
+  EXPECT_EQ(fs->bytes_used(), 0u);
+
+  put(*fs, "A.DAT", 100, 1);
+  EXPECT_EQ(fs->bytes_used(), 100u);
+  put(*fs, "B.DAT", 250, 2);
+  EXPECT_EQ(fs->bytes_used(), 350u);
+
+  ASSERT_EQ(fs->unlink(path({"A.DAT"})), vfs_error::none);
+  EXPECT_EQ(fs->bytes_used(), 250u);
+}
+
+TEST(memory_vfs_arena, a_directory_costs_no_bytes) {
+  const auto fs = make();
+  ASSERT_EQ(fs->mkdir(path({"SAVE"})), vfs_error::none);
+  EXPECT_EQ(fs->bytes_used(), 0u);
+}
+
+TEST(memory_vfs_arena, growing_a_file_does_not_disturb_the_ones_after_it) {
+  const auto fs = make();
+  put(*fs, "FIRST.DAT", 64, 1);
+  put(*fs, "MID.DAT", 64, 2);
+  put(*fs, "LAST.DAT", 64, 3);
+
+  // Rewrite the first file, longer. Everything after it has to move, and
+  // this is the case that says whether the offsets moved with it.
+  put(*fs, "FIRST.DAT", 4096, 4);
+
+  EXPECT_EQ(get(*fs, "FIRST.DAT"), expected(4096, 4));
+  EXPECT_EQ(get(*fs, "MID.DAT"), expected(64, 2));
+  EXPECT_EQ(get(*fs, "LAST.DAT"), expected(64, 3));
+  EXPECT_EQ(fs->bytes_used(), 4096u + 64u + 64u);
+}
+
+TEST(memory_vfs_arena, shrinking_a_file_does_not_disturb_the_ones_after_it) {
+  const auto fs = make();
+  put(*fs, "FIRST.DAT", 4096, 1);
+  put(*fs, "MID.DAT", 64, 2);
+  put(*fs, "LAST.DAT", 64, 3);
+
+  put(*fs, "FIRST.DAT", 16, 4);
+
+  EXPECT_EQ(get(*fs, "FIRST.DAT"), expected(16, 4));
+  EXPECT_EQ(get(*fs, "MID.DAT"), expected(64, 2));
+  EXPECT_EQ(get(*fs, "LAST.DAT"), expected(64, 3));
+  EXPECT_EQ(fs->bytes_used(), 16u + 64u + 64u);
+}
+
+TEST(memory_vfs_arena, unlinking_from_the_middle_keeps_the_rest_intact) {
+  const auto fs = make();
+  put(*fs, "A.DAT", 300, 1);
+  put(*fs, "B.DAT", 300, 2);
+  put(*fs, "C.DAT", 300, 3);
+
+  ASSERT_EQ(fs->unlink(path({"B.DAT"})), vfs_error::none);
+
+  EXPECT_EQ(get(*fs, "A.DAT"), expected(300, 1));
+  EXPECT_EQ(get(*fs, "C.DAT"), expected(300, 3));
+  EXPECT_EQ(fs->bytes_used(), 600u);
+}
+
+TEST(memory_vfs_arena, growing_a_file_from_empty_moves_only_the_others) {
+  // The case the `&other != &e` guard in `resize()` exists for: a
+  // zero-length file's range starts exactly where the tail does, so a
+  // careless fix-up pass would shift the file being grown along with
+  // everything after it.
+  const auto fs = make();
+  put(*fs, "A.DAT", 128, 1);
+  ASSERT_TRUE(fs->create(path({"EMPTY.DAT"})).ok());
+  put(*fs, "B.DAT", 128, 2);
+
+  put(*fs, "EMPTY.DAT", 512, 3);
+
+  EXPECT_EQ(get(*fs, "A.DAT"), expected(128, 1));
+  EXPECT_EQ(get(*fs, "EMPTY.DAT"), expected(512, 3));
+  EXPECT_EQ(get(*fs, "B.DAT"), expected(128, 2));
+}
+
+TEST(memory_vfs_arena, a_gap_left_by_a_seek_reads_back_as_zero) {
+  const auto fs = make();
+  put(*fs, "OTHER.DAT", 64, 9);
+
+  const auto made = fs->create(path({"SPARSE.DAT"}));
+  ASSERT_TRUE(made.ok());
+  ASSERT_TRUE(fs->seek(made.value, seek_origin::begin, 1000).ok());
+  const std::array<std::uint8_t, 1> tail = {0xAB};
+  ASSERT_TRUE(fs->write(made.value, tail).ok());
+  ASSERT_EQ(fs->close(made.value), vfs_error::none);
+
+  const std::vector<std::uint8_t> back = get(*fs, "SPARSE.DAT");
+  ASSERT_EQ(back.size(), 1001u);
+  EXPECT_TRUE(std::all_of(back.begin(), back.begin() + 1000,
+                          [](std::uint8_t b) { return b == 0; }));
+  EXPECT_EQ(back[1000], 0xAB);
+  EXPECT_EQ(get(*fs, "OTHER.DAT"), expected(64, 9));
+}
+
+TEST(memory_vfs_arena, holds_a_whole_game_directorys_worth_of_files) {
+  // The requirement #84 raised these bounds for: a Gold Box installation
+  // is around a hundred and twenty files. Sixteen kilobytes apiece is
+  // more than the average one weighs and the total is well inside the
+  // arena, so what this proves is that the *entry table* is the size the
+  // header claims and the packing holds up over a hundred and fifty
+  // resizes.
+  const auto fs = make();
+  constexpr std::size_t files = 150;
+  // Sized in the type it is used in: `16 * 1024` alone is an `int`
+  // multiplication widened afterwards, which is the habit
+  // bugprone-implicit-widening-of-multiplication-result exists to break.
+  constexpr std::size_t each = std::size_t{16} * 1024;
+
+  for (std::size_t i = 0; i < files; ++i) {
+    const std::string leaf = "F" + std::to_string(i) + ".DAT";
+    put(*fs, leaf, each, static_cast<std::uint8_t>(i));
+  }
+
+  EXPECT_EQ(fs->bytes_used(), files * each);
+  const auto count = fs->entry_count(dos_path{});
+  ASSERT_TRUE(count.ok());
+  EXPECT_EQ(count.value, files);
+
+  // And every one of them still reads back what it was given, which is
+  // the claim a hundred and fifty tail-moves could have broken anywhere.
+  for (std::size_t i = 0; i < files; ++i) {
+    const std::string leaf = "F" + std::to_string(i) + ".DAT";
+    EXPECT_EQ(get(*fs, leaf), expected(each, static_cast<std::uint8_t>(i)))
+        << leaf;
+  }
+}
+
+TEST(memory_vfs_arena, a_write_past_the_end_of_the_arena_is_a_short_count) {
+  const auto fs = make();
+
+  // Fill it to within a hundred bytes, in max-sized files.
+  constexpr std::size_t big = memory_filesystem::max_file_size;
+  constexpr std::size_t whole = memory_filesystem::arena_bytes / big;
+  for (std::size_t i = 0; i < whole; ++i) {
+    put(*fs, "B" + std::to_string(i) + ".DAT", big, 0);
+  }
+  ASSERT_EQ(fs->bytes_used(), whole * big);
+
+  const auto made = fs->create(path({"OVER.DAT"}));
+  ASSERT_TRUE(made.ok());
+  const std::vector<std::uint8_t> more(1024, 0x5A);
+  const auto wrote = fs->write(made.value, more);
+
+  // Not an error: DOS's own AH=40h answers a full disk with a short
+  // count, and so does this (vfs.h's note on `directory_full`).
+  ASSERT_TRUE(wrote.ok());
+  EXPECT_EQ(wrote.value, memory_filesystem::arena_bytes - (whole * big));
+  EXPECT_EQ(fs->bytes_used(), memory_filesystem::arena_bytes);
+  ASSERT_EQ(fs->close(made.value), vfs_error::none);
+}
+
+TEST(memory_vfs_arena, a_write_capped_by_the_file_size_is_still_a_short_count) {
+  // The bound that was there before the arena, unchanged by it.
+  const auto fs = make();
+  const auto made = fs->create(path({"HUGE.DAT"}));
+  ASSERT_TRUE(made.ok());
+  const std::vector<std::uint8_t> bytes(memory_filesystem::max_file_size + 512);
+  const auto wrote = fs->write(made.value, bytes);
+  ASSERT_TRUE(wrote.ok());
+  EXPECT_EQ(wrote.value, memory_filesystem::max_file_size);
+  ASSERT_EQ(fs->close(made.value), vfs_error::none);
+}
+
 // --- clear() ---------------------------------------------------------------
 
 TEST(memory_vfs_clear, empties_every_entry_and_every_handle) {
@@ -535,6 +751,7 @@ TEST(memory_vfs_clear, empties_every_entry_and_every_handle) {
   const auto count = fs->entry_count(dos_path{});
   ASSERT_TRUE(count.ok());
   EXPECT_EQ(count.value, 0u);
+  EXPECT_EQ(fs->bytes_used(), 0u);
 }
 
 }  // namespace
