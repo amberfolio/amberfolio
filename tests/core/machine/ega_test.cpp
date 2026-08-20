@@ -19,7 +19,9 @@
 #include <memory>
 
 #include "amberfolio/machine/device.h"
+#include "amberfolio/machine/machine.h"
 #include "gtest/gtest.h"
+#include "machine/test_device.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -674,6 +676,33 @@ TEST(ega_reset, clears_registers_latches_and_the_halt_but_keeps_vram) {
   r.set_map_mask(0x0F);
   r.video().write_memory(addr(0x1100), 0x77);
   EXPECT_EQ(r.video().plane_byte(0, 0x1100), 0x77);
+}
+
+// The refusal reaches the machine, not just the device (#65, closed by
+// #46's fault channel; this device joined it at M2's closeout, #57).
+//
+// Before that it was local: `halted()` went true, later cycles answered
+// open bus, and nothing stopped or logged — which is not what "a loud log
+// line and a clean stop" means. This is the test that says so.
+//
+// Its own machine rather than the rig above, which is a bare device with
+// nothing to stop.
+TEST(ega_refusal, stops_the_machine_and_not_only_the_device) {
+  test::recording_diagnostics log;
+  auto box = std::make_unique<machine>(memory_layout::pc, &log);
+  auto video = std::make_unique<ega>();
+  ASSERT_TRUE(box->attach(*video));
+
+  // Sequencer index 07 is outside the subset this device implements.
+  box->write_port8(seq_index_port, 0x07);
+  box->write_port8(seq_data_port, 0x01);
+
+  EXPECT_TRUE(video->halted()) << "the device records its own reason";
+  EXPECT_TRUE(box->stopped()) << "and the machine stops for it";
+  EXPECT_EQ(box->stop().reason, stop_reason::unimplemented_device);
+  EXPECT_EQ(box->stop().at, seq_data_port);
+  EXPECT_FALSE(log.device_stops.empty())
+      << "a refusal nobody is told about is not a loud log line";
 }
 
 }  // namespace

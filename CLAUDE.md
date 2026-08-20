@@ -11,15 +11,49 @@ Radiance. **PLAN.md is the plan of record** — scope, architecture,
 milestones, and settled decisions live there; don't re-litigate them
 here or in PRs.
 
-**Status: M1 complete. M2 — the machine — is the current milestone.**
-The 8086 interpreter is in the tree and it is exact: all 323 vector
-files of the pinned SingleStepTests/8088 v2 set pass in full in CI on
-every push, undefined flag behaviour included, nothing masked and
-nothing capped. That is PLAN.md §7's M1 exit criterion, met.
+**Status: M2 complete. M3 — first light — is the current milestone.**
+There is a machine now, and self-written real-mode programs run on it
+correctly on all four targets: that is PLAN.md §7's M2 exit criterion,
+met. The 8086 interpreter underneath it is still exact — all 323 vector
+files of the pinned SingleStepTests/8088 v2 set pass in CI on every push,
+undefined flag behaviour included — and stayed exact through every device
+that grew around it.
 
-There is still no *machine* around the CPU — no memory map, no MZ
-loader, no PIT, no EGA, no speaker, no DOS/BIOS service layer. That is
-M2, and PLAN.md §7 has its exit criterion.
+What is *not* here is a game. M3 is where the player's own copy boots:
+its unpacker and overlay manager run as-is, the title sequence renders,
+menus respond. Expect it to stop, loudly, on services this machine does
+not have yet — that is the design, and the log line is the worklist.
+PLAN.md §7 has M3's exit criterion.
+
+What M2 left in place:
+
+- The machine layer — `core/include/amberfolio/machine/` and
+  `core/src/machine/`. The memory map (RAM, ROM, device windows, open
+  bus that reports a first touch rather than inventing an answer), the
+  port map, the device contract, the virtual clock and its deadline
+  scheduler, the BIOS/DOS callout, and the platform interface the hosts
+  consume. `docs/machine.md` is the tour and the house style for adding
+  a device or a service — read it before extending the service surface.
+- The devices: 8253 PIT and a minimal 8259, EGA (planes, latches, the
+  full write pipeline, palette, renderer, INT 10h), PC speaker, and the
+  BIOS keyboard services over the real BDA buffer.
+- The DOS floor: a virtual filesystem with DOS name semantics settled in
+  core, an MZ loader with relocations and a PSP, and PLAN.md §3's INT 21h
+  subset — file I/O, date/time, console output, exit.
+- **Virtual time is the only clock.** Counted in PIT input ticks
+  (1,193,182 Hz); nothing under `core/` reads host time. Devices do not
+  tick, they compute: a channel's count is a formula, its next edge is a
+  deadline.
+- Both hosts run the machine. The SDL3 host takes a directory and a
+  program and returns the exit code the program chose; `--headless`
+  makes that checkable in CI. The wasm dev page puts it in a browser —
+  canvas, AudioWorklet, keyboard — with a headless smoke test asserting
+  the same run.
+- The exit-criterion suite — seven self-written programs under
+  `tests/programs`, driven through the whole machine, answers asserted
+  case by case. The M1 flat-bus programs still run beside them
+  unchanged, and the whole apparatus stays free of GoogleTest so it
+  builds under Emscripten.
 
 What M1 left in place:
 
@@ -51,7 +85,9 @@ What M1 left in place:
   than only building it.
 - `docs/cpu-implementation.md` — the architecture tour and the
   house style for an instruction handler, written for M1's wide phase
-  and still the guide for touching CPU code.
+  and still the guide for touching CPU code. `docs/machine.md` is its
+  sibling for everything around the CPU: adding a device, adding a BIOS
+  or DOS service, and what "log, don't fake" means at that layer.
 
 What M0 left in place, all of it running in CI on every push:
 
@@ -75,6 +111,8 @@ cmake --preset linux-gcc      # or windows-msvc, macos, linux-clang, wasm
 cmake --build --preset linux-gcc
 ctest --preset linux-gcc      # unit + programs + host smoke checks
 ctest --preset linux-gcc -L bench   # just the 8086 programs, timed
+ctest --preset linux-gcc -L smoke   # the hosts, headless
+ctest --preset wasm                 # the machine programs under node
 
 cmake --preset linux-asan-ubsan   # the tests under ASan + UBSan, no host
 
