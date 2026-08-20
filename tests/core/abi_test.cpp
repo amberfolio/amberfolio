@@ -18,9 +18,11 @@
 
 #include <array>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
 #include "amberfolio/machine/clock.h"
+#include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/version.h"
 
@@ -121,10 +123,32 @@ TEST(Abi, EveryCallToleratesANullHandle) {
             AF_NO_MACHINE);
   EXPECT_EQ(af_machine_console_pending(nullptr), 0u);
   EXPECT_EQ(af_machine_console_dropped(nullptr), 0.0);
-  EXPECT_EQ(af_machine_load_program(nullptr, nullptr, 0), AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_load_from_vfs(nullptr, "A.EXE", nullptr), AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_load_error(nullptr), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_write_memory(nullptr, 0, nullptr, 0), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_read_memory(nullptr, 0, nullptr, 0), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_set_entry(nullptr, 0, 0, 0, 0), AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_steps(nullptr), 0.0);
+  EXPECT_EQ(af_machine_set_trace(nullptr, 1), AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_vfs_clear(nullptr), AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_vfs_put(nullptr, "A.DAT", nullptr, 0), AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_vfs_count(nullptr), 0u);
+  EXPECT_EQ(af_machine_vfs_size_at(nullptr, 0), 0u);
+  EXPECT_EQ(af_machine_vfs_bytes_used(nullptr), 0.0);
+
+  std::array<char, 128> text{};
+  EXPECT_EQ(af_machine_vfs_name_at(nullptr, 0, text.data(),
+                                   static_cast<std::uint32_t>(text.size())),
+            0u);
+  EXPECT_EQ(af_machine_vfs_fingerprint(nullptr, "A.DAT", text.data(),
+                                       static_cast<std::uint32_t>(text.size())),
+            0u);
+  EXPECT_EQ(af_machine_stop_report(nullptr, AF_RUN_END_STOPPED, text.data(),
+                                   static_cast<std::uint32_t>(text.size())),
+            0u);
+  EXPECT_EQ(af_machine_trace_report(nullptr, text.data(),
+                                    static_cast<std::uint32_t>(text.size())),
+            0u);
 
   std::array<float, 4> samples{};
   EXPECT_EQ(af_machine_render_audio(nullptr, samples.data(), 4, 44100), 0u);
@@ -205,17 +229,252 @@ TEST(Abi, MemoryGoesInAndComesBackOut) {
   EXPECT_EQ(af_machine_write_memory(box.get(), 0, nullptr, 4), AF_INVALID);
 }
 
-// Reserved and loud, not reserved and silent: PLAN.md §3's rule at the
-// ABI. The MZ loader is M2-D6 (#51).
-TEST(Abi, LoadProgramSaysItIsNotImplementedYet) {
+// --- The filesystem (M3-F2, #84) ---------------------------------------
+//
+// The wasm counterpart of the directory the SDL host is pointed at. The
+// cases here are the boundary's own: that a bare machine says it has no
+// filesystem rather than pretending, that names are canonicalized in core
+// rather than by the caller, and that what goes in comes back out.
+// `memory_vfs_test.cpp` is where the backend itself is tested.
+
+/// A machine with the reference device set attached, which is the only
+/// kind that has a filesystem at all.
+struct equipped_machine {
+  equipped_machine() {
+    EXPECT_NE(box.get(), nullptr);
+    EXPECT_EQ(af_machine_attach_reference_devices(box.get()), AF_OK);
+  }
+
+  [[nodiscard]] af_machine* get() const { return box.get(); }
+
+  machine_handle box;
+};
+
+TEST(AbiVfs, SaysThereIsNoFilesystemOnABareMachine) {
   const machine_handle box;
   ASSERT_NE(box.get(), nullptr);
 
-  const std::array<std::uint8_t, 2> image{'M', 'Z'};
-  EXPECT_EQ(af_machine_load_program(box.get(), image.data(),
-                                    static_cast<std::uint32_t>(image.size())),
-            AF_UNIMPLEMENTED);
-  EXPECT_EQ(af_machine_load_program(box.get(), nullptr, 0), AF_INVALID);
+  // A machine exists; a filesystem does not. AF_NO_MACHINE would be a lie
+  // about the first, which is the whole reason AF_NO_FILESYSTEM has its
+  // own number.
+  EXPECT_EQ(af_machine_vfs_clear(box.get()), AF_NO_FILESYSTEM);
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "A.DAT", nullptr, 0),
+            AF_NO_FILESYSTEM);
+  EXPECT_EQ(af_machine_load_from_vfs(box.get(), "A.EXE", nullptr),
+            AF_NO_FILESYSTEM);
+  EXPECT_EQ(af_machine_vfs_count(box.get()), 0u);
+}
+
+TEST(AbiVfs, PutsAFileAndListsItBack) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 4> bytes{1, 2, 3, 4};
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "GAME.DAT", bytes.data(),
+                               static_cast<std::uint32_t>(bytes.size())),
+            AF_OK);
+  EXPECT_EQ(af_machine_vfs_count(box.get()), 1u);
+  EXPECT_EQ(af_machine_vfs_size_at(box.get(), 0), 4u);
+  EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), 4.0);
+
+  std::array<char, 16> name{};
+  EXPECT_EQ(af_machine_vfs_name_at(box.get(), 0, name.data(),
+                                   static_cast<std::uint32_t>(name.size())),
+            8u);
+  EXPECT_STREQ(name.data(), "GAME.DAT");
+}
+
+TEST(AbiVfs, CanonicalizesTheNameInCoreRatherThanTakingItAsGiven) {
+  const equipped_machine box;
+
+  // Lower case in, upper case out — the caller does no name logic
+  // (abi.h). A page that decided for itself what `game.dat` meant would
+  // be a second implementation of the rule that says whether two
+  // programs are looking at the same file.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "game.dat", nullptr, 0), AF_OK);
+  std::array<char, 16> name{};
+  EXPECT_EQ(af_machine_vfs_name_at(box.get(), 0, name.data(),
+                                   static_cast<std::uint32_t>(name.size())),
+            8u);
+  EXPECT_STREQ(name.data(), "GAME.DAT");
+}
+
+TEST(AbiVfs, RefusesANameNoDosNameCouldEqual) {
+  const equipped_machine box;
+
+  // The useful answer, not a failure: a real game directory has files in
+  // it DOS could never have named, and this is where a host gets its
+  // "these were skipped" list.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "code wheel.pdf", nullptr, 0),
+            AF_INVALID);
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "TOOLONGNAME.DAT", nullptr, 0),
+            AF_INVALID);
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "", nullptr, 0), AF_INVALID);
+  EXPECT_EQ(af_machine_vfs_put(box.get(), nullptr, nullptr, 0), AF_INVALID);
+  EXPECT_EQ(af_machine_vfs_count(box.get()), 0u);
+}
+
+TEST(AbiVfs, FingerprintsAFileTheSameWayTheDesktopHostDoes) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "ABC.DAT", bytes.data(), 3), AF_OK);
+
+  std::array<char, 128> hex{};
+  EXPECT_EQ(af_machine_vfs_fingerprint(box.get(), "ABC.DAT", hex.data(),
+                                       static_cast<std::uint32_t>(hex.size())),
+            64u);
+  // FIPS 180-4 appendix B.1, the digest of "abc" — the same answer every
+  // other SHA-256 in the world gives, which is the entire point of a
+  // fingerprint.
+  EXPECT_STREQ(
+      hex.data(),
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+
+  EXPECT_EQ(af_machine_vfs_fingerprint(box.get(), "GONE.DAT", hex.data(),
+                                       static_cast<std::uint32_t>(hex.size())),
+            0u);
+}
+
+TEST(AbiVfs, ClearingEmptiesIt) {
+  const equipped_machine box;
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "A.DAT", nullptr, 0), AF_OK);
+  ASSERT_EQ(af_machine_vfs_clear(box.get()), AF_OK);
+  EXPECT_EQ(af_machine_vfs_count(box.get()), 0u);
+  EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), 0.0);
+}
+
+TEST(AbiVfs, LoadsAnMzProgramOffTheFilesystem) {
+  const equipped_machine box;
+
+  // A two-paragraph MZ header with no relocations and a two-byte image:
+  // `JMP $`. Self-written, as everything in this repository is.
+  std::array<std::uint8_t, 34> image{};
+  image[0] = 'M';
+  image[1] = 'Z';
+  image[2] = 34;  // bytes in the last page
+  image[3] = 0;
+  image[4] = 1;  // pages
+  image[5] = 0;
+  image[8] = 2;  // header paragraphs
+  image[9] = 0;
+  image[10] = 0x10;  // MINALLOC
+  image[16] = 0x00;  // initial SP, low
+  image[17] = 0x01;  // initial SP, high
+  image[24] = 0x1C;  // relocation table offset
+  image[32] = 0xEB;  // JMP $
+  image[33] = 0xFE;
+
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "TINY.EXE", image.data(),
+                               static_cast<std::uint32_t>(image.size())),
+            AF_OK);
+
+  EXPECT_EQ(af_machine_load_from_vfs(box.get(), "TINY.EXE", " ARGS"), AF_OK);
+  EXPECT_EQ(af_machine_load_error(box.get()), 0u);
+
+  // And it runs: a frame of virtual time with nothing refused.
+  EXPECT_EQ(af_machine_run_until(box.get(), 1000.0), AF_OK);
+  EXPECT_GT(af_machine_steps(box.get()), 0.0);
+}
+
+TEST(AbiVfs, ReportsWhyALoadFailedWithoutFoldingItIntoTheStatus) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 4> junk{'N', 'O', 'P', 'E'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "BAD.EXE", junk.data(), 4), AF_OK);
+
+  EXPECT_EQ(af_machine_load_from_vfs(box.get(), "BAD.EXE", nullptr),
+            AF_INVALID);
+  EXPECT_EQ(af_machine_load_error(box.get()),
+            static_cast<std::uint32_t>(
+                amberfolio::machine::loader_error::bad_signature));
+
+  // A file that is not there is a loader error too, and a different one.
+  EXPECT_EQ(af_machine_load_from_vfs(box.get(), "GONE.EXE", nullptr),
+            AF_INVALID);
+  EXPECT_EQ(af_machine_load_error(box.get()),
+            static_cast<std::uint32_t>(
+                amberfolio::machine::loader_error::file_error));
+}
+
+// --- The report (M3-F1, #83, reached from here by M3-F2) ----------------
+
+TEST(AbiReport, WritesTheSameStopLineTheDesktopHostPrints) {
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+
+  // INT 21h on a bare machine: nothing backs the vector, so the machine
+  // refuses (PLAN.md §3).
+  const std::array<std::uint8_t, 2> program{0xCD, 0x21};
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, program.data(), 2),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  EXPECT_EQ(af_machine_run_until(box.get(), 10000.0), AF_STOPPED);
+
+  std::array<char, 512> text{};
+  const std::uint32_t written =
+      af_machine_stop_report(box.get(), AF_RUN_END_STOPPED, text.data(),
+                             static_cast<std::uint32_t>(text.size()));
+  ASSERT_GT(written, 0u);
+
+  const std::string_view report(text.data(), written);
+  EXPECT_NE(report.find("amberfolio: stop reason=unimplemented_service "),
+            std::string_view::npos)
+      << report;
+  EXPECT_NE(report.find("amberfolio: stop next=INT 21h AH=00h"),
+            std::string_view::npos)
+      << report;
+}
+
+TEST(AbiReport, PrintsTheHostsOwnReasonWhenTheMachineIsStillRunning) {
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+
+  const std::array<std::uint8_t, 2> program{0xEB, 0xFE};  // JMP $
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, program.data(), 2),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  ASSERT_EQ(af_machine_run_until(box.get(), 400.0), AF_OK);
+
+  std::array<char, 512> text{};
+  const std::uint32_t written =
+      af_machine_stop_report(box.get(), AF_RUN_END_STEP_BUDGET, text.data(),
+                             static_cast<std::uint32_t>(text.size()));
+  const std::string_view report(text.data(), written);
+  EXPECT_NE(report.find("reason=step_budget "), std::string_view::npos)
+      << report;
+}
+
+TEST(AbiReport, TracingIsOffUntilAskedForAndSurvivesAReset) {
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+
+  std::array<char, 256> text{};
+  ASSERT_GT(af_machine_trace_report(box.get(), text.data(),
+                                    static_cast<std::uint32_t>(text.size())),
+            0u);
+  EXPECT_STREQ(text.data(), "amberfolio: stop trace=off\n");
+
+  ASSERT_EQ(af_machine_set_trace(box.get(), 1), AF_OK);
+  const std::array<std::uint8_t, 2> program{0xEB, 0xFE};
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, program.data(), 2),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  ASSERT_EQ(af_machine_run_until(box.get(), 400.0), AF_OK);
+
+  std::vector<char> big(24576);
+  ASSERT_GT(af_machine_trace_report(box.get(), big.data(),
+                                    static_cast<std::uint32_t>(big.size())),
+            0u);
+  EXPECT_NE(std::string_view(big.data()).find("trace=on"),
+            std::string_view::npos);
+
+  // A setting, not state: the ring is emptied and recording stays on.
+  ASSERT_EQ(af_machine_reset(box.get()), AF_OK);
+  ASSERT_GT(af_machine_trace_report(box.get(), big.data(),
+                                    static_cast<std::uint32_t>(big.size())),
+            0u);
+  EXPECT_NE(std::string_view(big.data()).find("steps_seen=0"),
+            std::string_view::npos);
 }
 
 TEST(Abi, TheFramebufferIsCoreOwnedAndStable) {

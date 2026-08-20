@@ -22,14 +22,19 @@
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/dos.h"
 #include "amberfolio/machine/ega.h"
+#include "amberfolio/machine/fingerprint.h"
 #include "amberfolio/machine/int10.h"
+#include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_vfs.h"
 #include "amberfolio/machine/pic.h"
 #include "amberfolio/machine/pit.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/renderer.h"
+#include "amberfolio/machine/report.h"
 #include "amberfolio/machine/speaker.h"
+#include "amberfolio/machine/vfs.h"
+#include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
 
 /// The handle's definition, which is a machine and nothing else.
@@ -57,6 +62,7 @@ namespace {
 
 using amberfolio::machine::key_action;
 using amberfolio::machine::machine;
+using amberfolio::machine::run_end;
 using amberfolio::machine::speed_preset;
 using amberfolio::machine::stop_reason;
 using amberfolio::machine::wall_time;
@@ -88,6 +94,16 @@ static_assert(AF_OK == static_cast<uint32_t>(stop_reason::none),
               "directly, so a running machine's reason and AF_OK have to be "
               "the same number.");
 
+// The same for the run-end values: a host passes one of these straight
+// into `format_stop_report`, so the two spellings have to agree.
+static_assert(AF_RUN_END_STOPPED == static_cast<uint32_t>(run_end::stopped));
+static_assert(AF_RUN_END_STEP_BUDGET ==
+              static_cast<uint32_t>(run_end::step_budget));
+static_assert(AF_RUN_END_TICK_BUDGET ==
+              static_cast<uint32_t>(run_end::tick_budget));
+static_assert(AF_RUN_END_HOST_QUIT ==
+              static_cast<uint32_t>(run_end::host_quit));
+
 /// The one machine, in static storage.
 ///
 /// core/ does not allocate (PLAN.md §4), and `af_machine_create` has to
@@ -110,6 +126,69 @@ machine* box_of(af_machine* handle) noexcept {
 
 const machine* box_of(const af_machine* handle) noexcept {
   return handle == nullptr ? nullptr : &handle->box;
+}
+
+/// A DOS path's own worst case: `max_depth` components of
+/// `dos_name::max_length` plus their separators, and a drive. A name
+/// longer than this could not canonicalize anyway, so refusing it early
+/// is the same answer arrived at sooner.
+constexpr std::size_t max_name_text =
+    (amberfolio::machine::dos_path::max_depth *
+     (amberfolio::machine::dos_name::max_length + 1)) +
+    2;
+
+/// The length of a NUL-terminated C string, refused past `bound`.
+///
+/// Bounded because the string comes from the other side of an ABI and
+/// nothing here can promise it is terminated at all. Looking at `bound +
+/// 1` characters is what makes "longer than anything this can accept"
+/// and "not a string" one safely detected answer.
+[[nodiscard]] bool text_length(const char* text, std::size_t bound,
+                               std::size_t& out) noexcept {
+  if (text == nullptr) {
+    return false;
+  }
+  for (std::size_t i = 0; i <= bound; ++i) {
+    if (text[i] == '\0') {
+      out = i;
+      return true;
+    }
+  }
+  return false;
+}
+
+/// `text`, canonicalized against the root — the one place a raw name
+/// becomes a path, for both halves of the VFS surface (abi.h's "Names are
+/// normalized in core").
+[[nodiscard]] bool path_of(const char* text,
+                           amberfolio::machine::dos_path& out) noexcept {
+  std::size_t length = 0;
+  if (!text_length(text, max_name_text, length)) {
+    return false;
+  }
+  const auto where = amberfolio::machine::canonicalize(
+      amberfolio::machine::dos_path{}, std::span<const char>(text, length));
+  if (!where.ok()) {
+    return false;
+  }
+  out = where.value;
+  return true;
+}
+
+/// Copy `text` into `out` with a terminator, and answer how many
+/// characters were copied. Zero, and nothing written, if it will not fit
+/// — a truncated name is a different name.
+[[nodiscard]] uint32_t copy_out(std::span<const char> text, char* out,
+                                uint32_t max) noexcept {
+  if (out == nullptr || text.size() + 1 > max) {
+    return 0;
+  }
+  const std::span<char> destination(out, max);
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    destination[i] = text[i];
+  }
+  destination[text.size()] = '\0';
+  return static_cast<uint32_t>(text.size());
 }
 
 // --- The reference device set (M2-H2, #55) -----------------------------
@@ -222,6 +301,37 @@ alignas(reference_devices)
     std::array<std::byte, sizeof(reference_devices)> devices_storage;
 reference_devices* devices_live = nullptr;
 
+/// Why the last `af_machine_load_from_vfs` failed — see
+/// `af_machine_load_error()` in abi.h for why the reason is a second call
+/// rather than part of the status. Reset on every attempt, so it is
+/// always about the most recent one.
+amberfolio::machine::loader_error last_load_error =
+    amberfolio::machine::loader_error::none;
+
+/// The filesystem the `af_machine_vfs_*` calls are about: the reference
+/// device set's own `memory_filesystem`.
+///
+/// Not `machine::vfs()`, which answers a `filesystem&` — the abstract
+/// interface has no `clear()` and no `bytes_used()`, deliberately, since
+/// neither is something a DOS program can ask for (machine/vfs.h). These
+/// are host affordances over the *one backend a wasm host has*, so this
+/// reaches the concrete object rather than widening the interface every
+/// backend would then have to implement.
+amberfolio::machine::memory_filesystem* vfs_of(af_machine* handle) noexcept {
+  if (handle == nullptr || devices_live == nullptr) {
+    return nullptr;
+  }
+  return &devices_live->fs;
+}
+
+const amberfolio::machine::memory_filesystem* vfs_of(
+    const af_machine* handle) noexcept {
+  if (handle == nullptr || devices_live == nullptr) {
+    return nullptr;
+  }
+  return &devices_live->fs;
+}
+
 }  // namespace
 
 extern "C" {
@@ -319,6 +429,47 @@ uint32_t af_machine_run_until(af_machine* handle, double tick) {
 double af_machine_time(const af_machine* handle) {
   const machine* box = box_of(handle);
   return box == nullptr ? 0.0 : static_cast<double>(box->time());
+}
+
+double af_machine_steps(const af_machine* handle) {
+  const machine* box = box_of(handle);
+  return box == nullptr ? 0.0 : static_cast<double>(box->steps());
+}
+
+uint32_t af_machine_set_trace(af_machine* handle, int32_t on) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  box->trace().enable(on != 0);
+  return AF_OK;
+}
+
+uint32_t af_machine_stop_report(const af_machine* handle, uint32_t how,
+                                char* out, uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || out == nullptr || max == 0) {
+    return 0;
+  }
+  // An unknown `how` is treated as "the machine stopped" rather than
+  // refused: the report is the one thing that must always be printable,
+  // and the machine's own reason is the honest default when the host has
+  // not named one this file recognizes.
+  const run_end ended = (how <= AF_RUN_END_HOST_QUIT)
+                            ? static_cast<run_end>(how)
+                            : run_end::stopped;
+  return static_cast<uint32_t>(
+      format_stop_report(*box, ended, std::span<char>(out, max)));
+}
+
+uint32_t af_machine_trace_report(const af_machine* handle, char* out,
+                                 uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || out == nullptr || max == 0) {
+    return 0;
+  }
+  return static_cast<uint32_t>(
+      format_trace_report(*box, std::span<char>(out, max)));
 }
 
 int32_t af_machine_stopped(const af_machine* handle) {
@@ -456,19 +607,166 @@ double af_machine_console_dropped(const af_machine* handle) {
   return static_cast<double>(box->console().dropped());
 }
 
-uint32_t af_machine_load_program(af_machine* handle, const uint8_t* image,
-                                 uint32_t size) {
+uint32_t af_machine_vfs_clear(af_machine* handle) {
+  if (box_of(handle) == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return AF_NO_FILESYSTEM;
+  }
+  fs->clear();
+  return AF_OK;
+}
+
+uint32_t af_machine_vfs_put(af_machine* handle, const char* name,
+                            const uint8_t* bytes, uint32_t size) {
+  if (box_of(handle) == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return AF_NO_FILESYSTEM;
+  }
+  if (bytes == nullptr && size != 0) {
+    return AF_INVALID;
+  }
+
+  amberfolio::machine::dos_path where;
+  if (!path_of(name, where) || where.is_root()) {
+    return AF_INVALID;
+  }
+
+  const auto made = fs->create(where);
+  if (!made.ok()) {
+    return AF_INVALID;
+  }
+
+  bool whole = true;
+  if (size != 0) {
+    const auto wrote =
+        fs->write(made.value, std::span<const uint8_t>(bytes, size));
+    // A short count is the backend's honest answer to running out of room
+    // (machine/vfs.h). A partly-written file is not the file the host
+    // asked for, though, so this refuses — and takes the fragment away
+    // again, because a half-written `START.EXE` sitting there under the
+    // right name is precisely the plausible wrong answer PLAN.md §3 is
+    // about.
+    whole = wrote.ok() && wrote.value == size;
+  }
+  static_cast<void>(fs->close(made.value));
+  if (!whole) {
+    static_cast<void>(fs->unlink(where));
+    return AF_INVALID;
+  }
+  return AF_OK;
+}
+
+uint32_t af_machine_vfs_count(const af_machine* handle) {
+  const amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return 0;
+  }
+  const auto count = fs->entry_count(amberfolio::machine::dos_path{});
+  return count.ok() ? static_cast<uint32_t>(count.value) : 0;
+}
+
+uint32_t af_machine_vfs_name_at(const af_machine* handle, uint32_t index,
+                                char* out, uint32_t max) {
+  const amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return 0;
+  }
+  const auto entry = fs->entry_at(amberfolio::machine::dos_path{}, index);
+  if (!entry.ok()) {
+    return 0;
+  }
+  return copy_out(entry.value.name.text(), out, max);
+}
+
+uint32_t af_machine_vfs_size_at(const af_machine* handle, uint32_t index) {
+  const amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return 0;
+  }
+  const auto entry = fs->entry_at(amberfolio::machine::dos_path{}, index);
+  return entry.ok() ? entry.value.size : 0;
+}
+
+double af_machine_vfs_bytes_used(const af_machine* handle) {
+  const amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  return fs == nullptr ? 0.0 : static_cast<double>(fs->bytes_used());
+}
+
+uint32_t af_machine_vfs_fingerprint(af_machine* handle, const char* name,
+                                    char* out, uint32_t max) {
+  amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return 0;
+  }
+  amberfolio::machine::dos_path where;
+  if (!path_of(name, where) || where.is_root()) {
+    return 0;
+  }
+  const auto digest = amberfolio::machine::fingerprint_file(*fs, where);
+  if (!digest.ok()) {
+    return 0;
+  }
+  std::array<char, amberfolio::sha256_digest::text_length + 1> text{};
+  if (amberfolio::format_hex(digest.value, text) == 0) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(text.data(),
+                                        amberfolio::sha256_digest::text_length),
+                  out, max);
+}
+
+uint32_t af_machine_load_from_vfs(af_machine* handle, const char* name,
+                                  const char* command_tail) {
   machine* box = box_of(handle);
   if (box == nullptr) {
     return AF_NO_MACHINE;
   }
-  if (image == nullptr || size == 0) {
+  amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return AF_NO_FILESYSTEM;
+  }
+
+  last_load_error = amberfolio::machine::loader_error::none;
+
+  amberfolio::machine::dos_path where;
+  if (!path_of(name, where) || where.is_root()) {
     return AF_INVALID;
   }
-  // Reserved: the MZ loader is M2-D6 (#51). Loud rather than a quiet
-  // success, per PLAN.md §3 — the whole point of the code is that a host
-  // calling it early cannot mistake nothing for something.
-  return AF_UNIMPLEMENTED;
+
+  // Bounded by what a PSP can hold (machine/loader.h): a longer tail is
+  // `loader_error::command_tail_too_long` there, and refusing it here
+  // means the same answer without reading past the end of whatever the
+  // host actually passed.
+  std::size_t tail_length = 0;
+  if (command_tail != nullptr &&
+      !text_length(command_tail,
+                   amberfolio::machine::psp::command_tail_max_length,
+                   tail_length)) {
+    return AF_INVALID;
+  }
+
+  const auto loaded = amberfolio::machine::load_program(
+      *box, *fs, where,
+      std::span<const char>(command_tail == nullptr ? "" : command_tail,
+                            tail_length));
+  if (!loaded.ok()) {
+    last_load_error = loaded.error;
+    return AF_INVALID;
+  }
+  return AF_OK;
+}
+
+uint32_t af_machine_load_error(const af_machine* handle) {
+  if (box_of(handle) == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  return static_cast<uint32_t>(last_load_error);
 }
 
 uint32_t af_machine_write_memory(af_machine* handle, uint32_t address,

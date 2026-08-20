@@ -144,12 +144,37 @@ extern "C" {
 /// A real entry point that nothing implements yet. Loud on purpose
 /// (PLAN.md §3): a host gets a distinct code rather than a plausible
 /// success.
+///
+/// **Nothing answers this today.** It was the reserved MZ loader's, and
+/// M3-F2 (#84) replaced that with `af_machine_load_from_vfs` below. The
+/// number stays where it is rather than being reclaimed: these are ABI
+/// values, a host may have them written down, and shifting one to close
+/// a gap is a change with no benefit and a real cost. It is the code the
+/// next reserved entry point should use.
 #define AF_UNIMPLEMENTED 4u
+/// The machine has no filesystem attached, so there is nothing for a
+/// `af_machine_vfs_*` call to be about. Its own code rather than
+/// AF_NO_MACHINE, which would be a lie about a machine that exists: a
+/// host that forgot `af_machine_attach_reference_devices()` should be
+/// told what it forgot.
+#define AF_NO_FILESYSTEM 5u
 
 // There is no "a machine already exists" code, because no function can
 // return one: `af_machine_create` answers a pointer, and null is the
 // whole of what it has to say. A status nothing produces is a status a
 // host would write a branch for and never reach.
+
+// --- How a run ended --------------------------------------------------
+//
+// The values of machine::run_end (machine/report.h), for
+// `af_machine_stop_report` below. A host that ended the run itself — a
+// step budget, a closed page — says so, and the report prints its reason
+// instead of the machine's. Asserted against the C++ enum in abi.cpp.
+
+#define AF_RUN_END_STOPPED 0u
+#define AF_RUN_END_STEP_BUDGET 1u
+#define AF_RUN_END_TICK_BUDGET 2u
+#define AF_RUN_END_HOST_QUIT 3u
 
 // --- Speed presets ----------------------------------------------------
 //
@@ -261,6 +286,56 @@ uint32_t af_machine_run_until(af_machine* box, double tick);
 /// The virtual clock, in ticks since the last reset.
 double af_machine_time(const af_machine* box);
 
+/// Scheduling steps since the last reset (machine::steps).
+///
+/// The other axis a run is measured on, and the one that stays comparable
+/// when the speed governor does not: "the same stop line at the same
+/// step" is the claim the desktop host and this one make to each other
+/// (M3-F2, #84), and this is the number in it. A `double` for the reason
+/// every tick quantity here is one — see "Tick quantities are doubles"
+/// above.
+double af_machine_steps(const af_machine* box);
+
+/// Start or stop recording the trace ring (machine/trace.h): the last
+/// 256 instructions and 64 service calls, in fixed storage inside the
+/// machine.
+///
+/// A setting, not state — it survives `af_machine_reset`, exactly as the
+/// speed preset does. Off until asked for, at a cost of one branch per
+/// step, because a boot runs for hundreds of millions of them.
+uint32_t af_machine_set_trace(af_machine* box, int32_t on);
+
+// --- Why the run ended ------------------------------------------------
+//
+// The diagnostics sink is a C++ interface (machine/diagnostics.h) and
+// deliberately does not cross this boundary: it hands out structured
+// records held by reference, which is the opposite of everything the
+// rules at the top of this file ask for. What a JS host needs instead is
+// the *account*, already written — and it needs it to be the same
+// account the desktop host prints, because M3's exit criterion is that
+// the two agree at the same step (#84).
+//
+// So the formatting lives in core (machine/report.h) and these two hand
+// the characters over. A host prints them; it does not parse them.
+
+/// Write the stop report into `out`, NUL-terminated, and answer how many
+/// characters that was (the terminator not counted).
+///
+/// `how` is one of the AF_RUN_END_* values: AF_RUN_END_STOPPED when the
+/// machine stopped of its own accord, and one of the others when the host
+/// ended the run itself. Anything else is `AF_RUN_END_STOPPED`'s
+/// behaviour, because a report is not worth refusing to write.
+///
+/// 512 bytes is enough for any report this can produce; a smaller buffer
+/// truncates rather than failing, since a short report is still a report.
+uint32_t af_machine_stop_report(const af_machine* box, uint32_t how, char* out,
+                                uint32_t max);
+
+/// The same for the trace ring. 24576 bytes is enough for a full one;
+/// a machine that was never asked to trace writes one line saying so.
+uint32_t af_machine_trace_report(const af_machine* box, char* out,
+                                 uint32_t max);
+
 /// Non-zero once the machine has stopped. Sticky until reset.
 int32_t af_machine_stopped(const af_machine* box);
 
@@ -369,18 +444,98 @@ uint32_t af_machine_read_console(af_machine* box, uint8_t* out, uint32_t max);
 uint32_t af_machine_console_pending(const af_machine* box);
 double af_machine_console_dropped(const af_machine* box);
 
+// --- The filesystem ---------------------------------------------------
+//
+// The wasm counterpart of the directory the SDL host is pointed at
+// (M3-F2, #84). A browser cannot hand the core a directory, so it hands
+// it one file at a time, and these are the doors.
+//
+// **Names are normalized in core, not by the host.** `af_machine_vfs_put`
+// and `af_machine_load_from_vfs` take raw text and run it through
+// `machine::canonicalize()`, which is the one place DOS short-name rules
+// live (machine/vfs.h). A page that decided for itself what `Save1.Dat`
+// meant would be a second implementation of the rule that decides whether
+// two programs are looking at the same file, and the two would eventually
+// disagree.
+//
+// A name no legal DOS short name can equal is `AF_INVALID`, and that is
+// the useful answer rather than a failure: a real game directory has
+// files in it that DOS could never have named, and a host wanting to
+// report "these were skipped" gets its list from this.
+//
+// Every one of these needs a filesystem, which means
+// `af_machine_attach_reference_devices()`; without one they answer
+// `AF_NO_FILESYSTEM`.
+
+/// Empty the filesystem: every file gone, every byte reclaimed. What a
+/// page calls before taking a second directory from the player.
+uint32_t af_machine_vfs_clear(af_machine* box);
+
+/// Put `size` bytes under `name` in the root directory, replacing
+/// whatever was there.
+///
+/// `name` is NUL-terminated raw text — `START.EXE`, `save1.dat` — and is
+/// canonicalized here. `AF_INVALID` for a name that is not a legal DOS
+/// short name or for bytes that do not fit; `AF_NO_FILESYSTEM` when there
+/// is no filesystem attached.
+uint32_t af_machine_vfs_put(af_machine* box, const char* name,
+                            const uint8_t* bytes, uint32_t size);
+
+/// How many entries the root directory holds, and the name and size of
+/// one of them. The order is the VFS's own pinned name order
+/// (machine/vfs.h), so a listing is the same on every host and in every
+/// run.
+///
+/// `af_machine_vfs_name_at` writes a NUL-terminated name into `out` and
+/// answers its length, or zero for an index past the end or a buffer
+/// smaller than 13 bytes (`FILENAME.EXT` and its terminator).
+uint32_t af_machine_vfs_count(const af_machine* box);
+uint32_t af_machine_vfs_name_at(const af_machine* box, uint32_t index,
+                                char* out, uint32_t max);
+uint32_t af_machine_vfs_size_at(const af_machine* box, uint32_t index);
+
+/// Bytes the filesystem is holding, across every file.
+double af_machine_vfs_bytes_used(const af_machine* box);
+
+/// The SHA-256 of `name`, as 64 lowercase hex characters written into
+/// `out` and NUL-terminated; answers the length, or zero if the file
+/// could not be read or `out` is smaller than 65 bytes.
+///
+/// The identity of a player's file (PLAN.md §2), and the same digest the
+/// desktop host prints at load — one implementation, below both hosts,
+/// so that a fingerprint means the same thing wherever it is taken.
+uint32_t af_machine_vfs_fingerprint(af_machine* box, const char* name,
+                                    char* out, uint32_t max);
+
 // --- Getting a program in ---------------------------------------------
 
-/// Load an MZ executable: relocations, PSP, entry state, the lot.
+/// Load an MZ executable *from the filesystem*: relocations, PSP, entry
+/// state, the lot. `name` is canonicalized here, as everything else in
+/// this section is; `command_tail` may be null and is otherwise copied
+/// into the PSP verbatim.
 ///
-/// **Reserved, and answers `AF_UNIMPLEMENTED` today.** The loader is
-/// M2-D6 (#51) and the file it reads comes from the VFS, which is M2-D5
-/// (#50). The entry point is here now so that the export list, the JS
-/// host and this documentation are settled before the loader lands, and
-/// so that a host calling it early gets a distinct, loud answer rather
-/// than a machine that quietly does nothing.
-uint32_t af_machine_load_program(af_machine* box, const uint8_t* image,
-                                 uint32_t size);
+/// This replaced a reserved `af_machine_load_program(image, size)` that
+/// answered `AF_UNIMPLEMENTED` while the loader was still M2-D6 (#51).
+/// The loader takes a file off a `filesystem` rather than a buffer, so a
+/// buffer-shaped entry point could only have been implemented by staging
+/// the bytes under a name of the ABI's own invention — which is exactly
+/// the kind of quiet fiction PLAN.md §3 exists to prevent. A host with an
+/// image in hand calls `af_machine_vfs_put` and then this.
+///
+/// `AF_OK`, or `AF_INVALID` with the reason available from
+/// `af_machine_load_error()`.
+uint32_t af_machine_load_from_vfs(af_machine* box, const char* name,
+                                  const char* command_tail);
+
+/// Why the last `af_machine_load_from_vfs` failed: the value of
+/// `machine::loader_error`, with 0 meaning the last load succeeded (or
+/// that none has been attempted).
+///
+/// A second call rather than an out-parameter, because a `loader_error`
+/// is not a status: `AF_INVALID` already says the call failed, and
+/// folding fourteen loader outcomes into this file's status space would
+/// make `AF_OK == 0` stop being the only thing a host has to check.
+uint32_t af_machine_load_error(const af_machine* box);
 
 /// Copy `size` bytes into the machine's memory at physical `address`.
 ///
