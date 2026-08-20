@@ -2,6 +2,10 @@
 
 #include "amberfolio/machine/memory_vfs.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <span>
+
 namespace amberfolio::machine {
 namespace {
 
@@ -12,21 +16,102 @@ namespace {
   return candidate.depth() == dir.depth() + 1 && candidate.parent() == dir;
 }
 
+/// Move `count` bytes within `arena` from `from` to `to`, correctly when
+/// the two ranges overlap — which, in this file, they always do.
+///
+/// Written out rather than `std::memmove` for the reason every other loop
+/// in core is written out: the direction rule is the whole content of the
+/// function and it is worth being able to read it. Right-shifts copy from
+/// the end back, left-shifts copy from the start forward; either way, no
+/// byte is read after it has been overwritten.
+void move_bytes(std::span<std::uint8_t> arena, std::size_t to, std::size_t from,
+                std::size_t count) noexcept {
+  if (count == 0 || to == from) {
+    return;
+  }
+  if (to > from) {
+    for (std::size_t i = count; i > 0; --i) {
+      arena[to + i - 1] = arena[from + i - 1];
+    }
+  } else {
+    for (std::size_t i = 0; i < count; ++i) {
+      arena[to + i] = arena[from + i];
+    }
+  }
+}
+
 }  // namespace
 
 void memory_filesystem::clear() noexcept {
   // Field by field, not `entries_ = {}`: assigning a freshly
-  // aggregate-initialized array would build a temporary holding all 8 MiB
-  // of `entries_` before copying it over, on the stack, which is exactly
-  // what this header's top comment says never to do. Nothing below reads
-  // an entry whose `in_use` is false, so `data` does not need clearing.
+  // aggregate-initialized array would build a temporary of the whole
+  // table on the stack. Nothing below reads an entry whose `in_use` is
+  // false, so the offsets do not need clearing either.
   for (auto& e : entries_) {
     e.in_use = false;
     e.is_directory = false;
     e.path = dos_path{};
+    e.offset = 0;
     e.length = 0;
   }
   handles_ = {};  // No large member here; a plain reset is cheap.
+
+  // The arena's contents are not blanked, for the same reason: nothing
+  // can read a byte outside a live file's range, and zeroing 8 MiB to
+  // prove it would only cost time. What makes the *next* file's bytes
+  // defined is that `write()` fills every gap it opens.
+  used_ = 0;
+}
+
+std::uint32_t memory_filesystem::growth_ceiling(const entry& e) const noexcept {
+  const std::size_t room = arena_bytes - used_;
+  const std::size_t by_arena = std::size_t{e.length} + room;
+  return static_cast<std::uint32_t>((by_arena < max_file_size) ? by_arena
+                                                               : max_file_size);
+}
+
+bool memory_filesystem::resize(entry& e, std::uint32_t new_length) noexcept {
+  if (new_length == e.length) {
+    return true;
+  }
+
+  // Where the rest of the arena begins today. Everything at or past it
+  // belongs to some other file and moves with the change; everything
+  // below it is untouched.
+  const std::size_t tail_start = std::size_t{e.offset} + e.length;
+  const std::size_t tail_length = used_ - tail_start;
+  const std::span<std::uint8_t> arena(arena_);
+
+  if (new_length > e.length) {
+    const std::size_t grow = new_length - e.length;
+    if (grow > arena_bytes - used_) {
+      return false;
+    }
+    move_bytes(arena, tail_start + grow, tail_start, tail_length);
+    used_ += grow;
+    for (auto& other : entries_) {
+      // `&other != &e` matters and is not defensive: a zero-length file
+      // has `offset == tail_start` too, so without it a file being grown
+      // from empty would move itself along with the tail.
+      if (other.in_use && !other.is_directory && &other != &e &&
+          other.offset >= tail_start) {
+        other.offset += static_cast<std::uint32_t>(grow);
+      }
+    }
+  } else {
+    const std::size_t shrink = e.length - new_length;
+    move_bytes(arena, tail_start - shrink, tail_start, tail_length);
+    used_ -= shrink;
+    for (auto& other : entries_) {
+      if (other.in_use && !other.is_directory && &other != &e &&
+          other.offset >= tail_start) {
+        other.offset -= static_cast<std::uint32_t>(shrink);
+      }
+    }
+  }
+
+  e.length = new_length;
+  return true;
 }
 
 memory_filesystem::entry* memory_filesystem::find(
@@ -119,7 +204,9 @@ vfs_result<file_handle> memory_filesystem::create(const dos_path& path) {
     if (e->is_directory) {
       return {.error = vfs_error::access_denied};
     }
-    e->length = 0;  // DOS 3Ch: creating an existing file truncates it.
+    // DOS 3Ch: creating an existing file truncates it. Shrinking always
+    // fits, so the answer is not checked.
+    static_cast<void>(resize(*e, 0));
   } else {
     if (!parent_exists(path)) {
       return {.error = vfs_error::path_not_found};
@@ -132,6 +219,9 @@ vfs_result<file_handle> memory_filesystem::create(const dos_path& path) {
     e->in_use = true;
     e->is_directory = false;
     e->path = path;
+    // At the end of the packed region, which is what makes writing to a
+    // freshly created file free: there is no tail to move.
+    e->offset = static_cast<std::uint32_t>(used_);
     e->length = 0;
   }
 
@@ -166,7 +256,7 @@ vfs_result<std::size_t> memory_filesystem::read(file_handle handle,
       (out.size() < remaining) ? out.size() : std::size_t{remaining};
 
   for (std::size_t i = 0; i < count; ++i) {
-    out[i] = e.data[h.position + i];
+    out[i] = arena_[e.offset + h.position + i];
   }
   h.position += static_cast<std::uint32_t>(count);
 
@@ -187,30 +277,41 @@ vfs_result<std::size_t> memory_filesystem::write(
 
   // A seek past the old end of file leaves a gap; fill it with zero
   // before writing, so a later read of that gap sees defined bytes and
-  // never whatever a previous occupant of this slot left behind
+  // never whatever a previous occupant of the arena left behind
   // (PLAN.md §4: determinism covers what a backend was never told to
-  // write, not just what it was).
+  // write, not just what it was). A gap the arena cannot hold is a write
+  // of nothing, which is the same short-count answer a full file gives.
   if (h.position > e.length) {
-    for (std::uint32_t i = e.length; i < h.position; ++i) {
-      e.data[i] = 0;
+    if (h.position > growth_ceiling(e)) {
+      return {.value = 0, .error = vfs_error::none};
     }
-    e.length = h.position;
+    const std::uint32_t gap_from = e.length;
+    static_cast<void>(resize(e, h.position));
+    for (std::uint32_t i = gap_from; i < h.position; ++i) {
+      arena_[e.offset + i] = 0;
+    }
   }
 
+  // After the gap, because filling one consumed arena the write itself
+  // can no longer have.
+  const std::uint32_t ceiling = growth_ceiling(e);
   const std::uint32_t available =
-      (h.position < max_file_size)
-          ? static_cast<std::uint32_t>(max_file_size) - h.position
-          : 0;
+      (h.position < ceiling) ? ceiling - h.position : 0;
   const std::size_t count =
       (in.size() < available) ? in.size() : std::size_t{available};
 
+  const auto needed = static_cast<std::uint32_t>(h.position + count);
+  if (needed > e.length && !resize(e, needed)) {
+    // Unreachable while `growth_ceiling()` is what bounds `count`, and
+    // answered rather than asserted away: a short count is this
+    // backend's honest reply to running out of room anywhere else.
+    return {.value = 0, .error = vfs_error::none};
+  }
+
   for (std::size_t i = 0; i < count; ++i) {
-    e.data[h.position + i] = in[i];
+    arena_[e.offset + h.position + i] = in[i];
   }
   h.position += static_cast<std::uint32_t>(count);
-  if (h.position > e.length) {
-    e.length = h.position;
-  }
 
   return {.value = count, .error = vfs_error::none};
 }
@@ -264,13 +365,20 @@ vfs_error memory_filesystem::truncate(file_handle handle) {
   if (h.position > e.length) {
     // The same gap rule write() uses for a seek past the old end of
     // file: a later read of the extended region must see defined zero
-    // bytes, never whatever a previous occupant of this slot left behind.
-    for (std::uint32_t i = e.length; i < h.position; ++i) {
-      e.data[i] = 0;
+    // bytes, never whatever a previous occupant of the arena left behind.
+    if (h.position > growth_ceiling(e)) {
+      return vfs_error::access_denied;
     }
+    const std::uint32_t gap_from = e.length;
+    static_cast<void>(resize(e, h.position));
+    for (std::uint32_t i = gap_from; i < h.position; ++i) {
+      arena_[e.offset + i] = 0;
+    }
+    return vfs_error::none;
   }
-  e.length = h.position;
 
+  // Shrinking always fits.
+  static_cast<void>(resize(e, h.position));
   return vfs_error::none;
 }
 
@@ -305,10 +413,14 @@ vfs_error memory_filesystem::unlink(const dos_path& path) {
     }
   }
 
+  // The bytes go back to the arena before the entry goes: `resize()`
+  // works from `e`'s own offset and length, so an entry cleared first
+  // would leave its range stranded inside the packed region forever.
+  static_cast<void>(resize(*e, 0));
   e->in_use = false;
   e->is_directory = false;
   e->path = dos_path{};
-  e->length = 0;
+  e->offset = 0;
 
   return vfs_error::none;
 }
@@ -332,6 +444,9 @@ vfs_error memory_filesystem::mkdir(const dos_path& path) {
   e.in_use = true;
   e.is_directory = true;
   e.path = path;
+  // A directory owns no arena bytes and is never resized; the offset is
+  // set to nothing in particular and read by nothing.
+  e.offset = 0;
   e.length = 0;
 
   return vfs_error::none;
