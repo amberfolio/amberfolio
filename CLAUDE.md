@@ -11,19 +11,57 @@ Radiance. **PLAN.md is the plan of record** — scope, architecture,
 milestones, and settled decisions live there; don't re-litigate them
 here or in PRs.
 
-**Status: M2 complete. M3 — first light — is the current milestone.**
-There is a machine now, and self-written real-mode programs run on it
-correctly on all four targets: that is PLAN.md §7's M2 exit criterion,
-met. The 8086 interpreter underneath it is still exact — all 323 vector
-files of the pinned SingleStepTests/8088 v2 set pass in CI on every push,
-undefined flag behaviour included — and stayed exact through every device
-that grew around it.
+**Status: M3 complete, tagged `v0.1.0`. M4 — playable + seam engine —
+is the current milestone.**
+The game boots. A player-supplied copy runs its own unpacker and overlay
+manager, renders its title sequence, answers its menus and reaches the
+party roster — on the desktop host and in a browser, from the same core,
+reporting the same stop line at the same step and composing a
+pixel-identical frame. That is PLAN.md §7's M3 exit criterion, met;
+`docs/first-light.md` is the procedure for checking it, and no test in
+this repository runs the game or ever will.
 
-What is *not* here is a game. M3 is where the player's own copy boots:
-its unpacker and overlay manager run as-is, the title sequence renders,
-menus respond. Expect it to stop, loudly, on services this machine does
-not have yet — that is the design, and the log line is the worklist.
-PLAN.md §7 has M3's exit criterion.
+The 8086 interpreter underneath is still exact — all 323 vector files of
+the pinned SingleStepTests/8088 v2 set pass in CI on every push,
+undefined flag behaviour included — and stayed exact through every device
+and service that grew around it.
+
+What is *not* here is a game you can play. Exploration, combat, shops
+and save/load are M4, and so is the seam engine proper. PLAN.md §7 has
+M4's exit criterion.
+
+What M3 left in place:
+
+- **A machine that powers on like a PC.** `service_floor::reset()` is
+  the self test, and it has two halves now: the vector table, the stubs
+  and the BDA in memory, and then the PIT and the 8259 programmed
+  through real bus cycles, to whichever of them is attached. M2 had only
+  the first half, and the shape of that gap is the one to remember —
+  nothing refused anything, nothing was logged, and the boot simply
+  stopped making progress. Log-don't-fake cannot catch a program that
+  never asked.
+- **The surface a real boot asks for**, each item driven by a stop line
+  and recorded on its issue: INT 21h `AH=25h/35h/44h`; INT 10h
+  `AH=00h/05h/08h/0Fh/11h`; the BDA's video block; interrupts enabled at
+  DOS entry. What the boot never asked for is written down too — the DOS
+  memory functions, the keyboard hardware path, EXEC — and none of it
+  was built on spec.
+- **A raster at 3DAh.** The status register's timing bits are a formula
+  against `machine::time()` rather than a constant, so a program that
+  polls for vertical retrace terminates. Nothing in the boot polls it;
+  this closed a hang before anything hit it.
+- **A third answer beside "stop" and "fake":** a request the machine can
+  honestly record but not honestly perform, reported as a notice.
+  `docs/machine.md` §5 has the rule and the test for when it applies.
+- **`synthetic_boot`** in `tests/programs` — the CI-runnable shape of a
+  boot: it unpacks itself, loads a module off the filesystem, far-calls
+  into it through a relocated pointer, and calls every service M3 added.
+  **A service that closes a boot-log line adds its call there in the
+  same change.**
+- **The first seam** (`machine/seam.h`), which is deliberately the
+  smallest slice of PLAN.md §5's engine and not the engine: off by
+  default, keyed by binary fingerprint, one `bool` per step when
+  nothing is on. Its own header lists what M4 owes on top of it.
 
 What M2 left in place:
 
