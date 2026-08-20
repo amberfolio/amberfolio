@@ -50,6 +50,19 @@ target_link_libraries(amberfolio-programs
   PUBLIC amberfolio::core
   PRIVATE amberfolio::warnings)
 
+# A look at what a program produced, rather than an assertion about it.
+# Not a test and registered as none: the suite next door already checks
+# these runs against hashes and probes, and a hash is unreadable by eye.
+# This writes the frame as a PPM and the speaker as a WAV so a human can
+# open them. Native only — it writes files to a path someone chose, which
+# is not a thing the wasm leg does.
+if(NOT EMSCRIPTEN)
+  add_executable(amberfolio-dump dump_main.cpp)
+  target_link_libraries(amberfolio-dump PRIVATE
+    amberfolio::programs
+    amberfolio::warnings)
+endif()
+
 add_executable(amberfolio-bench bench_main.cpp)
 target_link_libraries(amberfolio-bench PRIVATE
   amberfolio::programs

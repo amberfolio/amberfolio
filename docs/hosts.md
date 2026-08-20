@@ -143,6 +143,21 @@ probes behind it. Expect:
    with the timer still running. Press one and it echoes the character,
    writes `\RUN.LOG`, prints `DONE` and exits with code **90**.
 
+If what the window shows is not what is described above, the question is
+whether the host mangled a correct frame or the machine composed a wrong
+one, and there is a tool for exactly that split:
+
+```sh
+./build/<preset>/tests/programs/<config>/amberfolio-dump composite <dir>
+```
+
+It runs the same program through the same machine with no host at all and
+writes what came out where you can open it — the composed frame as a PPM,
+the speaker's whole timeline as a WAV. If the PPM is right and the window
+is not, the fault is in this half; if the PPM is wrong too, it is not, and
+`ctest -L unit` will have a good deal more to say about which pixel probe
+stopped agreeing.
+
 ### Recording what you found
 
 The last inch is the part that stays a person's word. When you have run it
