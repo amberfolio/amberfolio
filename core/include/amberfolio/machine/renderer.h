@@ -81,7 +81,11 @@ class machine;
 class renderer final : public scheduled {
  public:
   /// See this file's top comment, "The frame period, and its rounding."
-  static constexpr ticks frame_period = pit_input_hz / 60;
+  /// The number itself is the card's vertical rate and lives with the
+  /// card (`ega::frame_period`), because since #88 the EGA computes its
+  /// own raster position against it and the two must be the same period
+  /// or 3DAh would report a beam the renderer does not follow.
+  static constexpr ticks frame_period = ega::frame_period;
 
   renderer(machine& box, const ega& video) noexcept
       : box_(&box), video_(&video) {}

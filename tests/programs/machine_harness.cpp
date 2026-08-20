@@ -158,7 +158,7 @@ machine_harness::machine_harness(const machine_setup& setup)
       irq_(std::make_unique<machine::pic::controller>(*box_)),
       timer_(std::make_unique<machine::pit>(*box_, *irq_)),
       sound_(std::make_unique<machine::speaker>(*box_, *timer_)),
-      video_(std::make_unique<machine::ega>()),
+      video_(std::make_unique<machine::ega>(*box_)),
       screen_(std::make_unique<machine::renderer>(*box_, *video_)) {
   box_->attach(*irq_);
   box_->attach(*timer_);

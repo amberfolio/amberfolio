@@ -230,7 +230,7 @@ struct wired_machine {
         irq(*box),
         timer(*box, irq),
         spk(*box, timer),
-        video(std::make_unique<machine::ega>()),
+        video(std::make_unique<machine::ega>(*box)),
         render(*box, *video) {
     box->attach(irq);
     box->attach(timer);

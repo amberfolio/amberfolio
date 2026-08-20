@@ -43,7 +43,7 @@ constexpr std::uint32_t vram_first = 0xA0000;
 struct rig {
   rig()
       : box(std::make_unique<machine>(memory_layout::pc, &log)),
-        video(std::make_unique<ega>()),
+        video(std::make_unique<ega>(*box)),
         render(*box, *video) {
     box->attach(*video);
     box->schedule(render);

@@ -58,15 +58,42 @@
 //
 // The flip-flop's reset is a *read* of 3DAh (the input status register),
 // and only that: nothing else in this subset resets it, which is exactly
-// what M2-D3 asks this file to implement. The status byte itself reports
-// display-enable and retrace timing on real hardware; this device has no
-// raster to report them from, so 3DAh always answers "not in retrace" —
-// a stub, not a simulation, and the honest thing to do with it until some
-// later issue actually needs a program to be able to wait on vertical
-// retrace (nothing in v1's scope polls for it). That is the "may log
-// until something needs them" the issue text allows, spelled out here
-// instead of at a call site, because there is no call site — there is
-// nothing to log about a constant.
+// what M2-D3 asks this file to implement.
+//
+//
+// The raster, and why 3DAh stopped being a constant
+// -------------------------------------------------
+//
+// M2 answered 3DAh with zero — "not in retrace", always. It was honest
+// about being a stub and it was a trap: a program that waits for
+// vertical retrace before drawing waits by polling this register until
+// bit 3 changes, and against a constant it never does. Nothing in M2's
+// scope polled it, so nothing found the trap; a game's title sequence is
+// exactly the kind of thing that would, and #88 exists because "the
+// machine hangs and nothing refused anything" is the one failure mode
+// this project's discipline cannot catch by refusing to guess.
+//
+// So the two timing bits are computed, from virtual time, as a formula
+// against the frame period — the same shape pit.h's counters have, and
+// for the same reason: this device does not tick, it answers where the
+// beam would be at `machine::time()`. Which makes it deterministic and
+// replayable; a toggle that flipped on every read would answer "yes,
+// eventually" to every poll and mean nothing.
+//
+// The geometry is the mode's own, and every number in `raster` below is
+// derived rather than chosen: 262 scan lines at the 15.7 kHz line rate
+// is the 60 Hz vertical rate mode 0Dh runs at, of which 200 are
+// displayed; 455 dot times per line is the 14.318 MHz colour-burst clock
+// halved for a 320-pixel line and divided by that same line rate, of
+// which 320 are displayed.
+//
+// What is *not* modelled is where inside the 62 blanked lines the
+// retrace pulse itself begins — the front-porch split is card-specific
+// and this device would be inventing it. Bit 3 is therefore set for the
+// whole vertical blanking interval, which contains the pulse. Every
+// program that polls it is asking "is it safe to write to display memory
+// now", and to that question this answers correctly, if slightly
+// generously.
 //
 // Sixteen palette registers, index 00h-0Fh, each a 6-bit EGA colour code
 // (masked on the way in, because the real register is six bits wide and
@@ -283,10 +310,13 @@
 #include <cstdint>
 #include <span>
 
+#include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/platform.h"
 
 namespace amberfolio::machine {
+
+class machine;
 
 /// One channel of an EGA colour code's RGB translation: 0x00 with neither
 /// the primary nor the secondary (intensity) bit set, 0xAA or 0x55 with
@@ -349,7 +379,37 @@ class ega final : public device {
   /// The attribute controller index that names the overscan register.
   static constexpr unsigned attribute_overscan_index = 0x11;
 
-  ega() = default;
+  /// The vertical rate this card runs at, as a period in PIT input ticks
+  /// — 60 Hz, truncated, so a frame is 19,886 ticks and 60 frames are
+  /// 1,193,160 of the 1,193,182 in a second. The card is what has a
+  /// vertical rate, so the constant lives here; `renderer::frame_period`
+  /// is this, and renderer.h is where the argument about the rounding is
+  /// written down.
+  static constexpr ticks frame_period = pit_input_hz / 60;
+
+  /// Mode 0Dh's raster, in the numbers 3DAh is computed from. See this
+  /// file's "The raster" for where each comes from.
+  struct raster {
+    static constexpr std::uint32_t scan_lines = 262;
+    static constexpr std::uint32_t displayed_scan_lines = 200;
+    static constexpr std::uint32_t dots_per_line = 455;
+    static constexpr std::uint32_t displayed_dots = 320;
+  };
+
+  /// Bit 0 of the input status register: display *disabled* — the beam is
+  /// in a blanking interval, horizontal or vertical, and display memory
+  /// is not being read.
+  static constexpr std::uint8_t status_display_disabled = 0x01;
+
+  /// Bit 3: vertical retrace in progress. The bit a program waits on.
+  static constexpr std::uint8_t status_vertical_retrace = 0x08;
+
+  /// `box` must outlive this, and is read for one thing: the tick 3DAh's
+  /// timing bits are computed at. Taken as a constructor argument the way
+  /// pit.h and speaker.h take theirs, rather than left null and set
+  /// later, because a card whose raster sometimes stands still is not a
+  /// state any machine has.
+  explicit ega(const machine& box) noexcept : box_(&box) {}
 
   [[nodiscard]] claims claimed() const noexcept override;
   void reset() override;
@@ -456,7 +516,8 @@ class ega final : public device {
   static constexpr std::uint16_t attribute_data_read_port = 0x3C1;
 
   /// The input status register. A read resets the attribute controller's
-  /// flip-flop; nothing else in this subset does.
+  /// flip-flop; nothing else in this subset does. What it *answers* is
+  /// `status_byte()`.
   static constexpr std::uint16_t status_port = 0x3DA;
 
   static constexpr port_range sequencer_ports{.first = sequencer_index_port,
@@ -471,6 +532,14 @@ class ega final : public device {
   static constexpr std::array<memory_window, 1> windows_{vram_window};
   static constexpr std::array<port_range, 4> ports_{
       sequencer_ports, graphics_ports, attribute_ports, status_ports};
+
+  /// Where the beam is at `box_->time()`, as the two timing bits of the
+  /// input status register. See this file's "The raster".
+  [[nodiscard]] std::uint8_t status_byte() const noexcept;
+
+  /// The clock the raster is computed against, and the only thing this
+  /// device reads its machine for.
+  const machine* box_;
 
   // --- Sequencer (3C4h index / 3C5h data) -----------------------------
 

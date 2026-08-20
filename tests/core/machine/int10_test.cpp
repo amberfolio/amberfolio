@@ -45,7 +45,7 @@ constexpr std::uint16_t graphics_data_port = 0x3CF;
 struct rig {
   rig()
       : box(std::make_unique<machine>(memory_layout::pc, &log)),
-        video(std::make_unique<ega>()) {
+        video(std::make_unique<ega>(*box)) {
     box->attach(*video);
     install_int10(box->services());
   }
