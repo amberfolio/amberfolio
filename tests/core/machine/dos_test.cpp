@@ -546,6 +546,128 @@ TEST(dos_exit, int20h_stops_with_code_zero) {
 
 // --- Everything else logs and stops ----------------------------------
 
+// --- AH=25h / AH=35h: the interrupt vectors -------------------------------
+
+TEST(dos_vectors, ah25_writes_the_real_vector_table_entry) {
+  rig r;
+  r.call(ah(0x25) | 0x60, 0, 0, 0xBEEF, 0x1234);
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  EXPECT_FALSE(r.carry());
+
+  cpu::processor& cpu = r.pc().processor();
+  const std::uint16_t at = cpu::vector_table_offset(0x60);
+  EXPECT_EQ(cpu.read_word(cpu::vector_table_segment, at), 0xBEEFu);
+  EXPECT_EQ(cpu.read_word(cpu::vector_table_segment,
+                          static_cast<std::uint16_t>(at + 2)),
+            0x1234u);
+}
+
+TEST(dos_vectors, ah35_reads_it_back_into_es_bx) {
+  rig r;
+  r.call(ah(0x25) | 0x60, 0, 0, 0xBEEF, 0x1234);
+  ASSERT_FALSE(r.carry());
+
+  r.call(ah(0x35) | 0x60);
+  ASSERT_TRUE(r.pc().processor().halted());
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::bx], 0xBEEFu);
+  EXPECT_EQ(r.regs()[cpu::sreg::es], 0x1234u);
+}
+
+TEST(dos_vectors, ah35_sees_a_vector_the_program_stored_by_hand) {
+  rig r;
+
+  // Four bytes at 0000:0084 *is* hooking INT 21h's neighbour, and this
+  // layer has no table of its own that could disagree (service_floor.h).
+  cpu::processor& cpu = r.pc().processor();
+  const std::uint16_t at = cpu::vector_table_offset(0x21);
+  cpu.write_word(cpu::vector_table_segment, at, 0x0042);
+  cpu.write_word(cpu::vector_table_segment, static_cast<std::uint16_t>(at + 2),
+                 0x9000);
+
+  // Reached through INT 20h, since INT 21h no longer points at us.
+  r.program20();
+  r.run();
+  EXPECT_TRUE(r.pc().stopped());
+}
+
+TEST(dos_vectors, ah35_of_an_unhooked_vector_answers_this_machines_stub) {
+  rig r;
+  r.call(ah(0x35) | 0x10);
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  EXPECT_FALSE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::sreg::es], service::stub_segment);
+  EXPECT_EQ(r.regs()[cpu::reg16::bx], service::stub_offset(0x10));
+}
+
+// --- AH=44h AL=00h: what is behind a handle -------------------------------
+
+TEST(dos_ioctl, the_console_handles_are_character_devices) {
+  rig r;
+  r.call(ah(0x44) | 0x00, 1);
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  EXPECT_FALSE(r.carry());
+  // Bit 7 (character device) and bit 1 (the console output device), and
+  // nothing else — bit 6 stays clear because a read of this handle
+  // answers zero bytes, which is end of file (dos.cpp).
+  EXPECT_EQ(r.regs()[cpu::reg16::dx], 0x0082u);
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x0082u);
+}
+
+TEST(dos_ioctl, the_documented_sink_handles_are_the_nul_device) {
+  rig r;
+  for (const std::uint16_t handle :
+       {std::uint16_t{0}, std::uint16_t{3}, std::uint16_t{4}}) {
+    r.call(ah(0x44) | 0x00, handle);
+    ASSERT_FALSE(r.carry()) << "handle " << handle;
+    EXPECT_EQ(r.regs()[cpu::reg16::dx], 0x0084u) << "handle " << handle;
+  }
+}
+
+TEST(dos_ioctl, a_file_reports_the_drive_and_whether_it_has_been_written) {
+  rig r;
+  r.write_asciz(path_area, "GAME.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  const std::uint16_t handle = r.regs()[cpu::reg16::ax];
+
+  // Freshly created: bit 7 clear (a file), the drive in bits 0-5, and
+  // bit 6 set because nothing has gone through it yet.
+  r.call(ah(0x44) | 0x00, handle);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::dx],
+            static_cast<std::uint16_t>(only_drive | 0x40u));
+
+  r.write_asciz(data_area, "X");
+  r.call(ah(0x40), handle, 1, data_area);
+  ASSERT_FALSE(r.carry());
+
+  r.call(ah(0x44) | 0x00, handle);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::dx], std::uint16_t{only_drive});
+}
+
+TEST(dos_ioctl, a_handle_that_names_nothing_open_fails) {
+  rig r;
+  r.call(ah(0x44) | 0x00, 19);
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  EXPECT_TRUE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax],
+            dos_error_code(vfs_error::invalid_handle));
+}
+
+TEST(dos_ioctl, setting_device_information_is_deferred) {
+  rig r;
+  r.call(ah(0x44) | 0x01, 1);
+
+  EXPECT_TRUE(r.pc().stopped());
+  EXPECT_EQ(r.pc().stop().reason, stop_reason::unimplemented_service);
+}
+
 TEST(dos_dispatch, an_unknown_function_logs_and_stops) {
   rig r;
   r.call(ah(0x60));  // Never a DOS function this machine will implement.

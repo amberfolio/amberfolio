@@ -9,6 +9,8 @@
 #include <bit>
 #include <cstdint>
 
+#include "amberfolio/machine/machine.h"
+
 namespace amberfolio::machine {
 namespace {
 
@@ -102,12 +104,11 @@ std::uint8_t ega::read_port(std::uint16_t port) {
     case attribute_data_read_port:
       return read_attribute_data();
     case status_port:
-      // The flip-flop reset this file's top comment describes, plus the
-      // stub status byte: always "not in retrace," because this device
-      // has no raster to report one from. See "The attribute controller"
-      // above for why that is the honest answer rather than a guess.
+      // The flip-flop reset ega.h's top comment describes, and the two
+      // timing bits, computed from where the beam is at this instant of
+      // virtual time (ega.h, "The raster").
       attr_expect_data_ = false;
-      return 0;
+      return status_byte();
     default:
       // machine::read_port8 only ever calls this with a port from
       // claimed().ports (device.h), so this is unreachable in practice —
@@ -426,6 +427,34 @@ void ega::halt_now(halt_reason reason, std::uint16_t port,
   // and a human debugging a mode-set wants. Neither is derivable from
   // the other.
   report_fault(port, value);
+}
+
+std::uint8_t ega::status_byte() const noexcept {
+  // Where in the frame, then which scan line, then how far along it —
+  // one division each, all in 32 bits: `into_frame` is under 19,886 and
+  // the widest product below is 19,886 * 455, about nine million.
+  const auto into_frame =
+      static_cast<std::uint32_t>(box_->time() % frame_period);
+
+  const std::uint32_t scaled_line = into_frame * raster::scan_lines;
+  const std::uint32_t line =
+      scaled_line / static_cast<std::uint32_t>(frame_period);
+  const std::uint32_t into_line =
+      scaled_line % static_cast<std::uint32_t>(frame_period);
+
+  if (line >= raster::displayed_scan_lines) {
+    // Past the last displayed line: blanked, and reporting the retrace
+    // the program is waiting for.
+    return status_display_disabled | status_vertical_retrace;
+  }
+
+  // Inside a displayed line, `into_line` runs 0..frame_period-1 across
+  // the whole line. Comparing it against the displayed fraction without
+  // dividing keeps this exact.
+  const bool displaying =
+      into_line * raster::dots_per_line <
+      raster::displayed_dots * static_cast<std::uint32_t>(frame_period);
+  return displaying ? 0 : status_display_disabled;
 }
 
 }  // namespace amberfolio::machine

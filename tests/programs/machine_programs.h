@@ -147,6 +147,19 @@ struct machine_program {
   /// order. A path the program deleted is `present == false`.
   std::vector<harvested_file> files;
 
+  /// How many "something was asked of nothing" notices the run should
+  /// produce (diagnostics.h). Zero for every program that is only
+  /// exercising services — a correct program touches no absent port.
+  ///
+  /// Not zero for one that is exercising an *honest refusal*: the
+  /// synthetic boot asks the video BIOS for 80x25 text, which this
+  /// machine records and cannot draw, and then for the character under
+  /// the cursor, which comes off a text page nothing answers for. Both
+  /// notices are the point of those calls, so the count is asserted
+  /// rather than forbidden — a run that stopped producing them would have
+  /// started faking something.
+  std::uint64_t notices{};
+
   /// Pixels, areas and palette entries of the composed frame, each
   /// worked out by hand from what the program wrote and from the rules
   /// in ega.h, renderer.h and int10.h. These are the claim about the

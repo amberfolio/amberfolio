@@ -26,6 +26,8 @@
 #include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/pic.h"
+#include "amberfolio/machine/pit.h"
 #include "gtest/gtest.h"
 #include "machine/test_device.h"
 
@@ -227,6 +229,69 @@ TEST(service_reset, lays_out_the_bios_data_area) {
       static_cast<std::uint16_t>(
           r.pc().memory().ram()[area + bda::memory_size_kb + 1] << 8u);
   EXPECT_EQ(kb, conventional_ram_size / 1024u);
+}
+
+TEST(service_reset, lays_out_the_video_block_for_the_one_mode_there_is) {
+  const rig r;
+  const std::uint32_t area = cpu::physical_address(bda::segment, 0);
+  const std::span<const std::uint8_t> ram = r.pc().memory().ram();
+
+  // A real self test always leaves *a* mode recorded here because it
+  // always sets one; this machine has one mode to record
+  // (service_floor.h's `bda` video block).
+  EXPECT_EQ(ram[area + bda::video_mode], bda::power_on_video_mode);
+  EXPECT_EQ(ram[area + bda::video_columns], bda::power_on_video_columns);
+  EXPECT_EQ(ram[area + bda::video_rows_minus_one],
+            bda::power_on_video_rows_minus_one);
+  EXPECT_EQ(ram[area + bda::character_points], bda::power_on_character_points);
+}
+
+// --- The hardware half of the self test ----------------------------------
+
+TEST(service_post, programs_nothing_on_a_machine_with_no_timer_or_controller) {
+  const rig r;
+  r.pc().reset();
+
+  // Nothing was written, so nothing was touched, so nothing is reported.
+  // A self test that poked ports no card answers would put a line about
+  // itself at the top of every boot log (service_floor.cpp).
+  EXPECT_TRUE(r.log.notices.empty());
+}
+
+TEST(service_post, the_tick_arrives_without_the_program_asking_for_it) {
+  recording_diagnostics log;
+  auto box = std::make_unique<machine>(memory_layout::pc, &log);
+  pic::controller irq(*box);
+  pit timer(*box, irq);
+  ASSERT_TRUE(box->attach(irq));
+  ASSERT_TRUE(box->attach(timer));
+  ASSERT_TRUE(box->schedule(timer.channel0_deadline()));
+  ASSERT_TRUE(box->schedule(timer.channel2_deadline()));
+
+  // The self test, which is the whole of what this test is about: after
+  // it, a program that programs nothing at all still gets 18.2 Hz.
+  box->reset();
+
+  box->memory().ram()[cpu::physical_address(code_segment, 0)] = 0xF4;  // HLT
+  cpu::registers& regs = box->processor().regs();
+  regs[cpu::sreg::cs] = code_segment;
+  regs[cpu::sreg::ss] = code_segment;
+  regs[cpu::reg16::sp] = stack_top;
+  regs.ip = 0;
+  regs.set_flag(cpu::flag::if_, true);
+  box->set_step_cost(1);
+
+  const std::uint32_t at =
+      cpu::physical_address(bda::segment, bda::timer_ticks);
+  ASSERT_EQ(box->memory().ram()[at], 0);
+
+  // One channel-0 period: 65536 input ticks, the divisor a self test
+  // loads (service_floor.h's `post` namespace).
+  box->run(box->time() + 65536 + 16);
+
+  EXPECT_EQ(box->memory().ram()[at], 1);
+  EXPECT_FALSE(box->stopped());
+  EXPECT_TRUE(log.notices.empty());
 }
 
 TEST(service_reset, rebuilds_the_table_but_keeps_what_was_installed) {

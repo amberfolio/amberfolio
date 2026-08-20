@@ -78,6 +78,17 @@ overwrites the IVT entry, the entry stops pointing at our stub, and the
 handler simply becomes unreachable. Nothing detects hooking, because
 detecting hooking is guessing.
 
+`service_floor::reset()` is also this machine's **power-on self test**,
+and both halves of it matter. It lays the vector table, the stubs and the
+BDA down in memory — and then it programs the hardware a PC's ROM
+programs before the first program runs: PIT channel 0 at 18.2 Hz and the
+8259's ICW sequence, as real bus cycles, to whichever of the two are
+attached. M2 had only the memory half, and the shape of that gap is worth
+remembering: nothing refused anything, no line was logged, and M3's first
+boot simply sat in a two-instruction loop watching `40:6C` for a change
+that had no way to arrive. Log-don't-fake cannot catch a program that
+never asked.
+
 ### The platform interface — `platform.h`
 
 The seam to the hosts, and the one file to read before writing host code.
@@ -215,6 +226,31 @@ closed by the fault channel in #46, and the EGA joined it at closeout. If
 you find yourself inventing a private way to say no, that is the signal
 to fix the shared one instead.
 
+### When the honest answer is a notice and not a stop
+
+There is a third row that does not fit the table, and it is worth
+knowing before you reach for a stop: a request the machine can honestly
+*record* but not honestly *perform*.
+
+The worked example is `INT 10h AH=00h AL=03h`. M3's first boot asks for
+80x25 text on its way to graphics, the way most programs of the era do.
+This machine has no text path at all — no CRTC, no character generator,
+nothing claiming B8000 — so there is nothing to program. But refusing
+ends the run of every program that merely passes through text, over a
+mode whose output nothing was ever going to look at.
+
+So the mode number goes into the BDA, `AH=0Fh` reports it back, nothing
+reaches the adapter, and the machine says so once through
+`notice_kind::undisplayable_video_mode`. The notice is what keeps this
+from being an accommodation: it is a worklist line, in the same channel
+as an open-bus touch, and a reader of the boot log sees exactly what the
+machine agreed to do and did not do.
+
+The test for whether you are in this row rather than inventing something:
+**can you state, in the log line, precisely what did not happen?** If you
+can, the notice is the honest answer. If the line would have to say
+"handled it somehow", it is a stop.
+
 ### The refusal a reader actually sees
 
 A stop is only half of "log, don't fake"; the other half is that the line
@@ -294,6 +330,15 @@ two constraints: the M1 flat-bus programs must keep passing unchanged,
 and **this apparatus must stay free of GoogleTest**, because it is the
 only test code that builds under Emscripten — which is what makes
 `ctest --preset wasm` run the interpreter rather than merely compile it.
+
+`synthetic_boot` is the M3 member of that list and the one to extend
+when you add a service. It is shaped like the thing CI can never run: a
+stub that unpacks the rest of itself and jumps into it, a module loaded
+off the filesystem and entered with a far call through a relocated
+pointer, and a call to every service the real boot turned out to need.
+**A service that closes a boot-log line adds its call here in the same
+change that implements it** — that program's coverage is the record of
+what M3 added.
 
 **Host smoke tests** run a program through a host headlessly and assert
 what came out.

@@ -11,6 +11,9 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/pic.h"
+#include "amberfolio/machine/pit.h"
+#include "amberfolio/machine/port_map.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -194,6 +197,20 @@ void service_floor::reset() {
   ram[area + bda::memory_size_kb] = static_cast<std::uint8_t>(kb);
   ram[area + bda::memory_size_kb + 1] = static_cast<std::uint8_t>(kb >> 8u);
 
+  // The video block, describing the one mode this machine can display —
+  // see the `bda` namespace in service_floor.h for why it is written at
+  // all before a program has asked for a mode.
+  ram[area + bda::video_mode] = bda::power_on_video_mode;
+  ram[area + bda::video_columns] =
+      static_cast<std::uint8_t>(bda::power_on_video_columns);
+  ram[area + bda::video_columns + 1] =
+      static_cast<std::uint8_t>(bda::power_on_video_columns >> 8u);
+  ram[area + bda::video_rows_minus_one] = bda::power_on_video_rows_minus_one;
+  ram[area + bda::character_points] =
+      static_cast<std::uint8_t>(bda::power_on_character_points);
+  ram[area + bda::character_points + 1] =
+      static_cast<std::uint8_t>(bda::power_on_character_points >> 8u);
+
   // The keyboard buffer starts empty at its own first slot, not at zero.
   // A real BIOS's self test does the same, and 40:1A/40:1C are offsets a
   // program may walk directly (keyboard.h, M2-D8) — zero is not an offset
@@ -206,6 +223,57 @@ void service_floor::reset() {
       static_cast<std::uint8_t>(bda::keyboard_buffer);
   ram[area + bda::keyboard_buffer_tail + 1] =
       static_cast<std::uint8_t>(bda::keyboard_buffer >> 8u);
+
+  // And then the hardware, which is the other half of what a self test
+  // is for — see `program_hardware()`.
+  program_hardware();
+}
+
+void service_floor::program_hardware() {
+  // Through the bus, as OUT instructions, because that is what a ROM's
+  // self test is: a table of them. `machine::reset()` has already reset
+  // every attached device and rebased the clock by the time this runs, so
+  // a deadline armed here is armed against the run that is starting.
+  machine& box = *box_;
+
+  // "If it is there." A real self test cannot ask its own bus what is
+  // plugged into it, but this floor already knows things about its own
+  // machine that no ROM could — `enabled()` reads the memory layout — and
+  // the alternative is worse in both directions: a machine wired without
+  // a timer would collect open-bus notices at every reset for hardware
+  // nobody claimed was present, and the notices would say "the BIOS
+  // touched a port nothing answers", which is a report about this
+  // function rather than about the program under test.
+  const auto present = [&box](std::uint16_t port) {
+    return box.ports().owner(port) != nullptr;
+  };
+
+  // The interval timer, channel 0: mode 3, both bytes, binary, and a
+  // divisor of zero — which is 65536 (pit.h), giving 1193182/65536 =
+  // 18.2065 Hz, the rate every DOS-era program means when it reads the
+  // tick count at 40:6C. Channels 1 and 2 are left alone: channel 1 was
+  // DRAM refresh on a real PC and this machine has no DRAM to refresh,
+  // and channel 2 belongs to whoever programs the speaker next.
+  if (present(pit_control_port)) {
+    box.write_port8(pit_control_port, post::timer_control);
+    box.write_port8(pit_channel0_port, 0x00);
+    box.write_port8(pit_channel0_port, 0x00);
+  }
+
+  // The interrupt controller: the stock sequence pic.h documents, then a
+  // mask that leaves exactly the one line this machine has wired open.
+  // Without this the PIT counts and raises IRQ0 into a controller that
+  // has no vector base to deliver it with, and a program waiting on the
+  // tick count waits forever — which is precisely what M3's first boot
+  // did (#87, #88), one instruction short of a stop the report could
+  // name.
+  if (present(pic::master_command_port)) {
+    box.write_port8(pic::master_command_port, pic::icw1_edge_cascade_icw4);
+    box.write_port8(pic::data_port, pic::expected_vector_base);
+    box.write_port8(pic::data_port, post::cascade_on_irq2);
+    box.write_port8(pic::data_port, pic::icw4_8086_mode);
+    box.write_port8(pic::data_port, post::interrupt_mask);
+  }
 }
 
 service_outcome service_floor::call(unsigned slot) {

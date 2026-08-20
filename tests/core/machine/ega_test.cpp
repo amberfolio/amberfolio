@@ -18,6 +18,9 @@
 #include <cstdint>
 #include <memory>
 
+#include "amberfolio/cpu/address.h"
+#include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/machine.h"
 #include "gtest/gtest.h"
@@ -50,7 +53,14 @@ constexpr std::uint32_t vram_last = 0xAFFFF;
 // megabyte.
 
 struct rig {
-  rig() : dev(std::make_unique<ega>()) {}
+  /// A machine of its own, and nothing attached to it: this rig drives
+  /// the device directly, and the machine is here only because the card
+  /// reads a clock off it for 3DAh (ega.h, "The raster"). Standing still
+  /// at tick 0 is what every test below wants, since none of them is
+  /// about the raster.
+  rig()
+      : box(std::make_unique<machine>(memory_layout::pc)),
+        dev(std::make_unique<ega>(*box)) {}
 
   [[nodiscard]] ega& video() const noexcept { return *dev; }
 
@@ -84,6 +94,7 @@ struct rig {
     dev->write_memory(at, value);
   }
 
+  std::unique_ptr<machine> box;
   std::unique_ptr<ega> dev;
 };
 
@@ -682,6 +693,125 @@ TEST(ega_reset, clears_registers_latches_and_the_halt_but_keeps_vram) {
 // #46's fault channel; this device joined it at M2's closeout, #57).
 //
 // Before that it was local: `halted()` went true, later cycles answered
+// --- The raster at 3DAh (#88) --------------------------------------------
+//
+// The one register in this device that is a function of time. Every test
+// here drives it through a real machine, because the whole claim is about
+// what a *polling program* sees.
+
+/// A machine with an EGA attached and a HLT to sit on, stepped at one
+/// tick apiece so `run()` lands on the exact tick asked for.
+struct raster_rig {
+  raster_rig()
+      : box(std::make_unique<machine>(memory_layout::pc)),
+        dev(std::make_unique<ega>(*box)) {
+    EXPECT_TRUE(box->attach(*dev));
+    box->memory().ram()[cpu::physical_address(0x2000, 0)] = 0xF4;  // HLT
+    cpu::registers& regs = box->processor().regs();
+    regs[cpu::sreg::cs] = 0x2000;
+    regs[cpu::sreg::ss] = 0x2000;
+    regs.ip = 0;
+    box->set_step_cost(1);
+  }
+
+  void advance_to(ticks when) const { box->run(when); }
+
+  [[nodiscard]] std::uint8_t status() const {
+    return box->read_port8(status_port);
+  }
+
+  std::unique_ptr<machine> box;
+  std::unique_ptr<ega> dev;
+};
+
+/// The tick a given scan line begins on, from the geometry ega.h states.
+[[nodiscard]] ticks at_line(std::uint32_t line) {
+  return ega::frame_period * line / ega::raster::scan_lines + 1;
+}
+
+TEST(ega_raster, the_first_line_of_a_frame_is_displaying) {
+  const raster_rig r;
+  EXPECT_EQ(r.status(), 0);
+}
+
+TEST(ega_raster, past_the_last_displayed_line_is_blanked_and_in_retrace) {
+  const raster_rig r;
+  r.advance_to(at_line(ega::raster::displayed_scan_lines + 20));
+
+  const std::uint8_t status = r.status();
+  EXPECT_NE(status & ega::status_vertical_retrace, 0);
+  EXPECT_NE(status & ega::status_display_disabled, 0);
+}
+
+TEST(ega_raster, the_last_displayed_line_is_not_yet_in_retrace) {
+  const raster_rig r;
+  r.advance_to(at_line(ega::raster::displayed_scan_lines - 1));
+  EXPECT_EQ(r.status() & ega::status_vertical_retrace, 0);
+}
+
+TEST(ega_raster, a_displayed_line_blanks_after_its_last_displayed_dot) {
+  const raster_rig r;
+
+  // Nine tenths of the way along line 10, which is past dot 320 of 455:
+  // the beam is in horizontal blanking, and nowhere near the vertical
+  // one.
+  const ticks line_period = ega::frame_period / ega::raster::scan_lines;
+  r.advance_to(at_line(10) + line_period * 9 / 10);
+
+  const std::uint8_t status = r.status();
+  EXPECT_NE(status & ega::status_display_disabled, 0);
+  EXPECT_EQ(status & ega::status_vertical_retrace, 0);
+}
+
+TEST(ega_raster, a_program_polling_for_retrace_gets_an_answer) {
+  const raster_rig r;
+
+  // The trap M2's constant set: wait for retrace to end, then for the
+  // next one to begin. Both halves have to terminate inside a frame or
+  // two, or a title sequence hangs with nothing having refused anything.
+  const ticks deadline = r.box->time() + ega::frame_period * 3;
+
+  while ((r.status() & ega::status_vertical_retrace) != 0) {
+    ASSERT_LT(r.box->time(), deadline) << "retrace never ended";
+    r.advance_to(r.box->time() + 16);
+  }
+  while ((r.status() & ega::status_vertical_retrace) == 0) {
+    ASSERT_LT(r.box->time(), deadline) << "retrace never began";
+    r.advance_to(r.box->time() + 16);
+  }
+  SUCCEED();
+}
+
+TEST(ega_raster, the_answer_is_a_formula_and_not_a_toggle) {
+  const raster_rig r;
+  r.advance_to(at_line(ega::raster::displayed_scan_lines + 20));
+
+  // Read it three times without moving the clock: a device that flipped
+  // a bit per read would answer "yes, eventually" to any poll and mean
+  // nothing by it (ega.h, "The raster").
+  const std::uint8_t first = r.status();
+  EXPECT_EQ(r.status(), first);
+  EXPECT_EQ(r.status(), first);
+
+  // And one whole frame later it is back where it was.
+  r.advance_to(r.box->time() + ega::frame_period);
+  EXPECT_EQ(r.status(), first);
+}
+
+TEST(ega_raster, reading_the_status_still_resets_the_flip_flop) {
+  const raster_rig r;
+  r.advance_to(at_line(ega::raster::displayed_scan_lines + 20));
+
+  // Mid-protocol: an index has gone in, so the next write would be data.
+  r.box->write_port8(attribute_port, 0x03);
+  // The status read — whatever byte it answers with — puts the flip-flop
+  // back to expecting an index.
+  static_cast<void>(r.status());
+  r.box->write_port8(attribute_port, 0x05);
+  r.box->write_port8(attribute_port, 0x2A);
+  EXPECT_EQ(r.dev->palette_register(5), 0x2A);
+}
+
 // open bus, and nothing stopped or logged — which is not what "a loud log
 // line and a clean stop" means. This is the test that says so.
 //
@@ -690,7 +820,7 @@ TEST(ega_reset, clears_registers_latches_and_the_halt_but_keeps_vram) {
 TEST(ega_refusal, stops_the_machine_and_not_only_the_device) {
   test::recording_diagnostics log;
   auto box = std::make_unique<machine>(memory_layout::pc, &log);
-  auto video = std::make_unique<ega>();
+  auto video = std::make_unique<ega>(*box);
   ASSERT_TRUE(box->attach(*video));
 
   // Sequencer index 07 is outside the subset this device implements.

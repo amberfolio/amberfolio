@@ -14,6 +14,7 @@
 #include <span>
 
 #include "amberfolio/cpu/address.h"
+#include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
@@ -55,6 +56,12 @@ bool dos_services::close(std::uint16_t handle) noexcept {
   }
   handles_[handle] = handle_state{};
   return true;
+}
+
+void dos_services::note_written(std::uint16_t handle) noexcept {
+  if (handle < max_handles && handles_[handle].in_use) {
+    handles_[handle].written = true;
+  }
 }
 
 const dos_services::handle_state* dos_services::find(
@@ -485,6 +492,10 @@ void write_fn(service_floor& floor) {
       if (fs == nullptr) {
         return;
       }
+      // Before the transfer, not after: DOS's bit 6 records that the
+      // handle has been written *through*, and a write that fails
+      // part-way still touched the file.
+      floor.box().dos().note_written(handle);
       write_file(floor, *fs, state->backing, count);
       return;
     }
@@ -572,6 +583,124 @@ void get_time_fn(service_floor& floor) {
   floor.set_caller_carry(false);
 }
 
+// --- IOCTL: AH=44h AL=00h -----------------------------------------------
+//
+// "What is behind this handle?" — the question a C runtime asks about
+// each of the standard handles on its way up, to decide whether to line
+// buffer. DOS answers with the device-information word, and every bit of
+// it below is a documented DOS bit reporting something this machine
+// actually knows, not a value picked because a program liked it:
+//
+//   * A **console** handle (1, 2) is a character device that this
+//     machine's console sink backs: bit 7 (character device) and bit 1
+//     (the console output device).
+//   * A **documented-sink** handle (0, 3, 4) is a character device with
+//     nothing behind it, which is precisely DOS's own NUL: bit 7 and
+//     bit 2.
+//   * Neither reports bit 6. For a character device bit 6 clear means
+//     "at end of file on input", and a read of either kind answers zero
+//     bytes today (dos.h's top comment) — which is what end of file is.
+//     When #53's keyboard grows a console input path, the handle that
+//     gains it is where this stops being true, and it will be visible
+//     here rather than hidden.
+//   * A **file** handle reports bit 7 clear, the drive in bits 0-5
+//     (`only_drive`; there is one), and bit 6 set until something has
+//     been written through it — DOS's own "0 if the file has been
+//     written to", which is why `handle_state::written` exists.
+//   * Bit 14, "the device accepts IOCTL control strings" (AL=02h-05h),
+//     stays clear because this layer has none of those functions.
+//
+// AL other than 00h is refused the way any other unimplemented function
+// is. AL=01h (set device information) is the near neighbour and it is
+// deliberately absent: this machine has no line discipline to switch
+// between cooked and raw, so accepting the write would be storing a bit
+// that changes nothing and reporting it back as if it had — the exact
+// shape of the silent accommodation PLAN.md §3 forbids. If a boot asks
+// for it, #86 is where that gets decided with the log line as evidence.
+
+/// Bits of the device-information word this layer reports. Named
+/// individually because the alternative is a magic constant that hides
+/// which facts about the handle went into it.
+constexpr std::uint16_t devinfo_console_output = 0x0002;
+constexpr std::uint16_t devinfo_nul_device = 0x0004;
+constexpr std::uint16_t devinfo_character_device = 0x0080;
+
+/// Bit 6, under the name it has when the handle is a file. DOS overloads
+/// it — on a character device the same bit means "not at end of file on
+/// input", which is why nothing here sets it for one.
+constexpr std::uint16_t devinfo_file_unwritten = 0x0040;
+
+[[nodiscard]] std::uint16_t device_info_word(
+    const dos_services::handle_state& state) noexcept {
+  switch (state.kind) {
+    case dos_services::handle_kind::console:
+      return devinfo_character_device | devinfo_console_output;
+    case dos_services::handle_kind::null_sink:
+      return devinfo_character_device | devinfo_nul_device;
+    case dos_services::handle_kind::file:
+      return static_cast<std::uint16_t>(
+          only_drive | (state.written ? 0u : devinfo_file_unwritten));
+  }
+  return 0;
+}
+
+void ioctl_fn(service_floor& floor) {
+  cpu::processor& cpu = floor.box().processor();
+  if (cpu.regs().get(reg8::al) != 0x00) {
+    floor.box().stop_unimplemented_function(
+        cpu::physical_address(floor.caller_cs(), floor.caller_ip()));
+    return;
+  }
+
+  const std::uint16_t handle = cpu.regs()[reg16::bx];
+  const dos_services::handle_state* state = floor.box().dos().find(handle);
+  if (state == nullptr) {
+    fail(floor, vfs_error::invalid_handle);
+    return;
+  }
+
+  const std::uint16_t info = device_info_word(*state);
+  cpu.regs()[reg16::dx] = info;
+  // DOS 3's answer, which also leaves the word in AX; DOS 2 documented AX
+  // as destroyed, so a program written against either sees something it
+  // is entitled to see.
+  succeed_with(floor, info);
+}
+
+// --- Interrupt vectors: AH=25h, AH=35h ----------------------------------
+//
+// Over the real vector table, because that is where a hook actually
+// lives (service_floor.h's top comment): a program that calls AH=25h and
+// a program that stores four bytes at 0000:0084 itself have done the
+// same thing, and these two functions exist to keep that true rather
+// than to keep a table of their own beside it. Nothing here knows or
+// cares whether the vector being read still points at one of our stubs.
+//
+// Neither function has a documented failure, and neither validates the
+// vector number: every value of AL names a real four-byte entry inside
+// the 1 KiB table, so there is nothing to refuse. CF is cleared the way
+// every other function in this file reports success — DOS's own
+// documentation says nothing about CF for either, and the one convention
+// a caller here can rely on is the one the rest of this dispatcher uses.
+
+void set_vector_fn(service_floor& floor) {
+  cpu::processor& cpu = floor.box().processor();
+  const std::uint16_t at = cpu::vector_table_offset(cpu.regs().get(reg8::al));
+  cpu.write_word(cpu::vector_table_segment, at, cpu.regs()[reg16::dx]);
+  cpu.write_word(cpu::vector_table_segment, static_cast<std::uint16_t>(at + 2),
+                 cpu.regs()[sreg::ds]);
+  succeed(floor);
+}
+
+void get_vector_fn(service_floor& floor) {
+  cpu::processor& cpu = floor.box().processor();
+  const std::uint16_t at = cpu::vector_table_offset(cpu.regs().get(reg8::al));
+  cpu.regs()[reg16::bx] = cpu.read_word(cpu::vector_table_segment, at);
+  cpu.regs()[sreg::es] = cpu.read_word(cpu::vector_table_segment,
+                                       static_cast<std::uint16_t>(at + 2));
+  succeed(floor);
+}
+
 // --- Exit: AH=4Ch, INT 20h -----------------------------------------------
 
 void terminate(service_floor& floor, std::uint8_t code) {
@@ -590,11 +719,17 @@ void int21_dispatch(service_floor& floor, std::uint8_t /*vector*/) {
     case 0x09:
       print_string(floor);
       return;
+    case 0x25:
+      set_vector_fn(floor);
+      return;
     case 0x2A:
       get_date_fn(floor);
       return;
     case 0x2C:
       get_time_fn(floor);
+      return;
+    case 0x35:
+      get_vector_fn(floor);
       return;
     case 0x39:
       mkdir_fn(floor);
@@ -619,6 +754,9 @@ void int21_dispatch(service_floor& floor, std::uint8_t /*vector*/) {
       return;
     case 0x42:
       seek_fn(floor);
+      return;
+    case 0x44:
+      ioctl_fn(floor);
       return;
     case 0x4C:
       terminate(floor, floor.box().processor().regs().get(reg8::al));

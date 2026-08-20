@@ -36,6 +36,7 @@ using machine::ticks;
 /// result store builds. Only the ones a program below actually answers
 /// with are named.
 constexpr unsigned reg_ax = 0;
+constexpr unsigned reg_cx = 1;
 constexpr unsigned reg_dx = 2;
 constexpr unsigned reg_bx = 3;
 constexpr unsigned reg_bp = 5;
@@ -1361,6 +1362,433 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
 /// silent — would be noise written for a diagnostic rather than for a
 /// reader. What a program leaves unset is empty, and empty is asserted
 /// (machine_programs.h), so nothing is being waived here.
+// --- 8. The synthetic boot ----------------------------------------------
+//
+// M3-T1 (#91). CI can never run the game; it can run a program shaped
+// like one. This is that program: it unpacks itself, loads a module off
+// the filesystem and far-calls into it, and asks the machine for every
+// service M3's first boot turned out to need — so the surface #85-#90
+// added has a test that drives it end to end, on all four targets, and
+// not only a unit test each.
+//
+// Nothing here resembles anything. The packed payload is bytes this file
+// computes from bytes this file wrote (`rle_xor_pack()`), and the *shape*
+// being imitated — a stub that decompresses the rest of itself and jumps
+// into it — is a fact about how DOS-era programs were built, not a fact
+// about any one of them (PLAN.md §6).
+//
+//
+// The image, offset by offset
+// ---------------------------
+//
+//   0000  the stub: what DOS entered us with, then the unpacker, then a
+//         jump into what it unpacked
+//   0080  an INT 60h handler, left in the clear because the hook has to
+//         point at something the unpacker did not have to produce
+//   0100  data: the overlay's filename, and the far pointer the payload
+//         calls it through — whose segment half is a real MZ relocation
+//   0140  the packed payload
+//   0500  where the payload lands, and where it runs
+//   0680  where the overlay module is read to
+//   0800  the result block (machine_layout)
+//
+// The payload carries no relocations, which is not an oversight: the
+// loader fixes up the *file*, and by the time the payload exists those
+// bytes have been through the unpacker. That is exactly why real
+// self-unpacking binaries keep their fixups in the stub, and why the far
+// call into the overlay goes through a pointer in the clear rather than
+// through an immediate inside the payload.
+
+constexpr std::uint16_t boot_handler_offset = 0x0080;
+constexpr std::uint16_t boot_data_offset = 0x0100;
+constexpr std::uint16_t boot_packed_offset = 0x0140;
+constexpr std::uint16_t boot_payload_offset = 0x0500;
+constexpr std::uint16_t boot_overlay_offset = 0x0680;
+
+/// The room the payload and its packed form each have. Checked at build
+/// time rather than trusted: a payload that outgrew its landing zone
+/// would overwrite the place the overlay is about to be read to, and the
+/// failure would look like anything but that.
+constexpr std::size_t boot_payload_capacity =
+    boot_overlay_offset - boot_payload_offset;
+constexpr std::size_t boot_packed_capacity =
+    boot_payload_offset - boot_packed_offset;
+
+/// The key the packer XORs every emitted byte with, so the packed region
+/// in the file looks like nothing in particular.
+constexpr std::uint8_t boot_pack_key = 0x5C;
+
+/// Where the overlay's filename sits, and what it says.
+constexpr std::uint16_t boot_name_offset = boot_data_offset;
+constexpr std::string_view boot_overlay_path = "\\OVL.BIN";
+
+/// The far pointer the payload calls the overlay through: the offset,
+/// then the segment word the loader relocates.
+constexpr std::uint16_t boot_thunk_offset = boot_data_offset + 0x10;
+
+/// The vector the program hooks. 60h is in the range DOS never used and
+/// every era program's own interrupts lived in.
+constexpr std::uint8_t boot_hook_vector = 0x60;
+
+/// What the hooked handler and the overlay each leave behind: values
+/// that cannot appear unless that code actually ran.
+constexpr std::uint16_t boot_handler_mark = 0xC0DE;
+constexpr std::uint16_t boot_overlay_mark = 0xBEEF;
+
+/// The command tail the harness gives it (#89), and therefore what DOS
+/// leaves at PSP:80h for it to read back.
+constexpr std::string_view boot_command_tail = " -FIRSTLIGHT";
+
+/// Result-block indices, named: twenty-odd `store(a, 14, ...)` calls are
+/// unreadable, and one off-by-one among them would be invisible.
+enum boot_result : std::uint8_t {
+  boot_entry_flags,
+  boot_tail_length,
+  boot_tail_first,
+  boot_vector_segment_before,
+  boot_vector_offset_before,
+  boot_vector_segment_after,
+  boot_vector_offset_after,
+  boot_handler_ran,
+  boot_ioctl_console,
+  boot_ioctl_sink,
+  boot_mode_at_power_on,
+  boot_mode_after_text,
+  boot_character_under_cursor,
+  boot_font_points,
+  boot_font_rows,
+  boot_font_segment,
+  boot_mode_after_graphics,
+  boot_active_page,
+  boot_retrace_seen,
+  boot_overlay_bytes,
+  boot_overlay_ran,
+  boot_timer_ticked,
+  boot_result_count,
+};
+
+/// Run-length encode `plain`, XORing every emitted byte with `key`.
+///
+/// Two bytes per run — a count and the byte — and a zero count ends the
+/// stream, which is why a run never reaches 256. The smallest scheme
+/// that is genuinely a decompressor rather than a copy, so the stub has
+/// something to do that a `rep movsb` would not.
+[[nodiscard]] std::vector<std::uint8_t> rle_xor_pack(
+    std::span<const std::uint8_t> plain, std::uint8_t key) {
+  std::vector<std::uint8_t> packed;
+  std::size_t at = 0;
+  while (at < plain.size()) {
+    std::size_t run = 1;
+    while (at + run < plain.size() && plain[at + run] == plain[at] &&
+           run < 255) {
+      ++run;
+    }
+    packed.push_back(static_cast<std::uint8_t>(run));
+    packed.push_back(static_cast<std::uint8_t>(plain[at] ^ key));
+    at += run;
+  }
+  packed.push_back(0);
+  return packed;
+}
+
+///     mov  bx, imm16                     ; BB iw
+void mov_bx(assembler& a, std::uint16_t value) {
+  a.db({0xBB});
+  a.dw(value);
+}
+
+///     int  n                             ; CD ib
+void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
+
+/// The payload: everything the program does once it has unpacked itself.
+///
+/// Assembled on its own and then packed, so nothing in it may name a
+/// label the outer image defines — it runs at `boot_payload_offset` and
+/// this assembler counts from zero. Every address it names is one of the
+/// constants above. That is a discipline rather than a limitation: a
+/// real unpacked payload has the same problem and solves it the same way.
+[[nodiscard]] std::vector<std::uint8_t> boot_payload() {
+  assembler a;
+
+  // --- The vectors (#86) ------------------------------------------------
+  //
+  // Read 60h before touching it: nothing backs it, so this machine
+  // answers with its own stub, which is a real address a program is
+  // entitled to read (service_floor.h).
+  mov_ax(a, 0x3500U | boot_hook_vector);
+  interrupt(a, 0x21);
+  a.db({0x8C, 0xC0});  // mov ax, es
+  store(a, boot_vector_segment_before, reg_ax);
+  store(a, boot_vector_offset_before, reg_bx);
+
+  // Hook it. DS:DX is our own handler, in the clear at a fixed offset
+  // because the unpacker could not have produced it.
+  a.db({0xBA});
+  a.dw(boot_handler_offset);  // mov dx, handler
+  mov_ax(a, 0x2500U | boot_hook_vector);
+  interrupt(a, 0x21);
+
+  // And read it back, which is the whole claim: what AH=25h wrote is what
+  // AH=35h finds, because both of them are the vector table itself.
+  mov_ax(a, 0x3500U | boot_hook_vector);
+  interrupt(a, 0x21);
+  a.db({0x8C, 0xC0});  // mov ax, es
+  store(a, boot_vector_segment_after, reg_ax);
+  store(a, boot_vector_offset_after, reg_bx);
+
+  // Then take the interrupt. A hook that cannot be called is not a hook.
+  interrupt(a, boot_hook_vector);
+
+  // --- What is behind a handle (#86) ------------------------------------
+  mov_ax(a, 0x4400);
+  mov_bx(a, 1);  // STDOUT: the console sink.
+  interrupt(a, 0x21);
+  store(a, boot_ioctl_console, reg_dx);
+
+  mov_ax(a, 0x4400);
+  mov_bx(a, 0);  // STDIN: the documented sink, which is DOS's own NUL.
+  interrupt(a, 0x21);
+  store(a, boot_ioctl_sink, reg_dx);
+
+  // --- The video BIOS (#87) ---------------------------------------------
+  //
+  // The mode before anything has set one: the self test left the one mode
+  // this machine can display recorded in the BDA.
+  mov_ax(a, 0x0F00);
+  interrupt(a, 0x10);
+  store(a, boot_mode_at_power_on, reg_ax);
+
+  // Through 80x25 text, the way a program of the era opens. Nothing is
+  // programmed and nothing will be drawn; the mode number is recorded and
+  // the machine says so once.
+  mov_ax(a, 0x0003);
+  interrupt(a, 0x10);
+  mov_ax(a, 0x0F00);
+  interrupt(a, 0x10);
+  store(a, boot_mode_after_text, reg_ax);
+
+  // The character under the cursor, out of a text page nothing in this
+  // machine answers for: open bus floats high, and that is the answer.
+  mov_ax(a, 0x0800);
+  mov_bx(a, 0x0000);
+  interrupt(a, 0x10);
+  store(a, boot_character_under_cursor, reg_ax);
+
+  // Where the character generator is: vector 1Fh, which nothing has set,
+  // so this machine's own stub — plus the cell height and the row count
+  // the mode set recorded.
+  mov_ax(a, 0x1130);
+  mov_bx(a, 0x0000);
+  interrupt(a, 0x10);
+  store(a, boot_font_points, reg_cx);
+  a.db({0xB6, 0x00});  // mov dh, 0
+  store(a, boot_font_rows, reg_dx);
+  a.db({0x8C, 0xC0});  // mov ax, es
+  store(a, boot_font_segment, reg_ax);
+
+  // And into the mode this machine actually draws.
+  mov_ax(a, 0x000D);
+  interrupt(a, 0x10);
+  mov_ax(a, 0x0500);  // page 0, the only one there is
+  interrupt(a, 0x10);
+  mov_ax(a, 0x0F00);
+  interrupt(a, 0x10);
+  store(a, boot_mode_after_graphics, reg_ax);
+  a.db({0x88, 0xF8});  // mov al, bh
+  a.db({0xB4, 0x00});  // mov ah, 0
+  store(a, boot_active_page, reg_ax);
+
+  // --- The raster (#88) -------------------------------------------------
+  //
+  // Wait for retrace to end, then for the next one to begin — the poll
+  // that spins forever against a constant status register. Reaching the
+  // store below *is* the assertion: a machine that answered 3DAh with a
+  // constant would run out of step cap here instead.
+  a.db({0xBA});
+  a.dw(0x03DA);  // mov dx, 3DAh
+  a.label("retrace_out");
+  a.db({0xEC});        // in al, dx
+  a.db({0xA8, 0x08});  // test al, 08h
+  a.jump(0x75, "retrace_out");
+  a.label("retrace_in");
+  a.db({0xEC});
+  a.db({0xA8, 0x08});
+  a.jump(0x74, "retrace_in");
+  mov_ax(a, 1);
+  store(a, boot_retrace_seen, reg_ax);
+
+  // --- The overlay ------------------------------------------------------
+  //
+  // Open it, read it into memory, close it, and far-call what arrived —
+  // through the relocated pointer in the clear, which is how an overlay
+  // manager reaches a module it has just loaded.
+  a.db({0xBA});
+  a.dw(boot_name_offset);  // mov dx, filename
+  mov_ax(a, 0x3D00);       // AH=3Dh AL=00h: open for reading
+  interrupt(a, 0x21);
+  a.db({0x89, 0xC3});  // mov bx, ax — the handle
+  a.db({0xB4, 0x3F});  // mov ah, 3Fh
+  a.db({0xB9});
+  a.dw(0x0040);  // mov cx, 40h — more than the module is
+  a.db({0xBA});
+  a.dw(boot_overlay_offset);
+  interrupt(a, 0x21);
+  store(a, boot_overlay_bytes, reg_ax);
+  a.db({0xB4, 0x3E});  // mov ah, 3Eh: close
+  interrupt(a, 0x21);
+
+  a.db({0xFF, 0x1E});
+  a.dw(boot_thunk_offset);  // call far [thunk]
+
+  // --- The tick nobody asked for (#87's self test) ----------------------
+  //
+  // 40:6C, read directly the way an era program reads it, waited on until
+  // it moves. This program programs neither the timer nor the controller.
+  // If the machine's own self test did not either, this loop never ends.
+  mov_ax(a, 0x0040);
+  a.db({0x8E, 0xC0});  // mov es, ax
+  a.db({0xBF});
+  a.dw(0x006C);  // mov di, 6Ch
+  a.label("wait_tick");
+  a.db({0x26, 0x8B, 0x05});  // mov ax, es:[di]
+  a.db({0x09, 0xC0});        // or ax, ax
+  a.jump(0x74, "wait_tick");
+  mov_ax(a, 1);
+  store(a, boot_timer_ticked, reg_ax);
+
+  exit_with(a, 0x77);
+  return a.assemble();
+}
+
+/// The overlay module: a second self-written program, staged on the
+/// filesystem, read into memory by the payload and entered with a far
+/// call. It leaves a mark and returns.
+[[nodiscard]] std::vector<std::uint8_t> boot_overlay_module() {
+  assembler a;
+  mov_ax(a, boot_overlay_mark);
+  store(a, boot_overlay_ran, reg_ax);
+  a.db({0xCB});  // retf
+  return a.assemble();
+}
+
+[[nodiscard]] std::vector<std::uint8_t> boot_exe_file() {
+  const std::vector<std::uint8_t> payload = boot_payload();
+  if (payload.size() > boot_payload_capacity) {
+    throw std::logic_error("the synthetic boot payload outgrew its landing");
+  }
+  const std::vector<std::uint8_t> packed = rle_xor_pack(payload, boot_pack_key);
+  if (packed.size() > boot_packed_capacity) {
+    throw std::logic_error("the packed synthetic boot payload does not fit");
+  }
+
+  assembler a;
+
+  // --- The stub ---------------------------------------------------------
+  //
+  // What DOS entered us with, before anything else touches it: the flag
+  // word — IF has to be set (#89) — and the command tail DOS laid at
+  // PSP:80h, which DS still points at.
+  a.db({0x9C});  // pushf
+  a.db({0x58});  // pop ax
+  a.db({0x25});
+  a.dw(0x0200);        // and ax, 0200h — the interrupt-enable bit alone
+  a.db({0x8C, 0xDB});  // mov bx, ds — the PSP segment
+  a.db({0x8E, 0xC3});  // mov es, bx
+  a.db({0x0E, 0x1F});  // push cs / pop ds — our stores go to our segment
+  store(a, boot_entry_flags, reg_ax);
+
+  a.db({0x26, 0xA0});
+  a.dw(machine::psp::command_tail_count_offset);  // mov al, es:[80h]
+  a.db({0xB4, 0x00});                             // mov ah, 0
+  store(a, boot_tail_length, reg_ax);
+  a.db({0x26, 0xA0});
+  a.dw(machine::psp::command_tail_bytes_offset);  // mov al, es:[81h]
+  a.db({0xB4, 0x00});
+  store(a, boot_tail_first, reg_ax);
+
+  // --- The unpacker -----------------------------------------------------
+  //
+  //     cld
+  //     push cs / pop es
+  //     mov  si, packed
+  //     mov  di, payload
+  //   next:
+  //     lodsb                 ; the run length, or zero at the end
+  //     or   al, al
+  //     jz   done
+  //     mov  cl, al
+  //     xor  ch, ch
+  //     lodsb                 ; the byte, still masked
+  //     xor  al, key
+  //     rep  stosb
+  //     jmp  next
+  //   done:
+  //     jmp  payload
+  a.db({0xFC});        // cld
+  a.db({0x0E, 0x07});  // push cs / pop es
+  a.db({0xBE});
+  a.dw(boot_packed_offset);
+  a.db({0xBF});
+  a.dw(boot_payload_offset);
+  a.label("unpack_next");
+  a.db({0xAC});        // lodsb
+  a.db({0x08, 0xC0});  // or al, al
+  a.jump(0x74, "unpack_done");
+  a.db({0x88, 0xC1});  // mov cl, al
+  a.db({0x30, 0xED});  // xor ch, ch
+  a.db({0xAC});        // lodsb
+  a.db({0x34, boot_pack_key});
+  a.db({0xF3, 0xAA});  // rep stosb
+  a.jump(0xEB, "unpack_next");
+  a.label("unpack_done");
+  a.near_jump(0xE9, "payload_lands");
+
+  // --- The INT 60h handler, in the clear --------------------------------
+  a.pad_to(boot_handler_offset);
+  a.db({0x1E, 0x50, 0x53});  // push ds / push ax / push bx
+  a.db({0x8C, 0xCB});        // mov bx, cs
+  a.db({0x8E, 0xDB});        // mov ds, bx
+  mov_ax(a, boot_handler_mark);
+  store(a, boot_handler_ran, reg_ax);
+  a.db({0x5B, 0x58, 0x1F});  // pop bx / pop ax / pop ds
+  a.db({0xCF});              // iret
+
+  // --- Data, in the clear -----------------------------------------------
+  a.pad_to(boot_name_offset);
+  for (const char c : boot_overlay_path) {
+    a.db({static_cast<std::uint8_t>(c)});
+  }
+  a.db({0x00});
+
+  a.pad_to(boot_thunk_offset);
+  a.dw(boot_overlay_offset);
+  a.label("overlay_segment");
+  a.dw(0x0000);  // relocated to the load segment
+
+  // --- The packed payload -----------------------------------------------
+  a.pad_to(boot_packed_offset);
+  for (const std::uint8_t byte : packed) {
+    a.db({byte});
+  }
+
+  // Where it lands. These bytes are zero in the file; the unpacker puts
+  // the payload here and the jump above arrives at it.
+  a.pad_to(boot_payload_offset);
+  a.label("payload_lands");
+
+  a.pad_to(machine_layout::result_offset + 0x40);
+
+  return build_exe({.initial_cs = 0,
+                    .initial_ip = 0,
+                    .initial_ss = 0,
+                    .initial_sp = 0x0F00,
+                    .min_alloc = 0x0100,
+                    .relocations = {{.offset = static_cast<std::uint16_t>(
+                                         a.offset_of("overlay_segment")),
+                                     .segment = 0}},
+                    .image = a.assemble()});
+}
+
 [[nodiscard]] std::vector<machine_program> build_all() {
   std::vector<machine_program> list;
 
@@ -1622,6 +2050,59 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
     list.push_back(std::move(p));
   }
 
+  {
+    machine_program p;
+    p.name = "synthetic_boot";
+    p.about = "unpacks itself, loads an overlay, and calls what M3 added";
+    p.setup.exe = boot_exe_file();
+    p.setup.exe_path = "\\BOOT.EXE";
+    p.setup.command_tail = boot_command_tail;
+    p.setup.files = {
+        {.path = boot_overlay_path, .contents = boot_overlay_module()}};
+    p.setup.step_cap = 400'000;
+    p.results = {
+        {.what = "IF, as DOS leaves it at entry", .value = 0x0200},
+        {.what = "the command tail's length byte",
+         .value = static_cast<std::uint16_t>(boot_command_tail.size())},
+        {.what = "its first character",
+         .value = static_cast<std::uint16_t>(boot_command_tail.front())},
+        {.what = "vector 60h's segment before hooking",
+         .value = machine::service::stub_segment},
+        {.what = "vector 60h's offset before hooking",
+         .value = machine::service::stub_offset(boot_hook_vector)},
+        {.what = "vector 60h's segment after hooking",
+         .value = machine::image_load_segment},
+        {.what = "vector 60h's offset after hooking",
+         .value = boot_handler_offset},
+        {.what = "the hooked handler ran", .value = boot_handler_mark},
+        {.what = "STDOUT is a character device", .value = 0x0082},
+        {.what = "STDIN is the documented sink", .value = 0x0084},
+        {.what = "the mode the self test left recorded", .value = 0x280D},
+        {.what = "the mode after 80x25 text was asked for", .value = 0x5003},
+        {.what = "the character under the cursor, off open bus",
+         .value = 0xFFFF},
+        {.what = "the character cell's height", .value = 14},
+        {.what = "rows on screen, less one", .value = 24},
+        {.what = "vector 1Fh's segment, as the font pointer",
+         .value = machine::service::stub_segment},
+        {.what = "the mode after 320x200 was programmed", .value = 0x280D},
+        {.what = "the active display page", .value = 0},
+        {.what = "retrace both ended and began again", .value = 1},
+        {.what = "bytes of the overlay module read in",
+         .value = static_cast<std::uint16_t>(boot_overlay_module().size())},
+        {.what = "the overlay ran and returned", .value = boot_overlay_mark},
+        {.what = "40:6C moved without the program programming anything",
+         .value = 1}};
+    p.exit_code = 0x77;
+    // The two the video BIOS owes: the text mode this machine records and
+    // cannot draw, and the text page nothing answers for.
+    p.notices = 2;
+    // The first timer tick is one whole channel-0 period away, and the
+    // program waits for it (service_floor.h's `post`).
+    p.least_time = machine::ticks{0x10000};
+    list.push_back(std::move(p));
+  }
+
   for (machine_program& p : list) {
     p.setup.result_words = p.results.size();
   }
@@ -1695,9 +2176,10 @@ std::vector<std::string> check_machine_program(const machine_program& expected,
          hex(expected.exit_code, 2));
   }
 
-  if (got.notices != 0) {
+  if (got.notices != expected.notices) {
     fail(std::to_string(got.notices) +
-         " touch(es) of an address or a port nothing answers for");
+         " touch(es) of an address or a port nothing answers for, expected " +
+         std::to_string(expected.notices));
   }
   if (got.device_stops != 0) {
     fail(std::to_string(got.device_stops) + " device fault(s)");

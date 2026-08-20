@@ -124,6 +124,7 @@ void machine::reset() {
   // clear it. `stop_` above is a handful of bytes and is left as it is.
   pages_noticed_.fill(0);
   ports_noticed_.fill(0);
+  video_modes_noticed_.fill(0);
 
   // The run's own bookkeeping. `trace_.clear()` forgets what was
   // recorded and deliberately leaves `enabled()` alone: whether anything
@@ -437,6 +438,18 @@ void machine::notice_port(notice_kind what, std::uint16_t port,
   log_->report({.what = what,
                 .at = port,
                 .value = value,
+                .cs = cpu_.regs()[cpu::sreg::cs],
+                .ip = cpu_.current().start_ip});
+}
+
+void machine::notice_video_mode(std::uint8_t mode) {
+  if (!first_touch(video_modes_noticed_, mode) || log_ == nullptr) {
+    return;
+  }
+
+  log_->report({.what = notice_kind::undisplayable_video_mode,
+                .at = mode,
+                .value = mode,
                 .cs = cpu_.regs()[cpu::sreg::cs],
                 .ip = cpu_.current().start_ip});
 }

@@ -158,7 +158,7 @@ machine_harness::machine_harness(const machine_setup& setup)
       irq_(std::make_unique<machine::pic::controller>(*box_)),
       timer_(std::make_unique<machine::pit>(*box_, *irq_)),
       sound_(std::make_unique<machine::speaker>(*box_, *timer_)),
-      video_(std::make_unique<machine::ega>()),
+      video_(std::make_unique<machine::ega>(*box_)),
       screen_(std::make_unique<machine::renderer>(*box_, *video_)) {
   box_->attach(*irq_);
   box_->attach(*timer_);
@@ -215,8 +215,10 @@ bool machine_harness::start() {
 
   if (!setup_->exe.empty()) {
     stage(*fs_, {.path = setup_->exe_path, .contents = setup_->exe});
-    const auto loaded =
-        machine::load_program(*box_, *fs_, parse_path(setup_->exe_path));
+    const auto loaded = machine::load_program(
+        *box_, *fs_, parse_path(setup_->exe_path),
+        std::span<const char>(setup_->command_tail.data(),
+                              setup_->command_tail.size()));
     result_.load_error = loaded.error;
     result_.loaded = loaded.value;
     running_ = loaded.ok();

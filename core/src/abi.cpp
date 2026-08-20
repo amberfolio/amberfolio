@@ -255,7 +255,7 @@ struct reference_devices {
       : fs(),
         pic_ctrl(box),
         pit_dev(box, pic_ctrl),
-        video(),
+        video(box),
         render(box, video),
         spk(box, pit_dev) {
     // Every attach() here claims a distinct, non-overlapping memory
