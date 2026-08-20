@@ -123,7 +123,9 @@
 //   * **The PIC.** M2-D1 (#46). The timer handler ends with a real EOI
 //     write to port 20h; with no controller attached the port map finds
 //     nothing there and says so once, which is the honest answer and
-//     needs no edit when the 8259 arrives to claim the port.
+//     needs no edit when the 8259 arrives to claim the port. Since M3
+//     this file also *initializes* the controller, and the timer, at
+//     power-on — see the `post` namespace below.
 //   * **A chain into a service with a native body.** A handler that
 //     hands control to another stub gets that stub dispatched in the same
 //     step, up to `service::max_chain` deep; the loop is in
@@ -270,6 +272,56 @@ inline constexpr std::uint16_t size = 0x0100;
 /// fact of the memory map (memory_map.h), so it is written from it.
 inline constexpr std::uint16_t memory_size_kb = 0x0013;
 
+// --- The video block --------------------------------------------------
+//
+// What the video BIOS keeps about the adapter, at the addresses a real
+// BIOS keeps it (int10.h, #87). Programs of the era read every one of
+// these directly instead of paying for an INT — 40:49 for "which mode am
+// I in" and 40:4A for "how wide is the screen" especially — so they are
+// real memory here for exactly the reason the tick count and the
+// keystroke buffer are.
+//
+// `reset()` writes them describing mode 0Dh, which is the one mode this
+// machine can display (PLAN.md §9). A real self test always leaves *a*
+// mode recorded here because it always sets one; this machine's self
+// test does not program the card (`machine::video_mode_set()` stays
+// false, and the notice it gates is a separate question — has the
+// *program* asked for a mode), but leaving the block zeroed would report
+// mode 00h, a mode this machine has even less of a claim to than the one
+// it can actually draw.
+
+/// 40:49 — the current video mode number, as AH=00h last set it.
+inline constexpr std::uint16_t video_mode = 0x0049;
+
+/// 40:4A — text columns on screen. 40 in mode 0Dh, 80 in mode 03h.
+inline constexpr std::uint16_t video_columns = 0x004A;
+
+/// 40:50 — the cursor position for page 0: column byte, then row byte.
+/// Eight pages' worth of them run to 40:5F; this machine has one page
+/// (int10.h), so only the first pair is ever written.
+inline constexpr std::uint16_t cursor_position = 0x0050;
+
+/// 40:62 — the active display page. Always 0 here; AH=05h refuses any
+/// other (int10.h).
+inline constexpr std::uint16_t video_active_page = 0x0062;
+
+/// 40:84 — rows on screen minus one. An EGA-and-later field; 24 for the
+/// 25-row screen both modes this machine knows about have.
+inline constexpr std::uint16_t video_rows_minus_one = 0x0084;
+
+/// 40:85 — the character cell's height in scan lines ("points"), a word.
+/// 8 in mode 0Dh. AH=11h AL=30h reports it.
+inline constexpr std::uint16_t character_points = 0x0085;
+
+/// The values `reset()` writes into the block above: mode 0Dh, 320
+/// pixels across an 8-dot character clock (40 columns), 25 rows of 8-line
+/// characters. int10.cpp restates none of these — it reads them back the
+/// way a program does.
+inline constexpr std::uint8_t power_on_video_mode = 0x0D;
+inline constexpr std::uint16_t power_on_video_columns = 40;
+inline constexpr std::uint8_t power_on_video_rows_minus_one = 24;
+inline constexpr std::uint16_t power_on_character_points = 8;
+
 /// 40:6C — the 32-bit tick count, incremented by the timer interrupt at
 /// the PC's 18.2 Hz. The field this issue's exit criterion reads.
 inline constexpr std::uint16_t timer_ticks = 0x006C;
@@ -334,6 +386,45 @@ inline constexpr std::uint8_t break_flag_bit = 0x80;
 
 }  // namespace bda
 
+/// What the self test programs into the hardware, and the values it uses
+/// (`service_floor::program_hardware()`).
+///
+/// M2 had no self test at all: the machine came up with a PIT that had
+/// never been given a control word and a PIC that had never seen an
+/// ICW1, so IRQ0 was raised into a controller with no vector base and
+/// nothing ever reached INT 08h. Every M2 program was self-contained and
+/// none of them noticed. M3's first boot did, immediately and silently:
+/// it sat in a two-instruction loop watching the low byte of 40:6C for a
+/// change that no longer had any way to arrive (#87, #88). That is the
+/// one failure this project's discipline cannot catch by refusing to
+/// fake an answer, because nobody asked for anything — the honest fix is
+/// not a louder log line, it is for the machine to power on the way a PC
+/// powers on.
+namespace post {
+
+/// Channel 0's control word: select channel 0, read/write both bytes,
+/// mode 3 (square wave), binary. The bit layout is the 8253's own
+/// (pit.cpp decodes it); the *choice* of mode 3 and a 16-bit load is
+/// what every PC's self test has written since the first one.
+inline constexpr std::uint8_t timer_control = 0x36;
+
+/// ICW3 for the master: a slave on IRQ2, which is how the PC/AT cascades
+/// its second controller. There is no second controller here and this
+/// machine's own PIC consumes the byte and ignores it (pic.h) — it is
+/// sent because the sequence a real master is given includes it, and
+/// sending a shorter one would make this self test the only thing in the
+/// machine that knows there is no slave.
+inline constexpr std::uint8_t cascade_on_irq2 = 0x04;
+
+/// OCW1, the interrupt mask: every line masked but IRQ0. This machine
+/// has exactly one wired line — channel 0's output edge (pic.h) — so
+/// unmasking any other bit would be opening a line to nothing. When
+/// #90's keyboard arrives with IRQ1, this is the constant that changes,
+/// and the boot log that demanded it is the reason it may.
+inline constexpr std::uint8_t interrupt_mask = 0xFE;
+
+}  // namespace post
+
 /// The interrupt controller's acknowledge, until M2-D1 (#46) brings a
 /// real 8259. Here rather than guessed at the call site: the timer
 /// handler must end with an EOI or a real controller would deliver
@@ -388,6 +479,10 @@ class service_floor {
   /// Does nothing under `memory_layout::flat`, which is a megabyte of RAM
   /// and no PC at all: it has no BIOS region to put stubs in, and the
   /// programs that run on it are self-contained (tests/programs).
+  ///
+  /// The last thing it does is `program_hardware()`, which is the other
+  /// half of a self test — see the `post` namespace above for what the
+  /// machine was doing wrong without one.
   void reset();
 
   /// Whether this machine has a service floor at all — see `reset()`.
@@ -424,6 +519,13 @@ class service_floor {
   [[nodiscard]] machine& box() noexcept { return *box_; }
 
  private:
+  /// The hardware half of `reset()`: give the interval timer and the
+  /// interrupt controller the programming a PC's own ROM gives them
+  /// before the first program runs. Real bus cycles, and only to devices
+  /// this machine actually has attached — the `post` namespace above has
+  /// the values and the argument for both.
+  void program_hardware();
+
   /// One word of the caller's interrupt frame, by `service::frame`
   /// offset. Through the bus, because the stack is memory like any other
   /// and a handler must see it exactly as the program does.
