@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The self-written 8086 programs, the machine that runs them, and the
+# The self-written 8086 programs, the machines that run them, and the
 # benchmark that times them.
 #
 # Outside the AMBERFOLIO_BUILD_TESTS guard in the directory above, and
@@ -11,13 +11,25 @@
 # the wasm leg proved only that the core compiles and that the module
 # answers with its version.
 #
+# Since M2-T1 (#56) there are two lists here, not one. M1's programs run
+# against a flat megabyte with no devices (harness.cpp, programs.cpp) and
+# pin the CPU-side baseline; M2's run against the whole machine —
+# devices, services, loader and all — and are the milestone's exit
+# criterion (machine_harness.cpp, machine_programs.cpp). The wasm leg
+# runs both, which is what makes it the wasm quarter of that criterion
+# rather than a compile check.
+#
 # The library is shared by two readers: amberfolio-bench times the
-# programs, and the unit-test rig (tests/core/cpu/program_test.cpp)
-# asserts their answers. What "correct" means lives in programs.cpp, once.
+# programs, and the unit-test rig (tests/core/cpu/program_test.cpp and
+# tests/core/machine/machine_program_test.cpp) asserts their answers.
+# What "correct" means lives in programs.cpp and machine_programs.cpp,
+# once each.
 
 add_library(amberfolio-programs STATIC
   assembler.cpp
   harness.cpp
+  machine_harness.cpp
+  machine_programs.cpp
   programs.cpp)
 add_library(amberfolio::programs ALIAS amberfolio-programs)
 
@@ -47,11 +59,25 @@ if(EMSCRIPTEN)
   # EXIT_RUNTIME is what carries main's return value out to node's exit
   # code, which is the whole of how CTest learns whether it passed.
   # ALLOW_MEMORY_GROWTH because the harness allocates the machine's
-  # megabyte on top of whatever the default heap is spoken for.
+  # megabyte, the EGA's quarter of one and the memory filesystem's eight
+  # on top of whatever the default heap is spoken for.
+  #
+  # STACK_SIZE because Emscripten's default stack is 64 KiB, which is
+  # one to two orders of magnitude smaller than any native target's, and
+  # the machine path has a frame that does not fit in it: an unoptimized
+  # build of `framebuffer::reset()` materializes the whole 64,000-byte
+  # pixel array as a temporary (`pixels_ = {}`) before assigning it, so
+  # the first `machine::reset()` walks off the end of the stack. Nothing
+  # here had ever constructed a machine on this target before M2-T1, so
+  # this is the first time it could have shown up. A wasm host (M2-H2,
+  # #55) constructs a machine too and will need the same line; 1 MiB is
+  # the Windows default, chosen so the wasm leg is not the target with
+  # the tightest budget.
   target_link_options(amberfolio-bench PRIVATE
     "-sENVIRONMENT=node"
     "-sEXIT_RUNTIME=1"
-    "-sALLOW_MEMORY_GROWTH=1")
+    "-sALLOW_MEMORY_GROWTH=1"
+    "-sSTACK_SIZE=1048576")
 
   # Already found by hosts/web for the module smoke check when that is
   # being built; find_program caches, so this is a no-op the second time.
