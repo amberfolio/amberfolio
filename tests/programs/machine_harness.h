@@ -174,6 +174,12 @@ struct machine_setup {
   std::vector<std::uint8_t> exe;
   std::string_view exe_path{"\\PROG.EXE"};
 
+  /// The command tail DOS lays down at PSP:80h — a length byte, these
+  /// characters, then a CR (loader.h). Passed verbatim, so a caller that
+  /// wants the leading space DOS's own parsing leaves in front of a tail
+  /// writes one. Only meaningful alongside `exe`; a raw image has no PSP.
+  std::string_view command_tail{};
+
   /// Files the filesystem holds before the program runs.
   std::vector<staged_file> files;
 

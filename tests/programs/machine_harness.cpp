@@ -215,8 +215,10 @@ bool machine_harness::start() {
 
   if (!setup_->exe.empty()) {
     stage(*fs_, {.path = setup_->exe_path, .contents = setup_->exe});
-    const auto loaded =
-        machine::load_program(*box_, *fs_, parse_path(setup_->exe_path));
+    const auto loaded = machine::load_program(
+        *box_, *fs_, parse_path(setup_->exe_path),
+        std::span<const char>(setup_->command_tail.data(),
+                              setup_->command_tail.size()));
     result_.load_error = loaded.error;
     result_.loaded = loaded.value;
     running_ = loaded.ok();
