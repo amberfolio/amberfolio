@@ -132,6 +132,18 @@ enum class notice_kind : std::uint8_t {
   /// a mode is running off-plan, and PLAN.md §3 wants that said once
   /// rather than silently accommodated.
   video_write_before_mode_set,
+  /// INT 10h AH=00h programmed a video mode this machine cannot display
+  /// (M3, #87). The mode number is recorded in the BIOS data area and
+  /// reported back by AH=0Fh, because that much is true — but nothing
+  /// was written to the adapter and nothing will be drawn until a mode
+  /// this machine does have is set. `at` is the mode number.
+  ///
+  /// Not a stop, and the reasoning is worth keeping: refusing would end
+  /// every run of a program that passes through 80x25 text on its way to
+  /// graphics, which the era's programs routinely do, over a mode whose
+  /// output nothing was ever going to look at. Reporting it is what turns
+  /// "we quietly went along with it" into a worklist line.
+  undisplayable_video_mode,
 };
 
 struct notice {

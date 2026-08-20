@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // INT 10h: what AH=00h AL=0Dh leaves programmed, what a program asking
-// for anything else gets, and the mode-discipline notice a write into the
-// video window trips before AH=00h has run.
+// for anything else gets, the mode-discipline notice a write into the
+// video window trips before AH=00h has run, and the five functions M3's
+// first boot went on to ask for (#87) — mode read-back, the recorded-only
+// text mode, page select, the character under the cursor, and the font
+// pointers.
 //
 // Every program below is written here from the encoding, the same
 // discipline service_floor_test.cpp follows (PLAN.md §6).
@@ -10,14 +13,17 @@
 #include "amberfolio/machine/int10.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
 
 #include "amberfolio/cpu/address.h"
+#include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/service_floor.h"
 #include "gtest/gtest.h"
 #include "machine/test_device.h"
 
@@ -128,6 +134,194 @@ TEST(int10_mode_set, any_other_mode_is_a_loud_log_and_a_clean_stop) {
 
   ASSERT_EQ(r.log.stops.size(), 1u);
   EXPECT_EQ(r.log.stops[0], r.pc().stop());
+}
+
+// --- AH=00h AL=03h: the mode this machine records and cannot draw --------
+
+TEST(int10_mode_set, al_03h_is_recorded_reported_and_reported_on) {
+  rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0003;
+  r.run();
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  EXPECT_FALSE(r.pc().stopped());
+
+  // Recorded where a program reads it.
+  cpu::processor& cpu = r.pc().processor();
+  EXPECT_EQ(cpu.read_byte(bda::segment, bda::video_mode), 0x03);
+  EXPECT_EQ(cpu.read_word(bda::segment, bda::video_columns), 80u);
+  EXPECT_EQ(cpu.read_byte(bda::segment, bda::video_rows_minus_one), 24);
+  EXPECT_EQ(cpu.read_word(bda::segment, bda::character_points), 14u);
+
+  // And said out loud, once, because nothing was programmed and nothing
+  // will be drawn (int10.h's "The modes this machine has").
+  ASSERT_EQ(r.log.notices.size(), 1u);
+  EXPECT_EQ(r.log.notices[0].what, notice_kind::undisplayable_video_mode);
+  EXPECT_EQ(r.log.notices[0].at, 0x03u);
+
+  // Nothing reached the adapter: the map mask is still what reset left,
+  // not the 0Fh a real mode-set writes.
+  r.video->write_port(sequencer_index_port, 0x02);
+  EXPECT_NE(r.video->read_port(sequencer_data_port), 0x0F);
+
+  // Not the same question as "has the program programmed a mode" — that
+  // flag gates one notice about drawing early and 03h programmed nothing.
+  EXPECT_FALSE(r.pc().video_mode_set());
+}
+
+TEST(int10_mode_set, the_undisplayable_notice_is_reported_once_per_mode) {
+  rig r;
+  for (int i = 0; i < 3; ++i) {
+    r.call_int10();
+    r.regs()[cpu::reg16::ax] = 0x0003;
+    r.run();
+    ASSERT_FALSE(r.pc().stopped());
+  }
+  EXPECT_EQ(r.log.notices.size(), 1u);
+}
+
+// --- AH=0Fh: report the current mode --------------------------------------
+
+TEST(int10_get_mode, answers_the_power_on_block_before_any_mode_set) {
+  rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0F00;
+  r.run();
+
+  ASSERT_FALSE(r.pc().stopped());
+  // The self test leaves the block describing the one mode this machine
+  // can display (service_floor.h's `bda` video block).
+  EXPECT_EQ(r.regs().get(cpu::reg8::al), 0x0D);
+  EXPECT_EQ(r.regs().get(cpu::reg8::ah), 40);
+  EXPECT_EQ(r.regs().get(cpu::reg8::bh), 0);
+}
+
+TEST(int10_get_mode, reads_back_whatever_mode_set_recorded) {
+  rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0003;
+  r.run();
+  ASSERT_FALSE(r.pc().stopped());
+
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0F00;
+  r.run();
+
+  ASSERT_FALSE(r.pc().stopped());
+  EXPECT_EQ(r.regs().get(cpu::reg8::al), 0x03);
+  EXPECT_EQ(r.regs().get(cpu::reg8::ah), 80);
+}
+
+// --- AH=05h: the one display page -----------------------------------------
+
+TEST(int10_set_page, page_zero_is_accepted_and_recorded) {
+  rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0500;
+  r.run();
+
+  ASSERT_FALSE(r.pc().stopped());
+  EXPECT_EQ(r.pc().processor().read_byte(bda::segment, bda::video_active_page),
+            0);
+}
+
+TEST(int10_set_page, any_other_page_is_refused) {
+  rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0501;
+  r.run();
+
+  EXPECT_TRUE(r.pc().stopped());
+  EXPECT_EQ(r.pc().stop().reason, stop_reason::unsupported_request);
+  EXPECT_EQ(r.pc().stop().at, 0x0501u);
+}
+
+// --- AH=08h: the character under the cursor -------------------------------
+
+TEST(int10_read_character, in_text_mode_it_reads_the_bus_and_finds_nothing) {
+  rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0003;
+  r.run();
+  ASSERT_FALSE(r.pc().stopped());
+  const std::size_t notices_after_mode_set = r.log.notices.size();
+
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0800;
+  r.regs()[cpu::reg16::bx] = 0x0000;
+  r.run();
+
+  ASSERT_FALSE(r.pc().stopped());
+  // Open bus floats high, and that is the answer — not an invented space
+  // (int10.cpp's AH=08h comment).
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0xFFFFu);
+
+  ASSERT_EQ(r.log.notices.size(), notices_after_mode_set + 1);
+  EXPECT_EQ(r.log.notices.back().what, notice_kind::unmapped_memory_read);
+  EXPECT_EQ(r.log.notices.back().at, 0xB8000u);
+}
+
+TEST(int10_read_character, in_a_graphics_mode_there_is_nothing_to_read) {
+  rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x000D;
+  r.run();
+  ASSERT_FALSE(r.pc().stopped());
+
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x0800;
+  r.regs()[cpu::reg16::bx] = 0x0000;
+  r.run();
+
+  EXPECT_TRUE(r.pc().stopped());
+  EXPECT_EQ(r.pc().stop().reason, stop_reason::unsupported_request);
+}
+
+// --- AH=11h AL=30h: where the character generator is ----------------------
+
+TEST(int10_font_info, bh_00h_answers_with_the_int_1fh_vector) {
+  rig r;
+  // A program's own font pointer, stored the way a program stores one:
+  // four bytes at the vector's place in the table.
+  cpu::processor& cpu = r.pc().processor();
+  cpu.write_word(cpu::vector_table_segment, cpu::vector_table_offset(0x1F),
+                 0x1234);
+  cpu.write_word(cpu::vector_table_segment,
+                 static_cast<std::uint16_t>(cpu::vector_table_offset(0x1F) + 2),
+                 0x5678);
+
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x1130;
+  r.regs()[cpu::reg16::bx] = 0x0000;
+  r.run();
+
+  ASSERT_FALSE(r.pc().stopped());
+  EXPECT_EQ(r.regs()[cpu::reg16::bp], 0x1234u);
+  EXPECT_EQ(r.regs()[cpu::sreg::es], 0x5678u);
+  EXPECT_EQ(r.regs()[cpu::reg16::cx], 8u);     // points, from the BDA
+  EXPECT_EQ(r.regs().get(cpu::reg8::dl), 24);  // rows less one
+}
+
+TEST(int10_font_info, a_rom_font_is_refused_because_there_is_no_rom_font) {
+  rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x1130;
+  r.regs()[cpu::reg16::bx] = 0x0300;  // BH=03h: the ROM 8x8 font.
+  r.run();
+
+  EXPECT_TRUE(r.pc().stopped());
+  EXPECT_EQ(r.pc().stop().reason, stop_reason::unsupported_request);
+}
+
+TEST(int10_font_info, any_other_subfunction_of_ah_11h_is_refused) {
+  rig r;
+  r.call_int10();
+  r.regs()[cpu::reg16::ax] = 0x1100;  // load a user font: not here.
+  r.run();
+
+  EXPECT_TRUE(r.pc().stopped());
+  EXPECT_EQ(r.pc().stop().reason, stop_reason::unsupported_request);
 }
 
 // --- AH=10h: palette register set -----------------------------------------

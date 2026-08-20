@@ -207,6 +207,8 @@ const char* notice_kind_name(notice_kind what) noexcept {
       return "unclaimed_port_write";
     case notice_kind::video_write_before_mode_set:
       return "video_write_before_mode_set";
+    case notice_kind::undisplayable_video_mode:
+      return "undisplayable_video_mode";
   }
   return "unknown";
 }

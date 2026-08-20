@@ -482,6 +482,16 @@ class machine final : public cpu::bus {
 
   [[nodiscard]] bool video_mode_set() const noexcept { return video_mode_set_; }
 
+  /// The video BIOS programmed a mode this machine cannot display
+  /// (diagnostics.h's `undisplayable_video_mode`, int10.h, #87). Reported
+  /// once per distinct mode number, on the same first-touch rule notices
+  /// about memory and ports already follow: a program that flips between
+  /// two modes should produce two lines and not two thousand.
+  ///
+  /// Public for the reason `stop_unsupported_request()` is: a handler
+  /// calls it from outside this class.
+  void notice_video_mode(std::uint8_t mode);
+
   /// A native service handler's own refusal: it understood the request
   /// and does not support it — an INT 10h video mode this machine does
   /// not have, say. PLAN.md §3's "loud log line and a clean stop," at the
@@ -621,6 +631,11 @@ class machine final : public cpu::bus {
   std::array<std::uint64_t, cpu::address_space_size / notice_page_size / 64>
       pages_noticed_{};
   std::array<std::uint64_t, 65536 / 64> ports_noticed_{};
+
+  /// One bit per video mode number: which have already been reported as
+  /// undisplayable (`notice_video_mode`). Thirty-two bytes, cleared by
+  /// `reset()` with the other two.
+  std::array<std::uint64_t, 256 / 64> video_modes_noticed_{};
 };
 
 }  // namespace amberfolio::machine
