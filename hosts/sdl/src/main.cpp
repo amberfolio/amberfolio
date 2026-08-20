@@ -8,7 +8,7 @@
 //                                     [--verify] [--press KEY@FRAME]
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
-//                                     [-- ARGUMENTS...]
+//                                     [--seam ID] [-- ARGUMENTS...]
 //
 // `--headless` opens no window and no audio device. That is what keeps
 // the CI smoke test meaningful on a runner with neither, and it is the
@@ -55,6 +55,20 @@
 //     Off by default, in the machine, at a cost of one branch per step
 //     (machine/trace.h). What it answers is the question a bare address
 //     cannot: how the program got there.
+//
+//   --seam ID        turn on one seam, by its config key
+//
+//     PLAN.md §5's opt-in runtime patches, off unless named here — and
+//     refused unless the program that was loaded is the one the seam's
+//     addresses are facts about, which is what its fingerprint is for
+//     (machine/seam.h). Repeatable. Every enabled seam is printed at
+//     startup, because a run that had one on is not the same run as one
+//     that did not and the log has to say so.
+//
+//     `code-wheel` is the only one this build carries, and seam.h is
+//     honest about what it is not yet: the possession gate PLAN.md §5
+//     requires is M5's, so today this is a maintainer's switch on a
+//     maintainer's own copy.
 //
 //   -- ARGUMENTS     everything after `--` becomes the command tail
 //
@@ -192,6 +206,7 @@
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/renderer.h"
 #include "amberfolio/machine/report.h"
+#include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/trace.h"
 #include "amberfolio/sha256.h"
@@ -435,6 +450,26 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
   capture_samples(*bridge, out);
 }
 
+/// Why a `--seam` was refused, in words. Named here rather than printed
+/// as a number because the two that a person actually hits — the wrong
+/// binary and a name that is not a seam — are the two a number would be
+/// useless for.
+[[nodiscard]] const char* seam_refusal(machine::seam_error why) noexcept {
+  switch (why) {
+    case machine::seam_error::none:
+      return "no reason";
+    case machine::seam_error::unknown_seam:
+      return "no seam by that name";
+    case machine::seam_error::wrong_binary:
+      return "this seam's addresses are facts about a different binary";
+    case machine::seam_error::no_program:
+      return "no program was loaded to key it on";
+    case machine::seam_error::too_many_points:
+      return "too many interception points for this build";
+  }
+  return "unknown";
+}
+
 /// A keystroke the host gives itself: which key, and which frame of the
 /// loop to push it on.
 ///
@@ -603,6 +638,7 @@ struct options {
   unsigned scale{default_scale};
   bool verify{false};
   std::vector<scripted_press> presses;
+  std::vector<std::string> seams;
 
   /// Zero means "no budget" for both. Zero is not a budget anyone can
   /// want — a run of no steps observes nothing — so it is free to be the
@@ -701,6 +737,8 @@ struct options {
         return opts;
       }
       opts.presses.push_back(std::move(press));
+    } else if (arg == "--seam" && i + 1 < argc) {
+      opts.seams.emplace_back(argv[++i]);
     } else if (arg == "--trace") {
       opts.trace = true;
     } else if (arg == "--dump" && i + 1 < argc) {
@@ -741,6 +779,7 @@ struct options {
                  " [--scale N] [--verify] [--press KEY@FRAME]\n"
                  "                                      [--steps N]"
                  " [--until TICKS] [--dump PREFIX] [--trace]\n"
+                 "                                      [--seam ID]\n"
                  "                                      [-- ARGUMENTS...]\n");
     return opts;
   }
@@ -833,6 +872,25 @@ int main(int argc, char** argv) try {
                loaded.value.entry_cs, loaded.value.entry_ip,
                loaded.value.entry_ss, loaded.value.entry_sp,
                opts.command_tail.size());
+
+  // The seams the run was asked for, now that there is a program to key
+  // them on. Enabled after the load and before the first step, and each
+  // one printed: a run with a seam on is not the same run as one without
+  // it, and a log that did not say so would be describing the wrong
+  // machine (machine/seam.h).
+  if (identity.ok()) {
+    box.seams().loaded(identity.value, loaded.value.load_segment);
+  }
+  for (const std::string& id : opts.seams) {
+    const machine::seam_error why = box.seams().enable(id);
+    if (why == machine::seam_error::none) {
+      std::fprintf(stderr, "amberfolio: seam %s on\n", id.c_str());
+      continue;
+    }
+    std::fprintf(stderr, "amberfolio: seam %s refused (%s)\n", id.c_str(),
+                 seam_refusal(why));
+    return EXIT_FAILURE;
+  }
 
   const std::uint32_t init_flags =
       opts.headless ? 0U : (SDL_INIT_VIDEO | SDL_INIT_AUDIO);
