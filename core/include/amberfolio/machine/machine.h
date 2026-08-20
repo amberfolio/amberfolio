@@ -59,6 +59,7 @@
 #include "amberfolio/machine/port_map.h"
 #include "amberfolio/machine/scheduler.h"
 #include "amberfolio/machine/service_floor.h"
+#include "amberfolio/machine/trace.h"
 #include "amberfolio/machine/vfs.h"
 
 namespace amberfolio::machine {
@@ -225,6 +226,24 @@ class machine final : public cpu::bus {
   /// reset. All machine-visible time is this (clock.h).
   [[nodiscard]] ticks time() const noexcept { return now_; }
 
+  /// Scheduling steps taken since the last reset — the other axis a run
+  /// is measured on, and the one a boot report is read against.
+  ///
+  /// Ticks and steps are the same fact twice while the speed governor is
+  /// left alone (`run_result`), and they stop being so the moment it is
+  /// not: a run that changed speed halfway has a tick count that no
+  /// longer divides. The step count is what stays comparable, which is
+  /// why "the same stop line at the same step" is the claim M3's two
+  /// hosts make to each other (#84) rather than "at the same tick".
+  ///
+  /// Kept here rather than accumulated by each caller out of
+  /// `run_result::steps`, because a stop report has to be able to say
+  /// where a run got to without depending on the caller having counted
+  /// — and because the two hosts would otherwise each keep their own,
+  /// which is two chances to disagree about a number they exist to
+  /// agree on.
+  [[nodiscard]] std::uint64_t steps() const noexcept { return steps_; }
+
   /// What one step costs, in ticks. The speed governor is this one
   /// number, and the presets are names for values of it.
   [[nodiscard]] ticks step_cost() const noexcept { return step_cost_; }
@@ -272,6 +291,46 @@ class machine final : public cpu::bus {
   /// The BIOS/DOS service floor: where a service layer installs its
   /// handlers, and where the vector table and the BDA came from.
   [[nodiscard]] service_floor& services() noexcept { return services_; }
+
+  /// The trace ring: the last N instructions and service calls, kept
+  /// only when a caller has asked for them (trace.h, M3-F1 #83).
+  ///
+  /// A member of the machine rather than something a host bolts on,
+  /// because the two things worth recording are seen nowhere else: CS:IP
+  /// at a step boundary is `step()`'s alone, and a service call is built
+  /// inside the floor. A host outside the machine could observe neither
+  /// without the machine handing it over one at a time, which is a
+  /// callback per instruction for a facility that is off by default.
+  [[nodiscard]] trace_ring& trace() noexcept { return trace_; }
+  [[nodiscard]] const trace_ring& trace() const noexcept { return trace_; }
+
+  /// The most recent call into the BIOS/DOS layer, or null if the
+  /// program has not made one since the last reset.
+  ///
+  /// Kept unconditionally, unlike the trace ring: it is eight bytes, it
+  /// is built on every call anyway (service_floor.cpp), and it is the
+  /// half of a stop report that turns "reason 2 at 0B5D2" into "INT 21h
+  /// AH=48h from 1A2B:00C6" — which is the difference between a stop and
+  /// a worklist line (#81, #83). A report that had it only when tracing
+  /// was on would be a report nobody could rely on.
+  [[nodiscard]] const service_call* last_service_call() const noexcept {
+    return have_service_call_ ? &last_service_call_ : nullptr;
+  }
+
+  /// The most recent device refusal (device.h's `device_fault`, enriched
+  /// by `note_device_fault()` with where the program was), or null if no
+  /// device has refused anything since the last reset. Kept for the same
+  /// reason and at the same cost as `last_service_call()`.
+  [[nodiscard]] const device_stop* last_device_stop() const noexcept {
+    return have_device_stop_ ? &last_device_stop_ : nullptr;
+  }
+
+  /// The service floor's way of telling the machine what it just built
+  /// (service_floor.cpp). Not something a handler or a host calls: it is
+  /// one link of the machine's own internal wiring, public only because
+  /// `service_floor` is a separate class rather than a friend — the same
+  /// shape `stop_unimplemented_service()` below already has.
+  void note_service_call(const service_call& call) noexcept;
 
   /// A service handler's own "unimplemented," one level finer than the
   /// floor's: INT 16h (keyboard.h, M2-D8) and INT 21h (M2-D7) each answer
@@ -508,6 +567,11 @@ class machine final : public cpu::bus {
   ticks now_{};
   ticks step_cost_{ticks_per_step(default_speed)};
 
+  /// Steps since the last reset — see `steps()`. Beside the clock
+  /// because it is the same kind of thing: a count the machine keeps of
+  /// its own running, moved by nothing but `step()`.
+  std::uint64_t steps_{};
+
   cpu::processor cpu_;
   service_floor services_;
 
@@ -518,6 +582,15 @@ class machine final : public cpu::bus {
   keyboard_service keyboard_;
 
   stop_record stop_{};
+
+  /// The trace ring, and the two single-entry records that are always
+  /// kept — see `trace()` and `last_service_call()` above for why the
+  /// three are not one thing.
+  trace_ring trace_;
+  service_call last_service_call_{};
+  device_stop last_device_stop_{};
+  bool have_service_call_{false};
+  bool have_device_stop_{false};
 
   /// The video BIOS's own bookkeeping — see "Video mode discipline"
   /// above.

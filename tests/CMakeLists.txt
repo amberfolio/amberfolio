@@ -38,6 +38,7 @@ add_executable(amberfolio-core-tests
   core/machine/clock_test.cpp
   core/machine/dos_test.cpp
   core/machine/ega_test.cpp
+  core/machine/fingerprint_test.cpp
   core/machine/int10_test.cpp
   core/machine/keyboard_test.cpp
   core/machine/loader_test.cpp
@@ -49,10 +50,13 @@ add_executable(amberfolio-core-tests
   core/machine/pit_test.cpp
   core/machine/platform_test.cpp
   core/machine/renderer_test.cpp
+  core/machine/report_test.cpp
   core/machine/scheduler_test.cpp
   core/machine/service_floor_test.cpp
   core/machine/speaker_test.cpp
+  core/machine/trace_test.cpp
   core/machine/vfs_test.cpp
+  core/sha256_test.cpp
   core/version_test.cpp)
 
 # So a test can say #include "cpu/test_bus.h" or "machine/test_device.h" —

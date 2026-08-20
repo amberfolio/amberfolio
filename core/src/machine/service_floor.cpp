@@ -222,6 +222,13 @@ service_outcome service_floor::call(unsigned slot) {
                             .caller_cs = caller_cs(),
                             .caller_ip = caller_ip(),
                             .outcome = outcome};
+  // The machine keeps it whether or not a sink does: it is what a stop
+  // report needs to name the service to widen next (machine.h's
+  // `last_service_call()`), and it is what feeds the trace ring when one
+  // is running (trace.h). Before the sink, so that the two orderings a
+  // reader might infer — "recorded, then reported" — is the one that is
+  // true.
+  box_->note_service_call(record);
   if (log_ != nullptr) {
     log_->report(record);
   }
