@@ -127,6 +127,16 @@ enable_testing()
 
 add_subdirectory(core)
 
+# Before the hosts, and not only alphabetically: tests/programs (inside
+# this) builds amberfolio::programs on every target including wasm — it
+# fetches nothing and links nothing but the core (tests/programs/
+# CMakeLists.txt says why) — and hosts/web links against it to assemble
+# the M2-H2 (#55) dev-page demo program at build time. A target has to
+# exist before something can `target_link_libraries()` it. The guard for
+# the GoogleTest rig underneath this is inside tests/CMakeLists.txt, not
+# here, so AMBERFOLIO_BUILD_TESTS is unaffected by the reorder.
+add_subdirectory(tests)
+
 if(AMBERFOLIO_BUILD_HOST_SDL)
   add_subdirectory(hosts/sdl)
 endif()
@@ -134,11 +144,6 @@ endif()
 if(AMBERFOLIO_BUILD_HOST_WEB)
   add_subdirectory(hosts/web)
 endif()
-
-# Unconditional, and the guard is inside: tests/programs builds on every
-# target including wasm, and only the GoogleTest rig beneath it depends on
-# AMBERFOLIO_BUILD_TESTS.
-add_subdirectory(tests)
 
 message(STATUS "amberfolio ${PROJECT_VERSION}: "
   "C++${AMBERFOLIO_CXX_STANDARD_EFFECTIVE}, "

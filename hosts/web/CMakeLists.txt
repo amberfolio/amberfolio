@@ -10,7 +10,7 @@
 # exists rather than a bare `python -m http.server` because the MIME type
 # a browser needs for an ES module is not the one Windows reports.
 
-add_executable(amberfolio-web src/main.cpp)
+add_executable(amberfolio-web src/main.cpp src/demo_program.cpp)
 
 # The one directory the module, its glue, the JS and the page share — the
 # thing that gets served. Spelled out rather than left to the generator's
@@ -27,8 +27,16 @@ set_target_properties(amberfolio-web PROPERTIES
   SUFFIX ".mjs"
   RUNTIME_OUTPUT_DIRECTORY "${AMBERFOLIO_WEB_OUTPUT_DIR}")
 
+# amberfolio::programs is tests/programs's `assembler` — src/demo_program.cpp
+# uses it to build the M2-H2 (#55) dev-page demo program at compile time
+# (see that file's own top comment for the reasoning and for where #56's
+# canonical composite program is meant to slot in). It builds under
+# Emscripten and links nothing but the core (tests/programs/CMakeLists.txt),
+# so this adds nothing to the module's dependency footprint beyond the
+# assembler's own handful of source files.
 target_link_libraries(amberfolio-web PRIVATE
   amberfolio::core
+  amberfolio::programs
   amberfolio::warnings)
 
 # The export list is the ABI's guest list, and it lives on this side of the
@@ -62,6 +70,7 @@ set(_amberfolio_web_export_names
   _af_palette_entries
   _af_machine_create
   _af_machine_destroy
+  _af_machine_attach_reference_devices
   _af_machine_reset
   _af_machine_run_until
   _af_machine_time
@@ -82,7 +91,13 @@ set(_amberfolio_web_export_names
   _af_machine_load_program
   _af_machine_write_memory
   _af_machine_read_memory
-  _af_machine_set_entry)
+  _af_machine_set_entry
+  # Web-host-specific, not part of core/include/amberfolio/abi.h: the
+  # M2-H2 (#55) embedded demo program, assembled at build time from
+  # src/demo_program.cpp and handed out the same "pointer into linear
+  # memory plus a length" way abi.h's own buffers are (see main.cpp).
+  _af_web_demo_program_bytes
+  _af_web_demo_program_size)
 list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
 
 target_link_options(amberfolio-web PRIVATE
@@ -99,7 +114,15 @@ target_link_options(amberfolio-web PRIVATE
   # they are asked for by name. Note the trap abi.h states: a view is
   # detached when memory grows, so a host re-derives it rather than
   # caching one.
-  "-sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPF32")
+  "-sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPF32"
+  # The reference device set (core/src/abi.cpp's `reference_devices`,
+  # attached through af_machine_attach_reference_devices()) adds the
+  # EGA's 256 KiB of planar VRAM and the in-memory VFS's 8 MiB on top of
+  # the machine's own megabyte, all static storage. Emscripten's default
+  # initial heap is smaller than that; growth is what tests/programs'
+  # own amberfolio-bench already asks for on this toolchain, for the same
+  # reason (its CMakeLists.txt says so).
+  "-sALLOW_MEMORY_GROWTH=1")
 
 # The page is generated rather than copied: it carries the AGPL-3.0-only
 # §13 source offer, which has to name the commit this build came from,
@@ -120,6 +143,8 @@ configure_file(page/index.html.in "${_amberfolio_web_index}" @ONLY)
 set(_amberfolio_web_files
   "${_amberfolio_web_index}"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/host.mjs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/page/app.mjs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/page/audio-worklet.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke.mjs")
 
 # A file-level rule per copy, rather than one POST_BUILD command on the

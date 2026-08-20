@@ -216,6 +216,25 @@ af_machine* af_machine_create(void);
 /// needs no check.
 void af_machine_destroy(af_machine* box);
 
+/// Attach PLAN.md §3's reference device set — the PIT, the minimal 8259,
+/// the EGA and its renderer, the speaker — and install the video (INT
+/// 10h) and DOS (INT 21h) service handlers, all in one call.
+///
+/// `af_machine_create()` deliberately does **not** do this: a freshly
+/// created machine is CPU and RAM only, so that an unbacked vector still
+/// stops the machine rather than quietly finding a handler nobody asked
+/// for (PLAN.md §3's "log, don't fake," exercised at this very boundary
+/// by the native test suite). A host that wants a complete, PLAN.md
+/// §3-shaped PC — the wasm dev page (#55) is the first one — calls this
+/// once, right after `create()`. Idempotent: calling it again on the
+/// same machine does nothing and still answers `AF_OK`.
+///
+/// `AF_NO_MACHINE` for a null handle. There is no failure code for the
+/// device wiring itself — every device this attaches claims a distinct,
+/// fixed memory window or port range, so nothing here can collide on a
+/// freshly created machine.
+uint32_t af_machine_attach_reference_devices(af_machine* box);
+
 /// The RESET line (machine::reset). Clears any stop, puts the virtual
 /// clock back to zero, blanks the frame, restarts the audio timeline, and
 /// throws away queued input and undrained console output. RAM keeps what
