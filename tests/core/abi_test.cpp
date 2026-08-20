@@ -355,13 +355,19 @@ TEST(Abi, AttachReferenceDevicesUnlocksTheDeviceSetAndIsIdempotent) {
   // AStoppedMachineStillAnswersEveryPull uses to prove a vector with no
   // handler stops the machine; here it must not, because
   // install_int10() is part of what attach() just did.
-  const std::array<std::uint8_t, 6> set_mode{0xB8, 0x0D, 0x00, 0xCD, 0x10, 0xF4};
-  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, set_mode.data(),
-                                    static_cast<std::uint32_t>(set_mode.size())),
-            AF_OK);
+  const std::array<std::uint8_t, 6> set_mode{0xB8, 0x0D, 0x00,
+                                             0xCD, 0x10, 0xF4};
+  ASSERT_EQ(
+      af_machine_write_memory(box.get(), 0x10000, set_mode.data(),
+                              static_cast<std::uint32_t>(set_mode.size())),
+      AF_OK);
   ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
 
-  EXPECT_EQ(af_machine_run_until(box.get(), 10'000.0), AF_OK);
+  // 25,000 ticks, comfortably past one renderer frame period
+  // (pit_input_hz / 60, about 19,886 ticks — renderer.h) even though the
+  // program itself HLTs almost immediately: a halted machine still burns
+  // virtual time every step (machine.h), so the deadline still arrives.
+  EXPECT_EQ(af_machine_run_until(box.get(), 25'000.0), AF_OK);
   EXPECT_EQ(af_machine_stopped(box.get()), 0);
   EXPECT_EQ(af_machine_stop_reason(box.get()), AF_OK);
 
@@ -375,11 +381,12 @@ TEST(Abi, AttachReferenceDevicesUnlocksTheDeviceSetAndIsIdempotent) {
   // wiring, not run state — machine.h's own distinction), so the same
   // program runs clean a second time.
   EXPECT_EQ(af_machine_reset(box.get()), AF_OK);
-  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, set_mode.data(),
-                                    static_cast<std::uint32_t>(set_mode.size())),
-            AF_OK);
+  ASSERT_EQ(
+      af_machine_write_memory(box.get(), 0x10000, set_mode.data(),
+                              static_cast<std::uint32_t>(set_mode.size())),
+      AF_OK);
   ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
-  EXPECT_EQ(af_machine_run_until(box.get(), 10'000.0), AF_OK);
+  EXPECT_EQ(af_machine_run_until(box.get(), 25'000.0), AF_OK);
   EXPECT_EQ(af_machine_stopped(box.get()), 0);
 }
 

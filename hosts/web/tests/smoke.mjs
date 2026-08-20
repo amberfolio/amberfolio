@@ -114,7 +114,7 @@ function fnv1a32(bytes) {
 /// demo program or something underneath it (the EGA write pipeline, the
 /// renderer, int10.h's mode-0Dh table) moved, and either is worth a human
 /// looking at rather than the test quietly re-pinning itself.
-const EXPECTED_FRAMEBUFFER_HASH = 0x38c165c5;
+const EXPECTED_FRAMEBUFFER_HASH = 0x24846c85;
 
 function parseArgs(argv) {
   const expectIndex = argv.indexOf('--expect');
@@ -361,6 +361,16 @@ if (missing.length === 0) {
   );
 
   // --- Video: a hash of the drawn pattern ---------------------------------
+
+  // The renderer is scheduled, not attached (renderer.h), and composes
+  // on its own 60 Hz virtual-time deadline — this is the check that it
+  // actually fired at least once, so the framebuffer hash below is a
+  // hash of the drawn picture and not of an all-zero frame nothing ever
+  // composed into.
+  check(
+    machine.frameGeneration() > 0,
+    'the renderer never composed a frame - frameGeneration() is still 0',
+  );
 
   const pixels = machine.framebufferView();
   check(

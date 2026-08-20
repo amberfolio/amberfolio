@@ -194,6 +194,15 @@ struct reference_devices {
     box.schedule(pit_dev.channel0_deadline());
     box.schedule(pit_dev.channel2_deadline());
     box.schedule(spk);
+    // The renderer is `scheduled` and not a `device` (renderer.h's own
+    // top comment — it answers no bus cycle), so it needs this call the
+    // same way the PIT's two channels above do: `scheduler::arm()`
+    // refuses a participant that was never `add()`ed, and `schedule()`
+    // is `add()`'s door. Forgetting this line leaves `render.reset()`
+    // below calling `arm()` on an unregistered participant, which is
+    // silently a no-op — the frame deadline is never armed and no frame
+    // is ever composed, with nothing anywhere saying so.
+    box.schedule(render);
 
     // "Call once after construction and again after every
     // machine::reset()" (renderer.h). af_machine_reset() below is the
