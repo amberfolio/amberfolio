@@ -27,6 +27,7 @@
 
 add_library(amberfolio-programs STATIC
   assembler.cpp
+  exe.cpp
   harness.cpp
   machine_harness.cpp
   machine_programs.cpp
