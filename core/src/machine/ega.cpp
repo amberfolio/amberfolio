@@ -409,6 +409,23 @@ void ega::halt_now(halt_reason reason, std::uint16_t port,
     return;
   }
   halt_ = {.reason = reason, .port = port, .value = value};
+
+  // And out to the machine, which is what makes this a stop rather than
+  // a device quietly going inert.
+  //
+  // When this device was written (#47) `device` had no channel back to
+  // the machine, so the refusal could only be local: `halted()` went
+  // true, later cycles answered open bus, and nothing said so. That was
+  // weaker than CLAUDE.md's rule — "a loud log line and a clean stop" —
+  // and it was filed as #65 rather than left in a comment. #46 built the
+  // channel; this is the EGA joining it.
+  //
+  // Both records are kept, because they answer different questions.
+  // `device_fault` carries what the machine needs to stop and report;
+  // `halt_` names *which* register was refused, which a test reads back
+  // and a human debugging a mode-set wants. Neither is derivable from
+  // the other.
+  report_fault(port, value);
 }
 
 }  // namespace amberfolio::machine

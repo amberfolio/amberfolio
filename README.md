@@ -2,17 +2,27 @@
 
 A low-level emulator for the SSI Gold Box games.
 
-**Status: early development.** There is nothing to play yet. What exists
-is the 8086 CPU core, and it is exact: all 323 vector files of the
+**Status: early development.** There is no game to play yet — but there
+is a machine, and it runs programs. The 8086 core is exact: all 323
+vector files of the
 [SingleStepTests/8088](https://github.com/SingleStepTests/8088) v2 set —
 captured from real silicon — pass in full in CI on every push, undefined
-flag behaviour included. It sits inside the skeleton the first milestone
-built: the core library, a stub desktop host and a wasm module, on all
-four targets, with the test rig, the gates and the deployment pipeline
-around them. That is M0 and M1, both done. Next is M2 — the machine the
-CPU runs inside: memory map, MZ loader, PIT, EGA, speaker, and the
-DOS/BIOS service layer. The shape of the work is in the
-[project plan](PLAN.md).
+flag behaviour included, and stayed passing through every device built
+around them.
+
+Around that core there is now a PC: a memory map, a virtual clock
+counted in PIT ticks, an 8253 and a minimal 8259, an EGA with its
+planar write pipeline and a renderer, a PC speaker, BIOS keyboard
+services, a virtual filesystem, an MZ loader with relocations, and the
+small INT 21h and INT 10h subsets the plan scopes. Both hosts run it —
+the SDL3 desktop host takes a directory and a program and gives back the
+exit code the program chose, and the wasm dev page runs the same machine
+in a browser. Seven self-written real-mode test programs drive all of it
+end to end on all four targets, which is what M2 set as its bar.
+
+That is M0, M1 and M2 done. Next is M3 — first light: the game boots
+from a player-supplied copy, its own unpacker and overlay manager
+running as-is. The shape of the work is in the [project plan](PLAN.md).
 
 **Try it in a browser:** <https://amberfolio.vercel.app> — the wasm host,
 published automatically from `main` on every push. Today it reports the
