@@ -164,6 +164,12 @@ class service_floor;
 inline constexpr std::uint16_t invalid_function_code = 0x01;
 inline constexpr std::uint16_t invalid_access_code = 0x0C;
 
+/// The one drive this machine has, as DOS's own zero-based drive number:
+/// C is 2. vfs.h's top comment is where "there is one drive, C:" is
+/// decided (PLAN.md §3); this is that decision expressed in the units
+/// AH=19h and AH=44h answer in.
+inline constexpr std::uint8_t only_drive = 2;
+
 /// The DOS-level per-program handle table and exit state — everything an
 /// INT 21h handler needs beyond the filesystem and the platform interface
 /// `machine` already carries. See this file's top comment for why it
@@ -198,6 +204,12 @@ class dos_services {
     handle_kind kind{};
     /// Meaningful only when `kind == handle_kind::file`.
     file_handle backing{};
+    /// Whether anything has been written through this handle since it
+    /// was opened — AH=44h AL=00h's bit 6 for a file handle, which DOS
+    /// reports *clear* once a write has happened. Tracked rather than
+    /// guessed: it is one bool per slot and the alternative is picking a
+    /// value and hoping no program reads it.
+    bool written{};
   };
 
   dos_services() noexcept { reset(); }
@@ -219,6 +231,11 @@ class dos_services {
   /// Release `handle`. False if it was not open — the caller reports
   /// `vfs_error::invalid_handle`.
   bool close(std::uint16_t handle) noexcept;
+
+  /// Record that a write went through `handle` — see `handle_state`'s
+  /// `written`. Silently ignores a handle that names nothing open,
+  /// because the caller has already reported that.
+  void note_written(std::uint16_t handle) noexcept;
 
   /// The state behind `handle`, or null if it names nothing open.
   [[nodiscard]] const handle_state* find(std::uint16_t handle) const noexcept;
