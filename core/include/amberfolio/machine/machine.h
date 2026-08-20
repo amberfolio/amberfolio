@@ -58,6 +58,7 @@
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/port_map.h"
 #include "amberfolio/machine/scheduler.h"
+#include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "amberfolio/machine/trace.h"
 #include "amberfolio/machine/vfs.h"
@@ -343,6 +344,13 @@ class machine final : public cpu::bus {
   /// the same value `dispatch_services()` would have used had the floor
   /// caught this itself.
   bool stop_unimplemented_service(std::uint32_t at);
+  /// The seam engine (seam.h, PLAN.md §5): the one mechanism by which
+  /// anything other than the program's own instructions may touch this
+  /// machine, and off by default. A host enables a seam through it; a
+  /// seam handler reaches back through it for `image_base()`.
+  [[nodiscard]] seam_engine& seams() noexcept { return seams_; }
+  [[nodiscard]] const seam_engine& seams() const noexcept { return seams_; }
+
   /// The DOS handle table and exit state INT 21h's handlers use
   /// (dos.h, M2-D7, #52) — present whether or not a program ever calls
   /// INT 21h, the same as the platform-interface members below.
@@ -610,6 +618,11 @@ class machine final : public cpu::bus {
   /// until then.
   dos_services dos_;
   filesystem* vfs_{};
+
+  /// Enabled seams and their armed interception points (seam.h). Costs
+  /// `step()` one `bool` test when nothing is on, which is always unless
+  /// somebody asked otherwise.
+  seam_engine seams_;
 
   /// The platform interface (platform.h). Members rather than something
   /// a host supplies, because the buffers have to outlive every pull and

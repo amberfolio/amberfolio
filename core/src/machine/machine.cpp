@@ -135,6 +135,11 @@ void machine::reset() {
   have_service_call_ = false;
   have_device_stop_ = false;
 
+  // Every seam off, and no program known: an enabled seam is a statement
+  // about a particular binary that has been loaded (seam.h), and a reset
+  // machine has not loaded one.
+  seams_.clear();
+
   // The video BIOS's bookkeeping goes back to power-on state along with
   // everything else here: a reset machine has no mode set, exactly as a
   // freshly powered-on one does not.
@@ -196,6 +201,19 @@ cpu::step_status machine::step() {
     if (stopped()) {
       return cpu::step_status::stopped;
     }
+  }
+
+  // Then the seams, if any are on (seam.h). Here rather than earlier for
+  // the reason the callout is here: this is the only point at which CS:IP
+  // is settled, and a handler that wants the instruction at it not to
+  // happen has to run before it is fetched. After the callout, so that a
+  // seam pointed at a BIOS stub sees the state the handler left rather
+  // than the state that reached it.
+  //
+  // The cost when nothing is enabled is the `armed()` test alone.
+  if (seams_.armed()) {
+    seams_.dispatch(*this, cpu::physical_address(cpu_.regs()[cpu::sreg::cs],
+                                                 cpu_.regs().ip));
   }
 
   // Last thing before the instruction, so that what is recorded is where
