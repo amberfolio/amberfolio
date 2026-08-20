@@ -244,6 +244,19 @@ struct machine_outcome {
   std::uint64_t frame_hash{};
   std::uint64_t frames{};
 
+  /// That same frame, kept whole: one palette index per pixel, and the
+  /// sixteen RGB entries they index.
+  ///
+  /// Copied out rather than left behind a reference, because the machine
+  /// is gone by the time anything checks it — and kept at all because a
+  /// hash on its own can only say that something changed. A check that
+  /// names a pixel, a colour and a count says *what* the picture is, and
+  /// those are numbers a reader can derive by hand from ega.h's write
+  /// pipeline and its DAC scheme. The hash is the backstop underneath
+  /// them, not the claim.
+  std::vector<std::uint8_t> frame_pixels;
+  std::vector<machine::rgb> frame_palette;
+
   /// `machine_setup::read_back`, resolved.
   std::vector<harvested_file> files{};
 

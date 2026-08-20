@@ -283,6 +283,11 @@ bool machine_harness::turn() {
     presented_ = generation;
     ++result_.frames;
     result_.frame_hash = frame_hash(box_->display());
+
+    const std::span<const std::uint8_t> pixels = box_->display().pixels();
+    const std::span<const machine::rgb> palette = box_->display().palette();
+    result_.frame_pixels.assign(pixels.begin(), pixels.end());
+    result_.frame_palette.assign(palette.begin(), palette.end());
   }
 
   std::array<std::uint8_t, 256> drained{};

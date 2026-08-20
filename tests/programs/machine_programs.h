@@ -74,6 +74,45 @@ struct expected_word {
   std::uint16_t value{};
 };
 
+/// One pixel of the composed frame: where it is, and the palette index
+/// it must hold.
+///
+/// The point of naming a pixel is that its value is *derivable*. A byte
+/// written into the planes becomes eight pixels, MSB first, with plane
+/// n contributing bit n of the index (renderer.h) — so a program that
+/// knows what it put in each plane knows what colour every pixel it
+/// touched came out. That is a fact about the hardware rules, worked out
+/// by hand, and it is what a frame hash on its own can never be.
+struct pixel_probe {
+  unsigned x{};
+  unsigned y{};
+  std::uint8_t index{};
+};
+
+/// How many pixels of one palette index the whole frame holds.
+///
+/// The area a program filled, counted: a band of sixteen rows written
+/// across the full width is 16 * 320 pixels of one colour and nothing
+/// else is, so this catches a write landing at the wrong offset, a row
+/// stride that is not 40 bytes, or a map mask reaching a plane it should
+/// not — none of which a handful of sampled pixels need notice.
+struct area_probe {
+  std::uint8_t index{};
+  std::size_t count{};
+};
+
+/// One entry of the composed frame's palette.
+///
+/// Also derivable by hand, and worth deriving: the EGA DAC gives each
+/// channel a primary and a secondary bit and drives it to 00h, 55h, AAh
+/// or FFh accordingly (ega.h), and the default sixteen codes INT 10h's
+/// mode set installs are documented (int10.h). Between them, "palette
+/// entry 9 is 55h/55h/FFh" is arithmetic rather than a golden.
+struct palette_probe {
+  unsigned index{};
+  machine::rgb color{};
+};
+
 /// One machine program, everything it needs, and everything it must
 /// produce.
 struct machine_program {
@@ -108,10 +147,24 @@ struct machine_program {
   /// order. A path the program deleted is `present == false`.
   std::vector<harvested_file> files;
 
+  /// Pixels, areas and palette entries of the composed frame, each
+  /// worked out by hand from what the program wrote and from the rules
+  /// in ega.h, renderer.h and int10.h. These are the claim about the
+  /// picture; the hash below is only the backstop.
+  std::vector<pixel_probe> pixels;
+  std::vector<area_probe> areas;
+  std::vector<palette_probe> palette;
+
   /// The hash of the last frame the renderer composed. Zero means the
   /// program draws nothing and the frame is whatever a blank machine
   /// shows, which is the renderer's business and not this program's —
   /// the two programs that draw assert it, and nothing else does.
+  ///
+  /// A golden, and it is only ever asserted *alongside* the probes
+  /// above. On its own it would lock in whatever the machine happened to
+  /// produce, bug included, and blame whoever later fixed it; underneath
+  /// a set of checks that each say what the picture is, it is the thing
+  /// that catches a change in the 63,900 pixels nobody named.
   std::uint64_t frame_hash{};
 
   /// The least virtual time the run can possibly have taken, computed

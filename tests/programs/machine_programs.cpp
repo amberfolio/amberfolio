@@ -515,7 +515,8 @@ constexpr std::uint8_t timer_wanted_ticks = 10;
 //
 //   then every plane byte of interest read back through read mode 0, the
 //   colour compare read through read mode 1, and two bands drawn with
-//   REP STOSB under a map mask.
+//   REP STOSB under a map mask (see `band`, which is a function because
+//   of the AL-clobber trap that ordering hides).
 
 /// One plane byte, read the way a program reads one: name the plane, put
 /// the controller in read mode 0, and load the byte.
@@ -547,6 +548,34 @@ void write_vram(assembler& a, std::uint16_t offset, std::uint8_t value) {
 void latch_from(assembler& a, std::uint16_t offset) {
   a.db({0x26, 0xA0});
   a.dw(offset);
+}
+
+/// A solid band of `rows` scanlines starting at `first_row`, on the
+/// planes the map mask names — 40 bytes to a row, eight pixels to a byte.
+///
+///     <map mask = planes>
+///     mov  al, FFh              ; B0 FF
+///     mov  di, first_row * 40   ; BF iw
+///     mov  cx, rows * 40        ; B9 iw
+///     rep  stosb                ; F3 AA
+///
+/// The MOV AL is *after* the map mask write and not before it, and that
+/// ordering is the whole reason this is a function. Programming an
+/// indexed register pair means putting the index and then the value in
+/// AL and OUTing each (`out_indexed`), so a map mask write leaves the
+/// mask itself sitting in AL — and a STOSB trusting an AL loaded
+/// beforehand fills the band with the map mask instead of with FFh. It
+/// did, once, and the frame hash was perfectly happy to record it; what
+/// caught it was a pixel count worked out by hand.
+void band(assembler& a, std::uint8_t planes, unsigned first_row,
+          unsigned rows) {
+  constexpr unsigned bytes_per_row = 40;
+  seq(a, seq_map_mask, planes);
+  a.db({0xB0, 0xFF, 0xBF});
+  a.dw(static_cast<std::uint16_t>(first_row * bytes_per_row));
+  a.db({0xB9});
+  a.dw(static_cast<std::uint16_t>(rows * bytes_per_row));
+  a.db({0xF3, 0xAA});
 }
 
 [[nodiscard]] std::vector<std::uint8_t> video_code() {
@@ -659,18 +688,8 @@ void latch_from(assembler& a, std::uint16_t offset) {
   //         mov  cx, 320              ; 8 rows
   //         rep  stosb
   a.db({0xFC});  // cld
-  seq(a, seq_map_mask, 0x09);
-  a.db({0xBF});
-  a.dw(320);
-  a.db({0xB0, 0xFF, 0xB9});
-  a.dw(640);
-  a.db({0xF3, 0xAA});
-  seq(a, seq_map_mask, 0x06);
-  a.db({0xBF});
-  a.dw(1280);
-  a.db({0xB9});
-  a.dw(320);
-  a.db({0xF3, 0xAA});
+  band(a, 0x09, 8, 16);
+  band(a, 0x06, 32, 8);
   seq(a, seq_map_mask, 0x0F);
 
   // The palette, through the BIOS: AH=10h AL=00h sets register BL to
@@ -1275,12 +1294,7 @@ constexpr std::uint16_t composite_data_offset = composite_data_paragraph * 16;
   write_vram(a, 0, 0xAA);
 
   a.db({0xFC});  // cld
-  seq(a, seq_map_mask, 0x03);
-  a.db({0xBF});
-  a.dw(1600);  // row 40
-  a.db({0xB0, 0xFF, 0xB9});
-  a.dw(800);  // 20 rows
-  a.db({0xF3, 0xAA});
+  band(a, 0x03, 40, 20);
   seq(a, seq_map_mask, 0x0F);
 
   read_plane(a, 0, 0, 2);
@@ -1393,14 +1407,19 @@ constexpr std::uint16_t key_shifted_d = 0x2044;
 /// The composed frame each drawing program leaves behind, hashed over
 /// its pixels and its palette (machine_harness.h).
 ///
-/// A golden, and honest about being one: what makes it worth asserting
-/// is not that the number was derived independently — it was not — but
-/// that the pixels behind it were produced by a pipeline whose every
-/// stage the same program already checked by reading the planes back.
-/// The hash is what catches the renderer, the palette lookup and the
-/// plane-to-bit assignment changing underneath a program whose own
-/// read-backs would not notice.
-constexpr std::uint64_t video_frame_hash = 0xBD8083D7310CFE6EULL;
+/// A golden, and honest about being one: the number was read off a run,
+/// not derived. It is asserted only underneath the pixel, area and
+/// palette probes in `build_all()`, which *are* derived — by hand, from
+/// the write pipeline in ega.h, the plane-to-bit assignment in
+/// renderer.h and the DAC scheme both of them share.
+///
+/// That ordering is not ceremony. The first value written here recorded
+/// a picture with a real bug in it (`band`, above), and the hash was
+/// perfectly happy: it would have made the bug permanent and blamed
+/// whoever later fixed it. What caught it was a pixel count somebody
+/// could work out on paper. The hash's own job is the 63,900 pixels no
+/// probe names.
+constexpr std::uint64_t video_frame_hash = 0x23EE1B0F7C12E66EULL;
 constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
 
 /// Every program's entry, built by assignment rather than as one
@@ -1455,6 +1474,63 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
         {.what = "read mode 1: no bit matches", .value = 0x00},
         {.what = "read mode 1: 3Ch's bits match", .value = 0x3C}};
     p.exit_code = 0x22;
+
+    // Row 0 is the write pipeline's own scratch, eight pixels to a byte,
+    // MSB first, plane n contributing bit n of the palette index
+    // (renderer.h). Offset 0 ended F0h on every plane, so its top nibble
+    // is colour 15 and its bottom nibble colour 0; offsets 1 and 3 hold
+    // 3Ch on planes 0 and 2 only, which is colour 5 in the four bits 3Ch
+    // sets; offset 2 is FFh on the same two planes, so all eight;
+    // offset 4 is FFh on planes 1 and 2, which is colour 6.
+    p.pixels = {{.x = 0, .y = 0, .index = 15},
+                {.x = 3, .y = 0, .index = 15},
+                {.x = 4, .y = 0, .index = 0},
+                {.x = 9, .y = 0, .index = 0},
+                {.x = 10, .y = 0, .index = 5},
+                {.x = 13, .y = 0, .index = 5},
+                {.x = 16, .y = 0, .index = 5},
+                {.x = 23, .y = 0, .index = 5},
+                {.x = 24, .y = 0, .index = 0},
+                {.x = 26, .y = 0, .index = 5},
+                {.x = 32, .y = 0, .index = 6},
+                {.x = 39, .y = 0, .index = 6},
+                // The first band: planes 0 and 3, so colour 9, over the
+                // sixteen rows starting at offset 320 (40 bytes a row).
+                {.x = 0, .y = 7, .index = 0},
+                {.x = 0, .y = 8, .index = 9},
+                {.x = 319, .y = 23, .index = 9},
+                {.x = 0, .y = 24, .index = 0},
+                // The second: planes 1 and 2, colour 6, eight rows from
+                // offset 1280.
+                {.x = 0, .y = 31, .index = 0},
+                {.x = 0, .y = 32, .index = 6},
+                {.x = 319, .y = 39, .index = 6},
+                {.x = 0, .y = 40, .index = 0}};
+
+    // And the whole frame accounted for, colour by colour: four pixels of
+    // 15, sixteen of 5 (four at offset 1, eight at offset 2, four at
+    // offset 3), 16 * 320 of 9, 8 * 320 of 6 plus the eight at offset 4,
+    // and everything else still black.
+    p.areas = {{.index = 15, .count = 4},
+               {.index = 5, .count = 16},
+               {.index = 9, .count = 16 * 320},
+               {.index = 6, .count = (8 * 320) + 8},
+               {.index = 0, .count = 64000 - 4 - 16 - (16 * 320) -
+                                     ((8 * 320) + 8)}};
+
+    // The palette INT 10h's mode set installs, through the EGA DAC's own
+    // two-bits-a-channel scheme (ega.h): code 5 is AAh/00h/AAh, code 20
+    // — the CGA-compatibility brown at index 6 — is AAh/55h/00h, code 57
+    // at index 9 is 55h/55h/FFh, code 63 is white. Index 1 is not the
+    // default 1 at all but the 2Ah this program set through AH=10h,
+    // which is 55h/AAh/55h.
+    p.palette = {{.index = 0, .color = {.red = 0x00, .green = 0x00, .blue = 0x00}},
+                 {.index = 1, .color = {.red = 0x55, .green = 0xAA, .blue = 0x55}},
+                 {.index = 5, .color = {.red = 0xAA, .green = 0x00, .blue = 0xAA}},
+                 {.index = 6, .color = {.red = 0xAA, .green = 0x55, .blue = 0x00}},
+                 {.index = 9, .color = {.red = 0x55, .green = 0x55, .blue = 0xFF}},
+                 {.index = 15, .color = {.red = 0xFF, .green = 0xFF, .blue = 0xFF}}};
+
     p.frame_hash = video_frame_hash;
     p.least_frames = 1;
     list.push_back(std::move(p));
@@ -1590,6 +1666,27 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
     p.console = {'a', 'D', 'O', 'N', 'E'};
     p.tone_periods = {first_tone_divisor};
     p.files = {{.present = true, .contents = {'M', '2', 'O', 'K'}}};
+    // AAh on all four planes at offset 0 is alternating colour 15 and
+    // colour 0 across the first eight pixels; the band is planes 0 and 1
+    // only, so colour 3, over the twenty rows starting at offset 1600.
+    p.pixels = {{.x = 0, .y = 0, .index = 15},
+                {.x = 1, .y = 0, .index = 0},
+                {.x = 6, .y = 0, .index = 15},
+                {.x = 7, .y = 0, .index = 0},
+                {.x = 0, .y = 39, .index = 0},
+                {.x = 0, .y = 40, .index = 3},
+                {.x = 319, .y = 59, .index = 3},
+                {.x = 0, .y = 60, .index = 0}};
+    p.areas = {{.index = 15, .count = 4},
+               {.index = 3, .count = 20 * 320},
+               {.index = 0, .count = 64000 - 4 - (20 * 320)}};
+    // The mode-set default, untouched: this program never calls AH=10h,
+    // so index 3 is code 3 — green and blue primaries, nothing else —
+    // which the DAC drives to 00h/AAh/AAh.
+    p.palette = {{.index = 0, .color = {.red = 0x00, .green = 0x00, .blue = 0x00}},
+                 {.index = 3, .color = {.red = 0x00, .green = 0xAA, .blue = 0xAA}},
+                 {.index = 15, .color = {.red = 0xFF, .green = 0xFF, .blue = 0xFF}}};
+
     p.frame_hash = composite_frame_hash;
     p.least_time = ticks{timer_divisor} * composite_wanted_ticks;
     p.least_frames = 1;
@@ -1722,6 +1819,49 @@ std::vector<std::string> check_machine_program(const machine_program& expected,
     if (have.contents != want.contents) {
       fail(std::string(path) + " holds " + bytes_as_text(have.contents) +
            ", expected " + bytes_as_text(want.contents));
+    }
+  }
+
+  // The picture, before the hash of it. Each of these is a number a
+  // reader can derive by hand from what the program wrote and from the
+  // rules in ega.h, renderer.h and int10.h; the hash below only says
+  // that the rest of the frame did not move.
+  for (const pixel_probe& probe : expected.pixels) {
+    const std::size_t at =
+        static_cast<std::size_t>(probe.y) * machine::frame_width + probe.x;
+    const std::uint8_t index =
+        at < got.frame_pixels.size() ? got.frame_pixels[at] : 0xFFU;
+    if (index != probe.index) {
+      fail("pixel (" + std::to_string(probe.x) + "," +
+           std::to_string(probe.y) + ") is colour " +
+           std::to_string(index) + ", expected " +
+           std::to_string(probe.index));
+    }
+  }
+
+  for (const area_probe& probe : expected.areas) {
+    std::size_t count = 0;
+    for (const std::uint8_t index : got.frame_pixels) {
+      if (index == probe.index) {
+        ++count;
+      }
+    }
+    if (count != probe.count) {
+      fail(std::to_string(count) + " pixel(s) of colour " +
+           std::to_string(probe.index) + ", expected " +
+           std::to_string(probe.count));
+    }
+  }
+
+  for (const palette_probe& probe : expected.palette) {
+    const machine::rgb color = probe.index < got.frame_palette.size()
+                                   ? got.frame_palette[probe.index]
+                                   : machine::rgb{};
+    if (!(color == probe.color)) {
+      fail("palette entry " + std::to_string(probe.index) + " is " +
+           hex(color.red, 2) + "/" + hex(color.green, 2) + "/" +
+           hex(color.blue, 2) + ", expected " + hex(probe.color.red, 2) + "/" +
+           hex(probe.color.green, 2) + "/" + hex(probe.color.blue, 2));
     }
   }
 
