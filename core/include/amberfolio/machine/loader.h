@@ -373,10 +373,14 @@ struct loaded_program {
 /// this file's top comment on the exit path), and the processor holds
 /// the entry state a real DOS EXEC leaves: DS=ES=PSP segment, CS:IP and
 /// SS:SP relocated from the header, AX=0000h (the FCB drive-validity
-/// convention no FCB in this machine ever contradicts), flags clean
-/// (`cpu::processor::reset()` is called first, so BX/CX/DX/BP/SI/DI are
+/// convention no FCB in this machine ever contradicts), and flags clean
+/// **except IF, which is set** — a program handed control by DOS runs
+/// with interrupts enabled, and one that does not gets no timer tick
+/// unless it issues an STI of its own (the entry-state comment in
+/// `load_program()` has how that failure presents).
+/// `cpu::processor::reset()` is called first, so BX/CX/DX/BP/SI/DI are
 /// zero too — real DOS leaves them undefined, and zero is the one value
-/// among "undefined" that cannot make a replay nondeterministic).
+/// among "undefined" that cannot make a replay nondeterministic.
 ///
 /// On failure, nothing above has happened: a `loader_error` explains
 /// why, and neither the processor nor conventional memory above the

@@ -343,12 +343,25 @@ loader_result<loaded_program> load_program(machine& box, filesystem& fs,
   box.services().provide(terminate_vector, &handle_int20);
 
   // Entry state: DS=ES=PSP segment, CS:IP/SS:SP relocated, AX=0000h (the
-  // FCB drive-validity convention), flags clean. `reset()` first, so
-  // every register this loader does not name is the zero real DOS never
-  // documents but this machine can honestly give.
+  // FCB drive-validity convention), flags clean but for IF. `reset()`
+  // first, so every register this loader does not name is the zero real
+  // DOS never documents but this machine can honestly give.
+  //
+  // IF is not decoration. `cpu::processor::reset()` models the RESET pin,
+  // which leaves interrupts disabled — correct for a processor coming out
+  // of reset and wrong for a program coming out of EXEC, because the
+  // machine that hands a program control has had interrupts on since its
+  // own self test and DOS never turns them off. A program started with IF
+  // clear that never issues an STI of its own gets no timer tick, and the
+  // way that presents is not an error but a hang (#87): M3's first boot
+  // sat watching 40:6C for a change that could not arrive. Set here
+  // rather than in `processor::reset()` for the reason the split exists —
+  // the RESET line is the processor's and the entry state is DOS's.
   cpu::processor& cpu_proc = box.processor();
   cpu_proc.reset();
   cpu::registers& regs = cpu_proc.regs();
+  regs.load_flags(
+      static_cast<std::uint16_t>(cpu::flag::reset_value | cpu::flag::if_));
   regs[cpu::sreg::ds] = psp_load_segment;
   regs[cpu::sreg::es] = psp_load_segment;
   regs[cpu::sreg::cs] = entry_cs;

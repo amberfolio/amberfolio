@@ -493,7 +493,7 @@ TEST(loader_psp, writes_int20_top_of_memory_and_the_command_tail) {
 
 // --- Entry state -----------------------------------------------------------
 
-TEST(loader_entry_state, sets_segments_stack_and_ax_with_clean_flags) {
+TEST(loader_entry_state, sets_segments_stack_ax_and_interrupts_on) {
   const rig r;
   const std::vector<std::uint8_t> file =
       build_exe({.initial_cs = 0x0010,
@@ -515,7 +515,13 @@ TEST(loader_entry_state, sets_segments_stack_and_ax_with_clean_flags) {
   EXPECT_EQ(regs[cpu::sreg::ss], result.value.entry_ss);
   EXPECT_EQ(regs[cpu::reg16::sp], result.value.entry_sp);
   EXPECT_EQ(regs[cpu::reg16::ax], 0x0000);
-  EXPECT_EQ(regs.flags, cpu::flag::reset_value);
+
+  // Clean but for IF: a program handed control by DOS runs with
+  // interrupts enabled, and one that does not never sees a timer tick
+  // (loader.h). Spelled as the reset word plus the one bit rather than as
+  // a literal, so it stays right if the fixed-ones mask ever moves.
+  EXPECT_EQ(regs.flags, static_cast<std::uint16_t>(cpu::flag::reset_value |
+                                                   cpu::flag::if_));
 
   EXPECT_EQ(result.value.entry_cs,
             static_cast<std::uint16_t>(0x0010 + image_load_segment));
