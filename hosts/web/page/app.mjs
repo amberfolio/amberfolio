@@ -1,29 +1,42 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Browser-only glue for the M2-H2 (#55) dev page: canvas presentation,
-// keyboard input, the AudioWorklet wiring, and the console <pre> sink.
+// Browser-only glue for the dev page: canvas presentation, keyboard
+// input, the AudioWorklet wiring, the console <pre> sink, and — since
+// M3-F2 (#84) — the player's own directory.
+//
 // Deliberately separate from host.mjs, which has to stay DOM-free so
 // tests/smoke.mjs can import it under node (host.mjs's own top comment).
+// The directory picker is separate again, in picker.mjs, for the same
+// reason one layer down: reading a `File` is browser work and putting the
+// bytes in the machine is not.
 //
-// This is the bare dev page PLAN.md §7 asks for, not the M6 reference
-// shell: one canvas, one button, no onboarding, no persistence, no
-// touch. Its only job is to prove frame, audio and input all cross the
-// wasm boundary in a real browser — everything here is in service of
-// that and nothing more.
+// This is still the bare dev page PLAN.md §7 asks for, not the M6
+// reference shell: no onboarding, no persistence, no touch, no styling
+// worth the name. What #84 added is one affordance — getting a directory
+// into the machine — because M3's exit criterion is "verified locally on
+// desktop **and** web" and there was previously no way to put a player's
+// files in front of the browser at all.
 //
 //
-// Why everything waits for one click
+// Two things it can run
+// ---------------------
+//
+// The embedded demo program (hosts/web/src/demo_program.cpp), which is
+// what M2-H2 built this page to prove, and a program out of a directory
+// the player chose. One run per page load either way: this page has no
+// business tearing a machine down and standing another one up, and the
+// ABI has one machine per module anyway (abi.h).
+//
+//
+// Why everything waits for a gesture
 // -----------------------------------
 //
 // Browsers refuse to start an AudioContext without a user gesture, and a
-// page that ran the machine (and so started the demo program's tone)
-// before the button existed to explain why nothing is audible yet would
-// be confusing about the one thing this page exists to demonstrate. So
-// the whole run — module load, machine creation, the run loop, the
-// AudioWorklet — waits for the Start button rather than only the audio
-// half of it: one state machine (idle -> running) instead of two
-// ("the picture is up but the sound needs another click"), which is the
-// simpler thing to get right on scaffolding.
+// page that ran the machine before the button existed to explain why
+// nothing is audible yet would be confusing about the one thing this page
+// exists to demonstrate. Choosing a directory is a gesture too, which is
+// why the module is instantiated there: by the time Boot is pressed, the
+// files are already in the machine and the audio context may start.
 
 import {
   loadAmberfolio,
@@ -32,12 +45,23 @@ import {
   scancodeFor,
   decodeConsoleBytes,
   AF_OK,
+  AF_RUN_END_STOPPED,
+  AF_RUN_END_STEP_BUDGET,
+  AF_RUN_END_HOST_QUIT,
 } from './host.mjs';
+import { wireDirectoryPicker } from './picker.mjs';
 
 const CANVAS_ID = 'screen';
 const START_BUTTON_ID = 'start';
+const BOOT_BUTTON_ID = 'boot';
 const STATUS_ID = 'status';
 const CONSOLE_ID = 'console';
+const DIRECTORY_INPUT_ID = 'directory';
+const DROP_ZONE_ID = 'drop';
+const PROGRAM_SELECT_ID = 'program';
+const TAIL_INPUT_ID = 'tail';
+const STEPS_INPUT_ID = 'steps';
+const TRACE_CHECKBOX_ID = 'trace';
 
 /// A frame's worth of audio, in samples, at this rate — matched to the
 /// video frame rate so one rAF callback pulls roughly one frame of both
@@ -45,64 +69,210 @@ const CONSOLE_ID = 'console';
 /// too; see its own comment).
 const AUDIO_SAMPLE_RATE = 44100;
 
-/// Wires the page up and starts it once the Start button is clicked.
-/// Called once, from index.html's own inline module script.
+/// Wires the page up. Called once, from index.html's own inline module
+/// script.
 export function runDevPage() {
-  const canvas = document.getElementById(CANVAS_ID);
-  const startButton = document.getElementById(START_BUTTON_ID);
-  const statusEl = document.getElementById(STATUS_ID);
-  const consoleEl = document.getElementById(CONSOLE_ID);
+  const el = (id) => document.getElementById(id);
+
+  const canvas = el(CANVAS_ID);
+  const startButton = el(START_BUTTON_ID);
+  const bootButton = el(BOOT_BUTTON_ID);
+  const statusEl = el(STATUS_ID);
+  const consoleEl = el(CONSOLE_ID);
+  const programSelect = el(PROGRAM_SELECT_ID);
 
   const setStatus = (text) => {
     if (statusEl) statusEl.textContent = text;
   };
 
   const appendConsole = (text) => {
-    if (consoleEl) consoleEl.textContent += text;
-    if (text.length > 0) console.log('[amberfolio console]', text);
+    if (consoleEl) {
+      consoleEl.textContent += text;
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+    if (text.length > 0) console.log('[amberfolio]', text);
   };
 
-  startButton.addEventListener('click', () => {
+  // The one machine, made on whichever gesture comes first. `Machine`
+  // throws if a second one is asked for (abi.h: one machine per module),
+  // so this is also what keeps the two entry points from colliding.
+  let loaded = null;
+  let machine = null;
+  let started = false;
+
+  const ensureMachine = async () => {
+    if (machine) return machine;
+    setStatus('loading the wasm module...');
+    loaded = await loadAmberfolio({ print: appendConsole, printErr: appendConsole });
+    for (const line of loaded.output) appendConsole(`${line}\n`);
+
+    machine = new Machine(loaded.module);
+    const attached = machine.attachReferenceDevices();
+    if (attached !== AF_OK) {
+      throw new Error(`af_machine_attach_reference_devices() answered ${attached}`);
+    }
+    // The RESET line, once the devices are on the bus — the same thing
+    // the SDL host's own wiring does before it loads anything
+    // (hosts/sdl/src/main.cpp's `wired_machine`).
+    //
+    // It is not decoration. `reset()` blanks the frame and republishes
+    // it, which advances the generation counter, so a machine that was
+    // reset and one that was not are one frame apart forever after. That
+    // difference shows up in the `frames=` field of the stop report, and
+    // M3's exit criterion is that this host and the desktop one print the
+    // same line at the same step (#84) — so the two have to power on the
+    // same way, not merely run the same way.
+    machine.reset();
+    const { major, minor, patch } = loaded.version;
+    appendConsole(`[host] amberfolio ${major}.${minor}.${patch}\n`);
+    return machine;
+  };
+
+  const claimTheRun = () => {
+    if (started) return false;
+    started = true;
     startButton.disabled = true;
+    bootButton.disabled = true;
+    if (programSelect) programSelect.disabled = true;
+    return true;
+  };
+
+  const fail = (error) => {
+    setStatus(`failed: ${error}`);
+    appendConsole(`[host] ${error}\n`);
+    console.error(error);
+  };
+
+  // --- The embedded demo -------------------------------------------------
+
+  startButton.addEventListener('click', () => {
+    if (!claimTheRun()) return;
     startButton.textContent = 'running...';
-    start({ canvas, setStatus, appendConsole }).catch((error) => {
-      setStatus(`failed: ${error}`);
-      console.error(error);
-      startButton.disabled = false;
-      startButton.textContent = 'start (retry)';
-    });
+    (async () => {
+      const box = await ensureMachine();
+      const { writeStatus, entryStatus, size } = loadDemoProgram(box);
+      if (writeStatus !== AF_OK || entryStatus !== AF_OK) {
+        throw new Error(
+          `loading the demo program failed (write=${writeStatus}, entry=${entryStatus})`,
+        );
+      }
+      appendConsole(`[host] embedded demo program loaded: ${size} bytes\n`);
+      await run(box, {
+        canvas,
+        setStatus,
+        appendConsole,
+        stepBudget: 0,
+        message:
+          'running - the machine draws a pattern, plays a tone, and echoes ' +
+          'whatever you type into the console below.',
+      });
+    })().catch(fail);
+  });
+
+  // --- The player's own directory (#84) ----------------------------------
+
+  wireDirectoryPicker({
+    input: el(DIRECTORY_INPUT_ID),
+    dropZone: el(DROP_ZONE_ID),
+    onError: fail,
+    onFiles: async (files) => {
+      if (started) return;
+      const box = await ensureMachine();
+      setStatus(`reading ${files.length} files...`);
+
+      // A second directory replaces the first rather than merging with
+      // it: two installations' files in one filesystem is not a state
+      // any real machine has, and this page keeps nothing between
+      // reloads anyway.
+      box.vfsClear();
+
+      const skipped = [];
+      let taken = 0;
+      for (const file of files) {
+        // The name goes across as the player's own text and core decides
+        // what it means (abi.h). A refusal is the useful answer: a boxed
+        // copy has files in it DOS could never have named.
+        const status = box.vfsPut(file.name, file.bytes);
+        if (status === AF_OK) taken += 1;
+        else skipped.push(file.name);
+      }
+
+      const listing = box.vfsList();
+      appendConsole(
+        `[host] filesystem: ${taken} files, ` +
+          `${Math.round(box.vfsBytesUsed() / 1024)} KiB` +
+          (skipped.length > 0
+            ? `, ${skipped.length} skipped (not DOS-nameable): ${skipped.join(', ')}`
+            : '') +
+          '\n',
+      );
+
+      // Programs first in the list, everything else after it: a player
+      // wants the .EXE and should not have to hunt for it, and the rest
+      // is still offered because nothing here should be deciding what is
+      // and is not bootable.
+      const isProgram = (name) => name.endsWith('.EXE') || name.endsWith('.COM');
+      const ordered = [
+        ...listing.filter((e) => isProgram(e.name)),
+        ...listing.filter((e) => !isProgram(e.name)),
+      ];
+      programSelect.replaceChildren(
+        ...ordered.map((entry) => {
+          const option = document.createElement('option');
+          option.value = entry.name;
+          option.textContent = `${entry.name} (${entry.size} bytes)`;
+          return option;
+        }),
+      );
+      programSelect.disabled = ordered.length === 0;
+      bootButton.disabled = ordered.length === 0;
+      setStatus(
+        ordered.length === 0
+          ? 'nothing in that directory has a DOS-legal name.'
+          : `${taken} files loaded - choose a program and press boot.`,
+      );
+    },
+  });
+
+  bootButton.addEventListener('click', () => {
+    const program = programSelect.value;
+    if (!program || !claimTheRun()) return;
+    bootButton.textContent = 'running...';
+
+    (async () => {
+      const box = await ensureMachine();
+
+      // The identity of the player's file, before anything runs — a fact
+      // about it, never anything out of it (PLAN.md §2, CONTRIBUTING.md),
+      // and the same digest the desktop host prints at load.
+      const digest = box.vfsFingerprint(program);
+      appendConsole(`[host] load ${program} sha256=${digest ?? 'unreadable'}\n`);
+
+      box.setTrace(el(TRACE_CHECKBOX_ID)?.checked === true);
+
+      const tail = el(TAIL_INPUT_ID)?.value ?? '';
+      const status = box.loadFromVfs(program, tail === '' ? '' : ` ${tail}`);
+      if (status !== AF_OK) {
+        throw new Error(
+          `${program} did not load (status ${status}, loader error ${box.loadError()})`,
+        );
+      }
+
+      const budget = Number.parseInt(el(STEPS_INPUT_ID)?.value ?? '', 10);
+      await run(box, {
+        canvas,
+        setStatus,
+        appendConsole,
+        stepBudget: Number.isFinite(budget) && budget > 0 ? budget : 0,
+        message: `running ${program} - the console below is what it says and ` +
+          'what the machine refuses.',
+      });
+    })().catch(fail);
   });
 }
 
-async function start({ canvas, setStatus, appendConsole }) {
-  setStatus('loading the wasm module...');
-  const { module, version, output } = await loadAmberfolio({
-    print: appendConsole,
-    printErr: appendConsole,
-  });
-  for (const line of output) appendConsole(`${line}\n`);
-
-  setStatus(
-    `amberfolio ${version.major}.${version.minor}.${version.patch} - ` +
-      'creating the machine...',
-  );
-
-  const machine = new Machine(module);
-  const attachStatus = machine.attachReferenceDevices();
-  if (attachStatus !== AF_OK) {
-    throw new Error(
-      `af_machine_attach_reference_devices() answered ${attachStatus}`,
-    );
-  }
-
-  const { writeStatus, entryStatus, size } = loadDemoProgram(machine);
-  if (writeStatus !== AF_OK || entryStatus !== AF_OK) {
-    throw new Error(
-      `loading the demo program failed (write=${writeStatus}, entry=${entryStatus})`,
-    );
-  }
-  appendConsole(`[host] embedded demo program loaded: ${size} bytes\n`);
-
+/// Present, run, and report — everything both entry points share.
+async function run(machine, { canvas, setStatus, appendConsole, stepBudget, message }) {
   const ctx = canvas.getContext('2d');
   const width = machine.frameWidth();
   const height = machine.frameHeight();
@@ -133,9 +303,9 @@ async function start({ canvas, setStatus, appendConsole }) {
   // it does not recognise is left alone (no preventDefault, no post) so
   // the browser's own shortcuts still work for keys this 83-key keyboard
   // never had. Recognised keys are prevented from their usual browser
-  // effect (Space scrolling the page, Backspace navigating back, Tab
-  // moving focus) because the dev page's whole surface is the machine
-  // while it is running.
+  // effect — Space scrolling the page, Backspace navigating back, Tab
+  // moving focus, and since #84 the arrows and Page keys scrolling —
+  // because the dev page's whole surface is the machine while it runs.
   const onKey = (down) => (event) => {
     const scancode = scancodeFor(event.code);
     if (scancode === undefined) return;
@@ -166,10 +336,7 @@ async function start({ canvas, setStatus, appendConsole }) {
   // user-gesture handler; resume() is a no-op if it is already running.
   await audioContext.resume();
 
-  setStatus(
-    'running - the machine draws a pattern, plays a tone, and echoes ' +
-      'whatever you type into the console below.',
-  );
+  setStatus(message);
 
   // --- The run loop: requestAnimationFrame, per abi.h's own snippet ------
   //
@@ -185,7 +352,29 @@ async function start({ canvas, setStatus, appendConsole }) {
   let next = 0;
   let lastGeneration = -1;
 
+  /// The run is over: say why, in the one fixed format the desktop host
+  /// prints (machine/report.h). Formatted in core precisely so that "the
+  /// same stop line at the same step" (#84) is a comparison anybody can
+  /// make by eye.
+  const finish = (how) => {
+    setStatus(
+      how === AF_RUN_END_STOPPED
+        ? `the machine stopped - see the report below.`
+        : `the run was cut short at ${machine.steps()} steps - see the report below.`,
+    );
+    appendConsole(machine.stopReport(how));
+    const trace = machine.traceReport();
+    if (!trace.startsWith('amberfolio: stop trace=off')) appendConsole(trace);
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
+  };
+
   const frame = () => {
+    if (stepBudget !== 0 && machine.steps() >= stepBudget) {
+      finish(AF_RUN_END_STEP_BUDGET);
+      return;
+    }
+
     next += machine.ticksPerSecond() / 60;
     const status = machine.runUntil(next);
 
@@ -209,19 +398,24 @@ async function start({ canvas, setStatus, appendConsole }) {
     speakerNode.port.postMessage(samples, [samples.buffer]);
 
     if (status !== AF_OK) {
-      setStatus(
-        `the machine stopped (reason ${machine.stopReason()}) - see the ` +
-          'console below for what it logged.',
-      );
       // Keep presenting and draining the console after a stop
       // (platform.h: "the pulls keep working... it is the console and
       // the diagnostics that say why it stopped"), but there is nothing
       // left to run.
+      finish(AF_RUN_END_STOPPED);
       return;
     }
 
     window.requestAnimationFrame(frame);
   };
+
+  // A page being closed or navigated away from is a host quit, and the
+  // report says so rather than nothing — the same distinction the desktop
+  // host draws between a machine that refused something and a person who
+  // walked away.
+  window.addEventListener('pagehide', () => {
+    if (!machine.stopped()) console.log(machine.stopReport(AF_RUN_END_HOST_QUIT));
+  });
 
   window.requestAnimationFrame(frame);
 }

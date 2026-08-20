@@ -1,11 +1,15 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: AGPL-3.0-only
 
-     M2-H2 (#55) dev page: proves frame, audio and input all cross the
-     wasm boundary. Deliberately bare — this is scaffolding, not the M6
-     reference shell (no onboarding, no persistence, no touch, no
-     styling worth the name). Click Start; it draws a pattern, plays a
-     tone, and echoes whatever you type into the console below.
+     The dev page. M2-H2 (#55) built it to prove frame, audio and input
+     all cross the wasm boundary; M3-F2 (#84) added the one affordance
+     M3's exit criterion needs — a way to put a player's own directory in
+     front of the machine, because "verified locally on desktop and web"
+     had no web half without it.
+
+     Deliberately bare, still: this is scaffolding, not the M6 reference
+     shell (no onboarding, no persistence, no touch, no styling worth the
+     name). Nothing a player drops here is kept; a reload starts over.
 
      ES modules need a real origin, so open it over HTTP, not file://:
          cmake --build --preset wasm
@@ -21,7 +25,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Amber Folio — M2 dev page</title>
+    <title>Amber Folio — dev page</title>
     <style>
       body {
         margin: 0;
@@ -49,11 +53,52 @@
         background: #000;
         border: 1px solid #3a2f22;
       }
-      #controls {
+      .controls {
         margin: 1rem 0;
         display: flex;
         align-items: center;
         gap: 1rem;
+        flex-wrap: wrap;
+      }
+      fieldset {
+        margin: 1.5rem 0 0;
+        padding: 1rem;
+        max-width: 640px;
+        border: 1px solid #3a2f22;
+      }
+      legend {
+        padding: 0 0.5rem;
+        color: #e0a33c;
+      }
+      #drop {
+        padding: 1.25rem;
+        margin: 0 0 1rem;
+        border: 1px dashed #5a4a30;
+        color: #b3a58c;
+        text-align: center;
+      }
+      #drop.dragging {
+        border-color: #e0a33c;
+        color: #e8d9bd;
+      }
+      label {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      select,
+      input[type='text'],
+      input[type='number'],
+      input[type='file'] {
+        font: inherit;
+        background: #0a0805;
+        color: #e8d9bd;
+        border: 1px solid #5a4a30;
+        padding: 0.35rem 0.5rem;
+        max-width: 100%;
+      }
+      select:disabled {
+        opacity: 0.6;
       }
       button {
         font: inherit;
@@ -94,15 +139,17 @@
     </style>
   </head>
   <body>
-    <h1>Amber Folio — M2 dev page</h1>
+    <h1>Amber Folio — dev page</h1>
     <p class="note">
-      This is scaffolding, not a game: it proves the wasm build can run a
-      machine end to end — video, sound and the keyboard — nothing more.
+      This is scaffolding, not a game. Press <em>start</em> and it runs a
+      built-in program that draws a pattern, plays a tone and echoes what
+      you type — proof that video, sound and the keyboard all cross the
+      wasm boundary. Or point it at a directory of your own below.
       Autoplay policy means the browser will not let a page start audio
-      before you interact with it, so nothing runs until you click Start.
+      before you interact with it, so nothing runs until you do.
     </p>
 
-    <div id="controls">
+    <div class="controls">
       <button id="start" type="button">start</button>
       <span id="status">idle - click start</span>
     </div>
@@ -110,6 +157,49 @@
     <canvas id="screen" width="320" height="200"></canvas>
 
     <pre id="console"></pre>
+
+    <!-- The M3-F2 (#84) half: a directory, a program, and the same stop
+         report the desktop host prints. Nothing here is kept - the files
+         live in the machine's own filesystem for as long as the page is
+         open and no longer. -->
+    <fieldset>
+      <legend>run your own copy</legend>
+      <div id="drop">drop a game directory here</div>
+      <div class="controls">
+        <label>
+          directory
+          <input id="directory" type="file" webkitdirectory directory multiple />
+        </label>
+      </div>
+      <div class="controls">
+        <label>
+          program
+          <select id="program" disabled></select>
+        </label>
+        <label>
+          command tail
+          <input id="tail" type="text" size="12" placeholder="(none)" />
+        </label>
+      </div>
+      <div class="controls">
+        <label>
+          stop after
+          <input id="steps" type="number" min="0" size="10" placeholder="(no limit)" />
+          steps
+        </label>
+        <label>
+          <input id="trace" type="checkbox" />
+          keep a trace
+        </label>
+        <button id="boot" type="button" disabled>boot</button>
+      </div>
+      <p class="note">
+        Files are read in your browser and never leave it. A file whose
+        name is not a legal DOS 8.3 name is refused by the emulator's own
+        filesystem rules and listed as skipped — that refusal is the
+        emulator being honest, not a fault.
+      </p>
+    </fieldset>
 
     <script type="module">
       // Imported dynamically, inside the try, rather than with a static

@@ -29,10 +29,28 @@ export const AF_OK = 0;
 export const AF_NO_MACHINE = 1;
 export const AF_STOPPED = 2;
 export const AF_INVALID = 3;
+/// Nothing answers this today — see abi.h, which keeps the number
+/// rather than reclaiming it.
 export const AF_UNIMPLEMENTED = 4;
+export const AF_NO_FILESYSTEM = 5;
 
 export const AF_KEY_UP = 0;
 export const AF_KEY_DOWN = 1;
+
+/// How a run ended, for `Machine.stopReport()`. `STOPPED` means the
+/// machine stopped of its own accord and the report prints its reason;
+/// the others are the *host's* reason, for a run this side cut short.
+export const AF_RUN_END_STOPPED = 0;
+export const AF_RUN_END_STEP_BUDGET = 1;
+export const AF_RUN_END_TICK_BUDGET = 2;
+export const AF_RUN_END_HOST_QUIT = 3;
+
+/// Buffer sizes the two report calls will never overflow — the values of
+/// `stop_report_capacity` and `trace_report_capacity`
+/// (core/include/amberfolio/machine/report.h). Restated here for the
+/// reason the status codes are: a JS host has no headers.
+export const AF_STOP_REPORT_CAPACITY = 512;
+export const AF_TRACE_REPORT_CAPACITY = 24576;
 
 /// Unpack af_version()'s 0x00MMmmpp. The one place JS knows the packing;
 /// keep it in step with AF_VERSION_* in core/include/amberfolio/abi.h.
@@ -138,6 +156,37 @@ export class Machine {
 
   time() {
     return this.module._af_machine_time(this.handle);
+  }
+
+  /// Scheduling steps since the last reset. The axis M3's exit criterion
+  /// is stated on: the desktop host and this one report the same stop
+  /// line at the same step (#84).
+  steps() {
+    return this.module._af_machine_steps(this.handle);
+  }
+
+  /// Start or stop the trace ring. A setting: it survives `reset()`.
+  setTrace(on) {
+    return this.module._af_machine_set_trace(this.handle, on ? 1 : 0);
+  }
+
+  /// The stop report, as text — the same characters the desktop host
+  /// prints, formatted in core so that the two cannot drift
+  /// (machine/report.h). `how` is one of the AF_RUN_END_* values above.
+  stopReport(how = AF_RUN_END_STOPPED) {
+    return this.#report(
+      (out, max) => this.module._af_machine_stop_report(this.handle, how, out, max),
+      AF_STOP_REPORT_CAPACITY,
+    );
+  }
+
+  /// The trace ring, as text. One line saying so when tracing was never
+  /// asked for.
+  traceReport() {
+    return this.#report(
+      (out, max) => this.module._af_machine_trace_report(this.handle, out, max),
+      AF_TRACE_REPORT_CAPACITY,
+    );
   }
 
   stopped() {
@@ -294,6 +343,173 @@ export class Machine {
   audioResyncs() {
     return this.module._af_machine_audio_resyncs(this.handle);
   }
+
+  // --- The filesystem (M3-F2, #84) --------------------------------------
+  //
+  // The wasm counterpart of the directory the SDL host is pointed at. A
+  // browser cannot hand the core a directory, so it hands it one file at
+  // a time.
+  //
+  // **Nothing here does name logic.** Names go across as raw text and
+  // core canonicalizes them (abi.h): a page that decided for itself what
+  // `Save1.Dat` meant would be a second implementation of the rule that
+  // says whether two programs are looking at the same file.
+
+  /// Empty the filesystem. What to call before taking a second directory
+  /// from the player.
+  vfsClear() {
+    return this.module._af_machine_vfs_clear(this.handle);
+  }
+
+  /// Put `bytes` (a Uint8Array) under `name`. `AF_INVALID` for a name no
+  /// legal DOS short name can equal — which is the useful answer, not a
+  /// failure: a real game directory has files in it DOS could never have
+  /// named, and this is where a caller gets its "skipped" list.
+  vfsPut(name, bytes) {
+    return this.#withCString(name, (namePtr) => {
+      const size = bytes ? bytes.length : 0;
+      if (size === 0) {
+        return this.module._af_machine_vfs_put(this.handle, namePtr, 0, 0);
+      }
+      const scratch = this.module._malloc(size);
+      if (scratch === 0) {
+        throw new Error('out of wasm heap while putting a file');
+      }
+      try {
+        this.module.HEAPU8.set(bytes, scratch);
+        return this.module._af_machine_vfs_put(this.handle, namePtr, scratch, size);
+      } finally {
+        this.module._free(scratch);
+      }
+    });
+  }
+
+  /// Everything in the root directory, in the VFS's own pinned name
+  /// order, as `{ name, size }`.
+  vfsList() {
+    const count = this.module._af_machine_vfs_count(this.handle);
+    const entries = [];
+    // 13 is `FILENAME.EXT` and its terminator; the ABI refuses a smaller
+    // buffer rather than truncating a name.
+    const scratch = this.module._malloc(16);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while listing the filesystem');
+    }
+    try {
+      for (let i = 0; i < count; ++i) {
+        const length = this.module._af_machine_vfs_name_at(this.handle, i, scratch, 16);
+        if (length === 0) continue;
+        const bytes = this.module.HEAPU8.subarray(scratch, scratch + length);
+        entries.push({
+          name: String.fromCharCode(...bytes),
+          size: this.module._af_machine_vfs_size_at(this.handle, i),
+        });
+      }
+    } finally {
+      this.module._free(scratch);
+    }
+    return entries;
+  }
+
+  vfsBytesUsed() {
+    return this.module._af_machine_vfs_bytes_used(this.handle);
+  }
+
+  /// The SHA-256 of `name` as 64 lowercase hex characters, or null if the
+  /// file could not be read. The identity of a player's file (PLAN.md
+  /// §2), and the same digest the desktop host prints at load.
+  vfsFingerprint(name) {
+    return this.#withCString(name, (namePtr) => {
+      const scratch = this.module._malloc(72);
+      if (scratch === 0) {
+        throw new Error('out of wasm heap while fingerprinting');
+      }
+      try {
+        const length = this.module._af_machine_vfs_fingerprint(
+          this.handle,
+          namePtr,
+          scratch,
+          72,
+        );
+        if (length === 0) return null;
+        const bytes = this.module.HEAPU8.subarray(scratch, scratch + length);
+        return String.fromCharCode(...bytes);
+      } finally {
+        this.module._free(scratch);
+      }
+    });
+  }
+
+  /// Load an MZ program off the filesystem: relocations, PSP, entry
+  /// state. `AF_OK`, or `AF_INVALID` with `loadError()` saying why.
+  loadFromVfs(name, commandTail = '') {
+    return this.#withCString(name, (namePtr) =>
+      this.#withCString(commandTail, (tailPtr) =>
+        this.module._af_machine_load_from_vfs(this.handle, namePtr, tailPtr),
+      ),
+    );
+  }
+
+  /// Why the last `loadFromVfs()` failed — the value of
+  /// `machine::loader_error`, 0 when the last one succeeded.
+  loadError() {
+    return this.module._af_machine_load_error(this.handle);
+  }
+
+  // --- Marshalling ------------------------------------------------------
+
+  /// Call `use` with `text` in linear memory as a NUL-terminated C
+  /// string, and free it afterwards however `use` ends.
+  ///
+  /// Latin-1 rather than UTF-8, deliberately: what is on the other side
+  /// is a DOS short name, whose legal character set is a subset of ASCII
+  /// (machine/vfs.h), and a multi-byte encoding of something outside it
+  /// would arrive as several bytes core would then reject one at a time.
+  /// A character past 0xFF is replaced with one core will refuse, so an
+  /// illegal name is refused as an illegal name rather than silently
+  /// becoming a different legal one.
+  #withCString(text, use) {
+    const source = String(text ?? '');
+    const scratch = this.module._malloc(source.length + 1);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while passing a string');
+    }
+    try {
+      const heap = this.module.HEAPU8;
+      for (let i = 0; i < source.length; ++i) {
+        const code = source.charCodeAt(i);
+        heap[scratch + i] = code < 0x100 ? code : 0x3f; // '?'
+      }
+      heap[scratch + source.length] = 0;
+      return use(scratch);
+    } finally {
+      this.module._free(scratch);
+    }
+  }
+
+  /// Run one of the two report calls into a scratch buffer and bring the
+  /// characters back as a string. The reports are plain ASCII by
+  /// construction (machine/report.h), so byte per character is exact.
+  #report(call, capacity) {
+    const scratch = this.module._malloc(capacity);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while reading a report');
+    }
+    try {
+      const length = call(scratch, capacity);
+      const bytes = this.module.HEAPU8.subarray(scratch, scratch + length);
+      let out = '';
+      // In chunks: `String.fromCharCode(...bytes)` on a full trace report
+      // is twenty thousand arguments, which is past what some engines
+      // accept in a spread call.
+      for (let i = 0; i < bytes.length; i += 4096) {
+        out += String.fromCharCode(...bytes.subarray(i, i + 4096));
+      }
+      return out;
+    } finally {
+      this.module._free(scratch);
+    }
+  }
 }
 
 // --- The embedded demo program (M2-H2, #55) -------------------------------
@@ -352,6 +568,15 @@ export function loadDemoProgram(machine) {
 // this machine. Keys the 83-key board never had (F11/F12, a numpad
 // Enter, a right Ctrl/Alt as distinct keys) are simply absent — the same
 // "not modelled, not guessed" gap keyboard.h documents.
+//
+// The arrow, Home/End, Page and Insert/Delete rows are the same keys as
+// the numeric keypad, and that is not an approximation: on an 83-key
+// board there *is* no separate cursor pad, and a program reads 48h for
+// "up" whether the player pressed Numpad8 or the arrow a later keyboard
+// added. Mapping them onto the same scancodes is what a real XT keyboard
+// does; leaving them out, which is what this table did until M3-F2
+// (#84), is what made a keyboard-driven game unplayable in a browser
+// while the desktop host had had them since M2-H1.
 export const XT_SCANCODES = Object.freeze({
   Escape: 0x01,
   Digit1: 0x02,
@@ -438,6 +663,19 @@ export const XT_SCANCODES = Object.freeze({
   Numpad3: 0x51,
   Numpad0: 0x52,
   NumpadDecimal: 0x53,
+
+  // The cursor pad, onto the keypad codes it shares with an 83-key
+  // board — see the note above.
+  Home: 0x47,
+  ArrowUp: 0x48,
+  PageUp: 0x49,
+  ArrowLeft: 0x4b,
+  ArrowRight: 0x4d,
+  End: 0x4f,
+  ArrowDown: 0x50,
+  PageDown: 0x51,
+  Insert: 0x52,
+  Delete: 0x53,
 });
 
 /// `KeyboardEvent.code` -> XT scancode, or `undefined` for a key the
