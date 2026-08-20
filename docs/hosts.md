@@ -92,7 +92,7 @@ making that line worth reading.
 amberfolio <dir> <program.exe> [--headless] [--scale N] [--verify]
                                [--press KEY@FRAME] [--steps N]
                                [--until TICKS] [--dump PREFIX] [--trace]
-                               [-- ARGUMENTS...]
+                               [--seam ID] [-- ARGUMENTS...]
 ```
 
 A run prints the identity of the file before anything executes, and a
@@ -123,6 +123,7 @@ fingerprint up by (PLAN.md §5).
 | `--trace` | keep the last 256 instructions and 64 service calls, and print them with the report. Off by default, at a cost of one branch per step. |
 | `--dump PREFIX` | write `PREFIX.ppm` (the composed frame) and `PREFIX.wav` (the speaker) when the run ends. |
 | `-- ARGUMENTS` | everything after `--` becomes the program's command tail, with the leading space DOS leaves in front of one. |
+| `--seam ID` | turn on one seam (PLAN.md §5, `machine/seam.h`). Off unless named, refused unless the loaded program is the binary the seam's addresses are facts about, and printed when it takes — a run with a seam on is not the same run as one without it. Repeatable. |
 
 `--dump` is the one to reach for when the claim is *"the title renders"*.
 `docs/machine.md` §7 says why a golden is the wrong instrument for that,
@@ -307,4 +308,6 @@ side, `ensureMachine()` in `app.mjs` on this one — and that is why.
 side. What CI proves is the path: `smoke.mjs` puts a self-written program
 into the filesystem through the same ABI the picker uses, loads it from
 there, runs it, and reads the report. The comparison above is a procedure
-a person carries out against their own copy (#92).
+a person carries out against their own copy — and it is now written down
+in full, stage by stage and with the notices a healthy run prints, in
+[`docs/first-light.md`](first-light.md).

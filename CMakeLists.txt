@@ -16,8 +16,13 @@ if(NOT DEFINED CMAKE_EXPORT_COMPILE_COMMANDS)
   set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 endif()
 
+# The version is the milestone (PLAN.md §7, CONTRIBUTING.md's "Releases
+# and tags"): it is bumped in a closeout pull request and tagged on the
+# merge commit, so no commit on `main` ever reports a version that was
+# never tagged. `af_version` carries it across the C ABI and the wasm
+# smoke test asserts the module reports what CMake built.
 project(amberfolio
-  VERSION 0.0.1
+  VERSION 0.1.0
   DESCRIPTION "A purpose-built low-level emulator for the Gold Box machine"
   HOMEPAGE_URL "https://github.com/amberfolio/amberfolio"
   LANGUAGES CXX)

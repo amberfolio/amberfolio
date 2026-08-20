@@ -125,6 +125,36 @@ The scripts are checked by [`scripts/test-guards.sh`](scripts/test-guards.sh),
 which asserts each gate *fails* on the violation it exists to catch. Run it
 after editing one.
 
+## Releases and tags
+
+PLAN.md §7 gives every milestone from M3 on a **0.x pre-release**, so
+that there is always a current, runnable tag while the work converges on
+1.0. This is how that is done, decided once at M3's closeout and reused
+by every milestone after.
+
+- **The tag is annotated, on `main`, named `vMAJOR.MINOR.PATCH`.**
+  Annotated rather than lightweight so the tag carries a message,
+  an author and a date of its own — a milestone is a claim about the
+  repository, and a claim should be signed and dated.
+- **Its name matches `project(VERSION ...)` in the top-level
+  `CMakeLists.txt`, exactly.** The version is not decoration: `af_version`
+  reports it across the C ABI and the wasm smoke test asserts the module
+  reports what CMake built. Bumping the one and not the other makes a
+  binary that lies about which milestone it is.
+- **The bump happens in the closeout pull request**, so that the commit
+  the tag names is the first commit that reports the new version, and no
+  commit on `main` ever reports a version that was never tagged.
+- **The tag's message is one paragraph on what the milestone means** —
+  the exit criterion in plain words — followed by what it does *not*
+  mean. Someone checking out a tag deserves to know what they are
+  getting before they build it.
+- **Nothing is ever retagged.** Public history is not rewritten (see
+  above); a tag that turns out to be wrong is followed by another tag,
+  not moved.
+
+So M3's closeout was: bump `VERSION` to `0.1.0` in the closeout PR, merge
+it, and `git tag -a v0.1.0` on the resulting merge commit.
+
 ## Practical bits
 
 - Building and running the tests: [README.md](README.md#building-from-source)

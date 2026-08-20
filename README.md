@@ -2,32 +2,49 @@
 
 A low-level emulator for the SSI Gold Box games.
 
-**Status: early development.** There is no game to play yet — but there
-is a machine, and it runs programs. The 8086 core is exact: all 323
+**Status: early development — but the game boots.** M3's exit criterion
+is met: a player-supplied copy runs its own unpacker and overlay
+manager, renders its title sequence, answers its menus, and reaches the
+party roster — on the desktop host and in a browser, from the same core,
+reporting the same stop line at the same step. `docs/first-light.md` is
+the procedure; there is still no *playing* it, which is M4.
+
+The 8086 core is exact: all 323
 vector files of the
 [SingleStepTests/8088](https://github.com/SingleStepTests/8088) v2 set —
 captured from real silicon — pass in full in CI on every push, undefined
 flag behaviour included, and stayed passing through every device built
 around them.
 
-Around that core there is now a PC: a memory map, a virtual clock
-counted in PIT ticks, an 8253 and a minimal 8259, an EGA with its
-planar write pipeline and a renderer, a PC speaker, BIOS keyboard
-services, a virtual filesystem, an MZ loader with relocations, and the
-small INT 21h and INT 10h subsets the plan scopes. Both hosts run it —
-the SDL3 desktop host takes a directory and a program and gives back the
-exit code the program chose, and the wasm dev page runs the same machine
-in a browser. Seven self-written real-mode test programs drive all of it
-end to end on all four targets, which is what M2 set as its bar.
+Around that core there is a PC: a memory map, a virtual clock counted in
+PIT ticks, an 8253 and a minimal 8259 that the machine's own power-on
+self test programs the way a ROM does, an EGA with its planar write
+pipeline, a raster its status register answers from, and a renderer, a
+PC speaker, BIOS keyboard services, a virtual filesystem, an MZ loader
+with relocations, and the INT 21h and INT 10h subsets the plan scopes
+plus what a real boot turned out to ask for. Both hosts run it — the
+SDL3 desktop host takes a directory and a program, and the wasm dev page
+runs the same machine in a browser. Eight self-written real-mode test
+programs drive all of it end to end on all four targets, the last of
+them shaped like a boot: it unpacks itself, loads a module off the
+filesystem, far-calls into it, and calls every service the real one
+needed.
 
-That is M0, M1 and M2 done. Next is M3 — first light: the game boots
-from a player-supplied copy, its own unpacker and overlay manager
-running as-is. The shape of the work is in the [project plan](PLAN.md).
+Nothing is faked. An unimplemented service, register or port is a loud
+log line and a clean stop, never a guessed answer — which is why a boot
+log reads as a worklist and why the three notices a healthy run prints
+are each a true statement about what this machine does not have.
+
+That is M0 through M3 done. Next is M4 — playable: exploration, combat,
+shops, save and load, the seam engine proper, and a replay harness. The
+shape of the work is in the [project plan](PLAN.md).
 
 **Try it in a browser:** <https://amberfolio.vercel.app> — the wasm host,
-published automatically from `main` on every push. Today it reports the
-core version and nothing more; that is the point of having the pipeline
-in place before there is anything to see.
+published automatically from `main` on every push. It is a developer
+page rather than a shell: point it at a directory holding your own copy
+and it will boot it, report the same stop line the desktop host does,
+and let you read it. Onboarding, persistence and a real interface are
+M6.
 
 ## What this will be
 
