@@ -1,10 +1,11 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: AGPL-3.0-only
 
-     M0 placeholder page: it loads the wasm module and shows the core
-     version. No canvas, no audio, no persistence — those land with the
-     bare dev page in M2, and the reference shell (onboarding, toggle
-     panel) in M6.
+     M2-H2 (#55) dev page: proves frame, audio and input all cross the
+     wasm boundary. Deliberately bare — this is scaffolding, not the M6
+     reference shell (no onboarding, no persistence, no touch, no
+     styling worth the name). Click Start; it draws a pattern, plays a
+     tone, and echoes whatever you type into the console below.
 
      ES modules need a real origin, so open it over HTTP, not file://:
          cmake --build --preset wasm
@@ -14,13 +15,13 @@
      AMBERFOLIO_SOURCE_URL into the source offer at the bottom (see
      hosts/web/CMakeLists.txt) — spelled without its at-signs here, or
      this comment would be substituted too. Nothing else is: the rule is
-     @ONLY, so the ${...} in the script below is JS, not CMake.
+     @ONLY, so the ${...} in app.mjs/host.mjs is JS, not CMake.
 -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Amber Folio — wasm module check</title>
+    <title>Amber Folio — M2 dev page</title>
     <style>
       body {
         margin: 0;
@@ -32,14 +33,52 @@
       h1 {
         font-size: 1.25rem;
         font-weight: 600;
-        margin: 0 0 1rem;
+        margin: 0 0 0.25rem;
       }
-      pre {
-        margin: 0;
+      p.note {
+        color: #b3a58c;
+        margin: 0 0 1.5rem;
+        max-width: 60ch;
+      }
+      #screen {
+        display: block;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        width: 640px;
+        height: 400px;
+        background: #000;
+        border: 1px solid #3a2f22;
+      }
+      #controls {
+        margin: 1rem 0;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      button {
+        font: inherit;
+        background: #2a2115;
+        color: #e8d9bd;
+        border: 1px solid #5a4a30;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+      }
+      button:disabled {
+        cursor: default;
+        opacity: 0.6;
+      }
+      #status {
+        color: #b3a58c;
+      }
+      #console {
+        margin: 1rem 0 0;
+        padding: 0.75rem;
+        max-width: 640px;
+        max-height: 12rem;
+        overflow-y: auto;
         white-space: pre-wrap;
-      }
-      .failed {
-        color: #ff8a7a;
+        background: #0a0805;
+        border: 1px solid #3a2f22;
       }
       footer {
         margin: 2rem 0 0;
@@ -47,6 +86,7 @@
         border-top: 1px solid #3a2f22;
         font-size: 0.875rem;
         color: #b3a58c;
+        max-width: 640px;
       }
       footer a {
         color: #e0a33c;
@@ -54,35 +94,39 @@
     </style>
   </head>
   <body>
-    <h1>Amber Folio — wasm module check</h1>
-    <pre id="out">loading…</pre>
+    <h1>Amber Folio — M2 dev page</h1>
+    <p class="note">
+      This is scaffolding, not a game: it proves the wasm build can run a
+      machine end to end — video, sound and the keyboard — nothing more.
+      Autoplay policy means the browser will not let a page start audio
+      before you interact with it, so nothing runs until you click Start.
+    </p>
+
+    <div id="controls">
+      <button id="start" type="button">start</button>
+      <span id="status">idle - click start</span>
+    </div>
+
+    <canvas id="screen" width="320" height="200"></canvas>
+
+    <pre id="console"></pre>
 
     <script type="module">
-      const out = document.getElementById('out');
-
       // Imported dynamically, inside the try, rather than with a static
       // import at the top: a static one that fails takes the whole module
-      // script with it, so the catch below never runs and the page sits on
-      // "loading…" saying nothing. That is exactly the case worth
-      // reporting — a server that sends host.mjs as text/plain, which
-      // browsers refuse to execute as a module, is the usual way this
-      // page fails on a fresh machine.
+      // script with it, so the catch below never runs and the page sits
+      // with the Start button doing nothing while saying why nowhere. That
+      // is exactly the case worth reporting — a server that sends app.mjs
+      // as text/plain, which browsers refuse to execute as a module, is
+      // the usual way this page fails on a fresh machine.
+      const status = document.getElementById('status');
       try {
-        const { loadAmberfolio, formatVersion } = await import('./host.mjs');
-        const { version, output } = await loadAmberfolio();
-        out.textContent = [
-          ...output,
-          `af_version() reports ${formatVersion(version)}.`,
-        ].join('\n');
+        const { runDevPage } = await import('./app.mjs');
+        runDevPage();
       } catch (error) {
-        out.classList.add('failed');
-        out.textContent = [
-          `failed to load the wasm module: ${error}`,
-          '',
-          'The browser console has the underlying error. If it mentions a',
-          'MIME type, the server is the problem, not the build — serve the',
-          'directory with scripts/serve-web.py, which sets them correctly.',
-        ].join('\n');
+        status.textContent = `failed to load: ${error}`;
+        document.getElementById('start').disabled = true;
+        console.error(error);
         throw error;
       }
     </script>
