@@ -58,8 +58,7 @@ TEST_P(machine_program_case, runs_correctly_on_the_whole_machine) {
 // with a parameter of that name and GCC's -Wshadow objects, exactly as
 // tests/core/cpu/program_test.cpp explains for its own instantiation.
 INSTANTIATE_TEST_SUITE_P(
-    machine, machine_program_case,
-    ::testing::ValuesIn(all_machine_programs()),
+    machine, machine_program_case, ::testing::ValuesIn(all_machine_programs()),
     [](const ::testing::TestParamInfo<machine_program>& entry) {
       return std::string(entry.param.name);
     });

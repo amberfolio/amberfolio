@@ -229,8 +229,7 @@ bool machine_harness::start() {
   const std::span<std::uint8_t> ram = box_->memory().ram();
   for (std::size_t i = 0; i < setup_->code.size(); ++i) {
     ram[cpu::physical_address(machine_layout::code_segment,
-                              static_cast<std::uint16_t>(i))] =
-        setup_->code[i];
+                              static_cast<std::uint16_t>(i))] = setup_->code[i];
   }
 
   cpu::registers& regs = box_->processor().regs();

@@ -157,8 +157,8 @@ void delay(assembler& a, std::string_view tag) {
 ///     mov al, 08h / out 21h, al
 ///     mov al, 01h / out 21h, al
 void init_pic(assembler& a) {
-  constexpr auto command = static_cast<std::uint8_t>(
-      machine::pic::master_command_port);
+  constexpr auto command =
+      static_cast<std::uint8_t>(machine::pic::master_command_port);
   constexpr auto data = static_cast<std::uint8_t>(machine::pic::data_port);
   out8(a, command, machine::pic::icw1_edge_single_icw4);
   out8(a, data, machine::pic::expected_vector_base);
@@ -207,7 +207,8 @@ void hook_user_tick(assembler& a, std::string_view handler) {
   a.dw(static_cast<std::uint16_t>(4U * machine::service::user_tick_vector));
   a.dw_label(handler);
   a.db({0x8C, 0x0E});
-  a.dw(static_cast<std::uint16_t>(4U * machine::service::user_tick_vector + 2U));
+  a.dw(
+      static_cast<std::uint16_t>(4U * machine::service::user_tick_vector + 2U));
   a.db({0x0E, 0x1F});
 }
 
@@ -375,10 +376,10 @@ void put16(std::vector<std::uint8_t>& bytes, std::size_t at,
 
   const auto total =
       static_cast<std::uint32_t>(header_size + spec.image.size());
-  const auto last_page = static_cast<std::uint16_t>(total %
-                                                    machine::mz::page_size);
-  const auto pages = static_cast<std::uint16_t>(
-      total / machine::mz::page_size + (last_page != 0 ? 1 : 0));
+  const auto last_page =
+      static_cast<std::uint16_t>(total % machine::mz::page_size);
+  const auto pages = static_cast<std::uint16_t>(total / machine::mz::page_size +
+                                                (last_page != 0 ? 1 : 0));
 
   std::vector<std::uint8_t> file(header_size + spec.image.size(), 0);
   file[0] = 'M';
@@ -1210,17 +1211,17 @@ constexpr std::uint16_t exe_dataword_offset = exe_data_offset + 4;
   a.dw(exe_data_paragraph);  // the relocated far pointer
   a.pad_to(machine_layout::result_offset + 0x20);
 
-  return build_exe({.initial_cs = 0,
-                    .initial_ip = 0,
-                    .initial_ss = 0,
-                    .initial_sp = 0x0F00,
-                    .min_alloc = 0x0100,
-                    .relocations = {{.offset = static_cast<std::uint16_t>(
-                                         a.offset_of("dataseg_immediate")),
-                                     .segment = 0},
-                                    {.offset = exe_dataword_offset,
-                                     .segment = 0}},
-                    .image = a.assemble()});
+  return build_exe(
+      {.initial_cs = 0,
+       .initial_ip = 0,
+       .initial_ss = 0,
+       .initial_sp = 0x0F00,
+       .min_alloc = 0x0100,
+       .relocations = {{.offset = static_cast<std::uint16_t>(
+                            a.offset_of("dataseg_immediate")),
+                        .segment = 0},
+                       {.offset = exe_dataword_offset, .segment = 0}},
+       .image = a.assemble()});
 }
 
 // --- 7. The composite ---------------------------------------------------
@@ -1419,6 +1420,15 @@ constexpr std::uint16_t key_shifted_d = 0x2044;
 /// whoever later fixed it. What caught it was a pixel count somebody
 /// could work out on paper. The hash's own job is the 63,900 pixels no
 /// probe names.
+/// Pixels in one scanline, and in the whole frame, as counts — what an
+/// area probe below is written out of. Named as `std::size_t` rather
+/// than multiplied out from `frame_width` on the spot so the arithmetic
+/// happens in the type the count is, which is also what keeps
+/// clang-tidy's implicit-widening check quiet without a cast in every
+/// entry.
+constexpr std::size_t pixels_per_row = machine::frame_width;
+constexpr std::size_t pixels_per_frame = machine::frame_pixels;
+
 constexpr std::uint64_t video_frame_hash = 0x23EE1B0F7C12E66EULL;
 constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
 
@@ -1464,8 +1474,7 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
         {.what = "plane 0 at 2: set/reset expanded a 1", .value = 0xFF},
         {.what = "plane 1 at 2: set/reset expanded a 0", .value = 0x00},
         {.what = "plane 2 at 2", .value = 0xFF},
-        {.what = "plane 0 at 3: write mode 1 copied the latch",
-         .value = 0x3C},
+        {.what = "plane 0 at 3: write mode 1 copied the latch", .value = 0x3C},
         {.what = "plane 1 at 3", .value = 0x00},
         {.what = "plane 0 at 4: write mode 2 expanded bit 0", .value = 0x00},
         {.what = "plane 1 at 4: and bit 1", .value = 0xFF},
@@ -1511,12 +1520,14 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
     // 15, sixteen of 5 (four at offset 1, eight at offset 2, four at
     // offset 3), 16 * 320 of 9, 8 * 320 of 6 plus the eight at offset 4,
     // and everything else still black.
+    constexpr std::size_t first_band = 16 * pixels_per_row;
+    constexpr std::size_t second_band = (8 * pixels_per_row) + 8;
     p.areas = {{.index = 15, .count = 4},
                {.index = 5, .count = 16},
-               {.index = 9, .count = 16 * 320},
-               {.index = 6, .count = (8 * 320) + 8},
-               {.index = 0, .count = 64000 - 4 - 16 - (16 * 320) -
-                                     ((8 * 320) + 8)}};
+               {.index = 9, .count = first_band},
+               {.index = 6, .count = second_band},
+               {.index = 0,
+                .count = pixels_per_frame - 4 - 16 - first_band - second_band}};
 
     // The palette INT 10h's mode set installs, through the EGA DAC's own
     // two-bits-a-channel scheme (ega.h): code 5 is AAh/00h/AAh, code 20
@@ -1524,12 +1535,13 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
     // at index 9 is 55h/55h/FFh, code 63 is white. Index 1 is not the
     // default 1 at all but the 2Ah this program set through AH=10h,
     // which is 55h/AAh/55h.
-    p.palette = {{.index = 0, .color = {.red = 0x00, .green = 0x00, .blue = 0x00}},
-                 {.index = 1, .color = {.red = 0x55, .green = 0xAA, .blue = 0x55}},
-                 {.index = 5, .color = {.red = 0xAA, .green = 0x00, .blue = 0xAA}},
-                 {.index = 6, .color = {.red = 0xAA, .green = 0x55, .blue = 0x00}},
-                 {.index = 9, .color = {.red = 0x55, .green = 0x55, .blue = 0xFF}},
-                 {.index = 15, .color = {.red = 0xFF, .green = 0xFF, .blue = 0xFF}}};
+    p.palette = {
+        {.index = 0, .color = {.red = 0x00, .green = 0x00, .blue = 0x00}},
+        {.index = 1, .color = {.red = 0x55, .green = 0xAA, .blue = 0x55}},
+        {.index = 5, .color = {.red = 0xAA, .green = 0x00, .blue = 0xAA}},
+        {.index = 6, .color = {.red = 0xAA, .green = 0x55, .blue = 0x00}},
+        {.index = 9, .color = {.red = 0x55, .green = 0x55, .blue = 0xFF}},
+        {.index = 15, .color = {.red = 0xFF, .green = 0xFF, .blue = 0xFF}}};
 
     p.frame_hash = video_frame_hash;
     p.least_frames = 1;
@@ -1543,8 +1555,7 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
     p.setup.code = sound_code();
     p.setup.step_cap = 400'000;
     p.results = {
-        {.what = "port 61h with the gate and data enable set",
-         .value = 0x0003},
+        {.what = "port 61h with the gate and data enable set", .value = 0x0003},
         {.what = "port 61h once both are cleared", .value = 0x0000},
         {.what = "the first divisor", .value = first_tone_divisor},
         {.what = "the second divisor", .value = second_tone_divisor}};
@@ -1669,23 +1680,21 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
     // AAh on all four planes at offset 0 is alternating colour 15 and
     // colour 0 across the first eight pixels; the band is planes 0 and 1
     // only, so colour 3, over the twenty rows starting at offset 1600.
-    p.pixels = {{.x = 0, .y = 0, .index = 15},
-                {.x = 1, .y = 0, .index = 0},
-                {.x = 6, .y = 0, .index = 15},
-                {.x = 7, .y = 0, .index = 0},
-                {.x = 0, .y = 39, .index = 0},
-                {.x = 0, .y = 40, .index = 3},
-                {.x = 319, .y = 59, .index = 3},
-                {.x = 0, .y = 60, .index = 0}};
+    p.pixels = {{.x = 0, .y = 0, .index = 15},   {.x = 1, .y = 0, .index = 0},
+                {.x = 6, .y = 0, .index = 15},   {.x = 7, .y = 0, .index = 0},
+                {.x = 0, .y = 39, .index = 0},   {.x = 0, .y = 40, .index = 3},
+                {.x = 319, .y = 59, .index = 3}, {.x = 0, .y = 60, .index = 0}};
+    constexpr std::size_t band_pixels = 20 * pixels_per_row;
     p.areas = {{.index = 15, .count = 4},
-               {.index = 3, .count = 20 * 320},
-               {.index = 0, .count = 64000 - 4 - (20 * 320)}};
+               {.index = 3, .count = band_pixels},
+               {.index = 0, .count = pixels_per_frame - 4 - band_pixels}};
     // The mode-set default, untouched: this program never calls AH=10h,
     // so index 3 is code 3 — green and blue primaries, nothing else —
     // which the DAC drives to 00h/AAh/AAh.
-    p.palette = {{.index = 0, .color = {.red = 0x00, .green = 0x00, .blue = 0x00}},
-                 {.index = 3, .color = {.red = 0x00, .green = 0xAA, .blue = 0xAA}},
-                 {.index = 15, .color = {.red = 0xFF, .green = 0xFF, .blue = 0xFF}}};
+    p.palette = {
+        {.index = 0, .color = {.red = 0x00, .green = 0x00, .blue = 0x00}},
+        {.index = 3, .color = {.red = 0x00, .green = 0xAA, .blue = 0xAA}},
+        {.index = 15, .color = {.red = 0xFF, .green = 0xFF, .blue = 0xFF}}};
 
     p.frame_hash = composite_frame_hash;
     p.least_time = ticks{timer_divisor} * composite_wanted_ticks;
@@ -1751,8 +1760,8 @@ std::vector<std::string> check_machine_program(const machine_program& expected,
     return wrong;
   }
   if (got.capped) {
-    fail("ran past its step cap of " +
-         std::to_string(expected.setup.step_cap) + " without exiting");
+    fail("ran past its step cap of " + std::to_string(expected.setup.step_cap) +
+         " without exiting");
   }
   if (!got.exited()) {
     fail("did not exit through DOS: stop reason " +
@@ -1813,7 +1822,8 @@ std::vector<std::string> check_machine_program(const machine_program& expected,
     const harvested_file empty{};
     const harvested_file& have = i < got.files.size() ? got.files[i] : empty;
     if (have.present != want.present) {
-      fail(std::string(path) + (want.present ? " is missing" : " still exists"));
+      fail(std::string(path) +
+           (want.present ? " is missing" : " still exists"));
       continue;
     }
     if (have.contents != want.contents) {
@@ -1832,9 +1842,8 @@ std::vector<std::string> check_machine_program(const machine_program& expected,
     const std::uint8_t index =
         at < got.frame_pixels.size() ? got.frame_pixels[at] : 0xFFU;
     if (index != probe.index) {
-      fail("pixel (" + std::to_string(probe.x) + "," +
-           std::to_string(probe.y) + ") is colour " +
-           std::to_string(index) + ", expected " +
+      fail("pixel (" + std::to_string(probe.x) + "," + std::to_string(probe.y) +
+           ") is colour " + std::to_string(index) + ", expected " +
            std::to_string(probe.index));
     }
   }
