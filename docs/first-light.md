@@ -84,6 +84,29 @@ millisecond is an order of magnitude faster than the machine this game
 was written for. Which of these presets is *right* is a playtest
 question and an open one (#107).
 
+**To just get to the game, use `--fast` instead.** It is the other knob
+and it is not the same one: `--speed` changes which machine this is, and
+divides only the 104 seconds of computation; `--fast` changes how fast
+you watch it, and divides both numbers.
+
+| | reaches the challenge in |
+|---|---|
+| `--speed at` (four times the CPU) | 0:47 |
+| `--fast 20` | **0:04** |
+| `--fast max` | 0:04 |
+
+Nothing inside the machine can tell the difference. A run at `--fast 20`
+produces the same step count, the same tick count, the same frame count
+and a byte-identical framebuffer as one at `--fast 1`; the only thing
+that changes is how long the host sleeps at the bottom of its loop. That
+is what `platform.h`'s rule about wall time never reaching machine state
+buys you.
+
+`max` is barely faster than `20` here, because composing and presenting
+eight thousand frames becomes the floor once the sleep is gone. And
+audio is spoiled by any of this, unavoidably: the speaker is pulled by a
+real 48 kHz device that cannot be hurried.
+
 **Answer the challenge from your own wheel.** That is the whole of it:
 the game asks, you answer, and the roster menu appears. If you would
 rather not, `--seam code-wheel` answers it for you — see "The seam"
@@ -133,6 +156,7 @@ names exactly what to widen — that is the whole M3 method, and
 ```
 --headless              no window, no audio device; runs flat out
 --speed xt|turbo|at     which machine to be (see the table above)
+--fast N|max            run virtual time N times faster than the wall
 --scale N               window size; the frame is 320x200, so 3 gives 960x600
 --until TICKS           stop at a moment in virtual time
 --steps N               stop after N scheduling steps

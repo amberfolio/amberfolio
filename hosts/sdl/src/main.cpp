@@ -9,7 +9,7 @@
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
 //                                     [--seam ID] [--speed NAME]
-//                                     [-- ARGUMENTS...]
+//                                     [--fast N|max] [-- ARGUMENTS...]
 //
 // `--headless` opens no window and no audio device. That is what keeps
 // the CI smoke test meaningful on a runner with neither, and it is the
@@ -89,6 +89,37 @@
 //     Which of them is *right* is a playtest question and not settled
 //     here (#107, PLAN.md §9's note on pacing feel). This flag exists so
 //     that the question can be asked by eye.
+//
+//   --fast N|max     run virtual time N times faster than the wall
+//
+//     The other way of going faster, and it is not the same way.
+//     `--speed` changes *which machine this is*; this changes *how fast
+//     you watch it*, and the difference is measurable rather than
+//     philosophical. Booting the maintainer's copy splits into about 104
+//     seconds of computation and about 21 seconds of pause the program
+//     times against the BIOS tick. A faster processor divides the first
+//     number and leaves the second alone, so twenty times the CPU is
+//     still twenty-six seconds; fast-forward divides both, and twenty
+//     times the wall rate is six.
+//
+//     Nothing inside the machine can tell. The step count, the tick
+//     count, the frames composed and every byte of the framebuffer are
+//     identical to a run at `--fast 1` — the only thing that changes is
+//     how long this host sleeps at the bottom of the loop, which
+//     platform.h's design essay is careful to keep outside machine state
+//     for exactly this reason. That is what makes it safe to hand a
+//     player a fast-forward before the replay harness exists (#100).
+//
+//     `max` does not sleep at all, and is what `--headless` has always
+//     done — so the flag means nothing there and says so rather than
+//     being quietly ignored. How fast `max` actually is depends on the
+//     host: this interpreter runs about 22 million steps a second, which
+//     at the default speed is roughly seventy times real time.
+//
+//     Audio is the one thing fast-forward spoils, unavoidably: the
+//     speaker is pulled by a real 48 kHz device that cannot be hurried,
+//     so anything past about 1x is producing sound faster than anything
+//     can consume it. `--verify` counts the resyncs.
 //
 //   -- ARGUMENTS     everything after `--` becomes the command tail
 //
@@ -674,6 +705,11 @@ struct options {
   std::vector<std::string> seams;
   machine::speed_preset speed{machine::default_speed};
 
+  /// How many seconds of virtual time to run per second of wall time.
+  /// Zero means "do not pace at all" — `--fast max`, and what
+  /// `--headless` does regardless.
+  double fast{1.0};
+
   /// Zero means "no budget" for both. Zero is not a budget anyone can
   /// want — a run of no steps observes nothing — so it is free to be the
   /// sentinel, and a caller does not have to say `--steps 0` to mean
@@ -789,6 +825,20 @@ struct options {
         return opts;
       }
       opts.tick_budget = static_cast<machine::ticks>(ticks);
+    } else if (arg == "--fast" && i + 1 < argc) {
+      const std::string_view rate = argv[++i];
+      if (rate == "max") {
+        opts.fast = 0.0;
+      } else {
+        char* end = nullptr;
+        const double value = std::strtod(std::string(rate).c_str(), &end);
+        if (end == nullptr || *end != '\0' || !(value > 0.0)) {
+          std::fprintf(stderr,
+                       "amberfolio: --fast wants a positive number, or max\n");
+          return opts;
+        }
+        opts.fast = value;
+      }
     } else if (arg == "--speed" && i + 1 < argc) {
       const std::string_view name = argv[++i];
       if (name == "xt") {
@@ -827,6 +877,7 @@ struct options {
                  " [--until TICKS] [--dump PREFIX] [--trace]\n"
                  "                                      [--seam ID]\n"
                  "                                      [--speed xt|turbo|at]\n"
+                 "                                      [--fast N|max]\n"
                  "                                      [-- ARGUMENTS...]\n");
     return opts;
   }
@@ -835,6 +886,16 @@ struct options {
   // `--headless` is defined as not opening. Refused rather than
   // quietly ignored: a check that reports nothing because its own
   // arguments cancelled out is worse than one that never ran.
+  // `--headless` never sleeps, so it is already running as fast as this
+  // machine can be run. Saying so beats accepting a number that would
+  // change nothing.
+  if (opts.headless && opts.fast != 1.0) {
+    std::fprintf(stderr,
+                 "amberfolio: --fast needs a window; --headless already"
+                 " runs unpaced\n");
+    return opts;
+  }
+
   if (opts.headless && (opts.verify || !opts.presses.empty())) {
     std::fprintf(stderr,
                  "amberfolio: --verify and --press need a window;"
@@ -875,6 +936,12 @@ int main(int argc, char** argv) try {
     std::fprintf(stderr, "amberfolio: speed %s, %llu tick%s a step\n",
                  speed_name(opts.speed), static_cast<unsigned long long>(cost),
                  cost == 1 ? "" : "s");
+  }
+
+  if (opts.fast == 0.0) {
+    std::fprintf(stderr, "amberfolio: fast-forward unpaced\n");
+  } else if (opts.fast != 1.0) {
+    std::fprintf(stderr, "amberfolio: fast-forward %gx wall time\n", opts.fast);
   }
 
   box.set_filesystem(files);
@@ -1127,14 +1194,20 @@ int main(int argc, char** argv) try {
       ++report.presented;
     }
 
-    if (!opts.headless) {
+    if (!opts.headless && opts.fast != 0.0) {
       // Whatever wall time is left of this frame, and never a negative
       // one: a host that fell behind simply does not sleep. It does not
       // then run the machine faster to compensate — see this file's top
       // comment.
+      //
+      // `--fast N` divides the budget and nothing else. The machine has
+      // already been run to the same tick it would have been run to
+      // anyway; all that changes is how long this thread waits before
+      // going round again, which is the one place wall time is allowed
+      // to appear at all.
       const auto spent = std::chrono::steady_clock::now() - frame_started;
       const auto budget = std::chrono::duration<double>(
-          static_cast<double>(frame_ticks) / machine::pit_input_hz);
+          static_cast<double>(frame_ticks) / machine::pit_input_hz / opts.fast);
       const auto left =
           std::chrono::duration_cast<std::chrono::milliseconds>(budget - spent);
       if (left.count() > 0) {
