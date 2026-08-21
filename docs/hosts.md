@@ -92,7 +92,8 @@ making that line worth reading.
 amberfolio <dir> <program.exe> [--headless] [--scale N] [--verify]
                                [--press KEY@FRAME] [--steps N]
                                [--until TICKS] [--dump PREFIX] [--trace]
-                               [--seam ID] [-- ARGUMENTS...]
+                               [--seam ID] [--speed NAME]
+                               [-- ARGUMENTS...]
 ```
 
 A run prints the identity of the file before anything executes, and a
@@ -123,6 +124,7 @@ fingerprint up by (PLAN.md §5).
 | `--trace` | keep the last 256 instructions and 64 service calls, and print them with the report. Off by default, at a cost of one branch per step. |
 | `--dump PREFIX` | write `PREFIX.ppm` (the composed frame) and `PREFIX.wav` (the speaker) when the run ends. |
 | `-- ARGUMENTS` | everything after `--` becomes the program's command tail, with the leading space DOS leaves in front of one. |
+| `--speed xt\|turbo\|at` | which machine to be (`machine/clock.h`): 4, 2 or 1 ticks a step. `xt` is the default and the machine the game was written for. Not a fast-forward — virtual time still governs every deadline, tone and tick, so a run at `at` is as deterministic as one at `xt`; what changes is how much of it fits in a second of yours. Printed when it is not the default. |
 | `--seam ID` | turn on one seam (PLAN.md §5, `machine/seam.h`). Off unless named, refused unless the loaded program is the binary the seam's addresses are facts about, and printed when it takes — a run with a seam on is not the same run as one without it. Repeatable. |
 
 `--dump` is the one to reach for when the claim is *"the title renders"*.

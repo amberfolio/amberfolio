@@ -49,19 +49,40 @@ every refusal after that (`docs/machine.md` §5).
 
 ### What the run should look like
 
-Four stages, in this order. Timings are in *virtual* time, which the
-windowed host paces against the wall, so they are also roughly how long
-you will wait:
+Five stages, in this order. Timings are in *virtual* time, which the
+windowed host paces against the wall, so at the default speed they are
+also how long you will wait:
 
 | about | what is on screen |
 |---|---|
-| a few seconds | a loading line, drawn by the program itself |
-| ~20 s | the publisher's logo |
-| ~40 s | the title screen |
-| ~200 s | the copy-protection challenge, waiting for input |
+| 0:02 | a loading line, drawn by the program itself |
+| 0:57 | **nothing at all** — the line clears and the screen goes black |
+| 1:13 | the publisher's logo, painting in visibly |
+| 1:20 | the title screen |
+| 2:05 | the copy-protection challenge, waiting for input |
 
-The long pauses are the program's own — it times them against the BIOS
-tick, and this machine's tick is the real 18.2 Hz.
+**The black stretch around a minute in is the one that looks broken and
+is not.** Nor is the logo painting itself in line by line: that is what a
+4.77 MHz machine looked like doing it.
+
+Almost all of that is computation rather than waiting, which is worth
+knowing before reaching for a stopwatch. Running the same boot at each
+speed preset and solving for the two parts gives **about 104 seconds of
+work and about 21 seconds of timed pause** — the pauses are the
+program's own, timed against the BIOS tick, and they do not shrink when
+the processor gets faster:
+
+| `--speed` | ticks per step | reaches the challenge at |
+|---|---|---|
+| `xt` (default) | 4 | 2:05 |
+| `turbo` | 2 | 1:13 |
+| `at` | 1 | 0:47 |
+
+If the emulator feels slower than another one you have used, this is
+why, and it is not a defect: DOSBox's default of 3000 cycles per
+millisecond is an order of magnitude faster than the machine this game
+was written for. Which of these presets is *right* is a playtest
+question and an open one (#107).
 
 **Answer the challenge from your own wheel.** That is the whole of it:
 the game asks, you answer, and the roster menu appears. If you would
@@ -111,6 +132,8 @@ names exactly what to widen — that is the whole M3 method, and
 
 ```
 --headless              no window, no audio device; runs flat out
+--speed xt|turbo|at     which machine to be (see the table above)
+--scale N               window size; the frame is 320x200, so 3 gives 960x600
 --until TICKS           stop at a moment in virtual time
 --steps N               stop after N scheduling steps
 --dump PREFIX           write PREFIX.ppm and PREFIX.wav at the end

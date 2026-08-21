@@ -8,7 +8,8 @@
 //                                     [--verify] [--press KEY@FRAME]
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
-//                                     [--seam ID] [-- ARGUMENTS...]
+//                                     [--seam ID] [--speed NAME]
+//                                     [-- ARGUMENTS...]
 //
 // `--headless` opens no window and no audio device. That is what keeps
 // the CI smoke test meaningful on a runner with neither, and it is the
@@ -69,6 +70,25 @@
 //     honest about what it is not yet: the possession gate PLAN.md §5
 //     requires is M5's, so today this is a maintainer's switch on a
 //     maintainer's own copy.
+//
+//   --speed NAME     which machine to be: xt, turbo or at
+//
+//     The virtual clock's step cost (machine/clock.h), by the names the
+//     presets already have. `xt` is the default and is the machine the
+//     game was written for — a 4.77 MHz 8088 at about 298,000
+//     instructions a second, which is slow enough to watch a title
+//     screen paint itself line by line, because that is what an XT did.
+//
+//     The other two are not a fast-forward and not a hack: they are the
+//     faster machines the same software ran on, and they change nothing
+//     about what the emulator computes — virtual time still governs
+//     every deadline, every tone and every tick, so a run at `at` is as
+//     deterministic and as replayable as one at `xt`. What changes is
+//     how much of it fits in a second of yours.
+//
+//     Which of them is *right* is a playtest question and not settled
+//     here (#107, PLAN.md §9's note on pacing feel). This flag exists so
+//     that the question can be asked by eye.
 //
 //   -- ARGUMENTS     everything after `--` becomes the command tail
 //
@@ -450,6 +470,19 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
   capture_samples(*bridge, out);
 }
 
+/// A speed preset in words, for the line a non-default run prints.
+[[nodiscard]] const char* speed_name(machine::speed_preset preset) noexcept {
+  switch (preset) {
+    case machine::speed_preset::pc_xt:
+      return "xt (4.77 MHz 8088)";
+    case machine::speed_preset::turbo_xt:
+      return "turbo (8-10 MHz XT clone)";
+    case machine::speed_preset::at:
+      return "at";
+  }
+  return "unknown";
+}
+
 /// Why a `--seam` was refused, in words. Named here rather than printed
 /// as a number because the two that a person actually hits — the wrong
 /// binary and a name that is not a seam — are the two a number would be
@@ -639,6 +672,7 @@ struct options {
   bool verify{false};
   std::vector<scripted_press> presses;
   std::vector<std::string> seams;
+  machine::speed_preset speed{machine::default_speed};
 
   /// Zero means "no budget" for both. Zero is not a budget anyone can
   /// want — a run of no steps observes nothing — so it is free to be the
@@ -755,6 +789,18 @@ struct options {
         return opts;
       }
       opts.tick_budget = static_cast<machine::ticks>(ticks);
+    } else if (arg == "--speed" && i + 1 < argc) {
+      const std::string_view name = argv[++i];
+      if (name == "xt") {
+        opts.speed = machine::speed_preset::pc_xt;
+      } else if (name == "turbo") {
+        opts.speed = machine::speed_preset::turbo_xt;
+      } else if (name == "at") {
+        opts.speed = machine::speed_preset::at;
+      } else {
+        std::fprintf(stderr, "amberfolio: --speed wants xt, turbo or at\n");
+        return opts;
+      }
     } else if (arg == "--scale" && i + 1 < argc) {
       // strtol rather than atoi, which cannot tell "0" from "not a
       // number" - a distinction worth having when the answer decides
@@ -780,6 +826,7 @@ struct options {
                  "                                      [--steps N]"
                  " [--until TICKS] [--dump PREFIX] [--trace]\n"
                  "                                      [--seam ID]\n"
+                 "                                      [--speed xt|turbo|at]\n"
                  "                                      [-- ARGUMENTS...]\n");
     return opts;
   }
@@ -818,6 +865,18 @@ int main(int argc, char** argv) try {
   stderr_diagnostics log;
   wired_machine wired(&log);
   machine::machine& box = *wired.box;
+  // The machine to be, before anything runs (machine/clock.h). Printed
+  // whenever it is not the default, for the reason a seam is: a run at a
+  // speed nobody expected is a different run, and a log that did not say
+  // so would be describing the wrong machine.
+  box.set_speed(opts.speed);
+  if (opts.speed != machine::default_speed) {
+    const machine::ticks cost = machine::ticks_per_step(opts.speed);
+    std::fprintf(stderr, "amberfolio: speed %s, %llu tick%s a step\n",
+                 speed_name(opts.speed), static_cast<unsigned long long>(cost),
+                 cost == 1 ? "" : "s");
+  }
+
   box.set_filesystem(files);
 
   const machine::vfs_result<machine::dos_path> where = machine::canonicalize(
