@@ -80,8 +80,9 @@ struct run_result {
 
   /// Scheduling steps taken. Steps and elapsed ticks are the same fact
   /// twice while the governor is left alone — `elapsed == steps *
-  /// step_cost()` — and it is the pair that makes a step-cost test able
-  /// to say which of the two went wrong.
+  /// step_cost_subticks() / subticks_per_tick`, exactly on a whole-tick
+  /// machine and within one tick on a fractional one — and it is the pair
+  /// that makes a step-cost test able to say which of the two went wrong.
   std::uint64_t steps{};
 };
 
@@ -165,7 +166,7 @@ class machine final : public cpu::bus {
   /// One scheduling step: the deadlines due at this moment, then one step
   /// of the processor — one instruction, one iteration of a repeated
   /// string instruction, or one interrupt delivery (cpu::step_status) —
-  /// then `step_cost()` ticks on the virtual clock.
+  /// then `step_cost_subticks()` subticks on the virtual clock.
   ///
   /// Deadlines first, and at a step boundary, because that boundary is
   /// also where the processor recognizes interrupts: a device that raises
@@ -245,25 +246,47 @@ class machine final : public cpu::bus {
   /// agree on.
   [[nodiscard]] std::uint64_t steps() const noexcept { return steps_; }
 
-  /// What one step costs, in ticks. The speed governor is this one
-  /// number, and the presets are names for values of it.
-  [[nodiscard]] ticks step_cost() const noexcept { return step_cost_; }
+  /// What one step costs, in `subticks_per_tick`ths of a tick (clock.h).
+  /// The speed governor is this one number, and the presets are names for
+  /// values of it.
+  ///
+  /// In subticks and not ticks because a machine faster than one
+  /// instruction per tick — a 386 is five — has a cost that is not a
+  /// whole number of them, and an accessor that rounded would answer zero
+  /// for it.
+  [[nodiscard]] ticks step_cost_subticks() const noexcept { return step_cost_; }
 
   /// Put the governor on a named preset (clock.h).
   void set_speed(speed_preset preset) noexcept {
-    step_cost_ = ticks_per_step(preset);
+    step_cost_ = subticks_per_step(preset);
+    subtick_ = 0;
   }
 
-  /// Set the step cost directly, for a calibration run or a test that
-  /// wants round numbers. False, and nothing changed, for zero: a step
-  /// that costs no time is a machine whose clock never moves, whose
-  /// deadlines therefore never arrive, and whose `run()` would never
-  /// return.
+  /// Set the step cost directly, in whole ticks, for a calibration run or
+  /// a test that wants round numbers. False, and nothing changed, for
+  /// zero: a step that costs no time is a machine whose clock never
+  /// moves, whose deadlines therefore never arrive, and whose `run()`
+  /// would never return.
   ///
   /// There is no accessor for "which preset is set", because after this
   /// call there might not be one. The step cost is the state; a preset is
   /// a way of writing a value of it down.
   bool set_step_cost(ticks cost) noexcept;
+
+  /// The same, in subticks, for a caller that wants a cost between the
+  /// whole ones. False for zero, for the reason above.
+  bool set_step_cost_subticks(ticks cost) noexcept;
+
+  /// What `time()` will read after `steps` more steps at the current
+  /// cost, assuming nothing changes the governor in between.
+  ///
+  /// Here rather than at the caller because it is the only place the
+  /// carried subtick fraction is known, and without it the answer is off
+  /// by a tick on a fractional machine — which is the difference between
+  /// a `--steps N` budget that ends on step N and one that ends near it.
+  /// Saturates rather than wrapping: a budget big enough to overflow the
+  /// clock is one no run reaches.
+  [[nodiscard]] ticks time_after_steps(std::uint64_t steps) const noexcept;
 
   /// The deadline queue. `pc.deadlines().arm(dev, when)` is how a device
   /// posts its next moment; `schedule()` is how it earns the
@@ -583,7 +606,12 @@ class machine final : public cpu::bus {
   /// integer with a getter and an adder, and the only code allowed to
   /// move it is in this file anyway.
   ticks now_{};
-  ticks step_cost_{ticks_per_step(default_speed)};
+  /// The step cost, in subticks, and the fraction of a tick carried over
+  /// from the last step. Zero for every whole-tick preset after every
+  /// step, which is why nothing about those machines changed when this
+  /// pair replaced a plain tick count (clock.h, `subticks_per_tick`).
+  ticks step_cost_{subticks_per_step(default_speed)};
+  ticks subtick_{};
 
   /// Steps since the last reset — see `steps()`. Beside the clock
   /// because it is the same kind of thing: a count the machine keeps of

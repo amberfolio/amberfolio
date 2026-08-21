@@ -8,7 +8,8 @@
 //                                     [--verify] [--press KEY@FRAME]
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
-//                                     [--seam ID] [-- ARGUMENTS...]
+//                                     [--seam ID] [--speed NAME]
+//                                     [--fast N|max] [-- ARGUMENTS...]
 //
 // `--headless` opens no window and no audio device. That is what keeps
 // the CI smoke test meaningful on a runner with neither, and it is the
@@ -69,6 +70,56 @@
 //     honest about what it is not yet: the possession gate PLAN.md §5
 //     requires is M5's, so today this is a maintainer's switch on a
 //     maintainer's own copy.
+//
+//   --speed NAME     which machine to be: xt, turbo, at or 386
+//
+//     The virtual clock's step cost (machine/clock.h), by the names the
+//     presets already have. `xt` is the default and is the machine the
+//     game was written for — a 4.77 MHz 8088 at about 298,000
+//     instructions a second, which is slow enough to watch a title
+//     screen paint itself line by line, because that is what an XT did.
+//
+//     The other three are not a fast-forward and not a hack: they are
+//     the faster machines the same software ran on, and they change nothing
+//     about what the emulator computes — virtual time still governs
+//     every deadline, every tone and every tick, so a run at `at` is as
+//     deterministic and as replayable as one at `xt`. What changes is
+//     how much of it fits in a second of yours.
+//
+//     Which of them is *right* is a playtest question and not settled
+//     here (#107, PLAN.md §9's note on pacing feel). This flag exists so
+//     that the question can be asked by eye.
+//
+//   --fast N|max     run virtual time N times faster than the wall
+//
+//     The other way of going faster, and it is not the same way.
+//     `--speed` changes *which machine this is*; this changes *how fast
+//     you watch it*, and the difference is measurable rather than
+//     philosophical. Booting the maintainer's copy splits into about 104
+//     seconds of computation and about 21 seconds of pause the program
+//     times against the BIOS tick. A faster processor divides the first
+//     number and leaves the second alone, so twenty times the CPU is
+//     still twenty-six seconds; fast-forward divides both, and twenty
+//     times the wall rate is six.
+//
+//     Nothing inside the machine can tell. The step count, the tick
+//     count, the frames composed and every byte of the framebuffer are
+//     identical to a run at `--fast 1` — the only thing that changes is
+//     how long this host sleeps at the bottom of the loop, which
+//     platform.h's design essay is careful to keep outside machine state
+//     for exactly this reason. That is what makes it safe to hand a
+//     player a fast-forward before the replay harness exists (#100).
+//
+//     `max` does not sleep at all, and is what `--headless` has always
+//     done — so the flag means nothing there and says so rather than
+//     being quietly ignored. How fast `max` actually is depends on the
+//     host: this interpreter runs about 22 million steps a second, which
+//     at the default speed is roughly seventy times real time.
+//
+//     Audio is the one thing fast-forward spoils, unavoidably: the
+//     speaker is pulled by a real 48 kHz device that cannot be hurried,
+//     so anything past about 1x is producing sound faster than anything
+//     can consume it. `--verify` counts the resyncs.
 //
 //   -- ARGUMENTS     everything after `--` becomes the command tail
 //
@@ -450,6 +501,21 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
   capture_samples(*bridge, out);
 }
 
+/// A speed preset in words, for the line a non-default run prints.
+[[nodiscard]] const char* speed_name(machine::speed_preset preset) noexcept {
+  switch (preset) {
+    case machine::speed_preset::pc_xt:
+      return "xt (4.77 MHz 8088)";
+    case machine::speed_preset::turbo_xt:
+      return "turbo (8-10 MHz XT clone)";
+    case machine::speed_preset::at:
+      return "at";
+    case machine::speed_preset::pc_386:
+      return "386 (33 MHz 386DX)";
+  }
+  return "unknown";
+}
+
 /// Why a `--seam` was refused, in words. Named here rather than printed
 /// as a number because the two that a person actually hits — the wrong
 /// binary and a name that is not a seam — are the two a number would be
@@ -597,11 +663,12 @@ void verify_target(SDL_Renderer* renderer, std::span<const std::uint32_t> src,
 ///
 /// Clamping the slice rather than checking after it is what makes
 /// `--steps N` end on step N rather than somewhere inside frame N+1. A
-/// step budget becomes a tick budget by the identity `run_result` states
-/// — a step costs `step_cost()` ticks, and `run()` steps while the clock
-/// is short of its target — so `now + remaining * cost` is exactly
-/// `remaining` more steps, provided nothing changes the governor
-/// mid-run, which nothing in this host does.
+/// step budget becomes a tick budget through
+/// `machine::time_after_steps()`, which is the machine's own arithmetic
+/// because it is the only thing that knows the fraction of a tick
+/// carried over from the last step — on a machine faster than one
+/// instruction per tick, doing the multiplication out here would land a
+/// tick away from the step actually asked for.
 [[nodiscard]] machine::ticks slice_end(const machine::machine& box,
                                        machine::ticks frame_ticks,
                                        std::uint64_t step_budget,
@@ -613,18 +680,12 @@ void verify_target(SDL_Renderer* renderer, std::span<const std::uint32_t> src,
   }
 
   if (step_budget != 0 && box.steps() < step_budget) {
-    const std::uint64_t remaining = step_budget - box.steps();
-    const machine::ticks cost = box.step_cost();
-    // Only when the product cannot run off the end of the type. A budget
-    // big enough to overflow is one this run will not reach anyway, so
-    // leaving the frame boundary alone is both safe and right.
-    const machine::ticks headroom =
-        (std::numeric_limits<machine::ticks>::max() - box.time()) / cost;
-    if (remaining <= headroom) {
-      const machine::ticks by_steps = box.time() + (remaining * cost);
-      if (by_steps < target) {
-        target = by_steps;
-      }
+    // Saturating, so a budget too big for the clock leaves the frame
+    // boundary alone — which is right, because a run cannot reach it.
+    const machine::ticks by_steps =
+        box.time_after_steps(step_budget - box.steps());
+    if (by_steps < target) {
+      target = by_steps;
     }
   }
 
@@ -639,6 +700,12 @@ struct options {
   bool verify{false};
   std::vector<scripted_press> presses;
   std::vector<std::string> seams;
+  machine::speed_preset speed{machine::default_speed};
+
+  /// How many seconds of virtual time to run per second of wall time.
+  /// Zero means "do not pace at all" — `--fast max`, and what
+  /// `--headless` does regardless.
+  double fast{1.0};
 
   /// Zero means "no budget" for both. Zero is not a budget anyone can
   /// want — a run of no steps observes nothing — so it is free to be the
@@ -755,6 +822,35 @@ struct options {
         return opts;
       }
       opts.tick_budget = static_cast<machine::ticks>(ticks);
+    } else if (arg == "--fast" && i + 1 < argc) {
+      const std::string_view rate = argv[++i];
+      if (rate == "max") {
+        opts.fast = 0.0;
+      } else {
+        char* end = nullptr;
+        const double value = std::strtod(std::string(rate).c_str(), &end);
+        if (end == nullptr || *end != '\0' || !(value > 0.0)) {
+          std::fprintf(stderr,
+                       "amberfolio: --fast wants a positive number, or max\n");
+          return opts;
+        }
+        opts.fast = value;
+      }
+    } else if (arg == "--speed" && i + 1 < argc) {
+      const std::string_view name = argv[++i];
+      if (name == "xt") {
+        opts.speed = machine::speed_preset::pc_xt;
+      } else if (name == "turbo") {
+        opts.speed = machine::speed_preset::turbo_xt;
+      } else if (name == "at") {
+        opts.speed = machine::speed_preset::at;
+      } else if (name == "386") {
+        opts.speed = machine::speed_preset::pc_386;
+      } else {
+        std::fprintf(stderr,
+                     "amberfolio: --speed wants xt, turbo, at or 386\n");
+        return opts;
+      }
     } else if (arg == "--scale" && i + 1 < argc) {
       // strtol rather than atoi, which cannot tell "0" from "not a
       // number" - a distinction worth having when the answer decides
@@ -774,13 +870,16 @@ struct options {
   }
 
   if (positional.size() != 2) {
-    std::fprintf(stderr,
-                 "usage: amberfolio <dir> <program.exe> [--headless]"
-                 " [--scale N] [--verify] [--press KEY@FRAME]\n"
-                 "                                      [--steps N]"
-                 " [--until TICKS] [--dump PREFIX] [--trace]\n"
-                 "                                      [--seam ID]\n"
-                 "                                      [-- ARGUMENTS...]\n");
+    std::fprintf(
+        stderr,
+        "usage: amberfolio <dir> <program.exe> [--headless]"
+        " [--scale N] [--verify] [--press KEY@FRAME]\n"
+        "                                      [--steps N]"
+        " [--until TICKS] [--dump PREFIX] [--trace]\n"
+        "                                      [--seam ID]\n"
+        "                                      [--speed xt|turbo|at|386]\n"
+        "                                      [--fast N|max]\n"
+        "                                      [-- ARGUMENTS...]\n");
     return opts;
   }
 
@@ -788,6 +887,16 @@ struct options {
   // `--headless` is defined as not opening. Refused rather than
   // quietly ignored: a check that reports nothing because its own
   // arguments cancelled out is worse than one that never ran.
+  // `--headless` never sleeps, so it is already running as fast as this
+  // machine can be run. Saying so beats accepting a number that would
+  // change nothing.
+  if (opts.headless && opts.fast != 1.0) {
+    std::fprintf(stderr,
+                 "amberfolio: --fast needs a window; --headless already"
+                 " runs unpaced\n");
+    return opts;
+  }
+
   if (opts.headless && (opts.verify || !opts.presses.empty())) {
     std::fprintf(stderr,
                  "amberfolio: --verify and --press need a window;"
@@ -818,6 +927,24 @@ int main(int argc, char** argv) try {
   stderr_diagnostics log;
   wired_machine wired(&log);
   machine::machine& box = *wired.box;
+  // The machine to be, before anything runs (machine/clock.h). Printed
+  // whenever it is not the default, for the reason a seam is: a run at a
+  // speed nobody expected is a different run, and a log that did not say
+  // so would be describing the wrong machine.
+  box.set_speed(opts.speed);
+  if (opts.speed != machine::default_speed) {
+    std::fprintf(
+        stderr, "amberfolio: speed %s, about %llu steps a second\n",
+        speed_name(opts.speed),
+        static_cast<unsigned long long>(machine::steps_per_second(opts.speed)));
+  }
+
+  if (opts.fast == 0.0) {
+    std::fprintf(stderr, "amberfolio: fast-forward unpaced\n");
+  } else if (opts.fast != 1.0) {
+    std::fprintf(stderr, "amberfolio: fast-forward %gx wall time\n", opts.fast);
+  }
+
   box.set_filesystem(files);
 
   const machine::vfs_result<machine::dos_path> where = machine::canonicalize(
@@ -1068,14 +1195,20 @@ int main(int argc, char** argv) try {
       ++report.presented;
     }
 
-    if (!opts.headless) {
+    if (!opts.headless && opts.fast != 0.0) {
       // Whatever wall time is left of this frame, and never a negative
       // one: a host that fell behind simply does not sleep. It does not
       // then run the machine faster to compensate — see this file's top
       // comment.
+      //
+      // `--fast N` divides the budget and nothing else. The machine has
+      // already been run to the same tick it would have been run to
+      // anyway; all that changes is how long this thread waits before
+      // going round again, which is the one place wall time is allowed
+      // to appear at all.
       const auto spent = std::chrono::steady_clock::now() - frame_started;
       const auto budget = std::chrono::duration<double>(
-          static_cast<double>(frame_ticks) / machine::pit_input_hz);
+          static_cast<double>(frame_ticks) / machine::pit_input_hz / opts.fast);
       const auto left =
           std::chrono::duration_cast<std::chrono::milliseconds>(budget - spent);
       if (left.count() > 0) {

@@ -147,7 +147,8 @@ TEST(MachineSteps, AgreeWithTheTicksARunConsumed) {
 
   const run_result done = r.pc().run(4000);
   EXPECT_EQ(r.pc().steps(), done.steps);
-  EXPECT_EQ(r.pc().time(), done.steps * r.pc().step_cost());
+  EXPECT_EQ(r.pc().time(),
+            done.steps * r.pc().step_cost_subticks() / subticks_per_tick);
 }
 
 // --- The report --------------------------------------------------------

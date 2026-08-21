@@ -89,6 +89,7 @@ static_assert(AF_SPEED_PC_XT == static_cast<uint32_t>(speed_preset::pc_xt));
 static_assert(AF_SPEED_TURBO_XT ==
               static_cast<uint32_t>(speed_preset::turbo_xt));
 static_assert(AF_SPEED_AT == static_cast<uint32_t>(speed_preset::at));
+static_assert(AF_SPEED_PC_386 == static_cast<uint32_t>(speed_preset::pc_386));
 static_assert(AF_OK == static_cast<uint32_t>(stop_reason::none),
               "af_machine_stop_reason() returns machine::stop_reason "
               "directly, so a running machine's reason and AF_OK have to be "
@@ -490,7 +491,7 @@ uint32_t af_machine_set_speed(af_machine* handle, uint32_t preset) {
   if (box == nullptr) {
     return AF_NO_MACHINE;
   }
-  if (preset > AF_SPEED_AT) {
+  if (preset > AF_SPEED_MAX) {
     return AF_INVALID;
   }
   box->set_speed(static_cast<speed_preset>(preset));

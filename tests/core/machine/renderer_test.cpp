@@ -71,7 +71,8 @@ struct rig {
   /// A single HLT at 0000:0000, so `machine::run()` advances the virtual
   /// clock — and so lets the scheduler dispatch the renderer's deadline —
   /// without executing anything that matters. A halted step still costs
-  /// `step_cost()` ticks (machine.h), which is the whole mechanism.
+  /// `step_cost_subticks()` subticks (machine.h), which is the whole
+  /// mechanism.
   void arm_halted_program() const {
     box->memory().ram()[cpu::physical_address(0, 0)] = 0xF4;
     box->processor().reset();
@@ -140,7 +141,8 @@ TEST(renderer_scheduling, the_first_frame_completes_at_exactly_one_period) {
   // the loop takes that step; the assertions below are what prove the
   // deadline itself still landed on the exact tick it was armed for,
   // regardless of this run-to-boundary margin.
-  r.box->run(renderer::frame_period + r.box->step_cost());
+  r.box->run(renderer::frame_period +
+             r.box->step_cost_subticks() / subticks_per_tick);
 
   EXPECT_EQ(r.box->display().completed_at(), renderer::frame_period);
   EXPECT_EQ(r.box->display().generation(), 1u);
@@ -150,7 +152,8 @@ TEST(renderer_scheduling, later_frames_never_drift_from_a_fixed_multiple) {
   const rig r;
   r.arm_halted_program();
 
-  r.box->run(3 * renderer::frame_period + r.box->step_cost());
+  r.box->run(3 * renderer::frame_period +
+             r.box->step_cost_subticks() / subticks_per_tick);
 
   EXPECT_EQ(r.box->display().completed_at(), 3 * renderer::frame_period);
   EXPECT_EQ(r.box->display().generation(), 3u);
