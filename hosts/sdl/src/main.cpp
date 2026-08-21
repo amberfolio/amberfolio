@@ -71,7 +71,7 @@
 //     requires is M5's, so today this is a maintainer's switch on a
 //     maintainer's own copy.
 //
-//   --speed NAME     which machine to be: xt, turbo or at
+//   --speed NAME     which machine to be: xt, turbo, at or 386
 //
 //     The virtual clock's step cost (machine/clock.h), by the names the
 //     presets already have. `xt` is the default and is the machine the
@@ -79,8 +79,8 @@
 //     instructions a second, which is slow enough to watch a title
 //     screen paint itself line by line, because that is what an XT did.
 //
-//     The other two are not a fast-forward and not a hack: they are the
-//     faster machines the same software ran on, and they change nothing
+//     The other three are not a fast-forward and not a hack: they are
+//     the faster machines the same software ran on, and they change nothing
 //     about what the emulator computes — virtual time still governs
 //     every deadline, every tone and every tick, so a run at `at` is as
 //     deterministic and as replayable as one at `xt`. What changes is
@@ -510,6 +510,8 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
       return "turbo (8-10 MHz XT clone)";
     case machine::speed_preset::at:
       return "at";
+    case machine::speed_preset::pc_386:
+      return "386 (33 MHz 386DX)";
   }
   return "unknown";
 }
@@ -661,11 +663,12 @@ void verify_target(SDL_Renderer* renderer, std::span<const std::uint32_t> src,
 ///
 /// Clamping the slice rather than checking after it is what makes
 /// `--steps N` end on step N rather than somewhere inside frame N+1. A
-/// step budget becomes a tick budget by the identity `run_result` states
-/// — a step costs `step_cost()` ticks, and `run()` steps while the clock
-/// is short of its target — so `now + remaining * cost` is exactly
-/// `remaining` more steps, provided nothing changes the governor
-/// mid-run, which nothing in this host does.
+/// step budget becomes a tick budget through
+/// `machine::time_after_steps()`, which is the machine's own arithmetic
+/// because it is the only thing that knows the fraction of a tick
+/// carried over from the last step — on a machine faster than one
+/// instruction per tick, doing the multiplication out here would land a
+/// tick away from the step actually asked for.
 [[nodiscard]] machine::ticks slice_end(const machine::machine& box,
                                        machine::ticks frame_ticks,
                                        std::uint64_t step_budget,
@@ -677,18 +680,12 @@ void verify_target(SDL_Renderer* renderer, std::span<const std::uint32_t> src,
   }
 
   if (step_budget != 0 && box.steps() < step_budget) {
-    const std::uint64_t remaining = step_budget - box.steps();
-    const machine::ticks cost = box.step_cost();
-    // Only when the product cannot run off the end of the type. A budget
-    // big enough to overflow is one this run will not reach anyway, so
-    // leaving the frame boundary alone is both safe and right.
-    const machine::ticks headroom =
-        (std::numeric_limits<machine::ticks>::max() - box.time()) / cost;
-    if (remaining <= headroom) {
-      const machine::ticks by_steps = box.time() + (remaining * cost);
-      if (by_steps < target) {
-        target = by_steps;
-      }
+    // Saturating, so a budget too big for the clock leaves the frame
+    // boundary alone — which is right, because a run cannot reach it.
+    const machine::ticks by_steps =
+        box.time_after_steps(step_budget - box.steps());
+    if (by_steps < target) {
+      target = by_steps;
     }
   }
 
@@ -847,8 +844,11 @@ struct options {
         opts.speed = machine::speed_preset::turbo_xt;
       } else if (name == "at") {
         opts.speed = machine::speed_preset::at;
+      } else if (name == "386") {
+        opts.speed = machine::speed_preset::pc_386;
       } else {
-        std::fprintf(stderr, "amberfolio: --speed wants xt, turbo or at\n");
+        std::fprintf(stderr,
+                     "amberfolio: --speed wants xt, turbo, at or 386\n");
         return opts;
       }
     } else if (arg == "--scale" && i + 1 < argc) {
@@ -870,15 +870,16 @@ struct options {
   }
 
   if (positional.size() != 2) {
-    std::fprintf(stderr,
-                 "usage: amberfolio <dir> <program.exe> [--headless]"
-                 " [--scale N] [--verify] [--press KEY@FRAME]\n"
-                 "                                      [--steps N]"
-                 " [--until TICKS] [--dump PREFIX] [--trace]\n"
-                 "                                      [--seam ID]\n"
-                 "                                      [--speed xt|turbo|at]\n"
-                 "                                      [--fast N|max]\n"
-                 "                                      [-- ARGUMENTS...]\n");
+    std::fprintf(
+        stderr,
+        "usage: amberfolio <dir> <program.exe> [--headless]"
+        " [--scale N] [--verify] [--press KEY@FRAME]\n"
+        "                                      [--steps N]"
+        " [--until TICKS] [--dump PREFIX] [--trace]\n"
+        "                                      [--seam ID]\n"
+        "                                      [--speed xt|turbo|at|386]\n"
+        "                                      [--fast N|max]\n"
+        "                                      [-- ARGUMENTS...]\n");
     return opts;
   }
 
@@ -932,10 +933,10 @@ int main(int argc, char** argv) try {
   // so would be describing the wrong machine.
   box.set_speed(opts.speed);
   if (opts.speed != machine::default_speed) {
-    const machine::ticks cost = machine::ticks_per_step(opts.speed);
-    std::fprintf(stderr, "amberfolio: speed %s, %llu tick%s a step\n",
-                 speed_name(opts.speed), static_cast<unsigned long long>(cost),
-                 cost == 1 ? "" : "s");
+    std::fprintf(
+        stderr, "amberfolio: speed %s, about %llu steps a second\n",
+        speed_name(opts.speed),
+        static_cast<unsigned long long>(machine::steps_per_second(opts.speed)));
   }
 
   if (opts.fast == 0.0) {

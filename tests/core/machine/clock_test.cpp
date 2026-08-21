@@ -108,7 +108,8 @@ std::vector<deadline_fired> deadlines_of(
 
   EXPECT_FALSE(r.pc().stopped());
   EXPECT_EQ(done.elapsed, r.pc().time());
-  EXPECT_EQ(done.elapsed, done.steps * r.pc().step_cost());
+  EXPECT_EQ(done.elapsed,
+            done.steps * r.pc().step_cost_subticks() / subticks_per_tick);
   return fired;
 }
 
@@ -135,7 +136,8 @@ TEST(machine_clock, starts_at_zero_on_the_period_preset) {
   const rig r;
 
   EXPECT_EQ(r.pc().time(), 0u);
-  EXPECT_EQ(r.pc().step_cost(), ticks_per_step(speed_preset::pc_xt));
+  EXPECT_EQ(r.pc().step_cost_subticks(),
+            subticks_per_step(speed_preset::pc_xt));
 }
 
 TEST(machine_clock, charges_a_step_that_ran_an_instruction) {
@@ -223,31 +225,175 @@ TEST(machine_clock, charges_nothing_for_a_step_taken_past_a_stop) {
 // --- The speed governor ------------------------------------------------
 
 TEST(machine_governor, has_a_step_cost_for_every_preset) {
-  EXPECT_EQ(ticks_per_step(speed_preset::pc_xt), 4u);
-  EXPECT_EQ(ticks_per_step(speed_preset::turbo_xt), 2u);
-  EXPECT_EQ(ticks_per_step(speed_preset::at), 1u);
+  EXPECT_EQ(subticks_per_step(speed_preset::pc_xt), 4u * subticks_per_tick);
+  EXPECT_EQ(subticks_per_step(speed_preset::turbo_xt), 2u * subticks_per_tick);
+  EXPECT_EQ(subticks_per_step(speed_preset::at), subticks_per_tick);
+
+  // The one preset that is not a whole number of ticks: a 386 retires
+  // about five instructions inside one (clock.h).
+  EXPECT_LT(subticks_per_step(speed_preset::pc_386), subticks_per_tick);
 
   // What those are in steps a second, which is the number the presets are
   // actually claiming. M4's playtests are what retune them (clock.h).
-  EXPECT_EQ(pit_input_hz / ticks_per_step(speed_preset::pc_xt), 298295u);
-  EXPECT_EQ(pit_input_hz / ticks_per_step(speed_preset::at), 1193182u);
+  EXPECT_EQ(steps_per_second(speed_preset::pc_xt), 298295u);
+  EXPECT_EQ(steps_per_second(speed_preset::turbo_xt), 596591u);
+  EXPECT_EQ(steps_per_second(speed_preset::at), 1193182u);
+  EXPECT_EQ(steps_per_second(speed_preset::pc_386), 5989305u);
+}
+
+// --- Costs smaller than a tick (clock.h's subtick accumulator) ---------
+//
+// The three original presets are whole numbers of ticks and always were.
+// A 386 is not: it retires about five instructions inside one, so the
+// clock has to be able to stand still for four steps out of five and
+// still keep exact time over the long run. These are the tests that say
+// it does.
+
+/// A page of NOPs, so a test can take as many steps as it likes without
+/// the program running out from under it.
+void nop_forever(const rig& r) {
+  for (std::uint32_t i = 0; i < 512; ++i) {
+    r.pc().memory().ram()[cpu::physical_address(
+        code_segment, static_cast<std::uint16_t>(i))] = 0x90;
+  }
+  r.pc().processor().reset();
+  r.pc().processor().regs()[cpu::sreg::cs] = code_segment;
+  r.pc().processor().regs().ip = 0;
+}
+
+TEST(machine_subticks, a_whole_tick_machine_advances_exactly_as_it_always_did) {
+  const rig r;
+  nop_forever(r);
+  r.pc().set_speed(speed_preset::pc_xt);
+
+  // The claim the accumulator must not break: on a whole-tick preset the
+  // clock moves by the cost on every single step, with nothing carried.
+  for (unsigned i = 1; i <= 8; ++i) {
+    r.pc().step();
+    EXPECT_EQ(r.pc().time(), ticks{i} * 4u) << "after " << i << " steps";
+  }
+}
+
+TEST(machine_subticks, a_386_stands_still_for_most_steps_and_still_keeps_time) {
+  const rig r;
+  nop_forever(r);
+  r.pc().set_speed(speed_preset::pc_386);
+
+  // Five steps to a tick and a bit, so the clock is unmoved far more
+  // often than it moves — and never moves backwards.
+  ticks last = r.pc().time();
+  unsigned stood_still = 0;
+  for (unsigned i = 0; i < 256; ++i) {
+    r.pc().step();
+    const ticks now = r.pc().time();
+    EXPECT_GE(now, last);
+    if (now == last) {
+      ++stood_still;
+    }
+    last = now;
+  }
+  EXPECT_GT(stood_still, 200u) << "a 386 step should usually cost no tick";
+
+  // And over those 256 steps the total is exactly the arithmetic, with no
+  // drift: 256 * 51 subticks is 51 whole ticks.
+  EXPECT_EQ(r.pc().time(), 51u);
+}
+
+TEST(machine_subticks, the_carried_fraction_does_not_survive_a_speed_change) {
+  const rig r;
+  nop_forever(r);
+  r.pc().set_speed(speed_preset::pc_386);
+  r.pc().step();  // leaves 51/256 of a tick carried
+
+  r.pc().set_speed(speed_preset::at);
+  const ticks before = r.pc().time();
+  r.pc().step();
+
+  // Exactly one tick, not one-and-a-carried-fraction: the leftover
+  // belonged to the machine that produced it (machine.h).
+  EXPECT_EQ(r.pc().time(), before + 1u);
+}
+
+TEST(machine_subticks, a_reset_forgets_the_carried_fraction) {
+  const rig r;
+  nop_forever(r);
+  r.pc().set_speed(speed_preset::pc_386);
+  for (unsigned i = 0; i < 3; ++i) {
+    r.pc().step();
+  }
+
+  r.pc().reset();
+  EXPECT_EQ(r.pc().time(), 0u);
+  nop_forever(r);
+  r.pc().set_speed(speed_preset::pc_386);
+
+  // If the fraction had survived, the first 256 steps of the new run
+  // would land a tick early.
+  for (unsigned i = 0; i < 256; ++i) {
+    r.pc().step();
+  }
+  EXPECT_EQ(r.pc().time(), 51u);
+}
+
+TEST(machine_subticks, set_step_cost_still_means_whole_ticks) {
+  const rig r;
+  nop_forever(r);
+  ASSERT_TRUE(r.pc().set_step_cost(3));
+  EXPECT_EQ(r.pc().step_cost_subticks(), 3u * subticks_per_tick);
+  r.pc().step();
+  EXPECT_EQ(r.pc().time(), 3u);
+}
+
+TEST(machine_subticks, a_sub_tick_cost_can_be_set_directly) {
+  const rig r;
+  nop_forever(r);
+  ASSERT_TRUE(r.pc().set_step_cost_subticks(subticks_per_tick / 4));
+  EXPECT_FALSE(r.pc().set_step_cost_subticks(0));
+
+  // Four steps to the tick, and the first three cost nothing.
+  for (unsigned i = 0; i < 3; ++i) {
+    r.pc().step();
+    EXPECT_EQ(r.pc().time(), 0u);
+  }
+  r.pc().step();
+  EXPECT_EQ(r.pc().time(), 1u);
+}
+
+TEST(machine_subticks, time_after_steps_answers_where_the_clock_will_be) {
+  const rig r;
+  nop_forever(r);
+  r.pc().set_speed(speed_preset::pc_386);
+
+  // The question `--steps N` asks the machine, and the reason it is the
+  // machine's to answer: only it knows the carried fraction (machine.h).
+  for (const std::uint64_t n : {std::uint64_t{1}, std::uint64_t{5},
+                                std::uint64_t{100}, std::uint64_t{257}}) {
+    const rig fresh;
+    nop_forever(fresh);
+    fresh.pc().set_speed(speed_preset::pc_386);
+    const ticks predicted = fresh.pc().time_after_steps(n);
+    for (std::uint64_t i = 0; i < n; ++i) {
+      fresh.pc().step();
+    }
+    EXPECT_EQ(fresh.pc().time(), predicted) << "after " << n << " steps";
+  }
 }
 
 TEST(machine_governor, puts_the_machine_on_the_preset_it_is_given) {
   const rig r;
 
   r.pc().set_speed(speed_preset::at);
-  EXPECT_EQ(r.pc().step_cost(), 1u);
+  EXPECT_EQ(r.pc().step_cost_subticks(), subticks_per_tick);
 
   r.pc().set_speed(speed_preset::turbo_xt);
-  EXPECT_EQ(r.pc().step_cost(), 2u);
+  EXPECT_EQ(r.pc().step_cost_subticks(), 2u * subticks_per_tick);
 }
 
 TEST(machine_governor, takes_a_step_cost_directly) {
   const rig r;
 
   EXPECT_TRUE(r.pc().set_step_cost(100));
-  EXPECT_EQ(r.pc().step_cost(), 100u);
+  EXPECT_EQ(r.pc().step_cost_subticks(), 100u * subticks_per_tick);
 
   r.program({0x90, 0x90});
   ASSERT_EQ(r.pc().step(), cpu::step_status::ran);
@@ -260,7 +406,8 @@ TEST(machine_governor, refuses_a_step_that_would_cost_no_time) {
   // A clock that never moves is a machine whose deadlines never arrive
   // and whose run() would never return.
   EXPECT_FALSE(r.pc().set_step_cost(0));
-  EXPECT_EQ(r.pc().step_cost(), ticks_per_step(speed_preset::pc_xt));
+  EXPECT_EQ(r.pc().step_cost_subticks(),
+            subticks_per_step(speed_preset::pc_xt));
 }
 
 TEST(machine_governor, buys_more_steps_with_the_same_virtual_time) {
@@ -463,7 +610,7 @@ TEST(machine_reset, leaves_the_speed_governor_where_it_was_set) {
 
   // A setting, not something the machine arrived at — the same reasoning
   // that keeps attached devices attached across a reset.
-  EXPECT_EQ(r.pc().step_cost(), 1u);
+  EXPECT_EQ(r.pc().step_cost_subticks(), subticks_per_tick);
 }
 
 }  // namespace

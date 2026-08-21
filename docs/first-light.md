@@ -72,11 +72,12 @@ work and about 21 seconds of timed pause** — the pauses are the
 program's own, timed against the BIOS tick, and they do not shrink when
 the processor gets faster:
 
-| `--speed` | ticks per step | reaches the challenge at |
+| `--speed` | the machine | reaches the challenge at |
 |---|---|---|
-| `xt` (default) | 4 | 2:05 |
-| `turbo` | 2 | 1:13 |
-| `at` | 1 | 0:47 |
+| `xt` (default) | 4.77 MHz 8088, ~298k steps/s | 2:05 |
+| `turbo` | 8-10 MHz XT clone, ~597k | 1:12 |
+| `at` | ~1.19M | 0:47 |
+| `386` | 33 MHz 386DX, ~5.99M | 0:25 |
 
 If the emulator feels slower than another one you have used, this is
 why, and it is not a defect: DOSBox's default of 3000 cycles per
@@ -91,7 +92,7 @@ you watch it, and divides both numbers.
 
 | | reaches the challenge in |
 |---|---|
-| `--speed at` (four times the CPU) | 0:47 |
+| `--speed 386` (twenty times the CPU) | 0:25 |
 | `--fast 20` | **0:04** |
 | `--fast max` | 0:04 |
 
@@ -155,7 +156,7 @@ names exactly what to widen — that is the whole M3 method, and
 
 ```
 --headless              no window, no audio device; runs flat out
---speed xt|turbo|at     which machine to be (see the table above)
+--speed xt|turbo|at|386 which machine to be (see the table above)
 --fast N|max            run virtual time N times faster than the wall
 --scale N               window size; the frame is 320x200, so 3 gives 960x600
 --until TICKS           stop at a moment in virtual time

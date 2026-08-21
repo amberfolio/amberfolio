@@ -184,6 +184,13 @@ extern "C" {
 #define AF_SPEED_PC_XT 0u
 #define AF_SPEED_TURBO_XT 1u
 #define AF_SPEED_AT 2u
+#define AF_SPEED_PC_386 3u
+
+/// The largest preset there is, so a caller can validate one without
+/// knowing how many there are — and so `af_machine_set_speed` has one
+/// name to bound against rather than whichever enumerator happens to be
+/// last this month.
+#define AF_SPEED_MAX AF_SPEED_PC_386
 
 // --- Key actions ------------------------------------------------------
 

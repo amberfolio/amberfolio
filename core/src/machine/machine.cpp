@@ -2,6 +2,7 @@
 
 #include "amberfolio/machine/machine.h"
 
+#include <limits>
 #include <span>
 
 namespace amberfolio::machine {
@@ -82,6 +83,7 @@ void machine::reset() {
   // reset() arms it against the time base the run is about to start on
   // rather than against the one that just ended.
   now_ = 0;
+  subtick_ = 0;
   deadlines_.disarm_all();
 
   // The platform interface. The frame is blanked and republished so that
@@ -150,7 +152,26 @@ bool machine::set_step_cost(ticks cost) noexcept {
   if (cost == 0) {
     return false;
   }
+  return set_step_cost_subticks(cost * subticks_per_tick);
+}
+
+ticks machine::time_after_steps(std::uint64_t steps) const noexcept {
+  const ticks limit = std::numeric_limits<ticks>::max();
+  if (step_cost_ != 0 && steps > (limit - subtick_) / step_cost_) {
+    return limit;
+  }
+  const ticks by = (subtick_ + steps * step_cost_) / subticks_per_tick;
+  return by > limit - now_ ? limit : now_ + by;
+}
+
+bool machine::set_step_cost_subticks(ticks cost) noexcept {
+  if (cost == 0) {
+    return false;
+  }
   step_cost_ = cost;
+  // The carried fraction belongs to the cost that produced it; keeping it
+  // across a change would spend part of one machine's tick on another's.
+  subtick_ = 0;
   return true;
 }
 
@@ -232,7 +253,13 @@ cpu::step_status machine::step() {
     // to keep moving. A stop is the one thing that costs nothing —
     // nothing happened, and a caller looping past it must not be able to
     // run the clock away.
-    now_ += step_cost_;
+    // The clock, through the subtick accumulator (clock.h). On every
+    // whole-tick preset `subtick_` is zero before and after, so this is
+    // the plain `now_ += cost` it replaced; on a 386 it is what lets five
+    // instructions share one tick.
+    subtick_ += step_cost_;
+    now_ += subtick_ / subticks_per_tick;
+    subtick_ %= subticks_per_tick;
   } else {
     const cpu::stop_record& refused = cpu_.stop();
     stop_ = {.reason = stop_reason::processor,

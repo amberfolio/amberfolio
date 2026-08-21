@@ -59,6 +59,29 @@ inline constexpr ticks pit_input_hz = 1'193'182;
 /// site rather than a null check at each of them.
 inline constexpr ticks never = UINT64_MAX;
 
+/// Fractions of a tick one step may cost, and the reason the governor is
+/// not simply a count of ticks.
+///
+/// A tick is 838 nanoseconds. An 8088 cannot retire an instruction in
+/// anything like that, so for the machines this emulator started with a
+/// step cost of one, two or four whole ticks said everything there was to
+/// say. A 386 can: at six million instructions a second it retires five
+/// of them per tick, and "one step costs 0.199 ticks" is not a sentence a
+/// `ticks` can hold.
+///
+/// So the cost is kept in 1/256ths of a tick and accumulated, with the
+/// whole ticks handed to the clock as they come out. A power of two so
+/// the division and the remainder are a shift and a mask, and 256 because
+/// it puts the worst rounding error — a 386 asked for 5.99 MIPS gets
+/// 5.99 MIPS — four orders of magnitude below anything that could matter,
+/// which is the same argument `pit_input_hz` makes for rounding itself.
+///
+/// **Nothing changes for a whole-tick machine.** A cost that is a
+/// multiple of `subticks_per_tick` leaves the accumulator at zero after
+/// every step, so the clock advances by exactly the same amount on
+/// exactly the same steps it always did.
+inline constexpr ticks subticks_per_tick = 256;
+
 /// The speed governor: how much virtual time one scheduling step costs.
 ///
 /// PLAN.md §3 settles the model — "virtual time advances by a fixed cost
@@ -100,24 +123,49 @@ enum class speed_preset : std::uint8_t {
   /// to count in a fraction of a tick everywhere, deliberately, not to
   /// let this enum grow a zero.
   at,
+  /// A 33 MHz 386DX: 51/256 of a tick per step, about 5,990,000 steps a
+  /// second.
+  ///
+  /// Derived the same way `pc_xt` is, and stated so it can be argued
+  /// with: six million instructions a second out of 33.3 MHz is five and
+  /// a half clocks an instruction, which is what a 386 running 16-bit
+  /// code out of memory with a wait state or two actually managed — well
+  /// short of the 4.4 the instruction timings promise and well short of
+  /// the Dhrystone figure the chip was sold on.
+  ///
+  /// This is the machine a Gold Box game feels *fast* on, and the one
+  /// people ran slowdown utilities to get away from. Whether that is
+  /// pleasant to play is exactly the question #107 answers by playtest.
+  pc_386,
 };
 
-/// The step cost `preset` names, in ticks.
+/// The step cost `preset` names, in `subticks_per_tick`ths of a tick.
 ///
-/// Spelled `ticks_per_step` and not `step_cost` because `machine` has a
-/// `step_cost()` accessor for the value it is currently running at, and a
-/// member of that name would hide this one inside the very class that
-/// needs to call it.
-[[nodiscard]] constexpr ticks ticks_per_step(speed_preset preset) noexcept {
+/// Spelled `subticks_per_step` and not `step_cost` because `machine` has
+/// a `step_cost_subticks()` accessor for the value it is currently
+/// running at, and a member of that name would hide this one inside the
+/// very class that needs to call it.
+[[nodiscard]] constexpr ticks subticks_per_step(speed_preset preset) noexcept {
   switch (preset) {
     case speed_preset::turbo_xt:
-      return 2;
+      return 2 * subticks_per_tick;
     case speed_preset::at:
-      return 1;
+      return subticks_per_tick;
+    case speed_preset::pc_386:
+      // 1,193,182 * 256 / 51 = 5,989,305 steps a second.
+      return 51;
     case speed_preset::pc_xt:
       break;
   }
-  return 4;
+  return 4 * subticks_per_tick;
+}
+
+/// How many steps a second `preset` runs at, for a caller that wants to
+/// print it. Integer arithmetic, rounded down, and exact enough that the
+/// three whole-tick presets come out on their documented figures.
+[[nodiscard]] constexpr std::uint64_t steps_per_second(
+    speed_preset preset) noexcept {
+  return pit_input_hz * subticks_per_tick / subticks_per_step(preset);
 }
 
 /// The preset a machine starts on. The game was written for an XT, so a
