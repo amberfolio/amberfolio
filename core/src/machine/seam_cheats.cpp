@@ -178,7 +178,26 @@ constexpr std::uint32_t end_check_offset = 0x0880;
 
 /// At the damage routine's entry: zero the damage word when the target is
 /// a party member. The program's own routine then runs on zero.
-void spare_the_party(machine& box, seam_context& /*ctx*/) {
+///
+/// The frame is checked before it is edited, and the seam declines rather
+/// than writing when the check fails (`seam_context::decline`, #96's
+/// fail-closed rule). What is checked is the one thing that cannot be
+/// argued with: a character record is a far pointer into the program's
+/// own memory, and **nothing lives in segment 0** — that is the interrupt
+/// vector table and the BDA (`machine/memory_map.h`). A frame whose
+/// record argument reads `0000:0004` is not the frame these facts
+/// describe, and a zero written into the word eight bytes up from SP is
+/// then a zero written into whatever happens to be there.
+///
+/// That is not hypothetical. Driven against the real program (#103,
+/// `docs/playable.md`), this point fires four times in a whole encounter
+/// with exactly such frames, and the party's hit points come out
+/// *different* from a run with the seam off — neither invulnerable nor
+/// untouched, which is the worst of the three. The check makes the seam
+/// say so once instead: one `inert point_not_recognized` line, and the
+/// program left alone. Finding the routine this offset was meant to name
+/// is #99's to finish.
+void spare_the_party(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
@@ -188,6 +207,10 @@ void spare_the_party(machine& box, seam_context& /*ctx*/) {
       cpu.read_word(ss, word_after(sp, frame_record_offset));
   const std::uint16_t record_segment =
       cpu.read_word(ss, word_after(sp, frame_record_segment));
+  if (record_segment == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
   const auto side = static_cast<std::int8_t>(
       cpu.read_byte(record_segment, word_after(record_offset, rec_side)));
   if (side != side_party) {

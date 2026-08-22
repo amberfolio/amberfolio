@@ -669,6 +669,13 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
       return "this seam was written against another schema version";
     case machine::seam_error::module_not_resident:
       return "the module this seam lives in is not resident";
+    case machine::seam_error::point_not_recognized:
+      // Never an answer to `enable()` - a handler produces it, at a
+      // point, and the host renders it through the seam-event line. Here
+      // because the enumeration is one and a switch over it has to be
+      // whole.
+      return "what is at one of this seam's points is not what its facts"
+             " describe";
     case machine::seam_error::too_many_points:
       return "too many interception points for this build";
     case machine::seam_error::no_room:

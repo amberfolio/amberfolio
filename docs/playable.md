@@ -152,8 +152,7 @@ cheats seam is for (#99, `docs/seams.md`):
 
 `cheat-kill-all` works: the enemies fall at the end of the round and the
 encounter ends in victory rather than in `THE END!`. `cheat-invulnerable`
-is **partially effective on the real program** — see the note at the
-bottom of this document.
+**does not**, and says so — see the note at the bottom of this document.
 
 ## Leg 3 — a save, and a load (#105)
 
@@ -232,14 +231,21 @@ Honest gaps, so nobody reads more into a green run than is there:
 - **The city services** — shops, training hall, temple, inn (#104). The
   city hall's entrance event fires and its interior renders; buying,
   selling, training and resting have not been driven.
-- **`cheat-invulnerable` on the real program (#99, #103).** In the same
-  goblin encounter, driven by the identical keystrokes, the party
-  character ends on 1 hit point with only `cheat-kill-all` on and on 5
-  with `cheat-invulnerable` on as well. The seam therefore fires for some
-  hits and not for others: it reduces damage rather than eliminating it,
-  which for a sweep that is meant not to be a dice roll is the wrong kind
-  of nearly. Its interception point covers one damage path and the
-  encounter uses more than one.
+- **`cheat-invulnerable` on the real program (#99, #103).** Its point is
+  not the damage routine. It fires four times in a whole encounter, and
+  the frame it finds is not the one its facts describe — the record
+  argument reads `0000:0004`, inside the interrupt vector table, where no
+  character record can be. Before this was found, the seam wrote its zero
+  anyway and the party came out of the same scripted encounter on five
+  hit points instead of one: neither invulnerable nor untouched. It now
+  checks the frame and declines instead —
+
+      amberfolio: seam cheat-invulnerable inert point_not_recognized
+
+  once, with the program left alone, which the same encounter confirms:
+  one hit point, exactly as with the seam off. Finding the routine the
+  offset was meant to name is #99's to finish, and until it does, a sweep
+  that needs a party to survive needs `cheat-kill-all`.
 - **The dungeon.** Everything above is the city and its slums.
 - **The web host** (#108) runs the same core and the same recordings, and
   none of these legs has been driven on the dev page.
