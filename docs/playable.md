@@ -150,11 +150,19 @@ cheats seam is for (#99, `docs/seams.md`):
 --seam cheat-invulnerable --seam cheat-kill-all
 ```
 
-Both work, and both had to be corrected first — neither had ever been run
-against the program (#99, #103). With them on, the same encounter ends
-`THE PARTY HAS WON. EACH CHARACTER RECEIVES 15 EXPERIENCE POINTS.` and
-the party is on its full hit points; with them off it ends on one hit
-point and a `CONTINUE BATTLE:` prompt.
+`cheat-invulnerable` works: with it on the same encounter ends with the
+party on its full eight hit points, where without it the party ends on
+one. It had to be corrected first — its two arguments were written down
+the wrong way round, and neither cheat had ever been run against the
+program (#99, #103).
+
+`cheat-kill-all` is **inert**, and not because of its facts: the module
+and offset are right, but the seam arms against where the overlay tracker
+last saw that module *read*, and the routine executes from somewhere it
+was moved to. `docs/seams.md` has it. Until that is fixed, a sweep that
+needs a party to survive an encounter has invulnerability and nothing
+else — which is enough for the party, and not enough to finish a fight
+that is going badly.
 
 ## Leg 3 — a save, and a load (#105)
 
@@ -230,6 +238,7 @@ worklist line, and `docs/machine.md` §5 is what to do with it.
 
 Honest gaps, so nobody reads more into a green run than is there:
 
+- **`cheat-kill-all`** — armed, and inert (above).
 - **The city services** — shops, training hall, temple, inn (#104). The
   city hall's entrance event fires and its interior renders; buying,
   selling, training and resting have not been driven.
