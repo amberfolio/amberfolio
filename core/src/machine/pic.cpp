@@ -6,6 +6,7 @@
 
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/state.h"
 
 namespace amberfolio::machine::pic {
 namespace {
@@ -34,6 +35,15 @@ void controller::reset() {
   imr_ = 0;
   irr0_ = false;
   isr0_ = false;
+}
+
+void controller::save_state(state_sink& out) const {
+  out.u8(static_cast<std::uint8_t>(state_));
+  out.flag(expects_icw3_);
+  out.u8(vector_base_);
+  out.u8(imr_);
+  out.flag(irr0_);
+  out.flag(isr0_);
 }
 
 std::uint8_t controller::read_port(std::uint16_t port) {

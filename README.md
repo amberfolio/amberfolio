@@ -205,9 +205,11 @@ about a host that only a person in front of a display and a speaker can
 ever confirm.
 
 Formatting (`clang-format`), static analysis (`clang-tidy`), shell linting
-(`shellcheck`), the content guard and the DCO check are gates in CI too,
-each a script you can run yourself before pushing:
-[CONTRIBUTING.md](CONTRIBUTING.md#checks-and-gates) has the five commands
+(`shellcheck`), the content guard, the DCO check and the host-time guard
+— nothing under `core/` may read the host's clock, which is what keeps a
+run replayable — are gates in CI too, each a script you can run yourself
+before pushing:
+[CONTRIBUTING.md](CONTRIBUTING.md#checks-and-gates) has the six commands
 and how to install what they need.
 
 ### WebAssembly

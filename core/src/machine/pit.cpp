@@ -6,6 +6,7 @@
 
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/pic.h"
+#include "amberfolio/machine/state.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -42,6 +43,22 @@ void pit_channel::reset() noexcept {
   latched_ = false;
   latched_value_ = 0;
   box_->deadlines().disarm(*this);
+}
+
+void pit_channel::save_state(state_sink& out) const {
+  out.u8(static_cast<std::uint8_t>(mode_));
+  out.u8(static_cast<std::uint8_t>(access_));
+  out.flag(awaiting_msb_);
+  out.u16(partial_write_);
+  out.flag(next_read_is_msb_);
+  out.u32(active_divisor_);
+  out.u64(active_since_);
+  out.flag(has_pending_);
+  out.u32(pending_divisor_);
+  out.flag(gate_);
+  out.u64(gate_paused_at_);
+  out.flag(latched_);
+  out.u16(latched_value_);
 }
 
 void pit_channel::write_control(pit_access access, pit_mode mode) noexcept {
@@ -377,6 +394,12 @@ void pit::reset() {
   channel0_.reset();
   channel1_.reset();
   channel2_.reset();
+}
+
+void pit::save_state(state_sink& out) const {
+  channel0_.save_state(out);
+  channel1_.save_state(out);
+  channel2_.save_state(out);
 }
 
 std::uint8_t pit::read_port(std::uint16_t port) {

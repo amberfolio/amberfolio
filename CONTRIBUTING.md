@@ -74,18 +74,23 @@ CI logs, and screenshots.
 
 ## Checks and gates
 
-Beside the build-and-test matrix, five scripted checks gate every push,
+Beside the build-and-test matrix, six scripted checks gate every push,
 and each is a script in [`scripts/`](scripts) you can run yourself. CI runs
 exactly these scripts — no CI-only variant, no extra flags — so a green run
 locally is a green run there:
 
 ```sh
-bash scripts/check-clean.sh   # content guard: every commit, index, worktree
-bash scripts/check-dco.sh     # every non-merge commit carries a sign-off
-bash scripts/check-format.sh  # clang-format over tracked C++
-bash scripts/check-tidy.sh    # clang-tidy; needs a configured build tree
-bash scripts/check-shell.sh   # shellcheck over scripts/
+bash scripts/check-clean.sh      # content guard: every commit, index, worktree
+bash scripts/check-dco.sh        # every non-merge commit carries a sign-off
+bash scripts/check-host-time.sh  # nothing under core/ reads the host's clock
+bash scripts/check-format.sh     # clang-format over tracked C++
+bash scripts/check-tidy.sh       # clang-tidy; needs a configured build tree
+bash scripts/check-shell.sh      # shellcheck over scripts/
 ```
+
+The host-time guard is what keeps a run replayable (`docs/replay.md`):
+virtual time is the machine's only clock, and a `<chrono>` or a `time()`
+under `core/` would put the host's wall clock into machine state.
 
 The first two look at **history**, not just your tip commit — an artifact
 or a missing sign-off four commits back fails the push even if the tree is

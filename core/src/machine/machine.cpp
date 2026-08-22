@@ -441,6 +441,90 @@ void machine::dispatch_services() {
   }
 }
 
+void machine::save_state(state_sink& out) const {
+  // The order is the layout (state.h). Nothing here reads anything but
+  // the machine's own members and asks the filesystem one question per
+  // open file; nothing is changed.
+
+  out.begin(state_section::clock);
+  out.u64(now_);
+  out.u64(subtick_);
+  out.u64(steps_);
+
+  out.begin(state_section::cpu);
+  const cpu::registers& regs = cpu_.regs();
+  for (const std::uint16_t word : regs.word) {
+    out.u16(word);
+  }
+  for (const std::uint16_t segment : regs.segment) {
+    out.u16(segment);
+  }
+  out.u16(regs.ip);
+  out.u16(regs.flags);
+  out.flag(cpu_.halted());
+  out.flag(cpu_.nmi_pending());
+  out.flag(cpu_.intr_pending());
+  out.u8(cpu_.intr_vector());
+  out.flag(cpu_.interrupts_inhibited());
+  out.flag(cpu_.trap_pending());
+  out.flag(cpu_.repeat_suspended());
+  out.u16(cpu_.repeat_resume_ip());
+
+  out.begin(state_section::ram);
+  out.bytes(memory_.ram());
+
+  out.begin(state_section::devices);
+  out.u8(static_cast<std::uint8_t>(attached_));
+  for (std::size_t i = 0; i < attached_; ++i) {
+    devices_[i]->save_state(out);
+    out.flag(devices_[i]->faulted());
+  }
+
+  out.begin(state_section::scheduler);
+  deadlines_.save_state(out);
+
+  out.begin(state_section::keyboard);
+  keyboard_.save_state(out);
+
+  out.begin(state_section::dos);
+  dos_.save_state(out);
+  // The position of every open file is the backend's (vfs.h), asked of
+  // it here because the machine is what holds the filesystem. A seek of
+  // zero from the current position moves nothing.
+  for (std::uint16_t h = 0; h < dos_services::max_handles; ++h) {
+    const dos_services::handle_state* slot = dos_.find(h);
+    if (slot == nullptr || slot->kind != dos_services::handle_kind::file ||
+        vfs_ == nullptr) {
+      continue;
+    }
+    const vfs_result<std::uint32_t> at =
+        vfs_->seek(slot->backing, seek_origin::current, 0);
+    out.u8(static_cast<std::uint8_t>(h));
+    out.u32(at.ok() ? at.value : 0xFFFFFFFFU);
+  }
+
+  out.begin(state_section::wall);
+  wall_.save_state(out);
+
+  out.begin(state_section::input);
+  input_.save_state(out);
+
+  out.begin(state_section::console);
+  console_.save_state(out);
+
+  out.begin(state_section::audio);
+  audio_.save_state(out);
+
+  out.begin(state_section::display);
+  display_.save_state(out);
+  out.flag(video_mode_set_);
+
+  out.begin(state_section::stop);
+  out.u8(static_cast<std::uint8_t>(stop_.reason));
+  out.u32(stop_.at);
+  out.u8(stop_.exit_code);
+}
+
 void machine::note_file_read(const dos_path& file, std::uint32_t file_offset,
                              std::uint16_t segment, std::uint16_t offset,
                              std::uint32_t length,

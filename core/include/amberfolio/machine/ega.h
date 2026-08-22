@@ -413,6 +413,7 @@ class ega final : public device {
 
   [[nodiscard]] claims claimed() const noexcept override;
   void reset() override;
+  void save_state(state_sink& out) const override;
 
   [[nodiscard]] std::uint8_t read_memory(std::uint32_t address) override;
   void write_memory(std::uint32_t address, std::uint8_t value) override;

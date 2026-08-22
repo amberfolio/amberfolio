@@ -180,6 +180,21 @@ class processor {
   /// single-step trap it owes has not been delivered yet.
   [[nodiscard]] bool trap_pending() const noexcept { return trap_pending_; }
 
+  /// The vector the controller is holding up with INTR — meaningful while
+  /// `intr_pending()`. A replay's state serialization (machine/state.h)
+  /// needs it; nothing else reads it from outside.
+  [[nodiscard]] std::uint8_t intr_vector() const noexcept {
+    return intr_vector_;
+  }
+
+  /// Whether a repeated string instruction is suspended between
+  /// iterations, and where an interrupt taken now would resume it — the
+  /// last prefix byte, as interrupts.h explains. For the same reader.
+  [[nodiscard]] bool repeat_suspended() const noexcept { return suspended_; }
+  [[nodiscard]] std::uint16_t repeat_resume_ip() const noexcept {
+    return resume_ip_;
+  }
+
   /// Hold external interrupt recognition off until after the next
   /// instruction. STI (#33), `MOV Sreg, r/m` (#18) and `POP Sreg` (#23)
   /// call this — one window, one flag, for the reasons interrupts.h

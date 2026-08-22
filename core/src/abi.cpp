@@ -34,6 +34,7 @@
 #include "amberfolio/machine/pit.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/renderer.h"
+#include "amberfolio/machine/replay.h"
 #include "amberfolio/machine/report.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
@@ -64,12 +65,17 @@ struct af_machine {
 
 namespace {
 
+using amberfolio::machine::hash_state;
 using amberfolio::machine::key_action;
 using amberfolio::machine::machine;
+using amberfolio::machine::replay_player;
 using amberfolio::machine::run_end;
 using amberfolio::machine::seam_state;
 using amberfolio::machine::speed_preset;
+using amberfolio::machine::state_hashes;
 using amberfolio::machine::stop_reason;
+using amberfolio::machine::verify_recording;
+using amberfolio::machine::verify_result;
 using amberfolio::machine::wall_time;
 
 // The packing in abi.h gives each component 8 bits. Nothing enforces that
@@ -278,11 +284,19 @@ struct reference_devices {
     // `machine::attach()`'s own
     // `stop_with(stop_reason::conflicting_claim, ...)` if that ever
     // stops being true, rather than being asserted away.
+    //
+    // The order is `hosts/sdl`'s and `tests/programs/machine_harness`'s,
+    // and since #100 it has to be: the canonical state hashes attached
+    // devices in attach order (machine/state.h), so a recording made on
+    // one target verifies on another only if all three wire the same
+    // list the same way. It is otherwise free — the claims below do not
+    // overlap, so no dispatch depends on it — which is exactly why it
+    // can be spent on this.
     box.set_filesystem(fs);
     box.attach(pic_ctrl);
     box.attach(pit_dev);
-    box.attach(video);
     box.attach(spk);
+    box.attach(video);
     box.schedule(pit_dev.channel0_deadline());
     box.schedule(pit_dev.channel2_deadline());
     box.schedule(spk);
@@ -960,6 +974,43 @@ uint32_t af_machine_set_entry(af_machine* handle, uint32_t cs, uint32_t ip,
   regs[amberfolio::cpu::sreg::ss] = static_cast<std::uint16_t>(ss);
   regs[amberfolio::cpu::reg16::sp] = static_cast<std::uint16_t>(sp);
   return AF_OK;
+}
+
+uint32_t af_machine_state_hash(const af_machine* handle, char* out,
+                               uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || out == nullptr ||
+      max < amberfolio::sha256_digest::text_length + 1) {
+    return 0;
+  }
+  const state_hashes hashes = hash_state(*box);
+  return static_cast<uint32_t>(
+      amberfolio::format_hex(hashes.whole, std::span<char>(out, max)));
+}
+
+uint32_t af_machine_verify_recording(af_machine* handle, const char* text,
+                                     uint32_t length, char* out, uint32_t max) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  if (text == nullptr) {
+    return AF_INVALID;
+  }
+
+  // The player is the caller's in core so that a host can read its
+  // report whichever way it went; here it is this call's, because the
+  // report is the only thing the ABI hands back and it is handed back
+  // now.
+  replay_player player;
+  const verify_result result =
+      verify_recording(*box, box->vfs(), std::span<const char>(text, length),
+                       amberfolio::machine::renderer::frame_period, player);
+
+  if (out != nullptr && max != 0) {
+    static_cast<void>(player.report(std::span<char>(out, max)));
+  }
+  return result.ok() ? AF_OK : AF_INVALID;
 }
 
 }  // extern "C"

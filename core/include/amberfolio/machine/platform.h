@@ -308,6 +308,8 @@
 
 namespace amberfolio::machine {
 
+class state_sink;
+
 // --- Frame out --------------------------------------------------------
 
 /// The framebuffer's width in pixels. The one video mode this machine has
@@ -405,6 +407,11 @@ class framebuffer {
   /// something that no longer exists. A real card blanks while it
   /// re-initialises; this is that.
   void reset() noexcept;
+
+  /// The frame, its palette, its generation and when it completed
+  /// (state.h): what a host presents is machine output and is pinned
+  /// with the rest.
+  void save_state(state_sink& out) const;
 
  private:
   std::array<std::uint8_t, frame_pixels> pixels_{};
@@ -506,6 +513,22 @@ class audio_timeline {
     return dropped_.load(std::memory_order_relaxed);
   }
 
+  /// How many edges the producer has published since the last restart,
+  /// and a running digest of every one of them (tick and level, in
+  /// order). Producer-side only, so machine-thread state like everything
+  /// else in the serialization: the edge list *is* the canonical audio
+  /// state (this file's audio section), and a count plus a digest is how
+  /// a ring that may already have been consumed can still be pinned.
+  [[nodiscard]] std::uint64_t published() const noexcept { return published_; }
+  [[nodiscard]] std::uint64_t edge_digest() const noexcept {
+    return edge_digest_;
+  }
+
+  /// The producer's side of this timeline (state.h): the published count
+  /// and digest, and the last edge. Never the consumer's cursor, the
+  /// horizon, or a sample — those are output.
+  void save_state(state_sink& out) const;
+
   // --- Consumer: exactly one thread, which may be any thread ----------
 
   /// Fill `out` with mono samples at `sample_rate`, box-filtered from the
@@ -583,6 +606,11 @@ class audio_timeline {
   /// edge. Producer-only; never read by the consumer.
   ticks last_published_{};
   bool have_published_{};
+
+  /// Every edge published since the last restart, counted and folded
+  /// into a running FNV-1a over (tick, level) — see `published()`.
+  std::uint64_t published_{};
+  std::uint64_t edge_digest_{1469598103934665603ULL};
 
   /// Consumer-only state. Plain, not atomic, and that is exactly why only
   /// one thread may ever call `render()`.
@@ -669,6 +697,11 @@ class input_queue {
   /// in-flight traffic belonging to the run that just ended, stamped with
   /// ticks from a clock that is about to go back to zero.
   void clear() noexcept;
+
+  /// The events still queued, oldest first (state.h). A key a host posted
+  /// that the keyboard service has not yet drained is machine state the
+  /// next step will consume.
+  void save_state(state_sink& out) const;
 
  private:
   std::array<key_event, capacity> events_{};
@@ -759,6 +792,10 @@ class wall_clock {
   /// counting from a tick that no longer exists, hence the re-base.
   void rebase(ticks from) noexcept;
 
+  /// The seed (state.h): what DOS's date and time functions answer is
+  /// derived from these and the tick, and a replay reseeds them.
+  void save_state(state_sink& out) const;
+
  private:
   /// Hundredths of a second since 1980-01-01 00:00:00, at `base_tick_`.
   /// 64-bit: a century is 3.2e11 of them, which is nowhere near the
@@ -805,6 +842,11 @@ class console_output {
   /// for the same reason it clears the input queue: this is in-flight
   /// traffic from the run that just ended.
   void clear() noexcept;
+
+  /// The bytes not yet drained, oldest first, and the drop count
+  /// (state.h). What the host has already read is the host's; what it
+  /// has not is still the machine's.
+  void save_state(state_sink& out) const;
 
  private:
   std::array<std::uint8_t, capacity> bytes_{};

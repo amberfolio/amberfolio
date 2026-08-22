@@ -154,6 +154,7 @@ namespace amberfolio::machine {
 
 class machine;
 class service_floor;
+class state_sink;
 
 /// DOS's own function-number-invalid error (0x01) and invalid-access-code
 /// error (0x0C) — the DOS 2.x extended error table's entries for the two
@@ -245,6 +246,11 @@ class dos_services {
 
   /// The state behind `handle`, or null if it names nothing open.
   [[nodiscard]] const handle_state* find(std::uint16_t handle) const noexcept;
+
+  /// The handle table and the exit state (state.h). The position of each
+  /// open file is the backend's and is asked of it by `machine`, which
+  /// has the filesystem; this writes what the table itself holds.
+  void save_state(state_sink& out) const;
 
   // --- Exit state -------------------------------------------------------
   //

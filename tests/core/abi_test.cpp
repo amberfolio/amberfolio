@@ -16,8 +16,10 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -245,6 +247,12 @@ struct equipped_machine {
     EXPECT_EQ(af_machine_attach_reference_devices(box.get()), AF_OK);
   }
 
+  /// The same, plus the RESET line — the self test that programs the PIT
+  /// and the 8259 through real bus cycles. A machine that skipped it is a
+  /// machine no host builds, which matters to anything comparing device
+  /// state (`state_section::devices`) and to nothing else.
+  void power_on() const { EXPECT_EQ(af_machine_reset(box.get()), AF_OK); }
+
   [[nodiscard]] af_machine* get() const { return box.get(); }
 
   machine_handle box;
@@ -397,6 +405,237 @@ TEST(AbiVfs, ReportsWhyALoadFailedWithoutFoldingItIntoTheStatus) {
 }
 
 // --- The report (M3-F1, #83, reached from here by M3-F2) ----------------
+
+// --- Replay, through the ABI (#100) --------------------------------------
+//
+// `af_machine_state_hash` and `af_machine_verify_recording` are the two
+// halves of what a host that did not record a run still has to be able to
+// do with one. They are checked against each other on purpose: the
+// recording below is written out of nothing but ABI answers — the
+// program's fingerprint, the file manifest, the tick, the step count and
+// the state hash — and then handed back to the verifier. If the two ever
+// disagreed about what the machine is, a recording built from one would
+// fail through the other, which is the only failure mode that matters
+// here and the only one a golden could not catch.
+//
+// The program is the same two-byte `JMP $` the loader test uses: it never
+// stops, so every checkpoint is of a running machine, and the recording
+// ends on a tick this test chooses.
+
+namespace {
+
+/// The `JMP $` MZ file, and nothing about it that a program needs to be.
+[[nodiscard]] std::array<std::uint8_t, 34> spinning_program() {
+  std::array<std::uint8_t, 34> image{};
+  image[0] = 'M';
+  image[1] = 'Z';
+  image[2] = 34;
+  image[4] = 1;
+  image[8] = 2;
+  image[10] = 0x10;
+  image[16] = 0x00;
+  image[17] = 0x01;
+  image[24] = 0x1C;
+  image[32] = 0xEB;
+  image[33] = 0xFE;
+  return image;
+}
+
+/// One frame of virtual time, in ticks — the boundary
+/// `af_machine_verify_recording` runs to, so the boundary a recording it
+/// will read has to put its checkpoints on.
+constexpr double frame_ticks = 1'193'182.0 / 60.0;
+
+/// `af_machine_state_hash`, as the string a checkpoint line carries.
+[[nodiscard]] std::string state_hash_of(const af_machine* box) {
+  std::array<char, 96> hex{};
+  const std::uint32_t n = af_machine_state_hash(
+      box, hex.data(), static_cast<std::uint32_t>(hex.size()));
+  return {hex.data(), n};
+}
+
+}  // namespace
+
+TEST(AbiReplay, StateHashIsSixtyFourHexDigitsAndMovesWithTheMachine) {
+  const equipped_machine box;
+  box.power_on();
+  const std::array<std::uint8_t, 34> image = spinning_program();
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SPIN.EXE", image.data(),
+                               static_cast<std::uint32_t>(image.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_load_from_vfs(box.get(), "SPIN.EXE", ""), AF_OK);
+
+  const std::string first = state_hash_of(box.get());
+  EXPECT_EQ(first.size(), 64u);
+  EXPECT_TRUE(std::ranges::all_of(first, [](char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+  })) << first;
+
+  // Asking twice does not change the answer, and running does.
+  EXPECT_EQ(state_hash_of(box.get()), first);
+  ASSERT_EQ(af_machine_run_until(box.get(), 40'000.0), AF_OK);
+  EXPECT_NE(state_hash_of(box.get()), first);
+
+  // A buffer that cannot hold the digest and its terminator is refused
+  // rather than filled with two thirds of an answer.
+  std::array<char, 64> narrow{};
+  EXPECT_EQ(af_machine_state_hash(box.get(), narrow.data(),
+                                  static_cast<std::uint32_t>(narrow.size())),
+            0u);
+  EXPECT_EQ(af_machine_state_hash(nullptr, narrow.data(), 96u), 0u);
+}
+
+TEST(AbiReplay, ARecordingBuiltFromAbiAnswersVerifiesThroughTheAbi) {
+  const std::array<std::uint8_t, 34> image = spinning_program();
+
+  // The run that is recorded.
+  std::string text;
+  {
+    const equipped_machine box;
+    box.power_on();
+    ASSERT_EQ(af_machine_vfs_put(box.get(), "SPIN.EXE", image.data(),
+                                 static_cast<std::uint32_t>(image.size())),
+              AF_OK);
+    ASSERT_EQ(af_machine_load_from_vfs(box.get(), "SPIN.EXE", ""), AF_OK);
+
+    std::array<char, 96> hex{};
+    ASSERT_GT(
+        af_machine_program_fingerprint(box.get(), hex.data(),
+                                       static_cast<std::uint32_t>(hex.size())),
+        0u);
+
+    text += "amberfolio-recording 1 state=1\n";
+    text += "program SPIN.EXE ";
+    text += hex.data();
+    text += "\ntail\n";
+
+    // The manifest, in the filesystem's own order — which is what the
+    // player will walk when it checks it.
+    const std::uint32_t files = af_machine_vfs_count(box.get());
+    ASSERT_EQ(files, 1u);
+    for (std::uint32_t i = 0; i < files; ++i) {
+      std::array<char, 32> name{};
+      ASSERT_GT(af_machine_vfs_name_at(box.get(), i, name.data(),
+                                       static_cast<std::uint32_t>(name.size())),
+                0u);
+      std::array<char, 96> digest{};
+      ASSERT_GT(
+          af_machine_vfs_fingerprint(box.get(), name.data(), digest.data(),
+                                     static_cast<std::uint32_t>(digest.size())),
+          0u);
+      text += "file ";
+      text += name.data();
+      text += ' ';
+      text += std::to_string(af_machine_vfs_size_at(box.get(), i));
+      text += ' ';
+      text += digest.data();
+      text += '\n';
+    }
+
+    // Four frames, a checkpoint after each — the boundaries the verifier
+    // runs to, and the reason this loop uses the same number it does.
+    for (int frame = 1; frame <= 4; ++frame) {
+      ASSERT_EQ(af_machine_run_until(box.get(), frame_ticks * frame), AF_OK);
+      text += "checkpoint ";
+      text += std::to_string(
+          static_cast<std::uint64_t>(af_machine_time(box.get())));
+      text += ' ';
+      text += std::to_string(
+          static_cast<std::uint64_t>(af_machine_steps(box.get())));
+      text += ' ';
+      text += state_hash_of(box.get());
+      text += '\n';
+    }
+    text +=
+        "end " +
+        std::to_string(static_cast<std::uint64_t>(af_machine_time(box.get()))) +
+        ' ' +
+        std::to_string(
+            static_cast<std::uint64_t>(af_machine_steps(box.get()))) +
+        '\n';
+  }
+
+  // And the run that has to be it. A second machine, equipped and loaded
+  // the same way and then handed nothing but the text.
+  {
+    const equipped_machine box;
+    box.power_on();
+    ASSERT_EQ(af_machine_vfs_put(box.get(), "SPIN.EXE", image.data(),
+                                 static_cast<std::uint32_t>(image.size())),
+              AF_OK);
+    ASSERT_EQ(af_machine_load_from_vfs(box.get(), "SPIN.EXE", ""), AF_OK);
+
+    std::array<char, 512> report{};
+    EXPECT_EQ(
+        af_machine_verify_recording(
+            box.get(), text.data(), static_cast<std::uint32_t>(text.size()),
+            report.data(), static_cast<std::uint32_t>(report.size())),
+        AF_OK)
+        << report.data();
+    EXPECT_THAT(std::string(report.data()),
+                ::testing::HasSubstr("replay verified checkpoints=4"));
+  }
+}
+
+TEST(AbiReplay, ARecordingOfAnotherMachineIsRefusedAndSaysWhy) {
+  const std::array<std::uint8_t, 34> image = spinning_program();
+
+  // A recording whose every checkpoint hash is wrong. The preamble is
+  // right, so what this asks is whether the *state* comparison bites —
+  // the initial-condition check would refuse it either way otherwise.
+  const equipped_machine first;
+  first.power_on();
+  ASSERT_EQ(af_machine_vfs_put(first.get(), "SPIN.EXE", image.data(),
+                               static_cast<std::uint32_t>(image.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_load_from_vfs(first.get(), "SPIN.EXE", ""), AF_OK);
+
+  std::array<char, 96> hex{};
+  ASSERT_GT(
+      af_machine_program_fingerprint(first.get(), hex.data(),
+                                     static_cast<std::uint32_t>(hex.size())),
+      0u);
+  std::array<char, 96> digest{};
+  ASSERT_GT(
+      af_machine_vfs_fingerprint(first.get(), "SPIN.EXE", digest.data(),
+                                 static_cast<std::uint32_t>(digest.size())),
+      0u);
+
+  std::string text = "amberfolio-recording 1 state=1\nprogram SPIN.EXE ";
+  text += hex.data();
+  text += "\ntail\nfile SPIN.EXE 34 ";
+  text += digest.data();
+  text += '\n';
+  text += "checkpoint " +
+          std::to_string(static_cast<std::uint64_t>(frame_ticks)) + " 0 " +
+          std::string(64, 'a') + '\n';
+  text += "end 19886 0\n";
+
+  std::array<char, 512> report{};
+  EXPECT_EQ(
+      af_machine_verify_recording(
+          first.get(), text.data(), static_cast<std::uint32_t>(text.size()),
+          report.data(), static_cast<std::uint32_t>(report.size())),
+      AF_INVALID);
+  EXPECT_THAT(std::string(report.data()),
+              ::testing::HasSubstr("amberfolio: replay diverged"));
+
+  // And a text that is not a recording at all is refused as malformed
+  // rather than as a machine that differs.
+  const std::string junk = "hello\n";
+  EXPECT_EQ(
+      af_machine_verify_recording(
+          first.get(), junk.data(), static_cast<std::uint32_t>(junk.size()),
+          report.data(), static_cast<std::uint32_t>(report.size())),
+      AF_INVALID);
+  EXPECT_THAT(std::string(report.data()),
+              ::testing::HasSubstr("amberfolio: replay refused"));
+
+  EXPECT_EQ(af_machine_verify_recording(nullptr, junk.data(), 6u, nullptr, 0u),
+            AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_verify_recording(first.get(), nullptr, 0u, nullptr, 0u),
+            AF_INVALID);
+}
 
 TEST(AbiReport, WritesTheSameStopLineTheDesktopHostPrints) {
   const machine_handle box;

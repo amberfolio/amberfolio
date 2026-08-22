@@ -161,6 +161,18 @@ machine_harness::machine_harness(const machine_setup& setup)
       sound_(std::make_unique<machine::speaker>(*box_, *timer_)),
       video_(std::make_unique<machine::ega>(*box_)),
       screen_(std::make_unique<machine::renderer>(*box_, *video_)) {
+  // Attach order is load-bearing since #100: the canonical state hashes
+  // attached devices in attach order (machine/state.h,
+  // `state_section::devices`), so a recording made against one wiring
+  // verifies only against the same wiring. This order — interrupt
+  // controller, timer, speaker, display — is `hosts/sdl`'s and
+  // `reference_devices`' (core/src/abi.cpp) too. All three have to stay
+  // the same list, or "the same run on every target" is not a claim
+  // anything can check.
+  //
+  // Nothing else depends on it: every claim here is a distinct,
+  // non-overlapping window or port range, so no bus dispatch changes.
+  // Which is what makes it free to be chosen for the one thing that does.
   box_->attach(*irq_);
   box_->attach(*timer_);
   box_->attach(*sound_);

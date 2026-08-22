@@ -175,8 +175,9 @@ to be exact.
 
 **Nothing under `core/` may read host time.** No `<chrono>`, no
 `std::time`. That rule is what makes a run recordable and replayable
-(PLAN.md §4), and it is enforced in review rather than mechanically —
-which is a known gap, filed rather than forgotten.
+(PLAN.md §4), and since M4 it is enforced mechanically:
+`scripts/check-host-time.sh` runs in CI's guards job and fails on any
+clock read under `core/` (#78; `docs/replay.md` is what the rule buys).
 
 A step costs a fixed number of ticks under the speed governor; per-opcode
 cycle counting is an explicit non-goal. Devices do not tick. **They

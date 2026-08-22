@@ -10,6 +10,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/service_floor.h"
+#include "amberfolio/machine/state.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -236,6 +237,12 @@ void keyboard_service::reset() noexcept {
   caps_lock_held_ = false;
   num_lock_held_ = false;
   scroll_lock_held_ = false;
+}
+
+void keyboard_service::save_state(state_sink& out) const {
+  out.flag(caps_lock_held_);
+  out.flag(num_lock_held_);
+  out.flag(scroll_lock_held_);
 }
 
 bool keyboard_service::enqueue(machine& mach, std::uint16_t keystroke) {

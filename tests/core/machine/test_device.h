@@ -26,6 +26,7 @@
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/scheduler.h"
 #include "amberfolio/machine/seam.h"
+#include "amberfolio/machine/state.h"
 
 namespace amberfolio::machine::test {
 
@@ -57,6 +58,11 @@ class recording_device final : public device {
   }
 
   void reset() override { ++resets; }
+
+  /// What a stand-in has of state: the byte it answers with. Written so
+  /// a test that hashes a machine with one attached gets a stable
+  /// answer, and nothing else (state.h).
+  void save_state(state_sink& out) const override { out.u8(answer); }
 
   std::uint8_t read_memory(std::uint32_t address) override {
     accesses.push_back({.what = device_access::kind::read_memory,

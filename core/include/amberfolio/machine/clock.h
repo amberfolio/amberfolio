@@ -8,9 +8,11 @@
 // interrupt delivery, and audio synthesis run on virtual time, never host
 // time. Host wall time only throttles presentation, outside machine
 // state." That is what makes a run recordable and replayable, and it is
-// why nothing under core/ may include <chrono> or call anything that asks
-// the host what time it is. There is no clock here to read the host with;
-// the machine owns the counter and it moves only when the machine steps.
+// why nothing under core/ may include the standard library's clocks or
+// call anything that asks the host what time it is — a rule a script
+// enforces now (scripts/check-host-time.sh, #78). There is no clock
+// here to read the host with; the machine owns the counter and it
+// moves only when the machine steps.
 //
 // **The unit is one tick of the PIT input clock**, 1,193,182 Hz. Not
 // microseconds and not CPU clocks: the PIT counts in exactly this unit,

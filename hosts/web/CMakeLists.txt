@@ -114,6 +114,8 @@ set(_amberfolio_web_export_names
   _af_machine_write_memory
   _af_machine_read_memory
   _af_machine_set_entry
+  _af_machine_state_hash
+  _af_machine_verify_recording
   # Web-host-specific, not part of core/include/amberfolio/abi.h: the
   # M2-H2 (#55) embedded demo program, assembled at build time from
   # src/demo_program.cpp and handed out the same "pointer into linear
@@ -208,10 +210,15 @@ find_program(AMBERFOLIO_NODE NAMES node nodejs
   DOC "node executable used to run the wasm module's headless smoke check")
 
 if(AMBERFOLIO_NODE)
+  # The committed sessions come in by path rather than being copied
+  # beside the module: they are source, and a check that read a stale
+  # copy of a golden would be the one failure this whole apparatus exists
+  # to make impossible (tests/sessions/README.md).
   add_test(NAME wasm-module-smoke
     COMMAND "${AMBERFOLIO_NODE}"
       "${AMBERFOLIO_WEB_OUTPUT_DIR}/smoke.mjs"
-      --expect "${PROJECT_VERSION}")
+      --expect "${PROJECT_VERSION}"
+      --sessions "${PROJECT_SOURCE_DIR}/tests/sessions")
   set_tests_properties(wasm-module-smoke PROPERTIES LABELS smoke)
 else()
   # Loud and unregistered rather than quietly skipped: the test presets set

@@ -180,6 +180,7 @@ class controller final : public device {
   }
 
   void reset() override;
+  void save_state(state_sink& out) const override;
 
   [[nodiscard]] std::uint8_t read_port(std::uint16_t port) override;
   void write_port(std::uint16_t port, std::uint8_t value) override;

@@ -42,6 +42,8 @@
 //      same step, so a check that it is produced at all belongs in CI
 //      even though the comparison itself is a local procedure (#92).
 
+import { readFileSync } from 'node:fs';
+
 import {
   loadAmberfolio,
   formatVersion,
@@ -123,6 +125,8 @@ const EXPECTED_EXPORTS = [
   // forgets is silently absent.
   '_af_web_demo_program_bytes',
   '_af_web_demo_program_size',
+  '_af_machine_state_hash',
+  '_af_machine_verify_recording',
   '_af_web_probe_program_bytes',
   '_af_web_probe_program_size',
   '_af_web_probe_seam_register',
@@ -153,18 +157,25 @@ function fnv1a32(bytes) {
 const EXPECTED_FRAMEBUFFER_HASH = 0x24846c85;
 
 function parseArgs(argv) {
+  const sessionsIndex = argv.indexOf('--sessions');
+  const sessions = sessionsIndex === -1 ? null : argv[sessionsIndex + 1];
+  if (sessionsIndex !== -1 && !sessions) {
+    console.error('smoke: --sessions needs a directory argument');
+    process.exit(2);
+  }
+
   const expectIndex = argv.indexOf('--expect');
-  if (expectIndex === -1) return { expected: null };
+  if (expectIndex === -1) return { expected: null, sessions };
 
   const expected = argv[expectIndex + 1];
   if (!expected) {
     console.error('smoke: --expect needs a version argument');
     process.exit(2);
   }
-  return { expected };
+  return { expected, sessions };
 }
 
-const { expected } = parseArgs(process.argv.slice(2));
+const { expected, sessions } = parseArgs(process.argv.slice(2));
 
 // Keep the module's own stdout/stderr distinguishable from ours: a version
 // that matches for the wrong reason is exactly what this is meant to catch.
@@ -767,6 +778,172 @@ if (missing.length === 0) {
     );
   }
   console.log(`smoke: ${Object.keys(expected).length} keyboard rows check out`);
+}
+
+
+// `JMP $` behind a two-paragraph MZ header: the program
+// `tests/sessions/spin.rec` was recorded of. It never stops, so every
+// checkpoint taken of it is of a running machine and a recording of it
+// ends on a tick its recorder chose.
+//
+// Read off the session's own disk rather than assembled here. A session
+// is a recording *plus* the disk it was recorded against — one copy of
+// the bytes, pinned by the recording's own manifest, and the same pair
+// `scripts/sweep.py` hands to the desktop host.
+const spinner = sessions === null
+  ? new Uint8Array(0)
+  : new Uint8Array(readFileSync(`${sessions}/spin/SPIN.EXE`));
+
+// --- Replay, on wasm (#100) ----------------------------------------------
+//
+// The claim M4-R1 exists to make is that a run is *keys, ticks and
+// hashes* and that a machine handed those three reproduces it — on every
+// target, from the same core. The native suite makes it in
+// `AbiReplay.ARecordingBuiltFromAbiAnswersVerifiesThroughTheAbi`; this is
+// the same check on the target that shares none of the native toolchain,
+// which is the only place it could plausibly come apart. If SHA-256, the
+// state layout, the scheduler's tie-break or the EGA's arithmetic differed
+// by one byte under Emscripten, a recording made here would not verify
+// here — and one made on a desktop would not verify here either, which is
+// what the committed session library (#101) will go on to assert.
+//
+// The recording is built out of nothing but ABI answers, so this also
+// pins `stateHash()` and `verifyRecording()` against each other: two
+// functions that disagreed about what the machine is would fail this and
+// nothing else.
+
+if (missing.length === 0 && sessions !== null) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  check(spinner.length === 34, `tests/sessions/spin/SPIN.EXE is ${spinner.length} bytes, expected 34`);
+
+  // One 60 Hz frame of virtual time — the boundary the verifier runs to,
+  // and so the boundary a recording it will read must checkpoint on.
+  const frameTicks = 1193182 / 60;
+
+  const equipped = () => {
+    const machine = new Machine(module);
+    check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    // The RESET line, which programs the PIT and the 8259 through real
+    // bus cycles. A machine that skipped it has different device state
+    // from one that powered on, and a recording is about device state.
+    machine.reset();
+    check(machine.vfsPut('SPIN.EXE', spinner) === AF_OK, 'putting SPIN.EXE failed');
+    check(machine.loadFromVfs('SPIN.EXE', '') === AF_OK, 'loading SPIN.EXE failed');
+    return machine;
+  };
+
+  const recorder = equipped();
+  const fingerprint = recorder.programFingerprint();
+  check(
+    typeof fingerprint === 'string' && fingerprint.length === 64,
+    `the program's fingerprint is ${JSON.stringify(fingerprint)}`,
+  );
+
+  const lines = [
+    'amberfolio-recording 1 state=1',
+    `program SPIN.EXE ${fingerprint}`,
+    'tail',
+    `file SPIN.EXE 34 ${recorder.vfsFingerprint('SPIN.EXE')}`,
+  ];
+
+  const first = recorder.stateHash();
+  check(
+    typeof first === 'string' && first.length === 64 && /^[0-9a-f]+$/.test(first),
+    `the state hash is ${JSON.stringify(first)}`,
+  );
+
+  for (let frame = 1; frame <= 4; ++frame) {
+    check(recorder.runUntil(frameTicks * frame) === AF_OK, `the machine stopped in frame ${frame}`);
+    lines.push(`checkpoint ${Math.round(recorder.time())} ${Math.round(recorder.steps())} ${recorder.stateHash()}`);
+  }
+  check(recorder.stateHash() !== first, 'the state hash did not move as the machine ran');
+  lines.push(`end ${Math.round(recorder.time())} ${Math.round(recorder.steps())}`);
+  recorder.destroy();
+
+  const text = `${lines.join('\n')}\n`;
+
+  const player = equipped();
+  const verdict = player.verifyRecording(text);
+  check(verdict.ok, `the recording did not verify: ${verdict.report}`);
+  check(
+    verdict.report.includes('replay verified checkpoints=4'),
+    `the report is ${JSON.stringify(verdict.report)}`,
+  );
+  player.destroy();
+
+  // And it can fail. One wrong checkpoint hash, and the same machine
+  // refuses the same recording — otherwise everything above is a test of
+  // a function that always says yes.
+  const tampered = text.replace(/(checkpoint \d+ \d+ )[0-9a-f]{64}/, `$1${'a'.repeat(64)}`);
+  check(tampered !== text, 'the recording could not be tampered with');
+  const skeptic = equipped();
+  const refused = skeptic.verifyRecording(tampered);
+  check(!refused.ok, 'a recording with a wrong checkpoint hash was accepted');
+  check(
+    refused.report.includes('replay diverged'),
+    `a tampered recording was refused, but as ${JSON.stringify(refused.report)}`,
+  );
+  skeptic.destroy();
+
+  console.log('smoke: a recording built from ABI answers verified on wasm, and a tampered one did not');
+}
+
+// --- The committed session library, on wasm (#100) -----------------------
+//
+// The other half of `tests/core/machine/session_test.cpp`, and the reason
+// either exists: the same file, verified by two builds that share no
+// compiler, no standard library and no SHA-256 implementation. A pair of
+// builds that agreed about a program's answer and disagreed about the
+// machine underneath it would fail here and nowhere else.
+//
+// tests/sessions/README.md says what each session pins and the short list
+// of changes that may legitimately re-record one. A red result here is
+// not on that list.
+
+if (missing.length === 0 && sessions !== null) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const text = readFileSync(`${sessions}/spin.rec`, 'latin1');
+  check(text.length > 0, 'tests/sessions/spin.rec is empty');
+
+  const loaded = () => {
+    const machine = new Machine(module);
+    check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    machine.reset();
+    check(machine.vfsPut('SPIN.EXE', spinner) === AF_OK, 'putting SPIN.EXE failed');
+    check(machine.loadFromVfs('SPIN.EXE', '') === AF_OK, 'loading SPIN.EXE failed');
+    return machine;
+  };
+
+  const machine = loaded();
+  const verdict = machine.verifyRecording(text);
+  check(
+    verdict.ok,
+    `tests/sessions/spin.rec did not verify on wasm: ${verdict.report}\n` +
+      '        tests/sessions/README.md says when a session may legitimately be\n' +
+      '        re-recorded. If none of those changed, this is a finding about the\n' +
+      '        machine and not about the golden.',
+  );
+  check(
+    verdict.report.includes('replay verified checkpoints=4'),
+    `the report is ${JSON.stringify(verdict.report)}`,
+  );
+  machine.destroy();
+
+  // And it can fail here too.
+  const tampered = text.replace(/(checkpoint \d+ \d+ )[0-9a-f]{64}/, `$1${'a'.repeat(64)}`);
+  check(tampered !== text, 'the committed session could not be tampered with');
+  const skeptic = loaded();
+  const refused = skeptic.verifyRecording(tampered);
+  check(!refused.ok, 'a committed session with a wrong checkpoint hash was accepted');
+  skeptic.destroy();
+
+  console.log('smoke: the committed session tests/sessions/spin.rec verified on wasm');
 }
 
 if (problems.length > 0) {

@@ -59,6 +59,7 @@ add_library(amberfolio-core STATIC
   src/machine/platform.cpp
   src/machine/port_map.cpp
   src/machine/renderer.cpp
+  src/machine/replay.cpp
   src/machine/report.cpp
   src/machine/scheduler.cpp
   src/machine/seam.cpp
@@ -67,6 +68,7 @@ add_library(amberfolio-core STATIC
   src/machine/seam_table.cpp
   src/machine/service_floor.cpp
   src/machine/speaker.cpp
+  src/machine/state.cpp
   src/machine/trace.cpp
   src/machine/vfs.cpp
   src/sha256.cpp

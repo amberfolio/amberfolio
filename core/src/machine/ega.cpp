@@ -10,6 +10,7 @@
 #include <cstdint>
 
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/state.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -65,6 +66,40 @@ void ega::reset() {
 
   latches_.fill(0);
   halt_ = {};
+}
+
+void ega::save_state(state_sink& out) const {
+  // Registers first, planes last: the order a reader of a divergence
+  // would want them in, and the order reset() puts them back.
+  out.u8(seq_index_);
+  for (const std::uint8_t reg : seq_regs_) {
+    out.u8(reg);
+  }
+  out.u8(gc_index_);
+  out.u8(set_reset_);
+  out.u8(enable_set_reset_);
+  out.u8(color_compare_);
+  out.u8(data_rotate_);
+  out.u8(read_map_select_);
+  out.u8(mode_);
+  out.u8(misc_);
+  out.u8(color_dont_care_);
+  out.u8(bit_mask_);
+  out.u8(attr_index_);
+  out.flag(attr_expect_data_);
+  for (const std::uint8_t reg : palette_) {
+    out.u8(reg);
+  }
+  out.u8(overscan_);
+  for (const std::uint8_t latch : latches_) {
+    out.u8(latch);
+  }
+  out.u8(static_cast<std::uint8_t>(halt_.reason));
+  out.u16(halt_.port);
+  out.u8(halt_.value);
+  for (const auto& plane : planes_) {
+    out.bytes(plane);
+  }
 }
 
 std::uint8_t ega::read_memory(std::uint32_t address) {

@@ -77,6 +77,34 @@ git -C "$r" checkout -q main
 git -C "$r" merge -q --no-ff --no-edit side
 expect "unsigned merge commit is exempt from dco" 0 bash "$r/scripts/check-dco.sh"
 
+# The host-time guard (#78): a clock read under core/ fails, the same
+# text anywhere else does not, and the names core legitimately uses —
+# `machine::time()`, `wall_time` — are not caught.
+r=$(mkrepo hosttime)
+mkdir -p "$r/core/src" "$r/hosts"
+printf '#include <cstdint>\nstd::uint64_t now() { return 0; }\n' > "$r/core/src/clean.cpp"
+printf 'struct m { std::uint64_t time() const; }; void f(m& box) { (void)box.time(); }\n' \
+  > "$r/core/src/legal.cpp"
+git -C "$r" add -A
+expect "core without a clock read passes host-time guard" 0 \
+  bash "$r/scripts/check-host-time.sh"
+printf '#include <chrono>\n' > "$r/core/src/chrono.cpp"
+git -C "$r" add -A
+expect "a <chrono> include under core fails host-time guard" 1 \
+  bash "$r/scripts/check-host-time.sh"
+git -C "$r" rm -q --cached core/src/chrono.cpp
+rm "$r/core/src/chrono.cpp"
+printf '#include <ctime>\nlong n() { return (long)time(nullptr); }\n' > "$r/core/src/libc.cpp"
+git -C "$r" add -A
+expect "a libc time() call under core fails host-time guard" 1 \
+  bash "$r/scripts/check-host-time.sh"
+git -C "$r" rm -q --cached core/src/libc.cpp
+rm "$r/core/src/libc.cpp"
+printf '#include <chrono>\n' > "$r/hosts/clock.cpp"
+git -C "$r" add -A
+expect "a clock read outside core is not the host-time guard's business" 0 \
+  bash "$r/scripts/check-host-time.sh"
+
 # The format and shell gates need their tools. Skipping is announced, not
 # silent: a self-test that reports OK for a case it never ran is worse
 # than one that does not run at all.

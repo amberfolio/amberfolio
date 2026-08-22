@@ -61,6 +61,7 @@
 #include "amberfolio/machine/scheduler.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
+#include "amberfolio/machine/state.h"
 #include "amberfolio/machine/trace.h"
 #include "amberfolio/machine/vfs.h"
 
@@ -499,6 +500,11 @@ class machine final : public cpu::bus {
   }
 
   [[nodiscard]] const stop_record& stop() const noexcept { return stop_; }
+
+  /// Write the whole machine's state into `out`, section by section, in
+  /// the canonical layout (state.h, M4-R1 #100). `hash_state()` is the
+  /// one caller that matters; a test that wants the bytes is the other.
+  void save_state(state_sink& out) const;
 
   /// The program terminated itself. Records
   /// `stop_reason::program_exited` with `code` and tells the sink, the

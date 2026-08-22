@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/state.h"
 
 namespace amberfolio::machine {
 
@@ -25,6 +26,11 @@ void speaker::reset() {
   // nothing is armed on the scheduler across a reset for this device to
   // disarm (`machine::reset()` calls `deadlines().disarm_all()` before
   // any device's own `reset()` runs).
+}
+
+void speaker::save_state(state_sink& out) const {
+  out.u8(control_);
+  out.flag(last_level_);
 }
 
 std::uint8_t speaker::read_port(std::uint16_t) {

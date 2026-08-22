@@ -142,6 +142,39 @@
 //     so anything past about 1x is producing sound faster than anything
 //     can consume it. `--verify` counts the resyncs.
 //
+//   --record FILE    write this run down as a recording
+//   --replay FILE    be the run a recording describes, and check it
+//
+//     The two halves of machine/replay.h, and the reason that file says
+//     the player never runs the machine: this loop does. Recording adds
+//     three things to it — a key line where a key is posted, a checkpoint
+//     where a frame ends, an `end` line where the run does — and the
+//     preamble, written before SDL is even up.
+//
+//     Replaying adds one thing and takes one away. It adds a clamp: the
+//     slice stops at the recording's next event as readily as at a frame
+//     boundary, because an event the machine *consumes* has to land on
+//     the exact tick it was recorded at, and a loop that ran through the
+//     tick first would be checking a machine that had already gone
+//     somewhere else. The exception is a checkpoint of a stopped
+//     machine, which this loop has to be allowed to run *past* to
+//     arrive at, because stopping happens inside a step and spends
+//     neither the step nor its ticks — machine/replay.h has that story.
+//
+//     It takes away the keyboard: the recording's keys are the run's
+//     keys, and a key struck at the window during a replay is an input
+//     the recorded run never had. The window still closes.
+//
+//     A replay does not take its speed or its seams from the command
+//     line either — the recording named them, the player applies them
+//     before it checks them, and `--speed`, `--seam` and `--press` are
+//     refused alongside `--replay` rather than silently agreed with.
+//
+//     The verdict is the run's exit code, ahead of the program's own, on
+//     the same reasoning as `--verify`: a run asked to check itself
+//     against a recording is answering that question and not the
+//     program's. Reaching the recording's `end` is part of passing.
+//
 //   -- ARGUMENTS     everything after `--` becomes the command tail
 //
 //     Passed to the loader verbatim, with the single leading space DOS's
@@ -258,6 +291,8 @@
 #include <cstring>
 #include <exception>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <span>
@@ -279,9 +314,11 @@
 #include "amberfolio/machine/pit.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/renderer.h"
+#include "amberfolio/machine/replay.h"
 #include "amberfolio/machine/report.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
+#include "amberfolio/machine/state.h"
 #include "amberfolio/machine/trace.h"
 #include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
@@ -756,14 +793,27 @@ void print_overlay_loads(const machine::machine& box, std::uint64_t& printed) {
 /// carried over from the last step — on a machine faster than one
 /// instruction per tick, doing the multiplication out here would land a
 /// tick away from the step actually asked for.
+///
+/// A replay's next event is one more thing that may bring it closer, and
+/// the reason it is a clamp and not a check: an event the machine
+/// consumes has to arrive on the exact tick it was recorded at, and a
+/// loop that noticed the tick after running through it would already
+/// have run the wrong machine. The one thing the player does not answer
+/// here is a checkpoint of a stopped machine, which this loop has to be
+/// allowed to run past in order to arrive at (machine/replay.h).
 [[nodiscard]] machine::ticks slice_end(const machine::machine& box,
                                        machine::ticks frame_ticks,
                                        std::uint64_t step_budget,
-                                       machine::ticks tick_budget) {
+                                       machine::ticks tick_budget,
+                                       machine::ticks next_event) {
   machine::ticks target = box.time() + frame_ticks;
 
   if (tick_budget != 0 && tick_budget < target) {
     target = tick_budget;
+  }
+
+  if (next_event < target) {
+    target = next_event;
   }
 
   if (step_budget != 0 && box.steps() < step_budget) {
@@ -801,6 +851,14 @@ struct options {
   /// "unlimited".
   std::uint64_t step_budget{0};
   machine::ticks tick_budget{0};
+
+  /// Where `--record` writes the recording, and where `--replay` reads
+  /// one. Empty when the option was not given, and never both at once:
+  /// a run is either the one being recorded or the one being checked
+  /// against a recording, and one that tried to be both would be
+  /// recording its own checks.
+  std::string record_path;
+  std::string replay_path;
 
   /// Where `--dump` writes. Empty when it was not asked for; the two
   /// files are this plus `.ppm` and `.wav`.
@@ -900,6 +958,10 @@ struct options {
       opts.trace = true;
     } else if (arg == "--dump" && i + 1 < argc) {
       opts.dump_prefix = argv[++i];
+    } else if (arg == "--record" && i + 1 < argc) {
+      opts.record_path = argv[++i];
+    } else if (arg == "--replay" && i + 1 < argc) {
+      opts.replay_path = argv[++i];
     } else if (arg == "--steps" && i + 1 < argc) {
       if (!parse_count(argv[++i], opts.step_budget) || opts.step_budget == 0) {
         std::fprintf(stderr, "amberfolio: --steps wants a positive count\n");
@@ -967,6 +1029,8 @@ struct options {
         "                                      [--steps N]"
         " [--until TICKS] [--dump PREFIX] [--trace]\n"
         "                                      [--seam ID] [--seams]\n"
+        "                                      [--record FILE]"
+        " [--replay FILE]\n"
         "                                      [--speed xt|turbo|at|386]\n"
         "                                      [--fast N|max]\n"
         "                                      [-- ARGUMENTS...]\n");
@@ -993,6 +1057,40 @@ struct options {
                  " they cannot be combined with --headless\n");
     return opts;
   }
+  // A run records or it replays; it does not do both. The recording of a
+  // replay would be a copy of its own input with the checks folded in,
+  // and a file that is neither the run nor the verification of one.
+  if (!opts.record_path.empty() && !opts.replay_path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: --record and --replay are the two halves of"
+                 " one thing; ask for one\n");
+    return opts;
+  }
+
+  // The recording names the speed, the seams and every key, and a player
+  // applies all three before it checks them (machine/replay.h). A command
+  // line that also named one of them would be either agreeing silently or
+  // disagreeing silently, and the second is a divergence reported as a
+  // mismatched initial condition — true, but three steps from the cause.
+  // Said here instead.
+  if (!opts.replay_path.empty()) {
+    const char* also = nullptr;
+    if (!opts.seams.empty()) {
+      also = "--seam";
+    } else if (opts.speed != machine::default_speed) {
+      also = "--speed";
+    } else if (!opts.presses.empty()) {
+      also = "--press";
+    }
+    if (also != nullptr) {
+      std::fprintf(stderr,
+                   "amberfolio: the recording decides the seams, the speed"
+                   " and the keys; %s cannot be given with --replay\n",
+                   also);
+      return opts;
+    }
+  }
+
   opts.root = std::filesystem::path(positional[0]);
   opts.program = std::string(positional[1]);
   opts.valid = true;
@@ -1145,6 +1243,90 @@ int main(int argc, char** argv) try {
     return EXIT_SUCCESS;
   }
 
+  // --- Replay: load the recording and become the run it describes -------
+  //
+  // The recording decides the speed, the seams and every key (machine/
+  // replay.h); this host's job is to be that machine and check each
+  // checkpoint. Set up before SDL, so a mismatch of the initial
+  // conditions is reported without a window ever opening.
+  std::string replay_text;
+  machine::replay_player player;
+  const bool replaying = !opts.replay_path.empty();
+  if (replaying) {
+    std::ifstream in(opts.replay_path, std::ios::binary);
+    if (!in) {
+      std::fprintf(stderr, "amberfolio: cannot read %s\n",
+                   opts.replay_path.c_str());
+      return EXIT_FAILURE;
+    }
+    replay_text.assign(std::istreambuf_iterator<char>(in),
+                       std::istreambuf_iterator<char>());
+    if (!player.load(
+            std::span<const char>(replay_text.data(), replay_text.size()))) {
+      std::array<char, machine::replay_report_capacity> line{};
+      static_cast<void>(player.report(line));
+      std::fputs(line.data(), stderr);
+      return EXIT_FAILURE;
+    }
+    // The recording's own speed and seams, applied before it is checked
+    // against the machine: a replay is the run the recording names.
+    box.set_step_cost_subticks(player.preamble().subticks);
+    for (std::size_t i = 0; i < player.preamble().seam_count; ++i) {
+      if (box.seams().enable(player.preamble().seam(i)) !=
+          machine::seam_error::none) {
+        std::fprintf(stderr,
+                     "amberfolio: the recording's seam %.*s is not"
+                     " available for this program\n",
+                     static_cast<int>(player.preamble().seam(i).size()),
+                     player.preamble().seam(i).data());
+        return EXIT_FAILURE;
+      }
+    }
+    if (player.check_initial(box, &files) != machine::replay_status::ok) {
+      std::array<char, machine::replay_report_capacity> line{};
+      static_cast<void>(player.report(line));
+      std::fputs(line.data(), stderr);
+      return EXIT_FAILURE;
+    }
+  }
+
+  // --- Record: the preamble now, the stream as the run goes -------------
+  std::ofstream recording;
+  if (!opts.record_path.empty()) {
+    recording.open(opts.record_path, std::ios::binary | std::ios::trunc);
+    if (!recording) {
+      std::fprintf(stderr, "amberfolio: cannot write %s\n",
+                   opts.record_path.c_str());
+      return EXIT_FAILURE;
+    }
+    std::array<char, 16384> preamble{};
+    const std::size_t n =
+        machine::write_preamble(box, files, opts.program,
+                                std::span<const char>(opts.command_tail.data(),
+                                                      opts.command_tail.size()),
+                                preamble);
+    if (n == 0) {
+      std::fprintf(stderr,
+                   "amberfolio: could not record this run's initial"
+                   " conditions\n");
+      return EXIT_FAILURE;
+    }
+    recording.write(preamble.data(), static_cast<std::streamsize>(n));
+  }
+
+  // One line of a recording, written to `recording` if it is open. Every
+  // line of the stream goes through here, so that a run without --record
+  // pays one branch, and so that this host's spelling of a line and the
+  // player's stay the one spelling in replay.h.
+  const auto record_line = [&recording](const machine::replay_event& event) {
+    if (!recording.is_open()) {
+      return;
+    }
+    std::array<char, machine::replay_max_line> line{};
+    const std::size_t n = machine::format_replay_line(event, line);
+    recording.write(line.data(), static_cast<std::streamsize>(n));
+  };
+
   const std::uint32_t init_flags =
       opts.headless ? 0U : (SDL_INIT_VIDEO | SDL_INIT_AUDIO);
   if (!SDL_Init(init_flags)) {
@@ -1234,9 +1416,31 @@ int main(int argc, char** argv) try {
   machine::run_end ended = machine::run_end::stopped;
   std::uint64_t overlays_printed = 0;
 
+  // The player is primed before the first slice: `next_tick()` answers
+  // only once `apply()` has looked at the recording, and an event
+  // recorded at tick 0 — a key on the very first frame — has to be
+  // delivered before the machine has taken a step, not after.
+  if (replaying) {
+    static_cast<void>(player.apply(box));
+  }
+
   for (;;) {
     if (box.stopped()) {
       ended = machine::run_end::stopped;
+      break;
+    }
+    // A replay that reached the recording's `end` has verified all of it,
+    // and one that diverged has nothing left worth running: every tick
+    // after the first difference is about a machine the recording never
+    // described. Either way this is where the loop ends, and the report
+    // below says which it was.
+    //
+    // `host_quit` because that is what this is from the machine's side:
+    // it was still running and something outside it said stop. The
+    // machine's own ending is checked first, above, so a replay of a
+    // program that exits still reports the exit.
+    if (replaying && player.status() != machine::replay_status::ok) {
+      ended = machine::run_end::host_quit;
       break;
     }
     if (quit) {
@@ -1273,11 +1477,25 @@ int main(int argc, char** argv) try {
         } else if (event.type == SDL_EVENT_KEY_DOWN ||
                    event.type == SDL_EVENT_KEY_UP) {
           const std::uint8_t code = sdl::xt_scancode(event.key.scancode);
-          if (code != 0 && !event.key.repeat) {
-            box.post_key(code, event.type == SDL_EVENT_KEY_DOWN
-                                   ? machine::key_action::down
-                                   : machine::key_action::up);
+          // A replay's keys are the recording's, delivered by the player
+          // at the ticks it names. A key struck at the window during one
+          // would be an input the recorded run never had, so the window
+          // still closes and nothing else gets through.
+          if (code != 0 && !event.key.repeat && !replaying) {
+            const machine::key_action action = event.type == SDL_EVENT_KEY_DOWN
+                                                   ? machine::key_action::down
+                                                   : machine::key_action::up;
+            box.post_key(code, action);
             ++report.keys;
+            // Recorded where it is posted and at the tick it is posted
+            // at: the machine's clock is the only stamp a key has, and
+            // the post is the only moment the machine can see one.
+            machine::replay_event line{};
+            line.kind = machine::replay_line::key;
+            line.at = box.time();
+            line.scancode = code;
+            line.action = action;
+            record_line(line);
           }
         }
       }
@@ -1287,10 +1505,28 @@ int main(int argc, char** argv) try {
     // about how long the last frame took on the wall gets to influence
     // how much machine time passes here. A budget may bring the boundary
     // closer; nothing may push it further out.
-    box.run(slice_end(box, frame_ticks, opts.step_budget, opts.tick_budget));
+    box.run(slice_end(box, frame_ticks, opts.step_budget, opts.tick_budget,
+                      replaying ? player.next_tick() : machine::never));
     drain_console(box);
     if (opts.trace) {
       print_overlay_loads(box, overlays_printed);
+    }
+
+    // Then the events this slice ran up to, delivered and checked before
+    // anything else looks at the machine: a checkpoint is a statement
+    // about the machine at a tick, and the display and the speaker are
+    // read from it just below.
+    if (replaying) {
+      static_cast<void>(player.apply(box));
+    }
+
+    // A checkpoint a frame. The boundary is the machine's own — frame
+    // ticks off its clock, never the wall — so a recording made on one
+    // target names ticks a replay reaches on every other. Taken after the
+    // slice and before the frame is presented, which is the moment the
+    // run has just finished being somewhere describable.
+    if (recording.is_open()) {
+      record_line(machine::checkpoint_of(box));
     }
 
     // With no audio device there is nobody pulling the speaker, so a
@@ -1347,6 +1583,19 @@ int main(int argc, char** argv) try {
     }
 
     ++frame_index;
+  }
+
+  // Where the recording stops, written before SDL comes down so that a
+  // run whose teardown goes wrong still leaves a recording saying how far
+  // it got. A player that reaches this line verified everything before
+  // it; one that runs out of text without it says so.
+  if (recording.is_open()) {
+    machine::replay_event last{};
+    last.kind = machine::replay_line::end;
+    last.at = box.time();
+    last.steps = box.steps();
+    record_line(last);
+    recording.flush();
   }
 
   // The audio stream first, and before the counters below are read: it is
@@ -1417,6 +1666,32 @@ int main(int argc, char** argv) try {
       std::fprintf(stderr, "amberfolio: dump could not write %s\n",
                    wav.string().c_str());
     }
+  }
+
+  // What the recording said, and whether this machine was it. Printed
+  // before `--verify`'s tally and answered before the program's own exit
+  // code, for the reason `--verify` is: a run asked to check itself
+  // against a recording is answering the check's question, not the
+  // program's. A replay that did not reach the recording's `end` failed,
+  // whatever else it did — a run cut short verified a prefix, and a
+  // prefix is not the run.
+  if (replaying) {
+    std::array<char, machine::replay_report_capacity> line{};
+    static_cast<void>(player.report(line));
+    std::fputs(line.data(), stderr);
+    if (!player.done()) {
+      std::fflush(stdout);
+      return EXIT_FAILURE;
+    }
+  }
+
+  // And where a recording went, so that the file's name and the tick it
+  // stops at are in the same log as the run that made it.
+  if (recording.is_open()) {
+    std::fprintf(stderr, "amberfolio: record %s tick=%llu steps=%llu\n",
+                 opts.record_path.c_str(),
+                 static_cast<unsigned long long>(box.time()),
+                 static_cast<unsigned long long>(box.steps()));
   }
 
   if (opts.verify) {
