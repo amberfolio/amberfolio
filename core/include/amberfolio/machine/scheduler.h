@@ -56,6 +56,8 @@
 
 namespace amberfolio::machine {
 
+class state_sink;
+
 /// Something that asks to be woken at a moment in virtual time.
 class scheduled {
  public:
@@ -149,6 +151,12 @@ class scheduler {
   /// part of how the machine was built and does survive it — the same
   /// distinction `machine::reset()` draws for attached devices.
   void disarm_all() noexcept;
+
+  /// Every registration's armed deadline, in registration order
+  /// (state.h): armed or not, and the tick. The registrations themselves
+  /// are wiring and are not written — two machines wired alike agree on
+  /// the count, and two wired differently are not the same machine.
+  void save_state(state_sink& out) const;
 
   [[nodiscard]] std::size_t registered() const noexcept { return registered_; }
 

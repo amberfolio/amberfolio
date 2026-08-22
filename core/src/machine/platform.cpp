@@ -5,6 +5,8 @@
 #include <array>
 #include <cstdint>
 
+#include "amberfolio/machine/state.h"
+
 namespace amberfolio::machine {
 namespace {
 
@@ -127,6 +129,17 @@ void framebuffer::complete(ticks at) noexcept {
   ++generation_;
 }
 
+void framebuffer::save_state(state_sink& out) const {
+  out.u64(generation_);
+  out.u64(completed_at_);
+  out.bytes(pixels_);
+  for (const rgb& entry : palette_) {
+    out.u8(entry.red);
+    out.u8(entry.green);
+    out.u8(entry.blue);
+  }
+}
+
 void framebuffer::reset() noexcept {
   // Filled in place, not `pixels_ = {}`.
   //
@@ -172,7 +185,27 @@ bool audio_timeline::publish(ticks at, bool level) noexcept {
 
   last_published_ = at;
   have_published_ = true;
+
+  // The producer's own record of what it has published, for the state
+  // serialization (state.h): FNV-1a over the tick's eight bytes and the
+  // level, the same mixing the framebuffer checks use.
+  ++published_;
+  std::uint64_t hash = edge_digest_;
+  for (unsigned i = 0; i < 8; ++i) {
+    hash ^= static_cast<std::uint8_t>(at >> (8U * i));
+    hash *= 1099511628211ULL;
+  }
+  hash ^= level ? 1U : 0U;
+  hash *= 1099511628211ULL;
+  edge_digest_ = hash;
   return true;
+}
+
+void audio_timeline::save_state(state_sink& out) const {
+  out.u64(published_);
+  out.u64(edge_digest_);
+  out.flag(have_published_);
+  out.u64(have_published_ ? last_published_ : 0);
 }
 
 void audio_timeline::advance(ticks now) noexcept {
@@ -195,6 +228,8 @@ void audio_timeline::restart() noexcept {
   epoch_.fetch_add(1, std::memory_order_release);
   last_published_ = 0;
   have_published_ = false;
+  published_ = 0;
+  edge_digest_ = 1469598103934665603ULL;
 }
 
 std::uint64_t audio_timeline::integrate(ticks from, ticks to,
@@ -365,6 +400,17 @@ void input_queue::clear() noexcept {
   dropped_ = 0;
 }
 
+void input_queue::save_state(state_sink& out) const {
+  out.u8(static_cast<std::uint8_t>(count_));
+  for (std::size_t i = 0; i < count_; ++i) {
+    const key_event& ev = events_[(first_ + i) % capacity];
+    out.u64(ev.at);
+    out.u8(ev.scancode);
+    out.u8(static_cast<std::uint8_t>(ev.action));
+  }
+  out.u64(dropped_);
+}
+
 // --- wall_clock -------------------------------------------------------
 
 bool wall_clock::set(const wall_time& when, ticks now) noexcept {
@@ -432,6 +478,12 @@ void wall_clock::rebase(ticks from) noexcept {
   base_tick_ = 0;
 }
 
+void wall_clock::save_state(state_sink& out) const {
+  out.u64(base_centiseconds_);
+  out.u64(base_tick_);
+  out.flag(seeded_);
+}
+
 // --- console_output ---------------------------------------------------
 
 void console_output::put(std::uint8_t byte) noexcept {
@@ -464,6 +516,14 @@ void console_output::clear() noexcept {
   first_ = 0;
   count_ = 0;
   dropped_ = 0;
+}
+
+void console_output::save_state(state_sink& out) const {
+  out.u16(static_cast<std::uint16_t>(count_));
+  for (std::size_t i = 0; i < count_; ++i) {
+    out.u8(bytes_[(first_ + i) % capacity]);
+  }
+  out.u64(dropped_);
 }
 
 }  // namespace amberfolio::machine

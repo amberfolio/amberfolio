@@ -39,6 +39,8 @@
 
 namespace amberfolio::machine {
 
+class state_sink;
+
 /// What a bus cycle nothing answers for reads back as.
 ///
 /// Not a guess and not a fake: an ISA bus with nothing driving it floats
@@ -156,6 +158,19 @@ class device {
   /// reason, and it is the common case: only the EGA has memory.
   [[nodiscard]] virtual std::uint8_t read_port(std::uint16_t port);
   virtual void write_port(std::uint16_t port, std::uint8_t value);
+
+  /// Write this device's architectural state into `out`, in a fixed
+  /// order, as fixed-width integers (state.h, M4-R1 #100) — every
+  /// register, latch and counter a program could observe or that decides
+  /// what it observes next, and nothing else. The machine calls this for
+  /// every attached device, in attach order, when a replay takes a
+  /// checkpoint; the bytes are what the checkpoint's hash is taken over.
+  ///
+  /// Pure, not defaulted: a device that wrote nothing would be a device
+  /// whose state a replay could not see, silently — the one failure a
+  /// golden exists to catch. A device with genuinely no state writes
+  /// nothing on purpose and says so in its override.
+  virtual void save_state(state_sink& out) const = 0;
 
   /// Whether this device has refused something since the last
   /// `clear_fault()`. `machine` checks this after every dispatch to a

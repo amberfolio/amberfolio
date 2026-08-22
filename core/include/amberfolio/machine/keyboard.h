@@ -154,6 +154,7 @@ namespace amberfolio::machine {
 
 class machine;
 class service_floor;
+class state_sink;
 
 /// Facts about the IBM PC/XT 83-key keyboard: XT scan code set 1, the US
 /// QWERTY legends printed on it, and the shift-flag bit layout at 40:17.
@@ -388,6 +389,10 @@ class keyboard_service {
   /// enters here precisely because its keystrokes are not part of that
   /// stream. Reached through `machine::inject_keystroke()`.
   bool enqueue(machine& mach, std::uint16_t keystroke);
+
+  /// The three lock-key flags (state.h). The BDA is RAM and is written
+  /// with it; this is the part that is not.
+  void save_state(state_sink& out) const;
 
  private:
   /// Apply one event: update modifier/lock state, detect Ctrl-Break, or

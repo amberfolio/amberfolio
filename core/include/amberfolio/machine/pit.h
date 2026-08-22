@@ -246,6 +246,7 @@
 namespace amberfolio::machine {
 
 class machine;
+class state_sink;
 
 namespace pic {
 class controller;
@@ -307,6 +308,10 @@ class pit_channel final : public scheduled {
   /// permanently-high state channels 0 and 1 are wired to and channel 2
   /// starts in until something drives its gate low).
   void reset() noexcept;
+
+  /// This channel's state, in a fixed order (state.h). The deadline it
+  /// has armed is the scheduler's to write, not this channel's.
+  void save_state(state_sink& out) const;
 
   /// 43h decoded down to "this channel, this access mode, this mode" —
   /// `pit::write_port` is where SC/RW/M/BCD get pulled apart and
@@ -445,6 +450,7 @@ class pit final : public device {
   }
 
   void reset() override;
+  void save_state(state_sink& out) const override;
 
   [[nodiscard]] std::uint8_t read_port(std::uint16_t port) override;
   void write_port(std::uint16_t port, std::uint8_t value) override;

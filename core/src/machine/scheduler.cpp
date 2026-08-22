@@ -2,6 +2,8 @@
 
 #include "amberfolio/machine/scheduler.h"
 
+#include "amberfolio/machine/state.h"
+
 namespace amberfolio::machine {
 
 bool scheduler::add(scheduled& who) {
@@ -72,6 +74,14 @@ void scheduler::dispatch_due(ticks now) {
     in_handler_ = true;
     entries_[at].who->on_deadline(due);
     in_handler_ = false;
+  }
+}
+
+void scheduler::save_state(state_sink& out) const {
+  out.u8(static_cast<std::uint8_t>(registered_));
+  for (std::size_t i = 0; i < registered_; ++i) {
+    out.flag(entries_[i].armed);
+    out.u64(entries_[i].armed ? entries_[i].due : 0);
   }
 }
 

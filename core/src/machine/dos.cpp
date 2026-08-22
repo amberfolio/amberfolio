@@ -20,6 +20,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/service_floor.h"
+#include "amberfolio/machine/state.h"
 #include "amberfolio/machine/vfs.h"
 #include "amberfolio/sha256.h"
 
@@ -74,6 +75,28 @@ const dos_services::handle_state* dos_services::find(
     return nullptr;
   }
   return &handles_[handle];
+}
+
+void dos_services::save_state(state_sink& out) const {
+  for (const handle_state& slot : handles_) {
+    out.flag(slot.in_use);
+    out.u8(static_cast<std::uint8_t>(slot.kind));
+    out.u32(slot.backing.slot);
+    out.flag(slot.written);
+    // The path, component by component: a file's identity to the
+    // program is its name, and a handle reopened on a different file is
+    // a different state.
+    out.u8(static_cast<std::uint8_t>(slot.path.depth()));
+    for (std::size_t i = 0; i < slot.path.depth(); ++i) {
+      const std::span<const char> text = slot.path.component(i).text();
+      out.u8(static_cast<std::uint8_t>(text.size()));
+      for (const char c : text) {
+        out.u8(static_cast<std::uint8_t>(c));
+      }
+    }
+  }
+  out.u8(exit_code_);
+  out.flag(exited_);
 }
 
 namespace {
