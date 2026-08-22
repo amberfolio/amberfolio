@@ -91,7 +91,8 @@ making that line worth reading.
 ```sh
 amberfolio <dir> <program.exe> [--headless] [--scale N] [--verify]
                                [--press KEY@FRAME] [--steps N]
-                               [--until TICKS] [--dump PREFIX] [--trace]
+                               [--until TICKS] [--dump PREFIX]
+                               [--dump-every N] [--trace]
                                [--seam ID] [--speed NAME]
                                [--fast N|max] [-- ARGUMENTS...]
 ```
@@ -123,10 +124,23 @@ fingerprint up by (PLAN.md §5).
 | `--steps N`, `--until TICKS` | bound the run. A hang is otherwise the one failure this host cannot report — the machine is running, nothing has refused anything, and the process just sits there. The budget is clamped into the run slice, so `--steps N` ends on step N exactly and the stop can be reproduced. |
 | `--trace` | keep the last 256 instructions and 64 service calls, and print them with the report. Off by default, at a cost of one branch per step. |
 | `--dump PREFIX` | write `PREFIX.ppm` (the composed frame) and `PREFIX.wav` (the speaker) when the run ends. |
+| `--dump-every N` | also write `PREFIX-NNNNNN.ppm` every N frames. A run is a film and one frame of it is a still; everything past the title happens over tens of virtual seconds, and "what did the screen *do*" is not a question a final frame answers. The number in the name is the one `--press KEY@FRAME` counts in, so a still and the keystroke that caused it are named in the same units. Needs `--dump`, whose prefix it shares. |
 | `-- ARGUMENTS` | everything after `--` becomes the program's command tail, with the leading space DOS leaves in front of one. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step — the last of those is a machine that retires five instructions inside one tick, which is what the clock's subtick accumulator exists for. `xt` is the default and the machine the game was written for. Not a fast-forward — virtual time still governs every deadline, tone and tick, so a run at `at` is as deterministic as one at `xt`; what changes is how much of it fits in a second of yours. Printed when it is not the default. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. The other way of going faster, and not the same one: `--speed` divides only the computation, `--fast` divides the pauses too. **Nothing inside the machine can tell** — same steps, same ticks, same frames, byte-identical framebuffer; only the sleep at the bottom of the loop changes, which is the one place wall time is allowed to appear (platform.h). Meaningless with `--headless`, which never paced, and refused there rather than ignored. |
 | `--seam ID` | turn on one seam (PLAN.md §5, `machine/seam.h`). Off unless named, refused unless the loaded program is the binary the seam's addresses are facts about, and printed when it takes — a run with a seam on is not the same run as one without it. Repeatable. |
+
+`--trace` also prints a line for every file the program names — which one,
+which handle, and what DOS answered:
+
+```
+amberfolio: file open \SAVE\CHARLIST.TXT handle=0006 none from=0B58:063B
+amberfolio: file open \SAVE\CHRDATA1.ITM handle=0000 file_not_found from=0B58:1458
+```
+
+The failures are the interesting half: a program asks whether a save slot
+exists by opening it, so a run's refusals are as much a record of what it
+did as its successes. `docs/machine.md` §5 has the channel's rules.
 
 `--dump` is the one to reach for when the claim is *"the title renders"*.
 `docs/machine.md` §7 says why a golden is the wrong instrument for that,
@@ -313,4 +327,5 @@ into the filesystem through the same ABI the picker uses, loads it from
 there, runs it, and reads the report. The comparison above is a procedure
 a person carries out against their own copy — and it is now written down
 in full, stage by stage and with the notices a healthy run prints, in
-[`docs/first-light.md`](first-light.md).
+[`docs/first-light.md`](first-light.md) — and, for everything past the
+roster, in [`docs/playable.md`](playable.md).

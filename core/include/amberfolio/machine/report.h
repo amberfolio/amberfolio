@@ -146,6 +146,31 @@ inline constexpr std::size_t trace_report_capacity = 24576;
 /// Never null.
 [[nodiscard]] const char* notice_kind_name(notice_kind what) noexcept;
 
+/// The printable name of a naming DOS call - `open`, `create`, `mkdir`,
+/// `unlink`, `close` (diagnostics.h's `file_action`). Never null.
+[[nodiscard]] const char* file_action_name(file_action what) noexcept;
+
+/// The printable name of a VFS error - the enumerator's own spelling, so
+/// a refusal in a log and the case in vfs.h are searchable with the same
+/// string. `none` for the calls that worked, which is what a successful
+/// event carries. Never null.
+[[nodiscard]] const char* vfs_error_name(vfs_error error) noexcept;
+
+/// Render `path` as `\NAME\NAME\LEAF`, into `out`, and answer how many
+/// characters that took, the terminator not counted. The root renders as
+/// a lone separator. `out` is always NUL-terminated when it has room for
+/// even that, the same contract the two report writers below keep.
+///
+/// Here rather than in vfs.h because this is the one direction vfs.h
+/// never needs: a path is parsed from a program's bytes and compared,
+/// and turning one back into text is something only a log does.
+std::size_t format_dos_path(const dos_path& path, std::span<char> out);
+
+/// Enough for any `dos_path`: `max_depth` names of `max_length` each, a
+/// separator before every one of them, and the terminator.
+inline constexpr std::size_t dos_path_capacity =
+    ((dos_name::max_length + 1) * dos_path::max_depth) + 2;
+
 /// The printable name of the processor's own stop reason
 /// (cpu::stop_reason). Never null.
 [[nodiscard]] const char* cpu_stop_reason_name(

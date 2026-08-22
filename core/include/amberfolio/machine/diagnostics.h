@@ -28,6 +28,13 @@
 //     because there was something to invent and the device declined to.
 //     `machine` is what turns it into one: a device has no channel back
 //     here to report anything itself.
+//   * A **file event**. The program opened, made, or removed something
+//     with a *name* (dos.h, M4-G3/#104, M4-G4/#105). A service call says
+//     AH=3Dh and where it came from; only the DOS layer knows which file,
+//     and by the time the call is recorded that answer does not exist
+//     yet. A run's file activity is the one thing the service trace
+//     could never say, and it is what a shop's item data and a save
+//     game's write path are both made of.
 //   * A **seam event**. A seam went on or off, armed itself against a
 //     resident module, or stayed inert and said why (seam.h, M4-F2 #96).
 //     Above the fidelity boundary, unlike everything else here, which is
@@ -44,6 +51,7 @@
 #include <cstdint>
 
 #include "amberfolio/cpu/diagnostics.h"
+#include "amberfolio/machine/vfs.h"
 
 namespace amberfolio::machine {
 
@@ -235,6 +243,67 @@ struct service_call {
                                    const service_call&) = default;
 };
 
+/// What a program did to something with a name.
+///
+/// Deliberately the *naming* calls only. A read or a write names a
+/// handle, and a handle is a number the reader has to trace back to an
+/// open they may not have kept; these five are the calls where the name
+/// is the argument, and between them they say everything about which
+/// files a run touched and which of them it made or destroyed. The
+/// handle traffic in between is what the service trace is already for.
+enum class file_action : std::uint8_t {
+  /// AH=3Dh, an existing file.
+  open,
+  /// AH=3Ch, made or truncated.
+  create,
+  /// AH=39h, a directory.
+  mkdir,
+  /// AH=41h, gone.
+  unlink,
+  /// AH=3Eh, the handle given back. The one non-naming call here,
+  /// because a save game is a file that has to *close* before the player
+  /// can be told it was written, and a log that cannot show the close
+  /// cannot show that.
+  close,
+};
+
+/// One naming call into the DOS layer, recorded once the answer is known.
+///
+/// Unlike `service_call`, which is built before its handler runs, this is
+/// built after: the point of it is the outcome, and the path, and neither
+/// exists until the handler has resolved them.
+struct file_event {
+  file_action what{};
+
+  /// The canonical path the call resolved to — what the machine acted
+  /// on, not the raw bytes at DS:DX, so a log line and the filesystem
+  /// agree about what was touched. Empty for a `close`, which names a
+  /// handle rather than a path; `dos_services` remembers the path an
+  /// open was given, and that is the one a close carries.
+  dos_path path{};
+
+  /// The DOS handle: the one an open or create answered with, or the one
+  /// a close was given. Zero for the calls that have none.
+  std::uint16_t handle{};
+
+  /// `vfs_error::none` when the call worked, and what DOS was about to
+  /// answer with when it did not. A failed open is not a stop and never
+  /// was — a program that asks whether a save slot exists gets told no —
+  /// which is exactly why the failure has to be visible somewhere.
+  vfs_error error{};
+
+  /// Where the call came from, the same value `service_call` carries.
+  std::uint16_t caller_cs{};
+  std::uint16_t caller_ip{};
+
+  [[nodiscard]] constexpr bool ok() const noexcept {
+    return error == vfs_error::none;
+  }
+
+  friend constexpr bool operator==(const file_event&,
+                                   const file_event&) = default;
+};
+
 class diagnostics {
  public:
   diagnostics() = default;
@@ -261,6 +330,16 @@ class diagnostics {
   /// for. A sink that does not want the volume drops them here, where it
   /// costs one branch, rather than the machine deciding for it.
   virtual void report(const service_call& call) = 0;
+
+  /// The program named a file (`file_event` above).
+  ///
+  /// Every one of them, with none of the first-touch filtering notices
+  /// get and for the same reason a service call gets none: this is
+  /// something the program *did*. A boot opens a few dozen files and a
+  /// shop visit a few more, so the volume is nothing like the service
+  /// channel's, and a sink that does not want it still drops it in one
+  /// branch.
+  virtual void report(const file_event& event) = 0;
 
   /// The machine layer gave up.
   virtual void report(const stop_record& stop) = 0;

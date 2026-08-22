@@ -20,7 +20,9 @@
 #   2. the report on a step budget, which is the shape a *hang* takes —
 #      the failure this host previously could not report at all;
 #   3. the dump, which is the file a person looks at when "the title
-#      renders" is the claim being made.
+#      renders" is the claim being made;
+#   4. and `--dump-every`'s refusal when `--dump` gave it no prefix
+#      (M4-G1, #102).
 
 if(NOT HOST OR NOT DISK OR NOT OUT)
   message(FATAL_ERROR
@@ -167,5 +169,27 @@ if(NOT _size EQUAL 192015)
     "is 192015.")
 endif()
 
+# --- 4. --dump-every is refused when there is nowhere to put them -------
+#
+# The stills themselves are checked where a run lasts long enough to
+# have more than one frame — run-verify-program.cmake, whose program
+# plays for a virtual second. What belongs here is the argument check,
+# because it is the same "say why rather than silently do nothing" rule
+# the two above it are made of.
+
+execute_process(
+  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --dump-every 60
+  RESULT_VARIABLE lonely_code
+  ERROR_VARIABLE lonely_err)
+
+if(lonely_code EQUAL 0)
+  message(FATAL_ERROR
+    "--dump-every without --dump was accepted.\nstderr: ${lonely_err}")
+endif()
+if(NOT lonely_err MATCHES "amberfolio: --dump-every needs --dump")
+  message(FATAL_ERROR
+    "--dump-every without --dump did not say why.\nstderr: ${lonely_err}")
+endif()
+
 message(STATUS
-  "sdl host stop report: refusal named, budget bounded, frame dumped")
+  "sdl host stop report: refusal named, budget bounded, frames dumped")

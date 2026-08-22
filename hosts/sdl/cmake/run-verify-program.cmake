@@ -55,8 +55,23 @@ set(ENV{SDL_RENDER_DRIVER} "software")
 # `audio_timeline::render()`. That is the one core function callable off
 # the machine thread, and a second of it under a real device's callback is
 # the closest a runner gets to the threading mistake #80 worried about.
+# `--dump-every` when the caller gave a prefix (M4-G1, #102). This is the
+# only check in the tree where a run lasts long enough to have a *series*
+# of frames, which is the whole of what the option is: everything a
+# player-supplied copy does past the title happens over tens of virtual
+# seconds, and one final frame cannot say what the screen did on the way.
+set(stills)
+if(STILLS)
+  file(GLOB _stale "${STILLS}-*.ppm")
+  if(_stale)
+    file(REMOVE ${_stale})
+  endif()
+  set(stills --dump "${STILLS}" --dump-every 15)
+endif()
+
 execute_process(
   COMMAND "${HOST}" "${DISK}" "${PROGRAM}" --scale 2 --verify --press "${PRESS}"
+    ${stills}
   RESULT_VARIABLE code
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err)
@@ -74,6 +89,40 @@ endif()
 
 if(NOT err MATCHES "verify OK")
   message(FATAL_ERROR "--verify did not pass.\n${context}")
+endif()
+
+if(STILLS)
+  # The key is at frame 60 and the program exits after answering it, so a
+  # cadence of 15 leaves five stills at least: 0, 15, 30, 45, 60.
+  file(GLOB _stills "${STILLS}-*.ppm")
+  list(LENGTH _stills _still_count)
+  if(_still_count LESS 5)
+    message(FATAL_ERROR
+      "--dump-every 15 wrote ${_still_count} stills over sixty frames."
+      "\n${context}")
+  endif()
+
+  # Named for the frame `--press KEY@FRAME` counts in, zero-padded so a
+  # listing sorts into the order the frames happened in.
+  foreach(_frame 000000 000015 000030 000045 000060)
+    if(NOT EXISTS "${STILLS}-${_frame}.ppm")
+      message(FATAL_ERROR
+        "--dump-every skipped frame ${_frame}.\n${context}")
+    endif()
+  endforeach()
+
+  file(READ "${STILLS}-000060.ppm" _still_header LIMIT 15)
+  if(NOT _still_header MATCHES "^P6\n320 200\n255\n")
+    message(FATAL_ERROR "a still is not a 320x200 binary PPM.")
+  endif()
+
+  # The still of the last frame and `--dump`'s own frame are the same
+  # screen under two names — which is what makes a still comparable with
+  # the frame a reader already trusts.
+  if(NOT EXISTS "${STILLS}.ppm")
+    message(FATAL_ERROR
+      "--dump-every displaced the final frame.\n${context}")
+  endif()
 endif()
 
 # Asserted separately from "verify OK" because the host's own failure

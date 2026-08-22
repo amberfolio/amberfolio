@@ -25,12 +25,14 @@
 #include <memory>
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_vfs.h"
+#include "amberfolio/machine/report.h"
 #include "amberfolio/machine/service_floor.h"
 #include "amberfolio/machine/vfs.h"
 #include "gtest/gtest.h"
@@ -149,6 +151,144 @@ struct rig {
 
 [[nodiscard]] std::uint16_t ah(std::uint8_t function) {
   return static_cast<std::uint16_t>(function) << 8u;
+}
+
+// --- The file-activity channel (M4-G3/#104, M4-G4/#105) ----------------
+//
+// A service call says AH=3Dh and where it came from; only the DOS layer
+// knows which file, and it does not know that until the handler has
+// resolved the path (diagnostics.h). These are the tests that the answer
+// reaches the sink - the path canonical, the handle the one the program
+// got back, and the refusals reported rather than swallowed, because "is
+// there a save in slot A" is a question a program asks by opening a file
+// and no is an answer.
+
+/// The events the last call produced, in order.
+[[nodiscard]] std::vector<file_event> events(const rig& r) {
+  return r.log.files;
+}
+
+TEST(dos_file_events, a_create_names_the_path_and_the_handle_it_answered) {
+  rig r;
+  r.write_asciz(path_area, "GAME.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+
+  const std::vector<file_event> got = events(r);
+  ASSERT_EQ(got.size(), 1U);
+  EXPECT_EQ(got[0].what, file_action::create);
+  EXPECT_EQ(got[0].handle, r.regs()[cpu::reg16::ax]);
+  EXPECT_EQ(got[0].error, vfs_error::none);
+  EXPECT_TRUE(got[0].ok());
+
+  std::array<char, dos_path_capacity> text{};
+  format_dos_path(got[0].path, text);
+  EXPECT_STREQ(text.data(), "\\GAME.DAT");
+}
+
+TEST(dos_file_events, an_open_that_fails_is_reported_with_its_reason) {
+  rig r;
+  r.write_asciz(path_area, "MISSING.DAT");
+  r.call(ah(0x3D), 0, 0, path_area);
+  ASSERT_TRUE(r.carry());
+
+  const std::vector<file_event> got = events(r);
+  ASSERT_EQ(got.size(), 1U);
+  EXPECT_EQ(got[0].what, file_action::open);
+  EXPECT_EQ(got[0].error, vfs_error::file_not_found);
+  EXPECT_FALSE(got[0].ok());
+  // No handle to name, and the field says so rather than carrying the
+  // last one that happened to be there.
+  EXPECT_EQ(got[0].handle, 0U);
+}
+
+TEST(dos_file_events, a_close_carries_the_path_the_handle_was_opened_on) {
+  rig r;
+  r.write_asciz(path_area, "GAME.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  const std::uint16_t handle = r.regs()[cpu::reg16::ax];
+
+  r.log.files.clear();
+  r.call(ah(0x3E), handle);
+  ASSERT_FALSE(r.carry());
+
+  const std::vector<file_event> got = events(r);
+  ASSERT_EQ(got.size(), 1U);
+  EXPECT_EQ(got[0].what, file_action::close);
+  EXPECT_EQ(got[0].handle, handle);
+  std::array<char, dos_path_capacity> text{};
+  format_dos_path(got[0].path, text);
+  EXPECT_STREQ(text.data(), "\\GAME.DAT");
+}
+
+TEST(dos_file_events, mkdir_and_unlink_are_named_too) {
+  rig r;
+  r.write_asciz(path_area, "SAVE");
+  r.call(ah(0x39), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+
+  r.write_asciz(path_area, "SAVE\\SLOT.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  r.call(ah(0x3E), r.regs()[cpu::reg16::ax]);
+  ASSERT_FALSE(r.carry());
+  r.write_asciz(path_area, "SAVE\\SLOT.DAT");
+  r.call(ah(0x41), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+
+  const std::vector<file_event> got = events(r);
+  ASSERT_EQ(got.size(), 4U);
+  EXPECT_EQ(got[0].what, file_action::mkdir);
+  EXPECT_EQ(got[1].what, file_action::create);
+  EXPECT_EQ(got[2].what, file_action::close);
+  EXPECT_EQ(got[3].what, file_action::unlink);
+
+  std::array<char, dos_path_capacity> text{};
+  format_dos_path(got[3].path, text);
+  EXPECT_STREQ(text.data(), "\\SAVE\\SLOT.DAT");
+}
+
+TEST(dos_file_events, a_second_mkdir_of_the_same_name_reports_the_refusal) {
+  // What a Gold Box save does on every visit to the camp screen: make the
+  // save directory, ignore the answer, and write into it. The refusal is
+  // ordinary, and the point of reporting it is that a reader of a log can
+  // tell it from a refusal that mattered.
+  rig r;
+  r.write_asciz(path_area, "SAVE");
+  r.call(ah(0x39), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  r.log.files.clear();
+
+  r.write_asciz(path_area, "SAVE");
+  r.call(ah(0x39), 0, 0, path_area);
+  EXPECT_TRUE(r.carry());
+
+  const std::vector<file_event> got = events(r);
+  ASSERT_EQ(got.size(), 1U);
+  EXPECT_EQ(got[0].what, file_action::mkdir);
+  EXPECT_EQ(got[0].error, vfs_error::access_denied);
+}
+
+TEST(dos_file_events, the_reads_and_writes_in_between_say_nothing_here) {
+  // The channel is the naming calls and nothing else: a run's file
+  // activity is which files it touched, and a line per 512-byte chunk
+  // would bury that under the thing the service trace already shows.
+  rig r;
+  r.write_asciz(path_area, "GAME.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  const std::uint16_t handle = r.regs()[cpu::reg16::ax];
+  r.write_asciz(data_area, "DATA");
+  r.log.files.clear();
+
+  r.call(ah(0x40), handle, 4, data_area);
+  ASSERT_FALSE(r.carry());
+  r.call(ah(0x42), handle, 0, 0);
+  ASSERT_FALSE(r.carry());
+  r.call(ah(0x3F), handle, 4, data_area);
+  ASSERT_FALSE(r.carry());
+
+  EXPECT_TRUE(events(r).empty());
 }
 
 // --- The exit criterion: create, write, reopen, seek, read, unlink -----

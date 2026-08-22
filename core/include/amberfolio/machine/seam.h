@@ -199,6 +199,19 @@ enum class seam_reason : std::uint8_t {
   /// The seam is on, but the module one of its points lives in is not
   /// resident, so nothing is armed (overlay.h).
   module_not_resident,
+  /// A point fired, and what the machine held there is not what the
+  /// seam's facts describe — a stack frame whose argument is not the
+  /// pointer it is supposed to be, a record where there is no record.
+  /// The handler did nothing and said so.
+  ///
+  /// The one reason a *running* seam produces, and the reason the
+  /// fail-closed rule needs most. Every other one here is answered
+  /// before a single instruction is intercepted; this one is what keeps
+  /// a seam whose address turned out to be wrong from writing a word
+  /// into whatever happens to be at that offset instead. A cheat that
+  /// silently corrupted a frame would show up as a wrong number on a
+  /// character sheet, three layers from its cause.
+  point_not_recognized,
   /// More points than the engine has room for. A build-time mistake, not
   /// something a caller can recover from.
   too_many_points,
@@ -336,6 +349,15 @@ class seam_context {
   /// Ask the host for `which`. False, and nothing happened, if no host
   /// service is attached — the seam stays inert rather than guessing.
   bool call_host(seam_host_service which, std::uint32_t argument);
+
+  /// "I was reached, and what is here is not what my facts describe."
+  ///
+  /// A handler calls this instead of acting when a precondition it can
+  /// check does not hold, and then returns without touching the machine.
+  /// Reported once per seam per enable — a point in a tight loop would
+  /// otherwise produce a line per iteration and bury the first one, the
+  /// same argument diagnostics.h makes for a notice's first touch.
+  void decline(seam_reason why);
 
  private:
   friend class seam_engine;
@@ -487,6 +509,10 @@ class seam_engine {
     /// Why an enabled seam is not (fully) armed; `none` when it is.
     seam_reason reason{seam_reason::none};
     bool armed{false};
+    /// Whether a handler of this seam has already declined once
+    /// (`seam_context::decline`). Cleared when the seam is enabled, so
+    /// turning it off and on again asks the question afresh.
+    bool declined{false};
   };
 
   struct armed_point {
@@ -506,6 +532,11 @@ class seam_engine {
 
   void report(std::string_view id, seam_event_kind kind,
               seam_reason reason) noexcept;
+
+  /// `seam_context::decline`'s other half: report once per seam per
+  /// enable, and do nothing else. Nothing here touches machine state —
+  /// a decline is the seam saying it did not.
+  void note_decline(std::string_view id, seam_reason why) noexcept;
 
   std::array<slot, max_seams> slots_{};
   std::size_t registered_{};

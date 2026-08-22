@@ -18,6 +18,7 @@
 #include <memory>
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
@@ -249,6 +250,89 @@ TEST(SeamCheatInvulnerable, DoesNothingWhenOff) {
 }
 
 // --- Kill-all-enemies ------------------------------------------------------
+
+// --- The frame that is not a frame (#99, #103) --------------------------
+//
+// Driven against the real program (`docs/playable.md`), this point fires
+// during an encounter with a stack that does not hold what the facts
+// above describe: the record argument reads `0000:0004`, which is inside
+// the interrupt vector table and cannot be a character record. A seam
+// that wrote its zero anyway would put it into whatever is eight bytes up
+// from SP, and the party's hit points would come out neither invulnerable
+// nor untouched — the worst of the three answers. So it declines.
+
+/// Every `inert` event the sink was told about, with its reason.
+[[nodiscard]] std::vector<seam_reason> declines(const rig& r,
+                                                std::string_view id) {
+  std::vector<seam_reason> found;
+  for (const seam_event& event : r.log.seam_events) {
+    if (event.id == id && event.kind == seam_event_kind::inert) {
+      found.push_back(event.reason);
+    }
+  }
+  return found;
+}
+
+/// The frame the real program turned out to present: a record pointer
+/// whose segment is zero.
+void unrecognizable_frame(const rig& r, std::uint16_t sp) {
+  r.put_word(data_segment, sp + 4, 0x0004);
+  r.put_word(data_segment, sp + 6, 0x0000);
+  r.put_word(data_segment, sp + 8, 7);
+}
+
+TEST(SeamCheatInvulnerable, DeclinesAFrameWhoseRecordIsNotAPointer) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-invulnerable"), seam_reason::none);
+  const auto entry = static_cast<std::uint16_t>(
+      r.seam("cheat-invulnerable").points.front().offset);
+
+  constexpr std::uint16_t sp = 0x0400;
+  unrecognizable_frame(r, sp);
+  r.halt_at(image_load_segment, entry, data_segment, data_segment, sp);
+
+  r.pc().step();
+
+  EXPECT_EQ(r.word_at(data_segment, sp + 8), 7u)
+      << "nothing is written into a frame the seam does not recognize";
+  EXPECT_EQ(declines(r, "cheat-invulnerable"),
+            std::vector{seam_reason::point_not_recognized});
+}
+
+TEST(SeamCheatInvulnerable, SaysSoOnceHoweverOftenThePointFires) {
+  // A point inside a combat round fires many times. One line says what
+  // there is to say; a line per firing buries it.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-invulnerable"), seam_reason::none);
+  const auto entry = static_cast<std::uint16_t>(
+      r.seam("cheat-invulnerable").points.front().offset);
+
+  constexpr std::uint16_t sp = 0x0400;
+  unrecognizable_frame(r, sp);
+  for (int i = 0; i < 5; ++i) {
+    r.halt_at(image_load_segment, entry, data_segment, data_segment, sp);
+    r.pc().step();
+  }
+
+  EXPECT_EQ(declines(r, "cheat-invulnerable").size(), 1u);
+}
+
+TEST(SeamCheatInvulnerable, AsksAgainAfterBeingTurnedOffAndOn) {
+  const rig r;
+  const auto entry = static_cast<std::uint16_t>(
+      r.seam("cheat-invulnerable").points.front().offset);
+  constexpr std::uint16_t sp = 0x0400;
+  unrecognizable_frame(r, sp);
+
+  for (int round = 0; round < 2; ++round) {
+    ASSERT_EQ(r.pc().seams().enable("cheat-invulnerable"), seam_reason::none);
+    r.halt_at(image_load_segment, entry, data_segment, data_segment, sp);
+    r.pc().step();
+    ASSERT_EQ(r.pc().seams().disable("cheat-invulnerable"), seam_reason::none);
+  }
+
+  EXPECT_EQ(declines(r, "cheat-invulnerable").size(), 2u);
+}
 
 TEST(SeamCheatKillAll, IsInertUntilTheCombatOverlayIsResident) {
   const rig r;

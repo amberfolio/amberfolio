@@ -32,6 +32,8 @@ const char* seam_reason_name(seam_reason reason) noexcept {
       return "schema_mismatch";
     case seam_reason::module_not_resident:
       return "module_not_resident";
+    case seam_reason::point_not_recognized:
+      return "point_not_recognized";
     case seam_reason::too_many_points:
       return "too_many_points";
     case seam_reason::no_room:
@@ -73,6 +75,8 @@ bool seam_context::call_host(seam_host_service which, std::uint32_t argument) {
   host->serve(*box_, which, argument);
   return true;
 }
+
+void seam_context::decline(seam_reason why) { engine_->note_decline(id_, why); }
 
 // --- seam_engine -------------------------------------------------------------
 
@@ -237,6 +241,7 @@ seam_error seam_engine::enable(std::string_view id) {
   }
 
   s.enabled = true;
+  s.declined = false;  // A fresh enable asks the question again.
   ++enabled_;
   report(id, seam_event_kind::enabled, seam_reason::none);
   arm_all(overlays_);
@@ -330,6 +335,15 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
                      point.module_base, image_base());
     point.run(box, ctx);
   }
+}
+
+void seam_engine::note_decline(std::string_view id, seam_reason why) noexcept {
+  const std::size_t at = index_of(id);
+  if (at == max_seams || slots_[at].declined) {
+    return;
+  }
+  slots_[at].declined = true;
+  report(id, seam_event_kind::inert, why);
 }
 
 void seam_engine::report(std::string_view id, seam_event_kind kind,

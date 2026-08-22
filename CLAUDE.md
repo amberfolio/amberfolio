@@ -19,7 +19,10 @@ party roster — on the desktop host and in a browser, from the same core,
 reporting the same stop line at the same step and composing a
 pixel-identical frame. That is PLAN.md §7's M3 exit criterion, met;
 `docs/first-light.md` is the procedure for checking it, and no test in
-this repository runs the game or ever will.
+this repository runs the game or ever will. `docs/playable.md` is its M4
+sibling: the legs past the roster — a party, the city and its story
+event, a fight with and without the cheats seam, a save and a load —
+each with the keystrokes that drive it and what it is evidence for.
 
 The 8086 interpreter underneath is still exact — all 323 vector files of
 the pinned SingleStepTests/8088 v2 set pass in CI on every push,

@@ -84,6 +84,22 @@ through `seam_event` on the diagnostics channel and through
 `seam_engine::status()` for a host that asks (PLAN.md §5's fail-closed
 rule).
 
+That includes the preconditions a handler can only check **once it is
+running**. Every other refusal is answered before an instruction is
+intercepted; this one is answered at the point, and it is the one the
+rule needs most. A handler that finds the machine is not holding what its
+facts describe — a stack frame whose argument is not the pointer it is
+supposed to be, a record where there is no record — calls
+`ctx.decline(seam_reason::point_not_recognized)` and **returns without
+touching anything**. Reported once per seam per enable, so a point in a
+tight loop says its piece and then stops.
+
+The alternative is worse than doing nothing and worse than crashing: a
+seam whose address turned out to name the wrong routine writes its word
+into whatever is at that offset, and the damage surfaces as a wrong
+number on a character sheet three layers from its cause. Check what you
+can check, and decline what you cannot.
+
 It also must not toggle seams. `enable()`/`disable()` are configuration,
 applied before the program runs or between `run()` calls, never from
 inside one.
@@ -320,6 +336,18 @@ routine then runs on zero and reaches its own conclusion through its own
 code. An enemy's damage is left alone; the qualifier is the record's
 combat-side byte, read where the program is about to read it.
 
+**It does not work on the real program yet, and it now says so.** Driven
+through an encounter (#103, `docs/playable.md`), its point fires four
+times in a whole combat and the frame it finds is not the one the facts
+above describe: the record argument reads `0000:0004`, inside the
+interrupt vector table, where no character record can be. The offset
+names something, but not the routine it was believed to name. Until #99
+finds the right one the handler checks the frame and declines —
+`inert point_not_recognized`, once, and the program left alone. Before
+the check it wrote its zero anyway, and the party came out of the same
+scripted encounter on five hit points instead of one: neither
+invulnerable nor untouched, and no line anywhere saying why.
+
 **Kill-all-enemies** intercepts the once-a-round end check, which lives in
 an overlay and is the point at which the program will next consult the
 combat state, and downs every standing enemy exactly the way the damage
@@ -329,8 +357,9 @@ then finds the enemies' count at zero and ends the combat through its own
 logic. Outside combat the point does nothing.
 
 Both are fail-closed by construction: unavailable on any binary but the
-baseline's, inert with `module_not_resident` while overlay 8 is not
-resident (its module names the read that loads it — file, offset,
+baseline's, inert with `point_not_recognized` when the frame at a point
+is not the one its facts describe, inert with `module_not_resident` while
+overlay 8 is not resident (its module names the read that loads it — file, offset,
 length, and the digest of the bytes — found by reading `--trace`'s
 overlay lines off the program's own boot), and nothing on the hot path
 when off. `tests/core/machine/seam_cheats_test.cpp` drives both handlers

@@ -287,6 +287,48 @@ The `next=` line is the M3 method in one sentence: it names the one
 service, register or opcode to widen, so the worklist is written by the
 machine rather than inferred by whoever is reading the log.
 
+### The other line: which file (M4-G3 #104, M4-G4 #105)
+
+A service call says `INT21 ax=3D02` and where it came from. It cannot say
+*which file*, because the record is built as the stub is reached and the
+path does not exist as an answer until the handler has resolved it — and
+"which file" is what a shop's item data and a save game's write path are
+both made of.
+
+So the DOS layer reports a second, much quieter record of its own:
+
+```
+amberfolio: file mkdir \SAVE handle=0000 access_denied from=0B58:1823
+amberfolio: file create \SAVE\SAVGAMA.DAT handle=0006 none from=0B58:1458
+amberfolio: file close \SAVE\SAVGAMA.DAT handle=0006 none from=0B58:14A8
+amberfolio: file open \SAVE\BOB.CHA handle=0006 none from=0B58:1458
+amberfolio: file unlink \SAVE\BOB.CHA handle=0000 none from=0B58:162D
+```
+
+That is a Gold Box save game in five lines: make the save directory and
+ignore the refusal, write the slot, move the party's character files into
+it. The rules the channel keeps:
+
+- **The naming calls only** — `AH=39h/3Ch/3Dh/41h`, plus `AH=3Eh` because
+  a save is a file that has to *close* before a player can be told it was
+  written. Reads and writes name a handle, and a line per 512-byte chunk
+  would bury what the channel is for under what the service trace already
+  shows.
+- **After the outcome, not before.** The point of the record is the path
+  and the answer, and neither exists until the handler has both.
+- **Refusals are reported, not swallowed.** "Is there a save in slot A"
+  is a question a program asks by opening a file, and `file_not_found` is
+  the answer — the same rule §5 states for the machine as a whole, one
+  layer up.
+- **The path is the canonical one**, not the bytes at `DS:DX`, so a log
+  line and the filesystem agree about what was touched.
+
+A handler that starts naming files adds its `floor.report_file()` call in
+the same change, the way §3 says a service closing a boot-log line adds
+its call to the synthetic boot. `machine_program::file_trace` in
+`tests/programs` is where that gets asserted, in order and including the
+refusals.
+
 ---
 
 ## 6. Talking to a host
