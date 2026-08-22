@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Seven programs, written in the assembly listing above each builder and
-// hand-encoded beneath it — programs.cpp's own convention, one layer out.
+// The machine programs, written in the assembly listing above each builder
+// and hand-encoded beneath it — programs.cpp's own convention, one layer out.
 // The listing is the source of truth for what the program means; the
 // bytes are the source of truth for what it does. Both are here so a
 // reader can check one against the other.
@@ -22,8 +22,13 @@
 #include <string>
 #include <utility>
 
+#include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/font.h"
+#include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
+#include "amberfolio/sha256.h"
 #include "programs/assembler.h"
 #include "programs/exe.h"
 
@@ -1867,6 +1872,99 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
                     .image = a.assemble()});
 }
 
+// --- 9. The seam probe ----------------------------------------------------
+//
+// M4-F2 (#96). A self-written program with a self-written seam: a
+// breakpoint that edits a register and one that posts a key, run twice —
+// once with the seam on and once with it off — so the difference between
+// an enhanced machine and a plain one is a pair of result words on every
+// target, and the toggle is something CI exercises rather than describes.
+//
+// The seam is keyed to this program's own SHA-256 (`seam_probe_definition`),
+// the way every real seam is keyed to the binary its addresses describe,
+// and its points are offsets this assembler names — which is the whole
+// shape of PLAN.md §5 at the size of a test.
+//
+//         push cs / pop ds
+//         mov  ax, 1111h
+// edit:   mov  [result+0], ax        ; the seam sets AX=2222h just before
+//         mov  cx, 4000h
+// poll:   mov  ah, 01h / int 16h     ; the seam posts 'k' on the way in
+//         jnz  got
+//         loop poll
+//         xor  ax, ax
+//         jmp  done
+// got:    mov  ah, 00h / int 16h
+// done:   mov  [result+2], ax
+//         <exit 88h>
+//
+// With the seam off the poll loop runs its 16,384 iterations against an
+// empty buffer and stores zero; with it on, the first poll finds the key
+// the seam just posted, which is what makes "nothing went through the
+// host's queue" a claim the result block can carry.
+
+constexpr std::uint16_t probe_plain_ax = 0x1111;
+constexpr std::uint16_t probe_edited_ax = 0x2222;
+constexpr std::uint8_t probe_key_scancode = 0x25;  // 'k'
+constexpr std::uint8_t probe_key_ascii = 'k';
+constexpr std::uint16_t probe_keystroke =
+    (std::uint16_t{probe_key_scancode} << 8U) | probe_key_ascii;
+
+/// Where the two points are, in the image. Filled in by the one build of
+/// the program below, and read by `seam_probe_definition()`.
+struct probe_layout {
+  std::vector<std::uint8_t> file;
+  std::uint32_t edit_offset{};
+  std::uint32_t poll_offset{};
+};
+
+[[nodiscard]] const probe_layout& probe() {
+  static const probe_layout built = [] {
+    assembler a;
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+    mov_ax(a, probe_plain_ax);
+    a.label("edit");
+    store(a, 0, reg_ax);
+    a.db({0xB9});
+    a.dw(0x4000);  // mov cx, 4000h
+    a.label("poll");
+    a.db({0xB4, 0x01, 0xCD, 0x16});  // mov ah, 01h / int 16h
+    a.jump(0x75, "got");             // jnz got
+    a.jump(0xE2, "poll");            // loop poll
+    a.db({0x31, 0xC0});              // xor ax, ax
+    a.jump(0xEB, "done");            // jmp done
+    a.label("got");
+    a.db({0xB4, 0x00, 0xCD, 0x16});  // mov ah, 00h / int 16h
+    a.label("done");
+    store(a, 1, reg_ax);
+    exit_with(a, 0x88);
+    a.pad_to(machine_layout::result_offset + 0x10);
+
+    probe_layout out;
+    out.edit_offset = static_cast<std::uint32_t>(a.offset_of("edit"));
+    out.poll_offset = static_cast<std::uint32_t>(a.offset_of("poll"));
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x0100,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
+}
+
+/// The two handlers. Plain functions with nowhere to keep state, exactly
+/// as a real seam's are (machine/seam.h).
+void probe_edit_ax(machine::machine& box, machine::seam_context& /*ctx*/) {
+  box.processor().regs()[cpu::reg16::ax] = probe_edited_ax;
+}
+
+void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
+  static_cast<void>(ctx.inject_keystroke(probe_key_scancode, probe_key_ascii));
+}
+
 [[nodiscard]] std::vector<machine_program> build_all() {
   std::vector<machine_program> list;
 
@@ -2190,6 +2288,41 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
     list.push_back(std::move(p));
   }
 
+  {
+    // The same program twice, and the seam is the only difference: two
+    // entries, so the suite asserts the plain run and the enhanced one
+    // each in their own right and neither is inferred from the other.
+    machine_program p;
+    p.name = "seam_probe";
+    p.about = "a self-written seam edits a register and posts a key";
+    p.setup.exe = seam_probe_file();
+    p.setup.exe_path = "\\PROBE.EXE";
+    p.setup.seam_definitions = {&seam_probe_definition()};
+    p.setup.seams = {"probe"};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "AX at the edited instruction, seam on",
+         .value = probe_edited_ax},
+        {.what = "the keystroke the seam posted", .value = probe_keystroke}};
+    p.exit_code = 0x88;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "seam_probe_off";
+    p.about = "the same program with its seam off: a plain machine";
+    p.setup.exe = seam_probe_file();
+    p.setup.exe_path = "\\PROBE.EXE";
+    p.setup.seam_definitions = {&seam_probe_definition()};
+    p.setup.step_cap = 200'000;
+    p.results = {{.what = "AX at the edited instruction, seam off",
+                  .value = probe_plain_ax},
+                 {.what = "no keystroke arrived", .value = 0}};
+    p.exit_code = 0x88;
+    list.push_back(std::move(p));
+  }
+
   for (machine_program& p : list) {
     p.setup.result_words = p.results.size();
   }
@@ -2220,6 +2353,34 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
 }
 
 }  // namespace
+
+const machine::seam_definition& seam_probe_definition() {
+  // Everything the definition points at has to outlive every engine it
+  // is registered with, so it all lives here: the fingerprint text, the
+  // point table, and the definition itself.
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 2> points{
+      {{.module = machine::resident_image,
+        .offset = probe().edit_offset,
+        .run = &probe_edit_ax},
+       {.module = machine::resident_image,
+        .offset = probe().poll_offset,
+        .run = &probe_post_key}}};
+  static const machine::seam_definition definition{
+      .id = "probe",
+      .about = "the test seam: edits AX and posts a keystroke",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
+
+const std::vector<std::uint8_t>& seam_probe_file() { return probe().file; }
 
 std::vector<machine_program> all_machine_programs() { return build_all(); }
 

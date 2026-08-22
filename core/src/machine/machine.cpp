@@ -23,7 +23,11 @@ bool first_touch(std::span<std::uint64_t> bits, std::uint32_t index) {
 }  // namespace
 
 machine::machine(memory_layout layout, diagnostics* log)
-    : memory_(layout), log_(log), cpu_(*this), services_(*this, log) {
+    : memory_(layout),
+      log_(log),
+      cpu_(*this),
+      services_(*this, log),
+      seams_(log) {
   // Power-on, and the self test with it: the vector table, the callout
   // stubs and the BDA are memory, and memory does not lay itself out.
   // In the constructor body rather than in the service floor's own
@@ -35,6 +39,13 @@ machine::machine(memory_layout layout, diagnostics* log)
   // `reset()` just laid the stubs down for. Wiring, like the timer
   // handlers the floor installs itself — see keyboard.h.
   keyboard_.install(services_);
+
+  // The seam engine's view of what is resident (overlay.h): handed over
+  // once, here, so a seam enabled after the program has already loaded
+  // an overlay is armed against what is actually in memory rather than
+  // against nothing. Wiring, not state — nothing is enabled yet, so this
+  // arms nothing.
+  seams_.rearm(overlays_);
 }
 
 bool machine::attach(device& dev) {
@@ -139,8 +150,10 @@ void machine::reset() {
 
   // Every seam off, and no program known: an enabled seam is a statement
   // about a particular binary that has been loaded (seam.h), and a reset
-  // machine has not loaded one.
+  // machine has not loaded one. Nor has it read anything, so the overlay
+  // table goes with it.
   seams_.clear();
+  overlays_.clear();
 
   // The video BIOS's bookkeeping goes back to power-on state along with
   // everything else here: a reset machine has no mode set, exactly as a
@@ -425,6 +438,19 @@ void machine::dispatch_services() {
         cpu_.regs().ip == at) {
       return;
     }
+  }
+}
+
+void machine::note_file_read(const dos_path& file, std::uint32_t file_offset,
+                             std::uint16_t segment, std::uint16_t offset,
+                             std::uint32_t length,
+                             const sha256_digest& digest) {
+  overlays_.note_read(file, file_offset, segment, offset, length, digest);
+  // Only when something is on: with every seam off the engine is not
+  // consulted at all, which is what keeps this bookkeeping and not a
+  // hand on the machine (seam.h, "The fidelity boundary, as a test").
+  if (seams_.any_enabled()) {
+    seams_.rearm(overlays_);
   }
 }
 

@@ -28,6 +28,11 @@
 //     because there was something to invent and the device declined to.
 //     `machine` is what turns it into one: a device has no channel back
 //     here to report anything itself.
+//   * A **seam event**. A seam went on or off, armed itself against a
+//     resident module, or stayed inert and said why (seam.h, M4-F2 #96).
+//     Above the fidelity boundary, unlike everything else here, which is
+//     exactly why it is reported: a run with a seam on is not the same
+//     run, and the log has to say so.
 //
 // One sink takes all of it, including the processor's own stops, so a
 // host wires up one object rather than three. The core stays free of host
@@ -41,6 +46,8 @@
 #include "amberfolio/cpu/diagnostics.h"
 
 namespace amberfolio::machine {
+
+struct seam_event;
 
 /// Why the machine stopped — the machine layer's own reasons. The
 /// processor's are in cpu::stop_reason, and `processor` below is how the
@@ -271,6 +278,13 @@ class diagnostics {
   /// `stop_reason::unimplemented_device` and the port or address from
   /// the same moment, so this is the line that names what happened.
   virtual void report(const device_stop& stop) = 0;
+
+  /// The seam engine did or declined something (seam.h, PLAN.md §5): a
+  /// seam went on or off, armed or went inert because its module is not
+  /// resident, or was refused. The "reports why" half of the fail-closed
+  /// rule, in the same channel as a notice so a boot log carries it —
+  /// once per transition, never once per step.
+  virtual void report(const seam_event& event) = 0;
 
  protected:
   // See cpu/bus.h: held by reference, never deleted through this type.

@@ -55,6 +55,7 @@
 #include "amberfolio/machine/dos.h"
 #include "amberfolio/machine/keyboard.h"
 #include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/port_map.h"
 #include "amberfolio/machine/scheduler.h"
@@ -370,9 +371,38 @@ class machine final : public cpu::bus {
   /// The seam engine (seam.h, PLAN.md §5): the one mechanism by which
   /// anything other than the program's own instructions may touch this
   /// machine, and off by default. A host enables a seam through it; a
-  /// seam handler reaches back through it for `image_base()`.
+  /// seam handler is handed what it needs beside the machine
+  /// (`seam_context`).
   [[nodiscard]] seam_engine& seams() noexcept { return seams_; }
   [[nodiscard]] const seam_engine& seams() const noexcept { return seams_; }
+
+  /// What the program has loaded where, as observed through the DOS file
+  /// layer (overlay.h, M4-F3 #97). Bookkeeping below the fidelity
+  /// boundary: it alters nothing, and the seam engine is its one reader.
+  [[nodiscard]] const overlay_tracker& overlays() const noexcept {
+    return overlays_;
+  }
+
+  /// The DOS read handler's way of telling the tracker a read landed
+  /// (dos.cpp): `length` bytes of `file` from `file_offset`, at
+  /// `segment:offset`, hashing to `digest`. Re-evaluates the seams'
+  /// points when any seam is on; costs the table update and nothing else
+  /// when none is. Not something a host calls — it is one link of the
+  /// machine's own wiring, public for the reason `note_service_call()`
+  /// is.
+  void note_file_read(const dos_path& file, std::uint32_t file_offset,
+                      std::uint16_t segment, std::uint16_t offset,
+                      std::uint32_t length, const sha256_digest& digest);
+
+  /// Put a translated keystroke — scan code high, character low — into
+  /// the BIOS buffer as though the keyboard service had just drained it
+  /// (keyboard.h's `enqueue`). **A seam primitive, not a host entry**: a
+  /// host posts scan codes through `post_key()`, which is the recordable
+  /// stream, and a seam enters here precisely because its keystrokes are
+  /// not part of that stream (seam.h). False if the buffer is full.
+  bool inject_keystroke(std::uint16_t keystroke) {
+    return keyboard_.enqueue(*this, keystroke);
+  }
 
   /// The DOS handle table and exit state INT 21h's handlers use
   /// (dos.h, M2-D7, #52) — present whether or not a program ever calls
@@ -651,6 +681,10 @@ class machine final : public cpu::bus {
   /// `step()` one `bool` test when nothing is on, which is always unless
   /// somebody asked otherwise.
   seam_engine seams_;
+
+  /// What the program has loaded where (overlay.h). Fed by the DOS read
+  /// handler through `note_file_read()`, read by the seam engine.
+  overlay_tracker overlays_;
 
   /// The platform interface (platform.h). Members rather than something
   /// a host supplies, because the buffers have to outlive every pull and

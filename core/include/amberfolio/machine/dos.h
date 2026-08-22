@@ -204,6 +204,11 @@ class dos_services {
     handle_kind kind{};
     /// Meaningful only when `kind == handle_kind::file`.
     file_handle backing{};
+    /// The canonical path the handle was opened on, for `file` handles.
+    /// Kept so a read can be recorded by name (overlay.h, M4-F3 #97):
+    /// the overlay tracker identifies a module by the file it came from,
+    /// and the backend's `file_handle` says nothing about that.
+    dos_path path{};
     /// Whether anything has been written through this handle since it
     /// was opened — AH=44h AL=00h's bit 6 for a file handle, which DOS
     /// reports *clear* once a write has happened. Tracked rather than
@@ -222,11 +227,12 @@ class dos_services {
   /// (service_floor.h makes the same distinction for its own handlers).
   void reset() noexcept;
 
-  /// Claim a slot for an already-open VFS `file`. `no_handle` if the
-  /// table is full — the caller (AH=3Ch/3Dh) must close `file` on the
-  /// backend in that case, or a file the program can never reach stays
-  /// open until the run ends.
-  [[nodiscard]] std::uint16_t open_file(file_handle file) noexcept;
+  /// Claim a slot for an already-open VFS `file`, opened on `path`.
+  /// `no_handle` if the table is full — the caller (AH=3Ch/3Dh) must
+  /// close `file` on the backend in that case, or a file the program can
+  /// never reach stays open until the run ends.
+  [[nodiscard]] std::uint16_t open_file(file_handle file,
+                                        const dos_path& path) noexcept;
 
   /// Release `handle`. False if it was not open — the caller reports
   /// `vfs_error::invalid_handle`.

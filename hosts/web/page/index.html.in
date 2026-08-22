@@ -193,6 +193,14 @@
         </label>
         <button id="boot" type="button" disabled>boot</button>
       </div>
+      <!-- The M4-F4 (#98) half: every seam this build carries, listed once
+           the program is loaded and identified, with a checkbox per seam
+           — off by default, and disabled with the reason when the seam is
+           not available for this program (PLAN.md §5). -->
+      <div class="controls">
+        <span id="edition"></span>
+      </div>
+      <div id="seams" class="controls"></div>
       <p class="note">
         Files are read in your browser and never leave it. A file whose
         name is not a legal DOS 8.3 name is refused by the emulator's own

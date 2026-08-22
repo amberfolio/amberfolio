@@ -45,6 +45,8 @@ import {
   scancodeFor,
   decodeConsoleBytes,
   AF_OK,
+  AF_SEAM_ON,
+  AF_SEAM_UNAVAILABLE,
   AF_RUN_END_STOPPED,
   AF_RUN_END_STEP_BUDGET,
   AF_RUN_END_HOST_QUIT,
@@ -62,6 +64,8 @@ const PROGRAM_SELECT_ID = 'program';
 const TAIL_INPUT_ID = 'tail';
 const STEPS_INPUT_ID = 'steps';
 const TRACE_CHECKBOX_ID = 'trace';
+const EDITION_ID = 'edition';
+const SEAMS_ID = 'seams';
 
 /// A frame's worth of audio, in samples, at this rate — matched to the
 /// video frame rate so one rAF callback pulls roughly one frame of both
@@ -258,6 +262,18 @@ export function runDevPage() {
         );
       }
 
+      // The identity the load established, and the seams it makes
+      // available (M4-F1 #95, M4-F4 #98). An unrecognized edition is an
+      // answer, not a fault: the game runs as a plain machine and every
+      // seam is listed as unavailable with the reason.
+      const edition = box.edition();
+      appendConsole(
+        `[host] edition ${edition ?? 'unrecognized - no seams are available for this program'}\n`,
+      );
+      const editionEl = el(EDITION_ID);
+      if (editionEl) editionEl.textContent = `edition: ${edition ?? 'unrecognized'}`;
+      renderSeams(box, el(SEAMS_ID), appendConsole);
+
       const budget = Number.parseInt(el(STEPS_INPUT_ID)?.value ?? '', 10);
       await run(box, {
         canvas,
@@ -269,6 +285,42 @@ export function runDevPage() {
       });
     })().catch(fail);
   });
+}
+
+/// One checkbox per seam, off by default, disabled with its reason when
+/// the seam is not available for the loaded program. Toggling is a
+/// configuration call between frames (host.mjs) — the page does it in
+/// the change handler, which runs between two rAF callbacks and so never
+/// from inside `runUntil()`. The listing is re-read after every toggle so
+/// an on-but-inert seam (its module is not resident yet) shows as such.
+function renderSeams(machine, container, appendConsole) {
+  if (!container) return;
+  const seams = machine.seamList();
+  container.replaceChildren(
+    ...seams.map((seam) => {
+      const label = document.createElement('label');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = seam.state === AF_SEAM_ON;
+      box.disabled = seam.state === AF_SEAM_UNAVAILABLE;
+      box.addEventListener('change', () => {
+        const status = box.checked ? machine.seamEnable(seam.id) : machine.seamDisable(seam.id);
+        const after = machine.seamList().find((s) => s.id === seam.id);
+        appendConsole(
+          `[host] seam ${seam.id} ${box.checked ? 'on' : 'off'}` +
+            (status === AF_OK ? '' : ` refused (${after?.reason ?? '?'})`) +
+            (after && after.state === AF_SEAM_ON && !after.armed ? ` (inert: ${after.reason})` : '') +
+            '\n',
+        );
+        if (status !== AF_OK) box.checked = !box.checked;
+      });
+      label.append(box, ` ${seam.id} - ${seam.about}`);
+      label.title =
+        seam.state === AF_SEAM_UNAVAILABLE ? `unavailable: ${seam.reason}` : seam.about;
+      return label;
+    }),
+  );
+  if (seams.length === 0) container.textContent = 'this build carries no seams';
 }
 
 /// Present, run, and report — everything both entry points share.

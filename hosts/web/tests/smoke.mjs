@@ -55,6 +55,9 @@ import {
   AF_KEY_DOWN,
   AF_KEY_UP,
   AF_RUN_END_STOPPED,
+  AF_SEAM_OFF,
+  AF_SEAM_ON,
+  AF_SEAM_UNAVAILABLE,
 } from './host.mjs';
 
 /// The ABI's guest list, as hosts/web/CMakeLists.txt sets it. Keep the
@@ -100,15 +103,29 @@ const EXPECTED_EXPORTS = [
   '_af_machine_vfs_fingerprint',
   '_af_machine_load_from_vfs',
   '_af_machine_load_error',
+  '_af_machine_edition',
+  '_af_machine_program_fingerprint',
+  '_af_machine_seam_count',
+  '_af_machine_seam_id',
+  '_af_machine_seam_about',
+  '_af_machine_seam_state',
+  '_af_machine_seam_reason',
+  '_af_machine_seam_armed',
+  '_af_machine_seam_enable',
+  '_af_machine_seam_disable',
   '_af_machine_write_memory',
   '_af_machine_read_memory',
   '_af_machine_set_entry',
   // Web-host-specific (hosts/web/src/main.cpp), not part of
   // core/include/amberfolio/abi.h: the M2-H2 (#55) embedded demo
-  // program. Listed here for the same reason as everything above it —
-  // an export hosts/web/CMakeLists.txt forgets is silently absent.
+  // program and the M4-F4 (#98) seam probe. Listed here for the same
+  // reason as everything above it — an export hosts/web/CMakeLists.txt
+  // forgets is silently absent.
   '_af_web_demo_program_bytes',
   '_af_web_demo_program_size',
+  '_af_web_probe_program_bytes',
+  '_af_web_probe_program_size',
+  '_af_web_probe_seam_register',
 ];
 
 /// FNV-1a, 32-bit. No third-party dependency (PLAN.md §4's house style,
@@ -598,6 +615,108 @@ if (missing.length === 0) {
   );
 
   machine.destroy();
+}
+
+// --- A seam, toggled through the ABI (M4-F4, #98) -------------------------
+//
+// The probe program tests/programs runs with its seam on and off, staged
+// here through the web host's own export and loaded off the filesystem
+// like a player's program. What this asserts is the toggle surface a page
+// sits on: the program is identified as it loads (unrecognized edition,
+// which is the honest answer for a test program), the seam is listed as
+// off and available, the code-wheel seam is listed as unavailable with
+// its reason, and turning the probe on changes the result block in
+// exactly the way the native suite asserts it does.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const runProbe = (seamOn) => {
+    const machine = new Machine(module);
+    check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    machine.reset();
+    check(
+      module._af_web_probe_seam_register(machine.handle) === AF_OK,
+      'the probe seam could not be registered',
+    );
+
+    const ptr = module._af_web_probe_program_bytes();
+    const size = module._af_web_probe_program_size();
+    const exe = module.HEAPU8.slice(ptr, ptr + size);
+    check(size > 0, 'the probe program is empty');
+    check(machine.vfsPut('PROBE.EXE', exe) === AF_OK, 'putting PROBE.EXE failed');
+
+    // Before the load: no program is known, so every seam is unavailable
+    // for want of one.
+    check(machine.edition() === null, 'an edition was reported before anything loaded');
+    check(
+      machine.seamList().every((s) => s.state === AF_SEAM_UNAVAILABLE && s.reason === 'no_program'),
+      'seams were available before a program was loaded',
+    );
+
+    const loadStatus = machine.loadFromVfs('PROBE.EXE', '');
+    check(loadStatus === AF_OK, `loading PROBE.EXE answered ${loadStatus}`);
+
+    // The load identified the program: its fingerprint is known, it is no
+    // edition this build recognizes, and the listing says which seams
+    // apply to it.
+    const fingerprint = machine.programFingerprint();
+    check(
+      typeof fingerprint === 'string' && /^[0-9a-f]{64}$/.test(fingerprint),
+      `the program's fingerprint is ${JSON.stringify(fingerprint)}`,
+    );
+    check(fingerprint === machine.vfsFingerprint('PROBE.EXE'), 'the machine and the filesystem disagree about the fingerprint');
+    check(machine.edition() === null, 'a test program was recognized as a known edition');
+
+    const before = machine.seamList();
+    const probe = before.find((s) => s.id === 'probe');
+    const wheel = before.find((s) => s.id === 'code-wheel');
+    check(probe !== undefined, 'the probe seam is not listed');
+    check(probe?.state === AF_SEAM_OFF && probe?.reason === 'none', `the probe seam starts ${JSON.stringify(probe)}`);
+    check(wheel !== undefined, 'the code-wheel seam is not listed');
+    check(
+      wheel?.state === AF_SEAM_UNAVAILABLE && wheel?.reason === 'wrong_binary',
+      `the code-wheel seam should be unavailable for a test program: ${JSON.stringify(wheel)}`,
+    );
+
+    if (seamOn) {
+      check(machine.seamEnable('probe') === AF_OK, 'enabling the probe seam was refused');
+      const on = machine.seamList().find((s) => s.id === 'probe');
+      check(on?.state === AF_SEAM_ON && on?.armed === true, `the probe seam did not arm: ${JSON.stringify(on)}`);
+      check(machine.seamEnable('code-wheel') === AF_INVALID, 'an unavailable seam was enabled');
+      check(machine.seamEnable('no-such-seam') === AF_INVALID, 'a seam that does not exist was enabled');
+    }
+
+    for (let frame = 0; frame < 120 && !machine.stopped(); ++frame) {
+      machine.runUntil(machine.ticksPerSecond() * ((frame + 1) / 60));
+    }
+    check(machine.stopped(), `the probe program never exited (seam ${seamOn ? 'on' : 'off'})`);
+    check(
+      machine.stopReport(AF_RUN_END_STOPPED).includes('amberfolio: stop exit=136'),
+      `the probe program did not exit 88h (seam ${seamOn ? 'on' : 'off'})`,
+    );
+
+    // The result block: two words at image segment 0060h, offset 0800h
+    // (tests/programs/machine_harness.h) — physical 0x600 + 0x800.
+    const scratch = module._malloc(4);
+    check(module._af_machine_read_memory(machine.handle, 0x600 + 0x800, scratch, 4) === AF_OK, 'reading the result block failed');
+    const words = [
+      module.HEAPU8[scratch] | (module.HEAPU8[scratch + 1] << 8),
+      module.HEAPU8[scratch + 2] | (module.HEAPU8[scratch + 3] << 8),
+    ];
+    module._free(scratch);
+    machine.destroy();
+    return words;
+  };
+
+  const off = runProbe(false);
+  check(off[0] === 0x1111 && off[1] === 0x0000, `seam off: result block is ${JSON.stringify(off.map((w) => w.toString(16)))}, expected 1111, 0`);
+  const on = runProbe(true);
+  check(on[0] === 0x2222 && on[1] === 0x256b, `seam on: result block is ${JSON.stringify(on.map((w) => w.toString(16)))}, expected 2222, 256b`);
+
+  console.log('smoke: the probe seam listed, toggled, edited a register and posted a key');
 }
 
 // --- The keys a keyboard-driven game needs (#84) -------------------------

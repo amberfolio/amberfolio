@@ -5,6 +5,7 @@
 #include <array>
 #include <chrono>
 #include <stdexcept>
+#include <string>
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
@@ -187,6 +188,16 @@ machine_harness::machine_harness(const machine_setup& setup)
   screen_->reset();
   box_->set_step_cost(setup.step_cost);
 
+  // The program's own seams, registered before anything is loaded — the
+  // registry is wiring, like an attached device, and a definition that
+  // does not fit is a mistake in a fixture rather than a run-time
+  // condition.
+  for (const machine::seam_definition* seam : setup.seam_definitions) {
+    if (seam == nullptr || !box_->seams().add(*seam)) {
+      throw std::logic_error("a seam definition could not be registered");
+    }
+  }
+
   // `reset()` bumped the audio timeline's epoch, and the first `render()`
   // after an epoch bump throws away whatever the ring holds (platform.h).
   // Spending that call here, on an empty ring, is what a host's audio
@@ -222,7 +233,25 @@ bool machine_harness::start() {
     result_.load_error = loaded.error;
     result_.loaded = loaded.value;
     running_ = loaded.ok();
-    return loaded.ok();
+    if (!loaded.ok()) {
+      return false;
+    }
+
+    // Identify what was loaded and turn on what was asked for, in that
+    // order — a seam is keyed to the file's fingerprint and placed
+    // against the segment the loader chose (machine/seam.h), and both
+    // are known only now. A refusal is a fixture mistake: the program
+    // and its seam were written together.
+    if (!box_->seams().identify(*fs_, parse_path(setup_->exe_path),
+                                loaded.value.load_segment)) {
+      throw std::logic_error("the loaded program could not be fingerprinted");
+    }
+    for (const std::string_view id : setup_->seams) {
+      if (box_->seams().enable(id) != machine::seam_reason::none) {
+        throw std::logic_error("seam " + std::string(id) + " was refused");
+      }
+    }
+    return true;
   }
 
   // A raw image, placed through `memory().ram()` and not through a bus
@@ -335,6 +364,7 @@ machine_outcome machine_harness::finish() {
   result_.device_stops = log_.device_stops;
   result_.service_calls = log_.service_calls;
   result_.underruns = box_->audio().underruns() - primed_underruns_;
+  result_.seam_events = log_.seam_events;
 
   result_.results.clear();
   const std::span<const std::uint8_t> ram = box_->memory().ram();

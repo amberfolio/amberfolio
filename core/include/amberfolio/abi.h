@@ -197,6 +197,17 @@ extern "C" {
 #define AF_KEY_UP 0
 #define AF_KEY_DOWN 1
 
+// --- Seam states ------------------------------------------------------
+//
+// The values of machine::seam_state (machine/seam.h), for
+// `af_machine_seam_state` below, plus one this side adds: the answer for
+// an index that names no seam. Asserted against the C++ enum in abi.cpp.
+
+#define AF_SEAM_OFF 0u
+#define AF_SEAM_ON 1u
+#define AF_SEAM_UNAVAILABLE 2u
+#define AF_SEAM_NONE 3u
+
 // --- Version ----------------------------------------------------------
 
 /// The version of the core, packed as 0x00MMmmpp: major in bits 16-23,
@@ -543,6 +554,65 @@ uint32_t af_machine_load_from_vfs(af_machine* box, const char* name,
 /// folding fourteen loader outcomes into this file's status space would
 /// make `AF_OK == 0` stop being the only thing a host has to check.
 uint32_t af_machine_load_error(const af_machine* box);
+
+// --- Identity and seams (M4-F1 #95, M4-F4 #98) --------------------------
+//
+// `af_machine_load_from_vfs` also *identifies* the program: it takes the
+// file's SHA-256 and tells the seam engine what is running, which is what
+// makes the seams below available or not (machine/seam.h). Everything
+// here is a configuration call, made between `af_machine_run_until`
+// slices and never from inside one — the same rule a host already keeps
+// for `af_machine_post_key`.
+
+/// The edition the loaded program is, as a name a host shows, written
+/// NUL-terminated into `out`; answers its length. Zero, and nothing
+/// written, when no program is loaded, when the edition is not one this
+/// build knows (machine/edition.h — the honest "unrecognized" answer, in
+/// which case no seam is available), or when `out` is too small.
+uint32_t af_machine_edition(const af_machine* box, char* out, uint32_t max);
+
+/// The SHA-256 of the loaded program, as 64 lowercase hex characters,
+/// NUL-terminated; answers its length, or zero when no program is loaded
+/// or `out` is smaller than 65 bytes. The same digest
+/// `af_machine_vfs_fingerprint` takes of the file, kept on the machine as
+/// an initial condition of the run (PLAN.md §4).
+uint32_t af_machine_program_fingerprint(const af_machine* box, char* out,
+                                        uint32_t max);
+
+/// How many seams this build's registry holds, available or not.
+uint32_t af_machine_seam_count(const af_machine* box);
+
+/// The id and the one-line description of seam `index`, NUL-terminated
+/// into `out`; each answers its length, or zero for an index past the
+/// end or a buffer too small.
+uint32_t af_machine_seam_id(const af_machine* box, uint32_t index, char* out,
+                            uint32_t max);
+uint32_t af_machine_seam_about(const af_machine* box, uint32_t index, char* out,
+                               uint32_t max);
+
+/// Where seam `index` stands: AF_SEAM_OFF, AF_SEAM_ON, or
+/// AF_SEAM_UNAVAILABLE — the last for a seam whose addresses are facts
+/// about a different binary, or for any seam before a program is loaded.
+/// AF_SEAM_NONE for an index past the end.
+uint32_t af_machine_seam_state(const af_machine* box, uint32_t index);
+
+/// Why seam `index` is unavailable, or why an enabled one is not armed
+/// (its module is not resident — machine/overlay.h), as the spelling
+/// `machine::seam_reason_name` gives it, NUL-terminated into `out`.
+/// `none` for a seam that is off, or on and armed. Answers the length, or
+/// zero for a bad index or a small buffer.
+uint32_t af_machine_seam_reason(const af_machine* box, uint32_t index,
+                                char* out, uint32_t max);
+
+/// Whether seam `index` is armed right now — on, and every one of its
+/// points placed. Non-zero means yes.
+int32_t af_machine_seam_armed(const af_machine* box, uint32_t index);
+
+/// Turn the seam called `id` on or off. `AF_OK` if it took; `AF_INVALID`
+/// if there is no such seam or it is unavailable, with the reason
+/// readable through `af_machine_seam_reason` on that seam.
+uint32_t af_machine_seam_enable(af_machine* box, const char* id);
+uint32_t af_machine_seam_disable(af_machine* box, const char* id);
 
 /// Copy `size` bytes into the machine's memory at physical `address`.
 ///

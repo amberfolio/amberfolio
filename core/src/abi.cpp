@@ -17,10 +17,13 @@
 #include <cstdint>
 #include <new>
 #include <span>
+#include <string_view>
 
+#include "amberfolio/abi_bridge.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/dos.h"
+#include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/fingerprint.h"
 #include "amberfolio/machine/int10.h"
@@ -32,6 +35,7 @@
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/renderer.h"
 #include "amberfolio/machine/report.h"
+#include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/vfs.h"
 #include "amberfolio/sha256.h"
@@ -63,6 +67,7 @@ namespace {
 using amberfolio::machine::key_action;
 using amberfolio::machine::machine;
 using amberfolio::machine::run_end;
+using amberfolio::machine::seam_state;
 using amberfolio::machine::speed_preset;
 using amberfolio::machine::stop_reason;
 using amberfolio::machine::wall_time;
@@ -94,6 +99,13 @@ static_assert(AF_OK == static_cast<uint32_t>(stop_reason::none),
               "af_machine_stop_reason() returns machine::stop_reason "
               "directly, so a running machine's reason and AF_OK have to be "
               "the same number.");
+
+// And the seam states (machine/seam.h), which `af_machine_seam_state`
+// answers with directly.
+static_assert(AF_SEAM_OFF == static_cast<uint32_t>(seam_state::off));
+static_assert(AF_SEAM_ON == static_cast<uint32_t>(seam_state::on));
+static_assert(AF_SEAM_UNAVAILABLE ==
+              static_cast<uint32_t>(seam_state::unavailable));
 
 // The same for the run-end values: a host passes one of these straight
 // into `format_stop_report`, so the two spellings have to agree.
@@ -760,7 +772,127 @@ uint32_t af_machine_load_from_vfs(af_machine* handle, const char* name,
     last_load_error = loaded.error;
     return AF_INVALID;
   }
+
+  // The identity of what was just loaded, handed to the seam engine: the
+  // file's SHA-256 and the segment the loader placed it at (machine/seam.h).
+  // Here rather than left to the page, because a host that loaded a
+  // program and forgot to say which is a host whose seams are all
+  // unavailable for a reason nothing explains. A file that loaded cannot
+  // fail to be read again a moment later; the answer is dropped because
+  // the load has already succeeded and is the thing this call reports.
+  static_cast<void>(
+      box->seams().identify(*fs, where, loaded.value.load_segment));
   return AF_OK;
+}
+
+uint32_t af_machine_edition(const af_machine* handle, char* out, uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr) {
+    return 0;
+  }
+  const amberfolio::machine::edition* known = box->seams().known_edition();
+  if (known == nullptr) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(known->name.data(), known->name.size()),
+                  out, max);
+}
+
+uint32_t af_machine_program_fingerprint(const af_machine* handle, char* out,
+                                        uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || !box->seams().have_program()) {
+    return 0;
+  }
+  std::array<char, amberfolio::sha256_digest::text_length + 1> text{};
+  if (amberfolio::format_hex(box->seams().program(), text) == 0) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(text.data(),
+                                        amberfolio::sha256_digest::text_length),
+                  out, max);
+}
+
+uint32_t af_machine_seam_count(const af_machine* handle) {
+  const machine* box = box_of(handle);
+  return box == nullptr ? 0 : static_cast<uint32_t>(box->seams().count());
+}
+
+uint32_t af_machine_seam_id(const af_machine* handle, uint32_t index, char* out,
+                            uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  const std::string_view id = box->seams().status(index).id;
+  return copy_out(std::span<const char>(id.data(), id.size()), out, max);
+}
+
+uint32_t af_machine_seam_about(const af_machine* handle, uint32_t index,
+                               char* out, uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  const std::string_view about = box->seams().status(index).about;
+  return copy_out(std::span<const char>(about.data(), about.size()), out, max);
+}
+
+uint32_t af_machine_seam_state(const af_machine* handle, uint32_t index) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return AF_SEAM_NONE;
+  }
+  return static_cast<uint32_t>(box->seams().status(index).state);
+}
+
+uint32_t af_machine_seam_reason(const af_machine* handle, uint32_t index,
+                                char* out, uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  const std::string_view why =
+      amberfolio::machine::seam_reason_name(box->seams().status(index).reason);
+  return copy_out(std::span<const char>(why.data(), why.size()), out, max);
+}
+
+int32_t af_machine_seam_armed(const af_machine* handle, uint32_t index) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  return box->seams().status(index).armed ? 1 : 0;
+}
+
+uint32_t af_machine_seam_enable(af_machine* handle, const char* id) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  std::size_t length = 0;
+  if (!text_length(id, 64, length)) {
+    return AF_INVALID;
+  }
+  return box->seams().enable(std::string_view(id, length)) ==
+                 amberfolio::machine::seam_reason::none
+             ? AF_OK
+             : AF_INVALID;
+}
+
+uint32_t af_machine_seam_disable(af_machine* handle, const char* id) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  std::size_t length = 0;
+  if (!text_length(id, 64, length)) {
+    return AF_INVALID;
+  }
+  return box->seams().disable(std::string_view(id, length)) ==
+                 amberfolio::machine::seam_reason::none
+             ? AF_OK
+             : AF_INVALID;
 }
 
 uint32_t af_machine_load_error(const af_machine* handle) {
@@ -831,3 +963,11 @@ uint32_t af_machine_set_entry(af_machine* handle, uint32_t cs, uint32_t ip,
 }
 
 }  // extern "C"
+
+namespace amberfolio {
+
+machine::machine* af_machine_unwrap(af_machine* box) noexcept {
+  return box_of(box);
+}
+
+}  // namespace amberfolio

@@ -8,7 +8,7 @@
 //                                     [--verify] [--press KEY@FRAME]
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
-//                                     [--seam ID] [--speed NAME]
+//                                     [--seam ID] [--seams] [--speed NAME]
 //                                     [--fast N|max] [-- ARGUMENTS...]
 //
 // `--headless` opens no window and no audio device. That is what keeps
@@ -66,10 +66,21 @@
 //     startup, because a run that had one on is not the same run as one
 //     that did not and the log has to say so.
 //
-//     `code-wheel` is the only one this build carries, and seam.h is
-//     honest about what it is not yet: the possession gate PLAN.md §5
-//     requires is M5's, so today this is a maintainer's switch on a
-//     maintainer's own copy.
+//     `code-wheel` is ungated, and seam.h is honest about what it is not
+//     yet: the possession gate PLAN.md §5 requires is M5's, so today it
+//     is a maintainer's switch on a maintainer's own copy.
+//
+//   --seams          list every seam this build carries, and exit
+//
+//     The toggle surface M4-F4 (#98) asks for: each seam's id, its
+//     description, and where it stands against the program that was
+//     loaded — off, on, or unavailable with the reason. Printed after
+//     the load and after any `--seam` flags have been applied, so the
+//     listing is the state the run would have started in, and then the
+//     process exits 0 without running anything. The edition line it
+//     prints beside the fingerprint is the other half of #95: which
+//     known edition the file is, or that it is not one, in which case no
+//     seam is available (machine/edition.h).
 //
 //   --speed NAME     which machine to be: xt, turbo, at or 386
 //
@@ -247,6 +258,7 @@
 
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/dos.h"
+#include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/fingerprint.h"
 #include "amberfolio/machine/int10.h"
@@ -323,6 +335,24 @@ struct wired_machine {
   machine::renderer render;
 };
 
+/// A seam event's kind, in a word, for the log line the sink prints.
+[[nodiscard]] const char* seam_event_name(
+    machine::seam_event_kind kind) noexcept {
+  switch (kind) {
+    case machine::seam_event_kind::enabled:
+      return "on";
+    case machine::seam_event_kind::disabled:
+      return "off";
+    case machine::seam_event_kind::armed:
+      return "armed";
+    case machine::seam_event_kind::inert:
+      return "inert";
+    case machine::seam_event_kind::refused:
+      return "refused";
+  }
+  return "unknown";
+}
+
 /// Reports what the core would not fake, to stderr. A host has to have
 /// one of these or "log, don't fake" is only half a mechanism
 /// (machine/diagnostics.h).
@@ -371,6 +401,18 @@ class stderr_diagnostics final : public machine::diagnostics {
     std::fprintf(
         stderr, "amberfolio: device declined %05X detail=%02X from=%04X:%04X\n",
         stop.at, stop.detail, stop.cs, stop.ip);
+  }
+
+  void report(const machine::seam_event& event) override {
+    // Every transition, always: a seam going on, arming, or staying inert
+    // is the one kind of line a boot log must never lose, because it is
+    // the difference between a plain machine and an enhanced one
+    // (machine/seam.h). Short, so the reason reads as the line.
+    const bool why = event.reason != machine::seam_reason::none;
+    std::fprintf(stderr, "amberfolio: seam %.*s %s%s%s\n",
+                 static_cast<int>(event.id.size()), event.id.data(),
+                 seam_event_name(event.kind), why ? " " : "",
+                 why ? machine::seam_reason_name(event.reason) : "");
   }
 
   void report(const machine::service_call& call) override {
@@ -530,8 +572,14 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
       return "this seam's addresses are facts about a different binary";
     case machine::seam_error::no_program:
       return "no program was loaded to key it on";
+    case machine::seam_error::schema_mismatch:
+      return "this seam was written against another schema version";
+    case machine::seam_error::module_not_resident:
+      return "the module this seam lives in is not resident";
     case machine::seam_error::too_many_points:
       return "too many interception points for this build";
+    case machine::seam_error::no_room:
+      return "the seam registry is full";
   }
   return "unknown";
 }
@@ -700,6 +748,7 @@ struct options {
   bool verify{false};
   std::vector<scripted_press> presses;
   std::vector<std::string> seams;
+  bool list_seams{false};
   machine::speed_preset speed{machine::default_speed};
 
   /// How many seconds of virtual time to run per second of wall time.
@@ -806,6 +855,8 @@ struct options {
       opts.presses.push_back(std::move(press));
     } else if (arg == "--seam" && i + 1 < argc) {
       opts.seams.emplace_back(argv[++i]);
+    } else if (arg == "--seams") {
+      opts.list_seams = true;
     } else if (arg == "--trace") {
       opts.trace = true;
     } else if (arg == "--dump" && i + 1 < argc) {
@@ -876,7 +927,7 @@ struct options {
         " [--scale N] [--verify] [--press KEY@FRAME]\n"
         "                                      [--steps N]"
         " [--until TICKS] [--dump PREFIX] [--trace]\n"
-        "                                      [--seam ID]\n"
+        "                                      [--seam ID] [--seams]\n"
         "                                      [--speed xt|turbo|at|386]\n"
         "                                      [--fast N|max]\n"
         "                                      [-- ARGUMENTS...]\n");
@@ -1005,18 +1056,54 @@ int main(int argc, char** argv) try {
   // one printed: a run with a seam on is not the same run as one without
   // it, and a log that did not say so would be describing the wrong
   // machine (machine/seam.h).
+  //
+  // First the identity: which known edition the fingerprint names, or
+  // that it names none — in which case the game runs as a plain machine
+  // and every seam is unavailable (machine/edition.h, PLAN.md §5). Said
+  // either way, because "no seams for this file" is a finding and not a
+  // silence.
   if (identity.ok()) {
     box.seams().loaded(identity.value, loaded.value.load_segment);
+    if (const machine::edition* known = box.seams().known_edition();
+        known != nullptr) {
+      std::fprintf(stderr, "amberfolio: edition %.*s\n",
+                   static_cast<int>(known->name.size()), known->name.data());
+    } else {
+      std::fprintf(stderr,
+                   "amberfolio: edition unrecognized - no seams are"
+                   " available for this program\n");
+    }
   }
   for (const std::string& id : opts.seams) {
     const machine::seam_error why = box.seams().enable(id);
     if (why == machine::seam_error::none) {
-      std::fprintf(stderr, "amberfolio: seam %s on\n", id.c_str());
       continue;
     }
     std::fprintf(stderr, "amberfolio: seam %s refused (%s)\n", id.c_str(),
                  seam_refusal(why));
     return EXIT_FAILURE;
+  }
+
+  if (opts.list_seams) {
+    // The listing #98 asks for, in the state the run would have started
+    // in, and then nothing runs: a listing is a question, and the answer
+    // is the whole of what was asked for.
+    const machine::seam_engine& seams = box.seams();
+    for (std::size_t i = 0; i < seams.count(); ++i) {
+      const machine::seam_status row = seams.status(i);
+      std::fprintf(stderr, "amberfolio: seams %.*s %s%s%s%s - %.*s\n",
+                   static_cast<int>(row.id.size()), row.id.data(),
+                   machine::seam_state_name(row.state),
+                   row.state == machine::seam_state::on
+                       ? (row.armed ? " armed" : " inert")
+                       : "",
+                   row.reason == machine::seam_reason::none ? "" : " ",
+                   row.reason == machine::seam_reason::none
+                       ? ""
+                       : machine::seam_reason_name(row.reason),
+                   static_cast<int>(row.about.size()), row.about.data());
+    }
+    return EXIT_SUCCESS;
   }
 
   const std::uint32_t init_flags =
