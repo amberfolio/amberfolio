@@ -112,8 +112,9 @@ constexpr std::uint16_t rec_hit_points = 0x11B;
 /// The wound status that means slain.
 constexpr std::uint8_t status_slain = 6;
 
-/// The side index that is the party's.
-constexpr std::uint8_t side_party = 0;
+/// The side index that is the party's. Signed, because the record's byte
+/// is the signed index the program uses into the body counts.
+constexpr std::int8_t side_party = 0;
 
 /// The byte of the combat scratch block the program clears when a
 /// combatant is downed.
@@ -187,8 +188,9 @@ void spare_the_party(machine& box, seam_context& /*ctx*/) {
       cpu.read_word(ss, word_after(sp, frame_record_offset));
   const std::uint16_t record_segment =
       cpu.read_word(ss, word_after(sp, frame_record_segment));
-  if (cpu.read_byte(record_segment, word_after(record_offset, rec_side)) !=
-      side_party) {
+  const auto side = static_cast<std::int8_t>(
+      cpu.read_byte(record_segment, word_after(record_offset, rec_side)));
+  if (side != side_party) {
     // An enemy's damage is the program's business.
     return;
   }
