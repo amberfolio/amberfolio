@@ -57,6 +57,16 @@
 //     (machine/trace.h). What it answers is the question a bare address
 //     cannot: how the program got there.
 //
+//     Since M4 (#97, #99) it also prints every file read the overlay
+//     tracker records as it lands — the file, the offset, the length,
+//     where it went and the digest of the bytes (machine/overlay.h):
+//
+//         amberfolio: overlay GAME.OVR offset=38919 length=4735 at=279D:0000 sha256=...
+//
+//     Those lines are the facts a seam qualified by an overlay is written
+//     from, read off the program's own loads rather than inferred from
+//     anything, and they are how the cheats seam's module was found.
+//
 //   --seam ID        turn on one seam, by its config key
 //
 //     PLAN.md §5's opt-in runtime patches, off unless named here — and
@@ -264,6 +274,7 @@
 #include "amberfolio/machine/int10.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/pic.h"
 #include "amberfolio/machine/pit.h"
 #include "amberfolio/machine/platform.h"
@@ -704,6 +715,34 @@ void verify_target(SDL_Renderer* renderer, std::span<const std::uint32_t> src,
 
   ++report.checked;
   report.mismatched += wrong;
+}
+
+/// Print every overlay-tracker record newer than `printed`, and move it
+/// on (machine/overlay.h). Once per slice, so a read that was replaced
+/// inside one slice is not seen — a trace, not a log — which is plenty
+/// for the thing it is for: reading the facts of a load off the program
+/// rather than guessing them.
+void print_overlay_loads(const machine::machine& box, std::uint64_t& printed) {
+  const machine::overlay_tracker& overlays = box.overlays();
+  std::uint64_t newest = printed;
+  for (std::size_t i = 0; i < overlays.count(); ++i) {
+    const machine::overlay_load& load = overlays.at(i);
+    if (load.generation <= printed) {
+      continue;
+    }
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(load.digest, hex));
+    const std::span<const char> name = load.file.leaf().text();
+    std::fprintf(stderr,
+                 "amberfolio: overlay %.*s offset=%u length=%u at=%04X:%04X"
+                 " sha256=%s\n",
+                 static_cast<int>(name.size()), name.data(), load.file_offset,
+                 load.length, load.segment, load.offset, hex.data());
+    if (load.generation > newest) {
+      newest = load.generation;
+    }
+  }
+  printed = newest;
 }
 
 /// Where this run slice has to stop: the next frame boundary, or a
@@ -1193,6 +1232,7 @@ int main(int argc, char** argv) try {
   std::vector<float> headless_audio(frame_samples);
 
   machine::run_end ended = machine::run_end::stopped;
+  std::uint64_t overlays_printed = 0;
 
   for (;;) {
     if (box.stopped()) {
@@ -1249,6 +1289,9 @@ int main(int argc, char** argv) try {
     // closer; nothing may push it further out.
     box.run(slice_end(box, frame_ticks, opts.step_budget, opts.tick_budget));
     drain_console(box);
+    if (opts.trace) {
+      print_overlay_loads(box, overlays_printed);
+    }
 
     // With no audio device there is nobody pulling the speaker, so a
     // `--dump` run has to pull it here, on the machine thread — which the

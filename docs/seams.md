@@ -29,6 +29,7 @@ The short version:
 - [7. The fidelity invariant](#7-the-fidelity-invariant)
 - [8. Writing a seam](#8-writing-a-seam)
 - [9. The review rule](#9-the-review-rule)
+- [10. The seams this build carries](#10-the-seams-this-build-carries)
 
 ---
 
@@ -294,3 +295,45 @@ In review that means: a change that writes the machine from anywhere
 but `machine::step()`'s own mechanisms, a device's bus cycle, a service
 handler, the loader, or a seam handler is a change to the fidelity
 boundary, and it needs the argument this document would have to carry.
+
+---
+
+## 10. The seams this build carries
+
+| id | what | keyed to | qualified by |
+|---|---|---|---|
+| `code-wheel` | answers the copy-protection challenge (ungated; the possession gate is M5's, #115) | the baseline | the resident image |
+| `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
+| `cheat-kill-all` | every enemy falls at the end of the round | the baseline | overlay 8 of the overlay file |
+
+### The debug cheats (#99)
+
+**Two seams, not one with two switches** — PLAN.md §5's first requirement
+is a toggle per seam, and the two are wanted separately: a sweep that
+wants combats won does not want the party unable to lose hit points in
+the saved game it then writes.
+
+**Invulnerability** intercepts the one resident routine every kind of
+damage lands in, at its entry, and — when the record on the stack is a
+party member's — writes a zero over the damage word. The program's own
+routine then runs on zero and reaches its own conclusion through its own
+code. An enemy's damage is left alone; the qualifier is the record's
+combat-side byte, read where the program is about to read it.
+
+**Kill-all-enemies** intercepts the once-a-round end check, which lives in
+an overlay and is the point at which the program will next consult the
+combat state, and downs every standing enemy exactly the way the damage
+routine downs one — slain, flag cleared, hit points zero, the side's
+count decremented, the scratch byte cleared. The program's own end check
+then finds the enemies' count at zero and ends the combat through its own
+logic. Outside combat the point does nothing.
+
+Both are fail-closed by construction: unavailable on any binary but the
+baseline's, inert with `module_not_resident` while overlay 8 is not
+resident (its module names the read that loads it — file, offset,
+length, and the digest of the bytes — found by reading `--trace`'s
+overlay lines off the program's own boot), and nothing on the hot path
+when off. `tests/core/machine/seam_cheats_test.cpp` drives both handlers
+at their points with records and a roster the test lays down by the
+facts; the addresses only mean something against the real binary, and
+the sweep (#101) is where that is checked.

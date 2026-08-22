@@ -62,7 +62,9 @@ add_library(amberfolio-core STATIC
   src/machine/report.cpp
   src/machine/scheduler.cpp
   src/machine/seam.cpp
+  src/machine/seam_cheats.cpp
   src/machine/seam_code_wheel.cpp
+  src/machine/seam_table.cpp
   src/machine/service_floor.cpp
   src/machine/speaker.cpp
   src/machine/trace.cpp
