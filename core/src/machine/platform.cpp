@@ -19,9 +19,9 @@ namespace {
 // Gregorian calendar: integer-only, no tables, no leap-year special
 // cases, correct for every year in and far outside the range we accept.
 //
-// Written out here rather than reached for through <chrono> because
-// core/ is freestanding: <chrono>'s calendar types are not, and the
-// arithmetic is twenty lines.
+// Written out here rather than reached for through the standard
+// library's calendar types because core/ is freestanding: those types
+// are not, and the arithmetic is twenty lines.
 
 /// Days since 1970-01-01 for a Gregorian date. `month` is 1-12 and `day`
 /// is a real day of that month; the callers below have already checked.

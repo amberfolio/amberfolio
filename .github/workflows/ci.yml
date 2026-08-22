@@ -69,6 +69,8 @@ jobs:
         run: bash scripts/check-clean.sh
       - name: DCO check (every non-merge commit)
         run: bash scripts/check-dco.sh
+      - name: host-time guard (no clock reads under core/)
+        run: bash scripts/check-host-time.sh
       - name: format check (clang-format over tracked C++)
         run: bash scripts/check-format.sh
       - name: shell lint (shellcheck over scripts/)
