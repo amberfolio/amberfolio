@@ -33,22 +33,38 @@
 //
 // **Damage lands in one resident routine.** Whatever deals it — a melee
 // result, a spell, a monster's special attack — arrives at one procedure
-// in the resident image with two arguments pushed left to right: the
-// damage as a word, then the record as a far pointer. At its entry the
-// stack holds the return address, then the record's offset and segment,
-// then the damage word. The routine subtracts, sets the wound status by
-// how far below zero the record went, writes the remaining hit points
-// back if the character is still standing, and otherwise downs them:
-// clears the flag, zeroes the hit points, decrements the side's body
-// count, and clears a byte in the scratch block.
+// in the resident image, reached by a far call, with two arguments: the
+// record as a far pointer and the damage as a word. At its entry the
+// stack holds the far return address, then **the damage word, then the
+// record's offset and segment** — the far pointer pushed first, segment
+// then offset, and the damage pushed last. The routine subtracts, sets
+// the wound status by how far below zero the record went, writes the
+// remaining hit points back if the character is still standing, and
+// otherwise downs them: clears the flag, zeroes the hit points,
+// decrements the side's body count, and clears a byte in the scratch
+// block.
+//
+// That order is the one thing here that was written down backwards and
+// stayed that way through #99, because nothing had ever run it against
+// the program (#103). It was found by observation and not by reading the
+// program: watch the byte a party member's hit points live at, take the
+// address of whatever writes it, and walk the trace ring back to where
+// control entered that code. `docs/playable.md` has the method.
 //
 // **Combat ends in one overlaid routine.** Once a round, the tactical
-// loop calls an end check that lives in overlay 8 of the overlay file;
-// it walks the roster, ages the dying, and answers "over" when either
-// side's body count has reached zero. The overlay manager loads that
-// overlay with one read of the code block — `overlay_module` below is
-// the file, the offset and the length of that read, and the SHA-256 of
-// the bytes it delivers, as the tracker records it (overlay.h).
+// loop calls an end check that lives in an overlaid code module; it
+// consults each side's body count and answers "over" when one of them has
+// reached zero. The overlay manager loads that module with one read —
+// `overlay_module` below is the file, the offset and the length of that
+// read, and the SHA-256 of the bytes it delivers, as the tracker records
+// it (overlay.h).
+//
+// Which module that is was also found by observation rather than
+// believed: watch the two bytes the side counts live at, take the
+// address of whatever *reads* both of them in sequence, and ask the
+// overlay tracker which of its recorded loads covered that address at
+// that moment. The answer was not the module #99 named, and the offset
+// was not the one it named either.
 //
 //
 // What the seams do, and what they are careful not to do
@@ -76,8 +92,8 @@
 //
 // Both are fail-closed by construction (#99): unavailable on any binary
 // but the baseline's (the fingerprint), inert with a reported reason
-// while overlay 8 is not resident (kill-all's point, #97), and nothing on
-// the hot path when off (#96).
+// while the end check's module is not resident (kill-all's point, #97),
+// and nothing on the hot path when off (#96).
 
 #include <array>
 #include <cstdint>
@@ -146,28 +162,40 @@ constexpr unsigned max_roster_walk = 64;
 /// the resident image, so the point is qualified by `resident_image`.
 constexpr std::uint32_t damage_routine_offset = 0x2DC8;
 
-/// The stack at that entry, as offsets from SP: the return address, then
-/// the record's far pointer (offset, then segment), then the damage word
-/// — the arguments in the order they were pushed, left to right.
-constexpr std::uint16_t frame_record_offset = 4;
-constexpr std::uint16_t frame_record_segment = 6;
-constexpr std::uint16_t frame_damage = 8;
+/// The stack at that entry, as offsets from SP: the far return address
+/// (four bytes, because the call is a far one), then the damage word,
+/// then the record's far pointer — its offset, then its segment.
+///
+/// Observed, not assumed. One firing of the point, mid-encounter, with a
+/// party member on eight hit points and one enemy on four:
+///
+///     +0=0489 +2=256A   the far return address
+///     +4=0004           the damage: the party member went 8 -> 4
+///     +6=0000 +8=3E0A   the record, and the roster says 3E0A:0000 is
+///                       the party member
+///
+/// and the next firing carried `+4=0002 +8=3DF8`, which is the enemy
+/// going 4 -> 2. Two arguments, both identified twice, in a frame that
+/// reads as itself.
+constexpr std::uint16_t frame_damage = 4;
+constexpr std::uint16_t frame_record_offset = 6;
+constexpr std::uint16_t frame_record_segment = 8;
 
 // --- Where combat ends -----------------------------------------------------
 
-/// Overlay 8 of the overlay file, as the manager reads it: one read of
-/// the code block, whose facts the tracker records (overlay.h). The
-/// digest is of those bytes as read, so a copy whose overlay file does
-/// not match leaves the seam inert rather than pointed at the wrong code.
+/// The module the end check lives in, as the manager reads it: one read,
+/// whose facts the tracker records (overlay.h). The digest is of those
+/// bytes as read, so a copy whose overlay file does not match leaves the
+/// seam inert rather than pointed at the wrong code.
 constexpr seam_module overlay_module{
     .file = "GAME.OVR",
-    .file_offset = 38919,
-    .length = 4735,
+    .file_offset = 50641,
+    .length = 8082,
     .digest =
-        "5d07a6b3fedb56509214f24bdbdbc3b8625ddf6b2ce4d6274e6e89b26c563930"};
+        "c6218f3045243e35017ed1ffbf3ee7df25e688d17b259d3472aef07889ca3b31"};
 
 /// The end check's entry, as an offset from where that read landed.
-constexpr std::uint32_t end_check_offset = 0x0880;
+constexpr std::uint32_t end_check_offset = 0x13FC;
 
 // --- The handlers ------------------------------------------------------------
 
