@@ -43,6 +43,7 @@ add_library(amberfolio-core STATIC
   src/cpu/processor.cpp
   src/machine/device.cpp
   src/machine/dos.cpp
+  src/machine/edition.cpp
   src/machine/ega.cpp
   src/machine/fingerprint.cpp
   src/machine/font.cpp
@@ -52,6 +53,7 @@ add_library(amberfolio-core STATIC
   src/machine/machine.cpp
   src/machine/memory_map.cpp
   src/machine/memory_vfs.cpp
+  src/machine/overlay.cpp
   src/machine/pic.cpp
   src/machine/pit.cpp
   src/machine/platform.cpp

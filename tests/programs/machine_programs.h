@@ -62,6 +62,7 @@
 #include <vector>
 
 #include "amberfolio/machine/clock.h"
+#include "amberfolio/machine/seam.h"
 #include "programs/machine_harness.h"
 
 namespace amberfolio::programs {
@@ -199,6 +200,18 @@ struct machine_program {
 
 /// Every machine program, in the order the benchmark should run them.
 [[nodiscard]] std::vector<machine_program> all_machine_programs();
+
+/// The seam the probe program (`seam_probe`) is written for: keyed to
+/// that program's own fingerprint, with one point that edits a register
+/// and one that posts a keystroke (M4-F2 #96's exit criterion, and the
+/// seam the wasm smoke check toggles through the ABI for #98). A
+/// function-local static, so it outlives any engine it is registered
+/// with; the same definition every time, because the program is.
+[[nodiscard]] const machine::seam_definition& seam_probe_definition();
+
+/// The probe program itself, as the MZ file `seam_probe` loads — for a
+/// host that wants to stage it somewhere of its own (hosts/web).
+[[nodiscard]] const std::vector<std::uint8_t>& seam_probe_file();
 
 /// One program by name, or null. The composite is `"composite"` — the
 /// program M2-H2's dev page (#55) embeds, which is why finding one by

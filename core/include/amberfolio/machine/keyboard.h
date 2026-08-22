@@ -377,6 +377,18 @@ class keyboard_service {
   /// parts of memory.
   void reset() noexcept;
 
+  /// Put one translated keystroke — scan code in the high byte, character
+  /// (or 0) in the low — straight into the BDA buffer, as `drain()` would
+  /// have after translating a host event. False, and nothing written, if
+  /// the buffer is full, exactly as a typed key is dropped.
+  ///
+  /// The seam engine's synthetic-input funnel (seam.h, PLAN.md §5 item
+  /// 3) and nothing else's: a host posts scan codes through
+  /// `machine::post_key()`, which is the recordable stream, and a seam
+  /// enters here precisely because its keystrokes are not part of that
+  /// stream. Reached through `machine::inject_keystroke()`.
+  bool enqueue(machine& mach, std::uint16_t keystroke);
+
  private:
   /// Apply one event: update modifier/lock state, detect Ctrl-Break, or
   /// translate and enqueue an ordinary keystroke.

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The code-wheel seam, and the seam table it is the only entry of.
+// The code-wheel seam, and the build's seam table it is an entry of.
 //
 // PLAN.md §5's first v1 enhancement, in the form M3 needs and no further.
 // Read seam.h first — it says what a seam is, what this one is *not*
@@ -30,8 +30,9 @@
 //   * returns with the answer in ZF and nothing else.
 //
 // `compare_loop_offset` is that `REPE CMPSB`. It is in the resident image
-// and cannot be overlaid, which is the only reason a bare address is
-// enough here (seam.h, on the overlay qualification M4 owes).
+// and cannot be overlaid, which is why the point is qualified by
+// `resident_image` and nothing more (seam.h; overlay.h is for the points
+// that are not).
 //
 //
 // What the seam does, and what it is careful not to do
@@ -66,14 +67,16 @@
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/seam.h"
 
 namespace amberfolio::machine {
 namespace {
 
-/// The SHA-256 of the program image these offsets are facts about.
-constexpr std::string_view code_wheel_binary =
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd";
+/// The SHA-256 of the program image these offsets are facts about — the
+/// baseline edition (edition.h), and only it.
+constexpr std::array<std::string_view, 1> code_wheel_binaries{
+    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
 /// The `REPE CMPSB` inside the program's string-compare routine, as an
 /// offset from the image segment.
@@ -94,7 +97,7 @@ constexpr std::uint32_t word_chars_last =
     word_table_offset + (word_table_entries - 1) * word_table_stride +
     word_length;
 
-void answer_the_code_wheel(machine& box) {
+void answer_the_code_wheel(machine& box, seam_context& ctx) {
   cpu::registers& regs = box.processor().regs();
 
   // The expected operand, as a physical address, against the table this
@@ -103,7 +106,7 @@ void answer_the_code_wheel(machine& box) {
   // machine's.
   const std::uint32_t expected =
       cpu::physical_address(regs[cpu::sreg::es], regs[cpu::reg16::di]);
-  const std::uint32_t base = box.seams().image_base();
+  const std::uint32_t base = ctx.image_base();
   if (expected < base + word_chars_first || expected > base + word_chars_last) {
     // Some other string comparison, of which this program makes many.
     return;
@@ -114,14 +117,20 @@ void answer_the_code_wheel(machine& box) {
   regs.set(cpu::reg8::al, regs.get(cpu::reg8::ah));
 }
 
+/// In the resident image (seam.h: the compare loop cannot be overlaid),
+/// so the point is qualified by `resident_image` and the offset is from
+/// the image segment.
 constexpr std::array<seam_point, 1> code_wheel_points{
-    {{.image_offset = compare_loop_offset, .run = &answer_the_code_wheel}}};
+    {{.module = resident_image,
+      .offset = compare_loop_offset,
+      .run = &answer_the_code_wheel}}};
 
 constexpr std::array<seam_definition, 1> seam_table{{
     {.id = "code-wheel",
      .about = "answer the code-wheel challenge (ungated; M5 owes the gate)",
-     .fingerprint = code_wheel_binary,
-     .points = code_wheel_points},
+     .fingerprints = code_wheel_binaries,
+     .points = code_wheel_points,
+     .schema = seam_schema_version},
 }};
 
 }  // namespace

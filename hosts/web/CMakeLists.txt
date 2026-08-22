@@ -101,15 +101,30 @@ set(_amberfolio_web_export_names
   _af_machine_vfs_fingerprint
   _af_machine_load_from_vfs
   _af_machine_load_error
+  _af_machine_edition
+  _af_machine_program_fingerprint
+  _af_machine_seam_count
+  _af_machine_seam_id
+  _af_machine_seam_about
+  _af_machine_seam_state
+  _af_machine_seam_reason
+  _af_machine_seam_armed
+  _af_machine_seam_enable
+  _af_machine_seam_disable
   _af_machine_write_memory
   _af_machine_read_memory
   _af_machine_set_entry
   # Web-host-specific, not part of core/include/amberfolio/abi.h: the
   # M2-H2 (#55) embedded demo program, assembled at build time from
   # src/demo_program.cpp and handed out the same "pointer into linear
-  # memory plus a length" way abi.h's own buffers are (see main.cpp).
+  # memory plus a length" way abi.h's own buffers are (see main.cpp), and
+  # the M4-F4 (#98) seam probe — tests/programs' program and its seam,
+  # staged for the node smoke check to toggle through the ABI.
   _af_web_demo_program_bytes
-  _af_web_demo_program_size)
+  _af_web_demo_program_size
+  _af_web_probe_program_bytes
+  _af_web_probe_program_size
+  _af_web_probe_seam_register)
 list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
 
 target_link_options(amberfolio-web PRIVATE

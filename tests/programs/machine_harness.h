@@ -99,6 +99,7 @@
 #include "amberfolio/machine/pit.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/renderer.h"
+#include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 
 namespace amberfolio::programs {
@@ -192,6 +193,15 @@ struct machine_setup {
   /// back as `present == false` rather than as an error.
   std::vector<std::string_view> read_back;
 
+  /// Seam definitions to register with the machine's engine before the
+  /// run, and the ids among them (or among the build's own) to enable
+  /// once the program is loaded and identified (machine/seam.h). Only
+  /// meaningful alongside `exe`: a seam is keyed to a file's fingerprint,
+  /// and a raw image has none. A definition must outlive the run; the
+  /// ones in machine_programs.cpp are function-local statics.
+  std::vector<const machine::seam_definition*> seam_definitions;
+  std::vector<std::string_view> seams;
+
   /// How many result words to harvest.
   std::size_t result_words{};
 
@@ -280,6 +290,10 @@ struct machine_outcome {
   /// harness pulls strictly less than it has run.
   std::uint64_t underruns{};
 
+  /// Every seam event the engine reported: which went on, which armed.
+  /// The run's own account of what was done to it, beside the results.
+  std::vector<machine::seam_event> seam_events;
+
   /// The step cap ran out before the program exited.
   bool capped{false};
 
@@ -349,8 +363,15 @@ class machine_harness {
     void report(const machine::device_stop& /*stop*/) override {
       ++device_stops;
     }
+    void report(const machine::seam_event& event) override {
+      // Only the transitions, and only for the program's own seams:
+      // which went on, and whether it armed. A test asserts these the
+      // way it asserts a result word.
+      seam_events.push_back(event);
+    }
 
     cpu::stop_record cpu_stop{};
+    std::vector<machine::seam_event> seam_events;
     std::uint64_t notices{};
     std::uint64_t device_stops{};
     std::uint64_t service_calls{};

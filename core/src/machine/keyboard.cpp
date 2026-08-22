@@ -238,6 +238,10 @@ void keyboard_service::reset() noexcept {
   scroll_lock_held_ = false;
 }
 
+bool keyboard_service::enqueue(machine& mach, std::uint16_t keystroke) {
+  return kb_buffer_push(mach.processor(), keystroke);
+}
+
 void keyboard_service::drain(machine& mach) {
   if (mach.input().empty()) {
     return;

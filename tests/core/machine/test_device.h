@@ -25,6 +25,7 @@
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/scheduler.h"
+#include "amberfolio/machine/seam.h"
 
 namespace amberfolio::machine::test {
 
@@ -159,8 +160,12 @@ class recording_diagnostics final : public diagnostics {
   void report(const device_stop& stop) override {
     device_stops.push_back(stop);
   }
+  void report(const seam_event& event) override {
+    seam_events.push_back(event);
+  }
 
   std::vector<notice> notices;
+  std::vector<seam_event> seam_events;
   std::vector<service_call> calls;
   std::vector<stop_record> stops;
   std::vector<cpu::stop_record> processor_stops;

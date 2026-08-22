@@ -37,6 +37,13 @@ export const AF_NO_FILESYSTEM = 5;
 export const AF_KEY_UP = 0;
 export const AF_KEY_DOWN = 1;
 
+/// Where a seam stands (abi.h's AF_SEAM_*): off, on, unavailable — and
+/// the answer for an index that names no seam.
+export const AF_SEAM_OFF = 0;
+export const AF_SEAM_ON = 1;
+export const AF_SEAM_UNAVAILABLE = 2;
+export const AF_SEAM_NONE = 3;
+
 /// How a run ended, for `Machine.stopReport()`. `STOPPED` means the
 /// machine stopped of its own accord and the report prints its reason;
 /// the others are the *host's* reason, for a run this side cut short.
@@ -456,7 +463,77 @@ export class Machine {
     return this.module._af_machine_load_error(this.handle);
   }
 
+  // --- Identity and seams (M4-F1 #95, M4-F4 #98) -------------------------
+  //
+  // `loadFromVfs()` identifies the program as it loads it (abi.h), and
+  // these read the answer: which known edition it is, or null for one
+  // this build does not recognize — in which case no seam is available,
+  // which is PLAN.md §5's rule and not a failure — and the seam list, to
+  // show and to toggle. Toggling is configuration: a page does it between
+  // `runUntil()` calls, never from inside one.
+
+  /// The edition the loaded program is, as a name, or null when it is
+  /// unrecognized or nothing is loaded.
+  edition() {
+    return this.#text((out, max) => this.module._af_machine_edition(this.handle, out, max), 128);
+  }
+
+  /// The SHA-256 of the loaded program, or null when nothing is loaded.
+  programFingerprint() {
+    return this.#text(
+      (out, max) => this.module._af_machine_program_fingerprint(this.handle, out, max),
+      72,
+    );
+  }
+
+  /// Every seam this build's registry holds, as `{ id, about, state,
+  /// reason, armed }`, in registry order. `state` is one of the AF_SEAM_*
+  /// values above; `reason` is the spelling core gives it (`none`,
+  /// `wrong_binary`, `module_not_resident`, ...).
+  seamList() {
+    const count = this.module._af_machine_seam_count(this.handle);
+    const seams = [];
+    for (let i = 0; i < count; ++i) {
+      seams.push({
+        id: this.#text((out, max) => this.module._af_machine_seam_id(this.handle, i, out, max), 64) ?? '',
+        about: this.#text((out, max) => this.module._af_machine_seam_about(this.handle, i, out, max), 256) ?? '',
+        state: this.module._af_machine_seam_state(this.handle, i),
+        reason: this.#text((out, max) => this.module._af_machine_seam_reason(this.handle, i, out, max), 64) ?? '',
+        armed: this.module._af_machine_seam_armed(this.handle, i) !== 0,
+      });
+    }
+    return seams;
+  }
+
+  /// Turn a seam on or off by id. `AF_OK` if it took, `AF_INVALID` if
+  /// there is no such seam or it is unavailable — `seamList()` says why.
+  seamEnable(id) {
+    return this.#withCString(id, (ptr) => this.module._af_machine_seam_enable(this.handle, ptr));
+  }
+
+  seamDisable(id) {
+    return this.#withCString(id, (ptr) => this.module._af_machine_seam_disable(this.handle, ptr));
+  }
+
   // --- Marshalling ------------------------------------------------------
+
+  /// Run one of the "write a NUL-terminated string into my buffer" calls
+  /// and bring the characters back, or null when it answered zero. The
+  /// strings are ASCII by construction (ids, names, reasons).
+  #text(call, capacity) {
+    const scratch = this.module._malloc(capacity);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while reading a string');
+    }
+    try {
+      const length = call(scratch, capacity);
+      if (length === 0) return null;
+      const bytes = this.module.HEAPU8.subarray(scratch, scratch + length);
+      return String.fromCharCode(...bytes);
+    } finally {
+      this.module._free(scratch);
+    }
+  }
 
   /// Call `use` with `text` in linear memory as a NUL-terminated C
   /// string, and free it afterwards however `use` ends.

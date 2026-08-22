@@ -21,6 +21,15 @@
 // The embedded program below did not change and is not going anywhere —
 // it is what proves the boundary works without anybody having a game.
 //
+// M4-F4 (#98) adds the seam probe: the self-written program tests/programs
+// runs with its own seam on and off, staged here so the node smoke check
+// can toggle a seam through the ABI and assert the difference — the same
+// program, the same seam, the same two results the native suite asserts.
+// The seam is registered into the machine's engine through this host's
+// own export rather than being part of core's table: it is a test seam
+// keyed to a test program, and a player's listing has no business
+// carrying it.
+//
 // <cstdio> rather than <iostream>/<format>: this is the one target where
 // the standard library we pull in becomes bytes the player downloads
 // (PLAN.md §4 — keeping the wasm bundle lean is why there is a hand-written
@@ -31,7 +40,11 @@
 #include <vector>
 
 #include "amberfolio/abi.h"
+#include "amberfolio/abi_bridge.h"
+#include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/seam.h"
 #include "demo_program.h"
+#include "programs/machine_programs.h"
 
 namespace {
 
@@ -51,12 +64,13 @@ const std::vector<std::uint8_t>& demo_program() {
 
 extern "C" {
 
-// Two web-host-specific exports, alongside the core ABI's — see this
-// file's own top comment and hosts/web/CMakeLists.txt's export list,
-// which is the only place that decides whether a browser can actually
-// reach these. Not part of core/include/amberfolio/abi.h: they hand out
-// this *host's* embedded program, not anything the core itself knows
-// about, so they live beside the code that assembled it.
+// Web-host-specific exports, alongside the core ABI's — see this file's
+// own top comment and hosts/web/CMakeLists.txt's export list, which is the
+// only place that decides whether a browser can actually reach these. Not
+// part of core/include/amberfolio/abi.h: they hand out this *host's*
+// embedded programs and register this host's test seam, not anything the
+// core itself knows about, so they live beside the code that assembled
+// them.
 
 /// A pointer into the module's own linear memory, stable for the
 /// module's life — the same "core-owned, read through a typed-array
@@ -65,6 +79,29 @@ const uint8_t* af_web_demo_program_bytes(void) { return demo_program().data(); }
 
 uint32_t af_web_demo_program_size(void) {
   return static_cast<uint32_t>(demo_program().size());
+}
+
+/// The seam probe program (tests/programs/machine_programs.cpp), as the MZ
+/// file a page puts on the filesystem and loads — same shape as the demo.
+const uint8_t* af_web_probe_program_bytes(void) {
+  return amberfolio::programs::seam_probe_file().data();
+}
+
+uint32_t af_web_probe_program_size(void) {
+  return static_cast<uint32_t>(amberfolio::programs::seam_probe_file().size());
+}
+
+/// Register the probe's seam with `box`'s engine, so `af_machine_seam_*`
+/// can list and toggle it. AF_NO_MACHINE for a null handle; AF_INVALID if
+/// the registry would not take it (already registered, or full).
+uint32_t af_web_probe_seam_register(af_machine* box) {
+  amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
+  if (pc == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  return pc->seams().add(amberfolio::programs::seam_probe_definition())
+             ? AF_OK
+             : AF_INVALID;
 }
 
 }  // extern "C"

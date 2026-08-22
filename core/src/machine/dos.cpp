@@ -21,6 +21,7 @@
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/service_floor.h"
 #include "amberfolio/machine/vfs.h"
+#include "amberfolio/sha256.h"
 
 namespace amberfolio::machine {
 
@@ -39,11 +40,14 @@ void dos_services::reset() noexcept {
   exited_ = false;
 }
 
-std::uint16_t dos_services::open_file(file_handle file) noexcept {
+std::uint16_t dos_services::open_file(file_handle file,
+                                      const dos_path& path) noexcept {
   for (std::uint16_t i = 0; i < max_handles; ++i) {
     if (!handles_[i].in_use) {
-      handles_[i] = {
-          .in_use = true, .kind = handle_kind::file, .backing = file};
+      handles_[i] = {.in_use = true,
+                     .kind = handle_kind::file,
+                     .backing = file,
+                     .path = path};
       return i;
     }
   }
@@ -263,14 +267,24 @@ void write_console(service_floor& floor, std::uint16_t count) {
 
 // --- File I/O: AH=39h, 3Ch, 3Dh, 3Eh, 3Fh, 40h, 41h, 42h ----------------
 
-void read_file(service_floor& floor, filesystem& fs, file_handle backing,
-               std::uint16_t count) {
+void read_file(service_floor& floor, filesystem& fs,
+               const dos_services::handle_state& state, std::uint16_t count) {
   cpu::processor& cpu = floor.box().processor();
   const std::uint16_t segment = cpu.regs()[sreg::ds];
   const std::uint16_t offset = cpu.regs()[reg16::dx];
+  const file_handle backing = state.backing;
+
+  // Where in the file this read begins — one of the facts the overlay
+  // tracker records about it (overlay.h, #97). Asked of the backend
+  // rather than tracked here, so the DOS layer keeps no second copy of a
+  // position the backend already owns. A backend that cannot say is a
+  // backend whose reads are not recorded, which is the honest answer.
+  const vfs_result<std::uint32_t> position =
+      fs.seek(backing, seek_origin::current, 0);
 
   std::array<std::uint8_t, io_chunk_size> chunk{};
   std::uint16_t total = 0;
+  sha256_hasher hasher;
   while (total < count) {
     const std::size_t want =
         chunk_len(static_cast<std::uint16_t>(count - total));
@@ -287,10 +301,20 @@ void read_file(service_floor& floor, filesystem& fs, file_handle backing,
       cpu.write_byte(segment, static_cast<std::uint16_t>(offset + total + i),
                      chunk[i]);
     }
+    hasher.update(std::span<const std::uint8_t>(chunk.data(), got.value));
     total = static_cast<std::uint16_t>(total + got.value);
     if (got.value < want) {
       break;  // Short read: end of file, still success (vfs.h).
     }
+  }
+
+  // Recorded after the bytes are in memory and before the program is
+  // answered, which is the moment the module became resident. The
+  // tracker is bookkeeping below the fidelity boundary (overlay.h): it
+  // reads nothing back and changes nothing about this call.
+  if (position.ok() && total != 0) {
+    floor.box().note_file_read(state.path, position.value, segment, offset,
+                               total, hasher.finish());
   }
   succeed_with(floor, total);
 }
@@ -371,7 +395,8 @@ void create_fn(service_floor& floor) {
     fail(floor, opened.error);
     return;
   }
-  const std::uint16_t handle = floor.box().dos().open_file(opened.value);
+  const std::uint16_t handle =
+      floor.box().dos().open_file(opened.value, path.value);
   if (handle == dos_services::no_handle) {
     fs->close(opened.value);
     fail(floor, vfs_error::too_many_open_files);
@@ -407,7 +432,8 @@ void open_fn(service_floor& floor) {
     fail(floor, opened.error);
     return;
   }
-  const std::uint16_t handle = floor.box().dos().open_file(opened.value);
+  const std::uint16_t handle =
+      floor.box().dos().open_file(opened.value, path.value);
   if (handle == dos_services::no_handle) {
     fs->close(opened.value);
     fail(floor, vfs_error::too_many_open_files);
@@ -462,7 +488,7 @@ void read_fn(service_floor& floor) {
   if (fs == nullptr) {
     return;
   }
-  read_file(floor, *fs, state->backing, count);
+  read_file(floor, *fs, *state, count);
 }
 
 void write_fn(service_floor& floor) {

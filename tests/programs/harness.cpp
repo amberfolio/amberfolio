@@ -8,6 +8,7 @@
 
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/seam.h"
 
 namespace amberfolio::programs {
 namespace {
@@ -57,6 +58,7 @@ class machine_log final : public machine::diagnostics {
   void report(const machine::stop_record& /*stop*/) override {}
   void report(const cpu::stop_record& stop) override { record = stop; }
   void report(const machine::device_stop& /*stop*/) override {}
+  void report(const machine::seam_event& /*event*/) override {}
 
   cpu::stop_record record{};
   std::uint64_t notices{};
