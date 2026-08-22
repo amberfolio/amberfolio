@@ -165,6 +165,29 @@ set_tests_properties(sdl-host-sounds-a-tone PROPERTIES
   LABELS smoke
   FIXTURES_REQUIRED sdl_demo_disk)
 
+# --- The round trip (#100) ---------------------------------------------
+#
+# M4-R1's claim, as one case: a run is keys, ticks and hashes, and a
+# second machine handed those three reproduces the first exactly. Over
+# the same disk and the same composite as the case above, because a
+# program that draws, sounds, reads a key and exits with a code of its
+# own exercises every part of the state a checkpoint hashes.
+# cmake/run-record-replay.cmake says what it asserts and why, including
+# the tampered recording it finishes with — a check that cannot fail is
+# not one.
+add_test(NAME sdl-host-records-and-replays
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/demo-disk"
+    "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/replay-work"
+    "-DPROGRAM=COMPOSIT.EXE"
+    "-DPRESS=A@60"
+    "-DEXPECT_CODE=90"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-record-replay.cmake")
+set_tests_properties(sdl-host-records-and-replays PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_demo_disk)
+
 # --- The mapping table, on its own (#80) -------------------------------
 #
 # The check above posts one key. The table has eighty-odd rows, and a

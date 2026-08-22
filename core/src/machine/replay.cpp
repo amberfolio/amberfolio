@@ -436,8 +436,16 @@ bool parse_replay_line(std::span<const char> line, replay_event& out) noexcept {
       if (!f.next(word) || !parse_digest(word, out.digest)) {
         return false;
       }
-      // Optional section fields, each `name=hex16`, any subset, in order.
+      // Then `stopped`, if the machine had, and the optional section
+      // fields, each `name=hex16`, any subset, in order.
       while (f.next(word)) {
+        if (word == "stopped") {
+          if (out.stopped) {
+            return false;
+          }
+          out.stopped = true;
+          continue;
+        }
         const std::size_t eq = word.find('=');
         if (eq == std::string_view::npos) {
           return false;
@@ -547,6 +555,9 @@ std::size_t format_replay_line(const replay_event& event,
       w.number(event.steps);
       w.put(' ');
       w.digest(event.digest);
+      if (event.stopped) {
+        w.text(" stopped");
+      }
       if (event.have_sections) {
         for (std::size_t i = 0; i < state_section_count; ++i) {
           w.put(' ');
@@ -574,6 +585,7 @@ replay_event checkpoint_of(const machine& box) {
   event.at = box.time();
   event.steps = box.steps();
   event.digest = hashes.whole;
+  event.stopped = box.stopped();
   event.have_sections = true;
   for (std::size_t i = 0; i < state_section_count; ++i) {
     event.sections[i] = section_prefix(hashes.sections[i]);
@@ -892,7 +904,16 @@ ticks replay_player::next_tick() const noexcept {
   // tick only after `apply()` has looked. Callers go through `apply()`
   // once at the start (at tick 0) to prime it, which every host's loop
   // does naturally: run to nothing, apply, ask.
-  return have_pending_ ? pending_.at : never;
+  if (!have_pending_) {
+    return never;
+  }
+  // Everything holds the host to its tick except a checkpoint of a
+  // stopped machine, which it has to be allowed to run past in order to
+  // arrive at. The header has the long version.
+  if (pending_.kind == replay_line::checkpoint && pending_.stopped) {
+    return never;
+  }
+  return pending_.at;
 }
 
 replay_status replay_player::apply(machine& box) {
@@ -938,6 +959,18 @@ replay_status replay_player::apply(machine& box) {
         if (box.steps() != pending_.steps) {
           fail(replay_status::diverged,
                "the step count is not the one recorded", box.steps());
+          return status_;
+        }
+        // Before the hash, because it is the one difference the hash
+        // would report as a whole state that disagrees when the plain
+        // truth is that one machine stopped here and the other did not.
+        if (box.stopped() != pending_.stopped) {
+          fail(replay_status::diverged,
+               pending_.stopped ? "the machine did not stop where the"
+                                  " recording says it did"
+                                : "the machine stopped where the recording"
+                                  " did not",
+               pending_.at);
           return status_;
         }
         const state_hashes hashes = hash_state(box);

@@ -85,7 +85,7 @@ void state_hasher::begin(state_section which) {
   // The section's tag goes into the whole-stream hash, so two streams
   // that differ only in where a section boundary falls hash differently
   // — the layout is part of what is being pinned.
-  const std::uint8_t tag = static_cast<std::uint8_t>(which);
+  const auto tag = static_cast<std::uint8_t>(which);
   whole_.update(std::span<const std::uint8_t>(&tag, 1));
 }
 

@@ -35,13 +35,16 @@
 //
 //     wall TICK YYYY-MM-DD HH:MM:SS.CC   a wall-clock seed, at that tick
 //     key TICK SCANCODE down|up          a host key event, at that tick
-//     checkpoint TICK STEPS WHOLE [SECTION=HEX16 ...]
+//     checkpoint TICK STEPS WHOLE [stopped] [SECTION=HEX16 ...]
 //     end TICK STEPS
 //
 // A checkpoint carries the whole-state hash (state.h) and, optionally,
 // the first eight bytes of each section's — enough to say *which* section
-// first disagreed. `end` is where the recording stopped; a player that
-// reaches it verified everything before it.
+// first disagreed. `stopped` marks one taken of a machine that had
+// stopped, which is a fact about the tick and not only about the state;
+// the paragraph on `next_tick()` below says why it has to be on the line.
+// `end` is where the recording stopped; a player that reaches it verified
+// everything before it.
 //
 // The tail is hex because it can begin with a space, and a format whose
 // fields are space-separated cannot carry a leading space as a field.
@@ -54,10 +57,31 @@
 // the same way, or "verified on all four targets" means four readings of
 // it. So the parsing, the initial-condition check, the event delivery
 // and the checkpoint comparison are here, once, and each host is the
-// loop around them: run the machine to the next event's tick (or its own
-// frame boundary, whichever is first), then `apply()`. The player never
-// runs the machine itself — that is the host's loop, and a player that
-// ran it would be a third host.
+// loop around them: run the machine to `next_tick()` or to its own frame
+// boundary, whichever is first, then `apply()`. The player never runs
+// the machine itself — that is the host's loop, and a player that ran it
+// would be a third host.
+//
+// `next_tick()` is when the machine must next be *interrupted*, and that
+// is not quite the same as when the next line of the recording is.
+//
+// A machine stops *inside* a step (`machine::run()`): the step that
+// refuses or exits is not counted and its ticks are not spent. So a
+// stopped machine and the machine one step short of stopping stand at
+// the same tick and the same step count, differing only in having
+// stopped — and the only way to get from the second to the first is to
+// ask the machine to run *past* that tick. A recording's last checkpoint
+// is almost always the stopped one. A host held at its tick would run to
+// it, find nothing left to do, and compare a machine that was never
+// given the chance to stop.
+//
+// So a checkpoint marked `stopped` does not hold the host back: it runs
+// to its own frame boundary, the machine stops where it stopped before,
+// and the tick agrees because stopping costs nothing. Every other line
+// does hold it back — a key or a seed consumed a tick late is a
+// different run, and `end` is where the recording stops being one. A
+// host that runs past a checkpoint anyway, because its frame period is
+// not the recorder's, is told that it did.
 //
 // It also never allocates (PLAN.md §4): it reads the text the host holds,
 // through a cursor, and keeps the initial conditions in fixed storage
@@ -129,6 +153,12 @@ inline constexpr std::size_t replay_max_id = 31;
 /// named, well under this.
 inline constexpr std::size_t replay_max_line = 768;
 
+/// Big enough for any report `replay_player::report()` writes — the
+/// sentence, the message, and two digests spelled out — so that a host
+/// never has to think about a report that was cut in half (report.h has
+/// the same two constants for the same reason).
+inline constexpr std::size_t replay_report_capacity = 512;
+
 /// One parsed line. A plain aggregate with every kind's fields in it,
 /// because the alternative is a variant core cannot spell without
 /// <variant>; a reader looks at `kind` and at the fields that kind uses.
@@ -166,6 +196,11 @@ struct replay_event {
   /// `key`: the event.
   std::uint8_t scancode{};
   key_action action{key_action::down};
+
+  /// `checkpoint`: whether the machine had stopped at this tick. On the
+  /// line rather than left to the state hash because a player has to know
+  /// it *before* it compares — see this file's header.
+  bool stopped{false};
 
   /// `checkpoint`: the whole-state hash, and — when the line carries them
   /// — the first eight bytes of each section's, as integers.
@@ -278,9 +313,12 @@ class replay_player {
   /// speed and seams first if it means the recording to be the run.
   replay_status check_initial(const machine& box, filesystem* fs);
 
-  /// The tick of the next event not yet applied, or `never` once the
-  /// recording is exhausted. A host runs the machine to this (or to its
-  /// own boundary, whichever is first) and then calls `apply()`.
+  /// The tick the machine must not be run past: the next key, wall seed,
+  /// `end` or plain checkpoint still to come. `never` when the next thing
+  /// is a checkpoint marked `stopped`, which the machine has to be run
+  /// past to reach (see this file's header), and once the recording is
+  /// exhausted. A host runs the machine to this or to its own frame
+  /// boundary, whichever is first, and then calls `apply()`.
   [[nodiscard]] ticks next_tick() const noexcept;
 
   /// Deliver every event whose tick is at or before `box.time()`: post
@@ -304,7 +342,7 @@ class replay_player {
   /// The report: one line, `amberfolio: replay ...`, saying what held or
   /// what differed first and where. NUL-terminated into `out`; answers
   /// the length.
-  std::size_t report(std::span<char> out) const noexcept;
+  [[nodiscard]] std::size_t report(std::span<char> out) const noexcept;
 
  private:
   /// Read the next non-empty line into `event`. False at the end of the
