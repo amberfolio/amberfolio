@@ -644,6 +644,45 @@ uint32_t af_machine_read_memory(af_machine* box, uint32_t address, uint8_t* out,
 uint32_t af_machine_set_entry(af_machine* box, uint32_t cs, uint32_t ip,
                               uint32_t ss, uint32_t sp);
 
+// --- Replay (machine/replay.h, docs/replay.md) ------------------------
+//
+// The two questions a host asks about a run it means to reproduce: what
+// state is this machine in, and is it the run this recording describes.
+//
+// Recording is not here. A recording is written by the loop that made
+// the run — where a key is posted, where a frame ends — and a host that
+// has such a loop has `format_replay_line()`. Verifying is here because
+// it is the opposite: no window, no speaker, no input of its own, and
+// three targets that must answer it identically or "verified everywhere"
+// means three readings of one file.
+
+/// The whole-state hash right now, as 64 lowercase hex characters
+/// written NUL-terminated into `out`; answers the length, or zero if
+/// `out` is smaller than 65 bytes.
+///
+/// The same digest a recording's checkpoint carries (machine/state.h), so
+/// a host can take one at any moment and compare it against a golden by
+/// eye. What is in it and what is deliberately not is docs/replay.md §2.
+uint32_t af_machine_state_hash(const af_machine* box, char* out, uint32_t max);
+
+/// Run `box` through the recording in `text` and say whether it was that
+/// run. `length` is the text's length in bytes; it need not be
+/// NUL-terminated.
+///
+/// The recording's speed and seams are applied before they are checked —
+/// a replay is the run the recording names — and then every initial
+/// condition is checked against the machine and the filesystem, every key
+/// delivered at the tick it was recorded at, and every checkpoint's hash
+/// compared. The machine must be freshly reset with the program loaded
+/// and nothing else done to it; this drives it to the recording's end.
+///
+/// Answers `AF_OK` when everything held and the end was reached, and
+/// `AF_INVALID` otherwise. Either way `out` receives the one-line report
+/// — what was verified, or what differed first and where — NUL-terminated
+/// if it fits, and 512 bytes is enough for any of them.
+uint32_t af_machine_verify_recording(af_machine* box, const char* text,
+                                     uint32_t length, char* out, uint32_t max);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

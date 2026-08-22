@@ -58,6 +58,7 @@ add_executable(amberfolio-core-tests
   core/machine/seam_cheats_test.cpp
   core/machine/seam_test.cpp
   core/machine/service_floor_test.cpp
+  core/machine/session_test.cpp
   core/machine/speaker_test.cpp
   core/machine/state_test.cpp
   core/machine/trace_test.cpp
@@ -75,6 +76,13 @@ target_include_directories(amberfolio-core-tests PRIVATE
 # gmock_main, not gtest_main: it brings gtest with it and initialises both,
 # so a test that wants a matcher does not need the link line changed. Our
 # warning baseline applies — test code is our code.
+# Where the committed recordings live (tests/sessions/README.md).
+# A compile definition and not a search: the sessions are source,
+# they sit beside the test that reads them, and a test that hunted
+# for them could pass by finding nothing.
+target_compile_definitions(amberfolio-core-tests PRIVATE
+  "AMBERFOLIO_SESSIONS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/sessions\"")
+
 target_link_libraries(amberfolio-core-tests PRIVATE
   amberfolio::core
   amberfolio::programs

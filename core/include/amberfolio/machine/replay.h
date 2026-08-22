@@ -379,4 +379,39 @@ class replay_player {
   sha256_digest actual_{};
 };
 
+/// What `verify_recording()` found.
+struct verify_result {
+  replay_status status{replay_status::malformed};
+  std::size_t checkpoints{};
+  std::size_t keys{};
+
+  [[nodiscard]] bool ok() const noexcept {
+    return status == replay_status::done;
+  }
+};
+
+/// Drive `box` through the whole of `text` and answer what happened.
+///
+/// This is the loop the player will not do for itself, and it is allowed
+/// to be here because it is a *loop* and not a host: nothing is
+/// presented, nothing is pulled from the speaker, no input arrives from
+/// anywhere but the recording, and no wall clock is consulted. A desktop
+/// or browser host still writes its own, because a host has all of those
+/// things to do between slices — but a checker has none of them, and
+/// three targets writing the same twelve lines is three chances to write
+/// them differently.
+///
+/// `slice` is the caller's frame period, the boundary it would have run
+/// to anyway. It must be the one the recording was made at — the
+/// recorder's checkpoints are at *its* boundaries, and a checker with a
+/// coarser slice runs past them and is told so.
+///
+/// Everything the recording names as an initial condition is applied
+/// first: the speed and the seams. Then `check_initial()`, then the
+/// loop. `player` is the caller's so that `report()` can be read after,
+/// whichever way it went.
+verify_result verify_recording(machine& box, filesystem* fs,
+                               std::span<const char> text, ticks slice,
+                               replay_player& player);
+
 }  // namespace amberfolio::machine

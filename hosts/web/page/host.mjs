@@ -486,6 +486,66 @@ export class Machine {
     );
   }
 
+  /// The whole-state hash right now, as 64 lowercase hex characters, or
+  /// null if it could not be taken. The same digest a recording's
+  /// checkpoint carries (docs/replay.md §2), so a page can take one at
+  /// any moment and compare it against a golden by eye.
+  stateHash() {
+    return this.#text(
+      (out, max) => this.module._af_machine_state_hash(this.handle, out, max),
+      72,
+    );
+  }
+
+  /// Run this machine through `text`, a recording, and answer
+  /// `{ ok, report }` — whether it was that run, and the one line saying
+  /// what was verified or what differed first and where.
+  ///
+  /// The machine must be freshly reset with the program loaded and
+  /// nothing else done to it; this drives it to the recording's end. The
+  /// recording's own speed and seams are applied before they are checked,
+  /// because a replay is the run the recording names (docs/replay.md §4).
+  ///
+  /// The text goes over as bytes rather than as a C string: a recording
+  /// is ASCII by construction but it is also long, and passing a length
+  /// beats hunting for a terminator in a megabyte.
+  verifyRecording(text) {
+    const source = String(text ?? '');
+    const scratch = this.module._malloc(source.length + 1);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while passing a recording');
+    }
+    const report = this.module._malloc(512);
+    if (report === 0) {
+      this.module._free(scratch);
+      throw new Error('out of wasm heap while passing a recording');
+    }
+    try {
+      const heap = this.module.HEAPU8;
+      for (let i = 0; i < source.length; ++i) {
+        const code = source.charCodeAt(i);
+        heap[scratch + i] = code < 0x100 ? code : 0x3f; // '?'
+      }
+      heap[scratch + source.length] = 0;
+      const status = this.module._af_machine_verify_recording(
+        this.handle,
+        scratch,
+        source.length,
+        report,
+        512,
+      );
+      let end = report;
+      while (this.module.HEAPU8[end] !== 0 && end < report + 512) ++end;
+      const line = String.fromCharCode(
+        ...this.module.HEAPU8.subarray(report, end),
+      );
+      return { ok: status === AF_OK, status, report: line };
+    } finally {
+      this.module._free(report);
+      this.module._free(scratch);
+    }
+  }
+
   /// Every seam this build's registry holds, as `{ id, about, state,
   /// reason, armed }`, in registry order. `state` is one of the AF_SEAM_*
   /// values above; `reason` is the spelling core gives it (`none`,

@@ -1095,4 +1095,53 @@ std::size_t replay_player::report(std::span<char> out) const noexcept {
   return w.finish();
 }
 
+verify_result verify_recording(machine& box, filesystem* fs,
+                               std::span<const char> text, ticks slice,
+                               replay_player& player) {
+  verify_result out{};
+  if (!player.load(text)) {
+    out.status = player.status();
+    return out;
+  }
+
+  // The recording's own initial conditions, applied before they are
+  // checked: a replay is the run the recording names, not a run that
+  // happens to agree with it. A seam that will not turn on is not
+  // reported here — `check_initial()` says "the seams on are not the ones
+  // recorded", which is the same finding said once.
+  if (player.preamble().have_speed) {
+    box.set_step_cost_subticks(player.preamble().subticks);
+  }
+  for (std::size_t i = 0; i < player.preamble().seam_count; ++i) {
+    static_cast<void>(box.seams().enable(player.preamble().seam(i)));
+  }
+
+  if (player.check_initial(box, fs) != replay_status::ok) {
+    out.status = player.status();
+    return out;
+  }
+
+  // Primed at tick 0, because an event recorded there has to be delivered
+  // before the machine has taken a step.
+  replay_status status = player.apply(box);
+  while (status == replay_status::ok) {
+    ticks target = box.time() + slice;
+    if (player.next_tick() < target) {
+      target = player.next_tick();
+    }
+    // A machine that has stopped cannot be run any further, and a
+    // recording that has more to say about one is describing a machine
+    // this is not. Left to the loop below rather than checked here: the
+    // `apply()` after the last slice is what notices, and it says so in
+    // the words the report is written in.
+    box.run(target);
+    status = player.apply(box);
+  }
+
+  out.status = status;
+  out.checkpoints = player.checkpoints_verified();
+  out.keys = player.keys_delivered();
+  return out;
+}
+
 }  // namespace amberfolio::machine
