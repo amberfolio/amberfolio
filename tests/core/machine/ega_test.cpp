@@ -623,19 +623,33 @@ TEST(ega_attribute_controller, halts_on_an_index_past_the_implemented_subset) {
 
 TEST(ega_attribute_controller,
      ega_color_table_reproduces_the_standard_16_palette) {
-  // A handful of the well-known standard EGA/CGA-compatible 16-colour
-  // values (int10.h's default palette), spot-checked against the
-  // documented DAC bit layout ega.h describes — a fact, not a game
-  // asset, and cross-checked here from the table's own logic rather than
-  // trusted blindly.
-  EXPECT_EQ(ega_color_table[0], (rgb{0x00, 0x00, 0x00}));   // black
-  EXPECT_EQ(ega_color_table[4], (rgb{0xAA, 0x00, 0x00}));   // red
-  EXPECT_EQ(ega_color_table[2], (rgb{0x00, 0xAA, 0x00}));   // green
-  EXPECT_EQ(ega_color_table[1], (rgb{0x00, 0x00, 0xAA}));   // blue
-  EXPECT_EQ(ega_color_table[7], (rgb{0xAA, 0xAA, 0xAA}));   // light gray
-  EXPECT_EQ(ega_color_table[56], (rgb{0x55, 0x55, 0x55}));  // dark gray
-  EXPECT_EQ(ega_color_table[63], (rgb{0xFF, 0xFF, 0xFF}));  // white
-  EXPECT_EQ(ega_color_table[20], (rgb{0xAA, 0x55, 0x00}));  // brown
+  // A handful of the well-known standard sixteen (int10.h's default
+  // palette), spot-checked against the four-wire bit layout ega.h
+  // describes — a fact, not a game asset, and cross-checked here from the
+  // table's own logic rather than trusted blindly.
+  EXPECT_EQ(ega_color_table[0x00], (rgb{0x00, 0x00, 0x00}));  // black
+  EXPECT_EQ(ega_color_table[0x04], (rgb{0xAA, 0x00, 0x00}));  // red
+  EXPECT_EQ(ega_color_table[0x02], (rgb{0x00, 0xAA, 0x00}));  // green
+  EXPECT_EQ(ega_color_table[0x01], (rgb{0x00, 0x00, 0xAA}));  // blue
+  EXPECT_EQ(ega_color_table[0x06], (rgb{0xAA, 0x55, 0x00}));  // brown
+  EXPECT_EQ(ega_color_table[0x07], (rgb{0xAA, 0xAA, 0xAA}));  // light gray
+  EXPECT_EQ(ega_color_table[0x10], (rgb{0x55, 0x55, 0x55}));  // dark gray
+  EXPECT_EQ(ega_color_table[0x17], (rgb{0xFF, 0xFF, 0xFF}));  // white
+}
+
+TEST(ega_attribute_controller,
+     only_bit_4_of_the_high_three_reaches_the_screen) {
+  // The display this machine has takes four colour wires, and the card's
+  // secondary red (bit 5) and secondary blue (bit 3) are not among them
+  // (ega.h). So a code differing only in those two is the same colour,
+  // and bit 4 — the one wired to intensity — is the only one of the three
+  // that changes anything.
+  for (unsigned code = 0; code < 0x40u; ++code) {
+    const auto stripped = static_cast<std::uint8_t>(code & 0x17u);
+    EXPECT_EQ(ega_color_table[code], ega_color_table[stripped])
+        << "code " << code;
+  }
+  EXPECT_NE(ega_color_table[0x00], ega_color_table[0x10]);
 }
 
 // --- Halting: a clean stop, not a crash ------------------------------------

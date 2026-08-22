@@ -325,9 +325,10 @@ inline constexpr std::size_t frame_pixels =
     std::size_t{frame_width} * frame_height;
 
 /// Sixteen palette entries, because mode 0Dh has four planes. The EGA's
-/// wider 64-colour space is the *source* of these values (M2-D3 maps it);
-/// what crosses this boundary is already RGB, so that neither host has to
-/// know anything about EGA colour encoding.
+/// six-bit colour codes are the *source* of these values (M2-D3 maps them
+/// through the wires this machine's display actually has — ega.h); what
+/// crosses this boundary is already RGB, so that neither host has to know
+/// anything about EGA colour encoding.
 inline constexpr unsigned palette_entries = 16;
 
 /// One palette entry, 8 bits per channel, no alpha.

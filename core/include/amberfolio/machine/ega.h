@@ -114,24 +114,43 @@
 // because it is one mechanism, not two.
 //
 //
-// The 64-colour EGA palette, mapped to RGB once
-// -----------------------------------------------
+// The palette codes, mapped to RGB once
+// ---------------------------------------
 //
 // `ega_color_table` is PLAN.md §4's "indexed framebuffer plus a 16-entry
 // RGB palette" one step upstream: the renderer looks up each of the
 // sixteen *palette registers'* 6-bit values in this 64-entry table to
 // fill the framebuffer's own palette, once a frame. The table is a
 // settled fact about the hardware, computed once as `constexpr` rather
-// than carried as 64 magic numbers: the EGA DAC treats each 6-bit colour
-// code as two bits per channel — a "primary" bit and a "secondary"
-// (intensity) bit for red, green and blue, bits 2/1/0 and 5/4/3
-// respectively — and drives each channel to 0x00 with neither bit set,
-// 0x55 or 0xAA with one, and 0xFF with both. That two-level-per-bit
-// scheme, not a linear ramp, is why 64 codes make sixteen visually
-// distinct "bright" and "dark" pairs instead of 64 evenly spaced shades,
-// and it is documented, published EGA hardware behaviour — a fact this
-// project's clean-content rule explicitly allows (CONTRIBUTING.md; the
-// issue text says so again for this exact table).
+// than carried as 64 magic numbers.
+//
+// **Which hardware, though, is a decision, and this machine makes it.**
+// The card puts six colour wires on its connector — a primary and a
+// secondary bit for red, green and blue — and what those wires *mean* is
+// the display's answer, not the card's. On the Enhanced Color Display,
+// all six arrive and each channel takes one of four levels: 64 colours.
+// On the 200-line **Color Display**, only four pins are colour at all —
+// red, green, blue and intensity — and the card's secondary green (bit 4)
+// is the one wired to intensity. Bits 5 and 3 reach nothing. Sixteen
+// colours, the CGA sixteen, and the two spare bits are simply not
+// connected.
+//
+// This machine is the second one, because mode 0Dh is a 200-line mode and
+// PLAN.md §3 scopes the video to it: 320x200, sixteen colours, on the
+// display a 1988 PC owner had in front of it. The consequence is visible
+// and it is the point — a program that writes `10h` into a palette
+// register is asking for dark grey (intensity, no colour), not for the
+// dark green that the same code means on an ECD, and this game asks for
+// exactly that when it darkens a battlefield. Rendering it as green was
+// this table's bug, not the program's.
+//
+// So: bits 2/1/0 are red, green and blue; bit 4 is intensity; a channel
+// is 0x00 or 0xAA without intensity and 0x55 or 0xFF with it. Colour 6
+// is the single irregularity — the display makes RGBI 0110 brown rather
+// than the olive the formula gives, which is why every CGA and EGA colour
+// chart in print shows brown there. All of that is documented, published
+// hardware behaviour, and facts about published hardware are a thing this
+// project's clean-content rule explicitly allows (CONTRIBUTING.md).
 //
 //
 // The write pipeline
@@ -318,32 +337,41 @@ namespace amberfolio::machine {
 
 class machine;
 
-/// One channel of an EGA colour code's RGB translation: 0x00 with neither
-/// the primary nor the secondary (intensity) bit set, 0xAA or 0x55 with
-/// one, 0xFF with both. See this file's top comment, "The 64-colour EGA
-/// palette, mapped to RGB once."
-[[nodiscard]] constexpr std::uint8_t ega_channel(bool primary,
-                                                 bool secondary) noexcept {
-  std::uint8_t value = 0;
+/// One channel of an RGBI colour, at the two levels a four-wire display
+/// drives: 0xAA or 0x00 without the intensity line, 0xFF or 0x55 with it.
+/// See this file's top comment, "The palette codes, mapped to RGB once."
+[[nodiscard]] constexpr std::uint8_t rgbi_channel(bool primary,
+                                                  bool intense) noexcept {
   if (primary) {
-    value = static_cast<std::uint8_t>(value + 0xAAu);
+    return intense ? std::uint8_t{0xFFu} : std::uint8_t{0xAAu};
   }
-  if (secondary) {
-    value = static_cast<std::uint8_t>(value + 0x55u);
-  }
-  return value;
+  return intense ? std::uint8_t{0x55u} : std::uint8_t{0x00u};
 }
 
-/// One 6-bit EGA colour code, translated to RGB. Bits 2/1/0 are the
-/// primary red/green/blue bits, bits 5/4/3 their secondary (intensity)
-/// counterparts — the documented EGA DAC bit layout this file's top
-/// comment names.
-[[nodiscard]] constexpr rgb ega_color(std::uint8_t code) noexcept {
-  return rgb{
-      .red = ega_channel((code & 0x04u) != 0, (code & 0x20u) != 0),
-      .green = ega_channel((code & 0x02u) != 0, (code & 0x10u) != 0),
-      .blue = ega_channel((code & 0x01u) != 0, (code & 0x08u) != 0),
+/// One of the sixteen colours a 200-line Color Display produces, from the
+/// four wires that reach it. The one irregularity is colour 6: RGBI 0110
+/// would be olive by the formula, and the display makes it brown, which
+/// is why every CGA/EGA colour chart shows brown there.
+[[nodiscard]] constexpr rgb rgbi_color(unsigned index) noexcept {
+  const bool intense = (index & 0x08u) != 0;
+  const rgb plain{
+      .red = rgbi_channel((index & 0x04u) != 0, intense),
+      .green = rgbi_channel((index & 0x02u) != 0, intense),
+      .blue = rgbi_channel((index & 0x01u) != 0, intense),
   };
+  if (index == 6) {
+    return rgb{.red = plain.red, .green = 0x55u, .blue = plain.blue};
+  }
+  return plain;
+}
+
+/// One 6-bit EGA colour code, translated to RGB the way the connector
+/// this machine's display hangs off does it. Bits 2/1/0 are primary red,
+/// green and blue; bit 4 — secondary green on the card, wired to the
+/// display's intensity pin — is intensity. Bits 5 and 3 reach no pin and
+/// change nothing. See this file's top comment.
+[[nodiscard]] constexpr rgb ega_color(std::uint8_t code) noexcept {
+  return rgbi_color((code & 0x07u) | ((code & 0x10u) != 0 ? 0x08u : 0x00u));
 }
 
 /// Every one of the 64 codes, translated once. "Map the 64-colour EGA

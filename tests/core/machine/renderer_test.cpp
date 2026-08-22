@@ -205,7 +205,7 @@ TEST(renderer_end_to_end, a_drawn_test_pattern_hashes_to_a_known_value) {
   // rather than through INT 10h because this test is about the renderer,
   // not the video BIOS.
   constexpr std::array<std::uint8_t, 16> palette{
-      0, 1, 2, 3, 4, 5, 20, 7, 56, 57, 58, 59, 60, 61, 62, 63};
+      0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23};
   for (unsigned i = 0; i < palette.size(); ++i) {
     r.set_palette(static_cast<std::uint8_t>(i), palette[i]);
   }

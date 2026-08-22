@@ -116,9 +116,10 @@ TEST(int10_mode_set, al_0dh_programs_the_documented_register_state) {
   r.video->write_port(graphics_index_port, 0x08);
   EXPECT_EQ(r.video->read_port(graphics_data_port), 0xFF);
 
-  // The standard 16-colour default palette (int10.h's top comment).
+  // The standard 16-colour default palette (int10.h's top comment): the
+  // colour bits alone, then the same eight with intensity added.
   constexpr std::array<std::uint8_t, 16> expected{
-      0, 1, 2, 3, 4, 5, 20, 7, 56, 57, 58, 59, 60, 61, 62, 63};
+      0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23};
   for (unsigned i = 0; i < expected.size(); ++i) {
     EXPECT_EQ(r.video->palette_register(i), expected[i]) << "register " << i;
   }

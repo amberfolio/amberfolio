@@ -48,12 +48,13 @@
 // the sequencer's map mask, set to 0Fh so that a program's writes after
 // mode-set actually reach the planes — that value is load-bearing and
 // documented as such at its definition. The default palette AH=00h
-// installs is the standard 16-colour EGA/CGA-compatible palette (the
-// well-known, publicly documented default — its non-consecutive register
-// values for the eight "bright" colours are the historical
-// CGA-compatibility quirk every EGA/VGA reference describes), used here
-// because it is a real, checkable fact rather than an arbitrary choice —
-// again, not because any specific program depends on it existing.
+// installs is the standard sixteen a 200-line mode gets on a Color
+// Display — the colour bits alone for the dark eight, the same bits plus
+// the intensity bit for the bright eight — which is the well-known,
+// publicly documented default for this display and a real, checkable
+// fact rather than an arbitrary choice. ega.h says which display this
+// machine has and why the *other* published table, the Enhanced Color
+// Display's, is the wrong one here.
 //
 //
 // The modes this machine has, and the one it only records

@@ -1357,7 +1357,7 @@ constexpr std::uint16_t key_shifted_d = 0x2044;
 constexpr std::size_t pixels_per_row = machine::frame_width;
 constexpr std::size_t pixels_per_frame = machine::frame_pixels;
 
-constexpr std::uint64_t video_frame_hash = 0x23EE1B0F7C12E66EULL;
+constexpr std::uint64_t video_frame_hash = 0x5A76F1F971C42CA2ULL;
 constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
 
 /// Every program's entry, built by assignment rather than as one
@@ -2053,15 +2053,17 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
                {.index = 0,
                 .count = pixels_per_frame - 4 - 16 - first_band - second_band}};
 
-    // The palette INT 10h's mode set installs, through the EGA DAC's own
-    // two-bits-a-channel scheme (ega.h): code 5 is AAh/00h/AAh, code 20
-    // — the CGA-compatibility brown at index 6 — is AAh/55h/00h, code 57
-    // at index 9 is 55h/55h/FFh, code 63 is white. Index 1 is not the
-    // default 1 at all but the 2Ah this program set through AH=10h,
-    // which is 55h/AAh/55h.
+    // The palette INT 10h's mode set installs, through the four wires
+    // this machine's display has (ega.h): code 5 is AAh/00h/AAh, code 6
+    // — the brown the display makes of RGBI 0110 — is AAh/55h/00h, code
+    // 17 at index 9 is 55h/55h/FFh, code 23 is white. Index 1 is not the
+    // default at all but the 2Ah this program set through AH=10h, and 2Ah
+    // is the case worth having: of its three high bits only bit 4 is
+    // wired to anything, and it is the one 2Ah leaves clear, so the two
+    // that *are* set change nothing and the colour is plain green.
     p.palette = {
         {.index = 0, .color = {.red = 0x00, .green = 0x00, .blue = 0x00}},
-        {.index = 1, .color = {.red = 0x55, .green = 0xAA, .blue = 0x55}},
+        {.index = 1, .color = {.red = 0x00, .green = 0xAA, .blue = 0x00}},
         {.index = 5, .color = {.red = 0xAA, .green = 0x00, .blue = 0xAA}},
         {.index = 6, .color = {.red = 0xAA, .green = 0x55, .blue = 0x00}},
         {.index = 9, .color = {.red = 0x55, .green = 0x55, .blue = 0xFF}},

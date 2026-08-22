@@ -150,15 +150,21 @@ constexpr std::array<register_write, 9> mode_0d_graphics{{
     {.index = 0x08, .value = 0xFF},
 }};
 
-/// The standard 16-colour EGA/CGA-compatible default palette (int10.h's
-/// top comment). Index *i* of this array is the value AH=00h writes to
-/// palette register *i*; the discontinuity at index 6 (20, not 6) and
-/// indices 8-15 (56-63, not 8-15) is the historical CGA
-/// backward-compatibility quirk every EGA/VGA hardware reference
-/// documents, not a typo.
+/// The standard 16-colour default palette for a 200-line mode on a Color
+/// Display (int10.h's top comment, and ega.h's "The palette codes,
+/// mapped to RGB once" for which display this machine has).
+/// Index *i* of this array is the value AH=00h writes to palette register
+/// *i*: the low eight are the colour bits alone, and the high eight are
+/// the same bits with intensity (bit 4) added, which is why they run
+/// 16-23 rather than 8-15. The other table an EGA BIOS carries — the one
+/// with 20 at index 6 and 56-63 above it — is the Enhanced Color
+/// Display's, where all six colour bits reach the screen; on this display
+/// bits 5 and 3 reach nothing and that table would put bright red where
+/// brown belongs. The program this machine exists to run programs its own
+/// palette in exactly the encoding below.
 constexpr std::array<std::uint8_t, ega::palette_register_count>
-    mode_0d_default_palette{0,  1,  2,  3,  4,  5,  20, 7,
-                            56, 57, 58, 59, 60, 61, 62, 63};
+    mode_0d_default_palette{0,  1,  2,  3,  4,  5,  6,  7,
+                            16, 17, 18, 19, 20, 21, 22, 23};
 
 /// The attribute controller's index/data protocol (ega.h): a status read
 /// resets the flip-flop, then two writes to the one port load the index

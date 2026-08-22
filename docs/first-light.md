@@ -20,14 +20,26 @@ that claim yourself.
 ## What you need
 
 A directory holding your own copy of the game, with the program you want
-to run in it. Everything the program opens has to be in that one
-directory, because the machine has one drive and no subdirectories are
-created for you (`machine/vfs.h`).
+to run in it, **configured the way its own installer or launcher
+configures it**. That last part is not a detail. A hard-disk release of a
+game of this era typically ships a small setup program that writes a
+configuration file next to the executable — which graphics and sound
+hardware to use, and the path the data and the saves live at — and the
+game reads it on the way up. Without it the program falls back to being a
+floppy game: it asks you to insert a disk, in 80x25 text, which this
+machine does not display (see the notices below), and the run looks like
+a hang at a black screen about two seconds in. Run the launcher on your
+own copy once, in whatever DOS you have, and keep what it writes.
 
-Two notes about what the emulator does with it:
+Three notes about what the emulator does with the directory:
 
-- **The directory is never written to by these instructions.** Every run
-  below is read-only as far as the boot is concerned.
+- **The boot never writes to it.** Everything down to the roster is
+  read-only. Past that the game does write — a character it creates is a
+  file, and it will make the save directory its configuration names
+  (`INT 21h AH=39h`, `machine/dos.h`) if that directory is not there yet.
+- **One drive, and subdirectories only where the program makes them.** The
+  machine has a C: and nothing else, and it creates no directory of its
+  own accord (`machine/vfs.h`).
 - **Files whose names no DOS short name can equal are skipped**, and the
   hosts say how many. A real game directory usually has one or two — a
   PDF, a readme with a long name. That is the correct answer, not a
