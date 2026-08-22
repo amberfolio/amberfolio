@@ -327,4 +327,5 @@ into the filesystem through the same ABI the picker uses, loads it from
 there, runs it, and reads the report. The comparison above is a procedure
 a person carries out against their own copy — and it is now written down
 in full, stage by stage and with the notices a healthy run prints, in
-[`docs/first-light.md`](first-light.md).
+[`docs/first-light.md`](first-light.md) — and, for everything past the
+roster, in [`docs/playable.md`](playable.md).

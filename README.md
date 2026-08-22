@@ -7,7 +7,14 @@ is met: a player-supplied copy runs its own unpacker and overlay
 manager, renders its title sequence, answers its menus, and reaches the
 party roster — on the desktop host and in a browser, from the same core,
 reporting the same stop line at the same step. `docs/first-light.md` is
-the procedure; there is still no *playing* it, which is M4.
+the procedure.
+
+M4 is under way, and the loop past the roster now runs on the maintainer's
+own copy: a party is made and added, the city and its opening story event
+play, movement works, a random encounter fights to a finish with and
+without the debug cheats seam, and a game saves, quits, loads and
+continues. `docs/playable.md` is that procedure, leg by leg, including
+what it has *not* covered.
 
 The 8086 core is exact: all 323
 vector files of the
