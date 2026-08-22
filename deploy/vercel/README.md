@@ -14,7 +14,7 @@ The wasm leg of the CI matrix already has the Emscripten toolchain pinned
 by [`.emscripten-version`](../../.emscripten-version) and cached. Vercel's
 build image has none of that, and pinning the toolchain a second time in
 their settings is a second source of truth waiting to drift. So the build
-job uploads `build/wasm/hosts/web/Debug/` as an Actions artifact and the
+job uploads `build/wasm/hosts/web/Release/` as an Actions artifact and the
 deploy job ships those exact bytes with `vercel deploy --prebuilt`.
 Nothing is compiled on Vercel's side; their project has no build step to
 run.

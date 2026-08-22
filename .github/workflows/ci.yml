@@ -592,6 +592,27 @@ jobs:
           AMBERFOLIO_CONFORMANCE_REQUIRED: ${{ matrix.emscripten && '' || '1' }}
         run: ctest --preset ${{ matrix.preset }}
 
+      # The optimised module, and the one that ships (#116, M4-W1 #108).
+      # Debug was what the deployed page ran until now, and it costs about
+      # nine times the wall clock and thirty-three times the bytes — 5.7 MB
+      # of wasm against 172 KB, and roughly ten times real time against
+      # ninety. Ten times is still enough for a browser at 1x, which is why
+      # nothing looked wrong; it is also nine-tenths of the margin that has
+      # to absorb a slow phone, a busy tab and a speed preset above 1x
+      # (PLAN.md §4).
+      #
+      # **Both configurations are built and both are tested**, rather than
+      # one swapped for the other. Debug stays because it is the leg that
+      # catches a whole class of bug the optimiser hides: #84's
+      # `framebuffer::reset()` overflowed Emscripten's stack in Debug only.
+      # A green Release and a red Debug is a finding, not a formality.
+      - name: build (optimised)
+        if: matrix.emscripten
+        run: cmake --build --preset wasm-release
+      - name: test (optimised)
+        if: matrix.emscripten
+        run: ctest --preset wasm-release
+
       # What the deploy job ships (deploy/vercel/README.md). Uploaded on
       # every event rather than only on main, because a pull request from
       # this repository gets a preview deployment of exactly the bytes CI
@@ -603,8 +624,8 @@ jobs:
         with:
           name: web-host
           path: |
-            build/wasm/hosts/web/Debug
-            !build/wasm/hosts/web/Debug/smoke.mjs
+            build/wasm/hosts/web/Release
+            !build/wasm/hosts/web/Release/smoke.mjs
           if-no-files-found: error
           retention-days: 7
 

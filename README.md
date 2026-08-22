@@ -242,7 +242,17 @@ ctest --preset wasm          # loads the module under node, checks its ABI,
 ```
 
 That leaves the module, its glue, and the JS host together in
-`build/wasm/hosts/web/Debug/`. ES modules need a real origin, so serve the
+`build/wasm/hosts/web/Debug/`.
+
+**For anything you mean to run rather than debug, build `wasm-release`**
+instead — same commands with `--preset wasm-release`, landing in
+`.../web/Release/`. The optimised module is about nine times faster and
+thirty-three times smaller (172 KB of wasm against 5.7 MB), and it is what
+CI deploys. The Debug tree is worth keeping around: it is where a stack
+overflow or an out-of-bounds shows up as itself rather than as a page that
+quietly stops.
+
+ES modules need a real origin, so serve the
 directory rather than opening the file:
 
 ```sh
