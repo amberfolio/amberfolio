@@ -51,6 +51,22 @@
 //     look at, and no test in this repository will ever run the file
 //     that produces it.
 //
+//   --dump-every N   also write PREFIX-NNNNNN.ppm every N frames
+//
+//     A run is a film, and one frame of it is a still. Everything a
+//     player-supplied copy does past the title happens over tens of
+//     virtual seconds - a menu answers, a tour walks, a fight resolves -
+//     and "what did the screen do" is a question a single final frame
+//     cannot answer. Needs `--dump`, whose prefix it shares; the frame
+//     number in the name is the same one `--press KEY@FRAME` counts in,
+//     so a still and the keystroke that caused it are named in the same
+//     units.
+//
+//     Deliberately every Nth frame rather than every frame: sixty files
+//     a virtual second fills a disk before it tells anyone anything, and
+//     the caller is the only one who knows how fast the thing they are
+//     watching moves.
+//
 //   --trace          keep the trace ring, and print it with the report
 //
 //     Off by default, in the machine, at a cost of one branch per step
@@ -463,6 +479,18 @@ class stderr_diagnostics final : public machine::diagnostics {
                  why ? machine::seam_reason_name(event.reason) : "");
   }
 
+  void report(const machine::file_event& event) override {
+    if (!tracing_) {
+      return;
+    }
+    std::array<char, machine::dos_path_capacity> path{};
+    machine::format_dos_path(event.path, path);
+    std::fprintf(
+        stderr, "amberfolio: file %s %s handle=%04X %s from=%04X:%04X\n",
+        machine::file_action_name(event.what), path.data(), event.handle,
+        machine::vfs_error_name(event.error), event.caller_cs, event.caller_ip);
+  }
+
   void report(const machine::service_call& call) override {
     if (!tracing_) {
       return;
@@ -477,6 +505,23 @@ class stderr_diagnostics final : public machine::diagnostics {
  private:
   bool tracing_{false};
 };
+
+/// Write one `--dump-every` still: `PREFIX-NNNNNN.ppm`, six digits so a
+/// directory listing sorts into the order the frames happened in for any
+/// run short of three virtual hours.
+///
+/// Failures are silent on purpose. A still is an observation aid, and a
+/// run that stopped to complain about a full disk in the middle of the
+/// thing being observed would have destroyed what it was there to show;
+/// the missing file is the report.
+void write_still(const std::string& prefix, std::uint64_t frame,
+                 const machine::machine& box) {
+  std::array<char, 32> suffix{};
+  std::snprintf(suffix.data(), suffix.size(), "-%06llu.ppm",
+                static_cast<unsigned long long>(frame));
+  (void)sdl::write_ppm(std::filesystem::path(prefix + suffix.data()),
+                       box.display().pixels(), box.display().palette());
+}
 
 /// Drain whatever DOS console output has accumulated to stdout.
 ///
@@ -852,6 +897,11 @@ struct options {
   std::uint64_t step_budget{0};
   machine::ticks tick_budget{0};
 
+  /// `--dump-every`: write a still every this many frames, on top of
+  /// the one `--dump` writes at the end. Zero means "only the last
+  /// one", which is what `--dump` alone has always meant.
+  std::uint64_t dump_every{0};
+
   /// Where `--record` writes the recording, and where `--replay` reads
   /// one. Empty when the option was not given, and never both at once:
   /// a run is either the one being recorded or the one being checked
@@ -958,6 +1008,13 @@ struct options {
       opts.trace = true;
     } else if (arg == "--dump" && i + 1 < argc) {
       opts.dump_prefix = argv[++i];
+    } else if (arg == "--dump-every" && i + 1 < argc) {
+      if (!parse_count(argv[++i], opts.dump_every) || opts.dump_every == 0) {
+        std::fprintf(stderr,
+                     "amberfolio: --dump-every wants a positive frame "
+                     "count\n");
+        return opts;
+      }
     } else if (arg == "--record" && i + 1 < argc) {
       opts.record_path = argv[++i];
     } else if (arg == "--replay" && i + 1 < argc) {
@@ -1027,7 +1084,8 @@ struct options {
         "usage: amberfolio <dir> <program.exe> [--headless]"
         " [--scale N] [--verify] [--press KEY@FRAME]\n"
         "                                      [--steps N]"
-        " [--until TICKS] [--dump PREFIX] [--trace]\n"
+        " [--until TICKS] [--dump PREFIX] [--dump-every N]\n"
+        "                                      [--trace]\n"
         "                                      [--seam ID] [--seams]\n"
         "                                      [--record FILE]"
         " [--replay FILE]\n"
@@ -1057,6 +1115,16 @@ struct options {
                  " they cannot be combined with --headless\n");
     return opts;
   }
+  // The stills share `--dump`'s prefix, so without one there is nowhere
+  // to put them. Refused for the reason above: an option that silently
+  // did nothing is worse than one that says why it cannot.
+  if (opts.dump_every != 0 && opts.dump_prefix.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: --dump-every needs --dump, whose prefix it"
+                 " writes under\n");
+    return opts;
+  }
+
   // A run records or it replays; it does not do both. The recording of a
   // replay would be a copy of its own input with the checks folded in,
   // and a file that is neither the run nor the verification of one.
@@ -1457,6 +1525,14 @@ int main(int argc, char** argv) try {
     }
 
     const auto frame_started = std::chrono::steady_clock::now();
+
+    // Before the frame is run rather than after: `frame_index` is the
+    // number `--press KEY@FRAME` matches on, and a still named for a
+    // frame should be the screen that frame's keystroke was answered
+    // against, not the one after it.
+    if (opts.dump_every != 0 && frame_index % opts.dump_every == 0) {
+      write_still(opts.dump_prefix, frame_index, box);
+    }
 
     if (!opts.headless) {
       // Pushed before the poll, so the events this frame owes are on the

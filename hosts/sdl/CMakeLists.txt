@@ -147,6 +147,7 @@ add_test(NAME sdl-host-presents-a-frame
     "-DPRESS=A@60"
     "-DEXPECT_CODE=90"
     "-DEXPECT_CONSOLE=aDONE"
+    "-DSTILLS=${CMAKE_CURRENT_BINARY_DIR}/verify-stills"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-verify-program.cmake")
 set_tests_properties(sdl-host-presents-a-frame PROPERTIES
   LABELS smoke

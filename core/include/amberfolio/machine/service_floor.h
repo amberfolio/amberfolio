@@ -510,6 +510,16 @@ class service_floor {
   /// to do.
   service_outcome call(unsigned slot);
 
+  /// Say what a naming DOS call did (diagnostics.h's `file_event`).
+  ///
+  /// On the floor rather than on `machine` because the floor is what
+  /// holds the sink, and because the handlers that have the answer are
+  /// handed a floor and nothing else. `path` and `error` are filled by
+  /// the caller; `caller_cs`/`caller_ip` are filled here, so no handler
+  /// has to remember to.
+  void report_file(file_action what, const dos_path& path, std::uint16_t handle,
+                   vfs_error error);
+
   // --- The caller's frame ---------------------------------------------
   //
   // Named accessors over `service::frame`, so that a handler reporting an

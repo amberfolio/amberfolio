@@ -55,6 +55,7 @@ class machine_log final : public machine::diagnostics {
  public:
   void report(const machine::notice& /*what*/) override { ++notices; }
   void report(const machine::service_call& /*call*/) override {}
+  void report(const machine::file_event& /*event*/) override {}
   void report(const machine::stop_record& /*stop*/) override {}
   void report(const cpu::stop_record& stop) override { record = stop; }
   void report(const machine::device_stop& /*stop*/) override {}

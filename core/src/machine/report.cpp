@@ -213,6 +213,72 @@ const char* notice_kind_name(notice_kind what) noexcept {
   return "unknown";
 }
 
+const char* file_action_name(file_action what) noexcept {
+  switch (what) {
+    case file_action::open:
+      return "open";
+    case file_action::create:
+      return "create";
+    case file_action::mkdir:
+      return "mkdir";
+    case file_action::unlink:
+      return "unlink";
+    case file_action::close:
+      return "close";
+  }
+  return "unknown";
+}
+
+const char* vfs_error_name(vfs_error error) noexcept {
+  switch (error) {
+    case vfs_error::none:
+      return "none";
+    case vfs_error::file_not_found:
+      return "file_not_found";
+    case vfs_error::path_not_found:
+      return "path_not_found";
+    case vfs_error::too_many_open_files:
+      return "too_many_open_files";
+    case vfs_error::access_denied:
+      return "access_denied";
+    case vfs_error::invalid_handle:
+      return "invalid_handle";
+    case vfs_error::invalid_drive:
+      return "invalid_drive";
+    case vfs_error::no_more_files:
+      return "no_more_files";
+    case vfs_error::directory_full:
+      return "directory_full";
+  }
+  return "unknown";
+}
+
+std::size_t format_dos_path(const dos_path& path, std::span<char> out) {
+  // Counted whether or not it fits, and truncated rather than refused:
+  // the two report writers above answer the length the caller would have
+  // needed, and a path in a log line is worth having in part.
+  std::size_t written = 0;
+  const auto put = [&](char c) {
+    if (written + 1 < out.size()) {
+      out[written] = c;
+    }
+    ++written;
+  };
+  if (path.is_root()) {
+    put('\\');
+  }
+  for (std::size_t i = 0; i < path.depth(); ++i) {
+    put('\\');
+    for (const char c : path.component(i).text()) {
+      put(c);
+    }
+  }
+  if (!out.empty()) {
+    out[written < out.size() ? written : out.size() - 1] = '\0';
+  }
+  return written;
+}
+
 const char* cpu_stop_reason_name(cpu::stop_reason reason) noexcept {
   switch (reason) {
     case cpu::stop_reason::none:

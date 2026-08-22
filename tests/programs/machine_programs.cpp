@@ -26,6 +26,7 @@
 #include "amberfolio/machine/font.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/report.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "amberfolio/sha256.h"
@@ -2151,6 +2152,22 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
     p.console = {'F', 'I', 'L', 'E', 'S', ' ', 'O', 'K'};
     p.files = {{.present = true, .contents = file_contents()},
                {.present = false, .contents = {}}};
+    // The whole of what the program asked DOS for by name, in order -
+    // including the three refusals, which are the point of the calls
+    // that make them (diagnostics.h: a failed open is an answer).
+    p.file_trace = {
+        "mkdir \\DATA",
+        "create \\DATA\\NOTE.TXT",
+        "close \\DATA\\NOTE.TXT",
+        "open \\DATA\\NOTE.TXT",
+        "close \\DATA\\NOTE.TXT",
+        "open \\NOPE.TXT file_not_found",
+        "unlink \\NOPE.TXT file_not_found",
+        "create \\SCRATCH.TMP",
+        "close \\SCRATCH.TMP",
+        "unlink \\SCRATCH.TMP",
+        "open \\SCRATCH.TMP file_not_found",
+    };
     list.push_back(std::move(p));
   }
 
@@ -2222,6 +2239,7 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
         {.index = 3, .color = {.red = 0x00, .green = 0xAA, .blue = 0xAA}},
         {.index = 15, .color = {.red = 0xFF, .green = 0xFF, .blue = 0xFF}}};
 
+    p.file_trace = {"create \\RUN.LOG", "close \\RUN.LOG"};
     p.frame_hash = composite_frame_hash;
     p.least_time = ticks{timer_divisor} * composite_wanted_ticks;
     p.least_frames = 1;
@@ -2281,6 +2299,10 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
         {.what = "40:6C moved without the program programming anything",
          .value = 1}};
     p.exit_code = 0x77;
+    // The overlay, opened by name and closed by handle - the whole of
+    // this program's file activity, and the shape a real overlay manager
+    // has (M4-G1/#102 found the same two lines under the game).
+    p.file_trace = {"open \\OVL.BIN", "close \\OVL.BIN"};
     // The two the video BIOS owes: the text mode this machine records and
     // cannot draw, and the text page nothing answers for.
     p.notices = 2;
@@ -2464,6 +2486,36 @@ std::vector<std::string> check_machine_program(const machine_program& expected,
       line += " " + std::to_string(period);
     }
     fail(line + " }");
+  }
+
+  {
+    // Rendered the same way a host renders it, so a line in a failure
+    // here and a line under `--trace` are the same text.
+    std::vector<std::string> trace;
+    trace.reserve(got.file_events.size());
+    for (const machine::file_event& event : got.file_events) {
+      std::array<char, machine::dos_path_capacity> path{};
+      machine::format_dos_path(event.path, path);
+      std::string line = machine::file_action_name(event.what);
+      line += ' ';
+      line += path.data();
+      if (!event.ok()) {
+        line += ' ';
+        line += machine::vfs_error_name(event.error);
+      }
+      trace.push_back(std::move(line));
+    }
+    if (trace != expected.file_trace) {
+      std::string line = "the file trace is {";
+      for (const std::string& entry : trace) {
+        line += " \"" + entry + "\"";
+      }
+      line += " }, expected {";
+      for (const std::string& entry : expected.file_trace) {
+        line += " \"" + entry + "\"";
+      }
+      fail(line + " }");
+    }
   }
 
   for (std::size_t i = 0; i < expected.files.size(); ++i) {

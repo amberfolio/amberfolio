@@ -159,6 +159,7 @@ class recording_diagnostics final : public diagnostics {
  public:
   void report(const notice& what) override { notices.push_back(what); }
   void report(const service_call& call) override { calls.push_back(call); }
+  void report(const file_event& event) override { files.push_back(event); }
   void report(const stop_record& stop) override { stops.push_back(stop); }
   void report(const cpu::stop_record& stop) override {
     processor_stops.push_back(stop);
@@ -173,6 +174,7 @@ class recording_diagnostics final : public diagnostics {
   std::vector<notice> notices;
   std::vector<seam_event> seam_events;
   std::vector<service_call> calls;
+  std::vector<file_event> files;
   std::vector<stop_record> stops;
   std::vector<cpu::stop_record> processor_stops;
   std::vector<device_stop> device_stops;

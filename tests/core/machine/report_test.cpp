@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,6 +30,7 @@
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/vfs.h"
 #include "gtest/gtest.h"
 #include "machine/test_device.h"
 
@@ -302,6 +304,68 @@ TEST(TraceReport, SurvivesResetAsASettingAndForgetsWhatItHeld) {
 
   EXPECT_TRUE(r.pc().trace().enabled());
   EXPECT_EQ(r.pc().trace().steps_seen(), 0u);
+}
+
+// --- Naming a file (M4-G3/#104, M4-G4/#105) -----------------------------
+//
+// The file-activity channel's rendering: a path back into text, and the
+// two enumerators a log line spells out. Here rather than in dos_test.cpp
+// because these are the format, and dos_test.cpp is what checks that the
+// events reach a sink at all.
+
+/// `format_dos_path` into a string, with room to spare.
+[[nodiscard]] std::string path_text(const dos_path& path) {
+  std::array<char, dos_path_capacity> out{};
+  const std::size_t wrote = format_dos_path(path, out);
+  EXPECT_LT(wrote, out.size());
+  return {out.data()};
+}
+
+[[nodiscard]] dos_path path_of(std::initializer_list<std::string_view> parts) {
+  dos_path path;
+  for (const std::string_view part : parts) {
+    const vfs_result<dos_name> name =
+        dos_name::parse(std::span<const char>(part.data(), part.size()));
+    EXPECT_TRUE(name.ok());
+    EXPECT_TRUE(path.push(name.value));
+  }
+  return path;
+}
+
+TEST(FilePath, RendersALeafUnderTheRoot) {
+  EXPECT_EQ(path_text(path_of({"GAME.DAT"})), "\\GAME.DAT");
+}
+
+TEST(FilePath, RendersEveryComponentSeparated) {
+  EXPECT_EQ(path_text(path_of({"SAVE", "SLOT01", "CHAR1.DAT"})),
+            "\\SAVE\\SLOT01\\CHAR1.DAT");
+}
+
+TEST(FilePath, RendersTheRootAsALoneSeparator) {
+  EXPECT_EQ(path_text(dos_path{}), "\\");
+}
+
+TEST(FilePath, TruncatesRatherThanRefusingASmallBuffer) {
+  // The two report writers' rule, kept here: the caller is told what it
+  // would have needed, and what fits is still terminated.
+  const dos_path path = path_of({"SAVE", "SLOT01"});
+  std::array<char, 8> out{};
+  const std::size_t wrote = format_dos_path(path, out);
+  EXPECT_EQ(wrote, std::string_view("\\SAVE\\SLOT01").size());
+  EXPECT_STREQ(out.data(), "\\SAVE\\S");
+}
+
+TEST(FileNames, SpellEachActionAndErrorAsItsOwnEnumerator) {
+  EXPECT_STREQ(file_action_name(file_action::open), "open");
+  EXPECT_STREQ(file_action_name(file_action::create), "create");
+  EXPECT_STREQ(file_action_name(file_action::mkdir), "mkdir");
+  EXPECT_STREQ(file_action_name(file_action::unlink), "unlink");
+  EXPECT_STREQ(file_action_name(file_action::close), "close");
+
+  EXPECT_STREQ(vfs_error_name(vfs_error::none), "none");
+  EXPECT_STREQ(vfs_error_name(vfs_error::file_not_found), "file_not_found");
+  EXPECT_STREQ(vfs_error_name(vfs_error::access_denied), "access_denied");
+  EXPECT_STREQ(vfs_error_name(vfs_error::directory_full), "directory_full");
 }
 
 }  // namespace

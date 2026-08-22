@@ -294,6 +294,14 @@ struct machine_outcome {
   /// The run's own account of what was done to it, beside the results.
   std::vector<machine::seam_event> seam_events;
 
+  /// Every naming DOS call the program made, in order (diagnostics.h's
+  /// `file_event`): which files it opened, made, removed and closed, and
+  /// which of those failed. `files` above is what the filesystem held
+  /// afterwards; this is what the program *did* to get there, which a
+  /// final listing cannot show - a file created, written and deleted
+  /// leaves nothing behind but three lines here.
+  std::vector<machine::file_event> file_events;
+
   /// The step cap ran out before the program exited.
   bool capped{false};
 
@@ -358,6 +366,9 @@ class machine_harness {
     void report(const machine::service_call& /*call*/) override {
       ++service_calls;
     }
+    void report(const machine::file_event& event) override {
+      files.push_back(event);
+    }
     void report(const machine::stop_record& /*stop*/) override {}
     void report(const cpu::stop_record& stop) override { cpu_stop = stop; }
     void report(const machine::device_stop& /*stop*/) override {
@@ -372,6 +383,7 @@ class machine_harness {
 
     cpu::stop_record cpu_stop{};
     std::vector<machine::seam_event> seam_events;
+    std::vector<machine::file_event> files;
     std::uint64_t notices{};
     std::uint64_t device_stops{};
     std::uint64_t service_calls{};

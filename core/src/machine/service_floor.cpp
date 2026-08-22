@@ -305,6 +305,22 @@ void service_floor::program_hardware() {
   }
 }
 
+void service_floor::report_file(file_action what, const dos_path& path,
+                                std::uint16_t handle, vfs_error error) {
+  if (log_ == nullptr) {
+    // The caller's frame is a stack read; skipping it when nobody is
+    // listening keeps a run with a sink and a run without one the same
+    // run, which is the rule `call()` above states at length.
+    return;
+  }
+  log_->report(file_event{.what = what,
+                          .path = path,
+                          .handle = handle,
+                          .error = error,
+                          .caller_cs = caller_cs(),
+                          .caller_ip = caller_ip()});
+}
+
 service_outcome service_floor::call(unsigned slot) {
   const stub& entry = stubs_[slot];
   const service_outcome outcome = entry.handler == nullptr

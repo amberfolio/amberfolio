@@ -148,6 +148,20 @@ struct machine_program {
   /// order. A path the program deleted is `present == false`.
   std::vector<harvested_file> files;
 
+  /// Every naming DOS call the run should make, in order, rendered as
+  /// `<action> <path>` - `open \OVL.BIN`, `close \OVL.BIN`
+  /// (diagnostics.h's `file_event`, report.h's `file_action_name` and
+  /// `format_dos_path`). Asserted even when empty, for the reason
+  /// `console` is: a program that opened something it should not have is
+  /// as wrong as one that opened the wrong thing.
+  ///
+  /// `files` above is what the filesystem held when the run ended; this
+  /// is what the program did to get there, and the two answer different
+  /// questions. A save game that creates a file, writes it and deletes a
+  /// character file it replaced leaves a listing that cannot show the
+  /// deletion happened at all.
+  std::vector<std::string> file_trace;
+
   /// How many "something was asked of nothing" notices the run should
   /// produce (diagnostics.h). Zero for every program that is only
   /// exercising services — a correct program touches no absent port.

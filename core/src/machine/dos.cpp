@@ -396,6 +396,7 @@ void mkdir_fn(service_floor& floor) {
     return;
   }
   const vfs_error err = fs->mkdir(path.value);
+  floor.report_file(file_action::mkdir, path.value, 0, err);
   if (err != vfs_error::none) {
     fail(floor, err);
     return;
@@ -415,6 +416,7 @@ void create_fn(service_floor& floor) {
   }
   const vfs_result<file_handle> opened = fs->create(path.value);
   if (!opened.ok()) {
+    floor.report_file(file_action::create, path.value, 0, opened.error);
     fail(floor, opened.error);
     return;
   }
@@ -422,9 +424,12 @@ void create_fn(service_floor& floor) {
       floor.box().dos().open_file(opened.value, path.value);
   if (handle == dos_services::no_handle) {
     fs->close(opened.value);
+    floor.report_file(file_action::create, path.value, 0,
+                      vfs_error::too_many_open_files);
     fail(floor, vfs_error::too_many_open_files);
     return;
   }
+  floor.report_file(file_action::create, path.value, handle, vfs_error::none);
   succeed_with(floor, handle);
 }
 
@@ -452,6 +457,9 @@ void open_fn(service_floor& floor) {
   const vfs_result<file_handle> opened =
       fs->open(path.value, static_cast<open_mode>(mode_bits));
   if (!opened.ok()) {
+    // Reported, not stopped: "does this save slot exist" is a question a
+    // program asks by opening the file, and no is an answer (dos.h).
+    floor.report_file(file_action::open, path.value, 0, opened.error);
     fail(floor, opened.error);
     return;
   }
@@ -459,9 +467,12 @@ void open_fn(service_floor& floor) {
       floor.box().dos().open_file(opened.value, path.value);
   if (handle == dos_services::no_handle) {
     fs->close(opened.value);
+    floor.report_file(file_action::open, path.value, 0,
+                      vfs_error::too_many_open_files);
     fail(floor, vfs_error::too_many_open_files);
     return;
   }
+  floor.report_file(file_action::open, path.value, handle, vfs_error::none);
   succeed_with(floor, handle);
 }
 
@@ -469,12 +480,17 @@ void close_fn(service_floor& floor) {
   const std::uint16_t handle = floor.box().processor().regs()[reg16::bx];
   const dos_services::handle_state* state = floor.box().dos().find(handle);
   if (state == nullptr) {
+    floor.report_file(file_action::close, dos_path{}, handle,
+                      vfs_error::invalid_handle);
     fail(floor, vfs_error::invalid_handle);
     return;
   }
 
   const bool is_file = state->kind == dos_services::handle_kind::file;
   const file_handle backing = state->backing;
+  // Read before `close()` frees the slot: the path is the whole reason a
+  // close is in this channel at all (diagnostics.h).
+  const dos_path named = state->path;
 
   floor.box().dos().close(handle);
 
@@ -487,6 +503,7 @@ void close_fn(service_floor& floor) {
       fs->close(backing);
     }
   }
+  floor.report_file(file_action::close, named, handle, vfs_error::none);
   succeed(floor);
 }
 
@@ -562,6 +579,7 @@ void unlink_fn(service_floor& floor) {
     return;
   }
   const vfs_error err = fs->unlink(path.value);
+  floor.report_file(file_action::unlink, path.value, 0, err);
   if (err != vfs_error::none) {
     fail(floor, err);
     return;

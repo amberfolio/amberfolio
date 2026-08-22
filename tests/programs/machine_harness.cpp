@@ -377,6 +377,7 @@ machine_outcome machine_harness::finish() {
   result_.service_calls = log_.service_calls;
   result_.underruns = box_->audio().underruns() - primed_underruns_;
   result_.seam_events = log_.seam_events;
+  result_.file_events = log_.files;
 
   result_.results.clear();
   const std::span<const std::uint8_t> ram = box_->memory().ram();
