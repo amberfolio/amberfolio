@@ -121,12 +121,29 @@ constexpr std::array<std::string_view, 1> cheat_binaries{
 constexpr std::uint16_t rec_next_offset = 0x104;     // far ptr: next record
 constexpr std::uint16_t rec_scratch_offset = 0x108;  // far ptr: combat scratch
 constexpr std::uint16_t rec_status = 0x10C;          // wound status
-constexpr std::uint16_t rec_standing = 0x10D;  // non-zero while up and counted
-constexpr std::uint16_t rec_side = 0x10E;      // combat side, signed
+/// The held/awarded flag. **Not** a liveness flag, whatever it looks
+/// like: the routine that downs a combatant clears it, but a combatant
+/// is not up because it is set. `still_standing()` below is the test.
+constexpr std::uint16_t rec_held = 0x10D;
+constexpr std::uint16_t rec_side = 0x10E;  // combat side, signed
 constexpr std::uint16_t rec_hit_points = 0x11B;
 
 /// The wound status that means slain.
 constexpr std::uint8_t status_slain = 6;
+
+/// Whether a combatant is still up, by its wound status: the program's
+/// own test, which is membership of a two-element set — unhurt, or an
+/// animated body. Everything else is out of the fight.
+///
+/// This is the fact that matters most in this file and the one easiest
+/// to get wrong, because the record has a *held* byte right next to the
+/// status that reads like a liveness flag and is not. Testing that byte
+/// instead would let this seam down a combatant that is already down —
+/// and downing decrements a side's body count, so doing it twice
+/// corrupts the count the program ends the combat on.
+[[nodiscard]] constexpr bool still_standing(std::uint8_t status) noexcept {
+  return status == 0 /* unhurt */ || status == 1 /* animated */;
+}
 
 /// The side index that is the party's. Signed, because the record's byte
 /// is the signed index the program uses into the body counts.
@@ -189,13 +206,13 @@ constexpr std::uint16_t frame_record_segment = 8;
 /// seam inert rather than pointed at the wrong code.
 constexpr seam_module overlay_module{
     .file = "GAME.OVR",
-    .file_offset = 50641,
-    .length = 8082,
+    .file_offset = 38919,
+    .length = 4735,
     .digest =
-        "c6218f3045243e35017ed1ffbf3ee7df25e688d17b259d3472aef07889ca3b31"};
+        "5d07a6b3fedb56509214f24bdbdbc3b8625ddf6b2ce4d6274e6e89b26c563930"};
 
 /// The end check's entry, as an offset from where that read landed.
-constexpr std::uint32_t end_check_offset = 0x13FC;
+constexpr std::uint32_t end_check_offset = 0x0880;
 
 // --- The handlers ------------------------------------------------------------
 
@@ -265,11 +282,11 @@ void fell_the_enemies(machine& box, seam_context& /*ctx*/) {
     const auto side = static_cast<std::int8_t>(
         cpu.read_byte(segment, word_after(offset, rec_side)));
     const bool standing =
-        cpu.read_byte(segment, word_after(offset, rec_standing)) != 0;
+        still_standing(cpu.read_byte(segment, word_after(offset, rec_status)));
 
     if (side != side_party && standing) {
       cpu.write_byte(segment, word_after(offset, rec_status), status_slain);
-      cpu.write_byte(segment, word_after(offset, rec_standing), 0);
+      cpu.write_byte(segment, word_after(offset, rec_held), 0);
       cpu.write_byte(segment, word_after(offset, rec_hit_points), 0);
 
       // The side's body count, indexed by the signed side byte exactly as

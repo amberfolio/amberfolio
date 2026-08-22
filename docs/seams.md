@@ -352,14 +352,48 @@ nothing lives in segment 0, and a frame that says otherwise gets
 `decline(point_not_recognized)` rather than a write. It is what caught
 this, and it costs one comparison.
 
-**Kill-all-enemies** intercepts the once-a-round end check, which lives in
-an overlaid module and is the point at which the program will next consult
-the combat state — four instructions later it reads both sides' body
-counts — and downs every standing enemy exactly the way the damage routine
-downs one — slain, flag cleared, hit points zero, the side's
-count decremented, the scratch byte cleared. The program's own end check
-then finds the enemies' count at zero and ends the combat through its own
+**Kill-all-enemies** intercepts the once-a-round end check — an overlaid
+routine, and the point at which the program will next consult the combat
+state — and downs every standing enemy exactly the way the damage routine
+downs one: slain, held byte cleared, hit points zero, the side's count
+decremented, the scratch byte cleared. The program's own end check then
+finds the enemies' count at zero and ends the combat through its own
 logic. Outside combat the point does nothing.
+
+**"Standing" is the wound status, not the byte beside it.** The record
+carries a *held* byte immediately before the combat-side index, and the
+routine that downs a combatant clears it — which makes it read like a
+liveness flag. It is not one: the program's own still-standing test is
+membership of a two-element status set (unhurt, or an animated body), and
+a combatant already slain can still have the held byte set. A seam that
+tested the held byte would down a body that was already down, and downing
+decrements a side's body count — so it would decrement twice and leave the
+program to end the combat on a count that had gone past zero.
+`SeamCheatKillAll.ReadsTheStatusAndNotTheHeldByteNextToIt` is that trap,
+written down as a test.
+
+**It is inert on the real program today, and the reason is not its facts.**
+Its module and offset are right — the overlay is the one the file's own
+overlay table names, and the point is that routine's entry. What goes
+wrong is one layer down: the tracker records where a module *landed when
+it was read*, and the end check demonstrably executes from an address no
+recorded read ever covered. An overlay manager may move a module inside
+its own arena without re-reading it from disk, and a tracker that only
+sees DOS reads cannot follow that. So the seam arms against a stale
+landing, reports `armed`, and is pointed at nothing.
+
+That is the honest state, and it is worse than it sounds: **`armed` is
+currently a claim about the fact table, not about the machine.** A seam
+that never fires is indistinguishable from one that works unless you
+compare a run against the same run without it — which is exactly the
+check that caught this, and is cheap:
+
+```sh
+# same script, same disk, once with and once without
+diff <(amberfolio ... ) <(amberfolio ... --seam cheat-kill-all)
+```
+
+Same step count and the same framebuffer means the seam did nothing.
 
 Both are fail-closed by construction: unavailable on any binary but the
 baseline's, inert with `point_not_recognized` when the frame at a point
@@ -395,12 +429,28 @@ reading the program:
    moment of the access (`format_trace_report`); the steps before it are
    the routine, and the transfer into it is where the seam's point
    belongs.
-4. **Ask which module that address was in.** For an overlaid routine, a
-   print in `overlay_tracker::note_read` gives every load's file offset,
-   length, landing range and digest; the last one covering the address
+4. **Ask which module that address was in — carefully.** For an overlaid
+   routine, a print in `overlay_tracker::note_read` gives every load's
+   file offset, length, landing range and digest; the last one covering
+   the address
    before the access is the module, and the address minus its base is the
    offset.
 
 None of that reproduces a byte of the program: what comes out is
 addresses, offsets, lengths and digests, which CONTRIBUTING.md names as
 facts.
+
+**Step 4 is where this method lies to you**, and it did. "The last
+recorded load covering this address" is not the same claim as "the module
+this code belongs to": overlays share an arena, their landing ranges
+overlap over the life of a run, and a module that was moved rather than
+re-read leaves no record at all. Answering step 4 from the *loads* gave a
+plausible module, a plausible offset, and a seam that worked once — for
+the wrong reason, at an address a few hundred bytes past the routine's
+entry, after a tally the entry would have included.
+
+The check that settles it is the artifact, not the run: the overlay file
+has an overlay table, and a module's file offset and length either match a
+row of it or they do not. If step 4's answer is not a row, step 4 is
+wrong. Prefer a fact you can derive from the file over one you inferred
+from a trace.

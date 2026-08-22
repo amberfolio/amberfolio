@@ -42,7 +42,7 @@ namespace {
 constexpr std::uint16_t rec_next = 0x104;
 constexpr std::uint16_t rec_scratch = 0x108;
 constexpr std::uint16_t rec_status = 0x10C;
-constexpr std::uint16_t rec_standing = 0x10D;
+constexpr std::uint16_t rec_held = 0x10D;
 constexpr std::uint16_t rec_side = 0x10E;
 constexpr std::uint16_t rec_hp = 0x11B;
 constexpr std::uint16_t data_mode = 0x49F3;
@@ -112,16 +112,21 @@ struct rig {
 
   /// A character record at `record_segment:offset`: its side, whether it
   /// is standing, its hit points, its scratch pointer and its next.
+  ///
+  /// "Standing" is the *status*, because that is what the program reads —
+  /// unhurt when up, slain when not. The held byte is set alongside it the
+  /// way the program leaves it, precisely so a test that confused the two
+  /// would still pass here and fail on the machine.
   void record(std::uint16_t offset, std::uint8_t side, bool standing,
               std::uint8_t hp, std::uint16_t scratch_offset,
               std::uint16_t next_offset) const {
     put_byte(record_segment, static_cast<std::uint16_t>(offset + rec_side),
              side);
-    put_byte(record_segment, static_cast<std::uint16_t>(offset + rec_standing),
+    put_byte(record_segment, static_cast<std::uint16_t>(offset + rec_held),
              standing ? 1 : 0);
     put_byte(record_segment, static_cast<std::uint16_t>(offset + rec_hp), hp);
     put_byte(record_segment, static_cast<std::uint16_t>(offset + rec_status),
-             0);
+             standing ? 0 : 6);
     put_word(record_segment, static_cast<std::uint16_t>(offset + rec_scratch),
              scratch_offset);
     put_word(record_segment,
@@ -378,18 +383,47 @@ TEST(SeamCheatKillAll, DownsEveryStandingEnemyAndLeavesThePartyAlone) {
 
   // The standing enemy is down the way the program downs one.
   EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_status), 6u) << "slain";
-  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_standing), 0u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_held), 0u);
   EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 0u);
   EXPECT_EQ(r.byte_at(scratch_segment, 0x0040 + 3), 0u);
   // The enemies' count went from two to one — the one that was already
   // down was not counted twice.
   EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 1), 1u);
-  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_status), 0u)
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_status), 6u)
       << "an enemy already down is left as it was";
   // The party member is untouched, and so is their count.
   EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 20u);
-  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_standing), 1u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_held), 1u);
   EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 0), 1u);
+}
+
+TEST(SeamCheatKillAll, ReadsTheStatusAndNotTheHeldByteNextToIt) {
+  // The record carries a *held* byte one before the combat-side index,
+  // and the routine that downs a combatant clears it — which makes it
+  // read like a liveness flag. It is not one. A combatant already slain
+  // can still have it set, and downing decrements its side's body count,
+  // so a seam that tested the held byte would decrement twice and leave
+  // the program to end the combat on a count that had gone past zero.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  r.load_combat_overlay();
+  const auto entry = static_cast<std::uint16_t>(
+      r.seam("cheat-kill-all").points.front().offset);
+
+  r.put_byte(data_segment, data_mode, 5);
+  r.put_word(data_segment, data_roster_head, 0x0100);
+  r.put_word(data_segment, data_roster_head + 2, record_segment);
+  r.put_byte(data_segment, data_side_counts + 1, 1);
+
+  // One enemy, slain already, but with the held byte still set.
+  r.record(0x0100, 1, false, 0, 0, 0);
+  r.put_byte(record_segment, 0x0100 + rec_held, 1);
+
+  r.halt_at(overlay_segment, entry, data_segment, data_segment, 0x0400);
+  r.pc().step();
+
+  EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 1), 1u)
+      << "the body count is decremented once per body, not once per pass";
 }
 
 TEST(SeamCheatKillAll, DoesNothingOutsideCombat) {
