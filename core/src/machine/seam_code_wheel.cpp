@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The code-wheel seam, and the build's seam table it is an entry of.
+// The code-wheel seam: PLAN.md §5 item 1, in the form M3 needed
+// (#119), and the first entry of the build's seam table (seam_table.cpp).
 //
 // PLAN.md §5's first v1 enhancement, in the form M3 needs and no further.
 // Read seam.h first — it says what a seam is, what this one is *not*
@@ -69,6 +70,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/seam.h"
+#include "seam_builtin.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -125,16 +127,17 @@ constexpr std::array<seam_point, 1> code_wheel_points{
       .offset = compare_loop_offset,
       .run = &answer_the_code_wheel}}};
 
-constexpr std::array<seam_definition, 1> seam_table{{
-    {.id = "code-wheel",
-     .about = "answer the code-wheel challenge (ungated; M5 owes the gate)",
-     .fingerprints = code_wheel_binaries,
-     .points = code_wheel_points,
-     .schema = seam_schema_version},
-}};
+constexpr seam_definition code_wheel_definition{
+    .id = "code-wheel",
+    .about = "answer the code-wheel challenge (ungated; M5 owes the gate)",
+    .fingerprints = code_wheel_binaries,
+    .points = code_wheel_points,
+    .schema = seam_schema_version};
 
 }  // namespace
 
-std::span<const seam_definition> all_seams() { return seam_table; }
+const seam_definition& code_wheel_seam() noexcept {
+  return code_wheel_definition;
+}
 
 }  // namespace amberfolio::machine
