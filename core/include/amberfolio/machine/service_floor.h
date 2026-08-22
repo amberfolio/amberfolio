@@ -112,6 +112,12 @@
 // Deliberately not here yet
 // ------------------------
 //
+//   * **The character generator.** `reset()` copies font.h's table into
+//     the BIOS region and points INT 43h and INT 1Fh at it, the way a
+//     real self test leaves them. It is here rather than in the video
+//     BIOS because it is memory this floor lays out, like the vectors
+//     and the BDA, and because it has to be there before any program
+//     runs whether or not INT 10h is ever installed.
 //   * **The services themselves.** INT 21h is M2-D7, INT 10h is M2-D3.
 //     The keyboard (INT 16h, the BDA buffer, Ctrl-Break) is M2-D8 and
 //     lives in keyboard.h — its handlers are `provide()`d there rather
@@ -189,6 +195,16 @@ inline constexpr std::uint8_t iret_opcode = 0xCF;
 
 /// `stub_index`'s answer when the offset is not one of ours.
 inline constexpr unsigned not_a_stub = stub_count;
+
+/// Where the character generator is put, as an offset in `stub_segment`.
+///
+/// A real adapter keeps its font in ROM and this machine keeps its own
+/// there too, for the reason font.h gives: a program is entitled to read
+/// it, index it and pass its address on. The address is here rather than
+/// in font.h because this file owns the BIOS region's layout — and it is
+/// a whole 4 KiB clear of the stubs so neither can grow into the other
+/// by accident.
+inline constexpr std::uint16_t font_offset = 0x1000;
 
 /// The stub address for `vector`, as an offset in `stub_segment`.
 [[nodiscard]] constexpr std::uint16_t stub_offset(

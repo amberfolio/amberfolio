@@ -45,6 +45,7 @@ add_library(amberfolio-core STATIC
   src/machine/dos.cpp
   src/machine/ega.cpp
   src/machine/fingerprint.cpp
+  src/machine/font.cpp
   src/machine/int10.cpp
   src/machine/keyboard.cpp
   src/machine/loader.cpp
