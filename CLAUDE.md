@@ -165,10 +165,12 @@ ctest --preset linux-gcc -L conformance        # the 8088 vector suite
 
 bash scripts/check-clean.sh   # content guard — run before every commit
 bash scripts/check-dco.sh     # DCO check — non-merge commits signed off
+bash scripts/check-host-time.sh  # nothing under core/ reads the host's clock
 bash scripts/check-format.sh  # clang-format over tracked C++
 bash scripts/check-tidy.sh    # clang-tidy; needs a configured build tree
 bash scripts/check-shell.sh   # shellcheck over scripts/
 bash scripts/test-guards.sh   # guard self-test — run after editing a guard
+python3 scripts/sweep.py      # every committed session, on every target
 ```
 
 The clang tools are pinned in `.llvm-version` and installed from PyPI

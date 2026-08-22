@@ -247,6 +247,12 @@ struct equipped_machine {
     EXPECT_EQ(af_machine_attach_reference_devices(box.get()), AF_OK);
   }
 
+  /// The same, plus the RESET line — the self test that programs the PIT
+  /// and the 8259 through real bus cycles. A machine that skipped it is a
+  /// machine no host builds, which matters to anything comparing device
+  /// state (`state_section::devices`) and to nothing else.
+  void power_on() const { EXPECT_EQ(af_machine_reset(box.get()), AF_OK); }
+
   [[nodiscard]] af_machine* get() const { return box.get(); }
 
   machine_handle box;
@@ -452,6 +458,7 @@ constexpr double frame_ticks = 1'193'182.0 / 60.0;
 
 TEST(AbiReplay, StateHashIsSixtyFourHexDigitsAndMovesWithTheMachine) {
   const equipped_machine box;
+  box.power_on();
   const std::array<std::uint8_t, 34> image = spinning_program();
   ASSERT_EQ(af_machine_vfs_put(box.get(), "SPIN.EXE", image.data(),
                                static_cast<std::uint32_t>(image.size())),
@@ -485,6 +492,7 @@ TEST(AbiReplay, ARecordingBuiltFromAbiAnswersVerifiesThroughTheAbi) {
   std::string text;
   {
     const equipped_machine box;
+    box.power_on();
     ASSERT_EQ(af_machine_vfs_put(box.get(), "SPIN.EXE", image.data(),
                                  static_cast<std::uint32_t>(image.size())),
               AF_OK);
@@ -551,6 +559,7 @@ TEST(AbiReplay, ARecordingBuiltFromAbiAnswersVerifiesThroughTheAbi) {
   // the same way and then handed nothing but the text.
   {
     const equipped_machine box;
+    box.power_on();
     ASSERT_EQ(af_machine_vfs_put(box.get(), "SPIN.EXE", image.data(),
                                  static_cast<std::uint32_t>(image.size())),
               AF_OK);
@@ -575,6 +584,7 @@ TEST(AbiReplay, ARecordingOfAnotherMachineIsRefusedAndSaysWhy) {
   // right, so what this asks is whether the *state* comparison bites —
   // the initial-condition check would refuse it either way otherwise.
   const equipped_machine first;
+  first.power_on();
   ASSERT_EQ(af_machine_vfs_put(first.get(), "SPIN.EXE", image.data(),
                                static_cast<std::uint32_t>(image.size())),
             AF_OK);

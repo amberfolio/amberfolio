@@ -46,7 +46,7 @@ namespace {
 #error "AMBERFOLIO_SESSIONS_DIR is not defined; see tests/CMakeLists.txt"
 #endif
 
-[[nodiscard]] std::string read_session(std::string_view name) {
+[[nodiscard]] std::string read_session_file(std::string_view name) {
   const std::string path =
       std::string(AMBERFOLIO_SESSIONS_DIR) + "/" + std::string(name);
   std::ifstream in(path, std::ios::binary);
@@ -55,23 +55,16 @@ namespace {
 }
 
 /// The program `spin.rec` was recorded of: `JMP $` behind a two-paragraph
-/// MZ header. Written out here rather than read from anywhere, because a
-/// session's whole point is that the thing it describes is reconstructible
-/// from the repository — and 34 bytes of this repository's own is the
-/// smallest way to say so.
-[[nodiscard]] std::array<std::uint8_t, 34> spinning_program() {
-  std::array<std::uint8_t, 34> image{};
-  image[0] = 'M';
-  image[1] = 'Z';
-  image[2] = 34;     // bytes in the last page
-  image[4] = 1;      // pages
-  image[8] = 2;      // header paragraphs
-  image[10] = 0x10;  // MINALLOC
-  image[17] = 0x01;  // initial SP, high byte
-  image[24] = 0x1C;  // relocation table offset
-  image[32] = 0xEB;  // JMP $
-  image[33] = 0xFE;
-  return image;
+/// MZ header, ten bytes of which are instructions.
+///
+/// Read off the session's own disk rather than assembled here, because a
+/// session *is* a recording plus the disk it was recorded against — that
+/// is what lets `scripts/sweep.py` hand the same pair to the desktop host
+/// with no special case, and what keeps one copy of the bytes rather than
+/// three that could drift. The recording's manifest pins them by SHA-256
+/// either way.
+[[nodiscard]] std::string spinning_program() {
+  return read_session_file("spin/SPIN.EXE");
 }
 
 /// A machine equipped and loaded the way the recording's initial
@@ -82,10 +75,20 @@ class session_machine {
   session_machine() : box_(af_machine_create()) {
     EXPECT_NE(box_, nullptr);
     EXPECT_EQ(af_machine_attach_reference_devices(box_), AF_OK);
-    const std::array<std::uint8_t, 34> image = spinning_program();
-    EXPECT_EQ(af_machine_vfs_put(box_, "SPIN.EXE", image.data(),
-                                 static_cast<std::uint32_t>(image.size())),
-              AF_OK);
+    // The RESET line, and it is not a formality: the self test programs
+    // the PIT and the 8259 through real bus cycles (docs/machine.md), so
+    // a machine that skipped it has different device state from one that
+    // powered on — which is a difference `state_section::devices` sees
+    // and nothing else does. A session of a machine that never reset
+    // would be a golden of a machine no host builds.
+    EXPECT_EQ(af_machine_reset(box_), AF_OK);
+    const std::string image = spinning_program();
+    EXPECT_EQ(image.size(), 34u);
+    EXPECT_EQ(
+        af_machine_vfs_put(box_, "SPIN.EXE",
+                           reinterpret_cast<const std::uint8_t*>(image.data()),
+                           static_cast<std::uint32_t>(image.size())),
+        AF_OK);
     EXPECT_EQ(af_machine_load_from_vfs(box_, "SPIN.EXE", ""), AF_OK);
   }
 
@@ -105,7 +108,7 @@ class session_machine {
 }  // namespace
 
 TEST(SessionLibrary, SpinReproducesEveryCheckpoint) {
-  const std::string text = read_session("spin.rec");
+  const std::string text = read_session_file("spin.rec");
   ASSERT_FALSE(text.empty());
 
   const session_machine box;
@@ -127,7 +130,7 @@ TEST(SessionLibrary, SpinReproducesEveryCheckpoint) {
 // something no machine will ever produce, and the same machine that just
 // verified the real one must refuse this.
 TEST(SessionLibrary, ASessionWithAWrongCheckpointIsRefused) {
-  std::string text = read_session("spin.rec");
+  std::string text = read_session_file("spin.rec");
   const std::size_t at = text.find("checkpoint ");
   ASSERT_NE(at, std::string::npos);
   const std::size_t digest = text.find_last_of(' ', text.find('\n', at));
@@ -148,7 +151,7 @@ TEST(SessionLibrary, ASessionWithAWrongCheckpointIsRefused) {
 // against a machine with no program loaded is refused before a step is
 // taken, naming the condition rather than a state that differs.
 TEST(SessionLibrary, ASessionIsRefusedAgainstAMachineItDoesNotDescribe) {
-  const std::string text = read_session("spin.rec");
+  const std::string text = read_session_file("spin.rec");
 
   af_machine* bare = af_machine_create();
   ASSERT_NE(bare, nullptr);

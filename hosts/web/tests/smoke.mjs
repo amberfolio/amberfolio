@@ -781,22 +781,18 @@ if (missing.length === 0) {
 }
 
 
-// `JMP $`, as an MZ file, and the program `tests/sessions/spin.rec` was
-// recorded of. It never stops, so every checkpoint taken of it is of a
-// running machine and a recording of it ends on a tick its recorder
-// chose. Written out rather than fetched: a session's whole point is that
-// what it describes is reconstructible from this repository.
-const spinner = new Uint8Array(34);
-spinner[0] = 0x4d; // 'M'
-spinner[1] = 0x5a; // 'Z'
-spinner[2] = 34;
-spinner[4] = 1;
-spinner[8] = 2;
-spinner[10] = 0x10;
-spinner[17] = 0x01;
-spinner[24] = 0x1c;
-spinner[32] = 0xeb;
-spinner[33] = 0xfe;
+// `JMP $` behind a two-paragraph MZ header: the program
+// `tests/sessions/spin.rec` was recorded of. It never stops, so every
+// checkpoint taken of it is of a running machine and a recording of it
+// ends on a tick its recorder chose.
+//
+// Read off the session's own disk rather than assembled here. A session
+// is a recording *plus* the disk it was recorded against — one copy of
+// the bytes, pinned by the recording's own manifest, and the same pair
+// `scripts/sweep.py` hands to the desktop host.
+const spinner = sessions === null
+  ? new Uint8Array(0)
+  : new Uint8Array(readFileSync(`${sessions}/spin/SPIN.EXE`));
 
 // --- Replay, on wasm (#100) ----------------------------------------------
 //
@@ -816,10 +812,12 @@ spinner[33] = 0xfe;
 // functions that disagreed about what the machine is would fail this and
 // nothing else.
 
-if (missing.length === 0) {
+if (missing.length === 0 && sessions !== null) {
   const check = (condition, message) => {
     if (!condition) problems.push(message);
   };
+
+  check(spinner.length === 34, `tests/sessions/spin/SPIN.EXE is ${spinner.length} bytes, expected 34`);
 
   // One 60 Hz frame of virtual time — the boundary the verifier runs to,
   // and so the boundary a recording it will read must checkpoint on.
@@ -828,6 +826,10 @@ if (missing.length === 0) {
   const equipped = () => {
     const machine = new Machine(module);
     check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    // The RESET line, which programs the PIT and the 8259 through real
+    // bus cycles. A machine that skipped it has different device state
+    // from one that powered on, and a recording is about device state.
+    machine.reset();
     check(machine.vfsPut('SPIN.EXE', spinner) === AF_OK, 'putting SPIN.EXE failed');
     check(machine.loadFromVfs('SPIN.EXE', '') === AF_OK, 'loading SPIN.EXE failed');
     return machine;
@@ -912,6 +914,7 @@ if (missing.length === 0 && sessions !== null) {
   const loaded = () => {
     const machine = new Machine(module);
     check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    machine.reset();
     check(machine.vfsPut('SPIN.EXE', spinner) === AF_OK, 'putting SPIN.EXE failed');
     check(machine.loadFromVfs('SPIN.EXE', '') === AF_OK, 'loading SPIN.EXE failed');
     return machine;

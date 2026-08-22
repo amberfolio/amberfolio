@@ -188,6 +188,33 @@ set_tests_properties(sdl-host-records-and-replays PROPERTIES
   LABELS smoke
   FIXTURES_REQUIRED sdl_demo_disk)
 
+# --- The committed session, on this host (#100) ------------------------
+#
+# The third leg of the cross-target proof. `tests/core/machine/
+# session_test.cpp` verifies tests/sessions/spin.rec through the ABI on a
+# native build and `hosts/web/tests/smoke.mjs` verifies the same file on
+# wasm; this is the desktop host doing it through its own `--replay`,
+# over the disk the session was recorded against.
+#
+# It is worth being a third and not a repetition. This host builds its
+# device set with its own code rather than through
+# `af_machine_attach_reference_devices()`, and the canonical state hashes
+# attached devices in attach order — so a wiring that drifted apart from
+# the ABI's would pass both of the other two and fail here. That is not
+# hypothetical: it is what #100 found, in the other direction.
+#
+# Headless, because nothing about a replay wants a window: the machine is
+# checked against the recording, not the picture against the eye.
+add_test(NAME sdl-host-verifies-a-session
+  COMMAND amberfolio-sdl
+    "${PROJECT_SOURCE_DIR}/tests/sessions/spin"
+    SPIN.EXE
+    --headless
+    --replay "${PROJECT_SOURCE_DIR}/tests/sessions/spin.rec")
+set_tests_properties(sdl-host-verifies-a-session PROPERTIES
+  LABELS smoke
+  PASS_REGULAR_EXPRESSION "replay verified checkpoints=[1-9][0-9]*")
+
 # --- The mapping table, on its own (#80) -------------------------------
 #
 # The check above posts one key. The table has eighty-odd rows, and a

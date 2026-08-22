@@ -217,6 +217,12 @@ record the composite with a scripted keystroke, replay it with nothing
 but the recording, then tamper with a checkpoint hash and require the
 refusal. A check that cannot fail is not one.
 
+And `scripts/sweep.py` runs every committed session
+([`tests/sessions/`](../tests/sessions/README.md)) against every target
+that can verify one — the desktop host, the native suite and the wasm
+module under node — and prints one table. A target that is not built is
+skipped and said so, never counted as a pass.
+
 ---
 
 ## 6. The guard that makes it possible
