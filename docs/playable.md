@@ -150,9 +150,11 @@ cheats seam is for (#99, `docs/seams.md`):
 --seam cheat-invulnerable --seam cheat-kill-all
 ```
 
-`cheat-kill-all` works: the enemies fall at the end of the round and the
-encounter ends in victory rather than in `THE END!`. `cheat-invulnerable`
-**does not**, and says so — see the note at the bottom of this document.
+Both work, and both had to be corrected first — neither had ever been run
+against the program (#99, #103). With them on, the same encounter ends
+`THE PARTY HAS WON. EACH CHARACTER RECEIVES 15 EXPERIENCE POINTS.` and
+the party is on its full hit points; with them off it ends on one hit
+point and a `CONTINUE BATTLE:` prompt.
 
 ## Leg 3 — a save, and a load (#105)
 
@@ -231,21 +233,6 @@ Honest gaps, so nobody reads more into a green run than is there:
 - **The city services** — shops, training hall, temple, inn (#104). The
   city hall's entrance event fires and its interior renders; buying,
   selling, training and resting have not been driven.
-- **`cheat-invulnerable` on the real program (#99, #103).** Its point is
-  not the damage routine. It fires four times in a whole encounter, and
-  the frame it finds is not the one its facts describe — the record
-  argument reads `0000:0004`, inside the interrupt vector table, where no
-  character record can be. Before this was found, the seam wrote its zero
-  anyway and the party came out of the same scripted encounter on five
-  hit points instead of one: neither invulnerable nor untouched. It now
-  checks the frame and declines instead —
-
-      amberfolio: seam cheat-invulnerable inert point_not_recognized
-
-  once, with the program left alone, which the same encounter confirms:
-  one hit point, exactly as with the seam off. Finding the routine the
-  offset was meant to name is #99's to finish, and until it does, a sweep
-  that needs a party to survive needs `cheat-kill-all`.
 - **The dungeon.** Everything above is the city and its slums.
 - **The web host** (#108) runs the same core and the same recordings, and
   none of these legs has been driven on the dev page.

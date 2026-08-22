@@ -320,7 +320,7 @@ boundary, and it needs the argument this document would have to carry.
 |---|---|---|---|
 | `code-wheel` | answers the copy-protection challenge (ungated; the possession gate is M5's, #115) | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
-| `cheat-kill-all` | every enemy falls at the end of the round | the baseline | overlay 8 of the overlay file |
+| `cheat-kill-all` | every enemy falls at the end of the round | the baseline | the overlaid module the end check lives in |
 
 ### The debug cheats (#99)
 
@@ -336,22 +336,27 @@ routine then runs on zero and reaches its own conclusion through its own
 code. An enemy's damage is left alone; the qualifier is the record's
 combat-side byte, read where the program is about to read it.
 
-**It does not work on the real program yet, and it now says so.** Driven
-through an encounter (#103, `docs/playable.md`), its point fires four
-times in a whole combat and the frame it finds is not the one the facts
-above describe: the record argument reads `0000:0004`, inside the
-interrupt vector table, where no character record can be. The offset
-names something, but not the routine it was believed to name. Until #99
-finds the right one the handler checks the frame and declines —
-`inert point_not_recognized`, once, and the program left alone. Before
-the check it wrote its zero anyway, and the party came out of the same
-scripted encounter on five hit points instead of one: neither
-invulnerable nor untouched, and no line anywhere saying why.
+**The two arguments were written down the wrong way round**, and neither
+seam had ever been run against the program until #103 did it. What the
+frame actually holds — observed, mid-encounter, and stated in
+`seam_cheats.cpp` — is the far return address, then the *damage*, then the
+record. Reading it the other way made the seam treat the damage word as a
+pointer and write its zero over something else entirely: the party came
+out of a scripted encounter on five hit points instead of one, neither
+invulnerable nor untouched, with no line anywhere saying why. With the
+frame read as it is, the same encounter ends with the party on its full
+eight, and the enemies still take their damage.
+
+The guard stays: a record is a far pointer into the program's own memory,
+nothing lives in segment 0, and a frame that says otherwise gets
+`decline(point_not_recognized)` rather than a write. It is what caught
+this, and it costs one comparison.
 
 **Kill-all-enemies** intercepts the once-a-round end check, which lives in
-an overlay and is the point at which the program will next consult the
-combat state, and downs every standing enemy exactly the way the damage
-routine downs one — slain, flag cleared, hit points zero, the side's
+an overlaid module and is the point at which the program will next consult
+the combat state — four instructions later it reads both sides' body
+counts — and downs every standing enemy exactly the way the damage routine
+downs one — slain, flag cleared, hit points zero, the side's
 count decremented, the scratch byte cleared. The program's own end check
 then finds the enemies' count at zero and ends the combat through its own
 logic. Outside combat the point does nothing.
@@ -359,10 +364,43 @@ logic. Outside combat the point does nothing.
 Both are fail-closed by construction: unavailable on any binary but the
 baseline's, inert with `point_not_recognized` when the frame at a point
 is not the one its facts describe, inert with `module_not_resident` while
-overlay 8 is not resident (its module names the read that loads it — file, offset,
-length, and the digest of the bytes — found by reading `--trace`'s
-overlay lines off the program's own boot), and nothing on the hot path
-when off. `tests/core/machine/seam_cheats_test.cpp` drives both handlers
-at their points with records and a roster the test lays down by the
-facts; the addresses only mean something against the real binary, and
-the sweep (#101) is where that is checked.
+the end check's module is not resident (a module is named by the read
+that loads it — file, offset, length, and the digest of the bytes), and
+nothing on the hot path when off.
+
+`tests/core/machine/seam_cheats_test.cpp` drives both handlers at their
+points with records and a roster the test lays down by the facts. That
+suite passed for a month against facts that were wrong, which is the
+thing to take from this section: **a seam's unit tests can only check
+that the handler does what the fact table says, never that the fact table
+says the truth.** Only running it against the program does that, and
+`docs/playable.md` is how.
+
+### How a wrong fact was found, in case the next one has to be
+
+Neither cheat had been run against the program until #103 did it, and
+both were wrong — one in its frame layout, one in its module *and* its
+offset. Both were found the same way, by observation rather than by
+reading the program:
+
+1. **Pick something the routine must touch.** For the damage routine, the
+   byte a party member's hit points live at; for the end check, the two
+   bytes the side counts live at. The roster head and the record layout
+   were already facts, and a handler at any point that fires during
+   combat can walk the roster and print what it finds.
+2. **Watch it.** A temporary print in `machine::write_memory` /
+   `read_memory` for that one physical address, with the processor's
+   CS:IP — which is the address of the instruction that did it.
+3. **Walk back to the entry.** Turn the trace ring on and dump it at the
+   moment of the access (`format_trace_report`); the steps before it are
+   the routine, and the transfer into it is where the seam's point
+   belongs.
+4. **Ask which module that address was in.** For an overlaid routine, a
+   print in `overlay_tracker::note_read` gives every load's file offset,
+   length, landing range and digest; the last one covering the address
+   before the access is the module, and the address minus its base is the
+   offset.
+
+None of that reproduces a byte of the program: what comes out is
+addresses, offsets, lengths and digests, which CONTRIBUTING.md names as
+facts.

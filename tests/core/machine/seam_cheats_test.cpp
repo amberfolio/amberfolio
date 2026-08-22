@@ -196,20 +196,24 @@ TEST(SeamCheatInvulnerable, ZeroesTheDamageWordForAPartyMember) {
 
   // The record: a party member with 20 hit points.
   r.record(0x0100, 0, true, 20, 0, 0);
-  // The frame at SP: return address, record far pointer, damage 7.
+  // The frame at SP, in the order the program actually pushes it
+  // (seam_cheats.cpp): the far return address, the damage word, then the
+  // record's offset and segment.
   constexpr std::uint16_t sp = 0x0400;
   r.put_word(data_segment, sp + 0, 0x1234);
   r.put_word(data_segment, sp + 2, 0x5678);
-  r.put_word(data_segment, sp + 4, 0x0100);
-  r.put_word(data_segment, sp + 6, record_segment);
-  r.put_word(data_segment, sp + 8, 7);
+  r.put_word(data_segment, sp + 4, 7);
+  r.put_word(data_segment, sp + 6, 0x0100);
+  r.put_word(data_segment, sp + 8, record_segment);
   r.halt_at(image_load_segment, entry, data_segment, data_segment, sp);
 
   r.pc().step();
 
-  EXPECT_EQ(r.word_at(data_segment, sp + 8), 0u) << "no damage reaches them";
-  EXPECT_EQ(r.word_at(data_segment, sp + 4), 0x0100u)
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 0u) << "no damage reaches them";
+  EXPECT_EQ(r.word_at(data_segment, sp + 6), 0x0100u)
       << "the pointer is untouched";
+  EXPECT_EQ(r.word_at(data_segment, sp + 8), record_segment)
+      << "and so is its segment";
   EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 20u)
       << "the record is the program's to update, not the seam's";
 }
@@ -222,14 +226,14 @@ TEST(SeamCheatInvulnerable, LeavesAnEnemysDamageAlone) {
 
   r.record(0x0100, 1, true, 9, 0, 0);
   constexpr std::uint16_t sp = 0x0400;
-  r.put_word(data_segment, sp + 4, 0x0100);
-  r.put_word(data_segment, sp + 6, record_segment);
-  r.put_word(data_segment, sp + 8, 7);
+  r.put_word(data_segment, sp + 4, 7);
+  r.put_word(data_segment, sp + 6, 0x0100);
+  r.put_word(data_segment, sp + 8, record_segment);
   r.halt_at(image_load_segment, entry, data_segment, data_segment, sp);
 
   r.pc().step();
 
-  EXPECT_EQ(r.word_at(data_segment, sp + 8), 7u);
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 7u);
 }
 
 TEST(SeamCheatInvulnerable, DoesNothingWhenOff) {
@@ -238,14 +242,14 @@ TEST(SeamCheatInvulnerable, DoesNothingWhenOff) {
       r.seam("cheat-invulnerable").points.front().offset);
   r.record(0x0100, 0, true, 20, 0, 0);
   constexpr std::uint16_t sp = 0x0400;
-  r.put_word(data_segment, sp + 4, 0x0100);
-  r.put_word(data_segment, sp + 6, record_segment);
-  r.put_word(data_segment, sp + 8, 7);
+  r.put_word(data_segment, sp + 4, 7);
+  r.put_word(data_segment, sp + 6, 0x0100);
+  r.put_word(data_segment, sp + 8, record_segment);
   r.halt_at(image_load_segment, entry, data_segment, data_segment, sp);
 
   r.pc().step();
 
-  EXPECT_EQ(r.word_at(data_segment, sp + 8), 7u);
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 7u);
   EXPECT_FALSE(r.pc().seams().armed());
 }
 
@@ -276,9 +280,9 @@ TEST(SeamCheatInvulnerable, DoesNothingWhenOff) {
 /// The frame the real program turned out to present: a record pointer
 /// whose segment is zero.
 void unrecognizable_frame(const rig& r, std::uint16_t sp) {
-  r.put_word(data_segment, sp + 4, 0x0004);
-  r.put_word(data_segment, sp + 6, 0x0000);
-  r.put_word(data_segment, sp + 8, 7);
+  r.put_word(data_segment, sp + 4, 7);       // the damage
+  r.put_word(data_segment, sp + 6, 0x0004);  // and a "record" in segment 0
+  r.put_word(data_segment, sp + 8, 0x0000);
 }
 
 TEST(SeamCheatInvulnerable, DeclinesAFrameWhoseRecordIsNotAPointer) {
@@ -293,7 +297,7 @@ TEST(SeamCheatInvulnerable, DeclinesAFrameWhoseRecordIsNotAPointer) {
 
   r.pc().step();
 
-  EXPECT_EQ(r.word_at(data_segment, sp + 8), 7u)
+  EXPECT_EQ(r.word_at(data_segment, sp + 4), 7u)
       << "nothing is written into a frame the seam does not recognize";
   EXPECT_EQ(declines(r, "cheat-invulnerable"),
             std::vector{seam_reason::point_not_recognized});
