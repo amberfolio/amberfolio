@@ -14,6 +14,7 @@
 
 #include "programs/machine_programs.h"
 
+#include <array>
 #include <cstddef>
 #include <ostream>
 #include <span>
@@ -21,6 +22,7 @@
 #include <string>
 #include <utility>
 
+#include "amberfolio/machine/font.h"
 #include "amberfolio/machine/service_floor.h"
 #include "programs/assembler.h"
 #include "programs/exe.h"
@@ -1369,7 +1371,10 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
 // the filesystem and far-calls into it, and asks the machine for every
 // service M3's first boot turned out to need — so the surface #85-#90
 // added has a test that drives it end to end, on all four targets, and
-// not only a unit test each.
+// not only a unit test each. It keeps growing for the same reason: what
+// a later milestone adds because the game asked for it gets its call
+// here in the same change (#121), or this program stops being the record
+// of what the machine answers.
 //
 // Nothing here resembles anything. The packed payload is bytes this file
 // computes from bytes this file wrote (`rle_xor_pack()`), and the *shape*
@@ -1426,6 +1431,19 @@ constexpr std::string_view boot_overlay_path = "\\OVL.BIN";
 /// then the segment word the loader relocates.
 constexpr std::uint16_t boot_thunk_offset = boot_data_offset + 0x10;
 
+/// The font this program installs at INT 1Fh, and where it keeps it —
+/// in the clear beside the overlay's filename, for the same reason.
+///
+/// Eight bytes of this file's own invention: a box, whose scan lines all
+/// differ, so a row drawn in the wrong place shows up as a wrong answer
+/// rather than as a different-looking wrong picture. It is a font in the
+/// only sense that matters here — the bytes INT 10h AH=09h reads through
+/// the vector the program set (int10.h's "Where the glyphs come from") —
+/// and it resembles nothing, which is the rule (PLAN.md §6).
+constexpr std::uint16_t boot_font_offset = boot_data_offset + 0x20;
+constexpr std::array<std::uint8_t, 8> boot_font_glyph{0xFF, 0x81, 0xBD, 0xA5,
+                                                      0xA5, 0xBD, 0x81, 0xFF};
+
 /// The vector the program hooks. 60h is in the range DOS never used and
 /// every era program's own interrupts lived in.
 constexpr std::uint8_t boot_hook_vector = 0x60;
@@ -1458,8 +1476,12 @@ enum boot_result : std::uint8_t {
   boot_font_points,
   boot_font_rows,
   boot_font_segment,
+  boot_font_pointer,
   boot_mode_after_graphics,
   boot_active_page,
+  boot_cursor_position,
+  boot_glyph_first_line,
+  boot_glyph_second_line,
   boot_retrace_seen,
   boot_overlay_bytes,
   boot_overlay_ran,
@@ -1575,8 +1597,9 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
   store(a, boot_character_under_cursor, reg_ax);
 
   // Where the character generator is: vector 1Fh, which nothing has set,
-  // so this machine's own stub — plus the cell height and the row count
-  // the mode set recorded.
+  // so the one power-on installed — the top half of this machine's own
+  // font, in its own BIOS region (font.h) — plus the cell height and the
+  // row count the mode set recorded.
   mov_ax(a, 0x1130);
   mov_bx(a, 0x0000);
   interrupt(a, 0x10);
@@ -1585,6 +1608,7 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
   store(a, boot_font_rows, reg_dx);
   a.db({0x8C, 0xC0});  // mov ax, es
   store(a, boot_font_segment, reg_ax);
+  store(a, boot_font_pointer, reg_bp);
 
   // And into the mode this machine actually draws.
   mov_ax(a, 0x000D);
@@ -1597,6 +1621,55 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
   a.db({0x88, 0xF8});  // mov al, bh
   a.db({0xB4, 0x00});  // mov ah, 0
   store(a, boot_active_page, reg_ax);
+
+  // The cursor (#121). Moved through the BIOS, then read back out of the
+  // BDA directly — which is the claim: AH=02h writes the same 40:50 a
+  // program reads for itself and AH=08h above indexed the text page
+  // with, not a copy of its own.
+  mov_ax(a, 0x0200);
+  mov_bx(a, 0x0000);  // BH=00h: the one page.
+  a.db({0xBA});
+  a.dw(0x0C05);  // mov dx, 0C05h — row 12, column 5
+  interrupt(a, 0x10);
+  a.db({0x1E});  // push ds
+  mov_ax(a, machine::bda::segment);
+  a.db({0x8E, 0xD8});  // mov ds, ax
+  a.db({0xA1});
+  a.dw(machine::bda::cursor_position);  // mov ax, [0050h]
+  a.db({0x1F});                         // pop ds
+  store(a, boot_cursor_position, reg_ax);
+
+  // And a character at it (#121), out of a font this program supplies —
+  // which is the only kind there is here, because a font is picture data
+  // and this machine ships none (int10.h). Installed through AH=25h, the
+  // same way the INT 60h hook above went in, then drawn at the top left
+  // and read straight back off plane 0.
+  a.db({0xBA});
+  a.dw(boot_font_offset);  // mov dx, font
+  mov_ax(a, 0x251F);       // AH=25h, AL=1Fh
+  interrupt(a, 0x21);
+
+  mov_ax(a, 0x0200);
+  mov_bx(a, 0x0000);
+  a.db({0x31, 0xD2});  // xor dx, dx — row 0, column 0
+  interrupt(a, 0x10);
+
+  mov_ax(a, 0x0980);  // AH=09h, AL=80h: the first glyph of the table
+  mov_bx(a, 0x000F);  // page 0, colour 15 — every plane
+  a.db({0xB9});
+  a.dw(0x0001);  // mov cx, 1
+  interrupt(a, 0x10);
+
+  mov_ax(a, 0xA000);
+  a.db({0x8E, 0xC0});  // mov es, ax
+  a.db({0x26, 0xA0});
+  a.dw(0x0000);        // mov al, es:[0] — plane 0, the cell's first line
+  a.db({0xB4, 0x00});  // mov ah, 0
+  store(a, boot_glyph_first_line, reg_ax);
+  a.db({0x26, 0xA0});
+  a.dw(0x0028);  // mov al, es:[40] — one scan line down
+  a.db({0xB4, 0x00});
+  store(a, boot_glyph_second_line, reg_ax);
 
   // --- The raster (#88) -------------------------------------------------
   //
@@ -1764,6 +1837,11 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
   a.dw(boot_overlay_offset);
   a.label("overlay_segment");
   a.dw(0x0000);  // relocated to the load segment
+
+  a.pad_to(boot_font_offset);
+  for (const std::uint8_t byte : boot_font_glyph) {
+    a.db({byte});
+  }
 
   // --- The packed payload -----------------------------------------------
   a.pad_to(boot_packed_offset);
@@ -2053,7 +2131,7 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
   {
     machine_program p;
     p.name = "synthetic_boot";
-    p.about = "unpacks itself, loads an overlay, and calls what M3 added";
+    p.about = "unpacks itself, loads an overlay, and calls the services";
     p.setup.exe = boot_exe_file();
     p.setup.exe_path = "\\BOOT.EXE";
     p.setup.command_tail = boot_command_tail;
@@ -2085,8 +2163,17 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
         {.what = "rows on screen, less one", .value = 24},
         {.what = "vector 1Fh's segment, as the font pointer",
          .value = machine::service::stub_segment},
+        {.what = "and its offset: the top half of the machine's own font",
+         .value = static_cast<std::uint16_t>(
+             machine::service::font_offset +
+             (machine::font::high_half_first * machine::font::glyph_height))},
         {.what = "the mode after 320x200 was programmed", .value = 0x280D},
         {.what = "the active display page", .value = 0},
+        {.what = "the cursor, read back out of the BDA", .value = 0x0C05},
+        {.what = "the glyph's first line, off plane 0",
+         .value = boot_font_glyph[0]},
+        {.what = "its second line, one scan line down",
+         .value = boot_font_glyph[1]},
         {.what = "retrace both ended and began again", .value = 1},
         {.what = "bytes of the overlay module read in",
          .value = static_cast<std::uint16_t>(boot_overlay_module().size())},

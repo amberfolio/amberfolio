@@ -9,6 +9,7 @@
 #include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/font.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/pic.h"
@@ -182,6 +183,34 @@ void service_floor::reset() {
     ram[cpu::physical_address(service::stub_segment, at)] =
         service::iret_opcode;
   }
+
+  // The character generator, and the two vectors that point at it.
+  //
+  // A real self test leaves a font in ROM and the addresses of it in 1Fh
+  // and 43h; so does this one, for the reasons font.h argues. These two
+  // are written *after* the loop above, which has just aimed all 256
+  // vectors at stubs — they are not entry points and never were
+  // (font.h), so a stub is exactly the wrong thing to leave in them.
+  const std::span<const std::uint8_t> glyphs = font::glyphs();
+  const std::uint32_t font_at =
+      cpu::physical_address(service::stub_segment, service::font_offset);
+  for (std::uint16_t i = 0; i < font::table_bytes; ++i) {
+    ram[font_at + i] = glyphs[i];
+  }
+
+  const auto point_at = [&ram](std::uint8_t vector, std::uint16_t offset) {
+    const std::uint32_t entry = cpu::physical_address(
+        cpu::vector_table_segment, cpu::vector_table_offset(vector));
+    ram[entry] = static_cast<std::uint8_t>(offset);
+    ram[entry + 1] = static_cast<std::uint8_t>(offset >> 8u);
+    ram[entry + 2] = static_cast<std::uint8_t>(service::stub_segment);
+    ram[entry + 3] = static_cast<std::uint8_t>(service::stub_segment >> 8u);
+  };
+  point_at(font::generator_vector, service::font_offset);
+  point_at(
+      font::high_half_vector,
+      static_cast<std::uint16_t>(service::font_offset +
+                                 font::high_half_first * font::glyph_height));
 
   // The BDA: cleared, then the fields this machine maintains. Clearing
   // first is what the self test does, and it is what makes a warm boot

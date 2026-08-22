@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // INT 10h: the video BIOS subset PLAN.md §3 scopes to two things, "mode
-// set, palette register set," plus the handful M3's first boot went on
-// to ask for on its way to the title screen (#87): mode read-back,
-// active page, the character under the cursor, and where the character
-// generator is. M2-D3 (#48), and the last piece the video
-// path needed — ega.h has the device, renderer.h turns its planes into
-// pixels, this is how a program tells the device what to be before either
-// of those matters.
+// set, palette register set," plus the handful M3's first boot went on to
+// ask for on its way to the title screen (#87) — mode read-back, active
+// page, the character under the cursor, and where the character generator
+// is — plus the two M4 added when the game got past the party roster and
+// into character creation (#121): move the cursor, and write a character
+// at it. M2-D3 (#48), and the
+// last piece the video path needed — ega.h has the device, renderer.h
+// turns its planes into pixels, this is how a program tells the device
+// what to be before either of those matters.
 //
 //
 // A free function, reaching the hardware through the bus
@@ -96,15 +98,85 @@
 // make when something needs it.
 //
 //
+// Where the cursor is
+// -------------------
+//
+// AH=02h is the first thing M4 had to add (#121): the game reaches
+// character creation, moves the cursor, and M3's dispatch had no case
+// for it. It is not a third kind of answer — it is an ordinary
+// implementation, because the position a BIOS keeps at 40:50 is a real
+// piece of state that programs read directly and that AH=08h already
+// indexes with, and writing it is the operation rather than a stand-in
+// for one.
+//
+// What a real BIOS also does — move the blinking underline by
+// programming the CRTC's cursor location registers — is not skipped
+// here so much as absent on both machines at once: this one has no CRTC
+// (#47), and mode 0Dh, the one mode it draws, does not display a
+// hardware cursor on a real adapter either. In mode 03h the difference
+// would be visible on a real screen, and that difference is the notice
+// the mode set already stood up. int10.cpp's AH=02h comment has the
+// argument in full.
+//
+//
+// Where the glyphs come from
+// --------------------------
+//
+// AH=09h — write a character and its attribute at the cursor — was the
+// next line after AH=02h, and the two arrive together for the obvious
+// reason: the game positions the cursor and then puts something there.
+// It is the first thing in this file that *draws*, and the question it
+// forces is where the picture of a character comes from.
+//
+// The first answer was: not from here, because a font is picture data
+// and this project shipped none — which is what M3 wrote at AH=11h when
+// it refused every ROM-font request. That answer did not survive
+// contact. The game asks the BIOS to draw code DBh having installed no
+// table of its own, because on a real EGA it does not have to: the
+// glyphs are in the adapter. A machine without them is missing a piece
+// of an EGA, not declining a piece of a game, so **this machine has a
+// character generator now** — its own, drawn for this project, in its
+// own BIOS region. font.h is that decision and its clean-content
+// argument; this file only reads it.
+//
+// And reads it *through the vectors*, never by reaching for the table
+// directly, because which generator answers is a question about the
+// machine's state rather than about this code:
+//
+//   * **Codes 80h-FFh: INT 1Fh**, the top-half table. No PC ROM ever
+//     carried the top half of an 8x8 graphics font, so on a real machine
+//     this vector is the only possible source — and here power-on fills
+//     it with the top half of ours.
+//   * **Codes 00h-7Fh: INT 43h**, the current character generator, which
+//     power-on aims at the whole table.
+//   * **A program that installs its own** overwrites one or both, and is
+//     then drawn from its own bytes. A program that replaced only INT 43h
+//     is answered from it for the whole code page, indexed from zero,
+//     which is what an EGA BIOS in a graphics mode does anyway.
+//   * **A program that clears both** — leaving the IRET stub every other
+//     vector carries, or a null pointer — is refused. There is nothing
+//     left to index, and the refusal says exactly that.
+//
+// The drawing itself goes through the ports and the bus like everything
+// else in this file, in write mode 2 with the glyph's bits in the bit
+// mask; int10.cpp's AH=09h comment walks the pipeline and says why the
+// replacing form takes two passes and the XOR form takes one. In mode
+// 03h there is no text path to draw into and nothing claiming B8000, so
+// the two bytes per cell go to the bus and are dropped, reported once —
+// which is AH=08h's answer from the other side.
+//
+//
 // What refuses, and how
 // ------------------------
 //
-// AH=00h with AL anything but 0Dh or 03h, AH=05h for any page but 0,
-// AH=08h outside a text mode, AH=10h with AL anything but 00h/01h,
-// AH=11h AL=30h asking for a ROM font this machine does not carry, and
-// any AH outside 00h/05h/08h/0Fh/10h/11h
-// are all the same shape: the vector *has* a
-// handler, the handler ran, and it looked at what was asked and declined.
+// AH=00h with AL anything but 0Dh or 03h, AH=02h or AH=05h or AH=09h
+// naming any page but 0, AH=08h outside a text mode, AH=09h in a mode
+// this file does not know or with both character generators cleared,
+// AH=10h with AL anything but 00h/01h, AH=11h AL=30h asking for a cell
+// taller than the 8x8 this machine carries, and any AH outside
+// 00h/02h/05h/08h/09h/0Fh/10h/11h are all the same shape: the vector
+// *has* a handler, the handler ran, and it looked at what was asked and
+// declined.
 // That is not `stop_reason::unimplemented_service` (service_floor.h) —
 // nothing is missing, something was refused — so it goes through
 // `machine::stop_unsupported_request()` instead, PLAN.md §3's rule

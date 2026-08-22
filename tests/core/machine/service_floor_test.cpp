@@ -25,6 +25,7 @@
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/font.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/pic.h"
 #include "amberfolio/machine/pit.h"
@@ -199,7 +200,13 @@ TEST(service_reset, points_every_vector_at_a_stub_that_is_a_real_iret) {
     const auto entry = static_cast<std::uint32_t>(
         (static_cast<std::uint32_t>(service::stub_segment) << 16u) | offset);
 
-    ASSERT_EQ(r.vector_at(vector), entry) << "vector " << v;
+    // Every vector but the two font pointers, which name a table rather
+    // than an entry point and are checked on their own below (font.h).
+    // The stub still exists for them — a vector's stub is not optional —
+    // and only the pointer is aimed elsewhere.
+    if (vector != font::generator_vector && vector != font::high_half_vector) {
+      ASSERT_EQ(r.vector_at(vector), entry) << "vector " << v;
+    }
     ASSERT_EQ(r.pc().memory().ram()[cpu::physical_address(service::stub_segment,
                                                           offset)],
               service::iret_opcode)
@@ -315,6 +322,52 @@ TEST(service_reset, rebuilds_the_table_but_keeps_what_was_installed) {
   r.program({0xCD, test_vector, 0xF4});
   r.run();
   EXPECT_EQ(seen.calls, 1u);
+}
+
+TEST(service_floor_post, the_character_generator_is_in_the_bios_region) {
+  const rig r;
+
+  // The whole table, byte for byte, where font.h says it goes.
+  const std::span<const std::uint8_t> glyphs = font::glyphs();
+  const std::uint32_t at =
+      cpu::physical_address(service::stub_segment, service::font_offset);
+  for (std::uint16_t i = 0; i < font::table_bytes; ++i) {
+    ASSERT_EQ(r.pc().memory().ram()[at + i], glyphs[i]) << "byte " << i;
+  }
+
+  // And it is well clear of the stubs: the last stub is nowhere near it,
+  // which is the invariant service_floor.h's `font_offset` claims.
+  EXPECT_GT(service::font_offset,
+            service::continuation_offset(service::continuation_stubs - 1));
+}
+
+TEST(service_floor_post, the_two_font_vectors_point_at_it) {
+  const rig r;
+
+  // INT 43h names the whole table; INT 1Fh names its top half. Neither
+  // holds an IRET stub, unlike every other vector — they are pointers to
+  // data and never were entry points (font.h).
+  EXPECT_EQ(r.vector_at(font::generator_vector),
+            (static_cast<std::uint32_t>(service::stub_segment) << 16u) |
+                service::font_offset);
+  EXPECT_EQ(r.vector_at(font::high_half_vector),
+            (static_cast<std::uint32_t>(service::stub_segment) << 16u) |
+                (service::font_offset +
+                 (font::high_half_first * font::glyph_height)));
+}
+
+TEST(service_floor_post, a_program_font_survives_until_the_next_reset) {
+  const rig r;
+
+  r.hook(font::generator_vector, 0x2000, 0x0100);
+  EXPECT_EQ(r.vector_at(font::generator_vector), 0x20000100u);
+
+  // A reset is a power-on, so the machine's own generator comes back —
+  // the same rule the rest of the table follows.
+  r.pc().reset();
+  EXPECT_EQ(r.vector_at(font::generator_vector),
+            (static_cast<std::uint32_t>(service::stub_segment) << 16u) |
+                service::font_offset);
 }
 
 TEST(service_floor_layout, is_absent_from_a_machine_that_is_not_a_pc) {

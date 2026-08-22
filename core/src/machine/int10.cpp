@@ -13,6 +13,7 @@
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/ega.h"
+#include "amberfolio/machine/font.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/service_floor.h"
 
@@ -64,13 +65,47 @@ constexpr std::uint8_t screen_rows = 25;
 /// answer rather than an evasion.
 constexpr std::uint16_t text_page_segment = 0xB800;
 
-/// The two font *pointer* vectors AH=11h AL=30h can answer for. Neither
-/// is an entry point: INT 1Fh holds the address of the graphics-mode
-/// glyphs for characters 128-255, and INT 43h the address of the current
-/// character generator. A program stores a far pointer there and the
-/// BIOS reads it back; nothing ever executes an INT to either.
-constexpr std::uint8_t graphics_font_vector = 0x1F;
-constexpr std::uint8_t alternate_font_vector = 0x43;
+/// The graphics-controller and sequencer indices AH=09h steers one at a
+/// time. The mode-set tables below name the same numbers positionally;
+/// they are named here because a character write selects them by hand.
+constexpr std::uint8_t graphics_enable_set_reset_index = 0x01;
+constexpr std::uint8_t graphics_data_rotate_index = 0x03;
+constexpr std::uint8_t graphics_mode_index = 0x05;
+constexpr std::uint8_t graphics_bit_mask_index = 0x08;
+constexpr std::uint8_t sequencer_map_mask_index = 0x02;
+
+/// Write mode 2, colour expand: the CPU byte's low four bits become one
+/// bit per plane, spread across all eight pixel positions (ega.h's write
+/// pipeline). It is the mode a glyph wants — one colour, eight pixels,
+/// selected by a mask.
+constexpr std::uint8_t graphics_write_mode_2 = 0x02;
+
+/// The Data Rotate register's function field (bits 4:3) set to 3, XOR.
+/// AH=09h's attribute bit 7 asks for it; a zero here is the copy the
+/// mode set leaves behind.
+constexpr std::uint8_t graphics_function_xor = 0x18;
+
+/// Every plane: what the map mask and Enable Set/Reset both want while a
+/// glyph is being expanded across all four.
+constexpr std::uint8_t all_planes = 0x0F;
+
+/// The bit mask that changes nothing: every bit of the ALU's result
+/// reaches the plane. What mode set leaves, and what AH=09h puts back.
+constexpr std::uint8_t whole_byte = 0xFF;
+
+/// Where mode 0Dh's planes are addressed (ega.h's `vram_window`). An
+/// offset into it is a 16-bit number and every 16-bit number is inside
+/// it, which is why nothing below clips: a cursor pointing off the end of
+/// the screen wraps within the segment, exactly as it would on the real
+/// card.
+constexpr std::uint16_t graphics_page_segment = 0xA000;
+
+/// The attribute byte AH=09h reads in a graphics mode: the foreground
+/// colour in the low four bits, and bit 7 asking for XOR against what is
+/// already there rather than a replacement. The documented public BIOS
+/// convention, like AH=10h's above (int10.h).
+constexpr std::uint8_t attribute_colour_mask = 0x0F;
+constexpr std::uint8_t attribute_exclusive_or = 0x80;
 
 /// One register write: an index, and the value that goes with it.
 struct register_write {
@@ -136,17 +171,29 @@ void write_attribute_register(machine& box, std::uint8_t index,
   box.write_port8(attribute_port, value);
 }
 
+/// One graphics-controller register, through its index/data pair.
+void write_graphics_register(machine& box, std::uint8_t index,
+                             std::uint8_t value) {
+  box.write_port8(graphics_index_port, index);
+  box.write_port8(graphics_data_port, value);
+}
+
+/// One sequencer register, the same way.
+void write_sequencer_register(machine& box, std::uint8_t index,
+                              std::uint8_t value) {
+  box.write_port8(sequencer_index_port, index);
+  box.write_port8(sequencer_data_port, value);
+}
+
 /// AH=00h AL=0Dh: program the sequencer, the graphics controller and the
 /// palette for 320x200x16, and tell the machine a mode is now active
 /// (machine.h's "Video mode discipline").
 void set_mode_0d(machine& box) {
   for (const register_write& reg : mode_0d_sequencer) {
-    box.write_port8(sequencer_index_port, reg.index);
-    box.write_port8(sequencer_data_port, reg.value);
+    write_sequencer_register(box, reg.index, reg.value);
   }
   for (const register_write& reg : mode_0d_graphics) {
-    box.write_port8(graphics_index_port, reg.index);
-    box.write_port8(graphics_data_port, reg.value);
+    write_graphics_register(box, reg.index, reg.value);
   }
   for (std::size_t i = 0; i < mode_0d_default_palette.size(); ++i) {
     write_attribute_register(box, static_cast<std::uint8_t>(i),
@@ -254,6 +301,39 @@ void set_mode(machine& box) {
   box.stop_unsupported_request(regs[cpu::reg16::ax]);
 }
 
+/// AH=02h: put the cursor at row DH, column DL of page BH.
+///
+/// Recording the position is the whole of what a real BIOS does here
+/// that this machine can also do. The BDA word at 40:50 *is* the cursor
+/// for page 0 — a program reads it directly as often as it asks for it,
+/// and AH=08h above indexes the text page with it — so writing it is the
+/// real operation and not a stand-in for one. DX already has the byte
+/// order the BDA wants: DL is the column and DH the row, which is a word
+/// stored low byte first, so the register goes down whole.
+///
+/// The other half of a real BIOS's job — programming the CRTC's cursor
+/// location registers so the blinking underline moves — has nothing to
+/// do here. This machine has no CRTC (#47), and in mode 0Dh, the one
+/// mode it draws, a real adapter does not display the hardware cursor
+/// either: on the screen this call is invisible on both machines. In
+/// mode 03h it would be visible on a real screen, and why it is not on
+/// this one is already standing in the log from the mode set
+/// (`undisplayable_video_mode`); a notice per cursor move would repeat
+/// that same sentence for as long as the program ran.
+///
+/// Nothing is range-checked, because a real BIOS checks nothing either:
+/// it stores what it was handed, and a program that asks for row 200
+/// reads row 200 back. BH is the exception, refused for exactly the
+/// reason AH=05h refuses it — there is one page here.
+void set_cursor_position(machine& box) {
+  cpu::registers& regs = box.processor().regs();
+  if (regs.get(cpu::reg8::bh) != 0) {
+    box.stop_unsupported_request(regs[cpu::reg16::ax]);
+    return;
+  }
+  set_bda_word(box, bda::cursor_position, regs[cpu::reg16::dx]);
+}
+
 /// AH=05h: select the active display page. There is one page here — mode
 /// 0Dh's 32 KiB fills the planes this device has, and there is no CRTC
 /// start address to point at a second one (ega.h; "no CRTC" is the rule
@@ -307,42 +387,268 @@ void read_character(machine& box) {
       cpu.read_byte(text_page_segment, static_cast<std::uint16_t>(offset + 1)));
 }
 
+/// A character generator, as a place in the emulated machine's memory:
+/// where the glyphs start, and the character code the first of them is
+/// for. `points` bytes each, one byte per scan line.
+struct glyph_source {
+  std::uint16_t segment{};
+  std::uint16_t offset{};
+  std::uint8_t first{};
+};
+
+/// Read a font *pointer* vector, and say whether it names glyphs.
+///
+/// Power-on puts this machine's own generator in the BIOS region and
+/// aims both vectors at it (font.h), so ordinarily this is true and the
+/// glyphs are the machine's. It stops being true in exactly two ways,
+/// and both of them are worth telling apart from a table: the vector
+/// still holds the IRET stub power-on gives every *other* vector, which
+/// means something cleared it back to nothing; or it is null, which is
+/// the same statement with different bytes. Neither can be indexed, so
+/// neither is a font.
+///
+/// Note what is *not* checked: that the pointer aims somewhere sensible.
+/// A program is free to install a table anywhere, including in this
+/// machine's own ROM region, and second-guessing where a font may live
+/// would be this file inventing a rule the hardware does not have.
+[[nodiscard]] bool font_pointer(machine& box, std::uint8_t vector,
+                                glyph_source& font) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t at = cpu::vector_table_offset(vector);
+  font.offset = cpu.read_word(cpu::vector_table_segment, at);
+  font.segment = cpu.read_word(cpu::vector_table_segment,
+                               static_cast<std::uint16_t>(at + 2));
+
+  const bool is_stub = font.segment == service::stub_segment &&
+                       font.offset == service::stub_offset(vector);
+  return !is_stub && (font.segment != 0 || font.offset != 0);
+}
+
+/// Which character generator draws `character`, if any does.
+///
+/// The order is the documented public convention: codes 80h-FFh come
+/// from INT 1Fh, the top-half table, and codes 00h-7Fh from INT 43h, the
+/// current generator. Power-on aims both at this machine's own font
+/// (font.h), so ordinarily both answer; a program that installs a table
+/// of its own is read out of that instead, which is the whole reason
+/// this goes through the vectors rather than reaching for `font::glyphs`
+/// directly.
+///
+/// The fallback in between is deliberate: an EGA BIOS in a graphics mode
+/// draws the *whole* code page out of INT 43h, so a program that
+/// replaced only that one is answered from it, indexed from zero. A
+/// program that cleared both is refused — there is nothing left to
+/// index — and that refusal says exactly that and nothing else.
+[[nodiscard]] bool find_glyphs(machine& box, std::uint8_t character,
+                               glyph_source& font) {
+  if (character >= font::high_half_first &&
+      font_pointer(box, font::high_half_vector, font)) {
+    font.first = font::high_half_first;
+    return true;
+  }
+  if (font_pointer(box, font::generator_vector, font)) {
+    font.first = 0;
+    return true;
+  }
+  return false;
+}
+
+/// AH=09h in the 80x25 text mode this machine records and cannot draw:
+/// the character and its attribute, at the cursor, CX times.
+///
+/// The same answer AH=08h gives from the other direction. A real BIOS
+/// stores two bytes per cell into the display page; so does this, through
+/// the bus, at the address the page is at. Nothing in this machine claims
+/// B8000 (memory_map.h), so the writes are dropped and the machine says
+/// so once — the honest report of a text mode it has already said it
+/// cannot display, not a second accommodation.
+void write_character_text(machine& box) {
+  const cpu::registers& regs = box.processor().regs();
+  const std::uint16_t cursor = bda_word(box, bda::cursor_position);
+  const auto column = static_cast<std::uint16_t>(cursor & 0xFFu);
+  const auto row = static_cast<std::uint16_t>(cursor >> 8u);
+  auto offset = static_cast<std::uint16_t>(
+      (row * bda_word(box, bda::video_columns) + column) * 2u);
+
+  cpu::processor& cpu = box.processor();
+  for (std::uint16_t left = regs[cpu::reg16::cx]; left > 0; --left) {
+    cpu.write_byte(text_page_segment, offset, regs.get(cpu::reg8::al));
+    cpu.write_byte(text_page_segment, static_cast<std::uint16_t>(offset + 1),
+                   regs.get(cpu::reg8::bl));
+    offset = static_cast<std::uint16_t>(offset + 2);
+  }
+}
+
+/// AH=09h in mode 0Dh: the glyph, in the attribute's colour, at the
+/// cursor, CX times.
+///
+/// This is a real drawing operation, done the way the rest of this file
+/// does everything — through the ports and the bus, so the pixels land
+/// through the EGA's own write pipeline (ega.h) rather than beside it.
+/// Per scan line, with write mode 2 selected and Enable Set/Reset opening
+/// all four planes:
+///
+///   * **Replace.** The whole cell is written as colour 0 with the bit
+///     mask wide open, then read back — which is what loads the latches —
+///     and written again as the foreground colour with the bit mask set
+///     to the glyph's bits. Mask bits of 0 keep the latch, which now
+///     holds the cleared cell, so the background stays colour 0 and the
+///     glyph stands in the attribute's colour. That two-pass shape is not
+///     an inefficiency to fold away: write mode 2 carries one colour per
+///     write, and a character cell has two.
+///   * **XOR** (attribute bit 7) skips the clearing pass entirely and
+///     sets the ALU function to XOR, so only the glyph's own bits change
+///     and whatever was underneath survives around them. That is what the
+///     bit is *for* — a cursor or a highlight that can be drawn a second
+///     time to undo it.
+///
+/// The repeat count walks one byte forward per character, which is one
+/// column in mode 0Dh because a four-bit-per-pixel planar row of 320
+/// pixels is 40 bytes and 40 is also the column count. Nothing clips:
+/// past the right edge the address carries on into the next scan line of
+/// the same character row, which is exactly what a real BIOS's own
+/// address arithmetic does and exactly the garbage it draws.
+///
+/// The adapter is left as the mode set left it rather than as the program
+/// had it. A real BIOS clobbers these registers too — its character
+/// writer is a table of OUTs like everything else it does — and a program
+/// that drives the graphics controller directly re-programs it before its
+/// next write for that reason.
+void write_character_graphics(machine& box) {
+  const cpu::registers& regs = box.processor().regs();
+  const std::uint8_t character = regs.get(cpu::reg8::al);
+
+  glyph_source font;
+  if (!find_glyphs(box, character, font)) {
+    box.stop_unsupported_request(regs[cpu::reg16::ax]);
+    return;
+  }
+
+  const std::uint16_t columns = bda_word(box, bda::video_columns);
+  const std::uint16_t points = bda_word(box, bda::character_points);
+  const std::uint16_t cursor = bda_word(box, bda::cursor_position);
+  const auto column = static_cast<std::uint16_t>(cursor & 0xFFu);
+  const auto row = static_cast<std::uint16_t>(cursor >> 8u);
+
+  const std::uint8_t attribute = regs.get(cpu::reg8::bl);
+  const std::uint8_t colour = attribute & attribute_colour_mask;
+  const bool exclusive_or = (attribute & attribute_exclusive_or) != 0;
+
+  const auto glyph = static_cast<std::uint16_t>(
+      font.offset + static_cast<unsigned>(character - font.first) *
+                        static_cast<unsigned>(points));
+
+  write_sequencer_register(box, sequencer_map_mask_index, all_planes);
+  write_graphics_register(box, graphics_enable_set_reset_index, all_planes);
+  write_graphics_register(box, graphics_mode_index, graphics_write_mode_2);
+  write_graphics_register(box, graphics_data_rotate_index,
+                          exclusive_or ? graphics_function_xor : 0x00);
+
+  cpu::processor& cpu = box.processor();
+  auto cell = static_cast<std::uint16_t>(row * points * columns + column);
+  for (std::uint16_t left = regs[cpu::reg16::cx]; left > 0; --left) {
+    std::uint16_t at = cell;
+    for (std::uint16_t line = 0; line < points; ++line) {
+      const std::uint8_t bits =
+          cpu.read_byte(font.segment, static_cast<std::uint16_t>(glyph + line));
+      if (!exclusive_or) {
+        write_graphics_register(box, graphics_bit_mask_index, whole_byte);
+        cpu.write_byte(graphics_page_segment, at, 0x00);
+      }
+      static_cast<void>(cpu.read_byte(graphics_page_segment, at));
+      write_graphics_register(box, graphics_bit_mask_index, bits);
+      cpu.write_byte(graphics_page_segment, at, colour);
+      at = static_cast<std::uint16_t>(at + columns);
+    }
+    cell = static_cast<std::uint16_t>(cell + 1);
+  }
+
+  write_graphics_register(box, graphics_bit_mask_index, whole_byte);
+  write_graphics_register(box, graphics_data_rotate_index, 0x00);
+  write_graphics_register(box, graphics_mode_index, 0x00);
+  write_graphics_register(box, graphics_enable_set_reset_index, 0x00);
+}
+
+/// AH=09h: write a character and its attribute at the cursor, CX times,
+/// without moving the cursor. Which of the two bodies above runs is the
+/// recorded mode's question; any other mode is refused, as is any page
+/// but 0.
+void write_character(machine& box) {
+  const cpu::registers& regs = box.processor().regs();
+  if (regs.get(cpu::reg8::bh) != 0) {
+    box.stop_unsupported_request(regs[cpu::reg16::ax]);
+    return;
+  }
+
+  const std::uint8_t mode = bda_byte(box, bda::video_mode);
+  if (mode == mode_0dh) {
+    write_character_graphics(box);
+    return;
+  }
+  if (mode == mode_03h) {
+    write_character_text(box);
+    return;
+  }
+
+  box.stop_unsupported_request(regs[cpu::reg16::ax]);
+}
+
 /// AH=11h AL=30h: where a character generator lives, and how tall its
 /// characters are.
 ///
-/// BH picks which one, and two of the eight are answerable here:
+/// BH picks which one, and four of the eight are answerable here:
 ///
 ///   * **BH=00h and BH=01h** ask for the *vectors* 1Fh and 43h, the font
 ///     pointers a program supplies for itself. They are read straight
 ///     out of the interrupt vector table, which is where they live and
 ///     where a program that set one put it. Nothing is invented, and
 ///     nothing is claimed about what they point at.
-///   * **BH=02h through 07h** ask for a font in the video ROM. This
-///     machine has no video ROM: its BIOS is native code rather than an
-///     image (service_floor.h), and a font is picture data, which is not
-///     something this project ships. They are refused, so that a program
-///     that genuinely needs ROM glyphs appears in the boot log instead of
-///     being handed an address that is not a font.
+///   * **BH=03h and BH=04h** ask for the ROM 8x8 font and for its top
+///     half. Since M4 this machine has one — its own, in its own BIOS
+///     region (font.h) — so they are answered with its address and with
+///     the height of the glyphs actually there, which is the one number
+///     a caller must not get from anywhere else.
+///   * **BH=02h, 05h, 06h and 07h** ask for the 8x14 and 8x16 fonts.
+///     Those are different glyphs, not the same glyphs at a different
+///     size, and this machine has only the 8x8 — so they are still
+///     refused, and a program that genuinely needs a taller cell appears
+///     in the log instead of being handed a table that is the wrong
+///     shape.
 ///
-/// CX and DL come out of the BDA either way — the character height in
-/// scan lines and the row count less one, both written by the mode set.
+/// CX and DL come out of the BDA for the vectors — the character height
+/// in scan lines and the row count less one, both written by the mode
+/// set. For the ROM font CX is the table's own height instead: it is a
+/// fact about the bytes being pointed at, and the mode's cell size has
+/// no vote in it.
 void get_font_info(machine& box) {
   cpu::registers& regs = box.processor().regs();
 
+  cpu::processor& cpu = box.processor();
+  const std::uint8_t which = regs.get(cpu::reg8::bh);
+
+  if (which == 0x03 || which == 0x04) {
+    const auto top_half = static_cast<std::uint16_t>(
+        service::font_offset + font::high_half_first * font::glyph_height);
+    regs[cpu::sreg::es] = service::stub_segment;
+    regs[cpu::reg16::bp] = which == 0x03 ? service::font_offset : top_half;
+    regs[cpu::reg16::cx] = font::glyph_height;
+    regs.set(cpu::reg8::dl, bda_byte(box, bda::video_rows_minus_one));
+    return;
+  }
+
   std::uint8_t vector = 0;
-  switch (regs.get(cpu::reg8::bh)) {
+  switch (which) {
     case 0x00:
-      vector = graphics_font_vector;
+      vector = font::high_half_vector;
       break;
     case 0x01:
-      vector = alternate_font_vector;
+      vector = font::generator_vector;
       break;
     default:
       box.stop_unsupported_request(regs[cpu::reg16::ax]);
       return;
   }
 
-  cpu::processor& cpu = box.processor();
   const std::uint16_t at = cpu::vector_table_offset(vector);
   regs[cpu::reg16::bp] = cpu.read_word(cpu::vector_table_segment, at);
   regs[cpu::sreg::es] = cpu.read_word(cpu::vector_table_segment,
@@ -360,11 +666,17 @@ void video_bios(service_floor& floor, std::uint8_t /*vector*/) {
     case 0x00:
       set_mode(box);
       return;
+    case 0x02:
+      set_cursor_position(box);
+      return;
     case 0x05:
       set_page(box);
       return;
     case 0x08:
       read_character(box);
+      return;
+    case 0x09:
+      write_character(box);
       return;
     case 0x0F:
       get_mode(box);
