@@ -72,6 +72,17 @@ Maintainers will reject anything that crosses this line, however useful
 it would be. This applies beyond git, too: keep game files out of issues,
 CI logs, and screenshots.
 
+Part of that tripwire is an allowlist, and it is the part you are most
+likely to meet: **anything that is not text is refused unless its path is
+named in the guard.** The repository has one such file today, a 34-byte
+program written here by hand. A denylist of artifact names can only
+refuse what somebody thought of in advance — #134 was a few kilobytes of
+the running program dumped out of the emulator under an invented name,
+comfortably under the size cap and on nobody's list. If your change needs
+a committed binary, add it to the allowlist in the same pull request with
+a one-line note saying where the bytes came from, and expect that line to
+be the thing review talks about.
+
 ## Checks and gates
 
 Beside the build-and-test matrix, six scripted checks gate every push,
@@ -80,7 +91,7 @@ exactly these scripts — no CI-only variant, no extra flags — so a green run
 locally is a green run there:
 
 ```sh
-bash scripts/check-clean.sh      # content guard: every commit, index, worktree
+bash scripts/check-clean.sh      # content guard: every commit, index, worktree, strays
 bash scripts/check-dco.sh        # every non-merge commit carries a sign-off
 bash scripts/check-host-time.sh  # nothing under core/ reads the host's clock
 bash scripts/check-format.sh     # clang-format over tracked C++
