@@ -1,8 +1,9 @@
 # Playable
 
 How to drive a player-supplied copy from the party roster into the game —
-a party, the city, a story event, a fight, a save, a load and a purchase
-— and what each of those legs is evidence for.
+a party, the city, a story event, a fight, a save, a load, a purchase, a
+cure paid for and a gem sold — and what each of those legs is evidence
+for.
 
 `docs/first-light.md` is the M3 procedure and stops where this one starts:
 at the roster, with an empty party and nothing to do. M4's exit criterion
@@ -350,6 +351,157 @@ junction.
 
 ---
 
+## Leg 5 — the temple, and a sale (#104)
+
+Two more city services transacting, and the instrument that made finding
+them affordable.
+
+### Watching where the party is
+
+Leg 4's honest note was that the city is a sixteen-by-sixteen grid the
+party walks blind and that sweeping it by hand is most of a session.
+That is a navigation problem, not an emulation one, and `--watch` is the
+answer to it: the party's position and the game's screen mode are three
+bytes and a byte in the program's data segment, and a line printed every
+time one of them changes is a readable trail of a run.
+
+```
+--watch 6AAD --watch 6AAE --watch 6AAF --watch 49F3
+```
+
+| offset | what |
+| --- | --- |
+| `6AAD` | the party's X on the area map |
+| `6AAE` | its Y |
+| `6AAF` | its facing: 0 N, 2 E, 4 S, 6 W |
+| `49F3` | the screen mode: 0 menu, 1 a portrait sub-view, 2 camp, 3 and 4 adventure, 5 tactical combat, 6 a banner |
+
+```
+amberfolio: watch frame=012814 ds=0CDC 6AAD=07 6AAE=05 6AAF=00 49F3=04
+amberfolio: watch frame=013114 ds=0CDC 6AAD=08 6AAE=05 6AAF=02 49F3=04
+```
+
+Those are facts about this program, in the same table the seams are
+written from (`docs/seams.md`), and `ds=0CDC` is the data segment they
+mean something in on this edition — the other segments the flag prints
+are frame boundaries that landed elsewhere, and filtering on the one is
+how the trail is read.
+
+The trail is the whole method. A leg is now: press the keys, read the
+lines the party actually moved on, and write the next leg from where it
+stopped. A wall shows up as a press that changed the facing and not the
+position, which is the same symptom as a flushed keystroke and used to
+be indistinguishable from it.
+
+### Two rules the trail makes obvious
+
+*Turning and walking are not the same cadence.* Ninety frames apart is
+enough between menu keys; a hundred and fifty is what movement wants
+(leg 4's trap, and the trail is where it shows). A turn lost inside a
+step reads as a party that walked east when it was told to walk north,
+three squares later.
+
+*An entrance event stops the walk until it is answered.* A script that
+walks past a service square and does not answer its prompt stands there
+for the rest of the run, and every remaining keystroke is flushed. A
+sweep therefore presses `Return` and `N` after every move — the two
+answers that dismiss a "press return to continue" and decline a "yes or
+no", neither of which does anything at the exploration bar.
+
+### The temple, and paying for a cure
+
+The civilised district's healing temple is at **3,1**, and walking onto
+it is the whole of the entrance:
+
+```
+YOU ARE WELCOMED BY PRIESTESS JOY OF SUNE. 'DO YOU SEEK HEALING?'
+```
+
+`Y` opens the service, and its command bar is the shop's bar with one
+word changed:
+
+```
+HEAL VIEW POOL APPRAISE EXIT
+```
+
+`H` asks which character, and then lists what the temple sells —
+`CURE BLINDNESS`, `CURE DISEASE`, the three cure-wounds spells,
+`NEUTRALIZE POISON`, `RAISE DEAD`, `REMOVE CURSE`, `STONE TO FLESH`,
+`EXIT` — a nine-line list over its own screen, which is #104's "text and
+list rendering" for the second time and the first with prices behind it.
+
+The transaction is two prompts, and the party being in perfect health is
+not an obstacle to it:
+
+```
+FIGHTER1 IS NOT BLIND.  CAST CURE ANYWAY: YES NO
+CURE BLINDNESS WILL ONLY COST 1000 GOLD PIECES.  PAY FOR CURE: YES NO
+```
+
+Run the same script twice, once answering `Y` to the second prompt and
+once `N` — `docs/seams.md`'s cheap check, applied to a purchase the way
+leg 4 applied it — and read the payer's sheet both times:
+
+| | declined | paid |
+| --- | --- | --- |
+| `FIGHTER1` | `PLATINUM 1586` | `PLATINUM 1386` |
+
+Two hundred platinum, which is the thousand gold the temple asked for at
+this game's five-to-one, off the character the service was bought for.
+Nothing else about the two runs differs.
+
+### The sale, which is not called selling
+
+Leg 4 recorded that `SELL` is not on the armourer's bar and guessed that
+it belonged to a shop that buys. It does not. **No shop in this district
+buys**, the general store at **12,10** included, and its bar is the same
+five words as the armourer's:
+
+```
+BUY VIEW POOL APPRAISE EXIT
+```
+
+`APPRAISE` is the sale. It opens on what the current character is
+carrying that a shop will take —
+
+```
+YOU HAVE A FINE COLLECTION OF:
+4 GEMS
+```
+
+over a bar reading `APPRAISE : GEMS EXIT` — and `G` sells one:
+
+| | before | after |
+| --- | --- | --- |
+| `FIGHTER1`'s gems | `GEMS 4` | `GEMS 3` |
+| `FIGHTER1`'s money | `PLATINUM 1586` | `PLATINUM 1588` |
+
+One gem, two platinum, on the character who was carrying it. That is
+#104's "sell", under the name the game gives it.
+
+### What else is on this map
+
+Every square below was reached on foot and fired what is written beside
+it. They are facts about a map, like leg 4's published coordinates, and
+they are here so that the next person walks a route rather than a grid:
+
+| square | what happens |
+| --- | --- |
+| `3,1` | Sune's temple — healing, above |
+| `4,4` | the city hall (leg 1 reaches its entrance event) |
+| `6,2` | the training schools' lobby: a note directing magic-users and clerics north, fighters and rogues east |
+| `7,2` | the arena master — a duel, and a prompt offering a hireling |
+| `8,2`, `9,2` | the dueling rooms behind him |
+| `10,5` | the Temple of Tyr: the bishop's study, and an NPC who asks to come along |
+| `12,10` | the general store — the sale, above |
+| `13,5` | the docks, through the temple |
+| `0,4` | the gate out of the civilised district |
+
+`10,8` put the party into a random encounter, which is worth knowing
+before assuming this district is safe: leg 4's note that slot A's
+quarter produced none in nine minutes of walking was a fact about a
+route, not about the map.
+
 ---
 
 ## What the run should not say
@@ -383,12 +535,17 @@ worklist line, and `docs/machine.md` §5 is what to do with it.
 
 Honest gaps, so nobody reads more into a green run than is there:
 
-- **The rest of the city services** (#104). Leg 4 buys from a shop, and
-  the city hall's entrance event, its interior and an NPC prompt all run.
-  The **training hall**, the **temple** and the **inn** have not been
-  driven, and neither has **selling** — `SELL` is not on the armourer's
-  bar, so it belongs to a shop that buys, which is a different square.
-- **The dungeon.** Everything above is the city and its slums.
+- **Two of the city services** (#104). Legs 4 and 5 buy, heal and sell,
+  and the city hall, the arena, the dueling rooms and the training
+  schools' lobby all render and answer. What has **not** been transacted
+  is **training** — no character with the experience for a level has been
+  taken through it, and the lobby's own note says the halls are by class
+  — and the **inn**, which has not been found. Those two are what is left
+  of "every city service the game offers", and neither is blocked on
+  anything the machine does.
+- **The dungeon.** Everything above is the city and its slums. The gate
+  out of the civilised district is at `0,4` and leg 5's routing method
+  works on the other side of it; nobody has walked through.
 - **The web host** (#108) runs the same core and the same recordings, and
   none of these legs has been driven on the dev page.
 - **Audio beyond "there was one."** The first sound this program makes is
