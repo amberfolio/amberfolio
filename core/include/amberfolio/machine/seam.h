@@ -244,6 +244,27 @@ struct seam_status {
   /// Whether any of its points is armed right now. On-and-unarmed is a
   /// seam waiting for its module.
   bool armed{false};
+
+  /// How many times one of its handlers has actually run since it was
+  /// enabled.
+  ///
+  /// Here because `armed` turned out to be a claim about the *fact
+  /// table* rather than about the machine (#131): a point is armed at an
+  /// address computed from where a module was recorded, and a seam whose
+  /// module has since moved — or whose offset was never right — reports
+  /// `armed`, fires nothing, and is indistinguishable from one that
+  /// works. It cost this milestone three wrong claims before a
+  /// with-and-without comparison caught it.
+  ///
+  /// A count cannot make a wrong address right. What it does is make the
+  /// wrongness *visible*, which is the half of fail-closed that was
+  /// missing: `on armed fired=0` after a run that should have fired is a
+  /// defect a reader can see, where silence is not.
+  ///
+  /// Bookkeeping, not machine state: above the fidelity boundary, never
+  /// serialized, and it can only move when a seam is on — so a run with
+  /// everything off is the run it always was.
+  std::uint64_t fired{};
 };
 
 /// The printable name of a `seam_reason`, for a host's listing. Never
@@ -509,6 +530,8 @@ class seam_engine {
     /// Why an enabled seam is not (fully) armed; `none` when it is.
     seam_reason reason{seam_reason::none};
     bool armed{false};
+    /// Handler runs since `enable()`. `seam_status::fired`.
+    std::uint64_t fired{};
     /// Whether a handler of this seam has already declined once
     /// (`seam_context::decline`). Cleared when the seam is enabled, so
     /// turning it off and on again asks the question afresh.

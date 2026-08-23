@@ -149,6 +149,7 @@ seam_status seam_engine::status(std::size_t index) const noexcept {
   out.state = s.enabled ? seam_state::on : seam_state::off;
   out.reason = s.enabled ? s.reason : seam_reason::none;
   out.armed = s.enabled && s.armed;
+  out.fired = s.fired;
   return out;
 }
 
@@ -242,6 +243,7 @@ seam_error seam_engine::enable(std::string_view id) {
 
   s.enabled = true;
   s.declined = false;  // A fresh enable asks the question again.
+  s.fired = 0;
   ++enabled_;
   report(id, seam_event_kind::enabled, seam_reason::none);
   arm_all(overlays_);
@@ -333,6 +335,7 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
     }
     seam_context ctx(box, *this, slots_[point.owner].seam->id, at,
                      point.module_base, image_base());
+    ++slots_[point.owner].fired;
     point.run(box, ctx);
   }
 }
