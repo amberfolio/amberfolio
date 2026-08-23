@@ -604,7 +604,7 @@ struct rig {
 /// directory-backed host is handed whatever the host's filesystem holds.
 /// So the walk's bound is checked against a disk that has none, rather
 /// than assumed from a backend that cannot break it.
-class bottomless : public filesystem {
+class bottomless final : public filesystem {
  public:
   vfs_result<file_handle> open(const dos_path&, open_mode) override {
     return {.value = {}, .error = vfs_error::access_denied};
