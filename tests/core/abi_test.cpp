@@ -700,7 +700,7 @@ TEST(AbiReport, TracingIsOffUntilAskedForAndSurvivesAReset) {
   ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
   ASSERT_EQ(af_machine_run_until(box.get(), 400.0), AF_OK);
 
-  std::vector<char> big(24576);
+  std::vector<char> big(32768);
   ASSERT_GT(af_machine_trace_report(box.get(), big.data(),
                                     static_cast<std::uint32_t>(big.size())),
             0u);

@@ -517,6 +517,11 @@ class service_floor {
   /// handed a floor and nothing else. `path` and `error` are filled by
   /// the caller; `caller_cs`/`caller_ip` are filled here, so no handler
   /// has to remember to.
+  ///
+  /// Goes two places: the machine's trace ring, when tracing is on
+  /// (trace.h, #121), and the sink, when there is one. Built at all only
+  /// when one of the two is listening, which is the rule this call
+  /// already had for the sink alone.
   void report_file(file_action what, const dos_path& path, std::uint16_t handle,
                    vfs_error error);
 

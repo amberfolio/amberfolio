@@ -550,6 +550,10 @@ void machine::note_service_call(const service_call& call) noexcept {
   trace_.record(call);
 }
 
+void machine::note_file_event(const file_event& event) noexcept {
+  trace_.record(event);
+}
+
 bool machine::stop_unimplemented_service(std::uint32_t at) {
   return stop_with(stop_reason::unimplemented_service, at);
 }

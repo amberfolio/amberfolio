@@ -987,12 +987,23 @@ constexpr std::uint16_t patch_length = 2;
   error_or_zero(a, "nothing_to_delete");
   store(a, 16, reg_ax);
 
+  // A name that does not resolve at all: there is one drive and it is C
+  // (vfs.h), so this fails inside `canonicalize()` before the filesystem
+  // is consulted. Here because that is the naming failure the file
+  // channel used to report nowhere (#121) — a program asking for a file
+  // on the floppy it was installed from, and a log with nothing in it.
+  mov_dx_offset(a, "otherdrive");
+  mov_ax(a, 0x3D00);
+  a.db({0xCD, 0x21});
+  error_or_zero(a, "no_such_drive");
+  store(a, 17, reg_ax);
+
   // --- Created, written, deleted ---
   mov_dx_offset(a, "scratchpath");
   a.db({0x31, 0xC9});
   int21(a, 0x3C);
   answer_or_zero(a, "scratch_made");
-  store(a, 17, reg_ax);
+  store(a, 18, reg_ax);
   a.db({0x89, 0xC3});
 
   mov_dx_offset(a, "patch");
@@ -1000,22 +1011,22 @@ constexpr std::uint16_t patch_length = 2;
   a.dw(patch_length);
   int21(a, 0x40);
   answer_or_zero(a, "scratch_written");
-  store(a, 18, reg_ax);
+  store(a, 19, reg_ax);
 
   int21(a, 0x3E);
   succeeded(a, "scratch_closed");
-  store(a, 19, reg_ax);
+  store(a, 20, reg_ax);
 
   mov_dx_offset(a, "scratchpath");
   int21(a, 0x41);
   succeeded(a, "scratch_deleted");
-  store(a, 20, reg_ax);
+  store(a, 21, reg_ax);
 
   mov_dx_offset(a, "scratchpath");
   mov_ax(a, 0x3D00);
   a.db({0xCD, 0x21});
   error_or_zero(a, "scratch_gone");
-  store(a, 21, reg_ax);
+  store(a, 22, reg_ax);
 
   mov_dx_offset(a, "banner");
   int21(a, 0x09);
@@ -1026,6 +1037,7 @@ constexpr std::uint16_t patch_length = 2;
   asciz(a, "dirpath", "\\DATA");
   asciz(a, "filepath", "\\DATA\\NOTE.TXT");
   asciz(a, "nopath", "\\NOPE.TXT");
+  asciz(a, "otherdrive", "A:\\NOPE.TXT");
   asciz(a, "scratchpath", "\\SCRATCH.TMP");
 
   a.label("wbuf");
@@ -2145,6 +2157,8 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
         {.what = "read from a handle nothing opened", .value = 0x06},
         {.what = "seek from an origin DOS does not have", .value = 0x01},
         {.what = "delete a file that is not there", .value = 0x02},
+        {.what = "open one on a drive this machine does not have",
+         .value = 0x0F},
         {.what = "create the scratch file", .value = 5},
         {.what = "bytes written to it", .value = patch_length},
         {.what = "close it", .value = 1},
@@ -2155,8 +2169,11 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
     p.files = {{.present = true, .contents = file_contents()},
                {.present = false, .contents = {}}};
     // The whole of what the program asked DOS for by name, in order -
-    // including the three refusals, which are the point of the calls
-    // that make them (diagnostics.h: a failed open is an answer).
+    // including the four refusals, which are the point of the calls
+    // that make them (diagnostics.h: a failed open is an answer). The
+    // fourth is the one that never reached this list until #121: a name
+    // `canonicalize()` refuses outright has no path to report, so it
+    // shows as the root with the error that says why.
     p.file_trace = {
         "mkdir \\DATA",
         "create \\DATA\\NOTE.TXT",
@@ -2165,6 +2182,7 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
         "close \\DATA\\NOTE.TXT",
         "open \\NOPE.TXT file_not_found",
         "unlink \\NOPE.TXT file_not_found",
+        "open \\ invalid_drive",
         "create \\SCRATCH.TMP",
         "close \\SCRATCH.TMP",
         "unlink \\SCRATCH.TMP",

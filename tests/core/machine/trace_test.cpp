@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The trace ring: that it is off until asked for, that it keeps the last
-// N and not the first N, and that a full ring answers about the window it
-// still has rather than about the run.
+// The trace ring: that it is off until asked for, that each of its three
+// rings keeps the last N and not the first N, and that a full one answers
+// about the window it still has rather than about the run.
 //
 // The wraparound cases are the reason this file exists. A ring that is
 // wrong by one is a ring that reads correctly on every run short enough
@@ -14,6 +14,7 @@
 #include <cstdint>
 
 #include "amberfolio/machine/diagnostics.h"
+#include "amberfolio/machine/vfs.h"
 #include "gtest/gtest.h"
 
 namespace amberfolio::machine {
@@ -33,17 +34,33 @@ namespace {
                       .outcome = service_outcome::handled};
 }
 
+/// A naming call carrying the number in its handle and its caller, so an
+/// entry is recognisable by eye the way the other two are. The path is
+/// the root, because what this file is about is the ring and not the
+/// rendering — `dos_test.cpp` is where a real path goes through it.
+[[nodiscard]] file_event file_numbered(std::uint16_t n) {
+  return file_event{.what = file_action::open,
+                    .path = dos_path{},
+                    .handle = n,
+                    .error = vfs_error::file_not_found,
+                    .caller_cs = 0x3000,
+                    .caller_ip = n};
+}
+
 TEST(TraceRing, RecordsNothingUntilEnabled) {
   trace_ring ring;
   EXPECT_FALSE(ring.enabled());
 
   ring.record(step_numbered(1));
   ring.record(call_numbered(1));
+  ring.record(file_numbered(1));
 
   EXPECT_EQ(ring.steps_seen(), 0u);
   EXPECT_EQ(ring.step_count(), 0u);
   EXPECT_EQ(ring.calls_seen(), 0u);
   EXPECT_EQ(ring.call_count(), 0u);
+  EXPECT_EQ(ring.files_seen(), 0u);
+  EXPECT_EQ(ring.file_count(), 0u);
 }
 
 TEST(TraceRing, KeepsWhatItIsGivenWhileItHasRoom) {
@@ -100,11 +117,31 @@ TEST(TraceRing, KeepsTheLastCallsOnceItIsFull) {
             static_cast<std::uint16_t>(recorded - 1));
 }
 
+TEST(TraceRing, KeepsTheLastNamingCallsOnceItIsFull) {
+  // The third ring (#121). Its entries are the big ones — a whole
+  // `dos_path` apiece — which is exactly why the wraparound is worth
+  // asserting separately rather than assumed to follow from the others.
+  trace_ring ring;
+  ring.enable(true);
+
+  constexpr std::size_t recorded = trace_ring::file_capacity + 5;
+  for (std::size_t i = 0; i < recorded; ++i) {
+    ring.record(file_numbered(static_cast<std::uint16_t>(i)));
+  }
+
+  EXPECT_EQ(ring.files_seen(), recorded);
+  EXPECT_EQ(ring.file_count(), trace_ring::file_capacity);
+  EXPECT_EQ(ring.file_at(0).handle, static_cast<std::uint16_t>(5));
+  EXPECT_EQ(ring.file_at(trace_ring::file_capacity - 1).handle,
+            static_cast<std::uint16_t>(recorded - 1));
+}
+
 TEST(TraceRing, ClearingForgetsTheEntriesAndKeepsTheSetting) {
   trace_ring ring;
   ring.enable(true);
   ring.record(step_numbered(1));
   ring.record(call_numbered(1));
+  ring.record(file_numbered(1));
 
   ring.clear();
 
@@ -113,6 +150,8 @@ TEST(TraceRing, ClearingForgetsTheEntriesAndKeepsTheSetting) {
   EXPECT_EQ(ring.step_count(), 0u);
   EXPECT_EQ(ring.calls_seen(), 0u);
   EXPECT_EQ(ring.call_count(), 0u);
+  EXPECT_EQ(ring.files_seen(), 0u);
+  EXPECT_EQ(ring.file_count(), 0u);
 }
 
 TEST(TraceRing, StopsRecordingWhenDisabledAndKeepsWhatItHad) {

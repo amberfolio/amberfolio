@@ -24,6 +24,7 @@
 #include <initializer_list>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -289,6 +290,123 @@ TEST(dos_file_events, the_reads_and_writes_in_between_say_nothing_here) {
   ASSERT_FALSE(r.carry());
 
   EXPECT_TRUE(events(r).empty());
+}
+
+// --- The same thing in the trace report (#121) -------------------------
+//
+// The live stream above is what a host prints as a run happens. The trace
+// report is what a reader reads afterwards, and until #121 it had the
+// service calls and not the file events - so `INT21 ax=3D00 handled` was
+// the whole of what a report said about a program that had spent its
+// startup asking for a file that is not there. These are the tests that
+// the tail carries the path and the answer, and that a run which opened
+// what it meant to does not read like one that did not.
+
+[[nodiscard]] std::string trace_text(const rig& r) {
+  std::vector<char> buffer(trace_report_capacity);
+  const std::size_t n = format_trace_report(r.pc(), buffer);
+  return {buffer.data(), n};
+}
+
+[[nodiscard]] bool has(std::string_view haystack, std::string_view needle) {
+  return haystack.find(needle) != std::string_view::npos;
+}
+
+TEST(dos_file_trace, a_failed_open_names_the_path_and_what_dos_answered) {
+  rig r;
+  r.pc().trace().enable(true);
+  r.write_asciz(path_area, "POR\\POOL.CFG");
+  r.call(ah(0x3D), 0, 0, path_area);
+  ASSERT_TRUE(r.carry());
+
+  const std::string text = trace_text(r);
+  EXPECT_TRUE(has(text,
+                  "trace file=open \\POR\\POOL.CFG handle=0000 "
+                  "path_not_found from="))
+      << text;
+  EXPECT_TRUE(has(text, "files_seen=1 kept=1")) << text;
+}
+
+TEST(dos_file_trace, tells_not_there_from_no_handles_left) {
+  // The three answers the report has to keep apart, named rather than
+  // numbered: `vfs_error_name` spells each one as its own enumerator, so
+  // a line in a log and a case in vfs.h are searchable with one string.
+  rig r;
+  r.pc().trace().enable(true);
+  r.write_asciz(path_area, "SAVE");
+  r.call(ah(0x39), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  r.call(ah(0x39), 0, 0, path_area);
+  ASSERT_TRUE(r.carry());
+  r.write_asciz(path_area, "MISSING.DAT");
+  r.call(ah(0x3D), 0, 0, path_area);
+  ASSERT_TRUE(r.carry());
+
+  const std::string text = trace_text(r);
+  EXPECT_TRUE(has(text, "trace file=mkdir \\SAVE handle=0000 none from="))
+      << text;
+  EXPECT_TRUE(
+      has(text, "trace file=mkdir \\SAVE handle=0000 access_denied from="))
+      << text;
+  EXPECT_TRUE(has(text,
+                  "trace file=open \\MISSING.DAT handle=0000 "
+                  "file_not_found from="))
+      << text;
+}
+
+TEST(dos_file_trace, an_open_that_worked_is_not_read_as_one_that_did_not) {
+  rig r;
+  r.pc().trace().enable(true);
+  r.write_asciz(path_area, "GAME.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+
+  const std::string text = trace_text(r);
+  // The handle it actually answered with, and `none` where a failure
+  // would carry its reason.
+  EXPECT_TRUE(has(text, "trace file=create \\GAME.DAT handle=0005 none from="))
+      << text;
+  EXPECT_FALSE(has(text, "file_not_found")) << text;
+  EXPECT_FALSE(has(text, "path_not_found")) << text;
+}
+
+TEST(dos_file_trace, a_name_that_does_not_resolve_at_all_is_reported_too) {
+  // The one naming failure this machine used to report nowhere: the name
+  // is refused by `canonicalize()` before the filesystem is consulted, so
+  // no path exists to name and the event carries the root. A program
+  // asking for a file on a drive this machine does not have is exactly
+  // how "please insert the disk" happens with nothing in the log.
+  rig r;
+  r.pc().trace().enable(true);
+  r.write_asciz(path_area, "A:\\POOL.CFG");
+  r.call(ah(0x3D), 0, 0, path_area);
+  ASSERT_TRUE(r.carry());
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], dos_error_code(vfs_error::invalid_drive));
+
+  const std::vector<file_event> got = events(r);
+  ASSERT_EQ(got.size(), 1U);
+  EXPECT_EQ(got[0].what, file_action::open);
+  EXPECT_EQ(got[0].error, vfs_error::invalid_drive);
+  EXPECT_TRUE(got[0].path.is_root());
+
+  EXPECT_TRUE(
+      has(trace_text(r), "trace file=open \\ handle=0000 invalid_drive from="))
+      << trace_text(r);
+}
+
+TEST(dos_file_trace, keeps_nothing_when_nobody_asked_for_a_trace) {
+  // The rule the whole facility rests on: off unless asked for, and a run
+  // with it off is the same run. The sink still hears the event - that
+  // channel is the host's to filter - but the ring is empty and the
+  // report says so.
+  rig r;
+  r.write_asciz(path_area, "MISSING.DAT");
+  r.call(ah(0x3D), 0, 0, path_area);
+  ASSERT_TRUE(r.carry());
+
+  EXPECT_EQ(events(r).size(), 1U) << "the sink is a separate channel";
+  EXPECT_EQ(r.pc().trace().files_seen(), 0U);
+  EXPECT_EQ(trace_text(r), "amberfolio: stop trace=off\n");
 }
 
 // --- The exit criterion: create, write, reopen, seek, read, unlink -----

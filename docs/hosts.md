@@ -127,7 +127,7 @@ fingerprint up by (PLAN.md §5).
 | option | what it is for |
 | --- | --- |
 | `--steps N`, `--until TICKS` | bound the run. A hang is otherwise the one failure this host cannot report — the machine is running, nothing has refused anything, and the process just sits there. The budget is clamped into the run slice, so `--steps N` ends on step N exactly and the stop can be reproduced. |
-| `--trace` | keep the last 256 instructions and 64 service calls, and print them with the report. Off by default, at a cost of one branch per step. |
+| `--trace` | keep the last 256 instructions, 64 service calls and 32 naming file calls, and print them with the report. Off by default, at a cost of one branch per step. |
 | `--dump PREFIX` | write `PREFIX.ppm` (the composed frame) and `PREFIX.wav` (the speaker) when the run ends. |
 | `--dump-every N` | also write `PREFIX-NNNNNN.ppm` every N frames. A run is a film and one frame of it is a still; everything past the title happens over tens of virtual seconds, and "what did the screen *do*" is not a question a final frame answers. The number in the name is the one `--press KEY@FRAME` counts in, so a still and the keystroke that caused it are named in the same units. Needs `--dump`, whose prefix it shares. |
 | `-- ARGUMENTS` | everything after `--` becomes the program's command tail, with the leading space DOS leaves in front of one. |
@@ -146,6 +146,37 @@ amberfolio: file open \SAVE\CHRDATA1.ITM handle=0000 file_not_found from=0B58:14
 The failures are the interesting half: a program asks whether a save slot
 exists by opening it, so a run's refusals are as much a record of what it
 did as its successes. `docs/machine.md` §5 has the channel's rules.
+
+Those lines are the *live* account, and a boot buries them in tens of
+thousands of `INT 16h` polls. So the trace report at the end of the run
+carries the last thirty-two of them too (#121):
+
+```
+amberfolio: stop trace=on steps_seen=... kept=256 calls_seen=... kept=64 files_seen=... kept=32
+amberfolio: stop trace file=open \POR\POOL.CFG handle=0000 path_not_found from=0B58:1458
+amberfolio: stop trace file=open \ handle=0000 invalid_drive from=0B58:1458
+```
+
+(The counts are elided; the three `..._seen` fields are the whole run and
+the three `kept=` fields are the window the ring still has.)
+
+That is the shape of the failure this facility was built for. A hard-disk
+install carries a config naming absolute paths, this host mounts the
+directory it is given *as the DOS root*, and every path the program builds
+from that config then resolves under a subdirectory that does not exist.
+The program's own answer to it is to ask for a floppy — and a failed
+`INT 21h` open is a legitimate DOS answer, so before #121 the report said
+nothing at all about the opens that had just failed. Two rules make
+the block readable:
+
+- **A path is never truncated.** By the time an entry exists the name has
+  been through `canonicalize()`, which produces a fixed-size `dos_path` or
+  refuses — so what the ring holds is what the machine acted on.
+- **A name that does not resolve at all renders as `\`.** There is no
+  canonical path for `A:\POOL.CFG` on a machine with one drive, so the
+  error is what names the failure. It is the one naming refusal that
+  happens before the filesystem is consulted, and the one this channel
+  reported nowhere until #121.
 
 `--dump` is the one to reach for when the claim is *"the title renders"*.
 `docs/machine.md` §7 says why a golden is the wrong instrument for that,
@@ -472,10 +503,14 @@ Three things follow that are worth knowing before you drive a leg here:
   `af_machine_reset` leaves it alone (`af_machine_clear_log` is the
   host's own broom). That is what let it exist without moving a single
   replay hash.
-- **`af_machine_set_trace` owns both halves of one facility** — the CPU
-  trace ring *and* the service-call and file-event streams, exactly as the
-  SDL host's `--trace` does. Notices and seam transitions are always kept;
-  those two are not, because a boot makes tens of thousands of them.
+- **`af_machine_set_trace` owns both halves of one facility** — the trace
+  ring, all three of it (steps, service calls, naming file calls), *and*
+  the service-call and file-event streams, exactly as the SDL host's
+  `--trace` does. Notices and seam transitions are always kept; those two
+  are not, because a boot makes tens of thousands of them.
+  `af_machine_trace_report` renders the ring, file lines included, so a
+  browser run's account of which files failed to open is the same block
+  of characters the desktop host prints.
 - **With tracing on, a browser run is a sample plus a count, not a
   transcript.** The ring is bounded and a program in a tight `INT 16h`
   poll outruns any per-frame drain — `smoke.mjs` drives exactly that and

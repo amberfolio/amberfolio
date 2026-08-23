@@ -278,10 +278,11 @@ machine keeps anything beyond `stop_record`:
   above apart: `unimplemented` is a vector nothing backs,
   `handled` with a service-shaped stop is a handler that ran and said no
   to this AH.
-- **`machine::trace()`.** The last 256 instructions and 64 service calls,
-  in a fixed ring, **off unless a caller asks** — one branch per step
-  when it is off (`machine/trace.h`). It answers the question a bare
-  address cannot: how the program got there.
+- **`machine::trace()`.** The last 256 instructions, 64 service calls and
+  32 naming file calls, in fixed rings, **off unless a caller asks** — one
+  branch per step when it is off (`machine/trace.h`). It answers the two
+  questions a bare address cannot: how the program got there, and which
+  files it was asking for on the way.
 
 The `next=` line is the M3 method in one sentence: it names the one
 service, register or opcode to widen, so the worklist is written by the
@@ -319,9 +320,22 @@ it. The rules the channel keeps:
 - **Refusals are reported, not swallowed.** "Is there a save in slot A"
   is a question a program asks by opening a file, and `file_not_found` is
   the answer — the same rule §5 states for the machine as a whole, one
-  layer up.
+  layer up. *Every* refusal, including the one that happens before the
+  filesystem is consulted at all: a name `canonicalize()` will not resolve
+  — a drive letter that is not C, a component no legal DOS short name can
+  equal — has no path to report, so the event carries the root and the
+  error is what says why (#121). That was the last naming failure this
+  machine reported nowhere, and it is exactly the shape of "the program
+  asked for the floppy it was installed from".
 - **The path is the canonical one**, not the bytes at `DS:DX`, so a log
   line and the filesystem agree about what was touched.
+- **The trace ring keeps the last thirty-two of them** (`trace.h`), and
+  `format_trace_report` renders them above the service calls. The live
+  lines are what a host prints as a run happens; the ring is what a reader
+  reads afterwards, and a boot buries the live ones under tens of
+  thousands of `INT 16h` polls. A `dos_path` is fixed-size by
+  construction, so nothing about the ring's no-allocator contract has to
+  bend to hold one.
 
 A handler that starts naming files adds its `floor.report_file()` call in
 the same change, the way §3 says a service closing a boot-log line adds

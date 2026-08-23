@@ -185,7 +185,18 @@ void succeed_with(service_floor& floor, std::uint16_t ax) {
 /// surface does not list them), so the current directory is always the
 /// root — when a later issue adds AH=3Bh/47h, this is the one call site
 /// that starts reading real per-machine state instead.
-[[nodiscard]] vfs_result<dos_path> read_path(service_floor& floor) {
+///
+/// `what` is the naming call this is being read for, and it is here
+/// because a name that does not canonicalize at all — a drive letter that
+/// is not C, a component no legal DOS short name can equal — fails before
+/// the filesystem is ever consulted. Until #121 that was the one naming
+/// failure this machine reported nowhere: the program asked for something
+/// on `A:`, got a refusal indistinguishable from a missing file, and put
+/// a "please insert the disk" message on the screen with nothing in the
+/// log to say why. There is no canonical path to name, so the event
+/// carries the root and `error` is what says what happened.
+[[nodiscard]] vfs_result<dos_path> read_path(service_floor& floor,
+                                             file_action what) {
   cpu::processor& cpu = floor.box().processor();
   const std::uint16_t segment = cpu.regs()[sreg::ds];
   const std::uint16_t offset = cpu.regs()[reg16::dx];
@@ -202,7 +213,12 @@ void succeed_with(service_floor& floor, std::uint16_t ax) {
     ++length;
   }
 
-  return canonicalize(dos_path{}, std::span<const char>(raw.data(), length));
+  const vfs_result<dos_path> resolved =
+      canonicalize(dos_path{}, std::span<const char>(raw.data(), length));
+  if (!resolved.ok()) {
+    floor.report_file(what, dos_path{}, 0, resolved.error);
+  }
+  return resolved;
 }
 
 // --- Ctrl-Break, the DOS half (dos.h's top comment) ---------------------
@@ -390,7 +406,7 @@ void mkdir_fn(service_floor& floor) {
   if (fs == nullptr) {
     return;
   }
-  const vfs_result<dos_path> path = read_path(floor);
+  const vfs_result<dos_path> path = read_path(floor, file_action::mkdir);
   if (!path.ok()) {
     fail(floor, path.error);
     return;
@@ -409,7 +425,7 @@ void create_fn(service_floor& floor) {
   if (fs == nullptr) {
     return;
   }
-  const vfs_result<dos_path> path = read_path(floor);
+  const vfs_result<dos_path> path = read_path(floor, file_action::create);
   if (!path.ok()) {
     fail(floor, path.error);
     return;
@@ -449,7 +465,7 @@ void open_fn(service_floor& floor) {
     return;
   }
 
-  const vfs_result<dos_path> path = read_path(floor);
+  const vfs_result<dos_path> path = read_path(floor, file_action::open);
   if (!path.ok()) {
     fail(floor, path.error);
     return;
@@ -573,7 +589,7 @@ void unlink_fn(service_floor& floor) {
   if (fs == nullptr) {
     return;
   }
-  const vfs_result<dos_path> path = read_path(floor);
+  const vfs_result<dos_path> path = read_path(floor, file_action::unlink);
   if (!path.ok()) {
     fail(floor, path.error);
     return;
