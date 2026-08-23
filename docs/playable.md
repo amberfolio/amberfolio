@@ -591,9 +591,13 @@ every byte of RAM, every device register, the clock — reproduced exactly
 by a different compiler on a different architecture. Until now that claim
 rested on `spin.rec`: four frames of a machine executing `JMP $` (#142).
 
-It cannot be committed, for the reason nothing here can, and there is no
-`--replay` on the web driver yet, so this is a procedure and not a test.
-Both of those are follow-ups rather than doubts.
+It cannot be committed, for the reason nothing here can — the disk is a
+player's own — so it is a procedure and not a test, and it would have
+been one however the driver was built. `drive.mjs` deliberately does not
+grow a `--replay` for it (#147): the wasm module already verifies
+recordings through `af_machine_verify_recording`, and
+`hosts/web/tests/smoke.mjs` asks it that on every CI run. What is
+un-repeatable here is this particular run, not the capability.
 
 ### What the browser cannot do yet
 
@@ -648,17 +652,26 @@ worklist line, and `docs/machine.md` §5 is what to do with it.
 
 Honest gaps, so nobody reads more into a green run than is there:
 
-- **Two of the city services** (#104). Legs 4 and 5 buy, heal and sell,
-  and the city hall, the arena, the dueling rooms and the training
-  schools' lobby all render and answer. What has **not** been transacted
-  is **training** — no character with the experience for a level has been
-  taken through it, and the lobby's own note says the halls are by class
-  — and the **inn**, which has not been found. Those two are what is left
-  of "every city service the game offers", and neither is blocked on
-  anything the machine does.
-- **The dungeon.** Everything above is the city and its slums. The gate
-  out of the civilised district is at `0,4` and leg 5's routing method
-  works on the other side of it; nobody has walked through.
+Two of them are **decisions** rather than a worklist — nobody is coming,
+and the entries stay because a procedure that quietly stopped mentioning
+what it skips would be worth less than one that says so.
+
+- **Two of the city services**, by decision (#104, #145). Legs 4 and 5
+  buy, heal and sell, and the city hall, the arena, the dueling rooms
+  and the training schools' lobby all render and answer. **Training** has
+  not been transacted — no character with the experience for a level has
+  been taken through it, though the shipped slot A has one — and the
+  **inn** has not been found. Three services checked to the coin was
+  judged enough: the check is about the transaction path, and these two
+  reuse it with different arithmetic on the far side. If training is ever
+  driven it is the interesting one, because it *writes a character
+  record* and so is closer to leg 3's save path than to a purchase.
+- **The dungeon**, by decision (#102, #144). Everything above is the city
+  and its slums. The gate out of the civilised district is at `0,4`, leg
+  5's routing method works on the other side of it, and nobody has walked
+  through. What a dungeon exercises is the same 3D view, the same ECL
+  events and the same movement code the city already runs over different
+  data — and the map edge itself, which *was* a mechanism, is covered.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam
