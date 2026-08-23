@@ -326,6 +326,16 @@ struct seam_event {
   seam_reason reason{seam_reason::none};
 };
 
+/// The printable name of a `seam_event_kind` — `on`, `off`, `armed`,
+/// `inert`, `refused`. Never null.
+///
+/// The word rather than the enumerator's own spelling, unlike the two
+/// names above, because this one is the middle of a sentence a person
+/// reads at a glance in a boot log: `seam cheat-kill-all inert
+/// module_not_resident`. Here rather than in a host so that both hosts
+/// say it identically (machine/report.h says why that matters).
+[[nodiscard]] const char* seam_event_kind_name(seam_event_kind kind) noexcept;
+
 /// The host services a seam may call out to — the slot M4 defines and M5
 /// fills (PLAN.md §5 items 2, 3 and 5; #96). Named here so that the
 /// consumers exist as names before any of them exists as code; a seam

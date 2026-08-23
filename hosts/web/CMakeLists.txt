@@ -89,6 +89,10 @@ set(_amberfolio_web_export_names
   _af_machine_audio_resyncs
   _af_machine_post_key
   _af_machine_set_wall_clock
+  _af_machine_read_log
+  _af_machine_log_pending
+  _af_machine_log_dropped
+  _af_machine_clear_log
   _af_machine_read_console
   _af_machine_console_pending
   _af_machine_console_dropped

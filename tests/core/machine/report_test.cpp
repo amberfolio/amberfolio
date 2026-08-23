@@ -30,6 +30,7 @@
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/vfs.h"
 #include "gtest/gtest.h"
 #include "machine/test_device.h"
@@ -366,6 +367,139 @@ TEST(FileNames, SpellEachActionAndErrorAsItsOwnEnumerator) {
   EXPECT_STREQ(vfs_error_name(vfs_error::file_not_found), "file_not_found");
   EXPECT_STREQ(vfs_error_name(vfs_error::access_denied), "access_denied");
   EXPECT_STREQ(vfs_error_name(vfs_error::directory_full), "directory_full");
+}
+
+// --- The live account -------------------------------------------------
+//
+// The other half of what a boot log is, and asserted by whole line rather
+// than field by field. These sentences were the SDL host's until M4-W1
+// (#108) moved them into core so that a browser run and a desktop run of
+// the same program produce the same characters; a test that checked the
+// fields would pass just as happily on a line whose shape had drifted,
+// which is the one thing that must not happen to them.
+
+[[nodiscard]] std::string line_of(const auto& record) {
+  std::array<char, diagnostic_line_capacity> out{};
+  const std::size_t wrote = format_diagnostic(record, out);
+  EXPECT_EQ(wrote, std::string_view(out.data()).size());
+  return {out.data()};
+}
+
+TEST(DiagnosticLine, NamesANoticeRatherThanNumberingIt) {
+  const notice what{.what = notice_kind::unclaimed_port_read,
+                    .at = 0x03F8,
+                    .value = 0,
+                    .cs = 0x0B58,
+                    .ip = 0x1234};
+  EXPECT_EQ(line_of(what),
+            "amberfolio: notice unclaimed_port_read at 003F8 value=00 "
+            "from=0B58:1234\n");
+}
+
+TEST(DiagnosticLine, CarriesTheByteADroppedWriteWasCarrying) {
+  const notice what{.what = notice_kind::rom_write,
+                    .at = 0xF0147,
+                    .value = 0xAB,
+                    .cs = 0x1000,
+                    .ip = 0x0002};
+  EXPECT_EQ(line_of(what),
+            "amberfolio: notice rom_write at F0147 value=AB "
+            "from=1000:0002\n");
+}
+
+TEST(DiagnosticLine, SaysWhetherAServiceCallWasAnsweredAtAll) {
+  const service_call handled{.vector = 0x21,
+                             .ax = 0x3D00,
+                             .caller_cs = 0x0B58,
+                             .caller_ip = 0x0052,
+                             .outcome = service_outcome::handled};
+  EXPECT_EQ(line_of(handled),
+            "amberfolio: call INT21 ax=3D00 from=0B58:0052 handled\n");
+
+  const service_call absent{.vector = 0x13,
+                            .ax = 0x0201,
+                            .caller_cs = 0x0B58,
+                            .caller_ip = 0x0052,
+                            .outcome = service_outcome::unimplemented};
+  EXPECT_EQ(line_of(absent),
+            "amberfolio: call INT13 ax=0201 from=0B58:0052 unimplemented\n");
+}
+
+TEST(DiagnosticLine, NamesTheFileAndWhatDosWasAboutToAnswerWith) {
+  const file_event event{.what = file_action::open,
+                         .path = path_of({"SAVE", "CHRDATA1.ITM"}),
+                         .handle = 0,
+                         .error = vfs_error::file_not_found,
+                         .caller_cs = 0x0B58,
+                         .caller_ip = 0x1458};
+  EXPECT_EQ(line_of(event),
+            "amberfolio: file open \\SAVE\\CHRDATA1.ITM handle=0000 "
+            "file_not_found from=0B58:1458\n");
+}
+
+TEST(DiagnosticLine, IsTerseAboutAStopBecauseTheReportIsNot) {
+  // The full account is the stop report; the same fact printed twice in
+  // two shapes is how a reader comes to trust the wrong one.
+  const stop_record stop{.reason = stop_reason::unimplemented_service,
+                         .at = 0x0B5D2,
+                         .exit_code = 0};
+  EXPECT_EQ(line_of(stop),
+            "amberfolio: machine stopped, unimplemented_service at 0B5D2\n");
+}
+
+TEST(DiagnosticLine, SaysNothingAtAllAboutAProgramThatExited) {
+  // Not a diagnostic: it is the run ending the way it was asked to, and a
+  // host that logged it would make every ordinary run look as though
+  // something had gone wrong. The rule lives here rather than in each
+  // sink so that the two hosts cannot come to disagree about it.
+  std::array<char, diagnostic_line_capacity> out{};
+  out[0] = 'x';
+  const stop_record stop{
+      .reason = stop_reason::program_exited, .at = 0, .exit_code = 0};
+  EXPECT_EQ(format_diagnostic(stop, out), 0u);
+  EXPECT_STREQ(out.data(), "");
+}
+
+TEST(DiagnosticLine, NamesTheOpcodeTheProcessorWouldNotInvent) {
+  const cpu::stop_record stop{.reason = cpu::stop_reason::unimplemented_opcode,
+                              .opcode = 0x0F,
+                              .extension = cpu::no_extension,
+                              .cs = 0x1000,
+                              .ip = 0x0007};
+  EXPECT_EQ(line_of(stop),
+            "amberfolio: cpu stopped on opcode 0F at 1000:0007\n");
+}
+
+TEST(DiagnosticLine, NamesWhatADeviceDeclinedAndItsOwnDetail) {
+  const device_stop stop{
+      .at = 0x00043, .detail = 0x30, .cs = 0x1000, .ip = 0x0010};
+  EXPECT_EQ(line_of(stop),
+            "amberfolio: device declined 00043 detail=30 from=1000:0010\n");
+}
+
+TEST(DiagnosticLine, ReadsAsAReasonWhenASeamHasOne) {
+  const seam_event armed{.id = "cheat-kill-all",
+                         .kind = seam_event_kind::armed,
+                         .reason = seam_reason::none};
+  EXPECT_EQ(line_of(armed), "amberfolio: seam cheat-kill-all armed\n");
+
+  const seam_event inert{.id = "cheat-kill-all",
+                         .kind = seam_event_kind::inert,
+                         .reason = seam_reason::module_not_resident};
+  EXPECT_EQ(line_of(inert),
+            "amberfolio: seam cheat-kill-all inert module_not_resident\n");
+}
+
+TEST(DiagnosticLine, TruncatesRatherThanRefusingASmallBuffer) {
+  const notice what{.what = notice_kind::rom_write,
+                    .at = 0xF0147,
+                    .value = 0xAB,
+                    .cs = 0x1000,
+                    .ip = 0x0002};
+  std::array<char, 16> out{};
+  const std::size_t wrote = format_diagnostic(what, out);
+  EXPECT_EQ(wrote, 15u);
+  EXPECT_STREQ(out.data(), "amberfolio: not");
 }
 
 }  // namespace

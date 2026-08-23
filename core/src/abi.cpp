@@ -28,6 +28,7 @@
 #include "amberfolio/machine/fingerprint.h"
 #include "amberfolio/machine/int10.h"
 #include "amberfolio/machine/loader.h"
+#include "amberfolio/machine/log.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_vfs.h"
 #include "amberfolio/machine/pic.h"
@@ -42,7 +43,7 @@
 #include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
 
-/// The handle's definition, which is a machine and nothing else.
+/// The handle's definition: a machine, and the account of what it says.
 ///
 /// A wrapper struct rather than `typedef machine af_machine`, because the
 /// C header declares `struct af_machine` and C has no idea what a
@@ -59,8 +60,20 @@
 /// struct grew a DOS handler by default. A host that wants the M2
 /// device set — the wasm dev page (#55) does — asks for it explicitly,
 /// below.
+///
+/// The **diagnostic log** (machine/log.h, M4-W1 #108) is the one thing
+/// beside the machine, and it does not make the struct less bare in the
+/// sense above: it answers nothing, backs no vector, and cannot change
+/// what a step does. It only writes down what the machine already said,
+/// so that a JS host can read the account a C++ host gets handed as
+/// records. It is a member rather than something a host installs because
+/// a sink is held by reference for the machine's whole life and there is
+/// nowhere else on this side of the boundary for it to live — and it is
+/// declared first so that it outlives what points at it.
 struct af_machine {
-  amberfolio::machine::machine box;
+  amberfolio::machine::diagnostic_log log;
+  amberfolio::machine::machine box{amberfolio::machine::memory_layout::pc,
+                                   &log};
 };
 
 namespace {
@@ -469,6 +482,8 @@ uint32_t af_machine_set_trace(af_machine* handle, int32_t on) {
     return AF_NO_MACHINE;
   }
   box->trace().enable(on != 0);
+  // Both halves of the one facility — see abi.h.
+  handle->log.set_tracing(on != 0);
   return AF_OK;
 }
 
@@ -510,6 +525,35 @@ uint32_t af_machine_stop_reason(const af_machine* handle) {
     return AF_NO_MACHINE;
   }
   return static_cast<uint32_t>(box->stop().reason);
+}
+
+uint32_t af_machine_read_log(af_machine* handle, char* out, uint32_t max) {
+  if (handle == nullptr || out == nullptr) {
+    return 0;
+  }
+  return static_cast<uint32_t>(handle->log.read(std::span<char>(out, max)));
+}
+
+uint32_t af_machine_log_pending(const af_machine* handle) {
+  if (handle == nullptr) {
+    return 0;
+  }
+  return static_cast<uint32_t>(handle->log.pending());
+}
+
+double af_machine_log_dropped(const af_machine* handle) {
+  if (handle == nullptr) {
+    return 0.0;
+  }
+  return static_cast<double>(handle->log.dropped());
+}
+
+uint32_t af_machine_clear_log(af_machine* handle) {
+  if (handle == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  handle->log.clear();
+  return AF_OK;
 }
 
 uint32_t af_machine_set_speed(af_machine* handle, uint32_t preset) {

@@ -399,110 +399,66 @@ struct wired_machine {
   machine::renderer render;
 };
 
-/// A seam event's kind, in a word, for the log line the sink prints.
-[[nodiscard]] const char* seam_event_name(
-    machine::seam_event_kind kind) noexcept {
-  switch (kind) {
-    case machine::seam_event_kind::enabled:
-      return "on";
-    case machine::seam_event_kind::disabled:
-      return "off";
-    case machine::seam_event_kind::armed:
-      return "armed";
-    case machine::seam_event_kind::inert:
-      return "inert";
-    case machine::seam_event_kind::refused:
-      return "refused";
-  }
-  return "unknown";
-}
-
 /// Reports what the core would not fake, to stderr. A host has to have
 /// one of these or "log, don't fake" is only half a mechanism
 /// (machine/diagnostics.h).
+///
+/// **The sentences are not this host's.** Every line below is rendered by
+/// `machine::format_diagnostic` (machine/report.h), for the reason that
+/// file gives at length: the browser has a sink of its own now
+/// (machine/log.h, M4-W1 #108), and two hosts writing their own version
+/// of the same line would produce two accounts that look alike and can
+/// quietly differ. This host's job is to put the characters on stderr.
 class stderr_diagnostics final : public machine::diagnostics {
  public:
-  /// Whether to print every service call as it is made. Off by default,
-  /// for the reason diagnostics.h gives: a call is something the program
-  /// *did*, not a symptom of anything, and a boot makes tens of thousands
-  /// of them. `--trace` turns it on, so that the live stream and the ring
-  /// dumped at the end are one facility asked for once.
+  /// Whether to print every service call and file event as it happens.
+  /// Off by default, for the reason diagnostics.h gives: a call is
+  /// something the program *did*, not a symptom of anything, and a boot
+  /// makes tens of thousands of them. `--trace` turns it on, so that the
+  /// live stream and the ring dumped at the end are one facility asked
+  /// for once.
   void set_tracing(bool on) noexcept { tracing_ = on; }
 
-  void report(const machine::notice& what) override {
-    // Named rather than numbered (machine/report.h), and with the byte and
-    // the caller it used to leave out. A number is a thing the reader has
-    // to go and look up, on the one line whose whole purpose is to be
-    // read.
-    std::fprintf(stderr,
-                 "amberfolio: notice %s at %05X value=%02X from=%04X:%04X\n",
-                 machine::notice_kind_name(what.what), what.at, what.value,
-                 what.cs, what.ip);
-  }
+  void report(const machine::notice& what) override { write(what); }
 
   void report(const machine::stop_record& stop) override {
-    // A program exiting is not a diagnostic. It is the run ending
-    // the way it was asked to, and main() turns it into this
-    // process's exit code; saying anything on stderr would make
-    // every ordinary run look as though something had gone wrong.
-    if (stop.reason == machine::stop_reason::program_exited) {
-      return;
-    }
-    // Deliberately terse: the full account is the stop report main()
-    // prints once the run has ended, and the same fact printed twice in
-    // two shapes is how a reader comes to trust the wrong one.
-    std::fprintf(stderr, "amberfolio: machine stopped, %s at %05X\n",
-                 machine::stop_reason_name(stop.reason), stop.at);
+    // A program exiting produces no line at all — report.h owns that
+    // rule, so that this host and the browser agree about it.
+    write(stop);
   }
 
-  void report(const cpu::stop_record& stop) override {
-    std::fprintf(stderr,
-                 "amberfolio: cpu stopped on opcode %02X at %04X:%04X\n",
-                 stop.opcode, stop.cs, stop.ip);
-  }
+  void report(const cpu::stop_record& stop) override { write(stop); }
 
-  void report(const machine::device_stop& stop) override {
-    std::fprintf(
-        stderr, "amberfolio: device declined %05X detail=%02X from=%04X:%04X\n",
-        stop.at, stop.detail, stop.cs, stop.ip);
-  }
+  void report(const machine::device_stop& stop) override { write(stop); }
 
-  void report(const machine::seam_event& event) override {
-    // Every transition, always: a seam going on, arming, or staying inert
-    // is the one kind of line a boot log must never lose, because it is
-    // the difference between a plain machine and an enhanced one
-    // (machine/seam.h). Short, so the reason reads as the line.
-    const bool why = event.reason != machine::seam_reason::none;
-    std::fprintf(stderr, "amberfolio: seam %.*s %s%s%s\n",
-                 static_cast<int>(event.id.size()), event.id.data(),
-                 seam_event_name(event.kind), why ? " " : "",
-                 why ? machine::seam_reason_name(event.reason) : "");
-  }
+  void report(const machine::seam_event& event) override { write(event); }
 
   void report(const machine::file_event& event) override {
     if (!tracing_) {
       return;
     }
-    std::array<char, machine::dos_path_capacity> path{};
-    machine::format_dos_path(event.path, path);
-    std::fprintf(
-        stderr, "amberfolio: file %s %s handle=%04X %s from=%04X:%04X\n",
-        machine::file_action_name(event.what), path.data(), event.handle,
-        machine::vfs_error_name(event.error), event.caller_cs, event.caller_ip);
+    write(event);
   }
 
   void report(const machine::service_call& call) override {
     if (!tracing_) {
       return;
     }
-    std::fprintf(stderr, "amberfolio: call INT%02X ax=%04X from=%04X:%04X %s\n",
-                 call.vector, call.ax, call.caller_cs, call.caller_ip,
-                 call.outcome == machine::service_outcome::handled
-                     ? "handled"
-                     : "unimplemented");
+    write(call);
   }
 
  private:
+  /// Render one record and put it on stderr. Nothing is printed for a
+  /// record that has no line.
+  template <typename T>
+  void write(const T& record) noexcept {
+    std::array<char, machine::diagnostic_line_capacity> line{};
+    if (machine::format_diagnostic(record, line) == 0) {
+      return;
+    }
+    std::fputs(line.data(), stderr);
+  }
+
   bool tracing_{false};
 };
 

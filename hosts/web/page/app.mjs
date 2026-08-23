@@ -414,11 +414,43 @@ async function run(machine, { canvas, setStatus, appendConsole, stepBudget, mess
         ? `the machine stopped - see the report below.`
         : `the run was cut short at ${machine.steps()} steps - see the report below.`,
     );
+    drainLog();
+    if (partialLine.length > 0) {
+      appendConsole(`${partialLine}\n`);
+      partialLine = '';
+    }
+    const lost = machine.logDropped();
+    if (lost > 0) {
+      appendConsole(`[host] ${lost} diagnostic line(s) dropped - the log ring overflowed\n`);
+    }
     appendConsole(machine.stopReport(how));
     const trace = machine.traceReport();
     if (!trace.startsWith('amberfolio: stop trace=off')) appendConsole(trace);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
+  };
+
+  // The diagnostics stream, as the lines core renders from it
+  // (machine/log.h, #108). Before this the page said nothing about what a
+  // program did beyond the number it stopped with, while the same run on
+  // the desktop host printed its notices, its file activity and every
+  // seam transition - which made driving docs/playable.md's legs here
+  // strictly worse than driving them there, for no reason but a missing
+  // door.
+  //
+  // A drain can end mid-line (abi.h), so the tail of one is held back and
+  // becomes the head of the next. Nothing is lost: the remainder is still
+  // the ring's, not this page's.
+  let partialLine = '';
+  const drainLog = () => {
+    const text = partialLine + machine.readLog();
+    const lastBreak = text.lastIndexOf('\n');
+    if (lastBreak < 0) {
+      partialLine = text;
+      return;
+    }
+    partialLine = text.slice(lastBreak + 1);
+    appendConsole(text.slice(0, lastBreak + 1));
   };
 
   const frame = () => {
@@ -440,6 +472,7 @@ async function run(machine, { canvas, setStatus, appendConsole, stepBudget, mess
     if (consoleBytes.length > 0) {
       appendConsole(decodeConsoleBytes(consoleBytes));
     }
+    drainLog();
 
     // One frame's worth of audio, pulled and handed to the worklet
     // whether or not it is still connected — a detached port simply

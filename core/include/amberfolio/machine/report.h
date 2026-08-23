@@ -176,6 +176,59 @@ inline constexpr std::size_t dos_path_capacity =
 [[nodiscard]] const char* cpu_stop_reason_name(
     cpu::stop_reason reason) noexcept;
 
+// --- The live account -------------------------------------------------
+//
+// The stop report is what a run says at the end. These are what it says
+// *while it runs*: one line per diagnostics record (diagnostics.h), in
+// the same shape and for the same reason — written once, below both
+// hosts, so that a browser run and a desktop run of the same program
+// produce the same characters and a difference between them is a real
+// difference rather than two renderings.
+//
+// Until M4-W1 (#108) these sentences lived in the SDL host's own sink,
+// which was fine while it was the only host that had one. It is not: the
+// C ABI installs a sink of its own that keeps the last few kilobytes of
+// them for a JS host to drain (machine/log.h), and two hosts formatting
+// their own would be exactly the drift the paragraph at the top of this
+// file was written about.
+
+/// Characters any one of the lines below can produce, the terminator
+/// included.
+///
+/// The widest is a file event: the prefix, an action name, a full
+/// `dos_path` (`dos_path_capacity`, 106 characters), a handle, the widest
+/// `vfs_error` spelling and a far address — a little over 180. This is
+/// the next round number above it, so a caller with a buffer this size
+/// never sees a truncated line.
+inline constexpr std::size_t diagnostic_line_capacity = 256;
+
+/// Render one diagnostics record as the line a host logs, into `out`,
+/// newline included.
+///
+/// Answers the number of characters written, the terminator not counted;
+/// `out` is always NUL-terminated when it has room for even that, and a
+/// buffer shorter than `diagnostic_line_capacity` truncates rather than
+/// refuses — the same contract the two report writers keep.
+std::size_t format_diagnostic(const notice& what, std::span<char> out);
+std::size_t format_diagnostic(const service_call& call, std::span<char> out);
+std::size_t format_diagnostic(const file_event& event, std::span<char> out);
+std::size_t format_diagnostic(const cpu::stop_record& stop,
+                              std::span<char> out);
+std::size_t format_diagnostic(const device_stop& stop, std::span<char> out);
+std::size_t format_diagnostic(const seam_event& event, std::span<char> out);
+
+/// The same for the machine's own stop — with one record that has no
+/// line: `program_exited` writes nothing and answers zero.
+///
+/// A program terminating itself is the run ending the way it was asked
+/// to (diagnostics.h), and a host that logged it would make every
+/// ordinary run look as though something had gone wrong. That rule is
+/// here rather than in each sink for the reason everything else in this
+/// section is: two hosts applying it separately is two hosts that can
+/// come to disagree about it. A caller logs what it is given and skips
+/// an answer of zero.
+std::size_t format_diagnostic(const stop_record& stop, std::span<char> out);
+
 /// Render the report for a run that ended `how`, into `out`.
 ///
 /// Answers the number of characters written, the terminator not counted;

@@ -54,6 +54,22 @@ const char* seam_state_name(seam_state state) noexcept {
   return "unknown";
 }
 
+const char* seam_event_kind_name(seam_event_kind kind) noexcept {
+  switch (kind) {
+    case seam_event_kind::enabled:
+      return "on";
+    case seam_event_kind::disabled:
+      return "off";
+    case seam_event_kind::armed:
+      return "armed";
+    case seam_event_kind::inert:
+      return "inert";
+    case seam_event_kind::refused:
+      return "refused";
+  }
+  return "unknown";
+}
+
 // --- seam_context -----------------------------------------------------------
 
 bool seam_context::inject_keystroke(std::uint8_t scancode, std::uint8_t ascii) {
