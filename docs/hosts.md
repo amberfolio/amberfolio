@@ -261,10 +261,10 @@ green runners, because it is the only claim any of them cannot make.
 `ctest --preset wasm` runs the module under node, headless. It asserts the
 ABI's export list, the embedded demo program's framebuffer hash and key
 echo, the filesystem path a player's directory travels (M3-F2, #84), and
-— since M4-W1 (#108) — the headless driver below. The browser half
-(canvas, AudioWorklet, keyboard) has the same shape of gap the desktop
-host had, and `scripts/serve-web.py` plus a browser is how a person
-closes it.
+— since M4-W1 (#108) — the headless driver below and the speaker
+worklet's underrun policy. The browser half (canvas, AudioWorklet,
+keyboard) has the same shape of gap the desktop host had, and
+`scripts/serve-web.py` plus a browser is how a person closes it.
 
 ```sh
 cmake --build --preset wasm
@@ -300,6 +300,13 @@ Three things are worth knowing about what it does:
   scancodes. They were simply absent until #84, which made a
   keyboard-driven game unplayable in a browser while the desktop host had
   had them since M2-H1; `hosts/web/tests/smoke.mjs` checks the rows.
+- **The speed preset is a control, not a build option** (#107, #108). The
+  same four names the desktop host's `--speed` takes, applied whenever it
+  changes rather than only at boot — the useful thing to do with it here
+  is to turn it up while watching the readout under the canvas and find
+  where the browser stops keeping up. It is a governor and not a
+  fast-forward: virtual time still decides every deadline, so a run at
+  `at` is exactly as deterministic as one at `xt`.
 
 ### What a browser run says about itself
 
@@ -434,6 +441,52 @@ another binary is refused with an exit code. What CI does **not** check —
 here or on the desktop side, where there is no such case either — is a
 seam being *accepted*: that needs a program a seam's addresses are facts
 about, and no such program is in this repository.
+
+### The audio path under load, and the underrun policy
+
+`app.mjs` pulls one frame of audio per `requestAnimationFrame` callback
+on the main thread and posts each chunk to the AudioWorklet, which plays
+them back in order. Two things can go wrong with that and they are
+counted separately, both now shown on the page beside the frame and step
+counts:
+
+- **`underruns` / `resyncs`** are core's (`af_machine_audio_underruns`,
+  `af_machine_audio_resyncs`): a pull that ran past settled virtual time,
+  and a pull that had to jump forward to bound latency.
+- **`starved`** is the worklet's: a render quantum the audio thread had no
+  chunk for, counted once per run of starvation rather than once per
+  sample.
+
+Neither is machine state (`platform.h`), and nothing about them
+back-pressures into the machine — a run that sounded wrong is still the
+same run.
+
+**The two hosts used to disagree about what an underrun sounds like, and
+#108 settles it.** `audio_timeline::render()` holds the last level
+(`platform_test.cpp`'s `AnUnderrunHoldsTheLevelAndKeepsItsPlace`); the
+worklet filled silence. The reconciliation is not to copy core's line but
+to follow its reasoning:
+
+- Core holds because its underrun is **not a gap in the waveform**. The
+  cursor does not advance, so the audio for that span is not lost but not
+  yet made; the level held is the level the cone is genuinely at, the next
+  pull resumes on the same tick, and the wave continues. It lasts as long
+  as one pull runs past the horizon — microseconds.
+- The worklet's underrun is a different event with the same name: the main
+  thread did not post in time, and how long that lasts is a question about
+  the browser's scheduler. A backgrounded tab is seconds, and the backlog
+  cap means a long stall does not even replay what it missed. A held
+  non-zero level for that long is not a continuation of anything — it is a
+  DC offset: silent in itself, but a deflected cone, a bias in whatever
+  the destination mixes it with, and a step at both ends of the gap.
+
+So the worklet now **holds across the seam and then fades to silence** —
+the last real sample for three milliseconds, ramped to zero over six
+more, silence thereafter. Core's rule for as long as core's reasoning
+holds, and an honest nothing once it stops. `smoke.mjs` drives the
+processor directly (stubbing the three globals `AudioWorkletGlobalScope`
+provides) and asserts the hold, the monotonic fade, the silence, and that
+one stall is counted once.
 
 ### The comparison M3's exit criterion rests on
 

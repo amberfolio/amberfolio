@@ -1289,6 +1289,126 @@ if (missing.length === 0 && sessions !== null) {
   console.log("smoke: the driver reads both hosts' key spellings and refuses the rest");
 }
 
+// --- The AudioWorklet's underrun policy (M4-A1 #106, M4-W1 #108) ---------
+//
+// `tests/core/machine/platform_test.cpp`'s
+// `AnUnderrunHoldsTheLevelAndKeepsItsPlace` pins core's rule. This is its
+// counterpart one layer out, and it exists because the two hosts had
+// quietly disagreed: the worklet filled silence where core holds. The
+// reconciliation (audio-worklet.mjs's own top comment) is hold across the
+// seam, then fade — core's rule for as long as core's reasoning holds,
+// and silence once it stops holding, because a stalled tab is not a pull
+// that ran a few microseconds past the horizon.
+//
+// The processor is a class in a global scope a browser provides
+// (`AudioWorkletGlobalScope`), so the three things that scope has and
+// node does not are stubbed here. Stubbing them is the whole trick: the
+// file under test is imported and run unmodified, and what is faked is
+// the room it runs in, not the thing being checked.
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const rate = 48000;
+  globalThis.sampleRate = rate;
+  globalThis.AudioWorkletProcessor = class {
+    constructor() {
+      this.port = { postMessage: (data) => posted.push(data), onmessage: null };
+    }
+  };
+  const posted = [];
+  let registeredAs = null;
+  let Processor = null;
+  globalThis.registerProcessor = (name, type) => {
+    registeredAs = name;
+    Processor = type;
+  };
+
+  await import('./audio-worklet.mjs');
+  check(
+    registeredAs === 'amberfolio-speaker',
+    `the processor registered as ${JSON.stringify(registeredAs)}; app.mjs asks for` +
+      ' "amberfolio-speaker"',
+  );
+
+  if (Processor !== null) {
+    const processor = new Processor();
+    const quantum = () => {
+      const channel = new Float32Array(128);
+      processor.process([], [[channel]]);
+      return channel;
+    };
+
+    // One chunk of a level held high — 64 samples, half a quantum, so
+    // the starvation begins inside the same call that plays them.
+    processor.port.onmessage({ data: new Float32Array(64).fill(1) });
+    const played = quantum();
+    check(
+      played.slice(0, 64).every((sample) => sample === 1),
+      'the processor did not play the chunk it was posted',
+    );
+    // The seam: held at the level the last real sample was at, which is
+    // exactly what `audio_timeline::render()` does when it runs out of
+    // settled time. A step to zero here would be an edge in the output
+    // that the machine never generated.
+    check(
+      played.slice(64).every((sample) => sample === 1),
+      'the first samples of an underrun were not the held level',
+    );
+    check(
+      posted.length === 1 && posted[0].underruns === 1,
+      `the processor reported ${JSON.stringify(posted)}, expected one underrun`,
+    );
+
+    // And then it goes away. `holdSamples` is 3 ms and `rampSamples` 6,
+    // so by 16 ms of starvation there is nothing left — a cone that is
+    // not being driven should not be left deflected, however quiet a
+    // constant deflection is.
+    let sample = 1;
+    let quanta = 0;
+    while (sample !== 0 && quanta < 16) {
+      const filled = quantum();
+      check(
+        filled.every((value) => value <= sample + 1e-6 && value >= 0),
+        'the fade to silence was not monotonic',
+      );
+      sample = filled[filled.length - 1];
+      quanta += 1;
+    }
+    check(sample === 0, `after ${quanta} quanta of starvation the output is ${sample}`);
+    check(
+      quanta * 128 <= Math.round(rate * 0.02),
+      `the fade took ${quanta * 128} samples, which is more than 20 ms`,
+    );
+
+    // One run of starvation is one underrun, however many quanta it
+    // lasted: the count is of events a listener would notice, not of
+    // samples nobody generated.
+    check(
+      posted.length === 1,
+      `a single stall reported ${posted.length} underruns`,
+    );
+
+    // And it recovers: a chunk arriving after a stall plays at once, and
+    // the next stall counts as a second one.
+    processor.port.onmessage({ data: new Float32Array(8).fill(-1) });
+    const recovered = quantum();
+    check(
+      recovered[0] === -1,
+      `after a stall the next chunk played as ${recovered[0]}, expected -1`,
+    );
+    check(
+      posted.length === 2 && posted[1].underruns === 2,
+      'the stall after a recovery was not counted as a second underrun',
+    );
+  }
+
+  console.log(
+    'smoke: the speaker worklet holds the level across a short gap and fades to silence',
+  );
+}
+
 if (problems.length > 0) {
   for (const problem of problems) console.error(`smoke: FAIL: ${problem}`);
   process.exit(1);
