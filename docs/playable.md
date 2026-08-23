@@ -502,6 +502,25 @@ before assuming this district is safe: leg 4's note that slot A's
 quarter produced none in nine minutes of walking was a fact about a
 route, not about the map.
 
+### Walking off the edge of the map (#102)
+
+The gate at `0,4` is the district's western edge, and stepping west
+through it is the first **area transition** this machine has run:
+
+```
+amberfolio: watch frame=014344 ds=0CDC 6AAD=00 6AAE=04 6AAF=06 49F3=04
+amberfolio: watch frame=014908 ds=0CDC 6AAD=0F 6AAE=04 6AAF=06 49F3=04
+```
+
+One step, and the party's X goes from `0` to `15` — a different sixteen
+by sixteen, a different wall set drawn around it, and the clock back to
+where the new area starts it. The exploration bar comes up on the other
+side and the party walks on.
+
+That is a code path nothing before it had exercised: leg 1's tour is one
+district and legs 2 to 5 never leave it. What is on the other side —
+the slums, and the dungeons that open off them — is still the gap below.
+
 ---
 
 ## What the run should not say
