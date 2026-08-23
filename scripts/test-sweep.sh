@@ -193,6 +193,92 @@ expect_silent "the disk it was pinned from is that disk" \
   "this disk is not that disk"
 expect_says "and the run went looking for a host" "no desktop host"
 
+# --- A pair that is supposed to differ ---------------------------------
+#
+# Two recordings of the same script one flag apart, and the assertion
+# that the flag mattered. This is the check `docs/seams.md` asks for
+# after a seam was twice on, armed, reporting itself, and doing nothing —
+# with a green suite throughout. It compares files rather than machines,
+# which is what lets CI make it about sessions no runner here can replay.
+
+mkpair() { # mkpair <repo> <name> <partner> <hashes...>
+  local repo="$1" name="$2" partner="$3"; shift 3
+  {
+    echo "amberfolio-recording 1 state=1"
+    echo "program MADEUP.EXE 00"
+    local tick=1000
+    for h in "$@"; do
+      echo "checkpoint $tick 1 $h"
+      tick=$((tick + 1000))
+    done
+    echo "end $tick 1"
+  } > "$repo/tests/sessions/$name.rec"
+  {
+    echo "disk external"
+    if [ -n "$partner" ]; then echo "contrast $partner"; fi
+  } > "$repo/tests/sessions/$name.session"
+}
+
+contrast() { # contrast <repo>
+  code=0
+  out=$("$python" "$1/scripts/sweep.py" --targets contrast 2>&1) || code=$?
+}
+
+r=$(mkrepo pair)
+mkpair "$r" plain "" aa bb cc dd
+mkpair "$r" seamed plain aa bb ff ee
+contrast "$r"
+expect_code "a pair that shares a prefix and then differs passes" 0
+expect_says "and says where it parted" "2 of 4 checkpoints identical"
+
+r=$(mkrepo inert)
+mkpair "$r" plain "" aa bb cc dd
+mkpair "$r" seamed plain aa bb cc dd
+contrast "$r"
+expect_code "a pair that is identical throughout fails" 1
+expect_says "and says the difference made none" "made no difference"
+
+r=$(mkrepo late)
+mkpair "$r" plain "" aa bb cc dd
+mkpair "$r" seamed plain aa bb cc ee
+contrast "$r"
+expect_code "a pair that differs only at the end still passes" 0
+
+r=$(mkrepo rejoined)
+mkpair "$r" plain "" aa bb cc dd
+mkpair "$r" seamed plain aa ff cc dd
+contrast "$r"
+expect_code "a pair that diverges and comes back together fails" 1
+expect_says "and says the difference did not last" "did not last"
+
+r=$(mkrepo fromthetop)
+mkpair "$r" plain "" aa bb cc dd
+mkpair "$r" seamed plain ee ff gg hh
+contrast "$r"
+expect_code "a pair that never agreed at all fails" 1
+expect_says "and says a pair should share the run first" "should share the run"
+
+r=$(mkrepo shifted)
+mkpair "$r" plain "" aa bb cc dd
+mkpair "$r" seamed plain aa bb cc
+contrast "$r"
+expect_code "a pair checkpointing at different ticks fails" 1
+expect_says "and says they are not the same run" "not the same run"
+
+r=$(mkrepo orphanpair)
+mkpair "$r" seamed nobody aa bb cc
+contrast "$r"
+expect_code "a contrast naming no session fails" 1
+expect_says "and says which name" "no session called nobody"
+
+# --- And the committed pair, in this tree ------------------------------
+#
+# The one case here that is about the real session library rather than an
+# invention. It needs no disk and no build tree, so CI runs it: if a
+# recorded seam ever stops making a difference, this is where it is said.
+contrast "$here/.."
+expect_code "the committed sessions' contrasts hold" 0
+
 if [ "$fail" -ne 0 ]; then
   echo "sweep self-test: FAILED"
   exit 1

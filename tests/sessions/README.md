@@ -52,11 +52,52 @@ skip.
 | `party.rec` | external, pristine | `docs/playable.md` leg 0 — the code-wheel challenge answered by its seam, a character generated, named and put in the party, and `BEGIN ADVENTURING` into the opening story event at 15,1 W. 15,655 frames, 144 checkpoints, 40 key events |
 | `save.rec` | external, pristine | legs 0, 1 and 3 as one run — the same party, the guide's tour taken to 0,4 W, and the game saved into slot A from the camp screen. 23,032 frames, 254 checkpoints, 148 key events. The write path is in it: the slot file created, the party's character files moved in and unlinked |
 | `load.rec` | external, **the disk `save.rec` wrote** | the other half of the round trip — `LOAD SAVED GAME`, slot A, and the party back at 0,4 W with the same character, the same AC and the same hit points. 12,069 frames, 100 checkpoints |
+| `fight.rec` | external, the disk `save.rec` wrote | leg 2 — the saved party loaded, walked twelve steps north into the slums and into a group of orcs, the fight handed to the computer with `QUICK`. A lone first-level fighter does not survive it: `THE END`, the party destroyed. 20,115 frames, 177 checkpoints |
+| `fight-cheat.rec` | the same | the same script, the same disk and the same tick budget with **`cheat-invulnerable` on and nothing else changed**: the fighter comes out standing on his full eight hit points at `CONTINUE BATTLE`. The seam fires nine times |
 
 `save.rec` and `load.rec` are #105's round trip, recorded. They are two
 sessions and not one because they have to be: a load is a fresh run over
 the directory the save left behind, and a recording carries its starting
 conditions rather than assuming them.
+
+## A pair, and the one check CI can make about a game session
+
+`fight.rec` and `fight-cheat.rec` are the same run one flag apart, and
+the second's descriptor says so:
+
+    contrast fight
+
+which is an assertion, not a note. The two must agree checkpoint for
+checkpoint until the seam first matters and disagree from there to the
+end, and `scripts/sweep.py` fails the pair if they do not:
+
+```
+  fight-cheat  contrast ok  126 of 177 checkpoints identical, then
+                            divergent from tick 274951600 to the end
+```
+
+**This exists because a seam has twice been on, armed, reporting itself,
+and doing nothing at all** — `cheat-invulnerable` pointed at a routine
+that was not the damage routine (#129), and `cheat-kill-all` arming at an
+address its module had since been moved away from (#131). The suite was
+green throughout both, because a seam's unit tests check the handler
+against the fact table and never the fact table against the program.
+`docs/seams.md` therefore asks for the only check that catches it: run
+the same script *without* the seam and compare. Identical step count and
+framebuffer means it did nothing.
+
+Two committed recordings are that check with nobody having to remember
+to make it. And because it compares *files*, it needs no disk and no
+build tree — which makes it **the one thing about a game session that CI
+can verify**, and the only line in this directory's table that is not a
+skip on a machine without the player's copy.
+
+The failure modes it distinguishes, each with its own case in
+`scripts/test-sweep.sh`: identical throughout (the change made no
+difference), divergent from the first checkpoint (not the same run up to
+the change), divergent and then rejoined (the difference did not last),
+and checkpoints at different ticks (not the same script, or not the same
+cadence — a comparison that would otherwise pass for the wrong reason).
 
 ## A session whose disk cannot be committed
 
