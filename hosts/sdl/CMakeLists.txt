@@ -9,6 +9,7 @@
 include(AmberfolioSDL3)
 
 add_executable(amberfolio-sdl
+  src/audio_gain.cpp
   src/directory_vfs.cpp
   src/dump.cpp
   src/keymap.cpp
@@ -174,6 +175,41 @@ set_tests_properties(sdl-host-sounds-a-tone PROPERTIES
   LABELS smoke
   FIXTURES_REQUIRED sdl_demo_disk)
 
+# --- And the same program with the volume down (#148) ------------------
+#
+# The case above is the only one in the tree where silence would be wrong,
+# which makes it the only one where *silence on purpose* can be asked for
+# and told apart from a broken audio path. So: the same program, the same
+# window, the same device, one more word on the command line, and the
+# opposite expectation.
+#
+# What it settles is the whole of volume and mute on this host, end to
+# end: an option parsed, a level handed to `audio_gain` before the device
+# opens, an atomic read on SDL's own audio thread, and a device that got
+# nothing but zeros out of a program that was playing a 440 Hz tone
+# throughout. `sounded 0` is only meaningful because the run beside it
+# proves the same program sounds; a mute that "worked" because nothing
+# was playing would be no check at all.
+#
+# It does not check the two runtime keys. F11 and F12 change the same two
+# variables this reaches through `--volume`/`--mute`, and what is
+# genuinely separate about them — that they cost the emulated program
+# nothing — is `keymap_test.cpp`'s, where the claim is that the board has
+# no scan code for either.
+add_test(NAME sdl-host-mutes-the-tone
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/demo-disk"
+    "-DPROGRAM=DEMO.EXE"
+    "-DPRESS=Escape@60"
+    "-DEXPECT_CODE=0"
+    "-DEXPECT_SILENCE=ON"
+    "-DEXTRA=--mute"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-verify-program.cmake")
+set_tests_properties(sdl-host-mutes-the-tone PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_demo_disk)
+
 # --- The round trip (#100) ---------------------------------------------
 #
 # M4-R1's claim, as one case: a run is keys, ticks and hashes, and a
@@ -247,7 +283,9 @@ if(AMBERFOLIO_BUILD_TESTS)
   include(GoogleTest)
 
   add_executable(amberfolio-sdl-tests
+    src/audio_gain.cpp
     src/keymap.cpp
+    tests/audio_gain_test.cpp
     tests/keymap_test.cpp)
   target_include_directories(amberfolio-sdl-tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src")

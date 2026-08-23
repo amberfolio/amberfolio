@@ -78,9 +78,17 @@ elseif(EDGES)
   set(stills --dump "${EDGES}")
 endif()
 
+# Anything else the caller wants on the command line — `--mute`, so far
+# (M4-A1 remainder, #148). A list, so a caller can pass more than one and
+# the quoting stays CMake's problem rather than a string's.
+set(extra)
+if(EXTRA)
+  set(extra ${EXTRA})
+endif()
+
 execute_process(
   COMMAND "${HOST}" "${DISK}" "${PROGRAM}" --scale 2 --verify --press "${PRESS}"
-    ${stills}
+    ${stills} ${extra}
   RESULT_VARIABLE code
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err)
@@ -160,6 +168,26 @@ if(EXPECT_SOUND AND NOT err MATCHES "sounded ([1-9][0-9]*)")
   message(FATAL_ERROR
     "the audio callback ran, and every sample it handed the device was"
     " silence.\n${context}")
+endif()
+
+# And the same question asked of a muted run, where the right answer is
+# the opposite one (#148). This is the whole of volume and mute checked
+# end to end on this host: a command line, an atomic read on SDL's audio
+# thread, and a device that got nothing but zeros from a program that was
+# playing a tone throughout — which the `.edges` file written by the run
+# beside this one proves it was. `sounded` is counted *after* the gain
+# for exactly this reason; the WAV is captured before it, so a muted run
+# still dumps what the machine made.
+if(EXPECT_SILENCE)
+  if(NOT err MATCHES "sounded 0,")
+    message(FATAL_ERROR
+      "a muted run handed the audio device something other than"
+      " silence.\n${context}")
+  endif()
+  if(NOT err MATCHES "dropped edges=0 volume=muted")
+    message(FATAL_ERROR
+      "a muted run's report does not say it was muted.\n${context}")
+  endif()
 endif()
 
 # And that the host can say what the pacing did to it. Both numbers are
