@@ -1197,6 +1197,97 @@ if (missing.length === 0 && sessions !== null) {
   console.log('smoke: the committed session tests/sessions/spin.rec verified on wasm');
 }
 
+// --- The manifest reaches the saved game (#155) ---------------------------
+//
+// A recording's manifest is the statement of what disk the run started
+// from. Until #155 it named the root and nothing below it, so a `.rec`
+// verified **on its own** — which is what `af_machine_verify_recording`
+// is, and the browser's only path to one — could begin from a different
+// saved party and not say so, diverging thousands of frames later at a
+// checkpoint hash. That reads as a finding about the machine and is
+// really a finding about a directory.
+//
+// Here on wasm rather than only natively because this is the target where
+// the ABI *is* the surface: a page hands over a whole installation, saves
+// and all (#146), and the recording has to speak for every byte of it.
+
+if (missing.length === 0 && sessions !== null) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const frameTicks = 1193182 / 60;
+  const saved = new Uint8Array([0x53]);
+
+  // A machine holding the spinner at the root and one saved-game file
+  // below it, the shape a player's installation arrives in.
+  const equipped = (save) => {
+    const machine = new Machine(module);
+    check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    machine.reset();
+    check(machine.vfsPut('SPIN.EXE', spinner) === AF_OK, 'putting SPIN.EXE failed');
+    check(machine.vfsPut('SAVE/SAVE1.DAT', save) === AF_OK, 'putting SAVE/SAVE1.DAT failed');
+    check(machine.loadFromVfs('SPIN.EXE', '') === AF_OK, 'loading SPIN.EXE failed');
+    return machine;
+  };
+
+  const recorder = equipped(saved);
+  // Depth first, each directory's entries in the VFS's pinned name order,
+  // a directory's own line before its contents — so `SAVE` and everything
+  // under it come before `SPIN.EXE`, and the directory itself carries
+  // neither a size nor a digest because it has neither.
+  const lines = [
+    'amberfolio-recording 2 state=1',
+    `program SPIN.EXE ${recorder.programFingerprint()}`,
+    'tail',
+    'dir SAVE',
+    `file SAVE\\SAVE1.DAT ${saved.length} ${recorder.vfsFingerprint('SAVE/SAVE1.DAT')}`,
+    `file SPIN.EXE ${spinner.length} ${recorder.vfsFingerprint('SPIN.EXE')}`,
+  ];
+  for (let frame = 1; frame <= 4; ++frame) {
+    check(recorder.runUntil(frameTicks * frame) === AF_OK, `the machine stopped in frame ${frame}`);
+    lines.push(`checkpoint ${Math.round(recorder.time())} ${Math.round(recorder.steps())} ${recorder.stateHash()}`);
+  }
+  lines.push(`end ${Math.round(recorder.time())} ${Math.round(recorder.steps())}`);
+  recorder.destroy();
+  const text = `${lines.join('\n')}\n`;
+
+  const player = equipped(saved);
+  const verdict = player.verifyRecording(text);
+  check(verdict.ok, `a recording naming a nested file did not verify: ${verdict.report}`);
+  player.destroy();
+
+  // One byte of the saved game, one run further along. Refused at the
+  // manifest, naming the file — not at a checkpoint, and not as a
+  // divergence.
+  const skeptic = equipped(new Uint8Array([0x54]));
+  const refused = skeptic.verifyRecording(text);
+  check(!refused.ok, 'a disk whose saved game differs was accepted');
+  check(
+    refused.report.includes('replay refused') &&
+      refused.report.includes('path=SAVE\\SAVE1.DAT'),
+    `the refusal does not name the nested file: ${JSON.stringify(refused.report)}`,
+  );
+  check(
+    !refused.report.includes('diverged'),
+    `the wrong disk was reported as a divergence: ${JSON.stringify(refused.report)}`,
+  );
+  skeptic.destroy();
+
+  // And the sensitivity that makes the two checks above mean something:
+  // with the nested lines taken out, the recording is not a description
+  // of this disk at all and is refused for that instead.
+  const rootOnly = text
+    .split('\n')
+    .filter((line) => !line.startsWith('dir ') && !line.startsWith('file SAVE\\'))
+    .join('\n');
+  const partial = equipped(saved);
+  check(!partial.verifyRecording(rootOnly).ok, 'a manifest missing the saved game was accepted');
+  partial.destroy();
+
+  console.log('smoke: a recording pins the saved game below the root, and a disk that differs there is refused by name');
+}
+
 // --- The headless web driver (M4-W1, #108) -------------------------------
 //
 // `tools/drive.mjs` is the web half of what the SDL host's `--press` /
