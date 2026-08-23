@@ -21,7 +21,7 @@
 // numbers in decimal and digests in lowercase hex. Lines that begin with
 // `#` and empty lines are ignored. The first line names the format:
 //
-//     amberfolio-recording 1 state=1
+//     amberfolio-recording 2 state=1
 //
 // Then the **initial conditions**, in this order:
 //
@@ -29,7 +29,8 @@
 //     tail HEX                     the command tail's bytes (may be empty)
 //     speed SUBTICKS               the step cost, in 1/256ths of a tick
 //     seam ID                      each seam that was on, registry order
-//     file NAME SIZE SHA256        each file in the root, pinned order
+//     dir PATH                     each directory on the disk
+//     file PATH SIZE SHA256        each file on the disk, with its digest
 //
 // and then the **stream**, in tick order:
 //
@@ -48,6 +49,46 @@
 //
 // The tail is hex because it can begin with a space, and a format whose
 // fields are space-separated cannot carry a leading space as a field.
+//
+//
+// The manifest (#155)
+// -------------------
+//
+// The `dir` and `file` lines are the statement of **what disk the run
+// started from**, and they name the whole of it — every directory and
+// every file, at every depth, not only the root. A `PATH` is
+// `\`-joined and relative to the root, with no leading `\`
+// (`SAVE\CHARLIST.TXT`), which is the spelling `tests/sessions/*.session`
+// already uses for the same facts.
+//
+// It recurses because a recording is not only about the program: since
+// #105 a session loads a *saved game*, and every byte of `\SAVE\` decides
+// what that run does. A manifest that stopped at the root let a replay
+// begin from a different saved party and say nothing, diverging thousands
+// of frames later at a checkpoint hash — a finding about the machine that
+// was really a finding about a directory. Now the disk is refused up
+// front, by name.
+//
+// **The order is depth-first, each directory's entries in the VFS's
+// pinned name order (`dos_name_less`), a directory's own line before its
+// contents.** That is a total order decided by nothing but what exists,
+// which is what makes two recordings of the same disk the same bytes; it
+// is also exactly lexicographic order over the component sequences, a
+// path sorting before every path it is a prefix of.
+//
+// A directory keeps a line of its own — `dir PATH`, with no size and no
+// digest, because a directory has neither (its size is a fiction and a
+// digest of one is not a thing). It is not redundant with its contents:
+// an *empty* directory is a fact about a disk that nothing else records,
+// and a manifest that skipped one would call two different disks the
+// same. One line per filesystem entry is also what makes the manifest's
+// capacity a count of entries (`replay_max_manifest_entries`) rather
+// than of files-plus-however-many-directories-there-happen-to-be.
+//
+// Depth is bounded by `dos_path::max_depth`, not by "one level". A disk
+// with a directory deeper than a path this machine can name is refused,
+// loudly, rather than walked as far as it goes — a truncated walk would
+// pin a disk that is not the disk.
 //
 //
 // Why a player in core, and what it does not do
@@ -85,9 +126,12 @@
 //
 // It also never allocates (PLAN.md §4): it reads the text the host holds,
 // through a cursor, and keeps the initial conditions in fixed storage
-// sized for the filesystem this machine has (`memory_filesystem::
-// max_entries` files). A host with the text in memory hands it over;
-// reading the file is the host's.
+// sized for the largest disk a recording may describe
+// (`replay_max_manifest_entries` files and directories, each a bounded
+// `dos_path`). That makes a player some tens of kilobytes; the ABI keeps
+// its one in static storage for the same reason `af_machine` is there
+// (abi.cpp). A host with the text in memory hands it over; reading the
+// file is the host's.
 //
 // Recording is the host's too, with `format_replay_line()` and
 // `write_preamble()` as the one spelling of each line. The desktop host
@@ -113,7 +157,6 @@
 #include <string_view>
 
 #include "amberfolio/machine/clock.h"
-#include "amberfolio/machine/memory_vfs.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/state.h"
 #include "amberfolio/machine/vfs.h"
@@ -124,9 +167,34 @@ namespace amberfolio::machine {
 class machine;
 class filesystem;
 
-/// The recording format's version — the first line's number. Bump when
-/// the line grammar changes; a player refuses another version.
-inline constexpr std::uint32_t recording_format_version = 1;
+/// The recording format a recorder **writes** — the first line's number.
+/// Bump when the line grammar changes.
+///
+/// 2 (#155): the manifest recurses. `file` takes a `\`-joined path rather
+/// than a bare name, and a directory is a `dir PATH` line rather than a
+/// `file` line with a zero size and a zero digest.
+inline constexpr std::uint32_t recording_format_version = 2;
+
+/// The oldest format a player still **reads**, and the rule: a version is
+/// readable for as long as a recording of it may still exist.
+///
+/// The seven recordings in `tests/sessions/` are version 1, and six of
+/// them are of a game whose disk is nobody's to re-record. So version 1
+/// is not retired — it is read exactly as it was written, with the
+/// manifest naming the root and nothing below it, and a version-1
+/// recording keeps saying precisely what it always said about a disk. A
+/// player that dropped it would not be reading an older format wrongly;
+/// it would be refusing evidence that cannot be remade.
+///
+/// Bumping this — retiring a version — invalidates every golden recorded
+/// under it and is the same deliberate act `state_format_version` is
+/// (docs/replay.md §7). Bumping `recording_format_version` alone is not:
+/// old recordings go on verifying, new ones say more.
+inline constexpr std::uint32_t recording_format_oldest_read = 1;
+
+/// The first format whose manifest recurses. Below it the manifest is the
+/// root directory only.
+inline constexpr std::uint32_t recording_format_recursive_manifest = 2;
 
 /// What one line of a recording says.
 enum class replay_line : std::uint8_t {
@@ -137,6 +205,8 @@ enum class replay_line : std::uint8_t {
   speed,
   seam,
   file,
+  /// `dir PATH` — a directory on the disk (format 2 and up).
+  dir,
   wall,
   key,
   checkpoint,
@@ -152,6 +222,34 @@ inline constexpr std::size_t replay_max_id = 31;
 /// The longest line a recording has: a checkpoint with every section
 /// named, well under this.
 inline constexpr std::size_t replay_max_line = 768;
+
+/// Manifest lines a recording may carry — one per filesystem entry,
+/// files and directories together. A disk with more than this cannot be
+/// described, and `write_preamble()` refuses rather than describing part
+/// of one.
+///
+/// Deliberately not `memory_filesystem::max_entries` (192), which is a
+/// bound on the disk a *browser* can hold. A recording is made on the
+/// desktop host over a directory, and the largest disk this repository's
+/// session library pins is 193 entries — a Gold Box installation with its
+/// save slots filled, which is exactly the shape #155 exists for. A cap
+/// set *at* the real high-water mark is a cap that refuses the next disk;
+/// this one is set well clear of it.
+inline constexpr std::size_t replay_max_manifest_entries = 512;
+
+/// The longest manifest line: `file `, a full-depth path (`max_depth`
+/// components of `dos_name::max_length` with a separator each), a size, a
+/// digest, the newline and the NUL.
+inline constexpr std::size_t replay_max_manifest_line =
+    5 + (dos_path::max_depth * (dos_name::max_length + 1)) + 1 + 10 + 1 +
+    sha256_digest::text_length + 2;
+
+/// A buffer big enough for any preamble `write_preamble()` writes: the
+/// header and the fixed lines, plus a manifest line per entry. A host
+/// sizes its buffer with this rather than guessing at one — the manifest
+/// grew with #155 and a guess made before it would have been too small.
+inline constexpr std::size_t replay_preamble_capacity =
+    1024 + (replay_max_manifest_entries * replay_max_manifest_line);
 
 /// Big enough for any report `replay_player::report()` writes — the
 /// sentence, the message, and two digests spelled out — so that a host
@@ -169,10 +267,18 @@ struct replay_event {
   std::uint32_t format_version{};
   std::uint32_t state_version{};
 
-  /// `program`, `file`: the name, and the digest. `file`: the size too.
+  /// `program`: the name it was loaded under, and its digest.
   dos_name name{};
+  /// `program`, `file`: the digest. `file`: the size too.
   std::uint32_t size{};
   sha256_digest digest{};
+
+  /// `file`, `dir`: where on the disk, relative to the root. A `dos_path`
+  /// and not a `dos_name` since #155, because the manifest recurses; the
+  /// type is bounded at `dos_path::max_depth` components, so an event is
+  /// still fixed-capacity and a line still cannot describe a path this
+  /// machine could not name.
+  dos_path path{};
 
   /// `tail`: the bytes, `tail_length` of them.
   std::array<char, 126> tail{};
@@ -240,7 +346,12 @@ std::size_t format_replay_line(const replay_event& event,
 /// program was loaded under and `tail` its command tail; the fingerprint,
 /// the speed, the seams and the file manifest are read off the machine
 /// and `fs`. Answers the length, or zero if it did not fit or the
-/// manifest could not be taken.
+/// manifest could not be taken — a disk with more entries than
+/// `replay_max_manifest_entries`, or a directory deeper than
+/// `dos_path::max_depth`, is refused rather than half-described.
+///
+/// `out` wants `replay_preamble_capacity` bytes; anything less is a
+/// guess, and the manifest is as long as the disk is deep.
 std::size_t write_preamble(const machine& box, filesystem& fs,
                            std::string_view program, std::span<const char> tail,
                            std::span<char> out);
@@ -262,12 +373,15 @@ struct replay_preamble {
   std::array<std::size_t, max_seams> seam_lengths{};
   std::size_t seam_count{};
 
+  /// One manifest line: a `dir` or a `file`, in the order the walk
+  /// produced it (this file's header says what that order is).
   struct file_entry {
-    dos_name name{};
+    dos_path path{};
     std::uint32_t size{};
+    bool is_directory{false};
     sha256_digest digest{};
   };
-  static constexpr std::size_t max_files = memory_filesystem::max_entries;
+  static constexpr std::size_t max_files = replay_max_manifest_entries;
   std::array<file_entry, max_files> files{};
   std::size_t file_count{};
 
@@ -307,10 +421,15 @@ class replay_player {
   }
 
   /// Compare the initial conditions to `box` as it stands, the program
-  /// loaded, the speed set and the seams enabled — and to `fs`'s root,
-  /// when `fs` is given. `ok`, or `malformed` with `report()` naming the
-  /// first condition that did not hold. A host applies the preamble's
-  /// speed and seams first if it means the recording to be the run.
+  /// loaded, the speed set and the seams enabled — and to `fs`'s whole
+  /// tree, when `fs` is given. `ok`, or `malformed` with `report()`
+  /// naming the first condition that did not hold, and the path it is
+  /// about. A host applies the preamble's speed and seams first if it
+  /// means the recording to be the run.
+  ///
+  /// How far the manifest reaches is the recording's own to say: a
+  /// version-2 recording names the whole disk, and a version-1 one names
+  /// the root, which is all it ever claimed to.
   replay_status check_initial(const machine& box, filesystem* fs);
 
   /// The tick the machine must not be run past: the next key, wall seed,
@@ -355,6 +474,16 @@ class replay_player {
   void fail(replay_status status, std::string_view what, std::uint64_t at);
   void fail_hash(std::string_view section, const sha256_digest& expected,
                  const sha256_digest& actual);
+  /// A refusal about one entry of the manifest, which the report names by
+  /// path — the whole point of #155 is that "this is not the disk this
+  /// was recorded against" says *which file*.
+  void fail_path(std::string_view what, const dos_path& where);
+
+  /// The manifest, root only: what a version-1 recording pins, read the
+  /// way version 1 wrote it.
+  replay_status check_root_manifest(filesystem& fs);
+  /// The manifest, the whole tree: version 2 and up.
+  replay_status check_tree_manifest(filesystem& fs);
 
   std::span<const char> text_{};
   std::size_t cursor_{};
@@ -377,6 +506,9 @@ class replay_player {
   bool have_digests_{false};
   sha256_digest expected_{};
   sha256_digest actual_{};
+  /// The manifest entry a refusal is about, when it is about one.
+  bool have_where_{false};
+  dos_path where_{};
 };
 
 /// What `verify_recording()` found.

@@ -75,6 +75,17 @@ class writer {
       hex(byte, 2);
     }
   }
+  /// A manifest path: components joined with `\`, no leading separator.
+  /// The root writes nothing, which is why no line ever carries it.
+  void dos(const dos_path& p) noexcept {
+    for (std::size_t i = 0; i < p.depth(); ++i) {
+      if (i != 0) {
+        put('\\');
+      }
+      const std::span<const char> component = p.component(i).text();
+      text(std::string_view(component.data(), component.size()));
+    }
+  }
   [[nodiscard]] std::size_t finish() noexcept {
     if (!out_.empty()) {
       out_[used_] = '\0';
@@ -231,6 +242,102 @@ class fields {
   return true;
 }
 
+/// A manifest path: `\`-joined components, relative to the root, no
+/// leading or trailing separator and no empty component. Deliberately
+/// *not* `canonicalize()`: a manifest line is a canonical value already
+/// written down, and a reader that resolved `..` out of one would accept
+/// two spellings of the same entry and break the ordering the manifest is
+/// compared in. The root itself is not a path a line may carry.
+[[nodiscard]] bool parse_path(std::string_view text, dos_path& out) noexcept {
+  out = dos_path{};
+  if (text.empty()) {
+    return false;
+  }
+  std::size_t at = 0;
+  while (at <= text.size()) {
+    const std::size_t sep = text.find('\\', at);
+    const std::size_t end = sep == std::string_view::npos ? text.size() : sep;
+    dos_name component;
+    if (!parse_name(text.substr(at, end - at), component) ||
+        !out.push(component)) {
+      return false;
+    }
+    if (sep == std::string_view::npos) {
+      return true;
+    }
+    at = sep + 1;
+  }
+  return false;
+}
+
+/// The order the manifest is written and compared in: lexicographic over
+/// the components, a path sorting before every path it is a prefix of.
+/// That is exactly what a depth-first walk in `dos_name_less` order
+/// produces, which is why a mismatch can be read as "one side has an
+/// entry the other does not" rather than only as "these differ".
+[[nodiscard]] bool dos_path_less(const dos_path& a,
+                                 const dos_path& b) noexcept {
+  const std::size_t n = a.depth() < b.depth() ? a.depth() : b.depth();
+  for (std::size_t i = 0; i < n; ++i) {
+    if (!(a.component(i) == b.component(i))) {
+      return dos_name_less(a.component(i), b.component(i));
+    }
+  }
+  return a.depth() < b.depth();
+}
+
+/// How a walk of the disk ended.
+enum class walk_outcome : std::uint8_t {
+  /// Every entry was visited.
+  done,
+  /// A directory below `dos_path::max_depth`. Refused rather than
+  /// truncated: a manifest that stopped short would pin a disk that is
+  /// not the disk (PLAN.md §3's "log, don't fake").
+  too_deep,
+  /// The filesystem would not answer for a directory it had just named.
+  unreadable,
+  /// The visitor said stop.
+  refused,
+};
+
+/// Every entry under `at`, depth first, each directory's entries in the
+/// VFS's pinned name order, a directory visited before its contents.
+/// `at` is the walk's own cursor and is left as it was found.
+///
+/// The recursion is bounded by `dos_path::max_depth` — `push()` is what
+/// stops it, and answering `too_deep` rather than descending is the whole
+/// of the depth rule.
+template <class Visit>
+[[nodiscard]] walk_outcome walk_tree(const filesystem& fs, dos_path& at,
+                                     Visit& visit) {
+  const vfs_result<std::size_t> count = fs.entry_count(at);
+  if (!count.ok()) {
+    return walk_outcome::unreadable;
+  }
+  for (std::size_t i = 0; i < count.value; ++i) {
+    const vfs_result<directory_entry> entry = fs.entry_at(at, i);
+    if (!entry.ok()) {
+      return walk_outcome::unreadable;
+    }
+    if (!at.push(entry.value.name)) {
+      return walk_outcome::too_deep;
+    }
+    if (!visit(at, entry.value)) {
+      at.pop();
+      return walk_outcome::refused;
+    }
+    if (entry.value.is_directory) {
+      const walk_outcome inner = walk_tree(fs, at, visit);
+      if (inner != walk_outcome::done) {
+        at.pop();
+        return inner;
+      }
+    }
+    at.pop();
+  }
+  return walk_outcome::done;
+}
+
 /// A line's first field says what it is.
 [[nodiscard]] replay_line kind_of(std::string_view word) noexcept {
   if (word == "amberfolio-recording") {
@@ -250,6 +357,9 @@ class fields {
   }
   if (word == "file") {
     return replay_line::file;
+  }
+  if (word == "dir") {
+    return replay_line::dir;
   }
   if (word == "wall") {
     return replay_line::wall;
@@ -376,7 +486,7 @@ bool parse_replay_line(std::span<const char> line, replay_event& out) noexcept {
     }
 
     case replay_line::file: {
-      if (!f.next(word) || !parse_name(word, out.name)) {
+      if (!f.next(word) || !parse_path(word, out.path)) {
         return false;
       }
       if (!f.next(word) || !parse_number(word, n, UINT32_MAX)) {
@@ -384,6 +494,13 @@ bool parse_replay_line(std::span<const char> line, replay_event& out) noexcept {
       }
       out.size = static_cast<std::uint32_t>(n);
       if (!f.next(word) || !parse_digest(word, out.digest)) {
+        return false;
+      }
+      return f.exhausted();
+    }
+
+    case replay_line::dir: {
+      if (!f.next(word) || !parse_path(word, out.path)) {
         return false;
       }
       return f.exhausted();
@@ -515,14 +632,17 @@ std::size_t format_replay_line(const replay_event& event,
       break;
     case replay_line::file: {
       w.text("file ");
-      const std::span<const char> name = event.name.text();
-      w.text(std::string_view(name.data(), name.size()));
+      w.dos(event.path);
       w.put(' ');
       w.number(event.size);
       w.put(' ');
       w.digest(event.digest);
       break;
     }
+    case replay_line::dir:
+      w.text("dir ");
+      w.dos(event.path);
+      break;
     case replay_line::wall:
       w.text("wall ");
       w.number(event.at);
@@ -664,35 +784,43 @@ std::size_t write_preamble(const machine& box, filesystem& fs,
     }
   }
 
-  // The manifest: the root, in the pinned order, each file's size and
-  // fingerprint. Directories are listed by name and size alone — nothing
-  // in this machine's scope puts a program in one, and a digest of a
-  // directory is not a thing.
-  const vfs_result<std::size_t> count = fs.entry_count(dos_path{});
-  if (!count.ok()) {
-    return 0;
-  }
-  for (std::size_t i = 0; i < count.value; ++i) {
-    const vfs_result<directory_entry> entry = fs.entry_at(dos_path{}, i);
-    if (!entry.ok()) {
-      return 0;
+  // The manifest (#155): the whole disk, depth first, each directory's
+  // entries in the VFS's pinned name order, a directory's own `dir` line
+  // before its contents. A file carries its size and its fingerprint; a
+  // directory carries neither, because a directory has neither.
+  //
+  // It recurses because a recording is the statement of what disk the run
+  // started from, and since #105 that includes a saved game the run
+  // reads. The root alone said nothing about `\SAVE\`.
+  std::size_t entries = 0;
+  bool refused = false;
+  auto visit = [&](const dos_path& at, const directory_entry& entry) {
+    if (entries == replay_max_manifest_entries) {
+      refused = true;
+      return false;
     }
-    event = replay_event{};
-    event.kind = replay_line::file;
-    event.name = entry.value.name;
-    event.size = entry.value.size;
-    if (!entry.value.is_directory) {
-      dos_path path;
-      path.push(entry.value.name);
-      const vfs_result<sha256_digest> digest = fingerprint_file(fs, path);
+    ++entries;
+    replay_event line{};
+    line.kind = entry.is_directory ? replay_line::dir : replay_line::file;
+    line.path = at;
+    if (!entry.is_directory) {
+      line.size = entry.size;
+      const vfs_result<sha256_digest> digest = fingerprint_file(fs, at);
       if (!digest.ok()) {
-        return 0;
+        refused = true;
+        return false;
       }
-      event.digest = digest.value;
+      line.digest = digest.value;
     }
-    if (!emit(event)) {
-      return 0;
+    if (!emit(line)) {
+      refused = true;
+      return false;
     }
+    return true;
+  };
+  dos_path cursor;
+  if (walk_tree(fs, cursor, visit) != walk_outcome::done || refused) {
+    return 0;
   }
   return used;
 }
@@ -719,8 +847,28 @@ bool replay_player::next_line(replay_event& event) {
   return false;
 }
 
+namespace {
+
+/// A player as `load()` has to leave one, in static storage.
+///
+/// `*this = replay_player{}` is what this used to say, and it is the
+/// obvious spelling — but it materializes a whole player as a temporary,
+/// and since #155 a player carries the entire manifest
+/// (`replay_max_manifest_entries` bounded paths, some tens of kilobytes).
+/// On a wasm module's stack that is a fault, and it was: the smoke test
+/// found it the first time this table grew. Copying out of an object that
+/// is already there costs no stack at all, and — unlike a hand-written
+/// `reset()` — cannot go stale the day this class grows a member.
+///
+/// At namespace scope and all-zero, so it is .bss: it costs the wasm
+/// module no bytes on the wire, and nothing runs before `main` to make
+/// it.
+const replay_player blank{};
+
+}  // namespace
+
 bool replay_player::load(std::span<const char> text) {
-  *this = replay_player{};
+  *this = blank;
   text_ = text;
 
   replay_event event{};
@@ -728,7 +876,11 @@ bool replay_player::load(std::span<const char> text) {
     fail(replay_status::malformed, "no amberfolio-recording header", 0);
     return false;
   }
-  if (event.format_version != recording_format_version) {
+  // Every version this build has ever written, read as that version wrote
+  // it — replay.h's `recording_format_oldest_read` says why a version is
+  // not retired while a recording of it may still exist.
+  if (event.format_version < recording_format_oldest_read ||
+      event.format_version > recording_format_version) {
     fail(replay_status::malformed,
          "a recording format this player does not read", event.format_version);
     return false;
@@ -783,15 +935,29 @@ bool replay_player::load(std::span<const char> text) {
         ++preamble_.seam_count;
         break;
       case replay_line::file:
+      case replay_line::dir: {
         if (preamble_.file_count == replay_preamble::max_files) {
           fail(replay_status::malformed, "more files than a recording may name",
                0);
           return false;
         }
-        preamble_.files[preamble_.file_count] = {
-            .name = event.name, .size = event.size, .digest = event.digest};
+        const bool is_directory = event.kind == replay_line::dir;
+        if (preamble_.format_version < recording_format_recursive_manifest &&
+            (is_directory || event.path.depth() != 1)) {
+          // A manifest line the version on the first line does not have.
+          // Refused rather than read anyway: a recording says which
+          // grammar it is written in, and half of one is not a grammar.
+          fail(replay_status::malformed,
+               "a manifest line this recording's format does not have", 0);
+          return false;
+        }
+        preamble_.files[preamble_.file_count] = {.path = event.path,
+                                                 .size = event.size,
+                                                 .is_directory = is_directory,
+                                                 .digest = event.digest};
         ++preamble_.file_count;
         break;
+      }
       case replay_line::header:
         fail(replay_status::malformed, "a second header", 0);
         return false;
@@ -842,7 +1008,17 @@ replay_status replay_player::check_initial(const machine& box, filesystem* fs) {
   if (fs == nullptr) {
     return status_;
   }
-  const vfs_result<std::size_t> count = fs->entry_count(dos_path{});
+  // How far the manifest reaches is the recording's own to say. A
+  // version-1 manifest named the root and never claimed more, and the
+  // seven committed sessions are version 1 — six of them of a game whose
+  // disk is nobody's to re-record (replay.h's version constants).
+  return preamble_.format_version < recording_format_recursive_manifest
+             ? check_root_manifest(*fs)
+             : check_tree_manifest(*fs);
+}
+
+replay_status replay_player::check_root_manifest(filesystem& fs) {
+  const vfs_result<std::size_t> count = fs.entry_count(dos_path{});
   if (!count.ok() || count.value != preamble_.file_count) {
     fail(replay_status::malformed,
          "the filesystem holds a different number of files",
@@ -850,21 +1026,19 @@ replay_status replay_player::check_initial(const machine& box, filesystem* fs) {
     return status_;
   }
   for (std::size_t i = 0; i < preamble_.file_count; ++i) {
-    const vfs_result<directory_entry> entry = fs->entry_at(dos_path{}, i);
+    const vfs_result<directory_entry> entry = fs.entry_at(dos_path{}, i);
     const replay_preamble::file_entry& want = preamble_.files[i];
-    if (!entry.ok() || !(entry.value.name == want.name) ||
+    if (!entry.ok() || want.path.depth() != 1 ||
+        !(entry.value.name == want.path.leaf()) ||
         entry.value.size != want.size) {
       fail(replay_status::malformed, "a file's name or size is not as recorded",
            i);
       return status_;
     }
     if (!entry.value.is_directory) {
-      dos_path path;
-      path.push(entry.value.name);
-      const vfs_result<sha256_digest> digest = fingerprint_file(*fs, path);
+      const vfs_result<sha256_digest> digest = fingerprint_file(fs, want.path);
       if (!digest.ok() || !(digest.value == want.digest)) {
-        fail(replay_status::malformed,
-             "a file's fingerprint is not as recorded", i);
+        fail_path("a file's fingerprint is not as recorded", want.path);
         if (digest.ok()) {
           have_digests_ = true;
           expected_ = want.digest;
@@ -873,6 +1047,86 @@ replay_status replay_player::check_initial(const machine& box, filesystem* fs) {
         return status_;
       }
     }
+  }
+  return status_;
+}
+
+replay_status replay_player::check_tree_manifest(filesystem& fs) {
+  // Both sides are in the same total order (replay.h), so the comparison
+  // is a merge: at the first place they differ, whichever path sorts
+  // earlier is the one the other side is missing, and the report says
+  // *which file* rather than "these disks differ".
+  std::size_t index = 0;
+  bool held = true;
+  auto visit = [&](const dos_path& at, const directory_entry& entry) {
+    if (index == preamble_.file_count) {
+      fail_path("the disk holds an entry the recording does not name", at);
+      held = false;
+      return false;
+    }
+    const replay_preamble::file_entry& want = preamble_.files[index];
+    if (!(want.path == at)) {
+      if (dos_path_less(at, want.path)) {
+        fail_path("the disk holds an entry the recording does not name", at);
+      } else {
+        fail_path("the recording names an entry the disk does not hold",
+                  want.path);
+      }
+      held = false;
+      return false;
+    }
+    if (want.is_directory != entry.is_directory) {
+      fail_path(entry.is_directory
+                    ? "a directory where the recording names a file"
+                    : "a file where the recording names a directory",
+                at);
+      held = false;
+      return false;
+    }
+    if (!entry.is_directory) {
+      if (entry.size != want.size) {
+        fail_path("a file's size is not as recorded", at);
+        failed_at_ = entry.size;
+        held = false;
+        return false;
+      }
+      const vfs_result<sha256_digest> digest = fingerprint_file(fs, at);
+      if (!digest.ok() || !(digest.value == want.digest)) {
+        fail_path("a file's fingerprint is not as recorded", at);
+        if (digest.ok()) {
+          have_digests_ = true;
+          expected_ = want.digest;
+          actual_ = digest.value;
+        }
+        held = false;
+        return false;
+      }
+    }
+    ++index;
+    return true;
+  };
+
+  dos_path cursor;
+  switch (walk_tree(fs, cursor, visit)) {
+    case walk_outcome::done:
+      break;
+    case walk_outcome::too_deep:
+      fail(replay_status::malformed,
+           "a directory deeper than a path this machine can name", 0);
+      return status_;
+    case walk_outcome::unreadable:
+      fail(replay_status::malformed, "the disk could not be walked", 0);
+      return status_;
+    case walk_outcome::refused:
+      return status_;  // `visit` already said what it found.
+  }
+  if (!held) {
+    return status_;
+  }
+  if (index != preamble_.file_count) {
+    fail_path("the recording names an entry the disk does not hold",
+              preamble_.files[index].path);
+    return status_;
   }
   return status_;
 }
@@ -1007,6 +1261,7 @@ replay_status replay_player::apply(machine& box) {
       case replay_line::speed:
       case replay_line::seam:
       case replay_line::file:
+      case replay_line::dir:
       case replay_line::nothing:
         break;
     }
@@ -1024,6 +1279,13 @@ void replay_player::fail(replay_status status, std::string_view what,
   failed_line_ = line_number_;
   failed_at_ = at;
   have_digests_ = false;
+  have_where_ = false;
+}
+
+void replay_player::fail_path(std::string_view what, const dos_path& where) {
+  fail(replay_status::malformed, what, 0);
+  have_where_ = true;
+  where_ = where;
 }
 
 void replay_player::fail_hash(std::string_view section,
@@ -1079,6 +1341,13 @@ std::size_t replay_player::report(std::span<char> out) const noexcept {
       w.number(failed_line_);
       w.text(" why=");
       w.text(std::string_view(what_.data(), what_length_));
+      // Which entry of the manifest, when it was about one. The whole
+      // point of #155 is that "this is not the disk this was recorded
+      // against" names the file (docs/replay.md §5).
+      if (have_where_) {
+        w.text(" path=");
+        w.dos(where_);
+      }
       if (failed_at_ != 0) {
         w.text(" value=");
         w.number(failed_at_);
