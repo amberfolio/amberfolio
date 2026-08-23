@@ -67,6 +67,15 @@ if(STILLS)
     file(REMOVE ${_stale})
   endif()
   set(stills --dump "${STILLS}" --dump-every 15)
+elseif(EDGES)
+  # `--dump` without the cadence, for the sake of its third file: the
+  # edge list the machine published, which is the canonical audio state
+  # and the only artefact of a run that can be checked against a
+  # programmed divisor rather than listened to (M4-A1, #106). Only one of
+  # the two, because they share a prefix and the caller who wants stills
+  # is not the caller who wants this.
+  file(REMOVE "${EDGES}.edges")
+  set(stills --dump "${EDGES}")
 endif()
 
 execute_process(
@@ -151,6 +160,82 @@ if(EXPECT_SOUND AND NOT err MATCHES "sounded ([1-9][0-9]*)")
   message(FATAL_ERROR
     "the audio callback ran, and every sample it handed the device was"
     " silence.\n${context}")
+endif()
+
+# And that the host can say what the pacing did to it. Both numbers are
+# facts about this run and not assertions about their value — an underrun
+# at the start of a windowed run is the shape of a healthy one, because
+# SDL's device pulls before the machine has settled any virtual time at
+# all. What is asserted is that the line exists: `platform.h` states a
+# policy for each, and until #106 no host read either counter, so the two
+# policies were specified and unreportable (M4-A1).
+if(NOT err MATCHES "audio underruns=[0-9]+ resyncs=[0-9]+ dropped edges=0")
+  message(FATAL_ERROR
+    "the host did not report the timeline's pacing counters, or the edge"
+    " ring overflowed.\n${context}")
+endif()
+
+# The other half of #106: the edge list itself, as the machine published
+# it, which is a claim about the machine and not about the render of it.
+#
+# The check is exact and it is not a golden. DEMO.EXE programs channel 2
+# with divisor 2712 (hosts/sdl/tests/make_demo_disk.cpp), and mode 3
+# toggles the output every half count — so every gap between consecutive
+# ticks in this file must be exactly 1356, derived from what the program
+# asks for the way this file's pixel rule is derived from what integer
+# scaling means. A filter change cannot move it and a WAV cannot show it.
+#
+# Every gap but the *last*. The final edge is the program clearing the
+# gate on its way out, which lands wherever the keystroke did and is a
+# short gap rather than a half cycle. Checking it would be checking when
+# Escape was pressed.
+if(EDGES)
+  if(NOT EXISTS "${EDGES}.edges")
+    message(FATAL_ERROR "--dump wrote no edge list.\n${context}")
+  endif()
+  file(STRINGS "${EDGES}.edges" _edge_lines)
+
+  set(_previous "")
+  set(_pending "")
+  set(_edges 0)
+  set(_wrong 0)
+  foreach(_line IN LISTS _edge_lines)
+    if(_line MATCHES "^([0-9]+) ([01])$")
+      math(EXPR _edges "${_edges} + 1")
+      if(NOT _previous STREQUAL "")
+        # Reaching another edge is what makes the gap before it not the
+        # last one, so it is checked here rather than where it was
+        # measured.
+        if(NOT _pending STREQUAL "")
+          if(NOT _pending EQUAL 1356)
+            math(EXPR _wrong "${_wrong} + 1")
+          endif()
+        endif()
+        math(EXPR _pending "${CMAKE_MATCH_1} - ${_previous}")
+      endif()
+      set(_previous "${CMAKE_MATCH_1}")
+    endif()
+  endforeach()
+
+  # A second of virtual time at 440 Hz is 880 transitions; the tone starts
+  # a little way into the run, so the floor is what asks "did it play
+  # throughout" without pinning where it began.
+  if(_edges LESS 800)
+    message(FATAL_ERROR
+      "the edge list holds ${_edges} edges, which is not a second of a"
+      " 440 Hz tone.\n${context}")
+  endif()
+  if(NOT _wrong EQUAL 0)
+    message(FATAL_ERROR
+      "${_wrong} gaps in the ${_edges} published edges are not 1356 ticks,"
+      " which is what divisor 2712 in mode 3 means.\n${context}")
+  endif()
+
+  # The trailer, so that a file cut short is told apart from a quiet run.
+  if(NOT _edge_lines MATCHES "# edges ${_edges} dropped 0")
+    message(FATAL_ERROR
+      "the edge list does not end saying it is all of them.\n${context}")
+  endif()
 endif()
 
 # Two: the make and the break of one scripted press, each mapped from an

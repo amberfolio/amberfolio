@@ -343,7 +343,12 @@ The parts that catch people:
 - **`audio_timeline::render()` is the only core function callable off the
   machine thread**, and by exactly one thread — not one at a time. The
   edge list is canonical machine state; the float samples are not, which
-  is what keeps audio out of replay hashes.
+  is what keeps audio out of replay hashes. Since M4-A1 (#106) the edge
+  list can also be *read* — an opt-in log the producer fills and the host
+  drains between slices, invisible to `render()` and absent from the state
+  serialization, so that "did the machine make the right edges" and "is
+  the render of them right" can be asked separately. `docs/hosts.md` §4
+  has the measurements that came out of asking.
 - **Input is stamped with the machine's own clock**, and a host may only
   post between `run()` calls, so the stamp is a settled step-boundary
   value.

@@ -139,6 +139,13 @@ set_tests_properties(sdl-host-demo-disk PROPERTIES
 # paths. The demo plays continuously, so it is the one that can be asked
 # whether what reached the audio device was a tone rather than a
 # well-plumbed silence.
+#
+# Since M4-A1 (#106) the demo's run is also asked the *other* audio
+# question, and it is a different one: `--dump` now writes the edge list
+# the machine published, and every gap in it must be the 1356 ticks that
+# divisor 2712 in mode 3 means. "What reached the device" and "what the
+# machine produced" have different owners in the code, and this is the
+# first check in the tree that asks the second of them through a host.
 add_test(NAME sdl-host-presents-a-frame
   COMMAND "${CMAKE_COMMAND}"
     "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
@@ -161,6 +168,7 @@ add_test(NAME sdl-host-sounds-a-tone
     "-DPRESS=Escape@60"
     "-DEXPECT_CODE=0"
     "-DEXPECT_SOUND=ON"
+    "-DEDGES=${CMAKE_CURRENT_BINARY_DIR}/verify-edges"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-verify-program.cmake")
 set_tests_properties(sdl-host-sounds-a-tone PROPERTIES
   LABELS smoke
