@@ -65,6 +65,12 @@ jobs:
       # to reject.
       - name: guard self-test (negative cases)
         run: bash scripts/test-guards.sh
+      # And the session runner's own, for the same reason: its third
+      # outcome — skipped, because this disk is not that disk — has to be
+      # impossible to read as a pass, and that is a property of an output
+      # nobody would otherwise assert (#101).
+      - name: session-runner self-test (the skip that is not a pass)
+        run: bash scripts/test-sweep.sh
       - name: content guard (every commit + index + working tree)
         run: bash scripts/check-clean.sh
       - name: DCO check (every non-merge commit)

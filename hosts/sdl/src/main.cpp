@@ -159,6 +159,7 @@
 //     can consume it. `--verify` counts the resyncs.
 //
 //   --record FILE    write this run down as a recording
+//   --record-every N take a checkpoint every N frames, not every one
 //   --replay FILE    be the run a recording describes, and check it
 //
 //     The two halves of machine/replay.h, and the reason that file says
@@ -166,6 +167,22 @@
 //     three things to it — a key line where a key is posted, a checkpoint
 //     where a frame ends, an `end` line where the run does — and the
 //     preamble, written before SDL is even up.
+//
+//     `--record-every` spaces the second of those. A checkpoint hashes
+//     every byte of RAM, so one a frame is about a megabyte of SHA-256
+//     sixty times a virtual second: right for a run somebody is pointing
+//     at a problem, and the reason a game-length recording at that
+//     cadence is both slow to make and far too large to commit. The
+//     session library picks its own and says why
+//     (tests/sessions/README.md).
+//
+//     What a sparse cadence costs is *where* a divergence is localized,
+//     never whether one is found: every key still lands on the tick it
+//     was recorded at, and the run still has to reach `end`. What it must
+//     not cost is the moments worth pinning, so a frame that posted a key
+//     is checkpointed whatever N says, and so is the frame the run ends
+//     on — that last one carries `stopped`, which a replaying host needs
+//     before it can arrive at the tick at all.
 //
 //     Replaying adds one thing and takes one away. It adds a clamp: the
 //     slice stops at the recording's next event as readily as at a frame
@@ -873,6 +890,20 @@ struct options {
   std::string record_path;
   std::string replay_path;
 
+  /// `--record-every`: take a checkpoint every this many frames rather
+  /// than every one. One — a checkpoint a frame — is what `--record`
+  /// alone has always done and is right for a run a person is pointing
+  /// at a problem; the committed session library uses a sparser one
+  /// (tests/sessions/README.md). A checkpoint hashes every byte of RAM,
+  /// so the cadence is most of what a recording *costs* to make as well
+  /// as most of what it costs to store, and a game session at one a
+  /// frame is neither affordable to record nor small enough to commit.
+  ///
+  /// Sparse never means "and not the interesting moments": a frame in
+  /// which a key was posted is checkpointed whatever the cadence says,
+  /// and so is the frame the run ends on.
+  std::uint64_t record_every{1};
+
   /// Where `--dump` writes. Empty when it was not asked for; the two
   /// files are this plus `.ppm` and `.wav`.
   std::string dump_prefix;
@@ -980,6 +1011,14 @@ struct options {
       }
     } else if (arg == "--record" && i + 1 < argc) {
       opts.record_path = argv[++i];
+    } else if (arg == "--record-every" && i + 1 < argc) {
+      if (!parse_count(argv[++i], opts.record_every) ||
+          opts.record_every == 0) {
+        std::fprintf(stderr,
+                     "amberfolio: --record-every wants a positive frame"
+                     " count\n");
+        return opts;
+      }
     } else if (arg == "--replay" && i + 1 < argc) {
       opts.replay_path = argv[++i];
     } else if (arg == "--steps" && i + 1 < argc) {
@@ -1051,7 +1090,7 @@ struct options {
         "                                      [--trace]\n"
         "                                      [--seam ID] [--seams]\n"
         "                                      [--record FILE]"
-        " [--replay FILE]\n"
+        " [--record-every N] [--replay FILE]\n"
         "                                      [--speed xt|turbo|at|386]\n"
         "                                      [--fast N|max]\n"
         "                                      [-- ARGUMENTS...]\n");
@@ -1085,6 +1124,16 @@ struct options {
     std::fprintf(stderr,
                  "amberfolio: --dump-every needs --dump, whose prefix it"
                  " writes under\n");
+    return opts;
+  }
+
+  // The cadence is a property of the recording being made, so without a
+  // recording there is nothing for it to be a property of. Refused rather
+  // than ignored, on the same reasoning as `--dump-every` above.
+  if (opts.record_every != 1 && opts.record_path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: --record-every needs --record, whose"
+                 " checkpoints it spaces\n");
     return opts;
   }
 
@@ -1358,6 +1407,19 @@ int main(int argc, char** argv) try {
     recording.write(line.data(), static_cast<std::streamsize>(n));
   };
 
+  // The tick of the last checkpoint written, so that the one taken where
+  // the run ends is not a second copy of the one the cadence had just
+  // taken. Two checkpoints at one tick would verify, and would say the
+  // same thing twice.
+  machine::ticks checkpointed = machine::never;
+
+  // Whether this frame posted a key. A sparse cadence must not thin out
+  // the moments a recording exists to pin: what a game session is
+  // evidence for is that the machine answered *this* keystroke the way
+  // it did, and a checkpoint on the far side of the frame that carried
+  // one is where that is visible.
+  bool keyed_this_frame = false;
+
   const std::uint32_t init_flags =
       opts.headless ? 0U : (SDL_INIT_VIDEO | SDL_INIT_AUDIO);
   if (!SDL_Init(init_flags)) {
@@ -1535,6 +1597,7 @@ int main(int argc, char** argv) try {
             line.scancode = code;
             line.action = action;
             record_line(line);
+            keyed_this_frame = true;
           }
         }
       }
@@ -1559,14 +1622,18 @@ int main(int argc, char** argv) try {
       static_cast<void>(player.apply(box));
     }
 
-    // A checkpoint a frame. The boundary is the machine's own — frame
-    // ticks off its clock, never the wall — so a recording made on one
-    // target names ticks a replay reaches on every other. Taken after the
-    // slice and before the frame is presented, which is the moment the
-    // run has just finished being somewhere describable.
-    if (recording.is_open()) {
+    // A checkpoint every `--record-every` frames, and every frame that
+    // posted a key. The boundary is the machine's own — frame ticks off
+    // its clock, never the wall — so a recording made on one target names
+    // ticks a replay reaches on every other. Taken after the slice and
+    // before the frame is presented, which is the moment the run has just
+    // finished being somewhere describable.
+    if (recording.is_open() &&
+        (keyed_this_frame || frame_index % opts.record_every == 0)) {
       record_line(machine::checkpoint_of(box));
+      checkpointed = box.time();
     }
+    keyed_this_frame = false;
 
     // With no audio device there is nobody pulling the speaker, so a
     // `--dump` run has to pull it here, on the machine thread — which the
@@ -1629,6 +1696,15 @@ int main(int argc, char** argv) try {
   // it got. A player that reaches this line verified everything before
   // it; one that runs out of text without it says so.
   if (recording.is_open()) {
+    // The frame the run ends on is checkpointed whatever the cadence
+    // says, and it is the checkpoint that matters most: it is the one a
+    // machine that stopped is described by, and `stopped` on its line is
+    // what lets a replaying host run *past* the tick to arrive at it
+    // (machine/replay.h). A cadence that happened not to divide the last
+    // frame number would otherwise drop it.
+    if (box.time() != checkpointed) {
+      record_line(machine::checkpoint_of(box));
+    }
     machine::replay_event last{};
     last.kind = machine::replay_line::end;
     last.at = box.time();

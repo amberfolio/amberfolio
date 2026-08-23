@@ -25,10 +25,11 @@
 # recording, and comes back out of the player at the same tick. Headless
 # has no event queue and so no key to record.
 
-if(NOT HOST OR NOT DISK OR NOT PROGRAM OR NOT WORK OR NOT DEFINED EXPECT_CODE)
+if(NOT HOST OR NOT DISK OR NOT PROGRAM OR NOT WORK OR NOT DEFINED EXPECT_CODE
+   OR NOT RECORD_EVERY OR NOT RECORD_UNTIL)
   message(FATAL_ERROR
-    "run-record-replay.cmake needs -DHOST=, -DDISK=, -DPROGRAM=, -DWORK="
-    " and -DEXPECT_CODE=")
+    "run-record-replay.cmake needs -DHOST=, -DDISK=, -DPROGRAM=, -DWORK=,"
+    " -DEXPECT_CODE=, -DRECORD_EVERY= and -DRECORD_UNTIL=")
 endif()
 
 set(ENV{SDL_VIDEODRIVER} "dummy")
@@ -165,5 +166,161 @@ if(tampered_code EQUAL 0 OR NOT tampered_err MATCHES "replay diverged")
     "exit: ${tampered_code}\n${tampered_err}")
 endif()
 
+# --- And the same run, written down less often (#101) ------------------
+#
+# `--record-every N` is what makes a recording of a game-length run
+# affordable to make and small enough to commit: a checkpoint hashes
+# every byte of RAM, so one a frame is most of what recording costs at
+# both ends. What has to stay true when the cadence is sparse is the
+# thing this leg asserts — that it changes *what is written down* and not
+# what happened, and that it does not thin out the moments a recording
+# exists to pin.
+#
+# ${RECORD_EVERY} is chosen not to divide the frame the scripted press
+# lands on, so the checkpoint beside that key is there because a key was
+# posted and for no other reason.
+
+set(sparse "${WORK}/sparse.rec")
+file(REMOVE_RECURSE "${WORK}/record")
+file(COPY "${DISK}/" DESTINATION "${WORK}/record")
+
+execute_process(
+  COMMAND "${HOST}" "${WORK}/record" "${PROGRAM}" --fast max
+          --press "${PRESS}" --record "${sparse}"
+          --record-every "${RECORD_EVERY}"
+  RESULT_VARIABLE sparse_code
+  ERROR_VARIABLE sparse_err)
+
+set(context "sparse exit: ${sparse_code}\n${sparse_err}")
+
+if(NOT sparse_code EQUAL ${EXPECT_CODE})
+  message(FATAL_ERROR
+    "the sparsely-recorded run should exit ${EXPECT_CODE}; it returned"
+    " '${sparse_code}'.\n${context}")
+endif()
+
+file(READ "${sparse}" sparse_text)
+
+# The same run. A cadence that moved a tick would not be a cadence, it
+# would be a different machine — and `end` names the tick and the step
+# count the run finished on, so two runs that agree there agree about
+# everything the recording is a record of.
+string(REGEX MATCH "\nend [0-9]+ [0-9]+" dense_end "${text}")
+string(REGEX MATCH "\nend [0-9]+ [0-9]+" sparse_end "${sparse_text}")
+if(NOT dense_end STREQUAL sparse_end)
+  message(FATAL_ERROR
+    "the cadence changed the run: '${dense_end}' against"
+    " '${sparse_end}'.\n${context}")
+endif()
+
+# Fewer lines, which is the point of the option.
+string(REGEX MATCHALL "\ncheckpoint " dense_marks "${text}")
+string(REGEX MATCHALL "\ncheckpoint " sparse_marks "${sparse_text}")
+list(LENGTH dense_marks dense_count)
+list(LENGTH sparse_marks sparse_count)
+if(NOT sparse_count LESS dense_count)
+  message(FATAL_ERROR
+    "--record-every ${RECORD_EVERY} wrote ${sparse_count} checkpoints"
+    " where one a frame wrote ${dense_count}.\n${context}")
+endif()
+
+# The frame that posted a key is checkpointed whatever the cadence says.
+# The two halves of the press are posted and recorded in one frame, so
+# the frame's checkpoint is the very next line after the break — and this
+# frame is not one the cadence would have taken.
+if(NOT sparse_text MATCHES "\nkey [0-9]+ [0-9a-f]+ up\ncheckpoint ")
+  message(FATAL_ERROR
+    "a sparse cadence dropped the checkpoint beside the"
+    " keystroke.\n${context}")
+endif()
+
+# So is the frame the run ends on, and that one has to carry `stopped`:
+# without it a replaying host cannot run past the tick to arrive at a
+# machine that stopped inside a step (machine/replay.h).
+if(NOT sparse_text MATCHES "\ncheckpoint [0-9]+ [0-9]+ [0-9a-f]+ stopped")
+  message(FATAL_ERROR
+    "a sparse cadence dropped the last checkpoint, or its stopped"
+    " marker.\n${context}")
+endif()
+
+# And it still has to be a recording of the run.
+file(REMOVE_RECURSE "${WORK}/replay")
+file(COPY "${DISK}/" DESTINATION "${WORK}/replay")
+
+execute_process(
+  COMMAND "${HOST}" "${WORK}/replay" "${PROGRAM}" --fast max
+          --replay "${sparse}"
+  RESULT_VARIABLE sparse_replay_code
+  ERROR_VARIABLE sparse_replay_err)
+
+if(NOT sparse_replay_err MATCHES "replay verified checkpoints=([1-9][0-9]*) keys=2")
+  message(FATAL_ERROR
+    "the sparse recording did not verify.\n${context}\nreplay exit:"
+    " ${sparse_replay_code}\n${sparse_replay_err}")
+endif()
+
+# --- A run that a budget ends, which is the shape a session has --------
+#
+# The rule above has a second half that the run before it cannot show:
+# there, the frame the run ended on was also the frame that posted the
+# key, so the checkpoint was there either way. A run ended by `--until`
+# has no key and stops wherever the budget falls — mid-frame, at a tick no
+# cadence would have chosen — which is exactly the shape of a recorded
+# leg of a game (`docs/playable.md`), and the case where dropping the
+# last checkpoint would mean the recording never pinned where the run
+# actually got to.
+
+set(budgeted "${WORK}/budgeted.rec")
+file(REMOVE_RECURSE "${WORK}/record")
+file(COPY "${DISK}/" DESTINATION "${WORK}/record")
+
+execute_process(
+  COMMAND "${HOST}" "${WORK}/record" "${PROGRAM}" --fast max
+          --record "${budgeted}" --record-every "${RECORD_EVERY}"
+          --until "${RECORD_UNTIL}"
+  RESULT_VARIABLE budgeted_code
+  ERROR_VARIABLE budgeted_err)
+
+file(READ "${budgeted}" budgeted_text)
+set(context "budgeted exit: ${budgeted_code}\n${budgeted_err}")
+
+# The last checkpoint is the tick the run reached, and it is not a
+# stopped one: the machine was still running when the budget took it
+# away. `end` names that tick too, and the two agreeing is the whole
+# rule — the frame a run ends on is checkpointed whatever the cadence
+# says.
+string(REGEX MATCHALL "\ncheckpoint [0-9]+" budgeted_marks "${budgeted_text}")
+list(POP_BACK budgeted_marks budgeted_last)
+string(REGEX MATCH "[0-9]+" budgeted_last_tick "${budgeted_last}")
+string(REGEX MATCH "\nend ([0-9]+) " budgeted_end "${budgeted_text}")
+if(NOT budgeted_end MATCHES "\nend ${budgeted_last_tick} ")
+  message(FATAL_ERROR
+    "the run ended at '${budgeted_end}' and its last checkpoint is at"
+    " ${budgeted_last_tick}.\n${context}")
+endif()
+
+if(budgeted_text MATCHES "\ncheckpoint [0-9]+ [0-9]+ [0-9a-f]+ stopped")
+  message(FATAL_ERROR
+    "a run a budget took away has not stopped, and no checkpoint of it"
+    " should say it had.\n${context}")
+endif()
+
+file(REMOVE_RECURSE "${WORK}/replay")
+file(COPY "${DISK}/" DESTINATION "${WORK}/replay")
+
+execute_process(
+  COMMAND "${HOST}" "${WORK}/replay" "${PROGRAM}" --fast max
+          --replay "${budgeted}"
+  RESULT_VARIABLE budgeted_replay_code
+  ERROR_VARIABLE budgeted_replay_err)
+
+if(NOT budgeted_replay_err MATCHES "replay verified checkpoints=([1-9][0-9]*) keys=0")
+  message(FATAL_ERROR
+    "the budget-ended recording did not verify.\n${context}\nreplay"
+    " exit: ${budgeted_replay_code}\n${budgeted_replay_err}")
+endif()
+
 message(STATUS
-  "sdl host replay: ${PROGRAM} recorded and reproduced tick for tick")
+  "sdl host replay: ${PROGRAM} recorded and reproduced tick for tick,"
+  " at one checkpoint a frame (${dense_count}) and at one every"
+  " ${RECORD_EVERY} (${sparse_count})")

@@ -176,6 +176,11 @@ set_tests_properties(sdl-host-sounds-a-tone PROPERTIES
 # cmake/run-record-replay.cmake says what it asserts and why, including
 # the tampered recording it finishes with — a check that cannot fail is
 # not one.
+#
+# It records the run twice: once at a checkpoint a frame, and once at one
+# every eight (#101). Eight does not divide sixty, which is the frame the
+# scripted press lands on, so the checkpoint beside that key in the sparse
+# recording is there because a key was posted and for no other reason.
 add_test(NAME sdl-host-records-and-replays
   COMMAND "${CMAKE_COMMAND}"
     "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
@@ -184,6 +189,8 @@ add_test(NAME sdl-host-records-and-replays
     "-DPROGRAM=COMPOSIT.EXE"
     "-DPRESS=A@60"
     "-DEXPECT_CODE=90"
+    "-DRECORD_EVERY=8"
+    "-DRECORD_UNTIL=400000"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-record-replay.cmake")
 set_tests_properties(sdl-host-records-and-replays PROPERTIES
   LABELS smoke
