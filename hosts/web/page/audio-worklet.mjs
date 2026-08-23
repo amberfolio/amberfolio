@@ -20,6 +20,45 @@
 // no `document`, and nothing in common with host.mjs or app.mjs except
 // what crosses `port.postMessage()` — which is exactly the boundary
 // platform.h's own audio section draws, one layer further out.
+//
+//
+// The underrun policy, and why it is not core's word for word (#108)
+// ------------------------------------------------------------------
+//
+// `audio_timeline::render()` holds the last level when it runs out of
+// settled virtual time, and `platform_test.cpp`'s
+// `AnUnderrunHoldsTheLevelAndKeepsItsPlace` pins that. This file used to
+// fill silence instead, which meant two hosts disagreeing about a
+// documented policy — worth reconciling, and worth reconciling by
+// understanding *why* core holds rather than by copying the line.
+//
+// Core holds because its underrun is not a gap in the waveform at all.
+// The cursor does not advance, so the machine's own audio for that span
+// is not lost, it is not yet made: the level being held is the level the
+// speaker's cone is genuinely at, the pull resumes at exactly the tick it
+// stopped on, and the wave continues from where it left off. A hold there
+// is the physically true answer, and it lasts as long as one pull runs
+// past the horizon — microseconds.
+//
+// The underrun on *this* side is a different event with the same name.
+// It means the main thread did not post a chunk in time, and how long it
+// will go on is a question about the browser's scheduler, not about
+// virtual time: a backgrounded tab is seconds, and the backlog cap above
+// means a long stall does not even replay what it missed. Holding a
+// non-zero level for that long is not a continuation of anything. It is
+// a DC offset on the output — inaudible in itself, since a constant
+// pressure makes no sound, but a deflected cone, a bias in whatever the
+// destination mixes this with, and a step at both ends of the gap.
+//
+// So: **hold across the seam, then fade to silence.** The first few
+// milliseconds of an underrun output the last sample, which is what core
+// does and what makes the common case — one late chunk — continuous. A
+// stall that outlasts that is ramped down to zero over a few more and
+// left there. Nothing is faked in either half: a held sample is the real
+// last sample, and silence after a stall says truthfully that this host
+// has nothing to play. The count of underruns is posted to the page, so
+// "why did it sound wrong" has a number attached on this side of the
+// boundary as well as core's (`af_machine_audio_underruns`).
 
 class AmberfolioSpeakerProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -43,6 +82,26 @@ class AmberfolioSpeakerProcessor extends AudioWorkletProcessor {
     // without bound.
     this.maxQueuedChunks = 8;
 
+    /// The last sample that came out of a chunk, and how many samples
+    /// have been filled since the queue ran dry. Together they are the
+    /// underrun policy in the top comment: hold `holdSamples` of the
+    /// former, ramp it away over `rampSamples` more, then silence.
+    ///
+    /// In milliseconds rather than in samples, because what the two
+    /// bounds are about is time — a chunk that is one quantum late, and
+    /// a cone that should not be left deflected — and `sampleRate` is
+    /// whatever the AudioContext was opened at.
+    this.lastSample = 0;
+    this.starvedFor = 0;
+    this.holdSamples = Math.round(sampleRate * 0.003);
+    this.rampSamples = Math.round(sampleRate * 0.006);
+
+    /// Runs of starvation, not starved samples: one late chunk is one
+    /// underrun however many samples it cost. Posted when it changes, so
+    /// the page can show it beside core's own counters and the message
+    /// rate is bounded by the thing being counted.
+    this.underruns = 0;
+
     this.port.onmessage = (event) => {
       const samples = event.data;
       if (!(samples instanceof Float32Array) || samples.length === 0) {
@@ -54,6 +113,23 @@ class AmberfolioSpeakerProcessor extends AudioWorkletProcessor {
         this.queueOffset = 0;
       }
     };
+  }
+
+  /// The value to fill an underrun sample with: the last real sample for
+  /// the first few milliseconds, ramped to zero over the next few, then
+  /// silence for as long as the stall lasts. See the top comment for why
+  /// this is core's rule rather than a departure from it.
+  starvedSample() {
+    const since = this.starvedFor;
+    this.starvedFor += 1;
+    if (since < this.holdSamples) {
+      return this.lastSample;
+    }
+    const into = since - this.holdSamples;
+    if (into >= this.rampSamples) {
+      return 0;
+    }
+    return this.lastSample * (1 - into / this.rampSamples);
   }
 
   process(_inputs, outputs) {
@@ -69,13 +145,19 @@ class AmberfolioSpeakerProcessor extends AudioWorkletProcessor {
       if (this.queue.length === 0) {
         // An underrun on this side of the boundary: the main thread has
         // not posted enough audio to keep up with real-time playback.
-        // Silence, not a stall — the same choice `audio_timeline::render()`
-        // makes on the core side, one layer further in.
-        channel[i] = 0;
+        // One run of starvation is one underrun, counted where it starts.
+        if (this.starvedFor === 0) {
+          this.underruns += 1;
+          this.port.postMessage({ underruns: this.underruns });
+        }
+        channel[i] = this.starvedSample();
         continue;
       }
       const chunk = this.queue[0];
-      channel[i] = chunk[this.queueOffset];
+      const sample = chunk[this.queueOffset];
+      channel[i] = sample;
+      this.lastSample = sample;
+      this.starvedFor = 0;
       this.queueOffset += 1;
       if (this.queueOffset >= chunk.length) {
         this.queue.shift();

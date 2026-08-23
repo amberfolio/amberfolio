@@ -1,8 +1,9 @@
 # Playable
 
 How to drive a player-supplied copy from the party roster into the game —
-a party, the city, a story event, a fight, a save, a load and a purchase
-— and what each of those legs is evidence for.
+a party, the city, a story event, a fight, a save, a load, a purchase, a
+cure paid for, a gem sold, and the whole of it again on the machine a
+browser runs — and what each of those legs is evidence for.
 
 `docs/first-light.md` is the M3 procedure and stops where this one starts:
 at the roster, with an empty party and nothing to do. M4's exit criterion
@@ -350,6 +351,270 @@ junction.
 
 ---
 
+## Leg 5 — the temple, and a sale (#104)
+
+Two more city services transacting, and the instrument that made finding
+them affordable.
+
+### Watching where the party is
+
+Leg 4's honest note was that the city is a sixteen-by-sixteen grid the
+party walks blind and that sweeping it by hand is most of a session.
+That is a navigation problem, not an emulation one, and `--watch` is the
+answer to it: the party's position and the game's screen mode are three
+bytes and a byte in the program's data segment, and a line printed every
+time one of them changes is a readable trail of a run.
+
+```
+--watch 6AAD --watch 6AAE --watch 6AAF --watch 49F3
+```
+
+| offset | what |
+| --- | --- |
+| `6AAD` | the party's X on the area map |
+| `6AAE` | its Y |
+| `6AAF` | its facing: 0 N, 2 E, 4 S, 6 W |
+| `49F3` | the screen mode: 0 menu, 1 a portrait sub-view, 2 camp, 3 and 4 adventure, 5 tactical combat, 6 a banner |
+
+```
+amberfolio: watch frame=012814 ds=0CDC 6AAD=07 6AAE=05 6AAF=00 49F3=04
+amberfolio: watch frame=013114 ds=0CDC 6AAD=08 6AAE=05 6AAF=02 49F3=04
+```
+
+Those are facts about this program, in the same table the seams are
+written from (`docs/seams.md`), and `ds=0CDC` is the data segment they
+mean something in on this edition — the other segments the flag prints
+are frame boundaries that landed elsewhere, and filtering on the one is
+how the trail is read.
+
+The trail is the whole method. A leg is now: press the keys, read the
+lines the party actually moved on, and write the next leg from where it
+stopped. A wall shows up as a press that changed the facing and not the
+position, which is the same symptom as a flushed keystroke and used to
+be indistinguishable from it.
+
+### Two rules the trail makes obvious
+
+*Turning and walking are not the same cadence.* Ninety frames apart is
+enough between menu keys; a hundred and fifty is what movement wants
+(leg 4's trap, and the trail is where it shows). A turn lost inside a
+step reads as a party that walked east when it was told to walk north,
+three squares later.
+
+*An entrance event stops the walk until it is answered.* A script that
+walks past a service square and does not answer its prompt stands there
+for the rest of the run, and every remaining keystroke is flushed. A
+sweep therefore presses `Return` and `N` after every move — the two
+answers that dismiss a "press return to continue" and decline a "yes or
+no", neither of which does anything at the exploration bar.
+
+### The temple, and paying for a cure
+
+The civilised district's healing temple is at **3,1**, and walking onto
+it is the whole of the entrance:
+
+```
+YOU ARE WELCOMED BY PRIESTESS JOY OF SUNE. 'DO YOU SEEK HEALING?'
+```
+
+`Y` opens the service, and its command bar is the shop's bar with one
+word changed:
+
+```
+HEAL VIEW POOL APPRAISE EXIT
+```
+
+`H` asks which character, and then lists what the temple sells —
+`CURE BLINDNESS`, `CURE DISEASE`, the three cure-wounds spells,
+`NEUTRALIZE POISON`, `RAISE DEAD`, `REMOVE CURSE`, `STONE TO FLESH`,
+`EXIT` — a nine-line list over its own screen, which is #104's "text and
+list rendering" for the second time and the first with prices behind it.
+
+The transaction is two prompts, and the party being in perfect health is
+not an obstacle to it:
+
+```
+FIGHTER1 IS NOT BLIND.  CAST CURE ANYWAY: YES NO
+CURE BLINDNESS WILL ONLY COST 1000 GOLD PIECES.  PAY FOR CURE: YES NO
+```
+
+Run the same script twice, once answering `Y` to the second prompt and
+once `N` — `docs/seams.md`'s cheap check, applied to a purchase the way
+leg 4 applied it — and read the payer's sheet both times:
+
+| | declined | paid |
+| --- | --- | --- |
+| `FIGHTER1` | `PLATINUM 1586` | `PLATINUM 1386` |
+
+Two hundred platinum, which is the thousand gold the temple asked for at
+this game's five-to-one, off the character the service was bought for.
+Nothing else about the two runs differs.
+
+### The sale, which is not called selling
+
+Leg 4 recorded that `SELL` is not on the armourer's bar and guessed that
+it belonged to a shop that buys. It does not. **No shop in this district
+buys**, the general store at **12,10** included, and its bar is the same
+five words as the armourer's:
+
+```
+BUY VIEW POOL APPRAISE EXIT
+```
+
+`APPRAISE` is the sale. It opens on what the current character is
+carrying that a shop will take —
+
+```
+YOU HAVE A FINE COLLECTION OF:
+4 GEMS
+```
+
+over a bar reading `APPRAISE : GEMS EXIT` — and `G` sells one:
+
+| | before | after |
+| --- | --- | --- |
+| `FIGHTER1`'s gems | `GEMS 4` | `GEMS 3` |
+| `FIGHTER1`'s money | `PLATINUM 1586` | `PLATINUM 1588` |
+
+One gem, two platinum, on the character who was carrying it. That is
+#104's "sell", under the name the game gives it.
+
+### What else is on this map
+
+Every square below was reached on foot and fired what is written beside
+it. They are facts about a map, like leg 4's published coordinates, and
+they are here so that the next person walks a route rather than a grid:
+
+| square | what happens |
+| --- | --- |
+| `3,1` | Sune's temple — healing, above |
+| `4,4` | the city hall (leg 1 reaches its entrance event) |
+| `6,2` | the training schools' lobby: a note directing magic-users and clerics north, fighters and rogues east |
+| `7,2` | the arena master — a duel, and a prompt offering a hireling |
+| `8,2`, `9,2` | the dueling rooms behind him |
+| `10,5` | the Temple of Tyr: the bishop's study, and an NPC who asks to come along |
+| `12,10` | the general store — the sale, above |
+| `13,5` | the docks, through the temple |
+| `0,4` | the gate out of the civilised district |
+
+`10,8` put the party into a random encounter, which is worth knowing
+before assuming this district is safe: leg 4's note that slot A's
+quarter produced none in nine minutes of walking was a fact about a
+route, not about the map.
+
+### Walking off the edge of the map (#102)
+
+The gate at `0,4` is the district's western edge, and stepping west
+through it is the first **area transition** this machine has run:
+
+```
+amberfolio: watch frame=014344 ds=0CDC 6AAD=00 6AAE=04 6AAF=06 49F3=04
+amberfolio: watch frame=014908 ds=0CDC 6AAD=0F 6AAE=04 6AAF=06 49F3=04
+```
+
+One step, and the party's X goes from `0` to `15` — a different sixteen
+by sixteen, a different wall set drawn around it, and the clock back to
+where the new area starts it. The exploration bar comes up on the other
+side and the party walks on.
+
+That is a code path nothing before it had exercised: leg 1's tour is one
+district and legs 2 to 5 never leave it. What is on the other side —
+the slums, and the dungeons that open off them — is still the gap below.
+
+---
+
+## Leg 6 — the same game, in the browser's machine (#108, #99)
+
+Every leg above is the desktop host. This one is the wasm module, driven
+headless by `hosts/web/tools/drive.mjs`, which takes a directory and a
+program the way the SDL host does and spells `--press KEY@FRAME` the same
+way — so a leg written here runs there:
+
+```sh
+node build/wasm/hosts/web/Release/drive.mjs <your-directory> START.EXE \
+  --seam code-wheel --press A@7600 --press Return@7650 ... --frames 28000 \
+  --quiet --dump run
+```
+
+It prints the load line, the edition, the stop report, the state hash,
+the audio counters, the seam table and a throughput line. `docs/hosts.md`
+has the tool; this is what it says about the game.
+
+### It runs the loop
+
+Legs 0, 1 and 2 as one script — the code wheel answered by its seam, a
+character generated and put in the party, `BEGIN ADVENTURING`, the
+guide's tour taken with fifty Returns, twenty steps north into the slums,
+`C` and `Q` — reaches the tactical view and a fight that ends at
+`CONTINUE BATTLE:` with the fighter alive on one hit point. 28,001
+frames, 139,204,567 steps.
+
+**Throughput**, which #116 closed without leaving a number in the tree
+and this is:
+
+```
+amberfolio: throughput virtual=466.667s wall=4.924015s factor=94.77x
+            steps=139204567 steps/s=28270540
+```
+
+Ninety-five times real time on the Release module, running the actual
+game rather than a synthetic loop. #107's default preset needs one.
+
+### The cheats toggle here too (#99)
+
+The same script, the same directory, one flag apart:
+
+| | fighter at `CONTINUE BATTLE:` |
+| --- | --- |
+| `--seam code-wheel` | `HITPOINTS 1` |
+| `--seam code-wheel --seam cheat-invulnerable` | `HITPOINTS 8` |
+
+The state hashes differ, the seam reports itself `on armed`, and the
+screens say what the numbers say. That is #99's last owed item — the
+cheats seam toggled end to end against the player's copy from **both**
+hosts — and it is the same evidence `tests/sessions/fight-cheat.rec`
+carries on the desktop, taken the only way the web host can take it,
+which is by hand.
+
+### A recording of the real game, verified on the other target
+
+The stronger claim, and the one the session library exists for. The same
+script was recorded on the **desktop** host and the recording handed to
+the **wasm** module through `af_machine_verify_recording`:
+
+```
+amberfolio: replay verified checkpoints=101 keys=186
+```
+
+A hundred and one checkpoints of a 139-million-step run of a real game —
+every byte of RAM, every device register, the clock — reproduced exactly
+by a different compiler on a different architecture. Until now that claim
+rested on `spin.rec`: four frames of a machine executing `JMP $` (#142).
+
+It cannot be committed, for the reason nothing here can, and there is no
+`--replay` on the web driver yet, so this is a procedure and not a test.
+Both of those are follow-ups rather than doubts.
+
+### What the browser cannot do yet
+
+**A saved game cannot be loaded there.** `af_machine_vfs_put` puts a file
+in the **root directory** and there is no door for anything below it, so
+a host handing over a real installation hands over its root and drops
+`\SAVE\` — which is where every shipped save slot lives. The dev page's
+picker says as much in its own comment and the driver reports it:
+
+```
+amberfolio: disk skipped SAVE (not a file)
+```
+
+The core is not the limit — `machine::filesystem` has directories, and
+the program makes its own `\SAVE\` on the web exactly as it does on the
+desktop, so a save and a load **within one session** are not blocked.
+What is blocked is starting from a directory that already has one, which
+is how legs 3, 4 and 5 all start. Until that door exists, the browser can
+play the game from the beginning and not from where you left it, and
+#105's round trip on the web is the in-session half only.
+
 ---
 
 ## What the run should not say
@@ -383,14 +648,30 @@ worklist line, and `docs/machine.md` §5 is what to do with it.
 
 Honest gaps, so nobody reads more into a green run than is there:
 
-- **The rest of the city services** (#104). Leg 4 buys from a shop, and
-  the city hall's entrance event, its interior and an NPC prompt all run.
-  The **training hall**, the **temple** and the **inn** have not been
-  driven, and neither has **selling** — `SELL` is not on the armourer's
-  bar, so it belongs to a shop that buys, which is a different square.
-- **The dungeon.** Everything above is the city and its slums.
-- **The web host** (#108) runs the same core and the same recordings, and
-  none of these legs has been driven on the dev page.
+- **Two of the city services** (#104). Legs 4 and 5 buy, heal and sell,
+  and the city hall, the arena, the dueling rooms and the training
+  schools' lobby all render and answer. What has **not** been transacted
+  is **training** — no character with the experience for a level has been
+  taken through it, and the lobby's own note says the halls are by class
+  — and the **inn**, which has not been found. Those two are what is left
+  of "every city service the game offers", and neither is blocked on
+  anything the machine does.
+- **The dungeon.** Everything above is the city and its slums. The gate
+  out of the civilised district is at `0,4` and leg 5's routing method
+  works on the other side of it; nobody has walked through.
+- **The dev page itself** (#108). Leg 6 drives the wasm module headless
+  and the module is the same one the page loads, but nobody has run any
+  of this in a browser: the canvas, the AudioWorklet, the seam
+  checkboxes and the directory drop are checked by a node harness and by
+  reading, not by looking. `docs/hosts.md` §3 is still where a person
+  closes that.
+- **A saved game in the browser.** Leg 6's last section: the VFS door
+  reaches the root directory only, so `\SAVE\` cannot be handed over and
+  legs 3, 4 and 5 have no web equivalent.
 - **Audio beyond "there was one."** The first sound this program makes is
-  in combat, and `docs/hosts.md` §3 is still where a person checks that a
-  pressure wave left a speaker (#106).
+  in combat. `docs/hosts.md` §4 now measures the speaker — the edge list
+  a run published, the box filter's DC offset, the two hosts' sample
+  rates against each other — but every one of those numbers comes from a
+  program in `tests/programs`. Nothing has measured *this* program, and
+  §3 is still where a person checks that a pressure wave left a speaker
+  (#106).

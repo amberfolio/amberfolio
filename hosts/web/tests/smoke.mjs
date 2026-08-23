@@ -10,7 +10,7 @@
 //
 // Usable by hand too: pass no --expect and it just reports what it found.
 //
-// Five checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84):
+// Six checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84, M4-W1 #108):
 //
 //   1. The version the module reports is the version CMake built.
 //   2. **Every name in the export list is actually exported.** This is
@@ -41,8 +41,18 @@
 //      stop report is the thing the desktop host has to agree with at the
 //      same step, so a check that it is produced at all belongs in CI
 //      even though the comparison itself is a local procedure (#92).
+//   6. **The headless web driver** (`tools/drive.mjs`, M4-W1 #108) — the
+//      thing a person actually points at their own copy, run here against
+//      the repository's own 34-byte disk. It is spawned as a process, not
+//      imported and called, because what is being checked is the tool as
+//      a person invokes it: the command line, the report lines, the
+//      exit code, and the files it writes.
 
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   loadAmberfolio,
@@ -61,6 +71,11 @@ import {
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
 } from './host.mjs';
+import {
+  encodePpm,
+  keyNameToScancode,
+  parseArgs as parseDriveArgs,
+} from './drive.mjs';
 
 /// The ABI's guest list, as hosts/web/CMakeLists.txt sets it. Keep the
 /// two in step; that is the whole job of this array.
@@ -776,14 +791,20 @@ if (missing.length === 0) {
     );
 
     // The result block: two words at image segment 0060h, offset 0800h
-    // (tests/programs/machine_harness.h) — physical 0x600 + 0x800.
-    const scratch = module._malloc(4);
-    check(module._af_machine_read_memory(machine.handle, 0x600 + 0x800, scratch, 4) === AF_OK, 'reading the result block failed');
-    const words = [
-      module.HEAPU8[scratch] | (module.HEAPU8[scratch + 1] << 8),
-      module.HEAPU8[scratch + 2] | (module.HEAPU8[scratch + 3] << 8),
-    ];
-    module._free(scratch);
+    // (tests/programs/machine_harness.h) — physical 0x600 + 0x800. Read
+    // through host.mjs's own wrapper, not the raw export: this check is
+    // meant to be the page's code path, and a `_af_machine_read_memory`
+    // called by hand here was a wrapper that did not exist saying it did
+    // (#108).
+    const block = machine.readMemory(0x600 + 0x800, 4);
+    check(block !== null, 'reading the result block failed');
+    check(
+      machine.readMemory(0x0f_ff_ff, 4) === null,
+      'a read that runs off the end of the megabyte was allowed',
+    );
+    const words = block === null
+      ? [0, 0]
+      : [block[0] | (block[1] << 8), block[2] | (block[3] << 8)];
     machine.destroy();
     return words;
   };
@@ -1010,6 +1031,382 @@ if (missing.length === 0 && sessions !== null) {
   skeptic.destroy();
 
   console.log('smoke: the committed session tests/sessions/spin.rec verified on wasm');
+}
+
+// --- The headless web driver (M4-W1, #108) -------------------------------
+//
+// `tools/drive.mjs` is the web half of what the SDL host's `--press` /
+// `--until` / `--dump` do: a directory, a program, keys at frames, a
+// picture at the end, and the same report lines core formats for both
+// hosts. Before it, the desktop half of every comparison in
+// `docs/hosts.md` was one command and the web half was a person clicking
+// through a page, which is not a thing a script can repeat.
+//
+// It is **spawned**, not imported and called. What is under test is the
+// tool as a person invokes it — the command line, the exit code, the
+// lines on stdout, the files on disk — and a function called in-process
+// would check none of those four. The disk is the repository's own
+// `tests/sessions/spin/`: nothing here runs a game, here or anywhere
+// else, and the driver's own top comment says why it never can.
+
+if (missing.length === 0 && sessions !== null) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const driver = fileURLToPath(new URL('./drive.mjs', import.meta.url));
+  const disk = `${sessions}/spin`;
+  const scratch = mkdtempSync(join(tmpdir(), 'amberfolio-drive-'));
+
+  /// The driver, run the way a person runs it, with its output captured.
+  /// `process.execPath` rather than a bare `node`: the runner may have
+  /// been started by emsdk's own node, and this should use whichever one
+  /// is running it rather than whichever one is first on PATH.
+  const run = (...args) =>
+    spawnSync(process.execPath, [driver, disk, 'SPIN.EXE', ...args], {
+      encoding: 'utf8',
+    });
+
+  const dump = join(scratch, 'spin');
+  const first = run('--frames', '4', '--press', 'A@1', '--press', 'Up@2', '--dump', dump);
+  check(first.status === 0, `the driver exited ${first.status}: ${first.stderr}`);
+  const said = first.stdout ?? '';
+
+  // The identity of the file, before anything ran — the same line the
+  // SDL host prints, and the reason the two can be compared at all.
+  check(
+    /^amberfolio: load SPIN\.EXE sha256=[0-9a-f]{64}$/m.test(said),
+    `the driver printed no load line:\n${said}`,
+  );
+  // The stop report, formatted in core (machine/report.h). A frame
+  // budget is the host's reason for ending a run and not the machine's,
+  // so it reports as a tick budget: the machine is still running.
+  check(
+    /^amberfolio: stop reason=tick_budget steps=\d+ ticks=\d+ frames=\d+ /m.test(said),
+    `the driver printed no stop report:\n${said}`,
+  );
+  check(
+    said.includes('amberfolio: press A frame=1') &&
+      said.includes('amberfolio: press Up frame=2'),
+    `the driver did not say which keys it posted:\n${said}`,
+  );
+  // Every seam this build carries, in the SDL host's own `--seams`
+  // shape. `SPIN.EXE` is no known edition, so all of them are
+  // unavailable and each says why — PLAN.md §5's rule reported rather
+  // than a silence.
+  check(
+    /^amberfolio: seams \S+ unavailable wrong_binary - /m.test(said),
+    `the driver printed no seam table:\n${said}`,
+  );
+  check(
+    /^amberfolio: audio underruns=\d+ resyncs=\d+$/m.test(said),
+    `the driver printed no audio counters:\n${said}`,
+  );
+
+  // The throughput measurement, which #116 was closed without having an
+  // instrument for. What is asserted is that it is a real quotient of
+  // two real quantities — virtual time covered over wall time spent —
+  // and not that it is any particular number: the number is a property
+  // of the machine it ran on and of nothing in this repository.
+  const throughput =
+    /^amberfolio: throughput virtual=([\d.]+)s wall=([\d.]+)s factor=([\d.]+)x steps=(\d+) steps\/s=(\d+)$/m.exec(
+      said,
+    );
+  check(throughput !== null, `the driver printed no throughput line:\n${said}`);
+  if (throughput !== null) {
+    const [, virtualSeconds, wallSeconds, factor, steps] = throughput;
+    check(Number(virtualSeconds) > 0, 'the driver covered no virtual time');
+    check(Number(wallSeconds) > 0, 'the driver spent no wall time');
+    check(Number(steps) > 0, 'the driver took no steps');
+    check(
+      Math.abs(
+        Number(factor) / (Number(virtualSeconds) / Number(wallSeconds)) - 1,
+      ) < 0.01,
+      `factor=${factor} is not virtual/wall (${virtualSeconds}/${wallSeconds})`,
+    );
+  }
+
+  // The state hash: the same digest a recording's checkpoint carries
+  // (docs/replay.md §2), and the one line two hosts' runs can be
+  // compared on. Two runs of one script must end in the same machine, or
+  // nothing above this is worth reading.
+  const hashOf = (text) => /^amberfolio: state hash=([0-9a-f]{64})$/m.exec(text)?.[1];
+  const hash = hashOf(said);
+  check(hash !== undefined, `the driver printed no state hash:\n${said}`);
+  const again = run('--frames', '4', '--press', 'A@1', '--press', 'Up@2');
+  check(again.status === 0, `the second run exited ${again.status}: ${again.stderr}`);
+  check(
+    hashOf(again.stdout ?? '') === hash,
+    'two runs of one script disagreed about the machine they ended in',
+  );
+
+  // The picture. A PPM the SDL host's `--dump` could have written, with
+  // the machine's own dimensions in its header — parsed rather than
+  // hashed, because what is asserted is that a frame was written at all
+  // and in the format both hosts agree on.
+  const ppm = readFileSync(`${dump}.ppm`);
+  const ppmHeader = 'P6\n320 200\n255\n';
+  check(
+    ppm.subarray(0, ppmHeader.length).toString('latin1') === ppmHeader,
+    `the dumped frame's header is ${JSON.stringify(ppm.subarray(0, 16).toString('latin1'))}`,
+  );
+  check(
+    ppm.length === ppmHeader.length + 320 * 200 * 3,
+    `the dumped frame is ${ppm.length} bytes, expected ${ppmHeader.length + 320 * 200 * 3}`,
+  );
+
+  // And the refusal. A seam whose addresses are facts about another
+  // binary must not quietly not happen: a script that asked for the
+  // cheats seam and got a plain machine would be the worst outcome this
+  // whole apparatus has (PLAN.md §5), so the run ends and says why.
+  const refused = run('--frames', '1', '--seam', 'cheat-invulnerable');
+  check(refused.status === 1, `a refused seam exited ${refused.status}`);
+  check(
+    (refused.stdout ?? '').includes(
+      'amberfolio: seam cheat-invulnerable refused (wrong_binary)',
+    ),
+    `a refused seam did not say why:\n${refused.stdout}`,
+  );
+  const unknown = run('--frames', '1', '--seam', 'no-such-seam');
+  check(unknown.status === 1, `a seam that does not exist exited ${unknown.status}`);
+
+  // A key the 83-key board never had is refused at the command line
+  // rather than posted as something else, and a listing is a question
+  // whose answer is the whole of what was asked for.
+  const bad = run('--press', 'F11@1', '--frames', '1');
+  check(bad.status === 2, `--press F11 exited ${bad.status}, expected a usage failure`);
+  const listed = run('--seams');
+  check(listed.status === 0, `--seams exited ${listed.status}`);
+  check(
+    !(listed.stdout ?? '').includes('amberfolio: stop '),
+    '--seams ran the machine; a listing is a question, not a run',
+  );
+
+  rmSync(scratch, { recursive: true, force: true });
+  console.log(
+    'smoke: the headless web driver ran a disk, pressed keys, dumped a frame ' +
+      'and measured itself',
+  );
+}
+
+// --- The driver's own parsing (M4-W1, #108) ------------------------------
+//
+// Pure functions, so they need no module and no process — and they are
+// where the two hosts' *procedures* meet. `docs/playable.md` writes every
+// key of every leg in SDL's spelling; a leg drivable there and not here
+// would be parity in the machine and none in the practice. So both
+// spellings resolve, through host.mjs's one scancode table and no second
+// one.
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const pairs = {
+    KeyA: 0x1e,
+    A: 0x1e,
+    a: 0x1e,
+    Enter: 0x1c,
+    Return: 0x1c,
+    ArrowUp: 0x48,
+    Up: 0x48,
+    Numpad5: 0x4c,
+    'Keypad 5': 0x4c,
+    Digit7: 0x08,
+    7: 0x08,
+    Escape: 0x01,
+    F10: 0x44,
+  };
+  for (const [name, scancode] of Object.entries(pairs)) {
+    check(
+      keyNameToScancode(name) === scancode,
+      `--press ${name} resolves to ${keyNameToScancode(name)}, expected ` +
+        `0x${scancode.toString(16)}`,
+    );
+  }
+  for (const name of ['F11', 'MetaLeft', 'Menu', '']) {
+    check(
+      keyNameToScancode(name) === undefined,
+      `--press ${name} resolved to a scancode the 83-key board does not have`,
+    );
+  }
+
+  // The command line refuses rather than guesses, and every refusal says
+  // what was wrong with what it was given.
+  check(parseDriveArgs([]).error !== undefined, 'the driver accepted no arguments at all');
+  check(
+    parseDriveArgs(['dir']).error !== undefined,
+    'the driver accepted a directory with no program',
+  );
+  check(
+    parseDriveArgs(['dir', 'P.EXE', '--press', 'A']).error !== undefined,
+    'the driver accepted a --press with no frame',
+  );
+  check(
+    parseDriveArgs(['dir', 'P.EXE', '--speed', 'pentium']).error !== undefined,
+    'the driver accepted a speed preset that does not exist',
+  );
+  check(
+    parseDriveArgs(['dir', 'P.EXE', '--dump-every', '10']).error !== undefined,
+    'the driver accepted --dump-every with no --dump to share a prefix with',
+  );
+  check(
+    parseDriveArgs(['dir', 'P.EXE', '--frames', '-3']).error !== undefined,
+    'the driver accepted a negative frame budget',
+  );
+  const ok = parseDriveArgs([
+    'dir', 'P.EXE', '--frames', '10', '--press', 'Return@4', '--seam', 'a',
+    '--seam', 'b', '--speed', '386', '--', 'ONE', 'TWO',
+  ]);
+  check(ok.error === undefined, `a good command line was refused: ${ok.error}`);
+  check(
+    ok.frames === 10 && ok.seams.length === 2 && ok.speed === '386',
+    'the command line did not parse',
+  );
+  // The single leading space DOS's own command-line parsing leaves in
+  // front of a tail — the same shape the SDL host hands the loader.
+  check(ok.tail === ' ONE TWO', `the command tail is ${JSON.stringify(ok.tail)}`);
+  check(
+    ok.presses[0]?.scancode === 0x1c,
+    'Return@4 did not resolve to the Enter scancode',
+  );
+
+  // The PPM encoder, on a picture small enough to write out by hand: two
+  // pixels, palette entries 1 and 0, and the P6 header both hosts agree
+  // on.
+  const encoded = encodePpm(
+    2,
+    1,
+    new Uint8Array([1, 0]),
+    new Uint8Array([9, 8, 7, 6, 5, 4]),
+  );
+  check(
+    encoded.toString('latin1') ===
+      `P6\n2 1\n255\n${String.fromCharCode(6, 5, 4, 9, 8, 7)}`,
+    `the PPM encoder wrote ${JSON.stringify(encoded.toString('latin1'))}`,
+  );
+
+  console.log("smoke: the driver reads both hosts' key spellings and refuses the rest");
+}
+
+// --- The AudioWorklet's underrun policy (M4-A1 #106, M4-W1 #108) ---------
+//
+// `tests/core/machine/platform_test.cpp`'s
+// `AnUnderrunHoldsTheLevelAndKeepsItsPlace` pins core's rule. This is its
+// counterpart one layer out, and it exists because the two hosts had
+// quietly disagreed: the worklet filled silence where core holds. The
+// reconciliation (audio-worklet.mjs's own top comment) is hold across the
+// seam, then fade — core's rule for as long as core's reasoning holds,
+// and silence once it stops holding, because a stalled tab is not a pull
+// that ran a few microseconds past the horizon.
+//
+// The processor is a class in a global scope a browser provides
+// (`AudioWorkletGlobalScope`), so the three things that scope has and
+// node does not are stubbed here. Stubbing them is the whole trick: the
+// file under test is imported and run unmodified, and what is faked is
+// the room it runs in, not the thing being checked.
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const rate = 48000;
+  globalThis.sampleRate = rate;
+  globalThis.AudioWorkletProcessor = class {
+    constructor() {
+      this.port = { postMessage: (data) => posted.push(data), onmessage: null };
+    }
+  };
+  const posted = [];
+  let registeredAs = null;
+  let Processor = null;
+  globalThis.registerProcessor = (name, type) => {
+    registeredAs = name;
+    Processor = type;
+  };
+
+  await import('./audio-worklet.mjs');
+  check(
+    registeredAs === 'amberfolio-speaker',
+    `the processor registered as ${JSON.stringify(registeredAs)}; app.mjs asks for` +
+      ' "amberfolio-speaker"',
+  );
+
+  if (Processor !== null) {
+    const processor = new Processor();
+    const quantum = () => {
+      const channel = new Float32Array(128);
+      processor.process([], [[channel]]);
+      return channel;
+    };
+
+    // One chunk of a level held high — 64 samples, half a quantum, so
+    // the starvation begins inside the same call that plays them.
+    processor.port.onmessage({ data: new Float32Array(64).fill(1) });
+    const played = quantum();
+    check(
+      played.slice(0, 64).every((sample) => sample === 1),
+      'the processor did not play the chunk it was posted',
+    );
+    // The seam: held at the level the last real sample was at, which is
+    // exactly what `audio_timeline::render()` does when it runs out of
+    // settled time. A step to zero here would be an edge in the output
+    // that the machine never generated.
+    check(
+      played.slice(64).every((sample) => sample === 1),
+      'the first samples of an underrun were not the held level',
+    );
+    check(
+      posted.length === 1 && posted[0].underruns === 1,
+      `the processor reported ${JSON.stringify(posted)}, expected one underrun`,
+    );
+
+    // And then it goes away. `holdSamples` is 3 ms and `rampSamples` 6,
+    // so by 16 ms of starvation there is nothing left — a cone that is
+    // not being driven should not be left deflected, however quiet a
+    // constant deflection is.
+    let sample = 1;
+    let quanta = 0;
+    while (sample !== 0 && quanta < 16) {
+      const filled = quantum();
+      check(
+        filled.every((value) => value <= sample + 1e-6 && value >= 0),
+        'the fade to silence was not monotonic',
+      );
+      sample = filled[filled.length - 1];
+      quanta += 1;
+    }
+    check(sample === 0, `after ${quanta} quanta of starvation the output is ${sample}`);
+    check(
+      quanta * 128 <= Math.round(rate * 0.02),
+      `the fade took ${quanta * 128} samples, which is more than 20 ms`,
+    );
+
+    // One run of starvation is one underrun, however many quanta it
+    // lasted: the count is of events a listener would notice, not of
+    // samples nobody generated.
+    check(
+      posted.length === 1,
+      `a single stall reported ${posted.length} underruns`,
+    );
+
+    // And it recovers: a chunk arriving after a stall plays at once, and
+    // the next stall counts as a second one.
+    processor.port.onmessage({ data: new Float32Array(8).fill(-1) });
+    const recovered = quantum();
+    check(
+      recovered[0] === -1,
+      `after a stall the next chunk played as ${recovered[0]}, expected -1`,
+    );
+    check(
+      posted.length === 2 && posted[1].underruns === 2,
+      'the stall after a recovery was not counted as a second underrun',
+    );
+  }
+
+  console.log(
+    'smoke: the speaker worklet holds the level across a short gap and fades to silence',
+  );
 }
 
 if (problems.length > 0) {

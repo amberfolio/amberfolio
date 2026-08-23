@@ -54,6 +54,7 @@ skip.
 | `load.rec` | external, **the disk `save.rec` wrote** | the other half of the round trip — `LOAD SAVED GAME`, slot A, and the party back at 0,4 W with the same character, the same AC and the same hit points. 12,069 frames, 100 checkpoints |
 | `fight.rec` | external, the disk `save.rec` wrote | leg 2 — the saved party loaded, walked twelve steps north into the slums and into a group of orcs, the fight handed to the computer with `QUICK`. A lone first-level fighter does not survive it: `THE END`, the party destroyed. 20,115 frames, 177 checkpoints |
 | `fight-cheat.rec` | the same | the same script, the same disk and the same tick budget with **`cheat-invulnerable` on and nothing else changed**: the fighter comes out standing on his full eight hit points at `CONTINUE BATTLE`. The seam fires nine times |
+| `temple.rec` | external, **the shipped save slots** | leg 5 — slot A loaded, routed to the healing temple at 3,1, and a cure bought: `CURE BLINDNESS` cast on a fighter who is not blind and paid for at a thousand gold, which is two hundred platinum off his sheet. The sheet is read at the end, so the session pins the money as well as the machine. 18,801 frames, 181 checkpoints, 68 key events |
 
 `save.rec` and `load.rec` are #105's round trip, recorded. They are two
 sessions and not one because they have to be: a load is a fresh run over
@@ -61,6 +62,11 @@ the directory the save left behind, and a recording carries its starting
 conditions rather than assuming them.
 
 ## A pair, and the one check CI can make about a game session
+
+`temple.rec` is #104's first recorded transaction. Its disk is a third
+snapshot — the installation's own save slots, untouched — because the
+party a city service wants is one with money in it, and neither the
+pristine disk nor the one `save.rec` wrote has one.
 
 `fight.rec` and `fight-cheat.rec` are the same run one flag apart, and
 the second's descriptor says so:

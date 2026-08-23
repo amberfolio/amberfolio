@@ -44,6 +44,7 @@ import {
   loadDemoProgram,
   scancodeFor,
   decodeConsoleBytes,
+  SPEED_PRESETS,
   AF_OK,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
@@ -66,6 +67,8 @@ const STEPS_INPUT_ID = 'steps';
 const TRACE_CHECKBOX_ID = 'trace';
 const EDITION_ID = 'edition';
 const SEAMS_ID = 'seams';
+const SPEED_SELECT_ID = 'speed';
+const HEALTH_ID = 'health';
 
 /// A frame's worth of audio, in samples, at this rate — matched to the
 /// video frame rate so one rAF callback pulls roughly one frame of both
@@ -84,6 +87,8 @@ export function runDevPage() {
   const statusEl = el(STATUS_ID);
   const consoleEl = el(CONSOLE_ID);
   const programSelect = el(PROGRAM_SELECT_ID);
+  const speedSelect = el(SPEED_SELECT_ID);
+  const healthEl = el(HEALTH_ID);
 
   const setStatus = (text) => {
     if (statusEl) statusEl.textContent = text;
@@ -129,8 +134,31 @@ export function runDevPage() {
     machine.reset();
     const { major, minor, patch } = loaded.version;
     appendConsole(`[host] amberfolio ${major}.${minor}.${patch}\n`);
+    if (speedSelect && speedSelect.value !== 'xt') applySpeed();
     return machine;
   };
+
+  // --- Speed: #107's presets, this page's half (#108) --------------------
+  //
+  // The same four names the SDL host's `--speed` takes and the web
+  // driver's `--speed` takes; host.mjs owns the mapping onto abi.h's
+  // numbers so that no host spells a preset its own way.
+  //
+  // A governor and not a fast-forward: virtual time still decides every
+  // deadline, tone and tick, so a run at `at` is exactly as deterministic
+  // as one at `xt` — what changes is how much of it fits into a second of
+  // yours, which on this host is the question #108 exists to ask. It is
+  // applied whenever the control changes and not only at boot, because
+  // the useful thing to do with it here is to turn it up while watching
+  // the readout below and find where the browser stops keeping up.
+  function applySpeed() {
+    if (!machine || !speedSelect) return;
+    const preset = SPEED_PRESETS[speedSelect.value];
+    if (preset === undefined) return;
+    machine.setSpeed(preset);
+    appendConsole(`[host] speed ${speedSelect.value}\n`);
+  }
+  if (speedSelect) speedSelect.addEventListener('change', applySpeed);
 
   const claimTheRun = () => {
     if (started) return false;
@@ -165,6 +193,7 @@ export function runDevPage() {
         canvas,
         setStatus,
         appendConsole,
+        healthEl,
         stepBudget: 0,
         message:
           'running - the machine draws a pattern, plays a tone, and echoes ' +
@@ -279,6 +308,7 @@ export function runDevPage() {
         canvas,
         setStatus,
         appendConsole,
+        healthEl,
         stepBudget: Number.isFinite(budget) && budget > 0 ? budget : 0,
         message: `running ${program} - the console below is what it says and ` +
           'what the machine refuses.',
@@ -324,7 +354,10 @@ function renderSeams(machine, container, appendConsole) {
 }
 
 /// Present, run, and report — everything both entry points share.
-async function run(machine, { canvas, setStatus, appendConsole, stepBudget, message }) {
+async function run(
+  machine,
+  { canvas, setStatus, appendConsole, healthEl, stepBudget, message },
+) {
   const ctx = canvas.getContext('2d');
   const width = machine.frameWidth();
   const height = machine.frameHeight();
@@ -388,6 +421,20 @@ async function run(machine, { canvas, setStatus, appendConsole, stepBudget, mess
   // user-gesture handler; resume() is a no-op if it is already running.
   await audioContext.resume();
 
+  // The worklet's own starvation count, which is a different number from
+  // core's: `machine.audioUnderruns()` counts pulls that ran past settled
+  // virtual time, and this counts quanta the audio thread had no chunk
+  // for. Both are host-pacing symptoms and neither is machine state
+  // (platform.h) — and until #108 the page showed neither, so "why does
+  // it sound wrong" had no number attached on either side of the
+  // boundary. The worklet posts this only when it changes, so the message
+  // rate is bounded by the thing being counted.
+  let workletUnderruns = 0;
+  speakerNode.port.onmessage = (event) => {
+    const count = event.data?.underruns;
+    if (typeof count === 'number') workletUnderruns = count;
+  };
+
   setStatus(message);
 
   // --- The run loop: requestAnimationFrame, per abi.h's own snippet ------
@@ -402,6 +449,7 @@ async function run(machine, { canvas, setStatus, appendConsole, stepBudget, mess
   // (platform.h's pull contract) — most callbacks will find exactly one
   // new frame, since the renderer's own deadline is also 60 Hz.
   let next = 0;
+  let frames = 0;
   let lastGeneration = -1;
 
   /// The run is over: say why, in the one fixed format the desktop host
@@ -409,6 +457,7 @@ async function run(machine, { canvas, setStatus, appendConsole, stepBudget, mess
   /// same stop line at the same step" (#84) is a comparison anybody can
   /// make by eye.
   const finish = (how) => {
+    showHealth();
     setStatus(
       how === AF_RUN_END_STOPPED
         ? `the machine stopped - see the report below.`
@@ -453,6 +502,25 @@ async function run(machine, { canvas, setStatus, appendConsole, stepBudget, mess
     appendConsole(text.slice(0, lastBreak + 1));
   };
 
+  /// The health readout: how far the run has got, and what the audio
+  /// path had to paper over to keep up. #106's policies have a visible
+  /// half and this is it.
+  ///
+  /// Every half virtual second rather than every frame. It is a readout
+  /// and not an instrument — the driver (`tools/drive.mjs`) is where a
+  /// number gets measured — and writing the same three figures into the
+  /// DOM sixty times a second is itself the sort of thing that causes
+  /// the underruns it would be reporting.
+  const showHealth = () => {
+    if (!healthEl) return;
+    healthEl.textContent =
+      `frames=${machine.frameGeneration()} steps=${Math.round(machine.steps())} ` +
+      `| audio underruns=${Math.round(machine.audioUnderruns())} ` +
+      `resyncs=${Math.round(machine.audioResyncs())} ` +
+      `starved=${workletUnderruns}`;
+  };
+  showHealth();
+
   const frame = () => {
     if (stepBudget !== 0 && machine.steps() >= stepBudget) {
       finish(AF_RUN_END_STEP_BUDGET);
@@ -481,6 +549,9 @@ async function run(machine, { canvas, setStatus, appendConsole, stepBudget, mess
     const audioFrames = Math.round(AUDIO_SAMPLE_RATE / 60);
     const { samples } = machine.renderAudio(audioFrames, AUDIO_SAMPLE_RATE);
     speakerNode.port.postMessage(samples, [samples.buffer]);
+
+    if (frames % 30 === 0) showHealth();
+    frames += 1;
 
     if (status !== AF_OK) {
       // Keep presenting and draining the console after a stop

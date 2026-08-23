@@ -34,7 +34,7 @@ headless; three are not.
 | `sdl-host-reports-a-stop` | headless: the stop report's shape, a bounded hang, a dumped frame |
 | `sdl-host-demo-disk` | the demo disk's two programs are written |
 | `sdl-host-presents-a-frame` | windowed: the picture that reached the render target, and a keystroke that reached the program |
-| `sdl-host-sounds-a-tone` | windowed: what reached the audio device was a tone |
+| `sdl-host-sounds-a-tone` | windowed: what reached the audio device was a tone, and the edge list behind it is the divisor the program asked for |
 
 The last two run the host **without** `--headless`, under SDL's
 `dummy` video and audio drivers. Those are not stubs of
@@ -56,7 +56,12 @@ Two host options exist for this and are documented in
   a scale that is not integer all come back as a mismatch count. It also
   tallies what SDL's audio thread did — callbacks, samples, and how many
   of those samples were not silence — and fails the process if nothing was
-  ever presented or the picture did not match.
+  ever presented or the picture did not match. Since M4-A1 (#106) it also
+  prints the timeline's two pacing counters, underruns and resyncs, and
+  the ring's dropped-edge count; §4 says what each means.
+- **`--dump PREFIX`** writes three files, and the third arrived with the
+  same issue: `PREFIX.edges`, the edge list the machine published, one
+  line of `tick level` per output transition. §4 again.
 - **`--press KEY@FRAME`** pushes a real SDL keyboard event onto SDL's own
   queue at frame `FRAME`, so it comes back out of `SDL_PollEvent` and
   travels the path a typed key travels, mapping table included. `KEY` is
@@ -256,14 +261,147 @@ green runners, because it is the only claim any of them cannot make.
 
 ---
 
-## 4. The wasm host
+## 4. The speaker, measured
+
+The paragraph above asks a person to listen for concert A. That is the
+right check for "did a pressure wave leave the speaker", and it is the
+wrong one for everything else — #106's own words for it are "it sounds
+right in a quiet room to one person". This section is what replaced the
+adjectives, and what is still owed.
+
+### The two questions, and which artefact answers which
+
+`platform.h` is emphatic that the **edge list** — "at tick T the speaker
+output became high" — is the canonical audio state and the float samples
+are not. That makes two separate questions, with two owners in the code:
+
+1. **Is the machine producing the right edges at the right ticks?** The
+   speaker, the PIT and the gate bit own that.
+2. **Is the render of those edges right?** `audio_timeline::render()` owns
+   that, and nothing else does.
+
+Until M4-A1 only the second could be inspected: `--dump` wrote a WAV, and
+a WAV is a rendering. The edge list had a count and a digest and no way to
+read it. It has one now.
+
+```sh
+./build/<preset>/hosts/sdl/<config>/amberfolio <dir> DEMO.EXE \
+    --verify --press Escape@60 --dump /tmp/tone
+```
+
+`/tmp/tone.edges` is a text file — a two-line header saying the tick rate,
+then one `tick level` line per transition, then a `# edges N dropped M`
+trailer so a truncated dump is told apart from a quiet run:
+
+```
+# amberfolio audio edges
+# pit-input-hz 1193182
+# tick level
+31488 1
+32844 0
+34200 1
+```
+
+`32844 - 31488` is 1356, which is half of 2712, which is the divisor
+`DEMO.EXE` writes to channel 2 — 1,193,182 / 2712 = 440.0 Hz. That is a
+fact about the machine, checkable with `awk`, that no amount of listening
+would have produced. `sdl-host-sounds-a-tone` now checks exactly it: over
+the second the run lasts, 857 of the file's 858 edges are 1356 ticks apart
+and the odd one out is the last — the program clearing the gate on its way
+out, which lands wherever the keystroke did.
+
+The log inside the machine is off unless `--dump` asks for it, drains to
+the host every frame rather than accumulating, and is read only on the
+machine thread — so it cannot perturb what the audio thread's `render()`
+sees, and it is not part of machine state. A unit test asserts both: the
+rendered samples are bit-identical whether or not somebody was reading,
+and a machine being watched has the same state hash as one that is not.
+
+### What the box filter actually does
+
+`tests/core/machine/platform_test.cpp`'s `AudioFilter` suite measures the
+reconstruction rather than describing it. The numbers, all reproducible by
+running that suite:
+
+| measurement | value |
+| --- | --- |
+| mean of a 50% tone over whole periods | **0.125**, to eleven decimal places |
+| duty recovered from the samples, at 12.5 / 25 / 50 / 87.5% | the duty, to 1e-11 |
+| a 1000.99 Hz tone at 44,100 | **1000.908 Hz**, mean 0.125124 |
+| the same edge list at 48,000 | **1001.043 Hz**, mean 0.125125 |
+| the two rates' disagreement | **0.013% in frequency, 1.5e-6 in mean** |
+| where a rising edge lands against the fitted period | within **0.82 samples** at 44,100, **0.75** at 48,000 (19 µs, 16 µs) |
+
+Two findings follow.
+
+**The DC offset is real, it is 0.125 at 50% duty, and it is a property to
+document rather than a defect to fix in `render()`.** Samples run 0.0 to
+0.25 and never go negative, by the design decision that makes silence
+exactly 0.0 (#49) — so a tone carries a quarter-scale offset for as long
+as it plays. The filter is not wrong: 0.125 *is* the average of a unipolar
+square, and the real cone is displaced too. The caveat is the one #106's
+third comment found: a *gate held on* is not a tone. The game's combat hit
+is 19 ms of constant 0.25 with no sign change at all, and a sink handed
+that gets a thump and a settle rather than a click. If anything is done
+about this it should be a high-pass in a host's reconstruction, chosen
+against that burst — and **not** in `render()`, because the samples would
+stop being the exact integral of the edge list, which is the one thing
+that filter is for.
+
+**Nothing here argues for a better-than-box filter in v1.** The two rates
+the two hosts actually pull at hear the same note to about a
+two-thousandth of a semitone, and what separates them is a sample of edge
+placement — quantisation the pull rate imposes, which no filter removes.
+
+### Underruns and resyncs, and how a person sees them
+
+`platform.h` states a policy for each, and until M4-A1 no host read either
+counter, so both were specified and unreportable. Every run now prints a
+line when there is something to say, and `--verify` prints it always:
+
+```
+amberfolio: audio underruns=11 resyncs=0 dropped edges=0
+```
+
+- **underruns** — calls where the next sample would have reached past the
+  settled horizon. The policy is *hold the last level and do not advance
+  the cursor*: nothing is lost, and playback resumes at exactly the tick
+  it stopped at when the machine catches up. A windowed run almost always
+  underruns a few times at the start, because SDL's device pulls before
+  the machine has settled any virtual time at all; the eleven above are
+  that, in a one-second run. A number that grows through a run is a host
+  that cannot keep up.
+- **resyncs** — calls where the horizon had run more than 200 ms ahead of
+  playback. The policy is *jump the cursor to 20 ms behind the horizon and
+  throw the backlog away*: latency is bounded by construction rather than
+  by hope. Expect these under `--fast`, which produces sound faster than a
+  48 kHz device can consume it, and under a dragged window or a stalled
+  tab.
+- **dropped edges** — the ring itself overflowed, which is the loud one:
+  sound the machine made that no host ever got. It should be zero, and the
+  smoke test asserts that it is.
+
+### What this section does not settle
+
+- **The game as the workload.** The measurements above are of self-written
+  tones. Combat, doors and spell effects have been heard once, by one
+  person, on one machine (#106's second and third comments); no capture of
+  them exists in this repository and none ever will.
+- **Whether it sounds right.** No measurement replaces §3's ear.
+- **The browser.** The AudioWorklet's underrun policy and its counters are
+  #108's, and nothing here touched `hosts/web/`.
+
+---
+
+## 5. The wasm host
 
 `ctest --preset wasm` runs the module under node, headless. It asserts the
 ABI's export list, the embedded demo program's framebuffer hash and key
-echo, and — since M3-F2 (#84) — the filesystem path a player's directory
-travels. The browser half (canvas, AudioWorklet, keyboard) has the same
-shape of gap the desktop host had, and `scripts/serve-web.py` plus a
-browser is how a person closes it.
+echo, the filesystem path a player's directory travels (M3-F2, #84), and
+— since M4-W1 (#108) — the headless driver below and the speaker
+worklet's underrun policy. The browser half (canvas, AudioWorklet,
+keyboard) has the same shape of gap the desktop host had, and
+`scripts/serve-web.py` plus a browser is how a person closes it.
 
 ```sh
 cmake --build --preset wasm
@@ -299,6 +437,13 @@ Three things are worth knowing about what it does:
   scancodes. They were simply absent until #84, which made a
   keyboard-driven game unplayable in a browser while the desktop host had
   had them since M2-H1; `hosts/web/tests/smoke.mjs` checks the rows.
+- **The speed preset is a control, not a build option** (#107, #108). The
+  same four names the desktop host's `--speed` takes, applied whenever it
+  changes rather than only at boot — the useful thing to do with it here
+  is to turn it up while watching the readout under the canvas and find
+  where the browser stops keeping up. It is a governor and not a
+  fast-forward: virtual time still decides every deadline, so a run at
+  `at` is exactly as deterministic as one at `xt`.
 
 ### What a browser run says about itself
 
@@ -339,6 +484,147 @@ Three things follow that are worth knowing before you drive a leg here:
   the count when the run ends, and the desktop host is still the place to
   take a full trace.
 
+### Driving it headlessly: `tools/drive.mjs`
+
+Everything above describes a page a person clicks. M4-W1 (#108) adds the
+other thing the desktop host has had since M3: a way to *spell* a run.
+
+```sh
+cmake --build --preset wasm-release
+node build/wasm/hosts/web/Release/drive.mjs <dir> <PROGRAM.EXE> [options]
+```
+
+It is the dev page's own run loop with the browser taken out — the same
+`host.mjs` `Machine`, the same one-frame-per-iteration cadence `abi.h`
+documents, the same audio pull, the same log drain — and it takes a
+directory exactly as the SDL host does. Its source is `hosts/web/tools/`;
+the build places it beside the module and the page's own files, which is
+why it imports `./host.mjs` with no path in it.
+
+| option | what it is for |
+| --- | --- |
+| `--frames N`, `--until TICKS`, `--steps N` | bound the run. With none of them it ends when the machine does, which for a program that never stops is never. |
+| `--press KEY@FRAME` | post a key at the top of frame `FRAME`, counting 60 Hz frames of virtual time. Repeatable. |
+| `--seam ID` | turn one seam on after the load and before the first step. Repeatable, and a refusal **ends the run**: a script that asked for the cheats seam and silently got a plain machine would be the worst outcome this apparatus has. |
+| `--seams` | list every seam this build carries, in the state the run would have started in, and exit without running. |
+| `--speed xt\|turbo\|at\|386` | the governor, spelled as on the desktop host. |
+| `--trace` | the trace ring and the service-call and file channels, as `--trace` does there. |
+| `--dump PREFIX` | `PREFIX.ppm` (the last composed frame) and `PREFIX.wav` (the speaker), the same two files the SDL host's `--dump` writes. |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames — the "what did the screen *do*" instrument, which the browser had no equivalent of. |
+| `-- ARGUMENTS` | the command tail, with DOS's leading space. |
+
+Two differences from the desktop host, both deliberate and both worth
+knowing before a comparison is made:
+
+- **Key names take either spelling.** `--press KeyA@60` is the browser's
+  name for the key and `--press A@60` is SDL's; both resolve, through
+  `host.mjs`'s one scancode table and no second one. That is so a leg
+  written down in [`docs/playable.md`](playable.md) can be typed here
+  unchanged — parity in the machine is worth little without parity in the
+  procedure.
+- **`--steps N` is coarser here.** `af_machine_run_until` takes a tick and
+  the ABI has no step-bounded run call, so a step budget is checked
+  between frames and the run ends on the first frame boundary at or past
+  N. The SDL host clamps the budget into the slice and ends on step N
+  exactly. `--frames` and `--until` are exact to the machine's own step
+  granularity, and the stop report always names the step it really ended
+  on — so the comparison is still made on a number both hosts state.
+
+A run prints the load line, the edition, every key it posted, the log as
+it happens, and then a report block:
+
+```
+amberfolio: stop reason=tick_budget steps=298296 ticks=1193184 frames=61 ...
+amberfolio: state hash=<64 hex characters>
+amberfolio: audio underruns=0 resyncs=0
+amberfolio: seams cheat-invulnerable unavailable wrong_binary - ...
+amberfolio: throughput virtual=1.000s wall=0.008962s factor=111.59x steps=298296 steps/s=33286763
+```
+
+The first line is core's, character for character the desktop host's. The
+`state hash` is the digest a recording's checkpoint carries
+([`docs/replay.md`](replay.md) §2), so two hosts' runs compare on one line
+rather than by eye over a picture. The seam table is the SDL host's
+`--seams` shape.
+
+**The throughput line is the one thing here that is measured rather than
+reported.** #116 was closed on the strength of an out-of-tree number and
+there was no instrument in the tree that produced one; this is it. Wall
+time appears in this program and nowhere near `core/`
+(`scripts/check-host-time.sh`), and the loop is unpaced — no
+`requestAnimationFrame`, no sleep — so the factor is a *ceiling*: how
+much faster than real time this module can run this program on this
+machine, not what a browser will do. Wall seconds are printed to the
+microsecond because a short run of a small program is single-digit
+milliseconds and three decimals would round the divisor away.
+
+Everything the driver prints goes to stdout, including the lines the SDL
+host writes to stderr. To diff two runs:
+
+```sh
+amberfolio <dir> P.EXE --headless --until 40000000 2>desktop.txt
+node .../drive.mjs <dir> P.EXE --until 40000000 >web.txt
+diff <(grep '^amberfolio: stop' desktop.txt) <(grep '^amberfolio: stop' web.txt)
+```
+
+**It reads nothing but the directory it is given.** No game content is in
+it and none may ever be — not bytes, not names, not screen text
+(CONTRIBUTING.md). What CI runs it against is the repository's own
+`tests/sessions/spin/`: `hosts/web/tests/smoke.mjs` spawns it as a
+process and asserts the load line, the stop report, the seam table, the
+audio counters, the state hash (twice, and they must agree), the
+throughput line's arithmetic, the PPM it wrote, and that a seam keyed to
+another binary is refused with an exit code. What CI does **not** check —
+here or on the desktop side, where there is no such case either — is a
+seam being *accepted*: that needs a program a seam's addresses are facts
+about, and no such program is in this repository.
+
+### The audio path under load, and the underrun policy
+
+`app.mjs` pulls one frame of audio per `requestAnimationFrame` callback
+on the main thread and posts each chunk to the AudioWorklet, which plays
+them back in order. Two things can go wrong with that and they are
+counted separately, both now shown on the page beside the frame and step
+counts:
+
+- **`underruns` / `resyncs`** are core's (`af_machine_audio_underruns`,
+  `af_machine_audio_resyncs`): a pull that ran past settled virtual time,
+  and a pull that had to jump forward to bound latency.
+- **`starved`** is the worklet's: a render quantum the audio thread had no
+  chunk for, counted once per run of starvation rather than once per
+  sample.
+
+Neither is machine state (`platform.h`), and nothing about them
+back-pressures into the machine — a run that sounded wrong is still the
+same run.
+
+**The two hosts used to disagree about what an underrun sounds like, and
+#108 settles it.** `audio_timeline::render()` holds the last level
+(`platform_test.cpp`'s `AnUnderrunHoldsTheLevelAndKeepsItsPlace`); the
+worklet filled silence. The reconciliation is not to copy core's line but
+to follow its reasoning:
+
+- Core holds because its underrun is **not a gap in the waveform**. The
+  cursor does not advance, so the audio for that span is not lost but not
+  yet made; the level held is the level the cone is genuinely at, the next
+  pull resumes on the same tick, and the wave continues. It lasts as long
+  as one pull runs past the horizon — microseconds.
+- The worklet's underrun is a different event with the same name: the main
+  thread did not post in time, and how long that lasts is a question about
+  the browser's scheduler. A backgrounded tab is seconds, and the backlog
+  cap means a long stall does not even replay what it missed. A held
+  non-zero level for that long is not a continuation of anything — it is a
+  DC offset: silent in itself, but a deflected cone, a bias in whatever
+  the destination mixes it with, and a step at both ends of the gap.
+
+So the worklet now **holds across the seam and then fades to silence** —
+the last real sample for three milliseconds, ramped to zero over six
+more, silence thereafter. Core's rule for as long as core's reasoning
+holds, and an honest nothing once it stops. `smoke.mjs` drives the
+processor directly (stubbing the three globals `AudioWorkletGlobalScope`
+provides) and asserts the hold, the monotonic fade, the silence, and that
+one stall is counted once.
+
 ### The comparison M3's exit criterion rests on
 
 PLAN.md §7 asks for first light "verified locally on desktop **and** web",
@@ -351,7 +637,10 @@ of that are one command each, and the two outputs are compared by eye:
 ```
 
 against the page's console after **boot**. The `amberfolio: stop ...`
-lines should be identical, field for field.
+lines should be identical, field for field. Since #108 the web half of
+that comparison need not be a person clicking: `tools/drive.mjs` above
+does it from a command line, and adds a state hash to compare on as well
+as a stop line.
 
 If `frames=` disagrees and nothing else does, the two machines were not
 powered on the same way rather than not run the same way: `reset()` blanks

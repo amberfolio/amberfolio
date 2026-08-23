@@ -8,6 +8,7 @@
 //                                     [--verify] [--press KEY@FRAME]
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
+//                                     [--watch OFF[:N]]
 //                                     [--seam ID] [--seams] [--speed NAME]
 //                                     [--fast N|max] [-- ARGUMENTS...]
 //
@@ -43,13 +44,27 @@
 //     for and not somewhere inside the frame after it: a stop you cannot
 //     reproduce exactly is not a worklist entry either.
 //
-//   --dump PREFIX    write PREFIX.ppm and PREFIX.wav when the run ends
+//   --dump PREFIX    write PREFIX.ppm, PREFIX.wav and PREFIX.edges
 //
 //     The frame the machine composed and the sound it made, in two
 //     formats every viewer opens (dump.h). docs/machine.md §7's warning
 //     about goldens is the argument: "the title renders" is a claim to
 //     look at, and no test in this repository will ever run the file
 //     that produces it.
+//
+//     `PREFIX.edges` is the third, and it is a different kind of thing
+//     from the other two (M4-A1, #106). The WAV is *a rendering* of the
+//     sound at 48 kHz through a box filter; the edges file is the sound
+//     as the machine holds it — one line per output transition, `tick
+//     level`, in PIT input ticks. platform.h calls the edge list the
+//     canonical audio state and says the floats are not it, and #106
+//     wants the two questions kept apart: whether the machine made the
+//     right edges at the right ticks, and whether the render of them is
+//     right. Only the second used to be inspectable at all.
+//
+//     Written as the run goes, so it survives a run that ends badly, and
+//     it ends with a `# edges N dropped M` line saying whether it is all
+//     of them.
 //
 //   --dump-every N   also write PREFIX-NNNNNN.ppm every N frames
 //
@@ -66,6 +81,42 @@
 //     a virtual second fills a disk before it tells anyone anything, and
 //     the caller is the only one who knows how fast the thing they are
 //     watching moves.
+//
+//   --watch OFF[:N]  print a data word every time it changes
+//
+//     The third instrument of the same kind, and it arrived for the same
+//     reason the other two did: a leg of docs/playable.md was impractical
+//     without it. `--dump-every` says what the screen did and `--trace`
+//     says what the program asked DOS for; neither says *where the party
+//     is*, and a city service three streets away is a navigation problem
+//     before it is an emulation one (#104).
+//
+//     `OFF` is a hexadecimal offset in the program's data segment — the
+//     anchor its globals are counted in, and the one a seam reads them
+//     through (seam_cheats.cpp) — and `N` is 1 or 2 bytes, default 1.
+//     Repeatable. A line is printed only when one of the watched values
+//     differs from the last line's, so a run that walks twenty squares
+//     prints twenty lines:
+//
+//         amberfolio: watch frame=011300 ds=0CDC 6AAD=05 6AAE=0C 6AAF=06
+//
+//     The segment is on every line because it is not always the data
+//     segment: DS is whatever the frame boundary landed on, and a frame
+//     that ends inside an interrupt or an overlay has it pointed
+//     somewhere else. What a watch has already said is remembered per
+//     segment, so each of those says its piece once and then stays quiet,
+//     and the lines that are left are the ones where the watched values
+//     actually moved. Filter on the segment the globals live in and the
+//     log is the movement and nothing else.
+//
+//     It reads `memory_map::ram()` and not the bus, so it takes no bus
+//     cycle, disturbs no EGA latch and cannot make a notice of its own: a
+//     watch has to be able to say a run was clean, which it could not do
+//     if watching were itself something the run did.
+//
+//     What it is *not* is a debugger, and deliberately: no writes, no
+//     breakpoints, no expressions. Machine state is the seam engine's to
+//     touch (PLAN.md §5) and nothing else's, and this reads.
 //
 //   --trace          keep the trace ring, and print it with the report
 //
@@ -275,9 +326,12 @@
 //                      presented, read the render target back and compare
 //                      every pixel of it against the bytes this host
 //                      uploaded. Count what the audio callback did on its
-//                      own thread. Report all of it on stderr at exit,
-//                      and fail the process if the picture did not match
-//                      or if nothing was ever presented.
+//                      own thread, and what the timeline thought of the
+//                      pacing while it did it — underruns, resyncs and
+//                      dropped edges (M4-A1, #106). Report all of it on
+//                      stderr at exit, and fail the process if the
+//                      picture did not match or if nothing was ever
+//                      presented.
 //
 //   --press KEY@FRAME  push a real SDL keyboard event — down and up — into
 //                      SDL's own queue at frame FRAME, so it comes back
@@ -328,12 +382,14 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <vector>
 
+#include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/dos.h"
 #include "amberfolio/machine/edition.h"
@@ -672,6 +728,38 @@ struct scripted_press {
   bool done{false};
 };
 
+/// One `--watch` subject: an offset in the program's data segment, and
+/// how wide the value there is.
+struct watch_point {
+  std::uint16_t offset{};
+  unsigned width{1};
+};
+
+/// What a watch has already said, per segment.
+///
+/// Per segment rather than one running value, because DS at a frame
+/// boundary is not always the program's data segment and a watch that
+/// forgot which segment it last read would alternate: the bytes under
+/// some other segment differ from the program's, so they print, and then
+/// the program's differ from those and print again — two lines a frame,
+/// neither of them about the thing being watched. Remembering per
+/// segment turns each of those into one line the first time it is seen
+/// and silence after, which leaves the log saying exactly what a watch is
+/// for: when the watched values moved, and to what.
+///
+/// Bounded because nothing here should be able to grow without limit on
+/// what a program does; a run that ends frames in more segments than this
+/// starts forgetting the oldest, and the only cost of forgetting is a
+/// line that says again what it said before.
+struct watch_log {
+  struct entry {
+    std::uint16_t segment{};
+    std::vector<std::uint16_t> values;
+  };
+  static constexpr std::size_t max_segments = 64;
+  std::vector<entry> seen;
+};
+
 /// Everything `--verify` has to say at the end of a run.
 struct verify_report {
   std::uint64_t composed{};    ///< Frames the renderer finished.
@@ -861,6 +949,7 @@ struct options {
   unsigned scale{default_scale};
   bool verify{false};
   std::vector<scripted_press> presses;
+  std::vector<watch_point> watches;
   std::vector<std::string> seams;
   bool list_seams{false};
   machine::speed_preset speed{machine::default_speed};
@@ -965,6 +1054,101 @@ struct options {
   return true;
 }
 
+/// `OFF[:WIDTH]`, hexadecimal offset, into a watch point. False on
+/// anything that is not that.
+///
+/// Hexadecimal without a `0x`, because every offset a watch is pointed at
+/// comes off the same fact table the seams are written from
+/// (machine/seam.h) and those are written in hex. A width is 1 or 2 —
+/// a byte or a word — and nothing else, because there is no third thing
+/// a data offset in a 16-bit program means.
+[[nodiscard]] bool parse_watch(std::string_view spec, watch_point& out) {
+  std::string_view digits = spec;
+  unsigned width = 1;
+  const std::size_t colon = spec.rfind(':');
+  if (colon != std::string_view::npos) {
+    const std::string_view tail = spec.substr(colon + 1);
+    if (tail == "1") {
+      width = 1;
+    } else if (tail == "2") {
+      width = 2;
+    } else {
+      return false;
+    }
+    digits = spec.substr(0, colon);
+  }
+  if (digits.empty() || digits.size() > 4) {
+    return false;
+  }
+  std::uint16_t offset = 0;
+  const char* const first = digits.data();
+  const char* const last = first + digits.size();
+  const std::from_chars_result parsed =
+      std::from_chars(first, last, offset, 16);
+  if (parsed.ec != std::errc{} || parsed.ptr != last) {
+    return false;
+  }
+  out.offset = offset;
+  out.width = width;
+  return true;
+}
+
+/// Read the watched values out of RAM and print them if they moved.
+///
+/// Offsets are resolved against the processor's DS, and not against
+/// `seam_engine::image_base()`, because a global is where the program's
+/// own code says it is: this program unpacks itself, and its data
+/// segment is nowhere near the image the loader placed. That is the same
+/// anchor the seams read their globals through (seam_cheats.cpp), so an
+/// offset that means something to one means the same thing to the other.
+///
+/// `memory_map::ram()` and not `machine::read_memory()`: this is not a
+/// bus cycle. A watch that took one would latch an EGA plane or make an
+/// open-bus notice of its own, and a run whose log a watch had written
+/// into could not be used to say the run was clean.
+void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
+                 watch_log& log, std::uint64_t frame_index) {
+  const std::span<const std::uint8_t> ram = box.memory().ram();
+  const std::uint16_t ds = box.processor().regs()[cpu::sreg::ds];
+  const auto base = static_cast<std::uint32_t>(ds) * 16U;
+
+  std::vector<std::uint16_t> values;
+  values.reserve(watches.size());
+  for (const watch_point& point : watches) {
+    std::uint16_t value = 0;
+    for (unsigned byte = 0; byte < point.width; ++byte) {
+      const std::uint32_t at = base + point.offset + byte;
+      const std::uint8_t got = at < ram.size() ? ram[at] : 0U;
+      value = static_cast<std::uint16_t>(
+          value | (static_cast<unsigned>(got) << (8U * byte)));
+    }
+    values.push_back(value);
+  }
+
+  const auto found =
+      std::ranges::find(log.seen, ds, &watch_log::entry::segment);
+  if (found != log.seen.end()) {
+    if (found->values == values) {
+      return;
+    }
+    found->values = values;
+  } else {
+    if (log.seen.size() >= watch_log::max_segments) {
+      log.seen.erase(log.seen.begin());
+    }
+    log.seen.push_back({.segment = ds, .values = values});
+  }
+
+  std::printf("amberfolio: watch frame=%06llu ds=%04X",
+              static_cast<unsigned long long>(frame_index), ds);
+  for (std::size_t i = 0; i < watches.size(); ++i) {
+    std::printf(watches[i].width == 2 ? " %04X=%04X" : " %04X=%02X",
+                watches[i].offset, values[i]);
+  }
+  std::printf("\n");
+  std::fflush(stdout);
+}
+
 [[nodiscard]] options parse(int argc, char** argv) {
   options opts;
   std::vector<std::string_view> positional;
@@ -994,6 +1178,16 @@ struct options {
         return opts;
       }
       opts.presses.push_back(std::move(press));
+    } else if (arg == "--watch" && i + 1 < argc) {
+      watch_point point;
+      if (!parse_watch(argv[++i], point)) {
+        std::fprintf(stderr,
+                     "amberfolio: --watch wants a hexadecimal data-segment "
+                     "offset, optionally :1 or :2 for its width, as in 6AAD "
+                     "or 6AAD:2\n");
+        return opts;
+      }
+      opts.watches.push_back(point);
     } else if (arg == "--seam" && i + 1 < argc) {
       opts.seams.emplace_back(argv[++i]);
     } else if (arg == "--seams") {
@@ -1087,7 +1281,8 @@ struct options {
         " [--scale N] [--verify] [--press KEY@FRAME]\n"
         "                                      [--steps N]"
         " [--until TICKS] [--dump PREFIX] [--dump-every N]\n"
-        "                                      [--trace]\n"
+        "                                      [--trace]"
+        " [--watch OFF[:N]]\n"
         "                                      [--seam ID] [--seams]\n"
         "                                      [--record FILE]"
         " [--record-every N] [--replay FILE]\n"
@@ -1394,6 +1589,64 @@ int main(int argc, char** argv) try {
     recording.write(preamble.data(), static_cast<std::streamsize>(n));
   }
 
+  // --- Dump: the edge list, written as the run makes it (M4-A1, #106) ---
+  //
+  // `--dump`'s third file. The PPM is the frame the machine composed and
+  // the WAV is one *rendering* of the sound it made; this is the sound
+  // itself, in the units the machine works in — "at tick T the speaker
+  // output became high" — which platform.h calls the canonical audio
+  // state and which the WAV's floats explicitly are not. #106 asks the
+  // two questions separately, and until now only one of them could be:
+  // whether the machine made the right edges at the right ticks is
+  // answered by this file, and whether the box filter renders them right
+  // is answered by the WAV beside it.
+  //
+  // Streamed rather than kept and written at the end, because core's log
+  // is a bounded drain-per-frame ring with no allocator behind it
+  // (platform.h): the loop below empties it every frame, so this file is
+  // the whole run's list and the machine never has to hold it. A run that
+  // ends badly then leaves the edges it had already made, which is more
+  // than a buffer in a dead process would.
+  std::ofstream edges;
+  std::uint64_t edges_written = 0;
+  if (!opts.dump_prefix.empty()) {
+    const std::string path = opts.dump_prefix + ".edges";
+    edges.open(path, std::ios::trunc);
+    if (!edges) {
+      std::fprintf(stderr, "amberfolio: dump could not write %s\n",
+                   path.c_str());
+    } else {
+      // A header a reader can act on. A tick is meaningless without the
+      // rate it is counted at, and this is a file somebody will open in a
+      // year with none of this in their head.
+      edges << "# amberfolio audio edges\n"
+            << "# pit-input-hz " << machine::pit_input_hz << "\n"
+            << "# tick level\n";
+      box.audio().log_edges(true);
+    }
+  }
+
+  // Empty the machine's edge log into that file. Called on the machine
+  // thread, between slices, which is where the log's producer side lives
+  // — nothing here is visible to the audio thread's `render()`, and a
+  // reader that perturbed what `render()` saw would be measuring itself.
+  const auto drain_edges = [&box, &edges, &edges_written]() {
+    if (!edges.is_open()) {
+      return;
+    }
+    std::array<machine::audio_edge, 256> batch{};
+    for (;;) {
+      const std::size_t got = box.audio().read_edge_log(batch);
+      if (got == 0) {
+        return;
+      }
+      for (std::size_t i = 0; i < got; ++i) {
+        edges << batch[i].at << ' ' << (batch[i].level ? '1' : '0') << '\n';
+      }
+      edges_written += got;
+    }
+  };
+
   // One line of a recording, written to `recording` if it is open. Every
   // line of the stream goes through here, so that a run without --record
   // pays one branch, and so that this host's spelling of a line and the
@@ -1430,6 +1683,7 @@ int main(int argc, char** argv) try {
   // The parsed presses, with room to record which have gone. `opts` is
   // what the command line said and stays that way.
   std::vector<scripted_press> presses = opts.presses;
+  watch_log watch_seen;
 
   SDL_Window* window = nullptr;
   SDL_Renderer* renderer = nullptr;
@@ -1610,8 +1864,12 @@ int main(int argc, char** argv) try {
     box.run(slice_end(box, frame_ticks, opts.step_budget, opts.tick_budget,
                       replaying ? player.next_tick() : machine::never));
     drain_console(box);
+    drain_edges();
     if (opts.trace) {
       print_overlay_loads(box, overlays_printed);
+    }
+    if (!opts.watches.empty()) {
+      print_watch(box, opts.watches, watch_seen, frame_index);
     }
 
     // Then the events this slice ran up to, delivered and checked before
@@ -1690,6 +1948,13 @@ int main(int argc, char** argv) try {
 
     ++frame_index;
   }
+
+  // The last slice's edges. The loop drains after each slice, and it
+  // leaves by a `break` that is above that drain — so without this, every
+  // edge the final slice published would be in the machine's log and in
+  // no file, which for a run that ends *because* of what it just did is
+  // the part worth reading.
+  drain_edges();
 
   // Where the recording stops, written before SDL comes down so that a
   // run whose teardown goes wrong still leaves a recording saying how far
@@ -1800,6 +2065,51 @@ int main(int argc, char** argv) try {
     } else {
       std::fprintf(stderr, "amberfolio: dump could not write %s\n",
                    wav.string().c_str());
+    }
+
+    // And the edge list's trailer. The count is on the last line as well
+    // as in this report so that the file answers "is this all of it?" on
+    // its own — a truncated dump and a silent run look identical from the
+    // top, and only one of them is a finding about the machine.
+    if (edges.is_open()) {
+      const std::uint64_t lost = box.audio().edge_log_dropped();
+      edges << "# edges " << edges_written << " dropped " << lost << '\n';
+      edges.close();
+      std::fprintf(stderr,
+                   "amberfolio: dump edges=%s.edges count=%llu dropped=%llu\n",
+                   opts.dump_prefix.c_str(),
+                   static_cast<unsigned long long>(edges_written),
+                   static_cast<unsigned long long>(lost));
+    }
+  }
+
+  // The speaker's two host-pacing symptoms, which until now no host read
+  // at all (M4-A1, #106). `platform.h` states the policy for each — an
+  // underrun holds the last level and keeps its place, an overrun jumps
+  // the cursor forward and throws the backlog away — and a policy no host
+  // can report is not a tested policy: a stalled run and a smooth one
+  // produced the same silence on stderr.
+  //
+  // Printed whenever there is something to say, and always under
+  // `--verify`, whose job is to say what happened whether or not anything
+  // did. A windowed run almost always underruns once at the start,
+  // because SDL's device pulls before the machine has settled any virtual
+  // time at all; that first one is the shape of a healthy run and not a
+  // symptom.
+  //
+  // `dropped edges` is the third and the loudest: it is the *ring*
+  // overflowing, which is sound the machine made and no host ever got.
+  {
+    const std::uint64_t underruns = box.audio().underruns();
+    const std::uint64_t resyncs = box.audio().resyncs();
+    const std::uint64_t dropped = box.audio().dropped_edges();
+    if (opts.verify || underruns != 0 || resyncs != 0 || dropped != 0) {
+      std::fprintf(stderr,
+                   "amberfolio: audio underruns=%llu resyncs=%llu dropped"
+                   " edges=%llu\n",
+                   static_cast<unsigned long long>(underruns),
+                   static_cast<unsigned long long>(resyncs),
+                   static_cast<unsigned long long>(dropped));
     }
   }
 

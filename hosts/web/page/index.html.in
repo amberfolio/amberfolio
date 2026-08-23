@@ -115,6 +115,10 @@
       #status {
         color: #b3a58c;
       }
+      #health {
+        color: #b3a58c;
+        font-size: 0.875rem;
+      }
       #console {
         margin: 1rem 0 0;
         padding: 0.75rem;
@@ -151,10 +155,32 @@
 
     <div class="controls">
       <button id="start" type="button">start</button>
+      <!-- The speed governor (#107), the same four presets the desktop
+           host's --speed takes. A machine setting rather than a
+           per-program one, which is why it is up here beside start and
+           not inside the fieldset below: it applies to whichever of the
+           two things this page can run. -->
+      <label>
+        speed
+        <select id="speed">
+          <option value="xt" selected>xt</option>
+          <option value="turbo">turbo</option>
+          <option value="at">at</option>
+          <option value="386">386</option>
+        </select>
+      </label>
       <span id="status">idle - click start</span>
     </div>
 
     <canvas id="screen" width="320" height="200"></canvas>
+
+    <!-- What the run has got through, and what the audio path had to
+         paper over on the way (#106's policies have a visible half, and
+         this is it). Neither counter is machine state; both are
+         host-pacing symptoms (platform.h). -->
+    <div class="controls">
+      <span id="health"></span>
+    </div>
 
     <pre id="console"></pre>
 

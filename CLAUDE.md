@@ -21,9 +21,12 @@ pixel-identical frame. That is PLAN.md §7's M3 exit criterion, met;
 `docs/first-light.md` is the procedure for checking it, and no test in
 this repository runs the game or ever will. `docs/playable.md` is its M4
 sibling: the legs past the roster — a party, the city and its story
-event, a fight with and without the cheats seam, a save, a load, and a
-shop bought from — each with the keystrokes that drive it and what it is
-evidence for.
+event, a fight with and without the cheats seam, a save, a load, a shop
+bought from, a cure paid for at the temple, a gem sold, a map edge walked
+across, and the whole loop again on the machine a browser runs — each
+with the keystrokes that drive it and what it is evidence for. Its last
+section is what it has *not* covered, which is the honest input to M4's
+closeout (#109).
 
 The 8086 interpreter underneath is still exact — all 323 vector files of
 the pinned SingleStepTests/8088 v2 set pass in CI on every push,
@@ -33,6 +36,32 @@ and service that grew around it.
 What is *not* here is a game you can play. Exploration, combat, shops
 and save/load are M4, and so is the seam engine proper. PLAN.md §7 has
 M4's exit criterion.
+
+M4's phase 3 — the playable buckets, #102 to #108 — is closed out. What
+it established, and the two instruments it needed:
+
+- **The loop plays, on both hosts.** Exploration, story events, a
+  tactical fight with and without the cheats seam, a save, a load, a
+  purchase, a cure paid for, a gem sold, and a map edge walked across.
+  The seven sessions in `tests/sessions/` are the ones worth repeating,
+  and `scripts/sweep.py` re-runs them.
+- **A recording of a real game run, made on the desktop host, verifies
+  on the wasm one** — 101 checkpoints of a 139-million-step run, every
+  hash equal. Before this the cross-target claim rested on four frames
+  of `JMP $` (#142).
+- **`--watch OFF[:N]`** on the SDL host prints a data-segment word every
+  time it changes, which is how a run becomes a trail of where the party
+  went. `--dump-every` says what the screen did and `--trace` what the
+  program asked DOS for; neither said where anything was.
+- **`hosts/web/tools/drive.mjs`** is the SDL host's driving surface for
+  the wasm module — a directory, a program, `--press KEY@FRAME`,
+  `--seam`, `--dump`, and a throughput line. #116 closed on a number
+  taken outside the tree; the instrument is in it now.
+- **The speaker is measured** rather than described: `--dump` writes the
+  edge list the machine published beside the PPM and the WAV, the
+  underrun and resync counters reach every run's report, and the box
+  filter's DC offset and its agreement across the two hosts' sample
+  rates are numbers in the unit suite (`docs/hosts.md` §4).
 
 What M3 left in place:
 
