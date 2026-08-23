@@ -129,10 +129,26 @@ times a virtual second, and makes a debug-build run roughly thirty times
 slower than the same run without it. Each line is about four hundred
 bytes. That is the right trade for a tool a person points at a problem;
 it is *not* the right trade for the committed session library, whose
-files also have to stay under the content guard's 256 KiB ceiling. #101
-picks the cadence a committed session uses; this file's grammar already
-allows any of them, because nothing requires a checkpoint every frame or
-requires one to carry its sections.
+files also have to stay under the content guard's 256 KiB ceiling.
+
+So `--record-every N` spaces them, and #101 picked **128** — a little
+over two virtual seconds — for a session recorded from the game. A leg of
+fifteen to twenty thousand frames is then a couple of hundred checkpoints
+and some tens of kilobytes, and the run records at very nearly the speed
+it runs at, which is what makes a game-length recording possible to make
+at all rather than merely possible to store.
+
+A sparse cadence costs *where* a divergence is localized and nothing
+else: every key still lands on the tick it was recorded at, and the run
+still has to reach `end`. Two frames are checkpointed whatever N says —
+**one that posted a key**, because that is the moment a recorded run is
+evidence about, and **the one the run ends on**, which is where a
+`stopped` marker lives and, for a run a budget ended, the only record of
+how far it got. `tests/sessions/README.md` has the arithmetic;
+`sdl-host-records-and-replays` records one run at both cadences and
+asserts they end on the same tick and the same step count, which is the
+property that matters: the cadence changes what is written down, not what
+happened.
 
 ---
 
@@ -221,7 +237,11 @@ And `scripts/sweep.py` runs every committed session
 ([`tests/sessions/`](../tests/sessions/README.md)) against every target
 that can verify one — the desktop host, the native suite and the wasm
 module under node — and prints one table. A target that is not built is
-skipped and said so, never counted as a pass.
+skipped and said so, never counted as a pass, and so is a session
+recorded from a game over a disk this machine does not have: the
+recording is committed, the disk never can be, and "this disk is not that
+disk" is a third answer beside verified and diverged rather than a
+quieter spelling of the first.
 
 ---
 

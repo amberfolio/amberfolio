@@ -46,6 +46,33 @@ Three flags carry it:
   sha256sum run-*.ppm | sort -k2 | uniq -f0 -w12 --group
   ```
 
+### Keeping a leg
+
+A leg driven this way happens once. To keep it, record it:
+
+```sh
+  ... --record tests/sessions/NAME.rec --record-every 128
+```
+
+and the run becomes a *session* — keys, ticks and hashes, committable,
+and re-runnable by `scripts/sweep.py` on a machine that has the disk.
+`tests/sessions/README.md` is the rest of it: the descriptor that says
+the disk is the player's own, `--pin` to write down the names and digests
+of the snapshot it was recorded over, and why the runner skips rather
+than fails when this disk is not that disk. 128 is the cadence a game
+session uses, and it is why recording a leg costs almost nothing on top
+of driving one.
+
+Two things a recording is better at than a script, and both are reasons
+to make one of any leg worth repeating. It carries its own initial
+conditions, where a script only works over a directory in exactly the
+state the last run left it. And it pins the *machine* rather than the
+answer: a script that still reaches the shop proves the program got
+there, while a recording that still verifies proves every byte of RAM and
+every device register got there the same way.
+
+---
+
 Each run replays from the start and mutates the game directory (a
 character created is a file, a save is more), so **snapshot the save
 directory before you begin and restore it between runs**, or the second

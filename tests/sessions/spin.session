@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# The least interesting run that could fail. tests/sessions/README.md says
+# what a descriptor is and why every session has one.
+
+about four frames of a machine doing nothing but keeping time — the PIT,
+about the 8259, the scheduler, the renderer's frame deadline and the clock
+disk spin
