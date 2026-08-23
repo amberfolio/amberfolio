@@ -582,7 +582,7 @@ and nothing leaves the browser. Onboarding, fingerprint UX and IndexedDB
 are M6's reference shell; this is a dev-page affordance and is not trying
 to be more.
 
-Three things are worth knowing about what it does:
+A few things are worth knowing about what it does:
 
 - **Paths are decided in core, not by the page.** Every one goes across
   the ABI as the player's own text and is canonicalized by
@@ -610,12 +610,79 @@ Three things are worth knowing about what it does:
   where the browser stops keeping up. It is a governor and not a
   fast-forward: virtual time still decides every deadline, so a run at
   `at` is exactly as deterministic as one at `xt`.
+- **Virtual time is paced against the wall clock, not against the
+  display** (#157). See below: it looked right on every 60 Hz monitor and
+  ran the machine at 4x on a 240 Hz one.
 - **The volume slider and the mute box are the page's, not the
   machine's** (#148). The gain is applied inside the speaker worklet, on
   the audio thread, where the held level of an underrun is also made —
   §4 says why that is the only place from which a mute actually mutes.
   Nothing about it reaches the machine, is recorded or is hashed, and the
   readout under the canvas says `volume=` only when it is not at 100%.
+
+### How the page keeps time
+
+The desktop host owns its own cadence: it runs the machine forward one
+60 Hz frame of *virtual* time, presents, and sleeps whatever *wall* time
+is left over (`hosts/sdl/src/main.cpp`'s top comment, PLAN.md §4). A
+browser does not own its cadence. `requestAnimationFrame` fires at the
+**display's refresh rate**, and until #157 the page advanced virtual time
+by one 60 Hz frame per callback — so the monitor was a speed control
+nobody had asked for:
+
+| display | how fast the machine ran |
+| --- | --- |
+| 60 Hz | 1.0x — correct, and why it went unnoticed |
+| 120 Hz | 2.0x |
+| 144 Hz | 2.4x |
+| 240 Hz | 4.0x |
+
+It compounded with the speed preset rather than replacing it: the preset
+sets steps per *virtual* second, and this set virtual seconds per *real*
+second. `--fast 4` on the desktop host and a 240 Hz monitor here were the
+same arithmetic, and only one of them was asked for.
+
+The loop now does what the desktop host does, with the arithmetic turned
+round to suit a caller that does not choose when it is called. rAF hands
+the callback a `DOMHighResTimeStamp`, and `pacedAdvance()` (in
+`host.mjs`, so it is a pure function a test can drive) answers where the
+elapsed *real* time says virtual time should be. The refresh rate then
+decides only how finely a second is chopped up, not how many seconds
+there are — which is rAF back in the role PLAN.md §4 allows it, throttling
+presentation and nothing else. Presentation itself never moved: a frame
+is drawn when `frameGeneration()` says a new one exists (`platform.h`'s
+pull contract), which on a 240 Hz display is now every fourth callback.
+
+**The catch-up is clamped at a tenth of a second, and what is past the
+clamp is dropped rather than banked.** A backgrounded tab, a breakpoint
+or a laptop that slept hands the next callback a delta of minutes;
+advancing by all of it would be exactly the burst of emulated
+instructions the SDL host's loop is written to forbid. So virtual time
+falls behind the wall and *stays* behind, which is precisely what the
+desktop host does when it declines to sleep. The clamp is also what makes
+a browser that cannot keep up settle instead of diverge: without it, each
+callback that overran would ask the next for more virtual time than the
+last. A tenth of a second is six 60 Hz frames — long enough that ordinary
+jitter (a dropped frame, a GC pause, an rAF throttled to 30 Hz on
+battery) is absorbed rather than lost, short enough that anything past it
+is a stall and not jitter. The readout under the canvas adds `stalls=N`
+when it has happened, by the same rule `volume=` joins that line: a run
+that kept up reads as it always did.
+
+There is deliberately **no fast-forward control on this page**. The
+desktop host has `--fast N`; if this one ever grows one it will be a
+control somebody chose, off by default, and not a property of the monitor
+they happen to own.
+
+`hosts/web/tests/smoke.mjs` drives `pacedAdvance()` with a synthetic
+clock, because the defect is browser-only by construction — there is no
+rAF and no display in the node harness, which is the point #147 makes
+about that whole checklist. The assertion that says it is fixed is that
+**100 callbacks at 240 Hz advance the same virtual time as 25 at 60 Hz**,
+they having covered the same wall time; the clamp, a first callback with
+nothing to measure against, a clock that went backwards, and the callback
+*after* a stall (which must advance its own delta and no more) are
+checked beside it.
 
 ### What a browser run says about itself
 
@@ -768,11 +835,13 @@ about, and no such program is in this repository.
 
 ### The audio path under load, and the underrun policy
 
-`app.mjs` pulls one frame of audio per `requestAnimationFrame` callback
-on the main thread and posts each chunk to the AudioWorklet, which plays
-them back in order. Two things can go wrong with that and they are
-counted separately, both now shown on the page beside the frame and step
-counts:
+`app.mjs` pulls, on the main thread, exactly the audio contained in the
+virtual time each `requestAnimationFrame` callback advanced — a fixed
+frame's worth until #157, which on a 240 Hz display was four times more
+audio than the machine had made — and posts each chunk to the
+AudioWorklet, which plays them back in order. Two things can go wrong
+with that and they are counted separately, both now shown on the page
+beside the frame and step counts:
 
 - **`underruns` / `resyncs`** are core's (`af_machine_audio_underruns`,
   `af_machine_audio_resyncs`): a pull that ran past settled virtual time,

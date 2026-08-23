@@ -79,11 +79,11 @@
 // `scripts/check-host-time.sh`): pacing and measurement are a host's
 // business, and this host does not pace at all. So the factor is a
 // ceiling — how much faster than real time this module *can* run this
-// program on this machine — and not what a browser will do, where
-// `requestAnimationFrame` holds the loop to one frame per display
-// refresh. A factor comfortably above 1 is the headroom #107's default
-// speed preset needs; a factor below 1 means a browser cannot keep up
-// and the number says by how much.
+// program on this machine — and not what a browser will do, where the
+// page holds virtual time to the wall clock (app.mjs's run loop, #157).
+// A factor comfortably above 1 is the headroom #107's default speed
+// preset needs; a factor below 1 means a browser cannot keep up and the
+// number says by how much.
 
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -52,6 +52,8 @@ import {
   AF_RUN_END_STOPPED,
   AF_RUN_END_STEP_BUDGET,
   AF_RUN_END_HOST_QUIT,
+  pacedAdvance,
+  MAX_CATCH_UP_SECONDS,
 } from './host.mjs';
 import { wireDirectoryPicker } from './picker.mjs';
 
@@ -73,10 +75,12 @@ const VOLUME_INPUT_ID = 'volume';
 const MUTE_CHECKBOX_ID = 'mute';
 const HEALTH_ID = 'health';
 
-/// A frame's worth of audio, in samples, at this rate — matched to the
-/// video frame rate so one rAF callback pulls roughly one frame of both
-/// (the run loop below advances virtual time by one frame per callback
-/// too; see its own comment).
+/// The rate the speaker is rendered and played at. What a callback pulls
+/// is not a fixed number of samples but however many this rate has in the
+/// virtual time that callback advanced (#157) — audio and the machine
+/// have to come off the same clock, and since that advance is now
+/// measured against the wall rather than counted in callbacks, a fixed
+/// chunk would be four times too much audio on a 240 Hz display.
 const AUDIO_SAMPLE_RATE = 44100;
 
 /// Wires the page up. Called once, from index.html's own inline module
@@ -535,19 +539,42 @@ async function run(
 
   setStatus(message);
 
-  // --- The run loop: requestAnimationFrame, per abi.h's own snippet ------
+  // --- The run loop: requestAnimationFrame, paced against the wall ------
   //
-  // "next += af_ticks_per_second() / 60; af_machine_run_until(box, next)"
-  // is abi.h's documented run loop, verbatim — a fixed virtual-time
-  // increment per callback, not a duration measured from wall time. rAF
-  // is what "wall time throttles presentation" means here: the browser
-  // paces how often this callback runs, and each run advances virtual
-  // time by exactly one 60 Hz frame, never more and never less. A frame
-  // is presented only when `frameGeneration()` says a new one exists
-  // (platform.h's pull contract) — most callbacks will find exactly one
-  // new frame, since the renderer's own deadline is also 60 Hz.
-  let next = 0;
-  let frames = 0;
+  // abi.h's snippet is "next += af_ticks_per_second() / 60;
+  // af_machine_run_until(box, next)", and this page used to run it
+  // verbatim, one increment per callback. That is correct for a caller
+  // invoked at 60 Hz and this is not one: **rAF fires at the display's
+  // refresh rate**, so the loop turned the monitor into a speed control —
+  // 2x on a 120 Hz panel, 4x on a 240 Hz one, compounding with whatever
+  // preset the control above was set to. That is #157, and it is a
+  // violation of PLAN.md §4's rule rather than a tension with it: the
+  // refresh rate is wall time, and it was deciding virtual time.
+  //
+  // So the callback asks `pacedAdvance()` (host.mjs) where elapsed *real*
+  // time says virtual time should be, and runs there. rAF is then back to
+  // being what §4 allows it to be — the thing that paces presentation —
+  // and the display's rate decides only how finely a second is chopped
+  // up, not how many seconds there are.
+  //
+  // The clamp is the other half, and it is the SDL host's rule wearing
+  // browser clothes (hosts/sdl/src/main.cpp's top comment): a host that
+  // falls behind does not sleep, and never runs the machine faster to
+  // compensate. A backgrounded tab hands the next callback a delta of
+  // minutes; advancing by all of it would be exactly the burst of
+  // emulated instructions that comment forbids. Past the clamp, virtual
+  // time falls behind the wall and stays behind — the loss is dropped,
+  // not banked — and the readout says how often that happened.
+  //
+  // Presentation is untouched by any of this and stays on the generation
+  // counter (platform.h's pull contract): a frame is drawn when a new one
+  // exists, which on a 240 Hz display is now every fourth callback rather
+  // than every one.
+  const ticksPerSecond = machine.ticksPerSecond();
+  let next = machine.time();
+  let lastTimestamp = null;
+  let stalls = 0;
+  let nextHealthTick = next;
   let lastGeneration = -1;
 
   /// The run is over: say why, in the one fixed format the desktop host
@@ -637,21 +664,48 @@ async function run(
       : volume === 100
         ? ''
         : ` volume=${volume}%`;
+    // `stalls=` joins the line by the same rule and for the same reason
+    // (#157): a run that kept up reads as it always has, and a run whose
+    // virtual time was left behind — a backgrounded tab, a browser that
+    // could not keep up at this preset — says so, where somebody
+    // wondering why the clock inside disagrees with theirs will look.
+    // Each one is up to MAX_CATCH_UP_SECONDS of wall time the machine
+    // did not run, deliberately.
+    const behind = stalls > 0 ? ` stalls=${stalls}` : '';
     healthEl.textContent =
       `frames=${machine.frameGeneration()} steps=${Math.round(machine.steps())} ` +
       `| audio underruns=${Math.round(machine.audioUnderruns())} ` +
       `resyncs=${Math.round(machine.audioResyncs())} ` +
-      `starved=${workletUnderruns}${level}`;
+      `starved=${workletUnderruns}${behind}${level}`;
   };
   showHealth();
 
-  const frame = () => {
+  const frame = (timestamp) => {
     if (stepBudget !== 0 && machine.steps() >= stepBudget) {
       finish(AF_RUN_END_STEP_BUDGET);
       return;
     }
 
-    next += machine.ticksPerSecond() / 60;
+    // Where elapsed wall time says to run to, and how much of it that is.
+    // The first callback anchors the clock and advances nothing; a
+    // clamped one is counted and the excess is dropped rather than owed.
+    const paced = pacedAdvance({
+      tick: next,
+      since: lastTimestamp,
+      now: timestamp,
+      ticksPerSecond,
+    });
+    lastTimestamp = timestamp;
+    next = paced.tick;
+    if (paced.clamped) {
+      stalls += 1;
+      if (stalls === 1) {
+        appendConsole(
+          `[host] the page fell more than ${MAX_CATCH_UP_SECONDS}s behind; ` +
+            'virtual time is left behind rather than caught up on\n',
+        );
+      }
+    }
     const status = machine.runUntil(next);
 
     const generation = machine.frameGeneration();
@@ -666,16 +720,25 @@ async function run(
     }
     drainLog();
 
-    // One frame's worth of audio, pulled and handed to the worklet
-    // whether or not it is still connected — a detached port simply
-    // drops the message, which is no worse than the underrun the
-    // worklet already plays as silence.
-    const audioFrames = Math.round(AUDIO_SAMPLE_RATE / 60);
-    const { samples } = machine.renderAudio(audioFrames, AUDIO_SAMPLE_RATE);
-    speakerNode.port.postMessage(samples, [samples.buffer]);
+    // Exactly the audio this callback's slice of virtual time contains —
+    // not a fixed frame's worth, which on a 240 Hz display would be four
+    // times more audio than the machine made and would leave the worklet
+    // dropping most of it (#157). Handed over whether or not the port is
+    // still connected: a detached one simply drops the message, which is
+    // no worse than the underrun the worklet already plays as silence.
+    const audioFrames = Math.round((paced.advance / ticksPerSecond) * AUDIO_SAMPLE_RATE);
+    if (audioFrames > 0) {
+      const { samples } = machine.renderAudio(audioFrames, AUDIO_SAMPLE_RATE);
+      speakerNode.port.postMessage(samples, [samples.buffer]);
+    }
 
-    if (frames % 30 === 0) showHealth();
-    frames += 1;
+    // Every half second of *virtual* time, which is what this cadence
+    // always meant (its own comment says so) and could say by counting
+    // callbacks only while a callback was a fixed frame.
+    if (next >= nextHealthTick) {
+      showHealth();
+      nextHealthTick = next + ticksPerSecond / 2;
+    }
 
     if (status !== AF_OK) {
       // Keep presenting and draining the console after a stop

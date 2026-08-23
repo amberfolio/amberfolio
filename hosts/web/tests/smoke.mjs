@@ -10,7 +10,7 @@
 //
 // Usable by hand too: pass no --expect and it just reports what it found.
 //
-// Six checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84, M4-W1 #108):
+// Seven checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84, M4-W1 #108, #157):
 //
 //   1. The version the module reports is the version CMake built.
 //   2. **Every name in the export list is actually exported.** This is
@@ -47,6 +47,12 @@
 //      imported and called, because what is being checked is the tool as
 //      a person invokes it: the command line, the report lines, the
 //      exit code, and the files it writes.
+//   7. **The dev page's pacing** (#157), on a clock made of numbers. The
+//      page's run loop cannot be run here — there is no rAF and no
+//      display — so its one decision, where elapsed wall time says
+//      virtual time should be, is a pure function in host.mjs and this
+//      drives it. Before #157 the display's refresh rate decided virtual
+//      time, and a 240 Hz monitor ran the machine at 4x.
 
 import { spawnSync } from 'node:child_process';
 import {
@@ -78,6 +84,8 @@ import {
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
   formatSeamFired,
+  pacedAdvance,
+  MAX_CATCH_UP_SECONDS,
 } from './host.mjs';
 import {
   encodePpm,
@@ -1901,6 +1909,164 @@ if (missing.length === 0 && sessions !== null) {
   }
 
   console.log('smoke: the speaker worklet mutes to silence and scales linearly');
+}
+
+// --- The dev page's pacing, on a synthetic clock (#157) ------------------
+//
+// The defect this pins was browser-only by construction and stayed
+// invisible for exactly that reason: there is no rAF here and no display,
+// so the page's run loop could not be driven at all. `pacedAdvance()` is
+// the loop's one decision — where elapsed wall time says virtual time
+// should be — factored out of the callback so a clock made of numbers can
+// ask it.
+//
+// The old loop advanced one 60 Hz frame per rAF callback, and rAF fires
+// at the *display's* refresh rate, so the machine ran at `refresh / 60`
+// times real time: 4x on the 240 Hz monitor #157 was found on. The
+// assertion that says it is fixed is the equivalence below — a hundred
+// callbacks at 240 Hz and twenty-five at 60 Hz cover the same span of
+// wall time, so they must advance the same virtual time.
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const ticksPerSecond = 1193182;
+  const oneFrame = ticksPerSecond / 60;
+
+  // The machine's own number and not a copy of it that could drift: the
+  // synthetic clock below is only meaningful in the units the PIT counts
+  // in (abi.h's `af_ticks_per_second`).
+  if (missing.length === 0) {
+    check(
+      module._af_ticks_per_second() === ticksPerSecond,
+      `af_ticks_per_second() is ${module._af_ticks_per_second()}, not the ` +
+        `${ticksPerSecond} this check paces against`,
+    );
+  }
+
+  /// `count` callbacks at `hz`, driven exactly as the rAF callback drives
+  /// it: the timestamp of one callback becomes the `since` of the next,
+  /// and the answer's tick becomes the next call's `tick`.
+  ///
+  /// The clock is anchored by a callback at t=0 that is not one of the
+  /// `count` — the real loop's first callback has nothing to measure
+  /// against either — so `count` callbacks at `hz` span exactly
+  /// `count / hz` seconds of wall time and the two rates below are
+  /// comparing the same span.
+  const runAt = (hz, count, options = {}) => {
+    let tick = 0;
+    let clamped = 0;
+    pacedAdvance({ tick, since: null, now: 0, ticksPerSecond, ...options });
+    let since = 0;
+    for (let i = 0; i < count; ++i) {
+      const now = ((i + 1) * 1000) / hz;
+      const paced = pacedAdvance({ tick, since, now, ticksPerSecond, ...options });
+      tick = paced.tick;
+      since = now;
+      if (paced.clamped) clamped += 1;
+    }
+    return { tick, clamped };
+  };
+
+  // The assertion #157 asks for. Five twelfths of a second of wall time,
+  // chopped four times as finely on one display as on the other: a
+  // hundred callbacks at 240 Hz and twenty-five at 60 Hz must advance the
+  // same virtual time, because they cover the same wall time. Under the
+  // old loop the first advanced four times the second.
+  const fast = runAt(240, 100);
+  const slow = runAt(60, 25);
+  check(
+    Math.abs(fast.tick - slow.tick) < oneFrame,
+    `100 callbacks at 240 Hz advanced ${fast.tick} ticks and 25 at 60 Hz ` +
+      `advanced ${slow.tick}: the display's refresh rate is still deciding ` +
+      'virtual time (#157)',
+  );
+  check(
+    Math.abs(fast.tick - ticksPerSecond * (100 / 240)) < 1,
+    `100 callbacks at 240 Hz advanced ${fast.tick} ticks, not the ` +
+      `${ticksPerSecond * (100 / 240)} of the wall time they spanned`,
+  );
+  check(
+    fast.clamped === 0 && slow.clamped === 0,
+    'an ordinary run hit the catch-up clamp',
+  );
+
+  // And a second of it, at every rate a person's display or a browser's
+  // battery throttling might hand this loop — 30 Hz being what rAF is
+  // slowed to on power saving, and the reason the clamp is not one frame.
+  for (const hz of [240, 144, 120, 60, 30]) {
+    const run = runAt(hz, hz);
+    check(
+      Math.abs(run.tick - ticksPerSecond) < 1,
+      `a second of callbacks at ${hz} Hz advanced ${run.tick} ticks, not ` +
+        `${ticksPerSecond}`,
+    );
+    check(run.clamped === 0, `${hz} Hz callbacks hit the catch-up clamp`);
+  }
+
+  // The first callback has nothing to measure against and advances
+  // nothing rather than guessing; so does a clock that went backwards.
+  const first = pacedAdvance({ tick: 500, since: null, now: 16.7, ticksPerSecond });
+  check(
+    first.tick === 500 && first.advance === 0 && !first.clamped,
+    `the first callback advanced ${first.advance} ticks with nothing to measure`,
+  );
+  const backwards = pacedAdvance({ tick: 500, since: 100, now: 90, ticksPerSecond });
+  check(
+    backwards.tick === 500 && backwards.advance === 0,
+    'a timestamp that went backwards advanced virtual time',
+  );
+
+  // The clamp: a backgrounded tab, a breakpoint, a laptop that slept.
+  // The whole point is that the answer is the clamp and not the delta —
+  // running the machine forward by a minute in one callback is the burst
+  // of emulated instructions hosts/sdl/src/main.cpp's loop is written to
+  // forbid.
+  const stalled = pacedAdvance({ tick: 0, since: 0, now: 60000, ticksPerSecond });
+  check(
+    stalled.clamped && stalled.advance === MAX_CATCH_UP_SECONDS * ticksPerSecond,
+    `a 60-second delta advanced ${stalled.advance / ticksPerSecond}s of virtual ` +
+      `time; the clamp is ${MAX_CATCH_UP_SECONDS}s`,
+  );
+
+  // And the excess is dropped, not banked. The callback after a stall
+  // advances its own delta and no more — virtual time stays behind the
+  // wall, which is what the desktop host does when it declines to sleep.
+  const after = pacedAdvance({
+    tick: stalled.tick,
+    since: 60000,
+    now: 60000 + 1000 / 60,
+    ticksPerSecond,
+  });
+  check(
+    !after.clamped && Math.abs(after.advance - oneFrame) < 1,
+    `the callback after a stall advanced ${after.advance} ticks instead of ` +
+      `one frame's ${oneFrame}: the lost time was banked and paid back in a burst`,
+  );
+
+  // The clamp is a parameter with a default, and a caller that hands it
+  // nonsense gets the default rather than a machine that never advances.
+  const explicit = pacedAdvance({
+    tick: 0, since: 0, now: 10000, ticksPerSecond, maxCatchUpSeconds: 0.5,
+  });
+  check(
+    explicit.advance === 0.5 * ticksPerSecond,
+    `an explicit half-second clamp advanced ${explicit.advance} ticks`,
+  );
+  for (const bad of [0, -1, Number.NaN, undefined]) {
+    const answer = pacedAdvance({
+      tick: 0, since: 0, now: 10000, ticksPerSecond, maxCatchUpSeconds: bad,
+    });
+    check(
+      answer.advance === MAX_CATCH_UP_SECONDS * ticksPerSecond,
+      `a clamp of ${bad} advanced ${answer.advance} ticks instead of the default`,
+    );
+  }
+
+  console.log(
+    'smoke: the page paces virtual time against the wall, not against the display',
+  );
 }
 
 if (problems.length > 0) {
