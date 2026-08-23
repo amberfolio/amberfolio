@@ -1365,11 +1365,13 @@ constexpr std::uint64_t composite_frame_hash = 0x280E6B18E8FA79B6ULL;
 /// designated-initializer aggregate.
 ///
 /// `-Wextra` on a current Clang wants every field of an aggregate named
-/// once any of them is, and spelling `.exe = {}` on the five programs
-/// that are not EXEs — and `.tone_periods = {}` on the five that are
-/// silent — would be noise written for a diagnostic rather than for a
-/// reader. What a program leaves unset is empty, and empty is asserted
-/// (machine_programs.h), so nothing is being waived here.
+/// once any of them is — precisely, every field that carries no default
+/// member initializer, which is most of `machine_program`'s — and
+/// spelling `.exe = {}` on the five programs that are not EXEs, and
+/// `.tone_periods = {}` on the five that are silent, would be noise
+/// written for a diagnostic rather than for a reader. What a program
+/// leaves unset is empty, and empty is asserted (machine_programs.h), so
+/// nothing is being waived here.
 // --- 8. The synthetic boot ----------------------------------------------
 //
 // M3-T1 (#91). CI can never run the game; it can run a program shaped
