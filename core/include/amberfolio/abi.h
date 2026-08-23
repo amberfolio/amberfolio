@@ -158,6 +158,25 @@ extern "C" {
 /// host that forgot `af_machine_attach_reference_devices()` should be
 /// told what it forgot.
 #define AF_NO_FILESYSTEM 5u
+/// The filesystem had nothing left to do the call with: no free entry
+/// for another file or directory, no room for the bytes of this one, no
+/// handle to open it with. The call did not do what it says, and —
+/// unlike `AF_INVALID` — nothing about the argument was wrong.
+///
+/// Its own code rather than `AF_INVALID` (M4, #158), because those two
+/// are the only ways `af_machine_vfs_put` refuses a file and they call
+/// for opposite responses. A path no DOS short name can equal is the
+/// answer a host wants: a boxed copy carries a PDF, the machine says so,
+/// and the run goes on without it. A full filesystem is a *hole in what
+/// the machine is running* — the file the program will ask for later is
+/// not there — and the host's next move is to stop, or to clear and take
+/// a smaller disk. Folded into one code they read alike, and a browser
+/// spent M4 reporting seven missing data files in the same sentence as a
+/// correctly-ignored PDF.
+///
+/// A host that only wants "did it work" still writes `!= AF_OK`, which
+/// is the whole convention this space has.
+#define AF_NO_ROOM 6u
 
 // There is no "a machine already exists" code, because no function can
 // return one: `af_machine_create` answers a pointer, and null is the
@@ -524,6 +543,12 @@ double af_machine_console_dropped(const af_machine* box);
 // files in it that DOS could never have named, and a host wanting to
 // report "these were skipped" gets its list from this.
 //
+// Running out of room is `AF_NO_ROOM` and is the other kind of skip
+// entirely (M4, #158) — see that status above. A host reporting a
+// skipped list must say which of the two it was, because one is the
+// machine working and the other is the disk it was handed being
+// incomplete on it.
+//
 // **A path, not merely a name** (M4, #146). Every `const char*` in this
 // section names a *path*: `START.EXE` at the root, `SAVE\SAVE1.DAT` one
 // directory down, and `/` is taken as a separator wherever `\` is,
@@ -566,14 +591,20 @@ uint32_t af_machine_vfs_clear(af_machine* box);
 /// Every one of those is settled before the first `mkdir`, so a refused
 /// path leaves no half-built tree behind.
 ///
-/// `AF_INVALID` too when the filesystem runs out of room — entries, or
-/// bytes for the file — and that one is the exception to `AF_INVALID`'s
-/// "nothing happened": the *file* is taken away again, because a
-/// half-written `START.EXE` sitting there under the right name is
-/// precisely the plausible wrong answer PLAN.md §3 is about, but a
-/// directory this call made on the way to it stays. It is empty, it is
-/// named exactly what the caller asked for, and a host that reached this
-/// is out of room — its next move is `af_machine_vfs_clear`.
+/// `AF_NO_ROOM`, and **not** `AF_INVALID`, when the filesystem runs out
+/// — a free entry for the file or a directory above it, bytes for its
+/// contents, a handle to open it with. Nothing about the path was wrong;
+/// there was nowhere to put it. The two were one code until #158, and
+/// the browser that found it could not tell a correctly-refused PDF from
+/// seven of its game's data files falling off the end of a full table.
+///
+/// This is the one answer here that does not leave the filesystem as it
+/// found it. The *file* is taken away again, because a half-written
+/// `START.EXE` sitting there under the right name is precisely the
+/// plausible wrong answer PLAN.md §3 is about — but a directory this
+/// call made on the way to it stays. It is empty, it is named exactly
+/// what the caller asked for, and a host that reached this is out of
+/// room: its next move is `af_machine_vfs_clear`, not another put.
 ///
 /// `AF_NO_FILESYSTEM` when there is no filesystem attached.
 uint32_t af_machine_vfs_put(af_machine* box, const char* path,

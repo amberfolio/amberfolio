@@ -19,6 +19,7 @@
 #include <string_view>
 #include <vector>
 
+#include "amberfolio/machine/replay.h"
 #include "gtest/gtest.h"
 
 namespace amberfolio::machine {
@@ -107,6 +108,103 @@ TEST(memory_vfs_create, reports_path_not_found_when_the_parent_is_missing) {
   const auto fs = make();
   EXPECT_EQ(fs->create(path({"SAVE", "1.DAT"})).error,
             vfs_error::path_not_found);
+}
+
+TEST(memory_vfs_create, exhausts_into_directory_full) {
+  const auto fs = make();
+  for (std::size_t i = 0; i < memory_filesystem::max_entries; ++i) {
+    const auto made = fs->create(path({std::to_string(i)}));
+    ASSERT_TRUE(made.ok()) << i;
+    ASSERT_EQ(fs->close(made.value), vfs_error::none) << i;
+  }
+  EXPECT_EQ(fs->create(path({"OVERFLOW"})).error, vfs_error::directory_full);
+}
+
+// --- The bound itself (M4, #158) ----------------------------------------
+//
+// `max_entries` was 192, argued from "somewhere around a hundred and
+// twenty files" with room left over for saves — and the arithmetic was
+// off by exactly the disk it described. A shipped Gold Box installation
+// is around 122 files, plus `SAVE\`, plus the seventy-odd slot files an
+// archive release ships already in it: 195 entries before a player has
+// saved anything. The table filled part-way through, seven data files
+// were refused after it, and the game ran without them.
+//
+// So the number is asserted against that shape, in this file, rather
+// than only stated in the header's prose. A reviewer lowering it has to
+// answer this test.
+TEST(memory_vfs_capacity, holds_a_shipped_installation_with_room_to_play) {
+  // The three counts the header argues from, restated so that changing
+  // one means changing this line and reading the argument.
+  constexpr std::size_t installation_files = 122;
+  constexpr std::size_t save_directory = 1;
+  constexpr std::size_t shipped_save_slots = 72;
+  constexpr std::size_t arrives_as =
+      installation_files + save_directory + shipped_save_slots;
+
+  static_assert(arrives_as == 195);
+  static_assert(memory_filesystem::max_entries > arrives_as,
+                "a disk nobody has played yet does not fit");
+
+  // And headroom that is for the player, not for the disk they arrived
+  // with: a party of six writes a character file each per game saved,
+  // beside the slot file itself.
+  constexpr std::size_t per_save = 7;
+  static_assert((memory_filesystem::max_entries - arrives_as) / per_save > 40,
+                "no room to save forty times over a shipped installation");
+
+  // Equal to the manifest a recording may carry (replay.h) on purpose:
+  // a disk one can describe and the other cannot load is a recording
+  // that does not travel.
+  static_assert(memory_filesystem::max_entries == replay_max_manifest_entries);
+}
+
+// The same claim as a run rather than as arithmetic, at the layer a save
+// actually goes through — `create()`, which is what INT 21h AH=3Ch calls.
+// A disk of the real shape (a flat root, a `SAVE\` with several dozen
+// files already in it) goes in whole, and *then* a new file can still be
+// made in that directory. The second half is the bug's symptom: the game
+// sat at its save prompt and could not be pressed past it.
+TEST(memory_vfs_capacity, takes_a_shipped_installation_and_can_still_save) {
+  const auto fs = make();
+
+  constexpr std::size_t root_files = 122;
+  constexpr std::size_t shipped_slots = 72;
+
+  const auto make_file = [&](const dos_path& at) {
+    const auto handle = fs->create(at);
+    EXPECT_TRUE(handle.ok());
+    if (!handle.ok()) {
+      return false;
+    }
+    EXPECT_EQ(fs->close(handle.value), vfs_error::none);
+    return true;
+  };
+
+  for (std::size_t i = 0; i < root_files; ++i) {
+    const std::string leaf = "DATA" + std::to_string(i);
+    ASSERT_TRUE(make_file(path({leaf}))) << i;
+  }
+  ASSERT_EQ(fs->mkdir(path({"SAVE"})), vfs_error::none);
+  for (std::size_t i = 0; i < shipped_slots; ++i) {
+    const std::string leaf = "SLOT" + std::to_string(i);
+    ASSERT_TRUE(make_file(path({"SAVE", leaf}))) << i;
+  }
+
+  const auto root = fs->entry_count(dos_path{});
+  ASSERT_TRUE(root.ok());
+  EXPECT_EQ(root.value, root_files + 1);
+  const auto saves = fs->entry_count(path({"SAVE"}));
+  ASSERT_TRUE(saves.ok());
+  EXPECT_EQ(saves.value, shipped_slots);
+
+  // The save: a slot file and a character file for each of a party of
+  // six, all made after the disk was already in.
+  EXPECT_TRUE(make_file(path({"SAVE", "SAVGAMA.DAT"})));
+  for (std::size_t i = 0; i < 6; ++i) {
+    const std::string leaf = "CHAR" + std::to_string(i);
+    EXPECT_TRUE(make_file(path({"SAVE", leaf}))) << i;
+  }
 }
 
 TEST(memory_vfs_open, reports_file_not_found_for_a_missing_leaf) {

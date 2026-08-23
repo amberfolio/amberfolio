@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -28,6 +29,7 @@
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/memory_vfs.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/version.h"
@@ -330,6 +332,122 @@ TEST(AbiVfs, RefusesANameNoDosNameCouldEqual) {
   EXPECT_EQ(af_machine_vfs_put(box.get(), "", nullptr, 0), AF_INVALID);
   EXPECT_EQ(af_machine_vfs_put(box.get(), nullptr, nullptr, 0), AF_INVALID);
   EXPECT_EQ(af_machine_vfs_count(box.get()), 0u);
+}
+
+// --- Out of room is not "your name was wrong" (M4, #158) ----------------
+//
+// Both refusals were `AF_INVALID` until #158, and a browser handed a real
+// installation reported seven of the game's own data files in the same
+// words as a PDF it was right to ignore — `status 3` apiece. A host
+// cannot act on that, and neither can a person reading it: one is the
+// machine working and the other is a hole in the disk it is running.
+
+TEST(AbiVfs, SaysOutOfRoomRatherThanInvalidWhenTheEntryTableIsFull) {
+  const equipped_machine box;
+
+  // Fill it exactly. Every name here is a legal DOS short name, so
+  // nothing below is refused for anything but capacity.
+  for (std::size_t i = 0;
+       i < amberfolio::machine::memory_filesystem::max_entries; ++i) {
+    const std::string name = std::to_string(i) + ".DAT";
+    ASSERT_EQ(af_machine_vfs_put(box.get(), name.c_str(), nullptr, 0), AF_OK)
+        << i;
+  }
+
+  // The two answers, side by side, from one full filesystem. This is the
+  // whole of the fix: a caller can tell them apart, so a report can.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "WALLDEF3.DAX", nullptr, 0),
+            AF_NO_ROOM);
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "code wheel.pdf", nullptr, 0),
+            AF_INVALID);
+  static_assert(AF_NO_ROOM != AF_INVALID,
+                "the two refusals must be different answers");
+
+  // And a full table is still a refusal, never a silent overwrite of
+  // something in use (PLAN.md §3).
+  EXPECT_EQ(af_machine_vfs_count(box.get()),
+            static_cast<std::uint32_t>(
+                amberfolio::machine::memory_filesystem::max_entries));
+
+  // Room again after a clear, which is what abi.h tells a host that
+  // reached this to do.
+  ASSERT_EQ(af_machine_vfs_clear(box.get()), AF_OK);
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "WALLDEF3.DAX", nullptr, 0), AF_OK);
+}
+
+TEST(AbiVfs, SaysOutOfRoomWhenTheBytesDoNotFitAndLeavesNoFragment) {
+  const equipped_machine box;
+
+  // Larger than one file may be. The backend answers a short count, this
+  // takes the fragment away again (abi.h), and the status says which
+  // kind of refusal it was — bytes, not a bad name.
+  const std::vector<std::uint8_t> big(
+      amberfolio::machine::memory_filesystem::max_file_size + 1, 0x5A);
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "HUGE.DAT", big.data(),
+                               static_cast<std::uint32_t>(big.size())),
+            AF_NO_ROOM);
+  EXPECT_EQ(af_machine_vfs_count(box.get()), 0u);
+  EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), 0.0);
+}
+
+TEST(AbiVfs, SaysOutOfRoomWhenADirectoryOnTheWayCannotBeMade) {
+  const equipped_machine box;
+
+  // Full, and then a path one directory down — so the refusal happens
+  // in `make_parents`, before the file is even reached: `\SAVE` has
+  // nowhere to go. That is why it answers a status rather than a bool
+  // (#158). The path was fine; the machine was not.
+  for (std::size_t i = 0;
+       i < amberfolio::machine::memory_filesystem::max_entries; ++i) {
+    const std::string name = std::to_string(i) + ".DAT";
+    ASSERT_EQ(af_machine_vfs_put(box.get(), name.c_str(), nullptr, 0), AF_OK)
+        << i;
+  }
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", nullptr, 0),
+            AF_NO_ROOM);
+}
+
+// --- The shape that actually failed (M4, #158) --------------------------
+//
+// A real installation is a flat directory of about a hundred and twenty
+// files with a `SAVE\` under it holding the slot files an archive release
+// ships — 195 entries before a player has saved anything, against a bound
+// that was 192. The table filled part-way through, the rest of the disk
+// was refused, and the game booted and ran with holes in it; the symptom
+// loud enough to notice was that no save could be written.
+//
+// No game content is here (CONTRIBUTING.md) — the *shape* is the fact
+// being reproduced, and these names are this test's own.
+TEST(AbiVfs, TakesAShippedInstallationWholeAndStillHasRoomToSave) {
+  const equipped_machine box;
+
+  constexpr std::uint32_t root_files = 122;
+  constexpr std::uint32_t shipped_slots = 72;
+
+  const std::array<std::uint8_t, 4> bytes{1, 2, 3, 4};
+  const auto put = [&](const std::string& path) {
+    return af_machine_vfs_put(box.get(), path.c_str(), bytes.data(),
+                              static_cast<std::uint32_t>(bytes.size()));
+  };
+
+  for (std::uint32_t i = 0; i < root_files; ++i) {
+    ASSERT_EQ(put("DATA" + std::to_string(i) + ".DAT"), AF_OK) << i;
+  }
+  for (std::uint32_t i = 0; i < shipped_slots; ++i) {
+    ASSERT_EQ(put("SAVE/SLOT" + std::to_string(i) + ".DAT"), AF_OK) << i;
+  }
+
+  // Complete: every file, plus the one directory core made on the way.
+  // Nothing skipped, which is the claim — 190 of 195 was the bug.
+  EXPECT_EQ(af_machine_vfs_count(box.get()), root_files + 1);
+
+  // And what the bug's symptom was: a save still has somewhere to go. A
+  // party of six writes a character file each beside the slot, so this
+  // is one save, not one file.
+  ASSERT_EQ(put("SAVE/SAVGAMA.DAT"), AF_OK);
+  for (std::uint32_t i = 0; i < 6; ++i) {
+    ASSERT_EQ(put("SAVE/CHAR" + std::to_string(i) + ".CHA"), AF_OK) << i;
+  }
 }
 
 TEST(AbiVfs, FingerprintsAFileTheSameWayTheDesktopHostDoes) {

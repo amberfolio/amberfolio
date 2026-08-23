@@ -19,16 +19,52 @@
 // against that target, stated here rather than left to be discovered by
 // an exhausted table failing a test nobody expected to fail.
 //
-//   * **`max_entries` files and directories, combined, 192.** A Gold Box
-//     installation is a flat directory of somewhere around a hundred and
-//     twenty files — the program, an overlay file, and a long tail of
-//     data files. A directory is an entry like any other (an empty one,
-//     structurally), so files and subdirectories share the one table
-//     rather than two separately-sized ones that would have to be
-//     reasoned about together anyway. A hundred and ninety-two leaves
-//     that distribution room for a save directory and several dozen save
-//     slots on top; a filesystem that needed more would not be this
-//     game's.
+//   * **`max_entries` files and directories, combined, 512.** A
+//     directory is an entry like any other (an empty one, structurally),
+//     so files and subdirectories share the one table rather than two
+//     separately-sized ones that would have to be reasoned about
+//     together anyway — and that sharing is the whole of why this number
+//     has to be counted rather than eyeballed.
+//
+//     Count it. A Gold Box installation is a flat directory of about a
+//     hundred and twenty files — the program, an overlay file, and a
+//     long tail of data files. On top of that an archive release ships
+//     `SAVE\` already populated: one directory and *seventy-odd* slot
+//     files, before a player has saved anything. That is 195 entries on
+//     a disk nobody has played yet, and then a party of six writes a
+//     character file each into `SAVE\` per game saved.
+//
+//     This was 192 until #158, argued from the hundred and twenty alone
+//     with "several dozen save slots" of headroom that the shipped slots
+//     had already spent. The failure it produced is the one worth
+//     naming, because it is not the one the number suggests: the table
+//     filled *mid-installation*, seven data files were refused after it,
+//     and the game booted, ran and fought without them — a browser was
+//     running an installation with holes in it, invisible until
+//     something asked for a wall definition. The save that could never
+//     be written was merely the symptom loud enough to notice.
+//
+//     Five hundred and twelve is set clear of the real high-water mark
+//     rather than a step past it — two and a half times a shipped
+//     installation, so the room left over is for what a *player*
+//     accumulates and not for the disk they arrived with. A bound set
+//     *at* the count somebody measured is a bound that refuses the next
+//     disk, which is exactly what 192 was. It is also `replay.h`'s
+//     `replay_max_manifest_entries` exactly, and that is not a
+//     coincidence to be tidied away: a recording that can name 512
+//     entries and a backend that can hold fewer is a disk describable on
+//     one host and unloadable on the other.
+//
+//     It costs what a table of fixed-size entries costs and nothing
+//     else. An `entry` is a `dos_path` and two offsets — 116 bytes on a
+//     64-bit target — so 320 more of them is 37,120 bytes, and
+//     `sizeof(memory_filesystem)` goes from 8,411,280 to 8,448,400: four
+//     tenths of one percent, all of it beside an arena that was already
+//     8 MiB. Measured rather than estimated, because #155 found a real
+//     wasm stack overflow from growth of exactly this kind — but nothing
+//     here is ever on a stack (see below), so this is static or heap
+//     bytes and not stack ones. The arena is untouched: a whole
+//     installation weighs about 1.6 MB of the 8 MiB it already has.
 //   * **`max_file_size`, 256 KiB per file.** `scripts/check-clean.sh`
 //     already draws this exact line — a file over 256 KiB tracked in
 //     this repository is flagged as plausibly a game asset
@@ -63,10 +99,13 @@
 // `port_map::max_ranges`, `machine::max_devices`): an array sized for the
 // worst case, indexed directly, with no allocator between a slot and its
 // owner. What changed is the requirement, not the taste. A dev page that
-// takes a player's directory needs six times the entries, and six times
-// the entries at a fixed 256 KiB apiece is 48 MiB of static storage to
-// hold a megabyte and a half of files — most of it, in a browser,
-// committed linear memory that never holds a byte.
+// takes a player's directory needs many times the entries, and
+// `max_entries` of them at a fixed 256 KiB apiece is 128 MiB of static
+// storage to hold a megabyte and a half of files — most of it, in a
+// browser, committed linear memory that never holds a byte. That the
+// bound could then be raised in #158 for the cost of a table row apiece,
+// rather than of a quarter-megabyte apiece, is this scheme paying for
+// itself a second time.
 //
 // The scheme is deliberately not an allocator. There is no free list, no
 // fragmentation and nothing to tune: growing a file shifts the tail right
@@ -86,8 +125,13 @@
 // **This object is not a thing to put on a stack.** Same rule
 // `memory_map.h` states for its own megabyte, for the same reason: the
 // arena alone is 8 MiB, two orders of magnitude past a default thread
-// stack. Heap-allocate it (`std::make_unique<memory_filesystem>()`, as
-// every test here does).
+// stack and further still past wasm's. Heap-allocate it
+// (`std::make_unique<memory_filesystem>()`, as every test here does), or
+// give it static storage (`abi.cpp`'s `reference_devices` holds one by
+// value in a namespace-scope buffer, which is where the wasm module's
+// filesystem lives). Those two are the only places one has ever been,
+// which is why `max_entries` can be sized against a real disk rather
+// than against a stack frame.
 //
 //
 // What determines enumeration order
@@ -115,7 +159,7 @@ namespace amberfolio::machine {
 
 class memory_filesystem final : public filesystem {
  public:
-  static constexpr std::size_t max_entries = 192;
+  static constexpr std::size_t max_entries = 512;
   static constexpr std::size_t max_file_size = std::size_t{256} * 1024;
   static constexpr std::size_t arena_bytes = std::size_t{8} * 1024 * 1024;
   static constexpr std::size_t max_open_handles = 16;

@@ -232,7 +232,10 @@ constexpr std::size_t max_name_text =
 }
 
 /// Make every directory `path` names above its leaf, so that a file can
-/// then be created at it; false when `path` is one no file can live at.
+/// then be created at it. `AF_OK`, or the status
+/// `af_machine_vfs_put` should answer with: `AF_INVALID` when `path` is
+/// one no file can live at, `AF_NO_ROOM` when the backend had no entry
+/// left to make a directory in.
 ///
 /// A host hands an installation over one file at a time (abi.h), so
 /// `\SAVE\SAVE1.DAT` may arrive before anything has made `\SAVE` — and
@@ -246,9 +249,10 @@ constexpr std::size_t max_name_text =
 /// as a directory, are both paths no file can be written at; they are
 /// found in the first pass, so a refusal never leaves a half-built tree
 /// behind. What is left after that is capacity, which is the backend
-/// running out rather than the caller being wrong — `af_machine_vfs_put`
-/// says what happens then and abi.h says why.
-[[nodiscard]] bool make_parents(
+/// running out rather than the caller being wrong — that is the whole of
+/// why this answers a status and not a `bool` (#158), and
+/// `af_machine_vfs_put` says what happens then.
+[[nodiscard]] uint32_t make_parents(
     amberfolio::machine::filesystem& fs,
     const amberfolio::machine::dos_path& path) noexcept {
   amberfolio::machine::dos_path so_far;
@@ -256,12 +260,12 @@ constexpr std::size_t max_name_text =
     static_cast<void>(so_far.push(path.component(i)));
     const auto seen = fs.stat(so_far);
     if (seen.ok() && !seen.value.is_directory) {
-      return false;
+      return AF_INVALID;
     }
   }
   const auto leaf = fs.stat(path);
   if (leaf.ok() && leaf.value.is_directory) {
-    return false;
+    return AF_INVALID;
   }
 
   so_far = amberfolio::machine::dos_path{};
@@ -270,11 +274,15 @@ constexpr std::size_t max_name_text =
     if (fs.exists(so_far)) {
       continue;
     }
-    if (fs.mkdir(so_far) != amberfolio::machine::vfs_error::none) {
-      return false;
+    const auto made = fs.mkdir(so_far);
+    if (made == amberfolio::machine::vfs_error::directory_full) {
+      return AF_NO_ROOM;
+    }
+    if (made != amberfolio::machine::vfs_error::none) {
+      return AF_INVALID;
     }
   }
-  return true;
+  return AF_OK;
 }
 
 /// Copy `text` into `out` with a terminator, and answer how many
@@ -777,13 +785,22 @@ uint32_t af_machine_vfs_put(af_machine* handle, const char* path,
   if (!path_of(path, where) || where.is_root()) {
     return AF_INVALID;
   }
-  if (!make_parents(*fs, where)) {
-    return AF_INVALID;
+  const uint32_t parents = make_parents(*fs, where);
+  if (parents != AF_OK) {
+    return parents;
   }
 
   const auto made = fs->create(where);
   if (!made.ok()) {
-    return AF_INVALID;
+    // The line #158 draws: a refusal about what the *machine* has left
+    // (no entry in the table, no handle to open the file with) is
+    // AF_NO_ROOM, and a refusal about what the caller asked for (a
+    // directory already under that name) stays AF_INVALID. A host can
+    // act on the first and cannot on the second.
+    const bool out_of_room =
+        made.error == amberfolio::machine::vfs_error::directory_full ||
+        made.error == amberfolio::machine::vfs_error::too_many_open_files;
+    return out_of_room ? AF_NO_ROOM : AF_INVALID;
   }
 
   bool whole = true;
@@ -801,7 +818,9 @@ uint32_t af_machine_vfs_put(af_machine* handle, const char* path,
   static_cast<void>(fs->close(made.value));
   if (!whole) {
     static_cast<void>(fs->unlink(where));
-    return AF_INVALID;
+    // Bytes rather than entries — the arena is full, or this one file is
+    // larger than one file may be. Both are room, not a bad argument.
+    return AF_NO_ROOM;
   }
   return AF_OK;
 }

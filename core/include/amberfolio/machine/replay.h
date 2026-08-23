@@ -228,13 +228,20 @@ inline constexpr std::size_t replay_max_line = 768;
 /// described, and `write_preamble()` refuses rather than describing part
 /// of one.
 ///
-/// Deliberately not `memory_filesystem::max_entries` (192), which is a
-/// bound on the disk a *browser* can hold. A recording is made on the
-/// desktop host over a directory, and the largest disk this repository's
-/// session library pins is 193 entries — a Gold Box installation with its
-/// save slots filled, which is exactly the shape #155 exists for. A cap
-/// set *at* the real high-water mark is a cap that refuses the next disk;
-/// this one is set well clear of it.
+/// Set against the disk, not against a backend. A recording is made on
+/// the desktop host over a directory, and the largest disk this
+/// repository's session library pins is 193 entries — a Gold Box
+/// installation with its save slots filled, which is exactly the shape
+/// #155 exists for. A cap set *at* the real high-water mark is a cap
+/// that refuses the next disk; this one is set well clear of it.
+///
+/// `memory_filesystem::max_entries` is now the same number, and equal on
+/// purpose (#158). It was 192 when this constant was written, and the
+/// gap read as harmless because a recording is made on the host with the
+/// directory VFS — but it meant a disk this file could describe was a
+/// disk the browser could not load, which is the one direction a
+/// recording exists to travel. Whichever of the two moves next, the
+/// other follows.
 inline constexpr std::size_t replay_max_manifest_entries = 512;
 
 /// The longest manifest line: `file `, a full-depth path (`max_depth`
