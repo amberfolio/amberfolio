@@ -833,6 +833,94 @@ TEST(Abi, AStoppedMachineStillAnswersEveryPull) {
   EXPECT_EQ(af_machine_stopped(box.get()), 0);
 }
 
+// M4-W1 (#108): the account crosses the boundary as characters.
+//
+// Before this, a run through the C ABI said nothing about what the
+// program did beyond the number it stopped with — the diagnostics sink is
+// a C++ interface and does not cross (abi.h), so a browser run was blind
+// where a desktop run printed notices, file activity and every seam
+// transition. What crosses now is the same line the SDL host prints,
+// rendered once in core (machine/report.h).
+TEST(Abi, TheLogCarriesTheSameSentenceTheDesktopHostPrints) {
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+
+  EXPECT_EQ(af_machine_log_pending(box.get()), 0u);
+  EXPECT_EQ(af_machine_log_dropped(box.get()), 0.0);
+
+  // The same refusal the test above drives, for the same reason: it is
+  // the stop a host is most likely to have to report.
+  const std::array<std::uint8_t, 2> refused{0xCD, 0x21};
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, refused.data(),
+                                    static_cast<std::uint32_t>(refused.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  EXPECT_EQ(af_machine_run_until(box.get(), 10'000.0), AF_STOPPED);
+
+  // It survives the stop, like the console ring and for the same reason:
+  // it is where the answer is.
+  EXPECT_NE(af_machine_log_pending(box.get()), 0u);
+  std::array<char, 1024> out{};
+  const std::uint32_t got = af_machine_read_log(
+      box.get(), out.data(), static_cast<std::uint32_t>(out.size()));
+  ASSERT_NE(got, 0u);
+  const std::string_view text(out.data(), got);
+  EXPECT_NE(text.find("amberfolio: machine stopped, unimplemented_service"),
+            std::string_view::npos);
+  EXPECT_EQ(text.back(), '\n');
+
+  // Drained is drained.
+  EXPECT_EQ(af_machine_log_pending(box.get()), 0u);
+  EXPECT_EQ(af_machine_read_log(box.get(), out.data(),
+                                static_cast<std::uint32_t>(out.size())),
+            0u);
+  EXPECT_EQ(af_machine_read_log(box.get(), nullptr, 8), 0u);
+}
+
+// The high-volume half of the channel, and the one switch that owns both
+// halves of the facility (abi.h's `af_machine_set_trace`).
+TEST(Abi, TheLogTakesServiceCallsOnlyWhenTracingIsOn) {
+  const auto drain = [](af_machine* box) {
+    std::array<char, 4096> out{};
+    const std::uint32_t got = af_machine_read_log(
+        box, out.data(), static_cast<std::uint32_t>(out.size()));
+    return std::string(out.data(), got);
+  };
+
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+  ASSERT_EQ(af_machine_attach_reference_devices(box.get()), AF_OK);
+  ASSERT_EQ(af_machine_reset(box.get()), AF_OK);
+
+  // INT 21h AH=4Ch, which the reference set answers: the program exits,
+  // and a program exiting is not a diagnostic (machine/report.h), so with
+  // tracing off there is nothing at all to say about this run.
+  const std::array<std::uint8_t, 4> exits{0xB4, 0x4C, 0xCD, 0x21};
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, exits.data(),
+                                    static_cast<std::uint32_t>(exits.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  EXPECT_EQ(af_machine_run_until(box.get(), 10'000.0), AF_STOPPED);
+  EXPECT_EQ(drain(box.get()), "");
+
+  ASSERT_EQ(af_machine_set_trace(box.get(), 1), AF_OK);
+  ASSERT_EQ(af_machine_reset(box.get()), AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  EXPECT_EQ(af_machine_run_until(box.get(), 10'000.0), AF_STOPPED);
+  const std::string traced = drain(box.get());
+  EXPECT_NE(traced.find("amberfolio: call INT21 ax=4C00"), std::string::npos);
+
+  // And the log is the host's to clear, not the RESET line's: it is not
+  // machine state (machine/log.h).
+  ASSERT_EQ(af_machine_set_trace(box.get(), 1), AF_OK);
+  ASSERT_EQ(af_machine_reset(box.get()), AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  EXPECT_EQ(af_machine_run_until(box.get(), 10'000.0), AF_STOPPED);
+  EXPECT_NE(af_machine_log_pending(box.get()), 0u);
+  EXPECT_EQ(af_machine_clear_log(box.get()), AF_OK);
+  EXPECT_EQ(af_machine_log_pending(box.get()), 0u);
+}
+
 // M2-H2 (#55): the opt-in reference device set. The test above proves a
 // *bare* machine's INT 21h stops; this is the other half — attaching the
 // reference set turns that same vector into something real, which is

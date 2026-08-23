@@ -50,6 +50,7 @@ add_library(amberfolio-core STATIC
   src/machine/int10.cpp
   src/machine/keyboard.cpp
   src/machine/loader.cpp
+  src/machine/log.cpp
   src/machine/machine.cpp
   src/machine/memory_map.cpp
   src/machine/memory_vfs.cpp

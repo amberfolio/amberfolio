@@ -310,6 +310,54 @@ export class Machine {
     return this.module._af_machine_console_dropped(this.handle);
   }
 
+  /// Drain up to `max` characters of the running diagnostic log, as a
+  /// string.
+  ///
+  /// What a C++ host is handed as records (machine/diagnostics.h) reaches
+  /// this one as the lines core renders from them - the same characters
+  /// the SDL host prints for the same record, which is the whole point of
+  /// the channel (machine/log.h, #108). Notices and seam transitions
+  /// always; service calls and file events after `setTrace(true)`.
+  ///
+  /// ASCII, not code page 437: unlike the console, these lines are
+  /// written by core rather than by the program, so there is nothing here
+  /// for the app to transcode. A drain can end mid-line, so a caller that
+  /// wants whole lines appends what it gets and splits on the newline
+  /// (app.mjs does).
+  readLog(max = 8192) {
+    const scratch = this.module._malloc(max);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while draining the log');
+    }
+    try {
+      const count = this.module._af_machine_read_log(this.handle, scratch, max);
+      const bytes = this.module.HEAPU8.subarray(scratch, scratch + count);
+      let text = '';
+      for (const byte of bytes) {
+        text += String.fromCharCode(byte);
+      }
+      return text;
+    } finally {
+      this.module._free(scratch);
+    }
+  }
+
+  logPending() {
+    return this.module._af_machine_log_pending(this.handle);
+  }
+
+  /// Lines the ring had no room for, over the whole run - see abi.h. A
+  /// count, not a length: a line that will not fit is dropped whole.
+  logDropped() {
+    return this.module._af_machine_log_dropped(this.handle);
+  }
+
+  /// Throw away what has not been drained. A host's call and not
+  /// `reset()`'s: the log is not machine state (machine/log.h).
+  clearLog() {
+    return this.module._af_machine_clear_log(this.handle);
+  }
+
   /// Pull `frames` mono samples at `sampleRate`. Answers `{ settled,
   /// samples }`: `samples` is always `frames` long (platform.h's "out is
   /// always written in full"), `settled` is how many of those came from
