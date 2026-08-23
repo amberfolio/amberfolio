@@ -300,6 +300,45 @@ Three things are worth knowing about what it does:
   keyboard-driven game unplayable in a browser while the desktop host had
   had them since M2-H1; `hosts/web/tests/smoke.mjs` checks the rows.
 
+### What a browser run says about itself
+
+Until M4-W1 (#108) the answer was "almost nothing". The diagnostics sink
+is a C++ interface that hands out structured records held by reference
+(`machine/diagnostics.h`), and `abi.h`'s rules are the opposite of every
+word in that sentence — no structs by value, no ownership across the
+boundary, nothing that can throw — so the sink does not cross it. A
+desktop run printed its notices, its file activity and every seam
+transition; a browser run of the same program printed the number it
+stopped with.
+
+What crosses now is the same thing the stop report crosses as: **the
+account, formatted in core**. `machine::format_diagnostic()` renders one
+line per record, `machine/log.h` keeps the last few kilobytes of them
+beside the machine, and `af_machine_read_log()` hands the characters over.
+The SDL host renders the *same function's* output to stderr, so a line
+about a given record is character for character the same on both hosts —
+which is the property `#84`'s comparison rests on, extended from one line
+at the end of a run to the whole log during it.
+
+Three things follow that are worth knowing before you drive a leg here:
+
+- **The log is not machine state.** It sits beside the machine rather than
+  inside it: nothing in it is hashed, saved or replayed, and
+  `af_machine_reset` leaves it alone (`af_machine_clear_log` is the
+  host's own broom). That is what let it exist without moving a single
+  replay hash.
+- **`af_machine_set_trace` owns both halves of one facility** — the CPU
+  trace ring *and* the service-call and file-event streams, exactly as the
+  SDL host's `--trace` does. Notices and seam transitions are always kept;
+  those two are not, because a boot makes tens of thousands of them.
+- **With tracing on, a browser run is a sample plus a count, not a
+  transcript.** The ring is bounded and a program in a tight `INT 16h`
+  poll outruns any per-frame drain — `smoke.mjs` drives exactly that and
+  drops twelve thousand lines doing it. A line that will not fit is
+  dropped whole and counted rather than written in half, the page prints
+  the count when the run ends, and the desktop host is still the place to
+  take a full trace.
+
 ### The comparison M3's exit criterion rests on
 
 PLAN.md §7 asks for first light "verified locally on desktop **and** web",

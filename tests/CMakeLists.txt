@@ -43,6 +43,7 @@ add_executable(amberfolio-core-tests
   core/machine/int10_test.cpp
   core/machine/keyboard_test.cpp
   core/machine/loader_test.cpp
+  core/machine/log_test.cpp
   core/machine/machine_program_test.cpp
   core/machine/machine_test.cpp
   core/machine/memory_map_test.cpp

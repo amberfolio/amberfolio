@@ -316,7 +316,14 @@ double af_machine_steps(const af_machine* box);
 
 /// Start or stop recording the trace ring (machine/trace.h): the last
 /// 256 instructions and 64 service calls, in fixed storage inside the
-/// machine.
+/// machine — **and** the two high-volume diagnostic streams, service
+/// calls and file events, in the log below.
+///
+/// One switch for both halves because they are one facility: the live
+/// stream and the ring dumped at the end are asked for together or not at
+/// all, which is what the SDL host's `--trace` does with the same two
+/// things (hosts/sdl/src/main.cpp). A host that wanted only one of them
+/// would be asking a question no boot log has ever needed the answer to.
 ///
 /// A setting, not state — it survives `af_machine_reset`, exactly as the
 /// speed preset does. Off until asked for, at a cost of one branch per
@@ -333,8 +340,10 @@ uint32_t af_machine_set_trace(af_machine* box, int32_t on);
 // account the desktop host prints, because M3's exit criterion is that
 // the two agree at the same step (#84).
 //
-// So the formatting lives in core (machine/report.h) and these two hand
-// the characters over. A host prints them; it does not parse them.
+// So the formatting lives in core (machine/report.h) and these hand the
+// characters over. A host prints them; it does not parse them. That is
+// true of all three: the stop report and the trace report, asked for once
+// when a run ends, and the running log below, drained as it fills.
 
 /// Write the stop report into `out`, NUL-terminated, and answer how many
 /// characters that was (the terminator not counted).
@@ -359,9 +368,43 @@ int32_t af_machine_stopped(const af_machine* box);
 
 /// Why it stopped: the value of machine::stop_reason, with 0 meaning
 /// "running". The detail behind it — the opcode, the service, the address
-/// — goes to the diagnostics sink, which is a C++ interface and not part
-/// of this ABI; a dev page shows the number and the console output.
+/// — is in the stop report above and in the log below, both of them the
+/// same characters the desktop host prints.
 uint32_t af_machine_stop_reason(const af_machine* box);
+
+/// Drain up to `max` characters of the running log into the caller's
+/// buffer, answering how many were copied.
+///
+/// The diagnostics stream as text: one line per record, newline-ended,
+/// each formatted by `machine::format_diagnostic` so that it is character
+/// for character the line the SDL host prints for the same record
+/// (machine/log.h, machine/report.h). Notices and seam transitions
+/// always; service calls and file events only after
+/// `af_machine_set_trace`.
+///
+/// **Not NUL-terminated** — this is a stream, and the answer is its
+/// length. A drain can land mid-line when the buffer is smaller than what
+/// is waiting; the remainder is the next drain's first characters, so a
+/// host that appends what it reads sees whole lines and loses nothing.
+///
+/// It survives a stop, like the console ring and for the same reason: it
+/// is where the answer is.
+uint32_t af_machine_read_log(af_machine* box, char* out, uint32_t max);
+
+/// Characters waiting to be drained, and *lines* the ring had no room
+/// for. The machine never blocks on a host that has stopped reading; a
+/// line that will not fit is dropped whole and counted, since half a line
+/// in a log reads as a fact.
+uint32_t af_machine_log_pending(const af_machine* box);
+double af_machine_log_dropped(const af_machine* box);
+
+/// Throw away what has not been drained, and the drop count with it.
+///
+/// A host's call and not `af_machine_reset`'s: the log sits beside the
+/// machine rather than inside it and is not machine state — nothing in it
+/// is hashed, saved or replayed — so a reset leaves it alone and a host
+/// that wants a clean log between runs says so.
+uint32_t af_machine_clear_log(af_machine* box);
 
 /// Put the speed governor on one of the AF_SPEED_* presets.
 uint32_t af_machine_set_speed(af_machine* box, uint32_t preset);

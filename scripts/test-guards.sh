@@ -62,6 +62,57 @@ rm "$r/big.bin"
 expect "staged blob with working copy deleted still fails" 1 \
   bash "$r/scripts/check-clean.sh"
 
+# The binary allowlist (#134). The dump that got through was 4.6 KiB
+# under an invented name: below the cap, on no denylist. What is not
+# text now has to be named in the guard before it can be committed.
+r=$(mkrepo binary)
+printf 'MZ\000\000dump\n' > "$r/dump.bin"
+expect "an untracked binary is caught before it is ever staged" 1 \
+  bash "$r/scripts/check-clean.sh"
+git -C "$r" add dump.bin
+expect "a staged binary that is not on the allowlist fails" 1 \
+  bash "$r/scripts/check-clean.sh"
+git -C "$r" commit -q -s -m "dump"
+expect "a committed binary that is not on the allowlist fails" 1 \
+  bash "$r/scripts/check-clean.sh"
+git -C "$r" rm -q dump.bin
+git -C "$r" commit -q -s -m "remove dump"
+expect "a binary buried in history still fails" 1 \
+  bash "$r/scripts/check-clean.sh"
+
+# The allowlist is a path list, not a rule about content: the one entry
+# passes staged and committed, and nothing else moved into its place
+# does. Binary is decided the way git decides it — a NUL in the first
+# 8000 bytes — so a NUL past that window is not this gate's business.
+r=$(mkrepo allowlisted)
+mkdir -p "$r/tests/sessions/spin"
+printf 'MZ\000\000spin\n' > "$r/tests/sessions/spin/SPIN.EXE"
+git -C "$r" add tests/sessions/spin/SPIN.EXE
+expect "the allowlisted binary passes staged" 0 bash "$r/scripts/check-clean.sh"
+git -C "$r" commit -q -s -m "spin"
+expect "the allowlisted binary passes committed" 0 bash "$r/scripts/check-clean.sh"
+printf 'MZ\000\000spin\n' > "$r/tests/sessions/spin/OTHER.EXE"
+git -C "$r" add tests/sessions/spin/OTHER.EXE
+expect "a sibling of the allowlisted binary is not covered by it" 1 \
+  bash "$r/scripts/check-clean.sh"
+git -C "$r" rm -q --cached tests/sessions/spin/OTHER.EXE
+rm "$r/tests/sessions/spin/OTHER.EXE"
+{ head -c 9000 /dev/zero | tr '\000' 'a'; printf '\000\n'; } > "$r/late.txt"
+git -C "$r" add late.txt
+expect "a NUL past the first 8000 bytes is still text" 0 \
+  bash "$r/scripts/check-clean.sh"
+git -C "$r" rm -q --cached late.txt
+rm "$r/late.txt"
+printf 'plain\n' > "$r/note.txt"
+expect "an untracked text file is nobody's violation" 0 \
+  bash "$r/scripts/check-clean.sh"
+printf 'MZ\000\000dump\n' > "$r/scratch.bin"
+expect "an untracked binary beside it fails" 1 \
+  bash "$r/scripts/check-clean.sh"
+printf '*.bin\n' > "$r/.gitignore"
+expect "an ignored binary is out of the untracked pass" 0 \
+  bash "$r/scripts/check-clean.sh"
+
 r=$(mkrepo badsign)
 echo x > "$r/f.txt"
 git -C "$r" add f.txt
