@@ -220,19 +220,19 @@ export function runDevPage() {
       box.vfsClear();
 
       const skipped = [];
-      let taken = 0;
+      const taken = [];
       for (const file of files) {
-        // The name goes across as the player's own text and core decides
-        // what it means (abi.h). A refusal is the useful answer: a boxed
-        // copy has files in it DOS could never have named.
-        const status = box.vfsPut(file.name, file.bytes);
-        if (status === AF_OK) taken += 1;
-        else skipped.push(file.name);
+        // The path goes across as the player's own text and core decides
+        // what it means, separators included (abi.h, #146). A refusal is
+        // the useful answer: a boxed copy has files in it DOS could never
+        // have named.
+        const status = box.vfsPut(file.path, file.bytes);
+        if (status === AF_OK) taken.push(file);
+        else skipped.push(file.path);
       }
 
-      const listing = box.vfsList();
       appendConsole(
-        `[host] filesystem: ${taken} files, ` +
+        `[host] filesystem: ${taken.length} files, ` +
           `${Math.round(box.vfsBytesUsed() / 1024)} KiB` +
           (skipped.length > 0
             ? `, ${skipped.length} skipped (not DOS-nameable): ${skipped.join(', ')}`
@@ -240,20 +240,28 @@ export function runDevPage() {
           '\n',
       );
 
-      // Programs first in the list, everything else after it: a player
-      // wants the .EXE and should not have to hunt for it, and the rest
-      // is still offered because nothing here should be deciding what is
-      // and is not bootable.
-      const isProgram = (name) => name.endsWith('.EXE') || name.endsWith('.COM');
+      // What to offer as bootable is what went in, not `vfsList()`: the
+      // root listing is the root's, and since #146 an entry in it may be
+      // a directory `vfsPut` made on the way to a file below (abi.h).
+      // This page knows which of the things it handed over were files,
+      // because it handed them over.
+      //
+      // Programs first, everything else after: a player wants the .EXE
+      // and should not have to hunt for it, and the rest is still offered
+      // because nothing here should be deciding what is and is not
+      // bootable. Ordering is the whole of what this looks at — the name
+      // itself goes to `loadFromVfs` as the player spelled it, for core
+      // to canonicalize.
+      const isProgram = (path) => /\.(exe|com)$/i.test(path);
       const ordered = [
-        ...listing.filter((e) => isProgram(e.name)),
-        ...listing.filter((e) => !isProgram(e.name)),
+        ...taken.filter((file) => isProgram(file.path)),
+        ...taken.filter((file) => !isProgram(file.path)),
       ];
       programSelect.replaceChildren(
-        ...ordered.map((entry) => {
+        ...ordered.map((file) => {
           const option = document.createElement('option');
-          option.value = entry.name;
-          option.textContent = `${entry.name} (${entry.size} bytes)`;
+          option.value = file.path;
+          option.textContent = `${file.path} (${file.bytes.length} bytes)`;
           return option;
         }),
       );
@@ -262,7 +270,7 @@ export function runDevPage() {
       setStatus(
         ordered.length === 0
           ? 'nothing in that directory has a DOS-legal name.'
-          : `${taken} files loaded - choose a program and press boot.`,
+          : `${taken.length} files loaded - choose a program and press boot.`,
       );
     },
   });
