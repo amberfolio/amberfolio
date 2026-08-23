@@ -98,6 +98,27 @@
 // leaves the seam enabled but inert, with `seam_reason::module_not_resident`
 // for anyone who asks why.
 //
+// **Where the program says where a module is, that is what is used.**
+// An overlay manager that shuffles modules around an arena has to keep
+// a note of where each one went, and that note lives in the resident
+// image, which does not move. `seam_module::load_segment_at` is the
+// offset of that word, and a point qualified by it is resolved
+// *per step, from the machine* — the word is read at the step boundary
+// and the point's address is that segment plus its offset — rather than
+// computed once at arming. That is the difference #131 was filed for:
+// an address computed at arming is a claim about the fact table and goes
+// stale the moment the manager moves the module, and a seam armed at a
+// stale address reports `armed`, fires nothing, and reads exactly like
+// one that works. An address resolved from the program's own record is a
+// claim about the machine, and there is no window in which it can be
+// wrong. Zero in that word means the module is not loaded, and the point
+// simply does not match — the same inert-and-honest answer, arrived at
+// one layer lower.
+//
+// The tracker's reading is still the fallback, and still what a module
+// with no such record gets. `docs/seams.md` §"Where a point lives" has
+// the choice written out.
+//
 // Every definition carries the schema version it was written against.
 // The engine refuses one written against another (`schema_mismatch`), so
 // a change to what a module or a point means cannot silently re-target a
@@ -114,6 +135,13 @@
 // path that is already an interpreted instruction away from anything
 // that matters — the same argument port_map.h makes for scanning its
 // claims.
+//
+// A point resolved from the program's load-segment word costs one more
+// thing on that scan: a two-byte read of RAM. It is behind a test that
+// throws away fifteen steps in sixteen for free — a load segment is a
+// paragraph, so a point can only be *here* if `at` and the point's
+// offset agree in their low four bits — and it happens only for a seam
+// that is on and only for the points that name such a word.
 
 #pragma once
 
@@ -139,7 +167,12 @@ struct edition;
 /// The shape a seam definition is written in. Bump when `seam_definition`,
 /// `seam_point` or `seam_module` change meaning; a definition that names
 /// another version is refused rather than misread.
-inline constexpr std::uint16_t seam_schema_version = 1;
+///
+/// 2: a module may name the word the program keeps its load segment in
+/// (`seam_module::load_segment_at`, overlay.h), and a point in such a
+/// module is resolved from that word at every step instead of from the
+/// tracker's record of a read (#131).
+inline constexpr std::uint16_t seam_schema_version = 2;
 
 /// What runs when execution reaches an armed interception point. Native
 /// C++, called from outside the emulated machine — see this file's top
@@ -514,6 +547,12 @@ class seam_engine {
   /// tracker recorded, only when `any_enabled()`.
   void rearm(const overlay_tracker& overlays);
 
+  /// The machine's RAM, for reading a module's load segment out of the
+  /// program's own record (`seam_module::load_segment_at`, overlay.h).
+  /// `machine` hands it over once; the engine only ever reads it, and
+  /// only at the one word a seam's facts name.
+  void watch_memory(std::span<const std::uint8_t> ram) noexcept { ram_ = ram; }
+
   // --- The host service slot ----------------------------------------------
 
   /// Attach the host's services, or detach with null. A setting, like an
@@ -539,16 +578,43 @@ class seam_engine {
   };
 
   struct armed_point {
+    /// The physical address the point is on, for a module that stays
+    /// where it was put. Meaningless for a point whose module names a
+    /// load-segment word: that one's address is `anchor`'s contents
+    /// times sixteen, plus `offset`, worked out afresh at every step.
     std::uint32_t at{};
     std::uint32_t module_base{};
+    /// The physical address of the word the program keeps this module's
+    /// load segment in, or `no_load_segment` for a point that has none.
+    std::uint32_t anchor{no_load_segment};
+    /// The point's offset in its module — kept past arming only because
+    /// an anchored point re-derives its address from it.
+    std::uint32_t offset{};
     seam_handler run{nullptr};
     std::size_t owner{};
   };
+
+  /// The word at `address`, or zero if it is not wholly inside the RAM
+  /// the engine was handed. Zero is the same answer as "the module is
+  /// not loaded", which is the fail-closed direction for a fact table
+  /// that names an offset the machine does not have.
+  [[nodiscard]] std::uint16_t word_at(std::uint32_t address) const noexcept;
 
   [[nodiscard]] std::size_t index_of(std::string_view id) const noexcept;
 
   /// Whether `seam` names the loaded program's digest.
   [[nodiscard]] bool applies(const seam_definition& seam) const noexcept;
+
+  /// Whether every module `seam`'s points live in is in memory *now* —
+  /// asked of the program's own record where there is one, and of the
+  /// tracker otherwise. The resident image always is.
+  ///
+  /// One function for both callers on purpose: `status()` answers a host
+  /// asking right now, `arm_all()` decides whether a transition is worth
+  /// a line, and the two must never be able to disagree about what
+  /// resident means.
+  [[nodiscard]] bool modules_resident(
+      const seam_definition& seam) const noexcept;
 
   /// Rebuild the armed table from the enabled slots against `overlays`.
   void arm_all(const overlay_tracker* overlays);
@@ -575,6 +641,11 @@ class seam_engine {
 
   diagnostics* log_;
   seam_host_services* host_{nullptr};
+
+  /// The machine's RAM, read-only and read at one word at a time
+  /// (`watch_memory`). Empty until `machine` hands it over, and an empty
+  /// one answers every anchored point "not loaded".
+  std::span<const std::uint8_t> ram_{};
 
   /// The overlay table the points were last armed against, kept so that
   /// `enable()` — which has no tracker argument — can arm against the

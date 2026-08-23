@@ -139,18 +139,39 @@ struct rig {
   }
 
   /// Pretend the overlay manager read the module the kill-all seam lives
-  /// in to `overlay_segment:0000`, with the digest the seam demands —
-  /// claimed, the way the program digest is: the engine compares, it does
-  /// not verify.
-  void load_combat_overlay() const {
+  /// in to `segment:0000`, with the digest the seam demands — claimed,
+  /// the way the program digest is: the engine compares, it does not
+  /// verify.
+  void read_combat_overlay_to(std::uint16_t segment) const {
     const seam_module& module = seam("cheat-kill-all").points.front().module;
     sha256_digest digest;
     ASSERT_TRUE(parse_digest(module.digest, digest));
     const auto resolved =
         canonicalize(dos_path{}, std::span<const char>("\\GAME.OVR", 9));
     ASSERT_TRUE(resolved.ok());
-    box->note_file_read(resolved.value, module.file_offset, overlay_segment, 0,
+    box->note_file_read(resolved.value, module.file_offset, segment, 0,
                         module.length, digest);
+  }
+
+  /// Write what the program's overlay manager writes: the segment that
+  /// module begins at right now, in the word the seam's facts name
+  /// (overlay.h, `seam_module::load_segment_at`). Zero is "not loaded",
+  /// which is what a reset machine's memory already says.
+  ///
+  /// This, and not the read above, is where the engine gets the address
+  /// from — so a test that moves the module moves this (#131).
+  void manager_says_overlay_at(std::uint16_t segment) const {
+    const seam_module& module = seam("cheat-kill-all").points.front().module;
+    ASSERT_TRUE(module.has_load_segment());
+    put_word(image_load_segment,
+             static_cast<std::uint16_t>(module.load_segment_at), segment);
+  }
+
+  /// The ordinary case: the manager reads the module in and says where
+  /// it put it.
+  void load_combat_overlay() const {
+    read_combat_overlay_to(overlay_segment);
+    manager_says_overlay_at(overlay_segment);
   }
 
   test::recording_diagnostics log;
@@ -173,6 +194,8 @@ TEST(SeamCheats, AreTwoSeamsKeyedToTheBaselineAndQualifiedAsTheFactsSay) {
   EXPECT_EQ(kill_all.points.front().module.file, "GAME.OVR");
   EXPECT_FALSE(kill_all.points.front().module.digest.empty())
       << "the overlay is identified by its bytes as well as its place";
+  EXPECT_TRUE(kill_all.points.front().module.has_load_segment())
+      << "and by the word the program keeps its whereabouts in (#131)";
 
   // Both keyed to the baseline, and therefore available on this rig.
   EXPECT_EQ(r.pc().seams().status("cheat-invulnerable").state, seam_state::off);
@@ -355,6 +378,12 @@ TEST(SeamCheatKillAll, IsInertUntilTheCombatOverlayIsResident) {
   const seam_status after = r.pc().seams().status("cheat-kill-all");
   EXPECT_TRUE(after.armed);
   EXPECT_EQ(after.reason, seam_reason::none);
+
+  // And back again the moment the program says the module has gone, with
+  // no read to announce it — which is the half of this a table of reads
+  // cannot answer.
+  r.manager_says_overlay_at(0);
+  EXPECT_FALSE(r.pc().seams().status("cheat-kill-all").armed);
 }
 
 TEST(SeamCheatKillAll, DownsEveryStandingEnemyAndLeavesThePartyAlone) {
@@ -446,7 +475,7 @@ TEST(SeamCheatKillAll, DoesNothingOutsideCombat) {
   EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 1), 1u);
 }
 
-TEST(SeamCheatKillAll, FiresOnlyWhereTheOverlayLanded) {
+TEST(SeamCheatKillAll, FiresOnlyWhereTheProgramSaysTheModuleIs) {
   const rig r;
   ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
   r.load_combat_overlay();
@@ -463,6 +492,77 @@ TEST(SeamCheatKillAll, FiresOnlyWhereTheOverlayLanded) {
   r.halt_at(0x7000, entry, data_segment, data_segment, 0x0400);
   r.pc().step();
   EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 9u);
+}
+
+TEST(SeamCheatKillAll, FollowsTheModuleWhenTheManagerMovesIt) {
+  // #131, as a test. The overlay manager owns an arena and may shuffle a
+  // module inside it — or answer a call from a copy it already holds —
+  // without going near DOS, so the address the read landed at is not the
+  // address the routine runs from. On the real program the module this
+  // seam lives in was read to one segment and ran, nineteen frames
+  // later, from the next one up.
+  //
+  // The seam has to follow the module, and it has to stop firing at the
+  // place the module *was*: a handler that ran at the landing after the
+  // move would be running on whatever the manager put there instead.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  const auto entry = static_cast<std::uint16_t>(
+      r.seam("cheat-kill-all").points.front().offset);
+  constexpr std::uint16_t moved_to = overlay_segment + 1;
+
+  r.put_byte(data_segment, data_mode, 5);
+  r.put_word(data_segment, data_roster_head, 0x0100);
+  r.put_word(data_segment, data_roster_head + 2, record_segment);
+  r.put_byte(data_segment, data_side_counts + 1, 2);
+  r.record(0x0100, 1, true, 9, 0, 0x0300);
+  r.record(0x0300, 1, true, 9, 0, 0);
+
+  // Read to one segment; moved to the next, with no read to say so.
+  r.read_combat_overlay_to(overlay_segment);
+  r.manager_says_overlay_at(moved_to);
+
+  // Where it landed is now somebody else's code.
+  r.halt_at(overlay_segment, entry, data_segment, data_segment, 0x0400);
+  r.pc().step();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 9u)
+      << "nothing fires at the address the read landed at";
+  EXPECT_EQ(r.pc().seams().status("cheat-kill-all").fired, 0u);
+
+  // Where the program says it is, is where the point is.
+  r.halt_at(moved_to, entry, data_segment, data_segment, 0x0400);
+  r.pc().step();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 0u) << "downed";
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 0u);
+  EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 1), 0u);
+  EXPECT_EQ(r.pc().seams().status("cheat-kill-all").fired, 1u);
+}
+
+TEST(SeamCheatKillAll, DoesNotFireWhileTheProgramSaysTheModuleIsGone) {
+  // The manager may drop a module without anything reading over it, and
+  // then the word it keeps reads zero. A point armed against a *read*
+  // would still be sitting on the address that read landed at, firing on
+  // whatever is there now; this one asks the program at the step it is
+  // asked to fire, and declines to be anywhere.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  const auto entry = static_cast<std::uint16_t>(
+      r.seam("cheat-kill-all").points.front().offset);
+
+  r.put_byte(data_segment, data_mode, 5);
+  r.put_word(data_segment, data_roster_head, 0x0100);
+  r.put_word(data_segment, data_roster_head + 2, record_segment);
+  r.put_byte(data_segment, data_side_counts + 1, 1);
+  r.record(0x0100, 1, true, 9, 0, 0);
+
+  r.read_combat_overlay_to(overlay_segment);
+  r.manager_says_overlay_at(0);
+
+  r.halt_at(overlay_segment, entry, data_segment, data_segment, 0x0400);
+  r.pc().step();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 9u);
+  EXPECT_EQ(r.pc().seams().status("cheat-kill-all").fired, 0u);
 }
 
 TEST(SeamCheatKillAll, BoundsTheRosterWalk) {

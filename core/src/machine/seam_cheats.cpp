@@ -59,12 +59,20 @@
 // read, and the SHA-256 of the bytes it delivers, as the tracker records
 // it (overlay.h).
 //
-// Which module that is was also found by observation rather than
-// believed: watch the two bytes the side counts live at, take the
-// address of whatever *reads* both of them in sequence, and ask the
-// overlay tracker which of its recorded loads covered that address at
-// that moment. The answer was not the module #99 named, and the offset
-// was not the one it named either.
+// Which module that is comes from the overlay file's **own table**, and
+// not from a trace. #129 asked instead "which recorded load last covered
+// the address the end check ran at", got a different overlay entirely,
+// and put its numbers here; #130 put the original ones back. Overlays
+// share an arena and their landing ranges overlap over a run, so "which
+// read covered this address" is not the same question as "which module
+// owns this code" and does not have the same answer.
+//
+// **And where it is comes from the program, not from the read.** The
+// manager moves a resident module inside its arena without reading it
+// again, so the address the read landed at is not the address the
+// routine runs from; that is #131, and `overlay_load_segment_at` below
+// is the answer to it — the word the manager itself keeps the module's
+// current segment in.
 //
 //
 // What the seams do, and what they are careful not to do
@@ -82,18 +90,26 @@
 // **Kill-all-enemies** intercepts the end check's entry — the point at
 // which the program will next consult the combat state, which is what
 // #99 asks for — and, when the game mode says combat, downs every enemy
-// exactly as the damage routine downs one: slain, flag cleared, hit
+// exactly as the damage routine downs one: slain, held flag cleared, hit
 // points zero, the side's body count decremented, the scratch byte
-// cleared. The program's own end check then finds the enemies' count at
-// zero and ends the combat through its own logic, and its own post-combat
-// code runs unmodified. Outside combat the point does nothing, and a
-// roster walk is bounded so a record whose next pointer is not what the
-// facts say cannot spin the host.
+// cleared. The end check then rebuilds both counts from the held flags —
+// which is why the cleared flag and not the decrement is what carries
+// this — finds the enemies' side at zero, and ends the combat through
+// its own logic, with its own post-combat code running unmodified.
+// Outside combat the point does nothing, and a roster walk is bounded so
+// a record whose next pointer is not what the facts say cannot spin the
+// host.
+//
+// Driven through a wilderness encounter against seven soldiers, one
+// firing ends it: `THE PARTY HAS WON. EACH CHARACTER RECEIVES 107
+// EXPERIENCE POINTS.` The same script with the seam off is still in the
+// fight when the run's tick budget expires.
 //
 // Both are fail-closed by construction (#99): unavailable on any binary
-// but the baseline's (the fingerprint), inert with a reported reason
-// while the end check's module is not resident (kill-all's point, #97),
-// and nothing on the hot path when off (#96).
+// but the baseline's (the fingerprint), inert while the end check's
+// module is not loaded — which the program's own record answers at the
+// step it is asked (kill-all's point, #97, #131) — and nothing on the
+// hot path when off (#96).
 
 #include <array>
 #include <cstdint>
@@ -121,9 +137,19 @@ constexpr std::array<std::string_view, 1> cheat_binaries{
 constexpr std::uint16_t rec_next_offset = 0x104;     // far ptr: next record
 constexpr std::uint16_t rec_scratch_offset = 0x108;  // far ptr: combat scratch
 constexpr std::uint16_t rec_status = 0x10C;          // wound status
-/// The held/awarded flag. **Not** a liveness flag, whatever it looks
-/// like: the routine that downs a combatant clears it, but a combatant
-/// is not up because it is set. `still_standing()` below is the test.
+/// The held flag: whether this record is in its side's body count.
+///
+/// **Not** a liveness flag, whatever it looks like: the routine that
+/// downs a combatant clears it, but a combatant is not up because it is
+/// set — `still_standing()` below is that test. What it *is* is the
+/// program's own ledger entry for the count: each side's count is
+/// **rebuilt** from these bytes, by a walk of this same roster, at the
+/// top of every round *and* inside the end check itself, immediately
+/// before the count is read. Between those rebuilds the program keeps
+/// the count by hand, decrementing as bodies drop.
+///
+/// So clearing this is what actually ends a combat, and the decrement
+/// that goes with it is faithfulness rather than mechanism (#99).
 constexpr std::uint16_t rec_held = 0x10D;
 constexpr std::uint16_t rec_side = 0x10E;  // combat side, signed
 constexpr std::uint16_t rec_hit_points = 0x11B;
@@ -200,18 +226,46 @@ constexpr std::uint16_t frame_record_segment = 8;
 
 // --- Where combat ends -----------------------------------------------------
 
-/// The module the end check lives in, as the manager reads it: one read,
-/// whose facts the tracker records (overlay.h). The digest is of those
-/// bytes as read, so a copy whose overlay file does not match leaves the
-/// seam inert rather than pointed at the wrong code.
+/// Where the program keeps this module's load segment: the offset, in
+/// the resident image, of one word (overlay.h,
+/// `seam_module::load_segment_at`). It reads zero while the module is
+/// not loaded and the segment the module currently begins at while it
+/// is, and the overlay manager maintains it — including when it moves
+/// the module, which is the whole reason this field exists (#131).
+///
+/// It sits inside the manager's own record for this module, which
+/// begins sixteen bytes earlier at image offset 0x350 and carries, in
+/// order, the offset and length above. That is how this offset was
+/// found and how it is checked: search the resident image for the
+/// record whose file offset is 38919 and whose length is 4735 — one
+/// match — and take the word sixteen bytes past its start.
+constexpr std::uint32_t overlay_load_segment_at = 0x360;
+
+/// The module the end check lives in: one read, whose facts the tracker
+/// records (overlay.h), plus the word above. The digest is of those
+/// bytes as read, so a copy whose overlay file does not match is not
+/// this module.
+///
+/// Both qualifiers, because they answer different questions. The read's
+/// facts say *which* module this is, and are what a person checks
+/// against the overlay file's own table. The word says *where it is
+/// now*, which the read cannot: driven through a wilderness encounter on
+/// a player-supplied copy, this module was read once and landed at
+/// 279D:0000, and was running from 279E:0000 nineteen frames later —
+/// and in a later fight it sat 0x73 paragraphs from where its read had
+/// put it. The engine arms against the word and never against the
+/// landing.
 constexpr seam_module overlay_module{
     .file = "GAME.OVR",
     .file_offset = 38919,
     .length = 4735,
     .digest =
-        "5d07a6b3fedb56509214f24bdbdbc3b8625ddf6b2ce4d6274e6e89b26c563930"};
+        "5d07a6b3fedb56509214f24bdbdbc3b8625ddf6b2ce4d6274e6e89b26c563930",
+    .load_segment_at = overlay_load_segment_at};
 
-/// The end check's entry, as an offset from where that read landed.
+/// The end check's entry, as an offset from the start of the module —
+/// which is to say from the segment the word above holds, wherever
+/// the manager has most recently put it.
 constexpr std::uint32_t end_check_offset = 0x0880;
 
 // --- The handlers ------------------------------------------------------------
@@ -285,6 +339,14 @@ void fell_the_enemies(machine& box, seam_context& /*ctx*/) {
         still_standing(cpu.read_byte(segment, word_after(offset, rec_status)));
 
     if (side != side_party && standing) {
+      // Cleared **held** is the one that ends the combat, and it is worth
+      // knowing which of these four writes is load-bearing: the end check
+      // re-tallies both sides' counts from the held bytes, by walking
+      // this same roster, immediately before it reads them. So the
+      // decrement below is faithfulness rather than mechanism — the
+      // program's own routine does it, so this does — and a body left
+      // held would come back into the count however many times it had
+      // been decremented for.
       cpu.write_byte(segment, word_after(offset, rec_status), status_slain);
       cpu.write_byte(segment, word_after(offset, rec_held), 0);
       cpu.write_byte(segment, word_after(offset, rec_hit_points), 0);
