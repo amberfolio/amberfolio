@@ -1407,6 +1407,127 @@ if (missing.length === 0 && sessions !== null) {
   console.log(
     'smoke: the speaker worklet holds the level across a short gap and fades to silence',
   );
+
+  // --- Volume and mute (M4-A1 remainder, #148) -------------------------
+  //
+  // The same room, a fresh processor, and the three claims
+  // `hosts/sdl/tests/audio_gain_test.cpp` makes of the desktop host's
+  // gain — asked of this one because the two are separate
+  // implementations of one decision, exactly as the underrun policy
+  // above is. Nothing is shared between them but the reasoning, so
+  // nothing but a test on each side can say they agree.
+  //
+  //   1. unity does not touch a sample;
+  //   2. a volume scales every sample by it, once the glide has landed;
+  //   3. mute is silence — arithmetically zero, including the held
+  //      level an underrun invents, which is the half only this file can
+  //      check because only this side of the boundary invents one.
+  if (Processor !== null) {
+    const processor = new Processor();
+    const quantum = () => {
+      const channel = new Float32Array(128);
+      processor.process([], [[channel]]);
+      return channel;
+    };
+    /// Feed one quantum's worth of a constant level and answer what came
+    /// out. A fresh chunk per call, so the queue never runs dry and what
+    /// is measured is the gain and not the underrun policy.
+    const playing = (level) => {
+      processor.port.onmessage({ data: new Float32Array(128).fill(level) });
+      return quantum();
+    };
+    /// The glide is six milliseconds; run it out and a little past, so
+    /// what follows is the settled gain.
+    const settle = (level) => {
+      const quanta = Math.ceil((rate * 0.006) / 128) + 1;
+      for (let i = 0; i < quanta; ++i) playing(level);
+    };
+
+    // 1. Unity. Not "close to": the same bits, which is what makes the
+    // numbers in docs/hosts.md §4 numbers about this host too.
+    const untouched = playing(0.125);
+    check(
+      untouched.every((sample) => sample === 0.125),
+      'the worklet altered a sample with the volume where it starts',
+    );
+
+    // 2. A volume, once it has arrived, is a multiply and nothing else.
+    processor.port.onmessage({ data: { gain: 0.5 } });
+    settle(0.25);
+    const halved = playing(0.25);
+    check(
+      halved.every((sample) => sample === 0.125),
+      `at half volume a 0.25 sample came out as ${halved[0]}`,
+    );
+
+    // And the walk to it is a walk: the first quantum after a change is
+    // between the two levels rather than at either, which is the click
+    // this glide exists to remove.
+    processor.port.onmessage({ data: { gain: 1 } });
+    const walking = playing(0.25);
+    check(
+      walking[0] > 0.125 && walking[0] < 0.25 && walking[127] > walking[0],
+      `a volume change stepped rather than glided: ${walking[0]} then ${walking[127]}`,
+    );
+
+    // 3. Mute. Every sample exactly zero, which is the value platform.h
+    // reserves for silence — and the monotonic way down, so the mute is
+    // not itself a click.
+    processor.port.onmessage({ data: { gain: 0 } });
+    let previous = 0.25;
+    let quanta = 0;
+    while (previous !== 0 && quanta < 16) {
+      const fading = playing(0.25);
+      for (const sample of fading) {
+        if (sample > previous + 1e-6 || sample < 0) {
+          check(false, `the mute was not a monotonic fade: ${sample} after ${previous}`);
+          break;
+        }
+        previous = sample;
+      }
+      quanta += 1;
+    }
+    check(previous === 0, `after ${quanta} quanta of muting the output is ${previous}`);
+    const silent = playing(0.25);
+    check(
+      silent.every((sample) => sample === 0),
+      'a muted worklet handed the destination something other than zero',
+    );
+
+    // The half of it that only this host has: a stall while muted must
+    // be silent too. `starvedSample()` invents the held level and the
+    // fade out of it on this side of the boundary, so a gain applied
+    // before the postMessage — in app.mjs, where the chunks are pulled —
+    // would leave a muted player hearing the held sample. Here it does
+    // not, because the multiply is where the sample is written.
+    const stalled = quantum();
+    check(
+      stalled.every((sample) => sample === 0),
+      'a muted worklet held a level through an underrun instead of silence',
+    );
+
+    // And it comes back. A gain of one restores the samples themselves,
+    // not an approximation of them.
+    processor.port.onmessage({ data: { gain: 1 } });
+    settle(0.25);
+    const restored = playing(0.25);
+    check(
+      restored.every((sample) => sample === 0.25),
+      `unmuting gave back ${restored[0]} where the machine made 0.25`,
+    );
+
+    // A gain nobody should be able to ask for is clamped rather than
+    // honoured: this host does not amplify, so the loudest thing a
+    // player hears is the thing `render()` produced.
+    processor.port.onmessage({ data: { gain: 4 } });
+    const capped = playing(0.25);
+    check(
+      capped.every((sample) => sample === 0.25),
+      `a gain of 4 was honoured: 0.25 came out as ${capped[0]}`,
+    );
+  }
+
+  console.log('smoke: the speaker worklet mutes to silence and scales linearly');
 }
 
 if (problems.length > 0) {

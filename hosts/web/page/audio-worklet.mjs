@@ -59,6 +59,41 @@
 // has nothing to play. The count of underruns is posted to the page, so
 // "why did it sound wrong" has a number attached on this side of the
 // boundary as well as core's (`af_machine_audio_underruns`).
+//
+//
+// Volume and mute, and why they are in *this* file (#148)
+// -------------------------------------------------------
+//
+// `hosts/sdl/src/audio_gain.h` makes the general argument — a gain does
+// not belong in `audio_timeline::render()`, because a sample there is the
+// exact integral of the edge list and every measurement in
+// docs/hosts.md §4 rests on its staying that. This host has a second,
+// sharper reason for the gain being *here* rather than one step earlier
+// in app.mjs, where the samples are pulled:
+//
+// **The held level and the fade are made on this side of the boundary.**
+// Scaling the chunks as they were posted would leave up to eight of them
+// already queued at the old level, and — worse — would not touch
+// `starvedSample()` at all. A player who muted a stalled tab would go on
+// hearing the held sample for three milliseconds and then a ramp of it,
+// which is a mute that does not mute. Applying the gain where the sample
+// is written to the output covers the real samples and the invented ones
+// with one multiply and no special case.
+//
+// It glides for the same reason the underrun fades: a gain that stepped
+// would put a discontinuity in the output at the moment somebody moved
+// the slider — a click this host made, which the machine never
+// generated. Six milliseconds, the same span as the fade; and it lands
+// *on* the target rather than approaching it, so muted is arithmetic
+// silence and not a small number. `hosts/web/tests/smoke.mjs` measures
+// all of it, unity leaving every sample untouched included.
+//
+// The control crosses the same `port.postMessage()` the chunks do — a
+// `{ gain }` record rather than a `Float32Array` — which is this host's
+// answer to the constraint platform.h states for the other side: no
+// mutex, because an audio thread may not wait. A message queue drained
+// between quanta is the boundary the browser already gives, and a level
+// is a value rather than a handshake.
 
 class AmberfolioSpeakerProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -102,8 +137,34 @@ class AmberfolioSpeakerProcessor extends AudioWorkletProcessor {
     /// rate is bounded by the thing being counted.
     this.underruns = 0;
 
+    /// The listening level (#148): where it is, where it is going, and
+    /// how far it may move in one sample. One is "what the machine
+    /// made"; this host does not amplify, for the reason the desktop one
+    /// does not.
+    ///
+    /// `gainStep` is recomputed whenever the target moves, as the
+    /// remaining distance over the ramp — so a whole change takes
+    /// `gainRampSamples` whatever its size, and muting a quiet page
+    /// feels like muting a loud one.
+    this.gain = 1;
+    this.targetGain = 1;
+    this.gainRampSamples = Math.max(1, Math.round(sampleRate * 0.006));
+    this.gainStep = 0;
+
     this.port.onmessage = (event) => {
-      const samples = event.data;
+      const data = event.data;
+      // The control record. Checked before the chunk, because a
+      // Float32Array is not a plain object and a plain object is not
+      // audio; neither shape can be mistaken for the other.
+      if (data && !(data instanceof Float32Array) && typeof data.gain === 'number') {
+        const wanted = Math.min(1, Math.max(0, data.gain));
+        if (wanted !== this.targetGain) {
+          this.targetGain = wanted;
+          this.gainStep = Math.abs(wanted - this.gain) / this.gainRampSamples;
+        }
+        return;
+      }
+      const samples = data;
       if (!(samples instanceof Float32Array) || samples.length === 0) {
         return;
       }
@@ -113,6 +174,19 @@ class AmberfolioSpeakerProcessor extends AudioWorkletProcessor {
         this.queueOffset = 0;
       }
     };
+  }
+
+  /// The gain to multiply the next output sample by, walked one step
+  /// towards the target. Lands exactly on it rather than approaching it,
+  /// which is what makes a mute silence.
+  nextGain() {
+    if (this.gain === this.targetGain) return this.gain;
+    if (this.gain < this.targetGain) {
+      this.gain = Math.min(this.targetGain, this.gain + this.gainStep);
+    } else {
+      this.gain = Math.max(this.targetGain, this.gain - this.gainStep);
+    }
+    return this.gain;
   }
 
   /// The value to fill an underrun sample with: the last real sample for
@@ -141,6 +215,13 @@ class AmberfolioSpeakerProcessor extends AudioWorkletProcessor {
       return true;
     }
 
+    // Unity is a no-op and not a multiply, which is the guarantee rather
+    // than the optimization: with the volume where it starts, what
+    // reaches the destination is bit for bit what `render()` produced,
+    // so the numbers docs/hosts.md §4 pins are numbers about this host
+    // too.
+    const gained = this.gain !== 1 || this.targetGain !== 1;
+
     for (let i = 0; i < channel.length; ++i) {
       if (this.queue.length === 0) {
         // An underrun on this side of the boundary: the main thread has
@@ -150,12 +231,19 @@ class AmberfolioSpeakerProcessor extends AudioWorkletProcessor {
           this.underruns += 1;
           this.port.postMessage({ underruns: this.underruns });
         }
-        channel[i] = this.starvedSample();
+        // Through the gain as well, which is the whole reason it is in
+        // this file: a mute during a stall has to silence the held level
+        // too, and the held level exists only here.
+        const held = this.starvedSample();
+        channel[i] = gained ? held * this.nextGain() : held;
         continue;
       }
       const chunk = this.queue[0];
       const sample = chunk[this.queueOffset];
-      channel[i] = sample;
+      // `lastSample` is the sample the machine made, not the sample the
+      // listener heard: it is what an underrun holds, so moving the
+      // volume must not move it or a stall would freeze the old level.
+      channel[i] = gained ? sample * this.nextGain() : sample;
       this.lastSample = sample;
       this.starvedFor = 0;
       this.queueOffset += 1;
