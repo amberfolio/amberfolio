@@ -237,6 +237,17 @@ struct machine_program {
 /// the result block too rather than only on the count.
 [[nodiscard]] const machine::seam_definition& seam_probe_unreached_definition();
 
+/// The third of the set (#161): the same program's fingerprint and the
+/// same point as `probe`'s register edit, declared as a **trigger**, so
+/// nothing happens there until somebody pulls it.
+///
+/// The pair of program entries it drives — `seam_probe_trigger` and
+/// `seam_probe_trigger_unpulled` — is the fidelity claim at program
+/// scale: on and asked, the result block carries the seam's word; on and
+/// never asked, it carries the program's own, which is the same block a
+/// machine with no seam at all produces.
+[[nodiscard]] const machine::seam_definition& seam_probe_trigger_definition();
+
 /// The probe program itself, as the MZ file `seam_probe` loads — for a
 /// host that wants to stage it somewhere of its own (hosts/web).
 [[nodiscard]] const std::vector<std::uint8_t>& seam_probe_file();

@@ -23,6 +23,7 @@ The short version:
 - [1. What a seam is](#1-what-a-seam-is)
 - [2. The handler contract](#2-the-handler-contract)
 - [3. The action primitives](#3-the-action-primitives)
+- [3a. The trigger: a host pulls, a seam acts](#3a-the-trigger-a-host-pulls-a-seam-acts)
 - [4. Qualified points: the resident image and the overlays](#4-qualified-points-the-resident-image-and-the-overlays)
 - [5. Identity: fingerprints and editions](#5-identity-fingerprints-and-editions)
 - [6. The toggle surface](#6-the-toggle-surface)
@@ -43,6 +44,7 @@ The short version:
 | `about` | one line for a listing |
 | `fingerprints` | the SHA-256s of the program images the addresses below are facts about |
 | `points` | interception points: a module, an offset in it, a handler |
+| `trigger` | whether this seam is **pulled** rather than left on (§3a) |
 | `schema` | the `seam_schema_version` the definition was written against |
 
 Everything in it is a *fact* about the program — an address, an offset, a
@@ -148,6 +150,105 @@ What a handler is handed beside the machine is `seam_context`: the seam's
 id, the physical address the point fired at, the base of the module it
 lives in, and the image base — so a handler that reads a fact-table
 offset against its module adds the right number.
+
+---
+
+## 3a. The trigger: a host pulls, a seam acts
+
+Everything above is a seam acting on its own account. `call_host()` is
+the seam → host direction. Until #161 there was no host → seam direction
+at all, and a cheat wants one: a debug cheat that fires at every visit to
+its point decides every fight from the moment it is switched on, which is
+a setting and not a cheat. A person wants to **pull** it.
+
+A definition may therefore say `trigger = true`, and then:
+
+- `seam_engine::pull(id, now)` sets a **one-shot latch** on that seam.
+  Refused, with a reason, for a seam that is off (`not_enabled`) or one
+  that does not take a trigger (`not_triggered`) — a latch quietly
+  waiting on a seam nobody turned on would fire at some unrelated later
+  moment, which is exactly what a trigger exists to remove.
+- The next time one of that seam's points is reached with the latch set,
+  the handler runs and the latch clears. One pull, one run.
+- With the latch unset the point is reached and **nothing happens**: the
+  address is compared, the arrival is counted, and the handler is not
+  called.
+- A handler that `decline()`s **keeps** the latch. A pull that arrived at
+  a point which was not the point is not a pull that was served, and
+  swallowing it would answer a person's request with nothing at all. A
+  handler that arrives and simply chooses to do nothing *has* been
+  served — only a decline is a non-arrival.
+
+### It cannot mean "at this instant", and this document will not pretend
+
+A seam acts at a CS:IP breakpoint because that is the whole mechanism
+(PLAN.md §5): editing a structure half-way through the routine that is
+walking it is precisely the corruption the breakpoint discipline exists
+to prevent. So the honest latency of a pull is **"at the next arrival at
+the point"**, and how long that is depends entirely on how often the
+program goes there — which is a fact about the program.
+
+That is why a seam's status row carries `reached`:
+
+| number | the claim |
+| --- | --- |
+| `armed` | an address was computed out of the fact table |
+| `reached` | the program arrived at that address, N times, whether or not anybody had asked |
+| `fired` | a handler ran there, N times |
+| `waiting` | a pull is outstanding: asked, and the point not reached since |
+| `pulled_at` / `waited` | when the outstanding pull was made, and what the last served one cost, in ticks |
+
+`reached − fired` is the arrivals a trigger had and did not need, and the
+*rate* of `reached` over a run is the granularity at which a pull can
+possibly be served. `waited` is the same question answered directly, in
+ticks, for the pull that actually happened.
+
+### It is configuration, not machine state
+
+The latch obeys the same three rules the enable does (§7): `reset()` and
+`clear()` drop it, `enable()` starts it fresh, `disable()` throws it away,
+and the state serialization has never seen it.
+`SeamFidelity.ATriggeredSeamNobodyPulledLeavesTheRunIdentical` is the
+first half of that as a test — the same program, once on a plain machine
+and once with the trigger *on and armed and never pulled*, with the same
+registers, the same memory, the same tick — and
+`SeamFidelity.ALatchIsNotMachineState` is the second: pulled and not yet
+served, the machine's state hash is the hash it would have had.
+
+`tests/programs`' `seam_probe_trigger` and `seam_probe_trigger_unpulled`
+are the same claim at program scale, on all four targets, and
+`hosts/web/tests/smoke.mjs` asks it of a browser.
+
+### A pull is an input event
+
+A recording carries it as one — `pull TICK ID`, in the stream beside the
+keys, not among the `seam` lines of the preamble (`docs/replay.md` §1).
+The seam being *on* is a fact about how the run was set up; a person
+pulling its trigger is something they did at a moment. A recording that
+carried the seam and not the pull would replay a run in which the cheat
+never fired.
+
+### The surfaces
+
+- **Desktop**: **Pause/Break** pulls every triggered seam that is on, and
+  `--pull ID@FRAME` scripts one (it needs no window, so it works under
+  `--headless`). Pause is safe on the same argument F11 and F12 were
+  chosen on (`docs/hosts.md` §3): an 83-key XT board has no such key —
+  pausing on one was Ctrl and the keypad's Num Lock, and the dedicated
+  Pause/Break arrived with the 101-key Enhanced board as its one
+  E1-prefixed sequence, which this machine's set-1 wire has no room for.
+  `sdl::xt_scancode()` answers 0 for it, and `keymap_test.cpp` pins that.
+  The keypad's `/` and its Enter are the other two keys an XT board has
+  not got; both were passed over for sitting inside the cluster this
+  game's movement keys are, and a key you can hit by accident mid-fight
+  is the wrong key for a cheat.
+- **Browser**: a **button** beside the seam's checkbox, live only while
+  the seam is on. A trigger is a different affordance from a toggle and
+  one shown as the other is a promise the seam does not keep.
+  `af_machine_seam_pull`, `_triggered`, `_waiting`, `_reached`,
+  `_waited` and `_pulled_at` are the ABI (`abi.h`), and
+  `tools/drive.mjs` takes `--pull ID@FRAME` in the desktop host's
+  spelling.
 
 ---
 
@@ -294,6 +395,21 @@ amberfolio: seam cheat-invulnerable armed fired=4
 amberfolio: seam cheat-kill-all inert fired=0
 ```
 
+A **triggered** seam (§3a) carries two more numbers on that line, and
+only it does — `fired=0` means nothing about a trigger nobody pulled, so
+the sentence about a point that may not be where its facts say is keyed
+on `reached` for it instead:
+
+```
+amberfolio: seam cheat-kill-all armed fired=0 reached=13 - reached, and never pulled; this seam acts only when asked
+amberfolio: seam cheat-kill-all armed fired=0 reached=13 waiting - pulled, and its point not reached since
+amberfolio: seam cheat-kill-all armed fired=1 reached=13 waited=1868720
+```
+
+`host.mjs`'s `formatSeamFired` says all of that identically, because a
+reader comparing a browser run with a desktop one should be comparing two
+runs and not two spellings.
+
 A count cannot make a wrong address right; it makes the wrongness
 visible, which is the half of fail-closed that was missing.
 
@@ -338,7 +454,10 @@ every native target and `hosts/web/tests/smoke.mjs` asserts it under node.
 
 Seam state is **configuration**, not machine state: it survives nothing
 (`machine::reset()` clears it), the serialization omits it, and a replay
-records the active set as an initial condition (#100). The persisted
+records the active set as an initial condition (#100). A trigger's latch
+is configuration in exactly the same sense, and for exactly the same
+reasons — but *when* it was pulled is not, which is why a pull is a
+stream event (§3a). The persisted
 config file and the shell's toggle panel are M6's.
 
 ---
@@ -355,7 +474,10 @@ PLAN.md §4's boundary, as the three things a test can say:
    seams arm points; `disable()` removes them; `dispatch()` is reached
    only when something is armed.
 3. **Seam state is not machine state.** `reset()` clears it and the
-   serialization leaves it out.
+   serialization leaves it out. Since #161 that includes a trigger's
+   latch: a seam that is on, armed, and never pulled leaves the run byte
+   for byte the run it would have been with the seam off, and a machine
+   with a pull outstanding hashes as the machine it would have been.
 
 `tests/core/machine/seam_test.cpp` asserts all three, and
 `tests/programs` runs the probe program with its seam on and off on all
@@ -413,7 +535,7 @@ boundary, and it needs the argument this document would have to carry.
 |---|---|---|---|
 | `code-wheel` | answers the copy-protection challenge (ungated; the possession gate is M5's, #115) | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
-| `cheat-kill-all` | every enemy falls at the end of the round | the baseline | the overlaid module the end check lives in |
+| `cheat-kill-all` | every enemy falls at the next end-of-round check, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 
 ### The debug cheats (#99)
 
@@ -445,13 +567,50 @@ nothing lives in segment 0, and a frame that says otherwise gets
 `decline(point_not_recognized)` rather than a write. It is what caught
 this, and it costs one comparison.
 
-**Kill-all-enemies** intercepts the once-a-round end check — an overlaid
-routine, and the point at which the program will next consult the combat
-state — and downs every standing enemy exactly the way the damage routine
-downs one: slain, held byte cleared, hit points zero, the side's count
-decremented, the scratch byte cleared. The program's own end check then
-finds the enemies' count at zero and ends the combat through its own
-logic. Outside combat the point does nothing.
+**Kill-all-enemies is pulled** (#161). It intercepts the once-a-round end
+check — an overlaid routine, and the point at which the program will next
+consult the combat state — and, *when a person has asked for it*, downs
+every standing enemy exactly the way the damage routine downs one: slain,
+held byte cleared, hit points zero, the side's count decremented, the
+scratch byte cleared. The program's own end check then finds the enemies'
+count at zero and ends the combat through its own logic. Outside combat
+the point does nothing, and so does every visit nobody asked for.
+
+It was not a trigger for its first two milestones, and the report that
+made it one is worth keeping: *"the kill all should not trigger at the
+end of the round but it should be on a new hotkey/button and trigger
+immediately."* Two complaints, and this seam answers one and a half of
+them. **"When I ask, and not otherwise"** is answered completely: the
+flag says the seam may act, the pull says somebody wanted it to, and the
+next fight is the player's own again.
+
+**"Immediately" is not**, and the honest thing is to write down what is
+missing rather than to claim it. The end check is the only combat address
+these facts know, so a pull made mid-round is served when the round ends.
+A per-turn or per-prompt point would serve it sooner, and finding one is
+**not** something this repository can do: it needs a trace of a real copy
+running a real fight, which is the method §"How a wrong fact was found"
+describes and which only somebody holding the game can carry out. What
+such a person would need:
+
+1. A point the tactical loop reaches **per turn or per redraw** rather
+   than per round — its module (from the overlay file's own table, not
+   from a trace) and its offset from that module's base.
+2. Evidence that the machine at that point is not mid-walk of the roster
+   the handler edits. The end check is safe because the program's next
+   act there is to re-tally both sides from the held bytes; a new point
+   needs its own version of that argument.
+3. The two numbers this change added, taken from a real fight:
+   `reached` over a combat says how often the candidate point is
+   arrived at, and `waited` says what a pull actually cost. Nobody has
+   either number yet, which is precisely why they exist.
+
+The handler itself is not tied to the end check and does not need to
+change: `fell_the_enemies` reads the roster head from **DS**, not from a
+stack frame, so a better point is a change to one constant.
+
+`SeamCheatKillAll.IsOnAndDoesNothingUntilSomebodyPullsIt` and
+`OnePullIsOneFiring` are the trigger as tests.
 
 **"Standing" is the wound status, not the byte beside it.** The record
 carries a *held* byte immediately before the combat-side index, and the
@@ -493,8 +652,10 @@ The cheap check that caught the original mistake is still the check to
 run on any new seam, and it costs one extra run:
 
 ```sh
-# same script, same disk, once with and once without
-diff <(amberfolio ... ) <(amberfolio ... --seam cheat-kill-all)
+# same script, same disk, once with and once without. Since #161 the
+# cheat needs the pull as well as the flag: --seam says it may act,
+# --pull says somebody asked, and the frame is where in the fight.
+diff <(amberfolio ... )      <(amberfolio ... --seam cheat-kill-all --pull cheat-kill-all@600)
 ```
 
 Same step count and the same framebuffer means the seam did nothing.

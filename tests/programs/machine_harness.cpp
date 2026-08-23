@@ -263,6 +263,15 @@ bool machine_harness::start() {
         throw std::logic_error("seam " + std::string(id) + " was refused");
       }
     }
+    // And the triggers the fixture asks for, after the enables and
+    // before the first step. A refusal is a fixture mistake for the same
+    // reason an enable's is.
+    for (const std::string_view id : setup_->pulls) {
+      if (box_->seams().pull(id, box_->time()) != machine::seam_reason::none) {
+        throw std::logic_error("seam " + std::string(id) +
+                               " would not be pulled");
+      }
+    }
     return true;
   }
 

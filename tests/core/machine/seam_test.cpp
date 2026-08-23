@@ -33,6 +33,7 @@
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/service_floor.h"
+#include "amberfolio/machine/state.h"
 #include "amberfolio/sha256.h"
 #include "gtest/gtest.h"
 #include "machine/test_device.h"
@@ -73,6 +74,7 @@ std::uint32_t edit_hits = 0;
 std::uint32_t key_hits = 0;
 std::uint32_t redirect_hits = 0;
 std::uint32_t host_calls = 0;
+std::uint32_t decline_hits = 0;
 std::uint32_t last_module_base = 0;
 
 /// Edits a register: AX becomes 2222h at the point.
@@ -92,6 +94,12 @@ void post_k(machine& /*box*/, seam_context& ctx) {
 void skip_ahead(machine& box, seam_context& ctx) {
   ++redirect_hits;
   ctx.redirect(box.processor().regs()[cpu::sreg::cs], 0x0010);
+}
+
+/// Declines, every time, and touches nothing.
+void decline_always(machine& /*box*/, seam_context& ctx) {
+  ++decline_hits;
+  ctx.decline(seam_reason::point_not_recognized);
 }
 
 /// Asks the host for something, and records where it was armed.
@@ -128,6 +136,30 @@ constexpr seam_definition redirect_seam{.id = "test-redirect",
                                         .about = "moves IP",
                                         .fingerprints = claimed_binaries,
                                         .points = redirect_points};
+
+/// The triggered one (#161): the same point and the same handler as
+/// `edit_seam`, and the difference is only that nothing happens there
+/// until somebody pulls it.
+constexpr seam_definition trigger_seam{
+    .id = "test-trigger",
+    .about = "sets AX at one instruction, when pulled",
+    .fingerprints = claimed_binaries,
+    .points = edit_points,
+    .trigger = true};
+
+/// A triggered seam whose handler always declines, for the one rule a
+/// decline has that a plain seam's does not: a pull that arrived at a
+/// point which was not the point is not a pull that was served.
+constexpr std::array<seam_point, 1> declining_points{
+    {{.module = resident_image,
+      .offset = edit_offset,
+      .run = &decline_always}}};
+constexpr seam_definition declining_seam{
+    .id = "test-trigger-declines",
+    .about = "a trigger whose point is never what its facts say",
+    .fingerprints = claimed_binaries,
+    .points = declining_points,
+    .trigger = true};
 
 constexpr seam_definition stale_seam{.id = "test-stale",
                                      .about = "written against another schema",
@@ -191,9 +223,11 @@ class counting_host final : public seam_host_services {
 /// "loaded" at the segment DOS would have put it at.
 struct rig {
   rig() : box(std::make_unique<machine>(memory_layout::pc, &log)) {
-    edit_hits = key_hits = redirect_hits = host_calls = 0;
+    edit_hits = key_hits = redirect_hits = host_calls = decline_hits = 0;
     last_module_base = 0;
     EXPECT_TRUE(box->seams().add(edit_seam));
+    EXPECT_TRUE(box->seams().add(trigger_seam));
+    EXPECT_TRUE(box->seams().add(declining_seam));
     EXPECT_TRUE(box->seams().add(key_seam));
     EXPECT_TRUE(box->seams().add(redirect_seam));
     EXPECT_TRUE(box->seams().add(stale_seam));
@@ -513,6 +547,150 @@ TEST(SeamFired, StaysZeroWhileTheSeamIsOff) {
   EXPECT_EQ(edit_hits, 0u);
 }
 
+// --- The trigger (#161) ------------------------------------------------------
+//
+// A seam that is *pulled* rather than left on. The engine facility, not
+// the cheat: these are this file's own seams, at this file's own points,
+// so what is asserted is the mechanism and never a fact about a program.
+
+TEST(SeamTrigger, ReachesItsPointAndDoesNothingUntilPulled) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-trigger"), seam_reason::none);
+  // MOV AX, 1111h ; NOP ; HLT — the point is on the NOP.
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();
+  r.pc().step();
+
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x1111) << "nobody asked";
+  EXPECT_EQ(edit_hits, 0u);
+
+  const seam_status row = r.pc().seams().status("test-trigger");
+  EXPECT_TRUE(row.trigger);
+  EXPECT_FALSE(row.waiting);
+  EXPECT_EQ(row.fired, 0u);
+  EXPECT_EQ(row.reached, 1u)
+      << "the point was arrived at; that is the number a latency is"
+         " measured from";
+}
+
+TEST(SeamTrigger, ActsOnceWhenPulledAndThenWaitsToBeAskedAgain) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-trigger"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-trigger", r.pc().time()),
+            seam_reason::none);
+  EXPECT_TRUE(r.pc().seams().waiting("test-trigger"));
+
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();
+  r.pc().step();
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x2222) << "asked, and served";
+  EXPECT_EQ(edit_hits, 1u);
+  EXPECT_FALSE(r.pc().seams().waiting("test-trigger")) << "one pull, one run";
+
+  // Round again with nothing asked for: the point is reached and the
+  // program keeps its own answer.
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();
+  r.pc().step();
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x1111);
+  EXPECT_EQ(edit_hits, 1u);
+
+  const seam_status row = r.pc().seams().status("test-trigger");
+  EXPECT_EQ(row.fired, 1u);
+  EXPECT_EQ(row.reached, 2u) << "reached twice, served once";
+  EXPECT_EQ(r.events(seam_event_kind::pulled), 1u);
+  EXPECT_EQ(r.events(seam_event_kind::served), 1u);
+}
+
+TEST(SeamTrigger, ASecondPullWhileOneIsOutstandingIsNotASecondRun) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-trigger"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-trigger", 100), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-trigger", 500), seam_reason::none);
+  EXPECT_EQ(r.pc().seams().status("test-trigger").pulled_at, 100u)
+      << "the wait a host shows is the wait since the person first asked";
+
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();
+  r.pc().step();
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();
+  r.pc().step();
+  EXPECT_EQ(edit_hits, 1u);
+}
+
+TEST(SeamTrigger, TheWaitIsMeasuredInTicks) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-trigger"), seam_reason::none);
+  // Two instructions before the point, so the machine has spent time
+  // between the pull and the arrival.
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  const ticks pulled = r.pc().time();
+  ASSERT_EQ(r.pc().seams().pull("test-trigger", pulled), seam_reason::none);
+  r.pc().step();
+  const ticks after_mov = r.pc().time();
+  ASSERT_GT(after_mov, pulled) << "a step costs virtual time";
+  r.pc().step();
+
+  const seam_status row = r.pc().seams().status("test-trigger");
+  EXPECT_FALSE(row.waiting);
+  EXPECT_EQ(row.waited, after_mov - pulled);
+}
+
+TEST(SeamTrigger, RefusesAPullOnASeamThatIsOffOrIsNotOne) {
+  const rig r;
+  EXPECT_EQ(r.pc().seams().pull("test-trigger", 0), seam_reason::not_enabled)
+      << "a latch on a seam nobody turned on would fire at some unrelated"
+         " later moment";
+  EXPECT_EQ(r.pc().seams().pull("not-a-seam", 0), seam_reason::unknown_seam);
+
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  EXPECT_EQ(r.pc().seams().pull("test-edit", 0), seam_reason::not_triggered)
+      << "an ordinary seam acts whenever it is on; there is nothing to"
+         " latch";
+}
+
+TEST(SeamTrigger, DisablingDropsAnOutstandingPull) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-trigger"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-trigger", 0), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().disable("test-trigger"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().enable("test-trigger"), seam_reason::none);
+  EXPECT_FALSE(r.pc().seams().waiting("test-trigger"));
+
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();
+  r.pc().step();
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x1111)
+      << "the pull died with the enable";
+  EXPECT_EQ(edit_hits, 0u);
+}
+
+TEST(SeamTrigger, AResetMachineHasNoLatch) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-trigger"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-trigger", 0), seam_reason::none);
+  r.pc().reset();
+  EXPECT_FALSE(r.pc().seams().waiting("test-trigger"))
+      << "a latch is configuration, and a reset machine has no program";
+}
+
+TEST(SeamTrigger, ADeclinedVisitKeepsTheLatch) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-trigger-declines"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-trigger-declines", 0), seam_reason::none);
+
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();
+  r.pc().step();
+
+  EXPECT_EQ(decline_hits, 1u);
+  EXPECT_TRUE(r.pc().seams().waiting("test-trigger-declines"))
+      << "a pull that arrived at a point which was not the point is not a"
+         " pull that was served";
+  EXPECT_EQ(r.pc().seams().status("test-trigger-declines").reached, 1u);
+}
+
 // --- The fidelity boundary ---------------------------------------------------
 
 TEST(SeamFidelity, AnUnarmedMachineRunsTheProgramUntouched) {
@@ -565,6 +743,57 @@ TEST(SeamFidelity, EnablingThenDisablingLeavesTheRunIdentical) {
     ASSERT_EQ(a[base + i], b[base + i]) << "byte " << i;
   }
   EXPECT_EQ(plain.pc().time(), toggled.pc().time());
+}
+
+TEST(SeamFidelity, ATriggeredSeamNobodyPulledLeavesTheRunIdentical) {
+  // #161's half of #96's rule: a trigger that is *on* and never pulled
+  // has to be the run the same program has with it off, byte for byte.
+  // The point is reached — the address is compared, the arrival is
+  // counted — and nothing about the machine moves.
+  const rig plain;
+  plain.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    plain.pc().step();
+  }
+
+  const rig armed;
+  armed.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  ASSERT_EQ(armed.pc().seams().enable("test-trigger"), seam_reason::none);
+  ASSERT_TRUE(armed.pc().seams().armed()) << "its point is armed all the same";
+  for (int i = 0; i < 4; ++i) {
+    armed.pc().step();
+  }
+
+  EXPECT_EQ(plain.regs(), armed.regs());
+  const std::span<const std::uint8_t> a = plain.pc().memory().ram();
+  const std::span<const std::uint8_t> b = armed.pc().memory().ram();
+  const std::uint32_t base = cpu::physical_address(image_load_segment, 0);
+  for (std::uint32_t i = 0; i < 0x400; ++i) {
+    ASSERT_EQ(a[base + i], b[base + i]) << "byte " << i;
+  }
+  EXPECT_EQ(plain.pc().time(), armed.pc().time());
+  EXPECT_GT(armed.pc().seams().status("test-trigger").reached, 0u)
+      << "and it was reached, which is what makes the equality mean"
+         " something";
+}
+
+TEST(SeamFidelity, ALatchIsNotMachineState) {
+  // Pulled but not yet served, the machine has to hash as the machine it
+  // would have been. A latch is configuration (seam.h), and the
+  // serialization has never carried a seam.
+  const rig plain;
+  plain.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  ASSERT_EQ(plain.pc().seams().enable("test-trigger"), seam_reason::none);
+
+  const rig pulled;
+  pulled.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  ASSERT_EQ(pulled.pc().seams().enable("test-trigger"), seam_reason::none);
+  ASSERT_EQ(pulled.pc().seams().pull("test-trigger", pulled.pc().time()),
+            seam_reason::none);
+
+  EXPECT_EQ(hash_state(plain.pc()).whole, hash_state(pulled.pc()).whole);
+  EXPECT_TRUE(pulled.pc().seams().waiting("test-trigger"))
+      << "and the latch really is set";
 }
 
 // --- The action primitives ----------------------------------------------------

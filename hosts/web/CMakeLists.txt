@@ -116,6 +116,12 @@ set(_amberfolio_web_export_names
   _af_machine_seam_fired
   _af_machine_seam_enable
   _af_machine_seam_disable
+  _af_machine_seam_triggered
+  _af_machine_seam_waiting
+  _af_machine_seam_reached
+  _af_machine_seam_waited
+  _af_machine_seam_pulled_at
+  _af_machine_seam_pull
   _af_machine_write_memory
   _af_machine_read_memory
   _af_machine_set_entry

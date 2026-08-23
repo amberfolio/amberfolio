@@ -21,7 +21,7 @@
 // numbers in decimal and digests in lowercase hex. Lines that begin with
 // `#` and empty lines are ignored. The first line names the format:
 //
-//     amberfolio-recording 2 state=1
+//     amberfolio-recording 3 state=1
 //
 // Then the **initial conditions**, in this order:
 //
@@ -36,8 +36,16 @@
 //
 //     wall TICK YYYY-MM-DD HH:MM:SS.CC   a wall-clock seed, at that tick
 //     key TICK SCANCODE down|up          a host key event, at that tick
+//     pull TICK ID                       a seam's trigger, pulled then
 //     checkpoint TICK STEPS WHOLE [stopped] [SECTION=HEX16 ...]
 //     end TICK STEPS
+//
+// A `pull` is a **stream** event and not an initial condition, unlike
+// the `seam` lines above it, and the distinction is the whole of #161: a
+// seam being *on* is a fact about how the run was set up, and a person
+// pulling its trigger is something they did at a moment, exactly as a
+// keystroke is. A recording that carried the seam and not the pull would
+// replay a run in which the cheat never fired.
 //
 // A checkpoint carries the whole-state hash (state.h) and, optionally,
 // the first eight bytes of each section's — enough to say *which* section
@@ -173,7 +181,13 @@ class filesystem;
 /// 2 (#155): the manifest recurses. `file` takes a `\`-joined path rather
 /// than a bare name, and a directory is a `dir PATH` line rather than a
 /// `file` line with a zero size and a zero digest.
-inline constexpr std::uint32_t recording_format_version = 2;
+///
+/// 3 (#161): the stream may carry `pull TICK ID` — a seam's trigger,
+/// pulled by a person at that tick. A version-2 recording never carries
+/// one, so a version-2 player reading one of these would refuse the line
+/// rather than misread it; the bump is so that the first line says what
+/// the file may contain, which is what a version is for.
+inline constexpr std::uint32_t recording_format_version = 3;
 
 /// The oldest format a player still **reads**, and the rule: a version is
 /// readable for as long as a recording of it may still exist.
@@ -196,6 +210,11 @@ inline constexpr std::uint32_t recording_format_oldest_read = 1;
 /// root directory only.
 inline constexpr std::uint32_t recording_format_recursive_manifest = 2;
 
+/// The first format whose stream may carry a `pull` line (#161). A
+/// recording that names an older version and carries one is refused: it
+/// is not a recording anything wrote.
+inline constexpr std::uint32_t recording_format_pull = 3;
+
 /// What one line of a recording says.
 enum class replay_line : std::uint8_t {
   /// `amberfolio-recording` — the first line.
@@ -209,6 +228,9 @@ enum class replay_line : std::uint8_t {
   dir,
   wall,
   key,
+  /// `pull TICK ID` — a seam's trigger, pulled at that tick (format 3
+  /// and up).
+  pull,
   checkpoint,
   end,
   /// A comment or a blank line: nothing.
@@ -294,11 +316,11 @@ struct replay_event {
   /// `speed`: the step cost, in subticks.
   std::uint32_t subticks{};
 
-  /// `seam`: the id, `id_length` of it.
+  /// `seam`, `pull`: the id, `id_length` of it.
   std::array<char, replay_max_id + 1> id{};
   std::size_t id_length{};
 
-  /// `wall`, `key`, `checkpoint`, `end`: the tick.
+  /// `wall`, `key`, `pull`, `checkpoint`, `end`: the tick.
   ticks at{};
   /// `checkpoint`, `end`: the step count.
   std::uint64_t steps{};
@@ -464,6 +486,10 @@ class replay_player {
     return checkpoints_;
   }
   [[nodiscard]] std::size_t keys_delivered() const noexcept { return keys_; }
+  /// Seam triggers delivered (#161). A pull the engine refused — the
+  /// seam is off, or is not one that takes a trigger — is a divergence
+  /// and not a delivery: the recording says the run had one.
+  [[nodiscard]] std::size_t pulls_delivered() const noexcept { return pulls_; }
 
   /// The report: one line, `amberfolio: replay ...`, saying what held or
   /// what differed first and where. NUL-terminated into `out`; answers
@@ -503,6 +529,7 @@ class replay_player {
   replay_status status_{replay_status::ok};
   std::size_t checkpoints_{};
   std::size_t keys_{};
+  std::size_t pulls_{};
 
   /// The report's pieces: a message, the line it is about, the tick, and
   /// for a hash divergence the two digests.
@@ -523,6 +550,8 @@ struct verify_result {
   replay_status status{replay_status::malformed};
   std::size_t checkpoints{};
   std::size_t keys{};
+  /// Seam triggers delivered (#161).
+  std::size_t pulls{};
 
   [[nodiscard]] bool ok() const noexcept {
     return status == replay_status::done;

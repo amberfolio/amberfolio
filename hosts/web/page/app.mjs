@@ -401,6 +401,13 @@ function seamRowText(seam) {
 /// from inside `runUntil()`. The listing is re-read after every toggle so
 /// an on-but-inert seam (its module is not resident yet) shows as such.
 ///
+/// A seam that is **pulled** rather than left on gets a button beside its
+/// checkbox (#161), because a trigger is a different affordance from a
+/// toggle and one shown as the other is a promise the seam does not
+/// keep. The button is live only while the seam is on — a latch waiting
+/// on a seam nobody turned on would fire at some unrelated later moment,
+/// which is what the trigger exists to remove.
+///
 /// Answers a `refresh()` the run loop calls on its own readout cadence,
 /// which is how `fired=` becomes a live number instead of one taken once
 /// before the machine had run a step. It rewrites the status text only —
@@ -410,6 +417,7 @@ function renderSeams(machine, container, appendConsole) {
   if (!container) return () => {};
   const seams = machine.seamList();
   const rows = new Map();
+  const buttons = new Map();
   container.replaceChildren(
     ...seams.map((seam) => {
       const label = document.createElement('label');
@@ -420,6 +428,44 @@ function renderSeams(machine, container, appendConsole) {
       const status = document.createElement('span');
       status.textContent = ` [${seamRowText(seam)}]`;
       rows.set(seam.id, status);
+
+      let trigger = null;
+      if (seam.trigger) {
+        trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.textContent = 'pull';
+        trigger.title =
+          'act once, at the next time the program reaches this seam’s point';
+        trigger.disabled = seam.state !== AF_SEAM_ON;
+        buttons.set(seam.id, trigger);
+        trigger.addEventListener('click', (event) => {
+          // The button sits inside the seam's `<label>`, and a label
+          // forwards a click to its control. HTML says it must not do
+          // that for a click on interactive content inside it, and a
+          // button is interactive content — but the failure if a browser
+          // disagreed would be a pull that also toggled the seam off, so
+          // this does not rest on the paragraph.
+          event.stopPropagation();
+          event.preventDefault();
+          const answer = machine.seamPull(seam.id);
+          const after = machine.seamList().find((s) => s.id === seam.id);
+          // What the pull is waiting for, said at the moment it is made.
+          // A trigger acts at a CS:IP breakpoint, so "immediately" means
+          // "at the next arrival at the point" and nothing else can; a
+          // person told neither has a button that did nothing.
+          appendConsole(
+            `[host] seam ${seam.id} pulled` +
+              (answer !== AF_OK
+                ? ' refused'
+                : after && !after.armed
+                  ? ` - inert (${after.reason}); it will act when its module is back`
+                  : ' - acts at the next arrival at its point') +
+              '\n',
+          );
+          if (after) status.textContent = ` [${seamRowText(after)}]`;
+        });
+      }
+
       box.addEventListener('change', () => {
         const answer = box.checked ? machine.seamEnable(seam.id) : machine.seamDisable(seam.id);
         const after = machine.seamList().find((s) => s.id === seam.id);
@@ -431,8 +477,10 @@ function renderSeams(machine, container, appendConsole) {
         );
         if (answer !== AF_OK) box.checked = !box.checked;
         if (after) status.textContent = ` [${seamRowText(after)}]`;
+        if (trigger) trigger.disabled = !after || after.state !== AF_SEAM_ON;
       });
       label.append(box, ` ${seam.id} - ${seam.about}`, status);
+      if (trigger) label.append(' ', trigger);
       label.title =
         seam.state === AF_SEAM_UNAVAILABLE ? `unavailable: ${seam.reason}` : seam.about;
       return label;
@@ -444,6 +492,8 @@ function renderSeams(machine, container, appendConsole) {
     for (const seam of machine.seamList()) {
       const status = rows.get(seam.id);
       if (status) status.textContent = ` [${seamRowText(seam)}]`;
+      const trigger = buttons.get(seam.id);
+      if (trigger) trigger.disabled = seam.state !== AF_SEAM_ON;
     }
   };
 }

@@ -87,9 +87,28 @@
 // alone: the qualifier is the side index, read from the record the
 // program itself is about to read.
 //
-// **Kill-all-enemies** intercepts the end check's entry — the point at
-// which the program will next consult the combat state, which is what
-// #99 asks for — and, when the game mode says combat, downs every enemy
+// **Kill-all-enemies is pulled** (#161). It is a `trigger` seam: while
+// it is on, its point is reached and does nothing, and it acts once for
+// each time a person asks — a key on the desktop host, a button on the
+// page, a `pull` line in a recording. Before that it fired at every end
+// check, so switching it on once decided every subsequent fight, which
+// is a setting rather than a cheat.
+//
+// **What it does not fix is the latency**, and the honest thing is to
+// say so here. Its point is the once-a-round end check, which is the
+// only combat address these facts know, so a pull is served at the end
+// of the round it was made in and not at the instant it was made. A
+// per-turn or per-prompt point would serve it sooner and would have to
+// be found the way every other fact in this file was — by observation
+// against a real copy, which is nobody's to do in this tree.
+// `seam_status::reached` is the instrument that would measure it:
+// `fell_the_enemies` reads the roster head from **DS** and not from the
+// stack frame at the end check, so nothing about it is tied to *this*
+// point, and a better one is a change of one constant.
+//
+// It intercepts the end check's entry — the point at which the program
+// will next consult the combat state, which is what #99 asks for — and,
+// when the game mode says combat, downs every enemy
 // exactly as the damage routine downs one: slain, held flag cleared, hit
 // points zero, the side's body count decremented, the scratch byte
 // cleared. The end check then rebuilds both counts from the held flags —
@@ -103,7 +122,11 @@
 // Driven through a wilderness encounter against seven soldiers, one
 // firing ends it: `THE PARTY HAS WON. EACH CHARACTER RECEIVES 107
 // EXPERIENCE POINTS.` The same script with the seam off is still in the
-// fight when the run's tick budget expires.
+// fight when the run's tick budget expires. That run predates the
+// trigger and was driven by the flag alone; the same script now needs a
+// pull as well, which is a line in `docs/playable.md` rather than a
+// change to anything committed — no recording in `tests/sessions/`
+// enables this seam.
 //
 // Both are fail-closed by construction (#99): unavailable on any binary
 // but the baseline's (the fingerprint), inert while the end check's
@@ -397,9 +420,17 @@ constexpr seam_definition invulnerable_definition{
 
 constexpr seam_definition kill_all_definition{
     .id = "cheat-kill-all",
-    .about = "every enemy falls at the end of the round (debug cheat)",
+    .about =
+        "when you pull it, every enemy falls at the next end-of-round "
+        "check (debug cheat)",
     .fingerprints = cheat_binaries,
     .points = kill_all_points,
+    // Pulled, not left on (#161). The `about` says where it acts as well
+    // as that it is asked for, because the two halves of the complaint
+    // were different: "it should not decide every fight" is answered
+    // here, and "it should be immediate" is answered by whatever point
+    // this seam is on — which is still the once-a-round end check.
+    .trigger = true,
     .schema = seam_schema_version};
 
 }  // namespace

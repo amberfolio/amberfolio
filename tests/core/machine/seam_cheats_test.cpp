@@ -75,6 +75,15 @@ struct rig {
     return *found;
   }
 
+  /// Turn the kill-all cheat on and ask it for one firing (#161). Both,
+  /// because since the trigger neither is enough on its own: the flag
+  /// says the seam may act and the pull says a person wanted it to.
+  void arm_kill_all() const {
+    ASSERT_EQ(box->seams().enable("cheat-kill-all"), seam_reason::none);
+    ASSERT_EQ(box->seams().pull("cheat-kill-all", box->time()),
+              seam_reason::none);
+  }
+
   [[nodiscard]] std::uint8_t byte_at(std::uint16_t segment,
                                      std::uint16_t offset) const {
     return box->memory().ram()[cpu::physical_address(segment, offset)];
@@ -388,7 +397,7 @@ TEST(SeamCheatKillAll, IsInertUntilTheCombatOverlayIsResident) {
 
 TEST(SeamCheatKillAll, DownsEveryStandingEnemyAndLeavesThePartyAlone) {
   const rig r;
-  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  r.arm_kill_all();
   r.load_combat_overlay();
   const auto entry = static_cast<std::uint16_t>(
       r.seam("cheat-kill-all").points.front().offset);
@@ -426,6 +435,67 @@ TEST(SeamCheatKillAll, DownsEveryStandingEnemyAndLeavesThePartyAlone) {
   EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 0), 1u);
 }
 
+TEST(SeamCheatKillAll, IsOnAndDoesNothingUntilSomebodyPullsIt) {
+  // #161. Before the trigger this seam fired at every end check, so
+  // switching it on once decided every subsequent fight. Now the flag
+  // says it *may* act and the pull says a person wanted it to, and the
+  // point is arrived at and left alone in between.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  EXPECT_TRUE(r.pc().seams().status("cheat-kill-all").trigger);
+  r.load_combat_overlay();
+  const auto entry = static_cast<std::uint16_t>(
+      r.seam("cheat-kill-all").points.front().offset);
+
+  r.put_byte(data_segment, data_mode, 5);
+  r.put_word(data_segment, data_roster_head, 0x0100);
+  r.put_word(data_segment, data_roster_head + 2, record_segment);
+  r.put_byte(data_segment, data_side_counts + 1, 1);
+  r.record(0x0100, 1, true, 9, 0, 0);
+
+  r.halt_at(overlay_segment, entry, data_segment, data_segment, 0x0400);
+  r.pc().step();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 9u)
+      << "the enemy is still standing; nobody asked";
+  const seam_status row = r.pc().seams().status("cheat-kill-all");
+  EXPECT_EQ(row.fired, 0u);
+  EXPECT_EQ(row.reached, 1u)
+      << "and the end check was reached, which is the number a latency"
+         " would be measured from";
+  EXPECT_FALSE(row.waiting);
+}
+
+TEST(SeamCheatKillAll, OnePullIsOneFiring) {
+  const rig r;
+  r.arm_kill_all();
+  r.load_combat_overlay();
+  const auto entry = static_cast<std::uint16_t>(
+      r.seam("cheat-kill-all").points.front().offset);
+
+  r.put_byte(data_segment, data_mode, 5);
+  r.put_word(data_segment, data_roster_head, 0x0100);
+  r.put_word(data_segment, data_roster_head + 2, record_segment);
+  r.put_byte(data_segment, data_side_counts + 1, 2);
+  r.record(0x0100, 1, true, 9, 0, 0);
+
+  r.halt_at(overlay_segment, entry, data_segment, data_segment, 0x0400);
+  r.pc().step();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 0u) << "downed";
+  EXPECT_FALSE(r.pc().seams().waiting("cheat-kill-all"));
+
+  // A second combat, with nobody asking: the next fight is the player's
+  // own again, which is the half of the complaint this closes.
+  r.put_byte(record_segment, 0x0100 + rec_status, 0);
+  r.put_byte(record_segment, 0x0100 + rec_held, 1);
+  r.put_byte(record_segment, 0x0100 + rec_hp, 9);
+  r.halt_at(overlay_segment, entry, data_segment, data_segment, 0x0400);
+  r.pc().step();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 9u);
+  EXPECT_EQ(r.pc().seams().status("cheat-kill-all").fired, 1u);
+  EXPECT_EQ(r.pc().seams().status("cheat-kill-all").reached, 2u);
+}
+
 TEST(SeamCheatKillAll, ReadsTheStatusAndNotTheHeldByteNextToIt) {
   // The record carries a *held* byte one before the combat-side index,
   // and the routine that downs a combatant clears it — which makes it
@@ -434,7 +504,7 @@ TEST(SeamCheatKillAll, ReadsTheStatusAndNotTheHeldByteNextToIt) {
   // so a seam that tested the held byte would decrement twice and leave
   // the program to end the combat on a count that had gone past zero.
   const rig r;
-  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  r.arm_kill_all();
   r.load_combat_overlay();
   const auto entry = static_cast<std::uint16_t>(
       r.seam("cheat-kill-all").points.front().offset);
@@ -457,7 +527,7 @@ TEST(SeamCheatKillAll, ReadsTheStatusAndNotTheHeldByteNextToIt) {
 
 TEST(SeamCheatKillAll, DoesNothingOutsideCombat) {
   const rig r;
-  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  r.arm_kill_all();
   r.load_combat_overlay();
   const auto entry = static_cast<std::uint16_t>(
       r.seam("cheat-kill-all").points.front().offset);
@@ -477,7 +547,7 @@ TEST(SeamCheatKillAll, DoesNothingOutsideCombat) {
 
 TEST(SeamCheatKillAll, FiresOnlyWhereTheProgramSaysTheModuleIs) {
   const rig r;
-  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  r.arm_kill_all();
   r.load_combat_overlay();
   const auto entry = static_cast<std::uint16_t>(
       r.seam("cheat-kill-all").points.front().offset);
@@ -506,7 +576,7 @@ TEST(SeamCheatKillAll, FollowsTheModuleWhenTheManagerMovesIt) {
   // place the module *was*: a handler that ran at the landing after the
   // move would be running on whatever the manager put there instead.
   const rig r;
-  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  r.arm_kill_all();
   const auto entry = static_cast<std::uint16_t>(
       r.seam("cheat-kill-all").points.front().offset);
   constexpr std::uint16_t moved_to = overlay_segment + 1;
@@ -545,7 +615,7 @@ TEST(SeamCheatKillAll, DoesNotFireWhileTheProgramSaysTheModuleIsGone) {
   // whatever is there now; this one asks the program at the step it is
   // asked to fire, and declines to be anywhere.
   const rig r;
-  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  r.arm_kill_all();
   const auto entry = static_cast<std::uint16_t>(
       r.seam("cheat-kill-all").points.front().offset);
 
@@ -567,7 +637,7 @@ TEST(SeamCheatKillAll, DoesNotFireWhileTheProgramSaysTheModuleIsGone) {
 
 TEST(SeamCheatKillAll, BoundsTheRosterWalk) {
   const rig r;
-  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  r.arm_kill_all();
   r.load_combat_overlay();
   const auto entry = static_cast<std::uint16_t>(
       r.seam("cheat-kill-all").points.front().offset);

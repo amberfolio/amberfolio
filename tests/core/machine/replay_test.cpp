@@ -60,7 +60,7 @@ TEST(ReplayGrammar, RoundTripsEveryKindOfLine) {
   e.kind = replay_line::header;
   e.format_version = recording_format_version;
   e.state_version = state_format_version;
-  EXPECT_EQ(line_of(e), "amberfolio-recording 2 state=1\n");
+  EXPECT_EQ(line_of(e), "amberfolio-recording 3 state=1\n");
 
   e = replay_event{};
   e.kind = replay_line::key;
@@ -260,6 +260,48 @@ TEST(ReplayGrammar, RefusesWhatIsNotALine) {
 
 // --- A recording of a run, verified against another -----------------------
 
+/// A triggered seam of this file's own (#161), for the one thing a
+/// recording has to carry that a `seam` line cannot: *when* somebody
+/// pulled it. Its point is the program's poll loop, which is reached
+/// thousands of times a run, so the tick the pull lands on is the only
+/// thing that decides which visit acts — which is exactly the property a
+/// replay is a test of.
+std::uint32_t pull_hits = 0;
+
+/// Writes a mark into the program's own result block, which is machine
+/// state and therefore in every checkpoint's hash. The handler reaches
+/// memory as the program would (seam.h), not through `memory().ram()`.
+void mark_the_result(machine& box, seam_context& ctx) {
+  ++pull_hits;
+  box.processor().write_byte(static_cast<std::uint16_t>(ctx.image_base() / 16U),
+                             0x0806, 0xAB);
+}
+
+/// The definition, keyed to KEYS.EXE's own fingerprint the way every real
+/// seam is keyed to the binary its addresses describe. Function-local
+/// statics, so everything it points at outlives every engine it is
+/// registered with; the program is the same bytes every time, so the
+/// digest taken once is the digest.
+[[nodiscard]] const seam_definition& poll_trigger_seam(const machine& box) {
+  static const std::string fingerprint = [&box] {
+    std::array<char, sha256_digest::text_length + 1> text{};
+    static_cast<void>(format_hex(box.seams().program(), text));
+    return std::string(text.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  // Image offset 6 is `next:` — the `mov ah, 01h` the poll loop returns
+  // to (this file's listing above).
+  static const std::array<seam_point, 1> points{
+      {{.module = resident_image, .offset = 6, .run = &mark_the_result}}};
+  static const seam_definition definition{
+      .id = "test-poll-trigger",
+      .about = "marks the result block, when pulled",
+      .fingerprints = fingerprints,
+      .points = points,
+      .trigger = true};
+  return definition;
+}
+
 /// The whole reference device set, a memory filesystem and the DOS layer
 /// — the shape machine_harness builds — with the one program every test
 /// here runs: poll for keys forever, counting the polls, and count each
@@ -419,7 +461,8 @@ struct rig {
 /// given, a checkpoint every `every` ticks, and the end at `until`.
 [[nodiscard]] std::string record(
     const rig& r, const std::vector<std::pair<ticks, std::uint8_t>>& keys,
-    ticks every, ticks until) {
+    ticks every, ticks until,
+    const std::vector<std::pair<ticks, std::string_view>>& pulls = {}) {
   std::string text;
   std::vector<char> buffer(replay_preamble_capacity);
   const std::size_t n = write_preamble(*r.box, *r.fs, "KEYS.EXE", {}, buffer);
@@ -434,6 +477,7 @@ struct rig {
   };
 
   std::size_t next_key = 0;
+  std::size_t next_pull = 0;
   ticks next_checkpoint = every;
   while (r.box->time() < until) {
     ticks target = until;
@@ -443,8 +487,27 @@ struct rig {
     if (next_key < keys.size() && keys[next_key].first < target) {
       target = keys[next_key].first;
     }
+    if (next_pull < pulls.size() && pulls[next_pull].first < target) {
+      target = pulls[next_pull].first;
+    }
     r.box->run(target);
     const ticks now = r.box->time();
+    // A pull is written where it is made and at the tick it is made at,
+    // exactly as a key is: the machine's clock is the only stamp either
+    // of them has.
+    while (next_pull < pulls.size() && pulls[next_pull].first <= now) {
+      replay_event e{};
+      e.kind = replay_line::pull;
+      e.at = now;
+      const std::string_view id = pulls[next_pull].second;
+      for (std::size_t i = 0; i < id.size(); ++i) {
+        e.id[i] = id[i];
+      }
+      e.id_length = id.size();
+      EXPECT_EQ(r.box->seams().pull(id, now), seam_reason::none);
+      emit(e);
+      ++next_pull;
+    }
     while (next_key < keys.size() && keys[next_key].first <= now) {
       replay_event e{};
       e.kind = replay_line::key;
@@ -1132,6 +1195,124 @@ TEST(Replay, AStoppedCheckpointWithoutItsMarkerDoesNotVerify) {
   EXPECT_FALSE(second.box->stopped());
 }
 
+// --- The trigger in the stream (#161) ------------------------------------
+
+TEST(ReplayGrammar, RoundTripsAPull) {
+  replay_event e{};
+  e.kind = replay_line::pull;
+  e.at = 274'951'600;
+  const std::string_view id = "cheat-kill-all";
+  for (std::size_t i = 0; i < id.size(); ++i) {
+    e.id[i] = id[i];
+  }
+  e.id_length = id.size();
+  EXPECT_EQ(line_of(e), "pull 274951600 cheat-kill-all\n");
+
+  replay_event back{};
+  ASSERT_TRUE(parse("pull 274951600 cheat-kill-all", back));
+  EXPECT_EQ(back.kind, replay_line::pull);
+  EXPECT_EQ(back.at, 274'951'600u);
+  EXPECT_EQ(back.id_text(), id);
+
+  EXPECT_FALSE(parse("pull 1", back)) << "a pull names a seam";
+  EXPECT_FALSE(parse("pull cheat-kill-all 1", back)) << "the tick first";
+  EXPECT_FALSE(parse("pull 1 cheat-kill-all extra", back));
+}
+
+TEST(Replay, APullIsReplayedAtTheTickItWasPulledAt) {
+  // The whole of why a pull is a stream event and not an initial
+  // condition: the seam is on for the whole run either way, and what
+  // decides the state is *which* visit to its point acted.
+  const rig first;
+  first.start();
+  ASSERT_TRUE(first.box->seams().add(poll_trigger_seam(*first.box)));
+  ASSERT_EQ(first.box->seams().enable("test-poll-trigger"), seam_reason::none);
+  pull_hits = 0;
+  const std::string text = record(first, {{5'000, 0x1E}}, 20'000, 100'000,
+                                  {{40'000, "test-poll-trigger"}});
+  EXPECT_EQ(pull_hits, 1u) << "one pull, one run of the handler";
+  EXPECT_NE(text.find("\nseam test-poll-trigger\n"), std::string::npos);
+  EXPECT_NE(text.find("\npull 40000 test-poll-trigger\n"), std::string::npos)
+      << text;
+
+  const rig second;
+  second.start();
+  ASSERT_TRUE(second.box->seams().add(poll_trigger_seam(*second.box)));
+  pull_hits = 0;
+  replay_player player;
+  const verify_result verdict = verify_recording(
+      *second.box, second.fs.get(),
+      std::span<const char>(text.data(), text.size()), 20'000, player);
+  std::array<char, 256> report{};
+  static_cast<void>(player.report(report));
+  EXPECT_TRUE(verdict.ok()) << report.data();
+  EXPECT_EQ(verdict.pulls, 1u);
+  EXPECT_EQ(pull_hits, 1u);
+  EXPECT_EQ(second.box->seams().status("test-poll-trigger").fired, 1u);
+}
+
+TEST(Replay, ARecordingWhosePullIsMovedDivergesAtTheNextCheckpoint) {
+  // A pull one tick later is a different run, the way a key one tick
+  // later is. Without that, "the seam was on" would be all a recording
+  // ever said about a cheat and the moment it acted would be nobody's
+  // to check.
+  const rig first;
+  first.start();
+  ASSERT_TRUE(first.box->seams().add(poll_trigger_seam(*first.box)));
+  ASSERT_EQ(first.box->seams().enable("test-poll-trigger"), seam_reason::none);
+  std::string text =
+      record(first, {}, 20'000, 100'000, {{40'000, "test-poll-trigger"}});
+  const std::size_t at = text.find("pull 40000 ");
+  ASSERT_NE(at, std::string::npos);
+  text.replace(at, std::strlen("pull 40000 "), "pull 80000 ");
+
+  const rig second;
+  second.start();
+  ASSERT_TRUE(second.box->seams().add(poll_trigger_seam(*second.box)));
+  replay_player player;
+  const verify_result verdict = verify_recording(
+      *second.box, second.fs.get(),
+      std::span<const char>(text.data(), text.size()), 20'000, player);
+  EXPECT_EQ(verdict.status, replay_status::diverged);
+  std::array<char, 256> report{};
+  static_cast<void>(player.report(report));
+  EXPECT_NE(std::string_view(report.data()).find("diverged"),
+            std::string_view::npos)
+      << report.data();
+}
+
+TEST(Replay, APullInAnOlderFormatIsRefused) {
+  // A version says what a file may contain. A version-2 recording never
+  // carried a pull, so one that does is not a recording anything wrote —
+  // refused rather than read anyway, which is the same rule §4's
+  // manifest lines follow.
+  const rig first;
+  first.start();
+  ASSERT_TRUE(first.box->seams().add(poll_trigger_seam(*first.box)));
+  ASSERT_EQ(first.box->seams().enable("test-poll-trigger"), seam_reason::none);
+  std::string text =
+      record(first, {}, 20'000, 100'000, {{40'000, "test-poll-trigger"}});
+  const std::size_t header = text.find("amberfolio-recording 3");
+  ASSERT_EQ(header, 0u);
+  text.replace(0, std::strlen("amberfolio-recording 3"),
+               "amberfolio-recording 2");
+
+  const rig second;
+  second.start();
+  ASSERT_TRUE(second.box->seams().add(poll_trigger_seam(*second.box)));
+  replay_player player;
+  const verify_result verdict = verify_recording(
+      *second.box, second.fs.get(),
+      std::span<const char>(text.data(), text.size()), 20'000, player);
+  EXPECT_EQ(verdict.status, replay_status::malformed);
+  std::array<char, 256> report{};
+  static_cast<void>(player.report(report));
+  EXPECT_NE(std::string_view(report.data())
+                .find("a stream line this recording's format does not have"),
+            std::string_view::npos)
+      << report.data();
+}
+
 TEST(Replay, RefusesATextThatIsNotARecording) {
   replay_player player;
   const std::string_view junk = "hello\n";
@@ -1139,10 +1320,11 @@ TEST(Replay, RefusesATextThatIsNotARecording) {
   EXPECT_EQ(player.status(), replay_status::malformed);
 
   // A `std::string` and not a view: the concatenation below is a
-  // temporary, and a view of it would dangle at the semicolon. Version 3
-  // is one this build has never written; 1 and 2 it has, and reads both.
+  // temporary, and a view of it would dangle at the semicolon. Version 4
+  // is one this build has never written; 1, 2 and 3 it has, and reads
+  // all three.
   const std::string other_version =
-      "amberfolio-recording 3 state=1\nprogram A.EXE " + std::string(64, 'a') +
+      "amberfolio-recording 4 state=1\nprogram A.EXE " + std::string(64, 'a') +
       "\n";
   EXPECT_FALSE(player.load(
       std::span<const char>(other_version.data(), other_version.size())));

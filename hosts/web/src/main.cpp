@@ -91,7 +91,7 @@ uint32_t af_web_probe_program_size(void) {
   return static_cast<uint32_t>(amberfolio::programs::seam_probe_file().size());
 }
 
-/// Register the probe's two seams with `box`'s engine, so
+/// Register the probe's three seams with `box`'s engine, so
 /// `af_machine_seam_*` can list and toggle them. AF_NO_MACHINE for a null
 /// handle; AF_INVALID if the registry would not take one (already
 /// registered, or full).
@@ -104,6 +104,12 @@ uint32_t af_web_probe_program_size(void) {
 /// have. Registering them together rather than through two exports keeps
 /// the pair inseparable: a smoke check cannot end up asserting the happy
 /// one and quietly skipping the other.
+///
+/// Three, since #161: `probe-trigger` shares `probe`'s point and is
+/// **pulled** rather than left on, so a browser can be asked the one
+/// question the ABI could not answer before — does a trigger nobody
+/// pulled leave the machine alone, and does one somebody pulled act
+/// exactly once.
 uint32_t af_web_probe_seam_register(af_machine* box) {
   amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
   if (pc == nullptr) {
@@ -111,7 +117,9 @@ uint32_t af_web_probe_seam_register(af_machine* box) {
   }
   const bool ok =
       pc->seams().add(amberfolio::programs::seam_probe_definition()) &&
-      pc->seams().add(amberfolio::programs::seam_probe_unreached_definition());
+      pc->seams().add(
+          amberfolio::programs::seam_probe_unreached_definition()) &&
+      pc->seams().add(amberfolio::programs::seam_probe_trigger_definition());
   return ok ? AF_OK : AF_INVALID;
 }
 

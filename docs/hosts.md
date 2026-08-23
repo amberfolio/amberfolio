@@ -95,7 +95,8 @@ making that line worth reading.
 
 ```sh
 amberfolio <dir> <program.exe> [--headless] [--scale N] [--verify]
-                               [--press KEY@FRAME] [--steps N]
+                               [--press KEY@FRAME] [--pull ID@FRAME]
+                               [--steps N]
                                [--until TICKS] [--dump PREFIX]
                                [--dump-every N] [--trace]
                                [--seam ID] [--speed NAME]
@@ -135,7 +136,36 @@ fingerprint up by (PLAN.md §5).
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step — the last of those is a machine that retires five instructions inside one tick, which is what the clock's subtick accumulator exists for. `xt` is the default and the machine the game was written for. Not a fast-forward — virtual time still governs every deadline, tone and tick, so a run at `at` is as deterministic as one at `xt`; what changes is how much of it fits in a second of yours. Printed when it is not the default. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. The other way of going faster, and not the same one: `--speed` divides only the computation, `--fast` divides the pauses too. **Nothing inside the machine can tell** — same steps, same ticks, same frames, byte-identical framebuffer; only the sleep at the bottom of the loop changes, which is the one place wall time is allowed to appear (platform.h). Meaningless with `--headless`, which never paced, and refused there rather than ignored. |
 | `--seam ID` | turn on one seam (PLAN.md §5, `machine/seam.h`). Off unless named, refused unless the loaded program is the binary the seam's addresses are facts about, and printed when it takes — a run with a seam on is not the same run as one without it. Repeatable. |
+| `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161, `docs/seams.md` §3a). A trigger-driven seam does nothing until somebody asks; this is the scripted ask, and unlike `--press` it needs no window, so it works under `--headless`. The seam has to be on — `--seam ID` as well — and a refusal is printed rather than swallowed. Repeatable. Refused alongside `--replay`, which decides its own pulls. |
 | `--volume 0-100`, `--mute` | how loudly to play it, and whether to play it at all (§4). Nothing to do with the machine: a run at 25% is the same run as one at 100%, down to the last edge. **F11** toggles the mute and **F12** steps the volume while the run is going. Refused with `--headless`, which opens no audio device. |
+
+**The three keys this host takes for itself**, and the one argument all
+three rest on: an 83-key XT board has no scan code for any of them, so
+`sdl::xt_scancode()` answers 0 and the emulated program loses nothing.
+`keymap_test.cpp` pins that, because it is the assumption the bindings
+rest on.
+
+| key | what it does |
+| --- | --- |
+| **F11** | toggle the mute (#148) |
+| **F12** | step the volume through 25/50/75/100% and wrap (#148) |
+| **Pause/Break** | pull the trigger of every triggered seam that is on (#161) |
+
+F11 and F12 are the function keys an 83-key board has not got — it has
+ten. Pause/Break it has not got at all: pausing on one was Ctrl and the
+keypad's Num Lock, and the dedicated key arrived with the 101-key
+Enhanced board as its one E1-prefixed sequence, which this machine's
+set-1 wire has no room for. *Break* is also the right word for it — a
+person interrupting the program from outside is what a debug trigger is.
+The keypad's `/` and its Enter are the only other keys an XT board is
+missing, and both were passed over for sitting inside the cluster this
+game's movement keys are: a key you can hit by accident mid-fight is the
+wrong key for a cheat.
+
+F11 and F12 work during a `--replay`, because how loudly a person plays a
+recording back is not something a recording decides. Pause does not: it
+reaches the machine, so a pull at the window during a replay would be an
+input the recorded run never had, exactly as a keystroke would be.
 
 `--trace` also prints a line for every file the program names — which one,
 which handle, and what DOS answered:
@@ -539,7 +569,8 @@ sounds — silence that was never going to be anything else is no check.
 F11 and F12 are keys an 83-key XT board does not have, so
 `sdl::xt_scancode()` answers 0 for both and the emulated program loses
 nothing by the binding; `keymap_test.cpp` pins that, because it is the
-assumption the binding rests on.
+assumption the binding rests on. Pause/Break is the third key on that
+argument (§2's key table, #161).
 
 ### What this section does not settle
 
@@ -762,6 +793,7 @@ why it imports `./host.mjs` with no path in it.
 | --- | --- |
 | `--frames N`, `--until TICKS`, `--steps N` | bound the run. With none of them it ends when the machine does, which for a program that never stops is never. |
 | `--press KEY@FRAME` | post a key at the top of frame `FRAME`, counting 60 Hz frames of virtual time. Repeatable. |
+| `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME`, in the desktop host's spelling (#161). |
 | `--seam ID` | turn one seam on after the load and before the first step. Repeatable, and a refusal **ends the run**: a script that asked for the cheats seam and silently got a plain machine would be the worst outcome this apparatus has. |
 | `--seams` | list every seam this build carries, in the state the run would have started in, and exit without running. |
 | `--speed xt\|turbo\|at\|386` | the governor, spelled as on the desktop host. |

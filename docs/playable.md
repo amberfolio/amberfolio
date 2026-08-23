@@ -175,7 +175,7 @@ A first-level character does not survive this, which is what the debug
 cheats seam is for (#99, `docs/seams.md`):
 
 ```
---seam cheat-invulnerable --seam cheat-kill-all
+--seam cheat-invulnerable --seam cheat-kill-all --pull cheat-kill-all@600
 ```
 
 `cheat-invulnerable` works: with it on the same encounter ends with the
@@ -195,6 +195,24 @@ manager keeps that module's segment in, at every step (#131,
 THE PARTY HAS WON.
 EACH CHARACTER RECEIVES 107 EXPERIENCE POINTS.
 ```
+
+**Since #161 it is pulled rather than left on**, which is why the flags
+above carry a `--pull` as well as a `--seam`. A person playing pulls it
+with **Pause/Break** on the desktop host or with the `pull` button beside
+the seam's checkbox on the page; a script names the frame. The run that
+produced the two lines above predates the trigger and was driven by the
+flag alone, so repeating it now needs the pull — nothing else about it
+changes.
+
+**What that run has still not measured** is how long a pull waits. The
+seam's point is the once-a-round end check, so "immediately" means "when
+this round ends", and how long that is in a real fight is a number
+nobody in this tree has. The two the change added are how to take it:
+after a run, `reached=` on the seam's end-of-run line says how many
+times the end check was arrived at, and `waited=` says what the pull that
+was served actually cost in ticks. Divide the first by the fight's length
+and you have the granularity a better point would have to beat;
+`docs/seams.md` §10 lists what finding one would need.
 
 A party that reaches this leg from a *saved game* is the practical way to
 see it. A first-level character made in leg 0 does not survive the slums
@@ -568,6 +586,11 @@ The same script, the same directory, one flag apart:
 | --- | --- |
 | `--seam code-wheel` | `HITPOINTS 1` |
 | `--seam code-wheel --seam cheat-invulnerable` | `HITPOINTS 8` |
+
+(`cheat-invulnerable` is not a trigger and never was — a party's not
+taking damage is a property rather than an act — so this leg is
+unchanged by #161. The kill-all leg above it is the one that now needs a
+pull.)
 
 The state hashes differ, the seam reports itself `on armed`, and the
 screens say what the numbers say. That is #99's last owed item — the

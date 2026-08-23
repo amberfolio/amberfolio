@@ -1053,6 +1053,64 @@ uint32_t af_machine_seam_disable(af_machine* handle, const char* id) {
              : AF_INVALID;
 }
 
+int32_t af_machine_seam_triggered(const af_machine* handle, uint32_t index) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  return box->seams().status(index).trigger ? 1 : 0;
+}
+
+int32_t af_machine_seam_waiting(const af_machine* handle, uint32_t index) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  return box->seams().status(index).waiting ? 1 : 0;
+}
+
+double af_machine_seam_reached(const af_machine* handle, uint32_t index) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0.0;
+  }
+  return static_cast<double>(box->seams().status(index).reached);
+}
+
+double af_machine_seam_waited(const af_machine* handle, uint32_t index) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0.0;
+  }
+  return static_cast<double>(box->seams().status(index).waited);
+}
+
+double af_machine_seam_pulled_at(const af_machine* handle, uint32_t index) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0.0;
+  }
+  return static_cast<double>(box->seams().status(index).pulled_at);
+}
+
+uint32_t af_machine_seam_pull(af_machine* handle, const char* id) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  std::size_t length = 0;
+  if (!text_length(id, 64, length)) {
+    return AF_INVALID;
+  }
+  // The machine's own clock stamps the pull, never the caller's: a
+  // latency measured against a tick a host chose would be a measurement
+  // of the host (machine/clock.h).
+  return box->seams().pull(std::string_view(id, length), box->time()) ==
+                 amberfolio::machine::seam_reason::none
+             ? AF_OK
+             : AF_INVALID;
+}
+
 uint32_t af_machine_load_error(const af_machine* handle) {
   if (box_of(handle) == nullptr) {
     return AF_NO_MACHINE;
