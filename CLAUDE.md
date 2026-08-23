@@ -190,13 +190,18 @@ the 260-character limit while configuring. README.md has the per-platform
 prerequisites.
 
 The two guards run in CI on every push, and nothing deploys unless they
-pass. The content guard scans every commit in history plus the working
-tree for denylisted game-artifact filenames
-and files over 256 KiB — an auditable tripwire against obvious
-artifacts, not proof by itself; the deeper clean-content claim rests on
-the full public history being open to inspection. Public history must
-never be rewritten (branch protection blocks force pushes to main), so
-both guards must stay green on every commit, not just at the tip.
+pass. The content guard scans every commit in history, the staged index
+and the working tree for denylisted game-artifact filenames, files over
+256 KiB, and — since #134 — anything that is not text whose path is not
+on its allowlist of committed binaries, which has one entry. It refuses
+an untracked binary lying beside the tree too: a stray dump was exactly
+what a `git add -A` swept into a commit in #134, and a denylist can only
+refuse names somebody thought of in advance. All of it is an auditable
+tripwire against obvious artifacts, not proof by itself; the deeper
+clean-content claim rests on the full public history being open to
+inspection. Public history must never be rewritten (branch protection
+blocks force pushes to main), so both guards must stay green on every
+commit, not just at the tip.
 
 ## Non-negotiable rules
 

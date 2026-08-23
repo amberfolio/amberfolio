@@ -37,6 +37,12 @@ session with no special case for which one it is.
 | --- | --- | --- |
 | `spin.rec` | `spin/SPIN.EXE` — 34 bytes, ten of them `JMP $` behind an MZ header | four frames of a machine doing nothing but keeping time: the PIT, the 8259, the scheduler, the renderer's frame deadline and the clock |
 
+`spin/SPIN.EXE` is also the only file in this repository that is not
+text, and the content guard
+([`scripts/check-clean.sh`](../../scripts/check-clean.sh)) names its path
+outright: everything else that is not text is refused, wherever it turns
+up. A session that needs a second such program needs a line there too.
+
 `spin.rec` is deliberately the least interesting run that could fail. The
 program executes one instruction forever, so anything that differs
 between two targets differs because the *machine* does — a device's
