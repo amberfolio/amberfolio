@@ -52,7 +52,6 @@ constexpr unsigned host_rate = 48000;
 /// number of samples and the mean is the duty cycle and nothing else.
 constexpr unsigned exact_rate = 29102;
 static_assert(pit_input_hz % exact_rate == 0);
-constexpr ticks sample_span = pit_input_hz / exact_rate;
 
 /// A 50% square of `half`-tick half-cycles, rendered over `length` ticks
 /// — the same shape `AudioFilter::ARenderedTonesMeanIsItsAmplitudeTimes
@@ -137,8 +136,7 @@ TEST(AudioGain, UnityLeavesTheDcOffsetAndTheDutyExactlyWhereTheyWere) {
     std::vector<float> tone = render_square(high, period, length, exact_rate);
 
     const double before = mean_of(tone);
-    const double duty =
-        static_cast<double>(high) / static_cast<double>(period);
+    const double duty = static_cast<double>(high) / static_cast<double>(period);
     ASSERT_NEAR(before / static_cast<double>(speaker_amplitude), duty, 1e-6)
         << "the rendered tone is not the duty it was asked for; this test "
            "has stopped measuring what it thinks it is";
@@ -201,8 +199,8 @@ TEST(AudioGain, MuteArrivesInsideTheRampWhateverTheBufferSizeIs) {
   // One buffer or many, the walk takes the same number of samples: it is
   // per sample, not per call, so a device that pulls 4096 at a time and
   // one that pulls 64 mute at the same moment.
-  for (const std::size_t chunk : {std::size_t{1}, std::size_t{64},
-                                  std::size_t{512}, std::size_t{4096}}) {
+  for (const std::size_t chunk :
+       {std::size_t{1}, std::size_t{64}, std::size_t{512}, std::size_t{4096}}) {
     audio_gain gain(host_rate);
     gain.set(0.0F);
     std::vector<float> samples(ramp_samples(host_rate), speaker_amplitude);

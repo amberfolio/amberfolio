@@ -400,6 +400,7 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1794,8 +1795,8 @@ int main(int argc, char** argv) try {
     if (muted) {
       std::fprintf(stderr, "amberfolio: audio muted\n");
     } else {
-      std::fprintf(stderr, "amberfolio: audio volume %u%%\n",
-                   static_cast<unsigned>((volume * 100.0F) + 0.5F));
+      std::fprintf(stderr, "amberfolio: audio volume %ld%%\n",
+                   std::lround(volume * 100.0F));
     }
   };
   const auto apply_level = [&bridge, &volume, &muted]() {
@@ -2260,8 +2261,8 @@ int main(int argc, char** argv) try {
       if (muted) {
         std::snprintf(level.data(), level.size(), " volume=muted");
       } else if (volume != 1.0F) {
-        std::snprintf(level.data(), level.size(), " volume=%u%%",
-                      static_cast<unsigned>((volume * 100.0F) + 0.5F));
+        std::snprintf(level.data(), level.size(), " volume=%ld%%",
+                      std::lround(volume * 100.0F));
       }
       std::fprintf(stderr,
                    "amberfolio: audio underruns=%llu resyncs=%llu dropped"
