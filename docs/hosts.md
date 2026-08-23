@@ -454,12 +454,17 @@ to be more.
 
 Three things are worth knowing about what it does:
 
-- **Names are decided in core, not by the page.** Every name goes across
+- **Paths are decided in core, not by the page.** Every one goes across
   the ABI as the player's own text and is canonicalized by
   `machine::canonicalize()` — the one implementation of DOS short-name
   rules. A name no DOS 8.3 name can equal is refused and listed as
   skipped, which is how a boxed copy's PDF ends up outside the machine
-  without the page ever having looked at a file extension.
+  without the page ever having looked at a file extension. Since #146 it
+  is a *path* and not merely a name: the picker keeps the
+  `webkitRelativePath` it used to throw away, `/` and `\` are one
+  separator at this door, and core makes the directories a path names. A
+  player who arrives with a `\SAVE\` arrives with the slots in it, which
+  is what `LOAD SAVED GAME` needs and what the page could not do before.
 - **The stop report is the same text the desktop host prints**, because
   it is formatted in core (`machine/report.h`) rather than by either
   host. That is what makes the comparison below possible at all.
@@ -532,7 +537,8 @@ node build/wasm/hosts/web/Release/drive.mjs <dir> <PROGRAM.EXE> [options]
 It is the dev page's own run loop with the browser taken out — the same
 `host.mjs` `Machine`, the same one-frame-per-iteration cadence `abi.h`
 documents, the same audio pull, the same log drain — and it takes a
-directory exactly as the SDL host does. Its source is `hosts/web/tools/`;
+directory exactly as the SDL host does, walking the subdirectories under
+it (#146) and handing each file over at its path relative to the top. Its source is `hosts/web/tools/`;
 the build places it beside the module and the page's own files, which is
 why it imports `./host.mjs` with no path in it.
 

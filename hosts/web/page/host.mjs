@@ -456,10 +456,12 @@ export class Machine {
   // browser cannot hand the core a directory, so it hands it one file at
   // a time.
   //
-  // **Nothing here does name logic.** Names go across as raw text and
+  // **Nothing here does name logic.** Paths go across as raw text and
   // core canonicalizes them (abi.h): a page that decided for itself what
   // `Save1.Dat` meant would be a second implementation of the rule that
-  // says whether two programs are looking at the same file.
+  // says whether two programs are looking at the same file. Since #146
+  // that includes the separator — `SAVE/SAVE1.DAT` is handed over with
+  // its `/` intact and core decides what it means.
 
   /// Empty the filesystem. What to call before taking a second directory
   /// from the player.
@@ -467,15 +469,19 @@ export class Machine {
     return this.module._af_machine_vfs_clear(this.handle);
   }
 
-  /// Put `bytes` (a Uint8Array) under `name`. `AF_INVALID` for a name no
-  /// legal DOS short name can equal — which is the useful answer, not a
-  /// failure: a real game directory has files in it DOS could never have
-  /// named, and this is where a caller gets its "skipped" list.
-  vfsPut(name, bytes) {
-    return this.#withCString(name, (namePtr) => {
+  /// Put `bytes` (a Uint8Array) at `path` — `START.EXE` at the root,
+  /// `SAVE/SAVE1.DAT` a directory down, either separator (#146). The
+  /// directories on the way are made in core.
+  ///
+  /// `AF_INVALID` for a path no DOS path can equal — which is the useful
+  /// answer, not a failure: a real game directory has files in it DOS
+  /// could never have named, and this is where a caller gets its
+  /// "skipped" list.
+  vfsPut(path, bytes) {
+    return this.#withCString(path, (pathPtr) => {
       const size = bytes ? bytes.length : 0;
       if (size === 0) {
-        return this.module._af_machine_vfs_put(this.handle, namePtr, 0, 0);
+        return this.module._af_machine_vfs_put(this.handle, pathPtr, 0, 0);
       }
       const scratch = this.module._malloc(size);
       if (scratch === 0) {
@@ -483,7 +489,7 @@ export class Machine {
       }
       try {
         this.module.HEAPU8.set(bytes, scratch);
-        return this.module._af_machine_vfs_put(this.handle, namePtr, scratch, size);
+        return this.module._af_machine_vfs_put(this.handle, pathPtr, scratch, size);
       } finally {
         this.module._free(scratch);
       }
@@ -491,7 +497,9 @@ export class Machine {
   }
 
   /// Everything in the root directory, in the VFS's own pinned name
-  /// order, as `{ name, size }`.
+  /// order, as `{ name, size }`. The root and only it, which is what the
+  /// ABI offers and why (abi.h) — an entry of size 0 may be a directory
+  /// the machine or a `vfsPut` made.
   vfsList() {
     const count = this.module._af_machine_vfs_count(this.handle);
     const entries = [];

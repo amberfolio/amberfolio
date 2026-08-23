@@ -599,25 +599,46 @@ recordings through `af_machine_verify_recording`, and
 `hosts/web/tests/smoke.mjs` asks it that on every CI run. What is
 un-repeatable here is this particular run, not the capability.
 
-### What the browser cannot do yet
+### Arriving with a saved game (#146)
 
-**A saved game cannot be loaded there.** `af_machine_vfs_put` puts a file
-in the **root directory** and there is no door for anything below it, so
-a host handing over a real installation hands over its root and drops
-`\SAVE\` — which is where every shipped save slot lives. The dev page's
-picker says as much in its own comment and the driver reports it:
+This used to be the section saying a browser could not. `af_machine_vfs_put`
+put a file in the **root directory** and there was no door for anything
+below it, so a host handing over a real installation handed over its root
+and dropped `\SAVE\` — which is where every shipped save slot lives:
 
 ```
 amberfolio: disk skipped SAVE (not a file)
 ```
 
-The core is not the limit — `machine::filesystem` has directories, and
-the program makes its own `\SAVE\` on the web exactly as it does on the
-desktop, so a save and a load **within one session** are not blocked.
-What is blocked is starting from a directory that already has one, which
-is how legs 3, 4 and 5 all start. Until that door exists, the browser can
-play the game from the beginning and not from where you left it, and
-#105's round trip on the web is the in-session half only.
+Legs 3, 4 and 5 all begin with `LOAD SAVED GAME`, and none of them had a
+web equivalent for that reason and no other. The core was never the
+limit: `machine::filesystem` has directories, and the program makes its
+own `\SAVE\` on the web exactly as it does on the desktop, so a save and
+a load **within one session** were never blocked. What was blocked was
+arriving with one.
+
+The door takes a **path** now, and the rule that decides what a path
+means is still core's alone: `af_machine_vfs_put` canonicalizes every
+component, takes `/` and `\` alike (a browser hands a page
+`webkitRelativePath`, and that is the spelling it comes in), and makes
+the directories on the way. Above it, `drive.mjs` walks the directory it
+is given instead of reading only its top, and the dev page's picker keeps
+the relative path it used to throw away. So the skipped line is gone and
+legs 3 to 5 are drivable here with the keystrokes they are written with:
+
+```sh
+node build/wasm/hosts/web/Release/drive.mjs <your-directory> START.EXE \
+  --seam code-wheel --press A@7600 --press Return@7650 \
+  --press L@8950 --press A@9200 --frames 12000 --quiet --dump load
+```
+
+What this repository checks is the **mechanism**, never the game: the
+wasm smoke test puts a file below the root and has a program of its own
+open it at its DOS path, and the path semantics — a nested put, a parent
+made on the way, and each path a file cannot live at — are in the unit
+suite. Running the legs themselves against a browser's copy is a
+procedure a person carries out, like every other line in this file, and
+the last section still records it as owed.
 
 ---
 
@@ -678,9 +699,12 @@ what it skips would be worth less than one that says so.
   checkboxes and the directory drop are checked by a node harness and by
   reading, not by looking. `docs/hosts.md` §3 is still where a person
   closes that.
-- **A saved game in the browser.** Leg 6's last section: the VFS door
-  reaches the root directory only, so `\SAVE\` cannot be handed over and
-  legs 3, 4 and 5 have no web equivalent.
+- **Legs 3 to 5 on the web.** The door that blocked them is open (#146,
+  leg 6's last section): a path goes into the VFS, the directories on the
+  way are made in core, and both web hosts hand over what is below the
+  root. Nobody has driven those three legs against a player's copy on the
+  wasm module and diffed them against the desktop runs above, which is
+  what would make them legs rather than a mechanism.
 - **Audio beyond "there was one."** The first sound this program makes is
   in combat. `docs/hosts.md` §4 now measures the speaker — the edge list
   a run published, the box filter's DC offset, the two hosts' sample

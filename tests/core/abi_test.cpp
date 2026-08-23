@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "amberfolio/machine/clock.h"
@@ -341,6 +342,150 @@ TEST(AbiVfs, FingerprintsAFileTheSameWayTheDesktopHostDoes) {
   EXPECT_EQ(af_machine_vfs_fingerprint(box.get(), "GONE.DAT", hex.data(),
                                        static_cast<std::uint32_t>(hex.size())),
             0u);
+}
+
+// --- A path, not merely a name (M4, #146) --------------------------------
+//
+// The door used to reach the root and no further, so a host handing over
+// a real installation dropped every subdirectory — and `\SAVE\` is where
+// a shipped save slot lives, which is why a browser could start a game
+// and never resume one. What follows is the widened door: a path in
+// either spelling, the directories on the way made in core, and the
+// paths no file can live at refused before anything is made.
+
+/// The SHA-256 of "abc" (FIPS 180-4 appendix B.1) — used below as a
+/// read-back: a fingerprint that matches is a file whose bytes arrived
+/// under the name the caller asked for.
+constexpr const char* abc_digest =
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+/// `af_machine_vfs_fingerprint` of `path`, or an empty string.
+std::string fingerprint_of(af_machine* box, const char* path) {
+  std::array<char, 128> hex{};
+  const std::uint32_t length = af_machine_vfs_fingerprint(
+      box, path, hex.data(), static_cast<std::uint32_t>(hex.size()));
+  return length == 0 ? std::string{} : std::string(hex.data());
+}
+
+/// The root listing as `{name, size}` pairs, which is all the ABI offers
+/// of a directory tree and is deliberately only the root (abi.h).
+std::vector<std::pair<std::string, std::uint32_t>> root_listing(
+    af_machine* box) {
+  std::vector<std::pair<std::string, std::uint32_t>> out;
+  const std::uint32_t count = af_machine_vfs_count(box);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    std::array<char, 16> name{};
+    if (af_machine_vfs_name_at(box, i, name.data(),
+                               static_cast<std::uint32_t>(name.size())) == 0) {
+      continue;
+    }
+    out.emplace_back(std::string(name.data()), af_machine_vfs_size_at(box, i));
+  }
+  return out;
+}
+
+TEST(AbiVfs, PutsAFileBelowTheRootAndMakesTheDirectoryOnTheWay) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+
+  // Nothing made `\SAVE` first — the host handed over one file and core
+  // made the directory it named, which is what
+  // `machine::filesystem::create()` deliberately will not do.
+  const auto root = root_listing(box.get());
+  ASSERT_EQ(root.size(), 1u);
+  EXPECT_EQ(root[0].first, "SAVE");
+  EXPECT_EQ(root[0].second, 0u);
+
+  // And the file is at the path it was given, by its own bytes.
+  EXPECT_EQ(fingerprint_of(box.get(), "SAVE/SAVE1.DAT"), abc_digest);
+  EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), 3.0);
+}
+
+TEST(AbiVfs, TakesEitherSpellingOfASeparatorAndFoldsCaseThroughEveryComponent) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "save/save1.dat", bytes.data(), 3),
+            AF_OK);
+
+  // One file, four spellings. A browser hands a page `SAVE/SAVE1.DAT` and
+  // a script hands it `\SAVE\SAVE1.DAT`; if either side folded that
+  // itself there would be two rules for what a path is, and eventually
+  // two answers (abi.h).
+  EXPECT_EQ(fingerprint_of(box.get(), "save/save1.dat"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "SAVE/SAVE1.DAT"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "\\SAVE\\SAVE1.DAT"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "C:\\save\\Save1.Dat"), abc_digest);
+
+  // Upper case out, one directory, one file.
+  const auto root = root_listing(box.get());
+  ASSERT_EQ(root.size(), 1u);
+  EXPECT_EQ(root[0].first, "SAVE");
+}
+
+TEST(AbiVfs, MakesEveryMissingDirectoryAndReusesTheOnesItAlreadyMade) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "A/B/C/D.DAT", bytes.data(), 3),
+            AF_OK);
+  // A second file two directories down the same branch: the existing
+  // directories are used, not refused as already-taken names and not
+  // remade.
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "A/B/E.DAT", bytes.data(), 3), AF_OK);
+
+  EXPECT_EQ(fingerprint_of(box.get(), "A/B/C/D.DAT"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "A/B/E.DAT"), abc_digest);
+
+  const auto root = root_listing(box.get());
+  ASSERT_EQ(root.size(), 1u);
+  EXPECT_EQ(root[0].first, "A");
+}
+
+TEST(AbiVfs, RefusesAPathNoFileCanLiveAtAndMakesNothingOnTheWayToIt) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "START.EXE", bytes.data(), 3), AF_OK);
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+  const auto before = root_listing(box.get());
+  const double bytes_before = af_machine_vfs_bytes_used(box.get());
+
+  // A component above the leaf that is a file. Overwriting `START.EXE`
+  // with a directory to make room for this would be the machine deciding
+  // it knew better than the caller about the caller's own disk.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "START.EXE/X.DAT", bytes.data(), 3),
+            AF_INVALID);
+  // A leaf that is already a directory.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "SAVE", bytes.data(), 3), AF_INVALID);
+  // A component no DOS short name can equal, anywhere in the path — the
+  // same refusal a bare name gets, applied component by component.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "code wheel/X.DAT", bytes.data(), 3),
+            AF_INVALID);
+  EXPECT_EQ(
+      af_machine_vfs_put(box.get(), "DOCS/code wheel.pdf", bytes.data(), 3),
+      AF_INVALID);
+  // Deeper than `machine::dos_path::max_depth`, which is eight: nine
+  // components do not resolve, and a truncated path would resolve to a
+  // different, real place (machine/vfs.h).
+  EXPECT_EQ(
+      af_machine_vfs_put(box.get(), "A/B/C/D/E/F/G/H/I.DAT", bytes.data(), 3),
+      AF_INVALID);
+  // The root itself is not a file.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "\\", bytes.data(), 3), AF_INVALID);
+
+  // Nothing was made on the way to any of them — no `DOCS`, no `A`, and
+  // `START.EXE` is still the file it was. A refusal that left a
+  // half-built tree behind would be the quiet fiction the whole rule
+  // exists to prevent.
+  EXPECT_EQ(root_listing(box.get()), before);
+  EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), bytes_before);
+  EXPECT_EQ(fingerprint_of(box.get(), "START.EXE"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "SAVE/SAVE1.DAT"), abc_digest);
 }
 
 TEST(AbiVfs, ClearingEmptiesIt) {
