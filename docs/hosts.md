@@ -251,6 +251,53 @@ is not, the fault is in this half; if the PPM is wrong too, it is not, and
 `ctest -L unit` will have a good deal more to say about which pixel probe
 stopped agreeing.
 
+### The dev page, in a browser — the list nobody has walked yet (#147)
+
+**No browser has been opened on any of this.** Everything phase 3 added
+to `hosts/web/page/` is checked by a node harness that stubs
+`AudioWorkletGlobalScope`, and by reading. That is not the same claim, and
+this section exists so the difference is written down rather than assumed
+away — and so the session is cheap when somebody does sit down.
+
+Serve the built page (`python3 scripts/serve-web.py build/wasm/hosts/web/<config>`)
+and work down the list. Each line is one observation; write the answer
+back into #147 or into the commit that touched the page, the way the
+desktop list above asks.
+
+- [ ] **The speed select.** Each of the four settings changes the pace of
+      the embedded demo visibly, and the machine does not stop when it is
+      changed mid-run.
+- [ ] **The health readout** — `frames= steps= | audio underruns=
+      resyncs= starved=`. It moves; the three audio numbers stay at or
+      near zero on an idle machine and grow when the tab is backgrounded,
+      which is the symptom they were added to name (#106).
+- [ ] **The AudioWorklet's hold-then-fade.** Starve it deliberately — drag
+      the window, background the tab — and the tone should hold at the
+      last real sample and fade rather than click or buzz. This is the one
+      item on the list that is a *pressure wave*, and it is the reason the
+      node harness cannot close it.
+- [ ] **The seam checkboxes against a real binary.** A recognized edition
+      names itself on the edition line, the seams for it list as
+      available, and toggling one shows the state beside its name going
+      `off` → `armed fired=0` → `armed fired=N` as the run reaches its
+      point. `armed fired=0` at the end of a run that should have fired is
+      the failure to look for (#131) — and it is a browser-visible number
+      only since #147, so this line is checking the new thing as well as
+      the old one.
+- [ ] **The directory drop of a real installation.** Drop the folder, not
+      the files; the file count and the skipped list are plausible; the
+      `.EXE`s sort to the top of the program list; a second drop replaces
+      the first rather than merging.
+- [ ] **The legs of `docs/playable.md`, in the page.** None of them has
+      been driven in a browser — only through `tools/drive.mjs`, which is
+      node. Leg 1 (a party to the roster) is the one to do first, because
+      everything after it depends on the keyboard path being right.
+
+Nothing above is a blocker for anything: the wasm module itself is checked
+continuously (§5), and the page is the thin layer over it. What is
+unchecked is the layer where a browser API is used, and browsers are
+exactly the thing a headless harness stubs.
+
 ### Recording what you found
 
 The last inch is the part that stays a person's word. When you have run it
@@ -258,6 +305,10 @@ on a target, say so where the next person will look — the issue, or a line
 in the commit that touched the host. "Ran `DEMO.EXE` on macOS 14, arm64:
 bars correct, tone audible, keys echo" is worth more than any number of
 green runners, because it is the only claim any of them cannot make.
+
+The same goes for the browser list above, and more so: a checkbox nobody
+signs is worth less than an unticked one, because an unticked box at least
+says what it is.
 
 ---
 
