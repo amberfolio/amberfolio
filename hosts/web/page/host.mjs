@@ -44,6 +44,30 @@ export const AF_SEAM_ON = 1;
 export const AF_SEAM_UNAVAILABLE = 2;
 export const AF_SEAM_NONE = 3;
 
+/// What one enabled seam did, as the desktop host says it at the end of a
+/// run (hosts/sdl/src/main.cpp): `armed fired=N`, or `inert fired=N`, and
+/// the sentence that names the failure when an armed seam fired nothing.
+///
+/// Here rather than in either caller because both hosts have to say it
+/// identically — the same argument `machine/report.h` makes for the stop
+/// line. `tools/drive.mjs` prints it after every run and the dev page
+/// puts it in its console and beside each seam's checkbox; a reader
+/// comparing a browser run against a desktop one should be comparing two
+/// runs, not two spellings.
+///
+/// Takes a row of `Machine.seamList()`. `armed` says an address was
+/// computed out of the seam's fact table; `fired` says a handler ran
+/// there, and #131's lesson is that the first cannot stand in for the
+/// second.
+export function formatSeamFired(seam) {
+  return (
+    `${seam.armed ? 'armed' : 'inert'} fired=${Math.round(seam.fired)}` +
+    (seam.armed && seam.fired === 0
+      ? ' - armed and never reached; its point may not be where its facts say'
+      : '')
+  );
+}
+
 /// The speed governor's presets (abi.h's `AF_SPEED_*`, the values of
 /// `machine::speed_preset`): 4, 2, 1 or 51/256 ticks a step. `xt` is the
 /// default and the machine the game was written for.
@@ -654,9 +678,15 @@ export class Machine {
   }
 
   /// Every seam this build's registry holds, as `{ id, about, state,
-  /// reason, armed }`, in registry order. `state` is one of the AF_SEAM_*
-  /// values above; `reason` is the spelling core gives it (`none`,
-  /// `wrong_binary`, `module_not_resident`, ...).
+  /// reason, armed, fired }`, in registry order. `state` is one of the
+  /// AF_SEAM_* values above; `reason` is the spelling core gives it
+  /// (`none`, `wrong_binary`, `module_not_resident`, ...).
+  ///
+  /// `armed` and `fired` are different claims and both are wanted
+  /// (#131): `armed` says an address was computed from the seam's fact
+  /// table, `fired` says a handler actually ran there. A seam that is on
+  /// and armed and has fired nothing is the failure that reads exactly
+  /// like success, and until #147 a browser could not say so.
   seamList() {
     const count = this.module._af_machine_seam_count(this.handle);
     const seams = [];
@@ -667,6 +697,7 @@ export class Machine {
         state: this.module._af_machine_seam_state(this.handle, i),
         reason: this.#text((out, max) => this.module._af_machine_seam_reason(this.handle, i, out, max), 64) ?? '',
         armed: this.module._af_machine_seam_armed(this.handle, i) !== 0,
+        fired: this.module._af_machine_seam_fired(this.handle, i),
       });
     }
     return seams;

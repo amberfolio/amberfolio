@@ -699,6 +699,40 @@ uint32_t af_machine_seam_reason(const af_machine* box, uint32_t index,
 /// points placed. Non-zero means yes.
 int32_t af_machine_seam_armed(const af_machine* box, uint32_t index);
 
+/// How many times one of seam `index`'s handlers has actually run since
+/// it was enabled (`machine::seam_status::fired`). Zero for a seam that
+/// is off, for one that has never been reached, and for an index past
+/// the end — `af_machine_seam_state` is what tells an index apart.
+///
+/// **`armed` is a claim about the fact table; this is a claim about the
+/// machine** (#131). A point is armed at an address computed from where
+/// a module was recorded, so a seam whose module has since moved — or
+/// whose offset was never right — answers armed, does nothing, and reads
+/// exactly like one that works. `armed` and `fired == 0` after a run
+/// that should have fired is a defect a reader can see, and it is the
+/// half of fail-closed a browser could not report until this call
+/// existed.
+///
+/// A `double` and not an `int32_t` like `af_machine_seam_armed` above,
+/// because the two answer different kinds of question: that one is a
+/// predicate and this one is a 64-bit count, which crosses here the way
+/// every other count does — `af_machine_log_dropped`,
+/// `af_machine_audio_underruns`, `af_machine_frame_generation`. See this
+/// file's "Tick quantities are doubles" for why.
+///
+/// Bookkeeping, not machine state: it lives above the fidelity boundary,
+/// is never serialized or hashed, and can only move while a seam is on —
+/// so a run with everything off is the run it always was.
+///
+/// Polled rather than pushed, and deliberately not a `seam_event`: the
+/// events on the diagnostics channel are *transitions* (on, off, armed,
+/// inert, refused), a fire is not one, and a point in a loop fires
+/// hundreds of times a second — a per-fire event would bury the
+/// transitions it shares a ring with. A stream also cannot say `fired ==
+/// 0`, which is the whole thing this call is for: absence of an event is
+/// exactly the silence that reads as success.
+double af_machine_seam_fired(const af_machine* box, uint32_t index);
+
 /// Turn the seam called `id` on or off. `AF_OK` if it took; `AF_INVALID`
 /// if there is no such seam or it is unavailable, with the reason
 /// readable through `af_machine_seam_reason` on that seam.

@@ -986,6 +986,14 @@ int32_t af_machine_seam_armed(const af_machine* handle, uint32_t index) {
   return box->seams().status(index).armed ? 1 : 0;
 }
 
+double af_machine_seam_fired(const af_machine* handle, uint32_t index) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0.0;
+  }
+  return static_cast<double>(box->seams().status(index).fired);
+}
+
 uint32_t af_machine_seam_enable(af_machine* handle, const char* id) {
   machine* box = box_of(handle);
   if (box == nullptr) {

@@ -24,10 +24,14 @@
 #include <utility>
 #include <vector>
 
+#include "amberfolio/abi_bridge.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/loader.h"
+#include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/platform.h"
+#include "amberfolio/machine/seam.h"
 #include "amberfolio/version.h"
+#include "programs/machine_programs.h"
 
 namespace {
 
@@ -121,6 +125,12 @@ TEST(Abi, EveryCallToleratesANullHandle) {
   EXPECT_EQ(af_machine_frame_generation(nullptr), 0.0);
   EXPECT_EQ(af_machine_audio_underruns(nullptr), 0.0);
   EXPECT_EQ(af_machine_audio_resyncs(nullptr), 0.0);
+  EXPECT_EQ(af_machine_seam_count(nullptr), 0u);
+  EXPECT_EQ(af_machine_seam_state(nullptr, 0), AF_SEAM_NONE);
+  EXPECT_EQ(af_machine_seam_armed(nullptr, 0), 0);
+  EXPECT_EQ(af_machine_seam_fired(nullptr, 0), 0.0);
+  EXPECT_EQ(af_machine_seam_enable(nullptr, "probe"), AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_seam_disable(nullptr, "probe"), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_post_key(nullptr, 0x1E, AF_KEY_DOWN), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_set_wall_clock(nullptr, 1990, 1, 1, 0, 0, 0, 0),
             AF_NO_MACHINE);
@@ -600,6 +610,141 @@ constexpr double frame_ticks = 1'193'182.0 / 60.0;
 }
 
 }  // namespace
+
+// --- What a seam did, across the C boundary (#147) -----------------------
+//
+// `af_machine_seam_armed` says an address was computed out of a seam's
+// fact table. It does not say a handler ever ran there, and #131's whole
+// lesson is that the two read identically: a seam whose module has moved,
+// or whose offset was never right, reports `armed`, fires nothing, and
+// looks exactly like one that works. `af_machine_seam_fired` is the
+// difference, and these run it on every native target so the browser is
+// not the only place it is checked.
+//
+// The pair is deliberate. `probe` and `probe-unreached` are keyed to the
+// same file, so both are available, both enable and both arm — every
+// answer this ABI gives about them before the run is identical. Only the
+// count afterwards tells them apart.
+
+/// The probe program on the filesystem, loaded, with both of its seams
+/// registered and the index of each. Everything the two tests below
+/// share.
+class seam_probe_rig {
+ public:
+  seam_probe_rig() {
+    // The RESET line first, as a host does — and before the registry is
+    // touched, since `machine::reset()` turns every seam off.
+    box_.power_on();
+
+    amberfolio::machine::machine* pc =
+        amberfolio::af_machine_unwrap(box_.get());
+    EXPECT_NE(pc, nullptr);
+    if (pc != nullptr) {
+      EXPECT_TRUE(
+          pc->seams().add(amberfolio::programs::seam_probe_definition()));
+      EXPECT_TRUE(pc->seams().add(
+          amberfolio::programs::seam_probe_unreached_definition()));
+    }
+
+    const std::vector<std::uint8_t>& exe =
+        amberfolio::programs::seam_probe_file();
+    EXPECT_EQ(af_machine_vfs_put(box_.get(), "PROBE.EXE", exe.data(),
+                                 static_cast<std::uint32_t>(exe.size())),
+              AF_OK);
+    EXPECT_EQ(af_machine_load_from_vfs(box_.get(), "PROBE.EXE", nullptr),
+              AF_OK);
+  }
+
+  [[nodiscard]] af_machine* get() const noexcept { return box_.get(); }
+
+  /// The registry index of `id`, or `count()` if there is no such seam —
+  /// found the way a JS host finds it, by asking for each id in turn.
+  [[nodiscard]] std::uint32_t index_of(std::string_view id) const {
+    const std::uint32_t count = af_machine_seam_count(box_.get());
+    for (std::uint32_t i = 0; i < count; ++i) {
+      std::array<char, 64> text{};
+      const std::uint32_t length = af_machine_seam_id(
+          box_.get(), i, text.data(), static_cast<std::uint32_t>(text.size()));
+      if (std::string_view(text.data(), length) == id) {
+        return i;
+      }
+    }
+    return count;
+  }
+
+  /// Run until the program exits, or until a generous budget of virtual
+  /// time is gone. The probe program polls 16,384 times at most.
+  void run_to_the_end() const {
+    for (int frame = 0; frame < 120 && af_machine_stopped(box_.get()) == 0;
+         ++frame) {
+      af_machine_run_until(box_.get(),
+                           af_ticks_per_second() * (frame + 1) / 60.0);
+    }
+  }
+
+ private:
+  equipped_machine box_;
+};
+
+TEST(AbiSeams, CountsWhatTheHandlersActuallyDid) {
+  const seam_probe_rig rig;
+  const std::uint32_t probe = rig.index_of("probe");
+  ASSERT_LT(probe, af_machine_seam_count(rig.get()));
+
+  // Off, and never run: zero, and it is zero for the honest reason.
+  EXPECT_EQ(af_machine_seam_state(rig.get(), probe), AF_SEAM_OFF);
+  EXPECT_EQ(af_machine_seam_fired(rig.get(), probe), 0.0);
+
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe"), AF_OK);
+  EXPECT_EQ(af_machine_seam_armed(rig.get(), probe), 1);
+  EXPECT_EQ(af_machine_seam_fired(rig.get(), probe), 0.0)
+      << "armed before a step is not fired";
+
+  rig.run_to_the_end();
+  ASSERT_NE(af_machine_stopped(rig.get()), 0);
+
+  EXPECT_GT(af_machine_seam_fired(rig.get(), probe), 0.0);
+  EXPECT_EQ(
+      af_machine_seam_fired(rig.get(), af_machine_seam_count(rig.get()) + 1),
+      0.0)
+      << "an index past the end answers zero, like every other call here";
+}
+
+TEST(AbiSeams, ASeamArmedWhereTheProgramNeverGoesReportsZero) {
+  const seam_probe_rig rig;
+  const std::uint32_t probe = rig.index_of("probe");
+  const std::uint32_t never = rig.index_of("probe-unreached");
+  ASSERT_LT(probe, af_machine_seam_count(rig.get()));
+  ASSERT_LT(never, af_machine_seam_count(rig.get()));
+
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe"), AF_OK);
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe-unreached"), AF_OK);
+
+  // Before the run the two are indistinguishable through this ABI: same
+  // state, same reason, same `armed`. That is the point — it is why
+  // `armed` was not enough.
+  EXPECT_EQ(af_machine_seam_state(rig.get(), probe),
+            af_machine_seam_state(rig.get(), never));
+  EXPECT_EQ(af_machine_seam_armed(rig.get(), probe),
+            af_machine_seam_armed(rig.get(), never));
+  EXPECT_EQ(af_machine_seam_armed(rig.get(), never), 1);
+
+  rig.run_to_the_end();
+  ASSERT_NE(af_machine_stopped(rig.get()), 0);
+
+  // And afterwards they are not.
+  EXPECT_GT(af_machine_seam_fired(rig.get(), probe), 0.0);
+  EXPECT_EQ(af_machine_seam_fired(rig.get(), never), 0.0)
+      << "a seam armed past the program's exit reported a run";
+
+  // The handler that must never run writes 0xFFFF over the program's own
+  // first answer if it ever does (tests/programs/machine_programs.cpp),
+  // so the result block is a second witness to the same fact.
+  std::array<std::uint8_t, 2> answer{};
+  ASSERT_EQ(af_machine_read_memory(rig.get(), 0x600 + 0x800, answer.data(), 2),
+            AF_OK);
+  EXPECT_NE(answer[0] | (answer[1] << 8), 0xFFFF);
+}
 
 TEST(AbiReplay, StateHashIsSixtyFourHexDigitsAndMovesWithTheMachine) {
   const equipped_machine box;
