@@ -1,8 +1,8 @@
 # Playable
 
 How to drive a player-supplied copy from the party roster into the game —
-a party, the city, a story event, a fight, a save and a load — and what
-each of those legs is evidence for.
+a party, the city, a story event, a fight, a save, a load and a purchase
+— and what each of those legs is evidence for.
 
 `docs/first-light.md` is the M3 procedure and stops where this one starts:
 at the roster, with an empty party and nothing to do. M4's exit criterion
@@ -215,6 +215,114 @@ its own accord. On desktop, that directory *is* the save location, as it
 was on the original machine, and backing it up is yours to do until M5's
 save management.
 
+## Leg 4 — a shop, and a purchase (#104)
+
+A city service, transacting: a shop reached on foot, its stock listed, an
+item bought, and the money gone from the character who paid.
+
+This leg starts from a **saved game** rather than from leg 0, for the
+reason leg 2 gives — `LOAD SAVED GAME` puts a whole party on the map in
+nine hundred frames, and a shop wants a party with money in it.
+
+```
+--press A@7600 --press Return@7650      the code wheel
+--press L@8950 --press A@9200           LOAD SAVED GAME, slot A
+```
+
+Then walk. The party starts at `4,12 S`; the armourer is at `8,11`, and
+the way there is four moves east and one north through the streets
+between. The presses that get there, at **150 frames apart** (see the trap
+below):
+
+```
+--press Up@11000  --press Up@11150 --press Up@11300 --press Up@11450
+--press Right@11600
+--press Up@11750  --press Up@11900 --press Up@12050 --press Up@12200
+--press Right@12350
+--press Up@12500  --press Up@12650 --press Up@12800 --press Up@12950
+--press Right@13100
+--press Up@13250  --press Up@13400 --press Up@13550 --press Up@13700
+--press Right@13850
+--press Up@14000
+```
+
+Walking onto the shop's square fires its event — a portrait, and
+
+```
+THE SHOP SPECIALIZES IN ARMS AND ARMOR. 'CAN I SHOW YOU OUR WARES?'
+```
+
+and the rest is menus:
+
+```
+--press Y@14400        yes: into the shop (BUY VIEW POOL APPRAISE EXIT)
+--press B@15000        BUY: the stock list
+--press B@15600        BUY again: the highlighted item, a HAND AXE
+--press E@16600        EXIT the stock list
+--press E@17000        EXIT the shop
+--press V@17600        VIEW the first character
+--press I@18200        ITEMS: what they are carrying
+```
+
+**What it is evidence for.** The shop's own screens render and answer: the
+entrance event with its portrait, the shop bar, a full stock list with
+prices (`HAND AXE 1`, `BARDICHE 7`, … `GLAIVE-GUISARME 10`) over its own
+`ITEMS: BUY NEXT PREV EXIT` bar, the character sheet, and the item list.
+That is #104's "text and list rendering", driven rather than described.
+
+And the transaction itself, which is the part worth being careful about.
+Run the same script twice, once with `--press B@15600` and once without —
+`docs/seams.md`'s cheap check, applied to a purchase — and read the
+character sheet both times:
+
+| | without the buy press | with it |
+| --- | --- | --- |
+| `FIGHTER1`'s money | `PLATINUM 1586`, `GOLD 1` | `PLATINUM 1586`, no gold line |
+| `FIGHTER1`'s pack | ends `POTION OF HEALING` | ends `POTION OF HEALING`, `HAND AXE` |
+
+One hand axe, one gold piece, on the character who paid. Nothing else
+about the two runs differs.
+
+**Two traps, both of which cost a run.**
+
+*Presses inside a step are lost.* A press that lands while the party is
+still walking into its square is flushed with the rest of the buffer, and
+the run then reads as though the key did nothing. Sixty frames apart is
+enough between menu keys and **not** enough between movement keys; 150 is.
+The symptom is a heading that never changes.
+
+*The buyer is the current character, not the party.* The money comes off
+one character and the item lands in that character's pack, so a run that
+checks the wrong sheet sees an unchanged `PLATINUM` and concludes nothing
+happened. `POOL` is the shop's own answer to that; `VIEW` plus `ITEMS` on
+the paying character is the check.
+
+**Finding a service without walking the whole grid.** The city is a
+sixteen-by-sixteen grid the party walks blind, `AREA` draws it, and
+sweeping it by hand is most of a session. Two things make it cheap:
+
+- The published coordinates. Contemporary player material gives the
+  civilised district's services by square — inns around `4,12`, a shop at
+  `11,12`, taverns at `8,9`, a jewellers at `8,10` behind another shop at
+  `9,10`, the hiring hall at `7,2`. Those are facts about a map, and they
+  turn a search into a route.
+- **Reading the stills for text rather than looking at them.** An event,
+  a prompt or a service screen is the only thing that puts ink in the
+  message box under the 3D view, so a script that counts non-black pixels
+  there across a `--dump-every` run finds every event in it and names the
+  frames. A wandering script — forward four, turn right, repeat — plus
+  that scan found the armourer in one run without a single frame being
+  looked at by eye.
+
+Do **not** try to read walkability off the `AREA` panel. The panel is an
+eleven-by-eleven window on the district (its origin was map `0,5` in the
+run above, and the party arrow is what pins it), and its light-grey lines
+do not correspond to the walls the party actually bumps into — a route
+computed from them disagreed with the party's own movement at the first
+junction.
+
+---
+
 ---
 
 ## What the run should not say
@@ -248,10 +356,11 @@ worklist line, and `docs/machine.md` §5 is what to do with it.
 
 Honest gaps, so nobody reads more into a green run than is there:
 
-- **`cheat-kill-all`** — armed, and inert (above).
-- **The city services** — shops, training hall, temple, inn (#104). The
-  city hall's entrance event fires and its interior renders; buying,
-  selling, training and resting have not been driven.
+- **The rest of the city services** (#104). Leg 4 buys from a shop, and
+  the city hall's entrance event, its interior and an NPC prompt all run.
+  The **training hall**, the **temple** and the **inn** have not been
+  driven, and neither has **selling** — `SELL` is not on the armourer's
+  bar, so it belongs to a shop that buys, which is a different square.
 - **The dungeon.** Everything above is the city and its slums.
 - **The web host** (#108) runs the same core and the same recordings, and
   none of these legs has been driven on the dev page.
