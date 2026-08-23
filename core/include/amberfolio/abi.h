@@ -358,7 +358,7 @@ uint32_t af_machine_set_trace(af_machine* box, int32_t on);
 uint32_t af_machine_stop_report(const af_machine* box, uint32_t how, char* out,
                                 uint32_t max);
 
-/// The same for the trace ring. 24576 bytes is enough for a full one;
+/// The same for the trace ring. 32768 bytes is enough for a full one;
 /// a machine that was never asked to trace writes one line saying so.
 uint32_t af_machine_trace_report(const af_machine* box, char* out,
                                  uint32_t max);

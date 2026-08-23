@@ -539,11 +539,39 @@ std::size_t format_trace_report(const machine& box, std::span<char> out) {
   w.number(ring.calls_seen());
   w.text(" kept=");
   w.number(ring.call_count());
+  w.text(" files_seen=");
+  w.number(ring.files_seen());
+  w.text(" kept=");
+  w.number(ring.file_count());
   w.end_line();
 
-  // Calls first. There are fewer of them, they carry the most meaning per
-  // line, and a reader who only reads the top of the block should be
-  // reading those rather than three hundred addresses.
+  // Files first, for the reason the calls come before the steps, one
+  // further along: they are the rarest entries and the only ones that
+  // name anything (#121). A call line says `INT21 ax=3D00`; these say
+  // which file, and what DOS was about to answer with — which is the
+  // difference between a run that opened what it meant to and one that
+  // has been asking for a file that is not there.
+  for (std::size_t i = 0; i < ring.file_count(); ++i) {
+    const file_event event = ring.file_at(i);
+    w.line_start();
+    w.text("trace file=");
+    w.text(file_action_name(event.what));
+    w.put(' ');
+    std::array<char, dos_path_capacity> path{};
+    format_dos_path(event.path, path);
+    w.text(path.data());
+    w.text(" handle=");
+    w.hex(event.handle, 4);
+    w.put(' ');
+    w.text(vfs_error_name(event.error));
+    w.text(" from=");
+    w.far_address(event.caller_cs, event.caller_ip);
+    w.end_line();
+  }
+
+  // Calls next. There are fewer of them than steps, they carry the most
+  // meaning per line, and a reader who only reads the top of the block
+  // should be reading those rather than three hundred addresses.
   for (std::size_t i = 0; i < ring.call_count(); ++i) {
     const service_call call = ring.call_at(i);
     w.line_start();

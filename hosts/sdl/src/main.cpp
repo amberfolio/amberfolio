@@ -124,6 +124,17 @@
 //     (machine/trace.h). What it answers is the question a bare address
 //     cannot: how the program got there.
 //
+//     The ring's third channel is the naming file calls (#121) — the last
+//     thirty-two opens, creates, mkdirs, unlinks and closes, each with
+//     the path it resolved to and what DOS answered:
+//
+//         amberfolio: stop trace file=open \POR\POOL.CFG handle=0000 path_not_found from=0B58:1458
+//
+//     A failed open is a legitimate DOS answer and stays one, so nothing
+//     stops and nothing is refused; the line is the whole of the fix.
+//     Without it "the program has spent its startup asking for a file
+//     that is not there" is a directory audit rather than a report.
+//
 //     Since M4 (#97, #99) it also prints every file read the overlay
 //     tracker records as it lands — the file, the offset, the length,
 //     where it went and the digest of the bytes (machine/overlay.h):

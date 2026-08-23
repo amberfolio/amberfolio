@@ -77,7 +77,7 @@ export const AF_RUN_END_HOST_QUIT = 3;
 /// (core/include/amberfolio/machine/report.h). Restated here for the
 /// reason the status codes are: a JS host has no headers.
 export const AF_STOP_REPORT_CAPACITY = 512;
-export const AF_TRACE_REPORT_CAPACITY = 24576;
+export const AF_TRACE_REPORT_CAPACITY = 32768;
 
 /// Unpack af_version()'s 0x00MMmmpp. The one place JS knows the packing;
 /// keep it in step with AF_VERSION_* in core/include/amberfolio/abi.h.
