@@ -234,10 +234,18 @@ export class Machine {
     return this.module._af_palette_entries();
   }
 
-  /// Run virtual time up to `tick` (absolute, not a duration — abi.h's
-  /// own run-loop snippet is `next += ticksPerSecond() / 60;
-  /// runUntil(next)`, and that is exactly what app.mjs's frame callback
-  /// does). Answers one of the AF_* status constants above.
+  /// Run virtual time up to `tick` (absolute, not a duration — a caller
+  /// keeps its own schedule and passes points on it, so the overshoot of
+  /// one slice never accumulates into drift). Answers one of the AF_*
+  /// status constants above.
+  ///
+  /// abi.h's snippet spells the next point as `next += ticksPerSecond() /
+  /// 60`, and that is right for a caller whose iterations *are* 60 Hz
+  /// frames: `tools/drive.mjs` is one, being unpaced and counting frames
+  /// of virtual time rather than seconds of anybody's. The dev page is
+  /// not — rAF calls it at the display's rate — so it asks
+  /// `pacedAdvance()` below for the point elapsed wall time implies
+  /// (#157).
   runUntil(tick) {
     return this.module._af_machine_run_until(this.handle, tick);
   }
@@ -826,6 +834,85 @@ export class Machine {
       this.module._free(scratch);
     }
   }
+}
+
+// --- Pacing: virtual time against the wall (#157) --------------------------
+//
+// PLAN.md §4's rule is that host wall time only throttles presentation,
+// and the SDL host honours it by running exactly one frame of virtual
+// time per iteration and then sleeping whatever wall time is left over
+// (hosts/sdl/src/main.cpp's top comment). Its corollary is the important
+// half: a host that falls behind simply does not sleep, and never runs
+// the machine faster to compensate.
+//
+// A browser cannot copy that loop, because it does not own the cadence.
+// `requestAnimationFrame` fires at the **display's** refresh rate, so the
+// dev page's old "one 60 Hz frame of virtual time per callback" ran the
+// machine at `refresh / 60` times real time — 4x on a 240 Hz monitor,
+// compounding with whatever speed preset was selected, which is #157.
+//
+// So the arithmetic is turned round. rAF hands the callback a
+// `DOMHighResTimeStamp`; the machine is advanced by the virtual time that
+// *elapsed real time* implies, and the display's rate decides only how
+// finely that advance is chopped up. A hundred callbacks at 240 Hz and
+// twenty-five at 60 Hz advance the same virtual time, because they cover
+// the same wall time.
+//
+// Absolute and not a duration, still: the caller keeps `tick` as a point
+// on its own schedule and this returns the next point, so the overshoot
+// of a slice — a step is indivisible — never accumulates into drift
+// (abi.h's note on `af_machine_run_until`).
+
+/// The most virtual time one callback may advance, in seconds, however
+/// much wall time went by.
+///
+/// It has to exist. A backgrounded tab, a breakpoint, a sleeping laptop
+/// or a slow first paint hands the next callback an arbitrarily large
+/// delta, and running the machine forward by all of it is exactly the
+/// burst of emulated instructions the SDL host's loop is written to
+/// forbid. It is also what makes a host that *cannot* keep up settle
+/// rather than diverge: without a cap, each callback that overran would
+/// ask the next one for more virtual time than the last, and the page
+/// would freeze for longer and longer.
+///
+/// A tenth of a second — six 60 Hz frames. Long enough that ordinary
+/// jitter is absorbed rather than lost (a dropped frame or two, a GC
+/// pause, an rAF throttled to 30 Hz on battery), so virtual time really
+/// does track the wall on any display a person is looking at; short
+/// enough that anything past it is not jitter but a stall, and a stall is
+/// dropped. What is dropped is *not* remembered: virtual time falls
+/// behind the wall and stays behind, which is precisely what the desktop
+/// host does when it declines to sleep.
+export const MAX_CATCH_UP_SECONDS = 0.1;
+
+/// Where to run virtual time to, given where it is and how much wall time
+/// has passed since the last callback.
+///
+/// `since` is the previous callback's `DOMHighResTimeStamp` and `now` is
+/// this one's, both in milliseconds; `since` is null on the first
+/// callback, which anchors the clock and advances nothing. A delta that
+/// is not a positive finite number — a first frame, a clock that went
+/// backwards — advances nothing rather than guessing at one.
+///
+/// Answers the next absolute tick, the advance it represents, and whether
+/// the clamp was reached, which is a fact about the host worth showing
+/// rather than swallowing.
+export function pacedAdvance({
+  tick,
+  since,
+  now,
+  ticksPerSecond,
+  maxCatchUpSeconds = MAX_CATCH_UP_SECONDS,
+}) {
+  const limit =
+    Number.isFinite(maxCatchUpSeconds) && maxCatchUpSeconds > 0
+      ? maxCatchUpSeconds * ticksPerSecond
+      : MAX_CATCH_UP_SECONDS * ticksPerSecond;
+  const elapsedMs =
+    Number.isFinite(since) && Number.isFinite(now) && now > since ? now - since : 0;
+  const wanted = (elapsedMs / 1000) * ticksPerSecond;
+  const advance = Math.min(wanted, limit);
+  return { tick: tick + advance, advance, clamped: wanted > limit };
 }
 
 // --- The embedded demo program (M2-H2, #55) -------------------------------
