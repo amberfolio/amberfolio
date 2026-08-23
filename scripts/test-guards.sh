@@ -196,11 +196,15 @@ if [ -n "$tidy_python" ]; then
     printf '[%s]\n' "$2" > "$r/$1/compile_commands.json"
   }
   # Both of these run through `expect`, which invokes what it is handed.
-  # shellcheck disable=SC2329
+  # Two codes for one finding: shellcheck spells "called indirectly" as
+  # SC2329 in 0.11 and as SC2317 in the version CI installs, and an
+  # unknown code in a disable directive is ignored rather than an error,
+  # so naming both is what keeps the gate green on either.
+  # shellcheck disable=SC2329,SC2317
   tidy_run() { # tidy_run <build-dir>
     env CLANG_TIDY="$r/stub/clang-tidy" bash "$r/scripts/check-tidy.sh" "$1"
   }
-  # shellcheck disable=SC2329
+  # shellcheck disable=SC2329,SC2317
   tidy_says() { # tidy_says <build-dir> <text>
     local said
     said=$(tidy_run "$1" 2>&1) || true
