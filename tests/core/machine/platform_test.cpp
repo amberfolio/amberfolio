@@ -28,13 +28,18 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <span>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/state.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "machine/test_host.h"
@@ -275,6 +280,405 @@ TEST(AudioTimeline, RestartThrowsAwayThePreviousRunsAudio) {
   EXPECT_EQ(audio.render(out, cd_rate), out.size());
   EXPECT_THAT(out, Each(FloatEq(0.0F)));
   EXPECT_LT(audio.playback_position(), settled_window);
+}
+
+// --- The edge log (M4-A1, #106) ---------------------------------------
+//
+// `published()` and `edge_digest()` pin the edge list and cannot show it,
+// and the ring itself is eaten by the consumer — so until this there was
+// no way to ask a machine *which* edges it made at *which* ticks. What
+// these check is the three properties that make it safe to ask: it is off
+// unless asked for, it drains rather than accumulates, and neither the
+// asking nor the answering is anything `render()` or a hash can see.
+
+TEST(AudioTimeline, LogsNoEdgesUntilSomebodyAsksItTo) {
+  audio_timeline audio;
+
+  ASSERT_TRUE(audio.publish(100, true));
+  EXPECT_FALSE(audio.logging_edges());
+  EXPECT_EQ(audio.edge_log_pending(), 0u);
+
+  std::array<audio_edge, 4> out{};
+  EXPECT_EQ(audio.read_edge_log(out), 0u);
+}
+
+TEST(AudioTimeline, TheEdgeLogHandsBackWhatWasPublishedOldestFirst) {
+  audio_timeline audio;
+  audio.log_edges(true);
+
+  ASSERT_TRUE(audio.publish(100, true));
+  ASSERT_TRUE(audio.publish(250, false));
+  ASSERT_TRUE(audio.publish(400, true));
+  EXPECT_EQ(audio.edge_log_pending(), 3u);
+
+  std::array<audio_edge, 2> first{};
+  ASSERT_EQ(audio.read_edge_log(first), 2u);
+  EXPECT_EQ(first[0], (audio_edge{.at = 100, .level = true}));
+  EXPECT_EQ(first[1], (audio_edge{.at = 250, .level = false}));
+
+  // Drained, not copied: what came out is gone, so a host draining every
+  // frame sees each edge exactly once and the log never grows.
+  EXPECT_EQ(audio.edge_log_pending(), 1u);
+  std::array<audio_edge, 4> rest{};
+  ASSERT_EQ(audio.read_edge_log(rest), 1u);
+  EXPECT_EQ(rest[0], (audio_edge{.at = 400, .level = true}));
+  EXPECT_EQ(audio.read_edge_log(rest), 0u);
+}
+
+// An edge the ring refused was never published, so it is not in the log
+// either — the log records what the timeline holds, not what was offered
+// to it.
+TEST(AudioTimeline, TheEdgeLogRecordsOnlyEdgesThatWereActuallyPublished) {
+  audio_timeline audio;
+  audio.log_edges(true);
+
+  ASSERT_TRUE(audio.publish(100, true));
+  ASSERT_FALSE(audio.publish(99, false));
+  EXPECT_EQ(audio.edge_log_pending(), 1u);
+}
+
+// A host that stopped draining loses the newest and is told how many.
+// Counted apart from `dropped_edges()`, which is the ring overflowing:
+// that is sound nobody heard, this is only an observation nobody made.
+TEST(AudioTimeline, AFullEdgeLogDropsTheNewestAndCountsThemSeparately) {
+  audio_timeline audio;
+  audio.log_edges(true);
+
+  for (std::size_t i = 0; i < audio_timeline::edge_log_capacity; ++i) {
+    ASSERT_TRUE(audio.publish(static_cast<ticks>(i + 1), (i % 2) == 0));
+  }
+  EXPECT_EQ(audio.edge_log_dropped(), 0u);
+
+  ASSERT_TRUE(audio.publish(audio_timeline::edge_log_capacity + 1, true));
+  EXPECT_EQ(audio.edge_log_dropped(), 1u);
+  EXPECT_EQ(audio.dropped_edges(), 0u);
+  EXPECT_EQ(audio.edge_log_pending(), audio_timeline::edge_log_capacity);
+
+  // The oldest survived, which is what "drops the newest" means.
+  std::array<audio_edge, 1> out{};
+  ASSERT_EQ(audio.read_edge_log(out), 1u);
+  EXPECT_EQ(out[0].at, 1u);
+}
+
+// The property the whole facility rests on: a reader must not perturb
+// what the consumer sees. Both ends of the log are the producer's, so a
+// drain in the middle of a run leaves the rendered samples bit for bit
+// what they would have been.
+TEST(AudioTimeline, ReadingTheEdgeLogChangesNothingRenderWillSee) {
+  const auto play = [](bool observed) {
+    audio_timeline audio;
+    audio.log_edges(observed);
+    for (ticks at = 0; at < settled_window; at += 1000) {
+      EXPECT_TRUE(audio.publish(at, (at / 1000) % 2 == 0));
+      if (observed) {
+        std::array<audio_edge, 8> seen{};
+        static_cast<void>(audio.read_edge_log(seen));
+      }
+    }
+    audio.advance(settled_window);
+    std::vector<float> out(256, 0.0F);
+    EXPECT_EQ(audio.render(out, cd_rate), out.size());
+    return out;
+  };
+
+  EXPECT_EQ(play(true), play(false));
+}
+
+// And the other half of that: the log is an observation of the run, not
+// part of it. A machine being watched hashes the same as one that is not,
+// which is what keeps every recording in tests/sessions a statement about
+// the machine rather than about the observer.
+TEST(AudioTimeline, WatchingTheEdgeListDoesNotMoveTheMachinesHash) {
+  // On the heap, like every other machine in this suite: one is a
+  // megabyte of RAM and two of them do not fit on a thread's stack.
+  auto unwatched = std::make_unique<machine>(memory_layout::pc);
+  auto watched = std::make_unique<machine>(memory_layout::pc);
+  watched->audio().log_edges(true);
+
+  for (machine* box : {unwatched.get(), watched.get()}) {
+    ASSERT_TRUE(box->audio().publish(100, true));
+    ASSERT_TRUE(box->audio().publish(250, false));
+  }
+  ASSERT_EQ(watched->audio().edge_log_pending(), 2u);
+  EXPECT_EQ(hash_state(*watched), hash_state(*unwatched));
+}
+
+TEST(AudioTimeline, RestartEmptiesTheEdgeLogAndLeavesItSwitchedOn) {
+  audio_timeline audio;
+  audio.log_edges(true);
+  ASSERT_TRUE(audio.publish(100, true));
+
+  audio.restart();
+  EXPECT_TRUE(audio.logging_edges());
+  EXPECT_EQ(audio.edge_log_pending(), 0u);
+  EXPECT_EQ(audio.edge_log_dropped(), 0u);
+
+  ASSERT_TRUE(audio.publish(50, false));
+  EXPECT_EQ(audio.edge_log_pending(), 1u);
+}
+
+// --- Measuring the box filter (M4-A1, #106) ---------------------------
+//
+// Everything above asks whether `render()` does what it says. These ask
+// what it *costs*, in numbers rather than adjectives — #106's second
+// comment is explicit that the only evidence the reconstruction had was
+// "it sounds right in a quiet room to one person", and its third names
+// the DC offset as the concrete thing to measure.
+//
+// The rates here are the ones the two hosts really use: 48,000 is the SDL
+// host's (hosts/sdl/src/main.cpp) and 44,100 is the wasm page's
+// (hosts/web/page/host.mjs). Neither divides `pit_input_hz`, which is
+// exactly the difficulty; where a measurement wants no rounding at all it
+// uses 29,102, which does — speaker_test.cpp's exit criterion explains
+// that number and this reuses it for the same reason.
+
+/// The edges of a square wave: `high` ticks on and `low` ticks off, from
+/// tick 0 until `length`.
+[[nodiscard]] std::vector<audio_edge> square_wave(ticks high, ticks low,
+                                                  ticks length) {
+  std::vector<audio_edge> edges;
+  for (ticks at = 0; at < length;) {
+    edges.push_back({.at = at, .level = true});
+    at += high;
+    if (at >= length) {
+      break;
+    }
+    edges.push_back({.at = at, .level = false});
+    at += low;
+  }
+  return edges;
+}
+
+/// Render one edge list through a timeline of its own. A fresh one per
+/// call, so that rendering the same list at two rates is two independent
+/// answers to the same question rather than one timeline asked twice.
+[[nodiscard]] std::vector<float> render_edges(std::span<const audio_edge> edges,
+                                              ticks settled, unsigned rate,
+                                              std::size_t samples) {
+  audio_timeline audio;
+  for (const audio_edge& one : edges) {
+    EXPECT_TRUE(audio.publish(one.at, one.level));
+  }
+  audio.advance(settled);
+
+  std::vector<float> out(samples, 0.0F);
+  EXPECT_EQ(audio.render(out, rate), out.size());
+  return out;
+}
+
+[[nodiscard]] double mean_of(std::span<const float> samples) {
+  double total = 0.0;
+  for (const float sample : samples) {
+    total += static_cast<double>(sample);
+  }
+  return total / static_cast<double>(samples.size());
+}
+
+/// The index of every rising zero crossing, at the half-amplitude
+/// threshold the rest of the suite uses.
+[[nodiscard]] std::vector<std::size_t> rises_in(std::span<const float> out) {
+  std::vector<std::size_t> rises;
+  const float threshold = speaker_amplitude / 2;
+  bool high = false;
+  for (std::size_t i = 0; i < out.size(); ++i) {
+    if (!high && out[i] > threshold) {
+      rises.push_back(i);
+      high = true;
+    } else if (high && out[i] < threshold) {
+      high = false;
+    }
+  }
+  return rises;
+}
+
+// The DC finding, as a number rather than as a sentence.
+//
+// A 50% square rendered through this filter has a mean of
+// `speaker_amplitude * 0.5` — **0.125**, a quarter of full scale, held
+// for as long as the tone plays. That is not a defect in the filter: the
+// filter is exact, and 0.125 is the true average of a unipolar square.
+// It is a property of the *representation* platform.h chose, so that
+// silence is exactly 0.0 (#49), and the header already says the real cone
+// is displaced too and that every practical DAC path removes it.
+//
+// So: **a property to document, not a defect to fix here** — with one
+// caveat that #106's third comment found and that this number makes
+// precise. A tone's DC is inaudible; a *gate held on* is not. The game's
+// combat hit is 19 ms of constant 0.25 with no sign change at all, and a
+// sink handed that gets a thump and a settle rather than a click. If
+// anything is ever done about this it should be a high-pass in the host's
+// reconstruction, chosen against that burst, and it must not be done in
+// `render()` — the samples would stop being the exact integral of the
+// edge list, which is the one thing this filter is for. Filed, not fixed.
+TEST(AudioFilter, ARenderedTonesMeanIsItsAmplitudeTimesItsDutyCycle) {
+  // 41 periods of 2,000 ticks is 82,000 ticks, which at 29,102 Hz is
+  // exactly 2,000 samples: a whole number of both, so the mean is the
+  // duty cycle and nothing else. Deliberately a period that is *not* a
+  // whole number of samples — 2,000 is not a multiple of 41 — so most
+  // samples in the buffer straddle an edge and the claim is about the
+  // filter conserving area, not about samples that happened to line up.
+  constexpr unsigned rate = 29102;
+  static_assert(pit_input_hz % rate == 0);
+  constexpr ticks span = pit_input_hz / rate;
+  constexpr ticks half = 1000;
+  constexpr ticks length = 82000;
+  static_assert(length % (2 * half) == 0);
+  static_assert(length % span == 0);
+
+  const std::vector<audio_edge> edges = square_wave(half, half, length);
+  const std::vector<float> out =
+      render_edges(edges, length, rate, length / span);
+
+  EXPECT_NEAR(mean_of(out), static_cast<double>(speaker_amplitude) * 0.5, 1e-7);
+  // And no sample is ever negative, which is the same finding said the
+  // other way round: there is nothing for the offset to cancel against.
+  EXPECT_THAT(out, Each(::testing::Ge(0.0F)));
+}
+
+// Duty recovered from the samples, which is a check on the render and not
+// an estimate of it: the box filter's defining property is that a sample
+// straddling an edge is the *exact* fractional overlap, so the mean of a
+// whole number of periods is the duty cycle at any duty.
+//
+// Worth doing at duties other than a half, because mode 3 is not the only
+// way the speaker is driven: a program that toggles the data bit of port
+// 61h by hand — the direct-drive path era games use for sampled effects —
+// produces whatever duty its timing loop produces.
+TEST(AudioFilter, TheDutyCycleComesBackOutOfTheSamplesAtAnyDuty) {
+  constexpr unsigned rate = 29102;
+  constexpr ticks span = pit_input_hz / rate;
+
+  // One straddled sample first, exactly. `render()` computes
+  // `amplitude * high / span` in float and so does this, so the two are
+  // the same bits and the assertion is an equality rather than a band —
+  // which is what makes the means below measurements.
+  {
+    audio_timeline audio;
+    ASSERT_TRUE(audio.publish(0, true));
+    ASSERT_TRUE(audio.publish(17, false));
+    audio.advance(settled_window);
+
+    std::array<float, 1> out{};
+    ASSERT_EQ(audio.render(out, rate), out.size());
+    EXPECT_THAT(out[0],
+                FloatEq(speaker_amplitude * 17.0F / static_cast<float>(span)));
+  }
+
+  constexpr ticks period = 2000;
+  constexpr ticks length = 82000;
+  for (const ticks high : {ticks{250}, ticks{500}, ticks{1000}, ticks{1750}}) {
+    const std::vector<audio_edge> edges =
+        square_wave(high, period - high, length);
+    const std::vector<float> out =
+        render_edges(edges, length, rate, length / span);
+
+    const double duty = static_cast<double>(high) / static_cast<double>(period);
+    EXPECT_NEAR(mean_of(out) / static_cast<double>(speaker_amplitude), duty,
+                1e-6)
+        << "duty " << duty;
+  }
+}
+
+// One edge list, the two rates the two hosts actually pull at, and what
+// the difference between the answers is. The closest thing to an aliasing
+// measurement that belongs in a unit test: a square wave has harmonics
+// past both Nyquist limits, the box filter is the only thing standing in
+// front of them, and if that mattered it would show up as the two rates
+// disagreeing about the tone.
+//
+// They agree. Measured over a tenth of a virtual second of a tone whose
+// true frequency is 1,193,182 / 1,192 = **1000.9916 Hz**:
+//
+//   * **frequency**, from the span between the first and last rising zero
+//     crossing: **1000.908 Hz at 44,100** and **1001.043 Hz at 48,000** —
+//     0.008% low and 0.005% high, and 0.013% apart from each other. A
+//     hundredth of a percent is about a two-thousandth of a semitone.
+//   * **mean**: **0.125124 at 44,100** and **0.125125 at 48,000** —
+//     1.5e-6 apart, and both 1.2e-4 above the 0.125 the test above pins
+//     exactly. That last gap is not the filter: the window is 100.1
+//     cycles rather than a whole number of them, so the leftover tenth of
+//     a cycle starts high and biases the average. Rendering a whole
+//     number of periods gives 0.125 to eleven decimal places, which is
+//     what `ARenderedTonesMeanIs...` does.
+//   * **cycle-to-cycle jitter**, the honest cost of the box filter: a
+//     rise lands within **0.82 samples at 44,100 and 0.75 at 48,000** of
+//     where the fitted period puts it — 19 µs and 16 µs. That is the
+//     quantisation the pull rate imposes, it is under one sample at both,
+//     and no better filter would remove it.
+//
+// So: nothing here argues for a better-than-box filter in v1. The two
+// rates hear the same note to a thousandth of a semitone, and what
+// separates them is a sample of edge placement.
+//
+// The tolerances below are stated an order of magnitude wider than the
+// numbers measured, so this is a regression check and not a transcript.
+TEST(AudioFilter, OneEdgeListRenderedAtBothHostsRatesAgrees) {
+  // 596 ticks a half cycle is 1,193,182 / 1,192 = 1000.99 Hz — the order
+  // a Gold Box effect lives in, and a period that divides neither 44,100
+  // nor 48,000, which is the point of choosing it.
+  constexpr ticks half = 596;
+
+  // A tenth of a virtual second, which is a hundred cycles of it. Not
+  // more: `max_lag` is 200 ms, and a horizon further ahead than that is
+  // the *overrun* rule's business — `render()` would jump the cursor
+  // forward and this would be measuring the resync path instead of the
+  // filter. (It is: that is what the first run of this test measured.)
+  constexpr ticks length = pit_input_hz / 10;
+  static_assert(length < audio_timeline::max_lag);
+
+  const std::vector<audio_edge> edges = square_wave(half, half, length);
+  ASSERT_LT(edges.size(), audio_timeline::edge_capacity);
+
+  const auto measure = [&edges](unsigned rate) {
+    // A tenth of a second of samples covers exactly `length` ticks at
+    // both rates, so both buffers end on the horizon rather than short of
+    // it and nothing here is an underrun either.
+    const std::vector<float> out = render_edges(edges, length, rate, rate / 10);
+    const std::vector<std::size_t> rises = rises_in(out);
+    EXPECT_GE(rises.size(), 2u);
+
+    // Frequency from the span between the first and last crossing rather
+    // than from the count of them: a count over a hundred cycles resolves
+    // to a percent, and a span resolves to the sample, which is what
+    // makes "the two rates agree to a tenth of a percent" a measurement
+    // rather than the granularity of the instrument.
+    const auto cycles = static_cast<double>(rises.size() - 1);
+    const auto spanned = static_cast<double>(rises.back() - rises.front());
+    const double period = spanned / cycles;
+    const double hz = cycles * static_cast<double>(rate) / spanned;
+
+    double worst = 0.0;
+    for (std::size_t i = 0; i < rises.size(); ++i) {
+      const double ideal = static_cast<double>(rises.front()) +
+                           (period * static_cast<double>(i));
+      worst = std::max(worst, std::abs(static_cast<double>(rises[i]) - ideal));
+    }
+    return std::tuple{hz, mean_of(out), worst};
+  };
+
+  const auto [cd_hz, cd_mean, cd_jitter] = measure(cd_rate);
+  const auto [host_hz, host_mean, host_jitter] = measure(48000);
+
+  // The two hosts hear the same note. A tenth of a percent of 1 kHz is
+  // about a fiftieth of a semitone — far below what an ear resolves, and
+  // seven times what the two numbers actually differ by.
+  constexpr double true_hz = static_cast<double>(pit_input_hz) / (2 * half);
+  EXPECT_NEAR(cd_hz, host_hz, host_hz * 0.001);
+  EXPECT_NEAR(cd_hz, true_hz, true_hz * 0.001);
+  EXPECT_NEAR(host_hz, true_hz, true_hz * 0.001);
+
+  // And carry the same offset. Wider than the 1.5e-6 the two rates differ
+  // by, and wider than the 1.2e-4 either sits above 0.125 for the
+  // whole-cycles reason above.
+  EXPECT_NEAR(cd_mean, host_mean, 5e-4);
+  EXPECT_NEAR(host_mean, static_cast<double>(speaker_amplitude) * 0.5, 5e-4);
+
+  // A rise lands within a sample of where the period says. Two, as the
+  // bound, because "within one sample" is a statement about a threshold
+  // crossing in a box-filtered edge and one sample of slack is what keeps
+  // it from being a statement about float comparison.
+  EXPECT_LE(cd_jitter, 2.0);
+  EXPECT_LE(host_jitter, 2.0);
 }
 
 // --- Input in ---------------------------------------------------------

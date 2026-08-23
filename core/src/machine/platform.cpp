@@ -198,7 +198,33 @@ bool audio_timeline::publish(ticks at, bool level) noexcept {
   hash ^= level ? 1U : 0U;
   hash *= 1099511628211ULL;
   edge_digest_ = hash;
+
+  // And, if anybody asked, the edge itself. The branch is the whole cost
+  // of the facility to a run that did not ask for it — the same bargain
+  // `trace_ring::record()` makes, and made here rather than at the call
+  // site so that "off unless asked for" is a property of this class and
+  // not a rule the speaker has to remember.
+  if (logging_) {
+    if (log_count_ == edge_log_capacity) {
+      ++log_dropped_;
+    } else {
+      log_[(log_first_ + log_count_) % edge_log_capacity] = {.at = at,
+                                                             .level = level};
+      ++log_count_;
+    }
+  }
   return true;
+}
+
+std::size_t audio_timeline::read_edge_log(std::span<audio_edge> out) noexcept {
+  std::size_t taken = 0;
+  while (taken < out.size() && log_count_ > 0) {
+    out[taken] = log_[log_first_];
+    log_first_ = (log_first_ + 1) % edge_log_capacity;
+    --log_count_;
+    ++taken;
+  }
+  return taken;
 }
 
 void audio_timeline::save_state(state_sink& out) const {
@@ -230,6 +256,14 @@ void audio_timeline::restart() noexcept {
   have_published_ = false;
   published_ = 0;
   edge_digest_ = 1469598103934665603ULL;
+
+  // The log's contents, but not the setting that fills it: what it holds
+  // is in-flight traffic from the run that just ended (the same rule
+  // `console_output::clear()` follows), and a host that asked to observe
+  // this machine did not stop asking because the machine was reset.
+  log_first_ = 0;
+  log_count_ = 0;
+  log_dropped_ = 0;
 }
 
 std::uint64_t audio_timeline::integrate(ticks from, ticks to,
@@ -242,7 +276,7 @@ std::uint64_t audio_timeline::integrate(ticks from, ticks to,
   // bug in the host either way, but with `!=` it is an emulator that
   // never returns, and with `<` it is a call that does nothing.
   while (taken_ < head) {
-    const edge& next = edges_[taken_ % edge_capacity];
+    const audio_edge& next = edges_[taken_ % edge_capacity];
     if (next.at >= to) {
       break;
     }
@@ -267,7 +301,7 @@ std::uint64_t audio_timeline::integrate(ticks from, ticks to,
 void audio_timeline::skip_to(ticks at, std::uint64_t head) noexcept {
   // `<` rather than `!=`, for the reason `integrate` gives.
   while (taken_ < head) {
-    const edge& next = edges_[taken_ % edge_capacity];
+    const audio_edge& next = edges_[taken_ % edge_capacity];
     if (next.at > at) {
       break;
     }

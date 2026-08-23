@@ -44,13 +44,27 @@
 //     for and not somewhere inside the frame after it: a stop you cannot
 //     reproduce exactly is not a worklist entry either.
 //
-//   --dump PREFIX    write PREFIX.ppm and PREFIX.wav when the run ends
+//   --dump PREFIX    write PREFIX.ppm, PREFIX.wav and PREFIX.edges
 //
 //     The frame the machine composed and the sound it made, in two
 //     formats every viewer opens (dump.h). docs/machine.md §7's warning
 //     about goldens is the argument: "the title renders" is a claim to
 //     look at, and no test in this repository will ever run the file
 //     that produces it.
+//
+//     `PREFIX.edges` is the third, and it is a different kind of thing
+//     from the other two (M4-A1, #106). The WAV is *a rendering* of the
+//     sound at 48 kHz through a box filter; the edges file is the sound
+//     as the machine holds it — one line per output transition, `tick
+//     level`, in PIT input ticks. platform.h calls the edge list the
+//     canonical audio state and says the floats are not it, and #106
+//     wants the two questions kept apart: whether the machine made the
+//     right edges at the right ticks, and whether the render of them is
+//     right. Only the second used to be inspectable at all.
+//
+//     Written as the run goes, so it survives a run that ends badly, and
+//     it ends with a `# edges N dropped M` line saying whether it is all
+//     of them.
 //
 //   --dump-every N   also write PREFIX-NNNNNN.ppm every N frames
 //
@@ -312,9 +326,12 @@
 //                      presented, read the render target back and compare
 //                      every pixel of it against the bytes this host
 //                      uploaded. Count what the audio callback did on its
-//                      own thread. Report all of it on stderr at exit,
-//                      and fail the process if the picture did not match
-//                      or if nothing was ever presented.
+//                      own thread, and what the timeline thought of the
+//                      pacing while it did it — underruns, resyncs and
+//                      dropped edges (M4-A1, #106). Report all of it on
+//                      stderr at exit, and fail the process if the
+//                      picture did not match or if nothing was ever
+//                      presented.
 //
 //   --press KEY@FRAME  push a real SDL keyboard event — down and up — into
 //                      SDL's own queue at frame FRAME, so it comes back
@@ -1572,6 +1589,64 @@ int main(int argc, char** argv) try {
     recording.write(preamble.data(), static_cast<std::streamsize>(n));
   }
 
+  // --- Dump: the edge list, written as the run makes it (M4-A1, #106) ---
+  //
+  // `--dump`'s third file. The PPM is the frame the machine composed and
+  // the WAV is one *rendering* of the sound it made; this is the sound
+  // itself, in the units the machine works in — "at tick T the speaker
+  // output became high" — which platform.h calls the canonical audio
+  // state and which the WAV's floats explicitly are not. #106 asks the
+  // two questions separately, and until now only one of them could be:
+  // whether the machine made the right edges at the right ticks is
+  // answered by this file, and whether the box filter renders them right
+  // is answered by the WAV beside it.
+  //
+  // Streamed rather than kept and written at the end, because core's log
+  // is a bounded drain-per-frame ring with no allocator behind it
+  // (platform.h): the loop below empties it every frame, so this file is
+  // the whole run's list and the machine never has to hold it. A run that
+  // ends badly then leaves the edges it had already made, which is more
+  // than a buffer in a dead process would.
+  std::ofstream edges;
+  std::uint64_t edges_written = 0;
+  if (!opts.dump_prefix.empty()) {
+    const std::string path = opts.dump_prefix + ".edges";
+    edges.open(path, std::ios::trunc);
+    if (!edges) {
+      std::fprintf(stderr, "amberfolio: dump could not write %s\n",
+                   path.c_str());
+    } else {
+      // A header a reader can act on. A tick is meaningless without the
+      // rate it is counted at, and this is a file somebody will open in a
+      // year with none of this in their head.
+      edges << "# amberfolio audio edges\n"
+            << "# pit-input-hz " << machine::pit_input_hz << "\n"
+            << "# tick level\n";
+      box.audio().log_edges(true);
+    }
+  }
+
+  // Empty the machine's edge log into that file. Called on the machine
+  // thread, between slices, which is where the log's producer side lives
+  // — nothing here is visible to the audio thread's `render()`, and a
+  // reader that perturbed what `render()` saw would be measuring itself.
+  const auto drain_edges = [&box, &edges, &edges_written]() {
+    if (!edges.is_open()) {
+      return;
+    }
+    std::array<machine::audio_edge, 256> batch{};
+    for (;;) {
+      const std::size_t got = box.audio().read_edge_log(batch);
+      if (got == 0) {
+        return;
+      }
+      for (std::size_t i = 0; i < got; ++i) {
+        edges << batch[i].at << ' ' << (batch[i].level ? '1' : '0') << '\n';
+      }
+      edges_written += got;
+    }
+  };
+
   // One line of a recording, written to `recording` if it is open. Every
   // line of the stream goes through here, so that a run without --record
   // pays one branch, and so that this host's spelling of a line and the
@@ -1789,6 +1864,7 @@ int main(int argc, char** argv) try {
     box.run(slice_end(box, frame_ticks, opts.step_budget, opts.tick_budget,
                       replaying ? player.next_tick() : machine::never));
     drain_console(box);
+    drain_edges();
     if (opts.trace) {
       print_overlay_loads(box, overlays_printed);
     }
@@ -1872,6 +1948,13 @@ int main(int argc, char** argv) try {
 
     ++frame_index;
   }
+
+  // The last slice's edges. The loop drains after each slice, and it
+  // leaves by a `break` that is above that drain — so without this, every
+  // edge the final slice published would be in the machine's log and in
+  // no file, which for a run that ends *because* of what it just did is
+  // the part worth reading.
+  drain_edges();
 
   // Where the recording stops, written before SDL comes down so that a
   // run whose teardown goes wrong still leaves a recording saying how far
@@ -1982,6 +2065,51 @@ int main(int argc, char** argv) try {
     } else {
       std::fprintf(stderr, "amberfolio: dump could not write %s\n",
                    wav.string().c_str());
+    }
+
+    // And the edge list's trailer. The count is on the last line as well
+    // as in this report so that the file answers "is this all of it?" on
+    // its own — a truncated dump and a silent run look identical from the
+    // top, and only one of them is a finding about the machine.
+    if (edges.is_open()) {
+      const std::uint64_t lost = box.audio().edge_log_dropped();
+      edges << "# edges " << edges_written << " dropped " << lost << '\n';
+      edges.close();
+      std::fprintf(stderr,
+                   "amberfolio: dump edges=%s.edges count=%llu dropped=%llu\n",
+                   opts.dump_prefix.c_str(),
+                   static_cast<unsigned long long>(edges_written),
+                   static_cast<unsigned long long>(lost));
+    }
+  }
+
+  // The speaker's two host-pacing symptoms, which until now no host read
+  // at all (M4-A1, #106). `platform.h` states the policy for each — an
+  // underrun holds the last level and keeps its place, an overrun jumps
+  // the cursor forward and throws the backlog away — and a policy no host
+  // can report is not a tested policy: a stalled run and a smooth one
+  // produced the same silence on stderr.
+  //
+  // Printed whenever there is something to say, and always under
+  // `--verify`, whose job is to say what happened whether or not anything
+  // did. A windowed run almost always underruns once at the start,
+  // because SDL's device pulls before the machine has settled any virtual
+  // time at all; that first one is the shape of a healthy run and not a
+  // symptom.
+  //
+  // `dropped edges` is the third and the loudest: it is the *ring*
+  // overflowing, which is sound the machine made and no host ever got.
+  {
+    const std::uint64_t underruns = box.audio().underruns();
+    const std::uint64_t resyncs = box.audio().resyncs();
+    const std::uint64_t dropped = box.audio().dropped_edges();
+    if (opts.verify || underruns != 0 || resyncs != 0 || dropped != 0) {
+      std::fprintf(stderr,
+                   "amberfolio: audio underruns=%llu resyncs=%llu dropped"
+                   " edges=%llu\n",
+                   static_cast<unsigned long long>(underruns),
+                   static_cast<unsigned long long>(resyncs),
+                   static_cast<unsigned long long>(dropped));
     }
   }
 

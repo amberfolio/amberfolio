@@ -34,7 +34,7 @@ headless; three are not.
 | `sdl-host-reports-a-stop` | headless: the stop report's shape, a bounded hang, a dumped frame |
 | `sdl-host-demo-disk` | the demo disk's two programs are written |
 | `sdl-host-presents-a-frame` | windowed: the picture that reached the render target, and a keystroke that reached the program |
-| `sdl-host-sounds-a-tone` | windowed: what reached the audio device was a tone |
+| `sdl-host-sounds-a-tone` | windowed: what reached the audio device was a tone, and the edge list behind it is the divisor the program asked for |
 
 The last two run the host **without** `--headless`, under SDL's
 `dummy` video and audio drivers. Those are not stubs of
@@ -56,7 +56,12 @@ Two host options exist for this and are documented in
   a scale that is not integer all come back as a mismatch count. It also
   tallies what SDL's audio thread did — callbacks, samples, and how many
   of those samples were not silence — and fails the process if nothing was
-  ever presented or the picture did not match.
+  ever presented or the picture did not match. Since M4-A1 (#106) it also
+  prints the timeline's two pacing counters, underruns and resyncs, and
+  the ring's dropped-edge count; §4 says what each means.
+- **`--dump PREFIX`** writes three files, and the third arrived with the
+  same issue: `PREFIX.edges`, the edge list the machine published, one
+  line of `tick level` per output transition. §4 again.
 - **`--press KEY@FRAME`** pushes a real SDL keyboard event onto SDL's own
   queue at frame `FRAME`, so it comes back out of `SDL_PollEvent` and
   travels the path a typed key travels, mapping table included. `KEY` is
@@ -256,7 +261,139 @@ green runners, because it is the only claim any of them cannot make.
 
 ---
 
-## 4. The wasm host
+## 4. The speaker, measured
+
+The paragraph above asks a person to listen for concert A. That is the
+right check for "did a pressure wave leave the speaker", and it is the
+wrong one for everything else — #106's own words for it are "it sounds
+right in a quiet room to one person". This section is what replaced the
+adjectives, and what is still owed.
+
+### The two questions, and which artefact answers which
+
+`platform.h` is emphatic that the **edge list** — "at tick T the speaker
+output became high" — is the canonical audio state and the float samples
+are not. That makes two separate questions, with two owners in the code:
+
+1. **Is the machine producing the right edges at the right ticks?** The
+   speaker, the PIT and the gate bit own that.
+2. **Is the render of those edges right?** `audio_timeline::render()` owns
+   that, and nothing else does.
+
+Until M4-A1 only the second could be inspected: `--dump` wrote a WAV, and
+a WAV is a rendering. The edge list had a count and a digest and no way to
+read it. It has one now.
+
+```sh
+./build/<preset>/hosts/sdl/<config>/amberfolio <dir> DEMO.EXE \
+    --verify --press Escape@60 --dump /tmp/tone
+```
+
+`/tmp/tone.edges` is a text file — a two-line header saying the tick rate,
+then one `tick level` line per transition, then a `# edges N dropped M`
+trailer so a truncated dump is told apart from a quiet run:
+
+```
+# amberfolio audio edges
+# pit-input-hz 1193182
+# tick level
+31488 1
+32844 0
+34200 1
+```
+
+`32844 - 31488` is 1356, which is half of 2712, which is the divisor
+`DEMO.EXE` writes to channel 2 — 1,193,182 / 2712 = 440.0 Hz. That is a
+fact about the machine, checkable with `awk`, that no amount of listening
+would have produced. `sdl-host-sounds-a-tone` now checks exactly it: over
+the second the run lasts, 857 of the file's 858 edges are 1356 ticks apart
+and the odd one out is the last — the program clearing the gate on its way
+out, which lands wherever the keystroke did.
+
+The log inside the machine is off unless `--dump` asks for it, drains to
+the host every frame rather than accumulating, and is read only on the
+machine thread — so it cannot perturb what the audio thread's `render()`
+sees, and it is not part of machine state. A unit test asserts both: the
+rendered samples are bit-identical whether or not somebody was reading,
+and a machine being watched has the same state hash as one that is not.
+
+### What the box filter actually does
+
+`tests/core/machine/platform_test.cpp`'s `AudioFilter` suite measures the
+reconstruction rather than describing it. The numbers, all reproducible by
+running that suite:
+
+| measurement | value |
+| --- | --- |
+| mean of a 50% tone over whole periods | **0.125**, to eleven decimal places |
+| duty recovered from the samples, at 12.5 / 25 / 50 / 87.5% | the duty, to 1e-11 |
+| a 1000.99 Hz tone at 44,100 | **1000.908 Hz**, mean 0.125124 |
+| the same edge list at 48,000 | **1001.043 Hz**, mean 0.125125 |
+| the two rates' disagreement | **0.013% in frequency, 1.5e-6 in mean** |
+| where a rising edge lands against the fitted period | within **0.82 samples** at 44,100, **0.75** at 48,000 (19 µs, 16 µs) |
+
+Two findings follow.
+
+**The DC offset is real, it is 0.125 at 50% duty, and it is a property to
+document rather than a defect to fix in `render()`.** Samples run 0.0 to
+0.25 and never go negative, by the design decision that makes silence
+exactly 0.0 (#49) — so a tone carries a quarter-scale offset for as long
+as it plays. The filter is not wrong: 0.125 *is* the average of a unipolar
+square, and the real cone is displaced too. The caveat is the one #106's
+third comment found: a *gate held on* is not a tone. The game's combat hit
+is 19 ms of constant 0.25 with no sign change at all, and a sink handed
+that gets a thump and a settle rather than a click. If anything is done
+about this it should be a high-pass in a host's reconstruction, chosen
+against that burst — and **not** in `render()`, because the samples would
+stop being the exact integral of the edge list, which is the one thing
+that filter is for.
+
+**Nothing here argues for a better-than-box filter in v1.** The two rates
+the two hosts actually pull at hear the same note to about a
+two-thousandth of a semitone, and what separates them is a sample of edge
+placement — quantisation the pull rate imposes, which no filter removes.
+
+### Underruns and resyncs, and how a person sees them
+
+`platform.h` states a policy for each, and until M4-A1 no host read either
+counter, so both were specified and unreportable. Every run now prints a
+line when there is something to say, and `--verify` prints it always:
+
+```
+amberfolio: audio underruns=11 resyncs=0 dropped edges=0
+```
+
+- **underruns** — calls where the next sample would have reached past the
+  settled horizon. The policy is *hold the last level and do not advance
+  the cursor*: nothing is lost, and playback resumes at exactly the tick
+  it stopped at when the machine catches up. A windowed run almost always
+  underruns a few times at the start, because SDL's device pulls before
+  the machine has settled any virtual time at all; the eleven above are
+  that, in a one-second run. A number that grows through a run is a host
+  that cannot keep up.
+- **resyncs** — calls where the horizon had run more than 200 ms ahead of
+  playback. The policy is *jump the cursor to 20 ms behind the horizon and
+  throw the backlog away*: latency is bounded by construction rather than
+  by hope. Expect these under `--fast`, which produces sound faster than a
+  48 kHz device can consume it, and under a dragged window or a stalled
+  tab.
+- **dropped edges** — the ring itself overflowed, which is the loud one:
+  sound the machine made that no host ever got. It should be zero, and the
+  smoke test asserts that it is.
+
+### What this section does not settle
+
+- **The game as the workload.** The measurements above are of self-written
+  tones. Combat, doors and spell effects have been heard once, by one
+  person, on one machine (#106's second and third comments); no capture of
+  them exists in this repository and none ever will.
+- **Whether it sounds right.** No measurement replaces §3's ear.
+- **The browser.** The AudioWorklet's underrun policy and its counters are
+  #108's, and nothing here touched `hosts/web/`.
+
+---
+
+## 5. The wasm host
 
 `ctest --preset wasm` runs the module under node, headless. It asserts the
 ABI's export list, the embedded demo program's framebuffer hash and key

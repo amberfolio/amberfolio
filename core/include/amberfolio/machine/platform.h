@@ -289,7 +289,11 @@
 //     and `render()` is mono. A host wanting stereo duplicates the
 //     channel; a host wanting a different rate asks for it, because the
 //     rate is a parameter of the pull. Removing the tone's DC component
-//     is fidelity polish for M4, not correctness.
+//     is fidelity polish, and M4-A1 (#106) measured it rather than
+//     doing it: 0.125 at 50% duty, and it belongs in a *host's*
+//     reconstruction if anywhere, because a `render()` that high-passed
+//     would stop being the exact integral of the edge list, which is the
+//     one thing it is for. docs/hosts.md §4 has the numbers.
 //   * **Seams.** Nothing in this file is a seam (PLAN.md §5). This is the
 //     machine's boundary with the outside world, below the fidelity
 //     boundary and always present; a seam is an opt-in enhancement above
@@ -432,7 +436,30 @@ class framebuffer {
 /// the output is high — and which every practical DAC path removes. A
 /// quarter of full scale leaves headroom and keeps a square wave from
 /// being painful; it is a comfort choice, not a fidelity one.
+///
+/// The offset has a number now (M4-A1, #106): a 50% tone rendered over a
+/// whole number of periods has a mean of exactly `speaker_amplitude / 2`
+/// = **0.125**, and no sample is ever negative, so there is nothing for
+/// it to cancel against. `AudioFilter` in tests/core/machine/
+/// platform_test.cpp pins that and docs/hosts.md §4 says what follows —
+/// in one line, it is a property to document and not a defect to fix
+/// here, but a *gate held on* is not a tone and that is where it bites.
 inline constexpr float speaker_amplitude = 0.25F;
+
+/// One published edge: the speaker output became `level` at tick `at`.
+///
+/// Named at namespace scope, and not left as a private member of
+/// `audio_timeline`, because it is the shape of the canonical audio state
+/// — "at tick T the output became high" is what a replay pins and what
+/// the edge log below hands back — and a type a host is expected to read
+/// should have a name a host can say (M4-A1, #106).
+struct audio_edge {
+  ticks at{};
+  bool level{};
+
+  friend constexpr bool operator==(const audio_edge&,
+                                   const audio_edge&) = default;
+};
 
 /// The virtual-time seam between the machine thread and the audio thread:
 /// a lock-free SPSC ring of output edges plus the horizon they are
@@ -530,6 +557,73 @@ class audio_timeline {
   /// horizon, or a sample — those are output.
   void save_state(state_sink& out) const;
 
+  // --- The edge log: what was published, in words (M4-A1, #106) -------
+  //
+  // `published()` and `edge_digest()` pin the edge list; they cannot show
+  // it. And the ring above cannot be read either — the consumer eats it,
+  // and the producer overwrites what the consumer has freed — so until
+  // this there was no way to ask the machine *which* edges it made at
+  // *which* ticks. That mattered, because the two questions #106 names
+  // have different owners: "is the machine producing the right edges at
+  // the right ticks" is answered here, and "is the render of those edges
+  // right" is answered by `render()` and its tests. Only the second could
+  // be inspected.
+  //
+  // Off unless asked for, the same shape as the trace ring (trace.h) and
+  // for the same reason: a facility almost no run uses must not be paid
+  // for by every run. `log_edges()` is a *setting* and survives
+  // `restart()`; what the log holds does not, because those edges belong
+  // to the run that just ended.
+  //
+  // Drained, not accumulated, the same shape as `console_output`: the
+  // host empties it between slices and keeps the whole run's worth on its
+  // own side, where there is an allocator. A host that stops draining
+  // loses the newest edges and is told how many, because the alternative
+  // is either stalling the machine or growing without bound and core does
+  // neither.
+  //
+  // **Machine-thread only, and not machine state.** Both ends of it —
+  // `publish()` and `read_edge_log()` — are the producer's, so nothing
+  // here is visible to `render()`, touches a cursor `render()` owns, or
+  // costs the consumer a load. It is deliberately absent from
+  // `save_state()`: an observation of the run is not part of it, and a
+  // machine whose hash moved because somebody switched the log on would
+  // make every recording in tests/sessions a statement about the
+  // observer.
+
+  /// Edges the log holds between drains. A 1 kHz tone is about 33 edges
+  /// in a frame of virtual time, so a drain-per-frame host never sees a
+  /// fraction of this; a thousand is thirty frames of that tone, which is
+  /// slack for a host that drains at some other cadence.
+  ///
+  /// Fixed storage — sixteen kilobytes in every machine whether the log
+  /// is on or not — because core has no allocator (vfs.h's reasoning).
+  /// Half what the ring above already costs, and the same bargain.
+  static constexpr std::size_t edge_log_capacity = 1024;
+
+  /// Start or stop logging. A setting: `restart()` does not change it.
+  void log_edges(bool on) noexcept { logging_ = on; }
+
+  [[nodiscard]] bool logging_edges() const noexcept { return logging_; }
+
+  /// Copy up to `out.size()` logged edges out, oldest first, and remove
+  /// them. Answers how many. Producer-side, on the machine thread.
+  [[nodiscard]] std::size_t read_edge_log(std::span<audio_edge> out) noexcept;
+
+  [[nodiscard]] std::size_t edge_log_pending() const noexcept {
+    return log_count_;
+  }
+
+  /// Edges the log had no room for. Not reset by a drain: a host that
+  /// wants to say "this list has a hole in it" needs the run's total.
+  ///
+  /// Distinct from `dropped_edges()`, which is the *ring* overflowing and
+  /// so sound the host never got to hear. A drop here costs an
+  /// observation and nothing else.
+  [[nodiscard]] std::uint64_t edge_log_dropped() const noexcept {
+    return log_dropped_;
+  }
+
   // --- Consumer: exactly one thread, which may be any thread ----------
 
   /// Fill `out` with mono samples at `sample_rate`, box-filtered from the
@@ -552,7 +646,9 @@ class audio_timeline {
   /// Calls that ran out of settled time, and calls that had to jump
   /// forward. Both are host-pacing symptoms and neither is machine state;
   /// they are here so a host can show a number instead of guessing why it
-  /// sounds wrong.
+  /// sounds wrong. The SDL host prints both at the end of every run that
+  /// has one to report (M4-A1, #106); until then nothing read either, and
+  /// a policy no host can report is not a tested policy.
   [[nodiscard]] std::uint64_t underruns() const noexcept {
     return underruns_.load(std::memory_order_relaxed);
   }
@@ -566,11 +662,6 @@ class audio_timeline {
   [[nodiscard]] ticks playback_position() const noexcept { return cursor_; }
 
  private:
-  struct edge {
-    ticks at{};
-    bool level{};
-  };
-
   /// Consume every edge inside `[from, to)`, leaving `level_` at what the
   /// output is by `to`, and answer how many ticks of that interval the
   /// output spent high. The whole of the box filter.
@@ -586,7 +677,7 @@ class audio_timeline {
   /// the other side.
   void restart_playback(std::uint64_t head) noexcept;
 
-  std::array<edge, edge_capacity> edges_{};
+  std::array<audio_edge, edge_capacity> edges_{};
 
   /// Written by the producer, read by the consumer. `head_` is published
   /// with release *after* the slot it names is written, which is what
@@ -612,6 +703,16 @@ class audio_timeline {
   /// into a running FNV-1a over (tick, level) — see `published()`.
   std::uint64_t published_{};
   std::uint64_t edge_digest_{1469598103934665603ULL};
+
+  /// The edge log, and the setting that fills it. Producer-only, all of
+  /// it: written by `publish()` and emptied by `read_edge_log()`, both on
+  /// the machine thread, which is why none of it is atomic and why none
+  /// of it is anything `render()` can see.
+  std::array<audio_edge, edge_log_capacity> log_{};
+  std::size_t log_first_{};
+  std::size_t log_count_{};
+  std::uint64_t log_dropped_{};
+  bool logging_{false};
 
   /// Consumer-only state. Plain, not atomic, and that is exactly why only
   /// one thread may ever call `render()`.
