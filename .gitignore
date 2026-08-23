@@ -40,3 +40,7 @@ __pycache__/
 # that no `git add` can ever stage it — the content guard would refuse the
 # commit, but the right number of chances to take is zero.
 /games/
+
+# Scratch dumps from local investigation: never committed.
+af_resident.bin
+*.bin.dump
