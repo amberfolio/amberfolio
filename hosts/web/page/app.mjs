@@ -46,6 +46,9 @@ import {
   decodeConsoleBytes,
   SPEED_PRESETS,
   AF_OK,
+  AF_INVALID,
+  AF_NO_ROOM,
+  describeSkip,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
   formatSeamFired,
@@ -226,26 +229,51 @@ export function runDevPage() {
       // reloads anyway.
       box.vfsClear();
 
-      const skipped = [];
+      // Two skipped lists, not one (#158). A path DOS could never have
+      // named is the machine working and the player needs no more than
+      // the name; a file the filesystem had no room for is a *hole in
+      // the disk they are about to boot*, and saying those two in one
+      // sentence is how a browser came to run an installation with seven
+      // data files missing from it.
+      const unnameable = [];
+      const noRoom = [];
+      const otherwise = [];
       const taken = [];
       for (const file of files) {
         // The path goes across as the player's own text and core decides
-        // what it means, separators included (abi.h, #146). A refusal is
-        // the useful answer: a boxed copy has files in it DOS could never
-        // have named.
+        // what it means, separators included (abi.h, #146).
         const status = box.vfsPut(file.path, file.bytes);
         if (status === AF_OK) taken.push(file);
-        else skipped.push(file.path);
+        else if (status === AF_NO_ROOM) noRoom.push(file.path);
+        else if (status === AF_INVALID) unnameable.push(file.path);
+        else otherwise.push(`${file.path} (${describeSkip(status)})`);
       }
 
       appendConsole(
         `[host] filesystem: ${taken.length} files, ` +
           `${Math.round(box.vfsBytesUsed() / 1024)} KiB` +
-          (skipped.length > 0
-            ? `, ${skipped.length} skipped (not DOS-nameable): ${skipped.join(', ')}`
+          (unnameable.length > 0
+            ? `, ${unnameable.length} ignored (not DOS-nameable, which is ` +
+              `expected): ${unnameable.join(', ')}`
+            : '') +
+          (otherwise.length > 0
+            ? `, ${otherwise.length} refused: ${otherwise.join(', ')}`
             : '') +
           '\n',
       );
+
+      if (noRoom.length > 0) {
+        // Its own line and its own sentence, because everything below
+        // this point — the boot, the frames, a save — is happening on a
+        // disk that is not the one the player chose.
+        appendConsole(
+          `[host] OUT OF ROOM: ${noRoom.length} file(s) did not fit in the ` +
+            "machine's filesystem and are missing from the disk this page " +
+            'will boot. The game will not find them, and a save may have ' +
+            'nowhere to go. Choose a smaller directory.\n' +
+            `[host]   ${noRoom.join(', ')}\n`,
+        );
+      }
 
       // What to offer as bootable is what went in, not `vfsList()`: the
       // root listing is the root's, and since #146 an entry in it may be
@@ -274,10 +302,17 @@ export function runDevPage() {
       );
       programSelect.disabled = ordered.length === 0;
       bootButton.disabled = ordered.length === 0;
+      // The one line a player who did not open the console will read, so
+      // "the disk is incomplete" has to survive into it (#158). A boot
+      // is still offered — it is their disk and their decision — but not
+      // silently.
       setStatus(
         ordered.length === 0
           ? 'nothing in that directory has a DOS-legal name.'
-          : `${taken.length} files loaded - choose a program and press boot.`,
+          : noRoom.length > 0
+            ? `${taken.length} files loaded, but ${noRoom.length} did not ` +
+              'fit - this disk is incomplete; see the console.'
+            : `${taken.length} files loaded - choose a program and press boot.`,
       );
     },
   });

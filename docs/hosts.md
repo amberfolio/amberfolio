@@ -320,7 +320,9 @@ desktop list above asks.
 - [ ] **The directory drop of a real installation.** Drop the folder, not
       the files; the file count and the skipped list are plausible; the
       `.EXE`s sort to the top of the program list; a second drop replaces
-      the first rather than merging.
+      the first rather than merging. "Plausible" now means *counted*:
+      #158 was found because it was not, and an installation that fits
+      should report nothing at all under "out of room".
 - [ ] **The legs of `docs/playable.md`, in the page.** None of them has
       been driven in a browser — only through `tools/drive.mjs`, which is
       node. Leg 1 (a party to the roster) is the one to do first, because
@@ -595,6 +597,17 @@ Three things are worth knowing about what it does:
   separator at this door, and core makes the directories a path names. A
   player who arrives with a `\SAVE\` arrives with the slots in it, which
   is what `LOAD SAVED GAME` needs and what the page could not do before.
+- **A refused file says which kind of refusal it was** (#158). There are
+  two, and they are opposites. A path DOS could never have named is the
+  machine working, and the page lists it as ignored. A file the
+  filesystem had no room for is a *hole in the disk about to be booted* —
+  `AF_NO_ROOM` at the ABI, its own line in the console and its own
+  clause in the status text. Both were one status until #158, and a
+  browser handed a real installation reported seven of the game's data
+  files in the same sentence as a PDF it was right to ignore; the disk
+  ran, with holes in it, and the first anyone knew was that no save could
+  be written. `tools/drive.mjs` prints the same two sentences, from the
+  same `describeSkip()` in `host.mjs`.
 - **The stop report is the same text the desktop host prints**, because
   it is formatted in core (`machine/report.h`) rather than by either
   host. That is what makes the comparison below possible at all.
