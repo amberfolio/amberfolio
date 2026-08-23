@@ -143,9 +143,109 @@ else
   echo "skip: shellcheck not installed (shell gate not self-tested)"
 fi
 
-# check-tidy.sh is not self-tested here: it needs a configured CMake build
-# tree, which is minutes of SDL3 and GoogleTest, not a throwaway repo. The
-# tidy CI job runs it against the real one.
+# check-tidy.sh's coverage step (#39): which tracked sources a build
+# tree's compile database holds an entry for. How a path is spelled in
+# that database is a generator's choice — CMake's Ninja+MSVC generator
+# has written both separators across releases, and the format lets an
+# entry give `file` relative to its `directory` — and matching one
+# spelling literally is what left Windows without this gate for two
+# milestones. Nothing announced that spelling when it moved, so pin every
+# spelling here instead.
+#
+# The analysis itself is not what is under test: a real clang-tidy run
+# needs a configured CMake tree, which is minutes of SDL3 and GoogleTest
+# rather than a throwaway repo, and the tidy CI job does it against the
+# real one. So clang-tidy is stubbed and only the arithmetic runs.
+tidy_python=""
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1 &&
+     "$candidate" -c "" >/dev/null 2>&1; then
+    tidy_python="$candidate"
+    break
+  fi
+done
+
+if [ -n "$tidy_python" ]; then
+  r=$(mkrepo tidy)
+  printf 'int covered(int x) { return x; }\n' > "$r/covered.cpp"
+  printf 'int elsewhere(int x) { return x; }\n' > "$r/elsewhere.cpp"
+  git -C "$r" add covered.cpp elsewhere.cpp
+  git -C "$r" commit -q -s -m "sources"
+
+  mkdir -p "$r/stub"
+  {
+    printf '#!/usr/bin/env bash\n'
+    # Literal, unexpanded: $1 belongs to the generated stub, which has to
+    # answer the gate's version check and nothing else.
+    # shellcheck disable=SC2016
+    printf 'if [ "${1:-}" = --version ]; then echo "LLVM version %s"; fi\n' \
+      "$(cat "$here/../.llvm-version")"
+    printf 'exit 0\n'
+  } > "$r/stub/clang-tidy"
+  chmod +x "$r/stub/clang-tidy"
+
+  # git's spelling of the root, because that is the one the gate compares
+  # against — and the same root respelled the way a Windows generator
+  # writes it, each separator doubled because that is how a backslash
+  # reaches a JSON string.
+  slash=$(git -C "$r" rev-parse --show-toplevel)
+  back=$(printf '%s' "$slash" | sed 's|/|\\\\|g')
+
+  tidy_db() { # tidy_db <build-dir> <entries-json>
+    mkdir -p "$r/$1"
+    printf '[%s]\n' "$2" > "$r/$1/compile_commands.json"
+  }
+  # Both of these run through `expect`, which invokes what it is handed.
+  # shellcheck disable=SC2329
+  tidy_run() { # tidy_run <build-dir>
+    env CLANG_TIDY="$r/stub/clang-tidy" bash "$r/scripts/check-tidy.sh" "$1"
+  }
+  # shellcheck disable=SC2329
+  tidy_says() { # tidy_says <build-dir> <text>
+    local said
+    said=$(tidy_run "$1" 2>&1) || true
+    case $said in *"$2"*) return 0 ;; *) return 1 ;; esac
+  }
+
+  tidy_db build/forward "$(printf \
+    '{"directory": "%s/build/forward", "command": "c++ -c x", "file": "%s/covered.cpp"},
+     {"directory": "%s/build/forward", "command": "c++ -c x", "file": "%s/elsewhere.cpp"}' \
+    "$slash" "$slash" "$slash" "$slash")"
+  expect "a forward-slash database covers the sources" 0 tidy_run build/forward
+
+  tidy_db build/backslash "$(printf \
+    '{"directory": "%s\\\\build\\\\backslash", "command": "cl x", "file": "%s\\\\covered.cpp"},
+     {"directory": "%s\\\\build\\\\backslash", "command": "cl x", "file": "%s\\\\elsewhere.cpp"}' \
+    "$back" "$back" "$back" "$back")"
+  expect "a backslash-spelled database covers the same sources" 0 \
+    tidy_run build/backslash
+
+  # `file` relative to `directory`, with `.`/`..` to fold away: the JSON
+  # format allows it and generators do it.
+  tidy_db build/relative "$(printf \
+    '{"directory": "%s/build/relative", "command": "c++ -c x", "file": "./../../covered.cpp"},
+     {"directory": "%s/build/relative", "command": "c++ -c x", "file": "../../elsewhere.cpp"}' \
+    "$slash" "$slash")"
+  expect "a database with relative file fields covers the same sources" 0 \
+    tidy_run build/relative
+
+  # The reason coverage is computed at all: a source a build tree does not
+  # compile is named, not passed over quietly.
+  tidy_db build/partial "$(printf \
+    '{"directory": "%s/build/partial", "command": "c++ -c x", "file": "%s/covered.cpp"}' \
+    "$slash" "$slash")"
+  expect "a partly covering database still analyses what it covers" 0 \
+    tidy_run build/partial
+  expect "a source the database omits is named, not silently dropped" 0 \
+    tidy_says build/partial elsewhere.cpp
+
+  tidy_db build/foreign "$(printf \
+    '{"directory": "%s/build/foreign", "command": "c++ -c x", "file": "%s/other/thing.cpp"}' \
+    "$slash" "$slash")"
+  expect "a database covering none of the sources fails" 1 tidy_run build/foreign
+else
+  echo "skip: no working python (tidy coverage not self-tested)"
+fi
 
 if [ "$fail" -eq 0 ]; then
   echo "test-guards: OK"

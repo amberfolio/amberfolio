@@ -124,7 +124,12 @@ over the files the gate names. `check-tidy.sh` reads the compile database
 from `build/linux-clang` by default — `cmake --preset linux-clang` is
 enough to produce one, no build needed — and takes another build directory
 as its argument. It says which files a given build tree does not cover
-rather than passing over them quietly.
+rather than passing over them quietly. That database is *parsed*, with
+the same python that installed clang-tidy above, rather than matched a
+spelling at a time — so `build/windows-msvc` serves as well as
+`build/linux-clang`, whichever way the generator of the day writes a
+path. Without a working python the gate stops and says so; it does not
+quietly check less.
 
 The scripts are checked by [`scripts/test-guards.sh`](scripts/test-guards.sh),
 which asserts each gate *fails* on the violation it exists to catch. Run it
