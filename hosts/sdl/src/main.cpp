@@ -89,11 +89,11 @@
 //     The segment is on every line because it is not always the data
 //     segment: DS is whatever the frame boundary landed on, and a frame
 //     that ends inside an interrupt or an overlay has it pointed
-//     somewhere else and prints that somewhere else's bytes. Visibly
-//     wrong beats quietly wrong — and a run that wants only the program's
-//     own globals filters on the segment they live in, the same way a
-//     `--dump-every` run is read by hashing its stills rather than by
-//     looking at them.
+//     somewhere else. What a watch has already said is remembered per
+//     segment, so each of those says its piece once and then stays quiet,
+//     and the lines that are left are the ones where the watched values
+//     actually moved. Filter on the segment the globals live in and the
+//     log is the movement and nothing else.
 //
 //     It reads `memory_map::ram()` and not the bus, so it takes no bus
 //     cycle, disturbs no EGA latch and cannot make a notice of its own: a
@@ -365,6 +365,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -712,16 +713,34 @@ struct scripted_press {
 
 /// One `--watch` subject: an offset in the program's data segment, and
 /// how wide the value there is.
-///
-/// `last` and `seen` are what make the output a change log rather than a
-/// transcript — sixty lines a virtual second says nothing, and the
-/// question a watch answers ("when did this move, and to what") is a
-/// question about the changes.
 struct watch_point {
   std::uint16_t offset{};
   unsigned width{1};
-  std::uint16_t last{};
-  bool seen{false};
+};
+
+/// What a watch has already said, per segment.
+///
+/// Per segment rather than one running value, because DS at a frame
+/// boundary is not always the program's data segment and a watch that
+/// forgot which segment it last read would alternate: the bytes under
+/// some other segment differ from the program's, so they print, and then
+/// the program's differ from those and print again — two lines a frame,
+/// neither of them about the thing being watched. Remembering per
+/// segment turns each of those into one line the first time it is seen
+/// and silence after, which leaves the log saying exactly what a watch is
+/// for: when the watched values moved, and to what.
+///
+/// Bounded because nothing here should be able to grow without limit on
+/// what a program does; a run that ends frames in more segments than this
+/// starts forgetting the oldest, and the only cost of forgetting is a
+/// line that says again what it said before.
+struct watch_log {
+  struct entry {
+    std::uint16_t segment{};
+    std::vector<std::uint16_t> values;
+  };
+  static constexpr std::size_t max_segments = 64;
+  std::vector<entry> seen;
 };
 
 /// Everything `--verify` has to say at the end of a run.
@@ -1057,7 +1076,7 @@ struct options {
   return true;
 }
 
-/// Read the watched values out of RAM and print them if any moved.
+/// Read the watched values out of RAM and print them if they moved.
 ///
 /// Offsets are resolved against the processor's DS, and not against
 /// `seam_engine::image_base()`, because a global is where the program's
@@ -1070,13 +1089,15 @@ struct options {
 /// bus cycle. A watch that took one would latch an EGA plane or make an
 /// open-bus notice of its own, and a run whose log a watch had written
 /// into could not be used to say the run was clean.
-void print_watch(machine::machine& box, std::vector<watch_point>& watches,
-                 std::uint64_t frame_index) {
+void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
+                 watch_log& log, std::uint64_t frame_index) {
   const std::span<const std::uint8_t> ram = box.memory().ram();
   const std::uint16_t ds = box.processor().regs()[cpu::sreg::ds];
   const auto base = static_cast<std::uint32_t>(ds) * 16U;
-  bool moved = false;
-  for (watch_point& point : watches) {
+
+  std::vector<std::uint16_t> values;
+  values.reserve(watches.size());
+  for (const watch_point& point : watches) {
     std::uint16_t value = 0;
     for (unsigned byte = 0; byte < point.width; ++byte) {
       const std::uint32_t at = base + point.offset + byte;
@@ -1084,20 +1105,28 @@ void print_watch(machine::machine& box, std::vector<watch_point>& watches,
       value = static_cast<std::uint16_t>(
           value | (static_cast<unsigned>(got) << (8U * byte)));
     }
-    if (!point.seen || point.last != value) {
-      moved = true;
+    values.push_back(value);
+  }
+
+  const auto found =
+      std::ranges::find(log.seen, ds, &watch_log::entry::segment);
+  if (found != log.seen.end()) {
+    if (found->values == values) {
+      return;
     }
-    point.last = value;
-    point.seen = true;
+    found->values = values;
+  } else {
+    if (log.seen.size() >= watch_log::max_segments) {
+      log.seen.erase(log.seen.begin());
+    }
+    log.seen.push_back({.segment = ds, .values = values});
   }
-  if (!moved) {
-    return;
-  }
+
   std::printf("amberfolio: watch frame=%06llu ds=%04X",
               static_cast<unsigned long long>(frame_index), ds);
-  for (const watch_point& point : watches) {
-    std::printf(point.width == 2 ? " %04X=%04X" : " %04X=%02X", point.offset,
-                point.last);
+  for (std::size_t i = 0; i < watches.size(); ++i) {
+    std::printf(watches[i].width == 2 ? " %04X=%04X" : " %04X=%02X",
+                watches[i].offset, values[i]);
   }
   std::printf("\n");
   std::fflush(stdout);
@@ -1579,7 +1608,7 @@ int main(int argc, char** argv) try {
   // The parsed presses, with room to record which have gone. `opts` is
   // what the command line said and stays that way.
   std::vector<scripted_press> presses = opts.presses;
-  std::vector<watch_point> watches = opts.watches;
+  watch_log watch_seen;
 
   SDL_Window* window = nullptr;
   SDL_Renderer* renderer = nullptr;
@@ -1763,8 +1792,8 @@ int main(int argc, char** argv) try {
     if (opts.trace) {
       print_overlay_loads(box, overlays_printed);
     }
-    if (!watches.empty()) {
-      print_watch(box, watches, frame_index);
+    if (!opts.watches.empty()) {
+      print_watch(box, opts.watches, watch_seen, frame_index);
     }
 
     // Then the events this slice ran up to, delivered and checked before
