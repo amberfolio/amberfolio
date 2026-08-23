@@ -6,9 +6,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string_view>
 
 #include "amberfolio/cpu/diagnostics.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/trace.h"
 
 namespace amberfolio::machine {
@@ -75,7 +77,22 @@ class writer {
     hex(offset, 4);
   }
 
-  void line_start() noexcept { text("amberfolio: stop "); }
+  void text(std::string_view s) noexcept {
+    for (const char c : s) {
+      put(c);
+    }
+  }
+
+  /// `amberfolio: KIND `, the opening of every line this file writes.
+  /// The prefix is part of the format and not a host's decoration (see
+  /// the top of report.h), and the kind is what a reader greps for.
+  void line_start(const char* kind) noexcept {
+    text("amberfolio: ");
+    text(kind);
+    put(' ');
+  }
+
+  void line_start() noexcept { line_start("stop"); }
 
   void end_line() noexcept { put('\n'); }
 
@@ -289,6 +306,131 @@ const char* cpu_stop_reason_name(cpu::stop_reason reason) noexcept {
       return "prefix_chain_too_long";
   }
   return "unknown";
+}
+
+// --- The live account -------------------------------------------------
+//
+// One line per record, each the sentence the SDL host printed before
+// M4-W1 (#108) moved it here, character for character — the smoke checks
+// and every boot log written down in an issue read the old spellings, and
+// a line that changed shape while being centralized would invalidate all
+// of them at once for no gain.
+
+std::size_t format_diagnostic(const notice& what, std::span<char> out) {
+  // Named rather than numbered, and with the byte and the caller: a
+  // number is a thing the reader has to go and look up, on the one line
+  // whose whole purpose is to be read.
+  writer w(out);
+  w.line_start("notice");
+  w.text(notice_kind_name(what.what));
+  w.text(" at ");
+  w.hex(what.at, 5);
+  w.text(" value=");
+  w.hex(what.value, 2);
+  w.text(" from=");
+  w.far_address(what.cs, what.ip);
+  w.end_line();
+  return w.finish();
+}
+
+std::size_t format_diagnostic(const service_call& call, std::span<char> out) {
+  writer w(out);
+  w.line_start("call");
+  w.text("INT");
+  w.hex(call.vector, 2);
+  w.text(" ax=");
+  w.hex(call.ax, 4);
+  w.text(" from=");
+  w.far_address(call.caller_cs, call.caller_ip);
+  w.put(' ');
+  w.text(call.outcome == service_outcome::handled ? "handled"
+                                                  : "unimplemented");
+  w.end_line();
+  return w.finish();
+}
+
+std::size_t format_diagnostic(const file_event& event, std::span<char> out) {
+  writer w(out);
+  w.line_start("file");
+  w.text(file_action_name(event.what));
+  w.put(' ');
+  std::array<char, dos_path_capacity> path{};
+  format_dos_path(event.path, path);
+  w.text(path.data());
+  w.text(" handle=");
+  w.hex(event.handle, 4);
+  w.put(' ');
+  w.text(vfs_error_name(event.error));
+  w.text(" from=");
+  w.far_address(event.caller_cs, event.caller_ip);
+  w.end_line();
+  return w.finish();
+}
+
+std::size_t format_diagnostic(const stop_record& stop, std::span<char> out) {
+  if (stop.reason == stop_reason::program_exited) {
+    // Nothing, and say so with a zero — see report.h. The buffer is still
+    // terminated, so a caller that logs unconditionally logs an empty
+    // string rather than whatever was in its array.
+    if (!out.empty()) {
+      out[0] = '\0';
+    }
+    return 0;
+  }
+  // Deliberately terse: the full account is the stop report, and the same
+  // fact printed twice in two shapes is how a reader comes to trust the
+  // wrong one.
+  writer w(out);
+  w.line_start("machine");
+  w.text("stopped, ");
+  w.text(stop_reason_name(stop.reason));
+  w.text(" at ");
+  w.hex(stop.at, 5);
+  w.end_line();
+  return w.finish();
+}
+
+std::size_t format_diagnostic(const cpu::stop_record& stop,
+                              std::span<char> out) {
+  writer w(out);
+  w.line_start("cpu");
+  w.text("stopped on opcode ");
+  w.hex(stop.opcode, 2);
+  w.text(" at ");
+  w.far_address(stop.cs, stop.ip);
+  w.end_line();
+  return w.finish();
+}
+
+std::size_t format_diagnostic(const device_stop& stop, std::span<char> out) {
+  writer w(out);
+  w.line_start("device");
+  w.text("declined ");
+  w.hex(stop.at, 5);
+  w.text(" detail=");
+  w.hex(stop.detail, 2);
+  w.text(" from=");
+  w.far_address(stop.cs, stop.ip);
+  w.end_line();
+  return w.finish();
+}
+
+std::size_t format_diagnostic(const seam_event& event, std::span<char> out) {
+  // Every transition, always: a seam going on, arming, or staying inert
+  // is the one kind of line a boot log must never lose, because it is the
+  // difference between a plain machine and an enhanced one (seam.h).
+  // Short, so the reason reads as the line.
+  writer w(out);
+  w.line_start("seam");
+  w.text(event.id);
+  w.put(' ');
+  w.text(seam_event_kind_name(event.kind));
+  if (event.reason != seam_reason::none) {
+    w.put(' ');
+    w.text(seam_reason_name(event.reason));
+  }
+  w.end_line();
+  return w.finish();
 }
 
 std::size_t format_stop_report(const machine& box, run_end how,

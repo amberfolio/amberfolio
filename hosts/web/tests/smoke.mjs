@@ -93,6 +93,10 @@ const EXPECTED_EXPORTS = [
   '_af_machine_audio_resyncs',
   '_af_machine_post_key',
   '_af_machine_set_wall_clock',
+  '_af_machine_read_log',
+  '_af_machine_log_pending',
+  '_af_machine_log_dropped',
+  '_af_machine_clear_log',
   '_af_machine_read_console',
   '_af_machine_console_pending',
   '_af_machine_console_dropped',
@@ -479,6 +483,68 @@ if (missing.length === 0) {
   );
   console.log(
     `smoke: the demo program echoed ${JSON.stringify(decodeConsoleBytes(new Uint8Array([0x61])))} after a posted key`,
+  );
+
+  // --- The account: the same lines the desktop host prints (#108) --------
+  //
+  // The high-volume channels are off until asked for, exactly as the SDL
+  // host's `--trace` asks for them, so the check is in two halves: quiet
+  // by default, and then the program's own service calls once tracing is
+  // on. What is asserted is the *shape core renders*, because that shape
+  // is the whole claim - a browser run and a desktop run of one program
+  // have to produce the same characters, not merely the same events.
+  machine.clearLog();
+  check(
+    machine.logPending() === 0,
+    'the log still had characters pending after clearLog()',
+  );
+
+  const quiet = machine.time();
+  machine.runUntil(quiet + 50_000);
+  check(
+    machine.readLog() === '',
+    'service calls reached the log with tracing off',
+  );
+
+  machine.setTrace(true);
+  check(
+    machine.postKey(0x1e, AF_KEY_DOWN) === AF_OK,
+    "posting the 'a' key's make code a second time failed",
+  );
+  check(machine.postKey(0x1e, AF_KEY_UP) === AF_OK, 'posting a break code failed');
+  machine.runUntil(machine.time() + 50_000);
+
+  const logged = machine.readLog();
+  check(
+    /^amberfolio: call INT[0-9A-F]{2} ax=[0-9A-F]{4} from=[0-9A-F]{4}:[0-9A-F]{4} (handled|unimplemented)$/m.test(
+      logged,
+    ),
+    `the log carried no service-call line in core's format; got ${JSON.stringify(logged.slice(0, 200))}`,
+  );
+  check(
+    logged.endsWith('\n'),
+    'the log did not end on a line break - a line was cut in half',
+  );
+  // The demo program polls INT 16h in a tight loop, so a traced slice of
+  // it produces thousands of call lines - far more than a bounded ring
+  // can hold between two drains, and diagnostics.h says as much about
+  // this channel. What is asserted is therefore not that nothing was
+  // dropped: it is that overflow is *reported* rather than silent, and
+  // that every line that did arrive is whole. A traced browser run is a
+  // sample plus a count, and the count is what makes it honest.
+  const dropped = machine.logDropped();
+  check(
+    dropped > 0,
+    'the tight INT 16h poll did not overflow the log ring - either the ' +
+      'ring grew or the trace channel stopped reporting',
+  );
+  check(
+    machine.logDropped() === dropped,
+    'the drop count moved across a drain - it is a property of the run',
+  );
+  console.log(
+    `smoke: the diagnostics account crossed the ABI ` +
+      `(${logged.split('\n').length - 1} lines, ${dropped} dropped and counted)`,
   );
 
   machine.destroy();
