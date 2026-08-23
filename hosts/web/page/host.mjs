@@ -44,6 +44,26 @@ export const AF_SEAM_ON = 1;
 export const AF_SEAM_UNAVAILABLE = 2;
 export const AF_SEAM_NONE = 3;
 
+/// The speed governor's presets (abi.h's `AF_SPEED_*`, the values of
+/// `machine::speed_preset`): 4, 2, 1 or 51/256 ticks a step. `xt` is the
+/// default and the machine the game was written for.
+export const AF_SPEED_PC_XT = 0;
+export const AF_SPEED_TURBO_XT = 1;
+export const AF_SPEED_AT = 2;
+export const AF_SPEED_PC_386 = 3;
+
+/// Those four by the names the SDL host's `--speed` takes, so a preset is
+/// spelled the same on both hosts — the dev page's control, the web
+/// driver's `--speed` and the desktop host's all say `turbo`. Here rather
+/// than in either caller for the reason the status codes are here: one
+/// place is allowed to know the numbers.
+export const SPEED_PRESETS = Object.freeze({
+  xt: AF_SPEED_PC_XT,
+  turbo: AF_SPEED_TURBO_XT,
+  at: AF_SPEED_AT,
+  386: AF_SPEED_PC_386,
+});
+
 /// How a run ended, for `Machine.stopReport()`. `STOPPED` means the
 /// machine stopped of its own accord and the report prints its reason;
 /// the others are the *host's* reason, for a run this side cut short.
@@ -248,6 +268,37 @@ export class Machine {
         scratch,
         bytes.length,
       );
+    } finally {
+      this.module._free(scratch);
+    }
+  }
+
+  /// Copy `length` bytes of the machine's RAM at physical `address` back
+  /// out, as a fresh `Uint8Array`, or null when the ABI refused — a span
+  /// that runs off the end of the megabyte, or no machine at all. The
+  /// other half of `writeMemory()`, and the way a caller looks at a
+  /// result block a program left behind.
+  ///
+  /// A copy rather than a view, unlike `framebufferView()`: that one is
+  /// a window onto storage the machine keeps for as long as it lives, and
+  /// this one is a snapshot of memory the machine goes on changing. Handing
+  /// back a subarray of the scratch buffer would hand back a view of heap
+  /// this method frees on its way out.
+  readMemory(address, length) {
+    if (length <= 0) return new Uint8Array(0);
+    const scratch = this.module._malloc(length);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while reading machine memory');
+    }
+    try {
+      const status = this.module._af_machine_read_memory(
+        this.handle,
+        address,
+        scratch,
+        length,
+      );
+      if (status !== AF_OK) return null;
+      return this.module.HEAPU8.slice(scratch, scratch + length);
     } finally {
       this.module._free(scratch);
     }

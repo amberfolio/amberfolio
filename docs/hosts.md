@@ -260,10 +260,11 @@ green runners, because it is the only claim any of them cannot make.
 
 `ctest --preset wasm` runs the module under node, headless. It asserts the
 ABI's export list, the embedded demo program's framebuffer hash and key
-echo, and — since M3-F2 (#84) — the filesystem path a player's directory
-travels. The browser half (canvas, AudioWorklet, keyboard) has the same
-shape of gap the desktop host had, and `scripts/serve-web.py` plus a
-browser is how a person closes it.
+echo, the filesystem path a player's directory travels (M3-F2, #84), and
+— since M4-W1 (#108) — the headless driver below and the speaker
+worklet's underrun policy. The browser half (canvas, AudioWorklet,
+keyboard) has the same shape of gap the desktop host had, and
+`scripts/serve-web.py` plus a browser is how a person closes it.
 
 ```sh
 cmake --build --preset wasm
@@ -299,6 +300,13 @@ Three things are worth knowing about what it does:
   scancodes. They were simply absent until #84, which made a
   keyboard-driven game unplayable in a browser while the desktop host had
   had them since M2-H1; `hosts/web/tests/smoke.mjs` checks the rows.
+- **The speed preset is a control, not a build option** (#107, #108). The
+  same four names the desktop host's `--speed` takes, applied whenever it
+  changes rather than only at boot — the useful thing to do with it here
+  is to turn it up while watching the readout under the canvas and find
+  where the browser stops keeping up. It is a governor and not a
+  fast-forward: virtual time still decides every deadline, so a run at
+  `at` is exactly as deterministic as one at `xt`.
 
 ### What a browser run says about itself
 
@@ -339,6 +347,147 @@ Three things follow that are worth knowing before you drive a leg here:
   the count when the run ends, and the desktop host is still the place to
   take a full trace.
 
+### Driving it headlessly: `tools/drive.mjs`
+
+Everything above describes a page a person clicks. M4-W1 (#108) adds the
+other thing the desktop host has had since M3: a way to *spell* a run.
+
+```sh
+cmake --build --preset wasm-release
+node build/wasm/hosts/web/Release/drive.mjs <dir> <PROGRAM.EXE> [options]
+```
+
+It is the dev page's own run loop with the browser taken out — the same
+`host.mjs` `Machine`, the same one-frame-per-iteration cadence `abi.h`
+documents, the same audio pull, the same log drain — and it takes a
+directory exactly as the SDL host does. Its source is `hosts/web/tools/`;
+the build places it beside the module and the page's own files, which is
+why it imports `./host.mjs` with no path in it.
+
+| option | what it is for |
+| --- | --- |
+| `--frames N`, `--until TICKS`, `--steps N` | bound the run. With none of them it ends when the machine does, which for a program that never stops is never. |
+| `--press KEY@FRAME` | post a key at the top of frame `FRAME`, counting 60 Hz frames of virtual time. Repeatable. |
+| `--seam ID` | turn one seam on after the load and before the first step. Repeatable, and a refusal **ends the run**: a script that asked for the cheats seam and silently got a plain machine would be the worst outcome this apparatus has. |
+| `--seams` | list every seam this build carries, in the state the run would have started in, and exit without running. |
+| `--speed xt\|turbo\|at\|386` | the governor, spelled as on the desktop host. |
+| `--trace` | the trace ring and the service-call and file channels, as `--trace` does there. |
+| `--dump PREFIX` | `PREFIX.ppm` (the last composed frame) and `PREFIX.wav` (the speaker), the same two files the SDL host's `--dump` writes. |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames — the "what did the screen *do*" instrument, which the browser had no equivalent of. |
+| `-- ARGUMENTS` | the command tail, with DOS's leading space. |
+
+Two differences from the desktop host, both deliberate and both worth
+knowing before a comparison is made:
+
+- **Key names take either spelling.** `--press KeyA@60` is the browser's
+  name for the key and `--press A@60` is SDL's; both resolve, through
+  `host.mjs`'s one scancode table and no second one. That is so a leg
+  written down in [`docs/playable.md`](playable.md) can be typed here
+  unchanged — parity in the machine is worth little without parity in the
+  procedure.
+- **`--steps N` is coarser here.** `af_machine_run_until` takes a tick and
+  the ABI has no step-bounded run call, so a step budget is checked
+  between frames and the run ends on the first frame boundary at or past
+  N. The SDL host clamps the budget into the slice and ends on step N
+  exactly. `--frames` and `--until` are exact to the machine's own step
+  granularity, and the stop report always names the step it really ended
+  on — so the comparison is still made on a number both hosts state.
+
+A run prints the load line, the edition, every key it posted, the log as
+it happens, and then a report block:
+
+```
+amberfolio: stop reason=tick_budget steps=298296 ticks=1193184 frames=61 ...
+amberfolio: state hash=<64 hex characters>
+amberfolio: audio underruns=0 resyncs=0
+amberfolio: seams cheat-invulnerable unavailable wrong_binary - ...
+amberfolio: throughput virtual=1.000s wall=0.008962s factor=111.59x steps=298296 steps/s=33286763
+```
+
+The first line is core's, character for character the desktop host's. The
+`state hash` is the digest a recording's checkpoint carries
+([`docs/replay.md`](replay.md) §2), so two hosts' runs compare on one line
+rather than by eye over a picture. The seam table is the SDL host's
+`--seams` shape.
+
+**The throughput line is the one thing here that is measured rather than
+reported.** #116 was closed on the strength of an out-of-tree number and
+there was no instrument in the tree that produced one; this is it. Wall
+time appears in this program and nowhere near `core/`
+(`scripts/check-host-time.sh`), and the loop is unpaced — no
+`requestAnimationFrame`, no sleep — so the factor is a *ceiling*: how
+much faster than real time this module can run this program on this
+machine, not what a browser will do. Wall seconds are printed to the
+microsecond because a short run of a small program is single-digit
+milliseconds and three decimals would round the divisor away.
+
+Everything the driver prints goes to stdout, including the lines the SDL
+host writes to stderr. To diff two runs:
+
+```sh
+amberfolio <dir> P.EXE --headless --until 40000000 2>desktop.txt
+node .../drive.mjs <dir> P.EXE --until 40000000 >web.txt
+diff <(grep '^amberfolio: stop' desktop.txt) <(grep '^amberfolio: stop' web.txt)
+```
+
+**It reads nothing but the directory it is given.** No game content is in
+it and none may ever be — not bytes, not names, not screen text
+(CONTRIBUTING.md). What CI runs it against is the repository's own
+`tests/sessions/spin/`: `hosts/web/tests/smoke.mjs` spawns it as a
+process and asserts the load line, the stop report, the seam table, the
+audio counters, the state hash (twice, and they must agree), the
+throughput line's arithmetic, the PPM it wrote, and that a seam keyed to
+another binary is refused with an exit code. What CI does **not** check —
+here or on the desktop side, where there is no such case either — is a
+seam being *accepted*: that needs a program a seam's addresses are facts
+about, and no such program is in this repository.
+
+### The audio path under load, and the underrun policy
+
+`app.mjs` pulls one frame of audio per `requestAnimationFrame` callback
+on the main thread and posts each chunk to the AudioWorklet, which plays
+them back in order. Two things can go wrong with that and they are
+counted separately, both now shown on the page beside the frame and step
+counts:
+
+- **`underruns` / `resyncs`** are core's (`af_machine_audio_underruns`,
+  `af_machine_audio_resyncs`): a pull that ran past settled virtual time,
+  and a pull that had to jump forward to bound latency.
+- **`starved`** is the worklet's: a render quantum the audio thread had no
+  chunk for, counted once per run of starvation rather than once per
+  sample.
+
+Neither is machine state (`platform.h`), and nothing about them
+back-pressures into the machine — a run that sounded wrong is still the
+same run.
+
+**The two hosts used to disagree about what an underrun sounds like, and
+#108 settles it.** `audio_timeline::render()` holds the last level
+(`platform_test.cpp`'s `AnUnderrunHoldsTheLevelAndKeepsItsPlace`); the
+worklet filled silence. The reconciliation is not to copy core's line but
+to follow its reasoning:
+
+- Core holds because its underrun is **not a gap in the waveform**. The
+  cursor does not advance, so the audio for that span is not lost but not
+  yet made; the level held is the level the cone is genuinely at, the next
+  pull resumes on the same tick, and the wave continues. It lasts as long
+  as one pull runs past the horizon — microseconds.
+- The worklet's underrun is a different event with the same name: the main
+  thread did not post in time, and how long that lasts is a question about
+  the browser's scheduler. A backgrounded tab is seconds, and the backlog
+  cap means a long stall does not even replay what it missed. A held
+  non-zero level for that long is not a continuation of anything — it is a
+  DC offset: silent in itself, but a deflected cone, a bias in whatever
+  the destination mixes it with, and a step at both ends of the gap.
+
+So the worklet now **holds across the seam and then fades to silence** —
+the last real sample for three milliseconds, ramped to zero over six
+more, silence thereafter. Core's rule for as long as core's reasoning
+holds, and an honest nothing once it stops. `smoke.mjs` drives the
+processor directly (stubbing the three globals `AudioWorkletGlobalScope`
+provides) and asserts the hold, the monotonic fade, the silence, and that
+one stall is counted once.
+
 ### The comparison M3's exit criterion rests on
 
 PLAN.md §7 asks for first light "verified locally on desktop **and** web",
@@ -351,7 +500,10 @@ of that are one command each, and the two outputs are compared by eye:
 ```
 
 against the page's console after **boot**. The `amberfolio: stop ...`
-lines should be identical, field for field.
+lines should be identical, field for field. Since #108 the web half of
+that comparison need not be a person clicking: `tools/drive.mjs` above
+does it from a command line, and adds a state hash to compare on as well
+as a stop line.
 
 If `frames=` disagrees and nothing else does, the two machines were not
 powered on the same way rather than not run the same way: `reset()` blanks

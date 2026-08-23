@@ -178,12 +178,19 @@ configure_file(page/index.html.in "${_amberfolio_web_index}" @ONLY)
 # The JS and the page are not compiled, they are placed: they have to sit
 # beside the generated glue to import it. Listed one by one rather than
 # globbed so a new file is a deliberate act.
+#
+# They land flat, in one directory, whatever subdirectory of the source
+# tree they came from — which is why `tools/drive.mjs` and
+# `tests/smoke.mjs` both import `./host.mjs` and not a path with a `..`
+# in it. The served directory is the layout, and the source tree only
+# says what each file is for.
 set(_amberfolio_web_files
   "${_amberfolio_web_index}"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/host.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/app.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/audio-worklet.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/picker.mjs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/tools/drive.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke.mjs")
 
 # A file-level rule per copy, rather than one POST_BUILD command on the
