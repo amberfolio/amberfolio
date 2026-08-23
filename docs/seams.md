@@ -309,12 +309,32 @@ amberfolio: seams code-wheel on armed - answer the code-wheel challenge (ungated
 ```
 
 On the web host: `af_machine_edition`, `af_machine_program_fingerprint`,
-`af_machine_seam_count/_id/_about/_state/_reason/_armed`,
+`af_machine_seam_count/_id/_about/_state/_reason/_armed/_fired`,
 `af_machine_seam_enable/_disable` (`abi.h`), wrapped by `host.mjs` and
-shown by the dev page as a checkbox per seam, unavailable ones disabled
-with the reason. The node smoke check toggles the probe seam on a
-self-written program and asserts the difference — the same two results
-the native suite asserts for `seam_probe` and `seam_probe_off`.
+shown by the dev page as a checkbox per seam with its state beside it,
+unavailable ones disabled with the reason. The node smoke check toggles
+the probe seam on a self-written program and asserts the difference — the
+same two results the native suite asserts for `seam_probe` and
+`seam_probe_off`.
+
+`_fired` is #147's addition, and it is the count above rather than a new
+idea: a browser run could report `armed` and had no way to report what
+that arming did, so the one thing #131 was filed about was the one thing
+the wasm target could not say. It crosses as a `double`, like every other
+64-bit count in that file and unlike `_armed`, which is a predicate. The
+dev page keeps it live in each seam's row on the health readout's cadence
+and prints the desktop host's own end-of-run line into its console;
+`tools/drive.mjs` prints the same line after every run.
+
+The check that makes the count worth having is a **pair** of test seams,
+not one. `probe` and `probe-unreached` (`tests/programs`) are keyed to the
+same self-written program, so both are available, both enable, and both
+arm — every answer either host can give about them before the run is
+identical. `probe-unreached`'s one point is on an instruction past the
+program's exit. After the run one reports a count and the other reports
+zero, which is the difference `armed` cannot express.
+`AbiSeams.ASeamArmedWhereTheProgramNeverGoesReportsZero` asserts it on
+every native target and `hosts/web/tests/smoke.mjs` asserts it under node.
 
 Seam state is **configuration**, not machine state: it survives nothing
 (`machine::reset()` clears it), the serialization omits it, and a replay

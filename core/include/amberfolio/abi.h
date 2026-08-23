@@ -358,7 +358,7 @@ uint32_t af_machine_set_trace(af_machine* box, int32_t on);
 uint32_t af_machine_stop_report(const af_machine* box, uint32_t how, char* out,
                                 uint32_t max);
 
-/// The same for the trace ring. 24576 bytes is enough for a full one;
+/// The same for the trace ring. 32768 bytes is enough for a full one;
 /// a machine that was never asked to trace writes one line saying so.
 uint32_t af_machine_trace_report(const af_machine* box, char* out,
                                  uint32_t max);
@@ -524,6 +524,23 @@ double af_machine_console_dropped(const af_machine* box);
 // files in it that DOS could never have named, and a host wanting to
 // report "these were skipped" gets its list from this.
 //
+// **A path, not merely a name** (M4, #146). Every `const char*` in this
+// section names a *path*: `START.EXE` at the root, `SAVE\SAVE1.DAT` one
+// directory down, and `/` is taken as a separator wherever `\` is,
+// because what a browser hands a page is `webkitRelativePath` and that is
+// the spelling it arrives in. All of that is the *same* rule applied
+// component by component in the *same* one place, for the reason the
+// paragraph above gives: a host that translated separators itself, or
+// invented a flat name for something under `\SAVE\`, would be deciding
+// what a path is. The translation stops at this boundary —
+// `machine::canonicalize()` keeps DOS's one separator, so nothing about
+// what the emulated program may write changes.
+//
+// Until #146 this door reached the root and no further, and the visible
+// consequence was that a browser could start a game and never resume
+// one: `\SAVE\` is where a shipped save slot lives, and a host handing
+// over an installation dropped it.
+//
 // Every one of these needs a filesystem, which means
 // `af_machine_attach_reference_devices()`; without one they answer
 // `AF_NO_FILESYSTEM`.
@@ -532,20 +549,47 @@ double af_machine_console_dropped(const af_machine* box);
 /// page calls before taking a second directory from the player.
 uint32_t af_machine_vfs_clear(af_machine* box);
 
-/// Put `size` bytes under `name` in the root directory, replacing
-/// whatever was there.
+/// Put `size` bytes at `path`, replacing whatever was there.
 ///
-/// `name` is NUL-terminated raw text — `START.EXE`, `save1.dat` — and is
-/// canonicalized here. `AF_INVALID` for a name that is not a legal DOS
-/// short name or for bytes that do not fit; `AF_NO_FILESYSTEM` when there
-/// is no filesystem attached.
-uint32_t af_machine_vfs_put(af_machine* box, const char* name,
+/// `path` is NUL-terminated raw text — `START.EXE`, `save1.dat`,
+/// `SAVE/Save1.Dat`, `\SAVE\SAVE1.DAT` — and is canonicalized here.
+/// **The directories on the way are made as needed**: a host handing an
+/// installation over one file at a time is in no position to have made
+/// them first, and `machine::filesystem::create()` deliberately will not
+/// (a missing parent is exactly what tells `path_not_found` from
+/// `file_not_found` for a program that asks).
+///
+/// `AF_INVALID`, **and nothing made**, for a component that is not a
+/// legal DOS short name, a path deeper than `machine::dos_path`'s
+/// `max_depth`, the root itself, a component above the leaf that already
+/// exists as a *file*, or a leaf that already exists as a *directory*.
+/// Every one of those is settled before the first `mkdir`, so a refused
+/// path leaves no half-built tree behind.
+///
+/// `AF_INVALID` too when the filesystem runs out of room — entries, or
+/// bytes for the file — and that one is the exception to `AF_INVALID`'s
+/// "nothing happened": the *file* is taken away again, because a
+/// half-written `START.EXE` sitting there under the right name is
+/// precisely the plausible wrong answer PLAN.md §3 is about, but a
+/// directory this call made on the way to it stays. It is empty, it is
+/// named exactly what the caller asked for, and a host that reached this
+/// is out of room — its next move is `af_machine_vfs_clear`.
+///
+/// `AF_NO_FILESYSTEM` when there is no filesystem attached.
+uint32_t af_machine_vfs_put(af_machine* box, const char* path,
                             const uint8_t* bytes, uint32_t size);
 
 /// How many entries the root directory holds, and the name and size of
 /// one of them. The order is the VFS's own pinned name order
 /// (machine/vfs.h), so a listing is the same on every host and in every
 /// run.
+///
+/// The **root**, and only it, even though `af_machine_vfs_put` reaches
+/// below it (#146). The consumer is a page offering a player something to
+/// boot, and the program of an installation of this era sits at its root;
+/// a host that wants to know what it put further down knows, because it
+/// put it there. A recursive listing would be a second answer to a
+/// question nobody has asked yet.
 ///
 /// `af_machine_vfs_name_at` writes a NUL-terminated name into `out` and
 /// answers its length, or zero for an index past the end or a buffer
@@ -561,6 +605,10 @@ double af_machine_vfs_bytes_used(const af_machine* box);
 /// The SHA-256 of `name`, as 64 lowercase hex characters written into
 /// `out` and NUL-terminated; answers the length, or zero if the file
 /// could not be read or `out` is smaller than 65 bytes.
+///
+/// A path, canonicalized like every other one here, so a file in a
+/// subdirectory is identifiable too — `SAVE/SAVE1.DAT` names the file an
+/// `af_machine_vfs_put` of that path wrote.
 ///
 /// The identity of a player's file (PLAN.md §2), and the same digest the
 /// desktop host prints at load — one implementation, below both hosts,
@@ -650,6 +698,40 @@ uint32_t af_machine_seam_reason(const af_machine* box, uint32_t index,
 /// Whether seam `index` is armed right now — on, and every one of its
 /// points placed. Non-zero means yes.
 int32_t af_machine_seam_armed(const af_machine* box, uint32_t index);
+
+/// How many times one of seam `index`'s handlers has actually run since
+/// it was enabled (`machine::seam_status::fired`). Zero for a seam that
+/// is off, for one that has never been reached, and for an index past
+/// the end — `af_machine_seam_state` is what tells an index apart.
+///
+/// **`armed` is a claim about the fact table; this is a claim about the
+/// machine** (#131). A point is armed at an address computed from where
+/// a module was recorded, so a seam whose module has since moved — or
+/// whose offset was never right — answers armed, does nothing, and reads
+/// exactly like one that works. `armed` and `fired == 0` after a run
+/// that should have fired is a defect a reader can see, and it is the
+/// half of fail-closed a browser could not report until this call
+/// existed.
+///
+/// A `double` and not an `int32_t` like `af_machine_seam_armed` above,
+/// because the two answer different kinds of question: that one is a
+/// predicate and this one is a 64-bit count, which crosses here the way
+/// every other count does — `af_machine_log_dropped`,
+/// `af_machine_audio_underruns`, `af_machine_frame_generation`. See this
+/// file's "Tick quantities are doubles" for why.
+///
+/// Bookkeeping, not machine state: it lives above the fidelity boundary,
+/// is never serialized or hashed, and can only move while a seam is on —
+/// so a run with everything off is the run it always was.
+///
+/// Polled rather than pushed, and deliberately not a `seam_event`: the
+/// events on the diagnostics channel are *transitions* (on, off, armed,
+/// inert, refused), a fire is not one, and a point in a loop fires
+/// hundreds of times a second — a per-fire event would bury the
+/// transitions it shares a ring with. A stream also cannot say `fired ==
+/// 0`, which is the whole thing this call is for: absence of an event is
+/// exactly the silence that reads as success.
+double af_machine_seam_fired(const af_machine* box, uint32_t index);
 
 /// Turn the seam called `id` on or off. `AF_OK` if it took; `AF_INVALID`
 /// if there is no such seam or it is unavailable, with the reason

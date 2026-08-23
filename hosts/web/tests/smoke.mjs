@@ -49,7 +49,14 @@
 //      exit code, and the files it writes.
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,6 +77,7 @@ import {
   AF_SEAM_OFF,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
+  formatSeamFired,
 } from './host.mjs';
 import {
   encodePpm,
@@ -132,6 +140,7 @@ const EXPECTED_EXPORTS = [
   '_af_machine_seam_state',
   '_af_machine_seam_reason',
   '_af_machine_seam_armed',
+  '_af_machine_seam_fired',
   '_af_machine_seam_enable',
   '_af_machine_seam_disable',
   '_af_machine_write_memory',
@@ -156,6 +165,32 @@ const EXPECTED_EXPORTS = [
 /// than a bundler) is worth pulling in to hash 64,000 bytes once per CI
 /// run; this is a dozen lines and every implementation of FNV-1a agrees
 /// with every other one, which is the property a pinned test hash needs.
+/// A self-written MZ executable around `image`: a two-paragraph header,
+/// no relocations, so that CS:IP lands on the image's first byte and
+/// SS:SP a quarter of a kilobyte above it. Every byte of it is ours
+/// (CONTRIBUTING.md) — nothing in this repository ships a program.
+function makeMzImage(image) {
+  const header = new Uint8Array(32);
+  const put16 = (at, value) => {
+    header[at] = value & 0xff;
+    header[at + 1] = (value >> 8) & 0xff;
+  };
+  header[0] = 0x4d; // 'M'
+  header[1] = 0x5a; // 'Z'
+  put16(2, header.length + image.length); // bytes in the last page
+  put16(4, 1); // pages
+  put16(6, 0); // relocations
+  put16(8, 2); // header paragraphs
+  put16(10, 0x0010); // MINALLOC
+  put16(12, 0xffff); // MAXALLOC
+  put16(16, 0x0100); // initial SP
+  put16(24, 0x001c); // relocation table offset
+  const exe = new Uint8Array(header.length + image.length);
+  exe.set(header, 0);
+  exe.set(image, header.length);
+  return exe;
+}
+
 function fnv1a32(bytes) {
   let hash = 0x811c9dc5;
   for (const byte of bytes) {
@@ -605,24 +640,7 @@ if (missing.length === 0) {
     0xb8, 0x0b, 0x4c, // MOV AX, 4C0Bh  ; exit, code 11
     0xcd, 0x21, // INT 21h
   ]);
-  const header = new Uint8Array(32);
-  const put16 = (at, value) => {
-    header[at] = value & 0xff;
-    header[at + 1] = (value >> 8) & 0xff;
-  };
-  header[0] = 0x4d; // 'M'
-  header[1] = 0x5a; // 'Z'
-  put16(2, header.length + image.length); // bytes in the last page
-  put16(4, 1); // pages
-  put16(6, 0); // relocations
-  put16(8, 2); // header paragraphs
-  put16(10, 0x0010); // MINALLOC
-  put16(12, 0xffff); // MAXALLOC
-  put16(16, 0x0100); // initial SP
-  put16(24, 0x001c); // relocation table offset
-  const exe = new Uint8Array(header.length + image.length);
-  exe.set(header, 0);
-  exe.set(image, header.length);
+  const exe = makeMzImage(image);
 
   check(machine.vfsPut('HELLO.EXE', exe) === AF_OK, 'putting HELLO.EXE failed');
 
@@ -709,6 +727,154 @@ if (missing.length === 0) {
   machine.destroy();
 }
 
+// --- A file below the root, opened by the program (M4, #146) -------------
+//
+// Until #146 the ABI's door reached the root and no further, so a host
+// handing over a real installation dropped every subdirectory — and
+// `\SAVE\` is where a shipped save slot lives, which is why a browser
+// could start a game and never resume one (docs/playable.md).
+//
+// This is the widened door, end to end and on the machine a browser runs:
+// a page hands over `SAVE/SAVE1.DAT` in the browser's own spelling, core
+// makes `\SAVE` and puts the file in it, and a program of our own opens
+// `\SAVE\SAVE1.DAT` in DOS's spelling and prints the byte it read. That
+// the two spellings are one file is the part core decides and neither
+// host may (abi.h); that the byte comes back is the part the whole issue
+// was about.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  check(
+    machine.attachReferenceDevices() === AF_OK,
+    'attaching the reference devices failed',
+  );
+  machine.reset();
+
+  // The path the *program* asks DOS for. The page hands the same file
+  // over as `SAVE/SAVE1.DAT` below.
+  const dosPath = '\\SAVE\\SAVE1.DAT';
+
+  // Laid out by hand, because the image carries its own data: the code
+  // first, then the ASCIZ path, then a one-byte buffer. DS is set from CS
+  // so that both are addressed at their offset in the image, which is
+  // where the loader puts CS:0000.
+  const codeLength = 44;
+  const pathAt = codeLength;
+  const bufferAt = pathAt + dosPath.length + 1;
+  const code = [
+    0x8c, 0xc8, //             MOV AX, CS
+    0x8e, 0xd8, //             MOV DS, AX
+    0xba, pathAt, 0x00, //     MOV DX, path
+    0xb8, 0x00, 0x3d, //       MOV AX, 3D00h   ; open, read-only
+    0xcd, 0x21, //             INT 21h
+    0x72, 0x19, //             JC  refused
+    0x89, 0xc3, //             MOV BX, AX      ; the handle DOS gave us
+    0xba, bufferAt, 0x00, //   MOV DX, buffer
+    0xb9, 0x01, 0x00, //       MOV CX, 1
+    0xb4, 0x3f, //             MOV AH, 3Fh     ; read
+    0xcd, 0x21, //             INT 21h
+    0x8a, 0x16, bufferAt, 0x00, // MOV DL, [buffer]
+    0xb4, 0x02, //             MOV AH, 02h     ; console output
+    0xcd, 0x21, //             INT 21h
+    0xb8, 0x00, 0x4c, //       MOV AX, 4C00h   ; exit 0
+    0xcd, 0x21, //             INT 21h
+    // refused:
+    0xb8, 0x01, 0x4c, //       MOV AX, 4C01h   ; exit 1
+    0xcd, 0x21, //             INT 21h
+  ];
+  check(
+    code.length === codeLength,
+    `the reader program is ${code.length} bytes, not the ${codeLength} its ` +
+      'own offsets were computed from',
+  );
+
+  const image = new Uint8Array(bufferAt + 1);
+  image.set(code, 0);
+  for (let i = 0; i < dosPath.length; ++i) image[pathAt + i] = dosPath.charCodeAt(i);
+  const exe = makeMzImage(image);
+
+  check(machine.vfsPut('READSAVE.EXE', exe) === AF_OK, 'putting READSAVE.EXE failed');
+
+  // The put a browser makes: the browser's separator, the player's own
+  // capitalization, and a directory nothing has made yet.
+  const slot = new Uint8Array([0x53]); // 'S'
+  check(
+    machine.vfsPut('save/Save1.Dat', slot) === AF_OK,
+    'putting a file into a subdirectory was refused',
+  );
+  // A component no DOS short name can equal is still the useful refusal,
+  // anywhere in the path rather than only at its end.
+  check(
+    machine.vfsPut('SAVE/code wheel.pdf', slot) === AF_INVALID,
+    'a path with a space in a component was accepted',
+  );
+
+  // The root listing is the root's (abi.h): the program, and the
+  // directory core made on the way to the file. Pinned name order, so
+  // `READSAVE.EXE` comes before `SAVE`.
+  const listing = machine.vfsList();
+  check(
+    listing.length === 2 &&
+      listing[0]?.name === 'READSAVE.EXE' &&
+      listing[1]?.name === 'SAVE',
+    `the root holds ${JSON.stringify(listing.map((e) => e.name))}, expected ` +
+      "['READSAVE.EXE', 'SAVE']",
+  );
+  check(
+    listing[1]?.size === 0,
+    `the directory core made reports ${listing[1]?.size} bytes, expected 0`,
+  );
+
+  // One file, either spelling — the identity of a player's file is taken
+  // in core and does not depend on how a host spelled the way to it.
+  const digest = machine.vfsFingerprint('save/Save1.Dat');
+  check(
+    typeof digest === 'string' && /^[0-9a-f]{64}$/.test(digest),
+    `the fingerprint of the saved file is ${JSON.stringify(digest)}`,
+  );
+  check(
+    machine.vfsFingerprint(dosPath) === digest,
+    "the browser's spelling and DOS's spelling fingerprint differently",
+  );
+
+  const loadStatus = machine.loadFromVfs('READSAVE.EXE', '');
+  check(
+    loadStatus === AF_OK,
+    `loading READSAVE.EXE answered ${loadStatus} (loader error ${machine.loadError()})`,
+  );
+
+  let text = '';
+  for (let frame = 0; frame < 60 && !machine.stopped(); ++frame) {
+    machine.runUntil(machine.ticksPerSecond() * ((frame + 1) / 60));
+    const bytes = machine.readConsole();
+    if (bytes.length > 0) text += decodeConsoleBytes(bytes);
+  }
+  // 'S' is the byte the page put in the file. Anything else — including
+  // nothing — means DOS did not open the file the page wrote, which is
+  // the failure #146 was filed about.
+  check(
+    text === 'S',
+    `the program printed ${JSON.stringify(text)}, expected "S" — the byte ` +
+      'the page put in the file below the root',
+  );
+  check(machine.stopped(), 'the reader program never exited');
+  check(
+    machine.stopReport(AF_RUN_END_STOPPED).includes('amberfolio: stop exit=0'),
+    'the reader program did not exit 0, so it could not open the file',
+  );
+
+  console.log(
+    'smoke: a file put below the root was opened by the program at its own ' +
+      'DOS path',
+  );
+
+  machine.destroy();
+}
+
 // --- A seam, toggled through the ABI (M4-F4, #98) -------------------------
 //
 // The probe program tests/programs runs with its seam on and off, staged
@@ -719,6 +885,16 @@ if (missing.length === 0) {
 // off and available, the code-wheel seam is listed as unavailable with
 // its reason, and turning the probe on changes the result block in
 // exactly the way the native suite asserts it does.
+//
+// And, since #147, what the seams *did*. Two seams are registered, not
+// one: `probe`, whose points the program runs through, and
+// `probe-unreached`, armed on an instruction past the exit that the
+// program never executes. Both are keyed to the same file, so both are
+// available and both arm - `af_machine_seam_armed` cannot tell them
+// apart. `af_machine_seam_fired` can, and the assertion that
+// `probe-unreached` finishes a whole run at zero is the one this issue
+// was filed for: "armed and fired nothing" is the failure that reads
+// exactly like success, and a browser had no way to say it.
 
 if (missing.length === 0) {
   const check = (condition, message) => {
@@ -731,7 +907,7 @@ if (missing.length === 0) {
     machine.reset();
     check(
       module._af_web_probe_seam_register(machine.handle) === AF_OK,
-      'the probe seam could not be registered',
+      'the probe seams could not be registered',
     );
 
     const ptr = module._af_web_probe_program_bytes();
@@ -767,6 +943,7 @@ if (missing.length === 0) {
     const wheel = before.find((s) => s.id === 'code-wheel');
     check(probe !== undefined, 'the probe seam is not listed');
     check(probe?.state === AF_SEAM_OFF && probe?.reason === 'none', `the probe seam starts ${JSON.stringify(probe)}`);
+    check(probe?.fired === 0, `a seam that is off has fired ${JSON.stringify(probe?.fired)} times`);
     check(wheel !== undefined, 'the code-wheel seam is not listed');
     check(
       wheel?.state === AF_SEAM_UNAVAILABLE && wheel?.reason === 'wrong_binary',
@@ -777,6 +954,22 @@ if (missing.length === 0) {
       check(machine.seamEnable('probe') === AF_OK, 'enabling the probe seam was refused');
       const on = machine.seamList().find((s) => s.id === 'probe');
       check(on?.state === AF_SEAM_ON && on?.armed === true, `the probe seam did not arm: ${JSON.stringify(on)}`);
+      check(on?.fired === 0, `the probe seam fired ${on?.fired} times before a step was taken`);
+
+      // The pair (#147). This one arms exactly as the working seam does
+      // - same program, same fingerprint, `armed === true` - and its
+      // point is on an instruction past the program's exit. Nothing
+      // visible before the run distinguishes the two.
+      check(
+        machine.seamEnable('probe-unreached') === AF_OK,
+        'enabling the unreached probe seam was refused',
+      );
+      const never = machine.seamList().find((s) => s.id === 'probe-unreached');
+      check(
+        never?.state === AF_SEAM_ON && never?.armed === true,
+        `the unreached probe seam did not arm: ${JSON.stringify(never)}`,
+      );
+
       check(machine.seamEnable('code-wheel') === AF_INVALID, 'an unavailable seam was enabled');
       check(machine.seamEnable('no-such-seam') === AF_INVALID, 'a seam that does not exist was enabled');
     }
@@ -805,16 +998,70 @@ if (missing.length === 0) {
     const words = block === null
       ? [0, 0]
       : [block[0] | (block[1] << 8), block[2] | (block[3] << 8)];
+
+    // What the seams did, read off the run that just ended - the browser
+    // half of the line the desktop host prints at the end of every run
+    // (#131, #147).
+    const after = machine.seamList();
+    const fired = Object.fromEntries(after.map((s) => [s.id, s.fired]));
+    const states = Object.fromEntries(after.map((s) => [s.id, s.state]));
     machine.destroy();
-    return words;
+    return { words, fired, states };
   };
 
   const off = runProbe(false);
-  check(off[0] === 0x1111 && off[1] === 0x0000, `seam off: result block is ${JSON.stringify(off.map((w) => w.toString(16)))}, expected 1111, 0`);
+  check(off.words[0] === 0x1111 && off.words[1] === 0x0000, `seam off: result block is ${JSON.stringify(off.words.map((w) => w.toString(16)))}, expected 1111, 0`);
   const on = runProbe(true);
-  check(on[0] === 0x2222 && on[1] === 0x256b, `seam on: result block is ${JSON.stringify(on.map((w) => w.toString(16)))}, expected 2222, 256b`);
+  check(on.words[0] === 0x2222 && on.words[1] === 0x256b, `seam on: result block is ${JSON.stringify(on.words.map((w) => w.toString(16)))}, expected 2222, 256b`);
 
-  console.log('smoke: the probe seam listed, toggled, edited a register and posted a key');
+  // --- What the seams did, not what they were armed at (#147) -----------
+  //
+  // Three claims, and the middle one is the issue:
+  //
+  //   * a seam that ran reports a count a browser can see;
+  //   * a seam that armed and was never reached reports **zero** - the
+  //     failure #131 spent a milestone not seeing, because `armed` says
+  //     the same thing either way;
+  //   * a seam left off reports zero, so the count belongs to the enable
+  //     it was made under and not to the machine's whole life.
+  check(on.fired.probe > 0, `the probe seam ran but reports fired=${on.fired.probe}`);
+  check(
+    on.fired['probe-unreached'] === 0,
+    'a seam armed where the program never goes reports ' +
+      `fired=${on.fired['probe-unreached']}, and the whole point of the count is that it is 0`,
+  );
+  check(
+    on.states['probe-unreached'] === AF_SEAM_ON,
+    'the unreached probe seam was not still on at the end of the run',
+  );
+  check(
+    off.fired.probe === 0 && off.fired['probe-unreached'] === 0,
+    `a seam that was never enabled reports ${JSON.stringify(off.fired)}`,
+  );
+
+  // The sentence both JS surfaces print, checked as the pure function it
+  // is (host.mjs). The driver and the dev page share it precisely so a
+  // browser run and a desktop run can be compared as two runs rather than
+  // as two spellings, and the wording of the zero case is the part that
+  // has to survive an edit - it is the whole warning.
+  check(
+    formatSeamFired({ armed: true, fired: 9 }) === 'armed fired=9',
+    `a fired seam formats as "${formatSeamFired({ armed: true, fired: 9 })}"`,
+  );
+  check(
+    formatSeamFired({ armed: false, fired: 0 }) === 'inert fired=0',
+    `an inert seam formats as "${formatSeamFired({ armed: false, fired: 0 })}"`,
+  );
+  check(
+    formatSeamFired({ armed: true, fired: 0 }) ===
+      'armed fired=0 - armed and never reached; its point may not be where its facts say',
+    `an armed seam that fired nothing formats as "${formatSeamFired({ armed: true, fired: 0 })}"`,
+  );
+
+  console.log(
+    'smoke: the probe seam listed, toggled, edited a register, posted a key ' +
+      `and reported fired=${on.fired.probe}; the unreached one reported fired=0`,
+  );
 }
 
 // --- The keys a keyboard-driven game needs (#84) -------------------------
@@ -1182,10 +1429,45 @@ if (missing.length === 0 && sessions !== null) {
     '--seams ran the machine; a listing is a question, not a run',
   );
 
+  // --- What is under the directory, too (M4, #146) ----------------------
+  //
+  // The driver used to read the top of the directory it was given and
+  // nothing below it, and reported what it left behind as
+  // `disk skipped SAVE (not a file)` — which is where a Gold Box save
+  // slot lives, so a player could not arrive in a browser with one. It
+  // walks now.
+  //
+  // The disk here is the repository's own `spin/` copied into a scratch
+  // directory with a subdirectory added, because `tests/sessions/spin/`
+  // is what `spin.rec` was recorded against and a new entry in it would
+  // change that recording's initial conditions (docs/replay.md §1).
+  const nested = join(scratch, 'disk');
+  mkdirSync(join(nested, 'SAVE'), { recursive: true });
+  copyFileSync(join(disk, 'SPIN.EXE'), join(nested, 'SPIN.EXE'));
+  writeFileSync(join(nested, 'SAVE', 'SAVE1.DAT'), Buffer.from([0x53]));
+
+  const walked = spawnSync(
+    process.execPath,
+    [driver, nested, 'SPIN.EXE', '--frames', '1', '--quiet'],
+    { encoding: 'utf8' },
+  );
+  check(walked.status === 0, `the driver exited ${walked.status}: ${walked.stderr}`);
+  const walkedSaid = walked.stdout ?? '';
+  // Two files taken, nothing skipped: the program at the top and the one
+  // in the subdirectory, whose bytes are counted in the total.
+  check(
+    /^amberfolio: disk files=2 skipped=0 bytes=35$/m.test(walkedSaid),
+    `the driver did not walk the subdirectory:\n${walkedSaid}`,
+  );
+  check(
+    !walkedSaid.includes('disk skipped'),
+    `the driver skipped something it should have walked into:\n${walkedSaid}`,
+  );
+
   rmSync(scratch, { recursive: true, force: true });
   console.log(
-    'smoke: the headless web driver ran a disk, pressed keys, dumped a frame ' +
-      'and measured itself',
+    'smoke: the headless web driver ran a disk, walked below it, pressed ' +
+      'keys, dumped a frame and measured itself',
   );
 }
 

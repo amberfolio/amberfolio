@@ -27,12 +27,13 @@
 // --------------------------------------------
 //
 // Exactly as the SDL host does. The caller names a directory; this reads
-// what is in it, hands each file to the machine's own filesystem, and
-// keeps nothing. **No game content is in this file, and none may ever
-// be** — not bytes, not file names, not screen text (CONTRIBUTING.md's
-// clean-content rule). Every name this program prints it learned from the
-// caller's disk a moment earlier, and prints to the caller's own
-// terminal.
+// what is in it — and, since #146, what is in the directories below it —
+// hands each file to the machine's own filesystem under its path
+// relative to that directory, and keeps nothing. **No game content is in
+// this file, and none may ever be** — not bytes, not file names, not
+// screen text (CONTRIBUTING.md's clean-content rule). Every name this
+// program prints it learned from the caller's disk a moment earlier, and
+// prints to the caller's own terminal.
 //
 // The consequence worth stating: nothing in this repository runs it
 // against a game. `hosts/web/tests/smoke.mjs` drives it against
@@ -98,6 +99,7 @@ import {
   AF_SEAM_OFF,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
+  formatSeamFired,
   AF_RUN_END_STOPPED,
   AF_RUN_END_STEP_BUDGET,
   AF_RUN_END_TICK_BUDGET,
@@ -384,27 +386,51 @@ export function encodeWav(samples, rate) {
 
 // --- The run -------------------------------------------------------------
 
-/// Put every file in `dir` into `machine`'s filesystem, one at a time —
-/// which is what a browser has to do, and so is what this does even
+/// Put every file under `dir` into `machine`'s filesystem, one at a time
+/// — which is what a browser has to do, and so is what this does even
 /// though node could hand over a directory. Answers what went in and what
 /// the machine refused.
 ///
+/// **Subdirectories are walked** (#146). Until the ABI's door took a path
+/// this reported `disk skipped SAVE (not a file)` and went on without it,
+/// which is where every shipped save slot lives — so a browser could
+/// start a game and never resume one. What goes across now is the path
+/// relative to `dir`, and core makes the directories it names.
+///
+/// The separator handed over is always `/`, never `join()`'s: this runs
+/// on three operating systems and the path a run is recorded against
+/// must not depend on which. Core takes either spelling and canonicalizes
+/// (abi.h), so `/` here and `\` in a `docs/playable.md` line are one
+/// path.
+///
 /// A refusal is the useful answer and not a failure: a real installation
 /// has files in it DOS could never have named, and core's own
-/// canonicalizer is the one thing entitled to say which (abi.h).
+/// canonicalizer is the one thing entitled to say which (abi.h). A
+/// directory with nothing in it simply never comes up — a VFS holds what
+/// a run reads, and nothing reads an empty directory.
 function putDirectory(machine, dir) {
   const skipped = [];
   let taken = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile()) {
-      skipped.push(`${entry.name} (not a file)`);
-      continue;
+
+  const walk = (at, prefix) => {
+    for (const entry of readdirSync(at, { withFileTypes: true })) {
+      const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) {
+        walk(join(at, entry.name), path);
+        continue;
+      }
+      if (!entry.isFile()) {
+        skipped.push(`${path} (not a file)`);
+        continue;
+      }
+      const bytes = new Uint8Array(readFileSync(join(at, entry.name)));
+      const status = machine.vfsPut(path, bytes);
+      if (status === AF_OK) taken += 1;
+      else skipped.push(`${path} (status ${status})`);
     }
-    const bytes = new Uint8Array(readFileSync(join(dir, entry.name)));
-    const status = machine.vfsPut(entry.name, bytes);
-    if (status === AF_OK) taken += 1;
-    else skipped.push(`${entry.name} (status ${status})`);
-  }
+  };
+
+  walk(dir, '');
   return { taken, skipped };
 }
 
@@ -625,6 +651,7 @@ export async function drive(opts) {
       `resyncs=${machine.audioResyncs()}`,
   );
   reportSeams(machine);
+  reportSeamsFired(machine);
 
   // --- Throughput --------------------------------------------------------
   //
@@ -695,6 +722,23 @@ function reportSeams(machine) {
     const armed = seam.state === AF_SEAM_ON ? (seam.armed ? ' armed' : ' inert') : '';
     const why = seam.reason === 'none' ? '' : ` ${seam.reason}`;
     say(`amberfolio: seams ${seam.id} ${state}${armed}${why} - ${seam.about}`);
+  }
+}
+
+/// What each enabled seam actually *did*, one line each, in the words the
+/// SDL host ends a run with (hosts/sdl/src/main.cpp) — `seam <id> armed
+/// fired=N`, singular, and distinct from the `seams` listing above.
+///
+/// The listing says an address was computed out of a fact table; this
+/// says a handler ran there (#131). A seam that is on and armed and
+/// fired nothing is the failure that reads exactly like success, so the
+/// zero is called out in words rather than left to a reader to spot.
+/// Only for a run: `--seams` asks a question before anything has moved,
+/// and every count would be zero for the honest reason.
+function reportSeamsFired(machine) {
+  for (const seam of machine.seamList()) {
+    if (seam.state !== AF_SEAM_ON) continue;
+    say(`amberfolio: seam ${seam.id} ${formatSeamFired(seam)}`);
   }
 }
 

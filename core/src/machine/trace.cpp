@@ -13,6 +13,7 @@ void trace_ring::clear() noexcept {
   // blanking two kilobytes to prove it would only cost time.
   steps_seen_ = 0;
   calls_seen_ = 0;
+  files_seen_ = 0;
 }
 
 void trace_ring::record(trace_step where) noexcept {
@@ -31,6 +32,14 @@ void trace_ring::record(const service_call& call) noexcept {
   ++calls_seen_;
 }
 
+void trace_ring::record(const file_event& event) noexcept {
+  if (!recording_) {
+    return;
+  }
+  files_[static_cast<std::size_t>(files_seen_ % file_capacity)] = event;
+  ++files_seen_;
+}
+
 trace_step trace_ring::step_at(std::size_t index) const noexcept {
   // The oldest kept entry is `steps_seen_ - step_count()` in absolute
   // terms; the ring position is that, modulo the capacity. Doing the
@@ -43,6 +52,11 @@ trace_step trace_ring::step_at(std::size_t index) const noexcept {
 service_call trace_ring::call_at(std::size_t index) const noexcept {
   const std::uint64_t oldest = calls_seen_ - call_count();
   return calls_[static_cast<std::size_t>((oldest + index) % call_capacity)];
+}
+
+file_event trace_ring::file_at(std::size_t index) const noexcept {
+  const std::uint64_t oldest = files_seen_ - file_count();
+  return files_[static_cast<std::size_t>((oldest + index) % file_capacity)];
 }
 
 }  // namespace amberfolio::machine

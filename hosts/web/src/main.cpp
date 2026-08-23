@@ -91,17 +91,28 @@ uint32_t af_web_probe_program_size(void) {
   return static_cast<uint32_t>(amberfolio::programs::seam_probe_file().size());
 }
 
-/// Register the probe's seam with `box`'s engine, so `af_machine_seam_*`
-/// can list and toggle it. AF_NO_MACHINE for a null handle; AF_INVALID if
-/// the registry would not take it (already registered, or full).
+/// Register the probe's two seams with `box`'s engine, so
+/// `af_machine_seam_*` can list and toggle them. AF_NO_MACHINE for a null
+/// handle; AF_INVALID if the registry would not take one (already
+/// registered, or full).
+///
+/// Two, since #147: `probe`, whose points the program runs through, and
+/// `probe-unreached`, whose one point sits on an instruction it never
+/// executes. Both are keyed to the same file, so both are equally
+/// available and both arm — and the only thing that tells them apart is
+/// `af_machine_seam_fired`, which is what a browser needed and did not
+/// have. Registering them together rather than through two exports keeps
+/// the pair inseparable: a smoke check cannot end up asserting the happy
+/// one and quietly skipping the other.
 uint32_t af_web_probe_seam_register(af_machine* box) {
   amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
   if (pc == nullptr) {
     return AF_NO_MACHINE;
   }
-  return pc->seams().add(amberfolio::programs::seam_probe_definition())
-             ? AF_OK
-             : AF_INVALID;
+  const bool ok =
+      pc->seams().add(amberfolio::programs::seam_probe_definition()) &&
+      pc->seams().add(amberfolio::programs::seam_probe_unreached_definition());
+  return ok ? AF_OK : AF_INVALID;
 }
 
 }  // extern "C"

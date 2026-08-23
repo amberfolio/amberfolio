@@ -21,12 +21,17 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
+#include "amberfolio/abi_bridge.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/loader.h"
+#include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/platform.h"
+#include "amberfolio/machine/seam.h"
 #include "amberfolio/version.h"
+#include "programs/machine_programs.h"
 
 namespace {
 
@@ -120,6 +125,12 @@ TEST(Abi, EveryCallToleratesANullHandle) {
   EXPECT_EQ(af_machine_frame_generation(nullptr), 0.0);
   EXPECT_EQ(af_machine_audio_underruns(nullptr), 0.0);
   EXPECT_EQ(af_machine_audio_resyncs(nullptr), 0.0);
+  EXPECT_EQ(af_machine_seam_count(nullptr), 0u);
+  EXPECT_EQ(af_machine_seam_state(nullptr, 0), AF_SEAM_NONE);
+  EXPECT_EQ(af_machine_seam_armed(nullptr, 0), 0);
+  EXPECT_EQ(af_machine_seam_fired(nullptr, 0), 0.0);
+  EXPECT_EQ(af_machine_seam_enable(nullptr, "probe"), AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_seam_disable(nullptr, "probe"), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_post_key(nullptr, 0x1E, AF_KEY_DOWN), AF_NO_MACHINE);
   EXPECT_EQ(af_machine_set_wall_clock(nullptr, 1990, 1, 1, 0, 0, 0, 0),
             AF_NO_MACHINE);
@@ -343,6 +354,150 @@ TEST(AbiVfs, FingerprintsAFileTheSameWayTheDesktopHostDoes) {
             0u);
 }
 
+// --- A path, not merely a name (M4, #146) --------------------------------
+//
+// The door used to reach the root and no further, so a host handing over
+// a real installation dropped every subdirectory — and `\SAVE\` is where
+// a shipped save slot lives, which is why a browser could start a game
+// and never resume one. What follows is the widened door: a path in
+// either spelling, the directories on the way made in core, and the
+// paths no file can live at refused before anything is made.
+
+/// The SHA-256 of "abc" (FIPS 180-4 appendix B.1) — used below as a
+/// read-back: a fingerprint that matches is a file whose bytes arrived
+/// under the name the caller asked for.
+constexpr const char* abc_digest =
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+/// `af_machine_vfs_fingerprint` of `path`, or an empty string.
+std::string fingerprint_of(af_machine* box, const char* path) {
+  std::array<char, 128> hex{};
+  const std::uint32_t length = af_machine_vfs_fingerprint(
+      box, path, hex.data(), static_cast<std::uint32_t>(hex.size()));
+  return length == 0 ? std::string{} : std::string(hex.data());
+}
+
+/// The root listing as `{name, size}` pairs, which is all the ABI offers
+/// of a directory tree and is deliberately only the root (abi.h).
+std::vector<std::pair<std::string, std::uint32_t>> root_listing(
+    af_machine* box) {
+  std::vector<std::pair<std::string, std::uint32_t>> out;
+  const std::uint32_t count = af_machine_vfs_count(box);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    std::array<char, 16> name{};
+    if (af_machine_vfs_name_at(box, i, name.data(),
+                               static_cast<std::uint32_t>(name.size())) == 0) {
+      continue;
+    }
+    out.emplace_back(std::string(name.data()), af_machine_vfs_size_at(box, i));
+  }
+  return out;
+}
+
+TEST(AbiVfs, PutsAFileBelowTheRootAndMakesTheDirectoryOnTheWay) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+
+  // Nothing made `\SAVE` first — the host handed over one file and core
+  // made the directory it named, which is what
+  // `machine::filesystem::create()` deliberately will not do.
+  const auto root = root_listing(box.get());
+  ASSERT_EQ(root.size(), 1u);
+  EXPECT_EQ(root[0].first, "SAVE");
+  EXPECT_EQ(root[0].second, 0u);
+
+  // And the file is at the path it was given, by its own bytes.
+  EXPECT_EQ(fingerprint_of(box.get(), "SAVE/SAVE1.DAT"), abc_digest);
+  EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), 3.0);
+}
+
+TEST(AbiVfs, TakesEitherSpellingOfASeparatorAndFoldsCaseThroughEveryComponent) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "save/save1.dat", bytes.data(), 3),
+            AF_OK);
+
+  // One file, four spellings. A browser hands a page `SAVE/SAVE1.DAT` and
+  // a script hands it `\SAVE\SAVE1.DAT`; if either side folded that
+  // itself there would be two rules for what a path is, and eventually
+  // two answers (abi.h).
+  EXPECT_EQ(fingerprint_of(box.get(), "save/save1.dat"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "SAVE/SAVE1.DAT"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "\\SAVE\\SAVE1.DAT"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "C:\\save\\Save1.Dat"), abc_digest);
+
+  // Upper case out, one directory, one file.
+  const auto root = root_listing(box.get());
+  ASSERT_EQ(root.size(), 1u);
+  EXPECT_EQ(root[0].first, "SAVE");
+}
+
+TEST(AbiVfs, MakesEveryMissingDirectoryAndReusesTheOnesItAlreadyMade) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "A/B/C/D.DAT", bytes.data(), 3),
+            AF_OK);
+  // A second file two directories down the same branch: the existing
+  // directories are used, not refused as already-taken names and not
+  // remade.
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "A/B/E.DAT", bytes.data(), 3), AF_OK);
+
+  EXPECT_EQ(fingerprint_of(box.get(), "A/B/C/D.DAT"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "A/B/E.DAT"), abc_digest);
+
+  const auto root = root_listing(box.get());
+  ASSERT_EQ(root.size(), 1u);
+  EXPECT_EQ(root[0].first, "A");
+}
+
+TEST(AbiVfs, RefusesAPathNoFileCanLiveAtAndMakesNothingOnTheWayToIt) {
+  const equipped_machine box;
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "START.EXE", bytes.data(), 3), AF_OK);
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+  const auto before = root_listing(box.get());
+  const double bytes_before = af_machine_vfs_bytes_used(box.get());
+
+  // A component above the leaf that is a file. Overwriting `START.EXE`
+  // with a directory to make room for this would be the machine deciding
+  // it knew better than the caller about the caller's own disk.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "START.EXE/X.DAT", bytes.data(), 3),
+            AF_INVALID);
+  // A leaf that is already a directory.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "SAVE", bytes.data(), 3), AF_INVALID);
+  // A component no DOS short name can equal, anywhere in the path — the
+  // same refusal a bare name gets, applied component by component.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "code wheel/X.DAT", bytes.data(), 3),
+            AF_INVALID);
+  EXPECT_EQ(
+      af_machine_vfs_put(box.get(), "DOCS/code wheel.pdf", bytes.data(), 3),
+      AF_INVALID);
+  // Deeper than `machine::dos_path::max_depth`, which is eight: nine
+  // components do not resolve, and a truncated path would resolve to a
+  // different, real place (machine/vfs.h).
+  EXPECT_EQ(
+      af_machine_vfs_put(box.get(), "A/B/C/D/E/F/G/H/I.DAT", bytes.data(), 3),
+      AF_INVALID);
+  // The root itself is not a file.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "\\", bytes.data(), 3), AF_INVALID);
+
+  // Nothing was made on the way to any of them — no `DOCS`, no `A`, and
+  // `START.EXE` is still the file it was. A refusal that left a
+  // half-built tree behind would be the quiet fiction the whole rule
+  // exists to prevent.
+  EXPECT_EQ(root_listing(box.get()), before);
+  EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), bytes_before);
+  EXPECT_EQ(fingerprint_of(box.get(), "START.EXE"), abc_digest);
+  EXPECT_EQ(fingerprint_of(box.get(), "SAVE/SAVE1.DAT"), abc_digest);
+}
+
 TEST(AbiVfs, ClearingEmptiesIt) {
   const equipped_machine box;
   ASSERT_EQ(af_machine_vfs_put(box.get(), "A.DAT", nullptr, 0), AF_OK);
@@ -455,6 +610,141 @@ constexpr double frame_ticks = 1'193'182.0 / 60.0;
 }
 
 }  // namespace
+
+// --- What a seam did, across the C boundary (#147) -----------------------
+//
+// `af_machine_seam_armed` says an address was computed out of a seam's
+// fact table. It does not say a handler ever ran there, and #131's whole
+// lesson is that the two read identically: a seam whose module has moved,
+// or whose offset was never right, reports `armed`, fires nothing, and
+// looks exactly like one that works. `af_machine_seam_fired` is the
+// difference, and these run it on every native target so the browser is
+// not the only place it is checked.
+//
+// The pair is deliberate. `probe` and `probe-unreached` are keyed to the
+// same file, so both are available, both enable and both arm — every
+// answer this ABI gives about them before the run is identical. Only the
+// count afterwards tells them apart.
+
+/// The probe program on the filesystem, loaded, with both of its seams
+/// registered and the index of each. Everything the two tests below
+/// share.
+class seam_probe_rig {
+ public:
+  seam_probe_rig() {
+    // The RESET line first, as a host does — and before the registry is
+    // touched, since `machine::reset()` turns every seam off.
+    box_.power_on();
+
+    amberfolio::machine::machine* pc =
+        amberfolio::af_machine_unwrap(box_.get());
+    EXPECT_NE(pc, nullptr);
+    if (pc != nullptr) {
+      EXPECT_TRUE(
+          pc->seams().add(amberfolio::programs::seam_probe_definition()));
+      EXPECT_TRUE(pc->seams().add(
+          amberfolio::programs::seam_probe_unreached_definition()));
+    }
+
+    const std::vector<std::uint8_t>& exe =
+        amberfolio::programs::seam_probe_file();
+    EXPECT_EQ(af_machine_vfs_put(box_.get(), "PROBE.EXE", exe.data(),
+                                 static_cast<std::uint32_t>(exe.size())),
+              AF_OK);
+    EXPECT_EQ(af_machine_load_from_vfs(box_.get(), "PROBE.EXE", nullptr),
+              AF_OK);
+  }
+
+  [[nodiscard]] af_machine* get() const noexcept { return box_.get(); }
+
+  /// The registry index of `id`, or `count()` if there is no such seam —
+  /// found the way a JS host finds it, by asking for each id in turn.
+  [[nodiscard]] std::uint32_t index_of(std::string_view id) const {
+    const std::uint32_t count = af_machine_seam_count(box_.get());
+    for (std::uint32_t i = 0; i < count; ++i) {
+      std::array<char, 64> text{};
+      const std::uint32_t length = af_machine_seam_id(
+          box_.get(), i, text.data(), static_cast<std::uint32_t>(text.size()));
+      if (std::string_view(text.data(), length) == id) {
+        return i;
+      }
+    }
+    return count;
+  }
+
+  /// Run until the program exits, or until a generous budget of virtual
+  /// time is gone. The probe program polls 16,384 times at most.
+  void run_to_the_end() const {
+    for (int frame = 0; frame < 120 && af_machine_stopped(box_.get()) == 0;
+         ++frame) {
+      af_machine_run_until(box_.get(),
+                           af_ticks_per_second() * (frame + 1) / 60.0);
+    }
+  }
+
+ private:
+  equipped_machine box_;
+};
+
+TEST(AbiSeams, CountsWhatTheHandlersActuallyDid) {
+  const seam_probe_rig rig;
+  const std::uint32_t probe = rig.index_of("probe");
+  ASSERT_LT(probe, af_machine_seam_count(rig.get()));
+
+  // Off, and never run: zero, and it is zero for the honest reason.
+  EXPECT_EQ(af_machine_seam_state(rig.get(), probe), AF_SEAM_OFF);
+  EXPECT_EQ(af_machine_seam_fired(rig.get(), probe), 0.0);
+
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe"), AF_OK);
+  EXPECT_EQ(af_machine_seam_armed(rig.get(), probe), 1);
+  EXPECT_EQ(af_machine_seam_fired(rig.get(), probe), 0.0)
+      << "armed before a step is not fired";
+
+  rig.run_to_the_end();
+  ASSERT_NE(af_machine_stopped(rig.get()), 0);
+
+  EXPECT_GT(af_machine_seam_fired(rig.get(), probe), 0.0);
+  EXPECT_EQ(
+      af_machine_seam_fired(rig.get(), af_machine_seam_count(rig.get()) + 1),
+      0.0)
+      << "an index past the end answers zero, like every other call here";
+}
+
+TEST(AbiSeams, ASeamArmedWhereTheProgramNeverGoesReportsZero) {
+  const seam_probe_rig rig;
+  const std::uint32_t probe = rig.index_of("probe");
+  const std::uint32_t never = rig.index_of("probe-unreached");
+  ASSERT_LT(probe, af_machine_seam_count(rig.get()));
+  ASSERT_LT(never, af_machine_seam_count(rig.get()));
+
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe"), AF_OK);
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe-unreached"), AF_OK);
+
+  // Before the run the two are indistinguishable through this ABI: same
+  // state, same reason, same `armed`. That is the point — it is why
+  // `armed` was not enough.
+  EXPECT_EQ(af_machine_seam_state(rig.get(), probe),
+            af_machine_seam_state(rig.get(), never));
+  EXPECT_EQ(af_machine_seam_armed(rig.get(), probe),
+            af_machine_seam_armed(rig.get(), never));
+  EXPECT_EQ(af_machine_seam_armed(rig.get(), never), 1);
+
+  rig.run_to_the_end();
+  ASSERT_NE(af_machine_stopped(rig.get()), 0);
+
+  // And afterwards they are not.
+  EXPECT_GT(af_machine_seam_fired(rig.get(), probe), 0.0);
+  EXPECT_EQ(af_machine_seam_fired(rig.get(), never), 0.0)
+      << "a seam armed past the program's exit reported a run";
+
+  // The handler that must never run writes 0xFFFF over the program's own
+  // first answer if it ever does (tests/programs/machine_programs.cpp),
+  // so the result block is a second witness to the same fact.
+  std::array<std::uint8_t, 2> answer{};
+  ASSERT_EQ(af_machine_read_memory(rig.get(), 0x600 + 0x800, answer.data(), 2),
+            AF_OK);
+  EXPECT_NE(answer[0] | (answer[1] << 8), 0xFFFF);
+}
 
 TEST(AbiReplay, StateHashIsSixtyFourHexDigitsAndMovesWithTheMachine) {
   const equipped_machine box;
@@ -700,7 +990,7 @@ TEST(AbiReport, TracingIsOffUntilAskedForAndSurvivesAReset) {
   ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
   ASSERT_EQ(af_machine_run_until(box.get(), 400.0), AF_OK);
 
-  std::vector<char> big(24576);
+  std::vector<char> big(32768);
   ASSERT_GT(af_machine_trace_report(box.get(), big.data(),
                                     static_cast<std::uint32_t>(big.size())),
             0u);

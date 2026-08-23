@@ -48,6 +48,7 @@ import {
   AF_OK,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
+  formatSeamFired,
   AF_RUN_END_STOPPED,
   AF_RUN_END_STEP_BUDGET,
   AF_RUN_END_HOST_QUIT,
@@ -226,19 +227,19 @@ export function runDevPage() {
       box.vfsClear();
 
       const skipped = [];
-      let taken = 0;
+      const taken = [];
       for (const file of files) {
-        // The name goes across as the player's own text and core decides
-        // what it means (abi.h). A refusal is the useful answer: a boxed
-        // copy has files in it DOS could never have named.
-        const status = box.vfsPut(file.name, file.bytes);
-        if (status === AF_OK) taken += 1;
-        else skipped.push(file.name);
+        // The path goes across as the player's own text and core decides
+        // what it means, separators included (abi.h, #146). A refusal is
+        // the useful answer: a boxed copy has files in it DOS could never
+        // have named.
+        const status = box.vfsPut(file.path, file.bytes);
+        if (status === AF_OK) taken.push(file);
+        else skipped.push(file.path);
       }
 
-      const listing = box.vfsList();
       appendConsole(
-        `[host] filesystem: ${taken} files, ` +
+        `[host] filesystem: ${taken.length} files, ` +
           `${Math.round(box.vfsBytesUsed() / 1024)} KiB` +
           (skipped.length > 0
             ? `, ${skipped.length} skipped (not DOS-nameable): ${skipped.join(', ')}`
@@ -246,20 +247,28 @@ export function runDevPage() {
           '\n',
       );
 
-      // Programs first in the list, everything else after it: a player
-      // wants the .EXE and should not have to hunt for it, and the rest
-      // is still offered because nothing here should be deciding what is
-      // and is not bootable.
-      const isProgram = (name) => name.endsWith('.EXE') || name.endsWith('.COM');
+      // What to offer as bootable is what went in, not `vfsList()`: the
+      // root listing is the root's, and since #146 an entry in it may be
+      // a directory `vfsPut` made on the way to a file below (abi.h).
+      // This page knows which of the things it handed over were files,
+      // because it handed them over.
+      //
+      // Programs first, everything else after: a player wants the .EXE
+      // and should not have to hunt for it, and the rest is still offered
+      // because nothing here should be deciding what is and is not
+      // bootable. Ordering is the whole of what this looks at — the name
+      // itself goes to `loadFromVfs` as the player spelled it, for core
+      // to canonicalize.
+      const isProgram = (path) => /\.(exe|com)$/i.test(path);
       const ordered = [
-        ...listing.filter((e) => isProgram(e.name)),
-        ...listing.filter((e) => !isProgram(e.name)),
+        ...taken.filter((file) => isProgram(file.path)),
+        ...taken.filter((file) => !isProgram(file.path)),
       ];
       programSelect.replaceChildren(
-        ...ordered.map((entry) => {
+        ...ordered.map((file) => {
           const option = document.createElement('option');
-          option.value = entry.name;
-          option.textContent = `${entry.name} (${entry.size} bytes)`;
+          option.value = file.path;
+          option.textContent = `${file.path} (${file.bytes.length} bytes)`;
           return option;
         }),
       );
@@ -268,7 +277,7 @@ export function runDevPage() {
       setStatus(
         ordered.length === 0
           ? 'nothing in that directory has a DOS-legal name.'
-          : `${taken} files loaded - choose a program and press boot.`,
+          : `${taken.length} files loaded - choose a program and press boot.`,
       );
     },
   });
@@ -307,7 +316,7 @@ export function runDevPage() {
       );
       const editionEl = el(EDITION_ID);
       if (editionEl) editionEl.textContent = `edition: ${edition ?? 'unrecognized'}`;
-      renderSeams(box, el(SEAMS_ID), appendConsole);
+      const refreshSeams = renderSeams(box, el(SEAMS_ID), appendConsole);
 
       const budget = Number.parseInt(el(STEPS_INPUT_ID)?.value ?? '', 10);
       await run(box, {
@@ -315,6 +324,7 @@ export function runDevPage() {
         setStatus,
         appendConsole,
         healthEl,
+        refreshSeams,
         volumeInput,
         muteCheckbox,
         stepBudget: Number.isFinite(budget) && budget > 0 ? budget : 0,
@@ -325,15 +335,42 @@ export function runDevPage() {
   });
 }
 
+/// What an enabled seam's row says beside its name: `armed fired=N`, in
+/// the same words the desktop host ends a run with (hosts/sdl/src/main.cpp).
+///
+/// The two halves are different claims and that is the whole point
+/// (#131): `armed` says an address was computed out of the seam's fact
+/// table, `fired` says a handler ran there. `armed fired=0` after a run
+/// that should have fired is the failure that reads exactly like
+/// success, so it is called out in words rather than left to a reader to
+/// notice a zero.
+function seamRowText(seam) {
+  if (seam.state === AF_SEAM_UNAVAILABLE) return `unavailable: ${seam.reason}`;
+  if (seam.state !== AF_SEAM_ON) return 'off';
+  // The reason is worth an extra word in a row a person is looking at,
+  // and only there: an inert seam is waiting for its module and the row
+  // is where somebody would ask what for. The console line below is the
+  // desktop host's, unembellished.
+  const why = !seam.armed && seam.reason !== 'none' ? ` (${seam.reason})` : '';
+  return formatSeamFired(seam) + why;
+}
+
 /// One checkbox per seam, off by default, disabled with its reason when
 /// the seam is not available for the loaded program. Toggling is a
 /// configuration call between frames (host.mjs) — the page does it in
 /// the change handler, which runs between two rAF callbacks and so never
 /// from inside `runUntil()`. The listing is re-read after every toggle so
 /// an on-but-inert seam (its module is not resident yet) shows as such.
+///
+/// Answers a `refresh()` the run loop calls on its own readout cadence,
+/// which is how `fired=` becomes a live number instead of one taken once
+/// before the machine had run a step. It rewrites the status text only —
+/// rebuilding the checkboxes under a person's pointer while they were
+/// aiming at one would be worse than the number being half a second old.
 function renderSeams(machine, container, appendConsole) {
-  if (!container) return;
+  if (!container) return () => {};
   const seams = machine.seamList();
+  const rows = new Map();
   container.replaceChildren(
     ...seams.map((seam) => {
       const label = document.createElement('label');
@@ -341,24 +378,35 @@ function renderSeams(machine, container, appendConsole) {
       box.type = 'checkbox';
       box.checked = seam.state === AF_SEAM_ON;
       box.disabled = seam.state === AF_SEAM_UNAVAILABLE;
+      const status = document.createElement('span');
+      status.textContent = ` [${seamRowText(seam)}]`;
+      rows.set(seam.id, status);
       box.addEventListener('change', () => {
-        const status = box.checked ? machine.seamEnable(seam.id) : machine.seamDisable(seam.id);
+        const answer = box.checked ? machine.seamEnable(seam.id) : machine.seamDisable(seam.id);
         const after = machine.seamList().find((s) => s.id === seam.id);
         appendConsole(
           `[host] seam ${seam.id} ${box.checked ? 'on' : 'off'}` +
-            (status === AF_OK ? '' : ` refused (${after?.reason ?? '?'})`) +
+            (answer === AF_OK ? '' : ` refused (${after?.reason ?? '?'})`) +
             (after && after.state === AF_SEAM_ON && !after.armed ? ` (inert: ${after.reason})` : '') +
             '\n',
         );
-        if (status !== AF_OK) box.checked = !box.checked;
+        if (answer !== AF_OK) box.checked = !box.checked;
+        if (after) status.textContent = ` [${seamRowText(after)}]`;
       });
-      label.append(box, ` ${seam.id} - ${seam.about}`);
+      label.append(box, ` ${seam.id} - ${seam.about}`, status);
       label.title =
         seam.state === AF_SEAM_UNAVAILABLE ? `unavailable: ${seam.reason}` : seam.about;
       return label;
     }),
   );
   if (seams.length === 0) container.textContent = 'this build carries no seams';
+
+  return () => {
+    for (const seam of machine.seamList()) {
+      const status = rows.get(seam.id);
+      if (status) status.textContent = ` [${seamRowText(seam)}]`;
+    }
+  };
 }
 
 /// Present, run, and report — everything both entry points share.
@@ -369,6 +417,7 @@ async function run(
     setStatus,
     appendConsole,
     healthEl,
+    refreshSeams,
     volumeInput,
     muteCheckbox,
     stepBudget,
@@ -524,6 +573,17 @@ async function run(
     appendConsole(machine.stopReport(how));
     const trace = machine.traceReport();
     if (!trace.startsWith('amberfolio: stop trace=off')) appendConsole(trace);
+
+    // What each enabled seam actually did, in the desktop host's own
+    // words (#131, #147). `armed` says an address was computed; `fired`
+    // says a handler ran there, and a seam that is on and armed and
+    // fired nothing is the failure that reads exactly like success. The
+    // end of the run it belongs to is the one place a reader gets told
+    // for free, and until now a browser run could not say it at all.
+    for (const seam of machine.seamList()) {
+      if (seam.state !== AF_SEAM_ON) continue;
+      appendConsole(`amberfolio: seam ${seam.id} ${formatSeamFired(seam)}\n`);
+    }
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
   };
@@ -551,16 +611,19 @@ async function run(
     appendConsole(text.slice(0, lastBreak + 1));
   };
 
-  /// The health readout: how far the run has got, and what the audio
-  /// path had to paper over to keep up. #106's policies have a visible
-  /// half and this is it.
+  /// The health readout: how far the run has got, what the audio path
+  /// had to paper over to keep up, and — since #147 — what each enabled
+  /// seam has actually done. #106's policies have a visible half and
+  /// this is it.
   ///
   /// Every half virtual second rather than every frame. It is a readout
   /// and not an instrument — the driver (`tools/drive.mjs`) is where a
   /// number gets measured — and writing the same three figures into the
   /// DOM sixty times a second is itself the sort of thing that causes
-  /// the underruns it would be reporting.
+  /// the underruns it would be reporting. The seam rows ride the same
+  /// cadence for the same reason.
   const showHealth = () => {
+    if (refreshSeams) refreshSeams();
     if (!healthEl) return;
     // The listening level joins the line only when it is not unity, the
     // same rule and for the same reason as the SDL host's report line

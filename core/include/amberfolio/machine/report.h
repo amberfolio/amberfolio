@@ -125,12 +125,15 @@ inline constexpr std::size_t stop_report_capacity = 512;
 /// The same, for `format_trace_report()`.
 ///
 /// `trace_ring::step_capacity` step lines at 62 characters apiece (the
-/// prefix, a step number of up to twenty digits, and a far address) plus
-/// `trace_ring::call_capacity` call lines at 79 plus the header is a
-/// little over twenty-one thousand; this is the next round number above
-/// it. Both counts are compile-time constants of `trace_ring`, so the
-/// arithmetic is a fact rather than an estimate.
-inline constexpr std::size_t trace_report_capacity = 24576;
+/// prefix, a step number of up to twenty digits, and a far address), plus
+/// `trace_ring::call_capacity` call lines at 79, plus
+/// `trace_ring::file_capacity` file lines at 192 — the widest of the
+/// three, because one carries a whole `dos_path` (`dos_path_capacity`,
+/// 106 characters) — plus the header is a little over twenty-seven
+/// thousand; this is the next round number above it. All three counts are
+/// compile-time constants of `trace_ring`, so the arithmetic is a fact
+/// rather than an estimate.
+inline constexpr std::size_t trace_report_capacity = 32768;
 
 /// The printable name of a stop reason — `unimplemented_service`,
 /// `unimplemented_device`, and so on: the enumerator's own spelling, so

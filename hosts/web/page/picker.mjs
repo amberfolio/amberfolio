@@ -24,23 +24,32 @@
 // nowhere; every engine ships it under that name, which is why the
 // attribute looks like a relic.
 //
-// Both paths produce the same thing: a flat list of `{ name, bytes }`,
-// with directory structure discarded. That is not laziness — a Gold Box
-// installation is a flat directory (machine/vfs.h's own note on
-// `dos_path::max_depth`), and the VFS these files are going into puts
-// them at the root. A page that preserved a nested layout would be
-// preserving it into a filesystem that has nowhere to put it.
+// Both produce the same thing: a list of `{ path, bytes }`, where `path`
+// is the file's place **relative to the directory the player chose**.
+// That directory is the disk, so it is the root and not a component of
+// anything on it — which is why `webkitRelativePath`'s first component,
+// the chosen directory's own name, comes off.
+//
+// It used to be `{ name, bytes }`, with everything above the leaf thrown
+// away, because the door into the VFS reached the root and no further.
+// The visible cost was that a browser could start a game and never
+// resume one: `\SAVE\` is where a shipped save slot lives and it was
+// dropped on the way in. #146 widened the door; this is the half above
+// it.
 //
 //
 // What this file deliberately does not do
 // ---------------------------------------
 //
 // **It does not look at the names.** Not to filter, not to upper-case,
-// not to decide what is a program. Whether `Save1.Dat` and `SAVE1.DAT`
-// are the same file is a DOS rule, it lives in core (`canonicalize()`),
-// and the ABI runs every name through it (abi.h). A page that pre-judged
-// names would be a second implementation of that rule, and two
-// implementations of a naming rule eventually disagree.
+// not to decide what is a program, and — since #146 — not to decide what
+// a separator is either. Whether `Save1.Dat` and `SAVE1.DAT` are the same
+// file, and whether `SAVE/Save1.Dat` and `\SAVE\SAVE1.DAT` are, are both
+// DOS rules; they live in core (`canonicalize()`) and the ABI runs every
+// path through them (abi.h). So the browser's own `/` goes across
+// untouched. A page that pre-judged any of this would be a second
+// implementation of that rule, and two implementations of a naming rule
+// eventually disagree.
 //
 // So a file whose name no DOS short name can equal — the PDF that comes
 // with a boxed copy, say — is not filtered here. It is offered, refused
@@ -52,43 +61,52 @@ async function readFile(file) {
   return new Uint8Array(buffer);
 }
 
-/// The leaf name of whatever the browser gave us.
+/// Where the browser says this file sits, relative to the directory the
+/// player chose.
 ///
-/// `webkitRelativePath` is the path *within the chosen directory* and is
-/// empty for a dropped file; either way the last component is the name,
-/// and the components above it are what the flat VFS has nowhere to keep.
-function leafOf(file) {
-  const relative = file.webkitRelativePath || file.name;
-  const cut = relative.lastIndexOf('/');
+/// `webkitRelativePath` is the chosen directory's own name followed by
+/// the path below it, and is empty for a dropped file. The chosen
+/// directory is the disk, so its name is the root: the first component
+/// comes off and the rest goes across as it stands, separators included
+/// (core takes `/`, abi.h).
+function pathOf(file) {
+  const relative = file.webkitRelativePath;
+  if (!relative) return file.name;
+  const cut = relative.indexOf('/');
   return cut === -1 ? relative : relative.slice(cut + 1);
 }
 
-/// Read every `File` in `files` into `{ name, bytes }`, in the order the
+/// Read every `File` in `files` into `{ path, bytes }`, in the order the
 /// browser listed them.
 async function readAll(files) {
   const out = [];
   for (const file of files) {
-    out.push({ name: leafOf(file), bytes: await readFile(file) });
+    out.push({ path: pathOf(file), bytes: await readFile(file) });
   }
   return out;
 }
 
-/// Everything under one dropped `FileSystemDirectoryEntry`, recursively.
+/// One dropped entry, at `prefix` — a file read into `out`, or a
+/// directory descended into with its own name added to the prefix.
+async function readDroppedEntry(entry, out, prefix) {
+  const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
+  if (entry.isFile) {
+    const file = await new Promise((resolve, reject) =>
+      entry.file(resolve, reject),
+    );
+    out.push({ path, bytes: await readFile(file) });
+    return;
+  }
+  if (entry.isDirectory) await readDroppedChildren(entry, out, path);
+}
+
+/// Everything inside one dropped `FileSystemDirectoryEntry`, recursively.
 ///
 /// Dropping a folder gives entries rather than files, and the directory
 /// reader hands them over in batches until it answers an empty one —
 /// which is the part of this API that is easy to get wrong, because a
 /// single `readEntries()` call looks as though it worked.
-async function readDroppedEntry(entry, out) {
-  if (entry.isFile) {
-    const file = await new Promise((resolve, reject) =>
-      entry.file(resolve, reject),
-    );
-    out.push({ name: entry.name, bytes: await readFile(file) });
-    return;
-  }
-  if (!entry.isDirectory) return;
-
+async function readDroppedChildren(entry, out, prefix) {
   const reader = entry.createReader();
   for (;;) {
     const batch = await new Promise((resolve, reject) =>
@@ -96,14 +114,14 @@ async function readDroppedEntry(entry, out) {
     );
     if (batch.length === 0) return;
     for (const child of batch) {
-      await readDroppedEntry(child, out);
+      await readDroppedEntry(child, out, prefix);
     }
   }
 }
 
 /// Wire `input` (a `<input type="file" webkitdirectory>`) and `dropZone`
 /// (any element) so that either one calls `onFiles` with the list of
-/// `{ name, bytes }` the player chose.
+/// `{ path, bytes }` the player chose.
 ///
 /// `onFiles` is called from inside the browser's own event handler, which
 /// matters: it is a user gesture, and a user gesture is what a page needs
@@ -149,7 +167,14 @@ export function wireDirectoryPicker({ input, dropZone, onFiles, onError }) {
       void deliver(async () => {
         if (entries.length > 0) {
           const out = [];
-          for (const entry of entries) await readDroppedEntry(entry, out);
+          for (const entry of entries) {
+            // A dropped *folder* is the disk, exactly as a chosen one is,
+            // so its own name is the root rather than a component: its
+            // children start at the empty prefix. A dropped file is
+            // already at the root.
+            if (entry.isDirectory) await readDroppedChildren(entry, out, '');
+            else await readDroppedEntry(entry, out, '');
+          }
           return out;
         }
         // No entry API: plain files, which is what dropping a selection
