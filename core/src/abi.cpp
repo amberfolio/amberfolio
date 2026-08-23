@@ -149,6 +149,16 @@ static_assert(AF_RUN_END_HOST_QUIT ==
 alignas(af_machine) std::array<std::byte, sizeof(af_machine)> storage;
 af_machine* live = nullptr;
 
+/// The one replay player, for the same reason and in the same place.
+///
+/// A player holds the recording's whole manifest in fixed storage
+/// (`replay_max_manifest_entries` bounded paths since #155) — tens of
+/// kilobytes, which is not a thing to put on a wasm module's stack. It is
+/// .bss, it has a trivial destructor, and `replay_player::load()` resets
+/// it at the top of every `af_machine_verify_recording`, so nothing
+/// carries from one call to the next.
+replay_player verifier;
+
 /// The one accessor. Every entry point below starts by calling it, which
 /// is what makes "a null handle answers rather than traps" true by
 /// construction rather than by remembering.
@@ -1117,13 +1127,20 @@ uint32_t af_machine_verify_recording(af_machine* handle, const char* text,
   // report whichever way it went; here it is this call's, because the
   // report is the only thing the ABI hands back and it is handed back
   // now.
-  replay_player player;
+  //
+  // In static storage rather than on the stack, for the reason `storage`
+  // above is: a player keeps the whole manifest in fixed storage
+  // (`replay_max_manifest_entries` bounded paths since #155), which is
+  // some tens of kilobytes, and the stack this is called on is a wasm
+  // module's. `load()` is the first thing `verify_recording` does and it
+  // resets the player, so one that outlives the call carries nothing
+  // into the next.
   const verify_result result =
       verify_recording(*box, box->vfs(), std::span<const char>(text, length),
-                       amberfolio::machine::renderer::frame_period, player);
+                       amberfolio::machine::renderer::frame_period, verifier);
 
   if (out != nullptr && max != 0) {
-    static_cast<void>(player.report(std::span<char>(out, max)));
+    static_cast<void>(verifier.report(std::span<char>(out, max)));
   }
   return result.ok() ? AF_OK : AF_INVALID;
 }

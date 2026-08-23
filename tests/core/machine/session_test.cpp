@@ -147,6 +147,33 @@ TEST(SessionLibrary, ASessionWithAWrongCheckpointIsRefused) {
               ::testing::HasSubstr("amberfolio: replay diverged"));
 }
 
+// Every committed recording is format 1, and stays readable (#155).
+//
+// The manifest recurses from format 2 on, so a recorder writes 2 now —
+// but these seven were written at 1, and six of them are of a game whose
+// disk is nobody's in this tree to re-record. `docs/replay.md` §7's rule
+// is that a version is read for as long as a recording of it may exist,
+// and this is the assertion that keeps it: a change that stranded them
+// fails here, on the files, rather than being noticed by whoever next
+// tried to verify one.
+//
+// Named one by one rather than globbed, exactly as tests/sessions/
+// README.md's table names them: a session that stopped being read would
+// otherwise stop being checked at the same moment.
+TEST(SessionLibrary, EveryCommittedRecordingIsAFormatThisBuildStillReads) {
+  for (const std::string_view name :
+       {"spin.rec", "party.rec", "save.rec", "load.rec", "fight.rec",
+        "fight-cheat.rec", "temple.rec"}) {
+    const std::string text = read_session_file(name);
+    ASSERT_FALSE(text.empty()) << name;
+    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 1 state=1\n"))
+        << name
+        << ": re-recording one of these is a decision (tests/sessions/"
+           "README.md), and for the six recorded from a game it is not one"
+           " this repository can make.";
+  }
+}
+
 // And so does the other half of an initial condition: the same recording
 // against a machine with no program loaded is refused before a step is
 // taken, naming the condition rather than a state that differs.

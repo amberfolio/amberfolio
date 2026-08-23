@@ -32,11 +32,14 @@ The short version:
 Plain text (`machine/replay.h`), one line per fact:
 
 ```
-amberfolio-recording 1 state=1
+amberfolio-recording 2 state=1
 program BOOT.EXE 3f1c…
 tail 202d4649525354 4c49474854
 speed 256
 seam probe
+dir SAVE
+file SAVE\CHARLIST.TXT 285 b677…
+file SAVE\SAVGAMA.DAT 1024 4c9e…
 file BOOT.EXE 2144 3f1c…
 file OVL.BIN 9 a7e0…
 key 5000 1e down
@@ -47,10 +50,65 @@ end 2000000 2000000
 The **initial conditions** come first: the program and its fingerprint,
 the command tail (as hex, because it usually begins with a space), the
 speed (the step cost in 1/256ths of a tick — a replay is made at the
-speed it was recorded at), every seam that was on, and the **manifest** —
-every file in the root directory in the VFS's pinned order, with its size
-and SHA-256. Then the **stream**, in tick order: wall-clock seeds, key
-events, checkpoints, and the end.
+speed it was recorded at), every seam that was on, and the **manifest**.
+Then the **stream**, in tick order: wall-clock seeds, key events,
+checkpoints, and the end.
+
+### The manifest
+
+The manifest is the statement of **what disk the run started from**, and
+since #155 it names the whole of it: every directory and every file, at
+every depth. A `PATH` is `\`-joined and relative to the root, with no
+leading `\` — the spelling
+[`tests/sessions/*.session`](../tests/sessions/README.md) already uses
+for the same facts.
+
+It recurses because a recording is not only about the program. Since #105
+a session **loads a saved game**, and every byte under `\SAVE\` decides
+what that run does. A manifest that stopped at the root let a replay begin
+from a different saved party and say nothing about it, diverging thousands
+of frames later at a checkpoint hash — which reads as a finding about the
+machine and is really a finding about a directory. `load.rec` and
+`temple.rec` are exactly that shape. The manifest exists to convert that
+failure into a legible one, and now it does: §5's `refused … path=…`.
+
+- **The order** is depth first, each directory's entries in the VFS's
+  pinned name order (`dos_name_less`), a directory's own line before its
+  contents. Nothing about it depends on how a backend enumerates, which
+  is what makes two recordings of the same disk the same bytes. It is
+  also exactly lexicographic order over the component sequences, a path
+  sorting before every path it is a prefix of — so `SAVE`, then
+  everything under `SAVE`, then `SAVED.TXT`. That is what lets a
+  mismatch be read as "one side has an entry the other has not" rather
+  than only as "these differ".
+- **A directory keeps a line of its own**, `dir PATH`, with no size and
+  no digest — a directory has neither (its size is a fiction, and a
+  digest of one is not a thing). It is not made redundant by listing its
+  contents: an *empty* directory is a fact about a disk that nothing else
+  records, and a manifest that skipped one would call two different disks
+  the same.
+- **Depth is bounded by `dos_path::max_depth`** (8), not by "one level".
+  A disk with anything deeper is refused — at recording time the
+  preamble is not written at all, at checking time the report says so —
+  rather than walked as far as it goes, because a truncated manifest
+  would pin a disk that is not the disk. Only the directory-backed host
+  can present one: nothing in the in-memory backend can be created below
+  the eighth component in the first place.
+- **Entries are bounded too**, at `replay_max_manifest_entries` (512,
+  files and directories together), and a disk past it is refused rather
+  than half-described. Not the in-memory backend's 192, which is a bound
+  on what a *browser* can hold: the largest disk this repository's
+  session library pins is 193 entries — an installation with its save
+  slots filled, which is the shape this all exists for — and a cap set
+  at the real high-water mark is a cap that refuses the next disk.
+
+The manifest is therefore some tens of kilobytes of fixed storage in a
+`replay_player`, which is why `af_machine_verify_recording` keeps its one
+in static storage rather than on the stack (`core/src/abi.cpp`, the same
+reasoning the machine handle itself is there for).
+
+Version 1 recordings — the seven in `tests/sessions/` — name the root and
+nothing below it, and are read that way. §7 is the rule.
 
 A checkpoint is the tick, the step count, the whole-state hash, and
 optionally the first eight bytes of each section's hash. `end` is where
@@ -88,7 +146,7 @@ the framebuffer and its generation, and the stop record.
 | the overlay tracker | an observation of machine events, rebuilt by replaying them |
 | the trace ring, the first-touch notices | diagnostic bookkeeping — a run with `--trace` and one without must hash alike |
 | every float audio sample | output, not state; the edge list is the canonical thing (`platform.h`) |
-| the filesystem's contents | the host's; captured as a manifest of names, sizes and SHA-256s in the preamble |
+| the filesystem's contents | the host's; captured as a manifest of paths, sizes and SHA-256s in the preamble |
 
 `state_format_version` is bumped when the bytes change — a device grows a
 register, a section is added — and a bump invalidates every golden. A
@@ -223,6 +281,7 @@ a recording is answering the check's question.
 | --- | --- |
 | `verified checkpoints=N keys=K` | every condition matched and `end` was reached; the process then returns the program's own exit code |
 | `refused line=L why=…` | not a recording this player reads, or the initial conditions do not match — the wrong program, the wrong speed, the wrong seams, a file that is not the file |
+| `refused … why=… path=SAVE\CHARLIST.TXT` | the manifest is what did not match, and that is the entry it is about: a file whose fingerprint or size differs, one the disk has and the recording does not name, one the recording names and the disk has not got, or a directory where the recording names a file. This is #155's whole point — a disk that is not the recorded one is refused up front by name, rather than diverging later at a checkpoint |
 | `diverged line=L tick=T section=S expected=… actual=…` | a checkpoint's hash was not the machine's; `section` is the first of the thirteen to disagree |
 | `diverged … why=the machine ran past an event's tick` | the host overran an event — a frame period that is not the recorder's, or a `stopped` marker that is not true |
 | `refused … why=the recording has no end line` | the recording was cut short; incomplete, not diverged, and told apart on purpose |
@@ -273,12 +332,34 @@ carries one.
 Two, and they are independent:
 
 - **`recording_format_version`** (`machine/replay.h`) — the line grammar.
-  A player refuses another version rather than misreading it.
+  A recorder writes this one. It is **2**: #155's recursing manifest.
 - **`state_format_version`** (`machine/state.h`) — the bytes a checkpoint
-  hashes. A player refuses to compare across versions, because a
-  divergence that is really a format change is a false finding.
+  hashes. It is **1**. A player refuses to compare across versions,
+  because a divergence that is really a format change is a false finding.
 
-Both are `1`. A recording names both on its first line
-(`amberfolio-recording 1 state=1`). Changing either invalidates every
-golden recorded under it; the session library is re-recorded in the same
-change, and the reason is written down here.
+A recording names both on its first line
+(`amberfolio-recording 2 state=1`).
+
+**The rule for the recording format: a version is read for as long as a
+recording of it may still exist.** `recording_format_oldest_read` says
+which versions a player accepts, and each is read the way it was written
+— a version-1 manifest names the root, because that is all a version-1
+recording ever claimed, and it goes on saying exactly that. So bumping
+`recording_format_version` does *not* invalidate a golden: old recordings
+keep verifying, new ones say more. Only bumping
+`recording_format_oldest_read` — retiring a version — does, and that is
+the deliberate act, not the grammar change.
+
+The constituency is why. The seven recordings in `tests/sessions/` are
+version 1, and **six of them are of a game whose disk is nobody's in this
+tree to re-record** (PLAN.md §6; `tests/sessions/README.md`). A player
+that dropped version 1 would not be reading an old format wrongly; it
+would be refusing evidence that cannot be remade.
+`SessionLibrary.EveryCommittedRecordingIsAFormatThisBuildStillReads`
+asserts the version on the files, so a change that would strand them
+fails there rather than being discovered by whoever next verified one.
+
+`state_format_version` has no such escape and never will: a checkpoint's
+hash is not readable "the way it was written" by a build whose state
+bytes moved. Bumping it invalidates every golden, the session library is
+re-recorded in the same change, and the reason is written down here.

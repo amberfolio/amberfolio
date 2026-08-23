@@ -71,7 +71,7 @@ endif()
 # agreed on the wrong format would agree with each other all day.
 file(READ "${recording}" text)
 
-if(NOT text MATCHES "^amberfolio-recording 1 state=1\n")
+if(NOT text MATCHES "^amberfolio-recording 2 state=1\n")
   message(FATAL_ERROR "the recording does not begin with its header.\n${context}")
 endif()
 
@@ -109,11 +109,11 @@ endif()
 # And nothing that is not a fact about the run. A recording is committable
 # precisely because it holds no byte of a program and no pixel of a screen
 # (PLAN.md §6), and the cheapest way to keep that true is to refuse any
-# line whose first word is not one of the nine the grammar has.
+# line whose first word is not one of the ten the grammar has.
 string(REGEX MATCHALL "[^\n]+" lines "${text}")
 foreach(line IN LISTS lines)
   if(NOT line MATCHES
-     "^(amberfolio-recording|program|tail|speed|seam|file|wall|key|checkpoint|end)( .*)?$")
+     "^(amberfolio-recording|program|tail|speed|seam|file|dir|wall|key|checkpoint|end)( .*)?$")
     message(FATAL_ERROR "the recording has a line that is not one: '${line}'")
   endif()
 endforeach()

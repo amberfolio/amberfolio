@@ -1676,7 +1676,11 @@ int main(int argc, char** argv) try {
                    opts.record_path.c_str());
       return EXIT_FAILURE;
     }
-    std::array<char, 16384> preamble{};
+    // Sized by core rather than guessed at: the manifest names the whole
+    // disk since #155, so how long a preamble gets is a fact about
+    // `dos_path` and how many entries a recording may name, not about
+    // this host. The number this used to carry was already too small.
+    std::vector<char> preamble(machine::replay_preamble_capacity, '\0');
     const std::size_t n =
         machine::write_preamble(box, files, opts.program,
                                 std::span<const char>(opts.command_tail.data(),

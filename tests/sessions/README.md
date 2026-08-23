@@ -28,11 +28,14 @@ Three things, named alike:
     tests/sessions/spin.session   what it is, and which disk it wants
     tests/sessions/spin/          the disk it was recorded against
 
-The recording's manifest names every file in the disk's root and pins it
-by SHA-256, so the pair is self-checking: a disk that drifted from its
-recording is refused before a step is taken. Keeping the disk beside the
-recording is what lets the desktop host and `scripts/sweep.py` verify any
-session with no special case for which one it is.
+The recording's manifest names the disk's files and pins them by SHA-256,
+so the pair is self-checking: a disk that drifted from its recording is
+refused before a step is taken. How far the manifest reaches is the
+recording's own to say — these seven are format 1 and name the root;
+anything recorded from now on names the whole tree (`docs/replay.md` §1).
+Keeping the disk beside the recording is what lets the desktop host and
+`scripts/sweep.py` verify any session with no special case for which one
+it is.
 
 The **descriptor** is the third, and it is the runner's rather than the
 machine's. One line of it decides everything else:
@@ -142,15 +145,27 @@ and exits non-zero. `scripts/test-sweep.sh` asserts each of those on a
 throwaway library, because "it did not read as a pass" is a property of
 an output and an output nobody asserts is an output that drifts.
 
-**The descriptor pins the whole disk, and the recording does not.** The
-preamble walks the *root*, in the VFS's pinned order, and lists a
-subdirectory by name and size alone — a digest of a directory is not a
-thing. The game keeps its saves in `\SAVE\`, so a disk whose save
-directory is one run further along than it was passes the preamble's
-check and then diverges halfway through, and a divergence is supposed to
-mean the machine changed. The descriptor's `file` and `dir` lines close
-that: every path under the disk, its size and its SHA-256, compared
-before a step is taken.
+**The descriptor pins the whole disk, and these seven recordings do
+not.** They are format 1 (`docs/replay.md` §7), whose preamble walks the
+*root* and lists a subdirectory by name and size alone. The game keeps
+its saves in `\SAVE\`, so a disk whose save directory is one run further
+along than it was passes such a preamble's check and then diverges
+halfway through, and a divergence is supposed to mean the machine
+changed. The descriptor's `file` and `dir` lines close that: every path
+under the disk, its size and its SHA-256, compared before a step is
+taken.
+
+Format 2 closes it inside the recording too (#155): its manifest names
+every directory and every file at every depth, in the same `\`-joined
+spelling the descriptor uses, so a `.rec` used **without** its descriptor
+— which is every use of `af_machine_verify_recording`, and the browser's
+only one — refuses the wrong disk by name. That does not retire the
+descriptor. It pins what is on the maintainer's shelf, which is how a
+candidate directory is *matched to a session* in the first place
+(`--game-disk` is repeatable, and `Session.disk()` picks by comparing);
+a recording can only say whether the disk it was handed is the right one.
+Nothing here changes for these seven, and re-recording them to gain the
+recursing manifest is not on the list below.
 
     python3 scripts/sweep.py --pin NAME --game-disk /path/to/copy
 
@@ -269,7 +284,12 @@ legitimately changes:
 
 - `state_format_version` is bumped (a device grows a register, a section
   is added or reordered);
-- `recording_format_version` is bumped (the line grammar changes);
+- `recording_format_oldest_read` is bumped — a recording *format* is
+  retired. Bumping `recording_format_version` alone is not on this list:
+  a player reads every version it has ever written, the way that version
+  wrote it, so a grammar that grew leaves these seven verifying
+  untouched (`docs/replay.md` §7). That is deliberate, and #155 is why:
+  six of these cannot be re-recorded from this tree at all;
 - the reference device set's **attach order** changes. The canonical
   state hashes devices in attach order, so this is machine state.
   `hosts/sdl/src/main.cpp`, `core/src/abi.cpp`'s `reference_devices` and

@@ -119,14 +119,21 @@ class Descriptor:
     — when that disk is not in the tree — exactly which files it is.
 
     Deliberately not part of the recording's own grammar (machine/
-    replay.h).  The recording's preamble pins what the *machine* saw: the
-    root directory, in the VFS's pinned order.  This pins what is on the
-    maintainer's shelf, all the way down, which is a different claim made
-    by a different reader — and which matters because the game's saves
-    live in a subdirectory the preamble does not descend into.  A disk
-    whose `SAVE` is one run further along than it was would pass the
-    preamble's check and then diverge halfway through, and a divergence
-    is supposed to mean the machine changed.
+    replay.h).  The recording's preamble pins what the *machine* saw;
+    this pins what is on the maintainer's shelf, which is a different
+    claim made by a different reader, and it is what *matches* a
+    candidate directory to a session — `--game-disk` is repeatable, and
+    at most one of the candidates can be the disk a descriptor names.
+
+    It also mattered for a second reason until #155.  The committed
+    recordings are format 1, whose preamble walks the root only, and the
+    game's saves live in `\\SAVE\\`: a disk whose save directory was one
+    run further along than it was would pass such a preamble's check and
+    then diverge halfway through, and a divergence is supposed to mean
+    the machine changed.  Format 2 recurses, in this same `\\`-joined
+    spelling, so a recording made from now on closes that itself — but
+    the six game sessions here cannot be re-recorded from this tree, and
+    matching a disk to a session is still this file's job either way.
     """
 
     def __init__(self, path: Path) -> None:
@@ -189,14 +196,25 @@ class Session:
         self.name = path.stem
         self.descriptor = descriptor
         self.program: str | None = None
+        # Manifest paths, `\`-joined and relative to the root.  In format
+        # 1 they are bare names and a directory arrives as a `file` line
+        # with a zero size and a zero digest; in format 2 they recurse and
+        # a directory has its own `dir` line (docs/replay.md §1).  Kept
+        # apart so the check below can say which is which.
+        self.format = 0
         self.files: list[str] = []
+        self.dirs: list[str] = []
         self.seams: list[str] = []
         for line in path.read_text(encoding="latin-1").splitlines():
             word = line.split(" ")
-            if word[0] == "program" and len(word) >= 2:
+            if word[0] == "amberfolio-recording" and len(word) >= 2:
+                self.format = int(word[1]) if word[1].isdigit() else 0
+            elif word[0] == "program" and len(word) >= 2:
                 self.program = word[1]
             elif word[0] == "file" and len(word) >= 2:
                 self.files.append(word[1])
+            elif word[0] == "dir" and len(word) >= 2:
+                self.dirs.append(word[1])
             elif word[0] == "seam" and len(word) >= 2:
                 self.seams.append(word[1])
 
@@ -244,9 +262,20 @@ class Session:
         if not disk.is_dir():
             wrong.append(f"no disk directory at {rel(disk)}")
             return wrong
+        # A manifest path is the machine's spelling; `\` is its separator
+        # on every host, so it is split rather than handed to Path().  A
+        # format-1 `file` line may be a directory (that is how format 1
+        # wrote one), so only a `dir` line is asked to be one.
         for name in self.files:
-            if not (disk / name).is_file():
+            here = disk.joinpath(*name.split("\\"))
+            ok = here.exists() if self.format < 2 else here.is_file()
+            if not ok:
                 wrong.append(f"the manifest names {name}, which the disk lacks")
+        for name in self.dirs:
+            if not disk.joinpath(*name.split("\\")).is_dir():
+                wrong.append(
+                    f"the manifest names {name}, which is not a directory"
+                    " on the disk")
         return wrong
 
 
