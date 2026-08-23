@@ -8,6 +8,7 @@
 //                                     [--verify] [--press KEY@FRAME]
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
+//                                     [--watch OFF[:N]]
 //                                     [--seam ID] [--seams] [--speed NAME]
 //                                     [--fast N|max] [-- ARGUMENTS...]
 //
@@ -66,6 +67,42 @@
 //     a virtual second fills a disk before it tells anyone anything, and
 //     the caller is the only one who knows how fast the thing they are
 //     watching moves.
+//
+//   --watch OFF[:N]  print a data word every time it changes
+//
+//     The third instrument of the same kind, and it arrived for the same
+//     reason the other two did: a leg of docs/playable.md was impractical
+//     without it. `--dump-every` says what the screen did and `--trace`
+//     says what the program asked DOS for; neither says *where the party
+//     is*, and a city service three streets away is a navigation problem
+//     before it is an emulation one (#104).
+//
+//     `OFF` is a hexadecimal offset in the program's data segment — the
+//     anchor its globals are counted in, and the one a seam reads them
+//     through (seam_cheats.cpp) — and `N` is 1 or 2 bytes, default 1.
+//     Repeatable. A line is printed only when one of the watched values
+//     differs from the last line's, so a run that walks twenty squares
+//     prints twenty lines:
+//
+//         amberfolio: watch frame=011300 ds=0CDC 6AAD=05 6AAE=0C 6AAF=06
+//
+//     The segment is on every line because it is not always the data
+//     segment: DS is whatever the frame boundary landed on, and a frame
+//     that ends inside an interrupt or an overlay has it pointed
+//     somewhere else and prints that somewhere else's bytes. Visibly
+//     wrong beats quietly wrong — and a run that wants only the program's
+//     own globals filters on the segment they live in, the same way a
+//     `--dump-every` run is read by hashing its stills rather than by
+//     looking at them.
+//
+//     It reads `memory_map::ram()` and not the bus, so it takes no bus
+//     cycle, disturbs no EGA latch and cannot make a notice of its own: a
+//     watch has to be able to say a run was clean, which it could not do
+//     if watching were itself something the run did.
+//
+//     What it is *not* is a debugger, and deliberately: no writes, no
+//     breakpoints, no expressions. Machine state is the seam engine's to
+//     touch (PLAN.md §5) and nothing else's, and this reads.
 //
 //   --trace          keep the trace ring, and print it with the report
 //
@@ -334,6 +371,7 @@
 #include <thread>
 #include <vector>
 
+#include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/dos.h"
 #include "amberfolio/machine/edition.h"
@@ -672,6 +710,20 @@ struct scripted_press {
   bool done{false};
 };
 
+/// One `--watch` subject: an offset in the program's data segment, and
+/// how wide the value there is.
+///
+/// `last` and `seen` are what make the output a change log rather than a
+/// transcript — sixty lines a virtual second says nothing, and the
+/// question a watch answers ("when did this move, and to what") is a
+/// question about the changes.
+struct watch_point {
+  std::uint16_t offset{};
+  unsigned width{1};
+  std::uint16_t last{};
+  bool seen{false};
+};
+
 /// Everything `--verify` has to say at the end of a run.
 struct verify_report {
   std::uint64_t composed{};    ///< Frames the renderer finished.
@@ -861,6 +913,7 @@ struct options {
   unsigned scale{default_scale};
   bool verify{false};
   std::vector<scripted_press> presses;
+  std::vector<watch_point> watches;
   std::vector<std::string> seams;
   bool list_seams{false};
   machine::speed_preset speed{machine::default_speed};
@@ -965,6 +1018,91 @@ struct options {
   return true;
 }
 
+/// `OFF[:WIDTH]`, hexadecimal offset, into a watch point. False on
+/// anything that is not that.
+///
+/// Hexadecimal without a `0x`, because every offset a watch is pointed at
+/// comes off the same fact table the seams are written from
+/// (machine/seam.h) and those are written in hex. A width is 1 or 2 —
+/// a byte or a word — and nothing else, because there is no third thing
+/// a data offset in a 16-bit program means.
+[[nodiscard]] bool parse_watch(std::string_view spec, watch_point& out) {
+  std::string_view digits = spec;
+  unsigned width = 1;
+  const std::size_t colon = spec.rfind(':');
+  if (colon != std::string_view::npos) {
+    const std::string_view tail = spec.substr(colon + 1);
+    if (tail == "1") {
+      width = 1;
+    } else if (tail == "2") {
+      width = 2;
+    } else {
+      return false;
+    }
+    digits = spec.substr(0, colon);
+  }
+  if (digits.empty() || digits.size() > 4) {
+    return false;
+  }
+  std::uint16_t offset = 0;
+  const char* const first = digits.data();
+  const char* const last = first + digits.size();
+  const std::from_chars_result parsed =
+      std::from_chars(first, last, offset, 16);
+  if (parsed.ec != std::errc{} || parsed.ptr != last) {
+    return false;
+  }
+  out.offset = offset;
+  out.width = width;
+  return true;
+}
+
+/// Read the watched values out of RAM and print them if any moved.
+///
+/// Offsets are resolved against the processor's DS, and not against
+/// `seam_engine::image_base()`, because a global is where the program's
+/// own code says it is: this program unpacks itself, and its data
+/// segment is nowhere near the image the loader placed. That is the same
+/// anchor the seams read their globals through (seam_cheats.cpp), so an
+/// offset that means something to one means the same thing to the other.
+///
+/// `memory_map::ram()` and not `machine::read_memory()`: this is not a
+/// bus cycle. A watch that took one would latch an EGA plane or make an
+/// open-bus notice of its own, and a run whose log a watch had written
+/// into could not be used to say the run was clean.
+void print_watch(machine::machine& box, std::vector<watch_point>& watches,
+                 std::uint64_t frame_index) {
+  const std::span<const std::uint8_t> ram = box.memory().ram();
+  const std::uint16_t ds = box.processor().regs()[cpu::sreg::ds];
+  const auto base = static_cast<std::uint32_t>(ds) * 16U;
+  bool moved = false;
+  for (watch_point& point : watches) {
+    std::uint16_t value = 0;
+    for (unsigned byte = 0; byte < point.width; ++byte) {
+      const std::uint32_t at = base + point.offset + byte;
+      const std::uint8_t got = at < ram.size() ? ram[at] : 0U;
+      value = static_cast<std::uint16_t>(
+          value | (static_cast<unsigned>(got) << (8U * byte)));
+    }
+    if (!point.seen || point.last != value) {
+      moved = true;
+    }
+    point.last = value;
+    point.seen = true;
+  }
+  if (!moved) {
+    return;
+  }
+  std::printf("amberfolio: watch frame=%06llu ds=%04X",
+              static_cast<unsigned long long>(frame_index), ds);
+  for (const watch_point& point : watches) {
+    std::printf(point.width == 2 ? " %04X=%04X" : " %04X=%02X", point.offset,
+                point.last);
+  }
+  std::printf("\n");
+  std::fflush(stdout);
+}
+
 [[nodiscard]] options parse(int argc, char** argv) {
   options opts;
   std::vector<std::string_view> positional;
@@ -994,6 +1132,16 @@ struct options {
         return opts;
       }
       opts.presses.push_back(std::move(press));
+    } else if (arg == "--watch" && i + 1 < argc) {
+      watch_point point;
+      if (!parse_watch(argv[++i], point)) {
+        std::fprintf(stderr,
+                     "amberfolio: --watch wants a hexadecimal data-segment "
+                     "offset, optionally :1 or :2 for its width, as in 6AAD "
+                     "or 6AAD:2\n");
+        return opts;
+      }
+      opts.watches.push_back(point);
     } else if (arg == "--seam" && i + 1 < argc) {
       opts.seams.emplace_back(argv[++i]);
     } else if (arg == "--seams") {
@@ -1087,7 +1235,8 @@ struct options {
         " [--scale N] [--verify] [--press KEY@FRAME]\n"
         "                                      [--steps N]"
         " [--until TICKS] [--dump PREFIX] [--dump-every N]\n"
-        "                                      [--trace]\n"
+        "                                      [--trace]"
+        " [--watch OFF[:N]]\n"
         "                                      [--seam ID] [--seams]\n"
         "                                      [--record FILE]"
         " [--record-every N] [--replay FILE]\n"
@@ -1430,6 +1579,7 @@ int main(int argc, char** argv) try {
   // The parsed presses, with room to record which have gone. `opts` is
   // what the command line said and stays that way.
   std::vector<scripted_press> presses = opts.presses;
+  std::vector<watch_point> watches = opts.watches;
 
   SDL_Window* window = nullptr;
   SDL_Renderer* renderer = nullptr;
@@ -1612,6 +1762,9 @@ int main(int argc, char** argv) try {
     drain_console(box);
     if (opts.trace) {
       print_overlay_loads(box, overlays_printed);
+    }
+    if (!watches.empty()) {
+      print_watch(box, watches, frame_index);
     }
 
     // Then the events this slice ran up to, delivered and checked before
