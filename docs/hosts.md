@@ -99,7 +99,8 @@ amberfolio <dir> <program.exe> [--headless] [--scale N] [--verify]
                                [--until TICKS] [--dump PREFIX]
                                [--dump-every N] [--trace]
                                [--seam ID] [--speed NAME]
-                               [--fast N|max] [-- ARGUMENTS...]
+                               [--fast N|max] [--volume 0-100] [--mute]
+                               [-- ARGUMENTS...]
 ```
 
 A run prints the identity of the file before anything executes, and a
@@ -127,13 +128,14 @@ fingerprint up by (PLAN.md §5).
 | option | what it is for |
 | --- | --- |
 | `--steps N`, `--until TICKS` | bound the run. A hang is otherwise the one failure this host cannot report — the machine is running, nothing has refused anything, and the process just sits there. The budget is clamped into the run slice, so `--steps N` ends on step N exactly and the stop can be reproduced. |
-| `--trace` | keep the last 256 instructions and 64 service calls, and print them with the report. Off by default, at a cost of one branch per step. |
+| `--trace` | keep the last 256 instructions, 64 service calls and 32 naming file calls, and print them with the report. Off by default, at a cost of one branch per step. |
 | `--dump PREFIX` | write `PREFIX.ppm` (the composed frame) and `PREFIX.wav` (the speaker) when the run ends. |
 | `--dump-every N` | also write `PREFIX-NNNNNN.ppm` every N frames. A run is a film and one frame of it is a still; everything past the title happens over tens of virtual seconds, and "what did the screen *do*" is not a question a final frame answers. The number in the name is the one `--press KEY@FRAME` counts in, so a still and the keystroke that caused it are named in the same units. Needs `--dump`, whose prefix it shares. |
 | `-- ARGUMENTS` | everything after `--` becomes the program's command tail, with the leading space DOS leaves in front of one. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step — the last of those is a machine that retires five instructions inside one tick, which is what the clock's subtick accumulator exists for. `xt` is the default and the machine the game was written for. Not a fast-forward — virtual time still governs every deadline, tone and tick, so a run at `at` is as deterministic as one at `xt`; what changes is how much of it fits in a second of yours. Printed when it is not the default. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. The other way of going faster, and not the same one: `--speed` divides only the computation, `--fast` divides the pauses too. **Nothing inside the machine can tell** — same steps, same ticks, same frames, byte-identical framebuffer; only the sleep at the bottom of the loop changes, which is the one place wall time is allowed to appear (platform.h). Meaningless with `--headless`, which never paced, and refused there rather than ignored. |
 | `--seam ID` | turn on one seam (PLAN.md §5, `machine/seam.h`). Off unless named, refused unless the loaded program is the binary the seam's addresses are facts about, and printed when it takes — a run with a seam on is not the same run as one without it. Repeatable. |
+| `--volume 0-100`, `--mute` | how loudly to play it, and whether to play it at all (§4). Nothing to do with the machine: a run at 25% is the same run as one at 100%, down to the last edge. **F11** toggles the mute and **F12** steps the volume while the run is going. Refused with `--headless`, which opens no audio device. |
 
 `--trace` also prints a line for every file the program names — which one,
 which handle, and what DOS answered:
@@ -146,6 +148,37 @@ amberfolio: file open \SAVE\CHRDATA1.ITM handle=0000 file_not_found from=0B58:14
 The failures are the interesting half: a program asks whether a save slot
 exists by opening it, so a run's refusals are as much a record of what it
 did as its successes. `docs/machine.md` §5 has the channel's rules.
+
+Those lines are the *live* account, and a boot buries them in tens of
+thousands of `INT 16h` polls. So the trace report at the end of the run
+carries the last thirty-two of them too (#121):
+
+```
+amberfolio: stop trace=on steps_seen=... kept=256 calls_seen=... kept=64 files_seen=... kept=32
+amberfolio: stop trace file=open \POR\POOL.CFG handle=0000 path_not_found from=0B58:1458
+amberfolio: stop trace file=open \ handle=0000 invalid_drive from=0B58:1458
+```
+
+(The counts are elided; the three `..._seen` fields are the whole run and
+the three `kept=` fields are the window the ring still has.)
+
+That is the shape of the failure this facility was built for. A hard-disk
+install carries a config naming absolute paths, this host mounts the
+directory it is given *as the DOS root*, and every path the program builds
+from that config then resolves under a subdirectory that does not exist.
+The program's own answer to it is to ask for a floppy — and a failed
+`INT 21h` open is a legitimate DOS answer, so before #121 the report said
+nothing at all about the opens that had just failed. Two rules make
+the block readable:
+
+- **A path is never truncated.** By the time an entry exists the name has
+  been through `canonicalize()`, which produces a fixed-size `dos_path` or
+  refuses — so what the ring holds is what the machine acted on.
+- **A name that does not resolve at all renders as `\`.** There is no
+  canonical path for `A:\POOL.CFG` on a machine with one drive, so the
+  error is what names the failure. It is the one naming refusal that
+  happens before the filesystem is consulted, and the one this channel
+  reported nowhere until #121.
 
 `--dump` is the one to reach for when the claim is *"the title renders"*.
 `docs/machine.md` §7 says why a golden is the wrong instrument for that,
@@ -251,6 +284,53 @@ is not, the fault is in this half; if the PPM is wrong too, it is not, and
 `ctest -L unit` will have a good deal more to say about which pixel probe
 stopped agreeing.
 
+### The dev page, in a browser — the list nobody has walked yet (#147)
+
+**No browser has been opened on any of this.** Everything phase 3 added
+to `hosts/web/page/` is checked by a node harness that stubs
+`AudioWorkletGlobalScope`, and by reading. That is not the same claim, and
+this section exists so the difference is written down rather than assumed
+away — and so the session is cheap when somebody does sit down.
+
+Serve the built page (`python3 scripts/serve-web.py build/wasm/hosts/web/<config>`)
+and work down the list. Each line is one observation; write the answer
+back into #147 or into the commit that touched the page, the way the
+desktop list above asks.
+
+- [ ] **The speed select.** Each of the four settings changes the pace of
+      the embedded demo visibly, and the machine does not stop when it is
+      changed mid-run.
+- [ ] **The health readout** — `frames= steps= | audio underruns=
+      resyncs= starved=`. It moves; the three audio numbers stay at or
+      near zero on an idle machine and grow when the tab is backgrounded,
+      which is the symptom they were added to name (#106).
+- [ ] **The AudioWorklet's hold-then-fade.** Starve it deliberately — drag
+      the window, background the tab — and the tone should hold at the
+      last real sample and fade rather than click or buzz. This is the one
+      item on the list that is a *pressure wave*, and it is the reason the
+      node harness cannot close it.
+- [ ] **The seam checkboxes against a real binary.** A recognized edition
+      names itself on the edition line, the seams for it list as
+      available, and toggling one shows the state beside its name going
+      `off` → `armed fired=0` → `armed fired=N` as the run reaches its
+      point. `armed fired=0` at the end of a run that should have fired is
+      the failure to look for (#131) — and it is a browser-visible number
+      only since #147, so this line is checking the new thing as well as
+      the old one.
+- [ ] **The directory drop of a real installation.** Drop the folder, not
+      the files; the file count and the skipped list are plausible; the
+      `.EXE`s sort to the top of the program list; a second drop replaces
+      the first rather than merging.
+- [ ] **The legs of `docs/playable.md`, in the page.** None of them has
+      been driven in a browser — only through `tools/drive.mjs`, which is
+      node. Leg 1 (a party to the roster) is the one to do first, because
+      everything after it depends on the keyboard path being right.
+
+Nothing above is a blocker for anything: the wasm module itself is checked
+continuously (§5), and the page is the thin layer over it. What is
+unchecked is the layer where a browser API is used, and browsers are
+exactly the thing a headless harness stubs.
+
 ### Recording what you found
 
 The last inch is the part that stays a person's word. When you have run it
@@ -258,6 +338,10 @@ on a target, say so where the next person will look — the issue, or a line
 in the commit that touched the host. "Ran `DEMO.EXE` on macOS 14, arm64:
 bars correct, tone audible, keys echo" is worth more than any number of
 green runners, because it is the only claim any of them cannot make.
+
+The same goes for the browser list above, and more so: a checkbox nobody
+signs is worth less than an unticked one, because an unticked box at least
+says what it is.
 
 ---
 
@@ -381,15 +465,92 @@ amberfolio: audio underruns=11 resyncs=0 dropped edges=0
   sound the machine made that no host ever got. It should be zero, and the
   smoke test asserts that it is.
 
+### Volume and mute, and why neither is in core
+
+#106's scope named them and phase 3 shipped neither; #148 item 4 is where
+that was written down, and this is the answer to it. **Both hosts have
+them and core has nothing of them at all** — no field in
+`audio_timeline`, no ABI export, no line in a recording.
+
+The reason is one sentence long and `platform.h` had already written it
+about a different filter: a sample out of `render()` is the *exact
+integral of the edge list* over its interval, and that identity is what
+every number in this section measures. A gain inside `render()` would
+make a sample the integral times a number nobody wrote down — so
+`--dump`'s WAV, the 0.125 mean and the duty recovered to 1e-11 would
+become statements about the listener's volume rather than about the
+machine. The same paragraph that refuses a high-pass there refuses this.
+Three more reasons, in `hosts/sdl/src/audio_gain.h`; the shortest is that
+a level is a fact about the room the player is in, and nothing in the
+machine may observe one.
+
+So it is two implementations of one decision, the way the underrun policy
+already is, and each side is measured on its own:
+
+| | desktop | browser |
+| --- | --- | --- |
+| set by | `--volume 0-100`, `--mute`; **F11** mutes, **F12** steps | a slider and a checkbox beside the speed select |
+| applied in | `audio_gain::apply()`, on SDL's audio thread, after `render()` | `audio-worklet.mjs`, on the audio thread, as each output sample is written |
+| crosses the thread boundary as | a lock-free `std::atomic<float>`, relaxed both ends | a `{ gain }` `postMessage`, drained between quanta |
+| measured by | `hosts/sdl/tests/audio_gain_test.cpp`, `sdl-host-mutes-the-tone` | the worklet block in `hosts/web/tests/smoke.mjs` |
+
+Four properties hold on both, and each is a test rather than a sentence:
+
+- **Unity is a no-op, not a multiply.** With the volume where it starts,
+  what reaches the device is *the same bits* `render()` produced. That is
+  the guarantee that keeps the table above true of what a player actually
+  hears, and `AudioGain.UnityLeavesTheDcOffsetAndTheDutyExactlyWhere
+  TheyWere` measures the mean and the duty on both sides of the gain and
+  demands the same `double`, not a tolerance.
+- **Mute is arithmetic silence** — every sample exactly `0.0F`, the value
+  #49's representation reserves for it — and on the browser side that
+  includes the level the worklet *invents* when it starves. That is why
+  the gain is inside the worklet rather than applied to the chunks as
+  they are posted: a mute that left the held level alone would not
+  silence a stalled tab.
+- **A change glides**, over six milliseconds, landing on the target
+  rather than approaching it. A gain that stepped would put a
+  discontinuity in the output at the moment the key was pressed — a click
+  this host made, which the machine never generated. Same span and same
+  reasoning as the worklet's fade out of an underrun.
+- **Neither host amplifies.** 100% is what the machine made, and a
+  request above it is clamped; the loudest thing a player can hear is
+  `render()`'s own output.
+
+Two things follow that a person reading a run's output will meet:
+
+- **`--dump`'s WAV is captured before the gain, `--verify`'s `sounded`
+  count is taken after it.** The WAV is the artefact §3 sends you to when
+  the question is "machine fault or host fault", so it is what the
+  machine made and not what you chose to hear — a muted run still dumps
+  its tone. `sounded` is the opposite question, "what reached SDL's
+  stream", so a muted run reports `sounded 0` truthfully. The `.edges`
+  file was never anywhere near either.
+- **The report says so when it is not unity**, and only then:
+  `amberfolio: audio underruns=0 resyncs=0 dropped edges=0 volume=muted`.
+  A default run's line is the line it has always been.
+
+`sdl-host-mutes-the-tone` is the end-to-end half: the same `DEMO.EXE`,
+the same window and device, `--mute` added, and `sounded 0` expected. It
+means something only because the case beside it proves the same program
+sounds — silence that was never going to be anything else is no check.
+F11 and F12 are keys an 83-key XT board does not have, so
+`sdl::xt_scancode()` answers 0 for both and the emulated program loses
+nothing by the binding; `keymap_test.cpp` pins that, because it is the
+assumption the binding rests on.
+
 ### What this section does not settle
 
 - **The game as the workload.** The measurements above are of self-written
   tones. Combat, doors and spell effects have been heard once, by one
   person, on one machine (#106's second and third comments); no capture of
   them exists in this repository and none ever will.
-- **Whether it sounds right.** No measurement replaces §3's ear.
-- **The browser.** The AudioWorklet's underrun policy and its counters are
-  #108's, and nothing here touched `hosts/web/`.
+- **Whether it sounds right.** No measurement replaces §3's ear — and
+  that now includes whether 25% is a useful quarter rather than an
+  inaudible one, which is a judgement about a room and not a number.
+- **The browser's edge list.** There is still no ABI export for the edge
+  log, so "is the machine producing the right edges" cannot be asked in a
+  browser at all (#148 item 5).
 
 ---
 
@@ -449,6 +610,12 @@ Three things are worth knowing about what it does:
   where the browser stops keeping up. It is a governor and not a
   fast-forward: virtual time still decides every deadline, so a run at
   `at` is exactly as deterministic as one at `xt`.
+- **The volume slider and the mute box are the page's, not the
+  machine's** (#148). The gain is applied inside the speaker worklet, on
+  the audio thread, where the held level of an underrun is also made —
+  §4 says why that is the only place from which a mute actually mutes.
+  Nothing about it reaches the machine, is recorded or is hashed, and the
+  readout under the canvas says `volume=` only when it is not at 100%.
 
 ### What a browser run says about itself
 
@@ -477,10 +644,14 @@ Three things follow that are worth knowing before you drive a leg here:
   `af_machine_reset` leaves it alone (`af_machine_clear_log` is the
   host's own broom). That is what let it exist without moving a single
   replay hash.
-- **`af_machine_set_trace` owns both halves of one facility** — the CPU
-  trace ring *and* the service-call and file-event streams, exactly as the
-  SDL host's `--trace` does. Notices and seam transitions are always kept;
-  those two are not, because a boot makes tens of thousands of them.
+- **`af_machine_set_trace` owns both halves of one facility** — the trace
+  ring, all three of it (steps, service calls, naming file calls), *and*
+  the service-call and file-event streams, exactly as the SDL host's
+  `--trace` does. Notices and seam transitions are always kept; those two
+  are not, because a boot makes tens of thousands of them.
+  `af_machine_trace_report` renders the ring, file lines included, so a
+  browser run's account of which files failed to open is the same block
+  of characters the desktop host prints.
 - **With tracing on, a browser run is a sample plus a count, not a
   transcript.** The ring is bounded and a program in a tight `INT 16h`
   poll outruns any per-frame drain — `smoke.mjs` drives exactly that and

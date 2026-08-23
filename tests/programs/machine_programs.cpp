@@ -987,12 +987,23 @@ constexpr std::uint16_t patch_length = 2;
   error_or_zero(a, "nothing_to_delete");
   store(a, 16, reg_ax);
 
+  // A name that does not resolve at all: there is one drive and it is C
+  // (vfs.h), so this fails inside `canonicalize()` before the filesystem
+  // is consulted. Here because that is the naming failure the file
+  // channel used to report nowhere (#121) — a program asking for a file
+  // on the floppy it was installed from, and a log with nothing in it.
+  mov_dx_offset(a, "otherdrive");
+  mov_ax(a, 0x3D00);
+  a.db({0xCD, 0x21});
+  error_or_zero(a, "no_such_drive");
+  store(a, 17, reg_ax);
+
   // --- Created, written, deleted ---
   mov_dx_offset(a, "scratchpath");
   a.db({0x31, 0xC9});
   int21(a, 0x3C);
   answer_or_zero(a, "scratch_made");
-  store(a, 17, reg_ax);
+  store(a, 18, reg_ax);
   a.db({0x89, 0xC3});
 
   mov_dx_offset(a, "patch");
@@ -1000,22 +1011,22 @@ constexpr std::uint16_t patch_length = 2;
   a.dw(patch_length);
   int21(a, 0x40);
   answer_or_zero(a, "scratch_written");
-  store(a, 18, reg_ax);
+  store(a, 19, reg_ax);
 
   int21(a, 0x3E);
   succeeded(a, "scratch_closed");
-  store(a, 19, reg_ax);
+  store(a, 20, reg_ax);
 
   mov_dx_offset(a, "scratchpath");
   int21(a, 0x41);
   succeeded(a, "scratch_deleted");
-  store(a, 20, reg_ax);
+  store(a, 21, reg_ax);
 
   mov_dx_offset(a, "scratchpath");
   mov_ax(a, 0x3D00);
   a.db({0xCD, 0x21});
   error_or_zero(a, "scratch_gone");
-  store(a, 21, reg_ax);
+  store(a, 22, reg_ax);
 
   mov_dx_offset(a, "banner");
   int21(a, 0x09);
@@ -1026,6 +1037,7 @@ constexpr std::uint16_t patch_length = 2;
   asciz(a, "dirpath", "\\DATA");
   asciz(a, "filepath", "\\DATA\\NOTE.TXT");
   asciz(a, "nopath", "\\NOPE.TXT");
+  asciz(a, "otherdrive", "A:\\NOPE.TXT");
   asciz(a, "scratchpath", "\\SCRATCH.TMP");
 
   a.label("wbuf");
@@ -1919,6 +1931,12 @@ struct probe_layout {
   std::vector<std::uint8_t> file;
   std::uint32_t edit_offset{};
   std::uint32_t poll_offset{};
+  /// An offset in the image that execution never reaches — the byte just
+  /// past the exit, which the assembler emits and the program leaves
+  /// behind it. `seam_probe_unreached_definition()` puts its one point
+  /// here so that "armed and never fired" is a thing this tree can build
+  /// deliberately instead of only meeting by accident (#131, #147).
+  std::uint32_t unreached_offset{};
 };
 
 [[nodiscard]] const probe_layout& probe() {
@@ -1941,11 +1959,16 @@ struct probe_layout {
     a.label("done");
     store(a, 1, reg_ax);
     exit_with(a, 0x88);
+    // Past the exit, and so past everything the program does. The label
+    // costs no bytes and names an address a point can be armed at and
+    // never reached.
+    a.label("unreached");
     a.pad_to(machine_layout::result_offset + 0x10);
 
     probe_layout out;
     out.edit_offset = static_cast<std::uint32_t>(a.offset_of("edit"));
     out.poll_offset = static_cast<std::uint32_t>(a.offset_of("poll"));
+    out.unreached_offset = static_cast<std::uint32_t>(a.offset_of("unreached"));
     out.file = build_exe({.initial_cs = 0,
                           .initial_ip = 0,
                           .initial_ss = 0,
@@ -1966,6 +1989,16 @@ void probe_edit_ax(machine::machine& box, machine::seam_context& /*ctx*/) {
 
 void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
   static_cast<void>(ctx.inject_keystroke(probe_key_scancode, probe_key_ascii));
+}
+
+/// The handler that must never run. If it ever does, it writes a value no
+/// assertion anywhere expects over the program's own first answer — so a
+/// point that turned out to be reachable after all fails loudly on the
+/// result block as well as on the count it was written to keep at zero.
+void probe_never(machine::machine& box, machine::seam_context& ctx) {
+  const auto segment = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  box.processor().write_byte(segment, machine_layout::result_offset, 0xFF);
+  box.processor().write_byte(segment, machine_layout::result_offset + 1, 0xFF);
 }
 
 [[nodiscard]] std::vector<machine_program> build_all() {
@@ -2145,6 +2178,8 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
         {.what = "read from a handle nothing opened", .value = 0x06},
         {.what = "seek from an origin DOS does not have", .value = 0x01},
         {.what = "delete a file that is not there", .value = 0x02},
+        {.what = "open one on a drive this machine does not have",
+         .value = 0x0F},
         {.what = "create the scratch file", .value = 5},
         {.what = "bytes written to it", .value = patch_length},
         {.what = "close it", .value = 1},
@@ -2155,8 +2190,11 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
     p.files = {{.present = true, .contents = file_contents()},
                {.present = false, .contents = {}}};
     // The whole of what the program asked DOS for by name, in order -
-    // including the three refusals, which are the point of the calls
-    // that make them (diagnostics.h: a failed open is an answer).
+    // including the four refusals, which are the point of the calls
+    // that make them (diagnostics.h: a failed open is an answer). The
+    // fourth is the one that never reached this list until #121: a name
+    // `canonicalize()` refuses outright has no path to report, so it
+    // shows as the root with the error that says why.
     p.file_trace = {
         "mkdir \\DATA",
         "create \\DATA\\NOTE.TXT",
@@ -2165,6 +2203,7 @@ void probe_post_key(machine::machine& /*box*/, machine::seam_context& ctx) {
         "close \\DATA\\NOTE.TXT",
         "open \\NOPE.TXT file_not_found",
         "unlink \\NOPE.TXT file_not_found",
+        "open \\ invalid_drive",
         "create \\SCRATCH.TMP",
         "close \\SCRATCH.TMP",
         "unlink \\SCRATCH.TMP",
@@ -2401,6 +2440,30 @@ const machine::seam_definition& seam_probe_definition() {
   static const machine::seam_definition definition{
       .id = "probe",
       .about = "the test seam: edits AX and posts a keystroke",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
+
+const machine::seam_definition& seam_probe_unreached_definition() {
+  // Same fingerprint as the seam above — it is the same program, and
+  // that is the point: this seam is available, enable-able and armable
+  // exactly as a working one is, and differs from it in nothing a host
+  // can see except what `fired` says afterwards.
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 1> points{
+      {{.module = machine::resident_image,
+        .offset = probe().unreached_offset,
+        .run = &probe_never}}};
+  static const machine::seam_definition definition{
+      .id = "probe-unreached",
+      .about = "a seam armed where the program never goes: fires nothing",
       .fingerprints = fingerprints,
       .points = points};
   return definition;

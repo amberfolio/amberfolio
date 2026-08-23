@@ -358,6 +358,14 @@ class machine final : public cpu::bus {
   /// shape `stop_unimplemented_service()` below already has.
   void note_service_call(const service_call& call) noexcept;
 
+  /// The same, for a naming DOS call once its answer is known
+  /// (diagnostics.h's `file_event`, #121). Into the trace ring only —
+  /// there is no `last_file_event()` beside `last_service_call()`,
+  /// because a stop report names the service to widen and a file event
+  /// never is one: a failed open is an answer, not a refusal, and what a
+  /// reader needs from it is the *sequence* the ring keeps.
+  void note_file_event(const file_event& event) noexcept;
+
   /// A service handler's own "unimplemented," one level finer than the
   /// floor's: INT 16h (keyboard.h, M2-D8) and INT 21h (M2-D7) each answer
   /// for one vector but dispatch several functions inside it by AH,

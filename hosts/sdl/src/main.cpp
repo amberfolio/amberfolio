@@ -124,6 +124,17 @@
 //     (machine/trace.h). What it answers is the question a bare address
 //     cannot: how the program got there.
 //
+//     The ring's third channel is the naming file calls (#121) — the last
+//     thirty-two opens, creates, mkdirs, unlinks and closes, each with
+//     the path it resolved to and what DOS answered:
+//
+//         amberfolio: stop trace file=open \POR\POOL.CFG handle=0000 path_not_found from=0B58:1458
+//
+//     A failed open is a legitimate DOS answer and stays one, so nothing
+//     stops and nothing is refused; the line is the whole of the fix.
+//     Without it "the program has spent its startup asking for a file
+//     that is not there" is a directory audit rather than a report.
+//
 //     Since M4 (#97, #99) it also prints every file read the overlay
 //     tracker records as it lands — the file, the offset, the length,
 //     where it went and the digest of the bytes (machine/overlay.h):
@@ -308,6 +319,33 @@
 // deterministic, which is the whole point of the edge list being the
 // canonical state rather than the samples.
 //
+// Volume and mute are this host's too, and only this host's (M4-A1
+// remainder, #148). `--volume PERCENT` and `--mute` set where the level
+// starts; F11 toggles the mute and F12 steps the volume while the run is
+// going. `audio_gain.h` argues at length why none of it is in core; the
+// short version is that a gain inside `render()` would stop the samples
+// being the exact integral of the edge list, which is the same objection
+// platform.h already makes to a high-pass there.
+//
+// Two consequences of that placement are worth stating where somebody
+// reading a run's output will meet them:
+//
+//   * **`--dump`'s WAV is written before the gain**, so it is what the
+//     machine made rather than what this host chose to play. A muted run
+//     still dumps its tone, which is the answer docs/hosts.md §3 wants
+//     when the question is "is the fault in the machine or in the host".
+//     The `.edges` file was never anywhere near it.
+//   * **`--verify`'s `sounded` count is taken after the gain**, because
+//     that number's whole job is to say what reached SDL's stream. A
+//     muted run therefore reports `sounded 0` truthfully, and
+//     `sdl-host-mutes-the-tone` is exactly that claim.
+//
+// F11 and F12 are host keys and cost the emulated program nothing: an
+// 83-key XT keyboard has ten function keys, so `sdl::xt_scancode()`
+// answers 0 for both and there is no scan code for them to have been
+// taken from. `keymap_test.cpp` pins that, because it is the assumption
+// the binding rests on.
+//
 //
 // Checking the paths a headless run cannot
 // ----------------------------------------
@@ -373,6 +411,7 @@
 #include <atomic>
 #include <charconv>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -411,6 +450,7 @@
 #include "amberfolio/machine/trace.h"
 #include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
+#include "audio_gain.h"
 #include "directory_vfs.h"
 #include "dump.h"
 #include "keymap.h"
@@ -434,6 +474,14 @@ constexpr unsigned audio_sample_rate = 48000;
 /// gigabytes, which matters because the audio thread appends to it and
 /// so it can never be grown.
 constexpr unsigned dump_audio_seconds = 60;
+
+/// The rungs F12 steps the volume between (#148). Four of them, and a
+/// wrap from the top back to the bottom: one key has to cover a whole
+/// axis — F11 and F12 are the only two keys an XT keyboard has no scan
+/// code for, so they are the only two this host may take without
+/// stealing one from the program — and if a wrap has to surprise
+/// somebody it should surprise them quietly rather than loudly.
+constexpr std::array<float, 4> volume_rungs{0.25F, 0.50F, 0.75F, 1.00F};
 
 /// Everything the machine is made of, in one place so its construction
 /// order is visible: the PIC exists before the PIT that raises IRQ0
@@ -598,9 +646,15 @@ void drain_console(machine::machine& box) {
 /// what makes appending to it from the audio thread legitimate; when it
 /// is full it stops taking samples and `truncated` says so, rather than
 /// allocating on the one thread that must not.
+///
+/// `gain` is the volume control (#148), and it is the only thing in this
+/// struct the main thread *writes* while the callback may be running. Its
+/// own header says why it is a `std::atomic<float>` and not a lock: the
+/// callback may not wait, and a level is a value rather than a handshake.
 struct audio_bridge {
   machine::machine* box{};
   std::vector<float> scratch;
+  sdl::audio_gain gain{audio_sample_rate};
   std::atomic<std::uint64_t> callbacks{0};
   std::atomic<std::uint64_t> samples{0};
   std::atomic<std::uint64_t> sounded{0};
@@ -648,6 +702,15 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
 
   const std::span<float> out(bridge->scratch.data(), wanted);
   bridge->box->audio().render(out, audio_sample_rate);
+
+  // Captured before the gain and played after it. `--dump`'s WAV is a
+  // rendering of what the *machine* made — the artefact docs/hosts.md §3
+  // sends a person to when they are trying to tell a machine fault from a
+  // host fault — and a listening level is no part of that. What goes to
+  // the device is the other thing, and `sounded` below counts that one.
+  capture_samples(*bridge, out);
+
+  bridge->gain.apply(out);
   SDL_PutAudioStreamData(stream, out.data(),
                          static_cast<int>(wanted * sizeof(float)));
 
@@ -661,8 +724,6 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
   bridge->callbacks.fetch_add(1, std::memory_order_relaxed);
   bridge->samples.fetch_add(wanted, std::memory_order_relaxed);
   bridge->sounded.fetch_add(sounded, std::memory_order_relaxed);
-
-  capture_samples(*bridge, out);
 }
 
 /// A speed preset in words, for the line a non-default run prints.
@@ -954,6 +1015,18 @@ struct options {
   bool list_seams{false};
   machine::speed_preset speed{machine::default_speed};
 
+  /// Where the speaker's level starts, and whether it starts latched to
+  /// silence (#148). Two things and not one, for the reason every mixer
+  /// ever built has them as two: mute is a latch that can be lifted, and
+  /// lifting it should give back the level that was there rather than
+  /// some level the player has to find again. The gain the audio thread
+  /// applies is `muted ? 0 : volume`.
+  ///
+  /// One is "what the machine made" and this host does not go above it;
+  /// `audio_gain.h` says why.
+  float volume{1.0F};
+  bool muted{false};
+
   /// How many seconds of virtual time to run per second of wall time.
   /// Zero means "do not pace at all" — `--fast max`, and what
   /// `--headless` does regardless.
@@ -1188,6 +1261,22 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         return opts;
       }
       opts.watches.push_back(point);
+    } else if (arg == "--volume" && i + 1 < argc) {
+      // Percent, because that is what a person means by a volume and
+      // because an integer 0-100 has no rounding to argue about. Refused
+      // rather than clamped: 150 is a request this host will not honour
+      // (it never amplifies), and quietly turning it into 100 would be a
+      // wrong answer given silently.
+      std::uint64_t percent = 0;
+      if (!parse_count(argv[++i], percent) || percent > 100) {
+        std::fprintf(stderr,
+                     "amberfolio: --volume wants a percentage from 0 to"
+                     " 100\n");
+        return opts;
+      }
+      opts.volume = static_cast<float>(percent) / 100.0F;
+    } else if (arg == "--mute") {
+      opts.muted = true;
     } else if (arg == "--seam" && i + 1 < argc) {
       opts.seams.emplace_back(argv[++i]);
     } else if (arg == "--seams") {
@@ -1288,6 +1377,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         " [--record-every N] [--replay FILE]\n"
         "                                      [--speed xt|turbo|at|386]\n"
         "                                      [--fast N|max]\n"
+        "                                      [--volume 0-100] [--mute]\n"
         "                                      [-- ARGUMENTS...]\n");
     return opts;
   }
@@ -1303,6 +1393,18 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
     std::fprintf(stderr,
                  "amberfolio: --fast needs a window; --headless already"
                  " runs unpaced\n");
+    return opts;
+  }
+
+  // `--headless` opens no audio device, so there is no level for either
+  // of these to be the level of. Refused on the same reasoning as
+  // `--fast` above, and with one extra: `--dump`'s WAV is written before
+  // the gain in any case, so a headless run that accepted `--mute` would
+  // still write a tone — an option that appeared to do nothing at all.
+  if (opts.headless && (opts.muted || opts.volume != 1.0F)) {
+    std::fprintf(stderr,
+                 "amberfolio: --volume and --mute need an audio device;"
+                 " --headless opens none\n");
     return opts;
   }
 
@@ -1696,6 +1798,33 @@ int main(int argc, char** argv) try {
   audio_bridge bridge;
   bridge.box = &box;
 
+  // The listening level (#148). `opts` is what the command line said and
+  // stays that way; these two are where it is *now*, because F11 and F12
+  // move them while the run is going. Neither is machine state, neither
+  // is recorded, and nothing in the machine can observe either — a run at
+  // 25% is the same run as one at 100%, down to the last edge.
+  float volume = opts.volume;
+  bool muted = opts.muted;
+
+  const auto say_level = [&volume, &muted]() {
+    if (muted) {
+      std::fprintf(stderr, "amberfolio: audio muted\n");
+    } else {
+      std::fprintf(stderr, "amberfolio: audio volume %ld%%\n",
+                   std::lround(volume * 100.0F));
+    }
+  };
+  const auto apply_level = [&bridge, &volume, &muted]() {
+    bridge.gain.set(muted ? 0.0F : volume);
+  };
+
+  // Before the device is opened, so that a run asked to start muted has
+  // never played a sample at any other level.
+  apply_level();
+  if (muted || volume != 1.0F) {
+    say_level();
+  }
+
   // `--dump`'s WAV, sized once and never resized: the audio thread
   // appends to it and must not allocate. A minute of virtual time is
   // enough to hear a title sequence through and small enough to be free
@@ -1833,6 +1962,34 @@ int main(int argc, char** argv) try {
       while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
           quit = true;
+        } else if ((event.type == SDL_EVENT_KEY_DOWN) && !event.key.repeat &&
+                   (event.key.scancode == SDL_SCANCODE_F11 ||
+                    event.key.scancode == SDL_SCANCODE_F12)) {
+          // The host's own two keys (#148), and the only two it takes.
+          // An 83-key XT board has ten function keys, so `xt_scancode()`
+          // answers 0 for both and the emulated program loses nothing by
+          // this; `keymap_test.cpp` pins that assumption rather than
+          // leaving it as a belief about a table.
+          //
+          // Handled during a replay as well, and deliberately: a
+          // recording decides what the *machine* did, and how loudly the
+          // person watching it wants that played back is not one of
+          // those things. Nothing here is posted, recorded or hashed.
+          if (event.key.scancode == SDL_SCANCODE_F11) {
+            muted = !muted;
+          } else if (muted) {
+            // Louder, while latched to silence, plainly means "let me
+            // hear it" — so the latch lifts and the level it lifts to is
+            // the one that was already there. One press, one audible
+            // change.
+            muted = false;
+          } else {
+            const auto next = std::ranges::find_if(
+                volume_rungs, [&volume](float rung) { return rung > volume; });
+            volume = next != volume_rungs.end() ? *next : volume_rungs.front();
+          }
+          apply_level();
+          say_level();
         } else if (event.type == SDL_EVENT_KEY_DOWN ||
                    event.type == SDL_EVENT_KEY_UP) {
           const std::uint8_t code = sdl::xt_scancode(event.key.scancode);
@@ -2108,12 +2265,26 @@ int main(int argc, char** argv) try {
     const std::uint64_t resyncs = box.audio().resyncs();
     const std::uint64_t dropped = box.audio().dropped_edges();
     if (opts.verify || underruns != 0 || resyncs != 0 || dropped != 0) {
+      // The listening level joins the line only when it is not unity, so
+      // that a default run's report is the line it has always been — and
+      // so that a run whose sound was turned down says so where somebody
+      // asking "why did I hear nothing" will read it (#148). It is
+      // appended rather than inserted for the same reason: the three
+      // counters in front of it are what cmake/run-verify-program.cmake
+      // matches on.
+      std::array<char, 32> level{};
+      if (muted) {
+        std::snprintf(level.data(), level.size(), " volume=muted");
+      } else if (volume != 1.0F) {
+        std::snprintf(level.data(), level.size(), " volume=%ld%%",
+                      std::lround(volume * 100.0F));
+      }
       std::fprintf(stderr,
                    "amberfolio: audio underruns=%llu resyncs=%llu dropped"
-                   " edges=%llu\n",
+                   " edges=%llu%s\n",
                    static_cast<unsigned long long>(underruns),
                    static_cast<unsigned long long>(resyncs),
-                   static_cast<unsigned long long>(dropped));
+                   static_cast<unsigned long long>(dropped), level.data());
     }
   }
 

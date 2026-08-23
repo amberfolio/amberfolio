@@ -37,11 +37,46 @@
 // two do not compete — a trace tells you where the machine was, a replay
 // puts it back there.
 //
-// **Not timestamped.** Every entry costs four bytes (a step) or eight (a
-// call) precisely because it carries no tick. The stop report already
+// **Not timestamped.** A step entry costs four bytes and a call entry
+// eight precisely because neither carries a tick. The stop report already
 // says what step and what tick the run ended on, and the entries are the
 // steps immediately before it; a per-entry tick would double the ring for
 // a number the reader can already count backwards.
+//
+//
+// The third ring: which file (#121)
+// ---------------------------------
+//
+// A call entry says `INT21 ax=3D00` and where it came from. It cannot say
+// *which file*, because it is built as the stub is reached and the path
+// does not exist as an answer until the handler has resolved it
+// (diagnostics.h's `file_event`). That gap cost a directory audit once:
+// a program built its paths from a config naming an absolute directory
+// this machine's root does not have, every open failed, and a failed open
+// is a legitimate DOS answer — so the run's own account of itself had
+// nothing in it about the thing that had gone wrong. The live stream a
+// host prints under `--trace` shows the file lines, but a stop report is
+// what a reader reads *after* the fact, and the tail is the part that
+// matters. So the naming calls get a ring of their own here, and the
+// trace report renders it.
+//
+// **A `dos_path` is not variable-length**, which is what lets this ring
+// stay a ring. By the time a `file_event` exists the name has been
+// through `canonicalize()`, and what comes out is at most
+// `dos_path::max_depth` components of at most `dos_name::max_length`
+// characters — a fixed array, 105 bytes, a compile-time fact. Nothing is
+// truncated to fit, and nothing can be: `canonicalize()` *refuses* a path
+// deeper than the type holds rather than shortening it (vfs.h), because a
+// truncated path would name a different real file. So an entry here is a
+// `file_event` verbatim — no arena, no allocator, no offsets into a
+// character pool that the next entry might overwrite — and
+// `report.h`'s `trace_report_capacity` bounds the rendering of it the
+// same way it bounds the other two.
+//
+// Fewer of them than calls, because they are rarer still: a whole boot
+// names a few dozen files, and a save or a load names a handful. The one
+// thing this ring must be able to hold in full is the last file
+// transaction before a stop, and thirty-two covers that many times over.
 //
 // **Not host time, ever.** Same rule as everything else under `core/`
 // (machine.h): nothing in this file reads a clock of any kind.
@@ -82,6 +117,13 @@ class trace_ring {
   /// makes in its whole start-up sequence, several times over.
   static constexpr std::size_t call_capacity = 64;
 
+  /// Naming DOS calls kept — opens, creates, mkdirs, unlinks and closes
+  /// (diagnostics.h's `file_action`). Fewer still than service calls, and
+  /// for the reason the header comment gives: a boot names a few dozen
+  /// files across its whole run, and the question this ring answers is
+  /// about the last few.
+  static constexpr std::size_t file_capacity = 32;
+
   constexpr trace_ring() noexcept = default;
 
   /// Start or stop recording. A setting: `clear()` does not change it and
@@ -98,6 +140,7 @@ class trace_ring {
   /// rather than a rule two files have to remember.
   void record(trace_step where) noexcept;
   void record(const service_call& call) noexcept;
+  void record(const file_event& event) noexcept;
 
   /// How many steps are kept — `steps_seen()` until the ring is full,
   /// `step_capacity` after.
@@ -130,13 +173,33 @@ class trace_ring {
   /// Kept call `index`, oldest first. Same rule as `step_at()`.
   [[nodiscard]] service_call call_at(std::size_t index) const noexcept;
 
+  [[nodiscard]] constexpr std::size_t file_count() const noexcept {
+    return (files_seen_ < file_capacity) ? static_cast<std::size_t>(files_seen_)
+                                         : file_capacity;
+  }
+
+  [[nodiscard]] constexpr std::uint64_t files_seen() const noexcept {
+    return files_seen_;
+  }
+
+  /// Kept file event `index`, oldest first. Same rule as `step_at()`.
+  /// Answered by value like the other two, and it is the one entry big
+  /// enough for that to be worth saying out loud: a `file_event` carries
+  /// a whole `dos_path`, so this is a hundred-odd bytes copied. A caller
+  /// is a report writer looking at one entry at a time, which is what
+  /// makes that the right trade against handing out a reference into a
+  /// ring the next call may overwrite.
+  [[nodiscard]] file_event file_at(std::size_t index) const noexcept;
+
  private:
-  /// Where the *next* entry goes. Both rings are written at
+  /// Where the *next* entry goes. All three rings are written at
   /// `seen % capacity`, so the index is derivable and is not kept twice.
   std::array<trace_step, step_capacity> steps_{};
   std::array<service_call, call_capacity> calls_{};
+  std::array<file_event, file_capacity> files_{};
   std::uint64_t steps_seen_{};
   std::uint64_t calls_seen_{};
+  std::uint64_t files_seen_{};
   bool recording_{false};
 };
 

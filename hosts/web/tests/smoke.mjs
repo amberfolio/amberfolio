@@ -77,6 +77,7 @@ import {
   AF_SEAM_OFF,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
+  formatSeamFired,
 } from './host.mjs';
 import {
   encodePpm,
@@ -139,6 +140,7 @@ const EXPECTED_EXPORTS = [
   '_af_machine_seam_state',
   '_af_machine_seam_reason',
   '_af_machine_seam_armed',
+  '_af_machine_seam_fired',
   '_af_machine_seam_enable',
   '_af_machine_seam_disable',
   '_af_machine_write_memory',
@@ -883,6 +885,16 @@ if (missing.length === 0) {
 // off and available, the code-wheel seam is listed as unavailable with
 // its reason, and turning the probe on changes the result block in
 // exactly the way the native suite asserts it does.
+//
+// And, since #147, what the seams *did*. Two seams are registered, not
+// one: `probe`, whose points the program runs through, and
+// `probe-unreached`, armed on an instruction past the exit that the
+// program never executes. Both are keyed to the same file, so both are
+// available and both arm - `af_machine_seam_armed` cannot tell them
+// apart. `af_machine_seam_fired` can, and the assertion that
+// `probe-unreached` finishes a whole run at zero is the one this issue
+// was filed for: "armed and fired nothing" is the failure that reads
+// exactly like success, and a browser had no way to say it.
 
 if (missing.length === 0) {
   const check = (condition, message) => {
@@ -895,7 +907,7 @@ if (missing.length === 0) {
     machine.reset();
     check(
       module._af_web_probe_seam_register(machine.handle) === AF_OK,
-      'the probe seam could not be registered',
+      'the probe seams could not be registered',
     );
 
     const ptr = module._af_web_probe_program_bytes();
@@ -931,6 +943,7 @@ if (missing.length === 0) {
     const wheel = before.find((s) => s.id === 'code-wheel');
     check(probe !== undefined, 'the probe seam is not listed');
     check(probe?.state === AF_SEAM_OFF && probe?.reason === 'none', `the probe seam starts ${JSON.stringify(probe)}`);
+    check(probe?.fired === 0, `a seam that is off has fired ${JSON.stringify(probe?.fired)} times`);
     check(wheel !== undefined, 'the code-wheel seam is not listed');
     check(
       wheel?.state === AF_SEAM_UNAVAILABLE && wheel?.reason === 'wrong_binary',
@@ -941,6 +954,22 @@ if (missing.length === 0) {
       check(machine.seamEnable('probe') === AF_OK, 'enabling the probe seam was refused');
       const on = machine.seamList().find((s) => s.id === 'probe');
       check(on?.state === AF_SEAM_ON && on?.armed === true, `the probe seam did not arm: ${JSON.stringify(on)}`);
+      check(on?.fired === 0, `the probe seam fired ${on?.fired} times before a step was taken`);
+
+      // The pair (#147). This one arms exactly as the working seam does
+      // - same program, same fingerprint, `armed === true` - and its
+      // point is on an instruction past the program's exit. Nothing
+      // visible before the run distinguishes the two.
+      check(
+        machine.seamEnable('probe-unreached') === AF_OK,
+        'enabling the unreached probe seam was refused',
+      );
+      const never = machine.seamList().find((s) => s.id === 'probe-unreached');
+      check(
+        never?.state === AF_SEAM_ON && never?.armed === true,
+        `the unreached probe seam did not arm: ${JSON.stringify(never)}`,
+      );
+
       check(machine.seamEnable('code-wheel') === AF_INVALID, 'an unavailable seam was enabled');
       check(machine.seamEnable('no-such-seam') === AF_INVALID, 'a seam that does not exist was enabled');
     }
@@ -969,16 +998,70 @@ if (missing.length === 0) {
     const words = block === null
       ? [0, 0]
       : [block[0] | (block[1] << 8), block[2] | (block[3] << 8)];
+
+    // What the seams did, read off the run that just ended - the browser
+    // half of the line the desktop host prints at the end of every run
+    // (#131, #147).
+    const after = machine.seamList();
+    const fired = Object.fromEntries(after.map((s) => [s.id, s.fired]));
+    const states = Object.fromEntries(after.map((s) => [s.id, s.state]));
     machine.destroy();
-    return words;
+    return { words, fired, states };
   };
 
   const off = runProbe(false);
-  check(off[0] === 0x1111 && off[1] === 0x0000, `seam off: result block is ${JSON.stringify(off.map((w) => w.toString(16)))}, expected 1111, 0`);
+  check(off.words[0] === 0x1111 && off.words[1] === 0x0000, `seam off: result block is ${JSON.stringify(off.words.map((w) => w.toString(16)))}, expected 1111, 0`);
   const on = runProbe(true);
-  check(on[0] === 0x2222 && on[1] === 0x256b, `seam on: result block is ${JSON.stringify(on.map((w) => w.toString(16)))}, expected 2222, 256b`);
+  check(on.words[0] === 0x2222 && on.words[1] === 0x256b, `seam on: result block is ${JSON.stringify(on.words.map((w) => w.toString(16)))}, expected 2222, 256b`);
 
-  console.log('smoke: the probe seam listed, toggled, edited a register and posted a key');
+  // --- What the seams did, not what they were armed at (#147) -----------
+  //
+  // Three claims, and the middle one is the issue:
+  //
+  //   * a seam that ran reports a count a browser can see;
+  //   * a seam that armed and was never reached reports **zero** - the
+  //     failure #131 spent a milestone not seeing, because `armed` says
+  //     the same thing either way;
+  //   * a seam left off reports zero, so the count belongs to the enable
+  //     it was made under and not to the machine's whole life.
+  check(on.fired.probe > 0, `the probe seam ran but reports fired=${on.fired.probe}`);
+  check(
+    on.fired['probe-unreached'] === 0,
+    'a seam armed where the program never goes reports ' +
+      `fired=${on.fired['probe-unreached']}, and the whole point of the count is that it is 0`,
+  );
+  check(
+    on.states['probe-unreached'] === AF_SEAM_ON,
+    'the unreached probe seam was not still on at the end of the run',
+  );
+  check(
+    off.fired.probe === 0 && off.fired['probe-unreached'] === 0,
+    `a seam that was never enabled reports ${JSON.stringify(off.fired)}`,
+  );
+
+  // The sentence both JS surfaces print, checked as the pure function it
+  // is (host.mjs). The driver and the dev page share it precisely so a
+  // browser run and a desktop run can be compared as two runs rather than
+  // as two spellings, and the wording of the zero case is the part that
+  // has to survive an edit - it is the whole warning.
+  check(
+    formatSeamFired({ armed: true, fired: 9 }) === 'armed fired=9',
+    `a fired seam formats as "${formatSeamFired({ armed: true, fired: 9 })}"`,
+  );
+  check(
+    formatSeamFired({ armed: false, fired: 0 }) === 'inert fired=0',
+    `an inert seam formats as "${formatSeamFired({ armed: false, fired: 0 })}"`,
+  );
+  check(
+    formatSeamFired({ armed: true, fired: 0 }) ===
+      'armed fired=0 - armed and never reached; its point may not be where its facts say',
+    `an armed seam that fired nothing formats as "${formatSeamFired({ armed: true, fired: 0 })}"`,
+  );
+
+  console.log(
+    'smoke: the probe seam listed, toggled, edited a register, posted a key ' +
+      `and reported fired=${on.fired.probe}; the unreached one reported fired=0`,
+  );
 }
 
 // --- The keys a keyboard-driven game needs (#84) -------------------------
@@ -1697,6 +1780,127 @@ if (missing.length === 0 && sessions !== null) {
   console.log(
     'smoke: the speaker worklet holds the level across a short gap and fades to silence',
   );
+
+  // --- Volume and mute (M4-A1 remainder, #148) -------------------------
+  //
+  // The same room, a fresh processor, and the three claims
+  // `hosts/sdl/tests/audio_gain_test.cpp` makes of the desktop host's
+  // gain — asked of this one because the two are separate
+  // implementations of one decision, exactly as the underrun policy
+  // above is. Nothing is shared between them but the reasoning, so
+  // nothing but a test on each side can say they agree.
+  //
+  //   1. unity does not touch a sample;
+  //   2. a volume scales every sample by it, once the glide has landed;
+  //   3. mute is silence — arithmetically zero, including the held
+  //      level an underrun invents, which is the half only this file can
+  //      check because only this side of the boundary invents one.
+  if (Processor !== null) {
+    const processor = new Processor();
+    const quantum = () => {
+      const channel = new Float32Array(128);
+      processor.process([], [[channel]]);
+      return channel;
+    };
+    /// Feed one quantum's worth of a constant level and answer what came
+    /// out. A fresh chunk per call, so the queue never runs dry and what
+    /// is measured is the gain and not the underrun policy.
+    const playing = (level) => {
+      processor.port.onmessage({ data: new Float32Array(128).fill(level) });
+      return quantum();
+    };
+    /// The glide is six milliseconds; run it out and a little past, so
+    /// what follows is the settled gain.
+    const settle = (level) => {
+      const quanta = Math.ceil((rate * 0.006) / 128) + 1;
+      for (let i = 0; i < quanta; ++i) playing(level);
+    };
+
+    // 1. Unity. Not "close to": the same bits, which is what makes the
+    // numbers in docs/hosts.md §4 numbers about this host too.
+    const untouched = playing(0.125);
+    check(
+      untouched.every((sample) => sample === 0.125),
+      'the worklet altered a sample with the volume where it starts',
+    );
+
+    // 2. A volume, once it has arrived, is a multiply and nothing else.
+    processor.port.onmessage({ data: { gain: 0.5 } });
+    settle(0.25);
+    const halved = playing(0.25);
+    check(
+      halved.every((sample) => sample === 0.125),
+      `at half volume a 0.25 sample came out as ${halved[0]}`,
+    );
+
+    // And the walk to it is a walk: the first quantum after a change is
+    // between the two levels rather than at either, which is the click
+    // this glide exists to remove.
+    processor.port.onmessage({ data: { gain: 1 } });
+    const walking = playing(0.25);
+    check(
+      walking[0] > 0.125 && walking[0] < 0.25 && walking[127] > walking[0],
+      `a volume change stepped rather than glided: ${walking[0]} then ${walking[127]}`,
+    );
+
+    // 3. Mute. Every sample exactly zero, which is the value platform.h
+    // reserves for silence — and the monotonic way down, so the mute is
+    // not itself a click.
+    processor.port.onmessage({ data: { gain: 0 } });
+    let previous = 0.25;
+    let quanta = 0;
+    while (previous !== 0 && quanta < 16) {
+      const fading = playing(0.25);
+      for (const sample of fading) {
+        if (sample > previous + 1e-6 || sample < 0) {
+          check(false, `the mute was not a monotonic fade: ${sample} after ${previous}`);
+          break;
+        }
+        previous = sample;
+      }
+      quanta += 1;
+    }
+    check(previous === 0, `after ${quanta} quanta of muting the output is ${previous}`);
+    const silent = playing(0.25);
+    check(
+      silent.every((sample) => sample === 0),
+      'a muted worklet handed the destination something other than zero',
+    );
+
+    // The half of it that only this host has: a stall while muted must
+    // be silent too. `starvedSample()` invents the held level and the
+    // fade out of it on this side of the boundary, so a gain applied
+    // before the postMessage — in app.mjs, where the chunks are pulled —
+    // would leave a muted player hearing the held sample. Here it does
+    // not, because the multiply is where the sample is written.
+    const stalled = quantum();
+    check(
+      stalled.every((sample) => sample === 0),
+      'a muted worklet held a level through an underrun instead of silence',
+    );
+
+    // And it comes back. A gain of one restores the samples themselves,
+    // not an approximation of them.
+    processor.port.onmessage({ data: { gain: 1 } });
+    settle(0.25);
+    const restored = playing(0.25);
+    check(
+      restored.every((sample) => sample === 0.25),
+      `unmuting gave back ${restored[0]} where the machine made 0.25`,
+    );
+
+    // A gain nobody should be able to ask for is clamped rather than
+    // honoured: this host does not amplify, so the loudest thing a
+    // player hears is the thing `render()` produced.
+    processor.port.onmessage({ data: { gain: 4 } });
+    const capped = playing(0.25);
+    check(
+      capped.every((sample) => sample === 0.25),
+      `a gain of 4 was honoured: 0.25 came out as ${capped[0]}`,
+    );
+  }
+
+  console.log('smoke: the speaker worklet mutes to silence and scales linearly');
 }
 
 if (problems.length > 0) {

@@ -307,18 +307,27 @@ void service_floor::program_hardware() {
 
 void service_floor::report_file(file_action what, const dos_path& path,
                                 std::uint16_t handle, vfs_error error) {
-  if (log_ == nullptr) {
+  if (log_ == nullptr && !box_->trace().enabled()) {
     // The caller's frame is a stack read; skipping it when nobody is
     // listening keeps a run with a sink and a run without one the same
-    // run, which is the rule `call()` above states at length.
+    // run, which is the rule `call()` above states at length. The trace
+    // ring counts as listening (#121): a machine with tracing on and no
+    // sink is a real configuration, and the ring is the half of `--trace`
+    // that a reader reads after the fact.
     return;
   }
-  log_->report(file_event{.what = what,
-                          .path = path,
-                          .handle = handle,
-                          .error = error,
-                          .caller_cs = caller_cs(),
-                          .caller_ip = caller_ip()});
+  const file_event event{.what = what,
+                         .path = path,
+                         .handle = handle,
+                         .error = error,
+                         .caller_cs = caller_cs(),
+                         .caller_ip = caller_ip()};
+  // Recorded before it is reported, the same order — and for the same
+  // reason — as `call()` below.
+  box_->note_file_event(event);
+  if (log_ != nullptr) {
+    log_->report(event);
+  }
 }
 
 service_outcome service_floor::call(unsigned slot) {

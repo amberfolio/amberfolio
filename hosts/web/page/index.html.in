@@ -86,6 +86,13 @@
         align-items: center;
         gap: 0.5rem;
       }
+      input[type='range'],
+      input[type='checkbox'] {
+        accent-color: #e0a33c;
+      }
+      input[type='range'] {
+        width: 8rem;
+      }
       select,
       input[type='text'],
       input[type='number'],
@@ -168,6 +175,20 @@
           <option value="at">at</option>
           <option value="386">386</option>
         </select>
+      </label>
+      <!-- Volume and mute (#148), which are this host's and not the
+           machine's: the gain is applied inside the speaker worklet, on
+           the far side of the boundary, and nothing about it reaches the
+           machine or is recorded. A run at 25% is the same run as one at
+           100%. Two controls rather than one because mute is a latch —
+           lifting it gives back the level that was there. -->
+      <label>
+        volume
+        <input id="volume" type="range" min="0" max="100" step="5" value="100" />
+      </label>
+      <label>
+        <input id="mute" type="checkbox" />
+        mute
       </label>
       <span id="status">idle - click start</span>
     </div>

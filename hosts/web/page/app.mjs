@@ -48,6 +48,7 @@ import {
   AF_OK,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
+  formatSeamFired,
   AF_RUN_END_STOPPED,
   AF_RUN_END_STEP_BUDGET,
   AF_RUN_END_HOST_QUIT,
@@ -68,6 +69,8 @@ const TRACE_CHECKBOX_ID = 'trace';
 const EDITION_ID = 'edition';
 const SEAMS_ID = 'seams';
 const SPEED_SELECT_ID = 'speed';
+const VOLUME_INPUT_ID = 'volume';
+const MUTE_CHECKBOX_ID = 'mute';
 const HEALTH_ID = 'health';
 
 /// A frame's worth of audio, in samples, at this rate — matched to the
@@ -88,6 +91,8 @@ export function runDevPage() {
   const consoleEl = el(CONSOLE_ID);
   const programSelect = el(PROGRAM_SELECT_ID);
   const speedSelect = el(SPEED_SELECT_ID);
+  const volumeInput = el(VOLUME_INPUT_ID);
+  const muteCheckbox = el(MUTE_CHECKBOX_ID);
   const healthEl = el(HEALTH_ID);
 
   const setStatus = (text) => {
@@ -194,6 +199,8 @@ export function runDevPage() {
         setStatus,
         appendConsole,
         healthEl,
+        volumeInput,
+        muteCheckbox,
         stepBudget: 0,
         message:
           'running - the machine draws a pattern, plays a tone, and echoes ' +
@@ -309,7 +316,7 @@ export function runDevPage() {
       );
       const editionEl = el(EDITION_ID);
       if (editionEl) editionEl.textContent = `edition: ${edition ?? 'unrecognized'}`;
-      renderSeams(box, el(SEAMS_ID), appendConsole);
+      const refreshSeams = renderSeams(box, el(SEAMS_ID), appendConsole);
 
       const budget = Number.parseInt(el(STEPS_INPUT_ID)?.value ?? '', 10);
       await run(box, {
@@ -317,6 +324,9 @@ export function runDevPage() {
         setStatus,
         appendConsole,
         healthEl,
+        refreshSeams,
+        volumeInput,
+        muteCheckbox,
         stepBudget: Number.isFinite(budget) && budget > 0 ? budget : 0,
         message: `running ${program} - the console below is what it says and ` +
           'what the machine refuses.',
@@ -325,15 +335,42 @@ export function runDevPage() {
   });
 }
 
+/// What an enabled seam's row says beside its name: `armed fired=N`, in
+/// the same words the desktop host ends a run with (hosts/sdl/src/main.cpp).
+///
+/// The two halves are different claims and that is the whole point
+/// (#131): `armed` says an address was computed out of the seam's fact
+/// table, `fired` says a handler ran there. `armed fired=0` after a run
+/// that should have fired is the failure that reads exactly like
+/// success, so it is called out in words rather than left to a reader to
+/// notice a zero.
+function seamRowText(seam) {
+  if (seam.state === AF_SEAM_UNAVAILABLE) return `unavailable: ${seam.reason}`;
+  if (seam.state !== AF_SEAM_ON) return 'off';
+  // The reason is worth an extra word in a row a person is looking at,
+  // and only there: an inert seam is waiting for its module and the row
+  // is where somebody would ask what for. The console line below is the
+  // desktop host's, unembellished.
+  const why = !seam.armed && seam.reason !== 'none' ? ` (${seam.reason})` : '';
+  return formatSeamFired(seam) + why;
+}
+
 /// One checkbox per seam, off by default, disabled with its reason when
 /// the seam is not available for the loaded program. Toggling is a
 /// configuration call between frames (host.mjs) — the page does it in
 /// the change handler, which runs between two rAF callbacks and so never
 /// from inside `runUntil()`. The listing is re-read after every toggle so
 /// an on-but-inert seam (its module is not resident yet) shows as such.
+///
+/// Answers a `refresh()` the run loop calls on its own readout cadence,
+/// which is how `fired=` becomes a live number instead of one taken once
+/// before the machine had run a step. It rewrites the status text only —
+/// rebuilding the checkboxes under a person's pointer while they were
+/// aiming at one would be worse than the number being half a second old.
 function renderSeams(machine, container, appendConsole) {
-  if (!container) return;
+  if (!container) return () => {};
   const seams = machine.seamList();
+  const rows = new Map();
   container.replaceChildren(
     ...seams.map((seam) => {
       const label = document.createElement('label');
@@ -341,30 +378,51 @@ function renderSeams(machine, container, appendConsole) {
       box.type = 'checkbox';
       box.checked = seam.state === AF_SEAM_ON;
       box.disabled = seam.state === AF_SEAM_UNAVAILABLE;
+      const status = document.createElement('span');
+      status.textContent = ` [${seamRowText(seam)}]`;
+      rows.set(seam.id, status);
       box.addEventListener('change', () => {
-        const status = box.checked ? machine.seamEnable(seam.id) : machine.seamDisable(seam.id);
+        const answer = box.checked ? machine.seamEnable(seam.id) : machine.seamDisable(seam.id);
         const after = machine.seamList().find((s) => s.id === seam.id);
         appendConsole(
           `[host] seam ${seam.id} ${box.checked ? 'on' : 'off'}` +
-            (status === AF_OK ? '' : ` refused (${after?.reason ?? '?'})`) +
+            (answer === AF_OK ? '' : ` refused (${after?.reason ?? '?'})`) +
             (after && after.state === AF_SEAM_ON && !after.armed ? ` (inert: ${after.reason})` : '') +
             '\n',
         );
-        if (status !== AF_OK) box.checked = !box.checked;
+        if (answer !== AF_OK) box.checked = !box.checked;
+        if (after) status.textContent = ` [${seamRowText(after)}]`;
       });
-      label.append(box, ` ${seam.id} - ${seam.about}`);
+      label.append(box, ` ${seam.id} - ${seam.about}`, status);
       label.title =
         seam.state === AF_SEAM_UNAVAILABLE ? `unavailable: ${seam.reason}` : seam.about;
       return label;
     }),
   );
   if (seams.length === 0) container.textContent = 'this build carries no seams';
+
+  return () => {
+    for (const seam of machine.seamList()) {
+      const status = rows.get(seam.id);
+      if (status) status.textContent = ` [${seamRowText(seam)}]`;
+    }
+  };
 }
 
 /// Present, run, and report — everything both entry points share.
 async function run(
   machine,
-  { canvas, setStatus, appendConsole, healthEl, stepBudget, message },
+  {
+    canvas,
+    setStatus,
+    appendConsole,
+    healthEl,
+    refreshSeams,
+    volumeInput,
+    muteCheckbox,
+    stepBudget,
+    message,
+  },
 ) {
   const ctx = canvas.getContext('2d');
   const width = machine.frameWidth();
@@ -443,6 +501,38 @@ async function run(
     if (typeof count === 'number') workletUnderruns = count;
   };
 
+  // --- Volume and mute: #148's half of #106's scope ----------------------
+  //
+  // Two controls and not one, for the reason every mixer ever built has
+  // two: mute is a latch that can be lifted, and lifting it should give
+  // back the level that was there rather than one the player has to find
+  // again. The gain that crosses to the worklet is `muted ? 0 : volume`.
+  //
+  // It crosses to the *worklet* and is not applied to the chunks here,
+  // which audio-worklet.mjs's own comment argues at length: the held
+  // level and the fade an underrun makes are on that side of the
+  // boundary, so a mute applied on this one would not silence a stalled
+  // tab. And it is not in core at all — a gain in
+  // `audio_timeline::render()` would stop a sample being the exact
+  // integral of the edge list, which is the property every number in
+  // docs/hosts.md §4 is a measurement of.
+  //
+  // Nothing here is machine state: a run at 25% is the same run as one
+  // at 100%, down to the last edge in the list and the last bit of the
+  // frame.
+  const sendGain = () => {
+    const muted = muteCheckbox ? muteCheckbox.checked : false;
+    const volume = volumeInput ? Number(volumeInput.value) / 100 : 1;
+    speakerNode.port.postMessage({ gain: muted ? 0 : volume });
+  };
+  if (volumeInput) volumeInput.addEventListener('input', sendGain);
+  if (muteCheckbox) muteCheckbox.addEventListener('change', sendGain);
+  // Whatever the controls say now, which is not necessarily what they
+  // said when the page loaded: a browser restores a form control's value
+  // across a reload, and a page that started at full volume because it
+  // never asked would be a control that lies.
+  sendGain();
+
   setStatus(message);
 
   // --- The run loop: requestAnimationFrame, per abi.h's own snippet ------
@@ -483,6 +573,17 @@ async function run(
     appendConsole(machine.stopReport(how));
     const trace = machine.traceReport();
     if (!trace.startsWith('amberfolio: stop trace=off')) appendConsole(trace);
+
+    // What each enabled seam actually did, in the desktop host's own
+    // words (#131, #147). `armed` says an address was computed; `fired`
+    // says a handler ran there, and a seam that is on and armed and
+    // fired nothing is the failure that reads exactly like success. The
+    // end of the run it belongs to is the one place a reader gets told
+    // for free, and until now a browser run could not say it at all.
+    for (const seam of machine.seamList()) {
+      if (seam.state !== AF_SEAM_ON) continue;
+      appendConsole(`amberfolio: seam ${seam.id} ${formatSeamFired(seam)}\n`);
+    }
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
   };
@@ -510,22 +611,37 @@ async function run(
     appendConsole(text.slice(0, lastBreak + 1));
   };
 
-  /// The health readout: how far the run has got, and what the audio
-  /// path had to paper over to keep up. #106's policies have a visible
-  /// half and this is it.
+  /// The health readout: how far the run has got, what the audio path
+  /// had to paper over to keep up, and — since #147 — what each enabled
+  /// seam has actually done. #106's policies have a visible half and
+  /// this is it.
   ///
   /// Every half virtual second rather than every frame. It is a readout
   /// and not an instrument — the driver (`tools/drive.mjs`) is where a
   /// number gets measured — and writing the same three figures into the
   /// DOM sixty times a second is itself the sort of thing that causes
-  /// the underruns it would be reporting.
+  /// the underruns it would be reporting. The seam rows ride the same
+  /// cadence for the same reason.
   const showHealth = () => {
+    if (refreshSeams) refreshSeams();
     if (!healthEl) return;
+    // The listening level joins the line only when it is not unity, the
+    // same rule and for the same reason as the SDL host's report line
+    // (#148): a default run reads as it always has, and a run somebody
+    // turned down says so where they will look when they wonder why
+    // they heard nothing.
+    const muted = muteCheckbox ? muteCheckbox.checked : false;
+    const volume = volumeInput ? Number(volumeInput.value) : 100;
+    const level = muted
+      ? ' volume=muted'
+      : volume === 100
+        ? ''
+        : ` volume=${volume}%`;
     healthEl.textContent =
       `frames=${machine.frameGeneration()} steps=${Math.round(machine.steps())} ` +
       `| audio underruns=${Math.round(machine.audioUnderruns())} ` +
       `resyncs=${Math.round(machine.audioResyncs())} ` +
-      `starved=${workletUnderruns}`;
+      `starved=${workletUnderruns}${level}`;
   };
   showHealth();
 
