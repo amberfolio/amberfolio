@@ -134,6 +134,9 @@ class Descriptor:
         self.name = path.stem
         self.about = ""
         self.disk = ""
+        # The session this one is the same run as, with one thing
+        # changed. See `contrast_of()` below for what that buys.
+        self.contrast = ""
         # DOS path (upper case, backslash-separated) -> (size, digest), and
         # the set of directories. A directory has no digest; a digest of a
         # directory is not a thing (the recording's preamble says the same).
@@ -154,6 +157,8 @@ class Descriptor:
                     part for part in (self.about, " ".join(word[1:])) if part)
             elif word[0] == "disk" and len(word) == 2:
                 self.disk = word[1]
+            elif word[0] == "contrast" and len(word) == 2:
+                self.contrast = word[1]
             elif word[0] == "dir" and len(word) == 2:
                 self.dirs.add(word[1].upper())
             elif word[0] == "file" and len(word) == 4:
@@ -323,6 +328,64 @@ def check_pinned(descriptor: Descriptor,
         return False, f"{rel(disk)} has no {missing_dirs[0]} directory"
 
     return True, f"{rel(disk)}, {len(descriptor.files)} file(s) as recorded"
+
+
+def checkpoints_of(path: Path) -> list[tuple[int, str]]:
+    """Every checkpoint in a recording: its tick and its whole-state hash."""
+    marks = []
+    for line in path.read_text(encoding="latin-1").splitlines():
+        word = line.split(" ")
+        if word[0] == "checkpoint" and len(word) >= 4:
+            marks.append((int(word[1]), word[3]))
+    return marks
+
+
+def contrast_of(session: Session,
+                partner: Session) -> tuple[str, str]:
+    """Does this pair actually differ, and only where it should?
+
+    Two recordings of the *same script over the same disk*, one thing
+    apart — a seam on rather than off — must agree exactly until that one
+    thing first matters, and disagree from there on. That is the check
+    `docs/seams.md` asks for after a seam has been wrong twice
+    (#129, #130): a seam that is on and armed and reports itself can
+    still be doing nothing at all, and the only way to see it is to run
+    the same script without it and compare.
+
+    Done here on the files rather than on a machine, which is the point:
+    it needs no disk, so it is the one thing about a game session that
+    CI can check. It answers what a lone recording never can — that the
+    difference the session exists to show is *in* it.
+    """
+    mine = checkpoints_of(session.path)
+    theirs = checkpoints_of(partner.path)
+    if not mine or not theirs:
+        return "FAIL", "one of the pair carries no checkpoints"
+    if [t for t, _ in mine] != [t for t, _ in theirs]:
+        # Not the same script, or not the same cadence. Either way the
+        # comparison below would be comparing two different runs and
+        # would "pass" for the wrong reason.
+        return "FAIL", (f"{session.name} and {partner.name} checkpoint at"
+                        " different ticks; they are not the same run")
+
+    same = 0
+    for (_, a), (_, b) in zip(mine, theirs):
+        if a != b:
+            break
+        same += 1
+    if same == len(mine):
+        return "FAIL", (f"{session.name} is checkpoint-for-checkpoint"
+                        f" identical to {partner.name}: whatever is meant to"
+                        " be different made no difference")
+    if same == 0:
+        return "FAIL", (f"{session.name} and {partner.name} differ at their"
+                        " first checkpoint; a pair should share the run up to"
+                        " where the one changed thing first matters")
+    if mine[-1][1] == theirs[-1][1]:
+        return "FAIL", (f"{session.name} and {partner.name} end in the same"
+                        " state; the difference did not last")
+    return "ok", (f"{same} of {len(mine)} checkpoints identical, then"
+                  f" divergent from tick {mine[same][0]} to the end")
 
 
 def find_sessions(only: str | None) -> list[Session]:
@@ -522,8 +585,9 @@ def main() -> int:
                         help="a build tree to run out of; repeatable"
                              " (default: every configured tree under build/)")
     parser.add_argument("--session", help="only this one, by stem")
-    parser.add_argument("--targets", default="sdl,ctest",
-                        help="comma-separated: sdl, ctest (default: both)")
+    parser.add_argument("--targets", default="sdl,ctest,contrast",
+                        help="comma-separated: sdl, ctest, contrast"
+                             " (default: all three)")
     parser.add_argument("--game-disk", action="append", default=[],
                         help="a copy of a disk the game sessions were"
                              f" recorded against; repeatable (or"
@@ -551,6 +615,10 @@ def main() -> int:
         return 1
 
     trees = find_build_trees(args.build)
+    # Every session, not the filtered ones: `--session NAME` must still be
+    # able to find that one's contrast partner, or asking about half a
+    # pair would report the other half missing.
+    by_name = {other.name: other for other in find_sessions(None)}
     rows: list[tuple[str, str, str, str]] = []
     failures = 0
     verified = 0
@@ -574,6 +642,23 @@ def main() -> int:
                 rows.append((session.name, label, "SKIP",
                              "the suites verify sessions whose disk is"
                              " committed; this one's cannot be"))
+
+        # Needs no disk and no build tree, so it is the one thing about a
+        # game session CI can check. Run before the disk work for that
+        # reason: it is the row that will still be here when everything
+        # else is a skip.
+        if "contrast" in wanted and session.descriptor.contrast:
+            partner = by_name.get(session.descriptor.contrast)
+            if partner is None:
+                rows.append((session.name, "contrast", "FAIL",
+                             "no session called"
+                             f" {session.descriptor.contrast}"))
+                failures += 1
+            else:
+                state, detail = contrast_of(session, partner)
+                rows.append((session.name, "contrast", state, detail))
+                failures += state == "FAIL"
+                verified += state == "ok"
 
         if "sdl" not in wanted:
             continue

@@ -479,6 +479,34 @@ diff <(amberfolio ... ) <(amberfolio ... --seam cheat-kill-all)
 
 Same step count and the same framebuffer means the seam did nothing.
 
+**That check is now committed**, for `cheat-invulnerable` at least, and
+so is no longer a thing anybody has to remember to run.
+`tests/sessions/fight.rec` and `fight-cheat.rec` are the same script over
+the same disk with the same tick budget, one flag apart: the saved party
+walked twelve steps north into the slums and into a group of orcs, and
+the fight handed to the computer. Without the seam a lone first-level
+fighter is destroyed. With it he ends the fight standing on his full
+eight hit points, the seam having fired nine times.
+
+`fight-cheat`'s descriptor names the other as its `contrast`, which
+`scripts/sweep.py` reads as an assertion and fails if it does not hold:
+
+```
+  fight-cheat  contrast ok  126 of 177 checkpoints identical, then
+                            divergent from tick 274951600 to the end
+```
+
+126 checkpoints byte-identical says it is genuinely the same run up to
+the moment the seam first matters; every one of the remaining 51
+differing says the seam mattered and kept mattering. It compares two
+files rather than two machines, so it needs no copy of the game — which
+makes it the one thing about a seam-on-the-real-program that CI can
+check, and it runs in the guards job on every push
+(`tests/sessions/README.md`).
+
+A seam recorded this way should get a pair. One recording proves a seam
+ran; a pair proves it made the difference it claims.
+
 Both are fail-closed by construction: unavailable on any binary but the
 baseline's, inert with `point_not_recognized` when the frame at a point
 is not the one its facts describe, inert with `module_not_resident` while
