@@ -567,6 +567,16 @@ node .../drive.mjs <dir> P.EXE --until 40000000 >web.txt
 diff <(grep '^amberfolio: stop' desktop.txt) <(grep '^amberfolio: stop' web.txt)
 ```
 
+**It does not replay a recording, and that is a decision** (#147). The
+wasm module verifies recordings through `af_machine_verify_recording`,
+and `hosts/web/tests/smoke.mjs` asks it that on every CI run — over
+`spin.rec` and over a recording built through the ABI — so the question
+"does this target reproduce a recorded run" is already asked of the web
+host continuously. Adding a `--replay` here would change which process
+asks it, not whether it is asked. This tool is for *driving* a program:
+keys, seams, dumps and a throughput number, which is what the web host
+did not have.
+
 **It reads nothing but the directory it is given.** No game content is in
 it and none may ever be — not bytes, not names, not screen text
 (CONTRIBUTING.md). What CI runs it against is the repository's own
