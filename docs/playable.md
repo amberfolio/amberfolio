@@ -156,13 +156,23 @@ one. It had to be corrected first — its two arguments were written down
 the wrong way round, and neither cheat had ever been run against the
 program (#99, #103).
 
-`cheat-kill-all` is **inert**, and not because of its facts: the module
-and offset are right, but the seam arms against where the overlay tracker
-last saw that module *read*, and the routine executes from somewhere it
-was moved to. `docs/seams.md` has it. Until that is fixed, a sweep that
-needs a party to survive an encounter has invulnerability and nothing
-else — which is enough for the party, and not enough to finish a fight
-that is going badly.
+`cheat-kill-all` works too, and took longer: its facts were right the
+whole time, but it armed against where the overlay tracker last saw its
+module *read*, and the overlay manager moves the module afterwards
+without reading it again. It now resolves its point through the word the
+manager keeps that module's segment in, at every step (#131,
+`docs/seams.md` §4). One firing ends a fight:
+
+```
+THE PARTY HAS WON.
+EACH CHARACTER RECEIVES 107 EXPERIENCE POINTS.
+```
+
+A party that reaches this leg from a *saved game* is the practical way to
+see it. A first-level character made in leg 0 does not survive the slums
+long enough to reach a second round, and `LOAD SAVED GAME` at the main
+menu (leg 3's second half) puts a whole party on the map in nine hundred
+frames.
 
 ## Leg 3 — a save, and a load (#105)
 

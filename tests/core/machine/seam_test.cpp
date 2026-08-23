@@ -160,6 +160,23 @@ constexpr seam_definition wrong_seam{.id = "test-wrong-bytes",
                                      .fingerprints = claimed_binaries,
                                      .points = wrong_points};
 
+/// The same module again, but qualified the way a module the program can
+/// move has to be (#131): the program keeps its current load segment in
+/// one word of the resident image, and this is that word's offset. The
+/// engine reads it at every step instead of trusting where a read
+/// landed.
+constexpr std::uint32_t moved_load_segment_at = 0x0100;
+constexpr seam_module moved_module{.file = "OVL.BIN",
+                                   .file_offset = 0x40,
+                                   .length = 16,
+                                   .load_segment_at = moved_load_segment_at};
+constexpr std::array<seam_point, 1> moved_points{
+    {{.module = moved_module, .offset = 0x0002, .run = &ask_host}}};
+constexpr seam_definition moved_seam{.id = "test-moving-overlay",
+                                     .about = "lives in a module that moves",
+                                     .fingerprints = claimed_binaries,
+                                     .points = moved_points};
+
 /// A host that counts what it was asked for.
 class counting_host final : public seam_host_services {
  public:
@@ -182,6 +199,7 @@ struct rig {
     EXPECT_TRUE(box->seams().add(stale_seam));
     EXPECT_TRUE(box->seams().add(ovl_seam));
     EXPECT_TRUE(box->seams().add(wrong_seam));
+    EXPECT_TRUE(box->seams().add(moved_seam));
     box->seams().loaded(claimed_digest(), image_load_segment);
   }
 
@@ -222,6 +240,18 @@ struct rig {
     box->note_file_read(
         path, file_offset, segment, 0, length,
         sha256(std::span<const std::uint8_t>(bytes.data(), length)));
+  }
+
+  /// Write what the program's overlay manager writes: the segment its
+  /// module begins at right now, in the word `moved_module` names. Zero
+  /// is "not loaded". Nothing is told about this — which is the point,
+  /// because nothing tells the program's manager to announce a move
+  /// either.
+  void manager_says_module_at(std::uint16_t segment) const {
+    const std::uint32_t at =
+        cpu::physical_address(image_load_segment, 0) + moved_load_segment_at;
+    box->memory().ram()[at] = static_cast<std::uint8_t>(segment);
+    box->memory().ram()[at + 1] = static_cast<std::uint8_t>(segment >> 8U);
   }
 
   [[nodiscard]] std::size_t events(seam_event_kind kind) const {
@@ -690,6 +720,89 @@ TEST(SeamOverlay, AModuleWithTheWrongBytesStaysInertWithTheReason) {
   EXPECT_FALSE(row.armed);
   EXPECT_EQ(row.reason, seam_reason::module_not_resident);
   EXPECT_FALSE(r.pc().seams().armed());
+}
+
+// --- A module the program moves (#131) ------------------------------------
+
+TEST(SeamMovingOverlay, FollowsTheWordTheProgramKeepsAndNotTheRead) {
+  // The failure this exists to make impossible: the manager reads a
+  // module in, then shuffles it inside its own arena — no DOS call, no
+  // event, nothing the tracker can see — and a point armed at the read's
+  // landing goes on reporting `armed` while sitting on somebody else's
+  // code.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-moving-overlay"), seam_reason::none);
+  counting_host host;
+  r.pc().seams().set_host(&host);
+
+  r.load_overlay(0x3000);
+  r.manager_says_module_at(0x3000);
+  r.pc().memory().ram()[cpu::physical_address(0x3000, 2)] = 0xF4;
+  r.pc().memory().ram()[cpu::physical_address(0x3400, 2)] = 0xF4;
+
+  r.regs()[cpu::sreg::cs] = 0x3000;
+  r.regs().ip = 2;
+  r.pc().step();
+  EXPECT_EQ(host_calls, 1u);
+  EXPECT_EQ(last_module_base, cpu::physical_address(0x3000, 0));
+
+  // Moved, with nothing to announce it.
+  r.manager_says_module_at(0x3400);
+
+  r.pc().processor().resume();
+  r.regs()[cpu::sreg::cs] = 0x3000;
+  r.regs().ip = 2;
+  r.pc().step();
+  EXPECT_EQ(host_calls, 1u) << "the landing is not the module any more";
+
+  r.pc().processor().resume();
+  r.regs()[cpu::sreg::cs] = 0x3400;
+  r.regs().ip = 2;
+  r.pc().step();
+  EXPECT_EQ(host_calls, 2u) << "and where the program says it is, it is";
+  EXPECT_EQ(last_module_base, cpu::physical_address(0x3400, 0));
+}
+
+TEST(SeamMovingOverlay, IsInertWhileTheProgramSaysTheModuleIsNotLoaded) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-moving-overlay"), seam_reason::none);
+  counting_host host;
+  r.pc().seams().set_host(&host);
+
+  // A read the tracker records, and a program that says the module is
+  // not there. The program wins: zero is not an address.
+  r.load_overlay(0x3000);
+  r.manager_says_module_at(0);
+  EXPECT_FALSE(r.pc().seams().status("test-moving-overlay").armed);
+  EXPECT_EQ(r.pc().seams().status("test-moving-overlay").reason,
+            seam_reason::module_not_resident);
+
+  r.pc().memory().ram()[cpu::physical_address(0x3000, 2)] = 0xF4;
+  r.regs()[cpu::sreg::cs] = 0x3000;
+  r.regs().ip = 2;
+  r.pc().step();
+  EXPECT_EQ(host_calls, 0u);
+  EXPECT_EQ(r.pc().seams().status("test-moving-overlay").fired, 0u);
+}
+
+TEST(SeamMovingOverlay, ArmsWithoutAReadWhenTheProgramSaysItIsThere) {
+  // A manager may answer a call from a copy it already holds, and then
+  // there is no read at all. Nothing would call `rearm()`, so a point
+  // that needed one would never come back.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-moving-overlay"), seam_reason::none);
+  counting_host host;
+  r.pc().seams().set_host(&host);
+  ASSERT_FALSE(r.pc().seams().status("test-moving-overlay").armed);
+
+  r.manager_says_module_at(0x3000);
+  EXPECT_TRUE(r.pc().seams().status("test-moving-overlay").armed);
+
+  r.pc().memory().ram()[cpu::physical_address(0x3000, 2)] = 0xF4;
+  r.regs()[cpu::sreg::cs] = 0x3000;
+  r.regs().ip = 2;
+  r.pc().step();
+  EXPECT_EQ(host_calls, 1u) << "no read ever happened, and the point fired";
 }
 
 TEST(SeamOverlay, TheTrackerIsNotConsultedWhileNothingIsOn) {

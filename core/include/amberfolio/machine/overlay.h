@@ -28,6 +28,16 @@
 // digest. "Resident" means: the most recent read matching those facts
 // landed in memory that no later read has overwritten.
 //
+// That is a claim about a **read**, and it is the weaker of the two
+// answers this file can give. Where the program keeps its own note of
+// where a module is — `seam_module::load_segment_at`, which most
+// overlay managers of this era do — that note is authoritative and this
+// table is not consulted for the address at all. The reason is #131:
+// a manager may move a resident module inside its arena without reading
+// it again, and a table built out of reads cannot follow. Both readings
+// are here because a program that keeps no such note still gets the
+// weaker one, which is better than nothing and fails closed.
+//
 //
 // Below the fidelity boundary
 // ---------------------------
@@ -84,9 +94,11 @@
 
 namespace amberfolio::machine {
 
-/// How a module is identified: by the facts of the read that loaded it.
-/// Bump when the meaning of `overlay_load` or `seam_module` changes.
-inline constexpr std::uint16_t overlay_schema_version = 1;
+/// How a module is identified: by the facts of the read that loaded it,
+/// and — since version 2 — optionally by the program's own record of
+/// where it currently is (`seam_module::load_segment_at`). Bump when the
+/// meaning of `overlay_load` or `seam_module` changes.
+inline constexpr std::uint16_t overlay_schema_version = 2;
 
 /// One read the tracker saw, and where it landed.
 struct overlay_load {
@@ -110,13 +122,20 @@ struct overlay_load {
   [[nodiscard]] std::uint32_t last() const noexcept;
 };
 
+/// The value `seam_module::load_segment_at` carries when the program
+/// keeps no reachable record of where a module is — in which case the
+/// tracker's reads are the whole of what is known about it.
+inline constexpr std::uint32_t no_load_segment = 0xFFFFFFFFU;
+
 /// What a seam's point says about which code it lives in (seam.h). Here
 /// rather than there because this is the file that decides what the
 /// fields mean.
 ///
 /// An empty `file` is the resident image — the program the loader
 /// placed, which is never overlaid and needs no tracking. Anything else
-/// names a module by the facts of the read that loads it.
+/// names a module by the facts of the read that loads it, and — where
+/// the program keeps one — by the program's own note of where that
+/// module is right now.
 struct seam_module {
   /// The leaf name of the file the module is read from — `OVL.BIN`, the
   /// name as DOS spells it. Empty for the resident image.
@@ -129,8 +148,44 @@ struct seam_module {
   /// qualifier.
   std::string_view digest{};
 
+  /// Where the *program* records this module's current load segment: an
+  /// offset in the resident image of one word, holding a segment while
+  /// the module is loaded and zero while it is not. `no_load_segment`
+  /// when the program keeps no such word, or when nobody has found it.
+  ///
+  /// This is the field that makes an overlaid point survive an overlay
+  /// manager that *moves* things (#131). The three facts above describe
+  /// a **read**, and a read tells you where a module landed once. It
+  /// does not tell you where the module is: a manager of this era owns
+  /// an arena, and it may shuffle a module inside that arena, or satisfy
+  /// a call from a copy it already holds, without going near DOS. Both
+  /// were observed on the program this tree is for — a module that
+  /// landed at one segment and ran, one frame later, from the next one
+  /// up, and the same module 0x73 paragraphs away from its landing after
+  /// a screen's worth of loading — and a tracker whose only input is
+  /// `note_read()` cannot see either happen.
+  ///
+  /// A manager that moves modules has to write down where it put them,
+  /// or it could not call into them itself. That note is in the resident
+  /// image, which does not move, and it is maintained by the very code
+  /// that does the moving — so it is a better answer than ours to both
+  /// questions a seam asks: *is this module in memory*, and *where*. The
+  /// engine reads it at the step boundary rather than at arming, so a
+  /// point qualified this way cannot go stale between reads (seam.h).
+  ///
+  /// It is a fact about a binary like every other one in a seam's table
+  /// — an offset, and what the word there means — and it is qualified by
+  /// the fingerprint like every other one.
+  std::uint32_t load_segment_at{no_load_segment};
+
   [[nodiscard]] constexpr bool is_resident_image() const noexcept {
     return file.empty();
+  }
+
+  /// Whether the program's own record of this module's whereabouts is
+  /// known, and so whether the engine resolves the point through it.
+  [[nodiscard]] constexpr bool has_load_segment() const noexcept {
+    return load_segment_at != no_load_segment;
   }
 };
 

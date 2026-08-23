@@ -45,6 +45,12 @@ machine::machine(memory_layout layout, diagnostics* log)
   // an overlay is armed against what is actually in memory rather than
   // against nothing. Wiring, not state — nothing is enabled yet, so this
   // arms nothing.
+  //
+  // Memory with it, and read-only: a point in a module the program can
+  // move is resolved through the program's own note of where it put it,
+  // which is a word of RAM (seam.h). The engine reads that word and
+  // nothing else, and only for a seam that is on.
+  seams_.watch_memory(memory_.ram());
   seams_.rearm(overlays_);
 }
 

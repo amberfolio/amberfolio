@@ -124,6 +124,24 @@ bool seam_engine::applies(const seam_definition& seam) const noexcept {
   return false;
 }
 
+bool seam_engine::modules_resident(const seam_definition& seam) const noexcept {
+  for (const seam_point& point : seam.points) {
+    if (point.module.is_resident_image()) {
+      continue;
+    }
+    if (point.module.has_load_segment()) {
+      if (word_at(image_base() + point.module.load_segment_at) == 0) {
+        return false;
+      }
+      continue;
+    }
+    if (overlays_ == nullptr || overlays_->resident(point.module) == nullptr) {
+      return false;
+    }
+  }
+  return true;
+}
+
 seam_status seam_engine::status(std::size_t index) const noexcept {
   if (index >= registered_) {
     return {};
@@ -147,8 +165,14 @@ seam_status seam_engine::status(std::size_t index) const noexcept {
     return out;
   }
   out.state = s.enabled ? seam_state::on : seam_state::off;
-  out.reason = s.enabled ? s.reason : seam_reason::none;
-  out.armed = s.enabled && s.armed;
+  // Asked of the machine rather than read off `slot`, because a module
+  // qualified by the program's own record can come and go without any
+  // event this engine is told about (#131). A host that prints a listing
+  // gets the answer as of the moment it asked.
+  const bool armed = s.enabled && modules_resident(*s.seam);
+  out.armed = armed;
+  out.reason = s.enabled && !armed ? seam_reason::module_not_resident
+                                   : seam_reason::none;
   out.fired = s.fired;
   return out;
 }
@@ -286,16 +310,26 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
     const bool was_armed = s.armed;
     const seam_reason was_reason = s.reason;
 
-    bool all_resident = true;
     for (const seam_point& point : s.seam->points) {
       std::uint32_t base = 0;
+      std::uint32_t anchor = no_load_segment;
       if (point.module.is_resident_image()) {
         base = image_base();
+      } else if (point.module.has_load_segment()) {
+        // The program's own note of where this module is, which the
+        // manager that moves it keeps up to date. Kept as an *address*
+        // and read at every step (`dispatch`) rather than dereferenced
+        // here: an address worked out at arming is precisely what #131
+        // was filed about. The point stays in the table whether or not
+        // the module is loaded right now, too, because a module can
+        // become resident without a read — a manager may answer a call
+        // from a copy it already holds — and nothing would tell this
+        // function to run again if it did.
+        anchor = image_base() + point.module.load_segment_at;
       } else {
         const overlay_load* load =
             overlays == nullptr ? nullptr : overlays->resident(point.module);
         if (load == nullptr) {
-          all_resident = false;
           continue;
         }
         base = load->first();
@@ -306,15 +340,17 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
       if (armed_ < max_points) {
         points_[armed_] = {.at = base + point.offset,
                            .module_base = base,
+                           .anchor = anchor,
+                           .offset = point.offset,
                            .run = point.run,
                            .owner = i};
         ++armed_;
       }
     }
 
-    s.armed = all_resident;
-    s.reason =
-        all_resident ? seam_reason::none : seam_reason::module_not_resident;
+    const bool resident = modules_resident(*s.seam);
+    s.armed = resident;
+    s.reason = resident ? seam_reason::none : seam_reason::module_not_resident;
 
     // Said once per transition, not once per read: a program that loads
     // and unloads an overlay produces one line each way, and a seam that
@@ -327,14 +363,52 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
   }
 }
 
+std::uint16_t seam_engine::word_at(std::uint32_t address) const noexcept {
+  if (address + 1 >= ram_.size()) {
+    return 0;
+  }
+  return static_cast<std::uint16_t>(
+      static_cast<unsigned>(ram_[address]) |
+      (static_cast<unsigned>(ram_[address + 1]) << 8U));
+}
+
 void seam_engine::dispatch(machine& box, std::uint32_t at) {
   for (std::size_t i = 0; i < armed_; ++i) {
     const armed_point& point = points_[i];
-    if (point.at != at || point.run == nullptr) {
+    if (point.run == nullptr) {
       continue;
     }
-    seam_context ctx(box, *this, slots_[point.owner].seam->id, at,
-                     point.module_base, image_base());
+
+    std::uint32_t base = point.module_base;
+    if (point.anchor != no_load_segment) {
+      // A module the program can move under us. Its address is whatever
+      // the program's own record says at this instant, and nothing else
+      // is trusted: not where the module last landed, not where it was
+      // when the point was armed.
+      //
+      // The paragraph test first, and it is free. A load segment is a
+      // paragraph, so if this point is here at all then `at` and the
+      // point's offset agree in their low four bits — fifteen steps in
+      // sixteen leave without touching memory.
+      if ((at & 0x0FU) != (point.offset & 0x0FU)) {
+        continue;
+      }
+      const std::uint16_t segment = word_at(point.anchor);
+      if (segment == 0) {
+        // The program says the module is not loaded. Inert, at the one
+        // moment when that answer is certainly current.
+        continue;
+      }
+      base = static_cast<std::uint32_t>(segment) * 16U;
+      if (base + point.offset != at) {
+        continue;
+      }
+    } else if (point.at != at) {
+      continue;
+    }
+
+    seam_context ctx(box, *this, slots_[point.owner].seam->id, at, base,
+                     image_base());
     ++slots_[point.owner].fired;
     point.run(box, ctx);
   }

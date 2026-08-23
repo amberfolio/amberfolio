@@ -167,7 +167,8 @@ A point is `{module, offset, handler}`. The module is either:
 - **A `seam_module`** — a read the program makes: the file's leaf name,
   the offset in the file the read starts at, its length, and optionally
   the SHA-256 of the bytes it delivers. The offset is from wherever that
-  read landed.
+  read landed — unless the module also names the word the program keeps
+  its whereabouts in, which is the next section and is what you want.
 
 The machine keeps an `overlay_tracker` (`machine/overlay.h`) that watches
 every INT 21h AH=3Fh through the DOS layer and records, for each read:
@@ -190,6 +191,61 @@ seam that declines, never one that fires on the wrong code.
 `overlay_schema_version` names how a module is identified, and a
 definition carries the version it was written against. The engine
 refuses a mismatch (`schema_mismatch`) rather than misreading the table.
+
+### Where a point lives: ask the program, not the read (#131)
+
+The reading above is the weaker of two, and it was wrong on the first
+real overlaid seam this tree wrote.
+
+A read tells you where a module landed **once**. It does not tell you
+where the module *is*. An overlay manager of this era owns an arena and
+manages it: it may shuffle a resident module inside that arena, or
+satisfy a call from a copy it already holds, and it does neither of those
+through DOS. A tracker whose only input is `note_read()` cannot see
+either happen, so a point armed at the landing address goes on reporting
+`armed` while sitting on whatever the manager put there instead. Both
+were observed on the program this tree is for: a module read to one
+segment and running from the next one up nineteen frames later, and the
+same module 0x73 paragraphs from its landing after a screen's worth of
+loading.
+
+A manager that moves modules has to write down where it put them, or it
+could not call into them itself. That note lives in the resident image,
+which does not move, and it is maintained by exactly the code that does
+the moving. `seam_module::load_segment_at` is the offset of that word:
+
+    constexpr seam_module end_check{
+        .file = "GAME.OVR",
+        .file_offset = 38919,
+        .length = 4735,
+        .digest = "5d07a6b3…",
+        .load_segment_at = 0x360};   // the program's own note
+
+When a module names one, the engine **resolves the point from that word
+at every step** — the word is read at the step boundary and the address
+is that segment times sixteen plus the point's offset — instead of
+computing an address once at arming. Zero in the word means the module is
+not loaded and the point simply does not match. That is the difference
+the issue was filed for:
+
+| | armed at the read's landing | resolved from the program's word |
+| --- | --- | --- |
+| what `armed` claims | the fact table | the machine |
+| a module that moved | fires on somebody else's code, or never | follows |
+| a module resident with no read | never arms | arms |
+| a module dropped with no read | still armed | inert, that step |
+| cost | an address compare | an address compare and a word of RAM, behind a test that discards fifteen steps in sixteen |
+
+The two qualifiers answer different questions and a real seam carries
+both. The read's facts — file, offset, length, digest — say *which*
+module this is, and are what you check against the overlay file's own
+table. The word says *where it is now*.
+
+The tracker's reading stays for a module with no such word, because it is
+better than nothing and it fails closed. But a seam whose point lives in
+an overlay and that has no `load_segment_at` should be treated as
+unfinished: it will work for as long as the manager happens not to move
+anything.
 
 ---
 
@@ -389,21 +445,32 @@ program to end the combat on a count that had gone past zero.
 `SeamCheatKillAll.ReadsTheStatusAndNotTheHeldByteNextToIt` is that trap,
 written down as a test.
 
-**It is inert on the real program today, and the reason is not its facts.**
-Its module and offset are right — the overlay is the one the file's own
-overlay table names, and the point is that routine's entry. What goes
-wrong is one layer down: the tracker records where a module *landed when
-it was read*, and the end check demonstrably executes from an address no
-recorded read ever covered. An overlay manager may move a module inside
-its own arena without re-reading it from disk, and a tracker that only
-sees DOS reads cannot follow that. So the seam arms against a stale
-landing, reports `armed`, and is pointed at nothing.
+**It was inert on the real program for two milestones, and the reason
+was never its facts.** Its module and offset were right all along — the
+overlay is the one the file's own overlay table names, and the point is
+that routine's entry. What was wrong was one layer down: the tracker
+records where a module *landed when it was read*, and the end check
+demonstrably executes from an address no recorded read ever covered,
+because the manager moves it. §4's "Where a point lives" is the fix, and
+this seam's module now carries the word the manager keeps its segment
+in.
 
-That is the honest state, and it is worse than it sounds: **`armed` is
-currently a claim about the fact table, not about the machine.** A seam
-that never fires is indistinguishable from one that works unless you
-compare a run against the same run without it — which is exactly the
-check that caught this, and is cheap:
+Driven through a wilderness encounter against seven soldiers, the point
+fires once and the fight ends: `THE PARTY HAS WON. EACH CHARACTER
+RECEIVES 107 EXPERIENCE POINTS.` The same script with the seam off is
+still in that fight when the run's tick budget expires. Before the fix,
+in a run that kept the battle going for thirteen rounds, the point fired
+exactly once — at the read's landing, in the one round before the
+manager moved the module — and never again.
+
+**What ends a combat is the cleared held byte, not the decrement.** The
+end check rebuilds both sides' counts from the roster's held bytes,
+immediately before it reads them, so the count this seam decrements is
+overwritten a moment later. The decrement stays because the program's own
+routine does it; the cleared flag is what carries the result.
+
+The cheap check that caught the original mistake is still the check to
+run on any new seam, and it costs one extra run:
 
 ```sh
 # same script, same disk, once with and once without
@@ -415,9 +482,8 @@ Same step count and the same framebuffer means the seam did nothing.
 Both are fail-closed by construction: unavailable on any binary but the
 baseline's, inert with `point_not_recognized` when the frame at a point
 is not the one its facts describe, inert with `module_not_resident` while
-the end check's module is not resident (a module is named by the read
-that loads it — file, offset, length, and the digest of the bytes), and
-nothing on the hot path when off.
+the end check's module is not loaded — which the program's own record
+answers at the step it is asked — and nothing on the hot path when off.
 
 `tests/core/machine/seam_cheats_test.cpp` drives both handlers at their
 points with records and a roster the test lays down by the facts. That
