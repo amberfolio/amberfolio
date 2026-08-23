@@ -189,21 +189,81 @@ constexpr std::size_t max_name_text =
   return false;
 }
 
-/// `text`, canonicalized against the root — the one place a raw name
-/// becomes a path, for both halves of the VFS surface (abi.h's "Names are
-/// normalized in core").
+/// `text`, canonicalized against the root — the one place a raw path
+/// becomes a `dos_path`, for every door in the VFS surface (abi.h's
+/// "Names are normalized in core").
+///
+/// `/` is folded to `\` on the way in, and that fold is here rather than
+/// in a host for exactly the reason the rest of the rule is (#146): the
+/// two spellings a host can hand over are a browser's
+/// `webkitRelativePath`, `SAVE/SAVE1.DAT`, and DOS's own,
+/// `SAVE\SAVE1.DAT`, and a page that decided for itself which one it was
+/// holding would be deciding what a path is. It stops at this boundary —
+/// `canonicalize()` keeps DOS's one separator, so what the emulated
+/// program may write is untouched by it.
 [[nodiscard]] bool path_of(const char* text,
                            amberfolio::machine::dos_path& out) noexcept {
   std::size_t length = 0;
   if (!text_length(text, max_name_text, length)) {
     return false;
   }
+  std::array<char, max_name_text> raw{};
+  for (std::size_t i = 0; i < length; ++i) {
+    raw[i] = (text[i] == '/') ? '\\' : text[i];
+  }
   const auto where = amberfolio::machine::canonicalize(
-      amberfolio::machine::dos_path{}, std::span<const char>(text, length));
+      amberfolio::machine::dos_path{},
+      std::span<const char>(raw.data(), length));
   if (!where.ok()) {
     return false;
   }
   out = where.value;
+  return true;
+}
+
+/// Make every directory `path` names above its leaf, so that a file can
+/// then be created at it; false when `path` is one no file can live at.
+///
+/// A host hands an installation over one file at a time (abi.h), so
+/// `\SAVE\SAVE1.DAT` may arrive before anything has made `\SAVE` — and
+/// `machine::filesystem::create()` deliberately will not make it, because
+/// a missing parent is what tells `path_not_found` from `file_not_found`
+/// for a program that asks (machine/vfs.h). Somebody has to, and abi.h's
+/// whole argument is that it is not the host.
+///
+/// **Everything is decided before anything is made.** A component above
+/// the leaf that already exists as a file, and a leaf that already exists
+/// as a directory, are both paths no file can be written at; they are
+/// found in the first pass, so a refusal never leaves a half-built tree
+/// behind. What is left after that is capacity, which is the backend
+/// running out rather than the caller being wrong — `af_machine_vfs_put`
+/// says what happens then and abi.h says why.
+[[nodiscard]] bool make_parents(
+    amberfolio::machine::filesystem& fs,
+    const amberfolio::machine::dos_path& path) noexcept {
+  amberfolio::machine::dos_path so_far;
+  for (std::size_t i = 0; i + 1 < path.depth(); ++i) {
+    static_cast<void>(so_far.push(path.component(i)));
+    const auto seen = fs.stat(so_far);
+    if (seen.ok() && !seen.value.is_directory) {
+      return false;
+    }
+  }
+  const auto leaf = fs.stat(path);
+  if (leaf.ok() && leaf.value.is_directory) {
+    return false;
+  }
+
+  so_far = amberfolio::machine::dos_path{};
+  for (std::size_t i = 0; i + 1 < path.depth(); ++i) {
+    static_cast<void>(so_far.push(path.component(i)));
+    if (fs.exists(so_far)) {
+      continue;
+    }
+    if (fs.mkdir(so_far) != amberfolio::machine::vfs_error::none) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -690,7 +750,7 @@ uint32_t af_machine_vfs_clear(af_machine* handle) {
   return AF_OK;
 }
 
-uint32_t af_machine_vfs_put(af_machine* handle, const char* name,
+uint32_t af_machine_vfs_put(af_machine* handle, const char* path,
                             const uint8_t* bytes, uint32_t size) {
   if (box_of(handle) == nullptr) {
     return AF_NO_MACHINE;
@@ -704,7 +764,10 @@ uint32_t af_machine_vfs_put(af_machine* handle, const char* name,
   }
 
   amberfolio::machine::dos_path where;
-  if (!path_of(name, where) || where.is_root()) {
+  if (!path_of(path, where) || where.is_root()) {
+    return AF_INVALID;
+  }
+  if (!make_parents(*fs, where)) {
     return AF_INVALID;
   }
 
