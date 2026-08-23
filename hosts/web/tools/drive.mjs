@@ -96,6 +96,8 @@ import {
   decodeConsoleBytes,
   SPEED_PRESETS,
   AF_OK,
+  describeSkip,
+  anySkipLostAFile,
   AF_SEAM_OFF,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
@@ -408,8 +410,17 @@ export function encodeWav(samples, rate) {
 /// canonicalizer is the one thing entitled to say which (abi.h). A
 /// directory with nothing in it simply never comes up — a VFS holds what
 /// a run reads, and nothing reads an empty directory.
+///
+/// **Except when the refusal is "no room" (#158).** That one is not the
+/// machine working; it is a file the program will ask for later that is
+/// not on the disk it was handed. This used to print `(status 3)` for
+/// both, and the run in which it was found reported seven of a game's
+/// data files in the same words as a PDF it was right to ignore. So each
+/// skipped line names its reason, and `incomplete` says whether any of
+/// them is a hole rather than a filter.
 function putDirectory(machine, dir) {
   const skipped = [];
+  const statuses = [];
   let taken = 0;
 
   const walk = (at, prefix) => {
@@ -425,13 +436,17 @@ function putDirectory(machine, dir) {
       }
       const bytes = new Uint8Array(readFileSync(join(at, entry.name)));
       const status = machine.vfsPut(path, bytes);
-      if (status === AF_OK) taken += 1;
-      else skipped.push(`${path} (status ${status})`);
+      if (status === AF_OK) {
+        taken += 1;
+        continue;
+      }
+      statuses.push(status);
+      skipped.push(`${path} (${describeSkip(status)})`);
     }
   };
 
   walk(dir, '');
-  return { taken, skipped };
+  return { taken, skipped, incomplete: anySkipLostAFile(statuses) };
 }
 
 /// Stand a machine up, run the program, and report. Answers the process
@@ -456,12 +471,24 @@ export async function drive(opts) {
   // (docs/hosts.md §4).
   machine.reset();
 
-  const { taken, skipped } = putDirectory(machine, opts.dir);
+  const { taken, skipped, incomplete } = putDirectory(machine, opts.dir);
   say(
     `amberfolio: disk files=${taken} skipped=${skipped.length} ` +
       `bytes=${machine.vfsBytesUsed()}`,
   );
   for (const name of skipped) say(`amberfolio: disk skipped ${name}`);
+  // Loud, and separately from the per-file lines, because this one is
+  // not a list of things that were right to leave out: the disk did not
+  // fit, and whatever it is missing the program will ask for eventually
+  // and get a file-not-found for. The run still goes ahead — it is the
+  // caller's disk and the caller's decision — but nobody should read the
+  // rest of this output without knowing (#158).
+  if (incomplete) {
+    say(
+      'amberfolio: disk INCOMPLETE - the filesystem ran out of room, so ' +
+        'files above are missing from the machine, not merely from DOS',
+    );
+  }
 
   // The identity of the file, before anything executes — a fact about it
   // and never anything out of it (PLAN.md §2), and the same line the SDL

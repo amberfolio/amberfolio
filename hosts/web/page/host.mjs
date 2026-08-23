@@ -33,6 +33,13 @@ export const AF_INVALID = 3;
 /// rather than reclaiming it.
 export const AF_UNIMPLEMENTED = 4;
 export const AF_NO_FILESYSTEM = 5;
+/// The filesystem had nothing left to do the call with — no free entry
+/// for the file, no room for its bytes, no handle to open it (#158).
+/// Its own code because it is the opposite kind of refusal from
+/// `AF_INVALID`: a path DOS could never have named is the machine
+/// working, and a full disk is the machine holding less than the player
+/// handed it.
+export const AF_NO_ROOM = 6;
 
 export const AF_KEY_UP = 0;
 export const AF_KEY_DOWN = 1;
@@ -66,6 +73,36 @@ export function formatSeamFired(seam) {
       ? ' - armed and never reached; its point may not be where its facts say'
       : '')
   );
+}
+
+/// Why a file the host offered did not go in, in the words a person
+/// reads (M4, #158). Takes the status `Machine.vfsPut()` answered.
+///
+/// Here rather than in either caller for the same reason
+/// `formatSeamFired` is: the dev page and `tools/drive.mjs` both print a
+/// skipped list, and a player comparing what a browser said with what
+/// the driver said should be comparing two disks, not two spellings.
+///
+/// The distinction is the whole point. `AF_INVALID` is the machine
+/// working — a boxed copy carries a PDF, DOS could never have named it,
+/// and the run goes on without it. `AF_NO_ROOM` is a hole in the disk
+/// the machine is running: the file the program will ask for later is
+/// not there. Until #158 both were `AF_INVALID` and read alike, and a
+/// browser reported seven missing game data files in the same sentence
+/// as a correctly-ignored PDF.
+export function describeSkip(status) {
+  if (status === AF_NO_ROOM) return 'no room left on the disk';
+  if (status === AF_INVALID) return 'not a DOS-nameable path';
+  if (status === AF_NO_FILESYSTEM) return 'no filesystem attached';
+  return `status ${status}`;
+}
+
+/// Whether a skipped list is one a run can carry on past. A path DOS
+/// could never have named is expected and harmless; a full filesystem
+/// means the machine is holding less than the player handed it, and
+/// whatever it is missing it will ask for later.
+export function anySkipLostAFile(statuses) {
+  return statuses.some((status) => status === AF_NO_ROOM);
 }
 
 /// The speed governor's presets (abi.h's `AF_SPEED_*`, the values of
@@ -501,6 +538,10 @@ export class Machine {
   /// answer, not a failure: a real game directory has files in it DOS
   /// could never have named, and this is where a caller gets its
   /// "skipped" list.
+  ///
+  /// `AF_NO_ROOM` when the filesystem is full, which is the other kind
+  /// of skip and must not be printed as the same one (#158). Use
+  /// `describeSkip()` above rather than spelling either out again.
   vfsPut(path, bytes) {
     return this.#withCString(path, (pathPtr) => {
       const size = bytes ? bytes.length : 0;

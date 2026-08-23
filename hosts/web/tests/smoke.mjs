@@ -71,6 +71,8 @@ import {
   AF_OK,
   AF_INVALID,
   AF_NO_FILESYSTEM,
+  AF_NO_ROOM,
+  describeSkip,
   AF_KEY_DOWN,
   AF_KEY_UP,
   AF_RUN_END_STOPPED,
@@ -875,6 +877,134 @@ if (missing.length === 0) {
   machine.destroy();
 }
 
+// --- A disk of the real shape, and the two ways one is refused (#158) ----
+//
+// A shipped installation is a flat root of about a hundred and twenty
+// files with a `SAVE\` under it already holding the slot files an archive
+// release ships — 195 entries before a player has saved anything. The
+// backend held 192, so the table filled part-way through the disk: seven
+// of the game's own data files were refused, the game booted and ran
+// without them, and the symptom loud enough to notice was that no save
+// could be written at all.
+//
+// Two things are checked here, and the second is the one that survives
+// the next disk. First, that shape goes in whole and a save can still be
+// made after it. Second, when a filesystem *is* full, the refusal says
+// so — `AF_NO_ROOM`, distinct from the `AF_INVALID` that a path DOS
+// could never have named gets. Both were `AF_INVALID` before, and a
+// skipped list of eight things read as eight of the same thing.
+//
+// No game content is here (CONTRIBUTING.md): the entry counts are the
+// fact, and every name below is this file's own.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  check(
+    machine.attachReferenceDevices() === AF_OK,
+    'attaching the reference devices failed',
+  );
+  machine.reset();
+
+  const byte = new Uint8Array([0x2a]);
+  const rootFiles = 122;
+  const shippedSlots = 72;
+
+  let refused = 0;
+  for (let i = 0; i < rootFiles; ++i) {
+    if (machine.vfsPut(`DATA${i}.DAT`, byte) !== AF_OK) refused += 1;
+  }
+  for (let i = 0; i < shippedSlots; ++i) {
+    if (machine.vfsPut(`SAVE/SLOT${i}.DAT`, byte) !== AF_OK) refused += 1;
+  }
+  check(
+    refused === 0,
+    `${refused} of a ${rootFiles + shippedSlots}-file installation were ` +
+      'refused; the disk the browser boots would have holes in it',
+  );
+  // The root holds its files plus the one directory core made on the way
+  // — 190 of 195 taken was the bug.
+  const rootListing = machine.vfsList();
+  check(
+    rootListing.length === rootFiles + 1,
+    `the root holds ${rootListing.length} entries, expected ${rootFiles + 1}`,
+  );
+  check(
+    rootListing.some((entry) => entry.name === 'SAVE'),
+    'the SAVE directory core made on the way is not in the root listing',
+  );
+
+  // What the bug's symptom was: a save still has somewhere to go, and it
+  // is seven files — the slot, and a character file for each of a party
+  // of six.
+  let saved = 0;
+  if (machine.vfsPut('SAVE/SAVGAMA.DAT', byte) === AF_OK) saved += 1;
+  for (let i = 0; i < 6; ++i) {
+    if (machine.vfsPut(`SAVE/CHAR${i}.CHA`, byte) === AF_OK) saved += 1;
+  }
+  check(saved === 7, `only ${saved} of a 7-file save could be written`);
+
+  // Now fill it the rest of the way and read the refusal. The bound is
+  // core's and this side does not restate it — it puts files until one
+  // does not fit, which is exactly what a page does.
+  let held = 0;
+  let full = AF_OK;
+  for (let i = 0; i < 4096; ++i) {
+    const status = machine.vfsPut(`FILL${i}.DAT`, byte);
+    if (status !== AF_OK) {
+      full = status;
+      break;
+    }
+    held += 1;
+  }
+  check(
+    full === AF_NO_ROOM,
+    `a full filesystem answered ${full}, expected AF_NO_ROOM (${AF_NO_ROOM})`,
+  );
+  check(
+    describeSkip(full) === 'no room left on the disk',
+    `a full filesystem is described as ${JSON.stringify(describeSkip(full))}`,
+  );
+  check(
+    held > 0,
+    'the filesystem was already full before this test put anything in it',
+  );
+
+  // And the other refusal, from that same full filesystem. These two
+  // being one status is what made a browser report seven missing game
+  // data files in the same sentence as a PDF it was right to ignore.
+  const unnameable = machine.vfsPut('code wheel.pdf', byte);
+  check(
+    unnameable === AF_INVALID,
+    `a name no DOS short name can equal answered ${unnameable}`,
+  );
+  check(
+    describeSkip(unnameable) === 'not a DOS-nameable path',
+    `an unnameable path is described as ${JSON.stringify(describeSkip(unnameable))}`,
+  );
+  check(
+    describeSkip(full) !== describeSkip(unnameable),
+    'a full disk and an illegal name are still reported the same way',
+  );
+
+  // The move abi.h tells a host that ran out of room to make.
+  check(machine.vfsClear() === AF_OK, 'clearing a full filesystem failed');
+  check(
+    machine.vfsPut('WALLDEF3.DAX', byte) === AF_OK,
+    'a cleared filesystem still had no room',
+  );
+
+  console.log(
+    'smoke: a 195-entry installation went in whole, a save was written ' +
+      'after it, and a full disk says so rather than saying "bad name"',
+  );
+
+  machine.destroy();
+}
+
 // --- A seam, toggled through the ABI (M4-F4, #98) -------------------------
 //
 // The probe program tests/programs runs with its seam on and off, staged
@@ -1553,6 +1683,61 @@ if (missing.length === 0 && sessions !== null) {
   check(
     !walkedSaid.includes('disk skipped'),
     `the driver skipped something it should have walked into:\n${walkedSaid}`,
+  );
+
+  // --- A disk the machine cannot hold, said so (M4, #158) ---------------
+  //
+  // The line a person reads when a directory overruns the filesystem.
+  // Both refusals printed `(status 3)` until #158, so the run that found
+  // this reported seven of a game's data files in the same words as a
+  // PDF it was right to ignore. They are different sentences now, and a
+  // disk with a hole in it says so once more, loudly, on its own line —
+  // because everything after it is a run on a disk that is not the one
+  // the caller named.
+  //
+  // The filler count is deliberately not `max_entries`: this side does
+  // not restate core's bound, it hands over more files than any bound
+  // this backend will plausibly have and checks what comes back.
+  const toobig = join(scratch, 'toobig');
+  mkdirSync(toobig, { recursive: true });
+  copyFileSync(join(disk, 'SPIN.EXE'), join(toobig, 'SPIN.EXE'));
+  for (let i = 0; i < 700; ++i) {
+    writeFileSync(join(toobig, `F${i}.DAT`), Buffer.from([0x2a]));
+  }
+  // And one name DOS could never have had, so both refusals are in the
+  // same output and can be told apart in it.
+  writeFileSync(join(toobig, 'code wheel.pdf'), Buffer.from([0x2a]));
+
+  // Nothing is asserted about the exit code, and that is on purpose:
+  // `readdirSync` hands files back in the order the operating system
+  // keeps them, so whether `SPIN.EXE` itself is one of the ones that fit
+  // differs between the three platforms this runs on. What is under test
+  // is the report of the disk, which is printed before anything is
+  // loaded — and which is the only thing that told anybody the disk was
+  // wrong.
+  const overrun = spawnSync(
+    process.execPath,
+    [driver, toobig, 'SPIN.EXE', '--frames', '1', '--quiet'],
+    { encoding: 'utf8' },
+  );
+  const overrunSaid = overrun.stdout ?? '';
+  check(
+    overrunSaid.includes('(no room left on the disk)'),
+    `an overrun disk did not say what was wrong:\n${overrunSaid.slice(0, 4000)}`,
+  );
+  check(
+    overrunSaid.includes('code wheel.pdf (not a DOS-nameable path)'),
+    'a name DOS could never have had was not reported as such:\n' +
+      overrunSaid.slice(0, 4000),
+  );
+  check(
+    /^amberfolio: disk INCOMPLETE - /m.test(overrunSaid),
+    `an overrun disk was not called incomplete:\n${overrunSaid.slice(0, 4000)}`,
+  );
+  check(
+    !overrunSaid.includes('(status 3)'),
+    'a refusal is still printed as a bare status number:\n' +
+      overrunSaid.slice(0, 4000),
   );
 
   rmSync(scratch, { recursive: true, force: true });

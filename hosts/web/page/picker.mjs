@@ -54,6 +54,15 @@
 // So a file whose name no DOS short name can equal — the PDF that comes
 // with a boxed copy, say — is not filtered here. It is offered, refused
 // by core, and reported as skipped. The refusal is the feature.
+//
+// **It does not count them either.** Whether a chosen directory has more
+// files than the machine's filesystem can hold is
+// `memory_filesystem::max_entries`' business, and a page that checked
+// the count itself would be a second copy of a bound that moves
+// (it moved in #158). Every file goes across; core answers `AF_NO_ROOM`
+// for the ones that did not fit, and `app.mjs` reports those apart from
+// the unnameable ones, because one is the machine working and the other
+// is a hole in the disk about to be booted.
 
 /// Read one `File` into a `Uint8Array`.
 async function readFile(file) {
