@@ -2,8 +2,8 @@
 
 How to drive a player-supplied copy from the party roster into the game —
 a party, the city, a story event, a fight, a save, a load, a purchase, a
-cure paid for and a gem sold — and what each of those legs is evidence
-for.
+cure paid for, a gem sold, and the whole of it again on the machine a
+browser runs — and what each of those legs is evidence for.
 
 `docs/first-light.md` is the M3 procedure and stops where this one starts:
 at the roster, with an empty party and nothing to do. M4's exit criterion
@@ -523,6 +523,100 @@ the slums, and the dungeons that open off them — is still the gap below.
 
 ---
 
+## Leg 6 — the same game, in the browser's machine (#108, #99)
+
+Every leg above is the desktop host. This one is the wasm module, driven
+headless by `hosts/web/tools/drive.mjs`, which takes a directory and a
+program the way the SDL host does and spells `--press KEY@FRAME` the same
+way — so a leg written here runs there:
+
+```sh
+node build/wasm/hosts/web/Release/drive.mjs <your-directory> START.EXE \
+  --seam code-wheel --press A@7600 --press Return@7650 ... --frames 28000 \
+  --quiet --dump run
+```
+
+It prints the load line, the edition, the stop report, the state hash,
+the audio counters, the seam table and a throughput line. `docs/hosts.md`
+has the tool; this is what it says about the game.
+
+### It runs the loop
+
+Legs 0, 1 and 2 as one script — the code wheel answered by its seam, a
+character generated and put in the party, `BEGIN ADVENTURING`, the
+guide's tour taken with fifty Returns, twenty steps north into the slums,
+`C` and `Q` — reaches the tactical view and a fight that ends at
+`CONTINUE BATTLE:` with the fighter alive on one hit point. 28,001
+frames, 139,204,567 steps.
+
+**Throughput**, which #116 closed without leaving a number in the tree
+and this is:
+
+```
+amberfolio: throughput virtual=466.667s wall=4.924015s factor=94.77x
+            steps=139204567 steps/s=28270540
+```
+
+Ninety-five times real time on the Release module, running the actual
+game rather than a synthetic loop. #107's default preset needs one.
+
+### The cheats toggle here too (#99)
+
+The same script, the same directory, one flag apart:
+
+| | fighter at `CONTINUE BATTLE:` |
+| --- | --- |
+| `--seam code-wheel` | `HITPOINTS 1` |
+| `--seam code-wheel --seam cheat-invulnerable` | `HITPOINTS 8` |
+
+The state hashes differ, the seam reports itself `on armed`, and the
+screens say what the numbers say. That is #99's last owed item — the
+cheats seam toggled end to end against the player's copy from **both**
+hosts — and it is the same evidence `tests/sessions/fight-cheat.rec`
+carries on the desktop, taken the only way the web host can take it,
+which is by hand.
+
+### A recording of the real game, verified on the other target
+
+The stronger claim, and the one the session library exists for. The same
+script was recorded on the **desktop** host and the recording handed to
+the **wasm** module through `af_machine_verify_recording`:
+
+```
+amberfolio: replay verified checkpoints=101 keys=186
+```
+
+A hundred and one checkpoints of a 139-million-step run of a real game —
+every byte of RAM, every device register, the clock — reproduced exactly
+by a different compiler on a different architecture. Until now that claim
+rested on `spin.rec`: four frames of a machine executing `JMP $` (#142).
+
+It cannot be committed, for the reason nothing here can, and there is no
+`--replay` on the web driver yet, so this is a procedure and not a test.
+Both of those are follow-ups rather than doubts.
+
+### What the browser cannot do yet
+
+**A saved game cannot be loaded there.** `af_machine_vfs_put` puts a file
+in the **root directory** and there is no door for anything below it, so
+a host handing over a real installation hands over its root and drops
+`\SAVE\` — which is where every shipped save slot lives. The dev page's
+picker says as much in its own comment and the driver reports it:
+
+```
+amberfolio: disk skipped SAVE (not a file)
+```
+
+The core is not the limit — `machine::filesystem` has directories, and
+the program makes its own `\SAVE\` on the web exactly as it does on the
+desktop, so a save and a load **within one session** are not blocked.
+What is blocked is starting from a directory that already has one, which
+is how legs 3, 4 and 5 all start. Until that door exists, the browser can
+play the game from the beginning and not from where you left it, and
+#105's round trip on the web is the in-session half only.
+
+---
+
 ## What the run should not say
 
 Three notices, and no others, on a clean run of any of the legs above:
@@ -565,8 +659,19 @@ Honest gaps, so nobody reads more into a green run than is there:
 - **The dungeon.** Everything above is the city and its slums. The gate
   out of the civilised district is at `0,4` and leg 5's routing method
   works on the other side of it; nobody has walked through.
-- **The web host** (#108) runs the same core and the same recordings, and
-  none of these legs has been driven on the dev page.
+- **The dev page itself** (#108). Leg 6 drives the wasm module headless
+  and the module is the same one the page loads, but nobody has run any
+  of this in a browser: the canvas, the AudioWorklet, the seam
+  checkboxes and the directory drop are checked by a node harness and by
+  reading, not by looking. `docs/hosts.md` §3 is still where a person
+  closes that.
+- **A saved game in the browser.** Leg 6's last section: the VFS door
+  reaches the root directory only, so `\SAVE\` cannot be handed over and
+  legs 3, 4 and 5 have no web equivalent.
 - **Audio beyond "there was one."** The first sound this program makes is
-  in combat, and `docs/hosts.md` §3 is still where a person checks that a
-  pressure wave left a speaker (#106).
+  in combat. `docs/hosts.md` §4 now measures the speaker — the edge list
+  a run published, the box filter's DC offset, the two hosts' sample
+  rates against each other — but every one of those numbers comes from a
+  program in `tests/programs`. Nothing has measured *this* program, and
+  §3 is still where a person checks that a pressure wave left a speaker
+  (#106).
