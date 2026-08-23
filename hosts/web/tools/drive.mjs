@@ -98,6 +98,7 @@ import {
   AF_SEAM_OFF,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
+  formatSeamFired,
   AF_RUN_END_STOPPED,
   AF_RUN_END_STEP_BUDGET,
   AF_RUN_END_TICK_BUDGET,
@@ -625,6 +626,7 @@ export async function drive(opts) {
       `resyncs=${machine.audioResyncs()}`,
   );
   reportSeams(machine);
+  reportSeamsFired(machine);
 
   // --- Throughput --------------------------------------------------------
   //
@@ -695,6 +697,23 @@ function reportSeams(machine) {
     const armed = seam.state === AF_SEAM_ON ? (seam.armed ? ' armed' : ' inert') : '';
     const why = seam.reason === 'none' ? '' : ` ${seam.reason}`;
     say(`amberfolio: seams ${seam.id} ${state}${armed}${why} - ${seam.about}`);
+  }
+}
+
+/// What each enabled seam actually *did*, one line each, in the words the
+/// SDL host ends a run with (hosts/sdl/src/main.cpp) — `seam <id> armed
+/// fired=N`, singular, and distinct from the `seams` listing above.
+///
+/// The listing says an address was computed out of a fact table; this
+/// says a handler ran there (#131). A seam that is on and armed and
+/// fired nothing is the failure that reads exactly like success, so the
+/// zero is called out in words rather than left to a reader to spot.
+/// Only for a run: `--seams` asks a question before anything has moved,
+/// and every count would be zero for the honest reason.
+function reportSeamsFired(machine) {
+  for (const seam of machine.seamList()) {
+    if (seam.state !== AF_SEAM_ON) continue;
+    say(`amberfolio: seam ${seam.id} ${formatSeamFired(seam)}`);
   }
 }
 

@@ -223,6 +223,20 @@ struct machine_program {
 /// with; the same definition every time, because the program is.
 [[nodiscard]] const machine::seam_definition& seam_probe_definition();
 
+/// The other half of the pair, and the one nothing about it is meant to
+/// happen to: the same program's fingerprint, one point, and the point
+/// sits on an instruction the program never executes — dead code the
+/// assembler emits past the exit for exactly this purpose.
+///
+/// It is the shape of #131's failure, made on purpose: a seam that is
+/// on, that arms, and that then does nothing, because its address is not
+/// where execution goes. `armed` cannot tell it apart from a seam that
+/// works and `fired == 0` can, which is what makes it the test the
+/// counter exists for (#147). Its handler writes a sentinel over the
+/// program's own first answer, so a run in which it *did* fire fails on
+/// the result block too rather than only on the count.
+[[nodiscard]] const machine::seam_definition& seam_probe_unreached_definition();
+
 /// The probe program itself, as the MZ file `seam_probe` loads — for a
 /// host that wants to stage it somewhere of its own (hosts/web).
 [[nodiscard]] const std::vector<std::uint8_t>& seam_probe_file();

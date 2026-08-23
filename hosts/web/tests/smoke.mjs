@@ -70,6 +70,7 @@ import {
   AF_SEAM_OFF,
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
+  formatSeamFired,
 } from './host.mjs';
 import {
   encodePpm,
@@ -132,6 +133,7 @@ const EXPECTED_EXPORTS = [
   '_af_machine_seam_state',
   '_af_machine_seam_reason',
   '_af_machine_seam_armed',
+  '_af_machine_seam_fired',
   '_af_machine_seam_enable',
   '_af_machine_seam_disable',
   '_af_machine_write_memory',
@@ -719,6 +721,16 @@ if (missing.length === 0) {
 // off and available, the code-wheel seam is listed as unavailable with
 // its reason, and turning the probe on changes the result block in
 // exactly the way the native suite asserts it does.
+//
+// And, since #147, what the seams *did*. Two seams are registered, not
+// one: `probe`, whose points the program runs through, and
+// `probe-unreached`, armed on an instruction past the exit that the
+// program never executes. Both are keyed to the same file, so both are
+// available and both arm - `af_machine_seam_armed` cannot tell them
+// apart. `af_machine_seam_fired` can, and the assertion that
+// `probe-unreached` finishes a whole run at zero is the one this issue
+// was filed for: "armed and fired nothing" is the failure that reads
+// exactly like success, and a browser had no way to say it.
 
 if (missing.length === 0) {
   const check = (condition, message) => {
@@ -731,7 +743,7 @@ if (missing.length === 0) {
     machine.reset();
     check(
       module._af_web_probe_seam_register(machine.handle) === AF_OK,
-      'the probe seam could not be registered',
+      'the probe seams could not be registered',
     );
 
     const ptr = module._af_web_probe_program_bytes();
@@ -767,6 +779,7 @@ if (missing.length === 0) {
     const wheel = before.find((s) => s.id === 'code-wheel');
     check(probe !== undefined, 'the probe seam is not listed');
     check(probe?.state === AF_SEAM_OFF && probe?.reason === 'none', `the probe seam starts ${JSON.stringify(probe)}`);
+    check(probe?.fired === 0, `a seam that is off has fired ${JSON.stringify(probe?.fired)} times`);
     check(wheel !== undefined, 'the code-wheel seam is not listed');
     check(
       wheel?.state === AF_SEAM_UNAVAILABLE && wheel?.reason === 'wrong_binary',
@@ -777,6 +790,22 @@ if (missing.length === 0) {
       check(machine.seamEnable('probe') === AF_OK, 'enabling the probe seam was refused');
       const on = machine.seamList().find((s) => s.id === 'probe');
       check(on?.state === AF_SEAM_ON && on?.armed === true, `the probe seam did not arm: ${JSON.stringify(on)}`);
+      check(on?.fired === 0, `the probe seam fired ${on?.fired} times before a step was taken`);
+
+      // The pair (#147). This one arms exactly as the working seam does
+      // - same program, same fingerprint, `armed === true` - and its
+      // point is on an instruction past the program's exit. Nothing
+      // visible before the run distinguishes the two.
+      check(
+        machine.seamEnable('probe-unreached') === AF_OK,
+        'enabling the unreached probe seam was refused',
+      );
+      const never = machine.seamList().find((s) => s.id === 'probe-unreached');
+      check(
+        never?.state === AF_SEAM_ON && never?.armed === true,
+        `the unreached probe seam did not arm: ${JSON.stringify(never)}`,
+      );
+
       check(machine.seamEnable('code-wheel') === AF_INVALID, 'an unavailable seam was enabled');
       check(machine.seamEnable('no-such-seam') === AF_INVALID, 'a seam that does not exist was enabled');
     }
@@ -805,16 +834,70 @@ if (missing.length === 0) {
     const words = block === null
       ? [0, 0]
       : [block[0] | (block[1] << 8), block[2] | (block[3] << 8)];
+
+    // What the seams did, read off the run that just ended - the browser
+    // half of the line the desktop host prints at the end of every run
+    // (#131, #147).
+    const after = machine.seamList();
+    const fired = Object.fromEntries(after.map((s) => [s.id, s.fired]));
+    const states = Object.fromEntries(after.map((s) => [s.id, s.state]));
     machine.destroy();
-    return words;
+    return { words, fired, states };
   };
 
   const off = runProbe(false);
-  check(off[0] === 0x1111 && off[1] === 0x0000, `seam off: result block is ${JSON.stringify(off.map((w) => w.toString(16)))}, expected 1111, 0`);
+  check(off.words[0] === 0x1111 && off.words[1] === 0x0000, `seam off: result block is ${JSON.stringify(off.words.map((w) => w.toString(16)))}, expected 1111, 0`);
   const on = runProbe(true);
-  check(on[0] === 0x2222 && on[1] === 0x256b, `seam on: result block is ${JSON.stringify(on.map((w) => w.toString(16)))}, expected 2222, 256b`);
+  check(on.words[0] === 0x2222 && on.words[1] === 0x256b, `seam on: result block is ${JSON.stringify(on.words.map((w) => w.toString(16)))}, expected 2222, 256b`);
 
-  console.log('smoke: the probe seam listed, toggled, edited a register and posted a key');
+  // --- What the seams did, not what they were armed at (#147) -----------
+  //
+  // Three claims, and the middle one is the issue:
+  //
+  //   * a seam that ran reports a count a browser can see;
+  //   * a seam that armed and was never reached reports **zero** - the
+  //     failure #131 spent a milestone not seeing, because `armed` says
+  //     the same thing either way;
+  //   * a seam left off reports zero, so the count belongs to the enable
+  //     it was made under and not to the machine's whole life.
+  check(on.fired.probe > 0, `the probe seam ran but reports fired=${on.fired.probe}`);
+  check(
+    on.fired['probe-unreached'] === 0,
+    'a seam armed where the program never goes reports ' +
+      `fired=${on.fired['probe-unreached']}, and the whole point of the count is that it is 0`,
+  );
+  check(
+    on.states['probe-unreached'] === AF_SEAM_ON,
+    'the unreached probe seam was not still on at the end of the run',
+  );
+  check(
+    off.fired.probe === 0 && off.fired['probe-unreached'] === 0,
+    `a seam that was never enabled reports ${JSON.stringify(off.fired)}`,
+  );
+
+  // The sentence both JS surfaces print, checked as the pure function it
+  // is (host.mjs). The driver and the dev page share it precisely so a
+  // browser run and a desktop run can be compared as two runs rather than
+  // as two spellings, and the wording of the zero case is the part that
+  // has to survive an edit - it is the whole warning.
+  check(
+    formatSeamFired({ armed: true, fired: 9 }) === 'armed fired=9',
+    `a fired seam formats as "${formatSeamFired({ armed: true, fired: 9 })}"`,
+  );
+  check(
+    formatSeamFired({ armed: false, fired: 0 }) === 'inert fired=0',
+    `an inert seam formats as "${formatSeamFired({ armed: false, fired: 0 })}"`,
+  );
+  check(
+    formatSeamFired({ armed: true, fired: 0 }) ===
+      'armed fired=0 - armed and never reached; its point may not be where its facts say',
+    `an armed seam that fired nothing formats as "${formatSeamFired({ armed: true, fired: 0 })}"`,
+  );
+
+  console.log(
+    'smoke: the probe seam listed, toggled, edited a register, posted a key ' +
+      `and reported fired=${on.fired.probe}; the unreached one reported fired=0`,
+  );
 }
 
 // --- The keys a keyboard-driven game needs (#84) -------------------------
