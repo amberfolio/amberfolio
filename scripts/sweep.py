@@ -57,6 +57,12 @@ that in as many words.
     python3 scripts/sweep.py --game-disk /path/to/a/pristine/copy
     AMBERFOLIO_GAME_DISK=/path/to/a/copy python3 scripts/sweep.py
 
+`--game-disk` is repeatable, and a library of any size needs it to be: a
+session begins wherever the last one left off, so the leg that loads a
+saved game starts from the directory the leg that saved it wrote.  Which
+candidate belongs to which session is never a guess — a descriptor pins
+its disk exactly, so at most one of them can match.
+
 Pinning a disk
 --------------
 
@@ -193,14 +199,25 @@ class Session:
     def external(self) -> bool:
         return self.descriptor is not None and self.descriptor.external
 
-    def disk(self, game_disk: Path | None) -> Path | None:
+    def disk(self, game_disks: list[Path]) -> Path | None:
         """Where the disk this recording wants actually is, or None when
-        it is an external one and nobody said where."""
+        it is an external one and none of the given directories is it.
+
+        More than one may be given, and a session library of any size
+        needs that: a session begins wherever the last one left off, and
+        `docs/playable.md`'s load leg starts from the directory its save
+        leg wrote. Which is which is never a guess — a descriptor pins its
+        disk exactly, so at most one of the candidates can match.
+        """
         if self.descriptor is None:
             return None
-        if self.descriptor.external:
-            return game_disk
-        return SESSIONS / self.descriptor.disk
+        if not self.descriptor.external:
+            return SESSIONS / self.descriptor.disk
+        for candidate in game_disks:
+            if candidate.is_dir() and check_pinned(self.descriptor,
+                                                   candidate)[0]:
+                return candidate
+        return None
 
     def problems(self) -> list[str]:
         """What is wrong with this session as a *session*, before any
@@ -488,7 +505,11 @@ def pin(name: str, game_disk: Path | None) -> int:
     lines += [f"dir {name}" for name in sorted(dirs)]
     lines += [f"file {name} {size} {digest}"
               for name, (size, digest) in sorted(files.items())]
-    side.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # The newline spelled out: on Windows the default would write CRLF,
+    # and a descriptor whose line endings changed every time it was
+    # pinned would come back as a diff of the whole file.
+    with side.open("w", encoding="utf-8", newline="\n") as out:
+        out.write("\n".join(lines) + "\n")
     print(f"sweep: pinned {len(files)} file(s) and {len(dirs)} directory(s)"
           f" from {game_disk} into {rel(side)}")
     return 0
@@ -503,18 +524,26 @@ def main() -> int:
     parser.add_argument("--session", help="only this one, by stem")
     parser.add_argument("--targets", default="sdl,ctest",
                         help="comma-separated: sdl, ctest (default: both)")
-    parser.add_argument("--game-disk", default=os.environ.get(GAME_DISK_ENV),
-                        help="a copy of the disk the game sessions were"
-                             f" recorded against (or ${GAME_DISK_ENV})")
+    parser.add_argument("--game-disk", action="append", default=[],
+                        help="a copy of a disk the game sessions were"
+                             f" recorded against; repeatable (or"
+                             f" ${GAME_DISK_ENV}, {os.pathsep}-separated)")
     parser.add_argument("--pin", metavar="SESSION",
                         help="rewrite that session's descriptor with the"
                              " names, sizes and digests --game-disk holds")
     args = parser.parse_args()
     wanted = {t.strip() for t in args.targets.split(",") if t.strip()}
-    game_disk = Path(args.game_disk) if args.game_disk else None
+    game_disks = [Path(p) for p in args.game_disk]
+    if not game_disks:
+        game_disks = [Path(p) for p
+                      in os.environ.get(GAME_DISK_ENV, "").split(os.pathsep)
+                      if p]
 
     if args.pin is not None:
-        return pin(args.pin, game_disk)
+        if len(game_disks) != 1:
+            sys.exit("sweep: --pin takes exactly one --game-disk, the"
+                     " snapshot the session was recorded over")
+        return pin(args.pin, game_disks[0])
 
     sessions = find_sessions(args.session)
     if not sessions:
@@ -549,26 +578,22 @@ def main() -> int:
         if "sdl" not in wanted:
             continue
 
-        disk = session.disk(game_disk)
+        disk = session.disk(game_disks)
         if disk is None:
+            # Why, and not just that: "no disk" and "a disk that has moved
+            # on since" are different things to be told, and the second is
+            # the one somebody can act on.
+            if not game_disks:
+                why = f"no --game-disk given (or ${GAME_DISK_ENV})"
+            else:
+                why = "; ".join(
+                    check_pinned(session.descriptor, candidate)[1]
+                    if candidate.is_dir() else f"{candidate} is not a directory"
+                    for candidate in game_disks)
             rows.append((session.name, "sdl", "SKIP",
-                         "this disk is not that disk: no --game-disk given"
-                         f" (or ${GAME_DISK_ENV})"))
+                         f"this disk is not that disk: {why}"))
             skipped.append(session.name)
             continue
-        if not disk.is_dir():
-            rows.append((session.name, "sdl", "SKIP",
-                         f"this disk is not that disk: {disk} is not a"
-                         " directory"))
-            skipped.append(session.name)
-            continue
-        if session.external:
-            same, detail = check_pinned(session.descriptor, disk)
-            if not same:
-                rows.append((session.name, "sdl", "SKIP",
-                             f"this disk is not that disk: {detail}"))
-                skipped.append(session.name)
-                continue
 
         host = find_desktop_host(trees)
         if host is None:

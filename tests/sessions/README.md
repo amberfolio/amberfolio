@@ -46,9 +46,17 @@ forgot to commit" by looking, and guessing from whether a directory
 happens to exist is exactly how a missing commit would become a quiet
 skip.
 
-| Session | Program | What it pins |
+| Session | Disk | What it pins |
 | --- | --- | --- |
 | `spin.rec` | `spin/SPIN.EXE` — 34 bytes, ten of them `JMP $` behind an MZ header | four frames of a machine doing nothing but keeping time: the PIT, the 8259, the scheduler, the renderer's frame deadline and the clock |
+| `party.rec` | external, pristine | `docs/playable.md` leg 0 — the code-wheel challenge answered by its seam, a character generated, named and put in the party, and `BEGIN ADVENTURING` into the opening story event at 15,1 W. 15,655 frames, 144 checkpoints, 40 key events |
+| `save.rec` | external, pristine | legs 0, 1 and 3 as one run — the same party, the guide's tour taken to 0,4 W, and the game saved into slot A from the camp screen. 23,032 frames, 254 checkpoints, 148 key events. The write path is in it: the slot file created, the party's character files moved in and unlinked |
+| `load.rec` | external, **the disk `save.rec` wrote** | the other half of the round trip — `LOAD SAVED GAME`, slot A, and the party back at 0,4 W with the same character, the same AC and the same hit points. 12,069 frames, 100 checkpoints |
+
+`save.rec` and `load.rec` are #105's round trip, recorded. They are two
+sessions and not one because they have to be: a load is a fresh run over
+the directory the save left behind, and a recording carries its starting
+conditions rather than assuming them.
 
 ## A session whose disk cannot be committed
 
@@ -62,6 +70,14 @@ runner say, plainly, when it cannot check it:
 python3 scripts/sweep.py --game-disk /path/to/a/pristine/copy
 AMBERFOLIO_GAME_DISK=/path/to/a/copy python3 scripts/sweep.py
 ```
+
+`--game-disk` is repeatable, and a library of any size needs it to be. A
+session begins wherever the last one left off, so `load.rec` starts from
+the directory `save.rec` wrote and wants a different snapshot from the
+one `party.rec` wants. Which candidate belongs to which session is never
+a guess: a descriptor pins its disk exactly, so at most one of them can
+match, and a session whose disk is among them runs while the rest are
+skipped by name.
 
 so there are three outcomes rather than two, and the third is the one
 that has to be impossible to misread:
