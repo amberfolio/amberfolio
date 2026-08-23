@@ -1713,6 +1713,26 @@ int main(int argc, char** argv) try {
     std::fputs(text.data(), stderr);
   }
 
+  // What each enabled seam actually did (#131). `armed` says an address
+  // was computed; this says a handler ran there. A seam that is on and
+  // armed and fired nothing is the failure that reads exactly like
+  // success, and the only place a reader can be told about it for free is
+  // here, once, at the end of the run it belongs to.
+  for (std::size_t i = 0; i < box.seams().count(); ++i) {
+    const machine::seam_status row = box.seams().status(i);
+    if (row.state != machine::seam_state::on) {
+      continue;
+    }
+    std::fprintf(stderr, "amberfolio: seam %.*s %s fired=%llu%s\n",
+                 static_cast<int>(row.id.size()), row.id.data(),
+                 row.armed ? "armed" : "inert",
+                 static_cast<unsigned long long>(row.fired),
+                 (row.armed && row.fired == 0)
+                     ? " - armed and never reached; its point may not be"
+                       " where its facts say"
+                     : "");
+  }
+
   if (!opts.dump_prefix.empty()) {
     const std::filesystem::path ppm(opts.dump_prefix + ".ppm");
     if (sdl::write_ppm(ppm, box.display().pixels(), box.display().palette())) {

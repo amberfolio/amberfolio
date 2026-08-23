@@ -224,6 +224,23 @@ Three states a host shows, per seam (`seam_engine::status()`):
 | `on` | enabled; `armed` says whether every point is placed, and `reason` says why not |
 | `unavailable` | not for this program (`wrong_binary`), no program yet (`no_program`), or written against another schema |
 
+Beside those, `fired`: how many times one of the seam's handlers has
+actually run since it was enabled. **`armed` is a claim about the fact
+table; `fired` is a claim about the machine.** A point is armed at an
+address computed from where a module was recorded, so a seam whose module
+has since moved — or whose offset was never right — reports `armed`, does
+nothing, and reads exactly like one that works (#131). The desktop host
+prints a line per enabled seam when a run ends:
+
+```
+amberfolio: seam code-wheel armed fired=635
+amberfolio: seam cheat-invulnerable armed fired=4
+amberfolio: seam cheat-kill-all inert fired=0
+```
+
+A count cannot make a wrong address right; it makes the wrongness
+visible, which is the half of fail-closed that was missing.
+
 On the desktop host: `--seam ID` enables (repeatable), `--seams` lists
 every seam with its state and exits, and the edition line is printed
 beside the fingerprint at load. Every transition is a line on stderr:
