@@ -238,6 +238,12 @@ TEST(SdlKeymap, SaysNothingForKeysTheBoardDoesNotHave) {
   // keypad divide — those arrived with later keyboards. A host that
   // invented codes for them would be faking a machine, which is the one
   // thing this project does not do (PLAN.md §3, "log, don't fake").
+  //
+  // Since #148 the first two of these are also load-bearing in the other
+  // direction: main.cpp binds F11 to mute and F12 to the volume, and it
+  // may only do that because there is no scan code here for it to be
+  // taking away from the emulated program. Mapping either of them would
+  // break that, and this is where it would be caught.
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_F11), 0);
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_F12), 0);
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_KP_ENTER), 0);
