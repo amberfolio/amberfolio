@@ -419,6 +419,70 @@ TEST(SeamIdentity, KnowsTheEditionOrSaysItDoesNot) {
   EXPECT_TRUE(box->seams().have_program());
 }
 
+// --- What a seam actually did (#131) ------------------------------------
+//
+// `armed` says an address was computed from where a module was recorded.
+// It does not say a handler ever ran there — and a seam whose point is not
+// where its facts claim reports `armed`, fires nothing, and reads exactly
+// like one that works. `fired` is the difference, and these are the tests
+// that it counts runs rather than intentions.
+
+TEST(SeamFired, IsZeroForASeamThatIsOnAndNeverReached) {
+  const rig r;
+  // HLT at offset 0. The point is at offset 3 and is never reached, which
+  // is the shape of a seam armed at an address the program does not go to.
+  r.program_at(0, {0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  ASSERT_TRUE(r.pc().seams().status("test-edit").armed);
+
+  r.pc().step();
+  r.pc().step();
+
+  EXPECT_EQ(r.pc().seams().status("test-edit").fired, 0u)
+      << "armed is not the same claim as fired";
+  EXPECT_EQ(edit_hits, 0u);
+}
+
+TEST(SeamFired, CountsEveryRunOfTheHandler) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+
+  // MOV AX, 1111h ; NOP ; HLT — the point is on the NOP. Three passes,
+  // each one a fresh entry to the same two instructions.
+  for (unsigned i = 0; i < 3; ++i) {
+    r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+    r.pc().step();  // MOV
+    r.pc().step();  // the point fires, then NOP
+  }
+
+  EXPECT_EQ(r.pc().seams().status("test-edit").fired, 3u);
+  EXPECT_EQ(edit_hits, 3u) << "the count and the handler agree";
+}
+
+TEST(SeamFired, StartsAgainWhenTheSeamIsEnabledAgain) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();
+  r.pc().step();
+  ASSERT_EQ(r.pc().seams().status("test-edit").fired, 1u);
+
+  ASSERT_EQ(r.pc().seams().disable("test-edit"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+
+  EXPECT_EQ(r.pc().seams().status("test-edit").fired, 0u)
+      << "a count belongs to the enable it was made under";
+}
+
+TEST(SeamFired, StaysZeroWhileTheSeamIsOff) {
+  const rig r;
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();
+  r.pc().step();
+  EXPECT_EQ(r.pc().seams().status("test-edit").fired, 0u);
+  EXPECT_EQ(edit_hits, 0u);
+}
+
 // --- The fidelity boundary ---------------------------------------------------
 
 TEST(SeamFidelity, AnUnarmedMachineRunsTheProgramUntouched) {
