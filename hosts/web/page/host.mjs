@@ -541,6 +541,71 @@ export class Machine {
     return this.module._af_machine_audio_resyncs(this.handle);
   }
 
+  // --- The edge log (#148) ----------------------------------------------
+  //
+  // What the machine published, in ticks and levels, rather than what a
+  // filter made of it. The SDL host's `--dump` has written this beside
+  // the WAV since #106; `tools/drive.mjs --dump` writes the same file
+  // now, which is what makes the two hosts' *machines* comparable and
+  // not only their renderings.
+
+  /// Start or stop logging. A setting, not machine state: `reset()`
+  /// leaves it alone and no hash sees it (abi.h).
+  logEdges(on) {
+    this.module._af_machine_audio_log_edges(this.handle, on ? 1 : 0);
+  }
+
+  loggingEdges() {
+    return this.module._af_machine_audio_logging_edges(this.handle) !== 0;
+  }
+
+  /// Drain up to `max` edges. Answers an array of `{ at, level }`, oldest
+  /// first, and removes exactly those from the log.
+  ///
+  /// Two scratch buffers because the ABI takes two parallel arrays, and
+  /// re-derived views because a `_malloc` may have grown memory and
+  /// detached any view held across it (abi.h's trap, and this file's
+  /// rule at the top of the class).
+  readEdges(max = 256) {
+    const ticks = this.module._malloc(max * 8);
+    const levels = this.module._malloc(max);
+    if (ticks === 0 || levels === 0) {
+      this.module._free(ticks);
+      this.module._free(levels);
+      throw new Error('out of wasm heap while draining the edge log');
+    }
+    try {
+      const got = this.module._af_machine_audio_read_edges(
+        this.handle,
+        ticks,
+        levels,
+        max,
+      );
+      const at = new Float64Array(
+        this.module.HEAPU8.buffer,
+        ticks,
+        got,
+      );
+      const level = this.module.HEAPU8.subarray(levels, levels + got);
+      const out = [];
+      for (let i = 0; i < got; i += 1) {
+        out.push({ at: at[i], level: level[i] !== 0 });
+      }
+      return out;
+    } finally {
+      this.module._free(ticks);
+      this.module._free(levels);
+    }
+  }
+
+  audioEdgesDropped() {
+    return this.module._af_machine_audio_edges_dropped(this.handle);
+  }
+
+  audioEdgesPending() {
+    return this.module._af_machine_audio_edges_pending(this.handle);
+  }
+
   // --- The filesystem (M3-F2, #84) --------------------------------------
   //
   // The wasm counterpart of the directory the SDL host is pointed at. A

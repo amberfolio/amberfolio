@@ -127,6 +127,9 @@ TEST(Abi, EveryCallToleratesANullHandle) {
   EXPECT_EQ(af_machine_frame_generation(nullptr), 0.0);
   EXPECT_EQ(af_machine_audio_underruns(nullptr), 0.0);
   EXPECT_EQ(af_machine_audio_resyncs(nullptr), 0.0);
+  EXPECT_EQ(af_machine_audio_logging_edges(nullptr), 0);
+  EXPECT_EQ(af_machine_audio_edges_dropped(nullptr), 0.0);
+  EXPECT_EQ(af_machine_audio_edges_pending(nullptr), 0.0);
   EXPECT_EQ(af_machine_seam_count(nullptr), 0u);
   EXPECT_EQ(af_machine_seam_state(nullptr, 0), AF_SEAM_NONE);
   EXPECT_EQ(af_machine_seam_armed(nullptr, 0), 0);
@@ -167,6 +170,11 @@ TEST(Abi, EveryCallToleratesANullHandle) {
 
   std::array<float, 4> samples{};
   EXPECT_EQ(af_machine_render_audio(nullptr, samples.data(), 4, 44100), 0u);
+  std::array<double, 4> ticks{};
+  std::array<std::uint8_t, 4> levels{};
+  EXPECT_EQ(
+      af_machine_audio_read_edges(nullptr, ticks.data(), levels.data(), 4), 0u);
+  af_machine_audio_log_edges(nullptr, 1);
   std::array<std::uint8_t, 4> bytes{};
   EXPECT_EQ(af_machine_read_console(nullptr, bytes.data(), 4), 0u);
 
@@ -1236,6 +1244,118 @@ TEST(Abi, AudioIsPulledIntoTheCallersBuffer) {
   EXPECT_EQ(af_machine_render_audio(box.get(), untouched.data(), 4, 1), 0u);
   EXPECT_THAT(untouched, Each(1.0F));
   EXPECT_EQ(af_machine_render_audio(box.get(), nullptr, 4, 44100), 0u);
+}
+
+// The edge log through the ABI (#148). What the machine *published*, as
+// against `af_machine_render_audio`'s rendering of it - the half of #106
+// a browser could not ask at all until this door existed, so its
+// measurable half stopped at the desktop host.
+//
+// The program is the smallest thing that makes a tone: divisor into
+// channel 2, then the two port 61h bits that gate it. An even divisor,
+// so mode 3's square wave is exactly symmetric and every gap in the list
+// is the same number - which is the assertion, because a list whose gaps
+// are all equal is a list of a *tone* and not of a machine twitching.
+TEST(Abi, TheEdgeLogSaysWhatTheSpeakerPublished) {
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+  ASSERT_EQ(af_machine_attach_reference_devices(box.get()), AF_OK);
+
+  // mov al,0B6h / out 43h,al        channel 2, mode 3, lobyte/hibyte
+  // mov al,54h  / out 42h,al        divisor 0x0554 = 1364, low
+  // mov al,05h  / out 42h,al        and high
+  // in al,61h / or al,3 / out 61h,al  gate and data on
+  // hlt
+  const std::array<std::uint8_t, 19> tone{
+      0xB0, 0xB6, 0xE6, 0x43, 0xB0, 0x54, 0xE6, 0x42, 0xB0, 0x05,
+      0xE6, 0x42, 0xE4, 0x61, 0x0C, 0x03, 0xE6, 0x61, 0xF4};
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, tone.data(),
+                                    static_cast<std::uint32_t>(tone.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+
+  // Off unless asked for, and that is a claim about every other run in
+  // this file: nothing pays for the log by existing.
+  EXPECT_EQ(af_machine_audio_logging_edges(box.get()), 0);
+  ASSERT_EQ(af_machine_run_until(box.get(), 20'000.0), AF_OK);
+
+  std::array<double, 256> at{};
+  std::array<std::uint8_t, 256> level{};
+  EXPECT_EQ(af_machine_audio_read_edges(box.get(), at.data(), level.data(),
+                                        static_cast<std::uint32_t>(at.size())),
+            0u);
+
+  af_machine_audio_log_edges(box.get(), 1);
+  EXPECT_NE(af_machine_audio_logging_edges(box.get()), 0);
+  ASSERT_EQ(af_machine_run_until(box.get(), 40'000.0), AF_OK);
+  EXPECT_GT(af_machine_audio_edges_pending(box.get()), 0.0);
+
+  const std::uint32_t got =
+      af_machine_audio_read_edges(box.get(), at.data(), level.data(),
+                                  static_cast<std::uint32_t>(at.size()));
+  ASSERT_GT(got, 4u);
+  EXPECT_EQ(af_machine_audio_edges_dropped(box.get()), 0.0);
+
+  // A tone: strictly increasing ticks, alternating levels, one gap.
+  const double gap = at[1] - at[0];
+  EXPECT_GT(gap, 0.0);
+  for (std::uint32_t i = 1; i < got; ++i) {
+    EXPECT_DOUBLE_EQ(at[i] - at[i - 1], gap) << "at edge " << i;
+    EXPECT_NE(level[i], level[i - 1]) << "at edge " << i;
+  }
+
+  // Drained means gone, which is what makes a host's file the whole run
+  // rather than the last thousand edges of it.
+  EXPECT_EQ(af_machine_audio_edges_pending(box.get()), 0.0);
+  EXPECT_EQ(af_machine_audio_read_edges(box.get(), at.data(), level.data(),
+                                        static_cast<std::uint32_t>(at.size())),
+            0u);
+
+  // The setting survives a reset and what the log held does not - the
+  // edges belonged to the run that just ended (platform.h). What is in
+  // it afterwards is the reset's own doing, at the new timeline's
+  // origin: the speaker device coming back up and publishing the level
+  // it powers on at. So the test is not "empty" but "nothing older than
+  // this machine", which is the claim that matters and the stronger one.
+  ASSERT_EQ(af_machine_reset(box.get()), AF_OK);
+  EXPECT_NE(af_machine_audio_logging_edges(box.get()), 0);
+  const std::uint32_t after =
+      af_machine_audio_read_edges(box.get(), at.data(), level.data(),
+                                  static_cast<std::uint32_t>(at.size()));
+  for (std::uint32_t i = 0; i < after; ++i) {
+    EXPECT_DOUBLE_EQ(at[i], 0.0) << "at edge " << i;
+  }
+
+  af_machine_audio_log_edges(box.get(), 0);
+  EXPECT_EQ(af_machine_audio_logging_edges(box.get()), 0);
+}
+
+// The log is an observation of a run and not part of one: a machine
+// asked to log hashes exactly as the same machine not asked to. If this
+// ever failed, every recording in tests/sessions would have become a
+// statement about the observer (abi.h, platform.h).
+TEST(Abi, LoggingEdgesDoesNotMoveTheStateHash) {
+  const auto run = [](bool logging) {
+    const machine_handle box;
+    EXPECT_EQ(af_machine_attach_reference_devices(box.get()), AF_OK);
+    const std::array<std::uint8_t, 19> tone{
+        0xB0, 0xB6, 0xE6, 0x43, 0xB0, 0x54, 0xE6, 0x42, 0xB0, 0x05,
+        0xE6, 0x42, 0xE4, 0x61, 0x0C, 0x03, 0xE6, 0x61, 0xF4};
+    EXPECT_EQ(af_machine_write_memory(box.get(), 0x10000, tone.data(),
+                                      static_cast<std::uint32_t>(tone.size())),
+              AF_OK);
+    EXPECT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE),
+              AF_OK);
+    af_machine_audio_log_edges(box.get(), logging ? 1 : 0);
+    EXPECT_EQ(af_machine_run_until(box.get(), 40'000.0), AF_OK);
+    std::array<char, 96> digest{};
+    EXPECT_GT(af_machine_state_hash(box.get(), digest.data(),
+                                    static_cast<std::uint32_t>(digest.size())),
+              0u);
+    return std::string(digest.data());
+  };
+
+  EXPECT_EQ(run(true), run(false));
 }
 
 TEST(Abi, KeysAndTheWallClockArePushedIn) {

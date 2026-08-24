@@ -83,6 +83,49 @@ a committed binary, add it to the allowlist in the same pull request with
 a one-line note saying where the bytes came from, and expect that line to
 be the thing review talks about.
 
+## The fidelity invariant (non-negotiable)
+
+The second rule that is not a review topic. PLAN.md §4 and §5 state it;
+this is what it means when you are reading a diff.
+
+**Nothing outside the seam engine mutates machine state.** A device
+answers bus cycles. A service answers an interrupt. The loader places a
+program. A host *reads* machine state — the framebuffer, the console,
+memory through the ABI — and writes it only through a seam. The seam
+engine is the only component in this repository that alters memory or
+registers from outside the program's own instructions, and the only one
+that intercepts its execution.
+
+**Every seam is off by default, and with all of them off the machine is
+a plain machine.** Not "behaves like one": a run's machine-state hash
+with the engine present and idle equals the hash of the same run on a
+build with no engine at all, a disabled seam's breakpoint is never
+consulted, and seam state — a trigger's outstanding latch included — is
+configuration and not machine state.
+`tests/core/machine/seam_test.cpp` asserts all three and
+`tests/programs` runs a probe program with its seam on and off on all
+four targets, so this is a test and not a sentence.
+
+In review that means: a change that writes the machine from anywhere but
+`machine::step()`'s own mechanisms, a device's bus cycle, a service
+handler, the loader, or a seam handler is a change to the fidelity
+boundary. It may still be right — but it needs the argument, in the
+change, and [`docs/seams.md`](docs/seams.md) is the shape that argument
+takes. §8 there is the house style for writing a seam and §9 is this
+rule at length.
+
+Two corollaries that come up more often than the rule itself:
+
+- **An observation is not part of the run.** A trace ring, an edge log, a
+  diagnostics sink: switching one on must not move a state hash. If it
+  does, every recording in `tests/sessions` has quietly become a
+  statement about the observer.
+- **Log, don't fake.** An unimplemented service, register or port is a
+  loud log line and a clean stop, never a guessed answer.
+  [`docs/machine.md`](docs/machine.md) §5 has the third answer beside
+  those two — a notice, for a request the machine can honestly record
+  but not honestly perform — and the test for when it applies.
+
 ## Checks and gates
 
 Beside the build-and-test matrix, six scripted checks gate every push,
@@ -174,7 +217,8 @@ by every milestone after.
   not moved.
 
 So M3's closeout was: bump `VERSION` to `0.1.0` in the closeout PR, merge
-it, and `git tag -a v0.1.0` on the resulting merge commit.
+it, and `git tag -a v0.1.0` on the resulting merge commit. M4's was the
+same three steps with `0.2.0`.
 
 ## Practical bits
 

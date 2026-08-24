@@ -87,6 +87,11 @@ set(_amberfolio_web_export_names
   _af_machine_render_audio
   _af_machine_audio_underruns
   _af_machine_audio_resyncs
+  _af_machine_audio_log_edges
+  _af_machine_audio_logging_edges
+  _af_machine_audio_read_edges
+  _af_machine_audio_edges_dropped
+  _af_machine_audio_edges_pending
   _af_machine_post_key
   _af_machine_set_wall_clock
   _af_machine_read_log

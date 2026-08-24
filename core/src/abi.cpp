@@ -12,6 +12,7 @@
 
 #include "amberfolio/abi.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -688,6 +689,59 @@ double af_machine_audio_underruns(const af_machine* handle) {
 double af_machine_audio_resyncs(const af_machine* handle) {
   const machine* box = box_of(handle);
   return box == nullptr ? 0.0 : static_cast<double>(box->audio().resyncs());
+}
+
+void af_machine_audio_log_edges(af_machine* handle, int32_t on) {
+  machine* box = box_of(handle);
+  if (box != nullptr) {
+    box->audio().log_edges(on != 0);
+  }
+}
+
+int32_t af_machine_audio_logging_edges(const af_machine* handle) {
+  const machine* box = box_of(handle);
+  return box != nullptr && box->audio().logging_edges() ? 1 : 0;
+}
+
+uint32_t af_machine_audio_read_edges(af_machine* handle, double* at,
+                                     uint8_t* level, uint32_t max) {
+  machine* box = box_of(handle);
+  if (box == nullptr || at == nullptr || level == nullptr || max == 0) {
+    return 0;
+  }
+  // Drained in batches into a fixed buffer on the stack, rather than
+  // handing core's `read_edge_log` a span over the caller's memory: the
+  // caller's is two parallel arrays and core's is one of pairs, so
+  // something has to transpose, and doing it here keeps the shape core
+  // owns out of the ABI's grammar (abi.h says why two arrays).
+  std::array<amberfolio::machine::audio_edge, 64> batch{};
+  uint32_t written = 0;
+  while (written < max) {
+    const std::size_t want = std::min<std::size_t>(batch.size(), max - written);
+    const std::size_t got = box->audio().read_edge_log(
+        std::span<amberfolio::machine::audio_edge>(batch.data(), want));
+    if (got == 0) {
+      break;
+    }
+    for (std::size_t i = 0; i < got; ++i) {
+      at[written] = static_cast<double>(batch[i].at);
+      level[written] = batch[i].level ? 1 : 0;
+      ++written;
+    }
+  }
+  return written;
+}
+
+double af_machine_audio_edges_dropped(const af_machine* handle) {
+  const machine* box = box_of(handle);
+  return box == nullptr ? 0.0
+                        : static_cast<double>(box->audio().edge_log_dropped());
+}
+
+double af_machine_audio_edges_pending(const af_machine* handle) {
+  const machine* box = box_of(handle);
+  return box == nullptr ? 0.0
+                        : static_cast<double>(box->audio().edge_log_pending());
 }
 
 uint32_t af_machine_post_key(af_machine* handle, uint32_t scancode,
