@@ -210,6 +210,18 @@ struct machine_setup {
   /// on a seam that is off.
   std::vector<std::string_view> pulls;
 
+  /// Log the speaker's edges into `machine_outcome::edges` (#148).
+  ///
+  /// Off by default and asked for by the one caller that wants it —
+  /// `amberfolio-dump`, which writes the list beside the WAV so the two
+  /// questions #106 names can be asked apart: "did the machine publish
+  /// the right edges at the right ticks" is answered by the list, and
+  /// "did the filter render them right" by the samples. The suite next
+  /// door pins tones through `audio` and `speaker_test.cpp`, and
+  /// platform.h's rule is that a facility almost no run uses is not paid
+  /// for by every run.
+  bool log_edges{false};
+
   /// How many result words to harvest.
   std::size_t result_words{};
 
@@ -261,6 +273,16 @@ struct machine_outcome {
 
   /// Every audio sample pulled, at `audio_sample_rate`.
   std::vector<float> audio;
+
+  /// Every edge the speaker published, when `machine_setup::log_edges`
+  /// asked for them, and empty otherwise. The canonical form of the
+  /// sound: `audio` above is one rendering of this list.
+  std::vector<machine::audio_edge> edges;
+
+  /// Edges the machine's log had no room for. Non-zero means `edges` has
+  /// a hole in it and is not the whole run — a short list presented as a
+  /// complete one is exactly the reading this counter exists to prevent.
+  std::uint64_t edges_dropped{};
 
   /// The last frame the renderer completed, hashed, and how many it
   /// completed. Zero frames means the program exited inside the first
@@ -365,6 +387,10 @@ class machine_harness {
   [[nodiscard]] machine_outcome finish();
 
  private:
+  /// Empty the machine's edge log into `result_.edges`. A no-op unless
+  /// `machine_setup::log_edges` asked for it.
+  void drain_edges();
+
   /// The machine's single sink, kept rather than printed: what a stop was
   /// and how much of the machine was asked for things nothing answers
   /// for.

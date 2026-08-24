@@ -211,7 +211,7 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
   --seams               list every seam this build carries, and exit
   --speed xt|turbo|at|386
   --trace               keep the trace ring and the service-call channel
-  --dump PREFIX         write PREFIX.ppm and PREFIX.wav when the run ends
+  --dump PREFIX         write PREFIX.ppm, PREFIX.wav and PREFIX.edges
   --dump-every N        also write PREFIX-NNNNNN.ppm every N frames
   --quiet               only the report lines, no per-frame console output
   -- ARGUMENTS          everything after -- becomes the command tail
@@ -573,6 +573,39 @@ export async function drive(opts) {
   let capturedSamples = 0;
   let stills = 0;
 
+  // --- The edge list, written as the run makes it (#148) ----------------
+  //
+  // `--dump`'s third file, and the SDL host's third file byte for byte
+  // (hosts/sdl/src/main.cpp says why it exists): the PPM is the frame,
+  // the WAV is one *rendering* of the sound, and this is the sound in the
+  // units the machine works in — "at tick T the output became high".
+  //
+  // Until the ABI grew an edge-log door this could not be asked here at
+  // all, so #106's measurable half stopped at the desktop: a browser
+  // could compare renderings and not machines. Now the same run dumped on
+  // both hosts produces two files that must be identical, and that is a
+  // stronger statement than two WAVs agreeing.
+  //
+  // Streamed, and drained every frame, because core's log is a bounded
+  // ring with no allocator behind it (platform.h) — the loop empties it
+  // and this file keeps the whole run.
+  const edgeLines = opts.dumpPrefix === null ? null : [];
+  let edgesWritten = 0;
+  if (edgeLines !== null) {
+    machine.logEdges(true);
+  }
+  const drainEdges = () => {
+    if (edgeLines === null) return;
+    for (;;) {
+      const batch = machine.readEdges(256);
+      if (batch.length === 0) return;
+      for (const edge of batch) {
+        edgeLines.push(`${edge.at} ${edge.level ? '1' : '0'}`);
+      }
+      edgesWritten += batch.length;
+    }
+  };
+
   // The keys, indexed by the frame they are due at, so the loop does no
   // searching. A make and a break at the same virtual instant, which is
   // what a keystroke posted to `af_machine_post_key` is: the machine
@@ -677,6 +710,7 @@ export async function drive(opts) {
       captured.push(samples);
       capturedSamples += samples.length;
     }
+    drainEdges();
 
     // Announced only in the count at the end: sixty stills a virtual
     // second is a line of output per still, and the caller asked to watch
@@ -773,6 +807,27 @@ export async function drive(opts) {
           (total >= AUDIO_CAPTURE_LIMIT ? ' (truncated)' : ''),
       );
     }
+
+    // And the edge list. The count is on the last line as well as in the
+    // report so the file answers "is this all of it?" on its own — a
+    // truncated dump and a silent run look identical from the top, and
+    // only one of them is a finding about the machine.
+    drainEdges();
+    const dropped = machine.audioEdgesDropped();
+    const edges = `${opts.dumpPrefix}.edges`;
+    const header = [
+      '# amberfolio audio edges',
+      `# pit-input-hz ${machine.ticksPerSecond()}`,
+      '# tick level',
+    ];
+    const trailer = `# edges ${edgesWritten} dropped ${dropped}`;
+    writeFileSync(
+      edges,
+      `${header.concat(edgeLines, [trailer]).join('\n')}\n`,
+    );
+    say(
+      `amberfolio: dump edges=${edges} count=${edgesWritten} dropped=${dropped}`,
+    );
   }
 
   machine.destroy();

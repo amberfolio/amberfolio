@@ -471,6 +471,61 @@ uint32_t af_machine_render_audio(af_machine* box, float* out, uint32_t frames,
 double af_machine_audio_underruns(const af_machine* box);
 double af_machine_audio_resyncs(const af_machine* box);
 
+// --- The edge log: what was published, in words (M4-A1, #106; #148) ---
+//
+// `af_machine_render_audio` above answers "what does it sound like".
+// This answers the other half, which is a different question with a
+// different owner: *which* edges did the machine publish, at *which*
+// ticks. A wrong-sounding run is either a machine that made the wrong
+// edges or a filter that rendered the right ones badly, and until these
+// three the second was the only one a browser could look at.
+//
+// The SDL host's `--dump PREFIX` has written exactly this as
+// `PREFIX.edges` since #106. #148 item 5 is that a browser could not ask
+// it at all, so the half of #106 that is a measurement rather than an
+// ear stopped at the desktop.
+//
+// Off unless asked for, drained rather than accumulated, and **not
+// machine state**: `af_machine_reset` leaves the setting alone,
+// `af_machine_state_hash` cannot see any of it, and a recording made
+// with the log on verifies against one made with it off. An observation
+// of a run is not part of the run (platform.h says this at length).
+
+/// Start or stop logging edges. Survives `af_machine_reset`; what the
+/// log already holds does not.
+void af_machine_audio_log_edges(af_machine* box, int32_t on);
+
+/// Non-zero if the log is on.
+int32_t af_machine_audio_logging_edges(const af_machine* box);
+
+/// Drain up to `max` logged edges, oldest first, into the caller's two
+/// arrays: `at[i]` is the tick the output changed, `level[i]` is 0 or 1
+/// for what it changed to. Answers how many were written, and removes
+/// exactly those from the log. Zero for a null handle or a null array.
+///
+/// Two arrays rather than one of pairs: a JS host reads each through one
+/// typed-array view, and an array of structs would make it know this
+/// ABI's alignment. A `double` for a tick for the reason
+/// `af_machine_time` is one.
+///
+/// Machine-thread only. `af_machine_render_audio` is the one call in
+/// this file that may be made from elsewhere, and this is not it — both
+/// ends of the log are the producer's side (platform.h).
+uint32_t af_machine_audio_read_edges(af_machine* box, double* at,
+                                     uint8_t* level, uint32_t max);
+
+/// How many edges the log had no room for, over the run. A host that
+/// drains every frame never sees this move; one that does not needs it
+/// to say "this list has a hole in it" rather than presenting a short
+/// list as a whole one.
+///
+/// Distinct from a *ring* overflow, which is sound the host never got to
+/// hear. A drop here costs an observation and nothing else.
+double af_machine_audio_edges_dropped(const af_machine* box);
+
+/// Edges the log is holding right now, waiting to be drained.
+double af_machine_audio_edges_pending(const af_machine* box);
+
 // --- Input in ---------------------------------------------------------
 
 /// Inject a key event, stamped at the machine's current virtual time.

@@ -219,6 +219,16 @@ machine_harness::machine_harness(const machine_setup& setup)
   static_cast<void>(box_->audio().render(priming, audio_sample_rate));
   primed_underruns_ = box_->audio().underruns();
 
+  // The edge log, when a caller asked for it (#148). Switched on here,
+  // after the priming render, so the list starts at the run rather than
+  // at the epoch bump before it. A setting and not machine state
+  // (platform.h): a program run with it on hashes as the same program
+  // run with it off, which is what lets `amberfolio-dump` and the suite
+  // be looking at the same machine.
+  if (setup.log_edges) {
+    box_->audio().log_edges(true);
+  }
+
   presented_ = box_->display().generation();
 }
 
@@ -368,6 +378,11 @@ bool machine_harness::turn() {
     }
   }
 
+  // Drained every turn, for the reason the console and the audio above
+  // are: core's log is a bounded ring with no allocator behind it, and a
+  // run that never drained would keep only its last thousand edges.
+  drain_edges();
+
   if (box_->stopped()) {
     running_ = false;
   }
@@ -378,6 +393,21 @@ bool machine_harness::turn() {
   return running_;
 }
 
+void machine_harness::drain_edges() {
+  if (!setup_->log_edges) {
+    return;
+  }
+  std::array<machine::audio_edge, 256> batch{};
+  for (;;) {
+    const std::size_t got = box_->audio().read_edge_log(batch);
+    if (got == 0) {
+      return;
+    }
+    result_.edges.insert(result_.edges.end(), batch.begin(),
+                         batch.begin() + static_cast<std::ptrdiff_t>(got));
+  }
+}
+
 machine_outcome machine_harness::finish() {
   result_.stop = box_->stop();
   result_.cpu_stop = log_.cpu_stop;
@@ -385,6 +415,8 @@ machine_outcome machine_harness::finish() {
   result_.device_stops = log_.device_stops;
   result_.service_calls = log_.service_calls;
   result_.underruns = box_->audio().underruns() - primed_underruns_;
+  drain_edges();
+  result_.edges_dropped = box_->audio().edge_log_dropped();
   result_.seam_events = log_.seam_events;
   result_.file_events = log_.files;
 

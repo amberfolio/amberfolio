@@ -1,7 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Runs a machine program and writes what it produced somewhere a human
-// can look at it: the frame as a PPM, the speaker as a WAV.
+// can look at it: the frame as a PPM, the speaker as a WAV, and - since
+// #148 - the edge list the speaker published, as text beside them.
+//
+// The third file is what this tool was missing to do the job
+// docs/hosts.md 3 sends people here for: splitting a machine fault from
+// a host fault. The PPM and the WAV are what the machine produced; the
+// edge list is what it *published*, in the ticks it works in, which is
+// the form the SDL host's `--dump` writes and so the form the two can be
+// compared in. A tone that sounds wrong is either the wrong edges or a
+// wrong rendering of the right ones, and with no host in the picture
+// only the second could be looked at here.
 //
 // The suite next door asserts these programs against hashes and probes,
 // which is what a test should do — but a hash is unreadable by eye, and
@@ -13,6 +23,8 @@
 //
 // PPM and WAV because both are a header and then the samples, so this
 // needs no image or audio library to write a file every viewer opens.
+// The edge list is text for the same reason turned up a notch: it is two
+// numbers a line, and `awk` is the viewer.
 
 #include <cstdint>
 #include <cstdio>
@@ -73,6 +85,28 @@ bool write_ppm(const std::filesystem::path& where,
   return static_cast<bool>(out);
 }
 
+/// The edge list as text: a header naming the rate its ticks are counted
+/// at, then `tick level` a line, then a trailer with the count.
+///
+/// The same file the SDL host's `--dump` writes (hosts/sdl/src/main.cpp),
+/// deliberately: two hosts and this tool producing three spellings of one
+/// list would make comparing them a parsing exercise. The count is stated
+/// twice for the reason it is there - a truncated dump and a short run
+/// look identical from the top, and only one of them is a finding.
+bool write_edges(const std::filesystem::path& where,
+                 std::span<const machine::audio_edge> edges,
+                 std::uint64_t dropped) {
+  std::ofstream out(where, std::ios::trunc);
+  out << "# amberfolio audio edges\n"
+      << "# pit-input-hz " << machine::pit_input_hz << "\n"
+      << "# tick level\n";
+  for (const machine::audio_edge& edge : edges) {
+    out << edge.at << ' ' << (edge.level ? '1' : '0') << '\n';
+  }
+  out << "# edges " << edges.size() << " dropped " << dropped << '\n';
+  return static_cast<bool>(out);
+}
+
 /// The pulled samples as a 16-bit mono WAV.
 bool write_wav(const std::filesystem::path& where,
                std::span<const float> samples) {
@@ -130,7 +164,15 @@ int main(int argc, char** argv) try {
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
 
-  const programs::machine_outcome got = programs::run_machine_setup(p->setup);
+  // A copy of the program's setup with the edge log switched on. The
+  // table's own entry leaves it off, because the suite next door runs
+  // every one of these and platform.h's rule is that a facility almost
+  // no run uses is not paid for by every run - this is the run that
+  // uses it.
+  programs::machine_setup setup = p->setup;
+  setup.log_edges = true;
+
+  const programs::machine_outcome got = programs::run_machine_setup(setup);
 
   std::printf("%.*s: %llu steps, %llu frames, %zu samples\n",
               static_cast<int>(p->name.size()), p->name.data(),
@@ -161,6 +203,15 @@ int main(int argc, char** argv) try {
     }
   } else {
     std::printf("audio: none (this program makes no sound)\n");
+  }
+
+  // Written even when the list is empty, and that is the point: 'this
+  // program published no edges' is an answer, and a missing file is not.
+  const std::filesystem::path list = dir / (base + ".edges");
+  if (write_edges(list, got.edges, got.edges_dropped)) {
+    std::printf("edges: %s (%zu edges, %llu dropped)\n", list.string().c_str(),
+                got.edges.size(),
+                static_cast<unsigned long long>(got.edges_dropped));
   }
 
   return EXIT_SUCCESS;

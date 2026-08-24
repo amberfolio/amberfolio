@@ -124,6 +124,11 @@ const EXPECTED_EXPORTS = [
   '_af_machine_render_audio',
   '_af_machine_audio_underruns',
   '_af_machine_audio_resyncs',
+  '_af_machine_audio_log_edges',
+  '_af_machine_audio_logging_edges',
+  '_af_machine_audio_read_edges',
+  '_af_machine_audio_edges_dropped',
+  '_af_machine_audio_edges_pending',
   '_af_machine_post_key',
   '_af_machine_set_wall_clock',
   '_af_machine_read_log',
@@ -468,6 +473,19 @@ if (missing.length === 0) {
   // generous multiple of that, and comfortably more than one 60 Hz frame
   // period (~19,886 ticks) so the renderer has composed at least once.
   const settleTicks = 400_000;
+
+  // The edge log on before the run, so the tone below can be checked as
+  // the machine *published* it and not only as the filter rendered it
+  // (#148). Off by default, and asserted so: a browser that paid for
+  // this on every run would be paying for a facility almost no run uses
+  // (platform.h).
+  check(
+    !machine.loggingEdges(),
+    'the edge log was on before anybody asked for it',
+  );
+  machine.logEdges(true);
+  check(machine.loggingEdges(), 'the edge log would not switch on');
+
   const settleStatus = machine.runUntil(settleTicks);
   check(
     settleStatus === AF_OK,
@@ -514,6 +532,39 @@ if (missing.length === 0) {
     Array.from(toneCheck.samples).some((sample) => sample !== 0),
     'the tone PIT channel 2 was programmed for produced no sound',
   );
+
+  // --- And the same tone as the machine published it (#148) --------------
+  //
+  // The other half of #106's question, which a browser could not ask at
+  // all before this door existed: not "does it sound like something" but
+  // "did the machine put the right edges at the right ticks". The list
+  // is what the SDL host's `--dump PREFIX.edges` writes and what
+  // `tools/drive.mjs --dump` now writes here, so the two hosts can be
+  // compared as machines rather than as renderings.
+  const edges = machine.readEdges(1024);
+  check(edges.length > 4, `the edge log holds ${edges.length} edges, expected a tone`);
+  check(
+    machine.audioEdgesDropped() === 0,
+    `the edge log dropped ${machine.audioEdgesDropped()} edges - the list has a hole`,
+  );
+  for (let i = 1; i < edges.length; i += 1) {
+    check(
+      edges[i].at > edges[i - 1].at,
+      `edge ${i} is at tick ${edges[i].at}, not after ${edges[i - 1].at}`,
+    );
+    check(
+      edges[i].level !== edges[i - 1].level,
+      `edge ${i} repeats the level of the one before it`,
+    );
+  }
+  // Drained means gone: what makes a host's file the whole run rather
+  // than its last thousand edges.
+  check(
+    machine.audioEdgesPending() === 0,
+    'the edge log still holds edges after a full drain',
+  );
+  check(machine.readEdges(16).length === 0, 'a drained edge log gave more edges');
+  machine.logEdges(false);
 
   // --- Keyboard: post a key, and prove the machine observed it -----------
 
@@ -1833,6 +1884,30 @@ if (missing.length === 0 && sessions !== null) {
   check(
     ppm.length === ppmHeader.length + 320 * 200 * 3,
     `the dumped frame is ${ppm.length} bytes, expected ${ppmHeader.length + 320 * 200 * 3}`,
+  );
+
+  // And the edge list, `--dump`'s third file (#148). `SPIN.EXE` is ten
+  // bytes of `JMP $` and publishes nothing, so what is checked here is
+  // the shape and the *statement*: a program that made no sound says so
+  // with a count of zero, because a missing file is not an answer and a
+  // silent run and a broken dump must not look alike. The tone this
+  // format carries is checked against a machine that makes one, above,
+  // and byte for byte against the SDL host's own file by a person
+  // (docs/hosts.md 4).
+  const edgeFile = readFileSync(`${dump}.edges`, 'utf8').split('\n');
+  check(
+    edgeFile[0] === '# amberfolio audio edges' &&
+      edgeFile[1] === '# pit-input-hz 1193182' &&
+      edgeFile[2] === '# tick level',
+    `the dumped edge list has the wrong header: ${JSON.stringify(edgeFile.slice(0, 3))}`,
+  );
+  check(
+    edgeFile[3] === '# edges 0 dropped 0',
+    `a machine that published nothing wrote ${JSON.stringify(edgeFile[3])}`,
+  );
+  check(
+    /^amberfolio: dump edges=\S+\.edges count=\d+ dropped=\d+$/m.test(said),
+    `the driver did not report its edge list:\n${said}`,
   );
 
   // And the refusal. A seam whose addresses are facts about another
