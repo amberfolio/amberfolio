@@ -726,6 +726,23 @@ uint32_t af_machine_seam_state(const af_machine* box, uint32_t index);
 uint32_t af_machine_seam_reason(const af_machine* box, uint32_t index,
                                 char* out, uint32_t max);
 
+/// What seam `index`'s row *means* — did it act, and if not why not — as
+/// the one sentence `machine::seam_reading_text` gives it, ready to
+/// append to a printed row (leading " - " and all), NUL-terminated into
+/// `out`. Empty when the numbers say everything there is to say.
+/// Answers the length, or zero for a bad index or a small buffer.
+///
+/// Text and not an enumerator on purpose (#163). The desktop host and
+/// the page each used to decide this for themselves out of the numbers
+/// beside it, and each got it wrong the same way the moment a seam could
+/// act somewhere other than at an address: both printed "armed and never
+/// reached" over a run in which the seam had done what it was asked.
+/// Handing over the finished sentence is what makes a browser row and a
+/// terminal row incapable of disagreeing, rather than merely expected
+/// not to.
+uint32_t af_machine_seam_reading(const af_machine* box, uint32_t index,
+                                 char* out, uint32_t max);
+
 /// Whether seam `index` is armed right now — on, and every one of its
 /// points placed. Non-zero means yes.
 int32_t af_machine_seam_armed(const af_machine* box, uint32_t index);

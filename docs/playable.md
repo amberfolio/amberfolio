@@ -201,18 +201,38 @@ above carry a `--pull` as well as a `--seam`. A person playing pulls it
 with **Pause/Break** on the desktop host or with the `pull` button beside
 the seam's checkbox on the page; a script names the frame. The run that
 produced the two lines above predates the trigger and was driven by the
-flag alone, so repeating it now needs the pull — nothing else about it
-changes.
+flag alone, so repeating it now needs the pull.
 
-**What that run has still not measured** is how long a pull waits. The
-seam's point is the once-a-round end check, so "immediately" means "when
-this round ends", and how long that is in a real fight is a number
-nobody in this tree has. The two the change added are how to take it:
-after a run, `reached=` on the seam's end-of-run line says how many
-times the end check was arrived at, and `waited=` says what the pull that
-was served actually cost in ticks. Divide the first by the fight's length
-and you have the granularity a better point would have to beat;
-`docs/seams.md` §10 lists what finding one would need.
+**And since #163 the pull is served where the person is**, not at the end
+of the round. The seam now carries a second point with no address at all,
+offered at every step boundary while the pull is outstanding, which acts
+at the first step where it can confirm from the program's own structures
+that this is a combat it recognizes; the end check stays underneath it as
+the fallback (`docs/seams.md` §10). What it does there is **120 points of
+damage** to every standing enemy rather than an instant slaying, so a
+combatant tougher than that survives with fewer hit points and is left
+standing.
+
+**Measured, on a player's copy**, by driving `fight.rec`'s own key
+script. Note the `--seam code-wheel`: a live driven run without it sits
+at the copy-protection challenge for ever and never reaches a fight.
+
+| pulled at | the seam's end-of-run line | |
+| --- | --- | --- |
+| frame 13500, just after `Q` starts the round | `fired=1 reached=1 waited=0` | served at the instant of the pull |
+| frame 12700, before the round starts | `fired=1 reached=0 waited=8327644` | 6.98 virtual seconds: the guard declined until the roster was one it recognized, then served |
+| frame 14000, after the combat ended | `fired=0 reached=1 waiting` + `inert point_not_recognized` | declined, kept the pull, said so |
+
+Before the change, the same script pulled before the round waited
+`22110288` ticks — 18.5 virtual seconds — because `reached=1`: the end
+check is arrived at exactly once per encounter. `waited=` is the answer
+to "was it immediate"; `reached=` is what the pull would have cost with
+only the old point, and the two together are the comparison.
+
+**What is still unmeasured** is `debug_damage` itself: whether 120
+finishes what a party actually meets. The wilderness encounter above is
+seven soldiers; if one pull leaves any of them standing, that is the
+number being wrong rather than the seam.
 
 A party that reaches this leg from a *saved game* is the practical way to
 see it. A first-level character made in leg 0 does not survive the slums

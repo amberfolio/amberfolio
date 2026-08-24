@@ -114,21 +114,41 @@
 // is one: something a person did to a running machine at a moment.
 //
 // **A trigger cannot mean "at this instant", and this file will not
-// pretend it does.** A seam acts at a CS:IP breakpoint because that is
-// the whole mechanism (PLAN.md §5): editing a structure half-way through
-// the routine that is walking it is precisely the corruption the
+// pretend it does.** A seam acts at a step boundary because that is the
+// whole mechanism (PLAN.md §5): there is no such thing as acting
+// half-way through an instruction, and editing a structure half-way
+// through the routine that is walking it is precisely the corruption the
 // breakpoint discipline exists to prevent. So the honest latency of a
-// pull is "at the next arrival at the point", and how long that is
-// depends entirely on how often the program goes there — which is a fact
-// about the program that nobody in this tree has measured.
+// pull is "at the next step boundary at which acting is *safe*", and the
+// question is only ever what a point knows about safety.
+//
+// An **address point** knows it from the address: a known instruction in
+// known code is a place where the structures a handler edits are known
+// not to be half-way through being edited. It pays for that with
+// latency, which is "how often does the program go there" — a fact about
+// the program, and one nobody in this tree has measured. For a
+// once-a-round end check that is a round, and a person who pulls a cheat
+// mid-fight wants it now.
+//
+// So a point may say `at_every_step` and have no address at all (#163).
+// It is offered at every step boundary while the latch is set, and it
+// has to buy its safety back from the machine: its handler opens with a
+// guard it can defend and `decline()`s — keeping the latch — until the
+// guard holds. That trades a fact about *where the program is* for a
+// fact about *what the program's own structures say*, which is a weaker
+// kind of evidence and has to be written down as such wherever it is
+// used. `seam_point::at_every_step` and `seam_cheats.cpp` do that.
 //
 // Hence `seam_status::reached`, and the two numbers beside it. `reached`
-// counts every arrival at an armed point whether or not a handler ran, so
-// `reached` minus `fired` is the chances a trigger had and did not need,
-// and the *rate* of `reached` over a run is the granularity a pull can
-// possibly be served at. `pulled_at` and `waited` are the same question
-// answered in ticks: when the outstanding pull was made, and how long the
-// last served one waited. That is the instrument the question needs; the
+// counts every arrival at an armed **address** point whether or not a
+// handler ran, so `reached` minus `fired` is the chances a trigger had
+// and did not need, and the *rate* of `reached` over a run is the
+// granularity a pull can possibly be served at by that point. A point
+// with no address has no arrivals to count — it is offered at every step
+// — so it counts none, and leaves `reached` meaning what it has always
+// meant. `pulled_at` and `waited` are the same question answered in
+// ticks: when the outstanding pull was made, and how long the last
+// served one waited. That is the instrument the question needs; the
 // answer for any particular point is a measurement, not a claim this
 // header can make.
 //
@@ -192,6 +212,15 @@
 // paragraph, so a point can only be *here* if `at` and the point's
 // offset agree in their low four bits — and it happens only for a seam
 // that is on and only for the points that name such a word.
+//
+// A point with no address (`seam_point::at_every_step`) costs one bool
+// on that scan — its seam's latch — and everything past it happens only
+// while somebody's pull is outstanding. That is the whole of what it
+// costs a run in which nobody pulled, and it is the same bool the
+// address points already test one line later, so an enabled-and-unpulled
+// trigger is exactly the machine it was before #163. A run with a pull
+// outstanding pays a guard per step until the guard holds, by design:
+// the guard is what the point has instead of an address.
 
 #pragma once
 
@@ -230,7 +259,15 @@ struct edition;
 /// which is what every seam meant then — but the field decides whether a
 /// point does anything at all, so a stale definition is refused rather
 /// than read as one or the other.
-inline constexpr std::uint16_t seam_schema_version = 3;
+///
+/// 4: a point may say `at_every_step`, and then it has no address at all
+/// — it is offered at every step boundary while its seam's latch is set,
+/// and its handler decides from the machine whether acting is safe
+/// (#163). A definition written before this version means "an address
+/// point", which is what every point meant then; the field decides
+/// *where* a handler runs, which is the one thing about a seam that must
+/// never be inferred.
+inline constexpr std::uint16_t seam_schema_version = 4;
 
 /// What runs when execution reaches an armed interception point. Native
 /// C++, called from outside the emulated machine — see this file's top
@@ -244,6 +281,37 @@ struct seam_point {
   seam_module module{};
   std::uint32_t offset{};
   seam_handler run{nullptr};
+
+  /// This point has **no address**: while its seam's latch is set, it is
+  /// offered at every step boundary, and `offset` means nothing (#163).
+  ///
+  /// Only for a `trigger` definition, and only ever consulted while that
+  /// seam is *waiting*: a point like this on a seam nobody pulled costs
+  /// exactly the one bool the latch is, which is what keeps an unpulled
+  /// run byte-identical to the run with the seam off (§"The fidelity
+  /// boundary"). On a definition that is not a trigger nothing can ever
+  /// set the latch, so such a point never runs at all — refused as a
+  /// definition would be too strong, since it is a mistake in this tree
+  /// rather than something a caller can hit, and `all_seams()` is
+  /// checked for it in the unit suite.
+  ///
+  /// **The address is what a seam usually gets its safety from**, and a
+  /// point without one gives that up: the whole reason the mechanism is
+  /// a CS:IP breakpoint is that a known instruction boundary in known
+  /// code is a place where the structures the handler edits are known
+  /// not to be half-way through being edited by the program. A point
+  /// with no address has to buy that back from the machine itself,
+  /// which means its handler must open with a guard it can defend and
+  /// `decline()` — keeping the latch — whenever the guard does not hold.
+  /// `seam_cheats.cpp` is the worked example and says what its guard can
+  /// and cannot rule out.
+  ///
+  /// What it buys is latency. "At the next arrival at the point" is as
+  /// good as an address point can do, and for a once-a-round point that
+  /// is a round; a person who pulls a cheat mid-fight wants it now. This
+  /// is the honest reading of "now" at a step boundary: the first step
+  /// at which acting is provably safe.
+  bool at_every_step{false};
 };
 
 /// A seam, as a fact table: what it is, what it applies to, and where it
@@ -358,8 +426,16 @@ struct seam_status {
   /// seam waiting for its module.
   bool armed{false};
 
-  /// How many times one of its handlers has actually run since it was
-  /// enabled.
+  /// How many times one of its handlers has actually **acted** since it
+  /// was enabled — run, and not declined.
+  ///
+  /// A decline does not count (#163). It used to, and that was the one
+  /// reading of this number that defeated its own purpose: a handler
+  /// that arrives at a point which is not the point and says so is
+  /// precisely the failure below, and a `fired` that went up for it made
+  /// the failure look like success. A point with no address is offered
+  /// at every step and declines at most of them, which is what turned an
+  /// arguable choice into a wrong one.
   ///
   /// Here because `armed` turned out to be a claim about the *fact
   /// table* rather than about the machine (#131): a point is armed at an
@@ -403,7 +479,51 @@ struct seam_status {
   /// rate of `reached` over a run is the granularity at which a pull can
   /// possibly be served. Nobody has measured that for the cheats' end
   /// check, and this is the instrument that measures it.
+  ///
+  /// **Address points only**, and deliberately so (#163). A point with
+  /// no address (`seam_point::at_every_step`) is offered at every step
+  /// boundary while a pull is outstanding, so counting its offers would
+  /// be counting steps, and counting steps is not a measurement of
+  /// anything.
+  ///
+  /// Keeping it address-only is what makes it still worth having, and
+  /// there is a measurement to show that. Driven against the real
+  /// program, the cheats' end check is arrived at **exactly once per
+  /// encounter**: a pull made before a round began used to cost
+  /// `waited=22110288` — 18.5 virtual seconds — and now costs
+  /// `waited=8327644` when the guard has to wait for the roster and
+  /// `waited=0` when it does not. `reached=1` is the number that makes
+  /// those three comparable, and a `reached` that also counted every
+  /// step of the wait would have destroyed it.
+  ///
+  /// What it must *not* be read as is "this seam did nothing". A seam
+  /// that acts at an address-free point reports `fired=1 reached=0`, and
+  /// that pair is a success. `seam_reading_of()` is what a host says out
+  /// loud, precisely so no host has to re-derive it.
   std::uint64_t reached{};
+
+  /// How many times one of this seam's handlers **declined** since it
+  /// was enabled (`seam_context::decline`) — arrived, found what the
+  /// machine held was not what its facts describe, and touched nothing.
+  ///
+  /// The diagnostics channel says this once per enable, because a point
+  /// in a tight loop would otherwise bury the first line. A count is the
+  /// same fact in the form a status row can carry, and it is what tells
+  /// "pulled, and the program has not been there yet" apart from
+  /// "pulled, and every offer was refused" — which look identical
+  /// through `waiting` alone and mean opposite things to whoever is
+  /// waiting for the cheat to go off (#163).
+  std::uint64_t declined{};
+
+  /// Whether any of this seam's points **has an address**, as opposed to
+  /// being offered at every step boundary (`seam_point::at_every_step`).
+  ///
+  /// Only here because one sentence a host says depends on it: "armed
+  /// and never reached; its point may not be where its facts say" is a
+  /// claim about an address table, and a seam with no addresses in it
+  /// cannot have a wrong one. Saying that of a seam nobody pulled would
+  /// send a reader to doubt a table that is not there.
+  bool addressed{};
 
   /// The virtual tick the outstanding pull was made at. Meaningful only
   /// while `waiting`; a host showing how long a pull has been waiting
@@ -416,6 +536,56 @@ struct seam_status {
   /// measures everything else in.
   ticks waited{};
 };
+
+/// What a seam's row *means*, as one of six sentences a person can read
+/// at a glance (#163).
+///
+/// Here rather than in a host — the same argument
+/// `seam_event_kind_name` makes one screen down, and it was not enough:
+/// both hosts spelled this decision out for themselves, and when a seam
+/// gained a point with no address they both started printing "armed and
+/// never reached; its point may not be where its facts say" over a run
+/// in which the seam had done exactly what it was asked. `fired=1` and
+/// "never reached" cannot both be true, and the sentence sent readers to
+/// doubt an address table that was working. That is #131's harm with the
+/// sign flipped — a line that reads as a failure when the thing worked —
+/// so the decision lives in one place, is tested in one place, and
+/// reaches the browser through the ABI as text rather than as logic to
+/// re-derive.
+///
+/// The question it answers is the one a person actually has: **did it
+/// act, and if not, why not.**
+enum class seam_reading : std::uint8_t {
+  /// The numbers on the row say everything there is to say: an ordinary
+  /// seam that fired, or a seam that is inert and already says so.
+  nothing_to_say,
+  /// A trigger was pulled and served. `waited` says what it cost.
+  served,
+  /// A pull is outstanding, and nothing has been offered to the handler
+  /// since — the program has not been where this seam is.
+  pulled_and_not_served,
+  /// A pull is outstanding, and what *was* offered got declined. The
+  /// seam is working, is being asked, and is refusing to act on a
+  /// machine it does not recognize — which is the fail-closed rule doing
+  /// its job, and is a different thing to be waiting on.
+  pulled_and_declined,
+  /// A trigger's point was arrived at and nobody had asked. `fired=0`
+  /// means nothing about such a seam.
+  reached_and_never_pulled,
+  /// #131's warning: armed at an address the program never went to, so
+  /// the address may not be where the fact table says. Only ever said of
+  /// a seam that *has* an address and did not act.
+  never_reached,
+};
+
+/// Which of those `row` is. A pure function of a status row, so a host
+/// that shows a listing and a host that prints one at the end of a run
+/// cannot disagree.
+[[nodiscard]] seam_reading seam_reading_of(const seam_status& row) noexcept;
+
+/// The sentence, ready to append to a row — leading " - " and all, or
+/// empty for `nothing_to_say`. Never null.
+[[nodiscard]] const char* seam_reading_text(seam_reading reading) noexcept;
 
 /// The printable name of a `seam_reason`, for a host's listing. Never
 /// null.
@@ -746,10 +916,12 @@ class seam_engine {
     bool waiting{false};
     ticks pulled_at{};
     ticks waited{};
-    /// Whether a handler of this seam has already declined once
-    /// (`seam_context::decline`). Cleared when the seam is enabled, so
-    /// turning it off and on again asks the question afresh.
-    bool declined{false};
+    /// How many times a handler of this seam has declined
+    /// (`seam_context::decline`). Zero means it has not, which is what
+    /// the diagnostics channel's report-once test reads; the count
+    /// itself is `seam_status::declined`. Cleared when the seam is
+    /// enabled, so turning it off and on again asks the question afresh.
+    std::uint64_t declined{};
   };
 
   struct armed_point {
@@ -757,6 +929,7 @@ class seam_engine {
     /// where it was put. Meaningless for a point whose module names a
     /// load-segment word: that one's address is `anchor`'s contents
     /// times sixteen, plus `offset`, worked out afresh at every step.
+    /// Meaningless too — and zero — for one that has no address at all.
     std::uint32_t at{};
     std::uint32_t module_base{};
     /// The physical address of the word the program keeps this module's
@@ -767,6 +940,9 @@ class seam_engine {
     std::uint32_t offset{};
     seam_handler run{nullptr};
     std::size_t owner{};
+    /// `seam_point::at_every_step`: this point has no address and is
+    /// offered at every step boundary while its seam's latch is set.
+    bool at_every_step{false};
   };
 
   /// The word at `address`, or zero if it is not wholly inside the RAM

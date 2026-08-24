@@ -112,6 +112,7 @@ set(_amberfolio_web_export_names
   _af_machine_seam_about
   _af_machine_seam_state
   _af_machine_seam_reason
+  _af_machine_seam_reading
   _af_machine_seam_armed
   _af_machine_seam_fired
   _af_machine_seam_enable

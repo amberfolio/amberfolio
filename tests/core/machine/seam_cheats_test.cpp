@@ -197,14 +197,30 @@ TEST(SeamCheats, AreTwoSeamsKeyedToTheBaselineAndQualifiedAsTheFactsSay) {
   EXPECT_FALSE(invulnerable.about.empty());
   EXPECT_FALSE(kill_all.about.empty());
   ASSERT_EQ(invulnerable.points.size(), 1u);
-  ASSERT_EQ(kill_all.points.size(), 1u);
   EXPECT_TRUE(invulnerable.points.front().module.is_resident_image());
-  EXPECT_FALSE(kill_all.points.front().module.is_resident_image());
-  EXPECT_EQ(kill_all.points.front().module.file, "GAME.OVR");
-  EXPECT_FALSE(kill_all.points.front().module.digest.empty())
-      << "the overlay is identified by its bytes as well as its place";
-  EXPECT_TRUE(kill_all.points.front().module.has_load_segment())
-      << "and by the word the program keeps its whereabouts in (#131)";
+
+  // Two points since #163, and which is which matters: the first has no
+  // address and is offered at every step while a pull is outstanding,
+  // the second is the end check exactly as it was. Both name the same
+  // module, because address-free is not qualifier-free — the immediate
+  // point is offered only while the program's own record says the
+  // tactical combat module is in memory.
+  ASSERT_EQ(kill_all.points.size(), 2u);
+  EXPECT_TRUE(kill_all.points.front().at_every_step);
+  EXPECT_EQ(kill_all.points.front().offset, 0u)
+      << "a point with no address carries no offset either";
+  EXPECT_FALSE(kill_all.points.back().at_every_step);
+  EXPECT_NE(kill_all.points.back().offset, 0u);
+  EXPECT_TRUE(kill_all.trigger);
+
+  for (const seam_point& point : kill_all.points) {
+    EXPECT_FALSE(point.module.is_resident_image());
+    EXPECT_EQ(point.module.file, "GAME.OVR");
+    EXPECT_FALSE(point.module.digest.empty())
+        << "the overlay is identified by its bytes as well as its place";
+    EXPECT_TRUE(point.module.has_load_segment())
+        << "and by the word the program keeps its whereabouts in (#131)";
+  }
 
   // Both keyed to the baseline, and therefore available on this rig.
   EXPECT_EQ(r.pc().seams().status("cheat-invulnerable").state, seam_state::off);
@@ -302,12 +318,19 @@ TEST(SeamCheatInvulnerable, DoesNothingWhenOff) {
 // from SP, and the party's hit points would come out neither invulnerable
 // nor untouched — the worst of the three answers. So it declines.
 
-/// Every `inert` event the sink was told about, with its reason.
+/// Every `inert` event the sink was told about that is a **handler**
+/// saying it declined, with its reason.
+///
+/// `inert` carries two different sentences: a seam whose module is not
+/// resident, which the engine says on a transition and which is not a
+/// decline at all, and a handler that arrived and would not act, which
+/// is. Only the second is what these tests are counting.
 [[nodiscard]] std::vector<seam_reason> declines(const rig& r,
                                                 std::string_view id) {
   std::vector<seam_reason> found;
   for (const seam_event& event : r.log.seam_events) {
-    if (event.id == id && event.kind == seam_event_kind::inert) {
+    if (event.id == id && event.kind == seam_event_kind::inert &&
+        event.reason != seam_reason::module_not_resident) {
       found.push_back(event.reason);
     }
   }
@@ -399,8 +422,8 @@ TEST(SeamCheatKillAll, DownsEveryStandingEnemyAndLeavesThePartyAlone) {
   const rig r;
   r.arm_kill_all();
   r.load_combat_overlay();
-  const auto entry = static_cast<std::uint16_t>(
-      r.seam("cheat-kill-all").points.front().offset);
+  const auto entry =
+      static_cast<std::uint16_t>(r.seam("cheat-kill-all").points.back().offset);
 
   // The data segment: combat mode, the roster head, one body each side up.
   r.put_byte(data_segment, data_mode, 5);
@@ -444,8 +467,8 @@ TEST(SeamCheatKillAll, IsOnAndDoesNothingUntilSomebodyPullsIt) {
   ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
   EXPECT_TRUE(r.pc().seams().status("cheat-kill-all").trigger);
   r.load_combat_overlay();
-  const auto entry = static_cast<std::uint16_t>(
-      r.seam("cheat-kill-all").points.front().offset);
+  const auto entry =
+      static_cast<std::uint16_t>(r.seam("cheat-kill-all").points.back().offset);
 
   r.put_byte(data_segment, data_mode, 5);
   r.put_word(data_segment, data_roster_head, 0x0100);
@@ -470,8 +493,8 @@ TEST(SeamCheatKillAll, OnePullIsOneFiring) {
   const rig r;
   r.arm_kill_all();
   r.load_combat_overlay();
-  const auto entry = static_cast<std::uint16_t>(
-      r.seam("cheat-kill-all").points.front().offset);
+  const auto entry =
+      static_cast<std::uint16_t>(r.seam("cheat-kill-all").points.back().offset);
 
   r.put_byte(data_segment, data_mode, 5);
   r.put_word(data_segment, data_roster_head, 0x0100);
@@ -506,8 +529,8 @@ TEST(SeamCheatKillAll, ReadsTheStatusAndNotTheHeldByteNextToIt) {
   const rig r;
   r.arm_kill_all();
   r.load_combat_overlay();
-  const auto entry = static_cast<std::uint16_t>(
-      r.seam("cheat-kill-all").points.front().offset);
+  const auto entry =
+      static_cast<std::uint16_t>(r.seam("cheat-kill-all").points.back().offset);
 
   r.put_byte(data_segment, data_mode, 5);
   r.put_word(data_segment, data_roster_head, 0x0100);
@@ -529,8 +552,8 @@ TEST(SeamCheatKillAll, DoesNothingOutsideCombat) {
   const rig r;
   r.arm_kill_all();
   r.load_combat_overlay();
-  const auto entry = static_cast<std::uint16_t>(
-      r.seam("cheat-kill-all").points.front().offset);
+  const auto entry =
+      static_cast<std::uint16_t>(r.seam("cheat-kill-all").points.back().offset);
 
   r.put_byte(data_segment, data_mode, 4);  // not combat
   r.put_word(data_segment, data_roster_head, 0x0100);
@@ -545,12 +568,18 @@ TEST(SeamCheatKillAll, DoesNothingOutsideCombat) {
   EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 1), 1u);
 }
 
-TEST(SeamCheatKillAll, FiresOnlyWhereTheProgramSaysTheModuleIs) {
+TEST(SeamCheatKillAll, TheEndCheckPointFiresOnlyWhereTheProgramSaysItIs) {
+  // The *end check* point, isolated. Since #163 this seam has a second
+  // point with no address, which would act here on any roster it
+  // recognizes — so the roster below is deliberately one it does not:
+  // there is no party member on it, which is condition 4 of
+  // `combat_roster_ready()`. What is left is the address point, and the
+  // claim is the one it has always made.
   const rig r;
   r.arm_kill_all();
   r.load_combat_overlay();
-  const auto entry = static_cast<std::uint16_t>(
-      r.seam("cheat-kill-all").points.front().offset);
+  const auto entry =
+      static_cast<std::uint16_t>(r.seam("cheat-kill-all").points.back().offset);
 
   r.put_byte(data_segment, data_mode, 5);
   r.put_word(data_segment, data_roster_head, 0x0100);
@@ -562,6 +591,15 @@ TEST(SeamCheatKillAll, FiresOnlyWhereTheProgramSaysTheModuleIs) {
   r.halt_at(0x7000, entry, data_segment, data_segment, 0x0400);
   r.pc().step();
   EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 9u);
+  EXPECT_TRUE(r.pc().seams().waiting("cheat-kill-all"))
+      << "and neither point served the pull";
+
+  // Where the module is, it fires — which is what makes the line above a
+  // claim about the address rather than about the roster.
+  r.halt_at(overlay_segment, entry, data_segment, data_segment, 0x0400);
+  r.pc().step();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 0u);
+  EXPECT_EQ(r.pc().seams().status("cheat-kill-all").fired, 1u);
 }
 
 TEST(SeamCheatKillAll, FollowsTheModuleWhenTheManagerMovesIt) {
@@ -577,8 +615,8 @@ TEST(SeamCheatKillAll, FollowsTheModuleWhenTheManagerMovesIt) {
   // move would be running on whatever the manager put there instead.
   const rig r;
   r.arm_kill_all();
-  const auto entry = static_cast<std::uint16_t>(
-      r.seam("cheat-kill-all").points.front().offset);
+  const auto entry =
+      static_cast<std::uint16_t>(r.seam("cheat-kill-all").points.back().offset);
   constexpr std::uint16_t moved_to = overlay_segment + 1;
 
   r.put_byte(data_segment, data_mode, 5);
@@ -616,8 +654,8 @@ TEST(SeamCheatKillAll, DoesNotFireWhileTheProgramSaysTheModuleIsGone) {
   // asked to fire, and declines to be anywhere.
   const rig r;
   r.arm_kill_all();
-  const auto entry = static_cast<std::uint16_t>(
-      r.seam("cheat-kill-all").points.front().offset);
+  const auto entry =
+      static_cast<std::uint16_t>(r.seam("cheat-kill-all").points.back().offset);
 
   r.put_byte(data_segment, data_mode, 5);
   r.put_word(data_segment, data_roster_head, 0x0100);
@@ -635,12 +673,273 @@ TEST(SeamCheatKillAll, DoesNotFireWhileTheProgramSaysTheModuleIsGone) {
   EXPECT_EQ(r.pc().seams().status("cheat-kill-all").fired, 0u);
 }
 
+// --- The point with no address (#163) -------------------------------------
+//
+// "The kill all should not trigger at the end of the round but it should
+// be on a new hotkey/button and trigger immediately." #161 answered the
+// first half. These are the second: a point with no address at all,
+// offered at every step boundary while the pull is outstanding, which
+// asks the machine whether acting is safe and declines — keeping the
+// pull — until it is.
+
+/// A combat the seam should be willing to act on: the mode byte, a
+/// roster head, a standing party member, two standing enemies and body
+/// counts that agree with all three.
+void lay_down_a_fight(const rig& r) {
+  r.put_byte(data_segment, data_mode, 5);
+  r.put_word(data_segment, data_roster_head, 0x0100);
+  r.put_word(data_segment, data_roster_head + 2, record_segment);
+  r.put_byte(data_segment, data_side_counts + 0, 1);
+  r.put_byte(data_segment, data_side_counts + 1, 2);
+  r.record(0x0100, 0, true, 20, 0, 0x0300);
+  r.record(0x0300, 1, true, 9, 0x0040, 0x0500);
+  r.record(0x0500, 1, true, 11, 0, 0);
+}
+
+/// Somewhere the program might be that is not either of this seam's
+/// points: not the end check, not the module.
+constexpr std::uint16_t elsewhere_segment = 0x7000;
+constexpr std::uint16_t elsewhere_offset = 0x0100;
+
+TEST(SeamCheatKillAll, ServesThePullWhereverTheProgramIs) {
+  const rig r;
+  r.arm_kill_all();
+  r.load_combat_overlay();
+  lay_down_a_fight(r);
+
+  // Not at the end check, not in the module, not at any address this
+  // seam's facts name. One step is all it takes.
+  r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+            0x0400);
+  r.pc().step();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 0u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_hp), 0u);
+  EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 1), 0u);
+  EXPECT_FALSE(r.pc().seams().waiting("cheat-kill-all"));
+  const seam_status row = r.pc().seams().status("cheat-kill-all");
+  EXPECT_EQ(row.fired, 1u);
+  EXPECT_EQ(row.reached, 0u)
+      << "the end check was never arrived at, and the point that served"
+         " this has no address to arrive at";
+  // And the party is the party.
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 20u);
+  EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 0), 1u);
+}
+
+TEST(SeamCheatKillAll, DealsDamageAndLeavesAnEnemyItCannotFinishStanding) {
+  // The change from #163: damage, not a written corpse. A combatant with
+  // more hit points than the debug value survives with fewer of them and
+  // is left entirely alone otherwise — no status, no held byte, no
+  // decrement, no scratch write — because that is what the program's own
+  // damage routine does with somebody who is still up, and because a
+  // count kept by hand only moves when a body drops.
+  const rig r;
+  r.arm_kill_all();
+  r.load_combat_overlay();
+
+  r.put_byte(data_segment, data_mode, 5);
+  r.put_word(data_segment, data_roster_head, 0x0100);
+  r.put_word(data_segment, data_roster_head + 2, record_segment);
+  r.put_byte(data_segment, data_side_counts + 0, 1);
+  r.put_byte(data_segment, data_side_counts + 1, 2);
+  r.record(0x0100, 0, true, 20, 0, 0x0300);
+  r.record(0x0300, 1, true, 200, 0x0040, 0x0500);  // survives 120
+  r.record(0x0500, 1, true, 9, 0x0080, 0);         // does not
+  r.put_byte(scratch_segment, 0x0040 + 3, 0x55);
+  r.put_byte(scratch_segment, 0x0080 + 3, 0x55);
+
+  r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+            0x0400);
+  r.pc().step();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 80u)
+      << "200 less 120, and it never wraps";
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_status), 0u)
+      << "still unhurt as far as the program's own test goes: still up";
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_held), 1u)
+      << "still in its side's count";
+  EXPECT_EQ(r.byte_at(scratch_segment, 0x0040 + 3), 0x55)
+      << "and nothing was written into its scratch block";
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_hp), 0u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_status), 6u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_held), 0u);
+  EXPECT_EQ(r.byte_at(scratch_segment, 0x0080 + 3), 0u);
+
+  EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 1), 1u)
+      << "one body dropped, so the count moves by one — not by two, and"
+         " not at all for the survivor";
+}
+
+TEST(SeamCheatKillAll, SaturatesRatherThanWrappingAtZero) {
+  // The one arithmetic mistake this could make, asked directly: a
+  // combatant on fewer hit points than the damage must reach zero and
+  // not the other end of a byte.
+  const rig r;
+  r.arm_kill_all();
+  r.load_combat_overlay();
+  lay_down_a_fight(r);
+  r.put_byte(record_segment, 0x0300 + rec_hp, 1);
+  r.put_byte(record_segment, 0x0500 + rec_hp, 0);
+
+  r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+            0x0400);
+  r.pc().step();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 0u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_hp), 0u);
+}
+
+TEST(SeamCheatKillAll, KeepsThePullUntilThereIsAFightItRecognizes) {
+  // The guard is what the address-free point has instead of an address,
+  // and a pull that arrives while it does not hold is not a pull that
+  // was served. Out of combat: nothing happens and the person's request
+  // is still outstanding. In combat: it is served.
+  const rig r;
+  r.arm_kill_all();
+  r.load_combat_overlay();
+  lay_down_a_fight(r);
+  r.put_byte(data_segment, data_mode, 4);  // not combat
+
+  for (int i = 0; i < 3; ++i) {
+    r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+              0x0400);
+    r.pc().step();
+  }
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 9u);
+  EXPECT_TRUE(r.pc().seams().waiting("cheat-kill-all"));
+  EXPECT_EQ(r.pc().seams().status("cheat-kill-all").fired, 0u)
+      << "a decline is not a firing";
+  EXPECT_EQ(declines(r, "cheat-kill-all").size(), 1u)
+      << "and three steps' worth of declining is one line, not three";
+
+  r.put_byte(data_segment, data_mode, 5);
+  r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+            0x0400);
+  r.pc().step();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 0u);
+  EXPECT_FALSE(r.pc().seams().waiting("cheat-kill-all"));
+}
+
+TEST(SeamCheatKillAll, DeclinesARosterThatIsNotAList) {
+  // Three of the guard's five conditions, one case each, and all of them
+  // end the same way: nothing is written and the pull is kept.
+  const auto nothing_happened = [](const rig& r) {
+    r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+              0x0400);
+    r.pc().step();
+    EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 9u);
+    EXPECT_TRUE(r.pc().seams().waiting("cheat-kill-all"));
+  };
+
+  {
+    // A head in segment 0, which is the interrupt vector table.
+    const rig r;
+    r.arm_kill_all();
+    r.load_combat_overlay();
+    lay_down_a_fight(r);
+    r.put_word(data_segment, data_roster_head + 2, 0);
+    nothing_happened(r);
+  }
+  {
+    // A list that never ends: the last record points back at the first.
+    const rig r;
+    r.arm_kill_all();
+    r.load_combat_overlay();
+    lay_down_a_fight(r);
+    r.put_word(record_segment, 0x0500 + rec_next, 0x0100);
+    r.put_word(record_segment, 0x0500 + rec_next + 2, record_segment);
+    nothing_happened(r);
+  }
+  {
+    // The two structures disagree: a body is up and its side's count
+    // says nobody is, which is what being part-way through something
+    // looks like from outside the program.
+    const rig r;
+    r.arm_kill_all();
+    r.load_combat_overlay();
+    lay_down_a_fight(r);
+    r.put_byte(data_segment, data_side_counts + 1, 0);
+    nothing_happened(r);
+  }
+}
+
+TEST(SeamCheatKillAll, DeclinesARosterWithNobodyLeftToFight) {
+  // Nothing to do is not "done": a pull served by damaging nobody would
+  // answer a person's request with nothing at all.
+  const rig r;
+  r.arm_kill_all();
+  r.load_combat_overlay();
+  lay_down_a_fight(r);
+  r.record(0x0300, 1, false, 0, 0, 0x0500);
+  r.record(0x0500, 1, false, 0, 0, 0);
+
+  r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+            0x0400);
+  r.pc().step();
+  EXPECT_TRUE(r.pc().seams().waiting("cheat-kill-all"));
+  EXPECT_EQ(r.pc().seams().status("cheat-kill-all").fired, 0u);
+}
+
+TEST(SeamCheatKillAll, IsNotConsultedAtAllUntilSomebodyPullsIt) {
+  // #96's rule where #163 could most easily have broken it: a point
+  // offered at every step boundary is a sentence about the hot path, and
+  // the only thing between it and a run that differs is the latch. On,
+  // armed, module resident, a fight laid out in front of it, and nobody
+  // has asked — so nothing moves, however many steps go by.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-kill-all"), seam_reason::none);
+  r.load_combat_overlay();
+  lay_down_a_fight(r);
+  ASSERT_TRUE(r.pc().seams().status("cheat-kill-all").armed);
+
+  for (int i = 0; i < 8; ++i) {
+    r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+              0x0400);
+    r.pc().step();
+  }
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 9u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_hp), 11u);
+  EXPECT_EQ(r.byte_at(data_segment, data_side_counts + 1), 2u);
+  const seam_status row = r.pc().seams().status("cheat-kill-all");
+  EXPECT_EQ(row.fired, 0u);
+  EXPECT_EQ(row.reached, 0u);
+  EXPECT_TRUE(declines(r, "cheat-kill-all").empty())
+      << "not even a decline: the handler was never called";
+}
+
+TEST(SeamCheatKillAll, IsNotOfferedWhileTheModuleIsGoneEitherWayIn) {
+  // Address-free is not qualifier-free. The immediate point names the
+  // same module the end check does, so "the tactical combat code is in
+  // memory" is a precondition of it too — asked of the program's own
+  // record, at the step it is asked.
+  const rig r;
+  r.arm_kill_all();
+  r.read_combat_overlay_to(overlay_segment);
+  r.manager_says_overlay_at(0);
+  lay_down_a_fight(r);
+
+  r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+            0x0400);
+  r.pc().step();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 9u);
+  EXPECT_TRUE(r.pc().seams().waiting("cheat-kill-all"));
+
+  r.manager_says_overlay_at(overlay_segment);
+  r.halt_at(elsewhere_segment, elsewhere_offset, data_segment, data_segment,
+            0x0400);
+  r.pc().step();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 0u);
+}
+
 TEST(SeamCheatKillAll, BoundsTheRosterWalk) {
   const rig r;
   r.arm_kill_all();
   r.load_combat_overlay();
-  const auto entry = static_cast<std::uint16_t>(
-      r.seam("cheat-kill-all").points.front().offset);
+  const auto entry =
+      static_cast<std::uint16_t>(r.seam("cheat-kill-all").points.back().offset);
 
   // A record whose next pointer is itself: a list that never ends.
   r.put_byte(data_segment, data_mode, 5);

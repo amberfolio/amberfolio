@@ -18,6 +18,58 @@
 
 namespace amberfolio::machine {
 
+seam_reading seam_reading_of(const seam_status& row) noexcept {
+  // `armed` first, because every sentence below is about a seam that is
+  // placed and could act. An inert one already says `inert` and why.
+  if (!row.armed) {
+    return seam_reading::nothing_to_say;
+  }
+  // An outstanding pull is what the person is waiting on, so it outranks
+  // whatever the seam did earlier in the run — and the two ways of
+  // waiting mean opposite things. Declined is the seam working and
+  // refusing; not-reached is the program not having been there.
+  if (row.waiting) {
+    return row.declined != 0 ? seam_reading::pulled_and_declined
+                             : seam_reading::pulled_and_not_served;
+  }
+  // It acted, and nothing is outstanding. **No warning may be printed
+  // past this line** — that is the whole of #163's defect: a seam served
+  // by a point with no address reports `fired=1 reached=0`, and every
+  // reading keyed on `reached == 0` called that a broken address table.
+  if (row.fired != 0) {
+    return row.trigger ? seam_reading::served : seam_reading::nothing_to_say;
+  }
+  if (row.trigger && row.reached != 0) {
+    return seam_reading::reached_and_never_pulled;
+  }
+  // #131's warning, and it is a claim about an address: only for a seam
+  // that has one, and only when the program never went to it.
+  if (row.addressed && row.reached == 0) {
+    return seam_reading::never_reached;
+  }
+  return seam_reading::nothing_to_say;
+}
+
+const char* seam_reading_text(seam_reading reading) noexcept {
+  switch (reading) {
+    case seam_reading::nothing_to_say:
+      return "";
+    case seam_reading::served:
+      return " - pulled, and served";
+    case seam_reading::pulled_and_not_served:
+      return " - pulled, and its point not reached since";
+    case seam_reading::pulled_and_declined:
+      return " - pulled, and not served: what it was offered is not what its"
+             " facts describe";
+    case seam_reading::reached_and_never_pulled:
+      return " - reached, and never pulled; this seam acts only when asked";
+    case seam_reading::never_reached:
+      return " - armed and never reached; its point may not be where its facts"
+             " say";
+  }
+  return "";
+}
+
 const char* seam_reason_name(seam_reason reason) noexcept {
   switch (reason) {
     case seam_reason::none:
@@ -206,6 +258,17 @@ seam_status seam_engine::status(std::size_t index) const noexcept {
   out.reason = s.enabled && !armed ? seam_reason::module_not_resident
                                    : seam_reason::none;
   out.fired = s.fired;
+  out.declined = s.declined;
+  // A fact about the definition rather than about the run, and worked
+  // out here so that no host has to walk a point table to say one
+  // sentence (#163).
+  out.addressed = false;
+  for (const seam_point& point : s.seam->points) {
+    if (!point.at_every_step) {
+      out.addressed = true;
+      break;
+    }
+  }
   return out;
 }
 
@@ -303,7 +366,7 @@ seam_error seam_engine::enable(std::string_view id) {
   }
 
   s.enabled = true;
-  s.declined = false;  // A fresh enable asks the question again.
+  s.declined = 0;  // A fresh enable asks the question again.
   s.fired = 0;
   s.reached = 0;
   s.waiting = false;
@@ -415,12 +478,17 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
       // guard is what keeps that a property of the table rather than a
       // belief about the caller.
       if (armed_ < max_points) {
-        points_[armed_] = {.at = base + point.offset,
+        points_[armed_] = {// A point with no address gets none: `at` is
+                           // never compared for it, and a plausible-looking
+                           // number in a field nothing reads is the kind of
+                           // fact this tree does not keep.
+                           .at = point.at_every_step ? 0 : base + point.offset,
                            .module_base = base,
                            .anchor = anchor,
                            .offset = point.offset,
                            .run = point.run,
-                           .owner = i};
+                           .owner = i,
+                           .at_every_step = point.at_every_step};
         ++armed_;
       }
     }
@@ -457,7 +525,31 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
     }
 
     std::uint32_t base = point.module_base;
-    if (point.anchor != no_load_segment) {
+    if (point.at_every_step) {
+      // A point with no address (#163). One bool decides whether
+      // anything at all happens here, and it is the latch: nobody has
+      // pulled, nothing is read, nothing is compared, and the step is
+      // the step the machine would have taken with this seam off.
+      //
+      // `waiting` alone, without asking whether the definition is a
+      // trigger: only `pull()` sets it and only a trigger may be
+      // pulled, so a latch that is set is a trigger's by construction —
+      // and a point like this on a definition that is not one simply
+      // never runs, which is the fail-closed direction.
+      if (!slots_[point.owner].waiting) {
+        continue;
+      }
+      if (point.anchor != no_load_segment) {
+        // Address-free is not module-free: the module still has to be
+        // in memory, and the program's own note is what says so, read
+        // at the one moment when that answer is certainly current.
+        const std::uint16_t segment = word_at(point.anchor);
+        if (segment == 0) {
+          continue;
+        }
+        base = static_cast<std::uint32_t>(segment) * 16U;
+      }
+    } else if (point.anchor != no_load_segment) {
       // A module the program can move under us. Its address is whatever
       // the program's own record says at this instant, and nothing else
       // is trusted: not where the module last landed, not where it was
@@ -485,21 +577,31 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
     }
 
     slot& owner = slots_[point.owner];
-    // The arrival, counted first and whatever happens next: `reached` is
-    // a fact about where the program went, and it is the only thing that
-    // can say how often a trigger *could* be served (#161).
-    ++owner.reached;
-    if (owner.seam->trigger && !owner.waiting) {
-      // Reached, and nobody asked. The whole of what a triggered seam
-      // does when its latch is down — no read, no write, no register
-      // touched, which is what makes an untriggered run the run it
-      // would have been with the seam off.
-      continue;
+    if (!point.at_every_step) {
+      // The arrival, counted first and whatever happens next: `reached`
+      // is a fact about where the program went, and it is the only thing
+      // that can say how often a trigger *could* be served (#161). A
+      // point with no address has no arrivals — it is offered at every
+      // step — so it counts none and leaves the number meaning what it
+      // means.
+      ++owner.reached;
+      if (owner.seam->trigger && !owner.waiting) {
+        // Reached, and nobody asked. The whole of what a triggered seam
+        // does when its latch is down — no read, no write, no register
+        // touched, which is what makes an untriggered run the run it
+        // would have been with the seam off.
+        continue;
+      }
     }
 
     seam_context ctx(box, *this, owner.seam->id, at, base, image_base());
-    ++owner.fired;
     point.run(box, ctx);
+    if (!ctx.declined_) {
+      // Acted. A decline is a handler saying it did *not*, and counting
+      // it here made the one failure this number exists to expose look
+      // like success (#163).
+      ++owner.fired;
+    }
 
     if (owner.seam->trigger && owner.waiting && !ctx.declined_) {
       // Served. A handler that declined did not act, so its pull is
@@ -515,10 +617,17 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
 
 void seam_engine::note_decline(std::string_view id, seam_reason why) noexcept {
   const std::size_t at = index_of(id);
-  if (at == max_seams || slots_[at].declined) {
+  if (at == max_seams) {
     return;
   }
-  slots_[at].declined = true;
+  const bool first = slots_[at].declined == 0;
+  ++slots_[at].declined;
+  if (!first) {
+    // Counted every time, said once: a point offered at every step
+    // declines at most of them, and a line each would bury the first.
+    // The count is what reaches `seam_status`.
+    return;
+  }
   report(id, seam_event_kind::inert, why);
 }
 

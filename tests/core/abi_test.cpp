@@ -764,6 +764,8 @@ class seam_probe_rig {
           amberfolio::programs::seam_probe_unreached_definition()));
       EXPECT_TRUE(pc->seams().add(
           amberfolio::programs::seam_probe_trigger_definition()));
+      EXPECT_TRUE(
+          pc->seams().add(amberfolio::programs::seam_probe_pull_definition()));
     }
 
     const std::vector<std::uint8_t>& exe =

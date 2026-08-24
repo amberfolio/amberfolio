@@ -149,6 +149,7 @@ const EXPECTED_EXPORTS = [
   '_af_machine_seam_about',
   '_af_machine_seam_state',
   '_af_machine_seam_reason',
+  '_af_machine_seam_reading',
   '_af_machine_seam_armed',
   '_af_machine_seam_fired',
   '_af_machine_seam_enable',
@@ -1143,8 +1144,9 @@ if (missing.length === 0) {
     const after = machine.seamList();
     const fired = Object.fromEntries(after.map((s) => [s.id, s.fired]));
     const states = Object.fromEntries(after.map((s) => [s.id, s.state]));
+    const lines = Object.fromEntries(after.map((s) => [s.id, formatSeamFired(s)]));
     machine.destroy();
-    return { words, fired, states };
+    return { words, fired, states, lines };
   };
 
   const off = runProbe(false);
@@ -1177,11 +1179,19 @@ if (missing.length === 0) {
     `a seam that was never enabled reports ${JSON.stringify(off.fired)}`,
   );
 
-  // The sentence both JS surfaces print, checked as the pure function it
-  // is (host.mjs). The driver and the dev page share it precisely so a
+  // The line both JS surfaces print, checked as the pure function it is
+  // (host.mjs). The driver and the dev page share it precisely so a
   // browser run and a desktop run can be compared as two runs rather than
-  // as two spellings, and the wording of the zero case is the part that
-  // has to survive an edit - it is the whole warning.
+  // as two spellings.
+  //
+  // What it does **not** decide any more is what the row means (#163):
+  // `reading` is the finished sentence, worked out once in core and
+  // carried over by `af_machine_seam_reading`, and all this checks is
+  // that the numbers are laid out right and the sentence goes on the
+  // end. The sentences themselves are asserted below against rows from
+  // runs that really happened, which is a stronger claim than a string
+  // pinned by hand here could be — a hand-built row can be made to say
+  // anything, including something the C++ never says.
   check(
     formatSeamFired({ armed: true, fired: 9 }) === 'armed fired=9',
     `a fired seam formats as "${formatSeamFired({ armed: true, fired: 9 })}"`,
@@ -1191,9 +1201,33 @@ if (missing.length === 0) {
     `an inert seam formats as "${formatSeamFired({ armed: false, fired: 0 })}"`,
   );
   check(
-    formatSeamFired({ armed: true, fired: 0 }) ===
+    formatSeamFired({ armed: true, fired: 0, reading: ' - a sentence core decided' }) ===
+      'armed fired=0 - a sentence core decided',
+    'the reading is not appended to the row',
+  );
+  check(
+    formatSeamFired({ armed: true, fired: 1, trigger: true, reached: 12, waited: 1868720 }) ===
+      'armed fired=1 reached=12 waited=1868720',
+    'a served pull does not report what it waited',
+  );
+  check(
+    formatSeamFired({ armed: true, fired: 0, trigger: true, reached: 12, waiting: true }) ===
+      'armed fired=0 reached=12 waiting',
+    'a pending pull does not show as waiting',
+  );
+
+  // And the two rows that must never contradict themselves, from runs
+  // that happened. `probe` acted; `probe-unreached` armed at an address
+  // the program never executes, which is #131's failure built on
+  // purpose, and is the one row that has earned the warning.
+  check(
+    on.lines.probe === `armed fired=${Math.round(on.fired.probe)}`,
+    `a seam that acted carries a sentence: "${on.lines.probe}"`,
+  );
+  check(
+    on.lines['probe-unreached'] ===
       'armed fired=0 - armed and never reached; its point may not be where its facts say',
-    `an armed seam that fired nothing formats as "${formatSeamFired({ armed: true, fired: 0 })}"`,
+    `the unreached seam's row reads "${on.lines['probe-unreached']}"`,
   );
 
   // --- The trigger (#161) -----------------------------------------------
@@ -1270,30 +1304,105 @@ if (missing.length === 0) {
       'the arrival is the same either way and only what happens there differs',
   );
 
-  // The sentences a triggered seam's row says, as the pure function they
-  // are. Each is a different state a person can be looking at, and the
-  // middle one is the whole of #161's visibility half: asked, and the
-  // program has not been there yet.
+  // --- The point with no address (#163) ---------------------------------
+  //
+  // `probe-pull`'s one point has no address at all: it is offered at
+  // every step boundary while the pull is outstanding, declines until
+  // the program has stored its own first answer, and marks a third
+  // result word at the first step after that. Asked of a browser because
+  // "one bool per step when nobody pulled" is a claim about a hot path,
+  // and hot paths differ per target.
+  const runPullPoint = (pull) => {
+    const machine = new Machine(module);
+    check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    machine.reset();
+    check(
+      module._af_web_probe_seam_register(machine.handle) === AF_OK,
+      'the probe seams could not be registered',
+    );
+    const ptr = module._af_web_probe_program_bytes();
+    const size = module._af_web_probe_program_size();
+    check(machine.vfsPut('PROBE.EXE', module.HEAPU8.slice(ptr, ptr + size)) === AF_OK, 'putting PROBE.EXE failed');
+    check(machine.loadFromVfs('PROBE.EXE', '') === AF_OK, 'loading PROBE.EXE failed');
+    check(machine.seamEnable('probe-pull') === AF_OK, 'enabling probe-pull was refused');
+    if (pull) {
+      check(machine.seamPull('probe-pull') === AF_OK, 'pulling probe-pull was refused');
+    }
+    for (let frame = 0; frame < 120 && !machine.stopped(); ++frame) {
+      machine.runUntil(machine.ticksPerSecond() * ((frame + 1) / 60));
+    }
+    check(machine.stopped(), `the probe program never exited (pull point ${pull ? 'pulled' : 'idle'})`);
+    const block = machine.readMemory(0x600 + 0x800, 6);
+    const mark = block === null ? -1 : block[4] | (block[5] << 8);
+    const row = machine.seamList().find((s) => s.id === 'probe-pull');
+    machine.destroy();
+    return { mark, row };
+  };
+
+  const notPulled = runPullPoint(false);
   check(
-    formatSeamFired({ armed: true, fired: 0, trigger: true, reached: 12 }) ===
-      'armed fired=0 reached=12 - reached, and never pulled; this seam acts only when asked',
-    `an unpulled trigger formats as "${formatSeamFired({ armed: true, fired: 0, trigger: true, reached: 12 })}"`,
+    notPulled.mark === 0,
+    `a point with no address acted without being pulled: ${notPulled.mark.toString(16)}`,
+  );
+  check(notPulled.row?.fired === 0, `an unpulled point with no address fired ${notPulled.row?.fired} times`);
+  check(
+    notPulled.row?.reached === 0,
+    'a point with no address counted an arrival, and it has no address to arrive at',
+  );
+
+  const pulledPoint = runPullPoint(true);
+  check(
+    pulledPoint.mark === 0x3333,
+    `a pulled point with no address left no mark: ${pulledPoint.mark.toString(16)}`,
   );
   check(
-    formatSeamFired({ armed: true, fired: 0, trigger: true, reached: 12, waiting: true }) ===
-      'armed fired=0 reached=12 waiting - pulled, and its point not reached since',
-    'a pending pull does not say so',
+    pulledPoint.row?.fired === 1,
+    `a pulled point with no address fired ${pulledPoint.row?.fired} times, expected 1 — ` +
+      'the offers it declined are not firings',
+  );
+  check(pulledPoint.row?.waiting === false, 'a served pull is still outstanding');
+
+  // --- What each row *means*, from four runs that happened (#163) -------
+  //
+  // The sentence is core's (`machine::seam_reading_of`), the same one the
+  // desktop host prints, and these are the states a person is actually
+  // looking at. The last pair is the defect this all exists for: a seam
+  // served by a point with no address reports `fired=1 reached=0`, and
+  // every earlier reading keyed on `reached === 0` called that a broken
+  // address table — `fired=1` and "never reached" cannot both be true.
+  check(
+    idle.row?.reading === ' - reached, and never pulled; this seam acts only when asked',
+    `an unpulled trigger's row reads "${idle.row?.reading}"`,
   );
   check(
-    formatSeamFired({ armed: true, fired: 1, trigger: true, reached: 12, waited: 1868720 }) ===
-      'armed fired=1 reached=12 waited=1868720',
-    'a served pull does not report what it waited',
+    pulled.row?.reading === ' - pulled, and served',
+    `a served trigger's row reads "${pulled.row?.reading}"`,
+  );
+  check(
+    notPulled.row?.reading === '',
+    'a point with no address that nobody pulled says something, and there is ' +
+      `nothing to say: "${notPulled.row?.reading}"`,
+  );
+  check(
+    pulledPoint.row?.reading === ' - pulled, and served',
+    `a served point with no address reads "${pulledPoint.row?.reading}"`,
+  );
+  check(
+    !notPulled.row?.reading.includes('never reached') &&
+      !pulledPoint.row?.reading.includes('never reached'),
+    'a seam with no addressed point was told its address may be wrong',
+  );
+  check(
+    formatSeamFired(pulledPoint.row) ===
+      `armed fired=1 reached=0 waited=${Math.round(pulledPoint.row?.waited)} - pulled, and served`,
+    `a served address-free point's whole line reads "${formatSeamFired(pulledPoint.row)}"`,
   );
 
   console.log(
     'smoke: the probe seam listed, toggled, edited a register, posted a key ' +
       `and reported fired=${on.fired.probe}; the unreached one reported fired=0; ` +
-      `the trigger acted only when pulled (reached=${pulled.row?.reached} either way)`,
+      `the trigger acted only when pulled (reached=${pulled.row?.reached} either way); ` +
+      `the address-free point read "${formatSeamFired(pulledPoint.row)}"`,
   );
 }
 

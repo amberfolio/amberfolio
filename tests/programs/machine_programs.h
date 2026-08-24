@@ -210,6 +210,21 @@ struct machine_program {
   /// for a frame boundary to fall after its last write, and this is what
   /// says so out loud.
   std::uint64_t least_frames{};
+
+  /// The **exact** number of scheduling steps the run must take. Zero
+  /// means no claim, which is what almost every entry here wants: how
+  /// many steps this emulator takes is a fact about the emulator and
+  /// pinning it would make every entry a golden.
+  ///
+  /// The exception is the one thing an exact step count is the right
+  /// instrument for: **several entries claiming the same one**. The seam
+  /// probes do (#163) — the plain machine, a trigger on and never
+  /// pulled, and a point with no address on and never pulled — and that
+  /// equality *is* the fidelity invariant (`machine/seam.h`), made where
+  /// every target runs it rather than argued in a header. An entry that
+  /// drifted off the shared number would be a seam that cost the machine
+  /// something while switched off.
+  std::uint64_t steps{};
 };
 
 /// Every machine program, in the order the benchmark should run them.
@@ -247,6 +262,19 @@ struct machine_program {
 /// never asked, it carries the program's own, which is the same block a
 /// machine with no seam at all produces.
 [[nodiscard]] const machine::seam_definition& seam_probe_trigger_definition();
+
+/// The fourth (#163): the same program's fingerprint, a trigger like the
+/// one above, and a point with **no address** — offered at every step
+/// boundary while the pull is outstanding rather than at an arrival.
+///
+/// Its handler is the shape such a handler has to have: it has no
+/// address to tell it whether acting is safe, so it asks the machine,
+/// declines while the answer is no — which keeps the latch — and acts at
+/// the first step where the answer is yes. `seam_probe_pull` and
+/// `seam_probe_pull_unpulled` drive it both ways, and the second shares
+/// its exact step count with the plain machine's entry, which is the
+/// fidelity invariant for a per-step guard: no pull, nothing consulted.
+[[nodiscard]] const machine::seam_definition& seam_probe_pull_definition();
 
 /// The probe program itself, as the MZ file `seam_probe` loads — for a
 /// host that wants to stage it somewhere of its own (hosts/web).

@@ -22,6 +22,7 @@
 #include <string>
 #include <utility>
 
+#include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/font.h"
 #include "amberfolio/machine/machine.h"
@@ -1918,6 +1919,25 @@ void interrupt(assembler& a, std::uint8_t vector) { a.db({0xCD, vector}); }
 // the seam just posted, which is what makes "nothing went through the
 // host's queue" a claim the result block can carry.
 
+/// What the probe program costs the machine when nothing has been done
+/// to it: the poll loop runs its 16,384 iterations against an empty
+/// buffer and the program exits.
+///
+/// **The number matters less than the fact that four entries claim the
+/// same one** (#96, #161, #163). `seam_probe_off` is the plain machine;
+/// `seam_probe_trigger_unpulled` is a trigger on and never asked;
+/// `seam_probe_pull_unpulled` is a point with *no address* on and never
+/// asked, which is the one that could plausibly have cost something,
+/// because "offered at every step boundary" is a sentence about the hot
+/// path. `seam_probe_trigger` is a pulled trigger whose one firing edits
+/// a register the program overwrites, so it is the same run too.
+///
+/// If any of them ever diverges from the others, the fidelity invariant
+/// has been broken on a target rather than in an argument, and the
+/// benchmark says so on every one of them including the browser's
+/// (`ctest --preset wasm`).
+constexpr std::uint64_t probe_plain_steps = 81'933;
+
 constexpr std::uint16_t probe_plain_ax = 0x1111;
 constexpr std::uint16_t probe_edited_ax = 0x2222;
 constexpr std::uint8_t probe_key_scancode = 0x25;  // 'k'
@@ -1999,6 +2019,41 @@ void probe_never(machine::machine& box, machine::seam_context& ctx) {
   const auto segment = static_cast<std::uint16_t>(ctx.image_base() / 16U);
   box.processor().write_byte(segment, machine_layout::result_offset, 0xFF);
   box.processor().write_byte(segment, machine_layout::result_offset + 1, 0xFF);
+}
+
+/// What the address-free point writes, into a result word the program
+/// itself never touches. `0x3333` because the two words beside it are
+/// `0x1111` and `0x2222` and a reader of a failing block should be able
+/// to tell at a glance which of the three it is looking at.
+constexpr std::uint16_t probe_pulled_mark = 0x3333;
+
+/// The address-free point's handler (#163, `seam_point::at_every_step`):
+/// the shape every such handler has to have, at the size of a test.
+///
+/// It is offered at *every* step boundary while the pull is outstanding
+/// and has no address to tell it whether acting is safe, so it asks the
+/// machine instead: it declines — which keeps the latch — until the
+/// program has stored its own first answer, and acts at the first step
+/// after that. Which makes the run say two things at once: that the
+/// point really is consulted every step (the program's first answer is
+/// stored 30-odd steps in and the mark is there at the exit), and that a
+/// guard which does not hold really does keep the pull waiting rather
+/// than swallowing it.
+void probe_mark_when_ready(machine::machine& box, machine::seam_context& ctx) {
+  const auto segment = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  cpu::processor& cpu = box.processor();
+  const auto stored = static_cast<std::uint16_t>(
+      cpu.read_byte(segment, machine_layout::result_offset) |
+      (cpu.read_byte(segment, machine_layout::result_offset + 1) << 8U));
+  if (stored != probe_plain_ax) {
+    ctx.decline(machine::seam_reason::point_not_recognized);
+    return;
+  }
+  const std::uint16_t mark_at = result_word(2);
+  cpu.write_byte(segment, mark_at,
+                 static_cast<std::uint8_t>(probe_pulled_mark));
+  cpu.write_byte(segment, static_cast<std::uint16_t>(mark_at + 1),
+                 static_cast<std::uint8_t>(probe_pulled_mark >> 8U));
 }
 
 [[nodiscard]] std::vector<machine_program> build_all() {
@@ -2391,6 +2446,7 @@ void probe_never(machine::machine& box, machine::seam_context& ctx) {
     p.results = {{.what = "AX at the edited instruction, trigger pulled",
                   .value = probe_edited_ax},
                  {.what = "no keystroke: this seam posts none", .value = 0}};
+    p.steps = probe_plain_steps;
     p.exit_code = 0x88;
     list.push_back(std::move(p));
   }
@@ -2407,6 +2463,53 @@ void probe_never(machine::machine& box, machine::seam_context& ctx) {
     p.results = {{.what = "AX at the edited instruction, trigger not pulled",
                   .value = probe_plain_ax},
                  {.what = "no keystroke arrived", .value = 0}};
+    p.steps = probe_plain_steps;
+    p.exit_code = 0x88;
+    list.push_back(std::move(p));
+  }
+
+  {
+    // The address-free point, both ways (#163). Pulled: it is offered at
+    // every step boundary, declines until the program has stored its own
+    // first answer, and marks a third result word at the first step
+    // after that — so the block says both that the offers happened and
+    // that the declines kept the pull waiting. On and not pulled: no
+    // offer is ever taken up, and `steps` below says the run is the
+    // plain machine's to the step.
+    machine_program p;
+    p.name = "seam_probe_pull";
+    p.about = "a point with no address, pulled: it acts at the first safe step";
+    p.setup.exe = seam_probe_file();
+    p.setup.exe_path = "\\PROBE.EXE";
+    p.setup.seam_definitions = {&seam_probe_pull_definition()};
+    p.setup.seams = {"probe-pull"};
+    p.setup.pulls = {"probe-pull"};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "AX at the edited instruction: this seam edits no register",
+         .value = probe_plain_ax},
+        {.what = "no keystroke: this seam posts none", .value = 0},
+        {.what = "the mark the address-free point left, once its guard held",
+         .value = probe_pulled_mark}};
+    p.steps = probe_plain_steps;
+    p.exit_code = 0x88;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "seam_probe_pull_unpulled";
+    p.about = "the same point, on and never asked: a plain machine";
+    p.setup.exe = seam_probe_file();
+    p.setup.exe_path = "\\PROBE.EXE";
+    p.setup.seam_definitions = {&seam_probe_pull_definition()};
+    p.setup.seams = {"probe-pull"};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "AX at the edited instruction", .value = probe_plain_ax},
+        {.what = "no keystroke arrived", .value = 0},
+        {.what = "and no mark: nobody pulled", .value = 0}};
+    p.steps = probe_plain_steps;
     p.exit_code = 0x88;
     list.push_back(std::move(p));
   }
@@ -2422,6 +2525,7 @@ void probe_never(machine::machine& box, machine::seam_context& ctx) {
     p.results = {{.what = "AX at the edited instruction, seam off",
                   .value = probe_plain_ax},
                  {.what = "no keystroke arrived", .value = 0}};
+    p.steps = probe_plain_steps;
     p.exit_code = 0x88;
     list.push_back(std::move(p));
   }
@@ -2527,6 +2631,34 @@ const machine::seam_definition& seam_probe_trigger_definition() {
   static const machine::seam_definition definition{
       .id = "probe-trigger",
       .about = "the test trigger: edits AX, once, when pulled",
+      .fingerprints = fingerprints,
+      .points = points,
+      .trigger = true};
+  return definition;
+}
+
+const machine::seam_definition& seam_probe_pull_definition() {
+  // The fourth (#163): the same program's fingerprint, a trigger like
+  // the one above, and a point with **no address at all** — offered at
+  // every step boundary while the pull is outstanding. The pair of
+  // entries it drives is the fidelity claim for that mechanism at
+  // program scale: pulled, the guard declines its way through the
+  // program's first thirty-odd steps and then marks a result word; not
+  // pulled, the run is the plain machine's, step for step.
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 1> points{
+      {{.module = machine::resident_image,
+        .run = &probe_mark_when_ready,
+        .at_every_step = true}}};
+  static const machine::seam_definition definition{
+      .id = "probe-pull",
+      .about = "the test trigger with no address: acts at the first safe step",
       .fingerprints = fingerprints,
       .points = points,
       .trigger = true};
@@ -2719,6 +2851,12 @@ std::vector<std::string> check_machine_program(const machine_program& expected,
     fail("took " + std::to_string(got.time) +
          " ticks of virtual time, which is less than the " +
          std::to_string(expected.least_time) + " the program asked for");
+  }
+  if (expected.steps != 0 && got.steps != expected.steps) {
+    fail("took " + std::to_string(got.steps) + " steps, expected exactly " +
+         std::to_string(expected.steps) +
+         " — the entries that claim this number claim it together, and one"
+         " of them costing the machine something is what that is for");
   }
 
   return wrong;
