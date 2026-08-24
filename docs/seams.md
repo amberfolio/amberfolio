@@ -197,8 +197,9 @@ carries `reached`:
 | number | the claim |
 | --- | --- |
 | `armed` | an address was computed out of the fact table |
-| `reached` | the program arrived at that address, N times, whether or not anybody had asked |
-| `fired` | a handler ran there **and acted**, N times; a decline is not one |
+| `reached` | the program arrived at that address, N times, whether or not anybody had asked. **Addressed points only** |
+| `fired` | a handler ran **and acted**, N times, wherever it ran; a decline is not one |
+| `declined` | a handler ran and would not act, N times — the fail-closed rule doing its job |
 | `waiting` | a pull is outstanding: asked, and not served since |
 | `pulled_at` / `waited` | when the outstanding pull was made, and what the last served one cost, in ticks |
 
@@ -206,6 +207,13 @@ carries `reached`:
 *rate* of `reached` over a run is the granularity at which a pull can
 possibly be served by that point. `waited` is the same question answered
 directly, in ticks, for the pull that actually happened.
+
+**None of those numbers is the sentence.** What a row *means* — did it
+act, and if not why not — is `machine::seam_reading_of()`, decided once
+in core and handed to the page as finished text by
+`af_machine_seam_reading`. It is in core because it was not: both hosts
+worked it out for themselves, and both got it wrong the same way the
+moment a seam could act somewhere other than at an address (§below).
 
 ### A point with no address (#163)
 
@@ -224,7 +232,11 @@ pulls a cheat mid-fight wants it now. So a point may set
   holds;
 - it counts no `reached`. It has no arrivals; counting its offers would
   be counting steps, and counting steps is not a measurement of
-  anything.
+  anything. Keeping `reached` addressed-only is what leaves it worth
+  reading: against the real program the cheats' end check is arrived at
+  **exactly once per encounter**, so `reached=1` is the number that makes
+  "a pull used to cost 18.5 virtual seconds" and "it now costs none"
+  comparable claims.
 
 It is **not** qualifier-free. Such a point still names a module, and the
 engine still refuses to offer it while the program's own record says that
@@ -238,6 +250,36 @@ program's structures say, which is weaker, and a guard that cannot rule
 out being mid-walk of the structure it edits has to say so.
 `seam_cheats.cpp`'s `combat_roster_ready()` is the worked example, and
 §10 has what it can and cannot claim.
+
+**And it changes what a row has to say.** A seam served by such a point
+reports `fired=1 reached=0`, and every reading that keyed a warning on
+`reached == 0` called that a broken address table:
+
+```
+seam cheat-kill-all armed fired=1 reached=0 waited=8327644
+    - armed and never reached; its point may not be where its facts say
+```
+
+`fired=1` and "never reached" cannot both be true, and that sentence
+sends a reader to doubt an address table that was working — #131's harm
+with the sign flipped, a line that reads as a failure when the thing
+worked. So the reading moved into core (`seam_reading_of`), it answers
+one question — *did it act, and if not why not* — and it is now
+impossible for it to warn about an address when `fired > 0`
+(`SeamReading.NeverWarnsAboutAnAddressWhenTheSeamActed`). The six
+answers:
+
+| reading | when | what a row says |
+| --- | --- | --- |
+| *nothing to say* | an ordinary seam that acted, or an inert one | the numbers, and nothing after them |
+| served | a trigger was pulled and served | `- pulled, and served`, with `waited=` beside it |
+| pulled, not served | a pull is outstanding and nothing has been offered since | `- pulled, and its point not reached since` |
+| pulled, declined | a pull is outstanding and every offer was refused | `- pulled, and not served: what it was offered is not what its facts describe` |
+| reached, never pulled | a trigger's point was arrived at and nobody asked | `- reached, and never pulled; this seam acts only when asked` |
+| never reached | armed at an address the program never went to, **and it did not act** | `- armed and never reached; its point may not be where its facts say` |
+
+The last one is #131's warning, and it is a claim about an *address*: it
+is said only of a seam that has one.
 
 `SeamPullPoint.*` and
 `SeamFidelity.APointWithNoAddressNobodyPulledLeavesTheRunIdentical` are
@@ -711,10 +753,26 @@ one healed, and never the party.
 `IsOnAndDoesNothingUntilSomebodyPullsIt` and `OnePullIsOneFiring` are
 still the trigger itself.
 
-**None of it has been run against the program.** Whether 120 finishes a
-wilderness encounter's seven soldiers in one pull, and whether the guard
-ever holds on a real fight, are measurements nobody in this tree can
-take.
+**It has been run against the program**, driving `fight.rec`'s own key
+script on a player-supplied copy. `--seam code-wheel` is needed as well:
+without it a live driven run sits at the copy-protection challenge for
+ever and never reaches a fight at all. Three pulls, at three moments:
+
+| pulled | row at the end of the run | what it says |
+| --- | --- | --- |
+| frame 13500, just after `Q` starts the round | `fired=1 reached=1 waited=0` | served at the instant of the pull |
+| frame 12700, before the round starts | `fired=1 reached=0 waited=8327644` | the guard declined until the roster was ready — 6.98 virtual seconds — then served |
+| frame 14000, after the combat ended | `fired=0 reached=1 waiting`, with `inert point_not_recognized` | the guard declined, kept the pull, and said so |
+
+The same script before this change, pulled before the round:
+`waited=22110288` — 18.5 virtual seconds, and `reached=1`, because the
+end check is arrived at exactly once per encounter. That is the
+measurement §3a's `reached` was built to make possible, and it is why
+`reached` stays a count of arrivals at the addressed point.
+
+**What is still unmeasured** is the number: whether 120 finishes what a
+party actually meets. A pull that leaves an enemy standing is
+`debug_damage` being wrong rather than the seam.
 
 **"Standing" is the wound status, not the byte beside it.** The record
 carries a *held* byte immediately before the combat-side index, and the

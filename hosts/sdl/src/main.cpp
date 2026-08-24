@@ -2340,15 +2340,20 @@ int main(int argc, char** argv) try {
   // here, once, at the end of the run it belongs to.
   //
   // A triggered seam (#161) carries two more numbers, and only it does:
-  // `reached` is how many times its point was arrived at whether or not
-  // anybody had asked — the one measurement of how promptly a pull can
-  // possibly be served — and `waited`/`waiting` is what the last pull
-  // cost or is still costing. `fired=0` means nothing about such a seam,
-  // because a trigger nobody pulled is a trigger working, so the
-  // never-reached sentence is keyed on `reached` for it instead.
-  // `host.mjs`'s `formatSeamFired` says all of this identically: a
-  // reader comparing a browser run with a desktop one should be
-  // comparing two runs and not two spellings.
+  // `reached` is how many times its **addressed** point was arrived at
+  // whether or not anybody had asked — the one measurement of how
+  // promptly a pull could be served there — and `waited`/`waiting` is
+  // what the last pull cost or is still costing.
+  //
+  // What the row *means* is `machine::seam_reading_of`, in core, and not
+  // a decision made here (#163). It used to be made here and again in
+  // `host.mjs`, and both got it wrong the same way the moment a seam
+  // could act at a point with no address: `fired=1 reached=0` is a
+  // success, and both printed "armed and never reached; its point may
+  // not be where its facts say" over it. One decision, one spelling, and
+  // the page is handed the finished sentence through the ABI — so a
+  // reader comparing a browser run with a desktop one is comparing two
+  // runs and not two spellings.
   for (std::size_t i = 0; i < box.seams().count(); ++i) {
     const machine::seam_status row = box.seams().status(i);
     if (row.state != machine::seam_state::on) {
@@ -2363,16 +2368,8 @@ int main(int argc, char** argv) try {
         extra += " waited=" + std::to_string(row.waited);
       }
     }
-    const char* say = "";
-    if (row.armed && row.reached == 0) {
-      say =
-          " - armed and never reached; its point may not be where its"
-          " facts say";
-    } else if (row.armed && row.trigger && row.waiting) {
-      say = " - pulled, and its point not reached since";
-    } else if (row.armed && row.trigger && row.fired == 0) {
-      say = " - reached, and never pulled; this seam acts only when asked";
-    }
+    // What the row means is core's answer, not this host's (#163).
+    const char* say = machine::seam_reading_text(machine::seam_reading_of(row));
     std::fprintf(stderr, "amberfolio: seam %.*s %s fired=%llu%s%s\n",
                  static_cast<int>(row.id.size()), row.id.data(),
                  row.armed ? "armed" : "inert",

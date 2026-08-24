@@ -480,13 +480,50 @@ struct seam_status {
   /// possibly be served. Nobody has measured that for the cheats' end
   /// check, and this is the instrument that measures it.
   ///
-  /// **Address points only.** A point with no address
-  /// (`seam_point::at_every_step`) is offered at every step boundary
-  /// while a pull is outstanding, so counting its offers would be
-  /// counting steps, and counting steps is not a measurement of
-  /// anything. It counts none, and this number goes on meaning what it
-  /// has always meant: where the program went (#163).
+  /// **Address points only**, and deliberately so (#163). A point with
+  /// no address (`seam_point::at_every_step`) is offered at every step
+  /// boundary while a pull is outstanding, so counting its offers would
+  /// be counting steps, and counting steps is not a measurement of
+  /// anything.
+  ///
+  /// Keeping it address-only is what makes it still worth having, and
+  /// there is a measurement to show that. Driven against the real
+  /// program, the cheats' end check is arrived at **exactly once per
+  /// encounter**: a pull made before a round began used to cost
+  /// `waited=22110288` — 18.5 virtual seconds — and now costs
+  /// `waited=8327644` when the guard has to wait for the roster and
+  /// `waited=0` when it does not. `reached=1` is the number that makes
+  /// those three comparable, and a `reached` that also counted every
+  /// step of the wait would have destroyed it.
+  ///
+  /// What it must *not* be read as is "this seam did nothing". A seam
+  /// that acts at an address-free point reports `fired=1 reached=0`, and
+  /// that pair is a success. `seam_reading_of()` is what a host says out
+  /// loud, precisely so no host has to re-derive it.
   std::uint64_t reached{};
+
+  /// How many times one of this seam's handlers **declined** since it
+  /// was enabled (`seam_context::decline`) — arrived, found what the
+  /// machine held was not what its facts describe, and touched nothing.
+  ///
+  /// The diagnostics channel says this once per enable, because a point
+  /// in a tight loop would otherwise bury the first line. A count is the
+  /// same fact in the form a status row can carry, and it is what tells
+  /// "pulled, and the program has not been there yet" apart from
+  /// "pulled, and every offer was refused" — which look identical
+  /// through `waiting` alone and mean opposite things to whoever is
+  /// waiting for the cheat to go off (#163).
+  std::uint64_t declined{};
+
+  /// Whether any of this seam's points **has an address**, as opposed to
+  /// being offered at every step boundary (`seam_point::at_every_step`).
+  ///
+  /// Only here because one sentence a host says depends on it: "armed
+  /// and never reached; its point may not be where its facts say" is a
+  /// claim about an address table, and a seam with no addresses in it
+  /// cannot have a wrong one. Saying that of a seam nobody pulled would
+  /// send a reader to doubt a table that is not there.
+  bool addressed{};
 
   /// The virtual tick the outstanding pull was made at. Meaningful only
   /// while `waiting`; a host showing how long a pull has been waiting
@@ -499,6 +536,56 @@ struct seam_status {
   /// measures everything else in.
   ticks waited{};
 };
+
+/// What a seam's row *means*, as one of six sentences a person can read
+/// at a glance (#163).
+///
+/// Here rather than in a host — the same argument
+/// `seam_event_kind_name` makes one screen down, and it was not enough:
+/// both hosts spelled this decision out for themselves, and when a seam
+/// gained a point with no address they both started printing "armed and
+/// never reached; its point may not be where its facts say" over a run
+/// in which the seam had done exactly what it was asked. `fired=1` and
+/// "never reached" cannot both be true, and the sentence sent readers to
+/// doubt an address table that was working. That is #131's harm with the
+/// sign flipped — a line that reads as a failure when the thing worked —
+/// so the decision lives in one place, is tested in one place, and
+/// reaches the browser through the ABI as text rather than as logic to
+/// re-derive.
+///
+/// The question it answers is the one a person actually has: **did it
+/// act, and if not, why not.**
+enum class seam_reading : std::uint8_t {
+  /// The numbers on the row say everything there is to say: an ordinary
+  /// seam that fired, or a seam that is inert and already says so.
+  nothing_to_say,
+  /// A trigger was pulled and served. `waited` says what it cost.
+  served,
+  /// A pull is outstanding, and nothing has been offered to the handler
+  /// since — the program has not been where this seam is.
+  pulled_and_not_served,
+  /// A pull is outstanding, and what *was* offered got declined. The
+  /// seam is working, is being asked, and is refusing to act on a
+  /// machine it does not recognize — which is the fail-closed rule doing
+  /// its job, and is a different thing to be waiting on.
+  pulled_and_declined,
+  /// A trigger's point was arrived at and nobody had asked. `fired=0`
+  /// means nothing about such a seam.
+  reached_and_never_pulled,
+  /// #131's warning: armed at an address the program never went to, so
+  /// the address may not be where the fact table says. Only ever said of
+  /// a seam that *has* an address and did not act.
+  never_reached,
+};
+
+/// Which of those `row` is. A pure function of a status row, so a host
+/// that shows a listing and a host that prints one at the end of a run
+/// cannot disagree.
+[[nodiscard]] seam_reading seam_reading_of(const seam_status& row) noexcept;
+
+/// The sentence, ready to append to a row — leading " - " and all, or
+/// empty for `nothing_to_say`. Never null.
+[[nodiscard]] const char* seam_reading_text(seam_reading reading) noexcept;
 
 /// The printable name of a `seam_reason`, for a host's listing. Never
 /// null.
@@ -829,10 +916,12 @@ class seam_engine {
     bool waiting{false};
     ticks pulled_at{};
     ticks waited{};
-    /// Whether a handler of this seam has already declined once
-    /// (`seam_context::decline`). Cleared when the seam is enabled, so
-    /// turning it off and on again asks the question afresh.
-    bool declined{false};
+    /// How many times a handler of this seam has declined
+    /// (`seam_context::decline`). Zero means it has not, which is what
+    /// the diagnostics channel's report-once test reads; the count
+    /// itself is `seam_status::declined`. Cleared when the seam is
+    /// enabled, so turning it off and on again asks the question afresh.
+    std::uint64_t declined{};
   };
 
   struct armed_point {

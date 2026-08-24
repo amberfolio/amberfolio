@@ -1007,6 +1007,18 @@ uint32_t af_machine_seam_reason(const af_machine* handle, uint32_t index,
   return copy_out(std::span<const char>(why.data(), why.size()), out, max);
 }
 
+uint32_t af_machine_seam_reading(const af_machine* handle, uint32_t index,
+                                 char* out, uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  const amberfolio::machine::seam_status row = box->seams().status(index);
+  const std::string_view say = amberfolio::machine::seam_reading_text(
+      amberfolio::machine::seam_reading_of(row));
+  return copy_out(std::span<const char>(say.data(), say.size()), out, max);
+}
+
 int32_t af_machine_seam_armed(const af_machine* handle, uint32_t index) {
   const machine* box = box_of(handle);
   if (box == nullptr || index >= box->seams().count()) {

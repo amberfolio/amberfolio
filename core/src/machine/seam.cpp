@@ -18,6 +18,58 @@
 
 namespace amberfolio::machine {
 
+seam_reading seam_reading_of(const seam_status& row) noexcept {
+  // `armed` first, because every sentence below is about a seam that is
+  // placed and could act. An inert one already says `inert` and why.
+  if (!row.armed) {
+    return seam_reading::nothing_to_say;
+  }
+  // An outstanding pull is what the person is waiting on, so it outranks
+  // whatever the seam did earlier in the run — and the two ways of
+  // waiting mean opposite things. Declined is the seam working and
+  // refusing; not-reached is the program not having been there.
+  if (row.waiting) {
+    return row.declined != 0 ? seam_reading::pulled_and_declined
+                             : seam_reading::pulled_and_not_served;
+  }
+  // It acted, and nothing is outstanding. **No warning may be printed
+  // past this line** — that is the whole of #163's defect: a seam served
+  // by a point with no address reports `fired=1 reached=0`, and every
+  // reading keyed on `reached == 0` called that a broken address table.
+  if (row.fired != 0) {
+    return row.trigger ? seam_reading::served : seam_reading::nothing_to_say;
+  }
+  if (row.trigger && row.reached != 0) {
+    return seam_reading::reached_and_never_pulled;
+  }
+  // #131's warning, and it is a claim about an address: only for a seam
+  // that has one, and only when the program never went to it.
+  if (row.addressed && row.reached == 0) {
+    return seam_reading::never_reached;
+  }
+  return seam_reading::nothing_to_say;
+}
+
+const char* seam_reading_text(seam_reading reading) noexcept {
+  switch (reading) {
+    case seam_reading::nothing_to_say:
+      return "";
+    case seam_reading::served:
+      return " - pulled, and served";
+    case seam_reading::pulled_and_not_served:
+      return " - pulled, and its point not reached since";
+    case seam_reading::pulled_and_declined:
+      return " - pulled, and not served: what it was offered is not what its"
+             " facts describe";
+    case seam_reading::reached_and_never_pulled:
+      return " - reached, and never pulled; this seam acts only when asked";
+    case seam_reading::never_reached:
+      return " - armed and never reached; its point may not be where its facts"
+             " say";
+  }
+  return "";
+}
+
 const char* seam_reason_name(seam_reason reason) noexcept {
   switch (reason) {
     case seam_reason::none:
@@ -206,6 +258,17 @@ seam_status seam_engine::status(std::size_t index) const noexcept {
   out.reason = s.enabled && !armed ? seam_reason::module_not_resident
                                    : seam_reason::none;
   out.fired = s.fired;
+  out.declined = s.declined;
+  // A fact about the definition rather than about the run, and worked
+  // out here so that no host has to walk a point table to say one
+  // sentence (#163).
+  out.addressed = false;
+  for (const seam_point& point : s.seam->points) {
+    if (!point.at_every_step) {
+      out.addressed = true;
+      break;
+    }
+  }
   return out;
 }
 
@@ -303,7 +366,7 @@ seam_error seam_engine::enable(std::string_view id) {
   }
 
   s.enabled = true;
-  s.declined = false;  // A fresh enable asks the question again.
+  s.declined = 0;  // A fresh enable asks the question again.
   s.fired = 0;
   s.reached = 0;
   s.waiting = false;
@@ -554,10 +617,17 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
 
 void seam_engine::note_decline(std::string_view id, seam_reason why) noexcept {
   const std::size_t at = index_of(id);
-  if (at == max_seams || slots_[at].declined) {
+  if (at == max_seams) {
     return;
   }
-  slots_[at].declined = true;
+  const bool first = slots_[at].declined == 0;
+  ++slots_[at].declined;
+  if (!first) {
+    // Counted every time, said once: a point offered at every step
+    // declines at most of them, and a line each would bury the first.
+    // The count is what reaches `seam_status`.
+    return;
+  }
   report(id, seam_event_kind::inert, why);
 }
 

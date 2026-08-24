@@ -839,6 +839,173 @@ TEST(SeamPullPoint, IsInertOnASeamThatTakesNoTrigger) {
   EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x1111);
 }
 
+// --- What a row means (#163) ------------------------------------------------
+//
+// The defect these exist for: both hosts used to decide this out of the
+// numbers beside it, and both said "armed and never reached; its point
+// may not be where its facts say" over a row that read `fired=1
+// reached=0` — which is what a seam served by a point with no address
+// reports, and is a success. Measured against the real program, a pull
+// made during a fight came back `fired=1 reached=1 waited=0` and one
+// made before the round began came back `fired=1 reached=0
+// waited=8327644`, and the second printed that warning. `fired=1` and
+// "never reached" cannot both be true, and sending a reader to doubt a
+// working address table is #131's harm with the sign flipped.
+
+/// A row as a host is handed one, built by hand so a reading can be
+/// asked about a *state* rather than about a run. Assigned field by
+/// field rather than designated-initialized: the reading depends on six
+/// of these and on none of the rest, and a list that named them in
+/// declaration order would go stale the next time a field is added
+/// between two of them.
+[[nodiscard]] seam_status armed_row() {
+  seam_status row;
+  row.id = "a-row";
+  row.state = seam_state::on;
+  row.armed = true;
+  return row;
+}
+
+TEST(SeamReading, NeverWarnsAboutAnAddressWhenTheSeamActed) {
+  // The invariant, stated once and directly: whatever else a row says,
+  // it does not tell a reader to go and doubt the fact table of a seam
+  // that did the thing it was asked to do.
+  for (const bool addressed : {false, true}) {
+    for (const bool trigger : {false, true}) {
+      for (const std::uint64_t reached : {std::uint64_t{0}, std::uint64_t{7}}) {
+        for (const std::uint64_t declined :
+             {std::uint64_t{0}, std::uint64_t{3}}) {
+          seam_status row = armed_row();
+          row.fired = 1;
+          row.trigger = trigger;
+          row.reached = reached;
+          row.declined = declined;
+          row.addressed = addressed;
+          EXPECT_NE(seam_reading_of(row), seam_reading::never_reached)
+              << "addressed=" << addressed << " trigger=" << trigger
+              << " reached=" << reached << " declined=" << declined;
+        }
+      }
+    }
+  }
+}
+
+TEST(SeamReading, SaysWhichOfTheThreeThingsHappened) {
+  // Did it act, and if not, why not. A person watching for a cheat to go
+  // off wants exactly one of these three, and the two ways of waiting
+  // mean opposite things: declined is the seam working and refusing,
+  // not-reached is the program not having been there.
+  seam_status served = armed_row();
+  served.fired = 1;
+  served.trigger = true;
+  served.addressed = true;
+  EXPECT_EQ(seam_reading_of(served), seam_reading::served);
+
+  seam_status waiting = served;
+  waiting.fired = 0;
+  waiting.waiting = true;
+  EXPECT_EQ(seam_reading_of(waiting), seam_reading::pulled_and_not_served);
+
+  waiting.declined = 4;
+  EXPECT_EQ(seam_reading_of(waiting), seam_reading::pulled_and_declined);
+
+  seam_status idle = armed_row();
+  idle.trigger = true;
+  idle.reached = 12;
+  idle.addressed = true;
+  EXPECT_EQ(seam_reading_of(idle), seam_reading::reached_and_never_pulled);
+
+  // Three different sentences, and none of them empty.
+  for (const seam_reading reading :
+       {seam_reading::served, seam_reading::pulled_and_not_served,
+        seam_reading::pulled_and_declined,
+        seam_reading::reached_and_never_pulled, seam_reading::never_reached}) {
+    EXPECT_STRNE(seam_reading_text(reading), "");
+  }
+  EXPECT_STREQ(seam_reading_text(seam_reading::nothing_to_say), "");
+}
+
+TEST(SeamReading, KeepsHash131sWarningForASeamThatHasAnAddress) {
+  seam_status unreached = armed_row();
+  unreached.addressed = true;
+  EXPECT_EQ(seam_reading_of(unreached), seam_reading::never_reached);
+
+  // The same row for a seam with no address in it at all: there is no
+  // fact table to doubt, so there is nothing to say.
+  seam_status address_free = unreached;
+  address_free.addressed = false;
+  EXPECT_EQ(seam_reading_of(address_free), seam_reading::nothing_to_say);
+
+  // And an inert seam says `inert` and its reason already.
+  seam_status inert = unreached;
+  inert.armed = false;
+  EXPECT_EQ(seam_reading_of(inert), seam_reading::nothing_to_say);
+}
+
+TEST(SeamReading, IsWhatTheRowsOfThisBuildsSeamsActuallySay) {
+  // The three states, taken off real rows rather than off hand-built
+  // ones — `test-pull`'s point has no address, so a served pull leaves
+  // exactly the row that used to be reported as a broken address table.
+  const rig r;
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-pull"), seam_reason::none);
+  EXPECT_EQ(seam_reading_of(r.pc().seams().status("test-pull")),
+            seam_reading::nothing_to_say)
+      << "on, never pulled, and no address to be wrong about";
+
+  ASSERT_EQ(r.pc().seams().pull("test-pull", r.pc().time()), seam_reason::none);
+  EXPECT_EQ(seam_reading_of(r.pc().seams().status("test-pull")),
+            seam_reading::pulled_and_not_served);
+
+  r.pc().step();
+  const seam_status row = r.pc().seams().status("test-pull");
+  ASSERT_EQ(row.fired, 1u);
+  ASSERT_EQ(row.reached, 0u);
+  EXPECT_EQ(seam_reading_of(row), seam_reading::served)
+      << "fired=1 reached=0 is a success and has to read as one";
+}
+
+TEST(SeamReading, CountsDeclinesAndSaysSoOnce) {
+  const rig r;
+  r.program_at(0, {0x90, 0x90, 0x90, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-pull-guarded"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-pull-guarded", r.pc().time()),
+            seam_reason::none);
+  for (int i = 0; i < 4; ++i) {
+    r.pc().step();
+  }
+
+  const seam_status row = r.pc().seams().status("test-pull-guarded");
+  EXPECT_EQ(row.declined, 4u) << "counted every time";
+  EXPECT_EQ(row.fired, 0u);
+  EXPECT_EQ(seam_reading_of(row), seam_reading::pulled_and_declined)
+      << "which is a different thing to be waiting on than a point the"
+         " program has not been to";
+  EXPECT_EQ(r.events(seam_event_kind::inert), 1u) << "and said once";
+}
+
+TEST(SeamReading, KnowsWhichSeamsInThisBuildHaveAddressesInThem) {
+  const rig r;
+  EXPECT_TRUE(r.pc().seams().status("test-edit").addressed);
+  EXPECT_FALSE(r.pc().seams().status("test-pull").addressed);
+  // The cheats' kill-all has one of each, so it is addressed — and its
+  // `reached` goes on measuring the end check, which is the number that
+  // says what a pull used to cost.
+  const seam_definition* kill_all = r.pc().seams().find("cheat-kill-all");
+  ASSERT_NE(kill_all, nullptr);
+  bool addressed = false;
+  bool address_free = false;
+  for (const seam_point& point : kill_all->points) {
+    if (point.at_every_step) {
+      address_free = true;
+    } else {
+      addressed = true;
+    }
+  }
+  EXPECT_TRUE(addressed);
+  EXPECT_TRUE(address_free);
+}
+
 TEST(SeamPullPoint, EveryAddressFreePointInThisBuildIsOnATrigger) {
   // The rule the case above rests on, asked of the seams this build
   // actually carries rather than of the test's own.

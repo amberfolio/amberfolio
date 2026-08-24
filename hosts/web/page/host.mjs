@@ -68,12 +68,21 @@ export const AF_SEAM_NONE = 3;
 /// second.
 ///
 /// A triggered seam (#161) carries two more numbers, and only it does:
-/// `reached` is how many times its point was arrived at whether or not
-/// anybody had asked — the one measurement of how promptly a pull can
-/// possibly be served — and `waited`/`waiting` is what the last pull cost
-/// or is still costing. `fired=0` means nothing about such a seam,
-/// because a trigger nobody pulled is a trigger working, so the
-/// never-reached sentence is keyed on `reached` for it instead.
+/// `reached` is how many times its **addressed** point was arrived at
+/// whether or not anybody had asked — the one measurement of how
+/// promptly a pull could be served there — and `waited`/`waiting` is
+/// what the last pull cost or is still costing.
+///
+/// **What the row means is not decided here** (#163). `seam.reading` is
+/// the finished sentence, worked out by `machine::seam_reading_of` in
+/// core and handed over by `af_machine_seam_reading`. It used to be
+/// decided here *and* in the desktop host, out of the numbers beside it,
+/// and both got it wrong the same way the moment a seam could act at a
+/// point with no address: such a seam reports `fired=1 reached=0`, which
+/// is a success, and both printed "armed and never reached; its point
+/// may not be where its facts say" over it — #131's harm with the sign
+/// flipped, a line that reads as a failure when the thing worked. A row
+/// this function cannot reason about is a row it cannot contradict.
 export function formatSeamFired(seam) {
   // A row from `seamList()` always carries `reached`; a caller that
   // built one by hand may not, and for an ordinary seam the two numbers
@@ -85,15 +94,7 @@ export function formatSeamFired(seam) {
     if (seam.waiting) extra += ' waiting';
     else if (seam.fired !== 0) extra += ` waited=${Math.round(seam.waited)}`;
   }
-  let say = '';
-  if (seam.armed && reached === 0) {
-    say = ' - armed and never reached; its point may not be where its facts say';
-  } else if (seam.armed && seam.trigger && seam.waiting) {
-    say = ' - pulled, and its point not reached since';
-  } else if (seam.armed && seam.trigger && seam.fired === 0) {
-    say = ' - reached, and never pulled; this seam acts only when asked';
-  }
-  return `${seam.armed ? 'armed' : 'inert'} fired=${Math.round(seam.fired)}${extra}${say}`;
+  return `${seam.armed ? 'armed' : 'inert'} fired=${Math.round(seam.fired)}${extra}${seam.reading ?? ''}`;
 }
 
 /// Why a file the host offered did not go in, in the words a person
@@ -771,6 +772,9 @@ export class Machine {
         about: this.#text((out, max) => this.module._af_machine_seam_about(this.handle, i, out, max), 256) ?? '',
         state: this.module._af_machine_seam_state(this.handle, i),
         reason: this.#text((out, max) => this.module._af_machine_seam_reason(this.handle, i, out, max), 64) ?? '',
+        // What the row means, as one sentence core decided (#163).
+        // Empty when the numbers say everything there is to say.
+        reading: this.#text((out, max) => this.module._af_machine_seam_reading(this.handle, i, out, max), 128) ?? '',
         armed: this.module._af_machine_seam_armed(this.handle, i) !== 0,
         fired: this.module._af_machine_seam_fired(this.handle, i),
         trigger: this.module._af_machine_seam_triggered(this.handle, i) !== 0,

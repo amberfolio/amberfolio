@@ -149,10 +149,21 @@
 // trigger and was driven by the flag alone; the same script now needs a
 // pull as well, which is a line in `docs/playable.md` rather than a
 // change to anything committed — no recording in `tests/sessions/`
-// enables this seam. It also predates the damage, and what it would
-// show now is what nobody in this tree can check: whether 120 finishes
-// those seven in one pull, and whether the immediate point serves it
-// before the round ends.
+// enables this seam.
+//
+// The immediate point *has* been driven against the program since, on a
+// player's copy, from `fight.rec`'s own key script: pulled during the
+// round it reports `fired=1 reached=1 waited=0`, and pulled before the
+// round begins it reports `fired=1 reached=0 waited=8327644` — the
+// guard declining for 6.98 virtual seconds and then serving. Pulled
+// after the combat ended it reports `fired=0 reached=1 waiting` and one
+// `inert point_not_recognized`, which is the guard refusing and keeping
+// the pull. The same script before this change waited 22110288 ticks,
+// because the end check is arrived at exactly once per encounter.
+// `docs/seams.md` §10 has the table.
+//
+// What is still unmeasured is `debug_damage` itself: whether 120
+// finishes those seven soldiers in one pull.
 //
 // Both are fail-closed by construction (#99): unavailable on any binary
 // but the baseline's (the fingerprint), inert while the end check's

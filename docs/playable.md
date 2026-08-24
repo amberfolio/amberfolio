@@ -213,23 +213,26 @@ damage** to every standing enemy rather than an instant slaying, so a
 combatant tougher than that survives with fewer hit points and is left
 standing.
 
-**What no run in this tree has measured** is any of that against the
-program. Two numbers say what happened, and both come off the seam's
-end-of-run line: `waited=` is what the pull actually cost in ticks — the
-answer to "was it immediate" — and `reached=` counts arrivals at the end
-check, which is what the pull *would* have cost with only the old point.
-The three things a person holding the game can settle that this tree
-cannot:
+**Measured, on a player's copy**, by driving `fight.rec`'s own key
+script. Note the `--seam code-wheel`: a live driven run without it sits
+at the copy-protection challenge for ever and never reaches a fight.
 
-1. whether the guard ever holds — a run that ends with the seam
-   reporting `inert point_not_recognized` and `waiting` still set is one
-   where it never did, and the fight ended by the end check or not at
-   all;
-2. whether `waited=` is a fraction of `reached=`'s spacing, which is the
-   whole claim;
-3. whether 120 finishes what a party actually meets. The wilderness
-   encounter above is seven soldiers; if one pull leaves any of them
-   standing, that is the number being wrong rather than the seam.
+| pulled at | the seam's end-of-run line | |
+| --- | --- | --- |
+| frame 13500, just after `Q` starts the round | `fired=1 reached=1 waited=0` | served at the instant of the pull |
+| frame 12700, before the round starts | `fired=1 reached=0 waited=8327644` | 6.98 virtual seconds: the guard declined until the roster was one it recognized, then served |
+| frame 14000, after the combat ended | `fired=0 reached=1 waiting` + `inert point_not_recognized` | declined, kept the pull, said so |
+
+Before the change, the same script pulled before the round waited
+`22110288` ticks — 18.5 virtual seconds — because `reached=1`: the end
+check is arrived at exactly once per encounter. `waited=` is the answer
+to "was it immediate"; `reached=` is what the pull would have cost with
+only the old point, and the two together are the comparison.
+
+**What is still unmeasured** is `debug_damage` itself: whether 120
+finishes what a party actually meets. The wilderness encounter above is
+seven soldiers; if one pull leaves any of them standing, that is the
+number being wrong rather than the seam.
 
 A party that reaches this leg from a *saved game* is the practical way to
 see it. A first-level character made in leg 0 does not survive the slums
