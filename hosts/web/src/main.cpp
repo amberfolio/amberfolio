@@ -110,6 +110,12 @@ uint32_t af_web_probe_program_size(void) {
 /// question the ABI could not answer before — does a trigger nobody
 /// pulled leave the machine alone, and does one somebody pulled act
 /// exactly once.
+///
+/// Four, since #163: `probe-pull` is a trigger whose point has **no
+/// address**, so it is offered at every step boundary while the pull is
+/// outstanding and decides for itself when acting is safe. A browser
+/// gets to ask that one too, because "one bool per step when nobody
+/// pulled" is a claim about a hot path and hot paths differ per target.
 uint32_t af_web_probe_seam_register(af_machine* box) {
   amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
   if (pc == nullptr) {
@@ -119,7 +125,8 @@ uint32_t af_web_probe_seam_register(af_machine* box) {
       pc->seams().add(amberfolio::programs::seam_probe_definition()) &&
       pc->seams().add(
           amberfolio::programs::seam_probe_unreached_definition()) &&
-      pc->seams().add(amberfolio::programs::seam_probe_trigger_definition());
+      pc->seams().add(amberfolio::programs::seam_probe_trigger_definition()) &&
+      pc->seams().add(amberfolio::programs::seam_probe_pull_definition());
   return ok ? AF_OK : AF_INVALID;
 }
 

@@ -88,36 +88,59 @@
 // program itself is about to read.
 //
 // **Kill-all-enemies is pulled** (#161). It is a `trigger` seam: while
-// it is on, its point is reached and does nothing, and it acts once for
-// each time a person asks — a key on the desktop host, a button on the
-// page, a `pull` line in a recording. Before that it fired at every end
-// check, so switching it on once decided every subsequent fight, which
-// is a setting rather than a cheat.
+// it is on, nothing happens, and it acts once for each time a person
+// asks — a key on the desktop host, a button on the page, a `pull` line
+// in a recording. Before that it fired at every end check, so switching
+// it on once decided every subsequent fight, which is a setting rather
+// than a cheat.
 //
-// **What it does not fix is the latency**, and the honest thing is to
-// say so here. Its point is the once-a-round end check, which is the
-// only combat address these facts know, so a pull is served at the end
-// of the round it was made in and not at the instant it was made. A
-// per-turn or per-prompt point would serve it sooner and would have to
-// be found the way every other fact in this file was — by observation
-// against a real copy, which is nobody's to do in this tree.
-// `seam_status::reached` is the instrument that would measure it:
-// `fell_the_enemies` reads the roster head from **DS** and not from the
-// stack frame at the end check, so nothing about it is tied to *this*
-// point, and a better one is a change of one constant.
+// **And it acts at the moment of the pull** (#163), which #161 did not.
+// Its only point used to be the once-a-round end check, so a pull made
+// mid-round was served when the round ended; the complaint that made it
+// a trigger asked for both halves and got one. It now has two points:
 //
-// It intercepts the end check's entry — the point at which the program
-// will next consult the combat state, which is what #99 asks for — and,
-// when the game mode says combat, downs every enemy
-// exactly as the damage routine downs one: slain, held flag cleared, hit
-// points zero, the side's body count decremented, the scratch byte
-// cleared. The end check then rebuilds both counts from the held flags —
-// which is why the cleared flag and not the decrement is what carries
-// this — finds the enemies' side at zero, and ends the combat through
-// its own logic, with its own post-combat code running unmodified.
-// Outside combat the point does nothing, and a roster walk is bounded so
-// a record whose next pointer is not what the facts say cannot spin the
-// host.
+//   * a point with **no address** (`seam_point::at_every_step`), offered
+//     at every step boundary while the pull is outstanding, which acts
+//     at the first step where its guard holds; and
+//   * the end check, kept exactly as it was.
+//
+// The second is not redundant, and keeping it is the reason this change
+// is safe to make from a tree with no copy of the program in it. The
+// end check is the one address here that has ever been driven against
+// the real thing and seen to end a real fight; the guard below is
+// reasoning about structures nobody has watched at an arbitrary step.
+// If that reasoning is wrong the guard declines, says so once, and the
+// pull is served at the end of the round exactly as it was — a slower
+// answer rather than a wrong one.
+//
+// **What the address bought, and what the guard has to buy back.** A
+// seam acts at a CS:IP breakpoint because a known instruction in known
+// code is a place where the structures the handler edits are known not
+// to be half-way through being edited by the program (PLAN.md §5). The
+// end check has that argument in the strongest form available here: the
+// program's very next act there is to rebuild both sides' counts from
+// the roster. A point with no address has no such argument and must
+// build one out of what the machine says, which is weaker evidence and
+// is written down as such at `combat_roster_ready()` below — including
+// the thing it cannot rule out.
+//
+// **Both points do the same thing**: deal `debug_damage` to every
+// standing non-party combatant, exactly as the program's own damage
+// routine deals damage to one. A combatant it does not finish keeps its
+// remaining hit points and stays standing, in its side's count, with no
+// status change; one it does finish is downed the way the routine downs
+// one — slain, held flag cleared, hit points zero, the side's body count
+// decremented, the scratch byte cleared. Damage rather than a written
+// corpse is what makes the mid-round point defensible at all: what this
+// leaves behind is a machine state the program produces for itself
+// several times a round.
+//
+// The end check then rebuilds both counts from the held flags — which is
+// why the cleared flag and not the decrement is what ends the combat —
+// finds the enemies' side at zero, and ends it through its own logic,
+// with its own post-combat code running unmodified. Outside combat both
+// points decline, and a roster walk is bounded so a record whose next
+// pointer is not what the facts say cannot spin the host.
 //
 // Driven through a wilderness encounter against seven soldiers, one
 // firing ends it: `THE PARTY HAS WON. EACH CHARACTER RECEIVES 107
@@ -126,13 +149,18 @@
 // trigger and was driven by the flag alone; the same script now needs a
 // pull as well, which is a line in `docs/playable.md` rather than a
 // change to anything committed — no recording in `tests/sessions/`
-// enables this seam.
+// enables this seam. It also predates the damage, and what it would
+// show now is what nobody in this tree can check: whether 120 finishes
+// those seven in one pull, and whether the immediate point serves it
+// before the round ends.
 //
 // Both are fail-closed by construction (#99): unavailable on any binary
 // but the baseline's (the fingerprint), inert while the end check's
 // module is not loaded — which the program's own record answers at the
-// step it is asked (kill-all's point, #97, #131) — and nothing on the
-// hot path when off (#96).
+// step it is asked, for both of kill-all's points (#97, #131, #163) —
+// and nothing on the hot path when off (#96). With kill-all on and
+// nobody having pulled it, the address-free point costs one bool and
+// the machine is the machine it would have been.
 
 #include <array>
 #include <cstdint>
@@ -175,6 +203,21 @@ constexpr std::uint16_t rec_status = 0x10C;          // wound status
 /// that goes with it is faithfulness rather than mechanism (#99).
 constexpr std::uint16_t rec_held = 0x10D;
 constexpr std::uint16_t rec_side = 0x10E;  // combat side, signed
+
+/// The current hit points, and **a byte** — which is a claim worth
+/// stating out loud, because until #163 nothing in this tree depended on
+/// it. The only write this file ever made here was a zero, and a zero
+/// written as a byte is indistinguishable from a zero written as a word
+/// whenever the byte above it is already zero, so a field that was
+/// really wider would have gone unnoticed. Dealing damage writes a
+/// non-zero remainder and does depend on it.
+///
+/// What is known: the fact table describes a record of single-byte
+/// fields — status, held, side — and this one is read and written as a
+/// byte here and has been since #99. What is *not* known is that a
+/// record whose hit points exceed 255 could not exist; nobody has
+/// watched one. The failure that would follow is bounded in the one
+/// direction that matters, and `debug_damage` says how.
 constexpr std::uint16_t rec_hit_points = 0x11B;
 
 /// The wound status that means slain.
@@ -201,6 +244,25 @@ constexpr std::int8_t side_party = 0;
 /// The byte of the combat scratch block the program clears when a
 /// combatant is downed.
 constexpr std::uint16_t scratch_downed = 3;
+
+/// How much damage a pull deals to each standing enemy.
+///
+/// **A chosen debug value, not a fact about the program.** Nothing in
+/// this file's fact table says what anything in this game hits for; 120
+/// is a number somebody picked for a debug cheat, high enough to finish
+/// anything a party is likely to meet in one pull and low enough that a
+/// combatant who is genuinely tougher survives and is *seen* to survive,
+/// which is the difference between a cheat and a corpse-writer.
+///
+/// Subtracted saturating: 0 is the floor and it never wraps. That is
+/// what makes the byte question above survivable rather than dangerous.
+/// A saturating subtraction of the low byte can only *lower* the value
+/// it is part of — if the field were secretly wider, the byte above it
+/// is left alone and the number it holds goes down, never up. The worst
+/// this can do to a record is deal less damage than it meant to, or
+/// finish a combatant it should not have; it cannot heal one, and it is
+/// never applied to the party.
+constexpr std::uint8_t debug_damage = 120;
 
 // --- The program's data segment --------------------------------------------
 //
@@ -342,53 +404,80 @@ void spare_the_party(machine& box, seam_context& ctx) {
   cpu.write_word(ss, word_after(sp, frame_damage), 0);
 }
 
-/// At the end check's entry, in combat: down every enemy the way the
-/// damage routine downs one, and let the check find their side's count at
-/// zero.
-void fell_the_enemies(machine& box, seam_context& /*ctx*/) {
-  cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  if (cpu.read_byte(ds, data_game_mode) != mode_combat) {
-    return;
-  }
-
+/// Deal `debug_damage` to every standing non-party combatant on the
+/// roster, exactly as the program's own damage routine deals damage to
+/// one — and down the ones it finishes, exactly as the routine downs
+/// one.
+///
+/// Both of this seam's points do this and nothing else; what differs
+/// between them is what each is willing to believe before calling it.
+void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
   std::uint16_t offset = cpu.read_word(ds, data_roster_head);
   std::uint16_t segment = cpu.read_word(ds, word_after(data_roster_head, 2));
   for (unsigned walked = 0;
        walked < max_roster_walk && (offset != 0 || segment != 0); ++walked) {
+    if (segment == 0) {
+      // A link that is not a pointer: nothing lives in segment 0, which
+      // is the interrupt vector table and the BDA
+      // (`machine/memory_map.h`). The walk stops rather than writing a
+      // wound status into somebody's interrupt vector — the same
+      // argument `spare_the_party` makes about a record on the stack,
+      // which this walk had never made about a record in the list.
+      return;
+    }
     const auto side = static_cast<std::int8_t>(
         cpu.read_byte(segment, word_after(offset, rec_side)));
     const bool standing =
         still_standing(cpu.read_byte(segment, word_after(offset, rec_status)));
 
     if (side != side_party && standing) {
-      // Cleared **held** is the one that ends the combat, and it is worth
-      // knowing which of these four writes is load-bearing: the end check
-      // re-tallies both sides' counts from the held bytes, by walking
-      // this same roster, immediately before it reads them. So the
-      // decrement below is faithfulness rather than mechanism — the
-      // program's own routine does it, so this does — and a body left
-      // held would come back into the count however many times it had
-      // been decremented for.
-      cpu.write_byte(segment, word_after(offset, rec_status), status_slain);
-      cpu.write_byte(segment, word_after(offset, rec_held), 0);
-      cpu.write_byte(segment, word_after(offset, rec_hit_points), 0);
+      const std::uint8_t hit_points =
+          cpu.read_byte(segment, word_after(offset, rec_hit_points));
+      if (hit_points > debug_damage) {
+        // Still in the fight, and therefore still in its side's count:
+        // the remainder goes back and **nothing else changes**. That is
+        // what the program's own routine does with a character who
+        // survives, and it is the branch that makes a body count kept by
+        // hand stay right — the program decrements when a body drops, so
+        // a seam that decremented for a survivor would put the count
+        // below the number of bodies.
+        cpu.write_byte(segment, word_after(offset, rec_hit_points),
+                       static_cast<std::uint8_t>(hit_points - debug_damage));
+      } else {
+        // Down, the way the routine downs one. Cleared **held** is what
+        // ends the combat: the end check re-tallies both sides' counts
+        // from the held bytes, by walking this same roster, immediately
+        // before it reads them, so a body left held would come back into
+        // the count however many times it had been decremented for.
+        //
+        // The decrement was faithfulness rather than mechanism while
+        // this seam only ever fired *at* that re-tally (#99). It is not
+        // any more (#163). Firing mid-round leaves the program running
+        // on a count it keeps by hand until the next rebuild, and
+        // anything that reads the count before then — a turn's targeting,
+        // a "is anybody left" test — reads what this leaves. So the
+        // decrement is load-bearing now, and the survivor branch above
+        // not decrementing is half of the same rule.
+        cpu.write_byte(segment, word_after(offset, rec_status), status_slain);
+        cpu.write_byte(segment, word_after(offset, rec_held), 0);
+        cpu.write_byte(segment, word_after(offset, rec_hit_points), 0);
 
-      // The side's body count, indexed by the signed side byte exactly as
-      // the program indexes it.
-      const auto count_at = static_cast<std::uint16_t>(
-          static_cast<std::int32_t>(data_side_counts) + side);
-      cpu.write_byte(
-          ds, count_at,
-          static_cast<std::uint8_t>(cpu.read_byte(ds, count_at) - 1));
+        // The side's body count, indexed by the signed side byte exactly
+        // as the program indexes it.
+        const auto count_at = static_cast<std::uint16_t>(
+            static_cast<std::int32_t>(data_side_counts) + side);
+        cpu.write_byte(
+            ds, count_at,
+            static_cast<std::uint8_t>(cpu.read_byte(ds, count_at) - 1));
 
-      const std::uint16_t scratch_offset =
-          cpu.read_word(segment, word_after(offset, rec_scratch_offset));
-      const std::uint16_t scratch_segment =
-          cpu.read_word(segment, word_after(offset, rec_scratch_offset + 2));
-      if (scratch_offset != 0 || scratch_segment != 0) {
-        cpu.write_byte(scratch_segment,
-                       word_after(scratch_offset, scratch_downed), 0);
+        const std::uint16_t scratch_offset =
+            cpu.read_word(segment, word_after(offset, rec_scratch_offset));
+        const std::uint16_t scratch_segment =
+            cpu.read_word(segment, word_after(offset, rec_scratch_offset + 2));
+        if (scratch_offset != 0 || scratch_segment != 0) {
+          cpu.write_byte(scratch_segment,
+                         word_after(scratch_offset, scratch_downed), 0);
+        }
       }
     }
 
@@ -401,13 +490,152 @@ void fell_the_enemies(machine& box, seam_context& /*ctx*/) {
   }
 }
 
+/// Whether the machine, at this arbitrary step boundary, is one this seam
+/// is willing to write to — the guard the address-free point has instead
+/// of an address (#163).
+///
+/// Read-only, and every one of these is a fact this file already knew:
+///
+///   1. the game mode byte reads `mode_combat`;
+///   2. the roster head is a far pointer, and **nothing lives in
+///      segment 0** — that is the interrupt vector table and the BDA
+///      (`machine/memory_map.h`), the same argument `spare_the_party`
+///      makes about a record on the stack;
+///   3. every link in the list is a far pointer too, by the same
+///      argument, and the list **ends** within `max_roster_walk` rather
+///      than being cut off by it;
+///   4. somebody on the party's side is standing, and somebody who is
+///      not is standing — a combat roster with a fight still in it;
+///   5. and for each of those, the program's own body count for that
+///      side is non-zero, so the two structures this seam writes agree
+///      with each other before it writes either.
+///
+/// One byte is not a guard: 5 is a plausible value for an uninitialized
+/// byte, and a data segment that has not been set up yet holds plenty of
+/// them. Five conditions across three structures is a different claim,
+/// and the ones that carry it are 3 and 5 — garbage is very unlikely to
+/// be a null-terminated list of far pointers whose side bytes index
+/// non-zero counters.
+///
+/// **What it cannot rule out**, and this is the honest limit: that the
+/// program is itself part-way through walking this roster — its own
+/// re-tally at the top of a round, or a targeting pass — with a record
+/// pointer or a running count in a register. This guard reads the same
+/// structures that code reads and cannot see its registers. Two things
+/// make that survivable rather than fatal. The state left behind is the
+/// state the program's own damage routine leaves several times a round,
+/// mid-walk or not; and any count this puts wrong is rebuilt from the
+/// held bytes at the end check, before it is read to decide the combat.
+/// A stale count *within* the round is the real exposure, and it is the
+/// reason the decrement in `strike_the_enemies` is not optional.
+///
+/// **What it assumes**, so the next person can check it: that the party
+/// is on this roster. Everything in this file reads as though it is —
+/// the walk exists to tell party from enemy — and the fact table says
+/// side 0 is the party's, but nobody has watched it. If that is wrong,
+/// condition 4 never holds, this point declines and says so once, and
+/// the end check serves the pull as it did before.
+[[nodiscard]] bool combat_roster_ready(cpu::processor& cpu, std::uint16_t ds) {
+  if (cpu.read_byte(ds, data_game_mode) != mode_combat) {
+    return false;
+  }
+  std::uint16_t offset = cpu.read_word(ds, data_roster_head);
+  std::uint16_t segment = cpu.read_word(ds, word_after(data_roster_head, 2));
+
+  bool party_standing = false;
+  bool enemy_standing = false;
+  // One more turn than the walk that writes takes, so that a list of
+  // exactly `max_roster_walk` records is seen to *end* rather than to
+  // run out.
+  for (unsigned walked = 0; walked <= max_roster_walk; ++walked) {
+    if (offset == 0 && segment == 0) {
+      return party_standing && enemy_standing;
+    }
+    if (segment == 0) {
+      return false;  // a link that is not a pointer
+    }
+    const auto side = static_cast<std::int8_t>(
+        cpu.read_byte(segment, word_after(offset, rec_side)));
+    if (still_standing(
+            cpu.read_byte(segment, word_after(offset, rec_status)))) {
+      const auto count_at = static_cast<std::uint16_t>(
+          static_cast<std::int32_t>(data_side_counts) + side);
+      if (cpu.read_byte(ds, count_at) == 0) {
+        // A body is up and its side's count says nobody is. The two
+        // structures disagree, which is what being part-way through
+        // something looks like from out here.
+        return false;
+      }
+      if (side == side_party) {
+        party_standing = true;
+      } else {
+        enemy_standing = true;
+      }
+    }
+    const std::uint16_t next_offset =
+        cpu.read_word(segment, word_after(offset, rec_next_offset));
+    const std::uint16_t next_segment =
+        cpu.read_word(segment, word_after(offset, rec_next_offset + 2));
+    offset = next_offset;
+    segment = next_segment;
+  }
+  return false;  // it did not end
+}
+
+/// The address-free point (#163): offered at every step boundary while
+/// the pull is outstanding, acting at the first one where the guard
+/// holds and declining — which keeps the latch — at every one before it.
+void fell_the_enemies_now(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
+  if (!combat_roster_ready(cpu, ds)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  strike_the_enemies(cpu, ds);
+}
+
+/// At the end check's entry, in combat: the same damage, and let the
+/// check find the enemies' side count at zero.
+///
+/// The guard here is the old one — the mode byte, and a roster head that
+/// is a pointer — because the address is most of the evidence and has
+/// been driven against the real program. Outside combat it **declines**
+/// rather than returning: doing nothing and calling the pull served
+/// would answer a person's request with nothing at all, and since #163
+/// the pull has somewhere better to be served anyway.
+void fell_the_enemies(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
+  if (cpu.read_byte(ds, data_game_mode) != mode_combat ||
+      cpu.read_word(ds, word_after(data_roster_head, 2)) == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  strike_the_enemies(cpu, ds);
+}
+
 constexpr std::array<seam_point, 1> invulnerable_points{
     {{.module = resident_image,
       .offset = damage_routine_offset,
       .run = &spare_the_party}}};
 
-constexpr std::array<seam_point, 1> kill_all_points{
+/// Two points, both in the module the end check lives in, and the module
+/// is what they have in common rather than an accident: the address-free
+/// one is address-free, not qualifier-free, and the engine will not offer
+/// it while the program's own record says that module is not loaded. So
+/// "the tactical combat code is in memory" is a precondition of the
+/// immediate point too, and this seam's `armed` row goes on meaning
+/// exactly what it meant.
+///
+/// The immediate one first, so that a step which is both — the end
+/// check, with a pull outstanding — is served by the point that answers
+/// what the person asked for.
+constexpr std::array<seam_point, 2> kill_all_points{
     {{.module = overlay_module,
+      .run = &fell_the_enemies_now,
+      .at_every_step = true},
+     {.module = overlay_module,
       .offset = end_check_offset,
       .run = &fell_the_enemies}}};
 
@@ -421,15 +649,17 @@ constexpr seam_definition invulnerable_definition{
 constexpr seam_definition kill_all_definition{
     .id = "cheat-kill-all",
     .about =
-        "when you pull it, every enemy falls at the next end-of-round "
-        "check (debug cheat)",
+        "when you pull it, every enemy takes 120 damage at once (debug "
+        "cheat)",
     .fingerprints = cheat_binaries,
     .points = kill_all_points,
-    // Pulled, not left on (#161). The `about` says where it acts as well
-    // as that it is asked for, because the two halves of the complaint
-    // were different: "it should not decide every fight" is answered
-    // here, and "it should be immediate" is answered by whatever point
-    // this seam is on — which is still the once-a-round end check.
+    // Pulled, not left on (#161), and served where the person is rather
+    // than at the end of the round (#163). The `about` says *when* as
+    // well as that it is asked for, because both halves of the original
+    // complaint were about when: "it should not decide every fight" and
+    // "it should be immediate". "At once" is the claim the address-free
+    // point makes and the end check is the fallback underneath it, which
+    // is a sentence for the docs rather than for a listing row.
     .trigger = true,
     .schema = seam_schema_version};
 

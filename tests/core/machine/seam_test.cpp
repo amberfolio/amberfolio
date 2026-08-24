@@ -161,6 +161,55 @@ constexpr seam_definition declining_seam{
     .points = declining_points,
     .trigger = true};
 
+/// The address-free one (#163): a trigger whose point has no address at
+/// all and is offered at every step boundary while the latch is set.
+/// `offset` is deliberately left out — there is nothing for it to mean,
+/// and a number here would be a fact nothing reads.
+constexpr std::array<seam_point, 1> pull_points{
+    {{.module = resident_image, .run = &edit_ax, .at_every_step = true}}};
+constexpr seam_definition pull_seam{
+    .id = "test-pull",
+    .about = "a trigger with no address: it acts at the first step",
+    .fingerprints = claimed_binaries,
+    .points = pull_points,
+    .trigger = true};
+
+/// The same, with a handler that declines until the program has put
+/// something in AX — a stand-in for the guard a real address-free point
+/// has instead of an address (`seam_cheats.cpp`). The offers it turns
+/// down are what keep the latch, and the one it takes is the "first step
+/// at which acting is safe" the whole mechanism is about.
+void edit_when_ax_is_set(machine& box, seam_context& ctx) {
+  cpu::registers& regs = box.processor().regs();
+  if (regs[cpu::reg16::ax] == 0) {
+    ++decline_hits;
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  ++edit_hits;
+  regs[cpu::reg16::ax] = 0x2222;
+}
+
+constexpr std::array<seam_point, 1> guarded_pull_points{
+    {{.module = resident_image,
+      .run = &edit_when_ax_is_set,
+      .at_every_step = true}}};
+constexpr seam_definition guarded_pull_seam{
+    .id = "test-pull-guarded",
+    .about = "a trigger with no address and a guard it waits on",
+    .fingerprints = claimed_binaries,
+    .points = guarded_pull_points,
+    .trigger = true};
+
+/// And one on a definition that is **not** a trigger, which is a mistake
+/// nothing can ever set the latch of. It has to be inert rather than
+/// firing at every step, which is the fail-closed direction.
+constexpr seam_definition untriggered_pull_seam{
+    .id = "test-pull-untriggered",
+    .about = "an address-free point on a seam that takes no trigger",
+    .fingerprints = claimed_binaries,
+    .points = pull_points};
+
 constexpr seam_definition stale_seam{.id = "test-stale",
                                      .about = "written against another schema",
                                      .fingerprints = claimed_binaries,
@@ -228,6 +277,9 @@ struct rig {
     EXPECT_TRUE(box->seams().add(edit_seam));
     EXPECT_TRUE(box->seams().add(trigger_seam));
     EXPECT_TRUE(box->seams().add(declining_seam));
+    EXPECT_TRUE(box->seams().add(pull_seam));
+    EXPECT_TRUE(box->seams().add(guarded_pull_seam));
+    EXPECT_TRUE(box->seams().add(untriggered_pull_seam));
     EXPECT_TRUE(box->seams().add(key_seam));
     EXPECT_TRUE(box->seams().add(redirect_seam));
     EXPECT_TRUE(box->seams().add(stale_seam));
@@ -689,6 +741,117 @@ TEST(SeamTrigger, ADeclinedVisitKeepsTheLatch) {
       << "a pull that arrived at a point which was not the point is not a"
          " pull that was served";
   EXPECT_EQ(r.pc().seams().status("test-trigger-declines").reached, 1u);
+  EXPECT_EQ(r.pc().seams().status("test-trigger-declines").fired, 0u)
+      << "and it is not a firing either (#163): a handler that says it did"
+         " not act is exactly the failure `fired` exists to expose, and"
+         " counting it made that failure look like success";
+}
+
+// --- A point with no address (#163) -----------------------------------------
+
+TEST(SeamPullPoint, ActsAtTheVeryFirstStepAfterAPull) {
+  // The whole of what an address-free point buys: no waiting for the
+  // program to go anywhere. The point is offered at the first step
+  // boundary after the pull, and that is where it acts.
+  const rig r;
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-pull"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-pull", r.pc().time()), seam_reason::none);
+
+  r.pc().step();  // MOV AX, 1111h — with the seam having run before it
+
+  EXPECT_EQ(edit_hits, 1u);
+  EXPECT_FALSE(r.pc().seams().waiting("test-pull")) << "one pull, one run";
+  const seam_status row = r.pc().seams().status("test-pull");
+  EXPECT_EQ(row.fired, 1u);
+  EXPECT_EQ(row.reached, 0u)
+      << "a point with no address has no arrivals to count; counting its"
+         " offers would be counting steps";
+}
+
+TEST(SeamPullPoint, IsOfferedEveryStepAndKeepsTheLatchUntilItsGuardHolds) {
+  // The shape a real one has: it cannot tell from an address whether
+  // acting is safe, so it asks the machine, declines while the answer is
+  // no — which keeps the latch — and acts at the first step where the
+  // answer is yes. Here the guard is "the program has put something in
+  // AX", and the program does that on its third instruction.
+  const rig r;
+  // NOP ; NOP ; MOV AX, 1111h ; HLT
+  r.program_at(0, {0x90, 0x90, 0xB8, 0x11, 0x11, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-pull-guarded"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-pull-guarded", r.pc().time()),
+            seam_reason::none);
+
+  r.pc().step();  // offered, guard does not hold
+  r.pc().step();  // offered again
+  EXPECT_EQ(decline_hits, 2u) << "offered at every step, not at an address";
+  EXPECT_EQ(edit_hits, 0u);
+  EXPECT_TRUE(r.pc().seams().waiting("test-pull-guarded"))
+      << "and every one of those declines kept the pull outstanding";
+
+  r.pc().step();  // MOV AX, 1111h runs; the guard did not hold before it
+  EXPECT_EQ(decline_hits, 3u);
+  r.pc().step();  // now it does, before the HLT
+  EXPECT_EQ(edit_hits, 1u);
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x2222);
+  EXPECT_FALSE(r.pc().seams().waiting("test-pull-guarded"));
+
+  const seam_status row = r.pc().seams().status("test-pull-guarded");
+  EXPECT_EQ(row.fired, 1u) << "three declines and one act is one firing";
+  EXPECT_EQ(row.reached, 0u);
+}
+
+TEST(SeamPullPoint, SaysItDeclinedOnceHoweverManyStepsItTook) {
+  // A point offered at every step declines at most of them. One line
+  // says what there is to say; a line per step would bury the run.
+  const rig r;
+  r.program_at(0, {0x90, 0x90, 0x90, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-pull-guarded"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().pull("test-pull-guarded", r.pc().time()),
+            seam_reason::none);
+  for (int i = 0; i < 4; ++i) {
+    r.pc().step();
+  }
+
+  EXPECT_EQ(decline_hits, 4u);
+  std::size_t lines = 0;
+  for (const seam_event& e : r.log.seam_events) {
+    if (e.id == "test-pull-guarded" && e.kind == seam_event_kind::inert) {
+      ++lines;
+    }
+  }
+  EXPECT_EQ(lines, 1u);
+}
+
+TEST(SeamPullPoint, IsInertOnASeamThatTakesNoTrigger) {
+  // Nothing can set that seam's latch — `pull()` refuses it — so the
+  // point is never offered. Inert rather than firing at every step,
+  // which is the fail-closed direction for a mistake in the table.
+  const rig r;
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-pull-untriggered"), seam_reason::none);
+  EXPECT_EQ(r.pc().seams().pull("test-pull-untriggered", 0),
+            seam_reason::not_triggered);
+
+  r.pc().step();
+  r.pc().step();
+  EXPECT_EQ(edit_hits, 0u);
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x1111);
+}
+
+TEST(SeamPullPoint, EveryAddressFreePointInThisBuildIsOnATrigger) {
+  // The rule the case above rests on, asked of the seams this build
+  // actually carries rather than of the test's own.
+  for (const seam_definition& seam : all_seams()) {
+    for (const seam_point& point : seam.points) {
+      if (point.at_every_step) {
+        EXPECT_TRUE(seam.trigger)
+            << seam.id
+            << ": a point with no address on a seam nobody can pull is a"
+               " point that never runs";
+      }
+    }
+  }
 }
 
 // --- The fidelity boundary ---------------------------------------------------
@@ -775,6 +938,41 @@ TEST(SeamFidelity, ATriggeredSeamNobodyPulledLeavesTheRunIdentical) {
   EXPECT_GT(armed.pc().seams().status("test-trigger").reached, 0u)
       << "and it was reached, which is what makes the equality mean"
          " something";
+}
+
+TEST(SeamFidelity, APointWithNoAddressNobodyPulledLeavesTheRunIdentical) {
+  // #163's half of #96's rule, and the one that had to be made rather
+  // than inherited: a point offered at *every step boundary* is a
+  // sentence about the hot path, and the only thing standing between it
+  // and a run that differs is that the offer is behind the latch. On and
+  // never pulled, the run has to be the run the same program has with
+  // the seam off — byte for byte, tick for tick, and with the handler
+  // never having been called at all.
+  const rig plain;
+  plain.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    plain.pc().step();
+  }
+  const cpu::registers plain_regs = plain.regs();
+  const state_hashes plain_hash = hash_state(plain.pc());
+  const ticks plain_time = plain.pc().time();
+
+  const rig armed;
+  armed.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  ASSERT_EQ(armed.pc().seams().enable("test-pull"), seam_reason::none);
+  ASSERT_TRUE(armed.pc().seams().armed());
+  for (int i = 0; i < 4; ++i) {
+    armed.pc().step();
+  }
+
+  EXPECT_EQ(plain_regs, armed.regs());
+  EXPECT_EQ(plain_time, armed.pc().time());
+  EXPECT_EQ(plain_hash.whole, hash_state(armed.pc()).whole)
+      << "the whole machine, and not only the page the program wrote";
+  EXPECT_EQ(edit_hits, 0u) << "the handler was never called";
+  const seam_status row = armed.pc().seams().status("test-pull");
+  EXPECT_EQ(row.fired, 0u);
+  EXPECT_EQ(row.reached, 0u);
 }
 
 TEST(SeamFidelity, ALatchIsNotMachineState) {

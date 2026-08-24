@@ -201,18 +201,35 @@ above carry a `--pull` as well as a `--seam`. A person playing pulls it
 with **Pause/Break** on the desktop host or with the `pull` button beside
 the seam's checkbox on the page; a script names the frame. The run that
 produced the two lines above predates the trigger and was driven by the
-flag alone, so repeating it now needs the pull — nothing else about it
-changes.
+flag alone, so repeating it now needs the pull.
 
-**What that run has still not measured** is how long a pull waits. The
-seam's point is the once-a-round end check, so "immediately" means "when
-this round ends", and how long that is in a real fight is a number
-nobody in this tree has. The two the change added are how to take it:
-after a run, `reached=` on the seam's end-of-run line says how many
-times the end check was arrived at, and `waited=` says what the pull that
-was served actually cost in ticks. Divide the first by the fight's length
-and you have the granularity a better point would have to beat;
-`docs/seams.md` §10 lists what finding one would need.
+**And since #163 the pull is served where the person is**, not at the end
+of the round. The seam now carries a second point with no address at all,
+offered at every step boundary while the pull is outstanding, which acts
+at the first step where it can confirm from the program's own structures
+that this is a combat it recognizes; the end check stays underneath it as
+the fallback (`docs/seams.md` §10). What it does there is **120 points of
+damage** to every standing enemy rather than an instant slaying, so a
+combatant tougher than that survives with fewer hit points and is left
+standing.
+
+**What no run in this tree has measured** is any of that against the
+program. Two numbers say what happened, and both come off the seam's
+end-of-run line: `waited=` is what the pull actually cost in ticks — the
+answer to "was it immediate" — and `reached=` counts arrivals at the end
+check, which is what the pull *would* have cost with only the old point.
+The three things a person holding the game can settle that this tree
+cannot:
+
+1. whether the guard ever holds — a run that ends with the seam
+   reporting `inert point_not_recognized` and `waiting` still set is one
+   where it never did, and the fight ended by the end check or not at
+   all;
+2. whether `waited=` is a fraction of `reached=`'s spacing, which is the
+   whole claim;
+3. whether 120 finishes what a party actually meets. The wilderness
+   encounter above is seven soldiers; if one pull leaves any of them
+   standing, that is the number being wrong rather than the seam.
 
 A party that reaches this leg from a *saved game* is the practical way to
 see it. A first-level character made in leg 0 does not survive the slums

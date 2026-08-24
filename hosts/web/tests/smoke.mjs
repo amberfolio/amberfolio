@@ -1270,6 +1270,64 @@ if (missing.length === 0) {
       'the arrival is the same either way and only what happens there differs',
   );
 
+  // --- The point with no address (#163) ---------------------------------
+  //
+  // `probe-pull`'s one point has no address at all: it is offered at
+  // every step boundary while the pull is outstanding, declines until
+  // the program has stored its own first answer, and marks a third
+  // result word at the first step after that. Asked of a browser because
+  // "one bool per step when nobody pulled" is a claim about a hot path,
+  // and hot paths differ per target.
+  const runPullPoint = (pull) => {
+    const machine = new Machine(module);
+    check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    machine.reset();
+    check(
+      module._af_web_probe_seam_register(machine.handle) === AF_OK,
+      'the probe seams could not be registered',
+    );
+    const ptr = module._af_web_probe_program_bytes();
+    const size = module._af_web_probe_program_size();
+    check(machine.vfsPut('PROBE.EXE', module.HEAPU8.slice(ptr, ptr + size)) === AF_OK, 'putting PROBE.EXE failed');
+    check(machine.loadFromVfs('PROBE.EXE', '') === AF_OK, 'loading PROBE.EXE failed');
+    check(machine.seamEnable('probe-pull') === AF_OK, 'enabling probe-pull was refused');
+    if (pull) {
+      check(machine.seamPull('probe-pull') === AF_OK, 'pulling probe-pull was refused');
+    }
+    for (let frame = 0; frame < 120 && !machine.stopped(); ++frame) {
+      machine.runUntil(machine.ticksPerSecond() * ((frame + 1) / 60));
+    }
+    check(machine.stopped(), `the probe program never exited (pull point ${pull ? 'pulled' : 'idle'})`);
+    const block = machine.readMemory(0x600 + 0x800, 6);
+    const mark = block === null ? -1 : block[4] | (block[5] << 8);
+    const row = machine.seamList().find((s) => s.id === 'probe-pull');
+    machine.destroy();
+    return { mark, row };
+  };
+
+  const notPulled = runPullPoint(false);
+  check(
+    notPulled.mark === 0,
+    `a point with no address acted without being pulled: ${notPulled.mark.toString(16)}`,
+  );
+  check(notPulled.row?.fired === 0, `an unpulled point with no address fired ${notPulled.row?.fired} times`);
+  check(
+    notPulled.row?.reached === 0,
+    'a point with no address counted an arrival, and it has no address to arrive at',
+  );
+
+  const pulledPoint = runPullPoint(true);
+  check(
+    pulledPoint.mark === 0x3333,
+    `a pulled point with no address left no mark: ${pulledPoint.mark.toString(16)}`,
+  );
+  check(
+    pulledPoint.row?.fired === 1,
+    `a pulled point with no address fired ${pulledPoint.row?.fired} times, expected 1 — ` +
+      'the offers it declined are not firings',
+  );
+  check(pulledPoint.row?.waiting === false, 'a served pull is still outstanding');
+
   // The sentences a triggered seam's row says, as the pure function they
   // are. Each is a different state a person can be looking at, and the
   // middle one is the whole of #161's visibility half: asked, and the

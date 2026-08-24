@@ -181,27 +181,71 @@ A definition may therefore say `trigger = true`, and then:
 
 ### It cannot mean "at this instant", and this document will not pretend
 
-A seam acts at a CS:IP breakpoint because that is the whole mechanism
-(PLAN.md §5): editing a structure half-way through the routine that is
-walking it is precisely the corruption the breakpoint discipline exists
-to prevent. So the honest latency of a pull is **"at the next arrival at
-the point"**, and how long that is depends entirely on how often the
-program goes there — which is a fact about the program.
+A seam acts at a step boundary because that is the whole mechanism
+(PLAN.md §5): there is no acting half-way through an instruction, and
+editing a structure half-way through the routine that is walking it is
+precisely the corruption the breakpoint discipline exists to prevent. So
+the honest latency of a pull is **"at the next step boundary at which
+acting is safe"**, and the only question is what a point knows about
+safety.
 
-That is why a seam's status row carries `reached`:
+An **address point** knows it from the address — a known instruction in
+known code — and pays for that in latency: "how often does the program
+go there" is a fact about the program. That is why a seam's status row
+carries `reached`:
 
 | number | the claim |
 | --- | --- |
 | `armed` | an address was computed out of the fact table |
 | `reached` | the program arrived at that address, N times, whether or not anybody had asked |
-| `fired` | a handler ran there, N times |
-| `waiting` | a pull is outstanding: asked, and the point not reached since |
+| `fired` | a handler ran there **and acted**, N times; a decline is not one |
+| `waiting` | a pull is outstanding: asked, and not served since |
 | `pulled_at` / `waited` | when the outstanding pull was made, and what the last served one cost, in ticks |
 
 `reached − fired` is the arrivals a trigger had and did not need, and the
 *rate* of `reached` over a run is the granularity at which a pull can
-possibly be served. `waited` is the same question answered directly, in
-ticks, for the pull that actually happened.
+possibly be served by that point. `waited` is the same question answered
+directly, in ticks, for the pull that actually happened.
+
+### A point with no address (#163)
+
+For a once-a-round point, "the next arrival" is a round, and a person who
+pulls a cheat mid-fight wants it now. So a point may set
+`seam_point::at_every_step` and have **no address at all**:
+
+- it is offered at **every step boundary** while its seam's latch is set,
+  and at no other time;
+- with the latch down nothing is read, nothing is compared, and the step
+  is the step the machine would have taken with the seam off — the whole
+  cost is the one bool the address points test a line later anyway;
+- it has to buy its safety back from the machine, because it has no
+  address to get it from. Its handler opens with a guard it can defend
+  and `decline()`s — keeping the latch — at every step until the guard
+  holds;
+- it counts no `reached`. It has no arrivals; counting its offers would
+  be counting steps, and counting steps is not a measurement of
+  anything.
+
+It is **not** qualifier-free. Such a point still names a module, and the
+engine still refuses to offer it while the program's own record says that
+module is not in memory (§4) — so "the code this seam is about is
+loaded" stays a precondition, and the seam's `armed` row goes on meaning
+what it meant.
+
+**The trade is written down wherever one is used.** An address is
+evidence about where the program is; a guard is evidence about what the
+program's structures say, which is weaker, and a guard that cannot rule
+out being mid-walk of the structure it edits has to say so.
+`seam_cheats.cpp`'s `combat_roster_ready()` is the worked example, and
+§10 has what it can and cannot claim.
+
+`SeamPullPoint.*` and
+`SeamFidelity.APointWithNoAddressNobodyPulledLeavesTheRunIdentical` are
+the mechanism as tests, and `tests/programs`' `seam_probe_pull` /
+`seam_probe_pull_unpulled` are the same claim at program scale on all
+four targets — the second sharing its *exact step count* with the plain
+machine's entry, which is the fidelity invariant as a number rather than
+an argument.
 
 ### It is configuration, not machine state
 
@@ -382,12 +426,24 @@ Three states a host shows, per seam (`seam_engine::status()`):
 | `unavailable` | not for this program (`wrong_binary`), no program yet (`no_program`), or written against another schema |
 
 Beside those, `fired`: how many times one of the seam's handlers has
-actually run since it was enabled. **`armed` is a claim about the fact
-table; `fired` is a claim about the machine.** A point is armed at an
-address computed from where a module was recorded, so a seam whose module
-has since moved — or whose offset was never right — reports `armed`, does
-nothing, and reads exactly like one that works (#131). The desktop host
-prints a line per enabled seam when a run ends:
+actually **acted** since it was enabled. **`armed` is a claim about the
+fact table; `fired` is a claim about the machine.** A point is armed at
+an address computed from where a module was recorded, so a seam whose
+module has since moved — or whose offset was never right — reports
+`armed`, does nothing, and reads exactly like one that works (#131).
+
+A handler that `decline()`s does **not** count (#163). It used to, and
+that reading defeated the number's own purpose: a handler saying "this is
+not what my facts describe" is exactly the failure `fired` exists to
+expose, and a count that went up for it made the failure look like
+success. A point offered at every step declines at most of them, which is
+what turned an arguable choice into a wrong one. One consequence to know
+about: any `fired` figure written down before #163 that came from a run
+in which a handler declined reads lower now — including the "fires nine
+times" in `tests/sessions/fight-cheat.session`, which nobody has
+re-measured.
+
+The desktop host prints a line per enabled seam when a run ends:
 
 ```
 amberfolio: seam code-wheel armed fired=635
@@ -535,7 +591,7 @@ boundary, and it needs the argument this document would have to carry.
 |---|---|---|---|
 | `code-wheel` | answers the copy-protection challenge (ungated; the possession gate is M5's, #115) | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
-| `cheat-kill-all` | every enemy falls at the next end-of-round check, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
+| `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 
 ### The debug cheats (#99)
 
@@ -567,50 +623,98 @@ nothing lives in segment 0, and a frame that says otherwise gets
 `decline(point_not_recognized)` rather than a write. It is what caught
 this, and it costs one comparison.
 
-**Kill-all-enemies is pulled** (#161). It intercepts the once-a-round end
-check — an overlaid routine, and the point at which the program will next
-consult the combat state — and, *when a person has asked for it*, downs
-every standing enemy exactly the way the damage routine downs one: slain,
-held byte cleared, hit points zero, the side's count decremented, the
-scratch byte cleared. The program's own end check then finds the enemies'
-count at zero and ends the combat through its own logic. Outside combat
-the point does nothing, and so does every visit nobody asked for.
+**Kill-all-enemies is pulled** (#161), and **acts at the moment of the
+pull** (#163). When a person has asked for it, it deals 120 points of
+damage to every standing enemy exactly the way the program's own damage
+routine deals damage to one: a combatant it does not finish keeps the
+remainder and stays standing, in its side's count, with nothing else
+touched; one it does finish is downed the way the routine downs one —
+slain, held byte cleared, hit points zero, the side's count decremented,
+the scratch byte cleared. The program's own end check then finds the
+enemies' count at zero and ends the combat through its own logic.
 
-It was not a trigger for its first two milestones, and the report that
-made it one is worth keeping: *"the kill all should not trigger at the
-end of the round but it should be on a new hotkey/button and trigger
-immediately."* Two complaints, and this seam answers one and a half of
-them. **"When I ask, and not otherwise"** is answered completely: the
-flag says the seam may act, the pull says somebody wanted it to, and the
-next fight is the player's own again.
+120 is a **chosen debug value and not a fact about the program**. Nothing
+in the fact table says what anything in this game hits for; the number is
+high enough to finish what a party meets and low enough that something
+genuinely tougher survives and is seen to survive. It is subtracted
+saturating — 0 is the floor, and it never wraps.
 
-**"Immediately" is not**, and the honest thing is to write down what is
-missing rather than to claim it. The end check is the only combat address
-these facts know, so a pull made mid-round is served when the round ends.
-A per-turn or per-prompt point would serve it sooner, and finding one is
-**not** something this repository can do: it needs a trace of a real copy
-running a real fight, which is the method §"How a wrong fact was found"
-describes and which only somebody holding the game can carry out. What
-such a person would need:
+The report that made this a trigger asked for two things: *"the kill all
+should not trigger at the end of the round but it should be on a new
+hotkey/button and trigger immediately."* #161 answered the first.
 
-1. A point the tactical loop reaches **per turn or per redraw** rather
-   than per round — its module (from the overlay file's own table, not
-   from a trace) and its offset from that module's base.
-2. Evidence that the machine at that point is not mid-walk of the roster
-   the handler edits. The end check is safe because the program's next
-   act there is to re-tally both sides from the held bytes; a new point
-   needs its own version of that argument.
-3. The two numbers this change added, taken from a real fight:
-   `reached` over a combat says how often the candidate point is
-   arrived at, and `waited` says what a pull actually cost. Nobody has
-   either number yet, which is precisely why they exist.
+**"Immediately" is now answered too, and by giving up the address rather
+than by finding a better one.** The seam has two points:
 
-The handler itself is not tied to the end check and does not need to
-change: `fell_the_enemies` reads the roster head from **DS**, not from a
-stack frame, so a better point is a change to one constant.
+1. **a point with no address** (§"A point with no address"), offered at
+   every step boundary while the pull is outstanding, which acts at the
+   first step where `combat_roster_ready()` holds; and
+2. **the end check**, unchanged — the once-a-round overlaid routine that
+   is the only combat address these facts have ever had.
 
-`SeamCheatKillAll.IsOnAndDoesNothingUntilSomebodyPullsIt` and
-`OnePullIsOneFiring` are the trigger as tests.
+The second is not redundant, and keeping it is why this was safe to do
+from a tree with no copy of the game in it. The end check is the one
+address here that has been driven against the real program and seen to
+end a real fight. The guard is reasoning about structures nobody has
+watched at an arbitrary step. If the reasoning is wrong the guard
+declines, says so once (`inert point_not_recognized`), and the pull is
+served at the end of the round exactly as before — slower, not wrong.
+
+**What the guard checks, and what it cannot.** Five conditions across
+three structures, all of them facts this seam already had:
+
+1. the game mode byte reads combat;
+2. the roster head is a far pointer — nothing lives in segment 0, which
+   is the interrupt vector table and the BDA, the same argument
+   `spare_the_party` makes about a record on the stack;
+3. every link is a far pointer too, and the list **ends** within the
+   bound rather than being cut off by it;
+4. somebody on the party's side is standing and somebody who is not is
+   standing — a combat roster with a fight still in it;
+5. and each of those sides' body counts is non-zero, so the two
+   structures this seam writes agree before it writes either.
+
+One byte is not a guard: 5 is a plausible value for an uninitialized
+byte. What it **cannot** rule out is that the program is itself part-way
+through walking this roster with a record pointer or a running count in a
+register — this guard reads the same structures that code reads and
+cannot see its registers. Two things make that survivable. Dealing damage
+rather than writing a corpse leaves behind a machine state the program
+produces for itself several times a round; and any count this puts wrong
+is rebuilt from the held bytes at the end check before it is read to
+decide the combat.
+
+**Which is why the decrement is no longer optional.** It used to be
+faithfulness rather than mechanism — the end check re-tallies both sides
+from the held bytes immediately before reading them, so a count this seam
+decremented at that point was overwritten a moment later. Firing
+mid-round changes that: the program keeps the count by hand until the
+next rebuild, and anything that reads it before then reads what this
+left. So the decrement carries weight now, and the survivor branch *not*
+decrementing is the same rule from the other side — a count kept by hand
+only moves when a body drops.
+
+**And whether the hit-point field is really a byte** is now load-bearing,
+where before it was not. The only write this seam ever made there was a
+zero, which is byte-safe either way; a remainder is not. It is read and
+written as a byte, as it has been since #99, and the saturating subtract
+bounds the damage if that is wrong: lowering the low byte of a wider
+field lowers the number it is part of, so the worst case is less damage
+than intended or a combatant finished that should not have been — never
+one healed, and never the party.
+
+`SeamCheatKillAll.ServesThePullWhereverTheProgramIs`,
+`DealsDamageAndLeavesAnEnemyItCannotFinishStanding`,
+`KeepsThePullUntilThereIsAFightItRecognizes`,
+`DeclinesARosterThatIsNotAList` and
+`IsNotConsultedAtAllUntilSomebodyPullsIt` are all of that as tests, and
+`IsOnAndDoesNothingUntilSomebodyPullsIt` and `OnePullIsOneFiring` are
+still the trigger itself.
+
+**None of it has been run against the program.** Whether 120 finishes a
+wilderness encounter's seven soldiers in one pull, and whether the guard
+ever holds on a real fight, are measurements nobody in this tree can
+take.
 
 **"Standing" is the wound status, not the byte beside it.** The record
 carries a *held* byte immediately before the combat-side index, and the
