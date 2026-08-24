@@ -22,7 +22,7 @@ endif()
 # never tagged. `af_version` carries it across the C ABI and the wasm
 # smoke test asserts the module reports what CMake built.
 project(amberfolio
-  VERSION 0.1.0
+  VERSION 0.2.0
   DESCRIPTION "A purpose-built low-level emulator for the Gold Box machine"
   HOMEPAGE_URL "https://github.com/amberfolio/amberfolio"
   LANGUAGES CXX)

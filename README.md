@@ -2,19 +2,29 @@
 
 A low-level emulator for the SSI Gold Box games.
 
-**Status: early development — but the game boots.** M3's exit criterion
-is met: a player-supplied copy runs its own unpacker and overlay
-manager, renders its title sequence, answers its menus, and reaches the
-party roster — on the desktop host and in a browser, from the same core,
-reporting the same stop line at the same step. `docs/first-light.md` is
-the procedure.
+**Status: early development — but the game plays.** M4's exit criterion
+is met and tagged `v0.2.0`: the full loop runs on a player-supplied copy
+on all four targets. A party is made and added, the city and its opening
+story event play, movement works, a random encounter fights to a finish
+with and without the debug cheats seam, a game saves and loads, a shop
+sells, a temple heals, a gem is sold, and the map's edge is walked
+across — and the same loop runs in a browser, from the same core.
+`docs/playable.md` is that procedure, leg by leg, with the keystrokes
+that drive it and — its last section — what it has *not* covered.
 
-M4 is under way, and the loop past the roster now runs on the maintainer's
-own copy: a party is made and added, the city and its opening story event
-play, movement works, a random encounter fights to a finish with and
-without the debug cheats seam, and a game saves, quits, loads and
-continues. `docs/playable.md` is that procedure, leg by leg, including
-what it has *not* covered.
+Underneath it are the two instruments M4 needed: a **replay harness**
+(`docs/replay.md`) that makes a run into keys, ticks and hashes, so a
+139-million-step recording of a real game made on the desktop host
+verifies checkpoint for checkpoint on the WebAssembly one; and the
+**seam engine** (`docs/seams.md`), the only mechanism by which anything
+but the program may touch this machine. Every seam is off by default,
+and with all of them off a run's state hash is the hash of the same run
+on a build with no engine at all — a test, not a promise.
+
+M3's exit criterion — the boot — stands where it was: a player-supplied
+copy runs its own unpacker and overlay manager, renders its title
+sequence, answers its menus, and reaches the party roster.
+`docs/first-light.md` is that procedure.
 
 The 8086 core is exact: all 323
 vector files of the
@@ -29,10 +39,10 @@ self test programs the way a ROM does, an EGA with its planar write
 pipeline, a raster its status register answers from, and a renderer, a
 PC speaker, BIOS keyboard services, a virtual filesystem, an MZ loader
 with relocations, and the INT 21h and INT 10h subsets the plan scopes
-plus what a real boot turned out to ask for. Both hosts run it — the
-SDL3 desktop host takes a directory and a program, and the wasm dev page
-runs the same machine in a browser. Eight self-written real-mode test
-programs drive all of it end to end on all four targets, the last of
+plus what a real boot and a real game turned out to ask for. Both hosts
+run it — the SDL3 desktop host takes a directory and a program, and the
+wasm dev page runs the same machine in a browser. Self-written real-mode
+test programs drive all of it end to end on all four targets, one of
 them shaped like a boot: it unpacks itself, loads a module off the
 filesystem, far-calls into it, and calls every service the real one
 needed.
@@ -42,9 +52,12 @@ log line and a clean stop, never a guessed answer — which is why a boot
 log reads as a worklist and why the three notices a healthy run prints
 are each a true statement about what this machine does not have.
 
-That is M0 through M3 done. Next is M4 — playable: exploration, combat,
-shops, save and load, the seam engine proper, and a replay harness. The
-shape of the work is in the [project plan](PLAN.md).
+That is M0 through M4 done. Next is M5 — the player enhancements, each
+one an opt-in seam and each off by default: the code-wheel bypass, the
+journal (OCR at ingestion, an in-game reader, auto-open), the automap
+panel drawn into the emulated EGA planes, the Encamp (F)ix, and save and
+roster management. The engine they all reuse is already here; M5 adds no
+new mechanism. The shape of the work is in the [project plan](PLAN.md).
 
 **Try it in a browser:** <https://amberfolio.vercel.app> — the wasm host,
 published automatically from `main` on every push. It is a developer

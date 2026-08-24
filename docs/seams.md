@@ -146,6 +146,15 @@ consumers are named (`journal_open`, `automap_update`,
 a seam that calls out on a machine without one is told so and does
 nothing.
 
+**#165 is the audit of that claim**, done at M4's closeout: the five M5
+enhancements against these five primitives, one at a time. Three of them
+need nothing that is not above. Two need a host that implements
+`serve()`, and one of those — save and roster management — also needs a
+VFS door the ABI does not have (there is no way to read a file back out
+or to remove one). Worth reading before writing the first M5 seam,
+because the answer to "does the engine already do this" is yes more often
+than it looks.
+
 What a handler is handed beside the machine is `seam_context`: the seam's
 id, the physical address the point fired at, the base of the module it
 lives in, and the image base — so a handler that reads a fact-table

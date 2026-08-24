@@ -309,10 +309,14 @@ one, and there is a tool for exactly that split:
 
 It runs the same program through the same machine with no host at all and
 writes what came out where you can open it — the composed frame as a PPM,
-the speaker's whole timeline as a WAV. If the PPM is right and the window
-is not, the fault is in this half; if the PPM is wrong too, it is not, and
-`ctest -L unit` will have a good deal more to say about which pixel probe
-stopped agreeing.
+the speaker's whole timeline as a WAV, and (since #148) the edge list the
+speaker published as a `.edges` file in the same format both hosts'
+`--dump` writes. If the PPM is right and the window is not, the fault is
+in this half; if the PPM is wrong too, it is not, and `ctest -L unit`
+will have a good deal more to say about which pixel probe stopped
+agreeing. The same split works for the sound, and the `.edges` file is
+what makes it work: a right list and a wrong noise is a host or a filter,
+and a wrong list is the machine. §4 has the format.
 
 ### The dev page, in a browser — the list nobody has walked yet (#147)
 
@@ -357,6 +361,18 @@ desktop list above asks.
       been driven in a browser — only through `tools/drive.mjs`, which is
       node. Leg 1 (a party to the roster) is the one to do first, because
       everything after it depends on the keyboard path being right.
+
+And one item that is not the page's and needs no browser, added at the M4
+closeout because the instrument for it landed there (#148):
+
+- [ ] **The two hosts' edge lists, diffed.** Run one leg with `--dump` on
+      the desktop host and the same leg with `--dump` through
+      `tools/drive.mjs`, and `diff` the two `.edges` files. They must be
+      identical — the same ticks, the same levels. Two WAVs agreeing is
+      two renderings agreeing; this compares the machines. §4 has the
+      format and what the trailer is for. Doing it against the *game*
+      also answers §4's first open question, because the divisors in the
+      file are the ones the program actually programmed.
 
 Nothing above is a blocker for anything: the wasm module itself is checked
 continuously (§5), and the page is the thin layer over it. What is
@@ -432,6 +448,34 @@ machine thread — so it cannot perturb what the audio thread's `render()`
 sees, and it is not part of machine state. A unit test asserts both: the
 rendered samples are bit-identical whether or not somebody was reading,
 and a machine being watched has the same state hash as one that is not.
+
+**Three writers, one file** (#148). The list had one writer until the M4
+closeout, and the gap that left is the one worth naming: the desktop host
+could ask question 1 and neither the browser nor the host-free dump tool
+could, so a wrong-sounding browser run had no way to say which half was
+wrong. All three write the same file now, header and trailer included,
+which is what makes them comparable rather than merely similar:
+
+| writer | how | what it is for |
+| --- | --- | --- |
+| `amberfolio --dump PREFIX` | streamed, drained every frame | the desktop host, with a real disk in front of it |
+| `node drive.mjs … --dump PREFIX` | the same, over `af_machine_audio_read_edges` | the browser's machine, headless — §5's driver |
+| `amberfolio-dump <program> [<dir>]` | `machine_setup::log_edges` | no host at all, which is what §3 sends people here for |
+
+The ABI door is four calls — `af_machine_audio_log_edges`,
+`_logging_edges`, `_read_edges`, `_edges_dropped`/`_edges_pending` — and
+they carry the same "not machine state" promise the C++ side does:
+`abi_test.cpp` runs one tone twice, once watched and once not, and
+asserts the two state hashes are equal. The wasm smoke check drives the
+whole door on the embedded demo's tone, and asserts what a tone is: ticks
+strictly increasing, levels alternating, nothing dropped, and a drained
+log empty.
+
+The three-writer rule has a use beyond tidiness. A run dumped on both
+hosts produces two `.edges` files that must be **identical** — the same
+ticks, the same levels — and that is a stronger statement than two WAVs
+agreeing, because it compares the machines rather than two renderings of
+them. Diffing them is a person's step and it is in §3's list.
 
 ### What the box filter actually does
 
@@ -581,9 +625,16 @@ argument (§2's key table, #161).
 - **Whether it sounds right.** No measurement replaces §3's ear — and
   that now includes whether 25% is a useful quarter rather than an
   inaudible one, which is a judgement about a room and not a number.
-- **The browser's edge list.** There is still no ABI export for the edge
-  log, so "is the machine producing the right edges" cannot be asked in a
-  browser at all (#148 item 5).
+- **A resync produced on purpose.** The *reporting* of one is tested and
+  the path itself has only ever been walked by a unit test. A stalled
+  tab, a dragged window, or `--fast` past what a 48 kHz device can
+  consume should produce one, and nobody has run that experiment
+  (#148 item 3).
+- ~~**The browser's edge list.**~~ Closed at the M4 closeout: the ABI has
+  the edge-log door, `tools/drive.mjs --dump` writes the file, and the
+  smoke check asserts the tone through it (#148 item 5, and item 6 for
+  `amberfolio-dump`). What remains of #148 is the three items above,
+  every one of them a person's.
 
 ---
 
@@ -798,7 +849,7 @@ why it imports `./host.mjs` with no path in it.
 | `--seams` | list every seam this build carries, in the state the run would have started in, and exit without running. |
 | `--speed xt\|turbo\|at\|386` | the governor, spelled as on the desktop host. |
 | `--trace` | the trace ring and the service-call and file channels, as `--trace` does there. |
-| `--dump PREFIX` | `PREFIX.ppm` (the last composed frame) and `PREFIX.wav` (the speaker), the same two files the SDL host's `--dump` writes. |
+| `--dump PREFIX` | `PREFIX.ppm` (the last composed frame), `PREFIX.wav` (the speaker rendered) and `PREFIX.edges` (the speaker as the machine published it, #148) — the same three files the SDL host's `--dump` writes, in the same formats, so a leg run on both hosts can be diffed rather than described. |
 | `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames — the "what did the screen *do*" instrument, which the browser had no equivalent of. |
 | `-- ARGUMENTS` | the command tail, with DOS's leading space. |
 

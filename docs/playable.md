@@ -714,7 +714,14 @@ worklist line, and `docs/machine.md` §5 is what to do with it.
 
 ## What this procedure has *not* covered
 
-Honest gaps, so nobody reads more into a green run than is there:
+Honest gaps, so nobody reads more into a green run than is there.
+
+**This list is M4's closeout input and it was taken as such** (#109): the
+milestone was closed with every line below still standing, deliberately,
+because a milestone closed on a list nobody wrote down is a milestone
+whose gaps get rediscovered. The two marked *by decision* are closed and
+nobody is coming; the rest live on in #147, #148 and — as the standing
+inventory of what this machine does and does not do — #166.
 
 Two of them are **decisions** rather than a worklist — nobody is coming,
 and the entries stay because a procedure that quietly stopped mentioning
@@ -755,3 +762,11 @@ what it skips would be worth less than one that says so.
   program in `tests/programs`. Nothing has measured *this* program, and
   §3 is still where a person checks that a pressure wave left a speaker
   (#106).
+
+  What *is* ready for that, since the closeout, is the instrument: all
+  three writers — the SDL host's `--dump`, `tools/drive.mjs --dump` and
+  the host-free `amberfolio-dump` — now write the same `.edges` file, so
+  running any leg above with `--dump` and reading the divisors out of it
+  answers "which tones did this program actually program" without
+  anybody listening to anything (#148). It is one command on top of a leg
+  that already works.

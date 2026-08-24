@@ -11,57 +11,75 @@ Radiance. **PLAN.md is the plan of record** — scope, architecture,
 milestones, and settled decisions live there; don't re-litigate them
 here or in PRs.
 
-**Status: M3 complete, tagged `v0.1.0`. M4 — playable + seam engine —
-is the current milestone.**
-The game boots. A player-supplied copy runs its own unpacker and overlay
-manager, renders its title sequence, answers its menus and reaches the
-party roster — on the desktop host and in a browser, from the same core,
-reporting the same stop line at the same step and composing a
-pixel-identical frame. That is PLAN.md §7's M3 exit criterion, met;
-`docs/first-light.md` is the procedure for checking it, and no test in
-this repository runs the game or ever will. `docs/playable.md` is its M4
-sibling: the legs past the roster — a party, the city and its story
-event, a fight with and without the cheats seam, a save, a load, a shop
-bought from, a cure paid for at the temple, a gem sold, a map edge walked
-across, and the whole loop again on the machine a browser runs — each
-with the keystrokes that drive it and what it is evidence for. Its last
-section is what it has *not* covered, which is the honest input to M4's
-closeout (#109).
+**Status: M4 complete, tagged `v0.2.0`. M5 — player enhancements — is
+the current milestone.**
+The game plays. A player-supplied copy runs its own unpacker and overlay
+manager, renders its title sequence, answers its menus, makes a party,
+walks the city, plays its opening story event, fights an encounter to a
+finish with and without the debug cheats seam, saves, loads, buys, heals,
+sells, and walks off the edge of a map — on the desktop host and in a
+browser, from the same core. That is PLAN.md §7's M4 exit criterion, met.
+`docs/playable.md` is the procedure, leg by leg, with the keystrokes that
+drive it and what each leg is evidence for; its last section is what it
+has *not* covered, and the gaps there that are decisions rather than
+debts say so. `docs/first-light.md` is the M3 sibling, the boot alone.
+**No test in this repository runs the game, and none ever will.**
 
 The 8086 interpreter underneath is still exact — all 323 vector files of
 the pinned SingleStepTests/8088 v2 set pass in CI on every push,
-undefined flag behaviour included — and stayed exact through every device
-and service that grew around it.
+undefined flag behaviour included — and stayed exact through every
+device, service and seam that grew around it.
 
-What is *not* here is a game you can play. Exploration, combat, shops
-and save/load are M4, and so is the seam engine proper. PLAN.md §7 has
-M4's exit criterion.
+What M4 left in place:
 
-M4's phase 3 — the playable buckets, #102 to #108 — is closed out. What
-it established, and the two instruments it needed:
-
-- **The loop plays, on both hosts.** Exploration, story events, a
-  tactical fight with and without the cheats seam, a save, a load, a
-  purchase, a cure paid for, a gem sold, and a map edge walked across.
-  The seven sessions in `tests/sessions/` are the ones worth repeating,
-  and `scripts/sweep.py` re-runs them.
-- **A recording of a real game run, made on the desktop host, verifies
-  on the wasm one** — 101 checkpoints of a 139-million-step run, every
-  hash equal. Before this the cross-target claim rested on four frames
-  of `JMP $` (#142).
-- **`--watch OFF[:N]`** on the SDL host prints a data-segment word every
-  time it changes, which is how a run becomes a trail of where the party
-  went. `--dump-every` says what the screen did and `--trace` what the
-  program asked DOS for; neither said where anything was.
-- **`hosts/web/tools/drive.mjs`** is the SDL host's driving surface for
-  the wasm module — a directory, a program, `--press KEY@FRAME`,
-  `--seam`, `--dump`, and a throughput line. #116 closed on a number
-  taken outside the tree; the instrument is in it now.
-- **The speaker is measured** rather than described: `--dump` writes the
-  edge list the machine published beside the PPM and the WAV, the
+- **The seam engine** (`machine/seam.h`, `docs/seams.md`), which is
+  PLAN.md §5's mechanism and the only way anything but the program may
+  touch this machine. Fingerprint-keyed, overlay-qualified, four action
+  primitives plus a host-service slot, a host→seam trigger a person
+  pulls, and a toggle surface on both hosts. **Every seam is off by
+  default**, and the fidelity invariant is a test: with all of them off a
+  run's state hash equals the same run's on a build with no engine at
+  all, a disabled seam's breakpoint is never consulted, and seam state —
+  an outstanding pull included — is configuration and not machine state.
+  M5's five enhancements add no mechanism; they add handlers.
+- **Three seams this build carries**: `code-wheel` (ungated; its
+  possession gate is M5's, #115), `cheat-invulnerable`, `cheat-kill-all`.
+  `docs/seams.md` §8 is the house style for the next one and §10 is the
+  worked example.
+- **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
+  canonical machine-state serialization, a recording that is keys, ticks
+  and hashes and no content at all, and verification on all four targets
+  from one recording. A desktop recording of a **real game run** verifies
+  on the wasm module — 101 checkpoints of a 139-million-step run, every
+  hash equal. Before it the cross-target claim rested on four frames of
+  `JMP $` (#142).
+- **The session library** (`tests/sessions/`, `scripts/sweep.py`). Seven
+  sessions; one has its disk committed and six pin a disk that cannot be
+  (PLAN.md §6), so the runner is told where a copy is and **skips loudly**
+  when it is not. A sweep that verified nothing must never read as a
+  sweep that passed.
+- **The instruments phase 3 needed.** `--watch OFF[:N]` on the SDL host
+  prints a data-segment word every time it changes, which is how a run
+  becomes a trail of where the party went; `--dump-every` says what the
+  screen did and `--trace` what the program asked DOS for, and neither
+  said where anything was. `hosts/web/tools/drive.mjs` is the SDL host's
+  driving surface for the wasm module — a directory, a program,
+  `--press KEY@FRAME`, `--pull`, `--seam`, `--dump`, a throughput line.
+- **The speaker is measured** rather than described. `--dump` writes the
+  edge list the machine published beside the PPM and the WAV; so does
+  `drive.mjs`, and so does the host-free `amberfolio-dump`, in one
+  format, so two hosts' runs are diffed rather than described. The
   underrun and resync counters reach every run's report, and the box
-  filter's DC offset and its agreement across the two hosts' sample
-  rates are numbers in the unit suite (`docs/hosts.md` §4).
+  filter's DC offset and its agreement across the two hosts' sample rates
+  are numbers in the unit suite (`docs/hosts.md` §4).
+
+What M4 did **not** settle, and is honest about: the dungeon and two city
+services were closed as decisions rather than debts (#144, #145); nobody
+has opened a browser on the dev page (#147); the game's own tones have
+been heard but not measured, and a resync has never been produced on
+purpose (#148). `docs/playable.md`'s last section and `docs/hosts.md` §3
+and §4 carry those lists, above a sentence saying whether anyone is
+coming.
 
 What M3 left in place:
 
