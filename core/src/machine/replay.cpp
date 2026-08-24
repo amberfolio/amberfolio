@@ -367,6 +367,9 @@ template <class Visit>
   if (word == "key") {
     return replay_line::key;
   }
+  if (word == "pull") {
+    return replay_line::pull;
+  }
   if (word == "checkpoint") {
     return replay_line::checkpoint;
   }
@@ -378,7 +381,8 @@ template <class Visit>
 
 [[nodiscard]] bool is_event(replay_line kind) noexcept {
   return kind == replay_line::wall || kind == replay_line::key ||
-         kind == replay_line::checkpoint || kind == replay_line::end;
+         kind == replay_line::pull || kind == replay_line::checkpoint ||
+         kind == replay_line::end;
 }
 
 /// A section name to its index, or `state_section_count` for none.
@@ -541,6 +545,21 @@ bool parse_replay_line(std::span<const char> line, replay_event& out) noexcept {
       return f.exhausted();
     }
 
+    case replay_line::pull: {
+      if (!f.next(word) || !parse_number(word, n)) {
+        return false;
+      }
+      out.at = n;
+      if (!f.next(word) || word.empty() || word.size() > replay_max_id) {
+        return false;
+      }
+      for (std::size_t i = 0; i < word.size(); ++i) {
+        out.id[i] = word[i];
+      }
+      out.id_length = word.size();
+      return f.exhausted();
+    }
+
     case replay_line::checkpoint: {
       if (!f.next(word) || !parse_number(word, n)) {
         return false;
@@ -667,6 +686,12 @@ std::size_t format_replay_line(const replay_event& event,
       w.put(' ');
       w.hex(event.scancode, 2);
       w.text(event.action == key_action::down ? " down" : " up");
+      break;
+    case replay_line::pull:
+      w.text("pull ");
+      w.number(event.at);
+      w.put(' ');
+      w.text(event.id_text());
       break;
     case replay_line::checkpoint:
       w.text("checkpoint ");
@@ -964,6 +989,7 @@ bool replay_player::load(std::span<const char> text) {
       case replay_line::nothing:
       case replay_line::wall:
       case replay_line::key:
+      case replay_line::pull:
       case replay_line::checkpoint:
       case replay_line::end:
         break;
@@ -1146,6 +1172,15 @@ bool replay_player::peek() {
          "an initial-condition line after the stream began", 0);
     return false;
   }
+  if (pending_.kind == replay_line::pull &&
+      preamble_.format_version < recording_format_pull) {
+    // A stream line the version on the first line does not have — the
+    // same refusal a manifest line out of its format gets, and for the
+    // same reason: a recording says which grammar it is written in.
+    fail(replay_status::malformed,
+         "a stream line this recording's format does not have", 0);
+    return false;
+  }
   have_pending_ = true;
   return true;
 }
@@ -1208,6 +1243,23 @@ replay_status replay_player::apply(machine& box) {
       case replay_line::key:
         box.post_key(pending_.scancode, pending_.action);
         ++keys_;
+        break;
+      case replay_line::pull:
+        // An input event, like the key above it, and refused for the
+        // same reasons a recorded key never is: the seam it names has to
+        // be on, and it has to be one that takes a trigger. Both are
+        // decided by the preamble's `seam` lines, which `check_initial`
+        // has already matched against the machine — so a refusal here is
+        // a recording that does not describe this build's seam table,
+        // and saying "verified" of it would be the silence #131 is
+        // about.
+        if (box.seams().pull(pending_.id_text(), pending_.at) !=
+            seam_reason::none) {
+          fail(replay_status::diverged, "a recorded seam trigger was refused",
+               pending_.at);
+          return status_;
+        }
+        ++pulls_;
         break;
       case replay_line::checkpoint: {
         if (box.steps() != pending_.steps) {
@@ -1306,12 +1358,16 @@ std::size_t replay_player::report(std::span<char> out) const noexcept {
       w.number(checkpoints_);
       w.text(" keys=");
       w.number(keys_);
+      w.text(" pulls=");
+      w.number(pulls_);
       break;
     case replay_status::done:
       w.text("verified checkpoints=");
       w.number(checkpoints_);
       w.text(" keys=");
       w.number(keys_);
+      w.text(" pulls=");
+      w.number(pulls_);
       break;
     case replay_status::diverged:
       if (have_digests_) {
@@ -1410,6 +1466,7 @@ verify_result verify_recording(machine& box, filesystem* fs,
   out.status = status;
   out.checkpoints = player.checkpoints_verified();
   out.keys = player.keys_delivered();
+  out.pulls = player.pulls_delivered();
   return out;
 }
 

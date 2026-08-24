@@ -66,13 +66,34 @@ export const AF_SEAM_NONE = 3;
 /// computed out of the seam's fact table; `fired` says a handler ran
 /// there, and #131's lesson is that the first cannot stand in for the
 /// second.
+///
+/// A triggered seam (#161) carries two more numbers, and only it does:
+/// `reached` is how many times its point was arrived at whether or not
+/// anybody had asked — the one measurement of how promptly a pull can
+/// possibly be served — and `waited`/`waiting` is what the last pull cost
+/// or is still costing. `fired=0` means nothing about such a seam,
+/// because a trigger nobody pulled is a trigger working, so the
+/// never-reached sentence is keyed on `reached` for it instead.
 export function formatSeamFired(seam) {
-  return (
-    `${seam.armed ? 'armed' : 'inert'} fired=${Math.round(seam.fired)}` +
-    (seam.armed && seam.fired === 0
-      ? ' - armed and never reached; its point may not be where its facts say'
-      : '')
-  );
+  // A row from `seamList()` always carries `reached`; a caller that
+  // built one by hand may not, and for an ordinary seam the two numbers
+  // are the same thing — every arrival at its point runs its handler.
+  const reached = seam.reached ?? seam.fired;
+  let extra = '';
+  if (seam.trigger) {
+    extra = ` reached=${Math.round(reached)}`;
+    if (seam.waiting) extra += ' waiting';
+    else if (seam.fired !== 0) extra += ` waited=${Math.round(seam.waited)}`;
+  }
+  let say = '';
+  if (seam.armed && reached === 0) {
+    say = ' - armed and never reached; its point may not be where its facts say';
+  } else if (seam.armed && seam.trigger && seam.waiting) {
+    say = ' - pulled, and its point not reached since';
+  } else if (seam.armed && seam.trigger && seam.fired === 0) {
+    say = ' - reached, and never pulled; this seam acts only when asked';
+  }
+  return `${seam.armed ? 'armed' : 'inert'} fired=${Math.round(seam.fired)}${extra}${say}`;
 }
 
 /// Why a file the host offered did not go in, in the words a person
@@ -736,6 +757,11 @@ export class Machine {
   /// table, `fired` says a handler actually ran there. A seam that is on
   /// and armed and has fired nothing is the failure that reads exactly
   /// like success, and until #147 a browser could not say so.
+  ///
+  /// `trigger`, `waiting`, `reached`, `waited` and `pulledAt` are
+  /// #161's: whether this seam is pulled rather than left on, whether a
+  /// pull is outstanding, how often its point has been arrived at at
+  /// all, and what the last pull cost in ticks.
   seamList() {
     const count = this.module._af_machine_seam_count(this.handle);
     const seams = [];
@@ -747,9 +773,25 @@ export class Machine {
         reason: this.#text((out, max) => this.module._af_machine_seam_reason(this.handle, i, out, max), 64) ?? '',
         armed: this.module._af_machine_seam_armed(this.handle, i) !== 0,
         fired: this.module._af_machine_seam_fired(this.handle, i),
+        trigger: this.module._af_machine_seam_triggered(this.handle, i) !== 0,
+        waiting: this.module._af_machine_seam_waiting(this.handle, i) !== 0,
+        reached: this.module._af_machine_seam_reached(this.handle, i),
+        waited: this.module._af_machine_seam_waited(this.handle, i),
+        pulledAt: this.module._af_machine_seam_pulled_at(this.handle, i),
       });
     }
     return seams;
+  }
+
+  /// Pull the trigger of a seam that takes one (#161). `AF_OK` if the
+  /// latch took, `AF_INVALID` if there is no such seam, if it does not
+  /// take a trigger, or if it is off.
+  ///
+  /// A configuration call between frames, like `seamEnable` — the page
+  /// does it in a click handler, which runs between two rAF callbacks
+  /// and so never from inside `runUntil()`.
+  seamPull(id) {
+    return this.#withCString(id, (ptr) => this.module._af_machine_seam_pull(this.handle, ptr));
   }
 
   /// Turn a seam on or off by id. `AF_OK` if it took, `AF_INVALID` if

@@ -289,7 +289,10 @@ legitimately changes:
   a player reads every version it has ever written, the way that version
   wrote it, so a grammar that grew leaves these seven verifying
   untouched (`docs/replay.md` §7). That is deliberate, and #155 is why:
-  six of these cannot be re-recorded from this tree at all;
+  six of these cannot be re-recorded from this tree at all. #161 grew the
+  grammar a second time — a `pull` line, for a seam trigger somebody
+  pulled — and these seven were untouched again: none of them carries
+  one, and none enables a seam that takes a trigger;
 - the reference device set's **attach order** changes. The canonical
   state hashes devices in attach order, so this is machine state.
   `hosts/sdl/src/main.cpp`, `core/src/abi.cpp`'s `reference_devices` and

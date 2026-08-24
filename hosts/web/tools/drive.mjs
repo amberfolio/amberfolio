@@ -204,6 +204,9 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
   --until TICKS         run until virtual tick TICKS
   --steps N             stop at the first frame boundary at or past step N
   --press KEY@FRAME     post a key at the top of frame FRAME (repeatable)
+  --pull ID@FRAME       pull a seam's trigger at the top of frame FRAME
+                        (repeatable; the seam has to be on and to be one
+                        that takes a trigger)
   --seam ID             turn one seam on before the first step (repeatable)
   --seams               list every seam this build carries, and exit
   --speed xt|turbo|at|386
@@ -228,6 +231,7 @@ export function parseArgs(argv) {
     until: 0,
     steps: 0,
     presses: [],
+    pulls: [],
     seams: [],
     listSeams: false,
     speed: null,
@@ -288,6 +292,19 @@ export function parseArgs(argv) {
         };
       }
       opts.presses.push({ name, frame, scancode });
+    } else if (arg === '--pull' && i + 1 < argv.length) {
+      // The SDL host's `--pull ID@FRAME` (#161), spelled identically so
+      // a leg written down in docs/playable.md can be typed at either
+      // host unchanged. Split on the last `@`, as `--press` is.
+      const text = next();
+      const at = text.lastIndexOf('@');
+      if (at <= 0) return { error: `--pull wants ID@FRAME, as in cheat-kill-all@600; got ${text}` };
+      const id = text.slice(0, at);
+      const frame = Number(text.slice(at + 1));
+      if (!Number.isInteger(frame) || frame < 0) {
+        return { error: `--pull wants ID@FRAME with a frame number; got ${text}` };
+      }
+      opts.pulls.push({ id, frame });
     } else if (arg === '--seam' && i + 1 < argv.length) {
       opts.seams.push(next());
     } else if (arg === '--seams') {
@@ -566,6 +583,11 @@ export async function drive(opts) {
     if (!due.has(press.frame)) due.set(press.frame, []);
     due.get(press.frame).push(press);
   }
+  const duePulls = new Map();
+  for (const pull of opts.pulls) {
+    if (!duePulls.has(pull.frame)) duePulls.set(pull.frame, []);
+    duePulls.get(pull.frame).push(pull);
+  }
 
   let partialLine = '';
   const drainLog = () => {
@@ -607,6 +629,25 @@ export async function drive(opts) {
       machine.postKey(press.scancode, false);
       if (!opts.quiet) {
         say(`amberfolio: press ${press.name} frame=${frame}`);
+      }
+    }
+
+    // A pull is said whether or not the run is quiet, and a refused one
+    // is said loudly: a script that asked a cheat to fire and silently
+    // got a plain machine is the worst outcome this driver has, which is
+    // the same reasoning `--seam` is refused on.
+    for (const pull of duePulls.get(frame) ?? []) {
+      const answer = machine.seamPull(pull.id);
+      const row = machine.seamList().find((seam) => seam.id === pull.id);
+      if (answer !== AF_OK) {
+        say(`amberfolio: seam ${pull.id} not pulled frame=${frame}`);
+      } else if (!opts.quiet) {
+        say(
+          `amberfolio: seam ${pull.id} pulled frame=${frame} - ` +
+            (row && row.armed
+              ? 'acts at the next arrival at its point'
+              : 'inert; its module is not resident'),
+        );
       }
     }
 

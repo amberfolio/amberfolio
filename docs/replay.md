@@ -32,7 +32,7 @@ The short version:
 Plain text (`machine/replay.h`), one line per fact:
 
 ```
-amberfolio-recording 2 state=1
+amberfolio-recording 3 state=1
 program BOOT.EXE 3f1c…
 tail 202d4649525354 4c49474854
 speed 256
@@ -43,6 +43,7 @@ file SAVE\SAVGAMA.DAT 1024 4c9e…
 file BOOT.EXE 2144 3f1c…
 file OVL.BIN 9 a7e0…
 key 5000 1e down
+pull 120000 probe
 checkpoint 1193182 1193182 9b2d… clock=… cpu=… ram=… devices=… …
 end 2000000 2000000
 ```
@@ -51,8 +52,23 @@ The **initial conditions** come first: the program and its fingerprint,
 the command tail (as hex, because it usually begins with a space), the
 speed (the step cost in 1/256ths of a tick — a replay is made at the
 speed it was recorded at), every seam that was on, and the **manifest**.
-Then the **stream**, in tick order: wall-clock seeds, key events,
-checkpoints, and the end.
+Then the **stream**, in tick order: wall-clock seeds, key events, seam
+triggers, checkpoints, and the end.
+
+### Why a pull is in the stream and not the preamble (#161)
+
+A `seam` line says the seam was **on**, which is a fact about how the run
+was set up. A `pull` line says a person asked it to act, at a tick, which
+is something they did to a running machine — the same kind of thing a
+keystroke is, and recorded the same way. A seam that is pulled rather
+than left on (`docs/seams.md` §3a) acts once per pull, at the first
+arrival at its point afterwards, so *which* arrival acts is decided by
+the tick and by nothing else. A recording that carried the seam and not
+the pull would replay a run in which the cheat never fired.
+
+A pull that the engine refuses on replay — the seam is off, or is not one
+that takes a trigger — is a **divergence**, not a warning: the recording
+says the run had one.
 
 ### The manifest
 
@@ -173,6 +189,9 @@ things and nothing else:
 - a `key` line **where a key is posted**, stamped with `machine::time()`
   — the machine's clock is the only stamp a key has, and the post is the
   only moment the machine can see one;
+- a `pull` line **where a seam's trigger is pulled**, stamped the same
+  way and for the same reason. The host key (Pause/Break) and
+  `--pull ID@FRAME` both go through it;
 - a `checkpoint` **where a frame ends**, taken after the slice and before
   the frame is presented;
 - an `end` line where the run does.
@@ -199,8 +218,8 @@ at all rather than merely possible to store.
 A sparse cadence costs *where* a divergence is localized and nothing
 else: every key still lands on the tick it was recorded at, and the run
 still has to reach `end`. Two frames are checkpointed whatever N says —
-**one that posted a key**, because that is the moment a recorded run is
-evidence about, and **the one the run ends on**, which is where a
+**one that carried an input**, a key or a pull, because that is the
+moment a recorded run is evidence about, and **the one the run ends on**, which is where a
 `stopped` marker lives and, for a run a budget ended, the only record of
 how far it got. `tests/sessions/README.md` has the arithmetic;
 `sdl-host-records-and-replays` records one run at both cadences and
@@ -279,7 +298,7 @@ a recording is answering the check's question.
 
 | Report | What happened |
 | --- | --- |
-| `verified checkpoints=N keys=K` | every condition matched and `end` was reached; the process then returns the program's own exit code |
+| `verified checkpoints=N keys=K pulls=P` | every condition matched and `end` was reached; the process then returns the program's own exit code |
 | `refused line=L why=…` | not a recording this player reads, or the initial conditions do not match — the wrong program, the wrong speed, the wrong seams, a file that is not the file |
 | `refused … why=… path=SAVE\CHARLIST.TXT` | the manifest is what did not match, and that is the entry it is about: a file whose fingerprint or size differs, one the disk has and the recording does not name, one the recording names and the disk has not got, or a directory where the recording names a file. This is #155's whole point — a disk that is not the recorded one is refused up front by name, rather than diverging later at a checkpoint |
 | `diverged line=L tick=T section=S expected=… actual=…` | a checkpoint's hash was not the machine's; `section` is the first of the thirteen to disagree |
@@ -332,13 +351,14 @@ carries one.
 Two, and they are independent:
 
 - **`recording_format_version`** (`machine/replay.h`) — the line grammar.
-  A recorder writes this one. It is **2**: #155's recursing manifest.
+  A recorder writes this one. It is **3**: #161's `pull` line. (2 was
+  #155's recursing manifest, and is still read as version 2.)
 - **`state_format_version`** (`machine/state.h`) — the bytes a checkpoint
   hashes. It is **1**. A player refuses to compare across versions,
   because a divergence that is really a format change is a false finding.
 
 A recording names both on its first line
-(`amberfolio-recording 2 state=1`).
+(`amberfolio-recording 3 state=1`).
 
 **The rule for the recording format: a version is read for as long as a
 recording of it may still exist.** `recording_format_oldest_read` says
@@ -358,6 +378,12 @@ would be refusing evidence that cannot be remade.
 `SessionLibrary.EveryCommittedRecordingIsAFormatThisBuildStillReads`
 asserts the version on the files, so a change that would strand them
 fails there rather than being discovered by whoever next verified one.
+
+#161 is the second grammar growth this rule has survived, and it did so
+untouched: the seven sessions carry no `pull` line, none of them enables
+a seam that takes a trigger, and all seven go on verifying byte for byte.
+A version-2 recording that *did* carry one would be refused — a version
+says what a file may contain, and half a grammar is not a grammar.
 
 `state_format_version` has no such escape and never will: a checkpoint's
 hash is not readable "the way it was written" by a build whose state

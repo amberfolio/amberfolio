@@ -770,6 +770,10 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
       return "too many interception points for this build";
     case machine::seam_error::no_room:
       return "the seam registry is full";
+    case machine::seam_error::not_triggered:
+      return "this seam is not one you pull; it acts whenever it is on";
+    case machine::seam_error::not_enabled:
+      return "this seam is off - turn it on with --seam before pulling it";
   }
   return "unknown";
 }
@@ -786,6 +790,17 @@ struct scripted_press {
   std::string key;
   std::uint64_t frame{};
   SDL_Scancode code{SDL_SCANCODE_UNKNOWN};
+  bool done{false};
+};
+
+/// A seam trigger the host pulls for itself, at a frame of the loop
+/// (#161) — `scripted_press`'s sibling, and the reason it is a separate
+/// type rather than a key: a pull does not go through SDL at all, so it
+/// needs no window and works under `--headless`, which is where the
+/// scripted runs that would want one live.
+struct scripted_pull {
+  std::string id;
+  std::uint64_t frame{};
   bool done{false};
 };
 
@@ -1010,6 +1025,7 @@ struct options {
   unsigned scale{default_scale};
   bool verify{false};
   std::vector<scripted_press> presses;
+  std::vector<scripted_pull> pulls;
   std::vector<watch_point> watches;
   std::vector<std::string> seams;
   bool list_seams{false};
@@ -1123,6 +1139,28 @@ struct options {
     return false;
   }
   out.key = std::string(spec.substr(0, at));
+  out.frame = frame;
+  return true;
+}
+
+/// `ID@FRAME`, into a scripted pull (#161). The same shape as
+/// `parse_press`, and split on the last `@` for the same reason — a seam
+/// id is kebab-case and cannot contain one, but making that a fact this
+/// parser depends on would be free only until it was not.
+[[nodiscard]] bool parse_pull(std::string_view spec, scripted_pull& out) {
+  const std::size_t at = spec.rfind('@');
+  if (at == std::string_view::npos || at == 0 || at + 1 == spec.size()) {
+    return false;
+  }
+  const std::string_view digits = spec.substr(at + 1);
+  std::uint64_t frame = 0;
+  const char* const first = digits.data();
+  const char* const last = first + digits.size();
+  const std::from_chars_result parsed = std::from_chars(first, last, frame);
+  if (parsed.ec != std::errc{} || parsed.ptr != last) {
+    return false;
+  }
+  out.id = std::string(spec.substr(0, at));
   out.frame = frame;
   return true;
 }
@@ -1251,6 +1289,15 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         return opts;
       }
       opts.presses.push_back(std::move(press));
+    } else if (arg == "--pull" && i + 1 < argc) {
+      scripted_pull pull;
+      if (!parse_pull(argv[++i], pull)) {
+        std::fprintf(stderr,
+                     "amberfolio: --pull wants ID@FRAME, as in"
+                     " cheat-kill-all@600\n");
+        return opts;
+      }
+      opts.pulls.push_back(std::move(pull));
     } else if (arg == "--watch" && i + 1 < argc) {
       watch_point point;
       if (!parse_watch(argv[++i], point)) {
@@ -1368,6 +1415,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         stderr,
         "usage: amberfolio <dir> <program.exe> [--headless]"
         " [--scale N] [--verify] [--press KEY@FRAME]\n"
+        "                                      [--pull ID@FRAME]\n"
         "                                      [--steps N]"
         " [--until TICKS] [--dump PREFIX] [--dump-every N]\n"
         "                                      [--trace]"
@@ -1458,6 +1506,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       also = "--speed";
     } else if (!opts.presses.empty()) {
       also = "--press";
+    } else if (!opts.pulls.empty()) {
+      also = "--pull";
     }
     if (also != nullptr) {
       std::fprintf(stderr,
@@ -1772,12 +1822,82 @@ int main(int argc, char** argv) try {
   // same thing twice.
   machine::ticks checkpointed = machine::never;
 
-  // Whether this frame posted a key. A sparse cadence must not thin out
-  // the moments a recording exists to pin: what a game session is
-  // evidence for is that the machine answered *this* keystroke the way
-  // it did, and a checkpoint on the far side of the frame that carried
-  // one is where that is visible.
-  bool keyed_this_frame = false;
+  // Whether this frame delivered an input — a key, or a seam trigger
+  // somebody pulled (#161). A sparse cadence must not thin out the
+  // moments a recording exists to pin: what a game session is evidence
+  // for is that the machine answered *this* keystroke the way it did,
+  // and a checkpoint on the far side of the frame that carried one is
+  // where that is visible. A pull is the same kind of moment and gets
+  // the same treatment.
+  bool input_this_frame = false;
+
+  // Pull one seam's trigger, wherever the ask came from — the host key
+  // below, or `--pull ID@FRAME` (#161). Recorded as a `pull` line at the
+  // machine's own tick, exactly as a keystroke is, and for the same
+  // reason: it is something a person did to a running machine at a
+  // moment, and a replay that had the seam on but not the pull would
+  // reproduce a run in which the cheat never fired (machine/replay.h).
+  const auto pull_trigger = [&](std::string_view id) {
+    const machine::seam_error why = box.seams().pull(id, box.time());
+    if (why != machine::seam_error::none) {
+      std::fprintf(stderr, "amberfolio: seam %.*s not pulled (%s)\n",
+                   static_cast<int>(id.size()), id.data(), seam_refusal(why));
+      return false;
+    }
+    // What the pull is waiting for, said at the moment it is made. A
+    // trigger acts at a CS:IP breakpoint, so "immediately" means "at the
+    // next arrival at the point" and nothing else can (machine/seam.h);
+    // an inert seam is not even that, and a person who is told neither
+    // has a button that did nothing.
+    const machine::seam_status row = box.seams().status(id);
+    std::fprintf(stderr, "amberfolio: seam %.*s pulled - %s\n",
+                 static_cast<int>(id.size()), id.data(),
+                 row.armed ? "acts at the next arrival at its point"
+                           : "inert; its module is not resident");
+    machine::replay_event line{};
+    line.kind = machine::replay_line::pull;
+    line.at = box.time();
+    if (id.size() <= machine::replay_max_id) {
+      for (std::size_t i = 0; i < id.size(); ++i) {
+        line.id[i] = id[i];
+      }
+      line.id_length = id.size();
+      record_line(line);
+    } else if (recording.is_open()) {
+      // A recording that quietly left a pull out would be a recording of
+      // a run that did not happen. Said out loud instead; the id would
+      // have to be longer than any seam in this tree for it.
+      std::fprintf(stderr,
+                   "amberfolio: seam %.*s pulled but NOT recorded - its id"
+                   " is longer than a recording may name\n",
+                   static_cast<int>(id.size()), id.data());
+    }
+    input_this_frame = true;
+    return true;
+  };
+
+  // The host key's whole job: pull every trigger that is on. One key for
+  // however many triggered seams a build carries, because a key per seam
+  // is a key this host does not have to spend — an 83-key XT board has
+  // only so many codes it never uses, and the toggle surface is where
+  // seams are chosen (`--seam`, the page's checkboxes).
+  const auto pull_every_trigger = [&]() {
+    unsigned pulled = 0;
+    for (std::size_t i = 0; i < box.seams().count(); ++i) {
+      const machine::seam_status row = box.seams().status(i);
+      if (row.state != machine::seam_state::on || !row.trigger) {
+        continue;
+      }
+      if (pull_trigger(row.id)) {
+        ++pulled;
+      }
+    }
+    if (pulled == 0) {
+      std::fprintf(stderr,
+                   "amberfolio: nothing to pull - no seam that takes a"
+                   " trigger is on\n");
+    }
+  };
 
   const std::uint32_t init_flags =
       opts.headless ? 0U : (SDL_INIT_VIDEO | SDL_INIT_AUDIO);
@@ -1789,6 +1909,7 @@ int main(int argc, char** argv) try {
   // The parsed presses, with room to record which have gone. `opts` is
   // what the command line said and stays that way.
   std::vector<scripted_press> presses = opts.presses;
+  std::vector<scripted_pull> pulls = opts.pulls;
   watch_log watch_seen;
 
   SDL_Window* window = nullptr;
@@ -1946,6 +2067,17 @@ int main(int argc, char** argv) try {
       write_still(opts.dump_prefix, frame_index, box);
     }
 
+    // The scripted pulls this frame owes (#161). Outside the windowed
+    // block on purpose: a pull is a call into the engine and not an SDL
+    // event, so it needs no window, and a scripted run that wants one is
+    // exactly the headless kind.
+    for (scripted_pull& pull : pulls) {
+      if (!pull.done && pull.frame == frame_index) {
+        static_cast<void>(pull_trigger(pull.id));
+        pull.done = true;
+      }
+    }
+
     if (!opts.headless) {
       // Pushed before the poll, so the events this frame owes are on the
       // queue by the time the queue is read - one loop iteration, not
@@ -1990,6 +2122,36 @@ int main(int argc, char** argv) try {
           }
           apply_level();
           say_level();
+        } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
+                   event.key.scancode == SDL_SCANCODE_PAUSE) {
+          // The host's third key, and the trigger a person pulls (#161).
+          //
+          // Pause/Break, on the same argument F11 and F12 were chosen
+          // on: an 83-key XT board has no such key at all. Pausing on
+          // one was Ctrl and the keypad's Num Lock; the dedicated
+          // Pause/Break arrived with the 101-key Enhanced board, where
+          // it is the one E1-prefixed sequence, and this machine's wire
+          // is set 1 with no prefixes on it. `sdl::xt_scancode()`
+          // answers 0 for it, so the emulated program loses nothing —
+          // `keymap_test.cpp` pins that, as it does for the other two.
+          //
+          // Break is also the right word for it: a person interrupting
+          // the program from outside is exactly what a debug trigger is.
+          // The keypad's `/` and its Enter are the other two keys an XT
+          // board has not got, and both were passed over for being
+          // inside the cluster this game's movement keys are — a key you
+          // can hit by accident mid-fight is the wrong key for a cheat.
+          //
+          // Unlike F11 and F12 this one reaches the machine, so it is
+          // refused during a replay for the same reason a keystroke at
+          // the window is: an input the recorded run never had.
+          if (replaying) {
+            std::fprintf(stderr,
+                         "amberfolio: a replay's pulls are the"
+                         " recording's\n");
+          } else {
+            pull_every_trigger();
+          }
         } else if (event.type == SDL_EVENT_KEY_DOWN ||
                    event.type == SDL_EVENT_KEY_UP) {
           const std::uint8_t code = sdl::xt_scancode(event.key.scancode);
@@ -2012,7 +2174,7 @@ int main(int argc, char** argv) try {
             line.scancode = code;
             line.action = action;
             record_line(line);
-            keyed_this_frame = true;
+            input_this_frame = true;
           }
         }
       }
@@ -2048,11 +2210,11 @@ int main(int argc, char** argv) try {
     // before the frame is presented, which is the moment the run has just
     // finished being somewhere describable.
     if (recording.is_open() &&
-        (keyed_this_frame || frame_index % opts.record_every == 0)) {
+        (input_this_frame || frame_index % opts.record_every == 0)) {
       record_line(machine::checkpoint_of(box));
       checkpointed = box.time();
     }
-    keyed_this_frame = false;
+    input_this_frame = false;
 
     // With no audio device there is nobody pulling the speaker, so a
     // `--dump` run has to pull it here, on the machine thread — which the
@@ -2176,19 +2338,46 @@ int main(int argc, char** argv) try {
   // armed and fired nothing is the failure that reads exactly like
   // success, and the only place a reader can be told about it for free is
   // here, once, at the end of the run it belongs to.
+  //
+  // A triggered seam (#161) carries two more numbers, and only it does:
+  // `reached` is how many times its point was arrived at whether or not
+  // anybody had asked — the one measurement of how promptly a pull can
+  // possibly be served — and `waited`/`waiting` is what the last pull
+  // cost or is still costing. `fired=0` means nothing about such a seam,
+  // because a trigger nobody pulled is a trigger working, so the
+  // never-reached sentence is keyed on `reached` for it instead.
+  // `host.mjs`'s `formatSeamFired` says all of this identically: a
+  // reader comparing a browser run with a desktop one should be
+  // comparing two runs and not two spellings.
   for (std::size_t i = 0; i < box.seams().count(); ++i) {
     const machine::seam_status row = box.seams().status(i);
     if (row.state != machine::seam_state::on) {
       continue;
     }
-    std::fprintf(stderr, "amberfolio: seam %.*s %s fired=%llu%s\n",
+    std::string extra;
+    if (row.trigger) {
+      extra += " reached=" + std::to_string(row.reached);
+      if (row.waiting) {
+        extra += " waiting";
+      } else if (row.fired != 0) {
+        extra += " waited=" + std::to_string(row.waited);
+      }
+    }
+    const char* say = "";
+    if (row.armed && row.reached == 0) {
+      say =
+          " - armed and never reached; its point may not be where its"
+          " facts say";
+    } else if (row.armed && row.trigger && row.waiting) {
+      say = " - pulled, and its point not reached since";
+    } else if (row.armed && row.trigger && row.fired == 0) {
+      say = " - reached, and never pulled; this seam acts only when asked";
+    }
+    std::fprintf(stderr, "amberfolio: seam %.*s %s fired=%llu%s%s\n",
                  static_cast<int>(row.id.size()), row.id.data(),
                  row.armed ? "armed" : "inert",
-                 static_cast<unsigned long long>(row.fired),
-                 (row.armed && row.fired == 0)
-                     ? " - armed and never reached; its point may not be"
-                       " where its facts say"
-                     : "");
+                 static_cast<unsigned long long>(row.fired), extra.c_str(),
+                 say);
   }
 
   if (!opts.dump_prefix.empty()) {

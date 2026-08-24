@@ -762,6 +762,8 @@ class seam_probe_rig {
           pc->seams().add(amberfolio::programs::seam_probe_definition()));
       EXPECT_TRUE(pc->seams().add(
           amberfolio::programs::seam_probe_unreached_definition()));
+      EXPECT_TRUE(pc->seams().add(
+          amberfolio::programs::seam_probe_trigger_definition()));
     }
 
     const std::vector<std::uint8_t>& exe =
@@ -862,6 +864,73 @@ TEST(AbiSeams, ASeamArmedWhereTheProgramNeverGoesReportsZero) {
   ASSERT_EQ(af_machine_read_memory(rig.get(), 0x600 + 0x800, answer.data(), 2),
             AF_OK);
   EXPECT_NE(answer[0] | (answer[1] << 8), 0xFFFF);
+}
+
+// --- The trigger, through the ABI (#161) ---------------------------------
+//
+// The host -> seam direction a page needs: `_triggered` says a seam takes
+// one, `_pull` sets the latch, `_waiting` says a pull is outstanding, and
+// `_reached` is what `_fired` cannot be for a trigger — the arrivals at
+// its point, whether or not anybody asked. `probe-trigger` is `probe`'s
+// register edit declared as a trigger, so the only difference between the
+// two runs below is whether the pull was made.
+
+TEST(AbiSeamTrigger, ATriggerNobodyPulledLeavesTheProgramsOwnAnswer) {
+  const seam_probe_rig rig;
+  const std::uint32_t trigger = rig.index_of("probe-trigger");
+  ASSERT_LT(trigger, af_machine_seam_count(rig.get()));
+  EXPECT_EQ(af_machine_seam_triggered(rig.get(), trigger), 1);
+  EXPECT_EQ(af_machine_seam_triggered(rig.get(), rig.index_of("probe")), 0);
+
+  // Off: a latch on a seam nobody turned on is refused rather than
+  // remembered.
+  EXPECT_EQ(af_machine_seam_pull(rig.get(), "probe-trigger"), AF_INVALID);
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe-trigger"), AF_OK);
+  EXPECT_EQ(af_machine_seam_pull(rig.get(), "probe"), AF_INVALID)
+      << "a seam that acts whenever it is on has nothing to latch";
+  EXPECT_EQ(af_machine_seam_waiting(rig.get(), trigger), 0);
+
+  rig.run_to_the_end();
+  ASSERT_NE(af_machine_stopped(rig.get()), 0);
+
+  std::array<std::uint8_t, 2> answer{};
+  ASSERT_EQ(af_machine_read_memory(rig.get(), 0x600 + 0x800, answer.data(), 2),
+            AF_OK);
+  EXPECT_EQ(answer[0] | (answer[1] << 8), 0x1111)
+      << "a trigger nobody pulled changed the run";
+  EXPECT_EQ(af_machine_seam_fired(rig.get(), trigger), 0.0);
+  EXPECT_GT(af_machine_seam_reached(rig.get(), trigger), 0.0)
+      << "and its point *was* reached, which is what makes that mean"
+         " something";
+}
+
+TEST(AbiSeamTrigger, APulledTriggerActsOnceAndSaysWhatItWaited) {
+  const seam_probe_rig rig;
+  const std::uint32_t trigger = rig.index_of("probe-trigger");
+  ASSERT_LT(trigger, af_machine_seam_count(rig.get()));
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe-trigger"), AF_OK);
+  ASSERT_EQ(af_machine_seam_pull(rig.get(), "probe-trigger"), AF_OK);
+  EXPECT_EQ(af_machine_seam_waiting(rig.get(), trigger), 1)
+      << "asked, and the program has not been there yet";
+
+  rig.run_to_the_end();
+  ASSERT_NE(af_machine_stopped(rig.get()), 0);
+
+  std::array<std::uint8_t, 2> answer{};
+  ASSERT_EQ(af_machine_read_memory(rig.get(), 0x600 + 0x800, answer.data(), 2),
+            AF_OK);
+  EXPECT_EQ(answer[0] | (answer[1] << 8), 0x2222) << "asked, and served";
+  EXPECT_EQ(af_machine_seam_fired(rig.get(), trigger), 1.0);
+  EXPECT_EQ(af_machine_seam_waiting(rig.get(), trigger), 0);
+
+  // Every one of these answers zero for an index past the end, like the
+  // rest of this file's seam calls.
+  const std::uint32_t past = af_machine_seam_count(rig.get()) + 1;
+  EXPECT_EQ(af_machine_seam_triggered(rig.get(), past), 0);
+  EXPECT_EQ(af_machine_seam_waiting(rig.get(), past), 0);
+  EXPECT_EQ(af_machine_seam_reached(rig.get(), past), 0.0);
+  EXPECT_EQ(af_machine_seam_waited(rig.get(), past), 0.0);
+  EXPECT_EQ(af_machine_seam_pulled_at(rig.get(), past), 0.0);
 }
 
 TEST(AbiReplay, StateHashIsSixtyFourHexDigitsAndMovesWithTheMachine) {

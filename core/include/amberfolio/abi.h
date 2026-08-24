@@ -770,6 +770,62 @@ double af_machine_seam_fired(const af_machine* box, uint32_t index);
 uint32_t af_machine_seam_enable(af_machine* box, const char* id);
 uint32_t af_machine_seam_disable(af_machine* box, const char* id);
 
+// --- Seam triggers (M4, #161) -------------------------------------------
+//
+// The host -> seam direction. A seam whose definition says so acts only
+// when a person asks: the host sets a one-shot latch, the next arrival at
+// one of the seam's points runs the handler, and the latch clears
+// (machine/seam.h). Everything here is a configuration call like the two
+// above — made between `af_machine_run_until` slices, never from inside
+// one.
+
+/// Whether seam `index` is pulled rather than left on. Non-zero means a
+/// page should give it a **button** and not only a checkbox: a trigger
+/// is a different affordance from a toggle, and one shown as the other
+/// is a promise the seam does not keep.
+int32_t af_machine_seam_triggered(const af_machine* box, uint32_t index);
+
+/// Whether seam `index` has a pull outstanding — asked for, and its
+/// point not reached since. Non-zero means yes.
+///
+/// The state that turns "the button did nothing" into "the button is
+/// armed and the program has not been there yet". A seam whose point is
+/// reached once a round is one a person can pull and watch do nothing
+/// for a second, and #131's lesson is that the failure with nothing to
+/// show is the one that reads as success.
+int32_t af_machine_seam_waiting(const af_machine* box, uint32_t index);
+
+/// How many times one of seam `index`'s armed points was **reached** —
+/// the address matched at a step boundary — whether or not a handler ran
+/// there (`machine::seam_status::reached`).
+///
+/// For an ordinary seam this is `af_machine_seam_fired`. For a triggered
+/// one the difference is the measurement nobody has: `reached - fired` is
+/// the arrivals nobody had asked for, and the rate of `reached` over a
+/// run is the granularity at which a pull can possibly be served. A
+/// `double` for the reason `_fired` is one — it is a 64-bit count.
+double af_machine_seam_reached(const af_machine* box, uint32_t index);
+
+/// How long the last served pull waited, in ticks: from the pull to the
+/// arrival that ran the handler. Zero until one has been served. The
+/// latency of the trigger, in the units this ABI states time in.
+double af_machine_seam_waited(const af_machine* box, uint32_t index);
+
+/// The tick the outstanding pull was made at. Meaningful only while
+/// `af_machine_seam_waiting` is non-zero; a page showing how long a pull
+/// has been waiting subtracts it from `af_machine_time`.
+double af_machine_seam_pulled_at(const af_machine* box, uint32_t index);
+
+/// Pull the trigger of the seam called `id`. `AF_OK` if the latch took;
+/// `AF_INVALID` if there is no such seam, if it does not take a trigger,
+/// or if it is off — `af_machine_seam_reason` does not carry that answer
+/// (the refusal is about the pull and not about the seam's state), so a
+/// caller that wants to explain it reads `_triggered` and `_state`.
+///
+/// A second pull while one is outstanding is `AF_OK` and changes
+/// nothing: the latch is one-shot and is already set.
+uint32_t af_machine_seam_pull(af_machine* box, const char* id);
+
 /// Copy `size` bytes into the machine's memory at physical `address`.
 ///
 /// The machine writing its own memory, not the program writing it: this

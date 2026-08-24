@@ -1196,9 +1196,104 @@ if (missing.length === 0) {
     `an armed seam that fired nothing formats as "${formatSeamFired({ armed: true, fired: 0 })}"`,
   );
 
+  // --- The trigger (#161) -----------------------------------------------
+  //
+  // The host -> seam direction, asked of a browser. `probe-trigger` is
+  // the same program, the same point and the same handler as `probe`'s
+  // register edit, declared as a trigger — so the only thing that
+  // decides whether the result block carries 1111h or 2222h is whether
+  // anybody pulled it. On and never asked has to be the plain machine's
+  // run, which is #96's rule with #161's latch in it.
+  const runTrigger = (pull) => {
+    const machine = new Machine(module);
+    check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+    machine.reset();
+    check(
+      module._af_web_probe_seam_register(machine.handle) === AF_OK,
+      'the probe seams could not be registered',
+    );
+    const ptr = module._af_web_probe_program_bytes();
+    const size = module._af_web_probe_program_size();
+    check(machine.vfsPut('PROBE.EXE', module.HEAPU8.slice(ptr, ptr + size)) === AF_OK, 'putting PROBE.EXE failed');
+    check(machine.loadFromVfs('PROBE.EXE', '') === AF_OK, 'loading PROBE.EXE failed');
+
+    const listed = machine.seamList().find((s) => s.id === 'probe-trigger');
+    check(listed?.trigger === true, `probe-trigger is not listed as a trigger: ${JSON.stringify(listed)}`);
+    check(
+      machine.seamPull('probe-trigger') === AF_INVALID,
+      'a trigger on a seam that is off was accepted',
+    );
+    check(machine.seamEnable('probe-trigger') === AF_OK, 'enabling probe-trigger was refused');
+    check(
+      machine.seamPull('probe') === AF_INVALID,
+      'a seam that takes no trigger accepted one',
+    );
+    if (pull) {
+      check(machine.seamPull('probe-trigger') === AF_OK, 'pulling probe-trigger was refused');
+      const waiting = machine.seamList().find((s) => s.id === 'probe-trigger');
+      check(waiting?.waiting === true, `a pull did not show as waiting: ${JSON.stringify(waiting)}`);
+    }
+
+    for (let frame = 0; frame < 120 && !machine.stopped(); ++frame) {
+      machine.runUntil(machine.ticksPerSecond() * ((frame + 1) / 60));
+    }
+    check(machine.stopped(), `the probe program never exited (trigger ${pull ? 'pulled' : 'idle'})`);
+    const block = machine.readMemory(0x600 + 0x800, 4);
+    const words = block === null ? [0, 0] : [block[0] | (block[1] << 8), block[2] | (block[3] << 8)];
+    const row = machine.seamList().find((s) => s.id === 'probe-trigger');
+    machine.destroy();
+    return { words, row };
+  };
+
+  const idle = runTrigger(false);
+  check(
+    idle.words[0] === 0x1111,
+    `a trigger nobody pulled changed the run: ${idle.words[0].toString(16)}`,
+  );
+  check(idle.row?.fired === 0, `a trigger nobody pulled fired ${idle.row?.fired} times`);
+  check(
+    idle.row?.reached > 0,
+    'a trigger nobody pulled was never reached either, so the equality above says nothing',
+  );
+  check(idle.row?.waiting === false, 'a trigger nobody pulled reports a pull outstanding');
+
+  const pulled = runTrigger(true);
+  check(
+    pulled.words[0] === 0x2222,
+    `a pulled trigger did not act: ${pulled.words[0].toString(16)}`,
+  );
+  check(pulled.row?.fired === 1, `a pulled trigger fired ${pulled.row?.fired} times, expected 1`);
+  check(pulled.row?.waiting === false, 'a served pull is still outstanding');
+  check(
+    pulled.row?.reached === idle.row?.reached,
+    `the point was reached ${pulled.row?.reached} times pulled and ${idle.row?.reached} times not; ` +
+      'the arrival is the same either way and only what happens there differs',
+  );
+
+  // The sentences a triggered seam's row says, as the pure function they
+  // are. Each is a different state a person can be looking at, and the
+  // middle one is the whole of #161's visibility half: asked, and the
+  // program has not been there yet.
+  check(
+    formatSeamFired({ armed: true, fired: 0, trigger: true, reached: 12 }) ===
+      'armed fired=0 reached=12 - reached, and never pulled; this seam acts only when asked',
+    `an unpulled trigger formats as "${formatSeamFired({ armed: true, fired: 0, trigger: true, reached: 12 })}"`,
+  );
+  check(
+    formatSeamFired({ armed: true, fired: 0, trigger: true, reached: 12, waiting: true }) ===
+      'armed fired=0 reached=12 waiting - pulled, and its point not reached since',
+    'a pending pull does not say so',
+  );
+  check(
+    formatSeamFired({ armed: true, fired: 1, trigger: true, reached: 12, waited: 1868720 }) ===
+      'armed fired=1 reached=12 waited=1868720',
+    'a served pull does not report what it waited',
+  );
+
   console.log(
     'smoke: the probe seam listed, toggled, edited a register, posted a key ' +
-      `and reported fired=${on.fired.probe}; the unreached one reported fired=0`,
+      `and reported fired=${on.fired.probe}; the unreached one reported fired=0; ` +
+      `the trigger acted only when pulled (reached=${pulled.row?.reached} either way)`,
   );
 }
 
@@ -1820,9 +1915,13 @@ if (missing.length === 0 && sessions !== null) {
     parseDriveArgs(['dir', 'P.EXE', '--frames', '-3']).error !== undefined,
     'the driver accepted a negative frame budget',
   );
+  check(
+    parseDriveArgs(['dir', 'P.EXE', '--pull', 'cheat-kill-all']).error !== undefined,
+    'the driver accepted a --pull with no frame',
+  );
   const ok = parseDriveArgs([
     'dir', 'P.EXE', '--frames', '10', '--press', 'Return@4', '--seam', 'a',
-    '--seam', 'b', '--speed', '386', '--', 'ONE', 'TWO',
+    '--seam', 'b', '--pull', 'a@7', '--speed', '386', '--', 'ONE', 'TWO',
   ]);
   check(ok.error === undefined, `a good command line was refused: ${ok.error}`);
   check(
@@ -1835,6 +1934,10 @@ if (missing.length === 0 && sessions !== null) {
   check(
     ok.presses[0]?.scancode === 0x1c,
     'Return@4 did not resolve to the Enter scancode',
+  );
+  check(
+    ok.pulls[0]?.id === 'a' && ok.pulls[0]?.frame === 7,
+    `--pull a@7 parsed as ${JSON.stringify(ok.pulls[0])}`,
   );
 
   // The PPM encoder, on a picture small enough to write out by hand: two

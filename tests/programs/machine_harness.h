@@ -202,6 +202,14 @@ struct machine_setup {
   std::vector<const machine::seam_definition*> seam_definitions;
   std::vector<std::string_view> seams;
 
+  /// Seam triggers to pull once the program is loaded and the seams
+  /// above are on (#161, machine/seam.h). A trigger's handler runs at
+  /// the first arrival at its point after the pull, so a pull made here
+  /// — before the first step — is served at the program's first visit.
+  /// Every id here has to be in `seams` too: the engine refuses a pull
+  /// on a seam that is off.
+  std::vector<std::string_view> pulls;
+
   /// How many result words to harvest.
   std::size_t result_words{};
 

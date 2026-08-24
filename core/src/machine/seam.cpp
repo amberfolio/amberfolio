@@ -38,6 +38,10 @@ const char* seam_reason_name(seam_reason reason) noexcept {
       return "too_many_points";
     case seam_reason::no_room:
       return "no_room";
+    case seam_reason::not_triggered:
+      return "not_triggered";
+    case seam_reason::not_enabled:
+      return "not_enabled";
   }
   return "unknown";
 }
@@ -66,6 +70,10 @@ const char* seam_event_kind_name(seam_event_kind kind) noexcept {
       return "inert";
     case seam_event_kind::refused:
       return "refused";
+    case seam_event_kind::pulled:
+      return "pulled";
+    case seam_event_kind::served:
+      return "served";
   }
   return "unknown";
 }
@@ -92,7 +100,10 @@ bool seam_context::call_host(seam_host_service which, std::uint32_t argument) {
   return true;
 }
 
-void seam_context::decline(seam_reason why) { engine_->note_decline(id_, why); }
+void seam_context::decline(seam_reason why) {
+  declined_ = true;
+  engine_->note_decline(id_, why);
+}
 
 // --- seam_engine -------------------------------------------------------------
 
@@ -181,6 +192,11 @@ seam_status seam_engine::status(std::size_t index) const noexcept {
     return out;
   }
   out.state = s.enabled ? seam_state::on : seam_state::off;
+  out.trigger = s.seam->trigger;
+  out.waiting = s.waiting;
+  out.pulled_at = s.pulled_at;
+  out.waited = s.waited;
+  out.reached = s.reached;
   // Asked of the machine rather than read off `slot`, because a module
   // qualified by the program's own record can come and go without any
   // event this engine is told about (#131). A host that prints a listing
@@ -222,6 +238,11 @@ void seam_engine::clear() noexcept {
     slots_[i].enabled = false;
     slots_[i].reason = seam_reason::none;
     slots_[i].armed = false;
+    // The latch goes with the enable it belongs to: a machine with no
+    // program has nothing to pull a trigger on (#161).
+    slots_[i].waiting = false;
+    slots_[i].pulled_at = ticks{};
+    slots_[i].waited = ticks{};
   }
   enabled_ = 0;
   points_ = {};
@@ -284,6 +305,10 @@ seam_error seam_engine::enable(std::string_view id) {
   s.enabled = true;
   s.declined = false;  // A fresh enable asks the question again.
   s.fired = 0;
+  s.reached = 0;
+  s.waiting = false;
+  s.pulled_at = ticks{};
+  s.waited = ticks{};
   ++enabled_;
   report(id, seam_event_kind::enabled, seam_reason::none);
   arm_all(overlays_);
@@ -303,10 +328,46 @@ seam_error seam_engine::disable(std::string_view id) {
   s.enabled = false;
   s.armed = false;
   s.reason = seam_reason::none;
+  // An outstanding pull dies with the enable. A latch that survived
+  // being switched off would fire on whatever fight happened to be
+  // running when somebody switched the seam back on.
+  s.waiting = false;
   --enabled_;
   report(id, seam_event_kind::disabled, seam_reason::none);
   arm_all(overlays_);
   return seam_reason::none;
+}
+
+seam_error seam_engine::pull(std::string_view id, ticks now) {
+  const std::size_t index = index_of(id);
+  if (index == max_seams) {
+    report(id, seam_event_kind::refused, seam_reason::unknown_seam);
+    return seam_reason::unknown_seam;
+  }
+  slot& s = slots_[index];
+  if (!s.seam->trigger) {
+    report(id, seam_event_kind::refused, seam_reason::not_triggered);
+    return seam_reason::not_triggered;
+  }
+  if (!s.enabled) {
+    report(id, seam_event_kind::refused, seam_reason::not_enabled);
+    return seam_reason::not_enabled;
+  }
+  if (s.waiting) {
+    // Already asked, not yet served. One-shot means the second press
+    // changes nothing — including the tick, so that a host showing how
+    // long the pull has waited shows the wait since the first ask.
+    return seam_reason::none;
+  }
+  s.waiting = true;
+  s.pulled_at = now;
+  report(id, seam_event_kind::pulled, seam_reason::none);
+  return seam_reason::none;
+}
+
+bool seam_engine::waiting(std::string_view id) const noexcept {
+  const std::size_t index = index_of(id);
+  return index != max_seams && slots_[index].waiting;
 }
 
 void seam_engine::rearm(const overlay_tracker& overlays) {
@@ -423,10 +484,32 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
       continue;
     }
 
-    seam_context ctx(box, *this, slots_[point.owner].seam->id, at, base,
-                     image_base());
-    ++slots_[point.owner].fired;
+    slot& owner = slots_[point.owner];
+    // The arrival, counted first and whatever happens next: `reached` is
+    // a fact about where the program went, and it is the only thing that
+    // can say how often a trigger *could* be served (#161).
+    ++owner.reached;
+    if (owner.seam->trigger && !owner.waiting) {
+      // Reached, and nobody asked. The whole of what a triggered seam
+      // does when its latch is down — no read, no write, no register
+      // touched, which is what makes an untriggered run the run it
+      // would have been with the seam off.
+      continue;
+    }
+
+    seam_context ctx(box, *this, owner.seam->id, at, base, image_base());
+    ++owner.fired;
     point.run(box, ctx);
+
+    if (owner.seam->trigger && owner.waiting && !ctx.declined_) {
+      // Served. A handler that declined did not act, so its pull is
+      // still outstanding and waits for a point that is the point.
+      owner.waiting = false;
+      owner.waited = box.time() >= owner.pulled_at
+                         ? box.time() - owner.pulled_at
+                         : ticks{};
+      report(owner.seam->id, seam_event_kind::served, seam_reason::none);
+    }
   }
 }
 

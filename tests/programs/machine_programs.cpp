@@ -2374,6 +2374,44 @@ void probe_never(machine::machine& box, machine::seam_context& ctx) {
   }
 
   {
+    // The trigger, both ways (#161). Pulled: the handler runs once and
+    // the program stores the seam's word. On and not pulled: the point
+    // is reached, nothing happens, and the result block is the plain
+    // machine's — which is the fidelity claim, made where every target
+    // runs it.
+    machine_program p;
+    p.name = "seam_probe_trigger";
+    p.about = "a self-written trigger, pulled: it acts once";
+    p.setup.exe = seam_probe_file();
+    p.setup.exe_path = "\\PROBE.EXE";
+    p.setup.seam_definitions = {&seam_probe_trigger_definition()};
+    p.setup.seams = {"probe-trigger"};
+    p.setup.pulls = {"probe-trigger"};
+    p.setup.step_cap = 200'000;
+    p.results = {{.what = "AX at the edited instruction, trigger pulled",
+                  .value = probe_edited_ax},
+                 {.what = "no keystroke: this seam posts none", .value = 0}};
+    p.exit_code = 0x88;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "seam_probe_trigger_unpulled";
+    p.about = "the same trigger, on and never asked: a plain machine";
+    p.setup.exe = seam_probe_file();
+    p.setup.exe_path = "\\PROBE.EXE";
+    p.setup.seam_definitions = {&seam_probe_trigger_definition()};
+    p.setup.seams = {"probe-trigger"};
+    p.setup.step_cap = 200'000;
+    p.results = {{.what = "AX at the edited instruction, trigger not pulled",
+                  .value = probe_plain_ax},
+                 {.what = "no keystroke arrived", .value = 0}};
+    p.exit_code = 0x88;
+    list.push_back(std::move(p));
+  }
+
+  {
     machine_program p;
     p.name = "seam_probe_off";
     p.about = "the same program with its seam off: a plain machine";
@@ -2466,6 +2504,32 @@ const machine::seam_definition& seam_probe_unreached_definition() {
       .about = "a seam armed where the program never goes: fires nothing",
       .fingerprints = fingerprints,
       .points = points};
+  return definition;
+}
+
+const machine::seam_definition& seam_probe_trigger_definition() {
+  // The same program and the same point as `probe`'s first, and the one
+  // difference is that nothing happens there until somebody pulls it
+  // (#161). Two entries in the list below drive it both ways, so what
+  // "on but not asked" costs the machine is a result word on every
+  // target rather than a sentence in a header.
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 1> points{
+      {{.module = machine::resident_image,
+        .offset = probe().edit_offset,
+        .run = &probe_edit_ax}}};
+  static const machine::seam_definition definition{
+      .id = "probe-trigger",
+      .about = "the test trigger: edits AX, once, when pulled",
+      .fingerprints = fingerprints,
+      .points = points,
+      .trigger = true};
   return definition;
 }
 

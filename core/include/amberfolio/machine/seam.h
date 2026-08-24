@@ -83,6 +83,56 @@
 // channel and through `status()` for a host that asks.
 //
 //
+// The trigger: the host -> seam direction (#161)
+// ----------------------------------------------
+//
+// Everything above is a seam acting on its own account: its point is
+// reached, its handler runs, and the only thing a host decided was
+// whether the seam was on at all. `call_host()` is the seam -> host
+// direction. There was no host -> seam direction, and a cheat wants one:
+// a debug cheat that fires on every visit to its point decides every
+// fight from the moment it is switched on, which is a setting and not a
+// cheat. A person wants to *pull* it.
+//
+// So a definition may say `trigger = true`, and then:
+//
+//   * `seam_engine::pull(id, now)` sets a **one-shot latch** on that
+//     seam. It is refused, with a reason, for a seam that is off or that
+//     does not take a trigger — a latch quietly waiting on a seam nobody
+//     turned on is the silence #131 is about.
+//   * the next time one of that seam's points is reached with the latch
+//     set, the handler runs and the latch clears. One pull, one run.
+//   * with the latch unset the point is reached and **nothing happens**:
+//     the address is compared, `reached` counts the arrival, and the
+//     handler is not called.
+//
+// The latch is *configuration*, exactly as the enable is: `reset()` and
+// `clear()` drop it, the serialization never sees it, `enable()` starts
+// it fresh, and a run in which nobody pulls is byte-for-byte the run the
+// same program has with the seam off. A replay records a pull the way it
+// records a keystroke — as an event with a tick (`replay.h`) — because it
+// is one: something a person did to a running machine at a moment.
+//
+// **A trigger cannot mean "at this instant", and this file will not
+// pretend it does.** A seam acts at a CS:IP breakpoint because that is
+// the whole mechanism (PLAN.md §5): editing a structure half-way through
+// the routine that is walking it is precisely the corruption the
+// breakpoint discipline exists to prevent. So the honest latency of a
+// pull is "at the next arrival at the point", and how long that is
+// depends entirely on how often the program goes there — which is a fact
+// about the program that nobody in this tree has measured.
+//
+// Hence `seam_status::reached`, and the two numbers beside it. `reached`
+// counts every arrival at an armed point whether or not a handler ran, so
+// `reached` minus `fired` is the chances a trigger had and did not need,
+// and the *rate* of `reached` over a run is the granularity a pull can
+// possibly be served at. `pulled_at` and `waited` are the same question
+// answered in ticks: when the outstanding pull was made, and how long the
+// last served one waited. That is the instrument the question needs; the
+// answer for any particular point is a measurement, not a claim this
+// header can make.
+//
+//
 // Qualified points
 // ----------------
 //
@@ -151,6 +201,7 @@
 #include <span>
 #include <string_view>
 
+#include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/vfs.h"
@@ -172,7 +223,14 @@ struct edition;
 /// (`seam_module::load_segment_at`, overlay.h), and a point in such a
 /// module is resolved from that word at every step instead of from the
 /// tracker's record of a read (#131).
-inline constexpr std::uint16_t seam_schema_version = 2;
+///
+/// 3: a definition may say `trigger`, and then its handlers run only
+/// when a host has pulled its latch (`seam_engine::pull`, #161). A
+/// definition written before this version means "run at every arrival",
+/// which is what every seam meant then — but the field decides whether a
+/// point does anything at all, so a stale definition is refused rather
+/// than read as one or the other.
+inline constexpr std::uint16_t seam_schema_version = 3;
 
 /// What runs when execution reaches an armed interception point. Native
 /// C++, called from outside the emulated machine — see this file's top
@@ -205,6 +263,19 @@ struct seam_definition {
   std::span<const std::string_view> fingerprints;
 
   std::span<const seam_point> points;
+
+  /// Whether this seam is **pulled** rather than left on: its handlers
+  /// run only when a host has set its latch (`seam_engine::pull`, #161),
+  /// once per pull, and its points are reached and do nothing the rest
+  /// of the time.
+  ///
+  /// False — run at every arrival — is what every seam meant before
+  /// schema 3 and what most of them still want: the code-wheel seam
+  /// answers a challenge whenever the challenge is asked, and
+  /// invulnerability is a property of a party rather than an act. A
+  /// cheat that *ends a fight* is an act, and this is the field that
+  /// says so.
+  bool trigger{false};
 
   /// The schema this definition was written against — `seam_schema_version`
   /// at the time. Spelled in the definition rather than assumed, so the
@@ -250,6 +321,15 @@ enum class seam_reason : std::uint8_t {
   too_many_points,
   /// The registry is full. The same kind of mistake.
   no_room,
+  /// A trigger was pulled on a seam that does not take one (#161). Its
+  /// handlers run at every arrival at its points and there is nothing to
+  /// latch; answering "done" would be a lie a host would then show.
+  not_triggered,
+  /// A trigger was pulled on a seam that is off. Refused rather than
+  /// remembered: a latch waiting on a seam nobody turned on would fire
+  /// at some unrelated later moment, which is exactly the "it did
+  /// something and I do not know when" this trigger exists to remove.
+  not_enabled,
 };
 
 /// Kept as its own name because `enable()` has always answered one and
@@ -298,6 +378,43 @@ struct seam_status {
   /// serialized, and it can only move when a seam is on — so a run with
   /// everything off is the run it always was.
   std::uint64_t fired{};
+
+  /// Whether this seam is pulled rather than left on
+  /// (`seam_definition::trigger`). A host shows a trigger-driven seam a
+  /// button and not only a switch, because they are different things.
+  bool trigger{false};
+
+  /// A pull is outstanding: somebody asked, and the point has not been
+  /// reached since.
+  ///
+  /// The state that turns "the button did nothing" into "the button is
+  /// armed and the program has not been there yet", which is #131's
+  /// lesson one layer up: the failure that reads as success is the one
+  /// with nothing to show.
+  bool waiting{false};
+
+  /// How many times one of this seam's armed points was **reached** —
+  /// the address matched at a step boundary — whether or not a handler
+  /// ran there.
+  ///
+  /// For an ordinary seam this is `fired` (every arrival runs the
+  /// handler). For a triggered one the difference is the whole point:
+  /// `reached - fired` is the arrivals nobody had asked for, and the
+  /// rate of `reached` over a run is the granularity at which a pull can
+  /// possibly be served. Nobody has measured that for the cheats' end
+  /// check, and this is the instrument that measures it.
+  std::uint64_t reached{};
+
+  /// The virtual tick the outstanding pull was made at. Meaningful only
+  /// while `waiting`; a host showing how long a pull has been waiting
+  /// subtracts it from `machine::time()`.
+  ticks pulled_at{};
+
+  /// How long the last **served** pull waited, in ticks: from the pull
+  /// to the arrival that ran the handler. Zero until one has been
+  /// served. The latency of the trigger, in the units the machine
+  /// measures everything else in.
+  ticks waited{};
 };
 
 /// The printable name of a `seam_reason`, for a host's listing. Never
@@ -318,6 +435,13 @@ enum class seam_event_kind : std::uint8_t {
   /// Enabled but not armed — the module is not resident (`reason` says).
   inert,
   refused,
+  /// A trigger's latch was set: somebody pulled it (#161).
+  pulled,
+  /// And consumed: the point was reached with the latch set, and the
+  /// handler ran. Two events rather than one because the gap between
+  /// them is the thing nobody has measured — a boot log that carries
+  /// both carries the latency.
+  served,
 };
 
 struct seam_event {
@@ -421,6 +545,11 @@ class seam_context {
   /// Reported once per seam per enable — a point in a tight loop would
   /// otherwise produce a line per iteration and bury the first one, the
   /// same argument diagnostics.h makes for a notice's first touch.
+  ///
+  /// For a triggered seam it also **keeps the latch** (#161): a pull
+  /// that arrived at a point which was not the point is not a pull that
+  /// was served, and swallowing it would answer a person's request with
+  /// nothing at all.
   void decline(seam_reason why);
 
  private:
@@ -441,6 +570,10 @@ class seam_context {
   std::uint32_t at_;
   std::uint32_t module_base_;
   std::uint32_t image_base_;
+  /// Whether `decline()` was called during this one visit. Read by
+  /// `seam_engine::dispatch()` to decide whether a trigger's latch was
+  /// spent.
+  bool declined_{false};
 };
 
 /// The registry, the toggles, and the armed interception points.
@@ -533,6 +666,29 @@ class seam_engine {
   /// is a setting about a program, and a reset machine has no program.
   void clear() noexcept;
 
+  /// Pull `id`'s trigger: the next arrival at one of its points runs its
+  /// handler, once (#161). `now` is the machine's own virtual time, and
+  /// is kept only so that `seam_status::waited` can say afterwards how
+  /// long the pull took to be served.
+  ///
+  /// `seam_reason::none` if the latch took. `unknown_seam` for a name
+  /// that is not a seam, `not_triggered` for one that does not take a
+  /// trigger, `not_enabled` for one that is off. A second pull while one
+  /// is outstanding is not an error and is not a second pull: the latch
+  /// is one-shot, so it is already set, and the tick stays the first
+  /// one's — the wait a host is watching is the wait since the person
+  /// first asked.
+  ///
+  /// Configuration, like `enable()`: a host pulls between `run()` calls,
+  /// never from inside one, and nothing about the latch is machine
+  /// state.
+  seam_error pull(std::string_view id, ticks now);
+
+  /// Whether `id` has a pull outstanding. `status()` says the same
+  /// thing; this is the question a host's key handler asks of every
+  /// seam without building a row.
+  [[nodiscard]] bool waiting(std::string_view id) const noexcept;
+
   /// The ids currently on, in registry order — what a host prints back so
   /// a run says what was done to it, and what a replay records.
   [[nodiscard]] std::size_t enabled_count() const noexcept;
@@ -581,6 +737,15 @@ class seam_engine {
     bool armed{false};
     /// Handler runs since `enable()`. `seam_status::fired`.
     std::uint64_t fired{};
+    /// Arrivals at one of this seam's points since `enable()`, handler
+    /// run or not. `seam_status::reached`.
+    std::uint64_t reached{};
+    /// The one-shot latch (#161): set by `pull()`, cleared by the
+    /// arrival that serves it. Only ever consulted for a seam whose
+    /// definition says `trigger`.
+    bool waiting{false};
+    ticks pulled_at{};
+    ticks waited{};
     /// Whether a handler of this seam has already declined once
     /// (`seam_context::decline`). Cleared when the seam is enabled, so
     /// turning it off and on again asks the question afresh.
