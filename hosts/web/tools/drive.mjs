@@ -877,6 +877,35 @@ function writeFrame(machine, path, announce) {
   }
 }
 
+/// Wait until everything written to a stream has actually left this
+/// process, and only then let the caller exit.
+///
+/// `process.exit()` does not do this. A pipe on Linux is an
+/// **asynchronous** stream in node, so `process.stdout.write()` can queue
+/// bytes rather than deliver them, and `exit()` drops whatever is still
+/// queued. Small runs never notice. A run that says a lot — the overrun
+/// disk in `tests/smoke.mjs` prints a line per skipped file, hundreds of
+/// them — loses its tail, and *which* line it is cut off at depends on
+/// how fast the process reached the exit. A Release module is faster than
+/// a Debug one, so this failed in one configuration and passed in the
+/// other, on the same code, from the same disk.
+///
+/// The lost tail is the worst part of the output to lose: the summary
+/// lines come last. `disk INCOMPLETE` is printed after the list it
+/// summarises, and it is the one line that says the machine is holding
+/// less than the caller handed it (#158).
+///
+/// `write('', cb)` calls back once the buffer has drained, which is the
+/// documented way to ask. Not `process.exitCode` and a natural exit: the
+/// wasm module may leave handles the event loop would wait on, and a
+/// driver that sometimes hangs instead of exiting is a worse tool than
+/// one that sometimes truncates.
+function flushed(stream) {
+  return new Promise((resolve) => {
+    stream.write('', () => resolve());
+  });
+}
+
 // --- Entry point ---------------------------------------------------------
 //
 // Guarded, so `hosts/web/tests/smoke.mjs` can import the pieces above
@@ -890,7 +919,11 @@ if (invokedDirectly) {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.error !== undefined) {
     process.stderr.write(`amberfolio: ${opts.error}\n\n${USAGE}\n`);
+    await flushed(process.stderr);
     process.exit(2);
   }
-  process.exit(await drive(opts));
+  const code = await drive(opts);
+  await flushed(process.stdout);
+  await flushed(process.stderr);
+  process.exit(code);
 }

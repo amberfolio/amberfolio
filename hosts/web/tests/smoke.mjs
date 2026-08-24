@@ -2008,6 +2008,30 @@ if (missing.length === 0 && sessions !== null) {
     { encoding: 'utf8' },
   );
   const overrunSaid = overrun.stdout ?? '';
+
+  // Before anything about *what* it said: that all of it arrived. A pipe
+  // is an asynchronous stream in node and `process.exit()` drops whatever
+  // is still queued on one, so a run that prints a line per skipped file
+  // — this one, six hundred-odd times — used to lose its tail, and the
+  // tail is where the summary lives. It failed in Release and passed in
+  // Debug, on the same code and the same disk, because the only variable
+  // was how fast the process reached the exit; the driver flushes before
+  // exiting now. Counting the lines against the number the report claims
+  // is the assertion that would have caught it: a truncated list is a
+  // count that does not add up, whichever line it stopped at.
+  const claimed = /^amberfolio: disk files=\d+ skipped=(\d+) /m.exec(overrunSaid);
+  check(claimed !== null, `the overrun disk printed no report:\n${overrunSaid.slice(0, 2000)}`);
+  if (claimed !== null) {
+    const printed = overrunSaid
+      .split('\n')
+      .filter((line) => line.startsWith('amberfolio: disk skipped ')).length;
+    check(
+      printed === Number(claimed[1]),
+      `the driver reported ${claimed[1]} skipped files and printed ${printed} ` +
+        'of them - its output was cut off',
+    );
+  }
+
   check(
     overrunSaid.includes('(no room left on the disk)'),
     `an overrun disk did not say what was wrong:\n${overrunSaid.slice(0, 4000)}`,
