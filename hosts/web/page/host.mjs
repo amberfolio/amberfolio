@@ -51,6 +51,18 @@ export const AF_SEAM_ON = 1;
 export const AF_SEAM_UNAVAILABLE = 2;
 export const AF_SEAM_NONE = 3;
 
+/// The host services a seam may call out to (`machine::seam_host_service`),
+/// in the order the ABI numbers them — index is `which` for
+/// `af_machine_seam_host_calls` and friends, and the name is the one core
+/// prints (`seam_host_service_name`), so a browser run and a desktop run
+/// spell them the same.
+///
+/// Two, since M5-D1 (#169). There were three names in the header before
+/// it: `save_state_changed` went with the enhancement that would have
+/// called it, because a service with no consumer is a surface built on
+/// spec.
+export const HOST_SERVICES = ['journal-open', 'automap-update'];
+
 /// What one enabled seam did, as the desktop host says it at the end of a
 /// run (hosts/sdl/src/main.cpp): `armed fired=N`, or `inert fired=N`, and
 /// the sentence that names the failure when an armed seam fired nothing.
@@ -225,8 +237,21 @@ export class Machine {
 
   /// Idempotent (abi.h): safe to call more than once, and safe to skip if
   /// a caller wants the bare CPU-and-RAM machine the ABI defaults to.
+  ///
+  /// It also attaches this module's `seam_host_services` (M5-D1, #169),
+  /// which is a *host's* decision and so a host export rather than part
+  /// of the core call. Here, and not left to each caller, for the reason
+  /// this whole file exists: the page, the driver and the smoke check
+  /// all go through it, and a machine whose seams call out into nothing
+  /// because one of them forgot is a difference between three hosts that
+  /// are meant to be one.
+  ///
+  /// Attaching changes nothing about a run with every seam off — no
+  /// handler runs, so nothing calls out.
   attachReferenceDevices() {
-    return this.module._af_machine_attach_reference_devices(this.handle);
+    const status = this.module._af_machine_attach_reference_devices(this.handle);
+    this.module._af_web_attach_host_services(this.handle);
+    return status;
   }
 
   destroy() {
@@ -861,6 +886,32 @@ export class Machine {
   /// and so never from inside `runUntil()`.
   seamPull(id) {
     return this.#withCString(id, (ptr) => this.module._af_machine_seam_pull(this.handle, ptr));
+  }
+
+  /// What this machine's seams have asked of the host, per service
+  /// (M5-D1, #169): `{ service, calls, argument, at }` for each, in the
+  /// `machine::seam_host_service` order the ABI numbers them in.
+  ///
+  /// **Polled, and that is the point.** A page watching only for
+  /// something to happen cannot tell a callout that was served from one
+  /// that was never made, because both look like nothing (#153) — and
+  /// with no host attached, a call is refused and counts nothing at all,
+  /// so `calls === 0` on a seam that fired is a finding rather than a
+  /// silence.
+  ///
+  /// `calls` and `argument` are the engine's record of what it routed,
+  /// so they read the same here as in the SDL host's end-of-run line.
+  /// `at` is this module's own implementation's — the machine's virtual
+  /// time at the instant of the call, which is the fact that makes the
+  /// call synchronous with the machine rather than queued behind a
+  /// frame.
+  seamHostServices() {
+    return HOST_SERVICES.map((service, which) => ({
+      service,
+      calls: this.module._af_machine_seam_host_calls(this.handle, which),
+      argument: this.module._af_machine_seam_host_argument(this.handle, which),
+      at: this.module._af_web_host_service_at(which),
+    }));
   }
 
   /// Turn a seam on or off by id. `AF_OK` if it took, `AF_INVALID` if

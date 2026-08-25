@@ -210,6 +210,14 @@ machine_harness::machine_harness(const machine_setup& setup)
     }
   }
 
+  // And the host a seam may call out to (#169), when the entry asked for
+  // one. Wiring too, and left undone otherwise on purpose: a machine
+  // with no host is where "the callout was refused" can be produced
+  // deliberately, which is the half of this door that has a failure mode.
+  if (setup.host_services) {
+    box_->seams().set_host(&host_);
+  }
+
   // `reset()` bumped the audio timeline's epoch, and the first `render()`
   // after an epoch bump throws away whatever the ring holds (platform.h).
   // Spending that call here, on an empty ring, is what a host's audio
@@ -418,6 +426,11 @@ machine_outcome machine_harness::finish() {
   drain_edges();
   result_.edges_dropped = box_->audio().edge_log_dropped();
   result_.seam_events = log_.seam_events;
+  for (std::size_t i = 0; i < machine::seam_host_service_count; ++i) {
+    const auto which = static_cast<machine::seam_host_service>(i);
+    result_.host_service_calls[i] = box_->seams().host_calls(which);
+    result_.host_service_arguments[i] = box_->seams().host_argument(which);
+  }
   result_.file_events = log_.files;
 
   result_.results.clear();

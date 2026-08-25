@@ -72,9 +72,13 @@
 //     want exactly this).
 //   * **Control**, by moving IP. `seam_context::redirect()` spells it.
 //   * **A host service**, through `seam_context::call_host()` — the
-//     callout slot M5's journal, automap and save management consume.
-//     Interface only, here: no host has attached one, and a seam that
-//     calls one on a machine without one is told so and does nothing.
+//     callout M5's journal and automap consume. Since M5-D1 (#169) both
+//     hosts attach one (`hosts/common/host_services.h`), so a call
+//     reaches an implementation that is handed this machine and reads it
+//     at the moment of the call. A seam that calls out on a machine with
+//     no host attached is still told so and still does nothing, which is
+//     the answer a test with no host gets and the fail-closed direction
+//     for a service nobody plugged in.
 //
 // It must not stop the machine. A seam is an enhancement above the
 // fidelity boundary, and "the enhancement gave up" is not a machine state
@@ -630,25 +634,55 @@ struct seam_event {
 /// say it identically (machine/report.h says why that matters).
 [[nodiscard]] const char* seam_event_kind_name(seam_event_kind kind) noexcept;
 
-/// The host services a seam may call out to — the slot M4 defines and M5
-/// fills (PLAN.md §5 items 2, 3 and 5; #96). Named here so that the
-/// consumers exist as names before any of them exists as code; a seam
-/// calling one on a machine with no host attached is told so and does
-/// nothing.
+/// The host services a seam may call out to — the slot M4 defined and
+/// M5-D1 (#169) filled (PLAN.md §5 items 2 and 3; #96).
+///
+/// **Two, since #169, and there were three.** `save_state_changed` was
+/// the callout save & roster management would have made, and that
+/// enhancement was withdrawn from the plan on 2026-08-24 (#176) by
+/// decision rather than deferral — it was the one v1 item that was not
+/// an in-game enhancement. A name in this enumeration is a promise that
+/// something calls it, and a service with no seam is a surface built on
+/// spec: exactly what PLAN.md §3's rule refuses one layer down. So it is
+/// gone, and this paragraph is what it left behind. Whatever M6 wants
+/// for persistence adds the name it actually needs.
 enum class seam_host_service : std::uint8_t {
-  /// The journal reader: open the entry the argument names.
+  /// The journal reader: open the entry the argument names (#175).
   journal_open,
   /// The automap: the party moved or the map changed; the argument is
-  /// whatever the seam chose to encode.
+  /// whatever the seam chose to encode. Two seams call it — the automap
+  /// panel (#173) and the explored overlay (#179) — because they share
+  /// one exploration state.
   automap_update,
-  /// Save and roster management: an in-game state change the host's
-  /// save manager has to stay consistent with.
-  save_state_changed,
 };
+
+/// How many there are, for an array indexed by one. Not an enumerator:
+/// a `count` in the enumeration would be a value `serve()` could be
+/// handed, and it is not a service.
+inline constexpr std::size_t seam_host_service_count = 2;
+
+/// The printable name of a `seam_host_service` — `journal-open`,
+/// `automap-update`. Never null.
+///
+/// Kebab-case, and here rather than in a host, for the reason
+/// `seam_event_kind_name` next door gives: both hosts print this in
+/// their end-of-run seam line, and a reader comparing a browser run
+/// with a desktop one should be comparing two runs and not two
+/// spellings.
+[[nodiscard]] const char* seam_host_service_name(
+    seam_host_service which) noexcept;
 
 /// What a host plugs in to answer those calls. Attached with
 /// `seam_engine::set_host()`; a plain interface in the shape of
 /// `diagnostics` and `filesystem`: held by reference, never owned.
+///
+/// **It is C++ running inside the module on both targets**, and not a
+/// queue a page drains later (#169). The reason is in `serve()`'s own
+/// contract: it is handed the machine, and what it reads there is only
+/// true at the moment of the call. The automap wants the party's
+/// position *now*, not when a page next gets a turn — by then the
+/// program has moved on, and a service that read the machine late would
+/// be answering a different question and could not say so.
 class seam_host_services {
  public:
   seam_host_services() = default;
@@ -754,9 +788,17 @@ class seam_context {
 class seam_engine {
  public:
   /// Definitions the registry holds. The v1 seam set is six (PLAN.md §5)
-  /// plus the cheats' two; sixteen leaves room for a test's own and for
-  /// the fast-follow fixes without making this a data structure.
-  static constexpr std::size_t max_seams = 16;
+  /// plus the cheats' two, and a test registers a dozen of its own
+  /// beside them; twenty-four leaves room for the fast-follow fixes
+  /// without making this a data structure.
+  ///
+  /// It was sixteen, which the seam suite's own set reached exactly when
+  /// M5-D1 added a thirteenth (#169) — and a registry that is exactly
+  /// full fails by *refusing the next definition*, which in a test rig
+  /// is a seam quietly missing rather than a build that stops. The
+  /// headroom is not for the seams this build carries; it is so that
+  /// adding one is never that.
+  static constexpr std::size_t max_seams = 24;
 
   /// Points armed at once, across every enabled seam.
   static constexpr std::size_t max_points = 32;
@@ -893,8 +935,53 @@ class seam_engine {
 
   /// Attach the host's services, or detach with null. A setting, like an
   /// attached device: it survives `reset()`.
+  ///
+  /// Attaching one changes **nothing** about a machine whose seams are
+  /// all off, and that is a test rather than a sentence (#169): nothing
+  /// here is consulted until a handler calls out, and no handler runs
+  /// until a seam is on. The fidelity invariant is the same invariant
+  /// with a host in the room.
   void set_host(seam_host_services* host) noexcept { host_ = host; }
   [[nodiscard]] seam_host_services* host() const noexcept { return host_; }
+
+  /// How many calls of `which` a host has **served** since the last
+  /// `clear()`, and what the last of them carried.
+  ///
+  /// The polled half of the pair #153 taught this project to build: a
+  /// stream cannot express "it never asked". A page that only watched
+  /// events could not tell a seam that called out and was answered from
+  /// one that never called out at all, because both look like an empty
+  /// stream — and "the callout never happened" is precisely the failure
+  /// a new door has. So the count sits beside whatever a host does with
+  /// the call, exactly as `seam_status::fired` sits beside the
+  /// `seam_event` stream, and reaches a browser through
+  /// `af_machine_seam_host_calls`.
+  ///
+  /// **Served, not asked.** A call made on a machine with no host
+  /// attached does not count, because nothing happened: `call_host()`
+  /// answers false, and the handler says so through the fail-closed path
+  /// that question belongs in (`decline()`, `seam_event`). A non-zero
+  /// count is therefore proof that an implementation was reached and
+  /// not merely that a seam tried.
+  ///
+  /// Counted **here** rather than in each host's object, though the
+  /// object is what serves: this is the engine's record of what it
+  /// routed, the way `fired` is its record of what it dispatched, so the
+  /// number cannot differ between a desktop run and a browser one, an
+  /// implementation cannot forget to keep it, and the ABI has a door
+  /// without a host-specific export behind it.
+  ///
+  /// Bookkeeping, not machine state — above the fidelity boundary, never
+  /// serialized, and it can only move when a seam is on.
+  [[nodiscard]] std::uint64_t host_calls(
+      seam_host_service which) const noexcept;
+
+  /// The argument of the most recent served call of `which`, or zero if
+  /// there has not been one. What the callout *carried*, which is the
+  /// other half of what a page has to learn (#169) — the count says a
+  /// journal entry was asked for, this says which.
+  [[nodiscard]] std::uint32_t host_argument(
+      seam_host_service which) const noexcept;
 
  private:
   friend class seam_context;
@@ -992,6 +1079,11 @@ class seam_engine {
 
   diagnostics* log_;
   seam_host_services* host_{nullptr};
+
+  /// `host_calls()` / `host_argument()`, one entry per service. Cleared
+  /// by `clear()` with everything else that is configuration.
+  std::array<std::uint64_t, seam_host_service_count> host_calls_{};
+  std::array<std::uint32_t, seam_host_service_count> host_arguments_{};
 
   /// The machine's RAM, read-only and read at one word at a time
   /// (`watch_memory`). Empty until `machine` hands it over, and an empty

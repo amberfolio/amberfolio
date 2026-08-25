@@ -130,6 +130,16 @@ const char* seam_event_kind_name(seam_event_kind kind) noexcept {
   return "unknown";
 }
 
+const char* seam_host_service_name(seam_host_service which) noexcept {
+  switch (which) {
+    case seam_host_service::journal_open:
+      return "journal-open";
+    case seam_host_service::automap_update:
+      return "automap-update";
+  }
+  return "unknown";
+}
+
 // --- seam_context -----------------------------------------------------------
 
 bool seam_context::inject_keystroke(std::uint8_t scancode, std::uint8_t ascii) {
@@ -149,6 +159,13 @@ bool seam_context::call_host(seam_host_service which, std::uint32_t argument) {
     return false;
   }
   host->serve(*box_, which, argument);
+  // After `serve()` and not before: the count means "a host answered
+  // this", and a call that has not been answered yet has not been
+  // answered (seam.h's `host_calls`). The argument is recorded with it,
+  // so the pair a reader sees is always the same call.
+  const auto slot = static_cast<std::size_t>(which);
+  ++engine_->host_calls_[slot];
+  engine_->host_arguments_[slot] = argument;
   return true;
 }
 
@@ -312,6 +329,21 @@ void seam_engine::clear() noexcept {
   armed_ = 0;
   have_program_ = false;
   edition_ = nullptr;
+  // The host-service record goes with them (#169): it is bookkeeping
+  // about what this configuration did, and a machine with no program has
+  // done none of it. The attached host itself stays, the way an attached
+  // device does — `set_host()` is a wiring decision and `clear()` is not.
+  host_calls_ = {};
+  host_arguments_ = {};
+}
+
+std::uint64_t seam_engine::host_calls(seam_host_service which) const noexcept {
+  return host_calls_[static_cast<std::size_t>(which)];
+}
+
+std::uint32_t seam_engine::host_argument(
+    seam_host_service which) const noexcept {
+  return host_arguments_[static_cast<std::size_t>(which)];
 }
 
 std::size_t seam_engine::enabled_count() const noexcept { return enabled_; }

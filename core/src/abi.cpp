@@ -1177,6 +1177,25 @@ uint32_t af_machine_seam_pull(af_machine* handle, const char* id) {
              : AF_INVALID;
 }
 
+double af_machine_seam_host_calls(const af_machine* handle, uint32_t which) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || which >= amberfolio::machine::seam_host_service_count) {
+    return 0.0;
+  }
+  return static_cast<double>(box->seams().host_calls(
+      static_cast<amberfolio::machine::seam_host_service>(which)));
+}
+
+uint32_t af_machine_seam_host_argument(const af_machine* handle,
+                                       uint32_t which) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || which >= amberfolio::machine::seam_host_service_count) {
+    return 0;
+  }
+  return box->seams().host_argument(
+      static_cast<amberfolio::machine::seam_host_service>(which));
+}
+
 uint32_t af_machine_load_error(const af_machine* handle) {
   if (box_of(handle) == nullptr) {
     return AF_NO_MACHINE;

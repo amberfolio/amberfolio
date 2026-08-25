@@ -41,6 +41,7 @@
 
 #include "amberfolio/abi.h"
 #include "amberfolio/abi_bridge.h"
+#include "amberfolio/host/host_services.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/seam.h"
 #include "demo_program.h"
@@ -58,6 +59,18 @@ const std::vector<std::uint8_t>& demo_program() {
   static const std::vector<std::uint8_t> program =
       amberfolio::web::demo_program_bytes();
   return program;
+}
+
+/// The host services this module attaches to whatever machine the page
+/// asks it to (M5-D1, #169) — the same object the SDL host attaches
+/// (hosts/common), because a callout has to mean the same thing on both.
+///
+/// One, and never freed: the module's whole life is one page load, and
+/// the page's whole life is one machine. A function-local static for the
+/// reason `demo_program()` above is one.
+amberfolio::host::host_services& services() {
+  static amberfolio::host::host_services one;
+  return one;
 }
 
 }  // namespace
@@ -116,6 +129,12 @@ uint32_t af_web_probe_program_size(void) {
 /// outstanding and decides for itself when acting is safe. A browser
 /// gets to ask that one too, because "one bool per step when nobody
 /// pulled" is a claim about a hot path and hot paths differ per target.
+///
+/// Five, since M5-D1 (#169): `probe-host` calls a host service at each of
+/// two points that are reached exactly once, so a browser can be asked
+/// whether the seam -> host direction works in *its* module — the one
+/// question the whole issue is about, and one that can only be answered
+/// where the implementation actually runs.
 uint32_t af_web_probe_seam_register(af_machine* box) {
   amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
   if (pc == nullptr) {
@@ -126,8 +145,57 @@ uint32_t af_web_probe_seam_register(af_machine* box) {
       pc->seams().add(
           amberfolio::programs::seam_probe_unreached_definition()) &&
       pc->seams().add(amberfolio::programs::seam_probe_trigger_definition()) &&
-      pc->seams().add(amberfolio::programs::seam_probe_pull_definition());
+      pc->seams().add(amberfolio::programs::seam_probe_pull_definition()) &&
+      pc->seams().add(amberfolio::programs::seam_probe_host_definition());
   return ok ? AF_OK : AF_INVALID;
+}
+
+/// Attach this module's `seam_host_services` to `box` (M5-D1, #169), so
+/// that a seam's `call_host()` reaches an implementation instead of
+/// answering false.
+///
+/// A host export rather than part of `af_machine_attach_reference_devices`
+/// for the reason abi.h's whole seam section gives: what a *host* plugs
+/// into a machine is the host's decision, and core does not have one to
+/// make. `host.mjs` calls it right after the devices, so every page and
+/// every check that goes through the JS host has it; a caller that drives
+/// the ABI by hand and does not is a machine whose seams call out into
+/// nothing, which is the honest answer for a host that attached nothing.
+///
+/// Attaching changes nothing about a run with every seam off: no handler
+/// runs, so nothing calls out. That is the fidelity invariant with a
+/// host in the room, and it is asserted rather than asserted-about
+/// (tests/core/machine/seam_test.cpp).
+///
+/// `AF_NO_MACHINE` for a null handle, `AF_OK` otherwise. Idempotent —
+/// attaching the same object twice is attaching it.
+uint32_t af_web_attach_host_services(af_machine* box) {
+  amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
+  if (pc == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  pc->seams().set_host(&services());
+  return AF_OK;
+}
+
+/// The virtual tick this module's host services last saw `which` called
+/// at, or zero if it has not been called.
+///
+/// The count and the argument are core's (`af_machine_seam_host_calls`,
+/// `af_machine_seam_host_argument`) because they are the engine's record
+/// of what it routed. This one is the *implementation's*, and is the
+/// fact that makes the call synchronous rather than queued: the machine's
+/// own time at the instant the seam called out. A page that could only
+/// read the count could not tell a callout served during the run from
+/// one served after it.
+double af_web_host_service_at(uint32_t which) {
+  if (which >= amberfolio::machine::seam_host_service_count) {
+    return 0.0;
+  }
+  return static_cast<double>(
+      services()
+          .record(static_cast<amberfolio::machine::seam_host_service>(which))
+          .at);
 }
 
 }  // extern "C"
