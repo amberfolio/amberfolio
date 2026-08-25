@@ -464,6 +464,54 @@ available — not misapplied ones (PLAN.md §5). Availability itself is
 per-seam: a seam is unavailable for any binary its `fingerprints` do not
 name, whether or not the table knows the binary.
 
+### The player's documents, and the gate (M5-D3, #171)
+
+PLAN.md §2 lists three artifacts a player may supply and only the first
+is required: the binaries, the Adventurer's Journal, the code wheel. A
+binary is what the machine *runs*; a document is what the player
+*holds*, so `machine/document.h` is `edition.h`'s sibling and not a
+column in it — a fingerprint, a name, and what the document is *for*.
+
+A `seam_definition` may name a `gate`, and then it is **one more
+condition on arming**, in the same place "is the module resident" is. An
+unsatisfied gate is a seam that is on and **inert**, with the reason
+`document_not_presented` — not a refusal. The seam took; the player has
+not shown the thing they are asked to hold. Its own reason, and not
+`module_not_resident`'s, because the two are answered by different
+people: a module arrives when the program loads it, a document when a
+person presents one, and a host that could not tell them apart would be
+telling a player to wait for the game.
+
+Fail-closed by construction, not by discipline: a shut gate arms **no
+points at all**, so there is no address in the table for `dispatch()` to
+compare against, and the gate is tested in the one function `status()`
+and `arm_all()` share — the same argument `modules_resident` makes, one
+condition over.
+
+The presenting side is a host's: `--document PATH` on the SDL host,
+`--document PATH` on `drive.mjs`, and `af_machine_present_document` for
+a page's file input. The file is read, hashed and **dropped**; nothing is
+parsed and nothing is kept, because "a possession gate: it demonstrates
+the player holds the document, no more" (PLAN.md §5) is the whole of it.
+The journal's extractor (#174) does read inside its own document, and it
+is separate work with its own issue.
+
+**Unrecognized is reported, never guessed**, and the fingerprint comes
+back either way — it is what a player can act on, and what a line in the
+table is made of. A gate that armed on a document this build cannot name
+would be a gate that armed on anything.
+
+Presenting is **configuration**, exactly as an enable is: it survives
+`reset()` the way an attached device does (a reset machine has no
+program; the player still has their code wheel), it is not in the
+serialization, and a machine with a document presented and every seam off
+is byte-for-byte the machine without one. That last is a test, not a
+sentence.
+
+**Nothing in this build is gated yet.** The code-wheel seam's gate is
+#115, which is now one field in its definition; the journal's is #174,
+and the table has no journal entry because nobody here has hashed one.
+
 ---
 
 ## 6. The toggle surface
@@ -615,8 +663,9 @@ four targets.
    run's hashes are the plain machine's (#100's harness is how that is
    checked, and #101's session library is where the run is recorded).
 6. **Say what it is not yet**, at the point of definition — the code-wheel
-   seam's header says its possession gate is M5's (#115), and that
-   honesty is part of the pattern.
+   seam's header says its possession gate is #115's — and, since M5-D3,
+   says that the mechanism exists and only the field is missing, which is
+   a more useful kind of honesty than the first one was.
 
 ---
 
@@ -640,7 +689,7 @@ boundary, and it needs the argument this document would have to carry.
 
 | id | what | keyed to | qualified by |
 |---|---|---|---|
-| `code-wheel` | answers the copy-protection challenge (ungated; the possession gate is M5's, #115) | the baseline | the resident image |
+| `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 

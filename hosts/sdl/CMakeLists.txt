@@ -81,6 +81,22 @@ set_tests_properties(sdl-host-runs-a-program PROPERTIES
   LABELS smoke
   FIXTURES_REQUIRED sdl_smoke_disk)
 
+# --- Presenting a document (M5-D3, #171) -------------------------------
+#
+# The other end of PLAN.md §5's possession gate: `--document PATH` reads
+# a file off this machine, hashes it and answers. The file this drives it
+# with is three bytes of the script's own, so what is checked is the path
+# and never a table entry nobody without the document could verify.
+add_test(NAME sdl-host-presents-a-document
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/smoke-disk"
+    "-DSCRATCH=${CMAKE_CURRENT_BINARY_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-document-gate.cmake")
+set_tests_properties(sdl-host-presents-a-document PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_smoke_disk)
+
 # --- The boot driver's report (#83) ------------------------------------
 #
 # The same disk, and the other program on it: one that asks for a service

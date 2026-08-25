@@ -96,6 +96,7 @@ import {
   decodeConsoleBytes,
   SPEED_PRESETS,
   AF_OK,
+  AF_UNRECOGNIZED,
   describeSkip,
   anySkipLostAFile,
   AF_SEAM_OFF,
@@ -208,6 +209,9 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
                         (repeatable; the seam has to be on and to be one
                         that takes a trigger)
   --seam ID             turn one seam on before the first step (repeatable)
+  --document PATH       present a document the player holds, by path on
+                        this machine (repeatable) — a possession gate,
+                        so the file is hashed and dropped
   --seams               list every seam this build carries, and exit
   --speed xt|turbo|at|386
   --trace               keep the trace ring and the service-call channel
@@ -233,6 +237,7 @@ export function parseArgs(argv) {
     presses: [],
     pulls: [],
     seams: [],
+    documents: [],
     listSeams: false,
     speed: null,
     trace: false,
@@ -307,6 +312,8 @@ export function parseArgs(argv) {
       opts.pulls.push({ id, frame });
     } else if (arg === '--seam' && i + 1 < argv.length) {
       opts.seams.push(next());
+    } else if (arg === '--document' && i + 1 < argv.length) {
+      opts.documents.push(next());
     } else if (arg === '--seams') {
       opts.listSeams = true;
     } else if (arg === '--speed' && i + 1 < argv.length) {
@@ -546,6 +553,28 @@ export async function drive(opts) {
   // shrugged at — a script that asked for the cheats seam and silently
   // got a plain machine would be the worst possible outcome of this
   // whole apparatus (PLAN.md §5).
+  // The documents the player presented, before the seams that may be
+  // gated on them (#171) — so a gated seam's first `seamEnable()` sees
+  // the gate satisfied rather than reporting inert and quietly changing
+  // its mind.
+  for (const path of opts.documents) {
+    const { status, fingerprint } = machine.presentDocument(
+      new Uint8Array(readFileSync(path)),
+    );
+    if (status === AF_OK) {
+      say(`amberfolio: document ${machine.documentsHeld().at(-1)} sha256=${fingerprint}`);
+    } else if (status === AF_UNRECOGNIZED) {
+      // Reported, not guessed (machine/document.h). The fingerprint is on
+      // the line because it is the thing somebody can act on: it is what
+      // an entry in the table is made of.
+      say(
+        `amberfolio: document unrecognized sha256=${fingerprint} - no gate is satisfied by it`,
+      );
+    } else {
+      say(`amberfolio: document ${path} could not be presented (status ${status})`);
+    }
+  }
+
   for (const id of opts.seams) {
     if (machine.seamEnable(id) !== AF_OK) {
       const row = machine.seamList().find((seam) => seam.id === id);

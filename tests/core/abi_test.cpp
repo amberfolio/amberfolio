@@ -27,6 +27,7 @@
 
 #include "amberfolio/abi_bridge.h"
 #include "amberfolio/machine/clock.h"
+#include "amberfolio/machine/document.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_vfs.h"
@@ -837,6 +838,112 @@ TEST(AbiSeams, CountsWhatTheHandlersActuallyDid) {
   EXPECT_EQ(
       af_machine_seam_fired(rig.get(), af_machine_seam_count(rig.get()) + 1),
       0.0)
+      << "an index past the end answers zero, like every other call here";
+}
+
+// --- Document gates (M5-D3, #171) ---------------------------------------
+//
+// PLAN.md §5's possession gate, from the page's side. Nothing here is a
+// document: the bytes below are this file's own, and what is asserted is
+// that they hash to something, that the something is not an edition this
+// build knows, and that the answer says so rather than guessing.
+
+TEST(AbiDocuments, AnUnrecognizedDocumentIsReportedWithItsFingerprint) {
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  std::array<char, 128> hex{};
+  const auto max = static_cast<std::uint32_t>(hex.size());
+
+  EXPECT_EQ(
+      af_machine_present_document(box.get(), bytes.data(), 3, hex.data(), max),
+      AF_UNRECOGNIZED);
+  // Written all the same, and that is the point: a player holding an
+  // edition nobody has fingerprinted can be shown the fingerprint of the
+  // file they hold, which is what a line in the table is made of. FIPS
+  // 180-4 appendix B.1's digest of "abc".
+  EXPECT_STREQ(
+      hex.data(),
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  EXPECT_EQ(af_machine_document_count(box.get()), 0u)
+      << "and nothing was satisfied by it";
+}
+
+TEST(AbiDocuments, RefusesWhatIsNotADocumentAtAll) {
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  std::array<char, 128> hex{};
+  const auto max = static_cast<std::uint32_t>(hex.size());
+
+  EXPECT_EQ(af_machine_present_document(box.get(), nullptr, 3, hex.data(), max),
+            AF_INVALID);
+  EXPECT_EQ(
+      af_machine_present_document(box.get(), bytes.data(), 0, hex.data(), max),
+      AF_INVALID)
+      << "a document of no bytes is not a document";
+  EXPECT_EQ(
+      af_machine_present_document(box.get(), bytes.data(), 3, hex.data(), 8),
+      AF_INVALID)
+      << "and a buffer that cannot hold the answer is refused rather than"
+         " truncated";
+  EXPECT_EQ(
+      af_machine_present_document(nullptr, bytes.data(), 3, hex.data(), max),
+      AF_NO_MACHINE);
+}
+
+TEST(AbiDocuments, ARecognizedDocumentIsHeldAndNamed) {
+  // Driven through the engine's own registry rather than through the
+  // build's table, for the reason document_test.cpp gives: a test that
+  // needed a real document would be a test nobody without the document
+  // could run. What is exercised here is the ABI's whole path — bytes
+  // in, digest out, the gate satisfied, the name readable.
+  const equipped_machine box;
+  amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box.get());
+  ASSERT_NE(pc, nullptr);
+
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  static constexpr amberfolio::machine::document_edition claimed{
+      .fingerprint =
+          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      .name = "a code wheel this test claims",
+      .kind = amberfolio::machine::document_kind::code_wheel};
+  ASSERT_TRUE(pc->seams().add_document(claimed));
+
+  std::array<char, 128> hex{};
+  EXPECT_EQ(af_machine_present_document(box.get(), bytes.data(), 3, hex.data(),
+                                        static_cast<std::uint32_t>(hex.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_document_count(box.get()), 1u);
+
+  std::array<char, 128> name{};
+  const std::uint32_t length = af_machine_document_name_at(
+      box.get(), 0, name.data(), static_cast<std::uint32_t>(name.size()));
+  EXPECT_EQ(length, claimed.name.size());
+  EXPECT_STREQ(name.data(), "a code wheel this test claims");
+  EXPECT_EQ(
+      af_machine_document_name_at(box.get(), 1, name.data(),
+                                  static_cast<std::uint32_t>(name.size())),
+      0u);
+}
+
+TEST(AbiSeams, EverySeamSaysWhatDocumentItNeeds) {
+  // Every seam in this build says `no document` today, and a page shows
+  // that rather than working it out: the words are core's, so a browser
+  // and a desktop say the same thing (machine/document.h).
+  const equipped_machine box;
+  const std::uint32_t count = af_machine_seam_count(box.get());
+  ASSERT_GT(count, 0u);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    std::array<char, 64> gate{};
+    EXPECT_GT(af_machine_seam_gate(box.get(), i, gate.data(),
+                                   static_cast<std::uint32_t>(gate.size())),
+              0u)
+        << i;
+    EXPECT_STREQ(gate.data(), "no document") << i;
+  }
+  std::array<char, 64> gate{};
+  EXPECT_EQ(af_machine_seam_gate(box.get(), count, gate.data(),
+                                 static_cast<std::uint32_t>(gate.size())),
+            0u)
       << "an index past the end answers zero, like every other call here";
 }
 

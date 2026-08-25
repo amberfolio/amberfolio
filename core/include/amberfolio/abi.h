@@ -178,6 +178,18 @@ extern "C" {
 /// is the whole convention this space has.
 #define AF_NO_ROOM 6u
 
+/// A document was read fine and is not one this build knows
+/// (`af_machine_present_document`, M5-D3 #171).
+///
+/// Its own code, and not `AF_INVALID`, for the reason `AF_NO_ROOM` has
+/// its own: nothing about the request was wrong. PLAN.md §9 names
+/// edition variance as a real risk — players hold re-scanned PDFs and
+/// releases nobody here has seen — and the mitigation it asks for is a
+/// friendly message and a process for adding editions. A host cannot
+/// give a player either one if "this is not a PDF I can read" and "this
+/// is a document I do not recognize" arrive as the same number.
+#define AF_UNRECOGNIZED 7u
+
 // There is no "a machine already exists" code, because no function can
 // return one: `af_machine_create` answers a pointer, and null is the
 // whole of what it has to say. A status nothing produces is a status a
@@ -927,6 +939,68 @@ uint32_t af_machine_read_memory(af_machine* box, uint32_t address, uint8_t* out,
 /// needs exactly these four to be runnable.
 uint32_t af_machine_set_entry(af_machine* box, uint32_t cs, uint32_t ip,
                               uint32_t ss, uint32_t sp);
+
+// --- Document gates (M5-D3, #171) --------------------------------------
+//
+// PLAN.md §5 gates two enhancements on a document the player holds — the
+// code-wheel bypass on the code wheel, the journal on the journal — and
+// the rule is exact: "a possession gate: it demonstrates the player holds
+// the document, no more". So what crosses this boundary is bytes, once,
+// and what comes back is a fingerprint and a name.
+//
+// Nothing here reads *inside* a document. A gate is over bytes
+// (machine/document.h); the journal's extractor (#174) reads inside its
+// own document and is separate work with its own issue.
+//
+// A gate is one more condition on whether a seam arms, in the same place
+// "is the module resident" is: a seam whose gate is unsatisfied is on and
+// **inert**, with `af_machine_seam_reason` answering
+// `document_not_presented`. It is not refused — the seam took, and the
+// player has not shown the thing PLAN.md §5 requires them to hold.
+//
+// Presenting is **configuration**, like a seam toggle: a host does it
+// between `af_machine_run_until` slices and never from inside one, it is
+// not machine state, it is not in the state hash, and a machine with a
+// document presented and every seam off is byte-for-byte the machine
+// without one.
+
+/// The player presented a document: `size` bytes at `bytes`.
+///
+/// `out` receives the document's SHA-256 as 64 lowercase hex characters,
+/// NUL-terminated, whatever the answer — including for one this build
+/// does not know, which is the whole point of writing it either way. A
+/// player holding an unrecognized edition can be shown the fingerprint
+/// of the file they hold, and that is what turns "this does not work"
+/// into a line somebody can add to the table.
+///
+/// `AF_OK` when it is an edition this build knows, and then every gate
+/// of that document's kind is satisfied for the life of this machine.
+/// `AF_UNRECOGNIZED` when the bytes hashed fine and name no edition —
+/// nothing is satisfied, and nothing is guessed. `AF_INVALID` for a null
+/// pointer, no bytes, or an `out` smaller than 65 bytes.
+///
+/// The bytes are hashed and dropped. This machine never keeps a document
+/// (PLAN.md §2, §6).
+uint32_t af_machine_present_document(af_machine* box, const uint8_t* bytes,
+                                     uint32_t size, char* out, uint32_t max);
+
+/// How many documents have been presented and recognized, and the name
+/// of one of them — what a host prints back so a run says what was shown
+/// to it.
+///
+/// `af_machine_document_name_at` writes the name NUL-terminated into
+/// `out` and answers its length, or zero for an index past the end or a
+/// buffer too small.
+uint32_t af_machine_document_count(const af_machine* box);
+uint32_t af_machine_document_name_at(const af_machine* box, uint32_t index,
+                                     char* out, uint32_t max);
+
+/// What document seam `index` is gated on, as a name a host shows
+/// (`machine::document_kind_name`) — `code wheel`, `journal`, or `no
+/// document` for a seam with no gate, which is every seam in this build
+/// today. Written NUL-terminated into `out`; answers its length.
+uint32_t af_machine_seam_gate(const af_machine* box, uint32_t index, char* out,
+                              uint32_t max);
 
 // --- Replay (machine/replay.h, docs/replay.md) ------------------------
 //

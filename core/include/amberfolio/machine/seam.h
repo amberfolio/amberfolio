@@ -232,6 +232,7 @@
 
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/diagnostics.h"
+#include "amberfolio/machine/document.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/vfs.h"
 #include "amberfolio/sha256.h"
@@ -267,7 +268,15 @@ struct edition;
 /// point", which is what every point meant then; the field decides
 /// *where* a handler runs, which is the one thing about a seam that must
 /// never be inferred.
-inline constexpr std::uint16_t seam_schema_version = 4;
+///
+/// 5: a definition may name a **document gate** (`seam_definition::gate`,
+/// #171), and then it is inert until the player has presented the
+/// document it names. A definition written before this version means "no
+/// gate", which is what every seam meant then — and that is exactly why
+/// the version moves: a stale definition read as ungated would be a
+/// possession gate silently not applied, which is the one failure a gate
+/// has (PLAN.md §5).
+inline constexpr std::uint16_t seam_schema_version = 5;
 
 /// What runs when execution reaches an armed interception point. Native
 /// C++, called from outside the emulated machine — see this file's top
@@ -345,6 +354,26 @@ struct seam_definition {
   /// says so.
   bool trigger{false};
 
+  /// The document the player must hold for this seam to do anything
+  /// (PLAN.md §5, #171), or `document_kind::none` for a seam that is not
+  /// gated — which is every seam in this build today.
+  ///
+  /// **A possession gate: it demonstrates the player holds the document,
+  /// no more.** PLAN.md §5's sentence, and the whole of what this field
+  /// does. It is one more condition on `armed()`, in the same place
+  /// "is the module resident" is, so an unsatisfied gate is a seam that
+  /// is *on and inert with a reason* rather than one that was refused —
+  /// the same shape a seam waiting for its overlay has, because it is
+  /// the same situation: the seam took, and something it needs is not
+  /// here yet.
+  ///
+  /// Fail-closed by construction and by nothing else. There is no code
+  /// path that arms a gated seam without a satisfied gate, because the
+  /// gate is tested where residency is tested and both answers are
+  /// computed by the one function `status()` and `arm_all()` share
+  /// (`modules_resident`'s own argument, applied again).
+  document_kind gate{document_kind::none};
+
   /// The schema this definition was written against — `seam_schema_version`
   /// at the time. Spelled in the definition rather than assumed, so the
   /// engine can refuse a stale one.
@@ -371,6 +400,17 @@ enum class seam_reason : std::uint8_t {
   /// The seam is on, but the module one of its points lives in is not
   /// resident, so nothing is armed (overlay.h).
   module_not_resident,
+  /// The seam is on, and the document it is gated on has not been
+  /// presented (`seam_definition::gate`, document.h, #171). Nothing is
+  /// armed and nothing was refused: the seam took, and the player has
+  /// not shown the thing PLAN.md §5 requires them to hold.
+  ///
+  /// Its own reason rather than `module_not_resident`'s, because the two
+  /// are answered by different people. A module arrives when the program
+  /// loads it; a document arrives when a person presents one, and a host
+  /// that could not tell them apart would be telling a player to wait
+  /// for the game.
+  document_not_presented,
   /// A point fired, and what the machine held there is not what the
   /// seam's facts describe — a stack frame whose argument is not the
   /// pointer it is supposed to be, a record where there is no record.
@@ -754,9 +794,17 @@ class seam_context {
 class seam_engine {
  public:
   /// Definitions the registry holds. The v1 seam set is six (PLAN.md §5)
-  /// plus the cheats' two; sixteen leaves room for a test's own and for
-  /// the fast-follow fixes without making this a data structure.
-  static constexpr std::size_t max_seams = 16;
+  /// plus the cheats' two, and a test registers a dozen-odd of its own
+  /// beside them; twenty-four leaves room for the fast-follow fixes
+  /// without making this a data structure.
+  ///
+  /// It was sixteen, which the seam suite's own set reached exactly when
+  /// M5 started adding definitions to it — and a registry that is
+  /// exactly full fails by *refusing the next one*, which in a test rig
+  /// is a seam quietly missing rather than a build that stops. The
+  /// headroom is not for the seams this build carries; it is so that
+  /// adding one is never that.
+  static constexpr std::size_t max_seams = 24;
 
   /// Points armed at once, across every enabled seam.
   static constexpr std::size_t max_points = 32;
@@ -891,6 +939,52 @@ class seam_engine {
 
   // --- The host service slot ----------------------------------------------
 
+  // --- Document gates (M5-D3, #171) --------------------------------------
+  //
+  // PLAN.md §5 gates two enhancements on a document the player holds.
+  // Presenting one is a thing a *person* does, once, to a host — not a
+  // thing the program does and not a thing the machine arrives at — so
+  // it is configuration in exactly the sense the enables are, and it
+  // survives `reset()` the way an attached device does. A reset machine
+  // has no program; the player still has their code wheel.
+  //
+  // Nothing here reads inside a document. A gate is over bytes
+  // (document.h), and the bytes never reach this file: a host hashes
+  // what it was handed and presents the digest.
+
+  /// The player presented a document with this digest. Answers the
+  /// edition it is, or **null for one this build does not recognize** —
+  /// in which case nothing is satisfied and the host says so (PLAN.md
+  /// §9's friendly unrecognized-artifact path, which M6 puts a face on).
+  ///
+  /// Presenting the same document twice is presenting it. Presenting a
+  /// second document of the same kind satisfies the same gate, because
+  /// the gate is about what the player holds and they hold both.
+  const document_edition* present_document(const sha256_digest& digest);
+
+  /// Register `document` as an edition this engine recognizes, beside
+  /// the ones `known_documents()` carries. `document` must outlive the
+  /// engine. False, and nothing registered, if there is no room.
+  ///
+  /// The door `add()` is for a seam: a test's own fact table, so the
+  /// gate mechanism can be driven against a synthetic document and a
+  /// synthetic edition rather than against a file nobody may commit
+  /// (PLAN.md §6).
+  bool add_document(const document_edition& document) noexcept;
+
+  /// Whether a document of `kind` has been presented. `document_kind::
+  /// none` is satisfied by nothing and needs nothing, which is what
+  /// makes an ungated seam ungated.
+  [[nodiscard]] bool holds_document(document_kind kind) const noexcept;
+
+  /// The documents presented so far, in the order they were presented —
+  /// what a host prints back so a run says what was shown to it.
+  [[nodiscard]] std::size_t document_count() const noexcept {
+    return documents_;
+  }
+  [[nodiscard]] const document_edition* document_at(
+      std::size_t nth) const noexcept;
+
   /// Attach the host's services, or detach with null. A setting, like an
   /// attached device: it survives `reset()`.
   void set_host(seam_host_services* host) noexcept { host_ = host; }
@@ -956,6 +1050,20 @@ class seam_engine {
   /// Whether `seam` names the loaded program's digest.
   [[nodiscard]] bool applies(const seam_definition& seam) const noexcept;
 
+  /// Why `seam` is not armable right now, or `none` if it is: the gate
+  /// first, then the modules.
+  ///
+  /// One function, and one order, for the same reason `modules_resident`
+  /// is one function: `status()` answers a host asking right now and
+  /// `arm_all()` decides whether a transition is worth a line, and the
+  /// two must never be able to disagree about why a seam is inert. The
+  /// gate comes first because it is the condition a *person* can do
+  /// something about — telling a player their overlay is not resident
+  /// when what they actually need is to present a code wheel would send
+  /// them to wait for the game.
+  [[nodiscard]] seam_reason blocking_reason(
+      const seam_definition& seam) const noexcept;
+
   /// Whether every module `seam`'s points live in is in memory *now* —
   /// asked of the program's own record where there is one, and of the
   /// tracker otherwise. The resident image always is.
@@ -992,6 +1100,18 @@ class seam_engine {
 
   diagnostics* log_;
   seam_host_services* host_{nullptr};
+
+  /// Documents the player has presented (#171). Configuration: `clear()`
+  /// and `reset()` leave it alone, because a reset machine has no
+  /// program and the player still holds what they hold.
+  ///
+  /// Room for the build's own table and a test's own, the way the seam
+  /// registry has room for both.
+  static constexpr std::size_t max_documents = 8;
+  std::array<const document_edition*, max_documents> presented_{};
+  std::size_t documents_{};
+  std::array<const document_edition*, max_documents> extra_documents_{};
+  std::size_t extra_documents_count_{};
 
   /// The machine's RAM, read-only and read at one word at a time
   /// (`watch_memory`). Empty until `machine` hands it over, and an empty

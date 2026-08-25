@@ -86,6 +86,7 @@ import {
   AF_SEAM_ON,
   AF_SEAM_UNAVAILABLE,
   formatSeamFired,
+  AF_UNRECOGNIZED,
   pacedAdvance,
   MAX_CATCH_UP_SECONDS,
 } from './host.mjs';
@@ -159,6 +160,10 @@ const EXPECTED_EXPORTS = [
   '_af_machine_seam_fired',
   '_af_machine_seam_enable',
   '_af_machine_seam_disable',
+  '_af_machine_seam_gate',
+  '_af_machine_present_document',
+  '_af_machine_document_count',
+  '_af_machine_document_name_at',
   '_af_machine_write_memory',
   '_af_machine_read_memory',
   '_af_machine_set_entry',
@@ -1457,6 +1462,72 @@ if (missing.length === 0) {
   );
 }
 
+// --- Document gates (M5-D3, #171) ----------------------------------------
+//
+// PLAN.md §5's possession gate, in a browser's module: bytes in, a
+// fingerprint out, and an answer that says "I do not know this file"
+// rather than guessing.
+//
+// **Nothing here is a document.** The bytes are this file's own three,
+// and what is asserted is the path, not the table: that the digest comes
+// back either way, that an edition nobody fingerprinted satisfies
+// nothing, and that every seam this build carries says what document it
+// needs.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  check(
+    machine.attachReferenceDevices() === AF_OK,
+    'attaching the reference devices failed',
+  );
+  machine.reset();
+
+  check(machine.documentsHeld().length === 0, 'a document was held before one was presented');
+
+  const abc = new Uint8Array([0x61, 0x62, 0x63]);
+  const shown = machine.presentDocument(abc);
+  check(
+    shown.status === AF_UNRECOGNIZED,
+    `presenting three bytes of this file's own answered ${shown.status}, expected AF_UNRECOGNIZED`,
+  );
+  // FIPS 180-4 appendix B.1's digest of "abc" — the same answer every
+  // other SHA-256 in the world gives, and written back even for a
+  // document this build does not know, because that is the fingerprint a
+  // player would be asked to report.
+  check(
+    shown.fingerprint ===
+      'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    `the fingerprint came back as ${JSON.stringify(shown.fingerprint)}`,
+  );
+  check(
+    machine.documentsHeld().length === 0,
+    'an unrecognized document was held anyway, so a gate could arm on anything',
+  );
+
+  const nothing = machine.presentDocument(new Uint8Array(0));
+  check(nothing.status === AF_INVALID, `a document of no bytes answered ${nothing.status}`);
+
+  // Every seam says what it is gated on, in core's words — `no document`
+  // for all of them today, and the point of asking is that a page shows
+  // the answer rather than working it out (#163's argument, one field
+  // over).
+  const gates = machine.seamList().map((seam) => seam.gate);
+  check(
+    gates.length > 0 && gates.every((gate) => gate === 'no document'),
+    `the seams report gates ${JSON.stringify(gates)}, expected every one to be "no document"`,
+  );
+
+  machine.destroy();
+  console.log(
+    'smoke: an unrecognized document was reported with its fingerprint and ' +
+      'satisfied nothing; every seam says what it needs',
+  );
+}
+
 // --- The keys a keyboard-driven game needs (#84) -------------------------
 //
 // The table itself is a pure function and needs no module, so this runs
@@ -1972,6 +2043,29 @@ if (missing.length === 0 && sessions !== null) {
     `the driver skipped something it should have walked into:\n${walkedSaid}`,
   );
 
+  // --- Presenting a document (M5-D3, #171) ------------------------------
+  //
+  // The driver's `--document` is the SDL host's flag of the same name,
+  // spelled identically. What it is given here is a file of this test's
+  // own three bytes, so what is asserted is the *path* — hashed, not
+  // recognized, reported with its fingerprint, nothing satisfied — and
+  // never a table entry nobody without the document could check.
+  const notADocument = join(scratch, 'not-a-document.bin');
+  writeFileSync(notADocument, Buffer.from([0x61, 0x62, 0x63]));
+  const presented = spawnSync(
+    process.execPath,
+    [driver, nested, 'SPIN.EXE', '--frames', '1', '--quiet',
+      '--document', notADocument],
+    { encoding: 'utf8' },
+  );
+  check(presented.status === 0, `--document exited ${presented.status}: ${presented.stderr}`);
+  check(
+    (presented.stdout ?? '').includes(
+      'amberfolio: document unrecognized sha256=ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+    ),
+    `--document did not report an unrecognized file with its fingerprint: ${presented.stdout}`,
+  );
+
   // --- A disk the machine cannot hold, said so (M4, #158) ---------------
   //
   // The line a person reads when a directory overruns the filesystem.
@@ -2053,8 +2147,9 @@ if (missing.length === 0 && sessions !== null) {
 
   rmSync(scratch, { recursive: true, force: true });
   console.log(
-    'smoke: the headless web driver ran a disk, walked below it, pressed ' +
-      'keys, dumped a frame and measured itself',
+    'smoke: the headless web driver ran a disk, walked below it, presented ' +
+      'a document it did not recognize, pressed keys, dumped a frame and ' +
+      'measured itself',
   );
 }
 

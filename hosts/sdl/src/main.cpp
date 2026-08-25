@@ -9,7 +9,7 @@
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
 //                                     [--watch OFF[:N]]
-//                                     [--seam ID] [--seams] [--speed NAME]
+//                                     [--seam ID] [--seams] [--document PATH] [--speed NAME]
 //                                     [--fast N|max] [-- ARGUMENTS...]
 //
 // `--headless` opens no window and no audio device. That is what keeps
@@ -157,6 +157,30 @@
 //     `code-wheel` is ungated, and seam.h is honest about what it is not
 //     yet: the possession gate PLAN.md §5 requires is M5's, so today it
 //     is a maintainer's switch on a maintainer's own copy.
+//
+//   --document PATH  present a document the player holds
+//
+//     PLAN.md §5 gates two enhancements on a fingerprint-verified
+//     document — the code-wheel bypass on the code wheel, the journal on
+//     the journal — and the rule is exact: a possession gate, which
+//     demonstrates the player holds the document and no more. This is
+//     the presenting side (#171): the file is read, hashed, and dropped.
+//     Nothing is parsed and nothing is kept.
+//
+//     `PATH` is a path on *this* machine, not on the emulated one: a
+//     code wheel lives wherever a person keeps their PDFs, which is very
+//     often not inside the game directory. Repeatable, because a player
+//     may hold both documents.
+//
+//     A document this build does not know is **reported, not guessed**:
+//     the line says so and prints the fingerprint of the file, which is
+//     what turns "this does not work" into something somebody can add to
+//     `machine/document.h`'s table. A gate that armed on an unrecognized
+//     document would be a gate that armed on anything.
+//
+//     Configuration, like `--seam`: it is applied before the first step,
+//     it is not machine state, and a run with a document presented and
+//     every seam off is byte-for-byte the run without one.
 //
 //   --seams          list every seam this build carries, and exit
 //
@@ -430,6 +454,7 @@
 
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/clock.h"
+#include "amberfolio/machine/document.h"
 #include "amberfolio/machine/dos.h"
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/ega.h"
@@ -759,6 +784,11 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
       return "this seam was written against another schema version";
     case machine::seam_error::module_not_resident:
       return "the module this seam lives in is not resident";
+    case machine::seam_error::document_not_presented:
+      // The one refusal a *person* can do something about (#171), so it
+      // says what to do rather than only what is wrong.
+      return "this seam needs a document you have not presented - show it"
+             " with --document";
     case machine::seam_error::point_not_recognized:
       // Never an answer to `enable()` - a handler produces it, at a
       // point, and the host renders it through the seam-event line. Here
@@ -1029,6 +1059,12 @@ struct options {
   std::vector<watch_point> watches;
   std::vector<std::string> seams;
   bool list_seams{false};
+
+  /// Documents the player presents (M5-D3, #171), as paths on this
+  /// machine's own filesystem — not on the emulated one. A code wheel
+  /// lives wherever a person keeps their PDFs, which is very often not
+  /// inside the game directory.
+  std::vector<std::string> documents;
   machine::speed_preset speed{machine::default_speed};
 
   /// Where the speaker's level starts, and whether it starts latched to
@@ -1326,6 +1362,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.muted = true;
     } else if (arg == "--seam" && i + 1 < argc) {
       opts.seams.emplace_back(argv[++i]);
+    } else if (arg == "--document" && i + 1 < argc) {
+      opts.documents.emplace_back(argv[++i]);
     } else if (arg == "--seams") {
       opts.list_seams = true;
     } else if (arg == "--trace") {
@@ -1421,6 +1459,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         "                                      [--trace]"
         " [--watch OFF[:N]]\n"
         "                                      [--seam ID] [--seams]\n"
+        "                                      [--document PATH]\n"
         "                                      [--record FILE]"
         " [--record-every N] [--replay FILE]\n"
         "                                      [--speed xt|turbo|at|386]\n"
@@ -1522,6 +1561,58 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
   opts.program = std::string(positional[1]);
   opts.valid = true;
   return opts;
+}
+
+/// Read `path` off *this* machine's filesystem, hash it, and present it
+/// to the engine (M5-D3, #171).
+///
+/// Streamed through a stack buffer rather than read whole: a document is
+/// a PDF and a PDF can be tens of megabytes, and nothing about hashing
+/// one needs it all in memory at once — the same argument
+/// `machine::fingerprint_file` makes for a file on the emulated disk.
+///
+/// The bytes are hashed and dropped. This host never keeps a document,
+/// never parses one, and never writes one anywhere (PLAN.md §2, §6): a
+/// possession gate is over bytes, and that is the whole of it.
+void present_document(machine::machine& box, const std::string& path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    std::fprintf(stderr, "amberfolio: document %s could not be read\n",
+                 path.c_str());
+    return;
+  }
+  sha256_hasher hasher;
+  std::array<char, std::size_t{64} * 1024> buffer{};
+  while (file) {
+    file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+    const std::streamsize got = file.gcount();
+    if (got <= 0) {
+      break;
+    }
+    hasher.update(std::span<const std::uint8_t>(
+        // The one place this host looks at a document's bytes, and it
+        // hands every one of them straight to the hasher.
+        reinterpret_cast<const std::uint8_t*>(buffer.data()),
+        static_cast<std::size_t>(got)));
+  }
+  const sha256_digest digest = hasher.finish();
+  std::array<char, sha256_digest::text_length + 1> hex{};
+  static_cast<void>(format_hex(digest, hex));
+
+  const machine::document_edition* known = box.seams().present_document(digest);
+  if (known != nullptr) {
+    std::fprintf(stderr, "amberfolio: document %.*s (%s) sha256=%s\n",
+                 static_cast<int>(known->name.size()), known->name.data(),
+                 machine::document_kind_name(known->kind), hex.data());
+    return;
+  }
+  // Reported, not guessed (machine/document.h). The fingerprint goes on
+  // the line because it is the thing somebody can act on: it is what an
+  // entry in the table is made of.
+  std::fprintf(stderr,
+               "amberfolio: document unrecognized sha256=%s - no gate is"
+               " satisfied by it\n",
+               hex.data());
 }
 
 }  // namespace
@@ -1638,6 +1729,15 @@ int main(int argc, char** argv) try {
                    " available for this program\n");
     }
   }
+  // The documents the player presented, before the seams that may be
+  // gated on them (#171). Before, and not after, so that a gated seam's
+  // very first `enable()` sees the gate satisfied and its startup line
+  // says `armed` rather than saying `inert` and then quietly changing
+  // its mind at the first overlay read.
+  for (const std::string& path : opts.documents) {
+    present_document(box, path);
+  }
+
   for (const std::string& id : opts.seams) {
     const machine::seam_error why = box.seams().enable(id);
     if (why == machine::seam_error::none) {
@@ -1666,6 +1766,27 @@ int main(int argc, char** argv) try {
                        ? ""
                        : machine::seam_reason_name(row.reason),
                    static_cast<int>(row.about.size()), row.about.data());
+      // What the seam is gated on, on a line of its own and only when
+      // there is one (#171). A person reading a listing needs to know
+      // that a seam is waiting on a document *before* they wonder why it
+      // is inert — and every seam in this build says `no document`
+      // today, so the line would otherwise be noise on every row.
+      if (const machine::seam_definition* definition = seams.find(row.id);
+          definition != nullptr &&
+          definition->gate != machine::document_kind::none) {
+        std::fprintf(stderr,
+                     "amberfolio: seams %.*s needs the %s (--document)\n",
+                     static_cast<int>(row.id.size()), row.id.data(),
+                     machine::document_kind_name(definition->gate));
+      }
+    }
+    // And what has been shown to it, so a listing says the whole state
+    // it is a listing of.
+    for (std::size_t i = 0; i < seams.document_count(); ++i) {
+      const machine::document_edition* held = seams.document_at(i);
+      std::fprintf(stderr, "amberfolio: seams holding %.*s (%s)\n",
+                   static_cast<int>(held->name.size()), held->name.data(),
+                   machine::document_kind_name(held->kind));
     }
     return EXIT_SUCCESS;
   }

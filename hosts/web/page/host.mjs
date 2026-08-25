@@ -41,6 +41,14 @@ export const AF_NO_FILESYSTEM = 5;
 /// handed it.
 export const AF_NO_ROOM = 6;
 
+/// A document was read fine and is not one this build knows
+/// (`presentDocument`, M5-D3 #171). Its own code, and not `AF_INVALID`,
+/// because nothing about the request was wrong: a page cannot offer a
+/// player the friendly unrecognized-artifact path PLAN.md §9 asks for if
+/// "this is not a file I can read" and "this is a document I do not
+/// recognize" arrive as the same number.
+export const AF_UNRECOGNIZED = 7;
+
 export const AF_KEY_UP = 0;
 export const AF_KEY_DOWN = 1;
 
@@ -847,6 +855,9 @@ export class Machine {
         reached: this.module._af_machine_seam_reached(this.handle, i),
         waited: this.module._af_machine_seam_waited(this.handle, i),
         pulledAt: this.module._af_machine_seam_pulled_at(this.handle, i),
+        // What document this seam is gated on, in core's words (#171).
+        // `no document` for every seam this build carries today.
+        gate: this.#text((out, max) => this.module._af_machine_seam_gate(this.handle, i, out, max), 64) ?? '',
       });
     }
     return seams;
@@ -861,6 +872,83 @@ export class Machine {
   /// and so never from inside `runUntil()`.
   seamPull(id) {
     return this.#withCString(id, (ptr) => this.module._af_machine_seam_pull(this.handle, ptr));
+  }
+
+  // --- Document gates (M5-D3, #171) -------------------------------------
+  //
+  // PLAN.md §5 gates two enhancements on a document the player holds, and
+  // the rule is exact: a possession gate, which demonstrates the player
+  // holds the document and no more. So the bytes of a file input cross
+  // once, get hashed, and are dropped. Nothing is parsed and nothing is
+  // kept.
+  //
+  // Presenting is configuration, like a seam toggle: a page does it in a
+  // change handler, which runs between two rAF callbacks and so never
+  // from inside `runUntil()`.
+
+  /// Present `bytes` (a Uint8Array) as a document the player holds.
+  ///
+  /// Answers `{ status, fingerprint }`. `status` is `AF_OK` when it is an
+  /// edition this build knows — and then every gate of that document's
+  /// kind is satisfied for the life of this machine — `AF_UNRECOGNIZED`
+  /// when the bytes hashed fine and name no edition, and `AF_INVALID` for
+  /// no bytes at all.
+  ///
+  /// The fingerprint comes back **either way**, and that is the point: a
+  /// player holding an edition nobody has fingerprinted can be shown the
+  /// digest of the file they hold, which is what turns "this does not
+  /// work" into a line somebody can add to `machine/document.h`'s table.
+  /// A gate that armed on an unrecognized document would be a gate that
+  /// armed on anything.
+  presentDocument(bytes) {
+    const size = bytes ? bytes.length : 0;
+    if (size === 0) return { status: AF_INVALID, fingerprint: null };
+    const scratch = this.module._malloc(size);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while presenting a document');
+    }
+    const digest = this.module._malloc(72);
+    if (digest === 0) {
+      this.module._free(scratch);
+      throw new Error('out of wasm heap while presenting a document');
+    }
+    try {
+      this.module.HEAPU8.set(bytes, scratch);
+      const status = this.module._af_machine_present_document(
+        this.handle,
+        scratch,
+        size,
+        digest,
+        72,
+      );
+      let end = digest;
+      while (this.module.HEAPU8[end] !== 0 && end < digest + 72) ++end;
+      const text = String.fromCharCode(
+        ...this.module.HEAPU8.subarray(digest, end),
+      );
+      return { status, fingerprint: text.length === 0 ? null : text };
+    } finally {
+      this.module._free(digest);
+      this.module._free(scratch);
+    }
+  }
+
+  /// The documents presented and recognized so far, by name, in the order
+  /// they were presented — what a page prints back so a run says what was
+  /// shown to it.
+  documentsHeld() {
+    const count = this.module._af_machine_document_count(this.handle);
+    const held = [];
+    for (let i = 0; i < count; ++i) {
+      held.push(
+        this.#text(
+          (out, max) =>
+            this.module._af_machine_document_name_at(this.handle, i, out, max),
+          256,
+        ) ?? '',
+      );
+    }
+    return held;
   }
 
   /// Turn a seam on or off by id. `AF_OK` if it took, `AF_INVALID` if

@@ -28,6 +28,7 @@
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/document.h"
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
@@ -268,6 +269,48 @@ class counting_host final : public seam_host_services {
   std::vector<std::pair<seam_host_service, std::uint32_t>> served;
 };
 
+// --- A gated seam and a synthetic document (M5-D3, #171) ---------------
+//
+// The gate is a possession gate (PLAN.md §5), so the mechanism is
+// "somebody hashed a file and it was one this build knows". Neither half
+// of that may be a real document here: a fingerprint of the code wheel
+// is a fact this tree may keep (machine/document.cpp keeps one), but a
+// *test* that needed the file itself would be a test nobody without the
+// document could run. So this file claims a digest of its own, registers
+// an edition naming it, and presents it — the same shape
+// `claimed_binaries` above uses for the program, one artifact over.
+
+constexpr std::string_view claimed_document_hex =
+    "4444444444444444444444444444444444444444444444444444444444444444";
+
+[[nodiscard]] sha256_digest claimed_document_digest() {
+  sha256_digest digest;
+  EXPECT_TRUE(parse_digest(claimed_document_hex, digest));
+  return digest;
+}
+
+constexpr document_edition claimed_document{
+    .fingerprint = claimed_document_hex,
+    .name = "a code wheel this test claims",
+    .kind = document_kind::code_wheel};
+
+/// A seam gated on it, at the same point `test-edit` uses — so the two
+/// differ in the gate and in nothing else, which is what makes the pair
+/// a measurement rather than a story.
+constexpr seam_definition gated_seam{.id = "test-gated",
+                                     .about = "needs a code wheel",
+                                     .fingerprints = claimed_binaries,
+                                     .points = edit_points,
+                                     .gate = document_kind::code_wheel};
+
+/// And one gated on the other document, so that presenting one does not
+/// quietly satisfy the other.
+constexpr seam_definition journal_gated_seam{.id = "test-gated-journal",
+                                             .about = "needs a journal",
+                                             .fingerprints = claimed_binaries,
+                                             .points = edit_points,
+                                             .gate = document_kind::journal};
+
 /// A machine with the test seams registered and the claimed binary
 /// "loaded" at the segment DOS would have put it at.
 struct rig {
@@ -286,6 +329,9 @@ struct rig {
     EXPECT_TRUE(box->seams().add(ovl_seam));
     EXPECT_TRUE(box->seams().add(wrong_seam));
     EXPECT_TRUE(box->seams().add(moved_seam));
+    EXPECT_TRUE(box->seams().add(gated_seam));
+    EXPECT_TRUE(box->seams().add(journal_gated_seam));
+    EXPECT_TRUE(box->seams().add_document(claimed_document));
     box->seams().loaded(claimed_digest(), image_load_segment);
   }
 
@@ -1019,6 +1065,177 @@ TEST(SeamPullPoint, EveryAddressFreePointInThisBuildIsOnATrigger) {
       }
     }
   }
+}
+
+// --- Document gates (M5-D3, #171) --------------------------------------
+//
+// PLAN.md §5's possession gate, as a mechanism: a seam names a document
+// kind, and until a recognized document of that kind has been presented
+// it is on, inert, and says why. Fail-closed by construction — the gate
+// is tested where residency is tested, so there is no path that arms a
+// gated seam without a satisfied gate.
+
+TEST(SeamGate, AGatedSeamIsOnAndInertUntilTheDocumentIsPresented) {
+  const rig r;
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+
+  // It enables. That is the point: a gate is not a refusal — the seam
+  // took, and the player has not shown the thing they are asked to hold.
+  ASSERT_EQ(r.pc().seams().enable("test-gated"), seam_reason::none);
+  const seam_status before = r.pc().seams().status("test-gated");
+  EXPECT_EQ(before.state, seam_state::on);
+  EXPECT_FALSE(before.armed);
+  EXPECT_EQ(before.reason, seam_reason::document_not_presented);
+  EXPECT_FALSE(r.pc().seams().armed())
+      << "and no point of it is in the armed table at all";
+
+  // Two steps of the program the ungated twin of this seam edits, and
+  // nothing was edited.
+  r.pc().step();
+  r.pc().step();
+  EXPECT_EQ(edit_hits, 0u);
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x1111);
+
+  // Presented, and it arms — with no re-enable, because the gate is a
+  // condition and not a toggle.
+  EXPECT_EQ(r.pc().seams().present_document(claimed_document_digest()),
+            &claimed_document);
+  const seam_status after = r.pc().seams().status("test-gated");
+  EXPECT_EQ(after.state, seam_state::on);
+  EXPECT_TRUE(after.armed);
+  EXPECT_EQ(after.reason, seam_reason::none);
+}
+
+TEST(SeamGate, ThePointsOfAGatedSeamAreNeverArmedWhileItIsShut) {
+  // The fail-closed half, stated separately because it is the half that
+  // matters: an unsatisfied gate does not arm a point and then decline
+  // at it. An address in the armed table is an address `dispatch()`
+  // compares against, and the gate keeps it out of the table.
+  const rig r;
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-gated"), seam_reason::none);
+  EXPECT_FALSE(r.pc().seams().armed());
+
+  ASSERT_NE(r.pc().seams().present_document(claimed_document_digest()),
+            nullptr);
+  EXPECT_TRUE(r.pc().seams().armed());
+  // The point is on the third instruction, and a handler runs at the
+  // boundary *before* the instruction there — so the first step is the
+  // MOV and the second is the arrival.
+  r.pc().step();
+  r.pc().step();
+  EXPECT_EQ(edit_hits, 1u);
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x2222);
+}
+
+TEST(SeamGate, OneDocumentDoesNotSatisfyAnothersGate) {
+  const rig r;
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-gated"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().enable("test-gated-journal"), seam_reason::none);
+  ASSERT_NE(r.pc().seams().present_document(claimed_document_digest()),
+            nullptr);
+
+  EXPECT_TRUE(r.pc().seams().status("test-gated").armed);
+  const seam_status journal = r.pc().seams().status("test-gated-journal");
+  EXPECT_FALSE(journal.armed);
+  EXPECT_EQ(journal.reason, seam_reason::document_not_presented)
+      << "a code wheel is not a journal, and holding one is not holding the"
+         " other";
+}
+
+TEST(SeamGate, AnUnrecognizedDocumentSatisfiesNothingAndIsNotRemembered) {
+  // PLAN.md §9's path, as a mechanism: reported, never guessed. A gate
+  // that armed on a document this build cannot name would be a gate that
+  // armed on anything.
+  const rig r;
+  sha256_digest stranger;
+  ASSERT_TRUE(parse_digest(
+      "9999999999999999999999999999999999999999999999999999999999999999",
+      stranger));
+
+  EXPECT_EQ(r.pc().seams().present_document(stranger), nullptr);
+  EXPECT_EQ(r.pc().seams().document_count(), 0u);
+  ASSERT_EQ(r.pc().seams().enable("test-gated"), seam_reason::none);
+  EXPECT_FALSE(r.pc().seams().status("test-gated").armed);
+}
+
+TEST(SeamGate, PresentingTheSameDocumentTwiceIsPresentingIt) {
+  const rig r;
+  EXPECT_NE(r.pc().seams().present_document(claimed_document_digest()),
+            nullptr);
+  EXPECT_NE(r.pc().seams().present_document(claimed_document_digest()),
+            nullptr);
+  EXPECT_EQ(r.pc().seams().document_count(), 1u);
+  ASSERT_NE(r.pc().seams().document_at(0), nullptr);
+  EXPECT_EQ(r.pc().seams().document_at(0)->name, claimed_document.name);
+  EXPECT_EQ(r.pc().seams().document_at(1), nullptr);
+}
+
+TEST(SeamGate, AnUngatedSeamNeedsNothingAndSaysSo) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  EXPECT_TRUE(r.pc().seams().status("test-edit").armed)
+      << "no document has been presented, and it does not need one";
+  EXPECT_TRUE(r.pc().seams().holds_document(document_kind::none));
+  EXPECT_FALSE(r.pc().seams().holds_document(document_kind::journal));
+}
+
+TEST(SeamGate, APresentedDocumentIsConfigurationAndSurvivesAReset) {
+  // What the player holds is not something the machine arrived at. A
+  // reset machine has no program; the player still has their code wheel,
+  // and being asked to present it again because the game restarted would
+  // be the machine confusing its own state for theirs.
+  const rig r;
+  ASSERT_NE(r.pc().seams().present_document(claimed_document_digest()),
+            nullptr);
+  r.pc().reset();
+  EXPECT_EQ(r.pc().seams().document_count(), 1u);
+  EXPECT_TRUE(r.pc().seams().holds_document(document_kind::code_wheel));
+}
+
+TEST(SeamGate, ADefinitionWithAGateNamesTheCurrentSchema) {
+  // The version moved for this field (seam.h): a definition written
+  // before schema 5 read as ungated would be a possession gate silently
+  // not applied, which is the one failure a gate has.
+  EXPECT_EQ(seam_schema_version, 5);
+  for (const seam_definition& seam : all_seams()) {
+    EXPECT_EQ(seam.schema, seam_schema_version) << seam.id;
+  }
+}
+
+TEST(SeamGate, EveryDocumentKindHasAName) {
+  EXPECT_STREQ(document_kind_name(document_kind::none), "no document");
+  EXPECT_STREQ(document_kind_name(document_kind::code_wheel), "code wheel");
+  EXPECT_STREQ(document_kind_name(document_kind::journal), "journal");
+}
+
+TEST(SeamGate, PresentingADocumentWithEverySeamOffChangesNothing) {
+  // The fidelity invariant, for the gate (#171). A document is
+  // configuration: it is not machine state, it is not in the
+  // serialization, and a machine that has been shown one is — to the
+  // byte and to the tick — the machine that has not.
+  const rig plain;
+  plain.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    plain.pc().step();
+  }
+  const cpu::registers plain_regs = plain.regs();
+  const state_hashes plain_hash = hash_state(plain.pc());
+  const ticks plain_time = plain.pc().time();
+
+  const rig shown;
+  ASSERT_NE(shown.pc().seams().present_document(claimed_document_digest()),
+            nullptr);
+  shown.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    shown.pc().step();
+  }
+
+  EXPECT_EQ(plain_regs, shown.regs());
+  EXPECT_EQ(plain_time, shown.pc().time());
+  EXPECT_EQ(plain_hash.whole, hash_state(shown.pc()).whole)
+      << "the whole machine, and not only the page the program wrote";
 }
 
 // --- The fidelity boundary ---------------------------------------------------
