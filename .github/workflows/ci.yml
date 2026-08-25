@@ -592,11 +592,27 @@ jobs:
       # interpreter on the wasm target rather than only building it. A
       # failing test fails the job — the presets set outputOnFailure, so
       # the assertion lands in the log.
+      #
+      # `--parallel 4` overrides the presets' own width, which is "every
+      # processor there is" (CMakePresets.json). That width is meant for
+      # a developer's machine; a runner is not one. The first parallel run
+      # of this suite lost 295 cases on macos-latest inside a two-second
+      # window, every one of them to `posix_spawn` answering "resource
+      # temporarily unavailable" — trivial cases like `Version.*` among
+      # them, so the machine had briefly stopped being able to spawn
+      # anything at all rather than having run out of memory for ours.
+      # That runner's CMake also launches every discovered case through a
+      # `LaunchTest.cmake` wrapper, doubling the spawn rate, which is the
+      # part of it under our control only by asking for less.
+      #
+      # Four is well under the threshold, still four times the serial run
+      # this replaced, and uniform across the matrix so no platform is a
+      # special case waiting to surprise somebody.
       - name: test
         env:
           AMBERFOLIO_CONFORMANCE_LIMIT: '500'
           AMBERFOLIO_CONFORMANCE_REQUIRED: ${{ matrix.emscripten && '' || '1' }}
-        run: ctest --preset ${{ matrix.preset }}
+        run: ctest --preset ${{ matrix.preset }} --parallel 4
 
       # The optimised module, and the one that ships (#116, M4-W1 #108).
       # Debug was what the deployed page ran until now, and it costs about

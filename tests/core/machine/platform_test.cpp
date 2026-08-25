@@ -1129,15 +1129,33 @@ TEST(FakeHost, AudioCanBePulledFromAnotherThreadWhileTheMachineRuns) {
 
   std::atomic<bool> running{true};
   std::atomic<std::uint64_t> pulled{0};
+  // The audio thread pulls once before the machine is told to run, and
+  // the machine waits for it. Without that handshake this test asks the
+  // scheduler for a favour: the thread could be starved from its
+  // construction until `running` is cleared, pull nothing, and fail an
+  // assertion about the interface rather than about itself. It did
+  // exactly that on a CI runner the first time this suite ran in
+  // parallel — which was the test being racy on its own terms, and the
+  // load only made it visible.
+  //
+  // The handshake makes the claim stronger rather than weaker: the pull
+  // is now *known* to have happened, and the loop underneath it is
+  // *known* to be running while `turns()` does, which is the thing this
+  // test is named for.
+  std::atomic<bool> primed{false};
 
-  std::thread audio_thread([&host, &running, &pulled] {
+  std::thread audio_thread([&host, &running, &pulled, &primed] {
     std::vector<float> block(256, 0.0F);
-    while (running.load(std::memory_order_relaxed)) {
+    do {
       host.pc().audio().render(block, cd_rate);
       pulled.fetch_add(block.size(), std::memory_order_relaxed);
-    }
+      primed.store(true, std::memory_order_release);
+    } while (running.load(std::memory_order_relaxed));
   });
 
+  while (!primed.load(std::memory_order_acquire)) {
+    std::this_thread::yield();
+  }
   host.turns(60);
   running.store(false, std::memory_order_relaxed);
   audio_thread.join();
