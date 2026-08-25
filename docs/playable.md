@@ -717,6 +717,40 @@ against a directory on disk and then looks at the disk.
 
 ---
 
+## Presenting a document (M5-D3, #171)
+
+PLAN.md §5 gates two of the enhancements on a document the player holds —
+the code-wheel bypass on the code wheel, the journal on the journal — and
+the rule is exact: a possession gate, which demonstrates the player holds
+the document and no more. The presenting side is the same flag on both
+hosts:
+
+```sh
+amberfolio <dir> START.EXE --document "/path/to/code wheel.pdf"
+node build/wasm/hosts/web/Release/drive.mjs <dir> START.EXE   --document "/path/to/code wheel.pdf"
+```
+
+```
+amberfolio: document Pool of Radiance code wheel, archive release (PDF) (code wheel) sha256=0db301ae...
+```
+
+The file is read, hashed and dropped. Nothing is parsed, nothing is
+kept, and nothing from it enters this tree — the fingerprint in
+`machine/document.h`'s table is a fact about a file and carries no byte
+of it (CONTRIBUTING.md).
+
+A document this build does not know is **reported, not guessed**, with
+the fingerprint of the file on the line, because that is the thing
+somebody can act on — an entry in the table is made of it. A gate that
+armed on an unrecognized document would be a gate that armed on anything.
+
+**Nothing in this build is gated yet**, so nothing here changes what a
+leg does. `--seams` says what each seam needs (`no document`, for all of
+them today), and the code-wheel seam's gate is one field away: #115 turns
+it on.
+
+---
+
 ## What the run should not say
 
 Three notices, and no others, on a clean run of any of the legs above:

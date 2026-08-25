@@ -210,6 +210,24 @@ inline constexpr std::uint32_t recording_format_oldest_read = 1;
 /// root directory only.
 inline constexpr std::uint32_t recording_format_recursive_manifest = 2;
 
+/// What the preamble does **not** carry yet, and what will have to add
+/// it (M5-D3, #171).
+///
+/// A seam may be gated on a document the player holds, and a run made
+/// with such a seam on is a run made by somebody holding that document.
+/// The preamble names the seams and says nothing about the documents,
+/// which is fine today for one reason only: **no seam in this build has
+/// a gate**, so no recording can depend on one.
+///
+/// The moment one does — #115 turns the code-wheel seam's gate on — the
+/// preamble gains a line naming the document, and the format version
+/// moves with it. Until then the player refuses up front, by name, a
+/// recording whose seam is shut behind an unpresented gate
+/// (`check_initial_conditions`), rather than letting it diverge at a
+/// checkpoint hash thousands of frames later. That is the same treatment
+/// a disk that differs gets (#155), and it is what keeps this paragraph
+/// an obligation rather than a hole.
+
 /// The first format whose stream may carry a `pull` line (#161). A
 /// recording that names an older version and carries one is refused: it
 /// is not a recording anything wrote.

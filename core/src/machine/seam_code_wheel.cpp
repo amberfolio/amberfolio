@@ -67,6 +67,7 @@
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/document.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/seam.h"
@@ -129,9 +130,21 @@ constexpr std::array<seam_point, 1> code_wheel_points{
 
 constexpr seam_definition code_wheel_definition{
     .id = "code-wheel",
-    .about = "answer the code-wheel challenge (ungated; M5 owes the gate)",
+    .about = "answer the code-wheel challenge (ungated; #115 owes the gate)",
     .fingerprints = code_wheel_binaries,
     .points = code_wheel_points,
+    // Still ungated, and now that is a *choice made here* rather than a
+    // mechanism that does not exist. M5-D3 (#171) built the gate:
+    // `.gate = document_kind::code_wheel` is the whole of what #115 has
+    // left to do, and the table already knows the code wheel this
+    // release ships (machine/document.cpp).
+    //
+    // It is not done in the same change deliberately. This seam is the
+    // one a maintainer runs against their own copy today, and turning
+    // its gate on is a change to what a person can do — which is #115's
+    // to make, with its own issue, rather than something that arrives
+    // inside a door.
+    .gate = document_kind::none,
     .schema = seam_schema_version};
 
 }  // namespace

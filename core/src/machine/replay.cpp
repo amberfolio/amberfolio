@@ -1030,6 +1030,25 @@ replay_status replay_player::check_initial(const machine& box, filesystem* fs) {
       fail(replay_status::malformed, "a recorded seam is not on", i);
       return status_;
     }
+    // A seam that is on and shut behind a document gate (#171) would do
+    // nothing all run and diverge at a checkpoint hash thousands of
+    // frames later — a finding about the machine that was really a
+    // finding about what the person replaying happens to hold. Said here,
+    // up front, by name, exactly as a disk that differs is (#155).
+    //
+    // No seam in this build has a gate yet, so this cannot fire today.
+    // It is written now because the alternative to writing it now is a
+    // silence, and the recording format is the other half of the answer:
+    // when a gated seam is first recorded, the preamble gains a line
+    // naming the document the run was made with, and that is #115's to
+    // add together with the gate it turns on (replay.h).
+    if (row.reason == seam_reason::document_not_presented) {
+      fail(replay_status::malformed,
+           "a recorded seam is gated on a document that has not been"
+           " presented",
+           i);
+      return status_;
+    }
   }
   if (fs == nullptr) {
     return status_;

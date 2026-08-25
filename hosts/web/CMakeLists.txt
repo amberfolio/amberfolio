@@ -139,6 +139,10 @@ set(_amberfolio_web_export_names
   _af_machine_seam_pull
   _af_machine_seam_host_calls
   _af_machine_seam_host_argument
+  _af_machine_seam_gate
+  _af_machine_present_document
+  _af_machine_document_count
+  _af_machine_document_name_at
   _af_machine_write_memory
   _af_machine_read_memory
   _af_machine_set_entry

@@ -11,6 +11,7 @@
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/document.h"
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/fingerprint.h"
 #include "amberfolio/machine/machine.h"
@@ -84,6 +85,8 @@ const char* seam_reason_name(seam_reason reason) noexcept {
       return "schema_mismatch";
     case seam_reason::module_not_resident:
       return "module_not_resident";
+    case seam_reason::document_not_presented:
+      return "document_not_presented";
     case seam_reason::point_not_recognized:
       return "point_not_recognized";
     case seam_reason::too_many_points:
@@ -238,6 +241,83 @@ bool seam_engine::modules_resident(const seam_definition& seam) const noexcept {
   return true;
 }
 
+seam_reason seam_engine::blocking_reason(
+    const seam_definition& seam) const noexcept {
+  // The gate first, and seam.h says why: it is the condition a *person*
+  // can do something about.
+  if (!holds_document(seam.gate)) {
+    return seam_reason::document_not_presented;
+  }
+  if (!modules_resident(seam)) {
+    return seam_reason::module_not_resident;
+  }
+  return seam_reason::none;
+}
+
+const document_edition* seam_engine::present_document(
+    const sha256_digest& digest) {
+  const document_edition* known = find_document(digest);
+  if (known == nullptr) {
+    for (std::size_t i = 0; i < extra_documents_count_; ++i) {
+      if (digest_is(digest, extra_documents_[i]->fingerprint)) {
+        known = extra_documents_[i];
+        break;
+      }
+    }
+  }
+  if (known == nullptr) {
+    // Unrecognized, and that is an answer rather than a failure
+    // (document.h). Nothing is satisfied and nothing is remembered: a
+    // gate that armed on a document this build cannot name would be a
+    // gate that armed on anything.
+    return nullptr;
+  }
+  for (std::size_t i = 0; i < documents_; ++i) {
+    if (presented_[i] == known) {
+      return known;  // Presenting the same document twice is presenting it.
+    }
+  }
+  if (documents_ < max_documents) {
+    presented_[documents_++] = known;
+  }
+  // A document arriving changes what can be armed, exactly as `enable()`
+  // does — so the armed table is rebuilt here for the same reason it is
+  // rebuilt there. Without this a gated seam would report `armed` from
+  // `status()` (which asks the machine afresh) and have no point in the
+  // table for `dispatch()` to compare against, which is #131's
+  // disagreement between a claim and a fact, arranged on purpose.
+  //
+  // Configuration, like every other caller of this: a host presents a
+  // document between `run()` calls and never from inside one.
+  arm_all(overlays_);
+  return known;
+}
+
+bool seam_engine::add_document(const document_edition& document) noexcept {
+  if (extra_documents_count_ == max_documents) {
+    return false;
+  }
+  extra_documents_[extra_documents_count_++] = &document;
+  return true;
+}
+
+bool seam_engine::holds_document(document_kind kind) const noexcept {
+  if (kind == document_kind::none) {
+    return true;  // Nothing is needed, so nothing is missing.
+  }
+  for (std::size_t i = 0; i < documents_; ++i) {
+    if (presented_[i]->kind == kind) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const document_edition* seam_engine::document_at(
+    std::size_t nth) const noexcept {
+  return nth < documents_ ? presented_[nth] : nullptr;
+}
+
 seam_status seam_engine::status(std::size_t index) const noexcept {
   if (index >= registered_) {
     return {};
@@ -270,10 +350,10 @@ seam_status seam_engine::status(std::size_t index) const noexcept {
   // qualified by the program's own record can come and go without any
   // event this engine is told about (#131). A host that prints a listing
   // gets the answer as of the moment it asked.
-  const bool armed = s.enabled && modules_resident(*s.seam);
+  const seam_reason blocked = blocking_reason(*s.seam);
+  const bool armed = s.enabled && blocked == seam_reason::none;
   out.armed = armed;
-  out.reason = s.enabled && !armed ? seam_reason::module_not_resident
-                                   : seam_reason::none;
+  out.reason = s.enabled ? blocked : seam_reason::none;
   out.fired = s.fired;
   out.declined = s.declined;
   // A fact about the definition rather than about the run, and worked
@@ -482,7 +562,18 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
     const bool was_armed = s.armed;
     const seam_reason was_reason = s.reason;
 
+    // A gated seam whose document has not been presented arms **no
+    // points at all** (#171). Not "arms them and declines": a point in
+    // the table is a point `dispatch()` compares an address against, and
+    // fail-closed here means the address never enters the table. The
+    // loop below is skipped entirely, and the reason falls out of
+    // `blocking_reason()` a few lines down like any other.
+    const bool gated_shut = !holds_document(s.seam->gate);
+
     for (const seam_point& point : s.seam->points) {
+      if (gated_shut) {
+        break;
+      }
       std::uint32_t base = 0;
       std::uint32_t anchor = no_load_segment;
       if (point.module.is_resident_image()) {
@@ -525,9 +616,9 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
       }
     }
 
-    const bool resident = modules_resident(*s.seam);
-    s.armed = resident;
-    s.reason = resident ? seam_reason::none : seam_reason::module_not_resident;
+    const seam_reason blocked = blocking_reason(*s.seam);
+    s.armed = blocked == seam_reason::none;
+    s.reason = blocked;
 
     // Said once per transition, not once per read: a program that loads
     // and unloads an overlay produces one line each way, and a seam that

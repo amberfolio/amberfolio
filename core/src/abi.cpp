@@ -23,6 +23,7 @@
 #include "amberfolio/abi_bridge.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/clock.h"
+#include "amberfolio/machine/document.h"
 #include "amberfolio/machine/dos.h"
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/ega.h"
@@ -1308,6 +1309,72 @@ uint32_t af_machine_load_error(const af_machine* handle) {
     return AF_NO_MACHINE;
   }
   return static_cast<uint32_t>(last_load_error);
+}
+
+uint32_t af_machine_present_document(af_machine* handle, const uint8_t* bytes,
+                                     uint32_t size, char* out, uint32_t max) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  if (bytes == nullptr || size == 0 || out == nullptr ||
+      max < amberfolio::sha256_digest::text_length + 1) {
+    return AF_INVALID;
+  }
+  const amberfolio::sha256_digest digest =
+      amberfolio::sha256(std::span<const uint8_t>(bytes, size));
+  std::array<char, amberfolio::sha256_digest::text_length + 1> text{};
+  if (amberfolio::format_hex(digest, text) == 0) {
+    return AF_INVALID;
+  }
+  // Written whatever the answer, and abi.h says why: a player holding an
+  // edition this build does not know can be shown the fingerprint of the
+  // file they hold, which is what turns "this does not work" into a line
+  // somebody can add to the table.
+  static_cast<void>(
+      copy_out(std::span<const char>(text.data(),
+                                     amberfolio::sha256_digest::text_length),
+               out, max));
+  return box->seams().present_document(digest) == nullptr ? AF_UNRECOGNIZED
+                                                          : AF_OK;
+}
+
+uint32_t af_machine_document_count(const af_machine* handle) {
+  const machine* box = box_of(handle);
+  return box == nullptr ? 0
+                        : static_cast<uint32_t>(box->seams().document_count());
+}
+
+uint32_t af_machine_document_name_at(const af_machine* handle, uint32_t index,
+                                     char* out, uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr) {
+    return 0;
+  }
+  const amberfolio::machine::document_edition* document =
+      box->seams().document_at(index);
+  if (document == nullptr) {
+    return 0;
+  }
+  return copy_out(
+      std::span<const char>(document->name.data(), document->name.size()), out,
+      max);
+}
+
+uint32_t af_machine_seam_gate(const af_machine* handle, uint32_t index,
+                              char* out, uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || index >= box->seams().count()) {
+    return 0;
+  }
+  const amberfolio::machine::seam_definition* seam =
+      box->seams().find(box->seams().status(index).id);
+  if (seam == nullptr) {
+    return 0;
+  }
+  const std::string_view name =
+      amberfolio::machine::document_kind_name(seam->gate);
+  return copy_out(std::span<const char>(name.data(), name.size()), out, max);
 }
 
 uint32_t af_machine_write_memory(af_machine* handle, uint32_t address,

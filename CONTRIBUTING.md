@@ -72,6 +72,15 @@ Maintainers will reject anything that crosses this line, however useful
 it would be. This applies beyond git, too: keep game files out of issues,
 CI logs, and screenshots.
 
+**The rule covers the player's documents exactly as it covers the
+binary** (M5, #171). The code wheel and the Adventurer's Journal are
+copyrighted material as much as the program is; what this repository may
+write down about one is what it may write down about the other — a
+SHA-256, a name, and the offsets a fact table needs. Never a page, never
+an image, never the text on one. `core/include/amberfolio/machine/
+document.h` is the table that keeps those fingerprints, and a fingerprint
+names a file without carrying a byte of it.
+
 Part of that tripwire is an allowlist, and it is the part you are most
 likely to meet: **anything that is not text is refused unless its path is
 named in the guard.** The repository has one such file today, a 34-byte
