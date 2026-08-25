@@ -754,6 +754,7 @@ export async function drive(opts) {
   );
   reportSeams(machine);
   reportSeamsFired(machine);
+  reportHostServices(machine);
 
   // --- Throughput --------------------------------------------------------
   //
@@ -862,6 +863,25 @@ function reportSeamsFired(machine) {
   for (const seam of machine.seamList()) {
     if (seam.state !== AF_SEAM_ON) continue;
     say(`amberfolio: seam ${seam.id} ${formatSeamFired(seam)}`);
+  }
+}
+
+/// And what the seams asked of the host (M5-D1, #169), in the words the
+/// SDL host ends a run with: a line per service that was called, and
+/// none for one that was not.
+///
+/// The silence is the point. A callout that reached nobody counts
+/// nothing, so a seam that fired with no line here is a seam whose
+/// `call_host()` was refused — and that difference is invisible in any
+/// stream (#153), which is why the number is polled and printed rather
+/// than watched for.
+function reportHostServices(machine) {
+  for (const row of machine.seamHostServices()) {
+    if (row.calls === 0) continue;
+    say(
+      `amberfolio: host-service ${row.service} calls=${row.calls}` +
+        ` last=${row.argument} at=${row.at}`,
+    );
   }
 }
 

@@ -159,6 +159,8 @@ const EXPECTED_EXPORTS = [
   '_af_machine_seam_fired',
   '_af_machine_seam_enable',
   '_af_machine_seam_disable',
+  '_af_machine_seam_host_calls',
+  '_af_machine_seam_host_argument',
   '_af_machine_write_memory',
   '_af_machine_read_memory',
   '_af_machine_set_entry',
@@ -174,6 +176,11 @@ const EXPECTED_EXPORTS = [
   '_af_web_probe_program_bytes',
   '_af_web_probe_program_size',
   '_af_web_probe_seam_register',
+  // The M5-D1 (#169) host-service door: attaching this module's
+  // `seam_host_services`, and the tick that implementation saw the call
+  // at. The count and the argument are core's, above.
+  '_af_web_attach_host_services',
+  '_af_web_host_service_at',
 ];
 
 /// FNV-1a, 32-bit. No third-party dependency (PLAN.md §4's house style,
@@ -1160,6 +1167,25 @@ if (missing.length === 0) {
         `the unreached probe seam did not arm: ${JSON.stringify(never)}`,
       );
 
+      // And the one that calls out (M5-D1, #169). Its two points are the
+      // register edit and the second store, each reached exactly once,
+      // and each asks the host for one service. Enabled beside the two
+      // above rather than in a run of its own because it changes nothing
+      // they assert: a callout does not touch the machine.
+      check(
+        machine.seamEnable('probe-host') === AF_OK,
+        'enabling the calling-out probe seam was refused',
+      );
+      const calling = machine.seamList().find((s) => s.id === 'probe-host');
+      check(
+        calling?.state === AF_SEAM_ON && calling?.armed === true,
+        `the calling-out probe seam did not arm: ${JSON.stringify(calling)}`,
+      );
+      check(
+        machine.seamHostServices().every((row) => row.calls === 0),
+        'a host service was counted before a step was taken',
+      );
+
       check(machine.seamEnable('code-wheel') === AF_INVALID, 'an unavailable seam was enabled');
       check(machine.seamEnable('no-such-seam') === AF_INVALID, 'a seam that does not exist was enabled');
     }
@@ -1179,15 +1205,18 @@ if (missing.length === 0) {
     // meant to be the page's code path, and a `_af_machine_read_memory`
     // called by hand here was a wrapper that did not exist saying it did
     // (#108).
-    const block = machine.readMemory(0x600 + 0x800, 4);
+    // Four words since #169: the program's own two, and the two the
+    // calling-out seam writes to say whether anybody answered its
+    // callouts.
+    const block = machine.readMemory(0x600 + 0x800, 8);
     check(block !== null, 'reading the result block failed');
     check(
       machine.readMemory(0x0f_ff_ff, 4) === null,
       'a read that runs off the end of the megabyte was allowed',
     );
     const words = block === null
-      ? [0, 0]
-      : [block[0] | (block[1] << 8), block[2] | (block[3] << 8)];
+      ? [0, 0, 0, 0]
+      : [0, 1, 2, 3].map((i) => block[i * 2] | (block[i * 2 + 1] << 8));
 
     // What the seams did, read off the run that just ended - the browser
     // half of the line the desktop host prints at the end of every run
@@ -1196,14 +1225,63 @@ if (missing.length === 0) {
     const fired = Object.fromEntries(after.map((s) => [s.id, s.fired]));
     const states = Object.fromEntries(after.map((s) => [s.id, s.state]));
     const lines = Object.fromEntries(after.map((s) => [s.id, formatSeamFired(s)]));
+    const hostServices = machine.seamHostServices();
     machine.destroy();
-    return { words, fired, states, lines };
+    return { words, fired, states, lines, hostServices };
   };
 
   const off = runProbe(false);
   check(off.words[0] === 0x1111 && off.words[1] === 0x0000, `seam off: result block is ${JSON.stringify(off.words.map((w) => w.toString(16)))}, expected 1111, 0`);
   const on = runProbe(true);
   check(on.words[0] === 0x2222 && on.words[1] === 0x256b, `seam on: result block is ${JSON.stringify(on.words.map((w) => w.toString(16)))}, expected 2222, 256b`);
+
+  // --- The host-service door, in a browser's module (M5-D1, #169) -------
+  //
+  // A seam called out twice, and something answered — which is the whole
+  // of what this issue had to prove on this target, because until it
+  // `seam_context::call_host()` answered false on every machine in the
+  // tree. Three things say so and they are not the same thing:
+  //
+  //   * the seam's own result words, written by its handlers from what
+  //     `call_host()` answered — the machine's account;
+  //   * the polled counts, which are the engine's account of what it
+  //     routed and are what a page can ask for at any moment;
+  //   * the tick, which is this module's *implementation's* account and
+  //     is the fact a queue drained on the next frame could not have.
+  //
+  // And the run with the seams off says all three are zero, which is
+  // what stops any of them from being true by accident.
+  check(
+    on.words[2] === 0x5555 && on.words[3] === 0x5555,
+    `seam on: the callouts report ${JSON.stringify(on.words.slice(2).map((w) => w.toString(16)))}, expected 5555, 5555`,
+  );
+  check(
+    off.words[2] === 0 && off.words[3] === 0,
+    `seam off: the callout words are ${JSON.stringify(off.words.slice(2))}, expected 0, 0`,
+  );
+  const journal = on.hostServices[0];
+  const automap = on.hostServices[1];
+  check(
+    journal?.service === 'journal-open' && automap?.service === 'automap-update',
+    `the host services are named ${JSON.stringify(on.hostServices.map((r) => r.service))}`,
+  );
+  check(
+    journal?.calls === 1 && automap?.calls === 1,
+    `the callouts were served ${JSON.stringify(on.hostServices.map((r) => r.calls))} time(s), expected 1 and 1`,
+  );
+  check(
+    journal?.argument === 0x1234 && automap?.argument === 0x00abcdef,
+    `the callouts carried ${JSON.stringify(on.hostServices.map((r) => r.argument))}`,
+  );
+  check(
+    automap?.at > journal?.at,
+    'the two callouts were served at the same virtual time, so neither is' +
+      ` a reading of the machine at its own moment: ${JSON.stringify(on.hostServices.map((r) => r.at))}`,
+  );
+  check(
+    off.hostServices.every((row) => row.calls === 0),
+    `a run with every seam off served ${JSON.stringify(off.hostServices.map((r) => r.calls))} callout(s)`,
+  );
 
   // --- What the seams did, not what they were armed at (#147) -----------
   //
@@ -1454,6 +1532,13 @@ if (missing.length === 0) {
       `and reported fired=${on.fired.probe}; the unreached one reported fired=0; ` +
       `the trigger acted only when pulled (reached=${pulled.row?.reached} either way); ` +
       `the address-free point read "${formatSeamFired(pulledPoint.row)}"`,
+  );
+  console.log(
+    'smoke: a seam called out and this module answered - ' +
+      on.hostServices
+        .map((r) => `${r.service} calls=${r.calls} last=${r.argument} at=${r.at}`)
+        .join(', ') +
+      '; with the seams off, nothing was asked of anybody',
   );
 }
 

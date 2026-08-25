@@ -142,6 +142,13 @@ add_subdirectory(core)
 # here, so AMBERFOLIO_BUILD_TESTS is unaffected by the reorder.
 add_subdirectory(tests)
 
+# What the two hosts share (M5-D1, #169): the `seam_host_services` both
+# of them attach. Before either, and only when there is a host to want
+# it — a core-only or a test-only build has no use for a host object.
+if(AMBERFOLIO_BUILD_HOST_SDL OR AMBERFOLIO_BUILD_HOST_WEB)
+  add_subdirectory(hosts/common)
+endif()
+
 if(AMBERFOLIO_BUILD_HOST_SDL)
   add_subdirectory(hosts/sdl)
 endif()
