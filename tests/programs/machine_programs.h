@@ -311,6 +311,21 @@ struct machine_program {
 /// machine's exact step count — a callout costs a run nothing.
 [[nodiscard]] const machine::seam_definition& seam_probe_host_definition();
 
+/// The build's own Encamp Fix (M5-E1, #172), keyed to the camp stand-in
+/// program's fingerprint instead of the game's and registered under its
+/// own id.
+///
+/// **The definition is copied, not written**: the points — and so the
+/// handler, its guard and its arithmetic — are `all_seams()`'s, so what
+/// the three `encamp_fix*` entries drive on all four targets is the same
+/// function a player's copy would drive. Only the fingerprint differs,
+/// because that is the field which decides what a set of addresses may be
+/// applied to.
+[[nodiscard]] const machine::seam_definition& seam_camp_definition();
+
+/// The camp stand-in itself, as the MZ file those entries load.
+[[nodiscard]] const std::vector<std::uint8_t>& seam_camp_file();
+
 /// The probe program itself, as the MZ file `seam_probe` loads — for a
 /// host that wants to stage it somewhere of its own (hosts/web).
 [[nodiscard]] const std::vector<std::uint8_t>& seam_probe_file();

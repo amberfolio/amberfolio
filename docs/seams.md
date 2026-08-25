@@ -133,7 +133,17 @@ condition rather than as input. Nothing about how often the program
 polls changes, because nothing is waited for — the key is simply there on
 the next INT 16h, as one typed a moment earlier would be. PLAN.md §5 item
 3 wants exactly this for the automap hotkey, and the Encamp Fix drives
-the program's own loop through it.
+the program's own rest through it.
+
+**One key per arrival, and not two.** The program this build targets
+drains its keyboard after every key it reads — having taken one, its
+keystroke routine reads and throws away whatever else is waiting. So a
+handler that posts two keys posts one: the screen that asked consumes the
+last of them and the rest are gone. A seam that wants to drive a sequence
+of menus therefore needs one handler call per key, which is a fact about
+what kind of seam it can be (§3a: a pulled seam gets one act) rather than
+about this primitive. `seam_encamp_fix.cpp` is where that argument is
+written out, because it is the first seam it decided anything about.
 
 **Control** — `seam_context::redirect(cs, ip)`, which is moving IP with
 its name on.
@@ -713,8 +723,165 @@ boundary, and it needs the argument this document would have to carry.
 | id | what | keyed to | qualified by |
 |---|---|---|---|
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
+| `encamp-fix` | at camp, **when you pull it**, dials the game's own rest to the days the party needs and presses Rest | the baseline | nothing: a point with no address (§3a) |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
+
+### The Encamp (F)ix (#172)
+
+PLAN.md §5 item 4, and the one enhancement the plan grants a deliberate
+exception: it automates play. The exception is narrow and the seam is
+built to stay inside it — **the game's own routines do the work; native
+code only asks.** Nothing in it shortens a rest, heals a character,
+memorizes a spell or suppresses an encounter.
+
+What it does, when a person pulls it at the camp screen with the rest
+menu up, is two things:
+
+1. **writes the days field of the game's own rest clock** with the days
+   the party needs to be whole — the largest hit-point deficit over the
+   members the program's own healing applier would accept, plus one,
+   capped at the 99 the program itself clamps that field to. It is the
+   word the rest menu's own daYs-then-Inc keys write;
+2. **posts the Rest key**, which is what a player pressing R does.
+
+Then it is out of the way. The program rests: time passes on the game's
+calendar, pending spells are memorized at the game's own rate, hit points
+come back one per member per rest day through the game's own Cure Wounds
+applier, and its own wandering-monster checks roll against its own odds.
+A monster that interrupts takes the party out of camp, which ends the
+Fix — the pull has already been spent, and the player pulls again.
+
+**The plus one is not a fudge factor.** The heal tick counts rest
+iterations in a counter the camp screen zeroes on entry and a rest does
+not reset, so a second rest in one camp session starts part-way through a
+day and would come up one hit point short. A day of slack costs the
+player nothing they did not ask for.
+
+**Why it is one act rather than the loop #172 describes.** Two facts
+turn "memorize, rest, heal, look again" into a single act, and both will
+shape every seam that drives this program through its own menus:
+
+* the program **drains its keyboard after every key it reads** (§3), so a
+  driver needs one handler call per key; and
+* a pull is a **one-shot latch** (§3a), so a pulled seam gets one act —
+  and a seam that ran at every arrival instead would rest the party every
+  time they camped to save the game, which is a setting and not a
+  command.
+
+One act is enough because the party heals in parallel: every member gains
+a hit point on every rest day, so the days the worst-wounded member needs
+are the days everybody needs. The loop in the later titles' FIX exists
+because those cast cure spells between rests.
+
+**What a later Gold Box title's FIX did that this one does not**, which
+#172 asks to be written down: it memorized cure spells for you, cast them
+through the game's own cast driver, and in at least one title made room
+by forgetting ready spells that were not cures. The first two are out of
+reach of one act rather than out of taste — a seam that memorized cures
+would owe the player their own loadout back afterwards, and there is no
+second act to put it back with. The third this project would refuse
+anyway: the game has no by-hand forget, so a Fix that forgot spells would
+be changing the rules rather than saving keystrokes. What the player
+keeps is the half that costs nothing: whatever they had queued for
+memorization is memorized during the rest this seam pays for.
+
+**The ask is a pull, not a key at the camp menu**, and #172 leaves that
+choice to the implementation. A key would need the automap's hotkey claim
+(#173) — a point inside the program's own input funnel, able to consume a
+keystroke the program has not read yet — and #173 has not landed. A pull
+needs nothing new, is what `cheat-kill-all` already uses, is recorded by
+a replay as an event with a tick, and changes nothing about how often the
+program polls. When #173 lands, the F this enhancement is named after is
+one more point on this seam and nothing else changes.
+
+**It has no address at all**, which is unusual and is a cost. Its facts
+are data-segment offsets and record offsets — the same table the debug
+cheats are written from — and its one point is address-free (§"A point
+with no address"), offered at every step boundary while the pull is
+outstanding. The rest menu lives in an overlaid module, and a point there
+wants the word the overlay manager keeps that module's segment in (§4),
+which nobody in this tree has located for that module. So the guard is
+what buys the safety back:
+
+1. the game mode byte reads camp;
+2. the program's own rest-screen flag is set, so the rest command is what
+   is running;
+3. the days field is zero — the rest wrapper fills hours and minutes and
+   never days, so a non-zero days field is a duration somebody else
+   dialled and this seam stands aside from it;
+4. every member's memorization countdown is zero, which the rest sets up
+   immediately before its menu is drawn and destroys on its first
+   iteration — this is what says the rest has **not started**;
+5. the roster is a roster: far pointers throughout, ending within a walk,
+   with at least one member on it;
+6. and nothing is in the keystroke buffer, so the program is waiting for
+   a key and no key a player typed is overtaken.
+
+**What it cannot rule out** is a narrow window mid-rest: the countdown
+bytes wrap down through a byte and can be re-seeded to zero for a member
+with nothing to memorize, so a party in which nobody is memorizing
+anything passes through one iteration in every 255 where they are all
+zero again. A pull served in one of those, with the days field also zero,
+dials a rest that is already running and presses Rest — and the program,
+which treats a key arriving during a rest as a request to stop, asks the
+player whether to stop resting. That is a question, not a corruption:
+every word this seam writes is a word the rest menu's own keys write.
+Closing that window for good means finding the manager's segment word for
+that module, and §"How a wrong fact was found" is the method.
+
+`tests/core/machine/seam_encamp_test.cpp` drives the handler over a camp
+the test lays down by the facts, both ways. The three `encamp_fix*`
+entries in `tests/programs` drive **the same handler** — the definition
+is the build's own, copied with the stand-in program's fingerprint in
+place of the game's — through the whole machine on all four targets, and
+two of them claim the same exact step count, which is the fidelity
+invariant for this seam where every target runs it.
+
+That stand-in caught something worth keeping: written with its camp laid
+out flag-first, it offered the seam a *half-built* camp — a roster whose
+records were still zero, which reads as a party with nothing to heal —
+and the seam acted on it. The program sets its rest-screen flag last for
+the same reason, and the stand-in now does too.
+
+**And it reads nothing it is not sure of**, which is a rule this seam
+learned on the program rather than in a test. A point with no address is
+offered at every step boundary while a pull is outstanding, so its guard
+runs with DS holding whatever the program has loaded at that instant —
+and a read through the bus is a bus cycle. The first version walked the
+roster before checking anything cheaper, and driven on a player's copy it
+left seven `unmapped_memory_read` notices between the pull and the camp
+screen: the walk following a far pointer out of a data segment that was
+not the program's. Nothing was corrupted, and the machine was right to
+say so. Every read here now refuses an address outside conventional
+memory, and the roster walk happens only once the three data-segment
+bytes hold — above conventional memory is the video window, where a read
+loads the adapter's latches, and a guard that perturbed the machine it is
+inspecting would be doing the one thing a seam may never do.
+
+**It has been run against the program.** Slot C loaded, encamped, the
+Fix pulled and `REST` chosen: the guard declines from the pull until the
+rest screen is up and then acts, `fired=1 reached=0 waited=10191624` —
+8.5 virtual seconds of declining, and one act. `tests/sessions/camp.rec`
+and `camp-fix.rec` are that run and the same run without the seam, and
+the pair carries the assertion:
+
+```
+  camp-fix     contrast ok  91 of 110 checkpoints identical, then
+                            divergent from tick 216401328 to the end
+```
+
+**On both hosts**, which is #172's exit criterion: `drive.mjs` drives the
+same script against the wasm module with `--pull encamp-fix@10368` and
+reports the same one act — `fired=1 reached=0 waited=10193564`, the two
+thousand ticks being the two hosts' frame pacing rather than the machine.
+
+**What is not yet measured**: nobody has watched a hit point come back.
+Every party in the shipped save slots is whole, so the days the seam
+dialled were zero and what the pair shows is the Rest key being pressed
+for the player rather than a party being healed. `docs/playable.md`'s
+leg 7 says the same thing from the run's side, and its honest-gaps list
+carries it.
 
 ### The debug cheats (#99)
 
