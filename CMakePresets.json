@@ -198,12 +198,13 @@
     {
       "name": "test-base",
       "hidden": true,
-      "description": "A test that hangs must fail, and soon: CTest's default is 1500 seconds, which on Windows is what a crashed test's modal abort dialog costs a CI job. Nothing here takes a second; raise this the day something legitimately needs to.",
+      "description": "Two rules for every suite. A test that hangs must fail, and soon: CTest's default is 1500 seconds, which on Windows is what a crashed test's modal abort dialog costs a CI job. Nothing here takes a second; raise this the day something legitimately needs to. And the suite runs across every processor there is (jobs 0), because it is a thousand-odd independent cases and CTest's default is one at a time -- 200 seconds of wall clock on a 32-core desktop against 26. The cases are independent by construction: each owns its own machine, the ones sharing a directory on disk read files of their own, and the single case that writes to one takes a RESOURCE_LOCK so the next one to do so is ordered against it.",
       "output": { "outputOnFailure": true },
       "execution": {
         "noTestsAction": "error",
         "stopOnFailure": false,
-        "timeout": 120
+        "timeout": 120,
+        "jobs": 0
       }
     },
 

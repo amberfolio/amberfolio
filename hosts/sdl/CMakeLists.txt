@@ -102,7 +102,15 @@ add_test(NAME sdl-host-vfs-door
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-vfs-door.cmake")
 set_tests_properties(sdl-host-vfs-door PROPERTIES
   LABELS smoke
-  FIXTURES_REQUIRED sdl_smoke_disk)
+  FIXTURES_REQUIRED sdl_smoke_disk
+  # The one case that *writes* to the shared smoke disk, and the suite
+  # runs in parallel (CMakePresets.json). A fixture orders setup against
+  # use; it does not order the users against each other. Nothing else
+  # touches the file this makes, so the lock has one holder today and
+  # costs nothing — it is here so that the second test to mutate this
+  # disk is serialized against this one by construction, rather than by
+  # somebody noticing a flake in CI.
+  RESOURCE_LOCK sdl_smoke_disk_contents)
 
 # --- Presenting a document (M5-D3, #171) -------------------------------
 #
