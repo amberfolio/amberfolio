@@ -8,12 +8,17 @@
 
 #include "amberfolio/machine/vfs.h"
 
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
+#include "amberfolio/machine/memory_vfs.h"
 #include "gtest/gtest.h"
 
 namespace amberfolio::machine {
@@ -290,6 +295,175 @@ TEST(vfs_result_ok, is_true_only_for_none) {
 
   EXPECT_TRUE(success.ok());
   EXPECT_FALSE(failure.ok());
+}
+
+// --- The whole tree, and one file whole (M5-D2, #170) -------------------
+//
+// Two free functions over `filesystem`, written once above every backend
+// for the reason `canonicalize()` is written once above every backend.
+// Driven here against the in-memory one; the SDL host runs the identical
+// code over a real directory.
+
+/// `\` for the root, `\A\B.DAT` for anything else — what
+/// `format_dos_path` gives, spelled here so this file does not have to
+/// pull in report.h to say what a path looks like.
+[[nodiscard]] std::string spell(const dos_path& path) {
+  if (path.is_root()) {
+    return "\\";
+  }
+  std::string out;
+  for (std::size_t i = 0; i < path.depth(); ++i) {
+    out += '\\';
+    const std::span<const char> text = path.component(i).text();
+    out.append(text.data(), text.size());
+  }
+  return out;
+}
+
+[[nodiscard]] std::vector<std::string> walk(const filesystem& fs) {
+  std::vector<tree_file> found(tree_file_count(fs));
+  const std::size_t count = tree_files(fs, found);
+  EXPECT_EQ(count, found.size());
+  std::vector<std::string> out;
+  out.reserve(found.size());
+  for (const tree_file& entry : found) {
+    out.push_back(spell(entry.path) + ":" + std::to_string(entry.size));
+  }
+  return out;
+}
+
+/// Make `path`, parents and all, holding `bytes`.
+void stage(filesystem& fs, std::string_view path,
+           std::span<const std::uint8_t> bytes) {
+  const dos_path where = canonicalize(dos_path{}, raw(path)).value;
+  dos_path so_far;
+  for (std::size_t i = 0; i + 1 < where.depth(); ++i) {
+    ASSERT_TRUE(so_far.push(where.component(i)));
+    if (!fs.exists(so_far)) {
+      ASSERT_EQ(fs.mkdir(so_far), vfs_error::none) << path;
+    }
+  }
+  const vfs_result<file_handle> made = fs.create(where);
+  ASSERT_TRUE(made.ok()) << path;
+  if (!bytes.empty()) {
+    ASSERT_TRUE(fs.write(made.value, bytes).ok()) << path;
+  }
+  ASSERT_EQ(fs.close(made.value), vfs_error::none) << path;
+}
+
+TEST(tree_walk, is_every_file_at_its_own_path_and_no_directories) {
+  // On the heap, every time: a `memory_filesystem` carries its own
+  // multi-megabyte arena and is not a thing to put on a stack
+  // (memory_vfs.h says so).
+  const auto held = std::make_unique<memory_filesystem>();
+  memory_filesystem& fs = *held;
+  const std::array<std::uint8_t, 3> abc{'a', 'b', 'c'};
+  stage(fs, "START.EXE", abc);
+  stage(fs, R"(SAVE\SAVE1.DAT)", abc);
+  stage(fs, R"(SAVE\SAVE2.DAT)", std::span<const std::uint8_t>{});
+  stage(fs, R"(A\B\C\D.DAT)", abc);
+
+  // Depth-first, each level in the pinned name order `entry_at()`
+  // promises — so the same walk on every host and in every run
+  // (PLAN.md §4). `A` before `SAVE` before `START.EXE`, and the walk
+  // descends before it moves on.
+  EXPECT_EQ(walk(fs), (std::vector<std::string>{
+                          "\\A\\B\\C\\D.DAT:3",
+                          "\\SAVE\\SAVE1.DAT:3",
+                          "\\SAVE\\SAVE2.DAT:0",
+                          "\\START.EXE:3",
+                      }));
+}
+
+TEST(tree_walk, does_not_see_a_directory_with_nothing_in_it) {
+  // The honest consequence of the set being the useful one (vfs.h): what
+  // the walk lists is exactly what can be read and unlinked, and an
+  // empty directory is neither.
+  const auto held = std::make_unique<memory_filesystem>();
+  memory_filesystem& fs = *held;
+  ASSERT_EQ(fs.mkdir(canonicalize(dos_path{}, raw("EMPTY")).value),
+            vfs_error::none);
+  EXPECT_EQ(tree_file_count(fs), 0u);
+  EXPECT_TRUE(walk(fs).empty());
+}
+
+TEST(tree_walk, is_empty_for_an_empty_filesystem) {
+  const auto held = std::make_unique<memory_filesystem>();
+  const memory_filesystem& fs = *held;
+  EXPECT_EQ(tree_file_count(fs), 0u);
+  EXPECT_TRUE(walk(fs).empty());
+}
+
+TEST(tree_walk, counts_what_a_short_buffer_could_not_hold) {
+  // The total, not the number written: a caller handed a listing that
+  // did not fit has to be able to tell that it did not, and a count that
+  // stopped at the buffer would be a truncated listing presented as a
+  // complete one — the reading #158 spent a milestone not having.
+  const auto held = std::make_unique<memory_filesystem>();
+  memory_filesystem& fs = *held;
+  const std::array<std::uint8_t, 1> one{7};
+  stage(fs, "A.DAT", one);
+  stage(fs, "B.DAT", one);
+  stage(fs, "C.DAT", one);
+
+  std::array<tree_file, 2> room{};
+  EXPECT_EQ(tree_files(fs, room), 3u);
+  EXPECT_EQ(spell(room[0].path), "\\A.DAT");
+  EXPECT_EQ(spell(room[1].path), "\\B.DAT");
+}
+
+TEST(read_file, brings_back_every_byte_and_closes_the_handle) {
+  const auto held = std::make_unique<memory_filesystem>();
+  memory_filesystem& fs = *held;
+  const std::array<std::uint8_t, 5> data{1, 2, 3, 4, 5};
+  stage(fs, "DATA.BIN", data);
+
+  std::array<std::uint8_t, 5> out{};
+  const dos_path where = canonicalize(dos_path{}, raw("DATA.BIN")).value;
+  const vfs_result<std::uint32_t> read = read_file(fs, where, out);
+  ASSERT_TRUE(read.ok());
+  EXPECT_EQ(read.value, 5u);
+  EXPECT_EQ(out, data);
+
+  // The handle is closed on every path out, so the file can be read
+  // again — and, since `unlink()` refuses a file with a handle open on
+  // it, removed.
+  EXPECT_TRUE(read_file(fs, where, out).ok());
+  EXPECT_EQ(fs.unlink(where), vfs_error::none);
+}
+
+TEST(read_file, answers_a_short_count_for_a_buffer_that_will_not_hold_it) {
+  // The rule this layer owns is how to read a file whole; how big a
+  // buffer the caller was given is the caller's (vfs.h). It knows the
+  // size — `stat()` answers it — so a short count is information rather
+  // than a surprise.
+  const auto held = std::make_unique<memory_filesystem>();
+  memory_filesystem& fs = *held;
+  const std::array<std::uint8_t, 5> data{1, 2, 3, 4, 5};
+  stage(fs, "DATA.BIN", data);
+
+  std::array<std::uint8_t, 2> out{};
+  const dos_path where = canonicalize(dos_path{}, raw("DATA.BIN")).value;
+  const vfs_result<std::uint32_t> read = read_file(fs, where, out);
+  ASSERT_TRUE(read.ok());
+  EXPECT_EQ(read.value, 2u);
+  EXPECT_EQ(out, (std::array<std::uint8_t, 2>{1, 2}));
+  EXPECT_EQ(fs.stat(where).value.size, 5u) << "and the caller could have known";
+}
+
+TEST(read_file, passes_the_filesystem_s_own_refusal_through) {
+  const auto held = std::make_unique<memory_filesystem>();
+  memory_filesystem& fs = *held;
+  std::array<std::uint8_t, 4> out{};
+  EXPECT_EQ(
+      read_file(fs, canonicalize(dos_path{}, raw("GONE.DAT")).value, out).error,
+      vfs_error::file_not_found);
+
+  ASSERT_EQ(fs.mkdir(canonicalize(dos_path{}, raw("SAVE")).value),
+            vfs_error::none);
+  EXPECT_EQ(
+      read_file(fs, canonicalize(dos_path{}, raw("SAVE")).value, out).error,
+      vfs_error::access_denied);
 }
 
 }  // namespace

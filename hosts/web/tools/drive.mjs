@@ -209,6 +209,9 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
                         that takes a trigger)
   --seam ID             turn one seam on before the first step (repeatable)
   --seams               list every seam this build carries, and exit
+  --vfs-list            list every file on the disk after the run, at its
+                        own path — what the run left behind, including
+                        anything the program wrote below the root
   --speed xt|turbo|at|386
   --trace               keep the trace ring and the service-call channel
   --dump PREFIX         write PREFIX.ppm, PREFIX.wav and PREFIX.edges
@@ -234,6 +237,7 @@ export function parseArgs(argv) {
     pulls: [],
     seams: [],
     listSeams: false,
+    listVfs: false,
     speed: null,
     trace: false,
     dumpPrefix: null,
@@ -307,6 +311,8 @@ export function parseArgs(argv) {
       opts.pulls.push({ id, frame });
     } else if (arg === '--seam' && i + 1 < argv.length) {
       opts.seams.push(next());
+    } else if (arg === '--vfs-list') {
+      opts.listVfs = true;
     } else if (arg === '--seams') {
       opts.listSeams = true;
     } else if (arg === '--speed' && i + 1 < argv.length) {
@@ -754,6 +760,7 @@ export async function drive(opts) {
   );
   reportSeams(machine);
   reportSeamsFired(machine);
+  if (opts.listVfs) reportVfs(machine);
 
   // --- Throughput --------------------------------------------------------
   //
@@ -832,6 +839,23 @@ export async function drive(opts) {
 
   machine.destroy();
   return 0;
+}
+
+/// Every file on the disk after the run, at its own path (M5-D2, #170) —
+/// the SDL host's `--vfs-list`, spelled identically.
+///
+/// After the run, because the question it exists to answer is what the
+/// run left behind: what is in `\\SAVE\\` once the game has saved, and
+/// whether the file the program wrote is the file a page can read back.
+/// Files, and only files — an empty directory does not appear, which is
+/// what makes every row here something `vfsGet()` and `vfsRemove()` can
+/// act on (abi.h).
+function reportVfs(machine) {
+  const listing = machine.vfsList();
+  say(`amberfolio: vfs ${listing.length} file(s)`);
+  for (const entry of listing) {
+    say(`amberfolio: vfs ${entry.path} ${entry.size}`);
+  }
 }
 
 /// One line per seam, in the shape the SDL host's `--seams` prints —

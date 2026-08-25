@@ -144,4 +144,99 @@ vfs_result<dos_path> canonicalize(const dos_path& current_directory,
   return {.value = result, .error = vfs_error::none};
 }
 
+vfs_result<dos_path> canonicalize_host_path(
+    std::span<const char> raw) noexcept {
+  if (raw.size() > max_host_path_text) {
+    return {.error = vfs_error::path_not_found};
+  }
+  std::array<char, max_host_path_text> folded{};
+  for (std::size_t i = 0; i < raw.size(); ++i) {
+    folded[i] = raw[i] == '/' ? '\\' : raw[i];
+  }
+  return canonicalize(dos_path{},
+                      std::span<const char>(folded.data(), raw.size()));
+}
+
+// --- The whole tree, and one file whole (M5-D2, #170) -------------------
+
+namespace {
+
+/// Walk `dir` depth-first, handing every file to `out` in turn, and
+/// answer how many there were in total — including the ones `out` had no
+/// room for, so a caller can tell a full listing from a truncated one.
+///
+/// Recursion, and bounded by construction: `dos_path::max_depth` is
+/// eight and `push()` refuses past it, so a directory deeper than that is
+/// simply not descended into. Nothing under it could be named by
+/// anything this machine can resolve, so there is nothing there a caller
+/// could open anyway.
+std::size_t walk(const filesystem& fs, dos_path& dir, std::size_t seen,
+                 std::span<tree_file> out) {
+  const vfs_result<std::size_t> entries = fs.entry_count(dir);
+  if (!entries.ok()) {
+    return seen;
+  }
+  for (std::size_t i = 0; i < entries.value; ++i) {
+    const vfs_result<directory_entry> entry = fs.entry_at(dir, i);
+    if (!entry.ok()) {
+      break;
+    }
+    if (!dir.push(entry.value.name)) {
+      // Deeper than a path can be spelled. Nothing under here is
+      // reachable by name, so there is nothing here to list.
+      continue;
+    }
+    if (entry.value.is_directory) {
+      seen = walk(fs, dir, seen, out);
+    } else {
+      if (seen < out.size()) {
+        out[seen] = {.path = dir, .size = entry.value.size};
+      }
+      ++seen;
+    }
+    dir.pop();
+  }
+  return seen;
+}
+
+}  // namespace
+
+std::size_t tree_files(const filesystem& fs, std::span<tree_file> out) {
+  dos_path root;
+  return walk(fs, root, 0, out);
+}
+
+std::size_t tree_file_count(const filesystem& fs) {
+  return tree_files(fs, std::span<tree_file>{});
+}
+
+vfs_result<std::uint32_t> read_file(filesystem& fs, const dos_path& path,
+                                    std::span<std::uint8_t> out) {
+  const vfs_result<file_handle> handle = fs.open(path, open_mode::read_only);
+  if (!handle.ok()) {
+    return {.error = handle.error};
+  }
+  std::uint32_t total = 0;
+  vfs_error failure = vfs_error::none;
+  while (total < out.size()) {
+    const vfs_result<std::size_t> read =
+        fs.read(handle.value, out.subspan(total));
+    if (!read.ok()) {
+      failure = read.error;
+      break;
+    }
+    if (read.value == 0) {
+      // End of file. Zero at the end is success and not an absence
+      // (vfs.h's `read()`), so this is the loop's ordinary way out.
+      break;
+    }
+    total += static_cast<std::uint32_t>(read.value);
+  }
+  static_cast<void>(fs.close(handle.value));
+  if (failure != vfs_error::none) {
+    return {.error = failure};
+  }
+  return {.value = total, .error = vfs_error::none};
+}
+
 }  // namespace amberfolio::machine

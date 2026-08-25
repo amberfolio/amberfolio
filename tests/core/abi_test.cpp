@@ -320,11 +320,40 @@ TEST(AbiVfs, CanonicalizesTheNameInCoreRatherThanTakingItAsGiven) {
   // be a second implementation of the rule that says whether two
   // programs are looking at the same file.
   EXPECT_EQ(af_machine_vfs_put(box.get(), "game.dat", nullptr, 0), AF_OK);
+  // The count is what takes the listing (abi.h); the rows read it.
+  ASSERT_EQ(af_machine_vfs_count(box.get()), 1u);
   std::array<char, 16> name{};
   EXPECT_EQ(af_machine_vfs_name_at(box.get(), 0, name.data(),
                                    static_cast<std::uint32_t>(name.size())),
             8u);
   EXPECT_STREQ(name.data(), "GAME.DAT");
+}
+
+TEST(AbiVfs, TheListingIsTakenByTheCountAndReadByTheRows) {
+  // M5-D2's contract, stated out loud (abi.h): one walk per listing,
+  // because a walk per row is quadratic on top of an `entry_at()` that
+  // is already quadratic and does not finish on a real installation.
+  //
+  // What that buys, beside finishing, is a listing that does not shift
+  // underneath the loop reading it — which a live one did, silently,
+  // whenever anything changed the filesystem in between.
+  const equipped_machine box;
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "A.DAT", nullptr, 0), AF_OK);
+  ASSERT_EQ(af_machine_vfs_count(box.get()), 1u);
+
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "B.DAT", nullptr, 0), AF_OK);
+  std::array<char, 16> name{};
+  EXPECT_EQ(af_machine_vfs_name_at(box.get(), 1, name.data(),
+                                   static_cast<std::uint32_t>(name.size())),
+            0u)
+      << "the listing is the one the count took, and it had one row";
+
+  EXPECT_EQ(af_machine_vfs_count(box.get()), 2u) << "and asking again takes"
+                                                    " a new one";
+  EXPECT_EQ(af_machine_vfs_name_at(box.get(), 1, name.data(),
+                                   static_cast<std::uint32_t>(name.size())),
+            5u);
+  EXPECT_STREQ(name.data(), "B.DAT");
 }
 
 TEST(AbiVfs, RefusesANameNoDosNameCouldEqual) {
@@ -445,9 +474,11 @@ TEST(AbiVfs, TakesAShippedInstallationWholeAndStillHasRoomToSave) {
     ASSERT_EQ(put("SAVE/SLOT" + std::to_string(i) + ".DAT"), AF_OK) << i;
   }
 
-  // Complete: every file, plus the one directory core made on the way.
-  // Nothing skipped, which is the claim — 190 of 195 was the bug.
-  EXPECT_EQ(af_machine_vfs_count(box.get()), root_files + 1);
+  // Complete: every file, wherever it lives. Nothing skipped, which is
+  // the claim — 190 of 195 was the bug. And since #170 the listing walks
+  // the tree, so the seventy-two under `\SAVE\` are *in* this number
+  // rather than standing behind one row saying `SAVE`.
+  EXPECT_EQ(af_machine_vfs_count(box.get()), root_files + shipped_slots);
 
   // And what the bug's symptom was: a save still has somewhere to go. A
   // party of six writes a character file each beside the slot, so this
@@ -503,11 +534,32 @@ std::string fingerprint_of(af_machine* box, const char* path) {
   return length == 0 ? std::string{} : std::string(hex.data());
 }
 
-/// The root listing as `{name, size}` pairs, which is all the ABI offers
-/// of a directory tree and is deliberately only the root (abi.h).
-std::vector<std::pair<std::string, std::uint32_t>> root_listing(
+/// The whole tree as `{path, size}` pairs, in the walk order the ABI
+/// pins (abi.h) — every file, at the path it lives at, and no
+/// directories, because a directory is not something any other call in
+/// this section takes.
+std::vector<std::pair<std::string, std::uint32_t>> tree_listing(
     af_machine* box) {
   std::vector<std::pair<std::string, std::uint32_t>> out;
+  // The count takes the listing and the rows read it (abi.h), which is
+  // what every caller of this trio does anyway.
+  const std::uint32_t count = af_machine_vfs_count(box);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    std::array<char, AF_PATH_CAPACITY> path{};
+    if (af_machine_vfs_path_at(box, i, path.data(),
+                               static_cast<std::uint32_t>(path.size())) == 0) {
+      continue;
+    }
+    out.emplace_back(std::string(path.data()), af_machine_vfs_size_at(box, i));
+  }
+  return out;
+}
+
+/// The leaf names of that listing, in the same order — what
+/// `af_machine_vfs_name_at` answers, kept separate so that a test can say
+/// which of the two it is checking.
+std::vector<std::string> tree_names(af_machine* box) {
+  std::vector<std::string> out;
   const std::uint32_t count = af_machine_vfs_count(box);
   for (std::uint32_t i = 0; i < count; ++i) {
     std::array<char, 16> name{};
@@ -515,7 +567,7 @@ std::vector<std::pair<std::string, std::uint32_t>> root_listing(
                                static_cast<std::uint32_t>(name.size())) == 0) {
       continue;
     }
-    out.emplace_back(std::string(name.data()), af_machine_vfs_size_at(box, i));
+    out.emplace_back(name.data());
   }
   return out;
 }
@@ -529,11 +581,16 @@ TEST(AbiVfs, PutsAFileBelowTheRootAndMakesTheDirectoryOnTheWay) {
 
   // Nothing made `\SAVE` first — the host handed over one file and core
   // made the directory it named, which is what
-  // `machine::filesystem::create()` deliberately will not do.
-  const auto root = root_listing(box.get());
-  ASSERT_EQ(root.size(), 1u);
-  EXPECT_EQ(root[0].first, "SAVE");
-  EXPECT_EQ(root[0].second, 0u);
+  // `machine::filesystem::create()` deliberately will not do. The
+  // listing says so by holding the file at its full path: a path that
+  // resolves is a directory that was made.
+  const auto tree = tree_listing(box.get());
+  ASSERT_EQ(tree.size(), 1u);
+  EXPECT_EQ(tree[0].first, "\\SAVE\\SAVE1.DAT");
+  EXPECT_EQ(tree[0].second, 3u);
+  EXPECT_EQ(tree_names(box.get()), std::vector<std::string>{"SAVE1.DAT"})
+      << "the leaf name and the path are different answers, and both are"
+         " wanted";
 
   // And the file is at the path it was given, by its own bytes.
   EXPECT_EQ(fingerprint_of(box.get(), "SAVE/SAVE1.DAT"), abc_digest);
@@ -556,10 +613,11 @@ TEST(AbiVfs, TakesEitherSpellingOfASeparatorAndFoldsCaseThroughEveryComponent) {
   EXPECT_EQ(fingerprint_of(box.get(), "\\SAVE\\SAVE1.DAT"), abc_digest);
   EXPECT_EQ(fingerprint_of(box.get(), "C:\\save\\Save1.Dat"), abc_digest);
 
-  // Upper case out, one directory, one file.
-  const auto root = root_listing(box.get());
-  ASSERT_EQ(root.size(), 1u);
-  EXPECT_EQ(root[0].first, "SAVE");
+  // Upper case out, in every component of the path the listing gives
+  // back.
+  const auto tree = tree_listing(box.get());
+  ASSERT_EQ(tree.size(), 1u);
+  EXPECT_EQ(tree[0].first, "\\SAVE\\SAVE1.DAT");
 }
 
 TEST(AbiVfs, MakesEveryMissingDirectoryAndReusesTheOnesItAlreadyMade) {
@@ -576,9 +634,158 @@ TEST(AbiVfs, MakesEveryMissingDirectoryAndReusesTheOnesItAlreadyMade) {
   EXPECT_EQ(fingerprint_of(box.get(), "A/B/C/D.DAT"), abc_digest);
   EXPECT_EQ(fingerprint_of(box.get(), "A/B/E.DAT"), abc_digest);
 
-  const auto root = root_listing(box.get());
-  ASSERT_EQ(root.size(), 1u);
-  EXPECT_EQ(root[0].first, "A");
+  // Two files, three directories deep and two deep, in the walk order:
+  // depth-first, each level in pinned name order, so `A\B\C\D.DAT`
+  // comes before `A\B\E.DAT`.
+  EXPECT_EQ(tree_listing(box.get()),
+            (std::vector<std::pair<std::string, std::uint32_t>>{
+                {"\\A\\B\\C\\D.DAT", 3u}, {"\\A\\B\\E.DAT", 3u}}));
+}
+
+// --- Reading back and taking away (M5-D2, #170) -------------------------
+//
+// A browser could hand an installation over one file at a time and never
+// read one byte back, and could never remove one. The exploration sidecar
+// (#173) and M6's persistence both walk out through here.
+
+TEST(AbiVfs, ReadsAFileBackOutByPathAndSaysHowBigItIsFirst) {
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+
+  // Query, then fill — the shape the rest of this ABI has.
+  EXPECT_EQ(af_machine_vfs_size(box.get(), "save/save1.dat"), 3u)
+      << "and the path is canonicalized here like every other one";
+
+  std::array<std::uint8_t, 3> out{};
+  EXPECT_EQ(af_machine_vfs_get(box.get(), "SAVE/SAVE1.DAT", out.data(), 3),
+            AF_OK);
+  EXPECT_EQ(out, bytes);
+
+  // A buffer that will not hold the file is the caller's problem and is
+  // told about it, rather than being handed a prefix it cannot tell from
+  // the whole thing.
+  std::array<std::uint8_t, 3> partial{};
+  EXPECT_EQ(af_machine_vfs_get(box.get(), "SAVE/SAVE1.DAT", partial.data(), 2),
+            AF_NO_ROOM);
+  EXPECT_EQ(partial, (std::array<std::uint8_t, 3>{}))
+      << "and nothing was copied";
+}
+
+TEST(AbiVfs, TellsAnEmptyFileFromOneThatIsNotThere) {
+  // The one ambiguity a size can never resolve on its own, resolved by
+  // the call beside it: zero bytes and no file both measure zero.
+  const equipped_machine box;
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "EMPTY.DAT", nullptr, 0), AF_OK);
+
+  EXPECT_EQ(af_machine_vfs_size(box.get(), "EMPTY.DAT"), 0u);
+  EXPECT_EQ(af_machine_vfs_size(box.get(), "GONE.DAT"), 0u);
+  EXPECT_EQ(af_machine_vfs_get(box.get(), "EMPTY.DAT", nullptr, 0), AF_OK);
+  EXPECT_EQ(af_machine_vfs_get(box.get(), "GONE.DAT", nullptr, 0), AF_INVALID);
+}
+
+TEST(AbiVfs, RefusesToReadAnythingThatIsNotAFile) {
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+
+  std::array<std::uint8_t, 8> out{};
+  const auto max = static_cast<std::uint32_t>(out.size());
+  EXPECT_EQ(af_machine_vfs_get(box.get(), "SAVE", out.data(), max), AF_INVALID)
+      << "a directory has no bytes";
+  EXPECT_EQ(af_machine_vfs_get(box.get(), "", out.data(), max), AF_INVALID)
+      << "nor has the root";
+  EXPECT_EQ(af_machine_vfs_get(box.get(), "code wheel.pdf", out.data(), max),
+            AF_INVALID)
+      << "nor has a name no DOS path can equal";
+  EXPECT_EQ(af_machine_vfs_get(nullptr, "SAVE/SAVE1.DAT", out.data(), max),
+            AF_NO_MACHINE);
+}
+
+TEST(AbiVfs, RemovesAFileAndLeavesTheDirectoryItWasIn) {
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE2.DAT", bytes.data(), 3),
+            AF_OK);
+  ASSERT_EQ(af_machine_vfs_count(box.get()), 2u);
+
+  EXPECT_EQ(af_machine_vfs_remove(box.get(), "save/save1.dat"), AF_OK);
+  EXPECT_EQ(tree_listing(box.get()),
+            (std::vector<std::pair<std::string, std::uint32_t>>{
+                {"\\SAVE\\SAVE2.DAT", 3u}}));
+  EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), 3.0)
+      << "and the bytes came back";
+
+  // Gone means gone, and asking again says so rather than answering as
+  // though it had done something.
+  EXPECT_EQ(af_machine_vfs_remove(box.get(), "SAVE/SAVE1.DAT"), AF_INVALID);
+
+  // The last file out of `\SAVE` leaves `\SAVE` behind — abi.h says why,
+  // and the listing cannot show it because a listing is files. What
+  // shows it is that a put under it still works without making anything.
+  EXPECT_EQ(af_machine_vfs_remove(box.get(), "SAVE/SAVE2.DAT"), AF_OK);
+  EXPECT_EQ(af_machine_vfs_count(box.get()), 0u);
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE3.DAT", bytes.data(), 3),
+            AF_OK);
+  EXPECT_EQ(af_machine_vfs_size(box.get(), "SAVE/SAVE3.DAT"), 3u);
+}
+
+TEST(AbiVfs, RefusesToRemoveAnythingThatIsNotAFile) {
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+
+  EXPECT_EQ(af_machine_vfs_remove(box.get(), "SAVE"), AF_INVALID)
+      << "a directory is not removed by this call, and never silently";
+  EXPECT_EQ(af_machine_vfs_remove(box.get(), ""), AF_INVALID);
+  EXPECT_EQ(af_machine_vfs_remove(box.get(), "code wheel.pdf"), AF_INVALID);
+  EXPECT_EQ(af_machine_vfs_remove(nullptr, "SAVE/SAVE1.DAT"), AF_NO_MACHINE);
+
+  // Nothing was taken away by any of those.
+  EXPECT_EQ(af_machine_vfs_size(box.get(), "SAVE/SAVE1.DAT"), 3u);
+}
+
+TEST(AbiVfs, TheListingIsTheSetTheOtherTwoCallsWorkOn) {
+  // The property that lets a row be a path and a size with no kind flag
+  // beside it: everything the listing names can be read and removed.
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "START.EXE", bytes.data(), 3), AF_OK);
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "A/B/C/D.DAT", bytes.data(), 3),
+            AF_OK);
+
+  const auto tree = tree_listing(box.get());
+  ASSERT_EQ(tree.size(), 3u);
+  for (const auto& [path, size] : tree) {
+    std::array<std::uint8_t, 8> out{};
+    EXPECT_EQ(af_machine_vfs_size(box.get(), path.c_str()), size) << path;
+    EXPECT_EQ(af_machine_vfs_get(box.get(), path.c_str(), out.data(),
+                                 static_cast<std::uint32_t>(out.size())),
+              AF_OK)
+        << path;
+    EXPECT_EQ(af_machine_vfs_remove(box.get(), path.c_str()), AF_OK) << path;
+  }
+  EXPECT_EQ(af_machine_vfs_count(box.get()), 0u);
+}
+
+TEST(AbiVfs, EveryCallHereNeedsAFilesystem) {
+  // A bare machine has no reference devices, so it has no filesystem —
+  // its own code rather than a lie about a machine that exists (abi.h).
+  af_machine* bare = af_machine_create();
+  ASSERT_NE(bare, nullptr);
+  std::array<std::uint8_t, 4> out{};
+  EXPECT_EQ(af_machine_vfs_get(bare, "X.DAT", out.data(), 4), AF_NO_FILESYSTEM);
+  EXPECT_EQ(af_machine_vfs_remove(bare, "X.DAT"), AF_NO_FILESYSTEM);
+  EXPECT_EQ(af_machine_vfs_size(bare, "X.DAT"), 0u);
+  EXPECT_EQ(af_machine_vfs_count(bare), 0u);
+  af_machine_destroy(bare);
 }
 
 TEST(AbiVfs, RefusesAPathNoFileCanLiveAtAndMakesNothingOnTheWayToIt) {
@@ -588,7 +795,7 @@ TEST(AbiVfs, RefusesAPathNoFileCanLiveAtAndMakesNothingOnTheWayToIt) {
   ASSERT_EQ(af_machine_vfs_put(box.get(), "START.EXE", bytes.data(), 3), AF_OK);
   ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
             AF_OK);
-  const auto before = root_listing(box.get());
+  const auto before = tree_listing(box.get());
   const double bytes_before = af_machine_vfs_bytes_used(box.get());
 
   // A component above the leaf that is a file. Overwriting `START.EXE`
@@ -618,7 +825,7 @@ TEST(AbiVfs, RefusesAPathNoFileCanLiveAtAndMakesNothingOnTheWayToIt) {
   // `START.EXE` is still the file it was. A refusal that left a
   // half-built tree behind would be the quiet fiction the whole rule
   // exists to prevent.
-  EXPECT_EQ(root_listing(box.get()), before);
+  EXPECT_EQ(tree_listing(box.get()), before);
   EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), bytes_before);
   EXPECT_EQ(fingerprint_of(box.get(), "START.EXE"), abc_digest);
   EXPECT_EQ(fingerprint_of(box.get(), "SAVE/SAVE1.DAT"), abc_digest);

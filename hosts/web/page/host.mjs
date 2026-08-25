@@ -41,6 +41,12 @@ export const AF_NO_FILESYSTEM = 5;
 /// handed it.
 export const AF_NO_ROOM = 6;
 
+/// A buffer big enough for any path this machine can name
+/// (`af_machine_vfs_path_at`), terminator included — abi.h's
+/// `AF_PATH_CAPACITY`, which is core's own `dos_path_capacity` and is
+/// static_asserted against it there.
+export const AF_PATH_CAPACITY = 106;
+
 export const AF_KEY_UP = 0;
 export const AF_KEY_DOWN = 1;
 
@@ -656,26 +662,51 @@ export class Machine {
     });
   }
 
-  /// Everything in the root directory, in the VFS's own pinned name
-  /// order, as `{ name, size }`. The root and only it, which is what the
-  /// ABI offers and why (abi.h) — an entry of size 0 may be a directory
-  /// the machine or a `vfsPut` made.
+  /// Every **file** on the filesystem, wherever it lives, as
+  /// `{ name, path, size }` — `name` the leaf, `path` the whole thing
+  /// (`\\SAVE\\SAVE1.DAT`), in the walk order core pins: depth-first
+  /// from the root, each directory's entries in name order, so a listing
+  /// is the same on every host and in every run.
+  ///
+  /// **The whole tree, since M5-D2 (#170), and it was the root alone.**
+  /// `vfsPut()` has reached below the root since #146 and this never
+  /// followed it, so a page could hand over an installation and not read
+  /// back one thing under `\\SAVE\\` — the same gap #146 closed on the
+  /// way in, still open on the way out.
+  ///
+  /// Files, and only files (abi.h): what this lists is exactly what
+  /// `vfsGet()` can read and `vfsRemove()` can take away, which is why a
+  /// row needs no kind flag. An *empty* directory is invisible here, and
+  /// nothing a caller could do with this listing could be done to one.
   vfsList() {
     const count = this.module._af_machine_vfs_count(this.handle);
     const entries = [];
     // 13 is `FILENAME.EXT` and its terminator; the ABI refuses a smaller
-    // buffer rather than truncating a name.
-    const scratch = this.module._malloc(16);
+    // buffer rather than truncating a name. The path needs the whole of
+    // AF_PATH_CAPACITY, which is core's own `dos_path_capacity`.
+    const scratch = this.module._malloc(16 + AF_PATH_CAPACITY);
     if (scratch === 0) {
       throw new Error('out of wasm heap while listing the filesystem');
     }
+    const pathScratch = scratch + 16;
     try {
       for (let i = 0; i < count; ++i) {
         const length = this.module._af_machine_vfs_name_at(this.handle, i, scratch, 16);
         if (length === 0) continue;
+        const pathLength = this.module._af_machine_vfs_path_at(
+          this.handle,
+          i,
+          pathScratch,
+          AF_PATH_CAPACITY,
+        );
         const bytes = this.module.HEAPU8.subarray(scratch, scratch + length);
+        const pathBytes = this.module.HEAPU8.subarray(
+          pathScratch,
+          pathScratch + pathLength,
+        );
         entries.push({
           name: String.fromCharCode(...bytes),
+          path: String.fromCharCode(...pathBytes),
           size: this.module._af_machine_vfs_size_at(this.handle, i),
         });
       }
@@ -683,6 +714,63 @@ export class Machine {
       this.module._free(scratch);
     }
     return entries;
+  }
+
+  /// How many bytes the file at `path` holds — zero for a path that names
+  /// no file, and zero for a file of no bytes, which `vfsGet()` tells
+  /// apart.
+  vfsSize(path) {
+    return this.#withCString(path, (ptr) =>
+      this.module._af_machine_vfs_size(this.handle, ptr),
+    );
+  }
+
+  /// Read `path` back out as a `Uint8Array`, or null if it could not be
+  /// read whole.
+  ///
+  /// The read half of the door #170 opened: until it, a browser could
+  /// hand an installation over one file at a time and never get one byte
+  /// back. What wants it is a page persisting what the program wrote —
+  /// the exploration sidecar now (#173), IndexedDB next.
+  ///
+  /// Query, then fill, which is this ABI's shape everywhere. The copy out
+  /// of linear memory is a `slice()` and not a `subarray()`: a view is
+  /// detached the moment the heap grows (abi.h), and what a caller does
+  /// with these bytes is its own business and may well allocate.
+  vfsGet(path) {
+    return this.#withCString(path, (ptr) => {
+      const size = this.module._af_machine_vfs_size(this.handle, ptr);
+      const scratch = size === 0 ? 0 : this.module._malloc(size);
+      if (size !== 0 && scratch === 0) {
+        throw new Error('out of wasm heap while reading a file back');
+      }
+      try {
+        const status = this.module._af_machine_vfs_get(
+          this.handle,
+          ptr,
+          scratch,
+          size,
+        );
+        if (status !== AF_OK) return null;
+        return this.module.HEAPU8.slice(scratch, scratch + size);
+      } finally {
+        if (scratch !== 0) this.module._free(scratch);
+      }
+    });
+  }
+
+  /// Delete the file at `path`. `AF_OK` when it is gone, `AF_INVALID` for
+  /// a path that names no file, a directory, or the root.
+  ///
+  /// A file, and only a file: the directory it was in stays, because
+  /// `machine::filesystem` has no `rmdir` and inventing one above the
+  /// interface that owns path semantics is the thing #146 settled must
+  /// not happen (abi.h has the whole argument). `vfsClear()` is what
+  /// removes directories.
+  vfsRemove(path) {
+    return this.#withCString(path, (ptr) =>
+      this.module._af_machine_vfs_remove(this.handle, ptr),
+    );
   }
 
   vfsBytesUsed() {

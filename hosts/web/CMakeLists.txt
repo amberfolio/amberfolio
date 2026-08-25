@@ -105,7 +105,11 @@ set(_amberfolio_web_export_names
   _af_machine_vfs_put
   _af_machine_vfs_count
   _af_machine_vfs_name_at
+  _af_machine_vfs_path_at
   _af_machine_vfs_size_at
+  _af_machine_vfs_size
+  _af_machine_vfs_get
+  _af_machine_vfs_remove
   _af_machine_vfs_bytes_used
   _af_machine_vfs_fingerprint
   _af_machine_load_from_vfs
