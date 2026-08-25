@@ -163,9 +163,8 @@ subtly wrong for decades.
 - **Fidelity boundary** — with every seam off, the core is a plain
   machine running an unmodified program; the seam engine is the *only*
   component that ever alters the machine's memory or intercepts its
-  execution, and the host UI (automap overlay, journal viewer, save
-  manager) reads machine state but never writes it except through a
-  seam.
+  execution, and the host UI (automap overlay, journal viewer) reads
+  machine state but never writes it except through a seam.
 
 ## 5. Enhancements as seams
 
@@ -211,6 +210,23 @@ Design requirements:
   re-expresses an already-proven design — screen layouts, integration
   points, behavior — as-is. The work in this project is carrying the
   mechanism onto the seam engine, not redesigning the features.
+- **Native in feel.** An enhancement is a modern quality-of-life
+  change, and it is built the way the original developers would have
+  built it had they shipped it: it respects the original design rather
+  than stomping on it. Concretely — it draws with the game's own
+  palette, font and screen conventions into the game's own screen, in
+  the places the game leaves for such things; it is reached the way
+  the game's own commands are reached (a key at a menu, not a modern
+  overlay floating above the game); where the game already has a
+  routine for the job, the seam drives that routine rather than
+  replacing it (the code-wheel bypass engages the program's own skip,
+  the Encamp (F)ix drives the game's own camp loop); and it changes
+  nothing a player did not ask for. A player who turns a seam on should
+  feel that the game gained a feature it could always have had, not
+  that a second program is running on top of it. This is a design
+  requirement beside the fidelity invariant, not a matter of taste:
+  an enhancement that cannot be made to feel native is reconsidered,
+  not shipped louder.
 
 ### The v1 seam set
 
@@ -243,10 +259,15 @@ Design requirements:
    Box titles had: drives the game's *own* memorize → rest → heal loop
    through orchestrated input, so game time passes and random
    encounters still roll — automation, not cheating.
-5. **Save & roster management** — delete/back up save games, delete
-   characters from the roster (operations the original never offered).
-   Host-level VFS operations surfaced in the shell UI; a seam is
-   involved only where in-game state must be kept consistent.
+5. **Explored overlay** — on the game's own overworld map, a marking
+   of the areas the party has already explored, so a player can tell
+   at a glance where they have and have not been. Drawn by the seam
+   into the emulated EGA planes over the game's own overworld screen,
+   in the game's palette and at the game's resolution, only while the
+   game itself is showing that screen; from the same exploration state
+   the automap keeps, persisted alongside the save. Nothing the game
+   draws is hidden — the overlay marks the known, it never obscures the
+   unknown.
 6. **Debug cheats** — invulnerability and kill-all-enemies, built
    early because they double as test tooling for the playthrough
    sweeps.
@@ -314,9 +335,9 @@ converges on **1.0** — the release the gate in §1 defines.
   passes on all targets; cheats seam toggleable end-to-end.*
 - **M5 — Player enhancements.** Code-wheel bypass, journal (OCR
   ingestion + in-game reader + auto-open), automap panel, Encamp
-  (F)ix, save & roster management — each
-  individually toggleable, each off by default. *Exit: all six v1
-  seams work and toggle independently on desktop + web.*
+  (F)ix, explored overlay — each individually toggleable, each off by
+  default, each native in feel (§5). *Exit: all six v1 seams work and
+  toggle independently on desktop + web.*
 - **M6 — Onboarding, shells + gamepad.** The reference web shell
   (file-picker / drag-drop onboarding, artifact fingerprinting with a
   clear unrecognized-edition path, IndexedDB persistence, touch
