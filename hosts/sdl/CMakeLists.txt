@@ -76,6 +76,27 @@ set_tests_properties(sdl-host-smoke-disk PROPERTIES
   LABELS smoke
   FIXTURES_SETUP sdl_smoke_disk)
 
+# Every case below that reads or writes one of the two disks takes a
+# RESOURCE_LOCK named for that disk, because the suite runs in parallel
+# (CMakePresets.json) and these are the only cases in the tree that share
+# mutable state.
+#
+# A FIXTURES_REQUIRED orders setup against use; it does **not** order the
+# users against each other, which is the thing that is easy to assume and
+# wrong. `sdl-host-vfs-door` writes a save into the smoke disk and takes
+# it away again, and `run-record-replay.cmake` copies the whole demo disk
+# to compare a replay against the manifest it recorded — so a concurrent
+# writer makes a replay fail for a reason that has nothing to do with
+# replay. That is not hypothetical: it took `sdl-host-records-and-replays`
+# down on three platforms the first time this suite ran in parallel, and
+# the message it failed with ("a recording with a wrong checkpoint hash
+# was accepted") pointed nowhere near the cause.
+#
+# One lock per disk rather than one for all eight: the two groups are
+# independent, and they run concurrently with each other and with the
+# other twelve hundred cases. Serially among themselves they cost about
+# ten seconds, which is well under the suite's critical path.
+
 add_test(NAME sdl-host-runs-a-program
   COMMAND "${CMAKE_COMMAND}"
     "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
@@ -83,7 +104,8 @@ add_test(NAME sdl-host-runs-a-program
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-smoke-program.cmake")
 set_tests_properties(sdl-host-runs-a-program PROPERTIES
   LABELS smoke
-  FIXTURES_REQUIRED sdl_smoke_disk)
+  FIXTURES_REQUIRED sdl_smoke_disk
+  RESOURCE_LOCK sdl_smoke_disk_contents)
 
 # --- The VFS door, over a real directory (M5-D2, #170) -----------------
 #
@@ -102,7 +124,8 @@ add_test(NAME sdl-host-vfs-door
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-vfs-door.cmake")
 set_tests_properties(sdl-host-vfs-door PROPERTIES
   LABELS smoke
-  FIXTURES_REQUIRED sdl_smoke_disk)
+  FIXTURES_REQUIRED sdl_smoke_disk
+  RESOURCE_LOCK sdl_smoke_disk_contents)
 
 # --- Presenting a document (M5-D3, #171) -------------------------------
 #
@@ -118,7 +141,8 @@ add_test(NAME sdl-host-presents-a-document
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-document-gate.cmake")
 set_tests_properties(sdl-host-presents-a-document PROPERTIES
   LABELS smoke
-  FIXTURES_REQUIRED sdl_smoke_disk)
+  FIXTURES_REQUIRED sdl_smoke_disk
+  RESOURCE_LOCK sdl_smoke_disk_contents)
 
 # --- The boot driver's report (#83) ------------------------------------
 #
@@ -138,7 +162,8 @@ add_test(NAME sdl-host-reports-a-stop
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-stop-report.cmake")
 set_tests_properties(sdl-host-reports-a-stop PROPERTIES
   LABELS smoke
-  FIXTURES_REQUIRED sdl_smoke_disk)
+  FIXTURES_REQUIRED sdl_smoke_disk
+  RESOURCE_LOCK sdl_smoke_disk_contents)
 
 # --- The windowed check (#80) ------------------------------------------
 #
@@ -198,7 +223,8 @@ add_test(NAME sdl-host-presents-a-frame
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-verify-program.cmake")
 set_tests_properties(sdl-host-presents-a-frame PROPERTIES
   LABELS smoke
-  FIXTURES_REQUIRED sdl_demo_disk)
+  FIXTURES_REQUIRED sdl_demo_disk
+  RESOURCE_LOCK sdl_demo_disk_contents)
 
 add_test(NAME sdl-host-sounds-a-tone
   COMMAND "${CMAKE_COMMAND}"
@@ -212,7 +238,8 @@ add_test(NAME sdl-host-sounds-a-tone
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-verify-program.cmake")
 set_tests_properties(sdl-host-sounds-a-tone PROPERTIES
   LABELS smoke
-  FIXTURES_REQUIRED sdl_demo_disk)
+  FIXTURES_REQUIRED sdl_demo_disk
+  RESOURCE_LOCK sdl_demo_disk_contents)
 
 # --- And the same program with the volume down (#148) ------------------
 #
@@ -247,7 +274,8 @@ add_test(NAME sdl-host-mutes-the-tone
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-verify-program.cmake")
 set_tests_properties(sdl-host-mutes-the-tone PROPERTIES
   LABELS smoke
-  FIXTURES_REQUIRED sdl_demo_disk)
+  FIXTURES_REQUIRED sdl_demo_disk
+  RESOURCE_LOCK sdl_demo_disk_contents)
 
 # --- The round trip (#100) ---------------------------------------------
 #
@@ -277,7 +305,8 @@ add_test(NAME sdl-host-records-and-replays
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-record-replay.cmake")
 set_tests_properties(sdl-host-records-and-replays PROPERTIES
   LABELS smoke
-  FIXTURES_REQUIRED sdl_demo_disk)
+  FIXTURES_REQUIRED sdl_demo_disk
+  RESOURCE_LOCK sdl_demo_disk_contents)
 
 # --- The committed session, on this host (#100) ------------------------
 #
