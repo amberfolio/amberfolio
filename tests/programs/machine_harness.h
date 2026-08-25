@@ -81,6 +81,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -210,6 +211,23 @@ struct machine_setup {
   /// on a seam that is off.
   std::vector<std::string_view> pulls;
 
+  /// Attach a `seam_host_services` to the machine's engine before the
+  /// run (M5-D1, #169), so a seam's `call_host()` is answered instead of
+  /// refused.
+  ///
+  /// The harness's own recorder, and deliberately not `hosts/common`'s:
+  /// this apparatus links the core and nothing else — that is what makes
+  /// it build under Emscripten and `ctest --preset wasm` run the
+  /// interpreter rather than only compile it (this file's top comment) —
+  /// and what a program entry is testing here is the *mechanism*, which
+  /// is the engine's. The object both hosts actually attach is exercised
+  /// where it lives: the SDL host's own unit suite and the wasm smoke
+  /// check drive it end to end.
+  ///
+  /// Off by default, so that the entry which runs the same seam with no
+  /// host attached is a plain absence rather than a second knob.
+  bool host_services{false};
+
   /// Log the speaker's edges into `machine_outcome::edges` (#148).
   ///
   /// Off by default and asked for by the one caller that wants it —
@@ -323,6 +341,16 @@ struct machine_outcome {
   /// Every seam event the engine reported: which went on, which armed.
   /// The run's own account of what was done to it, beside the results.
   std::vector<machine::seam_event> seam_events;
+
+  /// Host-service calls the engine routed and a host served, one entry
+  /// per `machine::seam_host_service`, and what the last of each carried
+  /// (#169). Zero throughout when no host was attached, which is the
+  /// entry that makes the count worth having: an unanswered callout is
+  /// invisible in anything but a count (#153).
+  std::array<std::uint64_t, machine::seam_host_service_count>
+      host_service_calls{};
+  std::array<std::uint32_t, machine::seam_host_service_count>
+      host_service_arguments{};
 
   /// Every naming DOS call the program made, in order (diagnostics.h's
   /// `file_event`): which files it opened, made, removed and closed, and
@@ -442,6 +470,18 @@ class machine_harness {
   std::unique_ptr<machine::speaker> sound_;
   std::unique_ptr<machine::ega> video_;
   std::unique_ptr<machine::renderer> screen_;
+
+  /// The harness's own `seam_host_services`, attached when
+  /// `machine_setup::host_services` asked for one and left detached
+  /// otherwise. It reads nothing and remembers nothing: the engine keeps
+  /// the count and the argument (machine/seam.h), and what this object
+  /// is for is to *exist*, so that `call_host()` has somewhere to land.
+  class recording_host final : public machine::seam_host_services {
+   public:
+    void serve(machine::machine& /*box*/, machine::seam_host_service /*which*/,
+               std::uint32_t /*argument*/) override {}
+  };
+  recording_host host_;
 
   machine_outcome result_{};
 

@@ -460,6 +460,7 @@
 #include <vector>
 
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/host/host_services.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/dos.h"
 #include "amberfolio/machine/edition.h"
@@ -1694,6 +1695,14 @@ int main(int argc, char** argv) try {
   stderr_diagnostics log;
   wired_machine wired(&log);
   machine::machine& box = *wired.box;
+  // The host services a seam may call out to (M5-D1, #169). Attached
+  // before anything is loaded and never detached: it is wiring, like an
+  // attached device, and it changes nothing at all about a run with
+  // every seam off — no handler runs, so nothing calls out. The same
+  // object the web host attaches (hosts/common), so a callout means the
+  // same thing on both.
+  host::host_services services;
+  box.seams().set_host(&services);
   // The machine to be, before anything runs (machine/clock.h). Printed
   // whenever it is not the default, for the reason a seam is: a run at a
   // speed nobody expected is a different run, and a log that did not say
@@ -2527,6 +2536,28 @@ int main(int argc, char** argv) try {
                  row.armed ? "armed" : "inert",
                  static_cast<unsigned long long>(row.fired), extra.c_str(),
                  say);
+  }
+
+  // And what the seams asked of the host (M5-D1, #169). A line per
+  // service that was called, and none for one that was not — which is
+  // the whole of what the polled count is for: "it never asked" is a
+  // finding, and the difference between it and "it asked and nobody
+  // answered" is invisible in any stream (#153). The count is the
+  // engine's (machine/seam.h); the tick beside it is this host's own
+  // object's, and is the fact only a synchronous implementation can
+  // have — the machine's virtual time at the instant of the call.
+  for (std::size_t i = 0; i < machine::seam_host_service_count; ++i) {
+    const auto which = static_cast<machine::seam_host_service>(i);
+    const std::uint64_t calls = box.seams().host_calls(which);
+    if (calls == 0) {
+      continue;
+    }
+    std::fprintf(stderr,
+                 "amberfolio: host-service %s calls=%llu last=%lu at=%llu\n",
+                 machine::seam_host_service_name(which),
+                 static_cast<unsigned long long>(calls),
+                 static_cast<unsigned long>(box.seams().host_argument(which)),
+                 static_cast<unsigned long long>(services.record(which).at));
   }
 
   // The VFS door (M5-D2, #170), over the directory this host was pointed

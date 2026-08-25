@@ -1016,6 +1016,47 @@ double af_machine_seam_pulled_at(const af_machine* box, uint32_t index);
 /// nothing: the latch is one-shot and is already set.
 uint32_t af_machine_seam_pull(af_machine* box, const char* id);
 
+// --- Host services (M5-D1, #169) ---------------------------------------
+//
+// The seam -> host direction, seen from the page. A seam may call out to
+// a host service (machine/seam.h): the journal reader, or the automap.
+// The implementation is C++ inside the module on both targets
+// (hosts/common), because it is handed the machine and what it reads
+// there is only true at the moment of the call — so what crosses *this*
+// boundary is not the call but the record of it.
+//
+// **Polled, and paired with whatever a host does with the call.** #153 is
+// the lesson: a stream cannot express "it never asked". A page watching
+// only for something to happen cannot tell a callout that was served
+// from one that was never made, because both look like nothing — and
+// "the callout never happened" is exactly the failure a new door has. So
+// these two sit beside the seam's own event line the way
+// `af_machine_seam_fired` sits beside the `seam_event` stream.
+//
+// `which` is a `machine::seam_host_service`: 0 for the journal reader's
+// `journal_open`, 1 for `automap_update`. There were three until #169;
+// `save_state_changed` went with the enhancement that would have called
+// it (#176, withdrawn), because a service with no consumer is a surface
+// built on spec.
+
+/// How many calls of `which` a host has **served** on this machine since
+/// the last reset. Zero for a `which` that is not a service.
+///
+/// Served, not asked: a call made on a machine with no host attached
+/// does not count, because nothing happened. A non-zero answer is
+/// therefore proof that an implementation was reached — which is the
+/// question this call exists to answer.
+///
+/// A `double` for the reason `af_machine_seam_fired` is one: it is a
+/// count that can outgrow a 32-bit integer over a long run, and every
+/// number the JS side reads is a double anyway.
+double af_machine_seam_host_calls(const af_machine* box, uint32_t which);
+
+/// What the most recent served call of `which` carried, or zero if there
+/// has not been one. The count says a journal entry was asked for; this
+/// says which entry.
+uint32_t af_machine_seam_host_argument(const af_machine* box, uint32_t which);
+
 /// Copy `size` bytes into the machine's memory at physical `address`.
 ///
 /// The machine writing its own memory, not the program writing it: this

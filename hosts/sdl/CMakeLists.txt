@@ -21,6 +21,10 @@ set_target_properties(amberfolio-sdl PROPERTIES OUTPUT_NAME amberfolio)
 
 target_link_libraries(amberfolio-sdl PRIVATE
   amberfolio::core
+  # The `seam_host_services` both hosts attach (M5-D1, #169) — one
+  # object, in hosts/common, so a callout means the same thing on the
+  # desktop and in the browser.
+  amberfolio::host_services
   amberfolio::warnings
   SDL3::SDL3)
 

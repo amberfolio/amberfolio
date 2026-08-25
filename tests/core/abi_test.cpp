@@ -981,6 +981,8 @@ class seam_probe_rig {
           amberfolio::programs::seam_probe_trigger_definition()));
       EXPECT_TRUE(
           pc->seams().add(amberfolio::programs::seam_probe_pull_definition()));
+      EXPECT_TRUE(
+          pc->seams().add(amberfolio::programs::seam_probe_host_definition()));
     }
 
     const std::vector<std::uint8_t>& exe =
@@ -1009,6 +1011,18 @@ class seam_probe_rig {
     return count;
   }
 
+  /// Attach a `seam_host_services` to this machine, so a seam's
+  /// `call_host()` reaches somebody (M5-D1, #169). Off unless a test asks
+  /// for it: a machine with none is where "the callout was refused" can
+  /// be produced deliberately, which is the half of this door with a
+  /// failure mode.
+  void attach_host() {
+    amberfolio::machine::machine* pc =
+        amberfolio::af_machine_unwrap(box_.get());
+    ASSERT_NE(pc, nullptr);
+    pc->seams().set_host(&host_);
+  }
+
   /// Run until the program exits, or until a generous budget of virtual
   /// time is gone. The probe program polls 16,384 times at most.
   void run_to_the_end() const {
@@ -1020,7 +1034,18 @@ class seam_probe_rig {
   }
 
  private:
+  /// A host that answers and remembers nothing. What the ABI hands back
+  /// is the *engine's* record of what it routed (abi.h), so this only
+  /// has to exist for a call to have been served.
+  class silent_host final : public amberfolio::machine::seam_host_services {
+   public:
+    void serve(amberfolio::machine::machine& /*box*/,
+               amberfolio::machine::seam_host_service /*which*/,
+               std::uint32_t /*argument*/) override {}
+  };
+
   equipped_machine box_;
+  silent_host host_;
 };
 
 TEST(AbiSeams, CountsWhatTheHandlersActuallyDid) {
@@ -1045,6 +1070,71 @@ TEST(AbiSeams, CountsWhatTheHandlersActuallyDid) {
       af_machine_seam_fired(rig.get(), af_machine_seam_count(rig.get()) + 1),
       0.0)
       << "an index past the end answers zero, like every other call here";
+}
+
+// --- The host-service door (M5-D1, #169) --------------------------------
+//
+// A seam may call out to a host service, and a page has to be able to
+// learn that it did and what it carried. #153's lesson is why these are
+// *polled* rather than only streamed: an empty stream cannot tell a
+// callout that was served from one that was never made, and both of
+// those are things a browser needs to distinguish.
+
+TEST(AbiSeams, AServedCalloutIsCountedAndItsArgumentIsReadable) {
+  seam_probe_rig rig;
+  rig.attach_host();
+  const auto journal = static_cast<std::uint32_t>(
+      amberfolio::machine::seam_host_service::journal_open);
+  const auto automap = static_cast<std::uint32_t>(
+      amberfolio::machine::seam_host_service::automap_update);
+
+  EXPECT_EQ(af_machine_seam_host_calls(rig.get(), journal), 0.0);
+  EXPECT_EQ(af_machine_seam_host_calls(rig.get(), automap), 0.0);
+
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe-host"), AF_OK);
+  rig.run_to_the_end();
+  ASSERT_NE(af_machine_stopped(rig.get()), 0);
+
+  // The seam's two points are each reached exactly once, so these are
+  // numbers a reader checks against the program rather than against a
+  // loop bound (tests/programs/machine_programs.cpp).
+  EXPECT_EQ(af_machine_seam_host_calls(rig.get(), journal), 1.0);
+  EXPECT_EQ(af_machine_seam_host_calls(rig.get(), automap), 1.0);
+  EXPECT_EQ(af_machine_seam_host_argument(rig.get(), journal), 0x1234u);
+  EXPECT_EQ(af_machine_seam_host_argument(rig.get(), automap), 0x00ABCDEFu);
+
+  // A `which` that is not a service answers zero, like every other
+  // out-of-range index in this ABI.
+  EXPECT_EQ(af_machine_seam_host_calls(rig.get(), 99), 0.0);
+  EXPECT_EQ(af_machine_seam_host_argument(rig.get(), 99), 0u);
+  EXPECT_EQ(af_machine_seam_host_calls(nullptr, journal), 0.0);
+}
+
+TEST(AbiSeams, ACalloutWithNoHostAttachedCountsNothing) {
+  // The entry that makes the count worth having. The same seam, the same
+  // program, the same two points reached — and no host, so `call_host()`
+  // answers false and nothing is counted, because nothing happened. In a
+  // stream this run and a run whose seam was never on look identical.
+  const seam_probe_rig rig;
+  ASSERT_EQ(af_machine_seam_enable(rig.get(), "probe-host"), AF_OK);
+  rig.run_to_the_end();
+  ASSERT_NE(af_machine_stopped(rig.get()), 0);
+
+  const std::uint32_t probe_host = rig.index_of("probe-host");
+  ASSERT_LT(probe_host, af_machine_seam_count(rig.get()));
+  EXPECT_GT(af_machine_seam_fired(rig.get(), probe_host), 0.0)
+      << "its handlers did run, which is what makes the zeroes below mean"
+         " something";
+  EXPECT_EQ(
+      af_machine_seam_host_calls(
+          rig.get(), static_cast<std::uint32_t>(
+                         amberfolio::machine::seam_host_service::journal_open)),
+      0.0);
+  EXPECT_EQ(af_machine_seam_host_calls(
+                rig.get(),
+                static_cast<std::uint32_t>(
+                    amberfolio::machine::seam_host_service::automap_update)),
+            0.0);
 }
 
 TEST(AbiSeams, ASeamArmedWhereTheProgramNeverGoesReportsZero) {
