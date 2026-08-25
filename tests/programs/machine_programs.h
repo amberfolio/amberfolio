@@ -55,6 +55,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <iosfwd>
 #include <string>
@@ -211,6 +212,21 @@ struct machine_program {
   /// says so out loud.
   std::uint64_t least_frames{};
 
+  /// What the run's seams must have asked of the host, per
+  /// `machine::seam_host_service`, and what the last of each call
+  /// carried (M5-D1, #169).
+  ///
+  /// Asserted always, and zero for every entry whose seams call out to
+  /// nothing — for the reason `console` is asserted even when empty: a
+  /// program that asked the host for something it should not have is as
+  /// wrong as one that asked for the wrong thing. It is also the only
+  /// way "the callout never reached anybody" is a claim at all, because
+  /// nothing else this suite gathers can tell it from silence (#153).
+  std::array<std::uint64_t, machine::seam_host_service_count>
+      host_service_calls{};
+  std::array<std::uint32_t, machine::seam_host_service_count>
+      host_service_arguments{};
+
   /// The **exact** number of scheduling steps the run must take. Zero
   /// means no claim, which is what almost every entry here wants: how
   /// many steps this emulator takes is a fact about the emulator and
@@ -275,6 +291,25 @@ struct machine_program {
 /// its exact step count with the plain machine's entry, which is the
 /// fidelity invariant for a per-step guard: no pull, nothing consulted.
 [[nodiscard]] const machine::seam_definition& seam_probe_pull_definition();
+
+/// The fifth (M5-D1, #169): the same program's fingerprint, two points
+/// on the same two instructions `probe` uses, and handlers that do
+/// exactly one thing each — **call a host service**.
+///
+/// One asks for `journal_open`, the other for `automap_update`, and each
+/// records what `call_host()` answered into a result word. That makes
+/// the seam -> host direction a thing the whole apparatus drives on
+/// every target, with no game binary anywhere near it, and it makes the
+/// answer's two halves separable: `seam_probe_host` runs with a host
+/// attached and expects both served, `seam_probe_host_unserved` runs
+/// with none and expects both refused. The second is the one that
+/// matters, because "the callout silently did nothing" is the failure
+/// this door has, and a machine with no host is the only place it can
+/// be produced deliberately.
+///
+/// Neither handler moves the machine, so both entries share the plain
+/// machine's exact step count — a callout costs a run nothing.
+[[nodiscard]] const machine::seam_definition& seam_probe_host_definition();
 
 /// The probe program itself, as the MZ file `seam_probe` loads — for a
 /// host that wants to stage it somewhere of its own (hosts/web).

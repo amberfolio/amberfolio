@@ -21,6 +21,10 @@ set_target_properties(amberfolio-sdl PROPERTIES OUTPUT_NAME amberfolio)
 
 target_link_libraries(amberfolio-sdl PRIVATE
   amberfolio::core
+  # The `seam_host_services` both hosts attach (M5-D1, #169) — one
+  # object, in hosts/common, so a callout means the same thing on the
+  # desktop and in the browser.
+  amberfolio::host_services
   amberfolio::warnings
   SDL3::SDL3)
 
@@ -78,6 +82,25 @@ add_test(NAME sdl-host-runs-a-program
     "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/smoke-disk"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-smoke-program.cmake")
 set_tests_properties(sdl-host-runs-a-program PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_smoke_disk)
+
+# --- The VFS door, over a real directory (M5-D2, #170) -----------------
+#
+# The same disk again. `--vfs-list`, `--vfs-get` and `--vfs-remove` are
+# the SDL half of the door the ABI opens for a browser; this drives all
+# three and then looks at the disk, because "it deleted a real file" is
+# a claim only the filesystem can settle.
+#
+# It runs after the two above and makes its own file, so nothing it does
+# can change what they see — but it *deletes* from the shared disk, so
+# it takes the same fixture and adds nothing the others read.
+add_test(NAME sdl-host-vfs-door
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/smoke-disk"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-vfs-door.cmake")
+set_tests_properties(sdl-host-vfs-door PROPERTIES
   LABELS smoke
   FIXTURES_REQUIRED sdl_smoke_disk)
 

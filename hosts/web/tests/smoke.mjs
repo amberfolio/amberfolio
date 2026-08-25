@@ -143,7 +143,11 @@ const EXPECTED_EXPORTS = [
   '_af_machine_vfs_put',
   '_af_machine_vfs_count',
   '_af_machine_vfs_name_at',
+  '_af_machine_vfs_path_at',
   '_af_machine_vfs_size_at',
+  '_af_machine_vfs_size',
+  '_af_machine_vfs_get',
+  '_af_machine_vfs_remove',
   '_af_machine_vfs_bytes_used',
   '_af_machine_vfs_fingerprint',
   '_af_machine_load_from_vfs',
@@ -160,6 +164,8 @@ const EXPECTED_EXPORTS = [
   '_af_machine_seam_fired',
   '_af_machine_seam_enable',
   '_af_machine_seam_disable',
+  '_af_machine_seam_host_calls',
+  '_af_machine_seam_host_argument',
   '_af_machine_seam_gate',
   '_af_machine_present_document',
   '_af_machine_document_count',
@@ -179,6 +185,11 @@ const EXPECTED_EXPORTS = [
   '_af_web_probe_program_bytes',
   '_af_web_probe_program_size',
   '_af_web_probe_seam_register',
+  // The M5-D1 (#169) host-service door: attaching this module's
+  // `seam_host_services`, and the tick that implementation saw the call
+  // at. The count and the argument are core's, above.
+  '_af_web_attach_host_services',
+  '_af_web_host_service_at',
 ];
 
 /// FNV-1a, 32-bit. No third-party dependency (PLAN.md §4's house style,
@@ -731,6 +742,13 @@ if (missing.length === 0) {
     `listing is ${JSON.stringify(listing.map((e) => e.name))}, expected ` +
       "['HELLO.EXE', 'NOTES.TXT'] in pinned name order",
   );
+  // The leaf and the whole path are different answers, and since #170
+  // both are given. At the root they differ only by the separator; a
+  // directory down they do not (below).
+  check(
+    listing[0]?.path === '\\HELLO.EXE' && listing[1]?.path === '\\NOTES.TXT',
+    `paths are ${JSON.stringify(listing.map((e) => e.path))}`,
+  );
   check(
     listing[0]?.size === exe.length,
     `HELLO.EXE is ${listing[0]?.size} bytes, expected ${exe.length}`,
@@ -825,27 +843,52 @@ if (missing.length === 0) {
   // over as `SAVE/SAVE1.DAT` below.
   const dosPath = '\\SAVE\\SAVE1.DAT';
 
+  // And the path the program *writes*, which is the other half of the
+  // round trip M5-D2 (#170) needed: a page could put a file in, and
+  // until that door there was no way to read one back out — so nothing
+  // a browser ran could be checked by what it left on the disk.
+  const dosOutPath = '\\SAVE\\ECHO.DAT';
+
   // Laid out by hand, because the image carries its own data: the code
-  // first, then the ASCIZ path, then a one-byte buffer. DS is set from CS
-  // so that both are addressed at their offset in the image, which is
-  // where the loader puts CS:0000.
-  const codeLength = 44;
+  // first, then the two ASCIZ paths, then a one-byte buffer. DS is set
+  // from CS so that all of them are addressed at their offset in the
+  // image, which is where the loader puts CS:0000.
+  const codeLength = 76;
   const pathAt = codeLength;
-  const bufferAt = pathAt + dosPath.length + 1;
+  const outPathAt = pathAt + dosPath.length + 1;
+  const bufferAt = outPathAt + dosOutPath.length + 1;
+  // `refused:` is the last two instructions; each JC reaches it from the
+  // instruction after itself, which is why the displacements are written
+  // as arithmetic rather than as two numbers to keep in step by hand.
+  const refusedAt = 71;
   const code = [
     0x8c, 0xc8, //             MOV AX, CS
     0x8e, 0xd8, //             MOV DS, AX
     0xba, pathAt, 0x00, //     MOV DX, path
     0xb8, 0x00, 0x3d, //       MOV AX, 3D00h   ; open, read-only
     0xcd, 0x21, //             INT 21h
-    0x72, 0x19, //             JC  refused
+    0x72, refusedAt - 14, //   JC  refused
     0x89, 0xc3, //             MOV BX, AX      ; the handle DOS gave us
     0xba, bufferAt, 0x00, //   MOV DX, buffer
     0xb9, 0x01, 0x00, //       MOV CX, 1
     0xb4, 0x3f, //             MOV AH, 3Fh     ; read
     0xcd, 0x21, //             INT 21h
+    0xb4, 0x3e, //             MOV AH, 3Eh     ; close
+    0xcd, 0x21, //             INT 21h
     0x8a, 0x16, bufferAt, 0x00, // MOV DL, [buffer]
     0xb4, 0x02, //             MOV AH, 02h     ; console output
+    0xcd, 0x21, //             INT 21h
+    0xba, outPathAt, 0x00, //  MOV DX, outPath
+    0xb9, 0x00, 0x00, //       MOV CX, 0       ; no attributes
+    0xb4, 0x3c, //             MOV AH, 3Ch     ; create
+    0xcd, 0x21, //             INT 21h
+    0x72, refusedAt - 50, //   JC  refused
+    0x89, 0xc3, //             MOV BX, AX
+    0xba, bufferAt, 0x00, //   MOV DX, buffer
+    0xb9, 0x01, 0x00, //       MOV CX, 1
+    0xb4, 0x40, //             MOV AH, 40h     ; write
+    0xcd, 0x21, //             INT 21h
+    0xb4, 0x3e, //             MOV AH, 3Eh     ; close
     0xcd, 0x21, //             INT 21h
     0xb8, 0x00, 0x4c, //       MOV AX, 4C00h   ; exit 0
     0xcd, 0x21, //             INT 21h
@@ -862,6 +905,9 @@ if (missing.length === 0) {
   const image = new Uint8Array(bufferAt + 1);
   image.set(code, 0);
   for (let i = 0; i < dosPath.length; ++i) image[pathAt + i] = dosPath.charCodeAt(i);
+  for (let i = 0; i < dosOutPath.length; ++i) {
+    image[outPathAt + i] = dosOutPath.charCodeAt(i);
+  }
   const exe = makeMzImage(image);
 
   check(machine.vfsPut('READSAVE.EXE', exe) === AF_OK, 'putting READSAVE.EXE failed');
@@ -880,20 +926,46 @@ if (missing.length === 0) {
     'a path with a space in a component was accepted',
   );
 
-  // The root listing is the root's (abi.h): the program, and the
-  // directory core made on the way to the file. Pinned name order, so
-  // `READSAVE.EXE` comes before `SAVE`.
+  // The listing walks the whole tree since #170: the program at the
+  // root, and the save one directory down at its own path — where
+  // before there was one row saying `SAVE` and no way to see what was
+  // behind it. Depth-first in pinned name order, so `READSAVE.EXE`
+  // comes first and the walk descends into `SAVE` after it.
   const listing = machine.vfsList();
+  const wantedPaths = ['\\READSAVE.EXE', '\\SAVE\\SAVE1.DAT'];
   check(
-    listing.length === 2 &&
-      listing[0]?.name === 'READSAVE.EXE' &&
-      listing[1]?.name === 'SAVE',
-    `the root holds ${JSON.stringify(listing.map((e) => e.name))}, expected ` +
-      "['READSAVE.EXE', 'SAVE']",
+    JSON.stringify(listing.map((e) => e.path)) === JSON.stringify(wantedPaths),
+    `the tree holds ${JSON.stringify(listing.map((e) => e.path))}, expected ` +
+      JSON.stringify(wantedPaths),
   );
   check(
-    listing[1]?.size === 0,
-    `the directory core made reports ${listing[1]?.size} bytes, expected 0`,
+    listing[1]?.name === 'SAVE1.DAT',
+    `the leaf of the saved file is ${JSON.stringify(listing[1]?.name)}`,
+  );
+
+  // --- Reading it back, and taking it away (M5-D2, #170) ---------------
+  //
+  // The round trip this door exists for: a page put a file below the
+  // root, the machine can be asked what is there, and now the page can
+  // read the bytes back and remove them. Until #170 the second half of
+  // that sentence did not exist — a browser could hand an installation
+  // over one file at a time and never get one byte back.
+  check(
+    machine.vfsSize('save/Save1.Dat') === 1,
+    `the saved file measures ${machine.vfsSize('save/Save1.Dat')} bytes, expected 1`,
+  );
+  const readBack = machine.vfsGet('\\SAVE\\SAVE1.DAT');
+  check(
+    readBack !== null && readBack.length === 1 && readBack[0] === 0x53,
+    `reading the saved file back gave ${JSON.stringify(readBack && Array.from(readBack))}, expected [83]`,
+  );
+  check(
+    machine.vfsGet('SAVE/GONE.DAT') === null,
+    'a file that is not there was read back all the same',
+  );
+  check(
+    machine.vfsSize('SAVE/GONE.DAT') === 0,
+    'a file that is not there has a size',
   );
 
   // One file, either spelling — the identity of a player's file is taken
@@ -934,9 +1006,40 @@ if (missing.length === 0) {
     'the reader program did not exit 0, so it could not open the file',
   );
 
+  // --- What the *program* left behind (M5-D2, #170) ---------------------
+  //
+  // The round trip the door exists for, and the half that could not be
+  // asked before it: the page put a file in, the program read it and
+  // wrote a second one of its own below the root, and now the page reads
+  // that one back and takes it away. Every step of that is a browser
+  // asking the machine what happened rather than being told.
+  const afterRun = machine.vfsList();
+  check(
+    afterRun.some((entry) => entry.path === '\\SAVE\\ECHO.DAT'),
+    `the program's own file is not in the tree: ${JSON.stringify(afterRun.map((e) => e.path))}`,
+  );
+  const echoed = machine.vfsGet('save/echo.dat');
+  check(
+    echoed !== null && echoed.length === 1 && echoed[0] === 0x53,
+    `the program wrote ${JSON.stringify(echoed && Array.from(echoed))}, expected [83] — the byte it read`,
+  );
+
+  // And away again. A file, and only a file: `\\SAVE` stays, which the
+  // listing cannot show because a listing is files (abi.h) — what shows
+  // it is that the file that is still in there is still readable.
+  check(machine.vfsRemove('\\SAVE\\ECHO.DAT') === AF_OK, 'removing the file the program wrote was refused');
+  check(machine.vfsGet('\\SAVE\\ECHO.DAT') === null, 'the removed file could still be read');
+  check(machine.vfsRemove('\\SAVE\\ECHO.DAT') === AF_INVALID, 'removing it twice answered as though it had done something');
+  check(machine.vfsRemove('SAVE') === AF_INVALID, 'a directory was removed by a call that does not remove directories');
+  check(
+    machine.vfsGet('\\SAVE\\SAVE1.DAT') !== null,
+    'the file beside it went too',
+  );
+
   console.log(
     'smoke: a file put below the root was opened by the program at its own ' +
-      'DOS path',
+      'DOS path, and the file the program wrote was listed, read back and ' +
+      'removed',
   );
 
   machine.destroy();
@@ -990,16 +1093,17 @@ if (missing.length === 0) {
     `${refused} of a ${rootFiles + shippedSlots}-file installation were ` +
       'refused; the disk the browser boots would have holes in it',
   );
-  // The root holds its files plus the one directory core made on the way
-  // — 190 of 195 taken was the bug.
-  const rootListing = machine.vfsList();
+  // Every file, wherever it lives — 190 of 195 taken was the bug. Since
+  // #170 the listing walks the tree, so the shipped slots are *in* this
+  // number rather than standing behind one row saying `SAVE`.
+  const treeListing = machine.vfsList();
   check(
-    rootListing.length === rootFiles + 1,
-    `the root holds ${rootListing.length} entries, expected ${rootFiles + 1}`,
+    treeListing.length === rootFiles + shippedSlots,
+    `the tree holds ${treeListing.length} files, expected ${rootFiles + shippedSlots}`,
   );
   check(
-    rootListing.some((entry) => entry.name === 'SAVE'),
-    'the SAVE directory core made on the way is not in the root listing',
+    treeListing.some((entry) => entry.path.startsWith('\\SAVE\\')),
+    'nothing under the SAVE directory core made on the way is in the listing',
   );
 
   // What the bug's symptom was: a save still has somewhere to go, and it
@@ -1165,6 +1269,25 @@ if (missing.length === 0) {
         `the unreached probe seam did not arm: ${JSON.stringify(never)}`,
       );
 
+      // And the one that calls out (M5-D1, #169). Its two points are the
+      // register edit and the second store, each reached exactly once,
+      // and each asks the host for one service. Enabled beside the two
+      // above rather than in a run of its own because it changes nothing
+      // they assert: a callout does not touch the machine.
+      check(
+        machine.seamEnable('probe-host') === AF_OK,
+        'enabling the calling-out probe seam was refused',
+      );
+      const calling = machine.seamList().find((s) => s.id === 'probe-host');
+      check(
+        calling?.state === AF_SEAM_ON && calling?.armed === true,
+        `the calling-out probe seam did not arm: ${JSON.stringify(calling)}`,
+      );
+      check(
+        machine.seamHostServices().every((row) => row.calls === 0),
+        'a host service was counted before a step was taken',
+      );
+
       check(machine.seamEnable('code-wheel') === AF_INVALID, 'an unavailable seam was enabled');
       check(machine.seamEnable('no-such-seam') === AF_INVALID, 'a seam that does not exist was enabled');
     }
@@ -1184,15 +1307,18 @@ if (missing.length === 0) {
     // meant to be the page's code path, and a `_af_machine_read_memory`
     // called by hand here was a wrapper that did not exist saying it did
     // (#108).
-    const block = machine.readMemory(0x600 + 0x800, 4);
+    // Four words since #169: the program's own two, and the two the
+    // calling-out seam writes to say whether anybody answered its
+    // callouts.
+    const block = machine.readMemory(0x600 + 0x800, 8);
     check(block !== null, 'reading the result block failed');
     check(
       machine.readMemory(0x0f_ff_ff, 4) === null,
       'a read that runs off the end of the megabyte was allowed',
     );
     const words = block === null
-      ? [0, 0]
-      : [block[0] | (block[1] << 8), block[2] | (block[3] << 8)];
+      ? [0, 0, 0, 0]
+      : [0, 1, 2, 3].map((i) => block[i * 2] | (block[i * 2 + 1] << 8));
 
     // What the seams did, read off the run that just ended - the browser
     // half of the line the desktop host prints at the end of every run
@@ -1201,14 +1327,63 @@ if (missing.length === 0) {
     const fired = Object.fromEntries(after.map((s) => [s.id, s.fired]));
     const states = Object.fromEntries(after.map((s) => [s.id, s.state]));
     const lines = Object.fromEntries(after.map((s) => [s.id, formatSeamFired(s)]));
+    const hostServices = machine.seamHostServices();
     machine.destroy();
-    return { words, fired, states, lines };
+    return { words, fired, states, lines, hostServices };
   };
 
   const off = runProbe(false);
   check(off.words[0] === 0x1111 && off.words[1] === 0x0000, `seam off: result block is ${JSON.stringify(off.words.map((w) => w.toString(16)))}, expected 1111, 0`);
   const on = runProbe(true);
   check(on.words[0] === 0x2222 && on.words[1] === 0x256b, `seam on: result block is ${JSON.stringify(on.words.map((w) => w.toString(16)))}, expected 2222, 256b`);
+
+  // --- The host-service door, in a browser's module (M5-D1, #169) -------
+  //
+  // A seam called out twice, and something answered — which is the whole
+  // of what this issue had to prove on this target, because until it
+  // `seam_context::call_host()` answered false on every machine in the
+  // tree. Three things say so and they are not the same thing:
+  //
+  //   * the seam's own result words, written by its handlers from what
+  //     `call_host()` answered — the machine's account;
+  //   * the polled counts, which are the engine's account of what it
+  //     routed and are what a page can ask for at any moment;
+  //   * the tick, which is this module's *implementation's* account and
+  //     is the fact a queue drained on the next frame could not have.
+  //
+  // And the run with the seams off says all three are zero, which is
+  // what stops any of them from being true by accident.
+  check(
+    on.words[2] === 0x5555 && on.words[3] === 0x5555,
+    `seam on: the callouts report ${JSON.stringify(on.words.slice(2).map((w) => w.toString(16)))}, expected 5555, 5555`,
+  );
+  check(
+    off.words[2] === 0 && off.words[3] === 0,
+    `seam off: the callout words are ${JSON.stringify(off.words.slice(2))}, expected 0, 0`,
+  );
+  const journal = on.hostServices[0];
+  const automap = on.hostServices[1];
+  check(
+    journal?.service === 'journal-open' && automap?.service === 'automap-update',
+    `the host services are named ${JSON.stringify(on.hostServices.map((r) => r.service))}`,
+  );
+  check(
+    journal?.calls === 1 && automap?.calls === 1,
+    `the callouts were served ${JSON.stringify(on.hostServices.map((r) => r.calls))} time(s), expected 1 and 1`,
+  );
+  check(
+    journal?.argument === 0x1234 && automap?.argument === 0x00abcdef,
+    `the callouts carried ${JSON.stringify(on.hostServices.map((r) => r.argument))}`,
+  );
+  check(
+    automap?.at > journal?.at,
+    'the two callouts were served at the same virtual time, so neither is' +
+      ` a reading of the machine at its own moment: ${JSON.stringify(on.hostServices.map((r) => r.at))}`,
+  );
+  check(
+    off.hostServices.every((row) => row.calls === 0),
+    `a run with every seam off served ${JSON.stringify(off.hostServices.map((r) => r.calls))} callout(s)`,
+  );
 
   // --- What the seams did, not what they were armed at (#147) -----------
   //
@@ -1459,6 +1634,13 @@ if (missing.length === 0) {
       `and reported fired=${on.fired.probe}; the unreached one reported fired=0; ` +
       `the trigger acted only when pulled (reached=${pulled.row?.reached} either way); ` +
       `the address-free point read "${formatSeamFired(pulledPoint.row)}"`,
+  );
+  console.log(
+    'smoke: a seam called out and this module answered - ' +
+      on.hostServices
+        .map((r) => `${r.service} calls=${r.calls} last=${r.argument} at=${r.at}`)
+        .join(', ') +
+      '; with the seams off, nothing was asked of anybody',
   );
 }
 
@@ -2043,6 +2225,26 @@ if (missing.length === 0 && sessions !== null) {
     `the driver skipped something it should have walked into:\n${walkedSaid}`,
   );
 
+  // --- And what is on it afterwards (M5-D2, #170) -----------------------
+  //
+  // `--vfs-list` is the driver's half of the SDL host's flag of the same
+  // name: what the run left behind, at each file's own path. Before the
+  // door it opened, the only thing a web run could say about the disk
+  // was what went *in*.
+  const afterRun = spawnSync(
+    process.execPath,
+    [driver, nested, 'SPIN.EXE', '--frames', '1', '--quiet', '--vfs-list'],
+    { encoding: 'utf8' },
+  );
+  check(afterRun.status === 0, `--vfs-list exited ${afterRun.status}: ${afterRun.stderr}`);
+  const afterSaid = afterRun.stdout ?? '';
+  for (const line of [
+    'amberfolio: vfs 2 file(s)',
+    'amberfolio: vfs \\SAVE\\SAVE1.DAT 1',
+    'amberfolio: vfs \\SPIN.EXE 34',
+  ]) {
+    check(afterSaid.includes(line), `--vfs-list never said "${line}": ${afterSaid}`);
+  }
   // --- Presenting a document (M5-D3, #171) ------------------------------
   //
   // The driver's `--document` is the SDL host's flag of the same name,
@@ -2147,9 +2349,9 @@ if (missing.length === 0 && sessions !== null) {
 
   rmSync(scratch, { recursive: true, force: true });
   console.log(
-    'smoke: the headless web driver ran a disk, walked below it, presented ' +
-      'a document it did not recognize, pressed keys, dumped a frame and ' +
-      'measured itself',
+    'smoke: the headless web driver ran a disk, walked below it, listed it ' +
+      'back afterwards, presented a document it did not recognize, pressed ' +
+      'keys, dumped a frame and measured itself',
   );
 }
 

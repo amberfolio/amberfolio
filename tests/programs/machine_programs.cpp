@@ -1957,6 +1957,13 @@ struct probe_layout {
   /// here so that "armed and never fired" is a thing this tree can build
   /// deliberately instead of only meeting by accident (#131, #147).
   std::uint32_t unreached_offset{};
+  /// Where the program stores its second answer, reached exactly once
+  /// however the poll loop ended. `seam_probe_host_definition()` (#169)
+  /// puts its second point here rather than on the poll, so that each of
+  /// its two callouts happens once and the count the ABI hands back is a
+  /// number a reader can check against the program instead of against
+  /// the loop bound.
+  std::uint32_t done_offset{};
 };
 
 [[nodiscard]] const probe_layout& probe() {
@@ -1989,6 +1996,7 @@ struct probe_layout {
     out.edit_offset = static_cast<std::uint32_t>(a.offset_of("edit"));
     out.poll_offset = static_cast<std::uint32_t>(a.offset_of("poll"));
     out.unreached_offset = static_cast<std::uint32_t>(a.offset_of("unreached"));
+    out.done_offset = static_cast<std::uint32_t>(a.offset_of("done"));
     out.file = build_exe({.initial_cs = 0,
                           .initial_ip = 0,
                           .initial_ss = 0,
@@ -2054,6 +2062,52 @@ void probe_mark_when_ready(machine::machine& box, machine::seam_context& ctx) {
                  static_cast<std::uint8_t>(probe_pulled_mark));
   cpu.write_byte(segment, static_cast<std::uint16_t>(mark_at + 1),
                  static_cast<std::uint8_t>(probe_pulled_mark >> 8U));
+}
+
+/// M5-D1 (#169): what the two host-service handlers ask for, and what
+/// they write down about the answer.
+///
+/// The arguments are arbitrary and distinct — the point is that whatever
+/// the seam passed is what the engine records and the ABI hands back, so
+/// two different numbers are worth more than two of the same.
+constexpr std::uint32_t probe_journal_argument = 0x0000'1234;
+constexpr std::uint32_t probe_automap_argument = 0x00AB'CDEF;
+
+/// What a handler writes into its result word: this, or zero. Not 1,
+/// because 1 is what half the machine's other answers are and a block
+/// read by eye should say which check it belongs to.
+constexpr std::uint16_t probe_served_mark = 0x5555;
+
+/// Ask the host to open a journal entry, and record whether anyone
+/// answered.
+///
+/// The whole shape of a callout at the size of a test: it does not touch
+/// the machine, it does not stop it, and it does not assume it was
+/// heard. `call_host()` answering false is a machine with no host
+/// attached, which is a run this suite deliberately produces
+/// (`seam_probe_host_unserved`) — and the seam's honest response is to
+/// write down that nothing happened, not to pretend it did.
+void probe_call_journal(machine::machine& box, machine::seam_context& ctx) {
+  const bool served = ctx.call_host(machine::seam_host_service::journal_open,
+                                    probe_journal_argument);
+  const auto segment = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  const std::uint16_t at = result_word(2);
+  const auto mark = static_cast<std::uint16_t>(served ? probe_served_mark : 0U);
+  box.processor().write_byte(segment, at, static_cast<std::uint8_t>(mark));
+  box.processor().write_byte(segment, static_cast<std::uint16_t>(at + 1),
+                             static_cast<std::uint8_t>(mark >> 8U));
+}
+
+/// The same, for the automap, at the program's other point.
+void probe_call_automap(machine::machine& box, machine::seam_context& ctx) {
+  const bool served = ctx.call_host(machine::seam_host_service::automap_update,
+                                    probe_automap_argument);
+  const auto segment = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  const std::uint16_t at = result_word(3);
+  const auto mark = static_cast<std::uint16_t>(served ? probe_served_mark : 0U);
+  box.processor().write_byte(segment, at, static_cast<std::uint8_t>(mark));
+  box.processor().write_byte(segment, static_cast<std::uint16_t>(at + 1),
+                             static_cast<std::uint8_t>(mark >> 8U));
 }
 
 [[nodiscard]] std::vector<machine_program> build_all() {
@@ -2515,6 +2569,60 @@ void probe_mark_when_ready(machine::machine& box, machine::seam_context& ctx) {
   }
 
   {
+    // M5-D1 (#169): the seam -> host direction, with a host attached.
+    // Two callouts, one at each point, each carrying its own argument,
+    // and the run is the plain machine's to the step — a callout costs
+    // nothing, because it does not touch the machine.
+    machine_program p;
+    p.name = "seam_probe_host";
+    p.about = "a self-written seam calls two host services, and a host answers";
+    p.setup.exe = seam_probe_file();
+    p.setup.exe_path = "\\PROBE.EXE";
+    p.setup.seam_definitions = {&seam_probe_host_definition()};
+    p.setup.seams = {"probe-host"};
+    p.setup.host_services = true;
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "AX at the edited instruction: this seam edits no register",
+         .value = probe_plain_ax},
+        {.what = "no keystroke: this seam posts none", .value = 0},
+        {.what = "the journal callout was served", .value = probe_served_mark},
+        {.what = "the automap callout was served", .value = probe_served_mark}};
+    p.host_service_calls = {1, 1};
+    p.host_service_arguments = {probe_journal_argument, probe_automap_argument};
+    p.steps = probe_plain_steps;
+    p.exit_code = 0x88;
+    list.push_back(std::move(p));
+  }
+
+  {
+    // The same seam with **no host attached**, which is the entry that
+    // makes the pair worth having. `call_host()` answers false, both
+    // marks stay zero, and every count the ABI can be asked for is zero
+    // — which is the only way "the callout never reached anybody" is
+    // distinguishable from "the callout was served", because in a stream
+    // the two look identical (#153).
+    machine_program p;
+    p.name = "seam_probe_host_unserved";
+    p.about = "the same seam with no host attached: both callouts refused";
+    p.setup.exe = seam_probe_file();
+    p.setup.exe_path = "\\PROBE.EXE";
+    p.setup.seam_definitions = {&seam_probe_host_definition()};
+    p.setup.seams = {"probe-host"};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "AX at the edited instruction", .value = probe_plain_ax},
+        {.what = "no keystroke arrived", .value = 0},
+        {.what = "the journal callout was refused", .value = 0},
+        {.what = "the automap callout was refused", .value = 0}};
+    p.host_service_calls = {0, 0};
+    p.host_service_arguments = {0, 0};
+    p.steps = probe_plain_steps;
+    p.exit_code = 0x88;
+    list.push_back(std::move(p));
+  }
+
+  {
     machine_program p;
     p.name = "seam_probe_off";
     p.about = "the same program with its seam off: a plain machine";
@@ -2665,6 +2773,39 @@ const machine::seam_definition& seam_probe_pull_definition() {
   return definition;
 }
 
+const machine::seam_definition& seam_probe_host_definition() {
+  // The fifth (M5-D1, #169). The same program's fingerprint again, and
+  // two points that are reached exactly once each — the register edit
+  // and the second store — so that the call counts the ABI hands back
+  // are one and one, and a reader checks them against the program
+  // rather than against a loop bound.
+  //
+  // Not a trigger: a callout is not an act on the machine, and there is
+  // nothing here for a person to decide the moment of. The two entries
+  // this drives differ in one thing only, and it is not the seam — it is
+  // whether a host was attached at all.
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 2> points{
+      {{.module = machine::resident_image,
+        .offset = probe().edit_offset,
+        .run = &probe_call_journal},
+       {.module = machine::resident_image,
+        .offset = probe().done_offset,
+        .run = &probe_call_automap}}};
+  static const machine::seam_definition definition{
+      .id = "probe-host",
+      .about = "the test seam that calls out: one host service at each point",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
+
 const std::vector<std::uint8_t>& seam_probe_file() { return probe().file; }
 
 std::vector<machine_program> all_machine_programs() { return build_all(); }
@@ -2716,6 +2857,24 @@ std::vector<std::string> check_machine_program(const machine_program& expected,
   }
   if (got.device_stops != 0) {
     fail(std::to_string(got.device_stops) + " device fault(s)");
+  }
+
+  // What the seams asked of the host (#169), per service. Checked even
+  // when both are expected to be zero: a callout nobody wanted is as
+  // wrong as a missing one, and zero-with-a-seam-on is the only shape
+  // "it never reached anybody" has.
+  for (std::size_t i = 0; i < machine::seam_host_service_count; ++i) {
+    const auto which = static_cast<machine::seam_host_service>(i);
+    if (got.host_service_calls[i] != expected.host_service_calls[i]) {
+      fail(std::string(machine::seam_host_service_name(which)) + " served " +
+           std::to_string(got.host_service_calls[i]) + " time(s), expected " +
+           std::to_string(expected.host_service_calls[i]));
+    }
+    if (got.host_service_arguments[i] != expected.host_service_arguments[i]) {
+      fail(std::string(machine::seam_host_service_name(which)) +
+           " last carried " + hex(got.host_service_arguments[i], 8) +
+           ", expected " + hex(expected.host_service_arguments[i], 8));
+    }
   }
   if (got.underruns != 0) {
     fail(std::to_string(got.underruns) +

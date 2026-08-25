@@ -36,6 +36,11 @@ set_target_properties(amberfolio-web PROPERTIES
 # assembler's own handful of source files.
 target_link_libraries(amberfolio-web PRIVATE
   amberfolio::core
+  # The `seam_host_services` both hosts attach (M5-D1, #169). One object,
+  # in hosts/common, so a callout means the same thing in a browser as on
+  # a desktop; it links only the core, so it adds nothing to the module's
+  # dependency footprint.
+  amberfolio::host_services
   amberfolio::programs
   amberfolio::warnings)
 
@@ -105,7 +110,11 @@ set(_amberfolio_web_export_names
   _af_machine_vfs_put
   _af_machine_vfs_count
   _af_machine_vfs_name_at
+  _af_machine_vfs_path_at
   _af_machine_vfs_size_at
+  _af_machine_vfs_size
+  _af_machine_vfs_get
+  _af_machine_vfs_remove
   _af_machine_vfs_bytes_used
   _af_machine_vfs_fingerprint
   _af_machine_load_from_vfs
@@ -128,6 +137,8 @@ set(_amberfolio_web_export_names
   _af_machine_seam_waited
   _af_machine_seam_pulled_at
   _af_machine_seam_pull
+  _af_machine_seam_host_calls
+  _af_machine_seam_host_argument
   _af_machine_seam_gate
   _af_machine_present_document
   _af_machine_document_count
@@ -147,7 +158,14 @@ set(_amberfolio_web_export_names
   _af_web_demo_program_size
   _af_web_probe_program_bytes
   _af_web_probe_program_size
-  _af_web_probe_seam_register)
+  _af_web_probe_seam_register
+  # The M5-D1 (#169) host-service door: attaching this module's
+  # `seam_host_services` to a machine is a *host's* decision, so it is a
+  # host export rather than part of af_machine_attach_reference_devices.
+  # The tick beside it is this implementation's own — the count and the
+  # argument are core's, above.
+  _af_web_attach_host_services
+  _af_web_host_service_at)
 list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
 
 target_link_options(amberfolio-web PRIVATE

@@ -213,6 +213,9 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
                         this machine (repeatable) — a possession gate,
                         so the file is hashed and dropped
   --seams               list every seam this build carries, and exit
+  --vfs-list            list every file on the disk after the run, at its
+                        own path — what the run left behind, including
+                        anything the program wrote below the root
   --speed xt|turbo|at|386
   --trace               keep the trace ring and the service-call channel
   --dump PREFIX         write PREFIX.ppm, PREFIX.wav and PREFIX.edges
@@ -239,6 +242,7 @@ export function parseArgs(argv) {
     seams: [],
     documents: [],
     listSeams: false,
+    listVfs: false,
     speed: null,
     trace: false,
     dumpPrefix: null,
@@ -312,6 +316,8 @@ export function parseArgs(argv) {
       opts.pulls.push({ id, frame });
     } else if (arg === '--seam' && i + 1 < argv.length) {
       opts.seams.push(next());
+    } else if (arg === '--vfs-list') {
+      opts.listVfs = true;
     } else if (arg === '--document' && i + 1 < argv.length) {
       opts.documents.push(next());
     } else if (arg === '--seams') {
@@ -783,6 +789,8 @@ export async function drive(opts) {
   );
   reportSeams(machine);
   reportSeamsFired(machine);
+  reportHostServices(machine);
+  if (opts.listVfs) reportVfs(machine);
 
   // --- Throughput --------------------------------------------------------
   //
@@ -863,6 +871,23 @@ export async function drive(opts) {
   return 0;
 }
 
+/// Every file on the disk after the run, at its own path (M5-D2, #170) —
+/// the SDL host's `--vfs-list`, spelled identically.
+///
+/// After the run, because the question it exists to answer is what the
+/// run left behind: what is in `\\SAVE\\` once the game has saved, and
+/// whether the file the program wrote is the file a page can read back.
+/// Files, and only files — an empty directory does not appear, which is
+/// what makes every row here something `vfsGet()` and `vfsRemove()` can
+/// act on (abi.h).
+function reportVfs(machine) {
+  const listing = machine.vfsList();
+  say(`amberfolio: vfs ${listing.length} file(s)`);
+  for (const entry of listing) {
+    say(`amberfolio: vfs ${entry.path} ${entry.size}`);
+  }
+}
+
 /// One line per seam, in the shape the SDL host's `--seams` prints —
 /// id, state, whether it armed, the reason if there is one, and what it
 /// is for. Printed at the end of every run as well as on `--seams`,
@@ -891,6 +916,25 @@ function reportSeamsFired(machine) {
   for (const seam of machine.seamList()) {
     if (seam.state !== AF_SEAM_ON) continue;
     say(`amberfolio: seam ${seam.id} ${formatSeamFired(seam)}`);
+  }
+}
+
+/// And what the seams asked of the host (M5-D1, #169), in the words the
+/// SDL host ends a run with: a line per service that was called, and
+/// none for one that was not.
+///
+/// The silence is the point. A callout that reached nobody counts
+/// nothing, so a seam that fired with no line here is a seam whose
+/// `call_host()` was refused — and that difference is invisible in any
+/// stream (#153), which is why the number is polled and printed rather
+/// than watched for.
+function reportHostServices(machine) {
+  for (const row of machine.seamHostServices()) {
+    if (row.calls === 0) continue;
+    say(
+      `amberfolio: host-service ${row.service} calls=${row.calls}` +
+        ` last=${row.argument} at=${row.at}`,
+    );
   }
 }
 

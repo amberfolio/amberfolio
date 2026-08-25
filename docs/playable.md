@@ -683,6 +683,38 @@ suite. Running the legs themselves against a browser's copy is a
 procedure a person carries out, like every other line in this file, and
 the last section still records it as owed.
 
+### Leaving with one (M5-D2, #170)
+
+The door was one-way until M5. A page could hand an installation over a
+file at a time and could not read back a single byte of what the run
+wrote — so leg 3's save was something a browser did and nothing a browser
+could show. `af_machine_vfs_get`, `_remove` and a listing that walks the
+whole tree are the other direction, and `drive.mjs --vfs-list` is what a
+web run says about the disk afterwards:
+
+```sh
+node build/wasm/hosts/web/Release/drive.mjs <your-directory> START.EXE   --press ... --frames 12000 --quiet --vfs-list
+```
+
+```
+amberfolio: vfs 196 file(s)
+amberfolio: vfs \SAVE\SAVGAMA.DAT 4096
+...
+```
+
+The SDL host has the same three, spelled the same, over the real
+directory it was pointed at: `--vfs-list`, `--vfs-get PATH` (which prints
+the size and the SHA-256 of the bytes that came back, not the bytes), and
+`--vfs-remove PATH` (which deletes a real file on the player's disk, and
+says so before it does). So "what did the run leave behind" is a question
+both hosts answer in the same words, which is what makes an exploration
+sidecar (#173) checkable on either.
+
+The mechanism is what CI checks, as ever: the wasm smoke runs a program
+of its own that writes a file below the root, then lists it, reads it
+back and removes it; the SDL host's own smoke case does the same three
+against a directory on disk and then looks at the disk.
+
 ---
 
 ## Presenting a document (M5-D3, #171)

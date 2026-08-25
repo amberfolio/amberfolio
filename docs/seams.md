@@ -110,8 +110,8 @@ inside one.
 
 ## 3. The action primitives
 
-Four things a handler may do, each the smallest honest version of itself
-(#96):
+Five things a handler may do, each the smallest honest version of itself
+(#96), and the fifth had no implementation behind it until M5-D1 (#169):
 
 **Register surgery** — `box.processor().regs()`. Plain state, edited in
 place. The code-wheel seam is three register writes and nothing else.
@@ -138,20 +138,43 @@ the program's own loop through it.
 **Control** — `seam_context::redirect(cs, ip)`, which is moving IP with
 its name on.
 
-And the slot for what is not here yet: **a host service** —
-`seam_context::call_host(which, argument)`, answered by whatever
-`seam_host_services` a host attached with `seam_engine::set_host()`. The
-consumers are named (`journal_open`, `automap_update`,
-`save_state_changed`) and M5 fills them; today no host attaches one, and
-a seam that calls out on a machine without one is told so and does
-nothing.
+**A host service** — `seam_context::call_host(which, argument)`,
+answered by the `seam_host_services` a host attached with
+`seam_engine::set_host()`. Two services: `journal_open` and
+`automap_update`. Since M5-D1 (#169) both hosts attach the same
+implementation — `hosts/common/include/amberfolio/host/host_services.h`,
+one object, linked into the SDL host and into the wasm module — so a
+callout means the same thing on a desktop and in a browser.
 
-**#165 is the audit of that claim**, done at M4's closeout: the five M5
-enhancements against these five primitives, one at a time. Three of them
-need nothing that is not above. Two need a host that implements
-`serve()`, and one of those — save and roster management — also needs a
-VFS door the ABI does not have (there is no way to read a file back out
-or to remove one). Worth reading before writing the first M5 seam,
+It is **C++ running inside the module**, synchronously, on both targets,
+and not a queue a page drains on its next turn. The reason is in what
+`serve()` is handed: the machine. What it reads there is only true at the
+moment of the call — the automap wants the party's position *now* — so a
+page that read it a frame later would be answering a different question
+and could not say by how much. What crosses the boundary to JS is
+therefore not the call but the *record* of it.
+
+That record is **polled**, which is #153's lesson one layer up: a stream
+cannot express "it never asked". `seam_engine::host_calls(which)` counts
+the calls a host actually served and `host_argument(which)` keeps what
+the last one carried; both reach a browser through
+`af_machine_seam_host_calls` / `_host_argument` and both hosts print them
+at the end of a run. Served, not asked — a call made on a machine with no
+host attached counts nothing, because nothing happened, and the handler
+is told false so it can say so through the fail-closed path. A non-zero
+count is proof an implementation was reached.
+
+There were **three** service names before #169. `save_state_changed`
+belonged to save and roster management, which was withdrawn from the plan
+by decision on 2026-08-24 (#176), and a service with no consumer is a
+surface built on spec — exactly what "log, don't fake" refuses one layer
+down. It is gone; whatever M6 wants for persistence adds the name it
+actually needs.
+
+**#165 is the audit of these primitives**, done at M4's closeout: the
+five M5 enhancements against them, one at a time. Three of them need
+nothing that is not above; two need a host that implements `serve()`,
+which is what #169 built. Worth reading before writing the first M5 seam,
 because the answer to "does the engine already do this" is yes more often
 than it looks.
 

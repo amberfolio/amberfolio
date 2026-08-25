@@ -128,6 +128,12 @@ static_assert(AF_SEAM_ON == static_cast<uint32_t>(seam_state::on));
 static_assert(AF_SEAM_UNAVAILABLE ==
               static_cast<uint32_t>(seam_state::unavailable));
 
+// `AF_PATH_CAPACITY` is core's `dos_path_capacity` written down where a C
+// caller and a JS one can both see it before they have a machine. Two
+// spellings of one number, so the header says they are checked here.
+static_assert(AF_PATH_CAPACITY == amberfolio::machine::dos_path_capacity,
+              "AF_PATH_CAPACITY has drifted from machine::dos_path_capacity");
+
 // The same for the run-end values: a host passes one of these straight
 // into `format_stop_report`, so the two spellings have to agree.
 static_assert(AF_RUN_END_STOPPED == static_cast<uint32_t>(run_end::stopped));
@@ -176,10 +182,7 @@ const machine* box_of(const af_machine* handle) noexcept {
 /// `dos_name::max_length` plus their separators, and a drive. A name
 /// longer than this could not canonicalize anyway, so refusing it early
 /// is the same answer arrived at sooner.
-constexpr std::size_t max_name_text =
-    (amberfolio::machine::dos_path::max_depth *
-     (amberfolio::machine::dos_name::max_length + 1)) +
-    2;
+constexpr std::size_t max_name_text = amberfolio::machine::max_host_path_text;
 
 /// The length of a NUL-terminated C string, refused past `bound`.
 ///
@@ -205,27 +208,20 @@ constexpr std::size_t max_name_text =
 /// becomes a `dos_path`, for every door in the VFS surface (abi.h's
 /// "Names are normalized in core").
 ///
-/// `/` is folded to `\` on the way in, and that fold is here rather than
-/// in a host for exactly the reason the rest of the rule is (#146): the
-/// two spellings a host can hand over are a browser's
-/// `webkitRelativePath`, `SAVE/SAVE1.DAT`, and DOS's own,
-/// `SAVE\SAVE1.DAT`, and a page that decided for itself which one it was
-/// holding would be deciding what a path is. It stops at this boundary —
-/// `canonicalize()` keeps DOS's one separator, so what the emulated
-/// program may write is untouched by it.
+/// The `/`-to-`\` fold lives in `machine::canonicalize_host_path()`,
+/// and used to live here. It moved when M5-D2 (#170) gave the SDL host
+/// paths of its own to resolve: a rule with one implementation and one
+/// caller is a rule, and the same rule written out again in a second
+/// host is two answers waiting to differ — which is the whole argument
+/// #146 makes about names, applied to the separator.
 [[nodiscard]] bool path_of(const char* text,
                            amberfolio::machine::dos_path& out) noexcept {
   std::size_t length = 0;
   if (!text_length(text, max_name_text, length)) {
     return false;
   }
-  std::array<char, max_name_text> raw{};
-  for (std::size_t i = 0; i < length; ++i) {
-    raw[i] = (text[i] == '/') ? '\\' : text[i];
-  }
-  const auto where = amberfolio::machine::canonicalize(
-      amberfolio::machine::dos_path{},
-      std::span<const char>(raw.data(), length));
+  const auto where = amberfolio::machine::canonicalize_host_path(
+      std::span<const char>(text, length));
   if (!where.ok()) {
     return false;
   }
@@ -427,6 +423,32 @@ reference_devices* devices_live = nullptr;
 /// always about the most recent one.
 amberfolio::machine::loader_error last_load_error =
     amberfolio::machine::loader_error::none;
+
+/// The listing `af_machine_vfs_count` takes and `_name_at`, `_path_at`
+/// and `_size_at` read (M5-D2, #170).
+///
+/// **A snapshot, taken by `af_machine_vfs_count`**, and abi.h says so.
+/// It is not an optimization dressed up as a contract: `entry_at()` is a
+/// selection over the backend's unsorted table, so enumerating a
+/// directory of *n* through it is already quadratic (memory_vfs.h says
+/// why that backend keeps no sorted index), and a tree walk per row
+/// would square that again. A real installation's hundred and ninety-odd
+/// files did not finish inside the wasm smoke check's two minutes that
+/// way. One walk per listing is the only shape that works, and one walk
+/// per listing means the rows come from somewhere.
+///
+/// It is also the more honest listing. Every caller of this trio asks
+/// for the count and then reads the rows; with a live listing, anything
+/// that changed the filesystem in between shifted the rows underneath
+/// the loop and nothing said so.
+///
+/// Static, like the machine and the device set above, and for the same
+/// reason: core allocates nothing (PLAN.md §4). `max_entries` is what
+/// the backend can hold, so the array can never be too small for it.
+std::array<amberfolio::machine::tree_file,
+           amberfolio::machine::memory_filesystem::max_entries>
+    listing;
+std::size_t listed = 0;
 
 /// The filesystem the `af_machine_vfs_*` calls are about: the reference
 /// device set's own `memory_filesystem`.
@@ -883,32 +905,117 @@ uint32_t af_machine_vfs_put(af_machine* handle, const char* path,
 uint32_t af_machine_vfs_count(const af_machine* handle) {
   const amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
   if (fs == nullptr) {
+    listed = 0;
     return 0;
   }
-  const auto count = fs->entry_count(amberfolio::machine::dos_path{});
-  return count.ok() ? static_cast<uint32_t>(count.value) : 0;
+  // The one walk (see `listing` above). Everything the backend can hold
+  // fits, so the count and the rows can never disagree.
+  listed = amberfolio::machine::tree_files(*fs, listing);
+  return static_cast<uint32_t>(listed);
 }
 
 uint32_t af_machine_vfs_name_at(const af_machine* handle, uint32_t index,
                                 char* out, uint32_t max) {
-  const amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
-  if (fs == nullptr) {
+  if (vfs_of(handle) == nullptr || index >= listed) {
     return 0;
   }
-  const auto entry = fs->entry_at(amberfolio::machine::dos_path{}, index);
-  if (!entry.ok()) {
+  return copy_out(listing[index].path.leaf().text(), out, max);
+}
+
+uint32_t af_machine_vfs_path_at(const af_machine* handle, uint32_t index,
+                                char* out, uint32_t max) {
+  if (vfs_of(handle) == nullptr || index >= listed) {
     return 0;
   }
-  return copy_out(entry.value.name.text(), out, max);
+  // Spelled by core, not here: a path in a listing and a path in a log
+  // line are the same characters, which is what lets a reader compare a
+  // listing against a file trace without translating between two
+  // renderings (machine/report.h says why that matters).
+  std::array<char, amberfolio::machine::dos_path_capacity> text{};
+  const std::size_t length =
+      amberfolio::machine::format_dos_path(listing[index].path, text);
+  if (length >= text.size()) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(text.data(), length), out, max);
 }
 
 uint32_t af_machine_vfs_size_at(const af_machine* handle, uint32_t index) {
+  if (vfs_of(handle) == nullptr || index >= listed) {
+    return 0;
+  }
+  return listing[index].size;
+}
+
+uint32_t af_machine_vfs_size(const af_machine* handle, const char* path) {
   const amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
   if (fs == nullptr) {
     return 0;
   }
-  const auto entry = fs->entry_at(amberfolio::machine::dos_path{}, index);
-  return entry.ok() ? entry.value.size : 0;
+  amberfolio::machine::dos_path where;
+  if (!path_of(path, where) || where.is_root()) {
+    return 0;
+  }
+  const auto seen = fs->stat(where);
+  if (!seen.ok() || seen.value.is_directory) {
+    return 0;
+  }
+  return seen.value.size;
+}
+
+uint32_t af_machine_vfs_get(af_machine* handle, const char* path, uint8_t* out,
+                            uint32_t max) {
+  if (box_of(handle) == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return AF_NO_FILESYSTEM;
+  }
+  if (out == nullptr && max != 0) {
+    return AF_INVALID;
+  }
+  amberfolio::machine::dos_path where;
+  if (!path_of(path, where) || where.is_root()) {
+    return AF_INVALID;
+  }
+  const auto seen = fs->stat(where);
+  if (!seen.ok() || seen.value.is_directory) {
+    return AF_INVALID;
+  }
+  // The buffer, before a byte is read. A short answer would be a caller
+  // holding a prefix of a file and no way to know it — the plausible
+  // wrong answer PLAN.md §3 is about, in the one direction where the
+  // caller is the browser rather than the program.
+  if (seen.value.size > max) {
+    return AF_NO_ROOM;
+  }
+  const auto read = amberfolio::machine::read_file(
+      *fs, where, std::span<uint8_t>(out, seen.value.size));
+  if (!read.ok() || read.value != seen.value.size) {
+    return AF_INVALID;
+  }
+  return AF_OK;
+}
+
+uint32_t af_machine_vfs_remove(af_machine* handle, const char* path) {
+  if (box_of(handle) == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return AF_NO_FILESYSTEM;
+  }
+  amberfolio::machine::dos_path where;
+  if (!path_of(path, where) || where.is_root()) {
+    return AF_INVALID;
+  }
+  // `unlink()` already refuses a directory, the root and a file with a
+  // handle open on it (machine/vfs.h). Every one of those is the caller
+  // asking for something this call does not do, so they are one answer
+  // here — abi.h says which they are.
+  return fs->unlink(where) == amberfolio::machine::vfs_error::none ? AF_OK
+                                                                   : AF_INVALID;
 }
 
 double af_machine_vfs_bytes_used(const af_machine* handle) {
@@ -1176,6 +1283,25 @@ uint32_t af_machine_seam_pull(af_machine* handle, const char* id) {
                  amberfolio::machine::seam_reason::none
              ? AF_OK
              : AF_INVALID;
+}
+
+double af_machine_seam_host_calls(const af_machine* handle, uint32_t which) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || which >= amberfolio::machine::seam_host_service_count) {
+    return 0.0;
+  }
+  return static_cast<double>(box->seams().host_calls(
+      static_cast<amberfolio::machine::seam_host_service>(which)));
+}
+
+uint32_t af_machine_seam_host_argument(const af_machine* handle,
+                                       uint32_t which) {
+  const machine* box = box_of(handle);
+  if (box == nullptr || which >= amberfolio::machine::seam_host_service_count) {
+    return 0;
+  }
+  return box->seams().host_argument(
+      static_cast<amberfolio::machine::seam_host_service>(which));
 }
 
 uint32_t af_machine_load_error(const af_machine* handle) {

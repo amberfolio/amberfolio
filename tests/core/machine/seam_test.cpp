@@ -259,6 +259,16 @@ constexpr seam_definition moved_seam{.id = "test-moving-overlay",
                                      .fingerprints = claimed_binaries,
                                      .points = moved_points};
 
+/// One in the resident image, so that the host-service record can be
+/// exercised without an overlay in the way (#169). Same handler, at the
+/// first instruction of whatever program a test places.
+constexpr std::array<seam_point, 1> host_points{
+    {{.module = resident_image, .offset = 0x0000, .run = &ask_host}}};
+constexpr seam_definition host_seam{.id = "test-host",
+                                    .about = "calls a host service",
+                                    .fingerprints = claimed_binaries,
+                                    .points = host_points};
+
 /// A host that counts what it was asked for.
 class counting_host final : public seam_host_services {
  public:
@@ -329,6 +339,7 @@ struct rig {
     EXPECT_TRUE(box->seams().add(ovl_seam));
     EXPECT_TRUE(box->seams().add(wrong_seam));
     EXPECT_TRUE(box->seams().add(moved_seam));
+    EXPECT_TRUE(box->seams().add(host_seam));
     EXPECT_TRUE(box->seams().add(gated_seam));
     EXPECT_TRUE(box->seams().add(journal_gated_seam));
     EXPECT_TRUE(box->seams().add_document(claimed_document));
@@ -1454,6 +1465,109 @@ TEST(SeamActions, AHostCallReachesAnAttachedHostAndNoOther) {
   ASSERT_EQ(host.served.size(), 1u);
   EXPECT_EQ(host.served[0].first, seam_host_service::automap_update);
   EXPECT_EQ(host.served[0].second, 7u);
+}
+
+// --- The polled record of what a host served (M5-D1, #169) ------------------
+//
+// #153's lesson, one layer up: a stream cannot express "it never asked".
+// The engine keeps a count and the last argument per service, so a host
+// that only ever sees an empty stream can still tell a callout that was
+// served from one that was never made — and, with no host attached, from
+// one that reached nobody.
+
+TEST(SeamHostServices, TheEngineCountsWhatAHostServedAndWhatItCarried) {
+  const rig r;
+  const seam_host_service which = seam_host_service::automap_update;
+  EXPECT_EQ(r.pc().seams().host_calls(which), 0u);
+  EXPECT_EQ(r.pc().seams().host_argument(which), 0u);
+
+  r.program_at(0, {0x90, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-host"), seam_reason::none);
+
+  // No host attached: the seam asks, `call_host()` answers false, and
+  // nothing is counted — because nothing happened. A non-zero count is
+  // proof an implementation was reached, which is the whole claim.
+  r.pc().step();
+  EXPECT_EQ(host_calls, 0u);
+  EXPECT_EQ(r.pc().seams().host_calls(which), 0u)
+      << "a call nobody served is not a call that happened";
+
+  counting_host host;
+  r.pc().seams().set_host(&host);
+  r.regs().ip = 0;
+  r.pc().processor().resume();
+  r.pc().step();
+  EXPECT_EQ(r.pc().seams().host_calls(which), 1u);
+  EXPECT_EQ(r.pc().seams().host_argument(which), 7u)
+      << "and what it carried, which is the other half a page has to"
+         " learn";
+
+  r.regs().ip = 0;
+  r.pc().processor().resume();
+  r.pc().step();
+  EXPECT_EQ(r.pc().seams().host_calls(which), 2u);
+
+  // The other service was never asked for, and says so.
+  EXPECT_EQ(r.pc().seams().host_calls(seam_host_service::journal_open), 0u);
+}
+
+TEST(SeamHostServices, TheRecordIsConfigurationAndClearWithTheSeams) {
+  const rig r;
+  counting_host host;
+  r.pc().seams().set_host(&host);
+  r.program_at(0, {0x90, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-host"), seam_reason::none);
+  r.pc().step();
+  ASSERT_EQ(r.pc().seams().host_calls(seam_host_service::automap_update), 1u);
+
+  // `clear()` is what `machine::reset()` calls, and the record goes with
+  // everything else that is a setting about a program: a reset machine
+  // has no program and has therefore asked nothing of anybody.
+  r.pc().seams().clear();
+  EXPECT_EQ(r.pc().seams().host_calls(seam_host_service::automap_update), 0u);
+  EXPECT_EQ(r.pc().seams().host_argument(seam_host_service::automap_update),
+            0u);
+  EXPECT_EQ(r.pc().seams().host(), &host)
+      << "the attached host is wiring and survives, the way a device does";
+}
+
+TEST(SeamHostServices, AttachingAHostToAMachineWithEverySeamOffChangesNothing) {
+  // The fidelity invariant with a host in the room (#169). Nothing in
+  // the host-service path is consulted until a handler calls out, and no
+  // handler runs until a seam is on — so a machine that has one attached
+  // has to be, to the byte and to the tick, the machine that does not.
+  const rig plain;
+  plain.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    plain.pc().step();
+  }
+  const cpu::registers plain_regs = plain.regs();
+  const state_hashes plain_hash = hash_state(plain.pc());
+  const ticks plain_time = plain.pc().time();
+
+  const rig hosted;
+  counting_host host;
+  hosted.pc().seams().set_host(&host);
+  hosted.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    hosted.pc().step();
+  }
+
+  EXPECT_EQ(plain_regs, hosted.regs());
+  EXPECT_EQ(plain_time, hosted.pc().time());
+  EXPECT_EQ(plain_hash.whole, hash_state(hosted.pc()).whole)
+      << "the whole machine, and not only the page the program wrote";
+  EXPECT_TRUE(host.served.empty()) << "nothing called out, because nothing ran";
+}
+
+TEST(SeamHostServices, EveryServiceHasAName) {
+  // Both hosts print these, so the spelling is core's (`seam.h`). A
+  // switch with no default is what makes adding a service without a name
+  // a compile error rather than an "unknown" in somebody's log.
+  EXPECT_STREQ(seam_host_service_name(seam_host_service::journal_open),
+               "journal-open");
+  EXPECT_STREQ(seam_host_service_name(seam_host_service::automap_update),
+               "automap-update");
 }
 
 // --- Overlay qualification ---------------------------------------------------
