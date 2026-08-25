@@ -55,9 +55,10 @@ are each a true statement about what this machine does not have.
 That is M0 through M4 done. Next is M5 — the player enhancements, each
 one an opt-in seam and each off by default: the code-wheel bypass, the
 journal (OCR at ingestion, an in-game reader, auto-open), the automap
-panel drawn into the emulated EGA planes, the Encamp (F)ix, and save and
-roster management. The engine they all reuse is already here; M5 adds no
-new mechanism. The shape of the work is in the [project plan](PLAN.md).
+panel drawn into the emulated EGA planes, the Encamp (F)ix, and an
+explored overlay on the overworld map. Each is built to feel native — as
+the original developers would have built it. The engine they all reuse
+is already here; M5 adds no new mechanism. The shape of the work is in the [project plan](PLAN.md).
 
 **Try it in a browser:** <https://amberfolio.vercel.app> — the wasm host,
 published automatically from `main` on every push. It is a developer
