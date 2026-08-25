@@ -404,6 +404,38 @@ class dos_path {
 [[nodiscard]] vfs_result<dos_path> canonicalize(
     const dos_path& current_directory, std::span<const char> raw) noexcept;
 
+/// The longest raw path text `canonicalize_host_path()` will look at: a
+/// DOS path's own worst case, `max_depth` components of `max_length`
+/// with their separators, and a drive. Anything longer could not
+/// canonicalize anyway, so refusing it early is the same answer arrived
+/// at sooner.
+inline constexpr std::size_t max_host_path_text =
+    (dos_path::max_depth * (dos_name::max_length + 1)) + 2;
+
+/// `canonicalize()` for a path a **host** hands over, against the root:
+/// the same rule, plus `/` counted as a separator wherever `\\` is.
+///
+/// Here, and not in either host, because it is the same argument the rest
+/// of this file makes about names (#146): what a browser hands a page is
+/// `webkitRelativePath` and it arrives spelled `SAVE/SAVE1.DAT`; what a
+/// person types at the SDL host's `--vfs-get` on a Unix keyboard is the
+/// same; what DOS itself uses is `SAVE\\SAVE1.DAT`. A host that decided
+/// for itself which one it was holding would be a second implementation
+/// of the rule that says whether two callers are looking at the same
+/// file, and two implementations of a naming rule eventually disagree.
+/// It had one implementation and one caller until M5-D2 (#170) gave it a
+/// second caller, which is exactly when a rule living in one host stops
+/// being a rule.
+///
+/// The fold stops here. `canonicalize()` keeps DOS's one separator, so
+/// nothing about what the emulated program may write changes — this is
+/// about the spellings a *host* can be handed, and nothing else.
+///
+/// `vfs_error::path_not_found` for text longer than
+/// `max_host_path_text`; otherwise whatever `canonicalize()` answers.
+[[nodiscard]] vfs_result<dos_path> canonicalize_host_path(
+    std::span<const char> raw) noexcept;
+
 // --- The filesystem interface -------------------------------------------
 
 /// A backend-assigned identifier for one open file, opaque outside the
@@ -589,5 +621,84 @@ class filesystem {
   // through this type.
   ~filesystem() = default;
 };
+
+// --- Reading the whole of one, from above it (M5-D2, #170) --------------
+//
+// Two free functions over `filesystem`, for the reason `canonicalize()`
+// above and `fingerprint_file()` next door are free functions: a rule
+// every backend would otherwise implement identically belongs above all
+// of them. The in-memory backend and the directory-backed host would
+// otherwise each have their own idea of what "the whole tree" is, and two
+// implementations of a listing rule eventually disagree about what a
+// disk holds.
+//
+// Both are **host affordances**, not part of what a DOS program can ask
+// for. Nothing in the INT 21h subset reads a file whole or walks a tree;
+// a program opens, seeks and reads, and FindFirst/FindNext see one
+// directory at a time. What wants these is a host: a browser reading back
+// a save the program wrote (#170), an exploration sidecar loaded beside
+// it (#173), the persistence M6 owes. They are written here rather than
+// in the ABI because the SDL host needs the same answers about a real
+// directory on a player's disk, and the ABI only ever sees the in-memory
+// one.
+
+/// One file of a whole-tree walk: where it is, and how big.
+///
+/// A *file*. A tree walk of this filesystem is exactly the set of things
+/// `read_file()` below can read and `unlink()` can remove, which is what
+/// makes a listing usable without a kind flag beside every row — and it
+/// means an empty directory is invisible to it. That is the honest
+/// consequence of the set being the useful one: a directory with nothing
+/// in it is a name and no contents, every directory that matters is
+/// implied by the path of a file inside it, and `mkdir` is what made it
+/// rather than anything a listing could show.
+struct tree_file {
+  dos_path path;
+  std::uint32_t size{};
+};
+
+/// Every file `fs` holds, across the whole tree, written into `out` —
+/// and the total, which may be more than `out` had room for.
+///
+/// Depth-first from the root, each directory's entries in the pinned
+/// name order `entry_at()` promises, so the walk is the same on every
+/// host and in every run (PLAN.md §4).
+///
+/// **One walk fills a whole listing**, rather than an `at(index)` a
+/// caller loops over, and that is not a convenience. `entry_at()` is a
+/// selection over the backend's unsorted table — O(index) passes over it
+/// (memory_vfs.h says why that backend keeps no sorted index) — so
+/// enumerating a directory of *n* through it is already quadratic, and a
+/// tree walk *per row* would square that again. On a real installation's
+/// hundred and ninety-odd files an index-at-a-time listing did not
+/// finish inside the wasm smoke check's two minutes. A listing is one
+/// walk because the alternative is not slow, it is unusable.
+///
+/// `out` may be empty, and then this only counts.
+[[nodiscard]] std::size_t tree_files(const filesystem& fs,
+                                     std::span<tree_file> out);
+
+/// How many files `fs` holds across the whole tree. `tree_files()` with
+/// nowhere to put them.
+[[nodiscard]] std::size_t tree_file_count(const filesystem& fs);
+
+/// Read `path` from its start into `out`, and answer how many bytes that
+/// was. The handle is closed on every path out.
+///
+/// The same errors `open()` and `read()` answer with, passed through
+/// rather than translated — the choice `fingerprint_file()` makes next
+/// door, and for the same reason: a read that failed failed for a
+/// filesystem reason and this layer has nothing to add.
+///
+/// **At most `out.size()` bytes**, and a file longer than that comes back
+/// as a short count rather than as a refusal. Whether a prefix is what
+/// the caller wanted is the caller's business: it knows the size, because
+/// `stat()` answers it, and a caller that did not ask is the one that has
+/// to be told. That keeps the rule this layer owns — how to read a file
+/// whole — separate from the rule its callers own, which is how big a
+/// buffer they were given.
+[[nodiscard]] vfs_result<std::uint32_t> read_file(filesystem& fs,
+                                                  const dos_path& path,
+                                                  std::span<std::uint8_t> out);
 
 }  // namespace amberfolio::machine

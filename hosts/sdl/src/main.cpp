@@ -9,7 +9,9 @@
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
 //                                     [--watch OFF[:N]]
-//                                     [--seam ID] [--seams] [--speed NAME]
+//                                     [--seam ID] [--seams]
+//                                     [--vfs-list] [--vfs-get PATH]
+//                                     [--vfs-remove PATH] [--speed NAME]
 //                                     [--fast N|max] [-- ARGUMENTS...]
 //
 // `--headless` opens no window and no audio device. That is what keeps
@@ -169,6 +171,35 @@
 //     prints beside the fingerprint is the other half of #95: which
 //     known edition the file is, or that it is not one, in which case no
 //     seam is available (machine/edition.h).
+//
+//   --vfs-list       list every file on the disk, after the run
+//   --vfs-get PATH   read one file back through the door, after the run
+//   --vfs-remove PATH  delete one file, after the run
+//
+//     M5-D2's door (#170), driven against a real directory. The wasm
+//     host reaches these operations through `af_machine_vfs_*`, over an
+//     in-memory filesystem a browser handed it a file at a time; this is
+//     the same three operations over `directory_vfs`, so the pair can be
+//     compared and #173's exploration sidecar can be checked on either
+//     host. The listing walks the whole tree and is **files** - a path
+//     and a size per line, in the pinned walk order core decides
+//     (machine/vfs.h), which is why an empty directory does not appear.
+//
+//     They run **after** the program has exited, because the question
+//     they exist to answer is what the run left behind: what is in
+//     `\\SAVE\\` once the game has saved.
+//
+//     `--vfs-get` prints the file's size and the SHA-256 of the bytes
+//     that came back, and not the bytes. Every byte goes through the
+//     read, which is what is being checked; putting a player's file into
+//     a log would be putting it somewhere it does not belong, and a
+//     digest of what was read is a stronger claim than a hexdump anybody
+//     would actually check by eye.
+//
+//     `--vfs-remove` deletes a real file on the player's disk. It says
+//     so on the line before it does it, because this host's filesystem
+//     is not a sandbox and a flag that reads like a test fixture is
+//     exactly the one somebody runs on a real installation.
 //
 //   --speed NAME     which machine to be: xt, turbo, at or 386
 //
@@ -1030,6 +1061,13 @@ struct options {
   std::vector<watch_point> watches;
   std::vector<std::string> seams;
   bool list_seams{false};
+
+  /// The VFS door (M5-D2, #170), against the directory this host was
+  /// pointed at. Applied *after* the run, so `--vfs-list` says what is
+  /// in `\\SAVE\\` once the game has saved rather than before it started.
+  bool list_vfs{false};
+  std::vector<std::string> vfs_gets;
+  std::vector<std::string> vfs_removes;
   machine::speed_preset speed{machine::default_speed};
 
   /// Where the speaker's level starts, and whether it starts latched to
@@ -1327,6 +1365,12 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.muted = true;
     } else if (arg == "--seam" && i + 1 < argc) {
       opts.seams.emplace_back(argv[++i]);
+    } else if (arg == "--vfs-list") {
+      opts.list_vfs = true;
+    } else if (arg == "--vfs-get" && i + 1 < argc) {
+      opts.vfs_gets.emplace_back(argv[++i]);
+    } else if (arg == "--vfs-remove" && i + 1 < argc) {
+      opts.vfs_removes.emplace_back(argv[++i]);
     } else if (arg == "--seams") {
       opts.list_seams = true;
     } else if (arg == "--trace") {
@@ -1422,6 +1466,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         "                                      [--trace]"
         " [--watch OFF[:N]]\n"
         "                                      [--seam ID] [--seams]\n"
+        "                                      [--vfs-list]"
+        " [--vfs-get PATH] [--vfs-remove PATH]\n"
         "                                      [--record FILE]"
         " [--record-every N] [--replay FILE]\n"
         "                                      [--speed xt|turbo|at|386]\n"
@@ -1523,6 +1569,112 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
   opts.program = std::string(positional[1]);
   opts.valid = true;
   return opts;
+}
+
+/// Resolve a raw path the way a program's own INT 21h call would, and
+/// say so when it does not resolve.
+///
+/// The host never decides what a path means: `canonicalize_host_path()`
+/// is the one place DOS short-name rules live, separator included
+/// (machine/vfs.h), and a host that folded case or translated a
+/// separator itself would be a second implementation of the rule that
+/// says whether two callers are looking at the same file. The ABI's own
+/// VFS door makes the identical call for the identical reason — and the
+/// separator half of that rule moved into core precisely because this
+/// flag became its second caller.
+[[nodiscard]] bool resolve_vfs_path(const std::string& raw,
+                                    machine::dos_path& out) {
+  const machine::vfs_result<machine::dos_path> where =
+      machine::canonicalize_host_path(
+          std::span<const char>(raw.data(), raw.size()));
+  if (!where.ok() || where.value.is_root()) {
+    std::fprintf(stderr,
+                 "amberfolio: vfs %s is not a path a file can live"
+                 " at\n",
+                 raw.c_str());
+    return false;
+  }
+  out = where.value;
+  return true;
+}
+
+/// `path`, spelled the way core spells it — so a listing line and a
+/// `--trace` line about the same file are the same characters
+/// (machine/report.h).
+[[nodiscard]] std::string spell_vfs_path(const machine::dos_path& path) {
+  std::array<char, machine::dos_path_capacity> text{};
+  static_cast<void>(machine::format_dos_path(path, text));
+  return {text.data()};
+}
+
+/// `--vfs-list`, `--vfs-get` and `--vfs-remove`, in that order, after the
+/// run. See this file's option notes for what each one is for and why
+/// `--vfs-get` prints a digest rather than bytes.
+void report_vfs(machine::filesystem& files, const options& opts) {
+  if (opts.list_vfs) {
+    // One walk, filling a listing, rather than an index at a time: a
+    // tree walk per row is quadratic on top of an `entry_at()` that is
+    // already quadratic, and on a real installation it does not finish
+    // (machine/vfs.h has the measurement).
+    std::vector<machine::tree_file> found(machine::tree_file_count(files));
+    const std::size_t count = machine::tree_files(files, found);
+    std::fprintf(stderr, "amberfolio: vfs %llu file(s)\n",
+                 static_cast<unsigned long long>(count));
+    for (std::size_t i = 0; i < count && i < found.size(); ++i) {
+      std::fprintf(stderr, "amberfolio: vfs %s %u\n",
+                   spell_vfs_path(found[i].path).c_str(), found[i].size);
+    }
+  }
+
+  for (const std::string& raw : opts.vfs_gets) {
+    machine::dos_path where;
+    if (!resolve_vfs_path(raw, where)) {
+      continue;
+    }
+    const machine::vfs_result<machine::file_stat> seen = files.stat(where);
+    if (!seen.ok() || seen.value.is_directory) {
+      std::fprintf(stderr, "amberfolio: vfs %s is not a file here\n",
+                   spell_vfs_path(where).c_str());
+      continue;
+    }
+    // Every byte through the read, hashed as it comes, and nothing kept:
+    // a player's file has no business in a log, and the digest of what
+    // came back is the claim worth making about a read anyway.
+    std::vector<std::uint8_t> bytes(seen.value.size);
+    const machine::vfs_result<std::uint32_t> read =
+        machine::read_file(files, where, bytes);
+    if (!read.ok() || read.value != seen.value.size) {
+      std::fprintf(stderr, "amberfolio: vfs %s could not be read whole\n",
+                   spell_vfs_path(where).c_str());
+      continue;
+    }
+    const sha256_digest digest = sha256(bytes);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    std::fprintf(stderr, "amberfolio: vfs %s %u sha256=%s\n",
+                 spell_vfs_path(where).c_str(), read.value, hex.data());
+  }
+
+  for (const std::string& raw : opts.vfs_removes) {
+    machine::dos_path where;
+    if (!resolve_vfs_path(raw, where)) {
+      continue;
+    }
+    // Said before it is done, and said plainly. This host's filesystem
+    // is a directory on the player's disk, not a sandbox, and a flag
+    // that reads like a test fixture is exactly the one somebody runs on
+    // a real installation.
+    std::fprintf(stderr, "amberfolio: vfs deleting %s from %s\n",
+                 spell_vfs_path(where).c_str(), opts.root.string().c_str());
+    const machine::vfs_error why = files.unlink(where);
+    if (why == machine::vfs_error::none) {
+      std::fprintf(stderr, "amberfolio: vfs %s deleted\n",
+                   spell_vfs_path(where).c_str());
+    } else {
+      std::fprintf(stderr, "amberfolio: vfs %s not deleted (%s)\n",
+                   spell_vfs_path(where).c_str(), machine::vfs_error_name(why));
+    }
+  }
 }
 
 }  // namespace
@@ -2407,6 +2559,16 @@ int main(int argc, char** argv) try {
                  static_cast<unsigned long>(box.seams().host_argument(which)),
                  static_cast<unsigned long long>(services.record(which).at));
   }
+
+  // The VFS door (M5-D2, #170), over the directory this host was pointed
+  // at — the same three operations the ABI gives a browser over its
+  // in-memory filesystem, so the two hosts' answers about a disk can be
+  // compared rather than described.
+  //
+  // After the run, because what they exist to answer is what the run
+  // left behind. Removals last: a listing that happened after them would
+  // be a listing of a disk nobody had.
+  report_vfs(files, opts);
 
   if (!opts.dump_prefix.empty()) {
     const std::filesystem::path ppm(opts.dump_prefix + ".ppm");

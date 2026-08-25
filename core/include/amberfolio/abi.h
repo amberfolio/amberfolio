@@ -227,6 +227,18 @@ extern "C" {
 #define AF_SEAM_UNAVAILABLE 2u
 #define AF_SEAM_NONE 3u
 
+/// A buffer that is always big enough for any path this machine can name
+/// (`af_machine_vfs_path_at`), terminator included — eight components of
+/// `FILENAME.EXT`, a separator before each, and one more for the root.
+///
+/// A number rather than a call, because a C caller wants an array size
+/// and a JS one wants a `_malloc` argument, and both want it before they
+/// have a machine. `machine::dos_path_capacity` is the same number in
+/// core, and abi.cpp static_asserts that they have not drifted apart —
+/// which is what stops this from being a second answer to a question core
+/// already answers.
+#define AF_PATH_CAPACITY 106u
+
 // --- Version ----------------------------------------------------------
 
 /// The version of the core, packed as 0x00MMmmpp: major in bits 16-23,
@@ -665,25 +677,131 @@ uint32_t af_machine_vfs_clear(af_machine* box);
 uint32_t af_machine_vfs_put(af_machine* box, const char* path,
                             const uint8_t* bytes, uint32_t size);
 
-/// How many entries the root directory holds, and the name and size of
-/// one of them. The order is the VFS's own pinned name order
-/// (machine/vfs.h), so a listing is the same on every host and in every
-/// run.
+/// How many **files** the filesystem holds, across the whole tree, and
+/// the name, path and size of one of them. The order is a depth-first
+/// walk from the root taking each directory's entries in the VFS's own
+/// pinned name order (machine/vfs.h), so a listing is the same on every
+/// host and in every run.
 ///
-/// The **root**, and only it, even though `af_machine_vfs_put` reaches
-/// below it (#146). The consumer is a page offering a player something to
-/// boot, and the program of an installation of this era sits at its root;
-/// a host that wants to know what it put further down knows, because it
-/// put it there. A recursive listing would be a second answer to a
-/// question nobody has asked yet.
+/// **The whole tree, since M5-D2 (#170), and it was the root alone.**
+/// `af_machine_vfs_put` has reached below the root since #146 and the
+/// listing never followed it, so a browser could hand over an
+/// installation and not read back a single thing under `\SAVE\` — the
+/// same gap #146 closed on the way in, still open on the way out. The
+/// exploration sidecar (#173) and M6's persistence both walk out through
+/// here, and neither of them lives at the root.
 ///
-/// `af_machine_vfs_name_at` writes a NUL-terminated name into `out` and
-/// answers its length, or zero for an index past the end or a buffer
-/// smaller than 13 bytes (`FILENAME.EXT` and its terminator).
+/// **Files, and only files.** What this lists is exactly the set
+/// `af_machine_vfs_get` can read and `af_machine_vfs_remove` can take
+/// away, which is what lets a row be a path and a size with no kind flag
+/// beside it. The honest consequence is that an *empty* directory is
+/// invisible here: it is a name with no contents, every directory that
+/// matters is implied by the path of a file inside it, and nothing a
+/// caller can do with this listing could be done to a directory anyway.
+///
+/// **The listing is taken by `af_machine_vfs_count`**, and the three
+/// `_at` calls read the rows it took. A caller lists by asking for the
+/// count and then reading the rows, which is what every caller does; a
+/// row read without a preceding count, or after the filesystem has
+/// changed, is the listing as it was, and asking for the count again
+/// takes a new one.
+///
+/// That is a contract and not an implementation detail leaking out.
+/// `entry_at()` is a selection over the backend's unsorted table, so
+/// enumerating a directory of *n* through it is already quadratic
+/// (machine/memory_vfs.h says why that backend keeps no sorted index),
+/// and a tree walk per row would square that again — a real
+/// installation's hundred and ninety-odd files did not finish inside the
+/// wasm smoke check's two-minute timeout that way. One walk per listing
+/// is the only shape that works. It is also the more honest listing: a
+/// live one shifted its rows underneath a caller's loop whenever
+/// anything changed the filesystem in between, and said nothing.
+///
+/// `af_machine_vfs_name_at` writes the file's **leaf name** into `out`,
+/// NUL-terminated, and answers its length — zero for an index past the
+/// end or a buffer smaller than 13 bytes (`FILENAME.EXT` and its
+/// terminator).
+///
+/// `af_machine_vfs_path_at` writes the whole path, `\SAVE\SAVE1.DAT`,
+/// separators and leading separator included — the spelling
+/// `machine::format_dos_path` gives it, so a path in a listing and a path
+/// in a log line are the same characters. It answers its length, or zero
+/// for an index past the end or a buffer that will not hold it;
+/// `AF_PATH_CAPACITY` below is always enough. It is what tells
+/// `SAVE1.DAT` at the root from `SAVE\SAVE1.DAT` one directory down, and
+/// it is what the other two calls in this section take.
+/// **This listing and a recording's manifest are not the same list, and
+/// should not be read as one.** A manifest (machine/replay.h) names every
+/// *entry* of the disk a run started from — directories included, empty
+/// ones especially, because an empty directory is a fact about a disk
+/// that nothing else records — and spells each one relative to the root,
+/// with no leading separator (`SAVE\\CHARLIST.TXT`). This names every
+/// *file* that is there now, absolutely, the way a program would ask DOS
+/// for it (`\\SAVE\\SAVE1.DAT`). Both are `\\`-joined and both are in the
+/// same pinned depth-first order, so a reader comparing them is
+/// comparing components rather than conventions; the two differ in what
+/// they are *for*, which is why neither was made to look like the other.
+///
 uint32_t af_machine_vfs_count(const af_machine* box);
 uint32_t af_machine_vfs_name_at(const af_machine* box, uint32_t index,
                                 char* out, uint32_t max);
+uint32_t af_machine_vfs_path_at(const af_machine* box, uint32_t index,
+                                char* out, uint32_t max);
 uint32_t af_machine_vfs_size_at(const af_machine* box, uint32_t index);
+
+/// How many bytes the file at `path` holds. Zero for a path that names
+/// no file — and zero for a file of no bytes, which
+/// `af_machine_vfs_get(box, path, 0, 0)` tells apart: it answers `AF_OK`
+/// for the one and `AF_INVALID` for the other.
+///
+/// The size-query half of the query-then-fill pair. `path` is raw text,
+/// canonicalized here like every other one in this section.
+uint32_t af_machine_vfs_size(const af_machine* box, const char* path);
+
+/// Copy the whole of `path` into `out`, which must be at least the size
+/// `af_machine_vfs_size` answered.
+///
+/// `AF_OK` when every byte of the file is in `out`. `AF_NO_ROOM`, and
+/// nothing copied, when `max` is smaller than the file — the caller's
+/// buffer, not the machine's storage, and the same code for the same
+/// reason: nothing about the request was wrong, there was nowhere to put
+/// the answer. `AF_INVALID` for a path that resolves to nothing, to a
+/// directory, or to the root, and for a `path` no DOS path can equal.
+/// `AF_NO_FILESYSTEM` when there is no filesystem attached.
+///
+/// `out` may be null when `max` is zero, and then this is an existence
+/// test that works on a file of no bytes.
+///
+/// The read half of the door #170 opened. A browser could hand an
+/// installation over one file at a time and never read one byte back;
+/// what wants to is a page persisting what the program wrote — the
+/// exploration sidecar now (#173), IndexedDB next (M6).
+uint32_t af_machine_vfs_get(af_machine* box, const char* path, uint8_t* out,
+                            uint32_t max);
+
+/// Delete the file at `path`.
+///
+/// `AF_OK` when it is gone. `AF_INVALID` for a path that names no file,
+/// for one that names a **directory** or the root, and for one no DOS
+/// path can equal. `AF_NO_FILESYSTEM` when there is no filesystem
+/// attached.
+///
+/// **A file, and only a file, and the directory above it stays.** That is
+/// the decision #170 asked for, and it is core's shape rather than a
+/// choice made here: `machine::filesystem` has no `rmdir`, deliberately,
+/// because nothing in PLAN.md §3's INT 21h subset removes a directory
+/// (AH=3Ah is not in it). Inventing one at this boundary would put a
+/// second path-removal rule above the interface that owns path
+/// semantics, which is the thing #146 settled must not happen. An empty
+/// directory left behind is a name with nothing in it: invisible to
+/// `af_machine_vfs_count`, harmless to the next `af_machine_vfs_put`
+/// under it, and gone with `af_machine_vfs_clear`.
+///
+/// **On the desktop this is a real file on a real disk.** The ABI only
+/// ever reaches the in-memory backend, but the same operation over
+/// `directory_vfs` — which the SDL host's `--vfs-remove` is — deletes the
+/// player's file. The host says so before it does it.
+uint32_t af_machine_vfs_remove(af_machine* box, const char* path);
 
 /// Bytes the filesystem is holding, across every file.
 double af_machine_vfs_bytes_used(const af_machine* box);
