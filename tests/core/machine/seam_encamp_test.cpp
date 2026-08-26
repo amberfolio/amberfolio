@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The Encamp (F)ix (seam_encamp_fix.cpp, M5-E1 #172), exercised through
-// its mechanism and not through any program: the test lays down a camp —
-// the mode byte, the rest screen's own flag, the rest clock and a party
-// roster, the way the facts say the program lays them down — offers the
-// machine a step with the pull outstanding, and watches what the handler
-// does to them. The addresses only mean something against the real
+// The Encamp (F)ix (seam_encamp_fix.cpp, M5-E1 #172, M5-E1a #186),
+// exercised through its mechanism and not through any program: the test
+// lays down a camp — the mode byte, a command bar, the rest clock and a
+// party roster, the way the facts say the program lays them down — puts
+// the machine at each of the seam's three points in turn, and watches what
+// the handlers do. The addresses only mean something against the real
 // binary; the mechanism has a public test (docs/seams.md §8 step 4).
 //
 // The offsets below are restated rather than read out of the seam, for
 // the reason `seam_cheats_test.cpp` gives: these are the *facts* the test
 // lays memory out by, and a test that read them out of the seam would be
-// agreeing with itself. Every byte here is this file's own (PLAN.md §6).
+// agreeing with itself. **Every byte here is this file's own** (PLAN.md
+// §6) — including the command bar, which is three words this file made up
+// so that the splice can be watched without any of the program's text
+// being anywhere near this tree.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -23,6 +27,7 @@
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "amberfolio/sha256.h"
@@ -36,12 +41,20 @@ namespace {
 constexpr std::uint16_t data_game_mode = 0x49F3;
 constexpr std::uint8_t mode_camp = 2;
 constexpr std::uint8_t mode_adventure = 4;
+constexpr std::uint16_t data_camp_bar = 0x508;
 constexpr std::uint16_t data_roster_head = 0x5D96;
 constexpr std::uint16_t data_rest_minute_units = 0x6DC4;
 constexpr std::uint16_t data_rest_hours = 0x6DC8;
 constexpr std::uint16_t data_rest_days = 0x6DCA;
-constexpr std::uint16_t data_memorize_countdown = 0x6DD0;
-constexpr std::uint16_t data_rest_screen_up = 0x6DDA;
+
+/// The camp loop's own frame, as offsets from BP.
+constexpr std::uint16_t frame_prompt = 0x0B;
+constexpr std::uint16_t frame_out_flag = 0x04;
+
+/// Where in the module the three points are.
+constexpr std::uint16_t point_before_input = 0x1F06;
+constexpr std::uint16_t point_after_input = 0x1F24;
+constexpr std::uint16_t point_rest_entry = 0x077A;
 
 /// The character record.
 constexpr std::uint16_t rec_max_hit_points = 0x32;
@@ -58,17 +71,38 @@ constexpr std::uint8_t status_dying = 5;
 constexpr std::uint8_t status_slain = 6;
 constexpr std::uint8_t status_petrified = 7;
 
-/// The key the seam posts, as INT 16h hands it back.
+/// The letter the Fix answers to, and the key it posts, as INT 16h hands
+/// them back.
+constexpr std::uint8_t fix_letter = 'F';
 constexpr std::uint16_t rest_keystroke = (std::uint16_t{0x13} << 8U) | 'R';
 
 /// Where the test puts things. Records live in a segment of their own so
-/// that a wrong segment register shows up as a wrong answer.
+/// that a wrong segment register shows up as a wrong answer, and the
+/// module lives in a third.
 constexpr std::uint16_t data_segment = 0x3000;
 constexpr std::uint16_t record_segment = 0x4000;
+constexpr std::uint16_t stack_segment = 0x5000;
+constexpr std::uint16_t overlay_segment = 0x6000;
+
+/// The camp loop's BP while it is in its menu loop — any value whose frame
+/// is inside the stack segment will do, and this one is far enough in that
+/// both frame offsets are positive.
+constexpr std::uint16_t frame_base = 0x0100;
 
 /// Where the first record goes, and how far apart the test spaces them.
 constexpr std::uint16_t first_record = 0x0100;
 constexpr std::uint16_t record_stride = 0x0200;
+
+/// **This file's own command bar**: three words of its own invention, in
+/// the shape the program's bars have — words separated by spaces, one
+/// capital each. The splice has no idea what a bar says and this is how
+/// the test says so.
+constexpr std::string_view plain_bar = "Alpha Beta Gamma";
+constexpr std::string_view fixed_bar = "Alpha Beta Fix Gamma";
+
+/// And the prompt the loop builds before it, of no interest except that
+/// the seam blanks it.
+constexpr std::string_view plain_prompt = "Camp";
 
 struct rig {
   rig() : box(std::make_unique<machine>(memory_layout::pc, &log)) {
@@ -105,20 +139,55 @@ struct rig {
              static_cast<std::uint8_t>(value >> 8U));
   }
 
-  /// The camp screen with the rest screen up and the rest not started:
-  /// the mode byte, the program's own rest-screen flag, a clock the rest
-  /// wrapper has filled with a memorization time and no days, and a
-  /// countdown block the rest has just zeroed.
-  void camp_with_rest_screen(unsigned members) const {
+  /// A Pascal string — length byte, then characters — where the program
+  /// keeps one.
+  void put_pascal(std::uint16_t segment, std::uint16_t offset,
+                  std::string_view text) const {
+    put_byte(segment, offset, static_cast<std::uint8_t>(text.size()));
+    for (std::size_t nth = 0; nth < text.size(); ++nth) {
+      put_byte(segment, static_cast<std::uint16_t>(offset + 1 + nth),
+               static_cast<std::uint8_t>(text[nth]));
+    }
+  }
+  [[nodiscard]] std::string pascal_at(std::uint16_t segment,
+                                      std::uint16_t offset) const {
+    std::string out;
+    const std::uint8_t length = byte_at(segment, offset);
+    for (unsigned nth = 1; nth <= length; ++nth) {
+      out.push_back(static_cast<char>(
+          byte_at(segment, static_cast<std::uint16_t>(offset + nth))));
+    }
+    return out;
+  }
+
+  /// Write what the program's overlay manager writes: the segment the
+  /// camp screen's module begins at right now, in the word the seam's
+  /// facts name (overlay.h, `seam_module::load_segment_at`). Zero is "not
+  /// loaded". It is the *only* thing the engine needs for a module that
+  /// names such a word — the tracker's record of a read is the weaker
+  /// qualifier and is not consulted (#131).
+  void manager_says_module_at(std::uint16_t segment) const {
+    const seam_module& module = seam("encamp-fix").points.front().module;
+    ASSERT_TRUE(module.has_load_segment());
+    put_word(image_load_segment,
+             static_cast<std::uint16_t>(module.load_segment_at), segment);
+  }
+
+  /// The camp screen, as the program leaves it while its menu loop is
+  /// running: the mode byte, the bar in the data segment, the prompt on
+  /// the loop's own stack, and a clock the rest command has not been near.
+  void camp() const {
+    manager_says_module_at(overlay_segment);
     put_byte(data_segment, data_game_mode, mode_camp);
-    put_byte(data_segment, data_rest_screen_up, 1);
+    put_pascal(data_segment, data_camp_bar, plain_bar);
+    put_pascal(stack_segment,
+               static_cast<std::uint16_t>(frame_base - frame_prompt),
+               plain_prompt);
+    put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base - frame_out_flag), 0);
     put_word(data_segment, data_rest_hours, 3);
     put_word(data_segment, data_rest_minute_units, 7);
     put_word(data_segment, data_rest_days, 0);
-    for (unsigned nth = 0; nth < members; ++nth) {
-      put_byte(data_segment,
-               static_cast<std::uint16_t>(data_memorize_countdown + nth), 0);
-    }
   }
 
   /// A party: one record per entry, linked in order and terminated, with
@@ -153,26 +222,41 @@ struct rig {
     }
   }
 
-  /// A HLT at physical `cs:ip`, the processor pointed at it with DS as
-  /// given — one step of a machine that is otherwise doing nothing, which
-  /// is all a point with no address needs to be offered.
-  void halt_with_data_segment() const {
-    constexpr std::uint16_t cs = 0x2000;
-    constexpr std::uint16_t ip = 0;
-    box->memory().ram()[cpu::physical_address(cs, ip)] = 0xF4;
+  /// A HLT at the module's `offset`, the processor pointed at it with the
+  /// registers the camp loop has there: the data segment, its own stack
+  /// frame, and — at the point where the menu-bar routine returns — the
+  /// letter it answered with, in AL.
+  void at_point(std::uint16_t offset, std::uint8_t al = 0) const {
+    box->memory().ram()[cpu::physical_address(overlay_segment, offset)] = 0xF4;
     box->processor().reset();
     cpu::registers& r = box->processor().regs();
-    r[cpu::sreg::cs] = cs;
-    r.ip = ip;
+    r[cpu::sreg::cs] = overlay_segment;
+    r.ip = offset;
     r[cpu::sreg::ds] = data_segment;
+    r[cpu::sreg::ss] = stack_segment;
+    r[cpu::reg16::sp] = 0x0080;
+    r[cpu::reg16::bp] = frame_base;
+    r.set(cpu::reg8::al, al);
   }
 
-  /// Turn the Fix on and ask it for one firing. Both, because since #161
-  /// neither is enough on its own: the flag says the seam may act and the
-  /// pull says a person wanted it to.
+  /// One step at a point: the instruction is a HLT, so the step is the
+  /// arrival and nothing else.
+  void step_at(std::uint16_t offset, std::uint8_t al = 0) const {
+    at_point(offset, al);
+    box->step();
+  }
+
+  /// One whole pass of the camp menu loop: the bar goes out, the routine
+  /// answers with `letter`, and the bar comes back.
+  void one_menu_pass(std::uint8_t letter, std::uint8_t out_flag = 0) const {
+    step_at(point_before_input);
+    put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base - frame_out_flag), out_flag);
+    step_at(point_after_input, letter);
+  }
+
   void arm() const {
     ASSERT_EQ(box->seams().enable("encamp-fix"), seam_reason::none);
-    ASSERT_EQ(box->seams().pull("encamp-fix", box->time()), seam_reason::none);
   }
 
   /// What the BIOS keystroke buffer holds, as a program would read it: the
@@ -189,11 +273,12 @@ struct rig {
                    word_at(bda::segment, bda::keyboard_buffer_head));
   }
 
-  /// One step with everything laid out: the point has no address, so a
-  /// single step boundary is one offer.
-  void offer_one_step() const {
-    halt_with_data_segment();
-    box->step();
+  [[nodiscard]] std::string bar() const {
+    return pascal_at(data_segment, data_camp_bar);
+  }
+  [[nodiscard]] std::string prompt() const {
+    return pascal_at(stack_segment,
+                     static_cast<std::uint16_t>(frame_base - frame_prompt));
   }
 
   [[nodiscard]] seam_status status() const {
@@ -216,18 +301,25 @@ struct rig {
 
 // --- The definition --------------------------------------------------------
 
-TEST(SeamEncampFix, IsAPulledSeamWithOnePointAndNoAddress) {
+TEST(SeamEncampFix, IsThreeAddressPointsInTheCampScreensModule) {
   const rig r;
   const seam_definition& fix = r.seam("encamp-fix");
 
   EXPECT_FALSE(fix.about.empty());
-  EXPECT_TRUE(fix.trigger) << "camping is not by itself a request to rest";
-  ASSERT_EQ(fix.points.size(), 1u);
-  EXPECT_TRUE(fix.points.front().at_every_step)
-      << "it acts where the program is waiting, which has no address here";
-  EXPECT_EQ(fix.points.front().offset, 0u)
-      << "a point with no address carries no offset either";
-  EXPECT_TRUE(fix.points.front().module.is_resident_image());
+  EXPECT_FALSE(fix.trigger)
+      << "the asking is a key on the game's own bar, not a host pull (#186)";
+  ASSERT_EQ(fix.points.size(), 3u);
+  for (const seam_point& point : fix.points) {
+    EXPECT_FALSE(point.at_every_step)
+        << "every point has an address now, so none has to guess";
+    EXPECT_NE(point.offset, 0u);
+    EXPECT_FALSE(point.module.is_resident_image());
+    EXPECT_EQ(point.module.file, "GAME.OVR");
+    EXPECT_FALSE(point.module.digest.empty())
+        << "the overlay is identified by its bytes as well as its place";
+    EXPECT_TRUE(point.module.has_load_segment())
+        << "and by the program's own note of where it is now (#131)";
+  }
   EXPECT_EQ(fix.gate, document_kind::none);
   EXPECT_EQ(fix.schema, seam_schema_version);
 
@@ -244,15 +336,113 @@ TEST(SeamEncampFix, IsUnavailableOnAnyOtherBinary) {
   EXPECT_EQ(box->seams().enable("encamp-fix"), seam_reason::wrong_binary);
 }
 
-// --- What it does when it is asked -----------------------------------------
+TEST(SeamEncampFix, IsInertWhileTheCampScreensModuleIsNotLoaded) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.manager_says_module_at(0);
+
+  // The manager's word reads zero, which is what it reads while the
+  // module is out of memory. The points stay in the table — a module can
+  // become resident without a read, so nothing would put them back
+  // (#131) — and the word is what every step compares against.
+  EXPECT_EQ(r.status().reason, seam_reason::module_not_resident);
+  r.step_at(point_before_input);
+  EXPECT_EQ(r.bar(), plain_bar);
+  EXPECT_EQ(r.prompt(), plain_prompt);
+}
+
+// --- The command on the bar ------------------------------------------------
+
+TEST(SeamEncampFix, PutsTheFixOnTheBarBeforeItsLastCommand) {
+  const rig r;
+  r.arm();
+  r.camp();
+
+  r.step_at(point_before_input);
+
+  EXPECT_EQ(r.bar(), fixed_bar)
+      << "the seam inserts four characters and knows nothing else about it";
+  EXPECT_EQ(r.prompt(), "")
+      << "the columns the longer bar needs come from the prompt";
+}
+
+TEST(SeamEncampFix, TakesItBackOffAgainAsSoonAsTheBarHasBeenDrawn) {
+  const rig r;
+  r.arm();
+  r.camp();
+
+  r.one_menu_pass('S');  // some other command of the program's own
+
+  EXPECT_EQ(r.bar(), plain_bar)
+      << "outside the one call that drew it, the string is the program's";
+}
+
+TEST(SeamEncampFix, PutsItOnAgainOnEveryPassAndOnlyOnce) {
+  const rig r;
+  r.arm();
+  r.camp();
+
+  r.one_menu_pass('V');
+  r.step_at(point_before_input);
+
+  EXPECT_EQ(r.bar(), fixed_bar);
+
+  // And a second arrival at the same point without the routine having run
+  // — which cannot happen in the program, and must not double the command
+  // if it ever did.
+  r.step_at(point_before_input);
+  EXPECT_EQ(r.bar(), fixed_bar);
+}
+
+TEST(SeamEncampFix, RefusesABarWithNoRoomForTheCommand) {
+  const rig r;
+  r.arm();
+  r.camp();
+  // Thirty-eight characters in a slot that holds forty: four more do not
+  // fit, and a bar that ran off the row would be worse than no command.
+  r.put_pascal(data_segment, data_camp_bar, std::string(38, 'A'));
+
+  r.step_at(point_before_input);
+
+  EXPECT_EQ(r.bar(), std::string(38, 'A'));
+  EXPECT_EQ(r.prompt(), plain_prompt) << "and the prompt is left alone too";
+  EXPECT_NE(r.status().declined, 0u);
+}
+
+TEST(SeamEncampFix, RefusesABarThatIsNotOne) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.put_pascal(data_segment, data_camp_bar, "One");  // no separator
+
+  r.step_at(point_before_input);
+
+  EXPECT_EQ(r.bar(), "One");
+  EXPECT_NE(r.status().declined, 0u);
+}
+
+TEST(SeamEncampFix, DrawsNothingWhereTheModeSaysThisIsNotCamp) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.put_byte(data_segment, data_game_mode, mode_adventure);
+
+  r.step_at(point_before_input);
+
+  EXPECT_EQ(r.bar(), plain_bar);
+  EXPECT_NE(r.status().declined, 0u);
+}
+
+// --- What it does when the command is chosen -------------------------------
 
 TEST(SeamEncampFix, DialsTheDaysTheWorstWoundedMemberNeedsAndPressesRest) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(3);
+  r.camp();
   r.party(wounded_party(11));
 
-  r.offer_one_step();
+  r.one_menu_pass(fix_letter);
 
   // Eleven hit points down, plus the day of slack the heal tick's own
   // counter costs a second rest in one camp session.
@@ -261,24 +451,40 @@ TEST(SeamEncampFix, DialsTheDaysTheWorstWoundedMemberNeedsAndPressesRest) {
   EXPECT_EQ(r.first_key(), rest_keystroke);
 
   // And nothing else about the clock: the hours and minutes the program's
-  // own rest wrapper computed are the memorization time, and they stand.
+  // own rest command computes are the memorization time, and this seam is
+  // not there yet.
   EXPECT_EQ(r.word_at(data_segment, data_rest_hours), 3u);
   EXPECT_EQ(r.word_at(data_segment, data_rest_minute_units), 7u);
+  EXPECT_EQ(r.bar(), plain_bar);
+  EXPECT_EQ(r.status().fired, 2u) << "the pass drew the bar and took the key";
+}
 
-  const seam_status row = r.status();
-  EXPECT_EQ(row.fired, 1u);
-  EXPECT_FALSE(row.waiting) << "the pull was served";
-  EXPECT_EQ(row.reached, 0u) << "a point with no address counts no arrivals";
-  EXPECT_EQ(seam_reading_of(row), seam_reading::served);
+TEST(SeamEncampFix, StartsTheRestTheProgramThenAsksAbout) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.party(wounded_party(4));
+
+  r.one_menu_pass(fix_letter);
+  ASSERT_EQ(r.keys_waiting(), 1u);
+  // The program reads that key and dispatches its own Rest command. The
+  // seam sees the entry with a duration already dialled, which is a thing
+  // only it can have done, and presses the rest screen's own Rest.
+  r.put_word(bda::segment, bda::keyboard_buffer_head,
+             r.word_at(bda::segment, bda::keyboard_buffer_tail));
+  r.step_at(point_rest_entry);
+
+  EXPECT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.first_key(), rest_keystroke);
 }
 
 TEST(SeamEncampFix, LeavesTheRecordsAloneEntirely) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(3);
+  r.camp();
   r.party(wounded_party(11));
 
-  r.offer_one_step();
+  r.one_menu_pass(fix_letter);
 
   // The hit points are the program's to restore, a day at a time, through
   // its own applier. This seam only asks for the days.
@@ -290,19 +496,18 @@ TEST(SeamEncampFix, LeavesTheRecordsAloneEntirely) {
       status_unhurt);
 }
 
-TEST(SeamEncampFix, RestsForTheMemorizationTimeAloneWhenThePartyIsWhole) {
+TEST(SeamEncampFix, RestsADayWhenThePartyIsAlreadyWhole) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(2);
+  r.camp();
   r.party({{.status = status_unhurt, .hit_points = 12, .most_hit_points = 12},
            {.status = status_unhurt, .hit_points = 9, .most_hit_points = 9}});
 
-  r.offer_one_step();
+  r.one_menu_pass(fix_letter);
 
-  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u)
-      << "nothing to heal, so nothing is added to what the program dialled";
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 1u)
+      << "nothing to heal, so the day of slack is the whole of it";
   EXPECT_EQ(r.keys_waiting(), 1u) << "and the rest is still asked for";
-  EXPECT_EQ(r.status().fired, 1u);
 }
 
 TEST(SeamEncampFix, CountsAWoundedMemberWhoseStatusStillHeals) {
@@ -310,11 +515,11 @@ TEST(SeamEncampFix, CountsAWoundedMemberWhoseStatusStillHeals) {
        {status_animated, status_unconscious, status_dying}) {
     const rig r;
     r.arm();
-    r.camp_with_rest_screen(2);
+    r.camp();
     r.party({{.status = status_unhurt, .hit_points = 9, .most_hit_points = 9},
              {.status = status, .hit_points = 0, .most_hit_points = 20}});
 
-    r.offer_one_step();
+    r.one_menu_pass(fix_letter);
 
     EXPECT_EQ(r.word_at(data_segment, data_rest_days), 21u)
         << "status " << static_cast<unsigned>(status);
@@ -325,11 +530,11 @@ TEST(SeamEncampFix, DoesNotSizeTheRestByAMemberRestingCannotHelp) {
   for (const std::uint8_t status : {status_slain, status_petrified}) {
     const rig r;
     r.arm();
-    r.camp_with_rest_screen(2);
+    r.camp();
     r.party({{.status = status_unhurt, .hit_points = 7, .most_hit_points = 9},
              {.status = status, .hit_points = 0, .most_hit_points = 40}});
 
-    r.offer_one_step();
+    r.one_menu_pass(fix_letter);
 
     // The corpse's forty hit points are not a deficit any number of days
     // can close; the living member's two are.
@@ -341,248 +546,182 @@ TEST(SeamEncampFix, DoesNotSizeTheRestByAMemberRestingCannotHelp) {
 TEST(SeamEncampFix, StopsAtTheDaysFieldTheProgramItselfClampsTo) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(1);
+  r.camp();
   r.party({{.status = status_unhurt, .hit_points = 1, .most_hit_points = 255}});
 
-  r.offer_one_step();
+  r.one_menu_pass(fix_letter);
 
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 99u);
 }
 
-// --- What it does when it is not sure --------------------------------------
+// --- What it does when the command is not chosen ---------------------------
 
-/// Every `inert` event the sink was told about that is a handler saying it
-/// declined, with its reason — `seam_cheats_test.cpp`'s helper, for the
-/// same reason: the engine says `inert` about a module too.
-[[nodiscard]] std::vector<seam_reason> declines(const rig& r) {
-  std::vector<seam_reason> found;
-  for (const seam_event& event : r.log.seam_events) {
-    if (event.id == "encamp-fix" && event.kind == seam_event_kind::inert &&
-        event.reason == seam_reason::point_not_recognized) {
-      found.push_back(event.reason);
-    }
-  }
-  return found;
-}
-
-/// The shape every refusal test has: lay a camp down, break one thing
-/// about it, and expect the seam to touch nothing and keep the pull.
-void expect_declined(const rig& r) {
+/// The shape every refusal test has: the pass happened, the bar came back,
+/// and the seam asked for nothing.
+void expect_no_rest_asked_for(const rig& r) {
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u);
   EXPECT_EQ(r.keys_waiting(), 0u) << "and no key was posted";
-  const seam_status row = r.status();
-  EXPECT_EQ(row.fired, 0u);
-  EXPECT_TRUE(row.waiting) << "a decline keeps the latch (#161)";
-  EXPECT_NE(row.declined, 0u);
-  EXPECT_EQ(seam_reading_of(row), seam_reading::pulled_and_declined);
-  EXPECT_EQ(declines(r).size(), 1u) << "reported once per enable";
+  EXPECT_EQ(r.bar(), plain_bar);
 }
 
-TEST(SeamEncampFix, WaitsWhileThePartyIsNotInCamp) {
+TEST(SeamEncampFix, SaysNothingAboutTheProgramsOwnCommands) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(3);
+  r.camp();
   r.party(wounded_party(11));
-  r.put_byte(data_segment, data_game_mode, mode_adventure);
 
-  r.offer_one_step();
+  r.one_menu_pass('R');  // the program's own Rest, chosen by hand
 
-  expect_declined(r);
+  expect_no_rest_asked_for(r);
 }
 
-TEST(SeamEncampFix, WaitsWhileTheRestScreenIsNotUp) {
+TEST(SeamEncampFix, SaysNothingAboutAKeyThatWasNotChosenOffTheBar) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(3);
+  r.camp();
   r.party(wounded_party(11));
-  r.put_byte(data_segment, data_rest_screen_up, 0);
 
-  r.offer_one_step();
+  // The same letter, but the routine is passing a raw key through rather
+  // than answering with a command.
+  r.one_menu_pass(fix_letter, /*out_flag=*/1);
 
-  expect_declined(r);
+  expect_no_rest_asked_for(r);
 }
 
-TEST(SeamEncampFix, StandsAsideWhenSomebodyElseDialledADuration) {
+TEST(SeamEncampFix, StandsAsideWhenAKeyIsAlreadyWaiting) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(3);
-  r.party(wounded_party(11));
-  r.put_word(data_segment, data_rest_days, 2);
-
-  r.offer_one_step();
-
-  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 2u)
-      << "the player's own two days are the player's";
-  EXPECT_EQ(r.keys_waiting(), 0u);
-  EXPECT_TRUE(r.status().waiting);
-}
-
-TEST(SeamEncampFix, WaitsWhileTheRestIsAlreadyRunning) {
-  const rig r;
-  r.arm();
-  r.camp_with_rest_screen(3);
-  r.party(wounded_party(11));
-  // One iteration of the rest has run: the countdown block the rest
-  // zeroed has been decremented, which is what says so.
-  r.put_byte(data_segment, data_memorize_countdown + 1, 0xFF);
-
-  r.offer_one_step();
-
-  expect_declined(r);
-}
-
-TEST(SeamEncampFix, WaitsWhileAKeyIsAlreadyWaiting) {
-  const rig r;
-  r.arm();
-  r.camp_with_rest_screen(3);
+  r.camp();
   r.party(wounded_party(11));
   ASSERT_TRUE(r.pc().inject_keystroke(0x1F << 8U | 's'));
 
-  r.offer_one_step();
+  r.one_menu_pass(fix_letter);
 
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u);
   EXPECT_EQ(r.keys_waiting(), 1u) << "the key that was there is the only one";
   EXPECT_EQ(r.first_key(), static_cast<std::uint16_t>(0x1F << 8U | 's'))
       << "and it is the player's, not the seam's";
-  EXPECT_TRUE(r.status().waiting);
 }
 
-TEST(SeamEncampFix, WaitsWhenTheRosterHeadIsNotAPointer) {
+TEST(SeamEncampFix, AsksForNothingWhenTheRosterHeadIsNotAPointer) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(3);
+  r.camp();
   r.party(wounded_party(11));
   // Nothing lives in segment 0: the interrupt vector table and the BDA.
   r.put_word(data_segment, data_roster_head + 2, 0);
 
-  r.offer_one_step();
+  r.one_menu_pass(fix_letter);
 
-  expect_declined(r);
+  expect_no_rest_asked_for(r);
 }
 
-TEST(SeamEncampFix, WaitsWhenTheRosterDoesNotEnd) {
+TEST(SeamEncampFix, AsksForNothingWhenTheRosterDoesNotEnd) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(3);
+  r.camp();
   r.party(wounded_party(11));
   // A record whose next is itself: a walk that would not terminate is a
   // walk over something that is not a roster.
   r.put_word(record_segment, first_record + rec_next, first_record);
   r.put_word(record_segment, first_record + rec_next + 2, record_segment);
 
-  r.offer_one_step();
+  r.one_menu_pass(fix_letter);
 
-  expect_declined(r);
-}
-
-TEST(SeamEncampFix, ServesThePullAtTheFirstStepWhereTheCampIsReady) {
-  const rig r;
-  r.arm();
-  r.camp_with_rest_screen(3);
-  r.party(wounded_party(4));
-  r.put_byte(data_segment, data_game_mode, mode_adventure);
-
-  // Three steps outside camp: offered, and refused, every one of them.
-  r.offer_one_step();
-  r.offer_one_step();
-  r.offer_one_step();
-  EXPECT_TRUE(r.status().waiting);
-  EXPECT_EQ(r.status().declined, 3u);
-
-  // Then the party camps and asks for a rest.
-  r.put_byte(data_segment, data_game_mode, mode_camp);
-  r.offer_one_step();
-
-  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 5u);
-  EXPECT_EQ(r.keys_waiting(), 1u);
-  EXPECT_FALSE(r.status().waiting);
-  EXPECT_EQ(r.status().fired, 1u);
-}
-
-// --- Reading nothing it is not sure of (#172) ------------------------------
-//
-// The point has no address, so while a pull is outstanding the guard runs
-// at every step boundary — with DS holding whatever the program happens
-// to have loaded. Every read it makes is therefore a read at an address
-// nobody chose, and a read through the bus is a bus cycle: above
-// conventional memory it is the video window, where a read loads the
-// adapter's latches.
-//
-// This was found on the real program, not here: the seam declined its way
-// from the pull to the camp screen and left seven `unmapped_memory_read`
-// notices behind it, which is the machine correctly reporting that
-// something had touched memory nobody answers for. These two are that,
-// written down.
-
-TEST(SeamEncampFix, ReadsNothingOutsideConventionalMemory) {
-  const rig r;
-  r.arm();
-  r.camp_with_rest_screen(3);
-  r.party(wounded_party(11));
-
-  // A data segment whose mode byte would land in the video window.
-  r.halt_with_data_segment();
-  r.pc().processor().regs()[cpu::sreg::ds] = 0xB000;
-  r.pc().step();
-
-  EXPECT_TRUE(r.log.notices.empty())
-      << "the guard touched memory nobody answers for";
-  EXPECT_TRUE(r.status().waiting);
-  EXPECT_EQ(r.status().fired, 0u);
+  expect_no_rest_asked_for(r);
 }
 
 TEST(SeamEncampFix, FollowsNoRosterPointerOutOfConventionalMemory) {
   const rig r;
   r.arm();
-  r.camp_with_rest_screen(3);
+  r.camp();
   r.party(wounded_party(11));
   // A head that is a pointer and is not a record: the walk must stop at
-  // it rather than read it.
+  // it rather than read it, because a read through the bus above
+  // conventional memory is the video window and loads the adapter's
+  // latches (ega.h).
   r.put_word(data_segment, data_roster_head + 2, 0xC000);
 
-  r.offer_one_step();
+  r.one_menu_pass(fix_letter);
 
   EXPECT_TRUE(r.log.notices.empty()) << "the walk read the video window";
-  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u);
-  EXPECT_EQ(r.keys_waiting(), 0u);
-  EXPECT_TRUE(r.status().waiting);
+  expect_no_rest_asked_for(r);
+}
+
+// --- The rest command's own entry ------------------------------------------
+
+TEST(SeamEncampFix, LeavesARestThePlayerAskedForToThePlayer) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.party(wounded_party(11));
+
+  // The days field is zero at the rest command's entry unless this seam
+  // wrote it: camp entry zeroes it, the end of a rest zeroes it, and the
+  // rest command's own set-up writes the fields below it and never it.
+  r.step_at(point_rest_entry);
+
+  EXPECT_EQ(r.keys_waiting(), 0u)
+      << "the player pressed Rest, and the rest screen is theirs";
+  EXPECT_NE(r.status().declined, 0u);
+}
+
+TEST(SeamEncampFix, PressesRestOnceTheDurationIsDialled) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.put_word(data_segment, data_rest_days, 7);
+
+  r.step_at(point_rest_entry);
+
+  EXPECT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.first_key(), rest_keystroke);
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 7u)
+      << "and the duration is left where it was written";
 }
 
 // --- The fidelity invariant, for this seam ---------------------------------
 
 TEST(SeamEncampFix, DoesNothingWhenItIsOff) {
   const rig r;
-  r.camp_with_rest_screen(3);
+  r.camp();
   r.party(wounded_party(11));
 
-  r.offer_one_step();
+  r.one_menu_pass(fix_letter);
 
   EXPECT_FALSE(r.pc().seams().armed());
+  EXPECT_EQ(r.bar(), plain_bar);
+  EXPECT_EQ(r.prompt(), plain_prompt);
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u);
   EXPECT_EQ(r.keys_waiting(), 0u);
 }
 
-TEST(SeamEncampFix, DoesNothingWhenItIsOnAndNobodyPulledIt) {
+/// #186's claim, which is the one the trigger's removal cost and the one
+/// that replaces it: on, and the command never chosen, the difference this
+/// seam makes to the machine is on the screen and nowhere else. Between
+/// one menu draw and the next, the program's own memory is what it would
+/// have been.
+TEST(SeamEncampFix, LeavesNoTraceInMemoryWhenTheCommandIsNeverChosen) {
   const rig r;
-  ASSERT_EQ(r.pc().seams().enable("encamp-fix"), seam_reason::none);
-  r.camp_with_rest_screen(3);
+  r.arm();
+  r.camp();
   r.party(wounded_party(11));
 
-  r.offer_one_step();
+  r.one_menu_pass('S');
+  r.one_menu_pass('V');
+  r.one_menu_pass('E');
 
-  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u)
-      << "a camp with the Fix on and unasked is a plain camp";
+  EXPECT_EQ(r.bar(), plain_bar);
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u);
   EXPECT_EQ(r.keys_waiting(), 0u);
-  const seam_status row = r.status();
-  EXPECT_EQ(row.fired, 0u);
-  EXPECT_EQ(row.declined, 0u) << "the guard is not even consulted";
-  EXPECT_FALSE(row.waiting);
 }
 
-TEST(SeamEncampFix, CannotBePulledWhileItIsOff) {
+TEST(SeamEncampFix, CannotBePulled) {
   const rig r;
+  r.arm();
   EXPECT_EQ(r.pc().seams().pull("encamp-fix", r.pc().time()),
-            seam_reason::not_enabled);
+            seam_reason::not_triggered)
+      << "there is nothing to pull: the command is on the game's own bar";
 }
 
 }  // namespace

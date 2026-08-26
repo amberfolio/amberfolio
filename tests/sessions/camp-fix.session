@@ -1,29 +1,31 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # The same script, the same disk and the same tick budget as `camp.rec`,
-# with `encamp-fix` on and pulled and nothing else changed (M5-E1, #172).
+# with `encamp-fix` on and nothing else changed (M5-E1 #172, M5-E1a #186).
 # The `contrast` line below is the assertion that this made a difference:
 # the two recordings must agree checkpoint for checkpoint until the seam
 # acts, and disagree from there to the end.
 #
-# The pull is at frame 10368 rather than at a round number because a
-# frame that carries an input is checkpointed whatever the cadence says
-# (`docs/replay.md` §3), and 10368 is a multiple of the 128-frame
-# cadence: a pull anywhere else would add a checkpoint this pair's
-# partner does not have, and two recordings that checkpoint at different
-# ticks are not the same run to compare.
+# **The two runs differ by one keystroke and nothing else.** Where `camp`
+# presses the camp menu's own Rest, this one presses the letter the seam
+# put on that menu — at the same tick, so the checkpoint a key event
+# forces (`docs/replay.md` §3) falls in the same place in both and the
+# pair is comparable. Since #186 there is no pull in this recording at
+# all: what a person does to ask for the Fix is press a key in the game.
 #
 # The file and dir lines are names, sizes and SHA-256s of a snapshot of
 # the disk. No byte of the player's installation is here.
 
-about the same script with the Encamp Fix pulled at the camp screen: the
-about guard declines from the pull until the rest screen is up, then
-about dials the rest and presses Rest, and the game rests and comes back
-about to the camp menu. fired=1 reached=0 waited=10191624. The party is
-about whole, so the days it dialled were zero
+about the same script with the Encamp Fix on and its letter pressed at
+about the camp menu: the seam offers the command on the game's own bar,
+about takes the letter back off the game's own menu-bar routine, dials
+about the days the party needs and presses Rest, and the game rests a day
+about and comes back to the camp menu. fired=5. The party is whole, so
+about the days it dialled were the one day of slack
 disk external
 contrast camp
 
+dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021
 file 8X8D2.DAX 12190 418fc6cfa448646d3f0b590b53d1c926a0b308a521260469c0d06d05a7869cf4
 file 8X8D3.DAX 12967 379aea0e70fe2f74512a2845176b3fb65d2d1f883abf661e7c8a9813e319c223
@@ -124,7 +126,6 @@ file PIC8.DAX 67227 760cf9042110bbf41e60bb4b0cf76635398751ceaf1ce693dc5e39ef92d8
 file POOL.BAT 186 64cbb144146f773dd4e1b2f6a76e95c5a8b94f08c9c630572bb060461fc5d200
 file POOL.CFG 24 a1d1206cdb795d273a728baa482e47c1df7546c805de5b79359765273021efda
 file RANDCOM.DAX 755 9e176f9521f0157c86a2f5891766ae19f0b9c29165138d7588f465d75ff48da2
-dir SAVE
 file SAVE\CHARLIST.TXT 8 306f1424166cf1f3d4cf768640dfc20187d00b3dc5f2acb1c45f033301b4c9f9
 file SAVE\CHRDATA1.ITM 504 36980b72ceed0f8594af6c0973ded2126bd6280a209b02280d4b6f4707e768f9
 file SAVE\CHRDATA1.SAV 285 1d89c52bd160bc28aceb4d5e4d489ca5fe93ec863b32eb4c1742d1bcefc5485e

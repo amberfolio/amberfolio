@@ -717,11 +717,12 @@ against a directory on disk and then looks at the disk.
 
 ---
 
-## Leg 7 — a camp, and the Encamp Fix (M5-E1, #172)
+## Leg 7 — a camp, and the Encamp Fix (M5-E1 #172, M5-E1a #186)
 
-The first M5 enhancement, on a player's copy. The Fix is a **pulled** seam
-(`docs/seams.md` §3a): a person asks for it, and the game's own Rest does
-everything after that.
+The first M5 enhancement, on a player's copy. Since #186 the Fix is
+**not** a pulled seam: it puts one more command on the camp screen's own
+bar and a person presses its letter, exactly as they press the game's
+own. There is nothing on the command line to ask with.
 
 This leg starts from a saved game, for the reason legs 4 and 5 give — and
 from **slot C**, whose party is four strong and reaches the camp screen
@@ -732,8 +733,7 @@ from where it stands.
 --press A@7600 --press Return@7650      the code wheel
 --press L@8950 --press C@9200           LOAD SAVED GAME, slot C
 --press E@10200                         ENCAMP
---pull encamp-fix@10368                 ask for the Fix
---press R@10400                         REST
+--press F@10400                         the Fix, on the camp menu
 ```
 
 and the trail that makes it readable, beside leg 5's `49F3`:
@@ -747,83 +747,103 @@ and the trail that makes it readable, beside leg 5's `49F3`:
 | `6DDA` | non-zero while the rest screen is the screen |
 | `6DCA` | the days field of the rest clock — what the Fix dials |
 
-What it is evidence for: the seam declining every step from the pull until
-the machine is the one its facts describe, acting at the rest screen, and
-the program going on by itself.
+What it is evidence for: the command appearing on the game's own bar, the
+letter being taken back off the game's own menu-bar routine, the rest
+being dialled and started, and the game going on by itself.
 
 ```
 amberfolio: watch frame=009868 ds=0CDC 49F3=04 6DDA=00 6DCA=00
-amberfolio: seam encamp-fix pulled - acts at the next arrival at its point
-amberfolio: seam encamp-fix inert point_not_recognized
+amberfolio: seam encamp-fix armed
 amberfolio: watch frame=010391 ds=0CDC 49F3=02 6DDA=00 6DCA=00
-amberfolio: seam encamp-fix served
-amberfolio: watch frame=010880 ds=0CDC 49F3=02 6DDA=01 6DCA=00
-amberfolio: watch frame=010915 ds=0CDC 49F3=02 6DDA=00 6DCA=00
-amberfolio: seam encamp-fix armed fired=1 reached=0 waited=10191624
-            - pulled, and served
+amberfolio: watch frame=010874 ds=0CDC 49F3=02 6DDA=00 6DCA=01
+amberfolio: seam encamp-fix inert point_not_recognized
+amberfolio: watch frame=010925 ds=0CDC 49F3=02 6DDA=01 6DCA=01
+amberfolio: watch frame=010959 ds=0CDC 49F3=02 6DDA=01 6DCA=00
+amberfolio: watch frame=011426 ds=0CDC 49F3=02 6DDA=00 6DCA=00
+amberfolio: seam encamp-fix armed fired=5
 ```
 
-The `inert point_not_recognized` line is the guard refusing to act on a
-machine it does not recognize and *keeping the pull*, which is the whole
-of what a point with no address has instead of an address; `waited` is
-what that cost, in ticks — 8.5 virtual seconds from the pull to the rest
-screen, spent in camp waiting for the player's own `REST`. The seam is
-served *before* the watch line that shows `6DDA=01`, because a seam acts
-at a step boundary and a watch line is printed at the frame boundary
-after the change.
+Read it in order. `armed` at 10360 is the camp screen's **overlay**
+arriving — the seam's three points live in it and are resolved through
+the program's own note of where it is (`docs/seams.md` §4), so until that
+word is written there is nothing to arm. `49F3=02` is camp. `6DCA=01` at
+10874 is the seam having taken the letter and dialled the rest: one day,
+because slot C's party is whole and the day is the slack the arithmetic
+adds. `6DDA` up at 10925 and down at 11426 is the rest itself, and the
+camp menu is back on the screen at the end of it.
 
-`6DDA` going to 1 and back to 0 is the rest, and the camp menu is back on
-the screen at the end of it. Without the seam the same script leaves the
-rest screen up, waiting for a key that never comes — which is the whole
-of the difference `tests/sessions/camp.rec` and `camp-fix.rec` record.
+`inert point_not_recognized` is the point at the menu-bar routine's
+return **declining a letter that is not the Fix's** — reported once per
+enable, and in this run it is the `R` the seam itself posted coming back
+round the loop. `fired=5` is the five acts: the bar spliced on each of
+three passes through the menu, the letter taken on the first, and the
+rest screen's own Rest pressed at the rest command's entry.
 
-**The days field stayed at zero, and that is the honest half.** Every
-party in the shipped save slots is whole, so the largest deficit the seam
-found was nothing and the rest it asked for was the one the program's own
-wrapper had already dialled. What has been driven against the program is
-the guard, the moment it acts, and the key it posts; what has not is a
-hit point coming back. Slot C's party walked twelve squares from where it
-stands without meeting anything, and slot A's lone fighter does not
-survive the fight leg 2 finds — so nothing in this procedure yet produces
-a wounded party at a camp screen. `docs/seams.md` §10 says the same thing
-from the seam's side.
+**And it is on the screen.** With the seam on, the camp menu's bar reads
+
+```
+SAVE VIEW MAGIC REST ALTER FIX EXIT
+```
+
+drawn by the program, in the program's font, with the program's
+highlighting — the prompt the game puts in front of that bar is blanked
+for the one call, which is where the four columns come from. With the
+seam off the same script leaves the game's own bar, prompt and all, and
+`F` does nothing at all: the camp loop compares the letter against its
+own commands and goes round again. That is the whole of the difference
+`tests/sessions/camp.rec` and `camp-fix.rec` record, and the two
+recordings differ by one keystroke at one tick.
+
+**A hit point came back, and the program said so.** During the rest the
+rest screen's own clock counts a day down — `REST TIME: 00:16:05`, then
+`00:10:16`, then `00:04:50`, then `00:00:00` — and the program draws its
+own `THE WHOLE PARTY IS HEALED`, which is the message its heal tick
+prints when a rest day's worth of iterations have passed and it has
+applied a hit point to every member through its own applier. Nothing in
+the seam draws any of that; the seam dialled a duration and pressed a
+key.
 
 **And the same leg on the browser's machine**, which is what #172's exit
-criterion asks for. `drive.mjs` takes the same flags leg 6 gives it, plus
-`--pull`:
+criterion asks for. `drive.mjs` takes the same flags leg 6 gives it:
 
 ```sh
-node build/wasm/hosts/web/Debug/drive.mjs <your-directory> START.EXE   --seam code-wheel --seam encamp-fix --press A@7600 ...   --pull encamp-fix@10368 --press R@10400 --frames 13075 --quiet
+node build/wasm/hosts/web/Debug/drive.mjs <your-directory> START.EXE \
+  --seam code-wheel --seam encamp-fix --press A@7600 ... --press F@10400 \
+  --frames 13176 --quiet
 ```
 
 ```
+amberfolio: seam encamp-fix armed
+amberfolio: seam encamp-fix inert module_not_resident
 amberfolio: seam encamp-fix inert point_not_recognized
-amberfolio: seam encamp-fix served
-amberfolio: seam encamp-fix armed fired=1 reached=0 waited=10193564
-            - pulled, and served
+amberfolio: seam encamp-fix armed fired=5
 ```
 
-The same three notices, the same one act, and the same guard declining
-its way to it. `waited` is two thousand ticks off the desktop run's
-because the two hosts pace their frames differently and the pull lands a
-hair later, not because the machine did anything else — the recording
-above is the claim that it did not.
+The same five acts, and the same two `inert` sentences — one of them the
+overlay not being in memory yet, which is the fail-closed direction a
+module-qualified point has and which this host reaches by a slightly
+different route through the loading.
 
-**One thing this leg found that no test could.** A point with no address
-is offered at every step boundary while a pull is outstanding, so its
-guard runs with DS holding whatever the program has loaded at that
-instant — and the first version of this seam walked the party roster
-before it checked anything cheaper. Driven here, it left seven
-`unmapped_memory_read` notices between the pull and the camp screen: the
-walk following a far pointer out of a data segment that was not the
+**What this leg still does not show.** Every party in the shipped save
+slots is whole, so the days the Fix dialled were the one day of slack
+rather than a deficit it had worked out. The heal tick fired and the
+program said so; what a *wounded* party's arithmetic does has been tested
+against a roster a test writes and never driven. `docs/seams.md` §10 says
+the same thing from the seam's side.
+
+**One thing an earlier version of this leg found that no test could.**
+The Fix's first cut had a point with no address, so its guard ran with DS
+holding whatever the program had loaded at that instant — and it walked
+the party roster before it checked anything cheaper. Driven here, it left
+seven `unmapped_memory_read` notices between the ask and the camp screen:
+the walk following a far pointer out of a data segment that was not the
 program's. Nothing was corrupted; the machine reported, correctly, that
 something had touched memory nobody answers for, and the something was
-the seam. The guard now checks the three data-segment bytes first and
-refuses any read that would land outside conventional memory, and the run
-is back to the three notices below.
+the seam. The points have addresses now and every read still refuses one
+outside conventional memory, and the run is back to the three notices
+below. That is the cheapest possible instance of this document's whole
+point: the suite was green throughout.
 
-That is the cheapest possible instance of this document's whole point:
-the suite was green throughout.
 
 ---
 
@@ -920,13 +940,14 @@ what it skips would be worth less than one that says so.
   events and the same movement code the city already runs over different
   data — and the map edge itself, which *was* a mechanism, is covered.
 - **A wounded party at a camp screen** (#172). Leg 7 drives the Encamp
-  Fix to the moment it acts and watches it act, but every shipped save
-  slot's party is whole, so the days field it dials has never been above
-  zero on a real run and no hit point has been watched coming back. The
-  arithmetic — the worst deficit over the members resting can help, plus
-  a day — is covered by tests against a roster a test writes, which is
-  exactly the kind of cover this document exists to distrust. What it
-  needs is a party that has been in a fight and survived it.
+  Fix end to end and the program's own heal tick fires and says so, but
+  every shipped save slot's party is whole — so the days field the Fix
+  dials has never been above the one day of slack, and the arithmetic
+  that decides it has never been exercised on a real party. The worst
+  deficit over the members resting can help, plus a day, is covered by
+  tests against a roster a test writes, which is exactly the kind of
+  cover this document exists to distrust. What it needs is a party that
+  has been in a fight and survived it.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam

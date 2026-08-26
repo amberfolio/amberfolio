@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The Encamp (F)ix: PLAN.md §5 item 4, M5-E1 (#172), and the first
-// enhancement of M5 because #165 found it needs no door — every primitive
-// it uses was already built and tested.
+// The Encamp (F)ix: PLAN.md §5 item 4, M5-E1 (#172), reached the way the
+// game's own commands are reached (M5-E1a, #186).
 //
 // PLAN.md §5 grants this one enhancement a deliberate exception: it
 // automates play. The exception is narrow, and this file is written to
@@ -14,40 +13,58 @@
 // the camp screen — and then it is out of the way while the program
 // spends that time by its own rules.
 //
+// What #186 changed is not that. It is *how a person asks*. Until it, the
+// asking was a host pull: a switch on a command line, or a key the host
+// owns, outside the game. A command a player can only reach by typing at
+// the emulator is not a command in the game; it is a console. So the
+// command now sits on the camp screen's own command bar, one item longer
+// than the game's, and a person uses it the way they use every other one.
+//
 //
 // What the program does, stated as facts
 // --------------------------------------
 //
 // Addresses and offsets, which the clean-content rule allows and
 // CONTRIBUTING.md names explicitly. Not a byte of the program is
-// reproduced here and nothing here describes its screens.
+// reproduced here, and neither is a word of its text — see
+// `splice_in()`, which is written the way it is for exactly that reason.
 //
 // **Camp is a mode.** The data segment's game-mode byte reads 2 while the
 // camp screen is up (`docs/playable.md` records the same byte and the
-// same value, found by watching a run). The camp menu offers Rest among
-// its commands, and choosing it runs a wrapper that:
+// same value, found by watching a run). The camp screen zeroes the rest
+// clock on entry, says its line, and then runs a loop: build a prompt on
+// its own stack, hand the prompt and a command bar to the program's
+// menu-bar input routine, and act on the letter that comes back.
 //
-//   * walks the party roster — the same far-linked list the debug cheats
-//     walk, off the same head word — taking the longest spell
-//     memorization time any member needs, and
-//   * decomposes that into the rest clock's own fields before the rest
-//     screen is drawn, so the duration a player is offered already covers
-//     memorization.
+// **The command bar is a string, and that is the whole of this seam's
+// display.** It is a Pascal string in the data segment — a length byte
+// and its characters — in a 41-byte slot, so forty characters at most.
+// The menu-bar routine draws every character it is given and treats each
+// letter `A`-`Z` in it as a selectable command; a group of characters
+// between letters is one highlightable word. So a seam that wants a
+// command on that bar does not draw anything: it edits one string, and
+// **the program draws the result in its own font, in its own colours,
+// with its own highlighting**. Nothing is drawn that the game does not
+// draw.
+//
+// **An unrecognised letter is already harmless.** The camp loop compares
+// what comes back against its own commands — save, view, magic, rest,
+// alter, exit — and, matching none of them, goes round the loop again. It
+// is not a menu with an index that could run off the end; it is a
+// sequence of comparisons against letters. So the program needs no
+// defending from a letter it has never seen. The one thing this seam must
+// not do is add a letter the program *does* recognise.
 //
 // **The rest clock is seven words in the data segment**, of which four
-// are the ones the rest screen shows: minute units, minute tens, hours
-// and days, at the offsets named below. The camp screen zeroes the whole
-// block on entry and the rest wrapper zeroes it again afterwards, so a
-// rest always begins from what that wrapper computed. The rest screen's
-// own Inc key increments one of these words and normalizes the carries;
-// **the program clamps the days field at 99**, which is where
-// `max_rest_days` comes from — it is the program's number, not one this
-// file chose.
-//
-// **The rest screen waits for a key.** It is a menu bar like every other:
-// it draws the clock, asks for a key, and acts on it — Rest starts the
-// rest, Exit leaves, the field keys pick which word Inc and Dec move.
-// Enter means Rest. Nothing happens until a key arrives.
+// are the ones the rest screen shows: minute units at +2, minute tens at
+// +4, hours at +6, and days at +8 from `0x6DC2`. The camp screen zeroes
+// the whole block on entry and the rest zeroes it again when it ends. The
+// rest command's own set-up walks the party, takes the longest spell
+// memorization time any member needs, and decomposes it into the three
+// fields *below* days — **it never writes days**. The rest screen's own
+// Inc key writes days and normalizes the carries; the program clamps the
+// days field at 99, which is where `max_rest_days` comes from — it is the
+// program's number, not one this file chose.
 //
 // **What a rest then does, per iteration**: takes five minutes off the
 // clock, runs the per-minute memorization countdown over every member,
@@ -62,73 +79,69 @@
 //     **One hit point per member per day, in parallel**, which is the
 //     whole arithmetic this seam does;
 //   * the memorization countdown **decrements one byte per member** every
-//     iteration, from a block the rest zeroes before it starts. That is
-//     the guard's clock (below).
+//     iteration, from a block the rest zeroes before it starts.
 //
 // The rest ends when the clock runs out, when the player stops it, or
 // when a wandering monster interrupts it — the last of which takes the
-// party out of camp entirely, which is exactly what #172 asks this seam
-// to notice.
+// party out of camp entirely.
 //
 //
-// What the seam does
-// ------------------
+// What the seam does: three points, and no memory of its own
+// -----------------------------------------------------------
 //
-// One point, no address (`seam_point::at_every_step`), offered at every
-// step boundary while a pull is outstanding. When its guard holds — the
-// party is in camp, the rest screen is up, and the rest has not started —
-// it does two things and stops:
+// All three are addresses in the overlay the camp screen lives in,
+// resolved through the program's own note of where that overlay is
+// (#131), so none of them is the address-free point this seam used to
+// have and none of them has to guess whether acting is safe.
 //
-//   1. **writes the days field**, through the bus, with the number of
-//      days the party needs to be whole: the largest hit-point deficit
-//      over the members the program's own heal applier would accept, plus
-//      one, capped at the program's own 99. It is the word the rest
-//      screen's own Inc key writes, and a player pressing daYs and then
-//      Inc that many times writes the same word to the same value;
-//   2. **posts the Rest key** into the BIOS keystroke buffer, which is
-//      what a player pressing R does.
+//   1. **Before the bar is handed over** (`camp_menu_before_input`).
+//      Blank the prompt the loop has just built — six columns the longer
+//      bar needs — and splice the Fix into the bar in place, before its
+//      last group. The program then draws it.
+//   2. **Where the menu-bar routine returns** (`camp_menu_after_input`).
+//      Splice those characters straight back out, so that outside the one
+//      call that drew the bar the program's own string is the program's
+//      own string, byte for byte. Then, if what came back is a selected
+//      command and it is the Fix's letter: work out how many days the
+//      party needs, write the days field, and post the camp bar's own
+//      Rest key.
+//   3. **At the rest command's entry** (`rest_command_entry`), reached
+//      because of the key just posted. If the days field is non-zero,
+//      post the rest screen's own Rest key.
 //
 // Then the program rests. Time passes on the game's calendar, pending
 // spells are memorized at the game's own rate, hit points come back one a
 // day through the game's own applier, and the game's own wandering
 // monsters roll against the game's own odds. Nothing else is touched.
 //
-// **The plus one is not a fudge factor.** The heal tick counts iterations
-// in a counter the camp screen zeroes on entry and the rest does *not*
-// reset between rests, so a second rest in one camp session starts
-// part-way through a day and would come up one hit point short. A day of
-// slack costs the player nothing they did not ask for — they asked to be
-// whole — and removes the one way this arithmetic can be wrong.
+// **Point 3 needs no memory of point 2, and that is the design's whole
+// trick.** The days field is zero whenever a rest begins — camp entry
+// zeroes it, the end of a rest zeroes it, and the rest command's own
+// set-up writes the three fields below it and never it. A player cannot
+// have dialled days yet either: the Inc key that writes it lives on the
+// rest screen, which the rest command has not drawn at the moment point 3
+// runs. So **a non-zero days field at the rest command's entry is this
+// seam's own signature**, written where the program keeps it and read
+// back out of the machine. There is no latch, no handler-local flag, and
+// nothing outside the machine remembering anything between the two.
 //
+// That is also what disposes of the constraint that shaped the first cut
+// of this seam (`docs/seams.md` §3): the program drains the keystroke
+// buffer after every key it reads, so a handler that posts two keys posts
+// one. Three points are three arrivals, and two keys posted one at each
+// of two of them.
 //
-// Why it is one act and not a loop, which is what #172 asked for
-// --------------------------------------------------------------
-//
-// #172 describes an orchestration: memorize, rest, heal, look again. Two
-// facts about this machine and this program turn that loop into a single
-// act, and both are worth writing down because they will shape every seam
-// that drives the program through its own menus.
-//
-// **The program drains the keyboard after every key it reads.** Its
-// keystroke routine, having read one key, reads and throws away whatever
-// else is in the buffer. So a handler that posts two keys posts one: the
-// screen that asked consumes the last and the rest is gone. One key per
-// arrival is the only rate that works, and a driver therefore needs one
-// handler call per key.
-//
-// **A pull is a one-shot latch** (seam.h, #161): the handler runs on the
-// arrival that serves the pull and not again. So a pulled seam gets one
-// act, and a multi-key driver would have to be a seam that runs at every
-// arrival — which is a setting, not a command, and would rest the party
-// every time they camped to save the game.
-//
-// One act is enough because **the party heals in parallel**: every member
-// gains a hit point on every rest day, so the days the worst-wounded
-// member needs are the days everybody needs. The loop in the later
-// titles' FIX exists because those cast cure spells between rests, and
-// this one does not (below). What one act cannot do is *look again* after
-// an interruption — and an interruption ends camp, which ends the Fix
-// anyway. The player pulls again.
+// **The days are the deficit plus one, and never fewer than one.** The
+// heal tick counts iterations in a counter the camp screen zeroes on
+// entry and the rest does *not* reset between rests, so a second rest in
+// one camp session starts part-way through a day and would come up one
+// hit point short. A day of slack costs the player nothing they did not
+// ask for — they asked to be whole — and removes the one way this
+// arithmetic can be wrong. A party that is already whole therefore rests
+// one day, which is the plain rest the game's own Rest command would have
+// given it with the memorization time the program itself computed, plus
+// that day; it is also what keeps the signature above non-zero in the one
+// case where the deficit is.
 //
 //
 // What a later Gold Box title's FIX did that this one does not
@@ -143,54 +156,42 @@
 //   * and in at least one title it **made room** by forgetting ready
 //     spells that were not cures.
 //
-// The first two are out of reach of one act rather than out of taste. A
-// seam that memorized cures would have to put the player's own loadout
-// back afterwards, which is a second act after the rest, and there is no
-// second act. Leaving somebody's memorized spells replaced by cures
-// because the mechanism could not undo it is precisely the kind of thing
-// PLAN.md §5's native-feel rule refuses. The third one this project would
-// refuse anyway, for the reason the earlier implementation gave: the game
-// has no by-hand forget, so a Fix that forgot spells would be changing
-// the rules rather than saving keystrokes.
+// The first two are a loop, and a loop is a different shape of seam: it
+// would have to put the player's own loadout back afterwards, and leaving
+// somebody's memorized spells replaced by cures because the mechanism
+// could not undo it is precisely the kind of thing PLAN.md §5's
+// native-feel rule refuses. The third one this project would refuse
+// anyway, for the reason the earlier implementation gave: the game has no
+// by-hand forget, so a Fix that forgot spells would be changing the rules
+// rather than saving keystrokes.
 //
 // What the player keeps is the half that costs nothing: whatever they
-// queued for memorization before pressing Rest is memorized during the
-// rest this seam pays for, by the program, on the program's own clock.
+// queued for memorization before pressing the Fix is memorized during the
+// rest it pays for, by the program, on the program's own clock.
 //
 //
 // What it is not yet
 // ------------------
 //
-// **The ask is a pull, not a key at the camp menu.** #172 allows either
-// and asks for the choice to be recorded: the automap's hotkey claim
-// (#173) is the mechanism a key would need — a point inside the program's
-// own input funnel, able to consume a keystroke the program has not read
-// yet — and #173 has not landed. A pull needs nothing new, is what the
-// kill-all cheat already uses, is recorded by a replay as an event with a
-// tick, and does not change the number of input polls the program makes.
-// When #173 lands, the F this enhancement is named after is one more
-// point on this seam and nothing else changes.
-//
-// **This seam has no address**, which is unusual and is a cost. Its facts
-// are data-segment offsets and record offsets — the same table the debug
-// cheats are written from, and every one of them either already appears
-// in this tree or was found the same way. What it does not have is a code
-// address: the rest screen lives in an overlaid module, and a point there
-// wants the word the overlay manager keeps that module's segment in
-// (#131), which nobody in this tree has located for that module. So the
-// point buys its safety from the machine instead, the way the kill-all
-// cheat's immediate point does, and `camp_rest_ready()` below says what
-// that guard can and cannot rule out. Finding that word is what a later
-// change would do to make this a point with an address; the method is in
-// `seam_cheats.cpp`.
+// **The fidelity test this seam owes is not the one every other seam
+// owes, and #186 says so at length.** With the seam off, a run is byte
+// for byte the run with no engine at all — unchanged, and PLAN.md §4's
+// invariant. With it *on* and the Fix never used, the run is not
+// identical, because the bar looks different, which is the entire point
+// of the change. What holds instead, and what the tests assert, is that
+// the difference is on the screen and nowhere else: between one menu draw
+// and the next, **not one byte of the program's own memory differs from
+// the run it would have been**, because the splice is undone at point 2
+// and the prompt is a stack byte in a frame that is gone before the loop
+// turns over.
 //
 // **Nobody has watched a hit point come back on a driven run yet.** The
 // mechanism has a public test (`tests/core/machine/seam_encamp_test.cpp`
-// drives the handler over a roster the test writes, and
-// `tests/programs`' camp stand-in drives the same shape through the whole
-// machine on all four targets). The arithmetic — one hit point per member
-// per day — is a fact read off the program's own rest loop and not a
-// measurement. `docs/seams.md` §10 says which of the two each claim is.
+// drives the handlers over a camp the test writes, and `tests/programs`'
+// camp stand-in drives the same shape through the whole machine on all
+// four targets). The arithmetic — one hit point per member per day — is a
+// fact read off the program's own rest loop and not a measurement.
+// `docs/seams.md` §10 says which of the two each claim is.
 
 #include <array>
 #include <cstdint>
@@ -215,11 +216,71 @@ namespace {
 constexpr std::array<std::string_view, 1> encamp_binaries{
     "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
+// --- The module the camp screen lives in -----------------------------------
+
+/// Where the program keeps this module's load segment: the offset, in the
+/// resident image, of one word (overlay.h, `seam_module::load_segment_at`).
+/// It reads zero while the module is not loaded and the segment the module
+/// begins at while it is, and the overlay manager maintains it — including
+/// when it moves the module, which is the whole reason the field exists
+/// (#131).
+///
+/// Found and checked the way `seam_cheats.cpp` documents for its own
+/// module: search the resident image for the manager's record whose file
+/// offset and length are the two below — one match — and take the word
+/// sixteen bytes past its start. That method was verified here by running
+/// it against the module `seam_cheats.cpp` already had facts for and
+/// getting `0x360` back.
+constexpr std::uint32_t overlay_load_segment_at = 0x760;
+
+/// The module the camp screen and the rest command live in: one read,
+/// whose facts the tracker records (overlay.h), plus the word above. The
+/// digest is of those bytes as read, so a copy whose overlay file does not
+/// match is not this module.
+constexpr seam_module camp_module{
+    .file = "GAME.OVR",
+    .file_offset = 96305,
+    .length = 8158,
+    .digest =
+        "9b9153998d07b8e16d2466d95670cdd683e4dc587281e162d05d15c3458d362b",
+    .load_segment_at = overlay_load_segment_at};
+
+/// In the camp menu loop, the instruction after the prompt has been built
+/// and before the bar is handed to the menu-bar input routine. Offsets
+/// from the start of the module, which is to say from the segment the word
+/// above holds, wherever the manager has most recently put it.
+constexpr std::uint32_t camp_menu_before_input = 0x1F06;
+
+/// In the same loop, where the menu-bar input routine returns: the
+/// instruction that stores the letter it answered with. The point runs
+/// before that instruction, so the letter is still in AL.
+constexpr std::uint32_t camp_menu_after_input = 0x1F24;
+
+/// The rest command's entry — the routine the camp bar's own Rest letter
+/// dispatches to, which computes the memorization time and then runs the
+/// rest screen.
+constexpr std::uint32_t rest_command_entry = 0x077A;
+
+// --- The camp loop's own stack frame ---------------------------------------
+//
+// Offsets from BP inside the camp menu loop, at the two points above.
+// Both are read at `SS:BP - offset`.
+
+/// The prompt the loop builds on every pass, as a Pascal string: its
+/// length byte is here. Blanking it is what frees the columns the longer
+/// bar needs.
+constexpr std::uint16_t frame_prompt = 0x0B;
+
+/// The byte the menu-bar routine sets to say what kind of answer it is
+/// giving: zero for a command selected off the bar, non-zero for a raw or
+/// extended key it is passing through. The Fix is only ever the first.
+constexpr std::uint16_t frame_out_flag = 0x04;
+
 // --- The program's data segment --------------------------------------------
 //
 // Offsets in the data segment DS addresses throughout the program. The
 // first two are already in this tree (`seam_cheats.cpp`, and the mode
-// byte is `docs/playable.md`'s `49F3`); the rest are the rest screen's.
+// byte is `docs/playable.md`'s `49F3`); the rest are the camp screen's.
 
 /// The game mode byte, and the value it reads while the camp screen is up.
 constexpr std::uint16_t data_game_mode = 0x49F3;
@@ -229,27 +290,19 @@ constexpr std::uint8_t mode_camp = 2;
 /// which is the list the rest's heal tick walks.
 constexpr std::uint16_t data_roster_head = 0x5D96;
 
+/// The camp screen's command bar: a Pascal string, length byte first.
+constexpr std::uint16_t data_camp_bar = 0x508;
+
+/// How long that string may be. The slot it sits in is 41 bytes — its
+/// length byte and forty characters — which is how the program's Pascal
+/// strings are laid out and is also, not by coincidence, the width of the
+/// screen in characters. The bar the program ships is well short of it,
+/// and the Fix costs four; the check below is against the slot and not
+/// against what happens to be in it, because the slot is the fact.
+constexpr std::uint8_t camp_bar_capacity = 40;
+
 /// The days field of the rest clock — the one word this seam writes.
-///
-/// The clock is seven words beginning at 0x6DC2, of which four are what
-/// the rest screen shows and the rest loop counts down: minute units at
-/// +2, minute tens at +4, hours at +6, and days at +8. Only the last is
-/// named as a constant because only the last is touched; the other three
-/// are the program's own arithmetic, filled by the rest wrapper from the
-/// party's memorization time and left exactly as they were found.
 constexpr std::uint16_t data_rest_days = 0x6DC2 + 8;
-
-/// The per-member memorization countdown: one byte per roster member,
-/// **one-based** — the first member's is at `data_memorize_countdown`,
-/// the second's one byte later. The rest zeroes every one of them before
-/// it begins and decrements every one of them on every iteration, which
-/// is the only reason this file knows one byte of it.
-constexpr std::uint16_t data_memorize_countdown = 0x6DD0;
-
-/// Non-zero while the rest screen is the screen (the program's own
-/// layout flag: a message box drawn while it is up goes one row lower).
-/// Set as the rest is entered, cleared as it is left.
-constexpr std::uint16_t data_rest_screen_up = 0x6DDA;
 
 /// What the program clamps the days field to when its own Inc key
 /// normalizes the clock. **Its number, not this file's**, which is what
@@ -292,53 +345,60 @@ constexpr std::uint16_t rec_hit_points = 0x11B;   // current hit points
          status == 4 /* unconscious */ || status == 5 /* dying */;
 }
 
-/// The key the rest screen's menu bar takes for Rest, as INT 16h hands it
-/// back: the scan code for R and its character. The program uppercases
-/// what it reads before matching it against the bar, so this is the same
-/// key a player types.
+// --- The command this seam puts on the bar ---------------------------------
+
+/// The Fix, as it appears on the bar: a separator and the word, four
+/// characters, **written here and nowhere read from the program**. The
+/// enhancement's own name (PLAN.md §5 item 4), in the case the program's
+/// own bar uses — one capital, which is what makes it one command letter
+/// and one highlightable group, and the rest lower case so they are not
+/// letters the menu-bar routine could select on.
+constexpr std::array<std::uint8_t, 4> fix_item{' ', 'F', 'i', 'x'};
+
+/// Its length, as the arithmetic below wants it.
+constexpr unsigned fix_item_length = 4;
+
+/// The key the menu-bar routine answers with when the Fix is chosen, and
+/// the one letter this seam had to be sure the camp loop does not already
+/// use. It compares against six letters and this is not one of them.
+constexpr std::uint8_t fix_key_ascii = 'F';
+
+/// The key the camp bar and the rest screen both take for Rest, as INT 16h
+/// hands it back: the scan code for R and its character. The program
+/// uppercases what it reads before matching it against a bar, so this is
+/// the same key a player types.
 constexpr std::uint8_t rest_key_scancode = 0x13;
 constexpr std::uint8_t rest_key_ascii = 'R';
 
-// --- Reading the party -----------------------------------------------------
+/// The separator the program's bars put between commands, and the one this
+/// seam looks for to find where the last command begins. A space, which is
+/// what the menu-bar routine's own grouping rule makes it.
+constexpr std::uint8_t bar_separator = ' ';
+
+// --- Reading the machine ---------------------------------------------------
 
 [[nodiscard]] std::uint16_t word_after(std::uint16_t at,
                                        std::uint16_t by) noexcept {
   return static_cast<std::uint16_t>(at + by);
 }
 
-/// What one walk of the roster found.
-struct roster_reading {
-  /// The list was a list: every link a far pointer, and it ended within
-  /// `max_roster_walk` rather than being cut off by it.
-  bool ended{false};
-  unsigned members{0};
-  /// The largest hit-point deficit over the members resting can put
-  /// right. Zero when the party is whole, or when nobody on it can be
-  /// healed at all.
-  unsigned worst_deficit{0};
-};
-
 /// Whether `segment:offset` is inside conventional RAM — 00000-9FFFF, the
 /// memory a program's own structures live in (memory_map.h) — and so
 /// whether this seam is willing to read it at all.
 ///
 /// **Checked before every read this file makes, and that is not
-/// belt-and-braces.** A point with no address is offered at every step
-/// boundary while a pull is outstanding, which means this guard runs with
-/// DS holding whatever the program happens to have loaded at that
-/// instant — and a read through the bus is a bus cycle. Above conventional
-/// memory it is the video window, where a read loads the adapter's
-/// latches (ega.h): a guard that perturbed the machine it is inspecting
-/// would be doing the one thing a seam may never do.
-///
-/// It is also how this was found, which is the reason it is written down
-/// rather than assumed. Driven against the program, this seam declined
-/// its way from the pull to the camp screen and left seven
-/// `unmapped_memory_read` notices behind it — a roster walk following a
-/// far pointer out of a data segment that was not the program's. Nothing
-/// was corrupted and nothing was faked; the machine said, correctly, that
-/// something had touched memory nobody answers for, and the something was
-/// this seam.
+/// belt-and-braces.** A read through the bus is a bus cycle: above
+/// conventional memory it is the video window, where a read loads the
+/// adapter's latches (ega.h), and a guard that perturbed the machine it is
+/// inspecting would be doing the one thing a seam may never do. The reads
+/// here are made from points with addresses, so DS is the program's — but
+/// the roster walk follows a far pointer it read out of memory, and that
+/// is the read this has always been for. It caught a real one: driven
+/// against the program, the address-free version of this seam left seven
+/// `unmapped_memory_read` notices behind it, walking a roster out of a
+/// data segment that was not the program's. Nothing was corrupted and
+/// nothing was faked; the machine said, correctly, that something had
+/// touched memory nobody answers for, and the something was this seam.
 [[nodiscard]] bool in_conventional_ram(std::uint16_t segment,
                                        std::uint16_t offset) noexcept {
   return cpu::physical_address(segment, offset) < conventional_ram_size;
@@ -365,6 +425,155 @@ struct roster_reading {
   out = cpu.read_word(segment, offset);
   return true;
 }
+
+/// One byte written, or false and nothing written. The write goes through
+/// the bus like the program's own, which is why it is refused rather than
+/// made when it would land somewhere a seam has no business writing.
+[[nodiscard]] bool write_byte(cpu::processor& cpu, std::uint16_t segment,
+                              std::uint16_t offset, std::uint8_t value) {
+  if (!in_conventional_ram(segment, offset)) {
+    return false;
+  }
+  cpu.write_byte(segment, offset, value);
+  return true;
+}
+
+// --- The bar ---------------------------------------------------------------
+
+/// Where the Fix sits in the bar right now: the one-based index of its
+/// separator, or zero if it is not there.
+///
+/// Both a test for "is it already spliced in" and the answer to "where do
+/// I take it out from", which is why it is one function. The scan is over
+/// a string of at most forty characters at a point that runs once per menu
+/// draw.
+[[nodiscard]] unsigned find_fix(cpu::processor& cpu, std::uint16_t ds,
+                                std::uint8_t length) {
+  if (length < fix_item_length) {
+    return 0;
+  }
+  for (unsigned at = 1; at + fix_item_length - 1 <= length; ++at) {
+    bool all = true;
+    for (unsigned nth = 0; nth < fix_item_length && all; ++nth) {
+      std::uint8_t byte = 0;
+      all = read_byte(
+                cpu, ds,
+                word_after(data_camp_bar, static_cast<std::uint16_t>(at + nth)),
+                byte) &&
+            byte == fix_item[nth];
+    }
+    if (all) {
+      return at;
+    }
+  }
+  return 0;
+}
+
+/// Put the Fix on the bar, before its last command. False and nothing
+/// written if the string is not the shape the facts say — too long to take
+/// four more characters, or with no separator to insert at, or already
+/// carrying the Fix.
+///
+/// **Nothing here is composed out of the program's own words.** The seam
+/// does not know what the bar says and does not need to: it finds the last
+/// separator and inserts four characters of its own before it. That is why
+/// this file can be in a public repository at all, and it is the shape any
+/// later seam that adds a command to one of this program's menus should
+/// copy (`docs/seams.md` §3).
+[[nodiscard]] bool splice_in(cpu::processor& cpu, std::uint16_t ds) {
+  std::uint8_t length = 0;
+  if (!read_byte(cpu, ds, data_camp_bar, length) || length == 0 ||
+      length > camp_bar_capacity ||
+      length + fix_item_length > camp_bar_capacity) {
+    return false;
+  }
+  if (find_fix(cpu, ds, length) != 0) {
+    return false;  // already there: this pass is not the first.
+  }
+
+  unsigned last = 0;
+  for (unsigned at = 1; at <= length; ++at) {
+    std::uint8_t byte = 0;
+    if (!read_byte(cpu, ds,
+                   word_after(data_camp_bar, static_cast<std::uint16_t>(at)),
+                   byte)) {
+      return false;
+    }
+    if (byte == bar_separator) {
+      last = at;
+    }
+  }
+  if (last == 0) {
+    return false;  // one command, or not a bar: not something to add to.
+  }
+
+  // Backwards, so the move cannot overwrite what it has not read yet.
+  for (unsigned at = length; at >= last; --at) {
+    std::uint8_t byte = 0;
+    if (!read_byte(cpu, ds,
+                   word_after(data_camp_bar, static_cast<std::uint16_t>(at)),
+                   byte) ||
+        !write_byte(cpu, ds,
+                    word_after(data_camp_bar, static_cast<std::uint16_t>(
+                                                  at + fix_item_length)),
+                    byte)) {
+      return false;
+    }
+  }
+  for (unsigned nth = 0; nth < fix_item_length; ++nth) {
+    if (!write_byte(
+            cpu, ds,
+            word_after(data_camp_bar, static_cast<std::uint16_t>(last + nth)),
+            fix_item[nth])) {
+      return false;
+    }
+  }
+  return write_byte(cpu, ds, data_camp_bar,
+                    static_cast<std::uint8_t>(length + fix_item_length));
+}
+
+/// Take it back out again, leaving the program's own string exactly as it
+/// was. False if it was not there, which is not an error: the pass that
+/// could not splice it in is the pass that has nothing to take out.
+[[nodiscard]] bool splice_out(cpu::processor& cpu, std::uint16_t ds) {
+  std::uint8_t length = 0;
+  if (!read_byte(cpu, ds, data_camp_bar, length) ||
+      length > camp_bar_capacity) {
+    return false;
+  }
+  const unsigned at = find_fix(cpu, ds, length);
+  if (at == 0) {
+    return false;
+  }
+  for (unsigned nth = at + fix_item_length; nth <= length; ++nth) {
+    std::uint8_t byte = 0;
+    if (!read_byte(cpu, ds,
+                   word_after(data_camp_bar, static_cast<std::uint16_t>(nth)),
+                   byte) ||
+        !write_byte(cpu, ds,
+                    word_after(data_camp_bar, static_cast<std::uint16_t>(
+                                                  nth - fix_item_length)),
+                    byte)) {
+      return false;
+    }
+  }
+  return write_byte(cpu, ds, data_camp_bar,
+                    static_cast<std::uint8_t>(length - fix_item_length));
+}
+
+// --- Reading the party -----------------------------------------------------
+
+/// What one walk of the roster found.
+struct roster_reading {
+  /// The list was a list: every link a far pointer, and it ended within
+  /// `max_roster_walk` rather than being cut off by it.
+  bool ended{false};
+  unsigned members{0};
+  /// The largest hit-point deficit over the members resting can put
+  /// right. Zero when the party is whole, or when nobody on it can be
+  /// healed at all.
+  unsigned worst_deficit{0};
+};
 
 /// Walk the party from the head word, reading only. Every read goes
 /// through the bus, at the offsets the program itself reads them at, and
@@ -432,160 +641,139 @@ struct roster_reading {
   return out;
 }
 
-/// Whether the BIOS keystroke buffer is empty — head and tail equal, the
-/// way the keyboard service's own INT 16h decides it (keyboard.cpp).
-///
-/// Two things at once, and both are needed. It is the closest this seam
-/// can get to "the program is waiting for a key rather than doing
-/// something with one", and it is the promise that a key the *player*
-/// typed is never overtaken by this seam's: with something already in the
-/// buffer, the seam stands aside and the pull waits.
-[[nodiscard]] bool keyboard_buffer_empty(cpu::processor& cpu) {
-  return cpu.read_word(bda::segment, bda::keyboard_buffer_head) ==
-         cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
-}
-
-/// Whether the machine, at this arbitrary step boundary, is the rest
-/// screen waiting for a key — the guard this point has instead of an
-/// address (#163, and `seam_cheats.cpp`'s `combat_roster_ready()` is the
-/// worked example this follows).
-///
-/// Read-only, cheapest first, and every condition is a fact this file
-/// already knew:
-///
-///   1. the game mode byte reads camp;
-///   2. the program's own rest-screen flag is set, so the rest command is
-///      the thing that is running and not some other camp screen;
-///   3. the days field is zero — the rest wrapper fills hours and minutes
-///      and never days, so a non-zero days field is a duration somebody
-///      else dialled, and a seam that overwrote it would be taking a
-///      choice away from the player who made it;
-///   4. every member's memorization countdown is zero, which the rest
-///      sets up immediately before the screen is drawn and destroys on
-///      its first iteration — this is what says the rest has **not
-///      started**;
-///   5. the roster is a roster: far pointers throughout, ending within a
-///      walk, with at least one member on it;
-///   6. and nothing is in the keystroke buffer.
-///
-/// **What it cannot rule out.** Conditions 3 and 4 are the ones carrying
-/// "the rest has not started", and 4 is not eternal: the countdown bytes
-/// wrap down through a byte and can be re-seeded to zero for a member
-/// with nothing to memorize, so a party in which *nobody* is memorizing
-/// anything passes through a single iteration every 255 in which they are
-/// all zero again. If a pull is served in one of those iterations, and
-/// the days field happens to be zero at that moment too, this seam will
-/// dial days into a rest that is already running and press Rest — and the
-/// program, which treats a key arriving during a rest as a request to
-/// stop, will ask the player whether to stop resting. That is a question
-/// the player answers, not a corruption: every word this seam writes is a
-/// word the rest screen's own keys write, and it writes none of them
-/// twice. The way to close that window for good is an address, and the
-/// header says where the address is and what it would cost.
-[[nodiscard]] bool camp_rest_ready(cpu::processor& cpu, std::uint16_t ds,
-                                   roster_reading& party) {
-  // The three data-segment bytes first, and the roster only once they
-  // hold. Order is not style here: the roster walk is the only thing in
-  // this file that follows a pointer it read out of memory, and following
-  // one out of a data segment that is not the program's is what
-  // `in_conventional_ram` above was written for. A step at which the mode
-  // byte does not read camp costs this seam one byte read and nothing
-  // else.
-  std::uint8_t mode = 0;
-  if (!read_byte(cpu, ds, data_game_mode, mode) || mode != mode_camp) {
-    return false;
-  }
-  std::uint8_t rest_screen = 0;
-  if (!read_byte(cpu, ds, data_rest_screen_up, rest_screen) ||
-      rest_screen == 0) {
-    return false;
-  }
-  std::uint16_t days = 0;
-  if (!read_word(cpu, ds, data_rest_days, days) || days != 0) {
-    return false;
-  }
-
-  party = read_roster(cpu, ds);
-  if (!party.ended || party.members == 0) {
-    return false;
-  }
-  for (unsigned nth = 0; nth < party.members; ++nth) {
-    std::uint8_t countdown = 0;
-    if (!read_byte(cpu, ds,
-                   word_after(data_memorize_countdown,
-                              static_cast<std::uint16_t>(nth)),
-                   countdown) ||
-        countdown != 0) {
-      return false;
-    }
-  }
-  return keyboard_buffer_empty(cpu);
-}
-
 /// The days to dial: what the worst-wounded member needs, plus the day of
-/// slack the header explains, capped at the program's own clamp. Zero
-/// when the party is whole — the rest is then whatever the program's own
-/// memorization time made it, which is the rest a player pressing R would
-/// have got.
+/// slack the header explains, capped at the program's own clamp. Never
+/// zero — the header says why that matters twice over.
 [[nodiscard]] std::uint16_t days_to_dial(const roster_reading& party) {
-  if (party.worst_deficit == 0) {
-    return 0;
-  }
   const unsigned wanted = party.worst_deficit + 1;
   return static_cast<std::uint16_t>(wanted > max_rest_days ? max_rest_days
                                                            : wanted);
 }
 
-/// The point (#163): offered at every step boundary while the pull is
-/// outstanding, acting at the first one where the guard holds and
-/// declining — which keeps the latch — at every one before it.
-void rest_until_whole(machine& box, seam_context& ctx) {
+/// Whether the BIOS keystroke buffer is empty — head and tail equal, the
+/// way the keyboard service's own INT 16h decides it (keyboard.cpp).
+///
+/// The promise that a key the *player* typed is never overtaken by this
+/// seam's: with something already in the buffer, the seam stands aside.
+[[nodiscard]] bool keyboard_buffer_empty(cpu::processor& cpu) {
+  return cpu.read_word(bda::segment, bda::keyboard_buffer_head) ==
+         cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
+}
+
+// --- The points ------------------------------------------------------------
+
+/// Point 1: the bar, on its way to being drawn.
+void offer_the_fix(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
-  roster_reading party;
-  if (!camp_rest_ready(cpu, ds, party)) {
+  auto& regs = cpu.regs();
+  const std::uint16_t ds = regs[cpu::sreg::ds];
+
+  std::uint8_t mode = 0;
+  if (!read_byte(cpu, ds, data_game_mode, mode) || mode != mode_camp) {
+    // The address says this is the camp loop; the mode byte is what says
+    // the machine agrees. A point that fires anywhere else is a fact that
+    // has gone wrong, and the fail-closed direction is to draw nothing.
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (!splice_in(cpu, ds)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  // The prompt's own columns, which the longer bar needs. It is a Pascal
+  // string on the loop's stack, rebuilt on every pass, so this is undone
+  // by the program itself rather than by this seam.
+  if (!write_byte(
+          cpu, regs[cpu::sreg::ss],
+          static_cast<std::uint16_t>(regs[cpu::reg16::bp] - frame_prompt), 0)) {
+    ctx.decline(seam_reason::point_not_recognized);
+  }
+}
+
+/// Point 2: the letter that came back, and the bar put back as it was.
+void take_the_answer(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  auto& regs = cpu.regs();
+  const std::uint16_t ds = regs[cpu::sreg::ds];
+
+  // Unconditionally, and before anything else can decline: outside the one
+  // call that drew it, the program's string is the program's string.
+  static_cast<void>(splice_out(cpu, ds));
+
+  std::uint8_t out_flag = 0;
+  if (!read_byte(
+          cpu, regs[cpu::sreg::ss],
+          static_cast<std::uint16_t>(regs[cpu::reg16::bp] - frame_out_flag),
+          out_flag) ||
+      out_flag != 0 || regs.get(cpu::reg8::al) != fix_key_ascii) {
+    ctx.decline(seam_reason::point_not_recognized);  // somebody else's key.
+    return;
+  }
+
+  const roster_reading party = read_roster(cpu, ds);
+  if (!party.ended || party.members == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (!keyboard_buffer_empty(cpu)) {
+    // Something the player typed is already waiting. Standing aside costs
+    // them one keypress; overtaking it would cost them the key.
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
 
-  const std::uint16_t days = days_to_dial(party);
-  if (days != 0) {
-    // The word the rest screen's own daYs-then-Inc writes, written once
-    // to where that many presses would have left it. The carry-normalize
-    // those presses run afterwards has nothing to do here: days is the
-    // top field and everything below it is what the program's own rest
-    // wrapper just put there.
-    cpu.write_word(ds, data_rest_days, days);
-  }
-  // And the key that starts it. If the buffer refuses it the rest simply
-  // waits for the player, which is the state the screen was already in.
+  // The word the rest screen's own daYs-then-Inc writes, written once to
+  // where that many presses would have left it — and, at the same time,
+  // the signature point 3 reads.
+  cpu.write_word(ds, data_rest_days, days_to_dial(party));
+  // And the bar's own Rest key, which is the key a player presses next.
   static_cast<void>(ctx.inject_keystroke(rest_key_scancode, rest_key_ascii));
 }
 
-/// One point, and it has no address: it is offered at every step boundary
-/// while a pull is outstanding and buys its safety from the guard above.
-/// Qualified by the resident image, which is always resident — the
-/// module qualifier a point in an overlay would carry is exactly what
-/// this seam does not have, and the header says so.
-constexpr std::array<seam_point, 1> encamp_fix_points{
-    {{.module = resident_image,
-      .run = &rest_until_whole,
-      .at_every_step = true}}};
+/// Point 3: the rest command, entered because of the key point 2 posted.
+void start_the_rest(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
+
+  std::uint16_t days = 0;
+  if (!read_word(cpu, ds, data_rest_days, days) || days == 0) {
+    // A rest the player asked for themselves: the clock is zero here, and
+    // this seam has nothing to say about it.
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (!keyboard_buffer_empty(cpu)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  static_cast<void>(ctx.inject_keystroke(rest_key_scancode, rest_key_ascii));
+}
+
+/// Three points, all with addresses, all in the camp screen's overlay and
+/// all resolved through the program's own note of where that overlay is.
+constexpr std::array<seam_point, 3> encamp_fix_points{
+    {{.module = camp_module,
+      .offset = camp_menu_before_input,
+      .run = &offer_the_fix},
+     {.module = camp_module,
+      .offset = camp_menu_after_input,
+      .run = &take_the_answer},
+     {.module = camp_module,
+      .offset = rest_command_entry,
+      .run = &start_the_rest}}};
 
 constexpr seam_definition encamp_fix_definition{
     .id = "encamp-fix",
-    .about =
-        "when you pull it at camp, rest as long as the party needs to be "
-        "whole",
+    .about = "put Fix on the camp menu: rest as long as the party needs",
     .fingerprints = encamp_binaries,
     .points = encamp_fix_points,
-    // Pulled, not left on (#161). Camping is something a player does for
-    // several reasons — to save, to look at a character, to memorize one
-    // spell — and a seam that rested the party every time it saw a camp
-    // screen would be a setting rather than a command. The `about` says
-    // *at camp* because that is where the pull is served: pulled
-    // anywhere else it waits, and a host's listing says it is waiting.
-    .trigger = true,
+    // Not a trigger (#186). It was one, because a pull was the only way to
+    // ask; the asking is now a key on the game's own bar, and a seam that
+    // needed a pull *as well* would be asking twice. What "on" means for
+    // this seam is that the command is offered — the same thing "on" means
+    // for the code-wheel seam, which answers a challenge whenever the
+    // challenge is asked.
+    .trigger = false,
     .schema = seam_schema_version};
 
 }  // namespace
