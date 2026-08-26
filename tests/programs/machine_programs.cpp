@@ -2110,6 +2110,197 @@ void probe_call_automap(machine::machine& box, machine::seam_context& ctx) {
                              static_cast<std::uint8_t>(mark >> 8U));
 }
 
+// --- 10. The camp stand-in ------------------------------------------------
+//
+// M5-E1 (#172). The Encamp (F)ix is a seam that reads a party out of the
+// program's data segment, writes one word of the game's own rest clock,
+// and posts the game's own Rest key — and #172 asks for a stand-in for
+// that menu here, so the whole mechanism runs on all four targets and not
+// only where GoogleTest builds.
+//
+// **It is the real handler.** The definition below is the build's own
+// `encamp-fix`, copied with this program's fingerprint in place of the
+// game's and a different id, so what this program drives is the same
+// function a player's copy would — its guard, its arithmetic, its writes.
+// Only the fingerprint is the test's, because a fingerprint is what
+// decides which binary a set of addresses may be applied to and this
+// binary is not that one.
+//
+// The program lays a camp out at the offsets the seam's facts name, in
+// its own segment, and then behaves like the menu: it polls for a key and
+// stores what it got beside what the clock now says.
+//
+//         push cs / pop ds
+//         <the camp: mode, the rest-screen flag, the clock, the
+//          countdown block, and a two-member roster>
+//         mov  cx, 4000h
+// poll:   mov  ah, 01h / int 16h     ; the seam posts 'R' on the way in
+//         jnz  got
+//         loop poll
+//         xor  ax, ax
+//         jmp  done
+// got:    mov  ah, 00h / int 16h
+// done:   mov  [result+0], ax        ; the key the menu read
+//         mov  ax, [days]  / mov [result+2], ax
+//         mov  ax, [hours] / mov [result+4], ax
+//         <exit 8Ah>
+//
+// With the seam pulled the first poll finds the Rest key and the days
+// word holds what the party needed; with it on and never pulled, or off,
+// the poll loop runs out against an empty buffer and the clock is exactly
+// what the program wrote.
+
+/// The camp, at the offsets `seam_encamp_fix.cpp` names — restated here
+/// because this program is the thing being driven, not the thing being
+/// checked, and a stand-in that read them out of the seam would be
+/// agreeing with itself.
+constexpr std::uint16_t camp_game_mode = 0x49F3;
+constexpr std::uint8_t camp_mode_camp = 2;
+constexpr std::uint16_t camp_roster_head = 0x5D96;
+constexpr std::uint16_t camp_rest_hours = 0x6DC8;
+constexpr std::uint16_t camp_rest_days = 0x6DCA;
+constexpr std::uint16_t camp_memorize_countdown = 0x6DD0;
+constexpr std::uint16_t camp_rest_screen_up = 0x6DDA;
+constexpr std::uint16_t camp_rec_max_hit_points = 0x32;
+constexpr std::uint16_t camp_rec_next = 0x104;
+constexpr std::uint16_t camp_rec_status = 0x10C;
+constexpr std::uint16_t camp_rec_hit_points = 0x11B;
+
+/// Where the two records go in the program's own segment, past everything
+/// else it uses.
+constexpr std::uint16_t camp_first_record = 0x7000;
+constexpr std::uint16_t camp_second_record = 0x7200;
+
+/// The party: one member five hit points into a maximum of twelve, one
+/// whole. Seven down, so the seam should dial eight days — the deficit
+/// and the day of slack its header explains.
+constexpr std::uint8_t camp_hurt_hit_points = 5;
+constexpr std::uint8_t camp_hurt_most = 12;
+constexpr std::uint8_t camp_whole_hit_points = 9;
+constexpr std::uint16_t camp_wanted_days =
+    camp_hurt_most - camp_hurt_hit_points + 1;
+
+/// What the camp stand-in costs the machine when nobody has asked the
+/// Fix for anything: the poll loop runs its 16,384 iterations against an
+/// empty buffer and the program exits.
+///
+/// **Two entries claim this same number** — the Fix on and never pulled,
+/// and the Fix off — and that equality is the fidelity invariant
+/// (machine/seam.h) for this seam, made where every target runs it
+/// rather than argued in a header. The on-and-unpulled entry is the one
+/// that could plausibly have cost something: this seam's only point has
+/// no address, and "offered at every step boundary" is a sentence about
+/// the hot path. It is offered at none of them, because nobody pulled.
+constexpr std::uint64_t camp_plain_steps = 81'953;
+
+/// What the program's own rest wrapper would have left in the clock: a
+/// memorization time in hours, and no days at all.
+constexpr std::uint16_t camp_wrapper_hours = 3;
+
+/// The keystroke the seam posts, as INT 16h hands it back.
+constexpr std::uint16_t camp_rest_keystroke = (std::uint16_t{0x13} << 8U) | 'R';
+
+///     mov  byte [off], imm8              ; C6 06 iw ib
+void store_byte_at(assembler& a, std::uint16_t offset, std::uint8_t value) {
+  a.db({0xC6, 0x06});
+  a.dw(offset);
+  a.db({value});
+}
+
+///     mov  word [off], imm16             ; C7 06 iw iw
+void store_word_at(assembler& a, std::uint16_t offset, std::uint16_t value) {
+  a.db({0xC7, 0x06});
+  a.dw(offset);
+  a.dw(value);
+}
+
+///     mov  [off], ds                     ; 8C 1E iw
+void store_ds_at(assembler& a, std::uint16_t offset) {
+  a.db({0x8C, 0x1E});
+  a.dw(offset);
+}
+
+///     mov  ax, [off]                     ; A1 iw
+void load_ax_from(assembler& a, std::uint16_t offset) {
+  a.db({0xA1});
+  a.dw(offset);
+}
+
+/// One record: its status, its hit points, its maximum, and its link.
+void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
+                 std::uint8_t hit_points, std::uint8_t most,
+                 std::uint16_t next) {
+  store_byte_at(a, static_cast<std::uint16_t>(at + camp_rec_status), status);
+  store_byte_at(a, static_cast<std::uint16_t>(at + camp_rec_hit_points),
+                hit_points);
+  store_byte_at(a, static_cast<std::uint16_t>(at + camp_rec_max_hit_points),
+                most);
+  store_word_at(a, static_cast<std::uint16_t>(at + camp_rec_next), next);
+  if (next == 0) {
+    store_word_at(a, static_cast<std::uint16_t>(at + camp_rec_next + 2), 0);
+  } else {
+    store_ds_at(a, static_cast<std::uint16_t>(at + camp_rec_next + 2));
+  }
+}
+
+[[nodiscard]] const std::vector<std::uint8_t>& camp_file() {
+  static const std::vector<std::uint8_t> built = [] {
+    assembler a;
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+
+    // In this order, and the order is the point: the rest-screen flag is
+    // the **last** thing written, because it is the last thing that
+    // becomes true in the program too — the rest zeroes the countdown
+    // block and sets that flag immediately before the menu it draws asks
+    // for a key. A stand-in that set it first would be offering the seam
+    // a half-built camp, and the seam would act on it: a roster whose
+    // records are still zero is a party with nothing to heal.
+    camp_record(a, camp_first_record, 0, camp_hurt_hit_points, camp_hurt_most,
+                camp_second_record);
+    camp_record(a, camp_second_record, 0, camp_whole_hit_points,
+                camp_whole_hit_points, 0);
+    store_word_at(a, camp_roster_head, camp_first_record);
+    store_ds_at(a, static_cast<std::uint16_t>(camp_roster_head + 2));
+    store_byte_at(a, camp_game_mode, camp_mode_camp);
+    store_word_at(a, camp_rest_hours, camp_wrapper_hours);
+    store_word_at(a, camp_rest_days, 0);
+    store_byte_at(a, camp_memorize_countdown, 0);
+    store_byte_at(a, static_cast<std::uint16_t>(camp_memorize_countdown + 1),
+                  0);
+    store_byte_at(a, camp_rest_screen_up, 1);
+
+    a.db({0xB9});
+    a.dw(0x4000);  // mov cx, 4000h
+    a.label("poll");
+    a.db({0xB4, 0x01, 0xCD, 0x16});  // mov ah, 01h / int 16h
+    a.jump(0x75, "got");             // jnz got
+    a.jump(0xE2, "poll");            // loop poll
+    a.db({0x31, 0xC0});              // xor ax, ax
+    a.jump(0xEB, "done");            // jmp done
+    a.label("got");
+    a.db({0xB4, 0x00, 0xCD, 0x16});  // mov ah, 00h / int 16h
+    a.label("done");
+    store(a, 0, reg_ax);
+    load_ax_from(a, camp_rest_days);
+    store(a, 1, reg_ax);
+    load_ax_from(a, camp_rest_hours);
+    store(a, 2, reg_ax);
+    exit_with(a, 0x8A);
+    a.pad_to(machine_layout::result_offset + 0x10);
+
+    // Room for the camp: the records sit past 0x7000 in this program's
+    // own segment, and DOS has to have given it that much.
+    return build_exe({.initial_cs = 0,
+                      .initial_ip = 0,
+                      .initial_ss = 0,
+                      .initial_sp = 0x0F00,
+                      .min_alloc = 0x0800,
+                      .relocations = {},
+                      .image = a.assemble()});
+  }();
+  return built;
+}
+
 [[nodiscard]] std::vector<machine_program> build_all() {
   std::vector<machine_program> list;
 
@@ -2638,6 +2829,63 @@ void probe_call_automap(machine::machine& box, machine::seam_context& ctx) {
     list.push_back(std::move(p));
   }
 
+  {
+    // M5-E1 (#172): the build's own Encamp Fix, pulled, against a camp
+    // this program laid out. One entry per way of asking, so the plain
+    // run and the enhanced one are each asserted in their own right.
+    machine_program p;
+    p.name = "encamp_fix";
+    p.about = "the Encamp Fix, pulled: it dials the rest and presses Rest";
+    p.setup.exe = seam_camp_file();
+    p.setup.exe_path = "\\CAMP.EXE";
+    p.setup.seam_definitions = {&seam_camp_definition()};
+    p.setup.seams = {"encamp-fix-probe"};
+    p.setup.pulls = {"encamp-fix-probe"};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "the key the camp menu read", .value = camp_rest_keystroke},
+        {.what = "the days the seam dialled", .value = camp_wanted_days},
+        {.what = "the hours the program itself dialled, untouched",
+         .value = camp_wrapper_hours}};
+    p.exit_code = 0x8A;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "encamp_fix_unpulled";
+    p.about = "the same Fix, on and never asked: a plain camp";
+    p.setup.exe = seam_camp_file();
+    p.setup.exe_path = "\\CAMP.EXE";
+    p.setup.seam_definitions = {&seam_camp_definition()};
+    p.setup.seams = {"encamp-fix-probe"};
+    p.setup.step_cap = 200'000;
+    p.results = {{.what = "no key arrived", .value = 0},
+                 {.what = "and no days were dialled", .value = 0},
+                 {.what = "the hours the program itself dialled",
+                  .value = camp_wrapper_hours}};
+    p.steps = camp_plain_steps;
+    p.exit_code = 0x8A;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "encamp_fix_off";
+    p.about = "and with the Fix off: the same machine, to the step";
+    p.setup.exe = seam_camp_file();
+    p.setup.exe_path = "\\CAMP.EXE";
+    p.setup.seam_definitions = {&seam_camp_definition()};
+    p.setup.step_cap = 200'000;
+    p.results = {{.what = "no key arrived", .value = 0},
+                 {.what = "and no days were dialled", .value = 0},
+                 {.what = "the hours the program itself dialled",
+                  .value = camp_wrapper_hours}};
+    p.steps = camp_plain_steps;
+    p.exit_code = 0x8A;
+    list.push_back(std::move(p));
+  }
+
   for (machine_program& p : list) {
     p.setup.result_words = p.results.size();
   }
@@ -2805,6 +3053,40 @@ const machine::seam_definition& seam_probe_host_definition() {
       .points = points};
   return definition;
 }
+
+const machine::seam_definition& seam_camp_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(camp_file());
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const machine::seam_definition definition = [] {
+    const machine::seam_definition* built_in = nullptr;
+    for (const machine::seam_definition& seam : machine::all_seams()) {
+      if (seam.id == "encamp-fix") {
+        built_in = &seam;
+      }
+    }
+    if (built_in == nullptr) {
+      throw std::logic_error("the build carries no encamp-fix seam");
+    }
+    // Everything but the identity: the points — and so the handler — are
+    // the build's own, which is the whole reason this entry is worth
+    // running. `points` is a span over a static array in
+    // seam_encamp_fix.cpp, so the copy outlives every engine it is
+    // registered with.
+    machine::seam_definition copy = *built_in;
+    copy.id = "encamp-fix-probe";
+    copy.about = "the build's Encamp Fix, keyed to the camp stand-in";
+    copy.fingerprints = fingerprints;
+    return copy;
+  }();
+  return definition;
+}
+
+const std::vector<std::uint8_t>& seam_camp_file() { return camp_file(); }
 
 const std::vector<std::uint8_t>& seam_probe_file() { return probe().file; }
 

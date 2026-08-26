@@ -42,10 +42,12 @@ What M4 left in place:
   all, a disabled seam's breakpoint is never consulted, and seam state —
   an outstanding pull included — is configuration and not machine state.
   M5's five enhancements add no mechanism; they add handlers.
-- **Three seams this build carries**: `code-wheel` (ungated; its
-  possession gate is M5's, #115), `cheat-invulnerable`, `cheat-kill-all`.
-  `docs/seams.md` §8 is the house style for the next one and §10 is the
-  worked example.
+- **Four seams this build carries**: `code-wheel` (ungated; its
+  possession gate is M5's, #115), `encamp-fix` (M5-E1, #172 — the first
+  M5 enhancement; pulled at the camp screen's rest menu, it dials the
+  game's own rest to the days the party needs and presses Rest),
+  `cheat-invulnerable`, `cheat-kill-all`. `docs/seams.md` §8 is the house
+  style for the next one and §10 is the worked example.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
   canonical machine-state serialization, a recording that is keys, ticks
   and hashes and no content at all, and verification on all four targets

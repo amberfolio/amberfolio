@@ -717,6 +717,116 @@ against a directory on disk and then looks at the disk.
 
 ---
 
+## Leg 7 — a camp, and the Encamp Fix (M5-E1, #172)
+
+The first M5 enhancement, on a player's copy. The Fix is a **pulled** seam
+(`docs/seams.md` §3a): a person asks for it, and the game's own Rest does
+everything after that.
+
+This leg starts from a saved game, for the reason legs 4 and 5 give — and
+from **slot C**, whose party is four strong and reaches the camp screen
+from where it stands.
+
+```
+--seam code-wheel --seam encamp-fix
+--press A@7600 --press Return@7650      the code wheel
+--press L@8950 --press C@9200           LOAD SAVED GAME, slot C
+--press E@10200                         ENCAMP
+--pull encamp-fix@10368                 ask for the Fix
+--press R@10400                         REST
+```
+
+and the trail that makes it readable, beside leg 5's `49F3`:
+
+```
+--watch 49F3 --watch 6DDA --watch 6DCA
+```
+
+| offset | what |
+| --- | --- |
+| `6DDA` | non-zero while the rest screen is the screen |
+| `6DCA` | the days field of the rest clock — what the Fix dials |
+
+What it is evidence for: the seam declining every step from the pull until
+the machine is the one its facts describe, acting at the rest screen, and
+the program going on by itself.
+
+```
+amberfolio: watch frame=009868 ds=0CDC 49F3=04 6DDA=00 6DCA=00
+amberfolio: seam encamp-fix pulled - acts at the next arrival at its point
+amberfolio: seam encamp-fix inert point_not_recognized
+amberfolio: watch frame=010391 ds=0CDC 49F3=02 6DDA=00 6DCA=00
+amberfolio: seam encamp-fix served
+amberfolio: watch frame=010880 ds=0CDC 49F3=02 6DDA=01 6DCA=00
+amberfolio: watch frame=010915 ds=0CDC 49F3=02 6DDA=00 6DCA=00
+amberfolio: seam encamp-fix armed fired=1 reached=0 waited=10191624
+            - pulled, and served
+```
+
+The `inert point_not_recognized` line is the guard refusing to act on a
+machine it does not recognize and *keeping the pull*, which is the whole
+of what a point with no address has instead of an address; `waited` is
+what that cost, in ticks — 8.5 virtual seconds from the pull to the rest
+screen, spent in camp waiting for the player's own `REST`. The seam is
+served *before* the watch line that shows `6DDA=01`, because a seam acts
+at a step boundary and a watch line is printed at the frame boundary
+after the change.
+
+`6DDA` going to 1 and back to 0 is the rest, and the camp menu is back on
+the screen at the end of it. Without the seam the same script leaves the
+rest screen up, waiting for a key that never comes — which is the whole
+of the difference `tests/sessions/camp.rec` and `camp-fix.rec` record.
+
+**The days field stayed at zero, and that is the honest half.** Every
+party in the shipped save slots is whole, so the largest deficit the seam
+found was nothing and the rest it asked for was the one the program's own
+wrapper had already dialled. What has been driven against the program is
+the guard, the moment it acts, and the key it posts; what has not is a
+hit point coming back. Slot C's party walked twelve squares from where it
+stands without meeting anything, and slot A's lone fighter does not
+survive the fight leg 2 finds — so nothing in this procedure yet produces
+a wounded party at a camp screen. `docs/seams.md` §10 says the same thing
+from the seam's side.
+
+**And the same leg on the browser's machine**, which is what #172's exit
+criterion asks for. `drive.mjs` takes the same flags leg 6 gives it, plus
+`--pull`:
+
+```sh
+node build/wasm/hosts/web/Debug/drive.mjs <your-directory> START.EXE   --seam code-wheel --seam encamp-fix --press A@7600 ...   --pull encamp-fix@10368 --press R@10400 --frames 13075 --quiet
+```
+
+```
+amberfolio: seam encamp-fix inert point_not_recognized
+amberfolio: seam encamp-fix served
+amberfolio: seam encamp-fix armed fired=1 reached=0 waited=10193564
+            - pulled, and served
+```
+
+The same three notices, the same one act, and the same guard declining
+its way to it. `waited` is two thousand ticks off the desktop run's
+because the two hosts pace their frames differently and the pull lands a
+hair later, not because the machine did anything else — the recording
+above is the claim that it did not.
+
+**One thing this leg found that no test could.** A point with no address
+is offered at every step boundary while a pull is outstanding, so its
+guard runs with DS holding whatever the program has loaded at that
+instant — and the first version of this seam walked the party roster
+before it checked anything cheaper. Driven here, it left seven
+`unmapped_memory_read` notices between the pull and the camp screen: the
+walk following a far pointer out of a data segment that was not the
+program's. Nothing was corrupted; the machine reported, correctly, that
+something had touched memory nobody answers for, and the something was
+the seam. The guard now checks the three data-segment bytes first and
+refuses any read that would land outside conventional memory, and the run
+is back to the three notices below.
+
+That is the cheapest possible instance of this document's whole point:
+the suite was green throughout.
+
+---
+
 ## Presenting a document (M5-D3, #171)
 
 PLAN.md §5 gates two of the enhancements on a document the player holds —
@@ -809,6 +919,14 @@ what it skips would be worth less than one that says so.
   through. What a dungeon exercises is the same 3D view, the same ECL
   events and the same movement code the city already runs over different
   data — and the map edge itself, which *was* a mechanism, is covered.
+- **A wounded party at a camp screen** (#172). Leg 7 drives the Encamp
+  Fix to the moment it acts and watches it act, but every shipped save
+  slot's party is whole, so the days field it dials has never been above
+  zero on a real run and no hit point has been watched coming back. The
+  arithmetic — the worst deficit over the members resting can help, plus
+  a day — is covered by tests against a roster a test writes, which is
+  exactly the kind of cover this document exists to distrust. What it
+  needs is a party that has been in a fight and survived it.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam

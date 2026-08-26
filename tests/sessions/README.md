@@ -58,6 +58,8 @@ skip.
 | `fight.rec` | external, the disk `save.rec` wrote | leg 2 — the saved party loaded, walked twelve steps north into the slums and into a group of orcs, the fight handed to the computer with `QUICK`. A lone first-level fighter does not survive it: `THE END`, the party destroyed. 20,115 frames, 177 checkpoints |
 | `fight-cheat.rec` | the same | the same script, the same disk and the same tick budget with **`cheat-invulnerable` on and nothing else changed**: the fighter comes out standing on his full eight hit points at `CONTINUE BATTLE`. The seam fires nine times |
 | `temple.rec` | external, **the shipped save slots** | leg 5 — slot A loaded, routed to the healing temple at 3,1, and a cure bought: `CURE BLINDNESS` cast on a fighter who is not blind and paid for at a thousand gold, which is two hundred platinum off his sheet. The sheet is read at the end, so the session pins the money as well as the machine. 18,801 frames, 181 checkpoints, 68 key events |
+| `camp.rec` | external, the shipped save slots | leg 7 without the enhancement — slot C loaded, `ENCAMP`, and `REST` chosen at the camp menu. The rest screen comes up with the duration the program's own wrapper dialled and waits for a key that never comes. 13,075 frames, 110 checkpoints |
+| `camp-fix.rec` | the same | the same script with **`encamp-fix` on and pulled** (M5-E1, #172): the guard declines from the pull until the rest screen is up, then dials the rest and presses Rest for the player, and the game rests and comes back to the camp menu. `fired=1 reached=0 waited=10191624` |
 
 `save.rec` and `load.rec` are #105's round trip, recorded. They are two
 sessions and not one because they have to be: a load is a fresh run over
@@ -84,6 +86,24 @@ end, and `scripts/sweep.py` fails the pair if they do not:
   fight-cheat  contrast ok  126 of 177 checkpoints identical, then
                             divergent from tick 274951600 to the end
 ```
+
+`camp.rec` and `camp-fix.rec` are the second such pair, for the Encamp
+Fix (#172):
+
+```
+  camp-fix     contrast ok  91 of 110 checkpoints identical, then
+                            divergent from tick 216401328 to the end
+```
+
+It needed one thing the first pair did not. A **pull** is an input, and a
+frame that carries an input is checkpointed whatever the cadence says
+(`docs/replay.md` §3) — so a pull at an arbitrary frame gives one
+recording a checkpoint its partner does not have, and `contrast_of`
+refuses a pair that checkpoints at different ticks (rightly: they are not
+the same run to compare). The pull is therefore at frame 10368, which is
+a multiple of the 128-frame cadence, and the two recordings' checkpoint
+ticks are identical. That is a thing to know before recording the next
+pulled seam's pair.
 
 **This exists because a seam has twice been on, armed, reporting itself,
 and doing nothing at all** — `cheat-invulnerable` pointed at a routine
