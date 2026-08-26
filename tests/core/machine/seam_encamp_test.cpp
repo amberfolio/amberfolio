@@ -71,6 +71,21 @@ constexpr std::uint8_t status_dying = 5;
 constexpr std::uint8_t status_slain = 6;
 constexpr std::uint8_t status_petrified = 7;
 
+/// The magic the Fix spends, and where the program keeps what it needs.
+constexpr std::uint8_t cure_light_wounds = 3;
+constexpr std::uint16_t rec_spell_slots = 0x17;
+constexpr std::uint8_t spell_pending = 0x80;
+constexpr std::uint16_t rec_can_act = 0x10D;
+constexpr std::uint16_t data_area_record = 0x49D2;
+constexpr std::uint16_t area_refuses_casting = 0x01CA;
+constexpr std::uint16_t data_current_member = 0x5D92;
+constexpr std::uint16_t data_cast_anchor = 0x6DB5;
+constexpr std::uint16_t pick_keystroke = (std::uint16_t{0x1F} << 8U) | 'S';
+
+/// Where the test puts the area record the cast gate reads.
+constexpr std::uint16_t area_segment = 0x4800;
+constexpr std::uint16_t area_offset = 0x0040;
+
 /// The letter the Fix answers to, and the key it posts, as INT 16h hands
 /// them back.
 constexpr std::uint8_t fix_letter = 'F';
@@ -188,6 +203,9 @@ struct rig {
     put_word(data_segment, data_rest_hours, 3);
     put_word(data_segment, data_rest_minute_units, 7);
     put_word(data_segment, data_rest_days, 0);
+    put_word(data_segment, data_cast_anchor, 0);
+    put_word(data_segment, static_cast<std::uint16_t>(data_cast_anchor + 2), 0);
+    area(true);
   }
 
   /// A party: one record per entry, linked in order and terminated, with
@@ -196,6 +214,11 @@ struct rig {
     std::uint8_t status{status_unhurt};
     std::uint8_t hit_points{};
     std::uint8_t most_hit_points{};
+    /// Ready cures this member holds, and whether they may act at all.
+    unsigned ready_cures{};
+    /// Cures queued for memorization: held, but not castable.
+    unsigned pending_cures{};
+    bool can_act{true};
   };
 
   void party(const std::vector<member>& members) const {
@@ -219,7 +242,44 @@ struct rig {
                last ? 0 : next);
       put_word(record_segment, static_cast<std::uint16_t>(at + rec_next + 2),
                last ? 0 : record_segment);
+      put_byte(record_segment, static_cast<std::uint16_t>(at + rec_can_act),
+               members[nth].can_act ? 1 : 0);
+      unsigned slot = 0;
+      for (unsigned nth_cure = 0; nth_cure < members[nth].ready_cures;
+           ++nth_cure, ++slot) {
+        put_byte(record_segment,
+                 static_cast<std::uint16_t>(at + rec_spell_slots + slot),
+                 cure_light_wounds);
+      }
+      for (unsigned nth_cure = 0; nth_cure < members[nth].pending_cures;
+           ++nth_cure, ++slot) {
+        put_byte(record_segment,
+                 static_cast<std::uint16_t>(at + rec_spell_slots + slot),
+                 static_cast<std::uint8_t>(cure_light_wounds | spell_pending));
+      }
     }
+  }
+
+  /// The area record the cast gate reads, and whether it lets anyone
+  /// cast. Laid down by `camp()`, so a test that says nothing gets an
+  /// area that allows it.
+  void area(bool allows) const {
+    put_word(data_segment, data_area_record, area_offset);
+    put_word(data_segment, static_cast<std::uint16_t>(data_area_record + 2),
+             area_segment);
+    put_word(area_segment,
+             static_cast<std::uint16_t>(area_offset + area_refuses_casting),
+             allows ? 0 : 1);
+  }
+
+  /// The first slot of `nth` member's record that is not zero.
+  [[nodiscard]] std::uint8_t slot_at(unsigned nth, unsigned slot) const {
+    return byte_at(record_segment, static_cast<std::uint16_t>(
+                                       first_record + nth * record_stride +
+                                       rec_spell_slots + slot));
+  }
+  [[nodiscard]] std::uint16_t member_offset(unsigned nth) const {
+    return static_cast<std::uint16_t>(first_record + nth * record_stride);
   }
 
   /// A HLT at the module's `offset`, the processor pointed at it with the
@@ -552,6 +612,154 @@ TEST(SeamEncampFix, StopsAtTheDaysFieldTheProgramItselfClampsTo) {
   r.one_menu_pass(fix_letter);
 
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 99u);
+}
+
+// --- Spending the cures the party already holds (#189) ---------------------
+//
+// The rule of record: the Fix casts **only** cures a member already holds
+// memorized, and queues one back for every one it spends, so the party
+// ends holding what it started with. The queue-back happens *before* the
+// cast, which is what makes that true at every instant rather than at the
+// end — and is why none of this needs the handler to remember anything.
+
+/// A party with somebody to heal and somebody who can heal them: two
+/// wounded, and a caster holding `cures` ready ones.
+[[nodiscard]] std::vector<rig::member> party_with_a_healer(unsigned cures) {
+  return {{.status = status_unhurt, .hit_points = 15, .most_hit_points = 17},
+          {.status = status_unhurt, .hit_points = 14, .most_hit_points = 18},
+          {.status = status_unhurt,
+           .hit_points = 30,
+           .most_hit_points = 30,
+           .ready_cures = cures}};
+}
+
+TEST(SeamEncampFix, SpendsAReadyCureOnTheWorstWoundedMember) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.party(party_with_a_healer(2));
+
+  r.one_menu_pass(fix_letter);
+
+  // The worst wounded is the second member, four down; the caster is the
+  // third, the only one holding anything.
+  EXPECT_EQ(r.word_at(data_segment, data_cast_anchor), r.member_offset(1))
+      << "the picker opens on the member the anchor names";
+  EXPECT_EQ(r.word_at(data_segment, data_current_member), r.member_offset(2))
+      << "and the caster is the current member, as the cast screen sets it";
+  EXPECT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.first_key(), pick_keystroke)
+      << "one key finishes a pick that is already positioned";
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u)
+      << "no rest is asked for while there is still a cure to spend";
+}
+
+TEST(SeamEncampFix, QueuesTheCureBackBeforeItSpendsIt) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.party(party_with_a_healer(2));
+
+  r.one_menu_pass(fix_letter);
+
+  // Two ready in slots 0 and 1; the queued-back one goes in the first
+  // empty slot, pending, so that ready-plus-pending never drops.
+  EXPECT_EQ(r.slot_at(2, 0), cure_light_wounds);
+  EXPECT_EQ(r.slot_at(2, 1), cure_light_wounds);
+  EXPECT_EQ(r.slot_at(2, 2),
+            static_cast<std::uint8_t>(cure_light_wounds | spell_pending))
+      << "the replacement is queued before the original is spent";
+}
+
+TEST(SeamEncampFix, RestsRatherThanCastingWhatNobodyHoldsReady) {
+  const rig r;
+  r.arm();
+  r.camp();
+  // Cures queued for memorization are held and not castable.
+  r.party({{.status = status_unhurt, .hit_points = 15, .most_hit_points = 17},
+           {.status = status_unhurt,
+            .hit_points = 30,
+            .most_hit_points = 30,
+            .pending_cures = 3}});
+
+  r.one_menu_pass(fix_letter);
+
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 3u)
+      << "two down plus the day of slack";
+  EXPECT_EQ(r.first_key(), rest_keystroke);
+  EXPECT_EQ(r.word_at(data_segment, data_cast_anchor), 0u);
+}
+
+TEST(SeamEncampFix, RestsRatherThanCastingWhereTheAreaRefusesIt) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.party(party_with_a_healer(2));
+  r.area(false);
+
+  r.one_menu_pass(fix_letter);
+
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 5u)
+      << "four down plus the day of slack, and no spell asked for";
+  EXPECT_EQ(r.first_key(), rest_keystroke);
+}
+
+TEST(SeamEncampFix, WillNotCastFromSomebodyWhoCannotAct) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.party({{.status = status_unhurt, .hit_points = 15, .most_hit_points = 17},
+           {.status = status_unhurt,
+            .hit_points = 30,
+            .most_hit_points = 30,
+            .ready_cures = 2,
+            .can_act = false}});
+
+  r.one_menu_pass(fix_letter);
+
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 3u);
+  EXPECT_EQ(r.first_key(), rest_keystroke);
+}
+
+TEST(SeamEncampFix, SpendsNothingOnAMemberRestingCannotHelp) {
+  const rig r;
+  r.arm();
+  r.camp();
+  // The only wounded one is past healing; the cure stays in the book.
+  r.party({{.status = status_slain, .hit_points = 0, .most_hit_points = 40},
+           {.status = status_unhurt,
+            .hit_points = 30,
+            .most_hit_points = 30,
+            .ready_cures = 2}});
+
+  r.one_menu_pass(fix_letter);
+
+  EXPECT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.first_key(), rest_keystroke) << "nothing to cast at";
+  EXPECT_EQ(r.slot_at(1, 2), 0u) << "and nothing queued back";
+}
+
+/// **The player can stop it.** The Fix decides one act per arrival, and
+/// every arrival stands aside if there is a key the program has not read
+/// yet — so anything typed during the run ends it there, with whatever
+/// healing has already happened kept and the camp menu in front of the
+/// player. That is the interruption point; the rest itself is
+/// interruptible by the program's own "stop resting" question.
+TEST(SeamEncampFix, StopsWhenThePlayerTypesDuringTheRun) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.party(party_with_a_healer(2));
+  ASSERT_TRUE(r.pc().inject_keystroke(0x01 << 8U | 0x1B));  // Esc
+
+  r.one_menu_pass(fix_letter);
+
+  EXPECT_EQ(r.keys_waiting(), 1u) << "the player's key is the only one";
+  EXPECT_EQ(r.first_key(), static_cast<std::uint16_t>(0x01 << 8U | 0x1B));
+  EXPECT_EQ(r.word_at(data_segment, data_cast_anchor), 0u)
+      << "nothing was set up";
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u)
+      << "and no rest was asked for either";
 }
 
 // --- What it does when the command is not chosen ---------------------------

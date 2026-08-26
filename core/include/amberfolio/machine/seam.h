@@ -158,6 +158,32 @@
 // is the point of it.
 //
 //
+// A seam's own few words (#189)
+// -----------------------------
+//
+// Every seam in this tree until M5-E1b held **no state at all**, and that
+// is the shape to reach for first: `seam_encamp_fix.cpp`'s three points
+// know where they are in a sequence because they read it out of the
+// machine — a field the program leaves in a known state, written with the
+// value the seam actually wanted. A handler that remembers nothing cannot
+// remember wrongly, and a run that ends mid-sequence leaves nothing behind
+// to be stale.
+//
+// Some sequences cannot be read back. A command that says what it *did* —
+// how much it restored, how much it spent — is comparing the machine now
+// against the machine before, and "before" is not in the machine any more.
+// So a seam may keep `scratch_words` words of its own, through
+// `seam_context::scratch()` and `set_scratch()`.
+//
+// **It is configuration, exactly as the enable and the latch are**:
+// `reset()` and `clear()` drop it, `enable()` starts it fresh, the
+// serialization never sees it, and a run in which the seam is off never
+// has any. It is not a back door for machine state — a seam that kept a
+// *copy* of something the machine holds would have two of them, and the
+// second one would be the wrong one the first time they disagreed. Keep
+// in it only what the machine has stopped holding.
+//
+//
 // The trigger: the host -> seam direction (#161)
 // ----------------------------------------------
 //
@@ -889,6 +915,12 @@ class seam_context {
   bool call_program(std::uint16_t segment, std::uint16_t offset,
                     std::span<const std::uint16_t> words);
 
+  /// One of this seam's own words (#189). Zero until something is put
+  /// there, and zero again after `enable()`. `slot` past the end reads
+  /// zero and writes nothing.
+  [[nodiscard]] std::uint16_t scratch(unsigned slot) const noexcept;
+  void set_scratch(unsigned slot, std::uint16_t value) noexcept;
+
   /// "I was reached, and what is here is not what my facts describe."
   ///
   /// A handler calls this instead of acting when a precondition it can
@@ -959,11 +991,30 @@ class seam_engine {
   static constexpr std::size_t max_call_words = 8;
   static constexpr std::size_t max_call_bytes = 256;
 
+  /// Words of its own a seam may keep between arrivals (#189). Eight is
+  /// what the Encamp Fix's report needs — what it spent, what it
+  /// restored, when it started — and small enough that a seam reaching
+  /// for a ninth is a seam that should be reading the machine instead.
+  static constexpr unsigned scratch_words = 8;
+
   /// How many step boundaries a batch may take before the engine decides
-  /// the call is not coming back. Drawing a framed box and six lines is
-  /// a few thousand instructions; a quarter of a million is far past any
-  /// of it and far short of a person noticing a pause.
-  static constexpr std::uint32_t max_call_steps = 250'000;
+  /// the call is not coming back.
+  ///
+  /// **A bound against *never*, not against slow**, and the difference
+  /// cost a day. The first cut said a quarter of a million, reasoning
+  /// that drawing a box and six lines is a few thousand instructions.
+  /// Then a seam called the program's own cast driver, which repaints
+  /// the screen it is on — and a repaint reads art off the disk. The
+  /// call was abandoned every time, the machine was put back every time,
+  /// and the seam looked broken when the engine was the thing that was
+  /// wrong. Measured afterwards, that one call costs between one and two
+  /// million steps.
+  ///
+  /// So: sixteen million, an order of magnitude past the worst thing
+  /// anything here has asked for, and still only some seconds of virtual
+  /// time — far inside how long a person would wait before deciding the
+  /// emulator had stopped.
+  static constexpr std::uint32_t max_call_steps = 16'000'000;
 
   /// `log` may be null; the engine does the same thing either way, and
   /// `machine` hands it the sink it was built with.
@@ -1219,6 +1270,10 @@ class seam_engine {
     bool waiting{false};
     ticks pulled_at{};
     ticks waited{};
+    /// The seam's own words (#189). Configuration like everything else
+    /// here: cleared by `enable()`, dropped by `reset()`, never
+    /// serialized.
+    std::array<std::uint16_t, scratch_words> scratch{};
     /// How many times a handler of this seam has declined
     /// (`seam_context::decline`). Zero means it has not, which is what
     /// the diagnostics channel's report-once test reads; the count
@@ -1297,8 +1352,9 @@ class seam_engine {
   void open_batch(machine& box, std::string_view id) noexcept;
 
   /// Set up the next queued call, or — when there is none left — restore
-  /// the snapshot and close the batch.
-  void advance_batch(machine& box) noexcept;
+  /// the snapshot and close the batch. True when the batch is finished,
+  /// which is when the caller offers the point again (#189).
+  bool advance_batch(machine& box) noexcept;
 
   /// Put the machine back and drop the batch, with a line saying why.
   void abandon_batch(machine& box, seam_reason why) noexcept;

@@ -180,6 +180,22 @@ Three rules go with it, and `seam_encamp_fix.cpp` is the worked example:
 **Control** — `seam_context::redirect(cs, ip)`, which is moving IP with
 its name on.
 
+**A seam's own few words** — `seam_context::scratch()` and
+`set_scratch()`, `scratch_words` of them (#189).
+
+Reach for this last. Every seam in this tree until M5-E1b held no state
+at all, and that is the shape that works: `seam_encamp_fix.cpp`'s points
+know where they are in a sequence because they read it out of the
+machine — a field the program leaves in a known state, written with the
+value the seam actually wanted. A handler that remembers nothing cannot
+remember wrongly. What genuinely cannot be read back is a comparison
+against *before*: how much a command restored, how much it spent. Those
+are what the words are for. They are configuration like the enable and
+the latch — `reset()` and `clear()` drop them, `enable()` starts them
+fresh, the serialization never sees them — and a seam that kept a *copy*
+of something the machine holds would have two of them, the second one
+wrong the first time they disagreed.
+
 **A call into the program** — `seam_context::call_program()`, and
 `place_bytes()` beside it for the arguments that are not numbers (#188).
 
@@ -218,6 +234,12 @@ The program's own routines are far and **clean their own arguments**
 Three properties it has to have, and the third is why the sentinel is an
 address and not a byte:
 
+* **when the batch is done the point is offered again**, at the
+  instruction the handler was called at. Without that a seam gets exactly
+  one batch per arrival — `step()` runs that instruction the moment the
+  engine returns, and the arrival is spent — so a seam driving a sequence
+  could act exactly once. The Encamp Fix casts one cure per arrival and
+  looks at the party again (#189);
 * **an interrupt during the batch is survivable**, because the frame is
   one the program itself could have built, on the program's own stack;
 * **a batch finishes even if the seam is switched off while it runs** —
@@ -230,6 +252,18 @@ address and not a byte:
   within a minute. What catches a call that does not come back is the
   batch's own step budget, which restores the snapshot and reports
   `call_did_not_return` rather than hanging the host.
+
+**That budget is a bound against *never*, not against slow**, and getting
+it wrong cost a day. It started at a quarter of a million steps, reasoned
+from "drawing a box and six lines is a few thousand instructions". Then a
+seam called the program's own cast driver, which repaints the screen it is
+on — and a repaint reads art off the disk. Every call was abandoned, the
+machine was put back every time, and the *seam* looked broken when the
+engine was the thing that was wrong. Measured afterwards, that one call
+costs between one and two million steps. The bound is sixteen million now:
+an order of magnitude past the worst thing anything here has asked for,
+and still far inside how long a person would wait before deciding the
+emulator had stopped.
 
 **Where the arguments go.** A Pascal string a seam invented is not in the
 program's memory, and it must not become part of it. `place_bytes()` puts
@@ -948,6 +982,50 @@ than saving keystrokes. What the player keeps is the half that costs
 nothing: whatever they had queued for memorization is memorized during
 the rest this seam pays for.
 
+#### What it spends before it rests (M5-E1b, #189)
+
+A rest heals one hit point per member per day, so a party forty down
+sleeps forty-one days and rolls the game's wandering-monster check every
+one of them. Spells are faster. So before it rests, the Fix spends the
+cures the party **already has**.
+
+The rule of record, and it is stricter than the design this project
+carried over:
+
+* only Cure Light Wounds a member holds **ready** is cast — never one
+  memorized into a slot that was empty, never a spell forgotten to make
+  room;
+* one is **queued back for every one spent**, by the two writes the
+  program's own memorize command makes (the slot gets `id | 0x80`, then
+  the program's own slot sort runs);
+* so the party ends holding exactly the cures it started with.
+
+The queue-back happens *before* the cast. That is what makes the promise
+true at every instant rather than at the end — there is no moment at
+which the player is a cure down — and it is why the handler needs no
+memory of what it has spent.
+
+**Everything is the program's own function**, which is the point rather
+than a nicety. The cast goes through the same driver the camp screen's
+own Cast command calls, so the 1d8, the overheal clamp, the forget and
+the drawing are the program's; the memorize is the memorize command's two
+writes and its sort; the frame and the clear are what the cast screen
+draws first. No menu is navigated — the seam positions the driver's own
+target anchor and answers its one prompt with one key, which is what the
+program's own code does with it.
+
+One act per arrival, and the machine comes back to the point when a batch
+is done (§3), so the next arrival looks at the party again and decides
+afresh: cast another, or dial the days the cures did not close and press
+Rest. It ends because every cast spends a ready cure.
+
+**And the player can stop it.** Every arrival stands aside if there is a
+key the program has not read yet, so anything typed during the run ends
+the Fix there — with whatever healing has happened kept, and the camp
+menu in front of the player. The rest itself is interruptible by the
+program's own stop-resting question, and a wandering monster ends it the
+way it ends any rest.
+
 #### The fidelity test this seam owes, which is not the usual one
 
 A seam that is *visible before it is used* cannot claim the invariant a
@@ -1019,11 +1097,20 @@ assertion:
 same script against the wasm module and reports the same five firings the
 desktop host does.
 
-**What is still not measured**: every party in the shipped save slots is
-whole, so the days the seam dialled were the one day of slack rather than
-a deficit it had worked out. The heal tick fired and said so; what a
-wounded party's arithmetic does has been tested and not driven.
-`docs/playable.md`'s leg 7 says the same thing from the run's side.
+**And a cure has been cast on a wounded party** (#189). The shipped save
+slots are not all whole after all: one holds two wounded fighters and a
+cleric with five ready cures, which is the party this seam had been
+waiting for since M4. Encamped, with the Fix chosen: two cures cast
+through the program's own driver took **15/17 to 17 and 14/18 to 18**,
+the party came out whole, the Fix dialled its one day of slack and
+pressed Rest — and the program answered with an event of its own, the
+city watch moving the party along. Its rules, running inside the rest the
+seam asked for.
+
+**What is still not measured**: nobody has driven a party so hurt that
+the cures run out and the days do the rest — the arithmetic for that is
+tested against rosters a test writes, not driven. `docs/playable.md`'s
+leg 7 says the same thing from the run's side.
 
 ### The debug cheats (#99)
 

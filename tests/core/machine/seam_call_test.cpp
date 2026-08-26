@@ -108,6 +108,8 @@ bool place_succeeded = false;
 bool call_succeeded = false;
 unsigned queue_how_many = 1;
 bool spin_instead = false;
+/// How many batches in a row the handler will queue, one per arrival.
+unsigned queue_batches = 1;
 
 /// The handler under test: place a byte, queue `queue_how_many` calls
 /// that name it, and return. It acts once — a second arrival would queue
@@ -115,7 +117,7 @@ bool spin_instead = false;
 /// instruction.
 void ask_the_program(machine& box, seam_context& ctx) {
   ++handler_runs;
-  if (handler_runs > 1) {
+  if (handler_runs > queue_batches) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -173,6 +175,7 @@ struct rig {
     call_succeeded = false;
     queue_how_many = 1;
     spin_instead = false;
+    queue_batches = 1;
     EXPECT_TRUE(box->seams().add(call_seam));
     EXPECT_TRUE(box->seams().add(quiet_seam));
     box->seams().loaded(claimed_digest(), image_load_segment);
@@ -302,8 +305,28 @@ TEST(SeamCallProgram, RunsEveryQueuedCallInTheOrderItWasQueued) {
 
   EXPECT_EQ(calls_queued, 3u);
   EXPECT_EQ(r.word_at(data_segment, call_count), 3u)
-      << "one arrival, three calls, and the handler never re-entered";
-  EXPECT_EQ(handler_runs, 1u);
+      << "one arrival, three calls, and the handler not re-entered between";
+}
+
+/// And when the batch is over the point is offered **again**, at the
+/// instruction the handler was called at — which is the whole of how a
+/// seam drives a sequence longer than one batch (#189).
+///
+/// Without it a handler gets exactly one batch per arrival, because
+/// `step()` runs that instruction the moment the engine returns and the
+/// arrival is spent. The Encamp Fix casts one cure per arrival and looks
+/// at the party again; it could cast exactly one without this.
+TEST(SeamCallProgram, OffersThePointAgainWhenTheBatchIsDone) {
+  const rig r;
+  queue_batches = 3;
+  ASSERT_EQ(r.box->seams().enable("test-call"), seam_reason::none);
+  r.stand_on_the_point();
+
+  static_cast<void>(r.run(600));
+
+  EXPECT_EQ(handler_runs, 4u)
+      << "three batches, and the arrival that decided there was no fourth";
+  EXPECT_EQ(r.word_at(data_segment, call_count), 3u);
 }
 
 TEST(SeamCallProgram, RefusesMoreCallsThanABatchHolds) {

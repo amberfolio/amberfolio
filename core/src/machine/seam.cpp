@@ -228,6 +228,22 @@ bool seam_context::call_program(std::uint16_t segment, std::uint16_t offset,
   return true;
 }
 
+std::uint16_t seam_context::scratch(unsigned slot) const noexcept {
+  const std::size_t at = engine_->index_of(id_);
+  if (at == seam_engine::max_seams || slot >= seam_engine::scratch_words) {
+    return 0;
+  }
+  return engine_->slots_[at].scratch[slot];
+}
+
+void seam_context::set_scratch(unsigned slot, std::uint16_t value) noexcept {
+  const std::size_t at = engine_->index_of(id_);
+  if (at == seam_engine::max_seams || slot >= seam_engine::scratch_words) {
+    return;
+  }
+  engine_->slots_[at].scratch[slot] = value;
+}
+
 void seam_context::decline(seam_reason why) {
   declined_ = true;
   engine_->note_decline(id_, why);
@@ -536,6 +552,7 @@ seam_error seam_engine::enable(std::string_view id) {
   s.enabled = true;
   s.declined = 0;  // A fresh enable asks the question again.
   s.fired = 0;
+  s.scratch = {};  // And a seam's own words start empty (#189).
   s.reached = 0;
   s.waiting = false;
   s.pulled_at = ticks{};
@@ -713,14 +730,14 @@ void seam_engine::open_batch(machine& box, std::string_view id) noexcept {
   call_.saved = box.processor().regs();
 }
 
-void seam_engine::advance_batch(machine& box) noexcept {
+bool seam_engine::advance_batch(machine& box) noexcept {
   cpu::registers& regs = box.processor().regs();
   if (call_.next == call_.count) {
     // Every call made. Put the machine back: the instruction the handler
     // was called at has still not run, and now it will.
     regs = call_.saved;
     call_ = call_batch{};
-    return;
+    return true;
   }
 
   const queued_call& queued = call_.call[call_.next];
@@ -746,6 +763,7 @@ void seam_engine::advance_batch(machine& box) noexcept {
   regs[cpu::sreg::cs] = queued.segment;
   regs.ip = queued.offset;
   call_.running = true;
+  return false;
 }
 
 void seam_engine::abandon_batch(machine& box, seam_reason why) noexcept {
@@ -761,20 +779,29 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
     // Points are not offered: the machine is inside the program's own
     // code at the seam's request, which is not a place a seam's facts
     // describe.
-    if (call_.running) {
-      if (at == cpu::physical_address(service::stub_segment,
-                                      service::call_return_offset)) {
-        advance_batch(box);
-        return;
-      }
-      if (++call_.steps > max_call_steps) {
+    if (!call_.running ||
+        at != cpu::physical_address(service::stub_segment,
+                                    service::call_return_offset)) {
+      if (call_.running && ++call_.steps > max_call_steps) {
         // The call is not coming back. That is a fact table naming an
         // address that is not a routine, and the one thing it must not
         // be is a host that never returns (seam.h).
         abandon_batch(box, seam_reason::call_did_not_return);
       }
+      return;
     }
-    return;
+    if (!advance_batch(box)) {
+      return;  // the next call of the batch is under way.
+    }
+    // The batch is done and the machine is back on the instruction the
+    // handler was called at — which is this seam's point, and the point
+    // has not been offered for it yet. **Offer it again**, at the
+    // restored address, so that a handler driving a sequence gets its
+    // next turn: without this a seam gets exactly one batch per arrival,
+    // because `step()` runs the instruction as soon as this returns and
+    // the arrival is spent (#189).
+    at = cpu::physical_address(box.processor().regs()[cpu::sreg::cs],
+                               box.processor().regs().ip);
   }
   for (std::size_t i = 0; i < armed_; ++i) {
     const armed_point& point = points_[i];

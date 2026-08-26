@@ -102,9 +102,13 @@
 //      Splice those characters straight back out, so that outside the one
 //      call that drew the bar the program's own string is the program's
 //      own string, byte for byte. Then, if what came back is a selected
-//      command and it is the Fix's letter: work out how many days the
-//      party needs, write the days field, and post the camp bar's own
-//      Rest key.
+//      command and it is the Fix's letter, do **one** thing and return:
+//      spend a cure if there is one to spend and somebody to spend it on
+//      (below), or else write the days field and post the camp bar's own
+//      Rest key. The machine comes back to this instruction when a batch
+//      of calls is done (seam.h), so the next arrival decides again from
+//      what it then reads — which is what makes a loop out of a handler
+//      that remembers almost nothing.
 //   3. **At the rest command's entry** (`rest_command_entry`), reached
 //      because of the key just posted. If the days field is non-zero,
 //      post the rest screen's own Rest key.
@@ -130,6 +134,23 @@
 // buffer after every key it reads, so a handler that posts two keys posts
 // one. Three points are three arrivals, and two keys posted one at each
 // of two of them.
+//
+// **Spending cures, and giving every one of them back** (M5-E1b, #189).
+// Before it rests, the Fix spends what the party already has: for each
+// arrival, one Cure Light Wounds that some member holds *ready*, cast
+// through the program's own cast driver — the same function the camp
+// screen's own Cast command calls — at the worst-wounded member the
+// program's own healing would accept. The roll, the overheal clamp, the
+// forget and the drawing are all the program's.
+//
+// The rule of record is the player's loadout: **only cures a member
+// already holds are spent, and one is queued back for every one spent**,
+// by the two writes the program's own memorize command makes. Nothing
+// fills an empty slot that was empty to begin with, and nothing is
+// forgotten to make room. The queue-back happens *before* the cast, which
+// is what makes the promise true at every instant rather than at the end
+// — there is no moment at which the player is a cure down — and is why
+// this handler needs no memory of what it has spent.
 //
 // **The days are the deficit plus one, and never fewer than one.** The
 // heal tick counts iterations in a counter the camp screen zeroes on
@@ -310,6 +331,95 @@ constexpr std::uint16_t data_rest_days = 0x6DC2 + 8;
 /// something the program would not have let a player dial, and the rest
 /// screen's two-digit display could not show it either.
 constexpr std::uint16_t max_rest_days = 99;
+
+// --- The magic the Fix spends, and gives back -------------------------------
+
+/// Cure Light Wounds, by the id the program's own spell tables use.
+///
+/// The only heal a player character can hold in memory: the program's own
+/// memorize picker scans ids 1..0x37, and its other healing handlers sit
+/// above that range as item and monster effects. A table rather than a
+/// constant, because a later mode may spend more than one kind and the
+/// shape of the code should not have to change for it.
+constexpr std::array<std::uint8_t, 1> heal_spells{3};
+
+/// The memorized-spell slots in a character record: twenty-one bytes, one
+/// spell id each, zero for an empty one. **Bit 7 set means pending** —
+/// queued for memorization and not learned yet — and clear means ready to
+/// cast. The program's own memorize command writes `id | 0x80` into the
+/// first empty slot and then sorts them; its cast driver clears the slot
+/// it spends.
+constexpr std::uint16_t rec_spell_slots = 0x17;
+constexpr unsigned rec_spell_slot_count = 0x15;
+constexpr std::uint8_t spell_pending = 0x80;
+
+/// Whether this character may act: the byte the program's own screens
+/// gate on, beside a status that is not an animated body.
+constexpr std::uint16_t rec_can_act = 0x10D;
+constexpr std::uint8_t status_animated = 1;
+
+/// The area the party is in, as a far pointer, and the word in it that
+/// says this area refuses spellcasting — which the program's own cast
+/// screen reads before it offers anything.
+constexpr std::uint16_t data_area_record = 0x49D2;
+constexpr std::uint16_t area_refuses_casting = 0x01CA;
+
+/// The current party member, as a far pointer: what the program's own
+/// cast screen sets before it casts, and what its slot sort works on.
+constexpr std::uint16_t data_current_member = 0x5D92;
+
+/// The cast target anchor, as a far pointer. The program's own target
+/// picker opens **already on** the member this names — which is what a
+/// player's own positioning keys do — so one keystroke finishes the pick.
+constexpr std::uint16_t data_cast_anchor = 0x6DB5;
+
+/// That keystroke.
+constexpr std::uint8_t pick_key_scancode = 0x1F;
+constexpr std::uint8_t pick_key_ascii = 'S';
+
+// --- The program's own routines this seam calls (#188) ---------------------
+//
+// Offsets from the image base, except the last, which is in the same
+// overlay this seam's points are in. Each was read off the routine itself,
+// and what each cleans up is part of the fact: the program's routines are
+// far and pop their own arguments.
+
+/// The generic cast driver, through the resident thunk that loads its
+/// overlay — never the overlay address, which would be a call into code
+/// that may not be in memory. Takes a far out-flag, an announce flag, a
+/// skip-abort flag and the spell id; cleans ten bytes.
+constexpr std::uint16_t image_cast_driver = 0x0999;
+
+/// The border and the clear the program's own cast screen draws before it
+/// casts, so that what the player sees is what that screen shows.
+constexpr std::uint16_t image_frame_border = 0x3F10;
+constexpr std::uint16_t image_clear_region = 0x4047;
+
+/// The slot sort, in this seam's own module: it orders the current
+/// member's slots by id, which is what the program's own memorize command
+/// does after it writes one. No arguments, and it cleans none.
+constexpr std::uint32_t module_sort_spell_slots = 0x0824;
+
+/// The region the cast screen frames and clears, in character cells.
+constexpr std::uint16_t cast_region_style = 0;
+constexpr std::uint16_t cast_region_bottom = 0x16;
+constexpr std::uint16_t cast_region_right = 0x26;
+constexpr std::uint16_t cast_region_top = 0x11;
+constexpr std::uint16_t cast_region_left = 1;
+
+/// This seam's own words (seam.h): how many cures it has spent since the
+/// command began. Zero between commands, and the backstop below is read
+/// against it.
+constexpr unsigned scratch_casts = 0;
+
+/// How many cures one command may spend before this seam stops trying.
+///
+/// **A backstop and not the design.** Every cast spends a ready cure, so
+/// the loop ends on its own; this is what stops a cast the program
+/// *refuses* — one whose picker never answers — from being asked for
+/// again at every arrival for ever. Two a member for a party of six is
+/// past any real loadout.
+constexpr std::uint16_t max_casts = 16;
 
 /// How many records a roster walk will follow before giving up. A party
 /// is six with room for hangers-on; sixteen is several times that and is
@@ -563,6 +673,24 @@ constexpr std::uint8_t bar_separator = ' ';
 
 // --- Reading the party -----------------------------------------------------
 
+/// One member, as the walk found them.
+struct member_reading {
+  std::uint16_t offset{};
+  std::uint16_t segment{};
+  /// How far below their maximum they are, if resting can put that
+  /// right. Zero for anyone it cannot help at all.
+  unsigned deficit{};
+  /// Able to act, and so able to cast: the program's own gate.
+  bool can_act{false};
+  /// Ready cures held — slots whose id is a heal and whose pending bit
+  /// is clear.
+  unsigned ready_cures{};
+  /// The first empty slot, or `no_slot`: where a cure this seam spends
+  /// is queued back.
+  unsigned free_slot{};
+  bool has_free_slot{false};
+};
+
 /// What one walk of the roster found.
 struct roster_reading {
   /// The list was a list: every link a far pointer, and it ended within
@@ -573,7 +701,18 @@ struct roster_reading {
   /// right. Zero when the party is whole, or when nobody on it can be
   /// healed at all.
   unsigned worst_deficit{0};
+  std::array<member_reading, max_roster_walk> member{};
 };
+
+/// Whether `id` is one of the spells this seam is willing to spend.
+[[nodiscard]] constexpr bool is_heal_spell(std::uint8_t id) noexcept {
+  for (const std::uint8_t heal : heal_spells) {
+    if (id == heal) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /// Walk the party from the head word, reading only. Every read goes
 /// through the bus, at the offsets the program itself reads them at, and
@@ -604,7 +743,10 @@ struct roster_reading {
     if (out.members == max_roster_walk) {
       return out;  // longer than a roster can be: not a roster.
     }
+    member_reading& who = out.member[out.members];
     ++out.members;
+    who.offset = offset;
+    who.segment = segment;
 
     std::uint8_t status = 0;
     if (!read_byte(cpu, segment, word_after(offset, rec_status), status)) {
@@ -620,10 +762,36 @@ struct roster_reading {
         return out;
       }
       if (most > current) {
-        const auto deficit = static_cast<unsigned>(most - current);
-        if (deficit > out.worst_deficit) {
-          out.worst_deficit = deficit;
+        who.deficit = static_cast<unsigned>(most - current);
+        if (who.deficit > out.worst_deficit) {
+          out.worst_deficit = who.deficit;
         }
+      }
+    }
+
+    // Who may cast, and what they are holding. The status gate is the
+    // program's own: an animated body does not act, and neither does
+    // anyone whose act byte is clear.
+    std::uint8_t acts = 0;
+    if (!read_byte(cpu, segment, word_after(offset, rec_can_act), acts)) {
+      return out;
+    }
+    who.can_act = acts != 0 && status != status_animated;
+    for (unsigned nth = 0; nth < rec_spell_slot_count; ++nth) {
+      std::uint8_t slot = 0;
+      if (!read_byte(cpu, segment,
+                     word_after(offset, static_cast<std::uint16_t>(
+                                            rec_spell_slots + nth)),
+                     slot)) {
+        return out;
+      }
+      if (slot == 0) {
+        if (!who.has_free_slot) {
+          who.free_slot = nth;
+          who.has_free_slot = true;
+        }
+      } else if ((slot & spell_pending) == 0 && is_heal_spell(slot)) {
+        ++who.ready_cures;
       }
     }
 
@@ -690,6 +858,140 @@ void offer_the_fix(machine& box, seam_context& ctx) {
   }
 }
 
+/// Whether this area lets anyone cast at all — the word the program's own
+/// cast screen reads before it offers a spell. True when it cannot be
+/// read, which is the fail-closed direction: a seam that cast where the
+/// program would not have offered to would be changing the rules.
+[[nodiscard]] bool casting_allowed(cpu::processor& cpu, std::uint16_t ds) {
+  std::uint16_t offset = 0;
+  std::uint16_t segment = 0;
+  if (!read_word(cpu, ds, data_area_record, offset) ||
+      !read_word(cpu, ds, word_after(data_area_record, 2), segment) ||
+      segment == 0) {
+    return false;
+  }
+  std::uint16_t refuses = 0;
+  if (!read_word(cpu, segment, word_after(offset, area_refuses_casting),
+                 refuses)) {
+    return false;
+  }
+  return refuses == 0;
+}
+
+/// Spend one ready cure on the worst-wounded member the program's own
+/// healing would accept, through the program's own cast driver. False
+/// when there is nothing to spend, nobody to spend it on, or nowhere to
+/// do it — and then the caller rests instead.
+///
+/// **The cure is queued back before it is spent, and that is the rule of
+/// record** (#189): the party ends holding exactly the cures it started
+/// with. Writing the pending slot first is what makes that true at every
+/// instant rather than at the end — there is no moment at which the
+/// player is a cure down, and this handler therefore needs no memory of
+/// what it has spent. What it costs is that a cast the program *refuses*
+/// leaves a cure pending rather than ready, which the backstop below
+/// bounds and a later report will say out loud.
+///
+/// Everything else here is the program's: the frame and the clear are
+/// what its own cast screen draws first, the sort is what its own
+/// memorize command runs after it writes a slot, the picker opens on the
+/// member the anchor names and one keystroke finishes the pick, and the
+/// roll, the announce, the overheal clamp and the forget are the driver's.
+[[nodiscard]] bool cast_one_cure(machine& box, seam_context& ctx,
+                                 std::uint16_t ds,
+                                 const roster_reading& party) {
+  if (ctx.scratch(scratch_casts) >= max_casts ||
+      !casting_allowed(box.processor(), ds)) {
+    return false;
+  }
+
+  const member_reading* target = nullptr;
+  const member_reading* caster = nullptr;
+  for (unsigned nth = 0; nth < party.members; ++nth) {
+    const member_reading& who = party.member[nth];
+    if (who.deficit != 0 &&
+        (target == nullptr || who.deficit > target->deficit)) {
+      target = &who;
+    }
+    if (caster == nullptr && who.can_act && who.ready_cures != 0) {
+      caster = &who;
+    }
+  }
+  if (target == nullptr || caster == nullptr) {
+    return false;
+  }
+
+  cpu::processor& cpu = box.processor();
+  // Queued back first (see above), into the first empty slot, which is
+  // where the program's own memorize command puts one.
+  if (caster->has_free_slot) {
+    cpu.write_byte(
+        caster->segment,
+        word_after(caster->offset, static_cast<std::uint16_t>(
+                                       rec_spell_slots + caster->free_slot)),
+        static_cast<std::uint8_t>(heal_spells[0] | spell_pending));
+  }
+
+  // Who is casting, and at whom. Both are far pointers the program's own
+  // screens write before they hand over.
+  cpu.write_word(ds, data_current_member, caster->offset);
+  cpu.write_word(ds, word_after(data_current_member, 2), caster->segment);
+  cpu.write_word(ds, data_cast_anchor, target->offset);
+  cpu.write_word(ds, word_after(data_cast_anchor, 2), target->segment);
+
+  // The key that answers the picker, in the buffer before the driver
+  // reads it — the way one a player typed a moment earlier would be.
+  if (!ctx.inject_keystroke(pick_key_scancode, pick_key_ascii)) {
+    return false;
+  }
+
+  // Somewhere for the driver's out-flag to land. This seam does not read
+  // it back: whether the spell landed is a thing the machine says, in
+  // hit points and in a slot that is no longer holding a cure, and the
+  // next arrival reads that rather than a byte on a dead stack.
+  std::uint16_t out_segment = 0;
+  std::uint16_t out_offset = 0;
+  const std::array<std::uint8_t, 2> out_flag{0, 0};
+  if (!ctx.place_bytes(out_flag, out_segment, out_offset)) {
+    return false;
+  }
+
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  const auto module = static_cast<std::uint16_t>(ctx.module_base() / 16U);
+
+  // In the order the program does them. Arguments are pushed in the
+  // reverse of the order each routine's own callers name them, with a far
+  // pointer's segment before its offset (`docs/seams.md` §3).
+  const std::array<std::uint16_t, 0> nothing{};
+  const std::array<std::uint16_t, 5> border{
+      cast_region_left, cast_region_top, cast_region_right, cast_region_bottom,
+      cast_region_style};
+  const std::array<std::uint16_t, 4> clear{
+      cast_region_left, cast_region_top, cast_region_right, cast_region_bottom};
+  // Announce off, and this is a fact about the driver rather than a
+  // preference: its announcement ends in the program's own message delay,
+  // which takes a waiting key as "the player has read it" and drains the
+  // buffer — so the keystroke meant for the target picker never reaches
+  // it and the picker waits for ever. Driven against the program, that is
+  // exactly what happened, and the engine's own step budget was what
+  // said so (#188).
+  const std::array<std::uint16_t, 5> cast{heal_spells[0], 0, 0, out_segment,
+                                          out_offset};
+  const bool queued =
+      ctx.call_program(module,
+                       static_cast<std::uint16_t>(module_sort_spell_slots),
+                       nothing) &&
+      ctx.call_program(image, image_frame_border, border) &&
+      ctx.call_program(image, image_clear_region, clear) &&
+      ctx.call_program(image, image_cast_driver, cast);
+  if (!queued) {
+    return false;
+  }
+  ctx.set_scratch(scratch_casts,
+                  static_cast<std::uint16_t>(ctx.scratch(scratch_casts) + 1));
+  return true;
+}
+
 /// Point 2: the letter that came back, and the bar put back as it was.
 void take_the_answer(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
@@ -716,18 +1018,43 @@ void take_the_answer(machine& box, seam_context& ctx) {
     return;
   }
   if (!keyboard_buffer_empty(cpu)) {
-    // Something the player typed is already waiting. Standing aside costs
-    // them one keypress; overtaking it would cost them the key.
+    // **This is where the player stops it.** The Fix decides one act per
+    // arrival, and every arrival stands aside if there is a key the
+    // program has not read yet — so anything typed during the run ends it
+    // here, with whatever healing has already happened kept and the camp
+    // menu in front of the player. The granularity is one cast, which is
+    // as often as this seam is ever in a position to hand control back.
+    //
+    // It is also the promise that a key the player typed is never
+    // overtaken by one of this seam's: standing aside costs them nothing,
+    // and going first would cost them the keystroke.
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
 
+  // Any anchor this seam left behind, cleared before it decides anything.
+  // The picker seeds it from the current record when it is zero, so
+  // leaving one set would be leaving the program a target nobody chose.
+  cpu.write_word(ds, data_cast_anchor, 0);
+  cpu.write_word(ds, word_after(data_cast_anchor, 2), 0);
+
+  // A cure to spend, if there is one and something to spend it on. This
+  // is the one arrival's worth of work; the machine comes back here when
+  // the calls are done, and the next arrival decides again from what it
+  // then reads.
+  if (cast_one_cure(box, ctx, ds, party)) {
+    return;
+  }
+
+  // Nothing left to cast: the rest closes whatever the cures did not.
+  //
   // The word the rest screen's own daYs-then-Inc writes, written once to
   // where that many presses would have left it — and, at the same time,
   // the signature point 3 reads.
   cpu.write_word(ds, data_rest_days, days_to_dial(party));
   // And the bar's own Rest key, which is the key a player presses next.
   static_cast<void>(ctx.inject_keystroke(rest_key_scancode, rest_key_ascii));
+  ctx.set_scratch(scratch_casts, 0);
 }
 
 /// Point 3: the rest command, entered because of the key point 2 posted.

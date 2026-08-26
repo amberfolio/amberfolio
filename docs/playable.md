@@ -824,12 +824,43 @@ overlay not being in memory yet, which is the fail-closed direction a
 module-qualified point has and which this host reaches by a slightly
 different route through the loading.
 
-**What this leg still does not show.** Every party in the shipped save
-slots is whole, so the days the Fix dialled were the one day of slack
-rather than a deficit it had worked out. The heal tick fired and the
-program said so; what a *wounded* party's arithmetic does has been tested
-against a roster a test writes and never driven. `docs/seams.md` §10 says
-the same thing from the seam's side.
+### The same leg on a wounded party (M5-E1b, #189)
+
+The shipped slots are not all whole. **Slot B** holds two wounded
+fighters — 15 of 17 and 14 of 18 — and a cleric with five ready Cure
+Light Wounds, which is the party leg 7 had been missing since M4:
+
+```
+--seam code-wheel --seam encamp-fix
+--press A@7600 --press Return@7650      the code wheel
+--press L@8950 --press B@9200           LOAD SAVED GAME, slot B
+--press E@10600                         ENCAMP
+--press F@10900                         the Fix
+```
+
+The load is slower than slot C's — six characters — so ENCAMP goes at
+10600 rather than 10200, and a press that lands while the game is still
+drawing is drained and lost.
+
+```
+amberfolio: seam encamp-fix armed
+amberfolio: watch frame=012055 ds=0CDC 6DCA=01
+amberfolio: watch frame=012175 ds=0CDC 6DCA=00
+amberfolio: seam encamp-fix armed fired=7
+```
+
+Seven acts: the bar spliced on each pass, two cures cast, and the rest.
+The party comes out **17 of 17 and 18 of 18** — the cures closed both
+deficits, so the days field reads 1, which is the slack and not a
+deficit. Then the program answers the rest with an event of its own —
+the city watch rousting the party and asking whether to go or stay. Its
+rules, running inside the rest the seam asked for, which is the whole of
+what "the game's own routines do the work" is supposed to mean.
+
+**What this leg still does not show.** Nobody has driven a party hurt
+badly enough that the cures run out and the days have to do the rest, so
+the days arithmetic has still only been tested against rosters a test
+writes. `docs/seams.md` §10 says the same thing from the seam's side.
 
 **One thing an earlier version of this leg found that no test could.**
 The Fix's first cut had a point with no address, so its guard ran with DS
