@@ -35,8 +35,10 @@ What M4 left in place:
 - **The seam engine** (`machine/seam.h`, `docs/seams.md`), which is
   PLAN.md §5's mechanism and the only way anything but the program may
   touch this machine. Fingerprint-keyed, overlay-qualified, four action
-  primitives plus a host-service slot, a host→seam trigger a person
-  pulls, and a toggle surface on both hosts. **Every seam is off by
+  primitives plus a host-service slot, a **call into the program** (M5-D4,
+  #188 — so text a seam puts on the game's screen is drawn by the game, in
+  the game's font), a host→seam trigger a person pulls, and a toggle
+  surface on both hosts. **Every seam is off by
   default**, and the fidelity invariant is a test: with all of them off a
   run's state hash equals the same run's on a build with no engine at
   all, a disabled seam's breakpoint is never consulted, and seam state —

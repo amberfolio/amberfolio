@@ -110,8 +110,9 @@ inside one.
 
 ## 3. The action primitives
 
-Five things a handler may do, each the smallest honest version of itself
-(#96), and the fifth had no implementation behind it until M5-D1 (#169):
+Six things a handler may do, each the smallest honest version of itself
+(#96). The fifth had no implementation behind it until M5-D1 (#169), and
+the sixth is M5-D4's (#188):
 
 **Register surgery** — `box.processor().regs()`. Plain state, edited in
 place. The code-wheel seam is three register writes and nothing else.
@@ -178,6 +179,83 @@ Three rules go with it, and `seam_encamp_fix.cpp` is the worked example:
 
 **Control** — `seam_context::redirect(cs, ip)`, which is moving IP with
 its name on.
+
+**A call into the program** — `seam_context::call_program()`, and
+`place_bytes()` beside it for the arguments that are not numbers (#188).
+
+This is the primitive that makes text a seam puts on the game's screen
+look like the game's, and the argument for it is short. The program draws
+text with **its own font**, a far pointer it keeps in its data segment.
+This machine has a font too and it is deliberately *not* that one — every
+glyph in `font.h` was drawn for this project, because shipping somebody
+else's bitmaps is what the clean-content rule forbids. So a seam that
+rasterized glyphs itself would put visibly foreign lettering beside the
+game's own on the same screen, which is the native-feel failure #186 was
+filed about, one layer down. A seam therefore **asks the game to draw
+it**.
+
+It is a **batch**, and that is the design decision. A handler is a plain
+function pointer with nowhere to keep "I am half-way through drawing a
+report", and a report is a framed box and several lines. So a handler
+queues the whole sequence in one arrival and hands it over; the engine
+runs the calls one after another and the handler is never re-entered
+part-way. What is next lives in the queue, and the queue exists only
+while the batch does.
+
+What the engine does, in order: snapshots the register file — every word,
+IP and SP included; lowers SP over anything `place_bytes()` put there, so
+an interrupt taken during the batch pushes *below* it; for each call
+pushes its words in the order given and then a far return address
+pointing at an address in the BIOS region that is not a stub, is in no
+vector and nothing executes; and recognises that address at a step
+boundary, either setting up the next call or restoring the snapshot — at
+which point the machine executes the instruction it was about to execute
+before the handler ran.
+
+The program's own routines are far and **clean their own arguments**
+(`retf N`), so the engine builds frames and never tears one down.
+
+Three properties it has to have, and the third is why the sentinel is an
+address and not a byte:
+
+* **an interrupt during the batch is survivable**, because the frame is
+  one the program itself could have built, on the program's own stack;
+* **a batch finishes even if the seam is switched off while it runs** —
+  you cannot un-call a call, so `armed()` stays true until it returns;
+* **nothing is written to make it work.** An earlier cut left an IRET at
+  the return address as insurance and it was wrong for a reason worth
+  keeping: the power-on image is machine state, it is hashed, and an
+  engine that wrote a byte into it would have altered every run whether
+  or not a seam was ever switched on. The committed sessions said so
+  within a minute. What catches a call that does not come back is the
+  batch's own step budget, which restores the snapshot and reports
+  `call_did_not_return` rather than hanging the host.
+
+**Where the arguments go.** A Pascal string a seam invented is not in the
+program's memory, and it must not become part of it. `place_bytes()` puts
+it on the machine's own stack, below what the program is using and above
+where an interrupt would push, and it is gone when the batch ends.
+
+**The frame to build is a fact like any other**, read off the routine
+being called. For the two the drawing consumers want:
+
+| routine | image offset | cleans | pushed first ... last |
+| --- | --- | --- | --- |
+| draw a Pascal string at a cell | `0x076B6` | `retf 0Ah` | col, row, colour, string segment, string offset |
+| draw a framed box with a centred title | `0x041F8` | `retf 10h` | left, top, right, bottom, style, colour, title segment, title offset |
+
+The rule both follow — and the one to check on the next routine rather
+than assume — is that the arguments are pushed in the reverse of the
+order the routine's own source lists them, with a far pointer's segment
+before its offset so the offset lands at the lower address, which is
+where a `les` looks for one.
+
+**It has been driven against the program.** A seam at the camp screen
+placed a four-character string, called the drawer at `0x076B6` with
+`(1, 13h, 0Fh, …)`, and the word appeared on the game's own screen in the
+game's own lettering, beside a line the game had drawn itself — with the
+camp screen and the run intact afterwards. That is the mechanism, the
+address and the frame, all three, in one picture.
 
 **A host service** — `seam_context::call_host(which, argument)`,
 answered by the `seam_host_services` a host attached with

@@ -2411,6 +2411,212 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
   return built;
 }
 
+// --- 11. The call door ----------------------------------------------------
+//
+// M5-D4 (#188). A seam asks the program to run one of its own routines,
+// and comes back. The real consumers call the game's text and frame
+// drawers so that what a seam puts on the game's screen is drawn by the
+// game; what that has in common with this is only the frame the engine
+// builds, so this program writes a routine of its own that **reports what
+// it was handed**.
+//
+// Three things it is evidence for, and the third is the one a unit test
+// cannot make:
+//
+//   1. the frame the engine builds is the frame the program's own callers
+//      build — the words come off the stack where the routine's own
+//      `[bp+n]` reads look for them, and a far pointer among them names
+//      the bytes the seam placed;
+//   2. a batch is a batch: two calls queued in one arrival both run, in
+//      order, and the handler is never re-entered part-way;
+//   3. **an interrupt during the call is survivable.** The routine hooks
+//      nothing itself; the program hooks the user tick before the seam's
+//      point is reached, the routine burns enough virtual time that the
+//      tick certainly arrives inside the call, and the routine then reads
+//      its arguments *afterwards*. A frame that an interrupt had damaged
+//      would read the wrong words. The tick handler counts in memory
+//      rather than in BP, because BP is what the routine's own frame is
+//      built on — which is the whole point.
+//
+//         start:  <hook the user tick, program the PIT, sti>
+//         trigger:                       ; the seam's point
+//                 nop                    ; what the machine resumes onto
+//                 <store what the routine saw>
+//                 exit 8Bh
+//
+//         routine:
+//                 push bp / mov bp, sp / push ds / push cs / pop ds
+//                 <sample the tick counter>
+//                 mov cx, delay / spin: loop spin
+//                 <did it change? then an interrupt happened in here>
+//                 mov ax, [bp+0Ch] -> saw_first    ; read AFTER the tick
+//                 les di, [bp+6] / mov al, es:[di] -> saw_byte
+//                 inc word [count]
+//                 pop ds / mov sp, bp / pop bp / retf 8
+
+/// Where the pieces sit in the program's own segment. The routine and
+/// the point are at round offsets because the seam's facts name them, and
+/// everything in between is jumped over rather than fallen through.
+constexpr std::uint16_t door_trigger_offset = 0x0100;
+constexpr std::uint16_t door_tick_offset = 0x0180;
+constexpr std::uint16_t door_routine_offset = 0x0200;
+
+/// The program's own scratch, clear of its code and of the result block.
+constexpr std::uint16_t door_ticks = 0x0700;
+constexpr std::uint16_t door_ticks_at_entry = 0x0702;
+constexpr std::uint16_t door_ticked = 0x0704;
+constexpr std::uint16_t door_saw_first = 0x0706;
+constexpr std::uint16_t door_saw_byte = 0x0708;
+constexpr std::uint16_t door_count = 0x070A;
+
+/// The two words the seam passes and the byte it places.
+constexpr std::uint16_t door_first_word = 0x1234;
+constexpr std::uint16_t door_second_word = 0x5678;
+constexpr std::uint8_t door_placed_byte = 0x5A;
+
+/// How many calls the handler queues.
+constexpr std::uint16_t door_calls = 2;
+
+/// The IRQ0 divisor and the routine's delay, in PIT ticks — which is
+/// steps, because these programs run one tick to the step. The delay is
+/// twice the divisor, so a tick arrives inside every call and the
+/// evidence is not a race.
+constexpr std::uint16_t door_divisor = 0x1000;
+constexpr std::uint16_t door_delay = 0x2000;
+
+/// The handler the seam runs, in this file rather than in the build:
+/// this is the *mechanism's* stand-in, so the thing being driven is the
+/// engine and the handler is the test's.
+///
+/// **Its guard is a word of the program's own memory**, not a counter
+/// beside the machine. The machine resumes onto the instruction the
+/// handler was called at, so the point is reached again the moment the
+/// batch ends — and a handler that queued another batch every time would
+/// never stop. The routine's own call counter is what says "this has
+/// already happened", which is the shape `seam_encamp_fix.cpp` uses for
+/// the same reason (#186).
+void door_call_program(machine::machine& box, machine::seam_context& ctx) {
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  if (box.processor().read_word(image, door_count) != 0) {
+    ctx.decline(machine::seam_reason::point_not_recognized);
+    return;
+  }
+
+  std::uint16_t segment = 0;
+  std::uint16_t offset = 0;
+  const std::array<std::uint8_t, 1> bytes{door_placed_byte};
+  if (!ctx.place_bytes(bytes, segment, offset)) {
+    ctx.decline(machine::seam_reason::point_not_recognized);
+    return;
+  }
+
+  // Segment then offset: the offset is pushed last and so lands at the
+  // lower address, which is where a `les` looks for a far pointer — the
+  // order the program's own callers push one in.
+  const std::array<std::uint16_t, 4> words{door_first_word, door_second_word,
+                                           segment, offset};
+  for (unsigned nth = 0; nth < door_calls; ++nth) {
+    if (!ctx.call_program(image, door_routine_offset, words)) {
+      ctx.decline(machine::seam_reason::point_not_recognized);
+      return;
+    }
+  }
+}
+
+constexpr std::array<machine::seam_point, 1> door_points{
+    {{.module = machine::resident_image,
+      .offset = door_trigger_offset,
+      .run = &door_call_program}}};
+
+[[nodiscard]] const std::vector<std::uint8_t>& door_file() {
+  static const std::vector<std::uint8_t> built = [] {
+    assembler a;
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+
+    // The user tick, pointed at this program's own counter, and the
+    // timer that drives it. Both before the point, so the interrupt is
+    // already live when the seam calls.
+    a.db({0x31, 0xC0, 0x8E, 0xD8});  // xor ax, ax / mov ds, ax
+    a.db({0xC7, 0x06});
+    a.dw(static_cast<std::uint16_t>(4U * machine::service::user_tick_vector));
+    a.dw(door_tick_offset);
+    a.db({0x8C, 0x0E});
+    a.dw(static_cast<std::uint16_t>(4U * machine::service::user_tick_vector +
+                                    2U));
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+    init_pic(a);
+    program_timer(a, door_divisor);
+    a.db({0xFB});  // sti
+    a.near_jump(0xE9, "trigger");
+
+    // The point. The machine resumes onto the instruction here when the
+    // batch ends, so it is a NOP and not something that matters.
+    a.pad_to(door_trigger_offset);
+    a.label("trigger");
+    a.db({0x90});  // nop
+    load_ax_from(a, door_saw_first);
+    store(a, 0, reg_ax);
+    load_ax_from(a, door_saw_byte);
+    store(a, 1, reg_ax);
+    load_ax_from(a, door_count);
+    store(a, 2, reg_ax);
+    load_ax_from(a, door_ticked);
+    store(a, 3, reg_ax);
+    exit_with(a, 0x8B);
+
+    // The tick handler, counting in memory. `inc bp` — what every other
+    // program here uses — would be incrementing the routine's own frame
+    // pointer while the routine is inside its frame.
+    a.pad_to(door_tick_offset);
+    a.db({0x2E, 0xFF, 0x06});  // inc word cs:[door_ticks]
+    a.dw(door_ticks);
+    a.db({0xCF});  // iret
+
+    // The routine the seam calls.
+    a.pad_to(door_routine_offset);
+    a.db({0x55, 0x89, 0xE5});     // push bp / mov bp, sp
+    a.db({0x1E, 0x0E, 0x1F});     // push ds / push cs / pop ds
+    load_ax_from(a, door_ticks);  // mov ax, [ticks]
+    a.db({0xA3});
+    a.dw(door_ticks_at_entry);  // mov [ticks_at_entry], ax
+    a.db({0xB9});
+    a.dw(door_delay);  // mov cx, delay
+    a.label("spin");
+    a.jump(0xE2, "spin");         // loop spin
+    load_ax_from(a, door_ticks);  // mov ax, [ticks]
+    a.db({0x2B, 0x06});
+    a.dw(door_ticks_at_entry);  // sub ax, [ticks_at_entry]
+    a.jump(0x74, "no_tick");    // je no_tick
+    store_word_at(a, door_ticked, 1);
+    a.label("no_tick");
+    // And only now the arguments, so that what they read is a frame an
+    // interrupt has already been taken across.
+    a.db({0x8B, 0x46, 0x0C});  // mov ax, [bp+0Ch] — the deepest word
+    a.db({0xA3});
+    a.dw(door_saw_first);
+    a.db({0xC4, 0x7E, 0x06});  // les di, [bp+6]
+    a.db({0x26, 0x8A, 0x05});  // mov al, es:[di]
+    a.db({0x30, 0xE4});        // xor ah, ah
+    a.db({0xA3});
+    a.dw(door_saw_byte);
+    a.db({0xFF, 0x06});
+    a.dw(door_count);          // inc word [count]
+    a.db({0x1F});              // pop ds
+    a.db({0x89, 0xEC, 0x5D});  // mov sp, bp / pop bp
+    a.db({0xCA, 0x08, 0x00});  // retf 8
+
+    a.pad_to(machine_layout::result_offset + 0x10);
+    return build_exe({.initial_cs = 0,
+                      .initial_ip = 0,
+                      .initial_ss = 0,
+                      .initial_sp = 0x0F00,
+                      .min_alloc = 0x0100,
+                      .relocations = {},
+                      .image = a.assemble()});
+  }();
+  return built;
+}
+
 [[nodiscard]] std::vector<machine_program> build_all() {
   std::vector<machine_program> list;
 
@@ -2940,6 +3146,45 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
   }
 
   {
+    // M5-D4 (#188): a seam calls a routine of the program's own, twice,
+    // with a timer interrupt landing inside each call.
+    machine_program p;
+    p.name = "call_door";
+    p.about = "a seam calls the program's own routine, and comes back";
+    p.setup.exe = seam_door_file();
+    p.setup.exe_path = "\\DOOR.EXE";
+    p.setup.seam_definitions = {&seam_door_definition()};
+    p.setup.seams = {"call-door-probe"};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "the deepest word the routine found on its stack",
+         .value = door_first_word},
+        {.what = "the byte it read through the far pointer",
+         .value = door_placed_byte},
+        {.what = "calls made, from one arrival", .value = door_calls},
+        {.what = "a timer interrupt was taken inside the call", .value = 1}};
+    p.exit_code = 0x8B;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "call_door_off";
+    p.about = "and with the seam off: the routine is never entered";
+    p.setup.exe = seam_door_file();
+    p.setup.exe_path = "\\DOOR.EXE";
+    p.setup.seam_definitions = {&seam_door_definition()};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "nothing was found on any stack", .value = 0},
+        {.what = "and no byte was placed", .value = 0},
+        {.what = "no calls were made", .value = 0},
+        {.what = "and no call was there to be interrupted", .value = 0}};
+    p.exit_code = 0x8B;
+    list.push_back(std::move(p));
+  }
+
+  {
     // M5-E1 (#172) as M5-E1a (#186) leaves it: the build's own Encamp
     // Fix, offered on this program's command bar and chosen with a
     // keystroke. One entry per way of asking, so the plain run and the
@@ -3172,6 +3417,24 @@ const machine::seam_definition& seam_probe_host_definition() {
       .points = points};
   return definition;
 }
+
+const machine::seam_definition& seam_door_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(door_file());
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const machine::seam_definition definition{
+      .id = "call-door-probe",
+      .about = "the test seam that calls a routine of the program's own",
+      .fingerprints = fingerprints,
+      .points = door_points};
+  return definition;
+}
+
+const std::vector<std::uint8_t>& seam_door_file() { return door_file(); }
 
 const machine::seam_definition& seam_camp_definition() {
   static const std::string fingerprint = [] {

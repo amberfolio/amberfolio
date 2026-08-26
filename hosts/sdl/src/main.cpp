@@ -822,6 +822,13 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
       // says what to do rather than only what is wrong.
       return "this seam needs a document you have not presented - show it"
              " with --document";
+    case machine::seam_error::call_did_not_return:
+      // Also never an answer to `enable()`: the engine produces it when a
+      // seam called into the program and the call did not come back
+      // (#188), and it means a fact table naming an address that is not
+      // the routine it says it is.
+      return "this seam called into the program and the call did not come"
+             " back";
     case machine::seam_error::point_not_recognized:
       // Never an answer to `enable()` - a handler produces it, at a
       // point, and the host renders it through the seam-event line. Here

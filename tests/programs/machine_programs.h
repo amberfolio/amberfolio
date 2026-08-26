@@ -321,6 +321,15 @@ struct machine_program {
 /// function a player's copy would drive. Only the fingerprint differs,
 /// because that is the field which decides what a set of addresses may be
 /// applied to.
+/// The test seam M5-D4's stand-in drives (#188): one point, whose handler
+/// places a byte and queues two calls to a routine the program carries at
+/// an offset the point's facts name. Unlike the camp entries this handler
+/// is the *test's*, because what is being driven is the engine.
+[[nodiscard]] const machine::seam_definition& seam_door_definition();
+
+/// The call-door stand-in itself, as the MZ file those entries load.
+[[nodiscard]] const std::vector<std::uint8_t>& seam_door_file();
+
 [[nodiscard]] const machine::seam_definition& seam_camp_definition();
 
 /// The camp stand-in itself, as the MZ file those entries load.
