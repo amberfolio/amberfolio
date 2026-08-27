@@ -556,7 +556,12 @@ TEST(SeamEncampFix, LeavesTheRecordsAloneEntirely) {
       status_unhurt);
 }
 
-TEST(SeamEncampFix, RestsADayWhenThePartyIsAlreadyWhole) {
+/// **A party with nothing wrong with it loses no time**, which is the
+/// bug this seam shipped with: it slept a full day for a party that was
+/// already whole, because the day was keeping a signature alive rather
+/// than healing anybody. Nothing to heal and nothing to memorize means
+/// nothing to do.
+TEST(SeamEncampFix, DoesNothingAtAllWhenThereIsNothingToDo) {
   const rig r;
   r.arm();
   r.camp();
@@ -565,9 +570,31 @@ TEST(SeamEncampFix, RestsADayWhenThePartyIsAlreadyWhole) {
 
   r.one_menu_pass(fix_letter);
 
-  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 1u)
-      << "nothing to heal, so the day of slack is the whole of it";
-  EXPECT_EQ(r.keys_waiting(), 1u) << "and the rest is still asked for";
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u) << "no days dialled";
+  EXPECT_EQ(r.keys_waiting(), 0u) << "and no rest asked for";
+  EXPECT_NE(r.status().declined, 0u) << "it says so rather than going quiet";
+}
+
+/// But a spell somebody is holding *pending* is a reason to rest even
+/// when every hit point is where it should be — only time turns it into
+/// one they can cast. The duration is then the program's own, which is
+/// the rest the player's own Rest key would have given them.
+TEST(SeamEncampFix, RestsForTheMemorizationWhenSpellsArePending) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.party({{.status = status_unhurt, .hit_points = 12, .most_hit_points = 12},
+           {.status = status_unhurt,
+            .hit_points = 9,
+            .most_hit_points = 9,
+            .pending_cures = 2}});
+
+  r.one_menu_pass(fix_letter);
+
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u)
+      << "no days of its own: the wrapper's memorization time is the rest";
+  EXPECT_EQ(r.keys_waiting(), 1u);
+  EXPECT_EQ(r.first_key(), rest_keystroke);
 }
 
 TEST(SeamEncampFix, CountsAWoundedMemberWhoseStatusStillHeals) {
@@ -734,8 +761,8 @@ TEST(SeamEncampFix, SpendsNothingOnAMemberRestingCannotHelp) {
 
   r.one_menu_pass(fix_letter);
 
-  EXPECT_EQ(r.keys_waiting(), 1u);
-  EXPECT_EQ(r.first_key(), rest_keystroke) << "nothing to cast at";
+  EXPECT_EQ(r.keys_waiting(), 0u)
+      << "nothing to cast at, and no rest can help them either";
   EXPECT_EQ(r.slot_at(1, 2), 0u) << "and nothing queued back";
 }
 
@@ -874,7 +901,10 @@ TEST(SeamEncampFix, LeavesARestThePlayerAskedForToThePlayer) {
   EXPECT_NE(r.status().declined, 0u);
 }
 
-TEST(SeamEncampFix, PressesRestOnceTheDurationIsDialled) {
+/// A duration on the clock is **not** what makes a rest this seam's.
+/// Point 3 reads a word of the seam's own, so a player who dialled a
+/// duration by hand and pressed Rest gets their own rest screen.
+TEST(SeamEncampFix, DoesNotClaimARestJustBecauseTheClockIsDialled) {
   const rig r;
   r.arm();
   r.camp();
@@ -882,10 +912,32 @@ TEST(SeamEncampFix, PressesRestOnceTheDurationIsDialled) {
 
   r.step_at(point_rest_entry);
 
-  EXPECT_EQ(r.keys_waiting(), 1u);
-  EXPECT_EQ(r.first_key(), rest_keystroke);
+  EXPECT_EQ(r.keys_waiting(), 0u);
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 7u)
-      << "and the duration is left where it was written";
+      << "and the player's own duration is left alone";
+}
+
+/// And a claim this seam made does not outlive the command that made it.
+/// It posts Rest expecting the menu to read it next; if a key the player
+/// typed gets there first, the claim is dropped rather than spent on the
+/// player's own next rest.
+TEST(SeamEncampFix, DropsItsClaimOnARestWhenSomebodyElsesKeyArrives) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.party({{.status = status_unhurt, .hit_points = 15, .most_hit_points = 17}});
+
+  r.one_menu_pass(fix_letter);  // claims a rest and posts Rest
+  ASSERT_EQ(r.keys_waiting(), 1u);
+  r.put_word(bda::segment, bda::keyboard_buffer_head,
+             r.word_at(bda::segment, bda::keyboard_buffer_tail));
+
+  // The menu reads something else instead — the claim goes with it.
+  r.one_menu_pass('V');
+  r.step_at(point_rest_entry);
+
+  EXPECT_EQ(r.keys_waiting(), 0u)
+      << "the rest the player then asks for is the player's";
 }
 
 // --- The fidelity invariant, for this seam ---------------------------------

@@ -1184,13 +1184,28 @@ arrivals, and two keys posted one at each of two of them. And it is why
 this seam is no longer a trigger: a pull is a one-shot latch (§3a), a
 pulled seam gets one act, and one act could not drive two keys.
 
-**The days are the deficit plus one, and never fewer than one.** The heal
-tick counts rest iterations in a counter the camp screen zeroes on entry
-and a rest does not reset, so a second rest in one camp session starts
-part-way through a day and would come up one hit point short. A day of
-slack costs the player nothing they did not ask for. A party that is
-already whole therefore rests one day — which is also what keeps the
-signature above non-zero in the one case where the deficit is.
+**The days are the deficit plus one, and zero when there is no deficit.**
+The heal tick counts rest iterations in a counter the camp screen zeroes
+on entry and a rest does not reset, so a second rest in one camp session
+starts part-way through a day and would come up one hit point short. A
+day of slack costs the player nothing they did not ask for.
+
+**A party that is whole gets no days at all**, and this seam shipped with
+that wrong: it dialled at least one, so choosing the Fix with nobody hurt
+slept a full day for nothing. The day was never the arithmetic's — it was
+keeping point 3's signature non-zero, back when point 3 inferred "this
+rest is mine" from the clock. It reads a word of the seam's own now, the
+clock is free to say zero, and zero leaves the duration the program's own
+wrapper computed: the rest the player's own Rest key would have given
+them.
+
+**With nothing to rest for, the Fix does nothing.** A hit point somebody
+is short and a spell somebody is holding pending are the two reasons to
+rest; with neither, the command declines and says so rather than spending
+the player's day to look busy. Which is a small lesson about signatures:
+one inferred from a field the program owns is cheaper to *read* than a
+word of your own, and can quietly cost the player something to keep
+true.
 
 **What a later Gold Box title's FIX did that this one does not**, which
 #172 asks to be written down: it memorized cure spells for you, cast them
@@ -1324,10 +1339,11 @@ slots are not all whole after all: one holds two wounded fighters and a
 cleric with five ready cures, which is the party this seam had been
 waiting for since M4. Encamped, with the Fix chosen: two cures cast
 through the program's own driver took **15/17 to 17 and 14/18 to 18**,
-the party came out whole, the Fix dialled its one day of slack and
-pressed Rest — and the program answered with an event of its own, the
-city watch moving the party along. Its rules, running inside the rest the
-seam asked for.
+the party came out whole, and the Fix pressed Rest for the memorization
+time the program itself computed — no days of its own, because after the
+cures there was no deficit left to close — and the program answered with
+an event of its own, the city watch moving the party along. Its rules,
+running inside the rest the seam asked for.
 
 **What is still not measured**: nobody has driven a party so hurt that
 the cures run out and the days do the rest — the arithmetic for that is
