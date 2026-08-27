@@ -1154,10 +1154,13 @@ through the program's own note of where that overlay is (§4, #131):
    command in;
 2. **where the menu-bar routine returns** — splice it back out; then, if
    the routine says a command was chosen off the bar and the letter is
-   this seam's, write the days field of the game's own rest clock with
-   the days the party needs and post the camp bar's own Rest key;
-3. **at the rest command's entry**, reached because of that key — if the
-   days field is non-zero, post the rest screen's own Rest key.
+   this seam's, do **one** thing and return: spend a ready cure if there
+   is one to spend and somebody to spend it on (below), or else write the
+   days field of the game's own rest clock with the days the party needs,
+   claim the rest that is about to start, and post the camp bar's own
+   Rest key;
+3. **at the rest command's entry**, reached because of that key — if this
+   seam claimed the rest, post the rest screen's own Rest key.
 
 Then it is out of the way. The program rests: time passes on the game's
 calendar, pending spells are memorized at the game's own rate, hit points
@@ -1166,23 +1169,36 @@ applier, and its own wandering-monster checks roll against its own odds.
 A monster that interrupts takes the party out of camp, exactly as it does
 a rest a player asked for by hand.
 
-**Point 3 needs no memory of point 2, and that is the design's whole
-trick.** The days field is zero whenever a rest begins — camp entry
-zeroes it, the end of a rest zeroes it, and the rest command's own set-up
-writes the three fields *below* days and never days itself. A player
-cannot have dialled it yet either: the Inc key that writes it lives on
-the rest screen, which has not been drawn when point 3 runs. So a
-non-zero days field at the rest command's entry is **this seam's own
-signature**, written where the program keeps it and read back out of the
-machine. There is no latch, no handler-local flag, and nothing outside
-the machine remembering anything between the two.
+**Point 3 has to know that the rest about to start is this seam's**, and
+one word of the seam's own says so (§3): point 2 sets it as it posts the
+Rest key, point 3 reads it. There is no latch and no handler-local flag.
 
-That is also what disposes of the constraint the first cut of this seam
-ran into. The program **drains its keyboard after every key it reads**
-(§3), so a handler that posts two keys posts one; three points are three
-arrivals, and two keys posted one at each of two of them. And it is why
-this seam is no longer a trigger: a pull is a one-shot latch (§3a), a
-pulled seam gets one act, and one act could not drive two keys.
+**It was the program's own field until #192**, and the swap is the most
+useful thing in this section. The days field is zero whenever a rest
+begins — camp entry zeroes it, the end of a rest zeroes it, the rest
+command's own set-up writes the three fields *below* days and never days
+itself, and the Inc key that would let a player dial it lives on a screen
+that has not been drawn when point 3 runs. So a non-zero days field at
+the rest command's entry was a **signature the program itself kept**,
+read back out of the machine and remembered nowhere, which is the shape
+§3 tells you to reach for first. It was the better design in every
+respect but one, and the one is below.
+
+Note what the replacement costs, because §3 says to reach for a seam's
+own words *last*: this is sequence position, which is the thing those
+words are explicitly not for, and it is configuration rather than machine
+state — the serialization never sees it. Nothing in this build notices,
+because a recording replays from the start and a seam's state is dropped
+on `enable()`. It is a debt against a future in which machine state is
+restored mid-sequence, and it is written here rather than discovered
+there.
+
+**The three points also dispose of the constraint** the first cut of this
+seam ran into. The program **drains its keyboard after every key it
+reads** (§3), so a handler that posts two keys posts one; three points
+are three arrivals, and two keys posted one at each of two of them. And
+it is why this seam is no longer a trigger: a pull is a one-shot latch
+(§3a), a pulled seam gets one act, and one act could not drive two keys.
 
 **The days are the deficit plus one, and zero when there is no deficit.**
 The heal tick counts rest iterations in a counter the camp screen zeroes
@@ -1192,9 +1208,9 @@ day of slack costs the player nothing they did not ask for.
 
 **A party that is whole gets no days at all**, and this seam shipped with
 that wrong: it dialled at least one, so choosing the Fix with nobody hurt
-slept a full day for nothing. The day was never the arithmetic's — it was
-keeping point 3's signature non-zero, back when point 3 inferred "this
-rest is mine" from the clock. It reads a word of the seam's own now, the
+slept a full day for nothing. That is **the one respect** promised above.
+The day was never the arithmetic's — it was keeping the borrowed
+signature non-zero. With point 3 reading a word of the seam's own, the
 clock is free to say zero, and zero leaves the duration the program's own
 wrapper computed: the rest the player's own Rest key would have given
 them.
@@ -1208,16 +1224,27 @@ word of your own, and can quietly cost the player something to keep
 true.
 
 **What a later Gold Box title's FIX did that this one does not**, which
-#172 asks to be written down: it memorized cure spells for you, cast them
-through the game's own cast driver, and in at least one title made room
-by forgetting ready spells that were not cures. The first two are a
-different shape of seam rather than a matter of taste — one that
-memorized cures would owe the player their own loadout back afterwards.
-The third this project would refuse anyway: the game has no by-hand
+#172 asks to be written down. The list was three things and #189 closed
+one of them, so it is two:
+
+* it **memorized cure spells for you**, filling empty slots with cures so
+  that the rests were spent on healing magic; and
+* in at least one title it **made room** by forgetting ready spells that
+  were not cures.
+
+The first is refused by the promise the next subsection makes rather than
+by taste: a seam that memorized cures into the player's slots would owe
+them their loadout back afterwards, and would have to be trusted to give
+it. The second this project would refuse anyway — the game has no by-hand
 forget, so a Fix that forgot spells would be changing the rules rather
-than saving keystrokes. What the player keeps is the half that costs
-nothing: whatever they had queued for memorization is memorized during
-the rest this seam pays for.
+than saving keystrokes.
+
+**Casting is no longer on this list.** It was, and the entry argued that
+a cast loop was a different shape of seam because it would owe the player
+their spells back; #189 landed it by never taking any. That is the
+subsection immediately below. What the player keeps either way is the
+half that costs nothing: whatever they had queued for memorization is
+memorized during the rest this seam pays for.
 
 #### What it spends before it rests (M5-E1b, #189)
 

@@ -237,6 +237,13 @@ mkpair "$r" seamed plain aa bb cc dd
 contrast "$r"
 expect_code "a pair that is identical throughout fails" 1
 expect_says "and says the difference made none" "made no difference"
+# Nothing verified here either, but for the opposite reason to the absent
+# disk above, and the summary must not confuse the two: it used to say
+# "every check was skipped" whenever nothing passed, which sends somebody
+# looking for a missing disk when what they have is a divergence.
+expect_silent "and does not call a failure a skip" "every check was skipped"
+expect_says "and says the checks failed" "every check failed"
+expect_says "and still points at the re-record rule" "be re-recorded"
 
 r=$(mkrepo late)
 mkpair "$r" plain "" aa bb cc dd

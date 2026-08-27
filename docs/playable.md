@@ -748,36 +748,43 @@ and the trail that makes it readable, beside leg 5's `49F3`:
 | `6DCA` | the days field of the rest clock — what the Fix dials |
 
 What it is evidence for: the command appearing on the game's own bar, the
-letter being taken back off the game's own menu-bar routine, the rest
-being dialled and started, and the game going on by itself.
+letter being taken back off the game's own menu-bar routine — and, since
+#192, the command **declining**, because slot C's party is whole.
 
 ```
 amberfolio: watch frame=009868 ds=0CDC 49F3=04 6DDA=00 6DCA=00
 amberfolio: seam encamp-fix armed
 amberfolio: watch frame=010391 ds=0CDC 49F3=02 6DDA=00 6DCA=00
-amberfolio: watch frame=010874 ds=0CDC 49F3=02 6DDA=00 6DCA=01
 amberfolio: seam encamp-fix inert point_not_recognized
-amberfolio: watch frame=010925 ds=0CDC 49F3=02 6DDA=01 6DCA=01
-amberfolio: watch frame=010959 ds=0CDC 49F3=02 6DDA=01 6DCA=00
-amberfolio: watch frame=011426 ds=0CDC 49F3=02 6DDA=00 6DCA=00
-amberfolio: seam encamp-fix armed fired=5
+amberfolio: seam encamp-fix armed fired=2
 ```
 
 Read it in order. `armed` at 10360 is the camp screen's **overlay**
 arriving — the seam's three points live in it and are resolved through
 the program's own note of where it is (`docs/seams.md` §4), so until that
-word is written there is nothing to arm. `49F3=02` is camp. `6DCA=01` at
-10874 is the seam having taken the letter and dialled the rest: one day,
-because slot C's party is whole and the day is the slack the arithmetic
-adds. `6DDA` up at 10925 and down at 11426 is the rest itself, and the
-camp menu is back on the screen at the end of it.
+word is written there is nothing to arm. `49F3=02` at 10391 is camp. And
+then **nothing else in the trail moves at all**: the days field `6DCA`
+and the rest-screen flag `6DDA` stay at zero to the end of the run.
+
+That is the whole of what #192 changed, seen from outside. This leg used
+to show `6DCA=01` here and a day of rest after it, and the day was never
+the arithmetic's — it was keeping point 3's signature non-zero
+(`docs/seams.md` §10). Two things make a rest worth asking for, a hit
+point somebody is short and a spell somebody is holding pending, and slot
+C's party has neither. So the Fix declines rather than spending a day of
+the player's game to look busy.
 
 `inert point_not_recognized` is the point at the menu-bar routine's
-return **declining a letter that is not the Fix's** — reported once per
-enable, and in this run it is the `R` the seam itself posted coming back
-round the loop. `fired=5` is the five acts: the bar spliced on each of
-three passes through the menu, the letter taken on the first, and the
-rest screen's own Rest pressed at the rest command's entry.
+return declining — **reported once per enable, and it does not say which
+pass it was**, which is worth knowing before reading much into it: the
+same line comes out of a run that presses the camp menu's own `R` and
+never asks for the Fix at all. What the whole-party case guarantees is
+that there is at least one such decline, on the pass where the Fix's own
+letter came back and the command found nothing to rest for.
+
+`fired=2` is the two acts, and both of them are the splice: the bar built
+on each of two passes through the menu, with no key posted, no field
+written and nothing else touched.
 
 **And it is on the screen.** With the seam on, the camp menu's bar reads
 
@@ -794,14 +801,13 @@ own commands and goes round again. That is the whole of the difference
 `tests/sessions/camp.rec` and `camp-fix.rec` record, and the two
 recordings differ by one keystroke at one tick.
 
-**A hit point came back, and the program said so.** During the rest the
-rest screen's own clock counts a day down — `REST TIME: 00:16:05`, then
-`00:10:16`, then `00:04:50`, then `00:00:00` — and the program draws its
-own `THE WHOLE PARTY IS HEALED`, which is the message its heal tick
-prints when a rest day's worth of iterations have passed and it has
-applied a hit point to every member through its own applier. Nothing in
-the seam draws any of that; the seam dialled a duration and pressed a
-key.
+**The healing is the next leg's evidence and no longer this one's.**
+Slot C's party is whole, so there is no hit point here for the program's
+own heal tick to give back and nothing for this run to show. That is the
+right behaviour and it is a worse demonstration, which is exactly why the
+wounded leg below exists — and why `tests/sessions/camp-fix.rec` now says
+in its own descriptor that it pins the command *appearing* and no longer
+pins the command *working*.
 
 **And the same leg on the browser's machine**, which is what #172's exit
 criterion asks for. `drive.mjs` takes the same flags leg 6 gives it:
@@ -816,13 +822,16 @@ node build/wasm/hosts/web/Debug/drive.mjs <your-directory> START.EXE \
 amberfolio: seam encamp-fix armed
 amberfolio: seam encamp-fix inert module_not_resident
 amberfolio: seam encamp-fix inert point_not_recognized
-amberfolio: seam encamp-fix armed fired=5
+amberfolio: seam encamp-fix armed fired=2
 ```
 
-The same five acts, and the same two `inert` sentences — one of them the
+The same two acts, and the same two `inert` sentences — one of them the
 overlay not being in memory yet, which is the fail-closed direction a
 module-qualified point has and which this host reaches by a slightly
-different route through the loading.
+different route through the loading. Two hosts that share no compiler, no
+standard library and no SHA-256 implementation agree about what the seam
+did *and* about what it declined to do, which is what #172's exit
+criterion asks for.
 
 ### The same leg on a wounded party (M5-E1b, #189)
 
@@ -844,17 +853,24 @@ drawing is drained and lost.
 
 ```
 amberfolio: seam encamp-fix armed
-amberfolio: watch frame=012055 ds=0CDC 6DCA=01
-amberfolio: watch frame=012175 ds=0CDC 6DCA=00
+amberfolio: watch frame=010621 ds=0CDC 49F3=02 6DDA=00 6DCA=00
+amberfolio: seam encamp-fix inert point_not_recognized
+amberfolio: watch frame=012107 ds=0CDC 49F3=02 6DDA=01 6DCA=00
+amberfolio: watch frame=012175 ds=0CDC 49F3=02 6DDA=00 6DCA=00
 amberfolio: seam encamp-fix armed fired=7
 ```
+
+`6DDA` up at 12107 and down at 12175 is the program's own rest, and
+`6DCA` never leaves zero for the whole run. That is the reading that
+matters here, and this trail was showing it backwards until now: the rest
+happens, and **no day is dialled to make it happen**.
 
 Seven acts: the bar spliced on each pass, two cures cast, and the rest.
 The party comes out **17 of 17 and 18 of 18** — the cures closed both
 deficits, so the days field stays at 0 and the rest is the memorization
 time the program's own wrapper computed. Then the program answers it with
-an event of its own —
-the city watch rousting the party and asking whether to go or stay. Its
+an event of its own — the city watch rousting the party and asking
+whether to go or stay. Its
 rules, running inside the rest the seam asked for, which is the whole of
 what "the game's own routines do the work" is supposed to mean.
 
@@ -971,16 +987,20 @@ what it skips would be worth less than one that says so.
   through. What a dungeon exercises is the same 3D view, the same ECL
   events and the same movement code the city already runs over different
   data — and the map edge itself, which *was* a mechanism, is covered.
-- **A wounded party at a camp screen** (#172). Leg 7 drives the Encamp
-  Fix end to end and the program's own heal tick fires and says so, but
-  every shipped save slot's party is whole — so the days field the Fix
-  dials has never been above what one round of cures left, and the
-  arithmetic
-  that decides it has never been exercised on a real party. The worst
-  deficit over the members resting can help, plus a day, is covered by
-  tests against a roster a test writes, which is exactly the kind of
+- **A party the cures cannot finish** (#172, #189). Slot B closed the
+  older half of this gap: it is wounded, and leg 7's second half drives
+  the Fix over it and watches two real cures land. What no shipped slot
+  offers is a party hurt *badly enough that the cures run out* and the
+  days have to do the rest — so the days arithmetic, the worst deficit
+  over the members resting can help plus one, has still only ever been
+  exercised against a roster a test writes, which is exactly the kind of
   cover this document exists to distrust. What it needs is a party that
-  has been in a fight and survived it.
+  has been in a hard fight and survived it.
+- **The committed camp pair no longer pins the Fix working** (#172,
+  #192). Its script loads slot C, whose party is whole, so the Fix now
+  declines and the pair's two halves diverge on the keystroke rather than
+  on the healing. `tests/sessions/README.md` says so at the pair, and
+  closing it is the same wounded party as the entry above.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam

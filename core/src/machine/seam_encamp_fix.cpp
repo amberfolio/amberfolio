@@ -118,16 +118,31 @@
 // day through the game's own applier, and the game's own wandering
 // monsters roll against the game's own odds. Nothing else is touched.
 //
-// **Point 3 needs no memory of point 2, and that is the design's whole
-// trick.** The days field is zero whenever a rest begins — camp entry
+// **Point 3 has to know the rest about to start is this seam's**, and one
+// word of the seam's own says so: point 2 sets `scratch_rest_is_ours` as
+// it posts the Rest key, and point 3 reads it. No latch, no
+// handler-local flag.
+//
+// **It was the program's own field until #192**, and the swap is worth
+// keeping. The days field is zero whenever a rest begins — camp entry
 // zeroes it, the end of a rest zeroes it, and the rest command's own
 // set-up writes the three fields below it and never it. A player cannot
 // have dialled days yet either: the Inc key that writes it lives on the
 // rest screen, which the rest command has not drawn at the moment point 3
-// runs. So **a non-zero days field at the rest command's entry is this
-// seam's own signature**, written where the program keeps it and read
-// back out of the machine. There is no latch, no handler-local flag, and
-// nothing outside the machine remembering anything between the two.
+// runs. So a non-zero days field at the rest command's entry was a
+// **signature the program itself kept**, read back out of the machine and
+// remembered nowhere, which is the shape `docs/seams.md` §3 says to reach
+// for first. It was the better design in every respect but one: the
+// signature had to be non-zero, and keeping it so cost a whole party a
+// day of their game (below).
+//
+// What the replacement costs is worth naming too, because §3 says to
+// reach for a seam's own words *last*. This is sequence position, which
+// is the one thing those words are explicitly not for, and it is
+// configuration rather than machine state — the serialization never sees
+// it. Nothing in this build notices: a recording replays from the start
+// and a seam's words are dropped on `enable()`. It is a debt against a
+// future where machine state is restored mid-sequence.
 //
 // That is also what disposes of the constraint that shaped the first cut
 // of this seam (`docs/seams.md` §3): the program drains the keystroke
@@ -180,27 +195,37 @@
 // What a later Gold Box title's FIX did that this one does not
 // ------------------------------------------------------------
 //
-// #172 asks for this list at the point of definition, and it is short:
+// #172 asks for this list at the point of definition. It was three items
+// and M5-E1b (#189) closed one, so it is two:
 //
 //   * **it memorized cure spells for you**, filling empty slots with
 //     cures so the rests were spent on healing magic;
-//   * **it cast them** afterwards, through the game's own cast driver,
-//     and looped until the party was whole;
 //   * and in at least one title it **made room** by forgetting ready
 //     spells that were not cures.
 //
-// The first two are a loop, and a loop is a different shape of seam: it
-// would have to put the player's own loadout back afterwards, and leaving
-// somebody's memorized spells replaced by cures because the mechanism
-// could not undo it is precisely the kind of thing PLAN.md §5's
-// native-feel rule refuses. The third one this project would refuse
-// anyway, for the reason the earlier implementation gave: the game has no
-// by-hand forget, so a Fix that forgot spells would be changing the rules
-// rather than saving keystrokes.
+// The first is refused by the promise above rather than by taste. A seam
+// that memorized cures into the player's slots would owe them their own
+// loadout back afterwards, and leaving somebody's memorized spells
+// replaced by cures because the mechanism could not undo it is precisely
+// the kind of thing PLAN.md §5's native-feel rule refuses. The second
+// this project would refuse anyway, for the reason the earlier
+// implementation gave: the game has no by-hand forget, so a Fix that
+// forgot spells would be changing the rules rather than saving
+// keystrokes.
 //
-// What the player keeps is the half that costs nothing: whatever they
-// queued for memorization before pressing the Fix is memorized during the
-// rest it pays for, by the program, on the program's own clock.
+// **Casting used to be the third item on this list**, and the entry
+// argued that a cast loop was a different shape of seam because it would
+// owe the player their spells back. #189 landed it by never taking any:
+// only cures a member already holds ready are spent, one is queued back
+// before each is cast, and the loadout is equal at every instant rather
+// than at the end. The objection was real and the answer was to remove
+// what it objected to, which is worth remembering the next time a list
+// like this one reads as settled.
+//
+// What the player keeps either way is the half that costs nothing:
+// whatever they queued for memorization before pressing the Fix is
+// memorized during the rest it pays for, by the program, on the program's
+// own clock.
 //
 //
 // What it is not yet
@@ -218,13 +243,20 @@
 // and the prompt is a stack byte in a frame that is gone before the loop
 // turns over.
 //
-// **Nobody has watched a hit point come back on a driven run yet.** The
-// mechanism has a public test (`tests/core/machine/seam_encamp_test.cpp`
-// drives the handlers over a camp the test writes, and `tests/programs`'
-// camp stand-in drives the same shape through the whole machine on all
-// four targets). The arithmetic — one hit point per member per day — is a
-// fact read off the program's own rest loop and not a measurement.
-// `docs/seams.md` §10 says which of the two each claim is.
+// **Hit points have come back on a driven run**, which they had not when
+// this comment was first written: `docs/playable.md` leg 7's second half
+// drives a wounded party on a player's copy and watches two of the
+// program's own cures land. What has *not* been driven is a party hurt
+// badly enough that the cures run out and the days have to finish the
+// job — so the arithmetic below, the worst deficit plus one, is still
+// only exercised against rosters the unit suite writes. The mechanism
+// has a public test either way
+// (`tests/core/machine/seam_encamp_test.cpp` drives the handlers over a
+// camp the test writes, and `tests/programs`' camp stand-in drives the
+// same shape through the whole machine on all four targets), and one
+// hit point per member per day remains a fact read off the program's own
+// rest loop rather than a measurement. `docs/seams.md` §10 says which of
+// the two each claim is.
 
 #include <array>
 #include <cstdint>
