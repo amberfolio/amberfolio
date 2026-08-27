@@ -71,6 +71,10 @@
 //     be (PLAN.md §5, item 3 — the automap hotkey and the Encamp Fix both
 //     want exactly this).
 //   * **Control**, by moving IP. `seam_context::redirect()` spells it.
+//   * **A call into the program**, through
+//     `seam_context::call_program()` — the mechanism M5-D4 (#188) added,
+//     and the one that lets a seam put text on the game's screen that
+//     the *game* drew. See "Calling the program" below.
 //   * **A host service**, through `seam_context::call_host()` — the
 //     callout M5's journal and automap consume. Since M5-D1 (#169) both
 //     hosts attach one (`hosts/common/host_services.h`), so a call
@@ -85,6 +89,99 @@
 // — a seam whose preconditions are not met stays inert and *says so*
 // (PLAN.md §5's fail-closed rule), through `seam_event` on the diagnostics
 // channel and through `status()` for a host that asks.
+//
+//
+// Calling the program (#188)
+// --------------------------
+//
+// Memory surgery puts pixels on the screen. It cannot make them look like
+// the game's: the program draws text with **its own font**, a far pointer
+// it keeps in its data segment, and this machine's font (font.h) is
+// deliberately not that one — every glyph of it was drawn for this
+// project, because shipping somebody else's bitmaps is what the
+// clean-content rule forbids. A seam that rasterized its own glyphs would
+// put visibly foreign lettering beside the game's on the same screen.
+//
+// So a seam that wants text on the game's screen **asks the game to draw
+// it**. `call_program()` queues a call to one of the program's own
+// routines; `place_bytes()` puts the arguments that are not numbers — a
+// string — where the program can read them.
+//
+// It is a **batch**, and that is the design decision worth writing down.
+// A handler is a plain function pointer with nowhere to keep "I am
+// half-way through drawing a report", and a report is a frame and several
+// lines. So a handler queues the whole sequence in one arrival and hands
+// it over; the engine runs the calls one after another and the handler is
+// never re-entered part-way. Nothing about which call is next lives
+// outside the machine except the queue itself, which exists only while
+// the batch does.
+//
+// What the engine does with a batch, in order:
+//
+//   1. **Snapshots the register file** — every word of it, IP and SP
+//      included — at the moment the handler returns.
+//   2. `place_bytes()` has already lowered SP over its bytes, so an
+//      interrupt taken during the batch pushes *below* them and they are
+//      the program's to read for as long as the batch lasts.
+//   3. For each call: pushes its words in the order given (the first is
+//      the deepest, which is the order the program's own callers push
+//      in), then a far return address pointing at
+//      `service::call_return_offset` — an address in the BIOS region that
+//      is not a stub, is in no vector, and nothing ever executes — and
+//      sets CS:IP to the routine.
+//   4. Recognises that return address at a step boundary, and either sets
+//      up the next call or **restores the snapshot**, at which point the
+//      machine executes the instruction it was about to execute before
+//      the handler ran.
+//
+// The program's routines are far and **clean their own arguments**
+// (`retf N`), so the engine builds a frame and never tears one down.
+// Everything the batch leaves behind is what the routines themselves did.
+//
+// Three properties this has to have, and does:
+//
+//   * **An interrupt during the batch is survivable**, because the frame
+//     is one the program itself could have built, on the program's own
+//     stack, and the machine's own INT 8 and INT 9 land below it.
+//   * **A batch finishes even if the seam is switched off while it
+//     runs.** You cannot un-call a call: the machine has a half-finished
+//     frame on its stack and the only honest thing is to let it return.
+//     `armed()` therefore stays true while a batch is outstanding.
+//   * **It cannot hang the host.** A routine that never returns would
+//     otherwise be an emulator that never comes back; the batch carries a
+//     step budget, and exceeding it restores the snapshot and reports
+//     `call_did_not_return` rather than waiting forever.
+//
+// A batch is *not* machine state: the snapshot and the queue are the
+// engine's, `reset()` drops them, and the serialization never sees them.
+// What is machine state is everything the batch did to the machine, which
+// is the point of it.
+//
+//
+// A seam's own few words (#189)
+// -----------------------------
+//
+// Every seam in this tree until M5-E1b held **no state at all**, and that
+// is the shape to reach for first: `seam_encamp_fix.cpp`'s three points
+// know where they are in a sequence because they read it out of the
+// machine — a field the program leaves in a known state, written with the
+// value the seam actually wanted. A handler that remembers nothing cannot
+// remember wrongly, and a run that ends mid-sequence leaves nothing behind
+// to be stale.
+//
+// Some sequences cannot be read back. A command that says what it *did* —
+// how much it restored, how much it spent — is comparing the machine now
+// against the machine before, and "before" is not in the machine any more.
+// So a seam may keep `scratch_words` words of its own, through
+// `seam_context::scratch()` and `set_scratch()`.
+//
+// **It is configuration, exactly as the enable and the latch are**:
+// `reset()` and `clear()` drop it, `enable()` starts it fresh, the
+// serialization never sees it, and a run in which the seam is off never
+// has any. It is not a back door for machine state — a seam that kept a
+// *copy* of something the machine holds would have two of them, and the
+// second one would be the wrong one the first time they disagreed. Keep
+// in it only what the machine has stopped holding.
 //
 //
 // The trigger: the host -> seam direction (#161)
@@ -234,6 +331,7 @@
 #include <span>
 #include <string_view>
 
+#include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/document.h"
@@ -428,6 +526,12 @@ enum class seam_reason : std::uint8_t {
   /// silently corrupted a frame would show up as a wrong number on a
   /// character sheet, three layers from its cause.
   point_not_recognized,
+  /// A seam called into the program and the call did not come back
+  /// inside the batch's step budget (#188). The engine put the machine
+  /// back the way it found it and said so, because the alternative is an
+  /// emulator that never returns — and a fact table that named the wrong
+  /// address is exactly how that would happen.
+  call_did_not_return,
   /// More points than the engine has room for. A build-time mistake, not
   /// something a caller can recover from.
   too_many_points,
@@ -782,6 +886,41 @@ class seam_context {
   /// service is attached — the seam stays inert rather than guessing.
   bool call_host(seam_host_service which, std::uint32_t argument);
 
+  /// Put `bytes` where the program can read them for the length of this
+  /// batch of calls, and answer the far pointer that names them (#188).
+  ///
+  /// They go on the machine's own stack, below what the program is using
+  /// and above where an interrupt taken during the batch would push, and
+  /// they are gone when the batch ends. That is what a Pascal string a
+  /// seam invented needs and what it must not have: somewhere the
+  /// program can read it from, and nowhere permanent.
+  ///
+  /// False, and nothing written, if the batch has no room left or the
+  /// stack has not got the space — a seam that cannot say what it wanted
+  /// to say declines, like any other unmet precondition.
+  bool place_bytes(std::span<const std::uint8_t> bytes, std::uint16_t& segment,
+                   std::uint16_t& offset);
+
+  /// Queue a call to the program's own routine at `segment:offset`, with
+  /// `words` pushed in the order given — the first the deepest, which is
+  /// the order the program's own callers push in (#188).
+  ///
+  /// The call does not happen here. It happens after this handler
+  /// returns, with the others queued beside it, and this handler is not
+  /// re-entered: see "Calling the program" at the top of this file for
+  /// why a batch rather than a call.
+  ///
+  /// False, and nothing queued, if the batch is full or `words` is longer
+  /// than a call may be.
+  bool call_program(std::uint16_t segment, std::uint16_t offset,
+                    std::span<const std::uint16_t> words);
+
+  /// One of this seam's own words (#189). Zero until something is put
+  /// there, and zero again after `enable()`. `slot` past the end reads
+  /// zero and writes nothing.
+  [[nodiscard]] std::uint16_t scratch(unsigned slot) const noexcept;
+  void set_scratch(unsigned slot, std::uint16_t value) noexcept;
+
   /// "I was reached, and what is here is not what my facts describe."
   ///
   /// A handler calls this instead of acting when a precondition it can
@@ -843,6 +982,39 @@ class seam_engine {
 
   /// Points armed at once, across every enabled seam.
   static constexpr std::size_t max_points = 32;
+
+  /// What a batch of calls into the program may hold (#188). A report is
+  /// a framed box and a handful of lines, so twelve calls of eight words
+  /// each is that with room over; the byte arena is the strings those
+  /// lines name, and a screen is forty columns.
+  static constexpr std::size_t max_calls = 12;
+  static constexpr std::size_t max_call_words = 8;
+  static constexpr std::size_t max_call_bytes = 256;
+
+  /// Words of its own a seam may keep between arrivals (#189). Eight is
+  /// what the Encamp Fix's report needs — what it spent, what it
+  /// restored, when it started — and small enough that a seam reaching
+  /// for a ninth is a seam that should be reading the machine instead.
+  static constexpr unsigned scratch_words = 8;
+
+  /// How many step boundaries a batch may take before the engine decides
+  /// the call is not coming back.
+  ///
+  /// **A bound against *never*, not against slow**, and the difference
+  /// cost a day. The first cut said a quarter of a million, reasoning
+  /// that drawing a box and six lines is a few thousand instructions.
+  /// Then a seam called the program's own cast driver, which repaints
+  /// the screen it is on — and a repaint reads art off the disk. The
+  /// call was abandoned every time, the machine was put back every time,
+  /// and the seam looked broken when the engine was the thing that was
+  /// wrong. Measured afterwards, that one call costs between one and two
+  /// million steps.
+  ///
+  /// So: sixteen million, an order of magnitude past the worst thing
+  /// anything here has asked for, and still only some seconds of virtual
+  /// time — far inside how long a person would wait before deciding the
+  /// emulator had stopped.
+  static constexpr std::uint32_t max_call_steps = 16'000'000;
 
   /// `log` may be null; the engine does the same thing either way, and
   /// `machine` hands it the sink it was built with.
@@ -955,7 +1127,15 @@ class seam_engine {
 
   /// Whether any point is armed. The whole of what a step costs when
   /// nothing is on.
-  [[nodiscard]] bool armed() const noexcept { return armed_ != 0; }
+  /// Whether the engine has anything to do at a step boundary.
+  ///
+  /// A batch of calls counts, and not only because it has to be driven:
+  /// a seam switched off in the middle of one leaves a half-finished
+  /// frame on the machine's stack, and the only honest thing is to let it
+  /// return (#188). You cannot un-call a call.
+  [[nodiscard]] bool armed() const noexcept {
+    return armed_ != 0 || call_.active;
+  }
 
   /// Run whatever is armed at `at`, if anything. Called from
   /// `machine::step()` at the boundary, only when `armed()`.
@@ -1090,6 +1270,10 @@ class seam_engine {
     bool waiting{false};
     ticks pulled_at{};
     ticks waited{};
+    /// The seam's own words (#189). Configuration like everything else
+    /// here: cleared by `enable()`, dropped by `reset()`, never
+    /// serialized.
+    std::array<std::uint16_t, scratch_words> scratch{};
     /// How many times a handler of this seam has declined
     /// (`seam_context::decline`). Zero means it has not, which is what
     /// the diagnostics channel's report-once test reads; the count
@@ -1118,6 +1302,62 @@ class seam_engine {
     /// offered at every step boundary while its seam's latch is set.
     bool at_every_step{false};
   };
+
+  /// One queued call: where, and the words to push before it.
+  struct queued_call {
+    std::uint16_t segment{};
+    std::uint16_t offset{};
+    std::uint8_t words{};
+    std::array<std::uint16_t, max_call_words> word{};
+  };
+
+  /// A batch of calls into the program, outstanding (#188).
+  ///
+  /// **Not machine state**, exactly as a seam's enable and its latch are
+  /// not: `reset()` drops it, the serialization never sees it, and a run
+  /// in which no seam calls anything never has one. What *is* machine
+  /// state is everything the calls did, which is the point of them.
+  struct call_batch {
+    /// A handler has queued something, or a call is running.
+    bool active{false};
+    /// The first call has been set up, so the machine is inside one and
+    /// the return address is worth comparing against.
+    bool running{false};
+    std::size_t count{};
+    std::size_t next{};
+    std::array<queued_call, max_calls> call{};
+    /// The register file as it was when the handler returned — every
+    /// word, IP and SP included. Restoring it is how the machine gets
+    /// back to the instruction it was about to execute.
+    cpu::registers saved{};
+    /// Which seam's, for the diagnostics line if the batch has to be
+    /// abandoned.
+    std::string_view owner{};
+    /// Bytes `place_bytes()` has put on the machine's stack for this
+    /// batch, against `max_call_bytes`. Counted across the batch and not
+    /// per call: the bound that matters is how much of the program's
+    /// stack a seam may stand on, and ten small strings are as much of
+    /// it as one large one.
+    std::size_t placed{};
+    /// Step boundaries seen since the batch began, against
+    /// `max_call_steps`. A routine that never returns is a fact table
+    /// that named the wrong address, and it must not be a host that
+    /// never returns.
+    std::uint32_t steps{};
+  };
+  call_batch call_{};
+
+  /// Begin a batch if one is not already open: snapshot the register
+  /// file, so that whatever the calls do, the machine can be put back.
+  void open_batch(machine& box, std::string_view id) noexcept;
+
+  /// Set up the next queued call, or — when there is none left — restore
+  /// the snapshot and close the batch. True when the batch is finished,
+  /// which is when the caller offers the point again (#189).
+  bool advance_batch(machine& box) noexcept;
+
+  /// Put the machine back and drop the batch, with a line saying why.
+  void abandon_batch(machine& box, seam_reason why) noexcept;
 
   /// The word at `address`, or zero if it is not wholly inside the RAM
   /// the engine was handed. Zero is the same answer as "the module is

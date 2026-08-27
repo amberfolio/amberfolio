@@ -57,6 +57,7 @@ add_executable(amberfolio-core-tests
   core/machine/replay_test.cpp
   core/machine/report_test.cpp
   core/machine/scheduler_test.cpp
+  core/machine/seam_call_test.cpp
   core/machine/seam_cheats_test.cpp
   core/machine/seam_encamp_test.cpp
   core/machine/seam_test.cpp

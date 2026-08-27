@@ -2112,43 +2112,67 @@ void probe_call_automap(machine::machine& box, machine::seam_context& ctx) {
 
 // --- 10. The camp stand-in ------------------------------------------------
 //
-// M5-E1 (#172). The Encamp (F)ix is a seam that reads a party out of the
-// program's data segment, writes one word of the game's own rest clock,
-// and posts the game's own Rest key — and #172 asks for a stand-in for
-// that menu here, so the whole mechanism runs on all four targets and not
-// only where GoogleTest builds.
+// M5-E1 (#172), rebuilt for M5-E1a (#186). The Encamp (F)ix puts a command
+// on the camp screen's own bar, watches for the letter coming back off the
+// program's menu-bar routine, and drives the game's own rest with two
+// keystrokes — and #172 asks for a stand-in for that menu here, so the
+// whole mechanism runs on all four targets and not only where GoogleTest
+// builds.
 //
 // **It is the real handler.** The definition below is the build's own
 // `encamp-fix`, copied with this program's fingerprint in place of the
-// game's and a different id, so what this program drives is the same
-// function a player's copy would — its guard, its arithmetic, its writes.
-// Only the fingerprint is the test's, because a fingerprint is what
-// decides which binary a set of addresses may be applied to and this
-// binary is not that one.
+// game's and a different id, so what this program drives is the same three
+// functions a player's copy would — their guards, their splice, their
+// arithmetic, their writes. Only the fingerprint is the test's, because a
+// fingerprint is what decides which binary a set of addresses may be
+// applied to and this binary is not that one.
 //
-// The program lays a camp out at the offsets the seam's facts name, in
-// its own segment, and then behaves like the menu: it polls for a key and
-// stores what it got beside what the clock now says.
+// The seam's points are addresses in an overlay, resolved through the word
+// the program's overlay manager keeps its whereabouts in (#131). So this
+// stand-in is its own overlay manager: it writes its own code segment into
+// that word, and lays its three routines out at the offsets the seam's
+// facts name — which is why the image below is nearly eight kilobytes of
+// mostly nothing, and why every stretch of it is jumped over rather than
+// fallen through.
 //
-//         push cs / pop ds
-//         <the camp: mode, the rest-screen flag, the clock, the
-//          countdown block, and a two-member roster>
+//         <lay the camp out: the mode byte, a command bar of this
+//          program's own words, the prompt on the frame, the clock,
+//          and a two-member roster>
+//         <write CS into the manager's word>
+//         jmp  menu_loop
+//
+//   0760: the manager's word
+//
+//   077A: rest_entry:                    ; the game's Rest command
+//         mov  ah, 00h / int 16h         ; the seam posts 'R' on the way in
+//         mov  [result+0], ax
+//         jmp  finish
+//
+//   1F06: menu_loop:                     ; the seam splices the bar here
+//         mov  ax, [bar] / xor ah, ah
+//         mov  [result+3], ax            ; the length the program sees
 //         mov  cx, 4000h
-// poll:   mov  ah, 01h / int 16h     ; the seam posts 'R' on the way in
+//   poll: mov  ah, 01h / int 16h
 //         jnz  got
 //         loop poll
 //         xor  ax, ax
-//         jmp  done
-// got:    mov  ah, 00h / int 16h
-// done:   mov  [result+0], ax        ; the key the menu read
-//         mov  ax, [days]  / mov [result+2], ax
-//         mov  ax, [hours] / mov [result+4], ax
+//         jmp  at_return
+//   got:  mov  ah, 00h / int 16h
+//
+//   1F24: at_return:                     ; the seam reads AL here
+//         cmp  al, 'F' / je menu_loop    ; the program's own bar has no F
+//         cmp  al, 'R' / je rest_entry   ; and this is its Rest command
+//  finish:
+//         mov  ax, [days]  / mov [result+1], ax
+//         mov  ax, [hours] / mov [result+2], ax
 //         <exit 8Ah>
 //
-// With the seam pulled the first poll finds the Rest key and the days
-// word holds what the party needed; with it on and never pulled, or off,
-// the poll loop runs out against an empty buffer and the clock is exactly
-// what the program wrote.
+// With the seam on and F pressed, the first pass hands the seam its
+// letter, the second reads the Rest key it posted, and the rest command's
+// entry finds a duration dialled and presses Rest — three points, two
+// keys, one player keystroke. With the seam on and some other key pressed,
+// or with it off, the pass runs once and the program exits, and **those
+// two runs are the same run to the step**.
 
 /// The camp, at the offsets `seam_encamp_fix.cpp` names — restated here
 /// because this program is the thing being driven, not the thing being
@@ -2156,15 +2180,42 @@ void probe_call_automap(machine::machine& box, machine::seam_context& ctx) {
 /// agreeing with itself.
 constexpr std::uint16_t camp_game_mode = 0x49F3;
 constexpr std::uint8_t camp_mode_camp = 2;
+constexpr std::uint16_t camp_bar = 0x508;
 constexpr std::uint16_t camp_roster_head = 0x5D96;
 constexpr std::uint16_t camp_rest_hours = 0x6DC8;
 constexpr std::uint16_t camp_rest_days = 0x6DCA;
-constexpr std::uint16_t camp_memorize_countdown = 0x6DD0;
-constexpr std::uint16_t camp_rest_screen_up = 0x6DDA;
 constexpr std::uint16_t camp_rec_max_hit_points = 0x32;
 constexpr std::uint16_t camp_rec_next = 0x104;
 constexpr std::uint16_t camp_rec_status = 0x10C;
 constexpr std::uint16_t camp_rec_hit_points = 0x11B;
+
+/// Where the seam's three points are in the module, and where the module
+/// says it is. All four are the seam's facts, restated for the same
+/// reason as the offsets above.
+constexpr std::uint16_t camp_load_segment_at = 0x760;
+constexpr std::uint16_t camp_rest_entry = 0x077A;
+constexpr std::uint16_t camp_menu_loop = 0x1F06;
+constexpr std::uint16_t camp_at_return = 0x1F24;
+
+/// The camp loop's frame: where this program puts BP, and the two offsets
+/// from it the seam reads — the prompt it blanks and the flag that says
+/// whether a command was chosen off the bar.
+constexpr std::uint16_t camp_frame_base = 0x0700;
+constexpr std::uint16_t camp_frame_prompt = 0x0B;
+constexpr std::uint16_t camp_frame_out_flag = 0x04;
+
+/// **This program's own command bar**: three words of its own invention,
+/// in the shape a menu bar has — words separated by spaces, a capital
+/// each. The seam knows nothing about what a bar says, and a stand-in
+/// carrying any of the program's own text would be the one thing this
+/// tree does not do (PLAN.md §6).
+constexpr std::string_view camp_bar_text = "Alpha Beta Gamma";
+constexpr std::uint16_t camp_bar_plain_length = 16;
+constexpr std::uint16_t camp_bar_fixed_length = camp_bar_plain_length + 4;
+
+/// The prompt the loop builds before the bar, of no interest except that
+/// the seam blanks it to make room.
+constexpr std::string_view camp_prompt_text = "ABCD";
 
 /// Where the two records go in the program's own segment, past everything
 /// else it uses.
@@ -2180,24 +2231,26 @@ constexpr std::uint8_t camp_whole_hit_points = 9;
 constexpr std::uint16_t camp_wanted_days =
     camp_hurt_most - camp_hurt_hit_points + 1;
 
-/// What the camp stand-in costs the machine when nobody has asked the
-/// Fix for anything: the poll loop runs its 16,384 iterations against an
-/// empty buffer and the program exits.
+/// What the camp stand-in costs the machine when the player chooses one of
+/// the program's own commands rather than the Fix.
 ///
-/// **Two entries claim this same number** — the Fix on and never pulled,
-/// and the Fix off — and that equality is the fidelity invariant
-/// (machine/seam.h) for this seam, made where every target runs it
-/// rather than argued in a header. The on-and-unpulled entry is the one
-/// that could plausibly have cost something: this seam's only point has
-/// no address, and "offered at every step boundary" is a sentence about
-/// the hot path. It is offered at none of them, because nobody pulled.
-constexpr std::uint64_t camp_plain_steps = 81'953;
+/// **Two entries claim this same number** — the Fix on with another key
+/// pressed, and the Fix off with the same key pressed — and that equality
+/// is what M5-E1a (#186) put in place of the invariant a pulled seam had.
+/// The seam is armed in one of them and inert in the other, and the two
+/// runs are the same run: the command it offered was not chosen, so the
+/// program went exactly where it would have gone.
+constexpr std::uint64_t camp_plain_steps = 66;
 
 /// What the program's own rest wrapper would have left in the clock: a
 /// memorization time in hours, and no days at all.
 constexpr std::uint16_t camp_wrapper_hours = 3;
 
-/// The keystroke the seam posts, as INT 16h hands it back.
+/// The keys: the one a player presses for the Fix, the one they press for
+/// a command of the program's own, and the keystroke the seam posts, as
+/// INT 16h hands it back.
+constexpr std::uint8_t camp_fix_scancode = 0x21;    // F
+constexpr std::uint8_t camp_other_scancode = 0x1F;  // S
 constexpr std::uint16_t camp_rest_keystroke = (std::uint16_t{0x13} << 8U) | 'R';
 
 ///     mov  byte [off], imm8              ; C6 06 iw ib
@@ -2226,6 +2279,17 @@ void load_ax_from(assembler& a, std::uint16_t offset) {
   a.dw(offset);
 }
 
+/// A Pascal string — length byte then characters — written where the
+/// program keeps one.
+void store_pascal_at(assembler& a, std::uint16_t offset,
+                     std::string_view text) {
+  store_byte_at(a, offset, static_cast<std::uint8_t>(text.size()));
+  for (std::size_t nth = 0; nth < text.size(); ++nth) {
+    store_byte_at(a, static_cast<std::uint16_t>(offset + 1 + nth),
+                  static_cast<std::uint8_t>(text[nth]));
+  }
+}
+
 /// One record: its status, its hit points, its maximum, and its link.
 void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
                  std::uint8_t hit_points, std::uint8_t most,
@@ -2248,13 +2312,11 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     assembler a;
     a.db({0x0E, 0x1F});  // push cs / pop ds
 
-    // In this order, and the order is the point: the rest-screen flag is
-    // the **last** thing written, because it is the last thing that
-    // becomes true in the program too — the rest zeroes the countdown
-    // block and sets that flag immediately before the menu it draws asks
-    // for a key. A stand-in that set it first would be offering the seam
-    // a half-built camp, and the seam would act on it: a roster whose
-    // records are still zero is a party with nothing to heal.
+    // The frame the camp loop runs its menu in. SS is the image segment
+    // already; only BP is this program's to choose.
+    a.db({0xBD});
+    a.dw(camp_frame_base);  // mov bp, imm16
+
     camp_record(a, camp_first_record, 0, camp_hurt_hit_points, camp_hurt_most,
                 camp_second_record);
     camp_record(a, camp_second_record, 0, camp_whole_hit_points,
@@ -2264,11 +2326,45 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     store_byte_at(a, camp_game_mode, camp_mode_camp);
     store_word_at(a, camp_rest_hours, camp_wrapper_hours);
     store_word_at(a, camp_rest_days, 0);
-    store_byte_at(a, camp_memorize_countdown, 0);
-    store_byte_at(a, static_cast<std::uint16_t>(camp_memorize_countdown + 1),
-                  0);
-    store_byte_at(a, camp_rest_screen_up, 1);
+    store_pascal_at(a, camp_bar, camp_bar_text);
+    store_pascal_at(
+        a, static_cast<std::uint16_t>(camp_frame_base - camp_frame_prompt),
+        camp_prompt_text);
+    store_byte_at(
+        a, static_cast<std::uint16_t>(camp_frame_base - camp_frame_out_flag),
+        0);
 
+    // The overlay manager's own note of where the module is, which this
+    // program is: its code segment, in the word the seam's facts name.
+    // Written last of the set-up, because until it is written nothing is
+    // armed and the seam is inert with a reason (#131).
+    a.db({0x8C, 0xC8});  // mov ax, cs
+    a.db({0xA3});
+    a.dw(camp_load_segment_at);  // mov [imm16], ax
+
+    a.near_jump(0xE9, "menu_loop");
+
+    // The word, and then the rest command — both at the offsets the
+    // module's facts name, with the gap between them jumped over.
+    a.pad_to(camp_load_segment_at);
+    a.dw(0);
+
+    a.pad_to(camp_rest_entry);
+    a.label("rest_entry");
+    a.db({0xB4, 0x00, 0xCD, 0x16});  // mov ah, 00h / int 16h
+    store(a, 0, reg_ax);
+    a.near_jump(0xE9, "finish");
+
+    // The menu-bar routine, in exactly the thirty bytes between the two
+    // points the seam has here. `pad_to` is the guard on that: a routine
+    // that outgrew the gap would be a program that could not be built,
+    // rather than a point landing in the middle of an instruction.
+    a.pad_to(camp_menu_loop);
+    a.label("menu_loop");
+    a.db({0xA0});
+    a.dw(camp_bar);  // mov al, [bar] — the length byte the routine draws
+    a.db({0xA2});
+    a.dw(result_word(3));  // mov [result+3], al
     a.db({0xB9});
     a.dw(0x4000);  // mov cx, 4000h
     a.label("poll");
@@ -2276,17 +2372,31 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     a.jump(0x75, "got");             // jnz got
     a.jump(0xE2, "poll");            // loop poll
     a.db({0x31, 0xC0});              // xor ax, ax
-    a.jump(0xEB, "done");            // jmp done
+    a.jump(0xEB, "at_return");
     a.label("got");
     a.db({0xB4, 0x00, 0xCD, 0x16});  // mov ah, 00h / int 16h
-    a.label("done");
-    store(a, 0, reg_ax);
+    // The program's own menu-bar routine uppercases what it read before
+    // it matches it against the bar, so the letter it answers with is an
+    // upper-case one and the seam's fact is that letter.
+    a.db({0x24, 0xDF});  // and al, 0DFh
+    a.jump(0xEB, "at_return");
+
+    a.pad_to(camp_at_return);
+    a.label("at_return");
+    a.db({0x3C, 'F'});  // cmp al, 'F'
+    a.jump(0x75, "not_fix");
+    a.near_jump(0xE9, "menu_loop");  // the loop goes round: an unknown
+    a.label("not_fix");              // letter is a letter it ignores
+    a.db({0x3C, 'R'});               // cmp al, 'R'
+    a.jump(0x75, "finish");
+    a.near_jump(0xE9, "rest_entry");
+
+    a.label("finish");
     load_ax_from(a, camp_rest_days);
     store(a, 1, reg_ax);
     load_ax_from(a, camp_rest_hours);
     store(a, 2, reg_ax);
     exit_with(a, 0x8A);
-    a.pad_to(machine_layout::result_offset + 0x10);
 
     // Room for the camp: the records sit past 0x7000 in this program's
     // own segment, and DOS has to have given it that much.
@@ -2295,6 +2405,212 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
                       .initial_ss = 0,
                       .initial_sp = 0x0F00,
                       .min_alloc = 0x0800,
+                      .relocations = {},
+                      .image = a.assemble()});
+  }();
+  return built;
+}
+
+// --- 11. The call door ----------------------------------------------------
+//
+// M5-D4 (#188). A seam asks the program to run one of its own routines,
+// and comes back. The real consumers call the game's text and frame
+// drawers so that what a seam puts on the game's screen is drawn by the
+// game; what that has in common with this is only the frame the engine
+// builds, so this program writes a routine of its own that **reports what
+// it was handed**.
+//
+// Three things it is evidence for, and the third is the one a unit test
+// cannot make:
+//
+//   1. the frame the engine builds is the frame the program's own callers
+//      build — the words come off the stack where the routine's own
+//      `[bp+n]` reads look for them, and a far pointer among them names
+//      the bytes the seam placed;
+//   2. a batch is a batch: two calls queued in one arrival both run, in
+//      order, and the handler is never re-entered part-way;
+//   3. **an interrupt during the call is survivable.** The routine hooks
+//      nothing itself; the program hooks the user tick before the seam's
+//      point is reached, the routine burns enough virtual time that the
+//      tick certainly arrives inside the call, and the routine then reads
+//      its arguments *afterwards*. A frame that an interrupt had damaged
+//      would read the wrong words. The tick handler counts in memory
+//      rather than in BP, because BP is what the routine's own frame is
+//      built on — which is the whole point.
+//
+//         start:  <hook the user tick, program the PIT, sti>
+//         trigger:                       ; the seam's point
+//                 nop                    ; what the machine resumes onto
+//                 <store what the routine saw>
+//                 exit 8Bh
+//
+//         routine:
+//                 push bp / mov bp, sp / push ds / push cs / pop ds
+//                 <sample the tick counter>
+//                 mov cx, delay / spin: loop spin
+//                 <did it change? then an interrupt happened in here>
+//                 mov ax, [bp+0Ch] -> saw_first    ; read AFTER the tick
+//                 les di, [bp+6] / mov al, es:[di] -> saw_byte
+//                 inc word [count]
+//                 pop ds / mov sp, bp / pop bp / retf 8
+
+/// Where the pieces sit in the program's own segment. The routine and
+/// the point are at round offsets because the seam's facts name them, and
+/// everything in between is jumped over rather than fallen through.
+constexpr std::uint16_t door_trigger_offset = 0x0100;
+constexpr std::uint16_t door_tick_offset = 0x0180;
+constexpr std::uint16_t door_routine_offset = 0x0200;
+
+/// The program's own scratch, clear of its code and of the result block.
+constexpr std::uint16_t door_ticks = 0x0700;
+constexpr std::uint16_t door_ticks_at_entry = 0x0702;
+constexpr std::uint16_t door_ticked = 0x0704;
+constexpr std::uint16_t door_saw_first = 0x0706;
+constexpr std::uint16_t door_saw_byte = 0x0708;
+constexpr std::uint16_t door_count = 0x070A;
+
+/// The two words the seam passes and the byte it places.
+constexpr std::uint16_t door_first_word = 0x1234;
+constexpr std::uint16_t door_second_word = 0x5678;
+constexpr std::uint8_t door_placed_byte = 0x5A;
+
+/// How many calls the handler queues.
+constexpr std::uint16_t door_calls = 2;
+
+/// The IRQ0 divisor and the routine's delay, in PIT ticks — which is
+/// steps, because these programs run one tick to the step. The delay is
+/// twice the divisor, so a tick arrives inside every call and the
+/// evidence is not a race.
+constexpr std::uint16_t door_divisor = 0x1000;
+constexpr std::uint16_t door_delay = 0x2000;
+
+/// The handler the seam runs, in this file rather than in the build:
+/// this is the *mechanism's* stand-in, so the thing being driven is the
+/// engine and the handler is the test's.
+///
+/// **Its guard is a word of the program's own memory**, not a counter
+/// beside the machine. The machine resumes onto the instruction the
+/// handler was called at, so the point is reached again the moment the
+/// batch ends — and a handler that queued another batch every time would
+/// never stop. The routine's own call counter is what says "this has
+/// already happened", which is the shape `seam_encamp_fix.cpp` uses for
+/// the same reason (#186).
+void door_call_program(machine::machine& box, machine::seam_context& ctx) {
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  if (box.processor().read_word(image, door_count) != 0) {
+    ctx.decline(machine::seam_reason::point_not_recognized);
+    return;
+  }
+
+  std::uint16_t segment = 0;
+  std::uint16_t offset = 0;
+  const std::array<std::uint8_t, 1> bytes{door_placed_byte};
+  if (!ctx.place_bytes(bytes, segment, offset)) {
+    ctx.decline(machine::seam_reason::point_not_recognized);
+    return;
+  }
+
+  // Segment then offset: the offset is pushed last and so lands at the
+  // lower address, which is where a `les` looks for a far pointer — the
+  // order the program's own callers push one in.
+  const std::array<std::uint16_t, 4> words{door_first_word, door_second_word,
+                                           segment, offset};
+  for (unsigned nth = 0; nth < door_calls; ++nth) {
+    if (!ctx.call_program(image, door_routine_offset, words)) {
+      ctx.decline(machine::seam_reason::point_not_recognized);
+      return;
+    }
+  }
+}
+
+constexpr std::array<machine::seam_point, 1> door_points{
+    {{.module = machine::resident_image,
+      .offset = door_trigger_offset,
+      .run = &door_call_program}}};
+
+[[nodiscard]] const std::vector<std::uint8_t>& door_file() {
+  static const std::vector<std::uint8_t> built = [] {
+    assembler a;
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+
+    // The user tick, pointed at this program's own counter, and the
+    // timer that drives it. Both before the point, so the interrupt is
+    // already live when the seam calls.
+    a.db({0x31, 0xC0, 0x8E, 0xD8});  // xor ax, ax / mov ds, ax
+    a.db({0xC7, 0x06});
+    a.dw(static_cast<std::uint16_t>(4U * machine::service::user_tick_vector));
+    a.dw(door_tick_offset);
+    a.db({0x8C, 0x0E});
+    a.dw(static_cast<std::uint16_t>(4U * machine::service::user_tick_vector +
+                                    2U));
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+    init_pic(a);
+    program_timer(a, door_divisor);
+    a.db({0xFB});  // sti
+    a.near_jump(0xE9, "trigger");
+
+    // The point. The machine resumes onto the instruction here when the
+    // batch ends, so it is a NOP and not something that matters.
+    a.pad_to(door_trigger_offset);
+    a.label("trigger");
+    a.db({0x90});  // nop
+    load_ax_from(a, door_saw_first);
+    store(a, 0, reg_ax);
+    load_ax_from(a, door_saw_byte);
+    store(a, 1, reg_ax);
+    load_ax_from(a, door_count);
+    store(a, 2, reg_ax);
+    load_ax_from(a, door_ticked);
+    store(a, 3, reg_ax);
+    exit_with(a, 0x8B);
+
+    // The tick handler, counting in memory. `inc bp` — what every other
+    // program here uses — would be incrementing the routine's own frame
+    // pointer while the routine is inside its frame.
+    a.pad_to(door_tick_offset);
+    a.db({0x2E, 0xFF, 0x06});  // inc word cs:[door_ticks]
+    a.dw(door_ticks);
+    a.db({0xCF});  // iret
+
+    // The routine the seam calls.
+    a.pad_to(door_routine_offset);
+    a.db({0x55, 0x89, 0xE5});     // push bp / mov bp, sp
+    a.db({0x1E, 0x0E, 0x1F});     // push ds / push cs / pop ds
+    load_ax_from(a, door_ticks);  // mov ax, [ticks]
+    a.db({0xA3});
+    a.dw(door_ticks_at_entry);  // mov [ticks_at_entry], ax
+    a.db({0xB9});
+    a.dw(door_delay);  // mov cx, delay
+    a.label("spin");
+    a.jump(0xE2, "spin");         // loop spin
+    load_ax_from(a, door_ticks);  // mov ax, [ticks]
+    a.db({0x2B, 0x06});
+    a.dw(door_ticks_at_entry);  // sub ax, [ticks_at_entry]
+    a.jump(0x74, "no_tick");    // je no_tick
+    store_word_at(a, door_ticked, 1);
+    a.label("no_tick");
+    // And only now the arguments, so that what they read is a frame an
+    // interrupt has already been taken across.
+    a.db({0x8B, 0x46, 0x0C});  // mov ax, [bp+0Ch] — the deepest word
+    a.db({0xA3});
+    a.dw(door_saw_first);
+    a.db({0xC4, 0x7E, 0x06});  // les di, [bp+6]
+    a.db({0x26, 0x8A, 0x05});  // mov al, es:[di]
+    a.db({0x30, 0xE4});        // xor ah, ah
+    a.db({0xA3});
+    a.dw(door_saw_byte);
+    a.db({0xFF, 0x06});
+    a.dw(door_count);          // inc word [count]
+    a.db({0x1F});              // pop ds
+    a.db({0x89, 0xEC, 0x5D});  // mov sp, bp / pop bp
+    a.db({0xCA, 0x08, 0x00});  // retf 8
+
+    a.pad_to(machine_layout::result_offset + 0x10);
+    return build_exe({.initial_cs = 0,
+                      .initial_ip = 0,
+                      .initial_ss = 0,
+                      .initial_sp = 0x0F00,
+                      .min_alloc = 0x0100,
                       .relocations = {},
                       .image = a.assemble()});
   }();
@@ -2830,40 +3146,85 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
   }
 
   {
-    // M5-E1 (#172): the build's own Encamp Fix, pulled, against a camp
-    // this program laid out. One entry per way of asking, so the plain
-    // run and the enhanced one are each asserted in their own right.
+    // M5-D4 (#188): a seam calls a routine of the program's own, twice,
+    // with a timer interrupt landing inside each call.
+    machine_program p;
+    p.name = "call_door";
+    p.about = "a seam calls the program's own routine, and comes back";
+    p.setup.exe = seam_door_file();
+    p.setup.exe_path = "\\DOOR.EXE";
+    p.setup.seam_definitions = {&seam_door_definition()};
+    p.setup.seams = {"call-door-probe"};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "the deepest word the routine found on its stack",
+         .value = door_first_word},
+        {.what = "the byte it read through the far pointer",
+         .value = door_placed_byte},
+        {.what = "calls made, from one arrival", .value = door_calls},
+        {.what = "a timer interrupt was taken inside the call", .value = 1}};
+    p.exit_code = 0x8B;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "call_door_off";
+    p.about = "and with the seam off: the routine is never entered";
+    p.setup.exe = seam_door_file();
+    p.setup.exe_path = "\\DOOR.EXE";
+    p.setup.seam_definitions = {&seam_door_definition()};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "nothing was found on any stack", .value = 0},
+        {.what = "and no byte was placed", .value = 0},
+        {.what = "no calls were made", .value = 0},
+        {.what = "and no call was there to be interrupted", .value = 0}};
+    p.exit_code = 0x8B;
+    list.push_back(std::move(p));
+  }
+
+  {
+    // M5-E1 (#172) as M5-E1a (#186) leaves it: the build's own Encamp
+    // Fix, offered on this program's command bar and chosen with a
+    // keystroke. One entry per way of asking, so the plain run and the
+    // enhanced one are each asserted in their own right.
     machine_program p;
     p.name = "encamp_fix";
-    p.about = "the Encamp Fix, pulled: it dials the rest and presses Rest";
+    p.about = "the Encamp Fix, chosen off the bar: it dials and presses Rest";
     p.setup.exe = seam_camp_file();
     p.setup.exe_path = "\\CAMP.EXE";
     p.setup.seam_definitions = {&seam_camp_definition()};
     p.setup.seams = {"encamp-fix-probe"};
-    p.setup.pulls = {"encamp-fix-probe"};
+    p.setup.keys = {{.at = machine::ticks{0}, .scancode = camp_fix_scancode}};
     p.setup.step_cap = 200'000;
     p.results = {
-        {.what = "the key the camp menu read", .value = camp_rest_keystroke},
+        {.what = "the key the rest screen read", .value = camp_rest_keystroke},
         {.what = "the days the seam dialled", .value = camp_wanted_days},
         {.what = "the hours the program itself dialled, untouched",
-         .value = camp_wrapper_hours}};
+         .value = camp_wrapper_hours},
+        {.what = "the bar the program drew, with the command on it",
+         .value = camp_bar_fixed_length}};
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
   }
 
   {
     machine_program p;
-    p.name = "encamp_fix_unpulled";
-    p.about = "the same Fix, on and never asked: a plain camp";
+    p.name = "encamp_fix_not_chosen";
+    p.about = "the same Fix, offered and not chosen: a plain camp";
     p.setup.exe = seam_camp_file();
     p.setup.exe_path = "\\CAMP.EXE";
     p.setup.seam_definitions = {&seam_camp_definition()};
     p.setup.seams = {"encamp-fix-probe"};
+    p.setup.keys = {{.at = machine::ticks{0}, .scancode = camp_other_scancode}};
     p.setup.step_cap = 200'000;
-    p.results = {{.what = "no key arrived", .value = 0},
+    p.results = {{.what = "no rest screen was reached", .value = 0},
                  {.what = "and no days were dialled", .value = 0},
                  {.what = "the hours the program itself dialled",
-                  .value = camp_wrapper_hours}};
+                  .value = camp_wrapper_hours},
+                 {.what = "the bar the program drew, with the command on it",
+                  .value = camp_bar_fixed_length}};
     p.steps = camp_plain_steps;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
@@ -2876,11 +3237,14 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     p.setup.exe = seam_camp_file();
     p.setup.exe_path = "\\CAMP.EXE";
     p.setup.seam_definitions = {&seam_camp_definition()};
+    p.setup.keys = {{.at = machine::ticks{0}, .scancode = camp_other_scancode}};
     p.setup.step_cap = 200'000;
-    p.results = {{.what = "no key arrived", .value = 0},
+    p.results = {{.what = "no rest screen was reached", .value = 0},
                  {.what = "and no days were dialled", .value = 0},
                  {.what = "the hours the program itself dialled",
-                  .value = camp_wrapper_hours}};
+                  .value = camp_wrapper_hours},
+                 {.what = "the bar the program drew, which is its own",
+                  .value = camp_bar_plain_length}};
     p.steps = camp_plain_steps;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
@@ -3053,6 +3417,24 @@ const machine::seam_definition& seam_probe_host_definition() {
       .points = points};
   return definition;
 }
+
+const machine::seam_definition& seam_door_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(door_file());
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const machine::seam_definition definition{
+      .id = "call-door-probe",
+      .about = "the test seam that calls a routine of the program's own",
+      .fingerprints = fingerprints,
+      .points = door_points};
+  return definition;
+}
+
+const std::vector<std::uint8_t>& seam_door_file() { return door_file(); }
 
 const machine::seam_definition& seam_camp_definition() {
   static const std::string fingerprint = [] {

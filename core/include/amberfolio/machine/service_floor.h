@@ -196,6 +196,29 @@ inline constexpr std::uint8_t iret_opcode = 0xCF;
 /// `stub_index`'s answer when the offset is not one of ours.
 inline constexpr unsigned not_a_stub = stub_count;
 
+/// Where a seam's call into the program returns to (M5-D4, #188).
+///
+/// A seam that calls one of the program's own routines has to hand it a
+/// return address, and the address has to be one the seam engine can
+/// recognise at a step boundary and nothing else will ever execute. This
+/// is that address: an offset in the BIOS region, clear of the stubs
+/// below it and the font above it, and named here because this file owns
+/// the region's layout.
+///
+/// **It is an address and not a byte, and nothing is written here.** The
+/// engine intercepts at the step boundary, which is before the
+/// instruction at CS:IP is fetched, and puts the machine back the way the
+/// program left it — so there is nothing for a byte to do.
+///
+/// An earlier cut of #188 left an IRET here as insurance, and it was
+/// wrong for a reason worth keeping: the power-on image is *machine
+/// state*, it is hashed, and a seam engine that wrote a byte into it
+/// would have altered every run whether or not a seam was ever switched
+/// on. The committed sessions said so within a minute. Insurance that
+/// costs the fidelity invariant is not insurance; the batch's own step
+/// budget is what catches a call that does not come back.
+inline constexpr std::uint16_t call_return_offset = 0x0800;
+
 /// Where the character generator is put, as an offset in `stub_segment`.
 ///
 /// A real adapter keeps its font in ROM and this machine keeps its own

@@ -35,17 +35,24 @@ What M4 left in place:
 - **The seam engine** (`machine/seam.h`, `docs/seams.md`), which is
   PLAN.md §5's mechanism and the only way anything but the program may
   touch this machine. Fingerprint-keyed, overlay-qualified, four action
-  primitives plus a host-service slot, a host→seam trigger a person
-  pulls, and a toggle surface on both hosts. **Every seam is off by
+  primitives plus a host-service slot, a **call into the program** (M5-D4,
+  #188 — so text a seam puts on the game's screen is drawn by the game, in
+  the game's font), a host→seam trigger a person pulls, and a toggle
+  surface on both hosts. **Every seam is off by
   default**, and the fidelity invariant is a test: with all of them off a
   run's state hash equals the same run's on a build with no engine at
   all, a disabled seam's breakpoint is never consulted, and seam state —
   an outstanding pull included — is configuration and not machine state.
   M5's five enhancements add no mechanism; they add handlers.
 - **Four seams this build carries**: `code-wheel` (ungated; its
-  possession gate is M5's, #115), `encamp-fix` (M5-E1, #172 — the first
-  M5 enhancement; pulled at the camp screen's rest menu, it dials the
-  game's own rest to the days the party needs and presses Rest),
+  possession gate is M5's, #115), `encamp-fix` (M5-E1 #172 and M5-E1a
+  #186 — the first M5 enhancement; it puts a `FIX` command on the camp
+  screen's own bar by splicing four characters into the string the
+  program draws that bar from, and when the player presses its letter it
+  spends the cures the party already holds through the game's own cast
+  driver — queueing one back for every one spent — then dials the game's
+  own rest to the days that did not close and presses Rest; any key the
+  player types stops it),
   `cheat-invulnerable`, `cheat-kill-all`. `docs/seams.md` §8 is the house
   style for the next one and §10 is the worked example.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
