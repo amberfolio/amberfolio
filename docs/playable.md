@@ -851,8 +851,9 @@ amberfolio: seam encamp-fix armed fired=7
 
 Seven acts: the bar spliced on each pass, two cures cast, and the rest.
 The party comes out **17 of 17 and 18 of 18** — the cures closed both
-deficits, so the days field reads 1, which is the slack and not a
-deficit. Then the program answers the rest with an event of its own —
+deficits, so the days field stays at 0 and the rest is the memorization
+time the program's own wrapper computed. Then the program answers it with
+an event of its own —
 the city watch rousting the party and asking whether to go or stay. Its
 rules, running inside the rest the seam asked for, which is the whole of
 what "the game's own routines do the work" is supposed to mean.
@@ -973,7 +974,8 @@ what it skips would be worth less than one that says so.
 - **A wounded party at a camp screen** (#172). Leg 7 drives the Encamp
   Fix end to end and the program's own heal tick fires and says so, but
   every shipped save slot's party is whole — so the days field the Fix
-  dials has never been above the one day of slack, and the arithmetic
+  dials has never been above what one round of cures left, and the
+  arithmetic
   that decides it has never been exercised on a real party. The worst
   deficit over the members resting can help, plus a day, is covered by
   tests against a roster a test writes, which is exactly the kind of

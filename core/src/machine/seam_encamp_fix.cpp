@@ -152,17 +152,29 @@
 // — there is no moment at which the player is a cure down — and is why
 // this handler needs no memory of what it has spent.
 //
-// **The days are the deficit plus one, and never fewer than one.** The
-// heal tick counts iterations in a counter the camp screen zeroes on
-// entry and the rest does *not* reset between rests, so a second rest in
-// one camp session starts part-way through a day and would come up one
-// hit point short. A day of slack costs the player nothing they did not
-// ask for — they asked to be whole — and removes the one way this
-// arithmetic can be wrong. A party that is already whole therefore rests
-// one day, which is the plain rest the game's own Rest command would have
-// given it with the memorization time the program itself computed, plus
-// that day; it is also what keeps the signature above non-zero in the one
-// case where the deficit is.
+// **The days are the deficit plus one — and zero when there is no
+// deficit.** The heal tick counts iterations in a counter the camp screen
+// zeroes on entry and the rest does *not* reset between rests, so a
+// second rest in one camp session starts part-way through a day and would
+// come up one hit point short. A day of slack costs the player nothing
+// they did not ask for — they asked to be whole — and removes the one way
+// this arithmetic can be wrong.
+//
+// **A party that is whole gets no days at all**, and this seam shipped
+// with that wrong. It used to dial at least one, so choosing the Fix with
+// nobody hurt slept a full day for nothing. The day was never the
+// arithmetic's: it was keeping point 3's signature non-zero, because
+// point 3 used to infer "this rest is mine" from the clock. Point 3 reads
+// a word of this seam's own now (`scratch_rest_is_ours`), the clock is
+// free to say zero, and zero is a real answer — it leaves the duration
+// the program's own wrapper computed, which is the rest the player's own
+// Rest key would have given them.
+//
+// **And with nothing to rest for, the Fix does nothing at all.** Two
+// things make a rest worth asking for: a hit point somebody is short, and
+// a spell somebody is holding pending, which only time turns into one
+// they can cast. With neither, the command declines and says so rather
+// than spending the player's day to look busy.
 //
 //
 // What a later Gold Box title's FIX did that this one does not
@@ -411,6 +423,18 @@ constexpr std::uint16_t cast_region_left = 1;
 /// command began. Zero between commands, and the backstop below is read
 /// against it.
 constexpr unsigned scratch_casts = 0;
+
+/// Set when this seam has posted Rest at the camp bar, cleared when the
+/// rest command starts — so point 3 knows the rest about to happen is
+/// **this seam's** and not one the player asked for.
+///
+/// It used to be inferred from the days field being non-zero, and that
+/// cost the player a day: a whole party needs no days at all, so the
+/// arithmetic was forced never to return zero purely to keep the
+/// signature alive. A word of the seam's own says the same thing without
+/// charging anybody for it, which is what `scratch_words` is for — a
+/// thing the machine does not hold (#189).
+constexpr unsigned scratch_rest_is_ours = 1;
 
 /// How many cures one command may spend before this seam stops trying.
 ///
@@ -701,6 +725,10 @@ struct roster_reading {
   /// right. Zero when the party is whole, or when nobody on it can be
   /// healed at all.
   unsigned worst_deficit{0};
+  /// Slots anybody is holding pending — a spell queued for memorization,
+  /// which only time turns into one they can cast. Something to rest
+  /// *for* even when every hit point is where it should be.
+  unsigned pending_spells{0};
   std::array<member_reading, max_roster_walk> member{};
 };
 
@@ -790,7 +818,9 @@ struct roster_reading {
           who.free_slot = nth;
           who.has_free_slot = true;
         }
-      } else if ((slot & spell_pending) == 0 && is_heal_spell(slot)) {
+      } else if ((slot & spell_pending) != 0) {
+        ++out.pending_spells;
+      } else if (is_heal_spell(slot)) {
         ++who.ready_cures;
       }
     }
@@ -810,9 +840,21 @@ struct roster_reading {
 }
 
 /// The days to dial: what the worst-wounded member needs, plus the day of
-/// slack the header explains, capped at the program's own clamp. Never
-/// zero — the header says why that matters twice over.
+/// slack the header explains, capped at the program's own clamp.
+///
+/// **Zero for a party that is whole**, and that is the whole of the fix
+/// for a bug this seam shipped with: it used to return at least one, so
+/// choosing the Fix with nobody hurt slept a full day for nothing. The
+/// day was never the arithmetic's — it was there to keep point 3's old
+/// signature non-zero, and point 3 reads a word of this seam's own now.
+///
+/// Zero does not mean "no rest". It means the rest is the one the
+/// program's own wrapper computed — the memorization time — which is
+/// exactly the rest the player's own Rest key would have given them.
 [[nodiscard]] std::uint16_t days_to_dial(const roster_reading& party) {
+  if (party.worst_deficit == 0) {
+    return 0;
+  }
   const unsigned wanted = party.worst_deficit + 1;
   return static_cast<std::uint16_t>(wanted > max_rest_days ? max_rest_days
                                                            : wanted);
@@ -1008,7 +1050,23 @@ void take_the_answer(machine& box, seam_context& ctx) {
           static_cast<std::uint16_t>(regs[cpu::reg16::bp] - frame_out_flag),
           out_flag) ||
       out_flag != 0 || regs.get(cpu::reg8::al) != fix_key_ascii) {
-    ctx.decline(seam_reason::point_not_recognized);  // somebody else's key.
+    // Somebody else's key. If it is neither this seam's letter nor the
+    // Rest key this seam posts, it is also the moment to let go of any
+    // claim on a rest: the claim is meant to live exactly from the Rest
+    // this seam posts to the rest command that reads it, and a key the
+    // player typed getting there first would otherwise leave it to be
+    // spent on the *player's* next rest.
+    //
+    // **Rest is excluded, and leaving it out is what broke it once**: the
+    // key this seam posts comes back through this very point on the next
+    // pass of the menu, so clearing on every non-Fix letter cleared the
+    // claim with the seam's own keystroke — and the rest command then
+    // found no claim, pressed nothing, and left the player on a rest
+    // screen waiting for a key that was never coming.
+    if (regs.get(cpu::reg8::al) != rest_key_ascii) {
+      ctx.set_scratch(scratch_rest_is_ours, 0);
+    }
+    ctx.decline(seam_reason::point_not_recognized);
     return;
   }
 
@@ -1046,15 +1104,30 @@ void take_the_answer(machine& box, seam_context& ctx) {
     return;
   }
 
-  // Nothing left to cast: the rest closes whatever the cures did not.
+  // Nothing left to cast. Is there anything left to rest *for*?
   //
+  // Two things make a rest worth asking for: a hit point somebody is
+  // short, and a spell somebody is holding pending, which only time turns
+  // into one they can cast. With neither, **the Fix does nothing at all**
+  // — and doing nothing is the entire point of this branch. Asking for a
+  // rest anyway is what it used to do, and it cost a whole party a day of
+  // their game for no reason.
+  ctx.set_scratch(scratch_casts, 0);
+  if (party.worst_deficit == 0 && party.pending_spells == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
   // The word the rest screen's own daYs-then-Inc writes, written once to
-  // where that many presses would have left it — and, at the same time,
-  // the signature point 3 reads.
+  // where that many presses would have left it. Zero is a real answer: it
+  // leaves the duration the program's own wrapper computed, which is the
+  // rest the player's own Rest key would have given them.
   cpu.write_word(ds, data_rest_days, days_to_dial(party));
+  // The rest that is about to happen is this seam's, and point 3 reads
+  // that here rather than guessing it from the clock.
+  ctx.set_scratch(scratch_rest_is_ours, 1);
   // And the bar's own Rest key, which is the key a player presses next.
   static_cast<void>(ctx.inject_keystroke(rest_key_scancode, rest_key_ascii));
-  ctx.set_scratch(scratch_casts, 0);
 }
 
 /// Point 3: the rest command, entered because of the key point 2 posted.
@@ -1062,13 +1135,17 @@ void start_the_rest(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
 
-  std::uint16_t days = 0;
-  if (!read_word(cpu, ds, data_rest_days, days) || days == 0) {
-    // A rest the player asked for themselves: the clock is zero here, and
-    // this seam has nothing to say about it.
+  static_cast<void>(ds);
+  if (ctx.scratch(scratch_rest_is_ours) == 0) {
+    // A rest the player asked for themselves. This seam posted no Rest
+    // key, so it has nothing to say about the screen that is coming.
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  // Consumed here whatever happens next: one posted Rest, one rest
+  // screen started, and never a second one on a later rest the player
+  // asked for.
+  ctx.set_scratch(scratch_rest_is_ours, 0);
   if (!keyboard_buffer_empty(cpu)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
