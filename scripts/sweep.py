@@ -469,12 +469,29 @@ def config_of(tree: Path) -> str | None:
 
 
 def find_desktop_host(trees: list[Path]) -> Path | None:
+    """The desktop host to replay with: the **most recently built** one.
+
+    A multi-config generator leaves a host per configuration side by side
+    — `hosts/sdl/Debug/` and `hosts/sdl/Release/` — and this used to take
+    whichever the glob yielded first, which is `Debug`.  Build only
+    `Release` and the sweep then ran a binary that could be days old: it
+    reported a divergence against a recording made minutes earlier by the
+    build in the tree, and the finding was about neither the machine nor
+    the recording.  That is the same failure the session library exists to
+    prevent, one layer down — a check that is red, or green, for a reason
+    nobody can see.
+
+    Newest wins, and `sweep_report_host()` prints which it was, because a
+    rule nobody can check is how the next stale binary gets in.
+    """
+    found: list[Path] = []
     for tree in trees:
         for name in ("amberfolio", "amberfolio.exe"):
-            for candidate in tree.glob(f"hosts/sdl/**/{name}"):
-                if candidate.is_file():
-                    return candidate
-    return None
+            found += [c for c in tree.glob(f"hosts/sdl/**/{name}")
+                      if c.is_file()]
+    if not found:
+        return None
+    return max(found, key=lambda c: c.stat().st_mtime)
 
 
 def run(command: list[str], env: dict[str, str] | None = None):
@@ -505,13 +522,20 @@ def sweep_desktop(host: Path, session: Session, disk: Path) -> tuple[str, str]:
     with tempfile.TemporaryDirectory(prefix="amberfolio-sweep-") as work:
         copy = Path(work) / "disk"
         shutil.copytree(disk, copy)
-        done = run(
-            [
-                str(host), str(copy), str(session.program),
-                "--headless", "--replay", str(session.path),
-            ],
-            HEADLESS_ENV,
-        )
+        try:
+            done = run(
+                [
+                    str(host), str(copy), str(session.program),
+                    "--headless", "--replay", str(session.path),
+                ],
+                HEADLESS_ENV,
+            )
+        except OSError as why:
+            # A host that will not start is a finding about the build
+            # tree, and it belongs in the table beside the others. It
+            # used to be a traceback, which reads as the sweep being
+            # broken rather than the thing it was pointed at.
+            return "FAIL", f"the desktop host would not run: {why}"
     for line in done.stderr.splitlines():
         if "amberfolio: replay " in line:
             return ("ok" if done.returncode == 0 else "FAIL"), line.strip()
@@ -652,6 +676,7 @@ def main() -> int:
     failures = 0
     verified = 0
     skipped: list[str] = []
+    host_used: Path | None = None
 
     for session in sessions:
         wrong = session.problems()
@@ -715,6 +740,7 @@ def main() -> int:
                          "no desktop host in the build tree"))
             skipped.append(session.name)
             continue
+        host_used = host
         state, detail = sweep_desktop(host, session, disk)
         rows.append((session.name, "sdl", state, detail))
         failures += state == "FAIL"
@@ -739,6 +765,10 @@ def main() -> int:
 
     if trees:
         print("sweep: build trees " + ", ".join(rel(t) for t in trees))
+    if host_used is not None:
+        # Named, for the reason `find_desktop_host` gives: a stale binary
+        # beside a fresh one is invisible until somebody says which ran.
+        print(f"sweep: desktop host {rel(host_used)}")
     passes = sum(1 for r in rows if r[2] == "ok")
     skips = sum(1 for r in rows if r[2] == "SKIP")
     print(f"sweep: {len(sessions)} session(s), {len(rows)} check(s),"

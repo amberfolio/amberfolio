@@ -193,6 +193,30 @@ expect_silent "the disk it was pinned from is that disk" \
   "this disk is not that disk"
 expect_says "and the run went looking for a host" "no desktop host"
 
+# --- Which host it ran, when a tree holds more than one -----------------
+#
+# A multi-config build tree keeps a host per configuration side by side,
+# and the sweep used to take whichever the glob yielded first — `Debug`.
+# Build only `Release` and it then replayed a binary that could be days
+# old, reporting a divergence that was about neither the machine nor the
+# recording. Newest wins, and the summary names it, because a rule
+# nobody can check is how the next stale binary gets in.
+mkdir -p "$r/build/tree/hosts/sdl/Debug" "$r/build/tree/hosts/sdl/Release"
+printf 'configured' > "$r/build/tree/CMakeCache.txt"   # what makes it a tree
+printf 'stale' > "$r/build/tree/hosts/sdl/Debug/amberfolio"
+printf 'fresh' > "$r/build/tree/hosts/sdl/Release/amberfolio"
+chmod +x "$r/build/tree/hosts/sdl/Debug/amberfolio" \
+         "$r/build/tree/hosts/sdl/Release/amberfolio"
+touch -d "2001-01-01" "$r/build/tree/hosts/sdl/Debug/amberfolio"
+sweep "$r" --game-disk "$tmp/copy" --build "$r/build/tree"
+expect_says "the summary names the host it replayed with" "desktop host"
+expect_says "and a host that will not start is a row, not a traceback" \
+  "would not run"
+# The separator is the platform's, so the assertion is on the part of the
+# path that says which of the two it was and not on the whole of it.
+expect_says "and it is the one that was built last" "Release"
+expect_silent "and not the one beside it that was not" "Debug"
+
 # --- A pair that is supposed to differ ---------------------------------
 #
 # Two recordings of the same script one flag apart, and the assertion
