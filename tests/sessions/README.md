@@ -59,7 +59,7 @@ skip.
 | `fight-cheat.rec` | the same | the same script, the same disk and the same tick budget with **`cheat-invulnerable` on and nothing else changed**: the fighter comes out standing on his full eight hit points at `CONTINUE BATTLE`. The seam fires nine times |
 | `temple.rec` | external, **the shipped save slots** | leg 5 — slot A loaded, routed to the healing temple at 3,1, and a cure bought: `CURE BLINDNESS` cast on a fighter who is not blind and paid for at a thousand gold, which is two hundred platinum off his sheet. The sheet is read at the end, so the session pins the money as well as the machine. 18,801 frames, 181 checkpoints, 68 key events |
 | `camp.rec` | external, the shipped save slots | leg 7 without the enhancement — slot C loaded, `ENCAMP`, and `REST` chosen at the camp menu. The rest screen comes up with the duration the program's own wrapper dialled and waits for a key that never comes. 13,075 frames, 110 checkpoints |
-| `camp-fix.rec` | the same | the same script with **`encamp-fix` on**, pressing the letter the seam puts on the camp menu instead of the menu's own Rest (M5-E1 #172, M5-E1a #186): the bar is spliced, the letter comes back off the program's own menu-bar routine, the rest is dialled and started, and the game rests a day and comes back to the camp menu. `fired=5` |
+| `camp-fix.rec` | the same | the same script with **`encamp-fix` on**, pressing the letter the seam puts on the camp menu instead of the menu's own Rest (M5-E1 #172, M5-E1a #186): the bar is spliced and the letter comes back off the program's own menu-bar routine — and the command then declines, because slot C's party is whole and nothing is pending, so since #192 there is nothing to rest for. `fired=2` |
 
 `save.rec` and `load.rec` are #105's round trip, recorded. They are two
 sessions and not one because they have to be: a load is a fresh run over
@@ -106,6 +106,16 @@ in both halves**, which is easy when the difference is which key, and
 needs arranging when it is an extra input: this pair carried a `--pull`
 at frame 10368 before M5-E1a (#186) took the pull away, and 10368 was a
 multiple of the 128-frame cadence for exactly this reason.
+
+**What this pair pins is less than it was, and saying so is the point.**
+Slot C's party is whole, and since #192 the Fix declines a party with
+nothing to rest for — so the two halves now diverge because one pressed
+`R` and rested and the other pressed `F` and did not, which a seam that
+had stopped working altogether would also produce. The splice is still
+caught: the bar reads `FIX` in one run and not the other, and the
+framebuffer is in every checkpoint. The healing is not. Restoring the
+half that has gone wants a **wounded** party, which no shipped save slot
+has and which #189 owes.
 
 **This exists because a seam has twice been on, armed, reporting itself,
 and doing nothing at all** — `cheat-invulnerable` pointed at a routine
@@ -322,7 +332,16 @@ legitimately changes:
   order, and all three have to move together;
 - what `machine::reset()` leaves behind changes — the self test programs
   the PIT and the 8259 through real bus cycles, and that is where a
-  session's device state starts.
+  session's device state starts;
+- **a seam the session turns on legitimately changes what it does.** This
+  entry was missing until #192, and its absence is why `camp-fix.rec` sat
+  stale across two commits: the Fix stopped dialling a day for a party
+  that was already whole, which is a fix and not a regression, and its
+  recording was of a run that no longer happens. A session that names a
+  seam is only ever as current as that seam. It is also the entry most
+  easily abused, so the test is the same one as above — the change was
+  *chosen*, argued on an issue and visible in the seam's own source — and
+  never that a red line went green.
 
 Re-recording is not a way to make a red test green. If a session stops
 verifying and none of the above changed, the machine changed and the

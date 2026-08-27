@@ -13,15 +13,28 @@
 # pair is comparable. Since #186 there is no pull in this recording at
 # all: what a person does to ask for the Fix is press a key in the game.
 #
+# **Re-recorded for #192**, which is a legitimate re-record and the kind
+# the README's list did not have: a *seam this session enables* changed
+# what it does. The Fix used to dial a day for a party that was already
+# whole; it now declines, so slot C's run is a different run and this
+# recording had to say so. What that costs the pair is written into the
+# `about` below, because a golden that quietly pins less than it did is
+# the failure this directory exists to prevent.
+#
 # The file and dir lines are names, sizes and SHA-256s of a snapshot of
 # the disk. No byte of the player's installation is here.
 
-about the same script with the Encamp Fix on and its letter pressed at
-about the camp menu: the seam offers the command on the game's own bar,
-about takes the letter back off the game's own menu-bar routine, dials
-about the days the party needs and presses Rest, and the game rests a day
-about and comes back to the camp menu. fired=5. The party is whole, so
-about the days it dialled were the one day of slack
+about the same script with the Encamp Fix on, pressing the letter the
+about seam puts on the camp menu instead of the menu's own Rest. The
+about seam splices the command onto the game's own bar and takes it back
+about off the game's own menu-bar routine — and then declines: slot C's
+about party is whole and nothing is pending, so there is nothing to rest
+about for and the Fix does nothing at all (#192). fired=2, the bar
+about spliced twice and no other act. So what this pair pins is the
+about command appearing on the program's own bar and the run diverging
+about from there; what it no longer pins is the command *working*, which
+about wants a wounded party and is what the shipped slots have never
+about given leg 7 (#189)
 disk external
 contrast camp
 

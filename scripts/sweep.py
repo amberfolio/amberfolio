@@ -751,15 +751,22 @@ def main() -> int:
         print("sweep: NOT VERIFIED, disk absent or different: "
               + ", ".join(sorted(set(skipped))))
     if verified == 0:
-        print("sweep: NOTHING WAS VERIFIED — every check was skipped."
+        # Why nothing verified matters as much as that nothing did, and
+        # this line used to say "every check was skipped" whatever the
+        # reason — including a run in which every check *failed*, which
+        # is the opposite finding and sends somebody looking for a
+        # missing disk instead of at a divergence.
+        why = ("every check was skipped" if not failures
+               else "nothing passed" if skips
+               else "every check failed")
+        print(f"sweep: NOTHING WAS VERIFIED — {why}."
               " This is not a pass.", file=sys.stderr)
-        return 1
 
     if failures:
         print("sweep: tests/sessions/README.md says when a session may"
               " legitimately be re-recorded. If none of those changed, a"
               " divergence is a finding about the machine.", file=sys.stderr)
-    return 1 if failures else 0
+    return 1 if failures or verified == 0 else 0
 
 
 if __name__ == "__main__":
