@@ -110,9 +110,12 @@ inside one.
 
 ## 3. The action primitives
 
-Six things a handler may do, each the smallest honest version of itself
-(#96). The fifth had no implementation behind it until M5-D1 (#169), and
-the sixth is M5-D4's (#188):
+Seven things a handler may do, each the smallest honest version of itself
+(#96). Four are as old as the engine; the host service had no
+implementation behind it until M5-D1 (#169); the call into the program is
+M5-D4's (#188) and a seam's own words are M5-E1b's (#189). They are in
+the order §8 says to reach for them, which is not the order they were
+built in:
 
 **Register surgery** — `box.processor().regs()`. Plain state, edited in
 place. The code-wheel seam is three register writes and nothing else.
@@ -818,30 +821,249 @@ four targets.
 
 ## 8. Writing a seam
 
-1. **Gather the facts** — the addresses and offsets, the module the code
-   lives in, the fingerprint(s) of the binary they are facts about. Facts
-   only: never a byte sequence, never anything that reproduces the
-   program.
-2. **Write the handler** as a `seam_handler`, in a file of its own under
-   `core/src/machine/seam_<name>.cpp`, with the facts as named constants
-   and the reasoning in the header comment — `seam_code_wheel.cpp` is the
-   pattern, including what it is careful *not* to do (it qualifies on
-   the expected operand, so the program's general string compare is left
-   alone everywhere else).
-3. **Define it** — a `seam_definition` with its points, and add it to
-   the build's table (`all_seams()`).
-4. **Test the mechanism, publicly** — a unit test that drives the
-   handler at its point with state the test writes from the encoding,
-   and a `tests/programs` entry where the seam's shape allows. A seam's
-   addresses only mean something against the real binary; its mechanism
-   has to have a test that does not need one.
-5. **Verify on the game, locally** — on, the difference visible; off, the
-   run's hashes are the plain machine's (#100's harness is how that is
-   checked, and #101's session library is where the run is recorded).
-6. **Say what it is not yet**, at the point of definition — the code-wheel
-   seam's header says its possession gate is #115's — and, since M5-D3,
-   says that the mechanism exists and only the field is missing, which is
-   a more useful kind of honesty than the first one was.
+This section was a nine-line checklist, written when the only seam in the
+tree was three register writes. It is longer now because the Encamp Fix
+(#172, #186, #189) took three passes and **not one of the three was lost
+to the enhancement's own logic**: they went to the trigger surface being
+wrong, to the engine having no way to call the program, and to two engine
+constants that were wrong in ways that made a working seam look broken. A
+method that named those in advance would have saved most of it (#190).
+
+Nothing here is new. It is the four seam headers, §3, §3a, §4, §10 and
+`docs/playable.md` gathered into the order a person actually needs them.
+
+### Start here: three decisions
+
+Make these before writing anything, because each one decides what the
+next step is even allowed to be.
+
+**What is its surface?** A *command* a player uses, a *setting* that is
+simply on, or a *cheat* somebody pulls. This is the decision most likely
+to be wrong, and #186 is the cautionary tale: the Encamp Fix shipped as a
+host pull and had to be rebuilt as a command on the game's own bar,
+because a command a player can only reach by typing at the emulator is
+not a command in the game, it is a console. The surface decides whether
+the definition is a `trigger` (§3a), how many points it has, and — this
+is the part that surprises — **what its fidelity test can claim at all**
+(§7, and see below).
+
+**Where are its points?** One address, several, or none (§3a's
+`at_every_step`). Prefer an address: a known instruction in known code is
+a place where the structures a handler edits are known not to be half-way
+through being edited, and a point without one has to buy that back from a
+guard it can defend.
+
+**What will it refuse?** What a handler declines is more of the design
+than what it does, and writing the guard first is what stops the happy
+path from being the only path. Every seam here refuses more often than it
+acts.
+
+### 8.1 Facts, before a line of code
+
+**The allowed direction.** Addresses, offsets, lengths, digests and
+format descriptions are facts and may live in this repository; game code,
+data, text and byte sequences may not (CONTRIBUTING.md). Reading a
+routine to understand it and writing down only its address is the allowed
+direction.
+
+The rule that keeps the content clean is usually also the rule that keeps
+the seam honest. The Encamp Fix adds a command to the camp bar by finding
+the last separator in the program's own string and inserting four
+characters — **splice, never compose** (§3) — because a seam that spelled
+the menu out would be carrying the program's text here. The result is a
+seam that does not care what the menu says, which is a better seam.
+
+**What a seam's fact table holds**, by kind:
+
+- the **code addresses** of its points, as offsets in the module they
+  live in;
+- the **module** each point lives in, *and the word the program keeps
+  that module's whereabouts in* (§4). A point without that word is
+  unfinished: it will work until the overlay manager moves something;
+- the **data-segment offsets** it reads or writes;
+- the **record offsets**, and what each byte means where that is not
+  obvious — `seam_cheats.cpp` warns that the byte beside a wound status
+  reads like a flag and is not one;
+- for anything that calls the program: the routine's **entry**, what it
+  **cleans up** (`retf N`), and its **argument frame**.
+
+**Check every fact twice, by two different routes.** Every address in
+this tree should have the method that found it *and* an independent
+check:
+
+- `seam_cheats.cpp` finds the word holding a module's load segment by
+  searching the resident image for the manager's record with that
+  module's file offset and length, then taking the word sixteen bytes in
+  — and the check is that the search has exactly one match;
+- #188 took four routine addresses from one source and checked them
+  against another: all four landed on a `push bp / mov bp, sp` prologue,
+  and one of them opened by reading the adapter byte the theory had
+  predicted it would;
+- §10's *How a wrong fact was found* is the worked failure. Read it
+  before trusting a trace: its step 4 — "which module was this address
+  in" — is answerable from the overlay file's own table, and answering it
+  from the run's loads instead gave a plausible module, a plausible
+  offset and a seam that worked once for the wrong reason. **Prefer a
+  fact you can derive from the artifact over one you inferred from a
+  trace.**
+
+**Argument frames follow a rule, and the rule is worth re-checking each
+time.** Arguments are pushed in the **reverse** of the order the
+routine's own source lists them, with a far pointer's **segment before
+its offset**, so the offset lands at the lower address where a `les`
+looks for one. Confirming it on a new routine is three lines of
+disassembly — its first few argument reads — and #188 confirmed it on
+four before relying on it.
+
+### 8.2 What the engine already does
+
+Read §3 before building anything. The answer to "can the engine do this"
+is yes more often than it looks, and #165 is the audit that established
+that for all of M5.
+
+The seven primitives (§3), the module qualifiers (§4), the trigger
+(§3a), the address-free point (#163), the document gate (#171). What
+matters more than the list is **the order to reach for them**:
+
+1. **Read the machine.** A handler that remembers nothing cannot remember
+   wrongly. The Encamp Fix's third point knows the second one ran because
+   it reads a field the program leaves in a known state — not because
+   anything told it.
+2. **Write what the player's own keys would write**, then post the key.
+   Two words of memory and a keystroke is the whole of what that seam
+   does to start a rest.
+3. **Call the program's own routine** (#188) when something has to be
+   *done* that the program knows how to do — drawing text in the game's
+   own font, casting a spell by the game's own rules.
+4. **Keep your own words** (#189) only for what the machine has stopped
+   holding: a comparison against *before*. A seam that kept a copy of
+   something the machine still holds would have two of them, and the
+   second one would be wrong the first time they disagreed.
+
+### 8.3 The order of work
+
+1. **The three decisions**, above.
+2. **Facts, and their checks** (§8.1).
+3. **The guard, then the action.** Write what it refuses first.
+4. **Unit tests over a machine the test lays out**, including every
+   refusal. A seam's addresses only mean something against the real
+   binary; its *mechanism* must have a test that needs no copy of the
+   game. Lay the state out from the facts, not by calling the seam's own
+   helpers — a test that read its offsets out of the seam would be
+   agreeing with itself.
+5. **A `tests/programs` stand-in**, so the same handler runs on all four
+   targets. Where the seam's points are overlay-qualified the stand-in
+   has to be **its own overlay manager** — writing its code segment into
+   the word the facts name and laying its routines out at the offsets
+   they name — which is worth knowing before it is discovered.
+6. **Drive it on a player's copy**, and expect to find something. Every
+   seam here has found something at this step that no test could: a
+   wrong frame layout, a wrong module, seven wild reads, a step budget
+   an order of magnitude too small.
+7. **A recorded session pair** (`tests/sessions/`) — the run with the
+   seam and the same run without.
+8. **The docs**: §10's entry, `docs/playable.md`'s leg, and the
+   honest-gaps list.
+
+### 8.4 The traps, each of which has cost a day
+
+Every entry names the seam it was learned on.
+
+**Driving the program**
+
+- **The program drains its keyboard after every key it reads**, so a
+  handler that posts two keys posts one — the screen that asked consumes
+  the last and the rest are gone. One key per arrival (§3; Encamp Fix,
+  #172).
+- **A pull is one act.** A pulled seam's handler runs once per pull, so
+  it cannot drive a sequence; and a seam that ran at every arrival
+  instead would be a setting rather than a command (§3a; Encamp Fix,
+  #172, and `cheat-kill-all`, #161).
+- **A batch of calls must re-offer its point when it finishes**, or a
+  seam driving a sequence acts exactly once — `step()` runs the restored
+  instruction the moment the engine returns, and the arrival is spent
+  (§3; Encamp Fix, #189).
+
+**Guards and points**
+
+- **An address-free guard reads wild memory.** It runs with DS holding
+  whatever the program has loaded, and a read through the bus is a bus
+  cycle: above conventional RAM it is the video window, where a read
+  loads the adapter's latches. Check the cheap DS-local bytes first,
+  follow no pointer until they hold, and refuse any read outside
+  conventional memory (Encamp Fix, #172 — seven `unmapped_memory_read`
+  notices on a driven run).
+- **A point armed where a module's read landed is armed at the wrong
+  place** as soon as the manager moves it. Resolve from the program's own
+  word (§4; `cheat-kill-all`, #131).
+- **A fact can be wrong and still work once.** Both cheats were wrong the
+  first time they were driven — one in its frame layout, one in its
+  module *and* its offset (§10; #103, #129, #131).
+
+**The engine itself**
+
+- **The seam engine must not write anything to make itself work.** The
+  power-on image is machine state and it is hashed; an IRET left at the
+  call-return sentinel "as insurance" diverged every committed session
+  within a minute. Insurance that costs the fidelity invariant is not
+  insurance (call door, #188).
+- **A step budget bounds *never*, not *slow*.** 250,000 steps looked
+  generous against "a box and six lines", and the program's cast driver
+  repaints the screen it is on — which reads art off the disk and costs
+  one to two million. While the constant was wrong the *seam* looked
+  broken (Encamp Fix, #189).
+
+**Reading a driven run**
+
+The symptom vocabulary, because it is what turns a day into an hour:
+
+- IP **creeping** through a small range rather than sitting still is slow
+  *progress*, not a hang — look for something expensive, not something
+  waiting;
+- a real keypress not unsticking it means it is **not waiting for
+  input**, whatever it looks like;
+- `module_not_resident` where you expected the screen means the
+  **overlay word**, not the address;
+- a call abandoned every time, at the same place, with the machine put
+  back cleanly, means the **engine's** bound and not the program.
+
+**Tests and recordings**
+
+- **A session pair must put its inputs at the same ticks in both
+  halves.** A frame carrying an input is checkpointed whatever the
+  cadence says, so an extra input in one half gives it a checkpoint its
+  partner lacks and `contrast_of` rightly refuses the pair. Easy when the
+  difference is *which* key; it needs arranging when it is an extra one
+  (Encamp Fix, #186).
+- **Other compilers see what the local one does not** — a missing switch
+  case is a warning-as-error on clang and a silent success on MSVC. Build
+  the wasm preset before pushing (#188).
+
+**Driving the game at all** (`docs/playable.md` has the rest)
+
+- A press that lands while the game is still drawing is **drained and
+  lost**; a six-character party loads slower than a four-character one,
+  so the same script needs later presses.
+- A live `--press` run needs `--seam code-wheel`, or it waits at the
+  copy-protection challenge for ever and every downstream symptom looks
+  like something else.
+
+### 8.5 What a seam owes when it is done
+
+- **Off, the run is byte for byte the run with no engine at all** (§7).
+- **The fidelity claim, stated for this seam.** The usual one — "on and
+  unused hashes the same as off" — cannot survive a seam that is
+  *visible* before it is used, and the Encamp Fix's replacement is two
+  narrower claims that are each tested (§10, #186). Say which one applies
+  and why.
+- **The facts checked against the program**, not only against the
+  handler. A unit test proves the handler; only a driven run proves the
+  table.
+- **What it is not yet, at the point of definition.** `seam_code_wheel.cpp`
+  naming #115 is the pattern, and it is why that gap is a filed issue
+  rather than a surprise.
+- **An honest-gaps entry** in `docs/playable.md`, saying what has been
+  driven and what has only been tested.
 
 ---
 
@@ -866,7 +1088,7 @@ boundary, and it needs the argument this document would have to carry.
 | id | what | keyed to | qualified by |
 |---|---|---|---|
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
-| `encamp-fix` | at camp, **when you pull it**, dials the game's own rest to the days the party needs and presses Rest | the baseline | nothing: a point with no address (§3a) |
+| `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds and rests off what they did not close | the baseline | the overlaid module the camp screen lives in |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 
