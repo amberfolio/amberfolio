@@ -20,6 +20,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 #include "amberfolio/cpu/address.h"
@@ -98,6 +99,20 @@ constexpr std::uint16_t data_segment = 0x3000;
 constexpr std::uint16_t record_segment = 0x4000;
 constexpr std::uint16_t stack_segment = 0x5000;
 constexpr std::uint16_t overlay_segment = 0x6000;
+
+/// The two routines the report calls, at the image offsets the seam's
+/// facts name (M5-E1b, #189), and what each cleans off the stack.
+constexpr std::uint16_t image_draw_frame = 0x41F8;
+constexpr std::uint16_t image_draw_string = 0x76B6;
+constexpr std::uint16_t draw_frame_cleans = 0x10;
+constexpr std::uint16_t draw_string_cleans = 0x0A;
+
+/// Where this file's stand-in routines count their own entries — two
+/// words of the data segment the seam's facts do not name, so that "the
+/// report was drawn" is a thing the *machine* says rather than a thing
+/// the handler is asked about.
+constexpr std::uint16_t frame_calls = 0x7000;
+constexpr std::uint16_t string_calls = 0x7002;
 
 /// The camp loop's BP while it is in its menu loop — any value whose frame
 /// is inside the stack segment will do, and this one is far enough in that
@@ -294,7 +309,13 @@ struct rig {
     r.ip = offset;
     r[cpu::sreg::ds] = data_segment;
     r[cpu::sreg::ss] = stack_segment;
-    r[cpu::reg16::sp] = 0x0080;
+    // **Room below SP for what a batch stands on.** `place_bytes()` puts
+    // a seam's strings below the stack pointer (`docs/seams.md` §3), and
+    // a report is a title, a summary and a line per member — a couple of
+    // hundred bytes with the engine's own call frames under them. This
+    // was 0x80 until the report needed more than that, and what it looked
+    // like was a report that stopped in the middle for no reason.
+    r[cpu::reg16::sp] = 0x0700;
     r[cpu::reg16::bp] = frame_base;
     r.set(cpu::reg8::al, al);
   }
@@ -317,6 +338,75 @@ struct rig {
 
   void arm() const {
     ASSERT_EQ(box->seams().enable("encamp-fix"), seam_reason::none);
+  }
+
+  /// The program's two drawing routines, as the least a routine can be
+  /// and still be one: it counts that it was entered and cleans its own
+  /// arguments off the stack.
+  ///
+  /// **What is being tested here is the batch and not the drawing.** What
+  /// the box looks like is not a thing a test can check, and one that
+  /// pretended to would be checking itself; what a test can check is that
+  /// the calls were queued, that each frame was built and torn down by
+  /// the routine's own `retf`, and that the point was offered again when
+  /// the last one returned.
+  void drawing_routines() const {
+    for (const auto& [at, cleans, counter] :
+         {std::tuple{image_draw_frame, draw_frame_cleans, frame_calls},
+          std::tuple{image_draw_string, draw_string_cleans, string_calls}}) {
+      std::uint16_t put = at;
+      put_byte(image_load_segment, put++, 0xFF);  // inc word [imm16]
+      put_byte(image_load_segment, put++, 0x06);
+      put_byte(image_load_segment, put++,
+               static_cast<std::uint8_t>(counter & 0xFFU));
+      put_byte(image_load_segment, put++,
+               static_cast<std::uint8_t>(counter >> 8U));
+      put_byte(image_load_segment, put++, 0xCA);  // retf imm16
+      put_byte(image_load_segment, put++,
+               static_cast<std::uint8_t>(cleans & 0xFFU));
+      put_byte(image_load_segment, put++,
+               static_cast<std::uint8_t>(cleans >> 8U));
+    }
+    put_word(data_segment, frame_calls, 0);
+    put_word(data_segment, string_calls, 0);
+  }
+
+  /// Steps until a batch the last arrival queued has run itself out. The
+  /// bound is a bound and not a measurement: the routines above are two
+  /// instructions each, so a report is a couple of dozen steps and this
+  /// is several times that.
+  /// **It stops at the HLT**, which is the point the arrival was made at
+  /// and the instruction the machine is put back on when the batch ends.
+  /// Stepping past it would run the zeros after it, and those are
+  /// instructions that write to memory — a bound that overshot was worth
+  /// two wrong answers here before this stopped at the right place.
+  void run_the_calls(unsigned most = 128) const {
+    for (unsigned nth = 0; nth < most; ++nth) {
+      box->step();
+      if (box->processor().halted()) {
+        return;
+      }
+    }
+  }
+
+  /// Empty the keystroke buffer, which is what the **program** does
+  /// between one command and the next: it reads the key, and reading one
+  /// drains the rest (`docs/seams.md` §3). Driving points by hand there
+  /// is nothing doing that, so a key this seam posted for a screen that
+  /// never ran is still waiting — and the next arrival rightly stands
+  /// aside for it, because it cannot tell that key from one the player
+  /// typed.
+  void drain_keys() const {
+    put_word(bda::segment, bda::keyboard_buffer_tail,
+             word_at(bda::segment, bda::keyboard_buffer_head));
+  }
+
+  /// How many times each drawing routine has been entered.
+  [[nodiscard]] unsigned frames_drawn() const {
+    return word_at(data_segment, frame_calls);
+  }
+  [[nodiscard]] unsigned lines_drawn() const {
+    return word_at(data_segment, string_calls);
   }
 
   /// What the BIOS keystroke buffer holds, as a program would read it: the
@@ -974,6 +1064,188 @@ TEST(SeamEncampFix, LeavesNoTraceInMemoryWhenTheCommandIsNeverChosen) {
   EXPECT_EQ(r.bar(), plain_bar);
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u);
   EXPECT_EQ(r.keys_waiting(), 0u);
+}
+
+// --- The report (M5-E1b, #189) ---------------------------------------------
+//
+// What the command did, on the pass of the camp menu after it finished.
+// The tests below are about *when* it is drawn and *how often* — which is
+// where every bug in it has been — and about the one thing a test can say
+// about its contents, which is how many lines it took.
+//
+// The box itself is not checked here and could not be: what it looks like
+// is the program's business, and a test that asserted it would be
+// asserting this file's own arithmetic back to itself. `docs/playable.md`
+// leg 7 is where a person looks at it.
+
+TEST(SeamEncampFix, DrawsNoReportWhenNoCommandHasRun) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 8, .most_hit_points = 8}});
+
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 0u)
+      << "nothing was asked for, so nothing is owed";
+  EXPECT_EQ(r.bar(), fixed_bar) << "and the pass is the ordinary one";
+}
+
+TEST(SeamEncampFix, DoesNotReportBeforeTheRestItAskedFor) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  ASSERT_NE(r.word_at(data_segment, data_rest_days), 0u)
+      << "the command asked for a rest";
+
+  // The camp loop goes round once between the Rest key the seam posted
+  // and the rest command reading it, because the Fix's letter is one the
+  // loop does not know. A report drawn here would have every number in
+  // it zero.
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 0u)
+      << "the rest has not happened yet, so there is nothing to report";
+  EXPECT_EQ(r.bar(), fixed_bar) << "and the bar is spliced as on any pass";
+}
+
+TEST(SeamEncampFix, ReportsOnTheMenuPassAfterTheRest) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);  // the rest starts: the claim is spent
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 1u) << "one box, framed and titled";
+  EXPECT_EQ(r.lines_drawn(), 2u)
+      << "the summary, and the one member still short";
+}
+
+TEST(SeamEncampFix, ReportsWhatTheCommandDeclinedToDo) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  // Whole, and nothing pending: the command does nothing at all, and
+  // says so rather than going quiet (#192).
+  r.party({{.hit_points = 8, .most_hit_points = 8}});
+
+  r.one_menu_pass(fix_letter);
+  ASSERT_EQ(r.word_at(data_segment, data_rest_days), 0u);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 1u) << "the box is drawn on the next pass";
+  EXPECT_EQ(r.lines_drawn(), 2u)
+      << "the summary, and a line saying the party is whole rather than a "
+         "list of nobody";
+}
+
+TEST(SeamEncampFix, DrawsItsReportOnceAndNotAgain) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 8, .most_hit_points = 8}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+  const unsigned once = r.frames_drawn();
+
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), once)
+      << "a report owed is a report drawn, and then it is not owed";
+  EXPECT_EQ(r.bar(), fixed_bar) << "and the pass after it is an ordinary one";
+}
+
+TEST(SeamEncampFix, IsReadyToRunAgainAfterItHasReported) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  // The party is still short — nothing here heals anybody — so choosing
+  // it again asks for another rest. A command whose state was left set
+  // would decline instead, and its next report would carry the first
+  // one's numbers.
+  r.put_word(data_segment, data_rest_days, 0);
+  r.drain_keys();
+  r.one_menu_pass(fix_letter);
+
+  EXPECT_NE(r.word_at(data_segment, data_rest_days), 0u)
+      << "the command is a command again";
+}
+
+TEST(SeamEncampFix, ReportsThatThePlayerStoppedIt) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party(party_with_a_healer(2));
+  // The key is already waiting when the command is chosen, which is the
+  // shape every arrival stands aside for: the player typed something the
+  // program has not read yet.
+  ASSERT_TRUE(r.pc().inject_keystroke(0x1E << 8U | 0x41));
+
+  r.one_menu_pass(fix_letter);
+  ASSERT_EQ(r.word_at(data_segment, data_rest_days), 0u)
+      << "and the command asked for nothing";
+
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 1u)
+      << "a command the player stopped still owes them an account of it";
+}
+
+TEST(SeamEncampFix, NamesNobodyItCouldNotHaveHelped) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  // Four the report has something to say about and one it has not: the
+  // slain member is an exception resting cannot help, the three wounded
+  // are exceptions it did not close, and the whole one is neither.
+  r.party({{.hit_points = 1, .most_hit_points = 9},
+           {.hit_points = 2, .most_hit_points = 9},
+           {.hit_points = 3, .most_hit_points = 9},
+           {.status = status_slain, .hit_points = 0, .most_hit_points = 9},
+           {.hit_points = 9, .most_hit_points = 9}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 1u);
+  // The summary, three of the four exceptions, and the line saying how
+  // many were not named — the box holds four rows and the list keeps one
+  // of them for that tail. The slain member's line is two calls, because
+  // the program's own word for their condition is drawn from where the
+  // program keeps it rather than copied through this seam.
+  EXPECT_GE(r.lines_drawn(), 4u) << "the summary and a list that filled up";
+  EXPECT_LE(r.lines_drawn(), 6u) << "and no more calls than the box has rows";
 }
 
 TEST(SeamEncampFix, CannotBePulled) {

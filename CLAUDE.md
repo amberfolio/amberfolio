@@ -45,14 +45,16 @@ What M4 left in place:
   an outstanding pull included — is configuration and not machine state.
   M5's five enhancements add no mechanism; they add handlers.
 - **Four seams this build carries**: `code-wheel` (ungated; its
-  possession gate is M5's, #115), `encamp-fix` (M5-E1 #172 and M5-E1a
-  #186 — the first M5 enhancement; it puts a `FIX` command on the camp
-  screen's own bar by splicing four characters into the string the
-  program draws that bar from, and when the player presses its letter it
-  spends the cures the party already holds through the game's own cast
+  possession gate is M5's, #115), `encamp-fix` (M5-E1 #172, M5-E1a #186
+  and M5-E1b #189 — the first M5 enhancement; it puts a `FIX` command on
+  the camp screen's own bar by splicing four characters into the string
+  the program draws that bar from, and when the player presses its letter
+  it spends the cures the party already holds through the game's own cast
   driver — queueing one back for every one spent — then dials the game's
-  own rest to the days that did not close and presses Rest; any key the
-  player types stops it),
+  own rest to the days that did not close and presses Rest, and on the
+  next pass of the menu says what it did in a framed report the *game*
+  draws, in the game's font, over a live bar that is the way out of it;
+  any key the player types stops it),
   `cheat-invulnerable`, `cheat-kill-all`. `docs/seams.md` §8 is the house
   style for the next one and §10 is the worked example.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a

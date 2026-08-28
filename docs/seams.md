@@ -1088,11 +1088,11 @@ boundary, and it needs the argument this document would have to carry.
 | id | what | keyed to | qualified by |
 |---|---|---|---|
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
-| `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds and rests off what they did not close | the baseline | the overlaid module the camp screen lives in |
+| `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws | the baseline | the overlaid module the camp screen lives in |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 
-### The Encamp (F)ix (#172, #186)
+### The Encamp (F)ix (#172, #186, #189)
 
 PLAN.md §5 item 4, and the one enhancement the plan grants a deliberate
 exception: it automates play. The exception is narrow and the seam is
@@ -1376,6 +1376,76 @@ running inside the rest the seam asked for.
 the cures run out and the days do the rest — the arithmetic for that is
 tested against rosters a test writes, not driven. `docs/playable.md`'s
 leg 7 says the same thing from the run's side.
+
+#### What it says when it is done (M5-E1b, #189)
+
+On the pass of the camp menu after the command finishes, the seam frames
+the program's own message panel and writes into it. **Every glyph is the
+program's**: the box, the font, the colours and the centring of the title
+come from the program's own frame and string drawers, called through the
+door #188 opened (§3). This machine has a font of its own and it is
+deliberately not the game's, so a seam that rasterized its own lettering
+would have put visibly foreign text on the game's screen — the failure
+#186 was filed about, one layer down.
+
+```
+  row 0x11   the title, centred by the frame on the box's own top row
+  row 0x12   the summary: hit points restored, cures spent, and the time
+  0x13..     ONLY the members it could not put right, one line each
+  last row   the pending-cures warning, when there is one
+```
+
+**The summary is the one line only this command can write**, and that is
+the argument for the seam keeping any words of its own at all (§3): every
+other number on that screen says where things are *now*, and this is a
+difference against a before the machine has stopped holding. Three words
+hold it — the party's hit points and the clock as the command began, and
+the days it dialled.
+
+**There is no per-member table**, which is the proven design's own cut
+(PLAN.md §5). The roster panel is still on screen behind the box with
+every member's hit points on it, so a table would mostly redraw what the
+player can already see. The exception list truncates to an "and N more"
+line rather than paging, which removes the one part of a report that can
+be got wrong.
+
+**A member resting cannot mend is named in the program's own word for
+it** — the drawer is handed a pointer into the program's own status
+table, not a copy of what it says. Same rule as the bar splice, same
+reason (§8.1).
+
+**The way out is the bar under it.** The box is drawn *before* the camp
+screen's own command bar goes out, so what the player is looking at is
+the report and a live bar with the program's own EXIT on it. Any key
+takes them somewhere and takes the box with it. Nothing says "press any
+key", because the thing on the screen that works is the thing on the
+screen — #186's rule, one layer on.
+
+**Six titles, and the seventh is a filed issue.** Healed, rest stopped,
+stopped by the player, no cure memorized, nobody knows a cure, cannot
+cast here — the last two being different sentences, which is this
+project's own addition: a party whose cleric knows a cure and has none
+memorized can do something about it, and one whose nobody knows it
+cannot. `Interrupted!` is not among them, and #194 is why: the program answers an interrupted rest
+by taking the party out of camp, so the pass this box is drawn on does
+not come. `docs/playable.md` leg 7 has the driven run that found it.
+
+**The clock cannot say how long a rest of a day or more took.** It is an
+hour and two minute digits with no day counter, so the summary drops its
+time clause whenever the command dialled days rather than print the
+remainder of a wrap as though it were the answer. A rest under a day —
+the memorization the cures queue back, which is the usual one — reports
+exactly.
+
+**What is measured and what is read off the program.** The box has been
+looked at, on a player's copy, on the desktop host: the title, the
+summary and the line a whole party gets, in the game's lettering, with
+the live bar under it. The wasm module took the same three acts on the
+same script. What has *not* been looked at is the exception list — every
+driven run so far ends with the party whole — so the rows naming who is
+still short are covered by tests over rosters the unit suite writes and
+by the `tests/programs` stand-in's count of the calls, and by nothing
+else. `docs/playable.md`'s honest-gaps list says the same.
 
 ### The debug cheats (#99)
 

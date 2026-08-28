@@ -192,6 +192,26 @@
 // than spending the player's day to look busy.
 //
 //
+// **And then it says what it did** (M5-E1b, #189). On the pass of the
+// camp menu after the command finishes, the seam frames the program's own
+// message panel and writes into it — through the program's own frame and
+// string drawers (#188), so the box, the font, the colours and the
+// centring of the title are the program's and nothing here rasterizes a
+// glyph. The title is one of six, per way the command ended; the summary
+// is the one line only this command can write, because every other number
+// on that screen says where things are *now* and this is a difference
+// against a before the machine has stopped holding; and what is left is
+// the members it could not put right, named in the program's own word for
+// their condition.
+//
+// **The way out is the bar under it.** The report is drawn before the
+// camp screen's own command bar goes out, so what is on the screen is the
+// box and a live bar with the program's own EXIT on it — any key the
+// player presses takes them somewhere and takes the box with it. That is
+// #186's rule one layer on: the prompt on screen is the prompt that
+// works, and this report needs no prompt of its own to say so.
+//
+//
 // What a later Gold Box title's FIX did that this one does not
 // ------------------------------------------------------------
 //
@@ -242,6 +262,31 @@
 // the run it would have been**, because the splice is undone at point 2
 // and the prompt is a stack byte in a frame that is gone before the loop
 // turns over.
+//
+// **A command the game interrupts does not report when it happened.**
+// This is the one the report cannot reach, and it is worth being exact
+// about because it is the common case for a wounded party. The box is
+// drawn on the next pass of the camp menu, and a wandering monster —
+// or, driven on a player's copy, the city watch rousting the party —
+// takes the party out of camp entirely: the mode word goes to
+// adventuring, the camp screen is gone, and the seam's three points are
+// in the overlay it went with. The next pass of that menu is whenever
+// the player next chooses ENCAMP, which may be an hour of their game
+// later, and the box that greets them then would be an account of
+// something they have half forgotten.
+//
+// So `Fix: Interrupted!` is a title this shape cannot honestly reach,
+// and it is not in the list. What the player gets instead is the healing
+// — which happened, and is on the roster panel — and no box. Closing it
+// wants a fourth point, on the program's own way out of camp, and that
+// is a seam with a different shape rather than a line of code here.
+//
+// **The elapsed time cannot express a rest of a day or more.** The
+// game's clock is an hour and two minute digits with no day counter, so
+// the summary drops its time clause whenever the command dialled days
+// (`scratch_days_asked`) rather than print the remainder of a wrap as
+// though it were an answer. A rest under a day — the memorization the
+// cures queue back, which is the usual one — reports exactly.
 //
 // **Hit points have come back on a driven run**, which they had not when
 // this comment was first written: `docs/playable.md` leg 7's second half
@@ -451,10 +496,132 @@ constexpr std::uint16_t cast_region_right = 0x26;
 constexpr std::uint16_t cast_region_top = 0x11;
 constexpr std::uint16_t cast_region_left = 1;
 
+/// The framed box with a centred title, and the string drawer — the two
+/// routines the report is made of (#188, `docs/seams.md` §3).
+///
+/// The frame puts its title on the box's **first interior row** rather
+/// than on the border, which is why the title's row and the box's top are
+/// the same number below.
+constexpr std::uint16_t image_draw_frame = 0x041F8;
+constexpr std::uint16_t image_draw_string = 0x076B6;
+
+/// The report's box is the message panel, which is the same region the
+/// cast screen frames — so the constants above are these, and the report
+/// says so by using them rather than repeating them.
+///
+/// There is no constant for the title row, and its absence is the fact:
+/// the frame puts its title on the box top itself, so the row the title
+/// lands on is `cast_region_top` and naming it twice would invite the two
+/// to drift apart.
+constexpr std::uint16_t report_summary_row = cast_region_top + 1;
+constexpr std::uint16_t report_first_row = cast_region_top + 2;
+
+/// Where the three cells of an exception line begin, and how wide the
+/// first two are. The name is the full width a character name can be; the
+/// hit points are `255/255` at their longest.
+constexpr unsigned report_name_column = 1;
+constexpr unsigned report_name_width = 0x0F;
+constexpr unsigned report_points_column = 0x11;
+constexpr unsigned report_reason_column = 0x19;
+
+/// The widest title the frame will centre without painting over its own
+/// border: the centring is `(left + right - length) / 2`, so a title of
+/// the full interior width lands one column outside it.
+constexpr unsigned report_title_width = cast_region_right - cast_region_left;
+
+/// The colours, which are the program's own: the frame and its title as
+/// the program frames every other box, the body as its message text, and
+/// the one it uses for a thing the player should notice.
+constexpr std::uint16_t report_frame_colour = 0x0F;
+constexpr std::uint16_t report_body_colour = 0x0A;
+constexpr std::uint16_t report_warning_colour = 0x0E;
+
+/// The game's clock, three words in the area record: the hour, and the
+/// minutes as tens and units. The same three the program's own status
+/// line reads, and the reason the report can say how long the rests took
+/// when the clock on screen can only say what time it is now.
+constexpr std::uint16_t area_clock_minute_units = 0x018E;
+constexpr std::uint16_t area_clock_minute_tens = 0x0190;
+constexpr std::uint16_t area_clock_hours = 0x0192;
+
+/// Minutes in a day, for a run that crosses midnight — the clock carries
+/// no day counter here, so an elapsed time that reads backwards is one
+/// wrap and not a fault.
+constexpr unsigned minutes_in_a_day = 24 * 60;
+
+/// The program's own wound-status names, and the stride between them: a
+/// table of Pascal strings in the data segment, indexed by the status
+/// byte. The report names a member resting cannot help **in the
+/// program's own words**, by handing the drawer a pointer into this table
+/// — never by copying the text through this seam, which is the same rule
+/// the bar splice follows (§8.1).
+constexpr std::uint16_t data_status_names = 0x1047;
+constexpr std::uint16_t status_name_stride = 0x0D;
+
 /// This seam's own words (seam.h): how many cures it has spent since the
 /// command began. Zero between commands, and the backstop below is read
 /// against it.
 constexpr unsigned scratch_casts = 0;
+
+/// What the command is doing, and — when it has finished — how it
+/// finished, so that the next pass of the camp menu can say so.
+///
+/// This is the one word here that is a **state machine** rather than a
+/// measurement, and §3 says to reach for a seam's own words last. The
+/// justification is the same as the report's: what the command *did* is a
+/// comparison against a before that the machine has stopped holding, and
+/// which of the outcomes below it reached is part of that comparison.
+constexpr unsigned scratch_state = 2;
+
+/// The party's total hit points when the command began, and the game
+/// clock in minutes at the same instant. Both are gone from the machine
+/// by the time the report is drawn, which is exactly what these words are
+/// for (§8.2).
+constexpr unsigned scratch_points_before = 3;
+constexpr unsigned scratch_clock_before = 4;
+
+/// The days the command dialled, kept from the ask to the report.
+///
+/// **Not for the arithmetic — for knowing when not to print a number.**
+/// The game's clock is an hour and two minute digits and carries no day
+/// counter (`area_clock_*` below), so a difference between two readings
+/// can only express less than a day. A rest of one day or more comes back
+/// with a clock that says something true about the time of day and
+/// nothing about how long the party slept, and the summary drops its
+/// elapsed clause rather than print the remainder as though it were the
+/// answer. A wrong number is worse than no number, and the days the
+/// command asked for are on the game's own calendar anyway.
+constexpr unsigned scratch_days_asked = 5;
+
+/// How the command is going, in `scratch_state`.
+///
+/// **Idle is zero**, so a seam that has just been switched on — its words
+/// start empty (seam.h) — is a seam with no report owing.
+/// A byte is the base, and `as_word()` below is how it reaches a scratch
+/// word: the outcomes number in the single digits, and the word they are
+/// kept in is the engine's type rather than this one's.
+enum class run_state : std::uint8_t {
+  idle = 0,
+  /// Chosen, and working: casting a cure per arrival.
+  running = 1,
+  /// A rest has been asked for. **The outcome is not known yet**, because
+  /// what a rest achieves is only readable after it — so this state says
+  /// "decide when the camp menu comes back", and the deciding happens
+  /// there, out of the machine, rather than being guessed here.
+  resting = 2,
+  /// Finished. Each of these is a title, and the next arrival at the camp
+  /// menu draws it.
+  healed = 3,
+  rest_stopped = 4,
+  no_cure_memorized = 5,
+  nobody_knows_a_cure = 6,
+  cannot_cast_here = 7,
+  player_stopped = 8,
+};
+
+[[nodiscard]] constexpr std::uint16_t as_word(run_state which) noexcept {
+  return static_cast<std::uint16_t>(which);
+}
 
 /// Set when this seam has posted Rest at the camp bar, cleared when the
 /// rest command starts — so point 3 knows the rest about to happen is
@@ -491,6 +658,17 @@ constexpr unsigned max_roster_walk = 16;
 // depends on.
 
 constexpr std::uint16_t rec_max_hit_points = 0x32;
+
+/// The known-spell flags: one byte per spell id, **one-based**, so the id
+/// that indexes them is never zero and index zero is `rec_max_hit_points`
+/// above. The overlap is the program's own and not a mistake in reading
+/// it — the two facts were found separately and agree.
+///
+/// This is what tells "nobody has a cure memorized" apart from "nobody
+/// knows one", which are different sentences and different titles: a
+/// party whose cleric knows Cure Light Wounds and has not memorized any
+/// can do something about it, and one whose nobody knows it cannot.
+constexpr std::uint16_t rec_known_spells = 0x32;
 constexpr std::uint16_t rec_next_offset = 0x104;  // far ptr: next record
 constexpr std::uint16_t rec_status = 0x10C;       // wound status
 constexpr std::uint16_t rec_hit_points = 0x11B;   // current hit points
@@ -745,6 +923,21 @@ struct member_reading {
   /// is queued back.
   unsigned free_slot{};
   bool has_free_slot{false};
+  /// Cures held **pending** — queued for memorization, and so not
+  /// spendable now. What tells "nobody memorized one" apart from "nobody
+  /// knows one", which are different sentences and different titles.
+  unsigned pending_cures{};
+  /// Hit points now and at most, as the report prints them. Read for
+  /// everybody, not only for the members resting can help: a line naming
+  /// somebody the command could not touch still has to say where they
+  /// are.
+  std::uint8_t points{};
+  std::uint8_t most_points{};
+  /// The wound status, for the program's own word for it.
+  std::uint8_t status{};
+  /// Whether resting can put this one right at all — the applier's gate,
+  /// kept because the report's reason column turns on it.
+  bool heals{false};
 };
 
 /// What one walk of the roster found.
@@ -761,8 +954,39 @@ struct roster_reading {
   /// which only time turns into one they can cast. Something to rest
   /// *for* even when every hit point is where it should be.
   unsigned pending_spells{0};
+  /// The party's hit points added up, which is the number the report's
+  /// summary is a difference of.
+  unsigned points{0};
+  /// Cures the party is holding, ready and pending. The ready count says
+  /// whether anybody could cast one now.
+  unsigned ready_cures{0};
+  unsigned pending_cures{0};
+  /// Whether anybody who can act knows a cure at all, book flag rather
+  /// than memorized — the difference between a party that can do
+  /// something about it and one that cannot.
+  bool anybody_knows_a_cure{false};
   std::array<member_reading, max_roster_walk> member{};
 };
+
+/// Whether this member knows any of the cures at all — the book flag,
+/// which is a different question from holding one memorized. False when
+/// the read is refused, which is the fail-closed direction: a report that
+/// said nobody knows a cure because it could not look would be worse than
+/// one that said the rest was stopped.
+[[nodiscard]] bool knows_a_cure(cpu::processor& cpu, std::uint16_t segment,
+                                std::uint16_t offset) {
+  for (const std::uint8_t heal : heal_spells) {
+    std::uint8_t known = 0;
+    if (read_byte(cpu, segment,
+                  word_after(offset, static_cast<std::uint16_t>(
+                                         rec_known_spells + heal)),
+                  known) &&
+        known != 0) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /// Whether `id` is one of the spells this seam is willing to spend.
 [[nodiscard]] constexpr bool is_heal_spell(std::uint8_t id) noexcept {
@@ -812,20 +1036,24 @@ struct roster_reading {
     if (!read_byte(cpu, segment, word_after(offset, rec_status), status)) {
       return out;
     }
-    if (heals_by_resting(status)) {
-      std::uint8_t current = 0;
-      std::uint8_t most = 0;
-      if (!read_byte(cpu, segment, word_after(offset, rec_hit_points),
-                     current) ||
-          !read_byte(cpu, segment, word_after(offset, rec_max_hit_points),
-                     most)) {
-        return out;
-      }
-      if (most > current) {
-        who.deficit = static_cast<unsigned>(most - current);
-        if (who.deficit > out.worst_deficit) {
-          out.worst_deficit = who.deficit;
-        }
+    who.status = status;
+    who.heals = heals_by_resting(status);
+    // Read for everybody and not only for the members resting can help.
+    // The deficit below still turns on the applier's gate — a member it
+    // refuses must not lengthen the rest — but the report names them,
+    // and a line that could not say where somebody is would be worse
+    // than no line.
+    if (!read_byte(cpu, segment, word_after(offset, rec_hit_points),
+                   who.points) ||
+        !read_byte(cpu, segment, word_after(offset, rec_max_hit_points),
+                   who.most_points)) {
+      return out;
+    }
+    out.points += who.points;
+    if (who.heals && who.most_points > who.points) {
+      who.deficit = static_cast<unsigned>(who.most_points - who.points);
+      if (who.deficit > out.worst_deficit) {
+        out.worst_deficit = who.deficit;
       }
     }
 
@@ -837,6 +1065,9 @@ struct roster_reading {
       return out;
     }
     who.can_act = acts != 0 && status != status_animated;
+    if (who.can_act && knows_a_cure(cpu, segment, offset)) {
+      out.anybody_knows_a_cure = true;
+    }
     for (unsigned nth = 0; nth < rec_spell_slot_count; ++nth) {
       std::uint8_t slot = 0;
       if (!read_byte(cpu, segment,
@@ -852,8 +1083,13 @@ struct roster_reading {
         }
       } else if ((slot & spell_pending) != 0) {
         ++out.pending_spells;
+        if (is_heal_spell(static_cast<std::uint8_t>(slot & ~spell_pending))) {
+          ++who.pending_cures;
+          ++out.pending_cures;
+        }
       } else if (is_heal_spell(slot)) {
         ++who.ready_cures;
+        ++out.ready_cures;
       }
     }
 
@@ -902,36 +1138,6 @@ struct roster_reading {
          cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
 }
 
-// --- The points ------------------------------------------------------------
-
-/// Point 1: the bar, on its way to being drawn.
-void offer_the_fix(machine& box, seam_context& ctx) {
-  cpu::processor& cpu = box.processor();
-  auto& regs = cpu.regs();
-  const std::uint16_t ds = regs[cpu::sreg::ds];
-
-  std::uint8_t mode = 0;
-  if (!read_byte(cpu, ds, data_game_mode, mode) || mode != mode_camp) {
-    // The address says this is the camp loop; the mode byte is what says
-    // the machine agrees. A point that fires anywhere else is a fact that
-    // has gone wrong, and the fail-closed direction is to draw nothing.
-    ctx.decline(seam_reason::point_not_recognized);
-    return;
-  }
-  if (!splice_in(cpu, ds)) {
-    ctx.decline(seam_reason::point_not_recognized);
-    return;
-  }
-  // The prompt's own columns, which the longer bar needs. It is a Pascal
-  // string on the loop's stack, rebuilt on every pass, so this is undone
-  // by the program itself rather than by this seam.
-  if (!write_byte(
-          cpu, regs[cpu::sreg::ss],
-          static_cast<std::uint16_t>(regs[cpu::reg16::bp] - frame_prompt), 0)) {
-    ctx.decline(seam_reason::point_not_recognized);
-  }
-}
-
 /// Whether this area lets anyone cast at all — the word the program's own
 /// cast screen reads before it offers a spell. True when it cannot be
 /// read, which is the fail-closed direction: a seam that cast where the
@@ -950,6 +1156,540 @@ void offer_the_fix(machine& box, seam_context& ctx) {
     return false;
   }
   return refuses == 0;
+}
+
+// --- The report ------------------------------------------------------------
+//
+// What the command did, in the game's own font, in the box the program
+// frames for its own messages. Everything here is composed in this seam's
+// own storage and drawn by the program's own routines (#188): nothing is
+// rasterized here, and no word of the program's is carried here — a
+// member the command could not help is named in the program's own word
+// for their condition, by handing the drawer a pointer into the
+// program's own table rather than a copy of what it says.
+
+/// A line of the report: a Pascal string — a length byte and its
+/// characters — built here and put on the machine's own stack by
+/// `place_bytes()` for exactly as long as the batch that draws it.
+///
+/// Forty-two bytes because a screen is forty columns and a Pascal string
+/// costs one more; the two over are what makes an append that would not
+/// fit a clamp rather than an overrun.
+class report_line {
+ public:
+  /// Characters, clamped. A line that ran out of room is a line that
+  /// stops, which is what each of these does at the box's edge anyway.
+  void add(std::string_view text) {
+    for (const char letter : text) {
+      if (static_cast<std::size_t>(length_) + 1U >= byte_.size()) {
+        return;
+      }
+      byte_[static_cast<std::size_t>(++length_)] =
+          static_cast<std::uint8_t>(letter);
+    }
+  }
+
+  void add_char(std::uint8_t letter) {
+    if (static_cast<std::size_t>(length_) + 1U >= byte_.size()) {
+      return;
+    }
+    byte_[static_cast<std::size_t>(++length_)] = letter;
+  }
+
+  /// A number in decimal. Everything the report counts — hit points,
+  /// spells, hours, minutes — is a byte or a small word, so five digits
+  /// is the whole range and there is no value this cannot print.
+  void add_number(unsigned value) {
+    std::array<char, 5> digit{};
+    std::size_t digits = 0;
+    while (digits < digit.size()) {
+      digit[digits++] = static_cast<char>('0' + (value % 10U));
+      value /= 10U;
+      if (value == 0) {
+        break;
+      }
+    }
+    while (digits != 0) {
+      --digits;
+      add(std::string_view{&digit[digits], 1});
+    }
+  }
+
+  /// The same, always two digits — the minutes cell of a clock, where
+  /// four minutes past is `04` and not `4`.
+  void add_two_digits(unsigned value) {
+    if (value < 10) {
+      add(std::string_view{"0"});
+    }
+    add_number(value);
+  }
+
+  /// Spaces until the next character would land in `column`, so a line
+  /// drawn from `report_name_column` puts its cells where the layout
+  /// says. A cell whose contents already overran its column gets one
+  /// space instead: columns that do not line up are harder to read, and
+  /// two words run together are harder to trust.
+  void pad_to(unsigned column) {
+    const unsigned wanted = column - report_name_column;
+    if (length_ >= wanted) {
+      add(std::string_view{" "});
+      return;
+    }
+    while (length_ < wanted) {
+      add(std::string_view{" "});
+    }
+  }
+
+  /// The length byte, written on the way out rather than kept up to date
+  /// by every append above.
+  void seal() { byte_[0] = length_; }
+
+  [[nodiscard]] std::span<const std::uint8_t> bytes() const {
+    return {byte_.data(), static_cast<std::size_t>(length_) + 1U};
+  }
+
+ private:
+  std::array<std::uint8_t, 0x2A> byte_{};
+  std::uint8_t length_{0};
+};
+
+/// The title, per outcome — this project's own words for its own
+/// command, and the one thing the report says that is not read out of
+/// the machine.
+[[nodiscard]] constexpr std::string_view title_for(std::uint16_t state) {
+  switch (state) {
+    case as_word(run_state::healed):
+      return "Fix: Party Healed";
+    case as_word(run_state::rest_stopped):
+      return "Fix: Rest Stopped";
+    case as_word(run_state::no_cure_memorized):
+      return "Fix: No Cure Memorized";
+    case as_word(run_state::nobody_knows_a_cure):
+      return "Fix: Nobody Knows Cure";
+    case as_word(run_state::cannot_cast_here):
+      return "Fix: Cannot Cast Here";
+    case as_word(run_state::player_stopped):
+      return "Fix: Stopped";
+    default:
+      return "Fix";
+  }
+}
+
+/// The game's clock in minutes, from the three words of the area record
+/// the program's own status line reads. Zero when it cannot be read,
+/// which costs the summary its elapsed clause and nothing else.
+[[nodiscard]] unsigned clock_minutes(cpu::processor& cpu, std::uint16_t ds) {
+  std::uint16_t offset = 0;
+  std::uint16_t segment = 0;
+  if (!read_word(cpu, ds, data_area_record, offset) ||
+      !read_word(cpu, ds, word_after(data_area_record, 2), segment) ||
+      segment == 0) {
+    return 0;
+  }
+  std::uint16_t hours = 0;
+  std::uint16_t tens = 0;
+  std::uint16_t units = 0;
+  if (!read_word(cpu, segment, word_after(offset, area_clock_hours), hours) ||
+      !read_word(cpu, segment, word_after(offset, area_clock_minute_tens),
+                 tens) ||
+      !read_word(cpu, segment, word_after(offset, area_clock_minute_units),
+                 units)) {
+    return 0;
+  }
+  return (unsigned{hours} * 60U) + (unsigned{tens} * 10U) + unsigned{units};
+}
+
+/// Minutes from `began` to `now`. **The clock wraps at midnight and
+/// carries no day counter here**, so a run that crossed it reads
+/// backwards; one day added back is the answer, and one wrap is the only
+/// case there is — a command that rested a whole day would have stopped
+/// when the party came whole long before.
+[[nodiscard]] unsigned minutes_since(unsigned began, unsigned now) {
+  return now >= began ? now - began : (now + minutes_in_a_day) - began;
+}
+
+/// Whether the report names this member: somebody the command could not
+/// put right, either because resting cannot help them at all or because
+/// they are still short of their maximum.
+[[nodiscard]] bool is_an_exception(const member_reading& who) {
+  return !who.heals || who.points < who.most_points;
+}
+
+/// The summary — the one line only this command can write, because every
+/// other number on the screen says where things are *now* and this is a
+/// difference against a before the machine has stopped holding.
+///
+/// A rest restores hit points with no spell spent, so the spell clause is
+/// dropped rather than printed as "with 0 spells"; and a command that
+/// healed nobody says so rather than printing a zero.
+[[nodiscard]] report_line summary_line(unsigned restored, unsigned casts,
+                                       unsigned minutes) {
+  report_line line;
+  if (restored != 0) {
+    line.add(std::string_view{"Healed "});
+    line.add_number(restored);
+    line.add(std::string_view{" HP"});
+    if (casts != 0) {
+      line.add(std::string_view{" with "});
+      line.add_number(casts);
+      line.add(casts == 1 ? std::string_view{" spell"}
+                          : std::string_view{" spells"});
+    }
+  } else {
+    line.add(std::string_view{"No hit points restored"});
+  }
+  if (minutes != 0) {
+    line.add(std::string_view{" in "});
+    line.add_number(minutes / 60U);
+    line.add(std::string_view{":"});
+    line.add_two_digits(minutes % 60U);
+  }
+  line.add(std::string_view{"."});
+  line.seal();
+  return line;
+}
+
+/// One call to the program's own string drawer, at a cell. The frame is
+/// the fact `docs/seams.md` §3 records: the arguments in the reverse of
+/// the order the routine's own callers name them, a far pointer's segment
+/// before its offset.
+[[nodiscard]] bool draw_string(seam_context& ctx, std::uint16_t image,
+                               const report_line& line, std::uint16_t colour,
+                               std::uint16_t row, std::uint16_t column) {
+  std::uint16_t segment = 0;
+  std::uint16_t offset = 0;
+  if (!ctx.place_bytes(line.bytes(), segment, offset)) {
+    return false;
+  }
+  const std::array<std::uint16_t, 5> where{column, row, colour, segment,
+                                           offset};
+  return ctx.call_program(image, image_draw_string, where);
+}
+
+/// The same, for a string already in the program's memory — the
+/// wound-status table. Nothing is placed and nothing is copied: the
+/// drawer is handed where the program keeps its own word.
+[[nodiscard]] bool draw_program_string(seam_context& ctx, std::uint16_t image,
+                                       std::uint16_t segment,
+                                       std::uint16_t offset,
+                                       std::uint16_t colour, std::uint16_t row,
+                                       std::uint16_t column) {
+  const std::array<std::uint16_t, 5> where{column, row, colour, segment,
+                                           offset};
+  return ctx.call_program(image, image_draw_string, where);
+}
+
+/// One exception line, up to its reason: the name out of the record, then
+/// the hit points. False when a read of the name would land outside
+/// conventional memory, which is the refusal every read here makes.
+[[nodiscard]] bool exception_line(cpu::processor& cpu,
+                                  const member_reading& who,
+                                  report_line& line) {
+  std::uint8_t name_length = 0;
+  if (!read_byte(cpu, who.segment, who.offset, name_length)) {
+    return false;
+  }
+  const unsigned letters =
+      name_length > report_name_width ? report_name_width : name_length;
+  for (unsigned at = 0; at < letters; ++at) {
+    std::uint8_t letter = 0;
+    if (!read_byte(cpu, who.segment,
+                   word_after(who.offset, static_cast<std::uint16_t>(at + 1)),
+                   letter)) {
+      return false;
+    }
+    line.add_char(letter);
+  }
+  line.pad_to(report_points_column);
+  line.add_number(who.points);
+  line.add(std::string_view{"/"});
+  line.add_number(who.most_points);
+  return true;
+}
+
+/// Queue the whole report as one batch (§3): the frame with its title,
+/// the summary, the members it could not put right, and the warning when
+/// there is one.
+///
+/// **It is one batch and not several arrivals**, because a report is one
+/// picture: a handler that drew half of it and was declined the rest
+/// would leave a titled box with nothing in it. Twelve calls is the
+/// engine's bound and the worst case here is ten — the frame, the
+/// summary, and four rows of at most two calls each.
+///
+/// **There is no pager.** The list truncates to a line saying how many it
+/// did not name, which is the proven design's own cut (PLAN.md §5) and
+/// removes the one part of a report that can be got wrong. What that
+/// costs is less than it looks: the roster panel is still on screen
+/// behind the box, with every member's hit points on it.
+[[nodiscard]] bool draw_the_report(cpu::processor& cpu, seam_context& ctx,
+                                   std::uint16_t ds,
+                                   const roster_reading& party,
+                                   std::uint16_t state, unsigned restored,
+                                   unsigned casts, unsigned minutes) {
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+
+  report_line title;
+  title.add(title_for(state));
+  title.seal();
+  std::uint16_t title_segment = 0;
+  std::uint16_t title_offset = 0;
+  if (title.bytes().size() > report_title_width + 1U ||
+      !ctx.place_bytes(title.bytes(), title_segment, title_offset)) {
+    return false;
+  }
+  // The frame clears the panel as it draws it, so whatever the last
+  // driven cast or rest left there goes with it. Its title lands on the
+  // box's first interior row rather than on the border, which is why the
+  // title row and the box's top are the same number.
+  const std::array<std::uint16_t, 8> frame{
+      cast_region_left,   cast_region_top,   cast_region_right,
+      cast_region_bottom, cast_region_style, report_frame_colour,
+      title_segment,      title_offset};
+  if (!ctx.call_program(image, image_draw_frame, frame)) {
+    return false;
+  }
+
+  const report_line summary = summary_line(restored, casts, minutes);
+  if (!draw_string(ctx, image, summary, report_body_colour, report_summary_row,
+                   report_name_column)) {
+    return false;
+  }
+
+  unsigned exceptions = 0;
+  for (unsigned nth = 0; nth < party.members; ++nth) {
+    exceptions += is_an_exception(party.member[nth]) ? 1U : 0U;
+  }
+
+  // The warning owns a row when there is one, so the list is that much
+  // shorter. A cure queued back and not yet memorized is not a cure the
+  // party has, and this is #189's promise saying out loud when it could
+  // not quite be kept.
+  const bool warn_pending = party.pending_cures != 0;
+  unsigned rows = (cast_region_bottom - report_first_row) + 1U;
+  if (warn_pending) {
+    --rows;
+  }
+  auto row = static_cast<std::uint16_t>(report_first_row);
+
+  if (exceptions == 0) {
+    // Nobody to name. Say what the absent list means, rather than leaving
+    // the player to read four blank rows as the answer.
+    report_line whole;
+    whole.add(std::string_view{"The party is at full hit points."});
+    whole.seal();
+    if (!draw_string(ctx, image, whole, report_body_colour, row,
+                     report_name_column)) {
+      return false;
+    }
+  } else {
+    const unsigned cap = exceptions > rows ? rows - 1U : exceptions;
+    unsigned shown = 0;
+    for (unsigned nth = 0; nth < party.members && shown < cap; ++nth) {
+      const member_reading& who = party.member[nth];
+      if (!is_an_exception(who)) {
+        continue;
+      }
+      report_line line;
+      if (!exception_line(cpu, who, line)) {
+        return false;
+      }
+      if (who.heals) {
+        // Still short, and resting could have helped: the shortfall is
+        // the whole explanation, and it is a number the player can act on
+        // without being told what to do about it.
+        line.pad_to(report_reason_column);
+        line.add(std::string_view{"short "});
+        line.add_number(static_cast<unsigned>(who.most_points - who.points));
+        line.seal();
+        if (!draw_string(ctx, image, line, report_body_colour, row,
+                         report_name_column)) {
+          return false;
+        }
+      } else {
+        // No cure can legally reach them, and the status that put them
+        // out of reach *is* the explanation — in the program's own word
+        // for it, from the program's own table.
+        line.seal();
+        if (!draw_string(ctx, image, line, report_body_colour, row,
+                         report_name_column) ||
+            !draw_program_string(
+                ctx, image, ds,
+                static_cast<std::uint16_t>(data_status_names +
+                                           (who.status * status_name_stride)),
+                report_warning_colour, row, report_reason_column)) {
+          return false;
+        }
+      }
+      row = static_cast<std::uint16_t>(row + 1);
+      ++shown;
+    }
+    if (shown < exceptions) {
+      report_line tail;
+      tail.add(std::string_view{"...and "});
+      tail.add_number(exceptions - shown);
+      tail.add(std::string_view{" more."});
+      tail.seal();
+      if (!draw_string(ctx, image, tail, report_warning_colour, row,
+                       report_name_column)) {
+        return false;
+      }
+    }
+  }
+
+  if (warn_pending) {
+    report_line warning;
+    warning.add(std::string_view{"Cures are still being memorized."});
+    warning.seal();
+    if (!draw_string(ctx, image, warning, report_warning_colour,
+                     static_cast<std::uint16_t>(cast_region_bottom),
+                     report_name_column)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Which title a command that never got as far as a rest has earned.
+///
+/// The order is the order the answers stop being interesting in: a party
+/// that is whole is healed however it got that way; then the two reasons
+/// nothing could be cast, which are different sentences; and what is left
+/// is a party that knows cures and had none ready.
+[[nodiscard]] run_state outcome_without_a_rest(cpu::processor& cpu,
+                                               std::uint16_t ds,
+                                               const roster_reading& party) {
+  if (party.worst_deficit == 0) {
+    return run_state::healed;
+  }
+  if (!casting_allowed(cpu, ds)) {
+    return run_state::cannot_cast_here;
+  }
+  if (!party.anybody_knows_a_cure) {
+    return run_state::nobody_knows_a_cure;
+  }
+  return run_state::no_cure_memorized;
+}
+
+/// The report, if the command that ran owes one: read the party as it is
+/// now, work out the difference against the words kept from before, and
+/// queue the whole box (§3).
+///
+/// **Every state but idle is reported**, and that is deliberate rather
+/// than tidy. `resting` is the expected way here — a rest has happened
+/// and this is the first instant its result is readable. `running` should
+/// not be, because a command under way does not hand the camp menu back;
+/// if it is, something took the program out of the command and the player
+/// is owed the same account of what was done before it. A state that
+/// could reach this point and not be cleared would be a seam trying to
+/// draw a box on every pass of the menu for ever, and a command whose
+/// before-half could never be taken again.
+[[nodiscard]] bool draw_a_report_if_one_is_owed(machine& box, seam_context& ctx,
+                                                std::uint16_t ds) {
+  const std::uint16_t state = ctx.scratch(scratch_state);
+  if (state == as_word(run_state::idle)) {
+    return false;
+  }
+  if (state == as_word(run_state::resting) &&
+      ctx.scratch(scratch_rest_is_ours) != 0) {
+    // **The rest has not happened yet**, and this arrival is the camp
+    // loop going round once between the Rest key point 2 posted and the
+    // rest command reading it — the Fix chose a letter the camp loop does
+    // not know, so the loop redraws its bar before it sees the key.
+    //
+    // Reporting here would put a box on the screen saying what a rest
+    // that had not happened achieved. The claim point 3 clears when the
+    // rest starts is exactly the word that tells the two passes apart,
+    // and it is already in the machine; this needs no state of its own.
+    //
+    // The `tests/programs` stand-in found this, which is what that
+    // stand-in is for (§8.3): driven, it would have been a report with
+    // every number in it zero.
+    return false;
+  }
+  cpu::processor& cpu = box.processor();
+  const roster_reading party = read_roster(cpu, ds);
+  if (!party.ended || party.members == 0) {
+    // Nothing readable to report on. Drop it rather than draw a box full
+    // of numbers nobody can stand behind.
+    ctx.set_scratch(scratch_state, as_word(run_state::idle));
+    return false;
+  }
+
+  std::uint16_t outcome = state;
+  if (state == as_word(run_state::resting)) {
+    // Whether the rest ran its course is the difference between a party
+    // that came out whole and one that did not — read off the party
+    // rather than remembered, because the program's own stop-resting
+    // question and its own wandering monsters both end a rest without
+    // telling anybody.
+    outcome = party.worst_deficit == 0 ? as_word(run_state::healed)
+                                       : as_word(run_state::rest_stopped);
+  } else if (state == as_word(run_state::running)) {
+    outcome = as_word(outcome_without_a_rest(cpu, ds, party));
+  }
+
+  const unsigned before = ctx.scratch(scratch_points_before);
+  const unsigned restored = party.points > before ? party.points - before : 0U;
+  // Zero minutes means "say nothing about the time", and a command that
+  // dialled days is exactly the case where the clock cannot answer.
+  const unsigned minutes =
+      ctx.scratch(scratch_days_asked) != 0
+          ? 0U
+          : minutes_since(ctx.scratch(scratch_clock_before),
+                          clock_minutes(cpu, ds));
+  const unsigned casts = ctx.scratch(scratch_casts);
+
+  // Cleared before the drawing and not after it. A report that could not
+  // be queued is one report lost; a state left set would be a box the
+  // seam tried and failed to draw on every pass of the menu from here on.
+  ctx.set_scratch(scratch_state, as_word(run_state::idle));
+  ctx.set_scratch(scratch_casts, 0);
+  return draw_the_report(cpu, ctx, ds, party, outcome, restored, casts,
+                         minutes);
+}
+
+// --- The points ------------------------------------------------------------
+
+/// Point 1: the bar, on its way to being drawn.
+void offer_the_fix(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  auto& regs = cpu.regs();
+  const std::uint16_t ds = regs[cpu::sreg::ds];
+
+  std::uint8_t mode = 0;
+  if (!read_byte(cpu, ds, data_game_mode, mode) || mode != mode_camp) {
+    // The address says this is the camp loop; the mode byte is what says
+    // the machine agrees. A point that fires anywhere else is a fact that
+    // has gone wrong, and the fail-closed direction is to draw nothing.
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  // A command that has finished, reported before the bar goes out — so
+  // the box and the live bar under it arrive on the same screen. **The
+  // way out is that bar**: it is the camp screen's own, with the
+  // program's own EXIT on it, and any key the player presses takes them
+  // off this screen and takes the box with it. That is #186's rule one
+  // layer on — the prompt on screen is the prompt that works — and it is
+  // why this report needs no bar of its own.
+  //
+  // The batch re-offers this point when it is done (§3), and by then the
+  // state is idle, so the arrival after it splices as usual.
+  if (draw_a_report_if_one_is_owed(box, ctx, ds)) {
+    return;
+  }
+  if (!splice_in(cpu, ds)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  // The prompt's own columns, which the longer bar needs. It is a Pascal
+  // string on the loop's stack, rebuilt on every pass, so this is undone
+  // by the program itself rather than by this seam.
+  if (!write_byte(
+          cpu, regs[cpu::sreg::ss],
+          static_cast<std::uint16_t>(regs[cpu::reg16::bp] - frame_prompt), 0)) {
+    ctx.decline(seam_reason::point_not_recognized);
+  }
 }
 
 /// Spend one ready cure on the worst-wounded member the program's own
@@ -1097,6 +1837,13 @@ void take_the_answer(machine& box, seam_context& ctx) {
     // screen waiting for a key that was never coming.
     if (regs.get(cpu::reg8::al) != rest_key_ascii) {
       ctx.set_scratch(scratch_rest_is_ours, 0);
+      // And a command that was under way when somebody else's letter came
+      // back off the bar has been stopped, whatever stopped it. Point 1
+      // would report it anyway; naming it here is what gets the title
+      // right rather than leaving it to be inferred from a roster.
+      if (ctx.scratch(scratch_state) == as_word(run_state::running)) {
+        ctx.set_scratch(scratch_state, as_word(run_state::player_stopped));
+      }
     }
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -1106,6 +1853,18 @@ void take_the_answer(machine& box, seam_context& ctx) {
   if (!party.ended || party.members == 0) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
+  }
+  if (ctx.scratch(scratch_state) == as_word(run_state::idle)) {
+    // The command begins here, and this is the only place the before-half
+    // of the report is readable: the party's hit points and the clock, as
+    // they are the instant before anything is spent (§8.2).
+    ctx.set_scratch(scratch_state, as_word(run_state::running));
+    ctx.set_scratch(scratch_points_before,
+                    static_cast<std::uint16_t>(party.points));
+    ctx.set_scratch(scratch_clock_before,
+                    static_cast<std::uint16_t>(clock_minutes(cpu, ds)));
+    ctx.set_scratch(scratch_casts, 0);
+    ctx.set_scratch(scratch_days_asked, 0);
   }
   if (!keyboard_buffer_empty(cpu)) {
     // **This is where the player stops it.** The Fix decides one act per
@@ -1118,6 +1877,13 @@ void take_the_answer(machine& box, seam_context& ctx) {
     // It is also the promise that a key the player typed is never
     // overtaken by one of this seam's: standing aside costs them nothing,
     // and going first would cost them the keystroke.
+    //
+    // A command that was under way owes a report saying so, and the key
+    // the player typed is what draws it: the camp loop goes round, point
+    // 1 arrives, and the box says what was done before they stopped it.
+    if (ctx.scratch(scratch_state) == as_word(run_state::running)) {
+      ctx.set_scratch(scratch_state, as_word(run_state::player_stopped));
+    }
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -1144,8 +1910,9 @@ void take_the_answer(machine& box, seam_context& ctx) {
   // — and doing nothing is the entire point of this branch. Asking for a
   // rest anyway is what it used to do, and it cost a whole party a day of
   // their game for no reason.
-  ctx.set_scratch(scratch_casts, 0);
   if (party.worst_deficit == 0 && party.pending_spells == 0) {
+    ctx.set_scratch(scratch_state,
+                    as_word(outcome_without_a_rest(cpu, ds, party)));
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -1154,10 +1921,15 @@ void take_the_answer(machine& box, seam_context& ctx) {
   // where that many presses would have left it. Zero is a real answer: it
   // leaves the duration the program's own wrapper computed, which is the
   // rest the player's own Rest key would have given them.
-  cpu.write_word(ds, data_rest_days, days_to_dial(party));
+  const std::uint16_t days = days_to_dial(party);
+  cpu.write_word(ds, data_rest_days, days);
+  ctx.set_scratch(scratch_days_asked, days);
   // The rest that is about to happen is this seam's, and point 3 reads
   // that here rather than guessing it from the clock.
   ctx.set_scratch(scratch_rest_is_ours, 1);
+  // What the rest achieves is only readable after it, so the outcome is
+  // not decided here — the camp menu decides it when it comes back.
+  ctx.set_scratch(scratch_state, as_word(run_state::resting));
   // And the bar's own Rest key, which is the key a player presses next.
   static_cast<void>(ctx.inject_keystroke(rest_key_scancode, rest_key_ascii));
 }

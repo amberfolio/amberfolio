@@ -756,7 +756,7 @@ amberfolio: watch frame=009868 ds=0CDC 49F3=04 6DDA=00 6DCA=00
 amberfolio: seam encamp-fix armed
 amberfolio: watch frame=010391 ds=0CDC 49F3=02 6DDA=00 6DCA=00
 amberfolio: seam encamp-fix inert point_not_recognized
-amberfolio: seam encamp-fix armed fired=2
+amberfolio: seam encamp-fix armed fired=3
 ```
 
 Read it in order. `armed` at 10360 is the camp screen's **overlay**
@@ -782,9 +782,9 @@ never asks for the Fix at all. What the whole-party case guarantees is
 that there is at least one such decline, on the pass where the Fix's own
 letter came back and the command found nothing to rest for.
 
-`fired=2` is the two acts, and both of them are the splice: the bar built
-on each of two passes through the menu, with no key posted, no field
-written and nothing else touched.
+`fired=3` is the three acts: the bar built on each of two passes through
+the menu, with no key posted and no field written — and then the report
+(#189), on the pass after the command declined.
 
 **And it is on the screen.** With the seam on, the camp menu's bar reads
 
@@ -800,6 +800,31 @@ seam off the same script leaves the game's own bar, prompt and all, and
 own commands and goes round again. That is the whole of the difference
 `tests/sessions/camp.rec` and `camp-fix.rec` record, and the two
 recordings differ by one keystroke at one tick.
+
+**And the command says what it did**, which is M5-E1b (#189) and the
+half of this seam that was unwritten until now. The pass after the
+command finishes, the seam frames the program's own message panel and
+writes into it — through the program's own frame and string drawers, so
+what is on the screen is the program's box, the program's font, the
+program's colours, and a title the program's own frame routine centred:
+
+```
+                 FIX: PARTY HEALED
+NO HIT POINTS RESTORED.
+THE PARTY IS AT FULL HIT POINTS.
+```
+
+**And the bar under it is the way out.** The box is drawn before the camp
+screen's own command bar goes out, so what the player is looking at is the
+report and a live `SAVE VIEW MAGIC REST ALTER FIX EXIT` — any key takes
+them somewhere and takes the box with it. Nothing says "press any key",
+because the thing on the screen that works is the thing on the screen.
+
+That whole picture is three calls into the program and not one glyph
+drawn here. This machine has a font and it is deliberately not the game's
+(`docs/seams.md` §3), so a seam that rasterized its own lettering would
+have put visibly foreign text beside the game's own, on the game's own
+screen — which is the failure #186 was filed about, one layer down.
 
 **The healing is the next leg's evidence and no longer this one's.**
 Slot C's party is whole, so there is no hit point here for the program's
@@ -822,16 +847,19 @@ node build/wasm/hosts/web/Debug/drive.mjs <your-directory> START.EXE \
 amberfolio: seam encamp-fix armed
 amberfolio: seam encamp-fix inert module_not_resident
 amberfolio: seam encamp-fix inert point_not_recognized
-amberfolio: seam encamp-fix armed fired=2
+amberfolio: seam encamp-fix armed fired=3
 ```
 
-The same two acts, and the same two `inert` sentences — one of them the
+The same three acts, and the same two `inert` sentences — one of them the
 overlay not being in memory yet, which is the fail-closed direction a
 module-qualified point has and which this host reaches by a slightly
 different route through the loading. Two hosts that share no compiler, no
 standard library and no SHA-256 implementation agree about what the seam
-did *and* about what it declined to do, which is what #172's exit
-criterion asks for.
+did, about what it declined to do, and about the report it drew — which
+is what #172's and #189's exit criteria ask for. The box itself has been
+looked at on the desktop host; the browser's agreement is that its
+machine took the same three acts, which is what a headless run of it can
+say.
 
 ### The same leg on a wounded party (M5-E1b, #189)
 
@@ -874,10 +902,27 @@ whether to go or stay. Its
 rules, running inside the rest the seam asked for, which is the whole of
 what "the game's own routines do the work" is supposed to mean.
 
+**And then the game answers, and takes the party out of camp** — which
+is the finding this leg produced for #189 and the reason the report has a
+gap. The city watch does not interrupt the rest and hand the camp screen
+back: the mode word goes from camp to adventuring at frame 12182 and
+stays there, the camp screen is gone, and with it the overlay the seam's
+three points live in. So the report is not drawn. It is not *lost* —
+the box is owed until the player next chooses ENCAMP — but a report that
+arrives an hour of their game later is not the report they wanted, and
+`Fix: Interrupted!` is therefore not one of the titles this shape offers.
+`seam_encamp_fix.cpp` says so at the point of definition and #194 is the
+issue.
+
+The healing is not in doubt: the fighters come out 17 of 17 and 18 of 18
+before the rest is ever asked for, because the cures did it.
+
 **What this leg still does not show.** Nobody has driven a party hurt
 badly enough that the cures run out and the days have to do the rest, so
-the days arithmetic has still only been tested against rosters a test
-writes. `docs/seams.md` §10 says the same thing from the seam's side.
+the days arithmetic — and with it the report's exception list, the part
+of the box that names who is still short — has still only been exercised
+against rosters a test writes. `docs/seams.md` §10 says the same thing
+from the seam's side.
 
 **One thing an earlier version of this leg found that no test could.**
 The Fix's first cut had a point with no address, so its guard ran with DS
@@ -994,8 +1039,18 @@ what it skips would be worth less than one that says so.
   days have to do the rest — so the days arithmetic, the worst deficit
   over the members resting can help plus one, has still only ever been
   exercised against a roster a test writes, which is exactly the kind of
-  cover this document exists to distrust. What it needs is a party that
-  has been in a hard fight and survived it.
+  cover this document exists to distrust. **The report's exception list
+  is in the same gap**: every driven run so far ends with the party
+  whole, so the rows that name who is still short, and the program's own
+  word for a condition resting cannot mend, have been drawn by tests and
+  never looked at. What both need is a party that has been in a hard
+  fight and survived it.
+- **A report the game interrupted** (#189, #194). Driven on slot B, the
+  program answers the Fix's rest by taking the party out of camp
+  entirely — so the pass of the camp menu the report is drawn on does not
+  come, and the box waits until the player next camps. Named as what it
+  is rather than smoothed over: it wants a fourth point, on the program's
+  own way out of camp.
 - **The committed camp pair no longer pins the Fix working** (#172,
   #192). Its script loads slot C, whose party is whole, so the Fix now
   declines and the pair's two halves diverge on the keystroke rather than

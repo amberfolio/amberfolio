@@ -2217,6 +2217,36 @@ constexpr std::uint16_t camp_bar_fixed_length = camp_bar_plain_length + 4;
 /// the seam blanks it to make room.
 constexpr std::string_view camp_prompt_text = "ABCD";
 
+/// The two routines the report calls (M5-E1b, #189), at the image offsets
+/// `seam_encamp_fix.cpp` names — restated here for the same reason as
+/// every other fact in this program.
+///
+/// **They do nothing but come back**, and that is the whole point: what
+/// is being driven is the batch — that the calls are queued, that each
+/// frame is built and torn down by the routine's own `retf`, and that the
+/// point is offered again when the last one returns. What the drawing
+/// looks like is not a thing a test on four targets can check, and a
+/// stand-in that pretended to check it would be checking itself.
+constexpr std::uint16_t camp_draw_frame = 0x41F8;
+constexpr std::uint16_t camp_draw_string = 0x76B6;
+
+/// What each of them cleans off the stack: the frame drawer takes eight
+/// words and the string drawer five.
+constexpr std::uint8_t camp_draw_frame_cleans = 0x10;
+constexpr std::uint8_t camp_draw_string_cleans = 0x0A;
+
+/// Where each keeps its own count of how many times it was entered, so
+/// the report is a thing this program can say happened rather than a
+/// thing the seam says it did.
+constexpr std::uint16_t camp_frame_calls = 0x6E00;
+constexpr std::uint16_t camp_string_calls = 0x6E02;
+
+/// What the report draws for this program's party: the frame once, and
+/// then the summary and one exception line — the hurt member, who is
+/// still seven short because nothing here heals anybody.
+constexpr std::uint16_t camp_wanted_frame_calls = 1;
+constexpr std::uint16_t camp_wanted_string_calls = 2;
+
 /// Where the two records go in the program's own segment, past everything
 /// else it uses.
 constexpr std::uint16_t camp_first_record = 0x7000;
@@ -2240,7 +2270,13 @@ constexpr std::uint16_t camp_wanted_days =
 /// The seam is armed in one of them and inert in the other, and the two
 /// runs are the same run: the command it offered was not chosen, so the
 /// program went exactly where it would have gone.
-constexpr std::uint64_t camp_plain_steps = 66;
+///
+/// **Sixty-six until M5-E1b (#189)**, and the six it grew by are this
+/// program's own and not the seam's: two words of set-up for the drawing
+/// routines' counters and four instructions reading them back at the end.
+/// The number moving is fine; the two entries claiming it moving apart
+/// would not be.
+constexpr std::uint64_t camp_plain_steps = 72;
 
 /// What the program's own rest wrapper would have left in the clock: a
 /// memorization time in hours, and no days at all.
@@ -2326,6 +2362,8 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     store_byte_at(a, camp_game_mode, camp_mode_camp);
     store_word_at(a, camp_rest_hours, camp_wrapper_hours);
     store_word_at(a, camp_rest_days, 0);
+    store_word_at(a, camp_frame_calls, 0);
+    store_word_at(a, camp_string_calls, 0);
     store_pascal_at(a, camp_bar, camp_bar_text);
     store_pascal_at(
         a, static_cast<std::uint16_t>(camp_frame_base - camp_frame_prompt),
@@ -2353,7 +2391,12 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     a.label("rest_entry");
     a.db({0xB4, 0x00, 0xCD, 0x16});  // mov ah, 00h / int 16h
     store(a, 0, reg_ax);
-    a.near_jump(0xE9, "finish");
+    // **And back to the camp menu**, which is where the program goes when
+    // a rest is over. It used to exit here, and that made the report
+    // untestable on this program: the box is drawn on the pass of the
+    // menu *after* the rest, and a stand-in that stopped at the rest
+    // never reached it (M5-E1b, #189).
+    a.near_jump(0xE9, "menu_loop");
 
     // The menu-bar routine, in exactly the thirty bytes between the two
     // points the seam has here. `pad_to` is the guard on that: a routine
@@ -2396,7 +2439,26 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     store(a, 1, reg_ax);
     load_ax_from(a, camp_rest_hours);
     store(a, 2, reg_ax);
+    load_ax_from(a, camp_frame_calls);
+    store(a, 4, reg_ax);
+    load_ax_from(a, camp_string_calls);
+    store(a, 5, reg_ax);
     exit_with(a, 0x8A);
+
+    // The two drawing routines, each counting its own entries and popping
+    // its own arguments — far, and cleaning up after itself, which is the
+    // shape every routine the seam door calls has (`docs/seams.md` §3).
+    a.pad_to(camp_draw_frame);
+    a.db({0xFF, 0x06});
+    a.dw(camp_frame_calls);  // inc word [frame_calls]
+    a.db({0xCA});
+    a.dw(camp_draw_frame_cleans);  // retf imm16
+
+    a.pad_to(camp_draw_string);
+    a.db({0xFF, 0x06});
+    a.dw(camp_string_calls);  // inc word [string_calls]
+    a.db({0xCA});
+    a.dw(camp_draw_string_cleans);  // retf imm16
 
     // Room for the camp: the records sit past 0x7000 in this program's
     // own segment, and DOS has to have given it that much.
@@ -3204,7 +3266,11 @@ constexpr std::array<machine::seam_point, 1> door_points{
         {.what = "the hours the program itself dialled, untouched",
          .value = camp_wrapper_hours},
         {.what = "the bar the program drew, with the command on it",
-         .value = camp_bar_fixed_length}};
+         .value = camp_bar_fixed_length},
+        {.what = "the report framed its box, once",
+         .value = camp_wanted_frame_calls},
+        {.what = "and drew the summary and the one member it left short",
+         .value = camp_wanted_string_calls}};
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
   }
@@ -3219,12 +3285,15 @@ constexpr std::array<machine::seam_point, 1> door_points{
     p.setup.seams = {"encamp-fix-probe"};
     p.setup.keys = {{.at = machine::ticks{0}, .scancode = camp_other_scancode}};
     p.setup.step_cap = 200'000;
-    p.results = {{.what = "no rest screen was reached", .value = 0},
-                 {.what = "and no days were dialled", .value = 0},
-                 {.what = "the hours the program itself dialled",
-                  .value = camp_wrapper_hours},
-                 {.what = "the bar the program drew, with the command on it",
-                  .value = camp_bar_fixed_length}};
+    p.results = {
+        {.what = "no rest screen was reached", .value = 0},
+        {.what = "and no days were dialled", .value = 0},
+        {.what = "the hours the program itself dialled",
+         .value = camp_wrapper_hours},
+        {.what = "the bar the program drew, with the command on it",
+         .value = camp_bar_fixed_length},
+        {.what = "and no report was drawn, because none was owed", .value = 0},
+        {.what = "nor any line of one", .value = 0}};
     p.steps = camp_plain_steps;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
@@ -3244,7 +3313,9 @@ constexpr std::array<machine::seam_point, 1> door_points{
                  {.what = "the hours the program itself dialled",
                   .value = camp_wrapper_hours},
                  {.what = "the bar the program drew, which is its own",
-                  .value = camp_bar_plain_length}};
+                  .value = camp_bar_plain_length},
+                 {.what = "and no report, the seam being off", .value = 0},
+                 {.what = "nor any line of one", .value = 0}};
     p.steps = camp_plain_steps;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
