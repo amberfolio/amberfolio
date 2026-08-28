@@ -271,6 +271,7 @@ bash scripts/check-tidy.sh    # clang-tidy; needs a configured build tree
 bash scripts/check-shell.sh   # shellcheck over scripts/
 bash scripts/test-guards.sh   # guard self-test — run after editing a guard
 bash scripts/test-sweep.sh    # session-runner self-test — after editing sweep.py
+bash scripts/test-release-bundle.sh  # release-bundler self-test — after editing it
 python3 scripts/sweep.py      # every committed session, on every target
 ```
 

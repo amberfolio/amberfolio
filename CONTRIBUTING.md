@@ -229,6 +229,50 @@ So M3's closeout was: bump `VERSION` to `0.1.0` in the closeout PR, merge
 it, and `git tag -a v0.1.0` on the resulting merge commit. M4's was the
 same three steps with `0.2.0`.
 
+### What a tag publishes
+
+Pushing a `v*` tag runs the whole of `ci.yml` and, past the same gate the
+deploy job waits on, publishes a **GitHub Release** carrying the web
+host's build output (issue #200). Six files — `amberfolio.wasm`,
+`amberfolio.mjs`, `host.mjs`, `app.mjs`, `audio-worklet.mjs`,
+`picker.mjs` — plus `SHA256SUMS`, a `manifest.json`, and the notices
+(`LICENSE`, `NOTICE.md`, and `LICENSES/`) so they can be rendered without
+cloning. The tag's own message becomes the release notes, which is why it
+is worth writing one. A `0.x` tag is marked a pre-release.
+
+Nothing here is for a player: there is no desktop binary in it (that is
+M7, PLAN.md §7). It exists because a **site that hosts the wasm build
+consumes it as a pinned build input** — it contains no emulator source,
+it records the tag and a sha256 per asset in a lockfile, and its build
+refuses to start when the bytes it downloads do not match. That is what
+lets such a site be honest about serving an AGPL program: every page
+running the emulator links to the exact commit it was built from, and the
+hash is what makes the link a fact rather than a claim. The commit is
+`manifest.json`'s `sourceCommit`, a full forty-character sha and never
+the tag, because a tag can be moved.
+
+Two consequences worth knowing before touching any of it:
+
+- **Assets are never republished under an existing tag.** The bytes are
+  not bit-reproducible — a different emsdk build of the same source is a
+  different `.wasm` — so re-running the job over a release that exists
+  would change hashes somebody has already pinned. The job refuses; a
+  release that genuinely has to be redone is deleted by hand first, by
+  someone who has checked who is pinning it.
+- **A tag pushed before this existed is released by dispatching the
+  workflow with its name** in the `tag` input, from `main` — running
+  `ci.yml` *at* an old tag would run that tag's own copy of the file,
+  which has no release job in it. Every job then builds the named tag.
+  Nothing is retagged either way.
+
+The bundle's shape lives in
+[`scripts/release-bundle.sh`](scripts/release-bundle.sh) rather than in
+the workflow, so it can be run and tested from a laptop:
+`scripts/test-release-bundle.sh` asserts its refusals, including the one
+that is easy to get wrong — on a tag push `GITHUB_SHA` is the *annotated
+tag object's* sha, forty hex characters that look exactly like a commit
+and resolve to no source tree.
+
 ## Practical bits
 
 - Building and running the tests: [README.md](README.md#building-from-source)
