@@ -2135,9 +2135,10 @@ void probe_call_automap(machine::machine& box, machine::seam_context& ctx) {
 // mostly nothing, and why every stretch of it is jumped over rather than
 // fallen through.
 //
+//         mov  al, es:[80h] -> interrupts  ; the command tail's length
 //         <lay the camp out: the mode byte, a command bar of this
 //          program's own words, the prompt on the frame, the clock,
-//          and a two-member roster>
+//          the out-parameter, and a two-member roster>
 //         <write CS into the manager's word>
 //         jmp  menu_loop
 //
@@ -2146,7 +2147,11 @@ void probe_call_automap(machine::machine& box, machine::seam_context& ctx) {
 //   077A: rest_entry:                    ; the game's Rest command
 //         mov  ah, 00h / int 16h         ; the seam posts 'R' on the way in
 //         mov  [result+0], ax
-//         jmp  finish
+//         mov  al, [interrupts] -> [changed]   ; what the rest answered
+//         jmp  loop_top
+//
+//   loop_top:                            ; the camp loop's own condition
+//         cmp  byte [changed], 0 / jne camp_exit
 //
 //   1F06: menu_loop:                     ; the seam splices the bar here
 //         mov  ax, [bar] / xor ah, ah
@@ -2160,12 +2165,17 @@ void probe_call_automap(machine::machine& box, machine::seam_context& ctx) {
 //   got:  mov  ah, 00h / int 16h
 //
 //   1F24: at_return:                     ; the seam reads AL here
-//         cmp  al, 'F' / je menu_loop    ; the program's own bar has no F
+//         cmp  al, 'F' / je loop_top     ; the program's own bar has no F
 //         cmp  al, 'R' / je rest_entry   ; and this is its Rest command
 //  finish:
 //         mov  ax, [days]  / mov [result+1], ax
 //         mov  ax, [hours] / mov [result+2], ax
 //         <exit 8Ah>
+//
+//   1FB2: camp_exit:                     ; the seam's fourth point
+//         nop                            ; what the machine resumes onto
+//         inc  word [exit_visits]
+//         jmp  finish
 //
 // With the seam on and F pressed, the first pass hands the seam its
 // letter, the second reads the Rest key it posted, and the rest command's
@@ -2173,6 +2183,15 @@ void probe_call_automap(machine::machine& box, machine::seam_context& ctx) {
 // keys, one player keystroke. With the seam on and some other key pressed,
 // or with it off, the pass runs once and the program exits, and **those
 // two runs are the same run to the step**.
+//
+// **And a way out of camp** (M5-E1c, #194), because a rest the game
+// interrupts does not hand the camp menu back and the report is then
+// owed at a point the first three do not cover. The program's own loop
+// condition is `loop_top`: while the out-parameter reads zero, round
+// again; when it does not, out. The one thing that ever writes that byte
+// is the rest, exactly as in the program — and what it writes is the
+// command tail's length byte, so **one image drives both ways out** and
+// there is no second binary with its own fingerprint to keep in step.
 
 /// The camp, at the offsets `seam_encamp_fix.cpp` names — restated here
 /// because this program is the thing being driven, not the thing being
@@ -2196,6 +2215,7 @@ constexpr std::uint16_t camp_load_segment_at = 0x760;
 constexpr std::uint16_t camp_rest_entry = 0x077A;
 constexpr std::uint16_t camp_menu_loop = 0x1F06;
 constexpr std::uint16_t camp_at_return = 0x1F24;
+constexpr std::uint16_t camp_exit_point = 0x1FB2;
 
 /// The camp loop's frame: where this program puts BP, and the two offsets
 /// from it the seam reads — the prompt it blanks and the flag that says
@@ -2203,6 +2223,11 @@ constexpr std::uint16_t camp_at_return = 0x1F24;
 constexpr std::uint16_t camp_frame_base = 0x0700;
 constexpr std::uint16_t camp_frame_prompt = 0x0B;
 constexpr std::uint16_t camp_frame_out_flag = 0x04;
+
+/// And the one the fourth point reads (M5-E1c, #194), which is **above**
+/// BP: it is the camp menu's own argument rather than one of its locals,
+/// a far pointer at a byte the loop's condition tests on every pass.
+constexpr std::uint16_t camp_frame_changed = 0x06;
 
 /// **This program's own command bar**: three words of its own invention,
 /// in the shape a menu bar has — words separated by spaces, a capital
@@ -2217,6 +2242,17 @@ constexpr std::uint16_t camp_bar_fixed_length = camp_bar_plain_length + 4;
 /// the seam blanks it to make room.
 constexpr std::string_view camp_prompt_text = "ABCD";
 
+/// The program's own scratch, past the clock and clear of everything the
+/// seam's facts name. `camp_changed` is what the frame's out-parameter
+/// points at — the byte a rest writes its own answer into, and the whole
+/// of how the fourth point tells an interruption from an exit;
+/// `camp_interrupts` is what this program will write there when its rest
+/// ends, taken from the command tail so that one image drives both ways
+/// out; and `camp_exit_visits` counts the way out being taken.
+constexpr std::uint16_t camp_changed = 0x6E04;
+constexpr std::uint16_t camp_interrupts = 0x6E06;
+constexpr std::uint16_t camp_exit_visits = 0x6E08;
+
 /// The two routines the report calls (M5-E1b, #189), at the image offsets
 /// `seam_encamp_fix.cpp` names — restated here for the same reason as
 /// every other fact in this program.
@@ -2230,6 +2266,11 @@ constexpr std::string_view camp_prompt_text = "ABCD";
 constexpr std::uint16_t camp_draw_frame = 0x41F8;
 constexpr std::uint16_t camp_draw_string = 0x76B6;
 
+/// And the message delay the interrupted report is held by (M5-E1c,
+/// #194). It takes no arguments and cleans none, so its stand-in is one
+/// instruction and a far return.
+constexpr std::uint16_t camp_message_delay = 0x7E4E;
+
 /// What each of them cleans off the stack: the frame drawer takes eight
 /// words and the string drawer five.
 constexpr std::uint8_t camp_draw_frame_cleans = 0x10;
@@ -2240,6 +2281,7 @@ constexpr std::uint8_t camp_draw_string_cleans = 0x0A;
 /// thing the seam says it did.
 constexpr std::uint16_t camp_frame_calls = 0x6E00;
 constexpr std::uint16_t camp_string_calls = 0x6E02;
+constexpr std::uint16_t camp_delay_calls = 0x6E0A;
 
 /// What the report draws for this program's party: the frame once, and
 /// then the summary and one exception line — the hurt member, who is
@@ -2271,12 +2313,14 @@ constexpr std::uint16_t camp_wanted_days =
 /// runs are the same run: the command it offered was not chosen, so the
 /// program went exactly where it would have gone.
 ///
-/// **Sixty-six until M5-E1b (#189)**, and the six it grew by are this
-/// program's own and not the seam's: two words of set-up for the drawing
-/// routines' counters and four instructions reading them back at the end.
-/// The number moving is fine; the two entries claiming it moving apart
-/// would not be.
-constexpr std::uint64_t camp_plain_steps = 72;
+/// **Sixty-six until M5-E1b (#189) and seventy-two until M5-E1c (#194)**,
+/// and every step it has grown by is this program's own and not the
+/// seam's: counters for the stand-in drawing routines, the instructions
+/// that read them back, and now the command tail this program reads its
+/// own way out of camp from, the out-parameter it lays down, and the loop
+/// condition that tests it. The number moving is fine; the two entries
+/// claiming it moving apart would not be.
+constexpr std::uint64_t camp_plain_steps = 86;
 
 /// What the program's own rest wrapper would have left in the clock: a
 /// memorization time in hours, and no days at all.
@@ -2346,7 +2390,16 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
 [[nodiscard]] const std::vector<std::uint8_t>& camp_file() {
   static const std::vector<std::uint8_t> built = [] {
     assembler a;
+    // **Before DS is this program's own**, the command tail's length byte
+    // off the PSP that ES still names (loader.cpp): non-zero says this
+    // camp's rest is one the game interrupts, so one image drives both
+    // ways out of camp and there is no second binary, with its own
+    // fingerprint, to keep in step.
+    a.db({0x26, 0xA0});
+    a.dw(0x0080);        // mov al, es:[80h]
     a.db({0x0E, 0x1F});  // push cs / pop ds
+    a.db({0xA2});
+    a.dw(camp_interrupts);  // mov [interrupts], al
 
     // The frame the camp loop runs its menu in. SS is the image segment
     // already; only BP is this program's to choose.
@@ -2364,6 +2417,16 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     store_word_at(a, camp_rest_days, 0);
     store_word_at(a, camp_frame_calls, 0);
     store_word_at(a, camp_string_calls, 0);
+    store_word_at(a, camp_delay_calls, 0);
+    store_word_at(a, camp_exit_visits, 0);
+    store_byte_at(a, camp_changed, 0);
+    // The out-parameter, as the far pointer the loop's own condition
+    // reads it as.
+    store_word_at(
+        a, static_cast<std::uint16_t>(camp_frame_base + camp_frame_changed),
+        camp_changed);
+    store_ds_at(a, static_cast<std::uint16_t>(camp_frame_base +
+                                              camp_frame_changed + 2));
     store_pascal_at(a, camp_bar, camp_bar_text);
     store_pascal_at(
         a, static_cast<std::uint16_t>(camp_frame_base - camp_frame_prompt),
@@ -2380,7 +2443,7 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     a.db({0xA3});
     a.dw(camp_load_segment_at);  // mov [imm16], ax
 
-    a.near_jump(0xE9, "menu_loop");
+    a.near_jump(0xE9, "loop_top");
 
     // The word, and then the rest command — both at the offsets the
     // module's facts name, with the gap between them jumped over.
@@ -2391,11 +2454,32 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     a.label("rest_entry");
     a.db({0xB4, 0x00, 0xCD, 0x16});  // mov ah, 00h / int 16h
     store(a, 0, reg_ax);
-    // **And back to the camp menu**, which is where the program goes when
-    // a rest is over. It used to exit here, and that made the report
-    // untestable on this program: the box is drawn on the pass of the
-    // menu *after* the rest, and a stand-in that stopped at the rest
-    // never reached it (M5-E1b, #189).
+    // **What the rest answered**, which in the program is whether a
+    // wandering monster ended it, and here is what the command tail asked
+    // for. It goes where the camp menu's own out-parameter points, which
+    // is the only thing that ever writes that byte (M5-E1c, #194).
+    a.db({0xA0});
+    a.dw(camp_interrupts);  // mov al, [interrupts]
+    a.db({0xA2});
+    a.dw(camp_changed);  // mov [changed], al
+    // **And back to the top of the camp loop**, which is where the
+    // program goes when a rest is over. It used to exit here, and that
+    // made the report untestable on this program: the box is drawn on the
+    // pass of the menu *after* the rest, and a stand-in that stopped at
+    // the rest never reached it (M5-E1b, #189).
+    a.near_jump(0xE9, "loop_top");
+
+    // The loop's own condition, which is the program's and not the
+    // seam's: while the out-parameter reads zero, go round; when it does
+    // not, leave. The address is this program's own choosing — only the
+    // three the seam's facts name are fixed.
+    a.label("loop_top");
+    a.db({0x80, 0x3E});
+    a.dw(camp_changed);
+    a.db({0x00});                   // cmp byte [changed], 0
+    a.jump(0x74, "into_the_menu");  // je into_the_menu
+    a.near_jump(0xE9, "camp_exit");
+    a.label("into_the_menu");
     a.near_jump(0xE9, "menu_loop");
 
     // The menu-bar routine, in exactly the thirty bytes between the two
@@ -2443,7 +2527,23 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     store(a, 4, reg_ax);
     load_ax_from(a, camp_string_calls);
     store(a, 5, reg_ax);
+    load_ax_from(a, camp_exit_visits);
+    store(a, 6, reg_ax);
+    load_ax_from(a, camp_delay_calls);
+    store(a, 7, reg_ax);
     exit_with(a, 0x8A);
+
+    // The way out of camp, at the offset the seam's fourth point names.
+    // The instruction the point runs before is a `nop` for the same
+    // reason every other point's is what it is: the machine is put back
+    // on it when a batch ends, so it is offered twice and must cost
+    // nothing the second time.
+    a.pad_to(camp_exit_point);
+    a.label("camp_exit");
+    a.db({0x90});  // nop
+    a.db({0xFF, 0x06});
+    a.dw(camp_exit_visits);  // inc word [exit_visits]
+    a.near_jump(0xE9, "finish");
 
     // The two drawing routines, each counting its own entries and popping
     // its own arguments — far, and cleaning up after itself, which is the
@@ -2459,6 +2559,11 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     a.dw(camp_string_calls);  // inc word [string_calls]
     a.db({0xCA});
     a.dw(camp_draw_string_cleans);  // retf imm16
+
+    a.pad_to(camp_message_delay);
+    a.db({0xFF, 0x06});
+    a.dw(camp_delay_calls);  // inc word [delay_calls]
+    a.db({0xCB});            // retf — no arguments to clean
 
     // Room for the camp: the records sit past 0x7000 in this program's
     // own segment, and DOS has to have given it that much.
@@ -2593,7 +2698,16 @@ constexpr std::array<machine::seam_point, 1> door_points{
 [[nodiscard]] const std::vector<std::uint8_t>& door_file() {
   static const std::vector<std::uint8_t> built = [] {
     assembler a;
+    // **Before DS is this program's own**, the command tail's length byte
+    // off the PSP that ES still names (loader.cpp): non-zero says this
+    // camp's rest is one the game interrupts, so one image drives both
+    // ways out of camp and there is no second binary, with its own
+    // fingerprint, to keep in step.
+    a.db({0x26, 0xA0});
+    a.dw(0x0080);        // mov al, es:[80h]
     a.db({0x0E, 0x1F});  // push cs / pop ds
+    a.db({0xA2});
+    a.dw(camp_interrupts);  // mov [interrupts], al
 
     // The user tick, pointed at this program's own counter, and the
     // timer that drives it. Both before the point, so the interrupt is
@@ -3270,7 +3384,44 @@ constexpr std::array<machine::seam_point, 1> door_points{
         {.what = "the report framed its box, once",
          .value = camp_wanted_frame_calls},
         {.what = "and drew the summary and the one member it left short",
-         .value = camp_wanted_string_calls}};
+         .value = camp_wanted_string_calls},
+        {.what = "the party never left camp", .value = 0},
+        {.what = "so nothing had to be held on the screen", .value = 0}};
+    p.exit_code = 0x8A;
+    list.push_back(std::move(p));
+  }
+
+  {
+    // M5-E1c (#194): the same command, and a rest the game answers by
+    // taking the party out of camp. The pass of the menu the report is
+    // drawn on never comes, so the fourth point draws it on the way past
+    // — and holds it there with the program's own message delay, which
+    // is what a box with no command bar under it has instead of a way
+    // out.
+    machine_program p;
+    p.name = "encamp_fix_interrupted";
+    p.about = "the same Fix, and a rest the game interrupts: it says so";
+    p.setup.exe = seam_camp_file();
+    p.setup.exe_path = "\\CAMP.EXE";
+    p.setup.command_tail = " X";
+    p.setup.seam_definitions = {&seam_camp_definition()};
+    p.setup.seams = {"encamp-fix-probe"};
+    p.setup.keys = {{.at = machine::ticks{0}, .scancode = camp_fix_scancode}};
+    p.setup.step_cap = 200'000;
+    p.results = {
+        {.what = "the key the rest screen read", .value = camp_rest_keystroke},
+        {.what = "the days the seam dialled", .value = camp_wanted_days},
+        {.what = "the hours the program itself dialled, untouched",
+         .value = camp_wrapper_hours},
+        {.what = "the bar the program drew, with the command on it",
+         .value = camp_bar_fixed_length},
+        {.what = "the report framed its box on the way out of camp",
+         .value = camp_wanted_frame_calls},
+        {.what = "and drew the summary and the one member it left short",
+         .value = camp_wanted_string_calls},
+        {.what = "the party left camp, once", .value = 1},
+        {.what = "and the box was held there by the program's own delay",
+         .value = 1}};
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
   }
@@ -3293,7 +3444,9 @@ constexpr std::array<machine::seam_point, 1> door_points{
         {.what = "the bar the program drew, with the command on it",
          .value = camp_bar_fixed_length},
         {.what = "and no report was drawn, because none was owed", .value = 0},
-        {.what = "nor any line of one", .value = 0}};
+        {.what = "nor any line of one", .value = 0},
+        {.what = "the party never left camp", .value = 0},
+        {.what = "and nothing was held on the screen", .value = 0}};
     p.steps = camp_plain_steps;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
@@ -3315,7 +3468,9 @@ constexpr std::array<machine::seam_point, 1> door_points{
                  {.what = "the bar the program drew, which is its own",
                   .value = camp_bar_plain_length},
                  {.what = "and no report, the seam being off", .value = 0},
-                 {.what = "nor any line of one", .value = 0}};
+                 {.what = "nor any line of one", .value = 0},
+                 {.what = "the party never left camp", .value = 0},
+                 {.what = "and nothing was held on the screen", .value = 0}};
     p.steps = camp_plain_steps;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));

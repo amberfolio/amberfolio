@@ -17,6 +17,7 @@
 // being anywhere near this tree.
 
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -52,10 +53,15 @@ constexpr std::uint16_t data_rest_days = 0x6DCA;
 constexpr std::uint16_t frame_prompt = 0x0B;
 constexpr std::uint16_t frame_out_flag = 0x04;
 
-/// Where in the module the three points are.
+/// The camp loop's own out-parameter, as a far pointer — above BP, being
+/// the routine's argument rather than one of its locals (M5-E1c, #194).
+constexpr std::uint16_t frame_changed = 0x06;
+
+/// Where in the module the four points are.
 constexpr std::uint16_t point_before_input = 0x1F06;
 constexpr std::uint16_t point_after_input = 0x1F24;
 constexpr std::uint16_t point_rest_entry = 0x077A;
+constexpr std::uint16_t point_camp_exit = 0x1FB2;
 
 /// The character record.
 constexpr std::uint16_t rec_max_hit_points = 0x32;
@@ -107,12 +113,32 @@ constexpr std::uint16_t image_draw_string = 0x76B6;
 constexpr std::uint16_t draw_frame_cleans = 0x10;
 constexpr std::uint16_t draw_string_cleans = 0x0A;
 
+/// And the message delay, which is how the program holds a line on the
+/// screen long enough to read (M5-E1c, #194). No arguments, and it cleans
+/// none.
+constexpr std::uint16_t image_message_delay = 0x7E4E;
+constexpr std::uint16_t message_delay_cleans = 0;
+
 /// Where this file's stand-in routines count their own entries — two
 /// words of the data segment the seam's facts do not name, so that "the
 /// report was drawn" is a thing the *machine* says rather than a thing
 /// the handler is asked about.
 constexpr std::uint16_t frame_calls = 0x7000;
 constexpr std::uint16_t string_calls = 0x7002;
+constexpr std::uint16_t delay_calls = 0x7004;
+
+/// And where the frame stand-in leaves the title it was handed, as the
+/// far pointer it arrived as. The title is the one part of the box a test
+/// can read back — the rest of what the drawing looks like is the
+/// program's, and a stand-in that pretended to check it would be checking
+/// itself.
+constexpr std::uint16_t title_offset_seen = 0x7008;
+constexpr std::uint16_t title_segment_seen = 0x700A;
+
+/// And the byte the camp loop's out-parameter points at, somewhere the
+/// seam's facts do not name — what the *program* is holding there is the
+/// whole of how the fourth point tells an interruption from an exit.
+constexpr std::uint16_t changed_byte = 0x7006;
 
 /// The camp loop's BP while it is in its menu loop — any value whose frame
 /// is inside the stack segment will do, and this one is far enough in that
@@ -351,9 +377,10 @@ struct rig {
   /// the routine's own `retf`, and that the point was offered again when
   /// the last one returned.
   void drawing_routines() const {
+    frame_routine();
     for (const auto& [at, cleans, counter] :
-         {std::tuple{image_draw_frame, draw_frame_cleans, frame_calls},
-          std::tuple{image_draw_string, draw_string_cleans, string_calls}}) {
+         {std::tuple{image_draw_string, draw_string_cleans, string_calls},
+          std::tuple{image_message_delay, message_delay_cleans, delay_calls}}) {
       std::uint16_t put = at;
       put_byte(image_load_segment, put++, 0xFF);  // inc word [imm16]
       put_byte(image_load_segment, put++, 0x06);
@@ -369,6 +396,59 @@ struct rig {
     }
     put_word(data_segment, frame_calls, 0);
     put_word(data_segment, string_calls, 0);
+    put_word(data_segment, delay_calls, 0);
+    put_word(data_segment, title_offset_seen, 0);
+    put_word(data_segment, title_segment_seen, 0);
+  }
+
+  /// The frame drawer's stand-in, which does one thing the others do not:
+  /// it **keeps the title it was handed**, as the far pointer it arrived
+  /// as. That is what makes the six outcomes assertable as the words a
+  /// player would read rather than as a count of calls.
+  ///
+  ///     push bp / mov bp, sp
+  ///     mov ax, [bp+6]  -> title_offset_seen    ; pushed last, so lowest
+  ///     mov ax, [bp+8]  -> title_segment_seen
+  ///     inc word [frame_calls]
+  ///     pop bp / retf 10h
+  void frame_routine() const {
+    std::uint16_t put = image_draw_frame;
+    const auto emit = [&](std::initializer_list<std::uint8_t> bytes) {
+      for (const std::uint8_t byte : bytes) {
+        put_byte(image_load_segment, put++, byte);
+      }
+    };
+    const auto emit_word = [&](std::uint16_t value) {
+      emit({static_cast<std::uint8_t>(value & 0xFFU),
+            static_cast<std::uint8_t>(value >> 8U)});
+    };
+    emit({0x55, 0x89, 0xE5});
+    emit({0x8B, 0x46, 0x06, 0xA3});
+    emit_word(title_offset_seen);
+    emit({0x8B, 0x46, 0x08, 0xA3});
+    emit_word(title_segment_seen);
+    emit({0xFF, 0x06});
+    emit_word(frame_calls);
+    emit({0x5D, 0xCA});
+    emit_word(draw_frame_cleans);
+  }
+
+  /// The camp loop on its way out, as the program leaves it at the fourth
+  /// point: its out-parameter, as the far pointer the loop's own condition
+  /// reads, and the byte behind it (M5-E1c, #194).
+  ///
+  /// **Non-zero is the program saying a rest was interrupted.** The only
+  /// thing that ever writes it is the rest, which stores what the rest
+  /// orchestrator answered, and the orchestrator answers non-zero for one
+  /// reason only.
+  void leaving_camp(bool interrupted) const {
+    put_word(stack_segment,
+             static_cast<std::uint16_t>(frame_base + frame_changed),
+             changed_byte);
+    put_word(stack_segment,
+             static_cast<std::uint16_t>(frame_base + frame_changed + 2),
+             data_segment);
+    put_byte(data_segment, changed_byte, interrupted ? 1 : 0);
   }
 
   /// Steps until a batch the last arrival queued has run itself out. The
@@ -407,6 +487,15 @@ struct rig {
   }
   [[nodiscard]] unsigned lines_drawn() const {
     return word_at(data_segment, string_calls);
+  }
+  [[nodiscard]] unsigned delays_asked_for() const {
+    return word_at(data_segment, delay_calls);
+  }
+
+  /// The title the box was framed with, read back out of the machine.
+  [[nodiscard]] std::string title() const {
+    return pascal_at(word_at(data_segment, title_segment_seen),
+                     word_at(data_segment, title_offset_seen));
   }
 
   /// What the BIOS keystroke buffer holds, as a program would read it: the
@@ -451,14 +540,14 @@ struct rig {
 
 // --- The definition --------------------------------------------------------
 
-TEST(SeamEncampFix, IsThreeAddressPointsInTheCampScreensModule) {
+TEST(SeamEncampFix, IsFourAddressPointsInTheCampScreensModule) {
   const rig r;
   const seam_definition& fix = r.seam("encamp-fix");
 
   EXPECT_FALSE(fix.about.empty());
   EXPECT_FALSE(fix.trigger)
       << "the asking is a key on the game's own bar, not a host pull (#186)";
-  ASSERT_EQ(fix.points.size(), 3u);
+  ASSERT_EQ(fix.points.size(), 4u);
   for (const seam_point& point : fix.points) {
     EXPECT_FALSE(point.at_every_step)
         << "every point has an address now, so none has to guess";
@@ -1129,6 +1218,8 @@ TEST(SeamEncampFix, ReportsOnTheMenuPassAfterTheRest) {
   r.run_the_calls();
 
   EXPECT_EQ(r.frames_drawn(), 1u) << "one box, framed and titled";
+  EXPECT_EQ(r.title(), "Fix: Rest Stopped")
+      << "the party came out of the rest still short";
   EXPECT_EQ(r.lines_drawn(), 2u)
       << "the summary, and the one member still short";
 }
@@ -1148,6 +1239,7 @@ TEST(SeamEncampFix, ReportsWhatTheCommandDeclinedToDo) {
   r.run_the_calls();
 
   EXPECT_EQ(r.frames_drawn(), 1u) << "the box is drawn on the next pass";
+  EXPECT_EQ(r.title(), "Fix: Party Healed");
   EXPECT_EQ(r.lines_drawn(), 2u)
       << "the summary, and a line saying the party is whole rather than a "
          "list of nobody";
@@ -1246,6 +1338,161 @@ TEST(SeamEncampFix, NamesNobodyItCouldNotHaveHelped) {
   // program keeps it rather than copied through this seam.
   EXPECT_GE(r.lines_drawn(), 4u) << "the summary and a list that filled up";
   EXPECT_LE(r.lines_drawn(), 6u) << "and no more calls than the box has rows";
+}
+
+// --- The way out of camp (M5-E1c, #194) ------------------------------------
+//
+// The report is drawn on the pass of the camp menu after the command
+// finishes, and a rest the game interrupts means that pass never comes:
+// the camp loop leaves, and the next visit to that menu is whenever the
+// player next chooses ENCAMP. The fourth point is the loop's own exit,
+// and what it does there is decided by the loop's own out-parameter
+// rather than by which of this seam's points happened to be reached.
+
+TEST(SeamEncampFix, SaysSoOnTheWayOutOfACampTheGameInterrupted) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);  // the rest starts, and the game ends it
+  r.leaving_camp(true);
+  r.step_at(point_camp_exit);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 1u)
+      << "the box the camp menu was never going to get a chance to draw";
+  EXPECT_EQ(r.title(), "Fix: Interrupted!")
+      << "the sixth title, which this shape could not reach until it had a "
+         "point on the way out of camp";
+  EXPECT_EQ(r.lines_drawn(), 2u)
+      << "the summary, and the one member still short";
+  EXPECT_EQ(r.delays_asked_for(), 1u)
+      << "held by the program's own message delay: there is no command bar "
+         "under this box to be the way out of it";
+}
+
+TEST(SeamEncampFix, DropsAReportRatherThanKeepItForALaterCamp) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  // The party is leaving camp for a reason that is not an interruption,
+  // which in practice is the player pressing EXIT.
+  r.leaving_camp(false);
+  r.step_at(point_camp_exit);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 0u)
+      << "an exit is not an interruption, and saying `Interrupted!` because "
+         "the party happened to be leaving would report the wrong thing";
+  EXPECT_EQ(r.delays_asked_for(), 0u);
+
+  // And it is *dropped*, not deferred: the next camp is a fresh one.
+  r.step_at(point_before_input);
+  r.run_the_calls();
+  EXPECT_EQ(r.frames_drawn(), 0u)
+      << "a box owed here would arrive an hour of the player's game later, "
+         "as a difference against a party that has been in a fight since";
+}
+
+TEST(SeamEncampFix, DrawsNothingOnTheWayOutOfAnOrdinaryCamp) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  // Nobody chose the command. Every way out of camp arrives at this
+  // point, and almost all of them have nothing owing.
+  r.leaving_camp(true);
+  r.step_at(point_camp_exit);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 0u);
+  EXPECT_EQ(r.delays_asked_for(), 0u);
+  EXPECT_EQ(r.status().declined, 0u)
+      << "and a point that found nothing to do refused nothing";
+}
+
+TEST(SeamEncampFix, ReportsTheInterruptionAndNotTheHitPoints) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  // And the party comes out of it whole — which is what a driven run on a
+  // player's copy produces, because the cures close the deficit before
+  // the rest is ever asked for. Read off the roster alone this is
+  // `healed`; what happened is an interruption, and the program is the
+  // one that knows which.
+  r.party({{.hit_points = 12, .most_hit_points = 12}});
+  r.leaving_camp(true);
+  r.step_at(point_camp_exit);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 1u);
+  EXPECT_EQ(r.title(), "Fix: Interrupted!")
+      << "the outcome the machine was told, not the one a roster reading "
+         "would have agreed with for the wrong reason";
+}
+
+TEST(SeamEncampFix, RefusesAnExitFrameThatIsNotOne) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  // The argument is not the far pointer the facts say it is.
+  r.put_word(stack_segment,
+             static_cast<std::uint16_t>(frame_base + frame_changed), 0);
+  r.put_word(stack_segment,
+             static_cast<std::uint16_t>(frame_base + frame_changed + 2),
+             0xF000);
+  r.step_at(point_camp_exit);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 0u) << "fail closed: nothing is drawn";
+  EXPECT_NE(r.status().declined, 0u);
+
+  // And the report is still let go of, because the reason it is being
+  // let go of is that the party is on its way out of camp — which is true
+  // whatever this word turned out to be.
+  r.step_at(point_before_input);
+  r.run_the_calls();
+  EXPECT_EQ(r.frames_drawn(), 0u);
+}
+
+TEST(SeamEncampFix, DrawsNothingWhereTheModeSaysThisIsNotTheWayOutOfCamp) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  r.leaving_camp(true);
+  r.put_byte(data_segment, data_game_mode, mode_adventure);
+  r.step_at(point_camp_exit);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.frames_drawn(), 0u);
+  EXPECT_NE(r.status().declined, 0u)
+      << "the teardown has not restored the mode byte at this instruction, "
+         "so anything else is a fact that has gone wrong";
 }
 
 TEST(SeamEncampFix, CannotBePulled) {

@@ -1088,11 +1088,11 @@ boundary, and it needs the argument this document would have to carry.
 | id | what | keyed to | qualified by |
 |---|---|---|---|
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
-| `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws | the baseline | the overlaid module the camp screen lives in |
+| `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 
-### The Encamp (F)ix (#172, #186, #189)
+### The Encamp (F)ix (#172, #186, #189, #194)
 
 PLAN.md §5 item 4, and the one enhancement the plan grants a deliberate
 exception: it automates play. The exception is narrow and the seam is
@@ -1145,9 +1145,9 @@ Two conditions make it safe, and both are facts about the program:
   from a letter it has never seen — and the one thing this seam must not
   do is add a letter the program *does* recognise.
 
-#### Three points, and no memory of its own
+#### Four points, and no memory of its own
 
-All three are addresses in the overlay the camp screen lives in, resolved
+All four are addresses in the overlay the camp screen lives in, resolved
 through the program's own note of where that overlay is (§4, #131):
 
 1. **before the bar is handed over** — blank the prompt, splice the
@@ -1160,7 +1160,10 @@ through the program's own note of where that overlay is (§4, #131):
    claim the rest that is about to start, and post the camp bar's own
    Rest key;
 3. **at the rest command's entry**, reached because of that key — if this
-   seam claimed the rest, post the rest screen's own Rest key.
+   seam claimed the rest, post the rest screen's own Rest key;
+4. **on the loop's own way out** (M5-E1c, #194) — where a report still
+   owed is one the camp menu is never going to draw, because the pass it
+   would be drawn on is not coming.
 
 Then it is out of the way. The program rests: time passes on the game's
 calendar, pending spells are memorized at the game's own rate, hit points
@@ -1192,6 +1195,19 @@ because a recording replays from the start and a seam's state is dropped
 on `enable()`. It is a debt against a future in which machine state is
 restored mid-sequence, and it is written here rather than discovered
 there.
+
+**Point 4 needs no word of its own either**, and it is the better of the
+two examples in this section. The camp loop takes an out-parameter and
+runs while the byte behind it reads zero; the only thing in the whole
+camp screen that ever writes that byte is the rest, which stores what the
+rest orchestrator answered — and the orchestrator answers non-zero for
+exactly one reason, a wandering-monster check that fired. Stopping a rest
+by hand answers zero, and so does running the clock out. So at the loop's
+exit a non-zero byte there **is** "a rest was interrupted", said by the
+program, and the seam does not have to tell that apart from a player
+pressing EXIT by remembering anything. Read back out of the machine and
+remembered nowhere: §3's first choice, on a conclusion rather than on a
+datum.
 
 **The three points also dispose of the constraint** the first cut of this
 seam ran into. The program **drains its keyboard after every key it
@@ -1306,19 +1322,19 @@ two claims, and both are tested:
   undone at point 2 and the prompt is a stack byte in a frame that is
   gone before the loop turns over.
 
-`tests/core/machine/seam_encamp_test.cpp` drives the three handlers over
+`tests/core/machine/seam_encamp_test.cpp` drives the four handlers over
 a camp the test lays down by the facts — including a command bar of its
 own three invented words, so the splice can be watched with none of the
-program's text anywhere near this tree. The three `encamp_fix*` entries
+program's text anywhere near this tree. The four `encamp_fix*` entries
 in `tests/programs` drive **the same handlers** — the definition is the
 build's own, copied with the stand-in program's fingerprint in place of
 the game's — through the whole machine on all four targets. That stand-in
 is its own overlay manager: it writes its code segment into the word the
-seam's facts name and lays its three routines out at the offsets they
-name, which is the only way to reach an overlay-qualified point without
-an overlay. Two of the three entries claim the **same exact step count**,
-one with the seam armed and one with it off, which is the second claim
-above made where every target runs it.
+seam's facts name and lays its routines out at the offsets they name,
+which is the only way to reach an overlay-qualified point without an
+overlay. Two of the four entries claim the **same exact step count**, one
+with the seam armed and one with it off, which is the second claim above
+made where every target runs it.
 
 **And it reads nothing it is not sure of**, a rule this seam learned on
 the program rather than in a test. Its first version had a point with no
@@ -1421,14 +1437,12 @@ takes them somewhere and takes the box with it. Nothing says "press any
 key", because the thing on the screen that works is the thing on the
 screen — #186's rule, one layer on.
 
-**Six titles, and the seventh is a filed issue.** Healed, rest stopped,
-stopped by the player, no cure memorized, nobody knows a cure, cannot
-cast here — the last two being different sentences, which is this
-project's own addition: a party whose cleric knows a cure and has none
-memorized can do something about it, and one whose nobody knows it
-cannot. `Interrupted!` is not among them, and #194 is why: the program answers an interrupted rest
-by taking the party out of camp, so the pass this box is drawn on does
-not come. `docs/playable.md` leg 7 has the driven run that found it.
+**Six titles.** Healed, rest stopped, stopped by the player, no cure
+memorized, nobody knows a cure, cannot cast here — the last two being
+different sentences, which is this project's own addition: a party whose
+cleric knows a cure and has none memorized can do something about it, and
+one whose nobody knows it cannot. `Interrupted!` is the seventh and it is
+the fourth point's, below.
 
 **The clock cannot say how long a rest of a day or more took.** It is an
 hour and two minute digits with no day counter, so the summary drops its
@@ -1440,12 +1454,83 @@ exactly.
 **What is measured and what is read off the program.** The box has been
 looked at, on a player's copy, on the desktop host: the title, the
 summary and the line a whole party gets, in the game's lettering, with
-the live bar under it. The wasm module took the same three acts on the
-same script. What has *not* been looked at is the exception list — every
+the live bar under it. The wasm module took the same acts on the same
+script. What has *not* been looked at is the exception list — every
 driven run so far ends with the party whole — so the rows naming who is
 still short are covered by tests over rosters the unit suite writes and
 by the `tests/programs` stand-in's count of the calls, and by nothing
-else. `docs/playable.md`'s honest-gaps list says the same.
+else. `docs/playable.md`'s honest-gaps list says the same, and #196 is
+the issue.
+
+#### And when the game does not hand the camp screen back (M5-E1c, #194)
+
+The box above is drawn on the pass of the camp menu after the command
+finishes, which is the only moment its result is readable: what a rest
+achieved is not a thing this seam can know until the rest is over. A rest
+the game **interrupts** does not give it that pass. The program answers
+the wandering-monster check by ending the rest and letting the camp loop
+leave — the mode word goes from camp to adventuring, the camp screen is
+gone, and the overlay the first three points live in goes with it. The
+next visit to that menu is whenever the player next chooses ENCAMP.
+
+Waiting for it is the wrong answer, and that is the whole argument for a
+fourth point. A box that arrived an hour of the player's game later would
+be an account of something they have half forgotten, and its "hit points
+restored" would be a difference against a party that has been in a fight
+since.
+
+So the fourth point is the camp loop's own exit, and what it does there
+is decided by the loop's own out-parameter (above) rather than by which
+of this seam's points happened to be reached:
+
+* **a rest the game interrupted** — the box is drawn there and then, with
+  `Fix: Interrupted!` on it, and **held on the screen by the program's
+  own message delay**. That delay is what makes drawing there work at
+  all: three calls further on, the teardown clears the very rows the box
+  occupies, and the caller then repaints the screen and runs the event
+  that interrupted the rest. It is also the program's own answer to a box
+  with no command bar under it — the same routine it calls itself after
+  it says the party was rudely interrupted, and it ends early on a key
+  the player has already typed;
+* **any other way out**, which in practice is the player pressing EXIT —
+  nothing is drawn, and the report is **dropped**. A player who chose
+  EXIT was shown the box on the pass of the menu they pressed it from,
+  and a seam that put `Interrupted!` on the screen because the party
+  happened to be leaving would be reporting the exit rather than the
+  interruption.
+
+Dropping is an act: the state is cleared either way, so a report owed
+here never survives to a later camp.
+
+**The outcome is told to this seam rather than worked out by it**, and
+that is the one place in this seam where a roster reading would agree for
+the wrong reason. Driven on a player's copy the cures close the party's
+deficit before the rest is ever asked for, so a party read at the exit is
+whole — which off the roster alone is `healed`. What happened is an
+interruption, and the program is the one that knows.
+
+**Driven, on a player's copy.** The wounded slot, encamped, the Fix
+chosen: three cures cast, the rest asked for, and the game answering it
+with the city watch. The box lands on the panel the rest orchestrator has
+just cleared, in the game's own lettering —
+
+```
+                 FIX: INTERRUPTED!
+HEALED 6 HP WITH 3 SPELLS IN 0:05.
+THE PARTY IS AT FULL HIT POINTS.
+
+CURES ARE STILL BEING MEMORIZED.
+```
+
+— is held there, and then the program clears it, repaints and runs its
+event, exactly as it did before. `docs/playable.md` leg 7 has the run and
+the frame numbers. The wasm module took the same acts on the same script.
+
+The `encamp_fix_interrupted` entry in `tests/programs` is the same shape
+on all four targets: the stand-in grew a loop condition and a way out of
+camp, and reads the command tail to decide whether its rest is one the
+game interrupts — one image, both ways out, and so no second fingerprint
+to keep in step.
 
 ### The debug cheats (#99)
 
