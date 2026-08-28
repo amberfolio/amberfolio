@@ -60,6 +60,7 @@ constexpr std::uint16_t data_map_pointer = 0x6A5C;
 constexpr std::uint16_t data_frame_colour = 0x6A60;
 constexpr std::uint16_t data_ground_colour = 0x6A63;
 constexpr std::uint16_t data_key_pushback = 0x8501;
+constexpr std::uint16_t data_font_pointer = 0x5E20;
 constexpr std::uint16_t data_shape_tiles = 0x6A58;
 constexpr std::uint16_t data_shape_first_slot = 0x0C8C;
 constexpr std::uint16_t data_shape_columns = 0x0C96;
@@ -84,6 +85,7 @@ constexpr std::uint16_t record_segment = 0x4000;
 constexpr std::uint16_t map_segment = 0x5000;
 constexpr std::uint16_t map_shape_segment = 0x6000;
 constexpr std::uint16_t map_bank_segment = 0x7000;
+constexpr std::uint16_t font_segment = 0x8000;
 
 constexpr std::uint16_t key_tab = 0x0F09;
 
@@ -271,6 +273,33 @@ struct rig {
                static_cast<std::uint16_t>(tile_first_frame + plane),
                ((colour >> plane) & 1U) != 0 ? 0xFF : 0x00);
     }
+  }
+
+  /// The program's 8x8 font, where the seam has to find it: a far pointer
+  /// in the data segment at sixty-four glyphs of eight bytes.
+  ///
+  /// Every row of glyph *g* is the byte *g*, so a glyph that reaches the
+  /// panel says which index it was drawn from — which is the half of this
+  /// that could go wrong quietly. The character-to-index mapping is the
+  /// program's own (upper-cased, modulo sixty-four) and is restated here
+  /// by the expectations rather than shared with the code under test.
+  void install_font() const {
+    const std::uint16_t ds = dgroup();
+    put_word(ds, data_font_pointer, 0x0000);
+    put_word(ds, static_cast<std::uint16_t>(data_font_pointer + 2),
+             font_segment);
+    for (unsigned glyph = 0; glyph < 64; ++glyph) {
+      for (unsigned row = 0; row < 8; ++row) {
+        put_byte(font_segment, static_cast<std::uint16_t>((glyph * 8) + row),
+                 static_cast<std::uint8_t>(glyph));
+      }
+    }
+  }
+
+  /// One pixel of the rendered panel, before it reaches the planes.
+  [[nodiscard]] std::uint8_t panel_pixel(unsigned x, unsigned y) const {
+    return map_state()
+        .pixels()[(static_cast<std::size_t>(y) * automap_panel_width) + x];
   }
 
   /// A key in the BIOS keystroke buffer, the way a typed one arrives.
@@ -944,6 +973,176 @@ TEST(AutomapPanel, TheColoursAreWorkedOutAgainWhenTheTileSetsAreSwapped) {
   }
   r.poll(2);
   EXPECT_EQ(r.map_state().wall_colour(1), 4);
+}
+
+// ---------------------------------------------------------------------------
+// The zone label (M5-E2b)
+// ---------------------------------------------------------------------------
+//
+// The band is x in [112, 176) of the panel, eight columns of the game's
+// own eight-pixel glyphs. With the rig's font every row of glyph *g* is
+// the byte *g*, so the pixels of a drawn character say both which glyph
+// index it came from and where the wrap put it.
+
+/// Where a centred line of `columns` characters starts, in panel pixels.
+[[nodiscard]] unsigned centred(std::size_t columns) {
+  const auto band = static_cast<int>(automap_panel_width - automap_band_x);
+  return automap_band_x +
+         static_cast<unsigned>((band - (static_cast<int>(columns) * 8)) / 2);
+}
+
+/// The x offsets a glyph of index `g` lights, taken from the byte the rig
+/// put in every one of its rows: bit 0x80 is the leftmost pixel.
+[[nodiscard]] bool lit(unsigned glyph, unsigned column) {
+  return ((glyph >> (7U - column)) & 1U) != 0;
+}
+
+TEST(AutomapLabel, TheZoneIsNamedInTheGamesOwnGlyphs) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.install_font();
+  r.adventuring(7, 5, lane_north);  // disk 3, area 0
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  // Two words, and eight columns cannot hold both with a space between
+  // them, so the wrap puts one on each line and centres each.
+  const unsigned first = centred(3);   // "NEW"
+  const unsigned second = centred(5);  // "PHLAN"
+
+  // 'N' is 0x4e, and 0x4e % 0x40 is 0x0e.
+  for (unsigned column = 0; column < 8; ++column) {
+    EXPECT_EQ(r.panel_pixel(first + column, 8), lit(0x0E, column) ? 14 : 0)
+        << "column " << column << " of the N";
+  }
+  // 'P' is 0x50, and 0x50 % 0x40 is 0x10 — a single pixel, in a different
+  // place, on the second line ten pixels down.
+  for (unsigned column = 0; column < 8; ++column) {
+    EXPECT_EQ(r.panel_pixel(second + column, 18), lit(0x10, column) ? 14 : 0)
+        << "column " << column << " of the P";
+  }
+
+  // And it is on the game's own screen, not only in the buffer.
+  EXPECT_EQ(r.screen_pixel(automap_panel_x + first + 4, automap_panel_y + 8),
+            14);
+}
+
+TEST(AutomapLabel, TheBandIsTheOnlyPartOfThePanelItReaches) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.install_font();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  // The map's sixteen seven-pixel cells end exactly where the band
+  // begins, so no glyph can land on a cell and no cell on a glyph.
+  for (unsigned y = 0; y < automap_panel_height; ++y) {
+    ASSERT_NE(r.panel_pixel(automap_band_x - 1, y), 14)
+        << "the label reached the map at row " << y;
+  }
+}
+
+TEST(AutomapLabel, ALongWordIsBrokenWhereTheNameSaysItMay) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.install_font();
+  r.adventuring(7, 5, lane_north);
+  const std::uint16_t ds = rig::dgroup();
+  r.put_byte(ds, data_disk_number, 6);
+  r.put_byte(ds, data_area_id, 25);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  // Eleven characters into eight columns: broken at its marked syllable,
+  // so the first line is seven characters and ends in a hyphen and the
+  // second is the remaining four.
+  const unsigned first = centred(7);
+  const unsigned second = centred(4);
+
+  // '-' is 0x2d, which is under 0x40 and so is its own index.
+  for (unsigned column = 0; column < 8; ++column) {
+    EXPECT_EQ(r.panel_pixel(first + (6 * 8) + column, 8),
+              lit(0x2D, column) ? 14 : 0)
+        << "column " << column << " of the hyphen";
+  }
+  // 'N' again, first of the remainder.
+  for (unsigned column = 0; column < 8; ++column) {
+    EXPECT_EQ(r.panel_pixel(second + column, 18), lit(0x0E, column) ? 14 : 0)
+        << "column " << column << " of the N";
+  }
+}
+
+TEST(AutomapLabel, AMapNobodyHasNamedSaysItsNumber) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.install_font();
+  r.adventuring(7, 5, lane_north);
+  const std::uint16_t ds = rig::dgroup();
+  r.put_byte(ds, data_disk_number, 3);
+  r.put_byte(ds, data_area_id, 99);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  // "AREA 99" — seven columns, on one line.
+  const unsigned first = centred(7);
+  // 'A' is 0x41, and 0x41 % 0x40 is 1.
+  for (unsigned column = 0; column < 8; ++column) {
+    EXPECT_EQ(r.panel_pixel(first + column, 8), lit(0x01, column) ? 14 : 0)
+        << "column " << column << " of the A";
+  }
+  // '9' is 0x39, its own index, twice at the end.
+  for (unsigned column = 0; column < 8; ++column) {
+    EXPECT_EQ(r.panel_pixel(first + (6 * 8) + column, 8),
+              lit(0x39, column) ? 14 : 0)
+        << "column " << column << " of the second 9";
+  }
+}
+
+TEST(AutomapLabel, WithNoFontInstalledTheBandStaysEmpty) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  // No install_font: the far pointer is zero, which is the program's own
+  // "not loaded yet" and has to leave the band alone rather than raster a
+  // label out of whatever the buffer holds.
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  ASSERT_TRUE(r.map_state().panel_on_screen()) << "the map itself is drawn";
+  for (unsigned y = 0; y < automap_panel_height; ++y) {
+    for (unsigned x = automap_band_x; x < automap_panel_width; ++x) {
+      ASSERT_EQ(r.panel_pixel(x, y), 0) << "at " << x << ", " << y;
+    }
+  }
+}
+
+TEST(AutomapLabel, AFontThatArrivesLateStillGetsItsLabel) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+  ASSERT_EQ(r.panel_pixel(centred(3) + 4, 8), 0) << "no font, no label";
+
+  // Nothing about the party or the map has moved, so only the font can
+  // ask for a redraw — which is what it being in the drawing signature
+  // is for.
+  r.install_font();
+  r.poll(2);
+  EXPECT_EQ(r.panel_pixel(centred(3) + 4, 8), 14);
 }
 
 TEST(AutomapPanel, AClearThatMeetsThePanelTakesItAndTheRosterGivesItBack) {

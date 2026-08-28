@@ -73,8 +73,11 @@ What M4 left in place:
   modal non-black pixel of the very tiles the 3D view blits for it, so
   the buildings are the colour of the buildings, and a door leaf is drawn
   where a wall face's *kind* has been seen shut — on this map or in the
-  table of every shut face in the shipped data. The zone label and
-  persistence are the remaining legs of #173),
+  table of every shut face in the shipped data. M5-E2b puts the zone's
+  name in the band the panel's geometry leaves for it, in the program's
+  own glyphs read out of its own font, off a table of (disk, area) to a
+  short label — because the program holds no such string to read.
+  Persistence is the remaining leg of #173),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine

@@ -1102,10 +1102,17 @@ party has walked past a way in, and an arrow that turns with the party.
 Every one of those colours is derived from the game's own data (M5-E2a)
 and none is sampled off the screen: the wall colour is the modal
 non-black pixel of the tiles the 3D renderer blits for that kind of wall,
-which is why the buildings are the colour of the buildings. The status row below it — `8,11 E 03:18` — is the *program's*,
-untouched, and the panel stops one row short of it deliberately: that row
-is redrawn as the clock ticks, and a panel that claimed it would flicker
-once a minute for nothing.
+which is why the buildings are the colour of the buildings.
+
+**And the band beside the map says where that is** (M5-E2b): `NEW` over
+`PHLAN`, wrapped to the eight columns the map's size leaves, centred, in
+the yellow the game highlights its own text in — and in the game's own
+glyphs, read out of the program's font and rasterized into the panel, so
+the label is pixel-identical to the text the game draws around it. The
+status row below it — `8,11 E 03:18` — is the *program's*, untouched, and
+the panel stops one row short of it deliberately: that row is redrawn as
+the clock ticks, and a panel that claimed it would flicker once a minute
+for nothing.
 
 **The panel yields to the game, and the game takes it back.** An NPC's
 portrait and a message do not disturb it, because they do not touch those
@@ -1176,8 +1183,8 @@ unit suite and by no driven run yet — Kovel Mansion, on the other side of
 this same district, has forty-five shut faces waiting for one.
 
 **What this leg does not cover** is written down in the honest-gaps list
-below and in `docs/seams.md` §10: the label band is empty and nothing is
-persisted. Each is a leg of #173 with its own change.
+below and in `docs/seams.md` §10: nothing is persisted. That is the last
+leg of #173, with its own change.
 
 ---
 
@@ -1295,7 +1302,11 @@ what it skips would be worth less than one that says so.
   change maps. The second is **door detection from evidence**: New Phlan
   has no shut face anywhere on it, so the driven run exercises the
   fallback and not the rule. Both close the same way, and the dungeon gap
-  above is the same door.
+  above is the same door. The third is the **zone label**: one of the
+  twenty-nine names has been seen drawn, and the wrap's other two shapes
+  — a name broken at its soft break, and the `AREA <n>` a map with no row
+  falls back to — are unit tests over a font a test hands the seam and
+  have never been on a screen.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam

@@ -118,6 +118,14 @@ inline constexpr unsigned automap_cell_pixels = 7;
 inline constexpr unsigned automap_band_x =
     automap_map_side * automap_cell_pixels;
 
+/// How many characters of the game's own eight-pixel font fit across that
+/// band, which is what the zone label is wrapped to (M5-E2b). Eight is
+/// what the map's size costs: at ten columns the cells could never exceed
+/// (176 - 80) / 16 = 6 pixels, so the wider band and the bigger map are
+/// exclusive and this is the side of that trade the panel is on.
+inline constexpr unsigned automap_text_columns =
+    (automap_panel_width - automap_band_x) / 8;
+
 /// The panel rect again, in the program's own text cells — which is the
 /// unit its region clears are expressed in, and therefore the unit the
 /// "has something else taken these cells" test has to be made in.

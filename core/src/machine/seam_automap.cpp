@@ -349,6 +349,20 @@ constexpr std::uint16_t data_ground_colour = 0x6A63;
 /// second half of an extended key is waiting to be handed over.
 constexpr std::uint16_t data_key_pushback = 0x8501;
 
+/// The 8x8 font the program draws every menu and message with, as a far
+/// pointer in the data segment (M5-E2b): sixty-four glyphs of eight
+/// bytes, one byte to a scanline, bit 0x80 the leftmost pixel, indexed by
+/// the character upper-cased and taken modulo sixty-four.
+///
+/// The program's own text primitive treats the two words being zero as
+/// "the font has not been loaded yet" and draws nothing at all. So does
+/// this: a label rasterized out of an empty buffer would be a black
+/// rectangle, and the panel's black already means something.
+constexpr std::uint16_t data_font_pointer = 0x5E20;
+constexpr std::uint16_t font_glyphs = 64;
+constexpr std::uint16_t font_glyph_bytes = 8;
+constexpr std::uint16_t font_bytes = font_glyphs * font_glyph_bytes;
+
 // --- The map's format ------------------------------------------------------
 
 /// The map is four 256-byte planes.
@@ -1028,6 +1042,284 @@ void draw_mark(panel_pixels& panel, int x0, int y0,
   }
 }
 
+// ---------------------------------------------------------------------------
+// The zone label (M5-E2b)
+// ---------------------------------------------------------------------------
+//
+// The band the panel's geometry leaves — `automap.h`'s eight text columns
+// to the right of the map — says where the party is, because nothing else
+// on this screen does: the program's own status row under the panel shows
+// coordinates, a compass and the clock, and never a place.
+
+using font_table = std::array<std::uint8_t, font_bytes>;
+
+/// The glyph box in the signed numbers everything that draws works in,
+/// which is also where `panel_width` and `panel_height` above are.
+constexpr int glyph_rows = static_cast<int>(font_glyph_bytes);
+constexpr int glyph_columns = 8;
+
+/// The program's own glyphs, copied out of its memory through the bus.
+///
+/// False when the far pointer is not one that can be followed, which
+/// covers the program's own "the font is not installed yet" and every way
+/// a pointer it has not set up can point somewhere a seam must not read.
+[[nodiscard]] bool read_font(cpu::processor& cpu, std::uint16_t ds,
+                             font_table& font) {
+  const far_pointer pointer = far_at(cpu, ds, data_font_pointer);
+  if (!followable(pointer, font_bytes)) {
+    return false;
+  }
+  for (std::uint16_t i = 0; i < font_bytes; ++i) {
+    font[i] = cpu.read_byte(pointer.segment, at(pointer.offset, i));
+  }
+  return true;
+}
+
+/// One run of text into the panel, in the program's own glyphs.
+///
+/// Rasterized here, into this seam's own linear buffer, rather than by
+/// calling the program's text primitive: the screen is planar and the
+/// program's, the panel is linear and this seam's, and the panel goes
+/// onto the planes in one piece. The glyphs are the same bytes the
+/// program draws its own menus with, so the label is pixel-identical to
+/// the text around it — which is what "in the game's own font" has to
+/// mean to be worth claiming.
+void draw_text(panel_pixels& panel, int x, int y, std::string_view text,
+               std::uint8_t colour, const font_table& font) noexcept {
+  for (const char ch : text) {
+    auto code = static_cast<std::uint8_t>(ch);
+    if (code >= 0x61 && code <= 0x7A) {
+      code = static_cast<std::uint8_t>(code - 0x20);
+    }
+    const auto glyph = static_cast<std::size_t>(code % font_glyphs) *
+                       static_cast<std::size_t>(font_glyph_bytes);
+    for (int row = 0; row < glyph_rows; ++row) {
+      const std::uint8_t bits = font[glyph + static_cast<std::size_t>(row)];
+      for (int bit = 0; bit < glyph_columns; ++bit) {
+        if (((bits >> (glyph_columns - 1 - bit)) & 1U) != 0) {
+          put(panel, x + bit, y + row, colour);
+        }
+      }
+    }
+    x += glyph_columns;
+  }
+}
+
+/// The marker that says a word may be split here.
+constexpr char soft_break = '|';
+
+/// A friendly name for a map, by the two bytes the program tells one from
+/// another with: the disk its files come from and the area's script id.
+///
+/// **A name is a fact** (CONTRIBUTING.md: "a SHA-256, a name, and the
+/// offsets a fact table needs"). This is a table of short labels for
+/// places, of the same kind as the addresses and the door table beside
+/// it, and not a line of anybody's prose. It has to be a table because
+/// the program holds no such string anywhere for the panel to read: the
+/// names live in its scripts as narration, and each of these was derived
+/// from one. Carried from the proven design, which is what PLAN.md §5
+/// means by re-expressing it as-is.
+///
+/// The id is the *script* id, and a sub-map that a script swaps in under
+/// a fixed area keeps its parent's — so those need no row of their own.
+/// The third byte of the map identity is what tells them apart for the
+/// fog (`automap.h`), and to a player they are the same place.
+///
+/// A `|` is a soft break: a point inside a word where the label may be
+/// split across two lines of the band with a hyphen. It costs no column
+/// and prints nothing where the word fits. Six of these have a word
+/// longer than the band is wide, and each carries one at a syllable.
+struct zone_name {
+  std::uint8_t disk;
+  std::uint8_t area;
+  std::string_view name;
+};
+
+constexpr std::array<zone_name, 29> zone_names{
+    {{.disk = 1, .area = 18, .name = "PODOL PLAZA"},
+     {.disk = 1, .area = 24, .name = "TEMPLE OF BANE"},
+     {.disk = 2, .area = 9, .name = "STOJANOW GATE"},
+     {.disk = 2, .area = 15, .name = "MENDOR'S LIBRARY"},
+     {.disk = 2, .area = 20, .name = "SLUMS"},
+     {.disk = 3, .area = 0, .name = "NEW PHLAN"},
+     {.disk = 3, .area = 8, .name = "CITY HALL"},
+     {.disk = 3, .area = 11, .name = "TRAINING HALL"},
+     {.disk = 3, .area = 14, .name = "KOVEL MANSION"},
+     {.disk = 4, .area = 2, .name = "TEXTILE HOUSE"},
+     {.disk = 4, .area = 10, .name = "VALHIN|GEN GRAVE|YARD"},
+     {.disk = 4, .area = 21, .name = "SOKAL KEEP"},
+     {.disk = 5, .area = 3, .name = "VALJEVO CASTLE"},
+     {.disk = 5, .area = 4, .name = "VALJEVO CASTLE"},
+     {.disk = 5, .area = 5, .name = "VALJEVO CASTLE"},
+     {.disk = 5, .area = 6, .name = "VALJEVO CASTLE"},
+     {.disk = 5, .area = 7, .name = "VALJEVO CASTLE"},
+     {.disk = 6, .area = 1, .name = "BUCCA|NEER BASE"},
+     {.disk = 6, .area = 19, .name = "DRAGON'S CAVE"},
+     {.disk = 6, .area = 25, .name = "WILDER|NESS"},
+     {.disk = 6, .area = 28, .name = "ZHENTIL OUTPOST"},
+     {.disk = 7, .area = 17, .name = "NOMAD CAMP"},
+     {.disk = 7, .area = 22, .name = "SORCER|ER'S ISLAND"},
+     {.disk = 7, .area = 23, .name = "YARASH'S PYRAMID"},
+     {.disk = 7, .area = 26, .name = "WILDER|NESS"},
+     {.disk = 8, .area = 13, .name = "KOBOLD CAVES"},
+     {.disk = 8, .area = 16, .name = "LIZARD|MAN KEEP"},
+     {.disk = 8, .area = 27, .name = "WILDER|NESS"},
+     {.disk = 8, .area = 29, .name = "KUTO'S WELL"}}};
+
+/// How many characters the fallback needs: "AREA " and three digits.
+constexpr std::size_t zone_fallback_bytes = 8;
+using zone_fallback = std::array<char, zone_fallback_bytes>;
+
+/// The label for a map, or `AREA <n>` where the table has no row.
+///
+/// The fallback is written into the caller's buffer rather than a local
+/// one, so the view this returns always names storage that outlives it.
+/// A map with no row is a map nobody has named yet, and saying its number
+/// is a better answer than saying nothing: the panel is still a map of
+/// somewhere, and the number is what a player would put in a bug report.
+[[nodiscard]] std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
+                                          zone_fallback& fallback) noexcept {
+  for (const zone_name& zone : zone_names) {
+    if (zone.disk == disk && zone.area == area) {
+      return zone.name;
+    }
+  }
+
+  std::size_t used = 0;
+  for (const char ch : std::string_view{"AREA "}) {
+    fallback[used++] = ch;
+  }
+  std::array<char, 3> digits{};
+  std::size_t count = 0;
+  auto value = static_cast<unsigned>(area);
+  do {
+    digits[count++] = static_cast<char>('0' + (value % 10U));
+    value /= 10U;
+  } while (value != 0);
+  while (count > 0) {
+    fallback[used++] = digits[--count];
+  }
+  return std::string_view{fallback.data(), used};
+}
+
+/// How wide a word prints, up to the next space or the end of the label.
+/// Soft-break markers are not characters and cost no column.
+[[nodiscard]] std::size_t word_columns(std::string_view text) noexcept {
+  std::size_t columns = 0;
+  for (const char ch : text) {
+    if (ch == ' ') {
+      break;
+    }
+    if (ch != soft_break) {
+      ++columns;
+    }
+  }
+  return columns;
+}
+
+/// Where the band's first line of text sits, and how far apart the lines
+/// are: an eight-pixel glyph with two pixels of leading. The top matches
+/// the inset the map's own first row of cells has from the panel's edge.
+constexpr int label_top = 8;
+constexpr int label_line_pitch = 10;
+
+/// The label's colour: the yellow the program highlights its own text in.
+/// The same index the door leaves are drawn in, and deliberately so —
+/// this panel has one accent colour and it is the game's.
+constexpr std::uint8_t colour_label = 14;
+
+/// The zone label into the band: greedy word wrap to the band's columns,
+/// each line centred.
+///
+/// A word too long for a whole line on its own is broken at the last soft
+/// break that still leaves room for the hyphen, and the remainder wraps —
+/// so a name marked `WILDER|NESS` sets as `WILDER-` over `NESS`. With no
+/// marker at all, which is the `AREA <n>` fallback and any name nobody
+/// has marked yet, it takes what fits. That is the deliberate answer
+/// rather than an oversight: a new name never vanishes, it just breaks in
+/// an ugly place until somebody puts a marker in it.
+void draw_label(panel_pixels& panel, std::uint8_t disk, std::uint8_t area,
+                const font_table& font) noexcept {
+  zone_fallback fallback{};
+  const std::string_view name = zone_label(disk, area, fallback);
+
+  constexpr auto columns = static_cast<std::size_t>(automap_text_columns);
+  constexpr int band_x = static_cast<int>(automap_band_x);
+  constexpr int band_width =
+      static_cast<int>(automap_panel_width - automap_band_x);
+  std::array<char, columns> line{};
+  std::size_t p = 0;
+  int y = label_top;
+  while (p < name.size() && y + glyph_rows <= panel_height) {
+    std::size_t filled = 0;
+    while (p < name.size() && name[p] == ' ') {
+      ++p;
+    }
+    while (p < name.size()) {
+      const std::size_t width = word_columns(name.substr(p));
+      const std::size_t separator = filled > 0 ? 1U : 0U;
+      if (filled + separator + width <= columns) {
+        if (separator != 0) {
+          line[filled++] = ' ';
+        }
+        for (; p < name.size() && name[p] != ' '; ++p) {
+          if (name[p] != soft_break) {
+            line[filled++] = name[p];
+          }
+        }
+        // Past the space that ended it, so the next pass measures the
+        // next word rather than an empty one and pads the line out with
+        // separators until it runs out of columns.
+        while (p < name.size() && name[p] == ' ') {
+          ++p;
+        }
+        continue;
+      }
+      if (filled > 0) {
+        // It will fit on a line of its own; leave it for the next one.
+        break;
+      }
+
+      // Alone on the line and still too long: hyphenate at the last
+      // marker that fits, and take what fits where there is none.
+      std::size_t cut = 0;
+      bool marked = false;
+      std::size_t seen = 0;
+      for (std::size_t q = p; q < name.size() && name[q] != ' '; ++q) {
+        if (name[q] != soft_break) {
+          ++seen;
+        } else if (seen + 1 <= columns) {
+          cut = q;
+          marked = true;
+        }
+      }
+      if (marked) {
+        for (std::size_t q = p; q < cut; ++q) {
+          if (name[q] != soft_break) {
+            line[filled++] = name[q];
+          }
+        }
+        line[filled++] = '-';
+        p = cut + 1;
+      } else {
+        for (; filled < columns && p < name.size() && name[p] != ' '; ++p) {
+          if (name[p] != soft_break) {
+            line[filled++] = name[p];
+          }
+        }
+      }
+      break;
+    }
+
+    draw_text(
+        panel,
+        band_x +
+            ((band_width - (static_cast<int>(filled) * glyph_columns)) / 2),
+        y, std::string_view{line.data(), filled}, colour_label, font);
+    y += label_line_pitch;
+  }
+}
+
 /// The colour a wall face of kind `nibble` is drawn in.
 ///
 /// Its texture's own colour where one has been worked out (M5-E2a), and
@@ -1093,11 +1385,26 @@ void learn_appearance(machine& box, std::uint16_t ds, const sample& now,
   }
 }
 
+/// The whole panel into its own buffer. `font` is null when the program
+/// has not installed its glyphs yet, which is the one thing that can
+/// leave the band empty.
 void render(automap_state& state, const automap_record& map,
-            const map_grid& grid, unsigned px, unsigned py, unsigned facing,
-            std::uint8_t floor_colour, std::uint8_t frame_colour) {
+            const map_grid& grid, const sample& now, const font_table* font) {
   panel_pixels& panel = state.pixels();
   panel.fill(colour_black);
+
+  const unsigned px = now.x;
+  const unsigned py = now.y;
+  const unsigned facing = now.facing;
+  const std::uint8_t floor_colour = now.floor_colour;
+  const std::uint8_t frame_colour = now.frame_colour;
+
+  // The band first. It is disjoint from the map's sixteen cells by
+  // construction (`automap.h`), so nothing below can reach it and nothing
+  // here can reach the map.
+  if (font != nullptr) {
+    draw_label(panel, now.disk, now.area, *font);
+  }
 
   const std::uint16_t doors = state.door_nibbles();
   const auto cell = static_cast<int>(automap_cell_pixels);
@@ -1491,6 +1798,9 @@ void at_key_pending(machine& box, seam_context& ctx) {
   std::uint32_t drawn = mix(where, now.floor_colour);
   drawn = mix(drawn, now.frame_colour);
   drawn = mix(drawn, banks);
+  // And whether the glyphs are there, so a panel first drawn with an empty
+  // band gets its label the moment the program installs its font.
+  drawn = mix(drawn, cpu.read_word(ds, at(data_font_pointer, 2)));
   if (drawn == 0) {
     // Zero is this seam's "nothing has been drawn" (automap.h), so it is
     // not allowed to be a real answer.
@@ -1533,8 +1843,9 @@ void at_key_pending(machine& box, seam_context& ctx) {
   if (map == nullptr) {
     return;
   }
-  render(state, *map, grid, now.x, now.y, now.facing, now.floor_colour,
-         now.frame_colour);
+  font_table font{};
+  const bool have_font = read_font(cpu, ds, font);
+  render(state, *map, grid, now, have_font ? &font : nullptr);
   blit(box, state);
   state.set_panel_on_screen(true);
   state.set_drawn_signature(drawn);

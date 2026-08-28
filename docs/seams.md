@@ -1576,7 +1576,7 @@ camp, and reads the command tail to decide whether its rest is one the
 game interrupts — one image, both ways out, and so no second fingerprint
 to keep in step.
 
-### The automap panel (#173, M5-E2a)
+### The automap panel (#173, M5-E2a, M5-E2b)
 
 PLAN.md §5 item 3, and the first seam in this tree that **draws**.
 
@@ -1702,6 +1702,41 @@ byte boundary and is twenty-two whole bytes wide, so nothing is shifted
 and nothing is read back to be merged. The registers are handed back in
 the state the program's own drawing primitives leave them.
 
+**The zone label is set in the program's own glyphs** (M5-E2b). The
+band the panel's geometry leaves — eight text columns to the right of the
+sixteen cells — names the place the party is in, because nothing else on
+that screen does: the program's own status row under the panel shows
+coordinates, a compass and the clock, and never a place.
+
+The glyphs are the program's. Its 8x8 font is a far pointer in the data
+segment, sixty-four glyphs indexed by the character upper-cased and taken
+modulo sixty-four, and the seam reads the same bytes the program's own
+text primitive reads and rasterizes them into the panel's linear buffer.
+It does not *call* that primitive, and the reason is the same one that
+makes the panel a buffer at all: the screen is planar and the program's,
+the panel is linear and this seam's, and it goes onto the planes in one
+piece. Same glyphs, so the label is pixel-identical to the text the game
+draws around it. The program treats its font pointer being zero as "not
+loaded yet" and draws nothing; so does this, and the font's segment is in
+the drawing signature so a panel first drawn without one picks the label
+up the moment it arrives.
+
+**The name is a table, and a name is a fact.** The program holds no such
+string anywhere for the panel to read — the names live in its scripts as
+narration — so the only way the band can say where the party is, is a
+table of (disk, area) to a short label. CONTRIBUTING.md's clean-content
+rule permits exactly that: "a SHA-256, a name, and the offsets a fact
+table needs". These are names, of the same kind as the door table beside
+them, and not a line of anybody's prose. A map with no row says `AREA
+<n>` rather than nothing.
+
+Six names have a word longer than eight columns, so a name may carry a
+`|` — a soft break, a point inside a word where the wrap may split it
+with a hyphen. It costs no column and prints nothing where the word fits.
+With no marker at all, a long word is cut where it stops fitting: ugly,
+and deliberately so, because a name nobody has marked yet should still
+appear.
+
 **Closing it calls the program's own screen composer** (#188's door),
 because the panel wrote over the party list and only the program can
 redraw it from live state — the game redraws single roster rows while the
@@ -1725,16 +1760,12 @@ somebody asks:
   times as `automap_probe_quiet` and is handed nothing, where
   `automap_probe_tab_seen` with the seam off is handed the Tab.
 
-**What it is not yet.** Two things, each its own leg of #173 and each
-named here rather than discovered later:
-
-* **there is no zone label** in the band the panel's geometry leaves for
-  one. That is M5-E2b;
-* **nothing is persisted.** What has been explored is lost when the
-  machine is reset, and the sidecar beside the save that #173 asks for —
-  through #170's VFS door, with `automap_update` telling the host it
-  changed — is M5-E2c. The store's shape is decided already, because the
-  explored overlay (#179) reads the same records.
+**What it is not yet.** One thing, the last leg of #173, named here
+rather than discovered later: **nothing is persisted.** What has been
+explored is lost when the machine is reset, and the sidecar beside the
+save that #173 asks for — through #170's VFS door, with `automap_update`
+telling the host it changed — is M5-E2c. The store's shape is decided
+already, because the explored overlay (#179) reads the same records.
 
 **Driven, and what it found.** Slot A loaded, forty-eight moves through
 New Phlan to the armourer at 8,11, Tab on the way out of the load: the
