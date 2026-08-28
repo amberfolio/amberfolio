@@ -32,6 +32,13 @@ void automap_state::clear() noexcept {
   panel_on_screen_ = false;
   panel_covered_ = false;
   unsettle();
+  appearance_valid_ = false;
+  appearance_area_ = 0;
+  appearance_geo_ = 0;
+  appearance_banks_ = 0;
+  wall_colour_ = {};
+  wall_colour_known_ = {};
+  door_nibbles_ = 0;
   pixels_ = {};
   drawn_signature_ = 0;
   revealed_signature_ = 0;
@@ -142,6 +149,40 @@ std::size_t automap_state::records_used() const noexcept {
     }
   }
   return used;
+}
+
+bool automap_state::appearance_is_for(std::uint8_t area, std::uint8_t geo,
+                                      std::uint16_t banks) const noexcept {
+  return appearance_valid_ && appearance_area_ == area &&
+         appearance_geo_ == geo && appearance_banks_ == banks;
+}
+
+void automap_state::begin_appearance(std::uint8_t area, std::uint8_t geo,
+                                     std::uint16_t banks) noexcept {
+  appearance_valid_ = true;
+  appearance_area_ = area;
+  appearance_geo_ = geo;
+  appearance_banks_ = banks;
+  wall_colour_ = {};
+  wall_colour_known_ = {};
+  door_nibbles_ = 0;
+}
+
+bool automap_state::wall_colour_known(unsigned nibble) const noexcept {
+  return nibble < wall_colour_known_.size() && wall_colour_known_[nibble];
+}
+
+std::uint8_t automap_state::wall_colour(unsigned nibble) const noexcept {
+  return nibble < wall_colour_.size() ? wall_colour_[nibble] : 0;
+}
+
+void automap_state::set_wall_colour(unsigned nibble,
+                                    std::uint8_t colour) noexcept {
+  if (nibble >= wall_colour_.size()) {
+    return;
+  }
+  wall_colour_[nibble] = colour;
+  wall_colour_known_[nibble] = true;
 }
 
 void automap_state::set_panel_covered(bool covered) noexcept {

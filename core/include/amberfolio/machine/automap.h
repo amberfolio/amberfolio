@@ -264,6 +264,43 @@ class automap_state {
                                              std::uint8_t top,
                                              std::uint8_t left) noexcept;
 
+  // --- what this map looks like ----------------------------------------
+  //
+  // Two things the panel has to work out about a map before it can draw
+  // it, both derived from what the program has in memory and neither of
+  // them cheap enough to redo on every keyboard poll: **what colour each
+  // kind of wall is**, histogrammed out of the very tiles the 3D view
+  // blits for it, and **which kinds of wall are doors**. They are worked
+  // out once when the party arrives and thrown away together.
+  //
+  // Keyed on the map *and* on which tile banks are loaded, because the
+  // second is what the first is read out of: a wall set swapped under a
+  // fixed map identity would otherwise keep the colours of the tiles it
+  // replaced.
+
+  /// Whether what is cached below belongs to this map and these banks.
+  [[nodiscard]] bool appearance_is_for(std::uint8_t area, std::uint8_t geo,
+                                       std::uint16_t banks) const noexcept;
+
+  /// Forget it and start again for this map and these banks.
+  void begin_appearance(std::uint8_t area, std::uint8_t geo,
+                        std::uint16_t banks) noexcept;
+
+  /// The colour a wall face of this kind is drawn in, and whether one has
+  /// been worked out. `nibble` is the map format's own wall-face number,
+  /// 1 to 15; 0 is not a wall face.
+  [[nodiscard]] bool wall_colour_known(unsigned nibble) const noexcept;
+  [[nodiscard]] std::uint8_t wall_colour(unsigned nibble) const noexcept;
+  void set_wall_colour(unsigned nibble, std::uint8_t colour) noexcept;
+
+  /// Bit *n* set means a wall face of kind *n* is a door rather than a
+  /// wall or an archway. Zero is "nothing on this map says which", which
+  /// is a state the renderer has its own answer for.
+  [[nodiscard]] std::uint16_t door_nibbles() const noexcept {
+    return door_nibbles_;
+  }
+  void set_door_nibbles(std::uint16_t mask) noexcept { door_nibbles_ = mask; }
+
   // --- where the party was when it last stood still --------------------
 
   /// The last position that was trusted: the map identity and the cell.
@@ -350,6 +387,14 @@ class automap_state {
   bool panel_open_{false};
   bool panel_on_screen_{false};
   bool panel_covered_{false};
+
+  bool appearance_valid_{false};
+  std::uint8_t appearance_area_{};
+  std::uint8_t appearance_geo_{};
+  std::uint16_t appearance_banks_{};
+  std::array<std::uint8_t, 16> wall_colour_{};
+  std::array<bool, 16> wall_colour_known_{};
+  std::uint16_t door_nibbles_{};
 
   bool settled_{false};
   std::uint8_t settled_disk_{};

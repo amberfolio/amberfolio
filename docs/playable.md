@@ -1094,10 +1094,15 @@ party roster.
 
 **What forty-eight moves through New Phlan look like.** The party starts
 at the docks end and walks north and east to the armourer at `8,11`, and
-the streets fill in behind it: floor in the colour the program says the
-3D view's ground is, walls in the area's own frame colour, a way through
-drawn as a gap with a stub at each end, and a white arrow that turns with
-the party. The status row below it — `8,11 E 03:18` — is the *program's*,
+the streets fill in behind it: brown streets in the colour the program
+says the 3D view's ground is, **white building fronts because the tiles
+those buildings are drawn with are white**, yellow door leaves where the
+party has walked past a way in, and an arrow that turns with the party.
+
+Every one of those colours is derived from the game's own data (M5-E2a)
+and none is sampled off the screen: the wall colour is the modal
+non-black pixel of the tiles the 3D renderer blits for that kind of wall,
+which is why the buildings are the colour of the buildings. The status row below it — `8,11 E 03:18` — is the *program's*,
 untouched, and the panel stops one row short of it deliberately: that row
 is redrawn as the clock ticks, and a panel that claimed it would flicker
 once a minute for nothing.
@@ -1159,9 +1164,19 @@ files says nothing: every one of the 64,000 pixels agrees, panel
 included. That is #173's "on both hosts", made as a comparison of two
 files rather than as two people's descriptions of two screens.
 
+**The doors here are the fallback, and it is worth knowing which.** A
+door leaf is drawn when a wall face's *kind* is known to be a door, and
+what knows that is a shut instance of the same kind — this map's own, or
+the table of every shut face in the shipped data (`docs/seams.md` §10).
+Twenty-one of the twenty-nine shipped grids carry one. **New Phlan does
+not**, and its wall set is not in the table, so the city falls through to
+the older rule: a passable face is a door. So this leg drives the
+*picture* and the fallback, and the evidence path is exercised by the
+unit suite and by no driven run yet — Kovel Mansion, on the other side of
+this same district, has forty-five shut faces waiting for one.
+
 **What this leg does not cover** is written down in the honest-gaps list
-below and in `docs/seams.md` §10: the wall colours are one shade, doors
-are not told from archways, the label band is empty, and nothing is
+below and in `docs/seams.md` §10: the label band is empty and nothing is
 persisted. Each is a leg of #173 with its own change.
 
 ---
@@ -1270,14 +1285,17 @@ what it skips would be worth less than one that says so.
   rosters the unit suite writes, and by nothing else. The way to close it
   is still the way #196 named: a leg that fights, survives and camps.
 - **The automap, off the city streets** (#173). Leg 8 drives it through
-  New Phlan and nowhere else. What that leaves untested against a real
-  program is the part the store was built for: a **map change**, where
-  the party's position words hold the old cell until the program's
-  arrival script places it and the seam has to wait for the position to
-  stop moving before it believes it. The settling rule and the marks it
-  plants have unit tests over positions a test hands them; nobody has
-  walked through the gate at `0,4` with the panel up and watched the
-  panel change maps. The dungeon gap above is the same door.
+  New Phlan and nowhere else, and two things follow from that. The first
+  is the part the store was built for: a **map change**, where the
+  party's position words hold the old cell until the program's arrival
+  script places it and the seam has to wait for the position to stop
+  moving before it believes it. The settling rule and the marks it plants
+  have unit tests over positions a test hands them; nobody has walked
+  through the gate at `0,4` with the panel up and watched the panel
+  change maps. The second is **door detection from evidence**: New Phlan
+  has no shut face anywhere on it, so the driven run exercises the
+  fallback and not the rule. Both close the same way, and the dungeon gap
+  above is the same door.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam

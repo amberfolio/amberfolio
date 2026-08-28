@@ -303,6 +303,39 @@ constexpr std::uint16_t data_party_facing = 0x6AAF;
 /// screen leaves it in.
 constexpr std::uint16_t data_map_pointer = 0x6A5C;
 
+/// The **shape-tile table**: a far pointer to the buffer the wall sets are
+/// loaded into. Row `n - 1` of it, stride `shape_row_bytes`, is the list
+/// of 8x8 tile codes the 3D renderer blits for a wall face of kind `n`.
+/// That is where a wall's colour comes from — the very tiles the player
+/// is looking at.
+constexpr std::uint16_t data_shape_tiles = 0x6A58;
+constexpr std::uint16_t shape_row_bytes = 0x9C;
+
+/// The **shape geometry**: for each of ten tile-block shapes the renderer
+/// knows, where in a row its tiles start and how many columns and rows it
+/// covers. Three byte tables, indexed by shape.
+constexpr std::uint16_t data_shape_first_slot = 0x0C8C;
+constexpr std::uint16_t data_shape_columns = 0x0C96;
+constexpr std::uint16_t data_shape_rows = 0x0CA0;
+constexpr unsigned shape_count = 10;
+
+/// The **tile banks**: six far pointers to decoded tile sets, and the
+/// table of the first tile code each bank answers for. A tile code is
+/// mapped to a bank by range and then to a frame inside it by subtracting
+/// that bank's first code.
+constexpr std::uint16_t data_tile_banks = 0x5E3A;
+constexpr std::uint16_t data_bank_first_tile = 0x2722;
+
+/// The **wall-set descriptor**: which WALLDEF block is loaded in each of
+/// the three slots, a word per slot at a stride of four. Slot 1 serves
+/// wall faces 1 to 5, slot 2 serves 6 to 10, slot 3 serves 11 to 15.
+/// `0xFFFF` is what the loader stamps when it filled a slot from a
+/// multi-block load and cannot say which block a row came from.
+constexpr std::uint16_t data_wall_set = 0x6AAE;
+constexpr std::uint16_t wall_set_stride = 4;
+constexpr unsigned wall_faces_per_slot = 5;
+constexpr std::uint16_t wall_set_unknown = 0xFFFF;
+
 /// The area's frame colour and the colour of the ground band in the 3D
 /// view, both EGA palette indices the program computes for itself. The
 /// second is what the panel's floor is drawn in, so the map's ground is
@@ -355,8 +388,33 @@ struct step {
   }
 }
 
-/// What plane 3's two bits say about a face that exists at all.
+/// What plane 3's two bits say about a face that exists at all: solid, a
+/// way through, or a door that is shut. Which *passable* faces are doors
+/// is not in this grid at all — see `door_nibbles()` below.
 constexpr std::uint8_t face_solid = 0;
+constexpr std::uint8_t face_passable = 1;
+constexpr std::uint8_t face_shut_door = 2;
+
+// --- The tile a wall face is drawn with ------------------------------------
+//
+// A decoded tile set is a header and a run of frames. The header gives the
+// frame's height in scanlines and its width in *bytes*, and the number of
+// bytes one whole frame takes; the frames start at a fixed offset. Inside
+// a frame the four EGA planes are interleaved a byte-column at a time, so
+// a pixel's palette index is one bit out of each of four consecutive
+// bytes — which is the same arrangement the adapter itself holds and the
+// reason the loader can `rep movs` a frame straight at it.
+constexpr std::uint16_t tile_header_height = 0x00;
+constexpr std::uint16_t tile_header_width = 0x02;
+constexpr std::uint16_t tile_header_frame_bytes = 0x11;
+constexpr std::uint16_t tile_first_frame = 0x17;
+constexpr unsigned tile_planes = 4;
+
+/// The last tile code each bank answers for. The renderer's own range
+/// map; a code past the last of these belongs to a bank that holds
+/// something other than wall tiles, and this refuses it rather than
+/// histogramming the wrong picture.
+constexpr std::array<std::uint16_t, 4> bank_last_tile{0x2D, 0x73, 0xB9, 0xFF};
 
 /// How far ahead the panel reveals: the cell the party is on and two
 /// more, which is what the 3D view in front of them shows.
@@ -373,6 +431,9 @@ constexpr std::uint8_t colour_brown = 6;
 constexpr std::uint8_t colour_grey = 7;
 constexpr std::uint8_t colour_green = 10;
 constexpr std::uint8_t colour_cyan = 11;
+/// A door leaf. Yellow, and the one colour on this panel a wall may not
+/// be: `wall_colour()` shifts a wall out of it.
+constexpr std::uint8_t colour_door = 14;
 constexpr std::uint8_t colour_white = 15;
 
 // ---------------------------------------------------------------------------
@@ -507,6 +568,363 @@ void reveal_from(automap_state& state, automap_record& map,
   }
 }
 
+/// Everything one pass of the tick reads off the data segment, which is
+/// also everything the panel is drawn from. Gathered once, so that the
+/// several things that want it are not several reads of the same byte.
+struct sample {
+  std::uint8_t disk;
+  std::uint8_t area;
+  std::uint8_t geo;
+  std::uint8_t x;
+  std::uint8_t y;
+  std::uint8_t facing;
+  std::uint8_t floor_colour;
+  std::uint8_t frame_colour;
+  std::uint16_t map_offset;
+  std::uint16_t map_segment;
+};
+
+// ---------------------------------------------------------------------------
+// What colour a wall is (M5-E2a)
+// ---------------------------------------------------------------------------
+//
+// **Derived from the game's data, never sampled off the screen.** The
+// colour is histogrammed out of the 8x8 tiles the 3D renderer actually
+// blits for that kind of wall, so water reads blue because its tiles are
+// blue, and nothing changes as the party walks. An earlier cut of the
+// proven design sampled the rendered ground band off the planes once and
+// latched whatever happened to be covering the viewport at the time — on
+// a fresh game, a tour guide's blue apron became the colour of the ground
+// for the whole session.
+//
+// Which tiles: a wall face of kind `n` indexes row `n - 1` of the
+// shape-tile table, and that row lists the tile codes for every *shape*
+// the renderer draws that wall as — the near head-on face, the side
+// slivers, the distant variants. Only the largest shape is histogrammed.
+// The slivers are mostly post and edge and they outvote the face: water
+// came out grey, off its pilings.
+
+/// A far pointer out of the data segment, as the program's own `les`
+/// would read it: offset first, segment second.
+struct far_pointer {
+  std::uint16_t offset;
+  std::uint16_t segment;
+};
+
+[[nodiscard]] far_pointer far_at(cpu::processor& cpu, std::uint16_t segment,
+                                 std::uint16_t offset) {
+  return {.offset = cpu.read_word(segment, offset),
+          .segment = cpu.read_word(segment, at(offset, 2))};
+}
+
+/// Whether a far pointer names conventional memory and can be followed
+/// for `length` bytes. The rule every read in this file obeys: a pointer
+/// the program has not set up yet points anywhere, and a read above
+/// conventional memory is a read of the video window, which loads the
+/// adapter's latches.
+[[nodiscard]] bool followable(const far_pointer& pointer,
+                              std::uint32_t length) {
+  if (pointer.segment == 0 || length == 0) {
+    return false;
+  }
+  if (static_cast<std::uint32_t>(pointer.offset) + length > 0x10000U) {
+    return false;
+  }
+  return cpu::physical_address(pointer.segment, pointer.offset) + length <=
+         conventional_ram_size;
+}
+
+/// One number that changes whenever the loaded tile sets do. Not a hash
+/// of anything and not compared with anything outside this file: it is
+/// what tells a cached wall colour that the tiles it was worked out from
+/// have been swapped underneath it.
+[[nodiscard]] std::uint16_t tile_bank_generation(cpu::processor& cpu,
+                                                 std::uint16_t ds) {
+  std::uint16_t generation = 0;
+  for (std::size_t bank = 0; bank < bank_last_tile.size(); ++bank) {
+    const std::uint16_t segment = cpu.read_word(
+        ds, at(data_tile_banks, static_cast<std::uint16_t>((bank * 4) + 2)));
+    generation = static_cast<std::uint16_t>((generation * 31U) + segment);
+  }
+  return generation;
+}
+
+/// Add every pixel of one tile to a histogram of palette indices.
+void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
+                    std::array<std::uint32_t, 16>& counts) {
+  std::size_t bank = bank_last_tile.size();
+  for (std::size_t i = 0; i < bank_last_tile.size(); ++i) {
+    if (code <= bank_last_tile[i]) {
+      bank = i;
+      break;
+    }
+  }
+  if (bank == bank_last_tile.size()) {
+    // Past the last bank that holds wall tiles. The renderer would send
+    // it to the border tile set, which is not this wall's picture.
+    return;
+  }
+
+  const far_pointer tiles = far_at(
+      cpu, ds, at(data_tile_banks, static_cast<std::uint16_t>(bank * 4)));
+  if (!followable(tiles, tile_first_frame)) {
+    return;
+  }
+  const std::uint16_t first_code = cpu.read_word(
+      ds, at(data_bank_first_tile, static_cast<std::uint16_t>(bank * 2)));
+  if (code < first_code) {
+    return;
+  }
+  const auto frame = static_cast<std::uint16_t>(code - first_code);
+
+  const std::uint16_t height =
+      cpu.read_word(tiles.segment, at(tiles.offset, tile_header_height));
+  const std::uint16_t width =
+      cpu.read_word(tiles.segment, at(tiles.offset, tile_header_width));
+  const std::uint16_t frame_bytes =
+      cpu.read_word(tiles.segment, at(tiles.offset, tile_header_frame_bytes));
+  if (height == 0 || width == 0 || frame_bytes == 0) {
+    return;
+  }
+  // The header has to agree with itself before a byte of it is followed:
+  // a frame is its scanlines times its byte columns times the four
+  // planes, and anything else is not a tile set.
+  if (static_cast<std::uint32_t>(height) * width * tile_planes > frame_bytes) {
+    return;
+  }
+  const std::uint32_t span =
+      static_cast<std::uint32_t>(tile_first_frame) +
+      ((static_cast<std::uint32_t>(frame) + 1U) * frame_bytes);
+  if (!followable(tiles, span)) {
+    return;
+  }
+
+  const auto base = static_cast<std::uint16_t>(
+      tiles.offset + tile_first_frame +
+      static_cast<std::uint16_t>(frame * frame_bytes));
+  for (std::uint16_t row = 0; row < height; ++row) {
+    for (std::uint16_t column = 0; column < width; ++column) {
+      std::array<std::uint8_t, tile_planes> planes{};
+      const auto pixels = static_cast<std::uint16_t>(
+          base + (((row * width) + column) * tile_planes));
+      for (unsigned plane = 0; plane < tile_planes; ++plane) {
+        planes[plane] = cpu.read_byte(
+            tiles.segment, at(pixels, static_cast<std::uint16_t>(plane)));
+      }
+      for (unsigned bit = 0; bit < 8; ++bit) {
+        const unsigned shift = 7U - bit;
+        unsigned colour = 0;
+        for (unsigned plane = 0; plane < tile_planes; ++plane) {
+          colour |= ((planes[plane] >> shift) & 1U) << plane;
+        }
+        ++counts[colour];
+      }
+    }
+  }
+}
+
+/// The colour of a wall face of kind `nibble`, or -1 when the program is
+/// not holding what this would need to work it out.
+[[nodiscard]] int texture_colour(cpu::processor& cpu, std::uint16_t ds,
+                                 std::uint8_t nibble) {
+  if (nibble < 1 || nibble > 15) {
+    return -1;
+  }
+  const far_pointer table = far_at(cpu, ds, data_shape_tiles);
+  const auto row_at = static_cast<std::uint32_t>(nibble - 1) * shape_row_bytes;
+  if (!followable(table, row_at + shape_row_bytes)) {
+    return -1;
+  }
+
+  // The largest shape the renderer has: the one whose rectangle of tiles
+  // covers the most of the view, which is the head-on face.
+  unsigned widest = 0;
+  unsigned widest_extent = 0;
+  for (unsigned shape = 0; shape < shape_count; ++shape) {
+    const unsigned extent =
+        static_cast<unsigned>(cpu.read_byte(
+            ds, at(data_shape_columns, static_cast<std::uint16_t>(shape)))) *
+        cpu.read_byte(ds,
+                      at(data_shape_rows, static_cast<std::uint16_t>(shape)));
+    if (extent > widest_extent) {
+      widest_extent = extent;
+      widest = shape;
+    }
+  }
+  if (widest_extent == 0 || widest_extent > shape_row_bytes) {
+    return -1;
+  }
+  const std::uint8_t first_slot = cpu.read_byte(
+      ds, at(data_shape_first_slot, static_cast<std::uint16_t>(widest)));
+
+  std::array<std::uint32_t, 16> counts{};
+  const auto row = static_cast<std::uint16_t>(table.offset + row_at);
+  for (unsigned i = 0; i < widest_extent; ++i) {
+    // The slot is a byte and the renderer lets it wrap, so this does too;
+    // a slot past the end of a row is not part of this shape.
+    const auto slot = static_cast<std::uint8_t>(first_slot + i);
+    if (slot >= shape_row_bytes) {
+      continue;
+    }
+    const std::uint8_t code = cpu.read_byte(table.segment, at(row, slot));
+    if (code != 0) {
+      histogram_tile(cpu, ds, code, counts);
+    }
+  }
+
+  // The modal colour that is not black: black is the gap between things
+  // in almost every one of these tiles, and it is also the panel's own
+  // "nobody has been here".
+  unsigned best = 0;
+  std::uint32_t best_count = 0;
+  for (unsigned colour = 1; colour < counts.size(); ++colour) {
+    if (counts[colour] > best_count) {
+      best_count = counts[colour];
+      best = colour;
+    }
+  }
+  return best_count > 0 ? static_cast<int>(best) : -1;
+}
+
+// ---------------------------------------------------------------------------
+// Which wall faces are doors (M5-E2a)
+// ---------------------------------------------------------------------------
+//
+// **The renderer picks a wall's graphic from its face nibble alone.** It
+// never consults the style bits — those govern movement and the prompt
+// that asks whether to force a door, and are invisible in the view. So a
+// door *leaf* is drawn exactly when the nibble indexes a door graphic,
+// and neither "style is not solid" (which paints every archway as a door)
+// nor "style is shut" (which drops every open one) can ever match what
+// the player is looking at. Both test the wrong plane.
+//
+// There is no boolean anywhere that says "this graphic is a door". What
+// there is, is evidence: a face that is *shut* is unarguably a door, and
+// it names its nibble. Two sources of that evidence are combined:
+//
+//   * **this map's own shut faces**, scanned when the party arrives;
+//   * **a table of every shut face in the shipped data**, below, because
+//     the evidence is scattered. Five sub-maps of one castle share a wall
+//     set and the shut instances are on three of them; without the table
+//     the other two draw their doors as archways.
+//
+// The durable identity of a wall graphic is (disk, WALLDEF block, row):
+// the same block reused in another slot or another area is the same
+// pictures. That is what the table is keyed on, and it is why it is a
+// fact table rather than a list of areas.
+//
+// **What this deliberately does not carry** is the proven design's
+// runtime *learning* across maps — a table that remembers a shut face
+// seen on one map and applies it to another. It is there to be robust
+// against other revisions of the data. This seam is unavailable for any
+// binary its fingerprint does not name (`seam.h`), and the table below
+// was derived from that binary's own data, so learning could only ever
+// matter for data this seam refuses to run against.
+
+/// One WALLDEF block known to hold door graphics, and which of its five
+/// rows they are on.
+///
+/// Facts about the shipped data — a disk number, a block number and a
+/// bitmap of row indices — derived by sweeping every shut face in the
+/// area files and asking which wall set was loaded for it. No byte of
+/// anything is here and neither is any picture: this says *where* the
+/// doors are, and the player's own copy says what they look like.
+struct door_graphics {
+  std::uint8_t disk;
+  std::uint16_t block;
+  std::uint8_t rows;
+};
+
+constexpr std::array<door_graphics, 19> door_table{
+    {{.disk = 1, .block = 1, .rows = 0x10},
+     {.disk = 1, .block = 3, .rows = 0x10},
+     {.disk = 2, .block = 1, .rows = 0x10},
+     {.disk = 2, .block = 2, .rows = 0x10},
+     {.disk = 2, .block = 4, .rows = 0x10},
+     {.disk = 2, .block = 9, .rows = 0x01},
+     {.disk = 2, .block = 19, .rows = 0x11},
+     {.disk = 3, .block = 1, .rows = 0x10},
+     {.disk = 3, .block = 3, .rows = 0x02},
+     {.disk = 4, .block = 1, .rows = 0x10},
+     {.disk = 4, .block = 3, .rows = 0x10},
+     {.disk = 4, .block = 20, .rows = 0x10},
+     {.disk = 4, .block = 22, .rows = 0x10},
+     {.disk = 5, .block = 1, .rows = 0x10},
+     {.disk = 5, .block = 24, .rows = 0x09},
+     {.disk = 6, .block = 2, .rows = 0x10},
+     {.disk = 6, .block = 6, .rows = 0x08},
+     {.disk = 7, .block = 1, .rows = 0x10},
+     {.disk = 8, .block = 18, .rows = 0x08}}};
+
+/// The WALLDEF block serving wall face `nibble`, or `wall_set_unknown`
+/// when the loader filled that slot from a multi-block load and cannot
+/// say which — which is the same value the loader itself stamps, and is
+/// not a block number, so it can be the answer as well as the reason.
+[[nodiscard]] std::uint16_t block_serving(cpu::processor& cpu, std::uint16_t ds,
+                                          std::uint8_t nibble) {
+  if (nibble < 1 || nibble > 15) {
+    return wall_set_unknown;
+  }
+  const unsigned slot = ((nibble - 1U) / wall_faces_per_slot) + 1U;
+  const std::uint16_t block = cpu.read_word(
+      ds,
+      at(data_wall_set, static_cast<std::uint16_t>(slot * wall_set_stride)));
+  return block > 0xFF ? wall_set_unknown : block;
+}
+
+/// Which wall faces of this map are doors: the map's own shut faces, and
+/// the table's answer for the wall sets this map has loaded.
+[[nodiscard]] std::uint16_t door_nibbles_of(cpu::processor& cpu,
+                                            std::uint16_t ds,
+                                            const map_grid& grid,
+                                            std::uint8_t disk) {
+  std::uint16_t mask = 0;
+  for (unsigned y = 0; y < automap_map_side; ++y) {
+    for (unsigned x = 0; x < automap_map_side; ++x) {
+      for (const unsigned lane : lanes) {
+        const std::uint8_t face = face_of(grid, x, y, lane);
+        if (face != 0 && style_of(grid, x, y, lane) >= face_shut_door) {
+          mask = static_cast<std::uint16_t>(mask | (1U << face));
+        }
+      }
+    }
+  }
+  for (std::uint8_t nibble = 1; nibble <= 15; ++nibble) {
+    const std::uint16_t block = block_serving(cpu, ds, nibble);
+    if (block == wall_set_unknown) {
+      continue;
+    }
+    const auto row = static_cast<unsigned>((nibble - 1U) % wall_faces_per_slot);
+    for (const door_graphics& known : door_table) {
+      if (known.disk == disk && known.block == block &&
+          ((known.rows >> row) & 1U) != 0) {
+        mask = static_cast<std::uint16_t>(mask | (1U << nibble));
+      }
+    }
+  }
+  return mask;
+}
+
+/// Is this face a door?
+///
+/// A shut one always is. A passable one is a door when its nibble is a
+/// door graphic — and when *nothing at all* is known about this map's
+/// wall sets, every passable face is drawn as a door, which is the
+/// pre-nibble rule and is better than drawing none.
+[[nodiscard]] bool is_door(std::uint8_t face, std::uint8_t style,
+                           std::uint16_t doors) {
+  if (face == 0 || style == face_solid) {
+    return false;
+  }
+  if (style >= face_shut_door) {
+    return true;
+  }
+  if (doors == 0) {
+    return true;
+  }
+  return ((doors >> face) & 1U) != 0;
+}
+
 // ---------------------------------------------------------------------------
 // Drawing the panel, into its own buffer
 // ---------------------------------------------------------------------------
@@ -526,32 +944,39 @@ void put(panel_pixels& panel, int x, int y, std::uint8_t colour) noexcept {
         static_cast<std::size_t>(x)] = colour;
 }
 
-/// One cell's wall stroke along one lane, optionally with a gap in the
-/// middle of it — which is how a way through is drawn: the stroke stops,
-/// leaving a one-pixel stub at each end so the opening is an opening in
-/// something rather than a missing wall.
-void stroke(panel_pixels& panel, int x0, int y0, unsigned lane, unsigned gap,
-            std::uint8_t colour) noexcept {
+/// One cell's wall stroke along one lane.
+///
+/// `thick` grows the stroke inward from the cell's edge, `inset` shortens
+/// it at both ends, and `gap` opens a hole in the middle of it. Between
+/// them those three draw all three kinds of border the panel has: a solid
+/// wall is one pixel thick and unbroken, a way through is one pixel thick
+/// with the middle missing and a stub at each end, and a door is a
+/// two-pixel leaf inset by one so it reads as a door *within* the wall
+/// rather than as a differently coloured wall.
+void stroke(panel_pixels& panel, int x0, int y0, unsigned lane, int thick,
+            int inset, int gap, std::uint8_t colour) noexcept {
   const auto cell = static_cast<int>(automap_cell_pixels);
-  const auto first = static_cast<int>((automap_cell_pixels - gap) / 2);
-  const int last = first + static_cast<int>(gap);
-  for (int i = 0; i < cell; ++i) {
-    if (gap > 0 && i >= first && i < last) {
-      continue;
-    }
-    switch (lane) {
-      case lane_north:
-        put(panel, x0 + i, y0, colour);
-        break;
-      case lane_south:
-        put(panel, x0 + i, y0 + cell - 1, colour);
-        break;
-      case lane_west:
-        put(panel, x0, y0 + i, colour);
-        break;
-      default:
-        put(panel, x0 + cell - 1, y0 + i, colour);
-        break;
+  const int first = (cell - gap) / 2;
+  const int last = first + gap;
+  for (int t = 0; t < thick; ++t) {
+    for (int i = inset; i < cell - inset; ++i) {
+      if (gap > 0 && i >= first && i < last) {
+        continue;
+      }
+      switch (lane) {
+        case lane_north:
+          put(panel, x0 + i, y0 + t, colour);
+          break;
+        case lane_south:
+          put(panel, x0 + i, y0 + cell - 1 - t, colour);
+          break;
+        case lane_west:
+          put(panel, x0 + t, y0 + i, colour);
+          break;
+        default:
+          put(panel, x0 + cell - 1 - t, y0 + i, colour);
+          break;
+      }
     }
   }
 }
@@ -603,28 +1028,69 @@ void draw_mark(panel_pixels& panel, int x0, int y0,
   }
 }
 
-/// The colour a wall is drawn in.
+/// The colour a wall face of kind `nibble` is drawn in.
 ///
-/// M5-E2 draws every wall of a map in one shade: the area's own frame
-/// colour, which is the colour the program frames that area's screens in,
-/// and brown when the program has not set one. Deriving a wall's colour
-/// from the texture the 3D view actually blits for it — so that water is
-/// blue because its tiles are blue — is M5-E2a, and it changes this
-/// function and nothing else.
+/// Its texture's own colour where one has been worked out (M5-E2a), and
+/// otherwise the area's frame colour — the colour the program frames that
+/// area's screens in — and brown when the program has not set even that.
+/// The fallback matters: a wall set that has not finished loading, or a
+/// nibble whose tiles are entirely black, has to draw as *something*.
 ///
-/// The one rule that survives either way: a wall the same colour as the
-/// floor is not a wall a player can see, so it is shifted to its bright
-/// twin, and away from black if that is where it lands.
-[[nodiscard]] std::uint8_t wall_colour(std::uint8_t frame_colour,
+/// The one rule on top: a wall the same colour as the floor is not a wall
+/// a player can see, so it is shifted to its bright twin — away from
+/// black if that is where it lands, and away from the door yellow, which
+/// means something else on this panel.
+[[nodiscard]] std::uint8_t wall_colour(const automap_state& state,
+                                       std::uint8_t nibble,
+                                       std::uint8_t frame_colour,
                                        std::uint8_t floor_colour) noexcept {
-  std::uint8_t colour = frame_colour != 0 ? frame_colour : colour_brown;
+  std::uint8_t colour = state.wall_colour_known(nibble)
+                            ? state.wall_colour(nibble)
+                            : (frame_colour != 0 ? frame_colour : colour_brown);
   if (colour == floor_colour) {
     colour = static_cast<std::uint8_t>(colour ^ 8U);
+    if (colour == colour_door) {
+      colour = colour_white;
+    }
     if (colour == colour_black) {
       colour = colour_grey;
     }
   }
   return colour;
+}
+
+/// Work out, once for this map, what colour each kind of wall face on it
+/// is and which kinds are doors.
+///
+/// Only the faces the map actually uses are histogrammed — there are
+/// fifteen possible and a map uses a handful, and each one costs a walk
+/// over every pixel of a tile.
+void learn_appearance(machine& box, std::uint16_t ds, const sample& now,
+                      const map_grid& grid, std::uint16_t banks) {
+  automap_state& state = box.automap();
+  state.begin_appearance(now.area, now.geo, banks);
+  state.set_door_nibbles(door_nibbles_of(box.processor(), ds, grid, now.disk));
+
+  std::uint16_t wanted = 0;
+  for (unsigned y = 0; y < automap_map_side; ++y) {
+    for (unsigned x = 0; x < automap_map_side; ++x) {
+      for (const unsigned lane : lanes) {
+        const std::uint8_t face = face_of(grid, x, y, lane);
+        if (face != 0) {
+          wanted = static_cast<std::uint16_t>(wanted | (1U << face));
+        }
+      }
+    }
+  }
+  for (std::uint8_t nibble = 1; nibble <= 15; ++nibble) {
+    if (((wanted >> nibble) & 1U) == 0) {
+      continue;
+    }
+    const int colour = texture_colour(box.processor(), ds, nibble);
+    if (colour > 0) {
+      state.set_wall_colour(nibble, static_cast<std::uint8_t>(colour));
+    }
+  }
 }
 
 void render(automap_state& state, const automap_record& map,
@@ -633,7 +1099,7 @@ void render(automap_state& state, const automap_record& map,
   panel_pixels& panel = state.pixels();
   panel.fill(colour_black);
 
-  const std::uint8_t wall = wall_colour(frame_colour, floor_colour);
+  const std::uint16_t doors = state.door_nibbles();
   const auto cell = static_cast<int>(automap_cell_pixels);
 
   for (unsigned cy = 0; cy < automap_map_side; ++cy) {
@@ -676,10 +1142,35 @@ void render(automap_state& state, const automap_record& map,
 
         // The near face decides when there is one, exactly as the
         // program's own movement and 3D view decide: both gate on the
-        // party cell's own lane.
+        // party cell's own lane. Folding the far face in with an `or`
+        // would paint a door leaf over a plain solid wall the player can
+        // neither walk through nor see a door in.
+        //
+        // A **shut** door is the exception, because being shut is a
+        // property of the border rather than of a side: one recorded only
+        // on the far cell would otherwise draw as a blank wall.
+        const bool far_shut = far_face != 0 && far_style >= face_shut_door;
+        const bool door =
+            near_face != 0 ? (is_door(near_face, near_style, doors) || far_shut)
+                           : is_door(far_face, far_style, doors);
         const std::uint8_t face_style = near_face != 0 ? near_style : far_style;
-        stroke(panel, x0, y0, lane,
-               face_style == face_solid ? 0U : automap_cell_pixels - 2U, wall);
+        const std::uint8_t wall =
+            wall_colour(state, near_face != 0 ? near_face : far_face,
+                        frame_colour, floor_colour);
+
+        if (door) {
+          // The wall-colour flanks first, at the ordinary one-pixel
+          // thickness, so the leaf stays joined to the wall on either
+          // side of it rather than floating in a gap; then the leaf over
+          // them, inset by one at each end and two pixels thick.
+          stroke(panel, x0, y0, lane, 1, 0, 0, wall);
+          stroke(panel, x0, y0, lane, 2, 1, 0, colour_door);
+        } else if (face_style == face_passable) {
+          stroke(panel, x0, y0, lane, 1, 0,
+                 static_cast<int>(automap_cell_pixels) - 2, wall);
+        } else {
+          stroke(panel, x0, y0, lane, 1, 0, 0, wall);
+        }
       }
     }
   }
@@ -836,19 +1327,6 @@ constexpr std::uint16_t key_tab = 0x0F09;
   return hash ^ (hash >> 13U);
 }
 
-struct sample {
-  std::uint8_t disk;
-  std::uint8_t area;
-  std::uint8_t geo;
-  std::uint8_t x;
-  std::uint8_t y;
-  std::uint8_t facing;
-  std::uint8_t floor_colour;
-  std::uint8_t frame_colour;
-  std::uint16_t map_offset;
-  std::uint16_t map_segment;
-};
-
 /// Whether the program is on the screen this panel is a map of, with a
 /// map loaded and nothing scripted in flight.
 [[nodiscard]] bool adventuring(cpu::processor& cpu, std::uint16_t ds) {
@@ -982,7 +1460,7 @@ void at_key_pending(machine& box, seam_context& ctx) {
   }
 
   // Where the party is, as one number: what the fog was last brought up
-  // to date from, and half of what the panel was last drawn from.
+  // to date from, and most of what the panel was last drawn from.
   std::uint32_t where = mix(2166136261U, now.disk);
   where = mix(where, now.area);
   where = mix(where, now.geo);
@@ -998,39 +1476,59 @@ void at_key_pending(machine& box, seam_context& ctx) {
     return;
   }
 
-  map_grid grid{};
-  bool have_grid = false;
-  if (where != state.revealed_signature()) {
-    if (!copy_map(cpu, now, grid)) {
-      ctx.decline(seam_reason::point_not_recognized);
-      return;
-    }
-    have_grid = true;
-    reveal_from(state, state.record_for(now.disk, now.area, now.geo), grid,
-                now.x, now.y, now.facing);
-    state.set_revealed_signature(where);
-  }
-
-  if (!state.panel_open() || state.panel_covered()) {
-    return;
-  }
-
+  // The whole picture, as one number. Everything the panel is drawn from
+  // is in it: where the party is (which is also everything the fog and
+  // the marks can depend on), the two colours the program computed for
+  // this area, and which tile sets are loaded — because that last is what
+  // the wall colours were histogrammed out of, and a wall set swapped
+  // under a fixed map identity has to redraw them.
+  //
+  // What is deliberately *not* in it is the exploration store's serial.
+  // It only ever moves when the party's cell does, which is already here,
+  // and having it would mean deciding whether to draw before or after the
+  // fog was brought up to date.
+  const std::uint16_t banks = tile_bank_generation(cpu, ds);
   std::uint32_t drawn = mix(where, now.floor_colour);
   drawn = mix(drawn, now.frame_colour);
-  drawn = mix(drawn, state.serial());
+  drawn = mix(drawn, banks);
   if (drawn == 0) {
     // Zero is this seam's "nothing has been drawn" (automap.h), so it is
     // not allowed to be a real answer.
     drawn = 1;
   }
-  if (drawn == state.drawn_signature() && state.panel_on_screen()) {
+
+  const bool shown = state.panel_open() && !state.panel_covered();
+  const bool want_reveal = where != state.revealed_signature();
+  const bool want_appearance =
+      shown && !state.appearance_is_for(now.area, now.geo, banks);
+  const bool want_draw =
+      shown && (drawn != state.drawn_signature() || !state.panel_on_screen());
+  if (!want_reveal && !want_appearance && !want_draw) {
+    // The common case by a wide margin: the program is polling and
+    // nothing about the party or the screen has moved since the last
+    // pass. Six bytes and four words of the data segment were read to
+    // decide it, and the map itself was not touched.
     return;
   }
 
-  if (!have_grid && !copy_map(cpu, now, grid)) {
+  map_grid grid{};
+  if (!copy_map(cpu, now, grid)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+
+  if (want_appearance) {
+    learn_appearance(box, ds, now, grid, banks);
+  }
+  if (want_reveal) {
+    reveal_from(state, state.record_for(now.disk, now.area, now.geo), grid,
+                now.x, now.y, now.facing);
+    state.set_revealed_signature(where);
+  }
+  if (!want_draw) {
+    return;
+  }
+
   const automap_record* map = state.find(now.disk, now.area, now.geo);
   if (map == nullptr) {
     return;

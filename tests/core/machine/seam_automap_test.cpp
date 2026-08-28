@@ -60,6 +60,19 @@ constexpr std::uint16_t data_map_pointer = 0x6A5C;
 constexpr std::uint16_t data_frame_colour = 0x6A60;
 constexpr std::uint16_t data_ground_colour = 0x6A63;
 constexpr std::uint16_t data_key_pushback = 0x8501;
+constexpr std::uint16_t data_shape_tiles = 0x6A58;
+constexpr std::uint16_t data_shape_first_slot = 0x0C8C;
+constexpr std::uint16_t data_shape_columns = 0x0C96;
+constexpr std::uint16_t data_shape_rows = 0x0CA0;
+constexpr std::uint16_t data_tile_banks = 0x5E3A;
+constexpr std::uint16_t data_bank_first_tile = 0x2722;
+constexpr std::uint16_t data_wall_set = 0x6AAE;
+constexpr std::uint16_t wall_set_stride = 4;
+constexpr std::uint16_t shape_row_bytes = 0x9C;
+constexpr std::uint16_t tile_header_height = 0x00;
+constexpr std::uint16_t tile_header_width = 0x02;
+constexpr std::uint16_t tile_header_frame_bytes = 0x11;
+constexpr std::uint16_t tile_first_frame = 0x17;
 
 constexpr std::uint8_t mode_adventure = 4;
 constexpr std::uint8_t view_kind_area = 1;
@@ -69,6 +82,8 @@ constexpr std::uint8_t view_kind_area = 1;
 /// rather than a lucky one.
 constexpr std::uint16_t record_segment = 0x4000;
 constexpr std::uint16_t map_segment = 0x5000;
+constexpr std::uint16_t map_shape_segment = 0x6000;
+constexpr std::uint16_t map_bank_segment = 0x7000;
 
 constexpr std::uint16_t key_tab = 0x0F09;
 
@@ -220,6 +235,41 @@ struct rig {
     const auto ny = static_cast<unsigned>(static_cast<int>(y) + dy[lane]);
     if (nx < automap_map_side && ny < automap_map_side) {
       face(nx, ny, (lane + 4) % 8, 1, 0);
+    }
+  }
+
+  /// The tiles the 3D renderer blits for a wall face of kind `nibble`,
+  /// as far as the panel's colour histogram is concerned: one shape, one
+  /// tile, one byte column of one scanline, every pixel of it `colour`.
+  ///
+  /// Laid out from the facts rather than by calling the seam's own
+  /// reader — the shape-tile table, the shape geometry, the bank's first
+  /// code and the tile-set header are what the program holds, and a test
+  /// that took them from the code under test would be agreeing with
+  /// itself.
+  void wall_texture(std::uint8_t nibble, std::uint8_t colour) const {
+    const std::uint16_t ds = dgroup();
+    put_word(ds, data_shape_tiles, 0x0000);
+    put_word(ds, static_cast<std::uint16_t>(data_shape_tiles + 2),
+             map_shape_segment);
+    // One shape, covering one tile, starting at slot 0.
+    put_byte(ds, data_shape_first_slot, 0);
+    put_byte(ds, data_shape_columns, 1);
+    put_byte(ds, data_shape_rows, 1);
+    put_byte(map_shape_segment,
+             static_cast<std::uint16_t>((nibble - 1) * shape_row_bytes), 1);
+
+    put_word(ds, data_bank_first_tile, 1);
+    put_word(ds, data_tile_banks, 0x0000);
+    put_word(ds, static_cast<std::uint16_t>(data_tile_banks + 2),
+             map_bank_segment);
+    put_word(map_bank_segment, tile_header_height, 1);
+    put_word(map_bank_segment, tile_header_width, 1);
+    put_word(map_bank_segment, tile_header_frame_bytes, 4);
+    for (unsigned plane = 0; plane < 4; ++plane) {
+      put_byte(map_bank_segment,
+               static_cast<std::uint16_t>(tile_first_frame + plane),
+               ((colour >> plane) & 1U) != 0 ? 0xFF : 0x00);
     }
   }
 
@@ -628,6 +678,10 @@ TEST(AutomapPanel, AWallIsAStrokeAndAWayThroughIsAGapInOne) {
   r.adventuring(7, 5, lane_north);
   r.wall_between(7, 5, lane_west);  // solid
   r.face(7, 5, lane_east, 1, 1);    // a way through
+  // Something on this map is a shut door, of a *different* kind of wall
+  // face — so the panel knows which faces are doors, and knows the one
+  // above is not.
+  r.face(2, 2, lane_north, 4, 2);
   r.poll(4);
   r.type(key_tab);
   r.poll(2);
@@ -649,7 +703,200 @@ TEST(AutomapPanel, AWallIsAStrokeAndAWayThroughIsAGapInOne) {
   const unsigned xe = x0 + automap_cell_pixels - 1;
   EXPECT_EQ(pixel(xe, y0), 6);
   EXPECT_EQ(pixel(xe, y0 + 6), 6);
-  EXPECT_NE(pixel(xe, y0 + 3), 6) << "the opening is not a wall";
+  EXPECT_EQ(pixel(xe, y0 + 3), 2) << "the opening is floor, not wall";
+}
+
+TEST(AutomapPanel, AShutDoorIsAYellowLeafInsideItsOwnWall) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  // On the cell ahead of the party, not the party's own: the arrow sits
+  // on a black backdrop five pixels square, and the leaf is two of the
+  // seven this cell has.
+  r.face(7, 4, lane_west, 4, 2);  // shut: unarguably a door
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  const auto& panel = r.map_state().pixels();
+  const auto pixel = [&panel](unsigned x, unsigned y) {
+    return panel[(static_cast<std::size_t>(y) * automap_panel_width) + x];
+  };
+  const unsigned x0 = 7 * automap_cell_pixels;
+  const unsigned y0 = 4 * automap_cell_pixels;
+
+  // The leaf: two pixels thick, inset one at each end.
+  EXPECT_EQ(pixel(x0, y0 + 3), 14);
+  EXPECT_EQ(pixel(x0 + 1, y0 + 3), 14);
+  // The flanks the leaf is set into: the wall's own colour, so the door
+  // is a door *within* a wall rather than a break in one.
+  EXPECT_EQ(pixel(x0, y0), 6);
+  EXPECT_EQ(pixel(x0, y0 + 6), 6);
+}
+
+TEST(AutomapPanel, APassableFaceOfAKindSeenShutSomewhereElseIsADoorToo) {
+  // The renderer picks a wall's graphic from the face nibble alone, so an
+  // open door and a shut one of the same kind draw the same leaf. The
+  // evidence for which kinds are doors is the shut ones.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.face(7, 5, lane_west, 4, 1);   // passable, kind 4
+  r.face(2, 2, lane_north, 4, 2);  // and kind 4 is shut over there
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  const auto& panel = r.map_state().pixels();
+  const unsigned x0 = 7 * automap_cell_pixels;
+  const unsigned y0 = (5 * automap_cell_pixels) + 3;
+  EXPECT_EQ(panel[(static_cast<std::size_t>(y0) * automap_panel_width) + x0],
+            14);
+  EXPECT_NE(r.map_state().door_nibbles() & (1U << 4U), 0u);
+}
+
+TEST(AutomapPanel, TheShippedDataSaysWhichFacesAreDoorsWhereAMapDoesNot) {
+  // The evidence is scattered — sub-maps share a wall set and only some
+  // of them have a shut instance — so the seam carries a table of every
+  // shut face in the shipped data, keyed on (disk, WALLDEF block, row).
+  // Here nothing on the map is shut and the table is the only witness.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.face(7, 5, lane_west, 5, 1);  // passable, kind 5 = block 1's row 4
+  r.put_word(rig::dgroup(), data_wall_set + wall_set_stride, 1);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  const auto& panel = r.map_state().pixels();
+  const unsigned x0 = 7 * automap_cell_pixels;
+  const unsigned y0 = (5 * automap_cell_pixels) + 3;
+  EXPECT_EQ(panel[(static_cast<std::size_t>(y0) * automap_panel_width) + x0],
+            14);
+}
+
+TEST(AutomapPanel, ASlotFilledFromAMultiBlockLoadIsNoWitnessAtAll) {
+  // 0xFFFF is what the loader stamps when it cannot say which block a
+  // row came from, and the table cannot be consulted for it.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.face(7, 5, lane_west, 5, 1);
+  r.face(2, 2, lane_north, 4, 2);  // some other kind is shut, so the mask
+                                   // is not empty and the fallback is off
+  r.put_word(rig::dgroup(), data_wall_set + wall_set_stride, 0xFFFF);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  const auto& panel = r.map_state().pixels();
+  const unsigned x0 = 7 * automap_cell_pixels;
+  const unsigned y0 = (5 * automap_cell_pixels) + 3;
+  EXPECT_EQ(panel[(static_cast<std::size_t>(y0) * automap_panel_width) + x0], 2)
+      << "not a door, so a way through, so the floor shows";
+}
+
+TEST(AutomapPanel, WithNoEvidenceAtAllAWayThroughIsDrawnAsADoor) {
+  // Nothing shut on the map and nothing in the table for its wall sets.
+  // The nibble cannot tell a door from an archway, so the older rule
+  // stands: a passable face is a door. Drawing none would be worse.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.face(7, 5, lane_west, 4, 1);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  EXPECT_EQ(r.map_state().door_nibbles(), 0u);
+  const auto& panel = r.map_state().pixels();
+  const unsigned x0 = 7 * automap_cell_pixels;
+  const unsigned y0 = (5 * automap_cell_pixels) + 3;
+  EXPECT_EQ(panel[(static_cast<std::size_t>(y0) * automap_panel_width) + x0],
+            14);
+}
+
+TEST(AutomapPanel, AShutDoorRecordedOnlyOnTheFarCellStillShows) {
+  // Being shut is a property of the border rather than of a side, and
+  // four half-edges in the shipped data are recorded on one cell only.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.face(7, 5, lane_west, 4, 0);  // the near face: a plain solid wall
+  r.face(6, 5, lane_east, 4, 2);  // the far face: shut
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  const auto& panel = r.map_state().pixels();
+  const unsigned x0 = 7 * automap_cell_pixels;
+  const unsigned y0 = (5 * automap_cell_pixels) + 3;
+  EXPECT_EQ(panel[(static_cast<std::size_t>(y0) * automap_panel_width) + x0],
+            14);
+}
+
+TEST(AutomapPanel, AWallIsTheColourOfItsOwnTexture) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.wall_between(7, 5, lane_west);  // wall face kind 1
+  r.wall_texture(1, 9);             // whose tiles are bright blue
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  EXPECT_TRUE(r.map_state().wall_colour_known(1));
+  EXPECT_EQ(r.map_state().wall_colour(1), 9)
+      << "histogrammed out of the tiles the 3D view blits for it";
+  const auto& panel = r.map_state().pixels();
+  const unsigned x0 = 7 * automap_cell_pixels;
+  const unsigned y0 = (5 * automap_cell_pixels) + 3;
+  EXPECT_EQ(panel[(static_cast<std::size_t>(y0) * automap_panel_width) + x0],
+            9);
+}
+
+TEST(AutomapPanel, BlackIsNotAWallColourBecauseItIsTheFogsColour) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.wall_between(7, 5, lane_west);
+  r.wall_texture(1, 0);  // a tile that is entirely black
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  EXPECT_FALSE(r.map_state().wall_colour_known(1));
+  const auto& panel = r.map_state().pixels();
+  const unsigned x0 = 7 * automap_cell_pixels;
+  const unsigned y0 = (5 * automap_cell_pixels) + 3;
+  EXPECT_EQ(panel[(static_cast<std::size_t>(y0) * automap_panel_width) + x0], 6)
+      << "the area's frame colour, which is the fallback";
+}
+
+TEST(AutomapPanel, ATileSetThatDoesNotAgreeWithItselfIsRefused) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.wall_between(7, 5, lane_west);
+  r.wall_texture(1, 9);
+  // A frame smaller than its own scanlines times its byte columns times
+  // the four planes is not a tile set, whatever else it is.
+  r.put_word(map_bank_segment, tile_header_frame_bytes, 2);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  EXPECT_FALSE(r.map_state().wall_colour_known(1));
 }
 
 TEST(AutomapPanel, AWallTheColourOfTheFloorIsShiftedSoItCanBeSeen) {
@@ -667,7 +914,36 @@ TEST(AutomapPanel, AWallTheColourOfTheFloorIsShiftedSoItCanBeSeen) {
   const unsigned x0 = 7 * automap_cell_pixels;
   const unsigned y0 = (5 * automap_cell_pixels) + 3;
   EXPECT_EQ(panel[(static_cast<std::size_t>(y0) * automap_panel_width) + x0],
-            6 ^ 8);
+            15)
+      << "6 is the floor, its bright twin 14 is the door yellow, so 15";
+}
+
+TEST(AutomapPanel, TheColoursAreWorkedOutAgainWhenTheTileSetsAreSwapped) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.wall_between(7, 5, lane_west);
+  r.wall_texture(1, 9);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+  ASSERT_EQ(r.map_state().wall_colour(1), 9);
+
+  // The same map, a different wall set loaded under it: the cached
+  // colour was histogrammed out of tiles that are not there any more.
+  r.wall_texture(1, 4);
+  r.put_word(rig::dgroup(), data_tile_banks + 2, map_bank_segment + 0x100);
+  r.put_word(map_bank_segment + 0x100, tile_header_height, 1);
+  r.put_word(map_bank_segment + 0x100, tile_header_width, 1);
+  r.put_word(map_bank_segment + 0x100, tile_header_frame_bytes, 4);
+  for (unsigned plane = 0; plane < 4; ++plane) {
+    r.put_byte(map_bank_segment + 0x100,
+               static_cast<std::uint16_t>(tile_first_frame + plane),
+               ((4U >> plane) & 1U) != 0 ? 0xFF : 0x00);
+  }
+  r.poll(2);
+  EXPECT_EQ(r.map_state().wall_colour(1), 4);
 }
 
 TEST(AutomapPanel, AClearThatMeetsThePanelTakesItAndTheRosterGivesItBack) {

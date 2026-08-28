@@ -69,7 +69,11 @@ What M4 left in place:
   as `docs/seams.md` §3's eighth primitive; what has been explored lives
   in `machine::automap()` beside the overlay tracker, as observation and
   not machine state; and closing it calls the program's own screen
-  composer to put the roster back. Wall colours, doors, the zone label and
+  composer to put the roster back. M5-E2a adds the colours: a wall is the
+  modal non-black pixel of the very tiles the 3D view blits for it, so
+  the buildings are the colour of the buildings, and a door leaf is drawn
+  where a wall face's *kind* has been seen shut — on this map or in the
+  table of every shut face in the shipped data. The zone label and
   persistence are the remaining legs of #173),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one

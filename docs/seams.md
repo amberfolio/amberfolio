@@ -1129,7 +1129,7 @@ boundary, and it needs the argument this document would have to carry.
 |---|---|---|---|
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
-| `automap` | a map of where the party has been, drawn into the game's own screen on **Tab** | the baseline | the resident image |
+| `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
@@ -1576,7 +1576,7 @@ camp, and reads the command tail to decide whether its rest is one the
 game interrupts — one image, both ways out, and so no second fingerprint
 to keep in step.
 
-### The automap panel (#173)
+### The automap panel (#173, M5-E2a)
 
 PLAN.md §5 item 3, and the first seam in this tree that **draws**.
 
@@ -1638,6 +1638,62 @@ dropped by `reset()`, absent from the serialization, and reconstructed by
 a replay because the same run walks the same squares. That is what lets
 the pair below be a pair.
 
+**A wall is the colour of its own texture** (M5-E2a). Not sampled off the
+screen — histogrammed out of the very 8x8 tiles the 3D renderer blits for
+that kind of wall, so water reads blue because its tiles are blue and
+nothing changes as the party walks. An earlier cut of the proven design
+sampled the rendered ground band off the planes once and latched whatever
+was covering the viewport at the time: on a fresh game, a tour guide's
+blue apron became the colour of the ground for the session.
+
+Only the *largest* shape's tiles are counted. A wall's row of the
+shape-tile table lists the codes for every shape the renderer draws it as
+— the head-on face, the side slivers, the distant variants — and the
+slivers are mostly post and edge, which outvote the face. Water came out
+grey, off its pilings. Black is skipped, because it is the gap between
+things in almost every one of these tiles and it is also the panel's own
+"nobody has been here"; a wall whose tiles are entirely black falls back
+to the area's frame colour, and so does one whose wall set has not
+finished loading.
+
+The answers are cached per map **and per loaded tile set**, because the
+second is what the first was read out of: a wall set swapped under a
+fixed map identity would otherwise keep the colours of the tiles it
+replaced.
+
+**A door is a door because something was seen shut** (M5-E2a). The
+renderer picks a wall's graphic from its face nibble alone and never
+consults the style bits — those govern movement and the prompt that asks
+whether to force a door, and are invisible in the view. So a door *leaf*
+is drawn exactly when the nibble indexes a door graphic, and neither
+"style is not solid" (which paints every archway as a door) nor "style is
+shut" (which drops every open one) can match what the player sees. Both
+test the wrong plane.
+
+Nothing in the data says "this graphic is a door". What there is, is
+evidence: a face that is shut is unarguably one, and it names its nibble.
+Two sources are combined — this map's own shut faces, scanned when the
+party arrives, and a table of every shut face in the shipped data, keyed
+on the durable identity of a wall graphic, which is (disk, WALLDEF block,
+row). The table is there because the evidence is scattered: five sub-maps
+of one castle share a wall set and only three of them have a shut
+instance.
+
+**Twenty-one of the twenty-nine shipped grids carry a shut face**, and
+New Phlan is not one of them — nor does its wall set appear in the table.
+So the city falls through to the older rule, which is that a passable
+face is a door, and the panel in the driven run below is drawing its door
+leaves by that rule. Drawing none would be worse, and it is what the
+proven design does there too.
+
+What this deliberately does not carry is the proven design's runtime
+*learning* across maps — a table that remembers a shut face on one map
+and applies it to another. It is there to be robust against other
+revisions of the data; this seam is unavailable for any binary its
+fingerprint does not name (§5), and the table was derived from that
+binary's own data, so learning could only ever matter for data this seam
+refuses to run against.
+
 **It draws through the bus and through the ports.** The panel is rendered
 into a private buffer of palette indices and blitted a plane at a time —
 the map mask selected with a port write (§3's eighth primitive), the
@@ -1669,16 +1725,9 @@ somebody asks:
   times as `automap_probe_quiet` and is handed nothing, where
   `automap_probe_tab_seen` with the seam off is handed the Tab.
 
-**What it is not yet.** Four things, each its own leg of #173 and each
+**What it is not yet.** Two things, each its own leg of #173 and each
 named here rather than discovered later:
 
-* **wall colours are the area's frame colour**, one shade for the whole
-  map. Deriving a wall's colour from the texture the 3D view blits for
-  it — so water reads blue because its tiles are blue — is M5-E2a, and it
-  changes one function;
-* **a way through is drawn as a way through**, without telling a door
-  from an archway. Which passable faces are doors is a question about the
-  wall graphics rather than about the map grid, and it is M5-E2a's too;
 * **there is no zone label** in the band the panel's geometry leaves for
   one. That is M5-E2b;
 * **nothing is persisted.** What has been explored is lost when the
