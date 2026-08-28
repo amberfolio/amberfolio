@@ -270,7 +270,12 @@ Design requirements:
    unknown.
 6. **Debug cheats** — invulnerability and kill-all-enemies, built
    early because they double as test tooling for the playthrough
-   sweeps.
+   sweeps. A third, wound-the-party, was added for that stated reason
+   (#196): an enhancement whose evidence needed a hurt party had no way
+   to get one, since a fight that leaves the party alive is not
+   something a driven leg can arrange and a save file this project wrote
+   would be a save file nobody else has. Each is its own switch and each
+   is off by default, like every other seam.
 
 Known engine bug-fix seams (roster and money-handling bugs, a map-edge
 transition trap) are a documented fast-follow after v1, on the same

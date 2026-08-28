@@ -44,7 +44,7 @@ What M4 left in place:
   all, a disabled seam's breakpoint is never consulted, and seam state —
   an outstanding pull included — is configuration and not machine state.
   M5's five enhancements add no mechanism; they add handlers.
-- **Four seams this build carries**: `code-wheel` (ungated; its
+- **Five seams this build carries**: `code-wheel` (ungated; its
   possession gate is M5's, #115), `encamp-fix` (M5-E1 #172, M5-E1a #186,
   M5-E1b #189 and M5-E1c #194 — the first M5 enhancement; it puts a `FIX`
   command on the camp screen's own bar by splicing four characters into
@@ -59,8 +59,14 @@ What M4 left in place:
   there instead — `Fix: Interrupted!`, held by the program's own message
   delay — and drops it on any other way out; any key the player types
   stops it),
-  `cheat-invulnerable`, `cheat-kill-all`. `docs/seams.md` §8 is the house
-  style for the next one and §10 is the worked example.
+  `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
+  #196 — pulled at the camp screen, it leaves every party member on one
+  hit point, through the same write the program's own damage routine
+  makes for that damage on a record it would accept; PLAN.md §5 item 6's
+  third switch, built for that item's own stated reason, because the
+  Encamp Fix's days arithmetic and its report's exception list had no
+  other way to be driven). `docs/seams.md` §8 is the house style for the
+  next one and §10 is the worked example.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
   canonical machine-state serialization, a recording that is keys, ticks
   and hashes and no content at all, and verification on all four targets

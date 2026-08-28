@@ -1,17 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The debug cheats: invulnerability and kill-all-enemies (PLAN.md §5 item
-// 6; M4-F5, #99). The first seams keyed to a real fingerprint, qualified
-// by a real overlay, toggled from both hosts — and the ones the
-// playthrough sweep (#101) turns on to finish a combat without luck.
+// The debug cheats: invulnerability, kill-all-enemies and wound-the-party
+// (PLAN.md §5 item 6; M4-F5, #99, and M5-E1d, #196). The first seams
+// keyed to a real fingerprint, qualified by a real overlay, toggled from
+// both hosts — and the ones the playthrough sweep (#101) turns on to
+// finish a combat without luck.
 //
-// Two seams, not one with two switches. PLAN.md §5's first requirement is
-// "every seam has its own config key and UI toggle", and the two cheats
-// are wanted separately: a sweep that wants combats *won* does not want
-// the party unable to lose hit points in the saved game it then writes,
-// and a playtest of the damage messages wants the party standing without
-// combats ending themselves. Two ids, two switches, recorded in
-// docs/seams.md.
+// Three seams, not one with three switches. PLAN.md §5's first
+// requirement is "every seam has its own config key and UI toggle", and
+// they are wanted separately: a sweep that wants combats *won* does not
+// want the party unable to lose hit points in the saved game it then
+// writes, and a playtest of the damage messages wants the party standing
+// without combats ending themselves. Three ids, three switches, recorded
+// in docs/seams.md.
+//
+// **PLAN.md §5 names two of them and this file carries three**, which is
+// worth saying out loud rather than hoping nobody notices. The entry
+// reads "invulnerability and kill-all-enemies, built early because they
+// double as test tooling for the playthrough sweeps" — the *reason* is
+// the test tooling, and #196 needed a piece of it that did not exist: a
+// party hurt badly enough to make the Encamp Fix's own arithmetic do
+// something. No shipped save slot holds one, `docs/playable.md` leg 2's
+// fight destroys the party rather than wounding it, and a save file this
+// project wrote would be a save file no other machine has. So the third
+// cheat is the same enhancement's third switch, built for the same
+// stated reason, and it is off by default like every other seam.
 //
 //
 // What the program does, stated as facts
@@ -247,6 +260,26 @@ constexpr std::uint8_t status_slain = 6;
 [[nodiscard]] constexpr bool still_standing(std::uint8_t status) noexcept {
   return status == 0 /* unhurt */ || status == 1 /* animated */;
 }
+
+/// The game mode byte's value while the camp screen is up
+/// (`seam_encamp_fix.cpp`, and `docs/playable.md` records the same byte
+/// found by watching a run). The wounding cheat's whole guard, for the
+/// reasons written at `party_is_at_camp()`.
+constexpr std::uint8_t mode_camp = 2;
+
+/// What a wounded party is left on: **one hit point each**, and nobody
+/// is ever downed.
+///
+/// A rule rather than a number, which is the difference between this and
+/// `debug_damage` below. There is no damage figure to justify: the most
+/// a cheat can take off a character without changing anything else about
+/// them is everything down to one, and the program's own damage routine
+/// agrees — hand it `hit points - 1` and it takes the branch that writes
+/// the remainder back, leaves the wound status where it found it, and
+/// touches nothing else. So this seam writes what that routine would
+/// have written, on records it would have accepted, and there is nothing
+/// left over for it to be wrong about (below).
+constexpr std::uint8_t wounded_to = 1;
 
 /// The side index that is the party's. Signed, because the record's byte
 /// is the signed index the program uses into the body counts.
@@ -626,6 +659,112 @@ void fell_the_enemies(machine& box, seam_context& ctx) {
   strike_the_enemies(cpu, ds);
 }
 
+// --- Wounding the party (M5-E1d, #196) -------------------------------------
+
+/// Whether the machine is at the camp screen with a roster this seam is
+/// willing to write to: the mode byte says camp, and the roster is a
+/// list that **ends** rather than one that runs out.
+///
+/// **The guard is the whole of the address**, because this point has
+/// none (`fell_the_enemies_now` above has the same shape and the same
+/// caveat). What it has to establish is that DS is the program's data
+/// segment — a read through a segment that is not is a bus cycle at an
+/// address nobody answers for, which is exactly what the Encamp Fix's
+/// first cut did and what `docs/playable.md` leg 7 caught it doing.
+///
+/// Camp is the tightest honest answer available. The mode byte reads 2
+/// there and nowhere else; the camp screen is a menu loop waiting on a
+/// key, so nothing is part-way through editing a character record; and
+/// it is where a person asking to be hurt is asking, because it is where
+/// the thing that heals them lives. A pull made anywhere else is not
+/// refused — it is **kept**, because a declined trigger keeps its latch
+/// (§3a), so pulling this and then pressing ENCAMP serves it.
+[[nodiscard]] bool party_is_at_camp(cpu::processor& cpu, std::uint16_t ds) {
+  if (cpu.read_byte(ds, data_game_mode) != mode_camp) {
+    return false;
+  }
+  std::uint16_t offset = cpu.read_word(ds, data_roster_head);
+  std::uint16_t segment = cpu.read_word(ds, word_after(data_roster_head, 2));
+  if (offset == 0 && segment == 0) {
+    return false;  // nobody to hurt
+  }
+  // One more turn than the walk that writes takes, so a list of exactly
+  // `max_roster_walk` records is seen to end rather than to run out.
+  for (unsigned walked = 0; walked <= max_roster_walk; ++walked) {
+    if (offset == 0 && segment == 0) {
+      return true;
+    }
+    if (segment == 0) {
+      return false;  // a link that is not a pointer
+    }
+    const std::uint16_t next_offset =
+        cpu.read_word(segment, word_after(offset, rec_next_offset));
+    const std::uint16_t next_segment =
+        cpu.read_word(segment, word_after(offset, rec_next_offset + 2));
+    offset = next_offset;
+    segment = next_segment;
+  }
+  return false;  // it did not end
+}
+
+/// Leave every member of the party on one hit point, and **down nobody**.
+///
+/// The write is one byte per record and it is the byte the program's own
+/// damage routine writes for `hit points - 1` on a record it accepts —
+/// so what this leaves behind is a machine state the program produces
+/// for itself every time somebody is hit and survives. Nothing else in
+/// the record is touched: not the wound status, not the held flag, not a
+/// side's body count, none of which that branch of the routine touches
+/// either.
+///
+/// **It only ever writes to a record the routine would have written to**,
+/// and that is what makes the sentence above true rather than nearly
+/// true. `still_standing()` is the routine's own gate — unhurt or an
+/// animated body — and for anything else the routine *downs* the
+/// character instead of writing hit points back. A cheat that wounded
+/// those would be writing something the program would not have written,
+/// and one that downed them would be kill-all pointed at the party.
+///
+/// A member already on one hit point or fewer is left alone: the damage
+/// would be zero, and zero damage on a record whose hit points are zero
+/// is the one input that makes the routine's own arithmetic decide the
+/// character is unconscious.
+void wound_the_party(cpu::processor& cpu, std::uint16_t ds) {
+  std::uint16_t offset = cpu.read_word(ds, data_roster_head);
+  std::uint16_t segment = cpu.read_word(ds, word_after(data_roster_head, 2));
+  for (unsigned walked = 0;
+       walked < max_roster_walk && (offset != 0 || segment != 0); ++walked) {
+    if (segment == 0) {
+      return;  // a link that is not a pointer
+    }
+    const std::uint8_t status =
+        cpu.read_byte(segment, word_after(offset, rec_status));
+    const std::uint8_t hit_points =
+        cpu.read_byte(segment, word_after(offset, rec_hit_points));
+    if (still_standing(status) && hit_points > wounded_to) {
+      cpu.write_byte(segment, word_after(offset, rec_hit_points), wounded_to);
+    }
+    const std::uint16_t next_offset =
+        cpu.read_word(segment, word_after(offset, rec_next_offset));
+    const std::uint16_t next_segment =
+        cpu.read_word(segment, word_after(offset, rec_next_offset + 2));
+    offset = next_offset;
+    segment = next_segment;
+  }
+}
+
+/// The point, which has no address and is offered at every step boundary
+/// while the pull is outstanding (§3a, #163).
+void wound_the_party_now(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
+  if (!party_is_at_camp(cpu, ds)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  wound_the_party(cpu, ds);
+}
+
 constexpr std::array<seam_point, 1> invulnerable_points{
     {{.module = resident_image,
       .offset = damage_routine_offset,
@@ -657,6 +796,19 @@ constexpr seam_definition invulnerable_definition{
     .points = invulnerable_points,
     .schema = seam_schema_version};
 
+/// One point, in the resident image — which is always resident, so this
+/// seam's `armed` row means "the program is the program" and nothing
+/// more. The camp screen's own module would be the tighter qualifier and
+/// is deliberately not used: this seam's guard reads the mode byte the
+/// camp screen writes, which says the same thing about the *machine*
+/// rather than about which overlay happens to be in memory, and a second
+/// copy of that module's facts in this file would be a second copy to
+/// keep in step.
+constexpr std::array<seam_point, 1> wound_party_points{
+    {{.module = resident_image,
+      .run = &wound_the_party_now,
+      .at_every_step = true}}};
+
 constexpr seam_definition kill_all_definition{
     .id = "cheat-kill-all",
     .about =
@@ -674,6 +826,21 @@ constexpr seam_definition kill_all_definition{
     .trigger = true,
     .schema = seam_schema_version};
 
+constexpr seam_definition wound_party_definition{
+    .id = "cheat-wound-party",
+    .about =
+        "when you pull it at camp, the whole party drops to one hit point "
+        "(debug cheat)",
+    .fingerprints = cheat_binaries,
+    .points = wound_party_points,
+    // Pulled, for the reason #161 made kill-all one: a wounding left
+    // switched on would wound the party at every camp for ever, which is
+    // a curse rather than a cheat. The `about` says *where* as well as
+    // that it is asked for, because the guard is a place and a pull made
+    // anywhere else waits until the party camps.
+    .trigger = true,
+    .schema = seam_schema_version};
+
 }  // namespace
 
 const seam_definition& cheat_invulnerable_seam() noexcept {
@@ -682,6 +849,10 @@ const seam_definition& cheat_invulnerable_seam() noexcept {
 
 const seam_definition& cheat_kill_all_seam() noexcept {
   return kill_all_definition;
+}
+
+const seam_definition& cheat_wound_party_seam() noexcept {
+  return wound_party_definition;
 }
 
 }  // namespace amberfolio::machine

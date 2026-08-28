@@ -947,12 +947,110 @@ spent, and the interruption came before the rest had memorized them.
 **And the same thing on the browser's machine**: `drive.mjs` on the same
 script reports `fired=9`, the same nine acts.
 
-**What this leg still does not show.** Nobody has driven a party hurt
-badly enough that the cures run out and the days have to do the rest, so
-the days arithmetic — and with it the report's exception list, the part
-of the box that names who is still short — has still only been exercised
-against rosters a test writes. `docs/seams.md` §10 says the same thing
-from the seam's side, and #196 is the issue.
+### A party the cures cannot finish (M5-E1d, #196)
+
+Everything above ends with the party whole, because the cures close slot
+B's deficit before the rest is ever asked for. So two pieces of the Fix
+had never run on a player's copy at all: **the days arithmetic**, which
+had only ever dialled zero, and **the report's exception list**, the rows
+that name who is still short, which had been drawn by tests and looked at
+by nobody.
+
+What that wants is a party that has been in a hard fight and survived it,
+and there is no way to get one: leg 2's fight destroys the party, no
+shipped save slot holds a hurt one, and a save file this project wrote
+would be a save file nobody else's machine has. So it is a **debug
+cheat** that supplies it — `cheat-wound-party`, pulled at the camp
+screen, leaves every member on one hit point through the same write the
+program's own damage routine makes (`docs/seams.md` §10). What is
+synthetic here is only how they got hurt; the healing, the arithmetic and
+the box are the same code a fight would have reached.
+
+```
+--seam code-wheel --seam encamp-fix --seam cheat-wound-party
+--press A@7600 --press Return@7650      the code wheel
+--press L@8950 --press B@9200           LOAD SAVED GAME, slot B
+--press E@10600                         ENCAMP
+--pull cheat-wound-party@10624          everybody down to one hit point
+--press F@10900                         the Fix
+```
+
+```
+amberfolio: watch frame=010621 ds=0CDC 49F3=02 6DDA=00 6DCA=00
+amberfolio: seam cheat-wound-party served
+amberfolio: watch frame=012666 ds=0CDC 49F3=02 6DDA=00 6DCA=1E
+amberfolio: watch frame=012718 ds=0CDC 49F3=02 6DDA=01 6DCA=1E
+amberfolio: watch frame=012787 ds=0CDC 49F3=02 6DDA=00 6DCA=00
+amberfolio: watch frame=012884 ds=0CDC 49F3=04 6DDA=00 6DCA=00
+```
+
+**`6DCA=1E` is the whole point of this leg.** Thirty days, dialled on the
+program's own rest clock at frame 12666 — the first time that field has
+ever left zero on a driven run. It is the worst survivor's deficit plus
+one: the cleric, maximum 30, on one after the wounding and never a target
+for a cure because somebody was always worse. And it is on the program's
+own rest screen, which is where it stops being a number this seam
+computed and starts being a number the game agreed to:
+
+```
+REST TIME:  30:05:15
+```
+
+The thirty is the seam's; the 5:15 is the memorization time the program's
+own wrapper computed, untouched. Then `6DDA` goes up and down between
+12718 and 12787 — the rest, ended by the game's own wandering-monster
+check — and the party is out of camp at 12884.
+
+**And the exception list, looked at for the first time**, in the box the
+fourth point draws on the way out:
+
+```
+                 FIX: INTERRUPTED!
+HEALED 17 HP WITH 5 SPELLS.
+FIGHTER1          1/17      SHORT 16
+FIGHTER2          1/18      SHORT 17
+...AND 4 MORE.
+CURES ARE STILL BEING MEMORIZED.
+```
+
+Read it cell by cell, because that is what this leg is for. The three
+columns line up — a name, a current-over-maximum, a shortfall — in the
+program's own font at the program's own column positions. The list is
+**two rows and a tail**, not six, because the box holds four rows and the
+pending-cures warning owns one of them; the `...and N more.` line is the
+proven design's own answer to a list that does not fit, and it is drawn
+rather than paged. The summary has no time clause, which is correct and
+deliberate: the command dialled days, and the game's clock is an hour and
+two minute digits with no day counter, so a number there would be a wrap
+printed as an answer.
+
+Two other things this leg settled by being run:
+
+- **the loop's own end condition.** Five spells is exactly what slot B's
+  cleric holds ready, so the casting loop ended because the party ran out
+  of cures rather than because the backstop caught it — the first driven
+  evidence of that;
+- **who the cures go to.** They go to the worst-wounded member the
+  program's own healing would accept, recomputed on every arrival, so
+  four of the five went to the same fighter (maximum 42, the deepest
+  deficit in the party) and one to the thief. The roster panel behind the
+  box says so: `1 1 16 3 1 1`.
+
+**The committed camp pair is this run.** `tests/sessions/camp.rec` and
+`camp-fix.rec` are both recorded over it — both halves enable
+`cheat-wound-party` and pull it at the same tick, so the wounding is part
+of the run they have in common and the difference between them is still
+one keystroke. That is what put back what #192 cost the pair: it pins the
+command *working* again, not merely appearing.
+
+```
+  camp-fix     contrast ok  91 of 112 checkpoints identical, then
+                            divergent from tick 216799088 to the end
+```
+
+**And on the browser's machine**: `drive.mjs` on the same script reports
+`encamp-fix fired=11` and `cheat-wound-party fired=1`, which is what the
+desktop host reports.
 
 **One thing an earlier version of this leg found that no test could.**
 The Fix's first cut had a point with no address, so its guard ran with DS
@@ -1062,24 +1160,17 @@ what it skips would be worth less than one that says so.
   through. What a dungeon exercises is the same 3D view, the same ECL
   events and the same movement code the city already runs over different
   data — and the map edge itself, which *was* a mechanism, is covered.
-- **A party the cures cannot finish** (#172, #189). Slot B closed the
-  older half of this gap: it is wounded, and leg 7's second half drives
-  the Fix over it and watches two real cures land. What no shipped slot
-  offers is a party hurt *badly enough that the cures run out* and the
-  days have to do the rest — so the days arithmetic, the worst deficit
-  over the members resting can help plus one, has still only ever been
-  exercised against a roster a test writes, which is exactly the kind of
-  cover this document exists to distrust. **The report's exception list
-  is in the same gap**: every driven run so far ends with the party
-  whole, so the rows that name who is still short, and the program's own
-  word for a condition resting cannot mend, have been drawn by tests and
-  never looked at. What both need is a party that has been in a hard
-  fight and survived it.
-- **The committed camp pair no longer pins the Fix working** (#172,
-  #192). Its script loads slot C, whose party is whole, so the Fix now
-  declines and the pair's two halves diverge on the keystroke rather than
-  on the healing. `tests/sessions/README.md` says so at the pair, and
-  closing it is the same wounded party as the entry above.
+- **A party hurt by the game rather than by a cheat** (#196). Leg 7's
+  third half closes the days arithmetic and the exception list, and it
+  does it with `cheat-wound-party` rather than with a fight: the party is
+  put on one hit point by a debug seam, not by anything in the game. What
+  that leaves open is narrow and worth naming — nobody has driven a party
+  hurt by **combat** and then camped, so the one thing this substitution
+  cannot speak for is a roster carrying the wound *statuses* a fight
+  leaves behind (unconscious, dying, and the conditions resting cannot
+  mend). The report's reason column for those is drawn by tests over
+  rosters the unit suite writes, and by nothing else. The way to close it
+  is still the way #196 named: a leg that fights, survives and camps.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam
