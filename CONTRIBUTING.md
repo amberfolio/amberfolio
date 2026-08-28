@@ -292,6 +292,41 @@ that is easy to get wrong — on a tag push `GITHUB_SHA` is the *annotated
 tag object's* sha, forty hex characters that look exactly like a commit
 and resolve to no source tree.
 
+### Rules a release is bound by
+
+Confirmed against a first real consumer, which read `v0.2.0` cold and
+needed nothing changed. These are the parts that are somebody else's
+problem the moment they move.
+
+- **The six filenames are keys in a consumer's lockfile.** Renaming one
+  is a breaking change for everyone pinning it, not a refactor. The same
+  goes for the hash spelling: `SHA256SUMS` is hex and `manifest.json` is
+  whatever is natural, and a consumer normalises both, so a change there
+  would be invisible in code and merely confusing to a person reading the
+  two files side by side. `scripts/test-release-bundle.sh` asserts the
+  list by name and in order, so it cannot move quietly.
+- **Every pre-1.0 tag is a pre-release**, and this has a consequence
+  worth stating rather than discovering: `/releases/latest` *excludes*
+  pre-releases, so a consumer tracking "latest" instead of a tag sees
+  nothing at all. That is the right answer while no release is one
+  anybody should track blind, and it stops being true on its own at 1.0.
+- **The notices are flattened, and a collision is refused.** Release
+  assets are one flat namespace, so `LICENSES/x.txt` is attached as
+  `x.txt` beside the build outputs. Three files today, no collision. If
+  the licence set grows enough for that namespace to feel crowded, give
+  them a prefix or a tarball — but the failure mode is already a loud one
+  rather than a silent overwrite: `release-bundle.sh` refuses when two
+  files would be published under one name, and the self-test proves it.
+- **Assets are never republished under an existing tag** (above), which
+  is the property a lockfile's whole premise rests on. GitHub's immutable
+  releases would make that impossible rather than merely refused; the
+  repository does not have it turned on yet.
+- **A rebuild will not be byte-identical**, and that is expected. The
+  retroactive `v0.2.0` build differed from the dev page's bytes for
+  `amberfolio.wasm`, `amberfolio.mjs` and `host.mjs` while the three
+  pure-JS page scripts were identical. It costs one lockfile bump
+  downstream, which is the normal path.
+
 ## Practical bits
 
 - Building and running the tests: [README.md](README.md#building-from-source)
