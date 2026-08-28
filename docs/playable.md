@@ -861,7 +861,7 @@ looked at on the desktop host; the browser's agreement is that its
 machine took the same three acts, which is what a headless run of it can
 say.
 
-### The same leg on a wounded party (M5-E1b, #189)
+### The same leg on a wounded party (M5-E1b #189, M5-E1c #194)
 
 The shipped slots are not all whole. **Slot B** holds two wounded
 fighters — 15 of 17 and 14 of 18 — and a cleric with five ready Cure
@@ -885,7 +885,8 @@ amberfolio: watch frame=010621 ds=0CDC 49F3=02 6DDA=00 6DCA=00
 amberfolio: seam encamp-fix inert point_not_recognized
 amberfolio: watch frame=012107 ds=0CDC 49F3=02 6DDA=01 6DCA=00
 amberfolio: watch frame=012175 ds=0CDC 49F3=02 6DDA=00 6DCA=00
-amberfolio: seam encamp-fix armed fired=7
+amberfolio: watch frame=012259 ds=0CDC 49F3=04 6DDA=00 6DCA=00
+amberfolio: seam encamp-fix armed fired=9
 ```
 
 `6DDA` up at 12107 and down at 12175 is the program's own rest, and
@@ -893,36 +894,65 @@ amberfolio: seam encamp-fix armed fired=7
 matters here, and this trail was showing it backwards until now: the rest
 happens, and **no day is dialled to make it happen**.
 
-Seven acts: the bar spliced on each pass, two cures cast, and the rest.
-The party comes out **17 of 17 and 18 of 18** — the cures closed both
-deficits, so the days field stays at 0 and the rest is the memorization
-time the program's own wrapper computed. Then the program answers it with
-an event of its own — the city watch rousting the party and asking
-whether to go or stay. Its
-rules, running inside the rest the seam asked for, which is the whole of
-what "the game's own routines do the work" is supposed to mean.
+Nine acts, two more than before this leg had a fourth point: the bar
+spliced on each pass, the cures cast, the rest asked for, and the report
+drawn on the way out of camp. **How many cures** is not a thing to read
+off that number — the report below says it, and says three. The party
+comes out **17 of 17 and 18 of 18** — the cures closed both deficits, so the days field stays at 0
+and the rest is the memorization time the program's own wrapper computed.
+Then the program answers it with an event of its own — the city watch
+rousting the party. Its rules, running inside the rest the seam asked
+for, which is the whole of what "the game's own routines do the work" is
+supposed to mean.
 
-**And then the game answers, and takes the party out of camp** — which
-is the finding this leg produced for #189 and the reason the report has a
-gap. The city watch does not interrupt the rest and hand the camp screen
-back: the mode word goes from camp to adventuring at frame 12182 and
-stays there, the camp screen is gone, and with it the overlay the seam's
-three points live in. So the report is not drawn. It is not *lost* —
-the box is owed until the player next chooses ENCAMP — but a report that
-arrives an hour of their game later is not the report they wanted, and
-`Fix: Interrupted!` is therefore not one of the titles this shape offers.
-`seam_encamp_fix.cpp` says so at the point of definition and #194 is the
-issue.
+**And the game does not hand the camp screen back**, which is the finding
+this leg produced for #189 and the reason there is a fourth point. The
+city watch does not interrupt the rest and return to the camp menu: the
+mode word goes from camp to adventuring and stays there, the camp screen
+is gone, and with it the overlay the seam's points live in. The pass of
+the menu the report is drawn on never comes.
 
-The healing is not in doubt: the fighters come out 17 of 17 and 18 of 18
-before the rest is ever asked for, because the cures did it.
+**So it says so on the way past** (M5-E1c, #194). The camp loop's own
+exit is the fourth point, and the loop's own out-parameter says why the
+party is leaving — non-zero only when a wandering-monster check ended a
+rest. The box lands on the panel the rest orchestrator has just cleared,
+in the game's own lettering:
+
+```
+                 FIX: INTERRUPTED!
+HEALED 6 HP WITH 3 SPELLS IN 0:05.
+THE PARTY IS AT FULL HIT POINTS.
+
+CURES ARE STILL BEING MEMORIZED.
+```
+
+and is held there by the program's own message delay — the same routine
+the program calls after its own `THE PARTY IS RUDELY INTERRUPTED!`, which
+is what a box with no command bar under it has instead of a way out.
+
+Read the trail for what that cost: the mode word used to go to
+adventuring at **12182** and now goes at **12259**, which is the box
+being drawn and held. Everything before 12182 is the same run to the
+frame. After the delay the program clears the panel, repaints the screen
+and runs its camp-post event exactly as it did before — the party is back
+in the city view at 12450, out of camp.
+
+The report is also the first driven statement of what the command
+actually did, and it corrects this document: **three** cures were cast,
+not two, closing six hit points between the two fighters (15/17 → 17 and
+14/18 → 18). The yellow line is #189's promise saying out loud where it
+could not quite be kept — the cures were queued back before they were
+spent, and the interruption came before the rest had memorized them.
+
+**And the same thing on the browser's machine**: `drive.mjs` on the same
+script reports `fired=9`, the same nine acts.
 
 **What this leg still does not show.** Nobody has driven a party hurt
 badly enough that the cures run out and the days have to do the rest, so
 the days arithmetic — and with it the report's exception list, the part
 of the box that names who is still short — has still only been exercised
 against rosters a test writes. `docs/seams.md` §10 says the same thing
-from the seam's side.
+from the seam's side, and #196 is the issue.
 
 **One thing an earlier version of this leg found that no test could.**
 The Fix's first cut had a point with no address, so its guard ran with DS
@@ -1045,12 +1075,6 @@ what it skips would be worth less than one that says so.
   word for a condition resting cannot mend, have been drawn by tests and
   never looked at. What both need is a party that has been in a hard
   fight and survived it.
-- **A report the game interrupted** (#189, #194). Driven on slot B, the
-  program answers the Fix's rest by taking the party out of camp
-  entirely — so the pass of the camp menu the report is drawn on does not
-  come, and the box waits until the player next camps. Named as what it
-  is rather than smoothed over: it wants a fourth point, on the program's
-  own way out of camp.
 - **The committed camp pair no longer pins the Fix working** (#172,
   #192). Its script loads slot C, whose party is whole, so the Fix now
   declines and the pair's two halves diverge on the keystroke rather than

@@ -86,10 +86,10 @@
 // party out of camp entirely.
 //
 //
-// What the seam does: three points, and no memory of its own
-// -----------------------------------------------------------
+// What the seam does: four points, and no memory of its own
+// ----------------------------------------------------------
 //
-// All three are addresses in the overlay the camp screen lives in,
+// All four are addresses in the overlay the camp screen lives in,
 // resolved through the program's own note of where that overlay is
 // (#131), so none of them is the address-free point this seam used to
 // have and none of them has to guess whether acting is safe.
@@ -112,6 +112,11 @@
 //   3. **At the rest command's entry** (`rest_command_entry`), reached
 //      because of the key just posted. If the days field is non-zero,
 //      post the rest screen's own Rest key.
+//   4. **On the loop's own way out** (`camp_menu_exit`, M5-E1c #194),
+//      where a report still owed is one the camp menu will never draw.
+//      The loop's out-parameter says why the party is leaving; a rest the
+//      game interrupted gets its box there and then, and any other way
+//      out drops it.
 //
 // Then the program rests. Time passes on the game's calendar, pending
 // spells are memorized at the game's own rate, hit points come back one a
@@ -192,6 +197,28 @@
 // than spending the player's day to look busy.
 //
 //
+// **And a command the game interrupts says so on the way past**
+// (M5-E1c, #194), which is the fourth point and the reason there is one.
+// A wandering monster — or, driven on a player's copy, the city watch
+// rousting the party — does not hand the camp screen back: it ends the
+// rest, the camp loop leaves, and the pass of the menu the report would
+// have been drawn on never comes. Waiting for it would put the box in
+// front of the player the next time they camped, an hour of their game
+// later, as a difference against a party that has been in a fight since.
+//
+// So the fourth point is the camp loop's own exit, and what it reads
+// there is the loop's own out-parameter: the byte the rest stores the
+// orchestrator's answer into, which is non-zero for exactly one reason —
+// a wandering-monster check that fired. Non-zero and a report owed is
+// `Fix: Interrupted!`, drawn there and held by the program's own message
+// delay; zero is the player leaving by their own EXIT, and then the
+// report is dropped rather than drawn. Seven titles now, and the seventh
+// is the only one that is *told* to this seam rather than worked out by
+// it — which matters, because a party read at that exit is usually whole
+// (the cures closed the deficit before the rest was ever asked for) and
+// off the roster alone would be reported as healed.
+//
+//
 // **And then it says what it did** (M5-E1b, #189). On the pass of the
 // camp menu after the command finishes, the seam frames the program's own
 // message panel and writes into it — through the program's own frame and
@@ -262,24 +289,6 @@
 // the run it would have been**, because the splice is undone at point 2
 // and the prompt is a stack byte in a frame that is gone before the loop
 // turns over.
-//
-// **A command the game interrupts does not report when it happened.**
-// This is the one the report cannot reach, and it is worth being exact
-// about because it is the common case for a wounded party. The box is
-// drawn on the next pass of the camp menu, and a wandering monster —
-// or, driven on a player's copy, the city watch rousting the party —
-// takes the party out of camp entirely: the mode word goes to
-// adventuring, the camp screen is gone, and the seam's three points are
-// in the overlay it went with. The next pass of that menu is whenever
-// the player next chooses ENCAMP, which may be an hour of their game
-// later, and the box that greets them then would be an account of
-// something they have half forgotten.
-//
-// So `Fix: Interrupted!` is a title this shape cannot honestly reach,
-// and it is not in the list. What the player gets instead is the healing
-// — which happened, and is on the roster panel — and no box. Closing it
-// wants a fourth point, on the program's own way out of camp, and that
-// is a seam with a different shape rather than a line of code here.
 //
 // **The elapsed time cannot express a rest of a day or more.** The
 // game's clock is an hour and two minute digits with no day counter, so
@@ -371,6 +380,18 @@ constexpr std::uint32_t camp_menu_after_input = 0x1F24;
 /// rest screen.
 constexpr std::uint32_t rest_command_entry = 0x077A;
 
+/// The program's own way out of camp (M5-E1c, #194): the first
+/// instruction past the menu loop, where the loop's own teardown begins.
+///
+/// The loop runs while the out-parameter below reads zero **and** the
+/// last key is not one of its two exit keys, and both of its exits jump
+/// here. Nothing has been undone yet at this instruction — the mode byte
+/// still reads camp, the message panel is still the message panel, and
+/// the roster is still the roster. Three calls later it is a different
+/// screen: the teardown clears the panel's own rows and the caller
+/// repaints and runs an event.
+constexpr std::uint32_t camp_menu_exit = 0x1FB2;
+
 // --- The camp loop's own stack frame ---------------------------------------
 //
 // Offsets from BP inside the camp menu loop, at the two points above.
@@ -385,6 +406,24 @@ constexpr std::uint16_t frame_prompt = 0x0B;
 /// giving: zero for a command selected off the bar, non-zero for a raw or
 /// extended key it is passing through. The Fix is only ever the first.
 constexpr std::uint16_t frame_out_flag = 0x04;
+
+/// The camp screen's own out-parameter, as a far pointer — **above** BP
+/// rather than below it, because it is the routine's argument and not one
+/// of its locals, and read at `SS:BP + offset` for that reason.
+///
+/// It is the one word in this file that is a *conclusion* the program
+/// keeps rather than a datum. The camp loop's own condition tests the
+/// byte it points at on every pass and leaves when it is non-zero; the
+/// only thing in the whole camp screen that ever writes it is the rest,
+/// which stores what the rest orchestrator answered — and the
+/// orchestrator answers non-zero for exactly one reason, a wandering
+/// monster check that fired. Stopping the rest by hand and running the
+/// clock out both answer zero.
+///
+/// So at the exit above, a non-zero byte here **is** "a rest was
+/// interrupted", said by the program, and this seam needs no word of its
+/// own to tell that apart from a player pressing EXIT (M5-E1c, #194).
+constexpr std::uint16_t frame_changed = 0x06;
 
 // --- The program's data segment --------------------------------------------
 //
@@ -495,6 +534,17 @@ constexpr std::uint16_t cast_region_bottom = 0x16;
 constexpr std::uint16_t cast_region_right = 0x26;
 constexpr std::uint16_t cast_region_top = 0x11;
 constexpr std::uint16_t cast_region_left = 1;
+
+/// The program's own message delay: how it holds a line on the screen
+/// long enough to be read. No arguments, and it cleans none.
+///
+/// It is what the rest orchestrator itself calls after it says the party
+/// was interrupted, and this seam calls it for the same reason and in the
+/// same place — a box drawn on the way out of camp has no command bar
+/// under it to be the way out of it, and the program's own answer to that
+/// is this routine. It ends early on a key the player has already typed,
+/// which is the "press anything" half a player expects.
+constexpr std::uint16_t image_message_delay = 0x7E4E;
 
 /// The framed box with a centred title, and the string drawer — the two
 /// routines the report is made of (#188, `docs/seams.md` §3).
@@ -617,6 +667,12 @@ enum class run_state : std::uint8_t {
   nobody_knows_a_cure = 6,
   cannot_cast_here = 7,
   player_stopped = 8,
+  /// The game answered the rest with an event of its own and took the
+  /// party out of camp (M5-E1c, #194). Not decided by reading the party
+  /// — the program's own out-parameter says it, at the point on its own
+  /// way out of camp, and this is the only outcome that is *told* to
+  /// this seam rather than worked out by it.
+  interrupted = 9,
 };
 
 [[nodiscard]] constexpr std::uint16_t as_word(run_state which) noexcept {
@@ -1270,6 +1326,8 @@ class report_line {
       return "Fix: Cannot Cast Here";
     case as_word(run_state::player_stopped):
       return "Fix: Stopped";
+    case as_word(run_state::interrupted):
+      return "Fix: Interrupted!";
     default:
       return "Fix";
   }
@@ -1584,13 +1642,23 @@ class report_line {
 /// could reach this point and not be cleared would be a seam trying to
 /// draw a box on every pass of the menu for ever, and a command whose
 /// before-half could never be taken again.
+///
+/// **`told` is the outcome the machine named**, and it is `idle` — no
+/// outcome — everywhere but the way out of camp (M5-E1c, #194). The one
+/// caller that passes something else has been handed the answer by the
+/// program's own out-parameter and must not have it overruled by a roster
+/// reading that agrees with it for the wrong reason: a party the cures
+/// left whole before an interrupted rest would otherwise be reported as
+/// `healed`, which is true of the hit points and false about what
+/// happened.
 [[nodiscard]] bool draw_a_report_if_one_is_owed(machine& box, seam_context& ctx,
-                                                std::uint16_t ds) {
+                                                std::uint16_t ds,
+                                                run_state told) {
   const std::uint16_t state = ctx.scratch(scratch_state);
   if (state == as_word(run_state::idle)) {
     return false;
   }
-  if (state == as_word(run_state::resting) &&
+  if (told == run_state::idle && state == as_word(run_state::resting) &&
       ctx.scratch(scratch_rest_is_ours) != 0) {
     // **The rest has not happened yet**, and this arrival is the camp
     // loop going round once between the Rest key point 2 posted and the
@@ -1617,7 +1685,9 @@ class report_line {
   }
 
   std::uint16_t outcome = state;
-  if (state == as_word(run_state::resting)) {
+  if (told != run_state::idle) {
+    outcome = as_word(told);
+  } else if (state == as_word(run_state::resting)) {
     // Whether the rest ran its course is the difference between a party
     // that came out whole and one that did not — read off the party
     // rather than remembered, because the program's own stop-resting
@@ -1675,7 +1745,7 @@ void offer_the_fix(machine& box, seam_context& ctx) {
   //
   // The batch re-offers this point when it is done (§3), and by then the
   // state is idle, so the arrival after it splices as usual.
-  if (draw_a_report_if_one_is_owed(box, ctx, ds)) {
+  if (draw_a_report_if_one_is_owed(box, ctx, ds, run_state::idle)) {
     return;
   }
   if (!splice_in(cpu, ds)) {
@@ -1957,9 +2027,95 @@ void start_the_rest(machine& box, seam_context& ctx) {
   static_cast<void>(ctx.inject_keystroke(rest_key_scancode, rest_key_ascii));
 }
 
-/// Three points, all with addresses, all in the camp screen's overlay and
+/// Point 4: the program's own way out of camp (M5-E1c, #194).
+///
+/// **A report owed here is a report the camp menu is never going to
+/// draw**, because the pass it would be drawn on is not coming: the loop
+/// has left, and the next visit to it is whenever the player next chooses
+/// ENCAMP. So this is where the seam either says what it did or says
+/// nothing, and which of the two is decided by the program's own
+/// out-parameter rather than by where this seam's points happen to be.
+///
+///   * **Non-zero — a rest was interrupted.** The box is drawn here, with
+///     the title that case has always wanted and could not reach, and
+///     held on the screen by the program's own message delay. That delay
+///     is the whole reason drawing here works at all: three calls further
+///     on the teardown clears the very rows the box occupies, and the
+///     caller then repaints the screen and runs the event that interrupted
+///     the rest. Without something holding it, the box would be drawn
+///     into a screen nobody sees.
+///   * **Zero — the party left camp for some other reason**, which in
+///     practice is the player pressing EXIT. Then nothing is drawn and
+///     the report is dropped. A player who chose EXIT has already been
+///     shown the box on the pass of the menu they pressed it from, and a
+///     seam that put `Interrupted!` on the screen because the party
+///     happened to be leaving would be reporting the exit rather than the
+///     interruption.
+///
+/// **Dropping is an act**, and the state is cleared either way. A report
+/// left owed here is the thing this point exists to prevent: it would be
+/// drawn on some later camp, an hour of the player's game away, as a
+/// difference against a party that has been in a fight since.
+void leave_the_camp(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  auto& regs = cpu.regs();
+  const std::uint16_t ds = regs[cpu::sreg::ds];
+
+  if (ctx.scratch(scratch_state) == as_word(run_state::idle)) {
+    // Every way out of camp arrives here, and almost all of them have
+    // nothing owing. Not a refusal: this point is doing its job by
+    // finding nothing to do.
+    return;
+  }
+
+  std::uint8_t mode = 0;
+  if (!read_byte(cpu, ds, data_game_mode, mode) || mode != mode_camp) {
+    // The teardown has not restored the mode byte yet, so it still reads
+    // camp here. If it does not, this is not the instruction the facts
+    // describe and nothing is drawn.
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  std::uint16_t changed_offset = 0;
+  std::uint16_t changed_segment = 0;
+  std::uint8_t changed = 0;
+  const auto frame =
+      static_cast<std::uint16_t>(regs[cpu::reg16::bp] + frame_changed);
+  if (!read_word(cpu, regs[cpu::sreg::ss], frame, changed_offset) ||
+      !read_word(cpu, regs[cpu::sreg::ss],
+                 static_cast<std::uint16_t>(frame + 2), changed_segment) ||
+      !read_byte(cpu, changed_segment, changed_offset, changed)) {
+    // The argument is not the far pointer the facts say it is. Fail
+    // closed the way every other point here does — and drop the report,
+    // because the reason it is being dropped is that the party is on its
+    // way out of camp whatever this word says.
+    ctx.set_scratch(scratch_state, as_word(run_state::idle));
+    ctx.set_scratch(scratch_casts, 0);
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  if (changed == 0) {
+    ctx.set_scratch(scratch_state, as_word(run_state::idle));
+    ctx.set_scratch(scratch_casts, 0);
+    return;
+  }
+
+  if (!draw_a_report_if_one_is_owed(box, ctx, ds, run_state::interrupted)) {
+    return;
+  }
+  // And the program's own way of holding a line long enough to read it,
+  // queued behind the box in the same batch.
+  const std::array<std::uint16_t, 0> nothing{};
+  static_cast<void>(
+      ctx.call_program(static_cast<std::uint16_t>(ctx.image_base() / 16U),
+                       image_message_delay, nothing));
+}
+
+/// Four points, all with addresses, all in the camp screen's overlay and
 /// all resolved through the program's own note of where that overlay is.
-constexpr std::array<seam_point, 3> encamp_fix_points{
+constexpr std::array<seam_point, 4> encamp_fix_points{
     {{.module = camp_module,
       .offset = camp_menu_before_input,
       .run = &offer_the_fix},
@@ -1968,7 +2124,10 @@ constexpr std::array<seam_point, 3> encamp_fix_points{
       .run = &take_the_answer},
      {.module = camp_module,
       .offset = rest_command_entry,
-      .run = &start_the_rest}}};
+      .run = &start_the_rest},
+     {.module = camp_module,
+      .offset = camp_menu_exit,
+      .run = &leave_the_camp}}};
 
 constexpr seam_definition encamp_fix_definition{
     .id = "encamp-fix",
