@@ -48,9 +48,28 @@ void diagnostic_log::clear() noexcept {
   dropped_ = 0;
 }
 
-void diagnostic_log::report(const notice& what) { keep(what); }
+/// Hand a record to the second sink, if there is one. Before `keep()`
+/// rather than after, so that a consumer sees a record even when the ring
+/// had no room for its line.
+template <typename T>
+void diagnostic_log::relay_to(const T& record) noexcept {
+  if (relay_ != nullptr) {
+    relay_->report(record);
+  }
+}
 
+void diagnostic_log::report(const notice& what) {
+  relay_to(what);
+  keep(what);
+}
+
+// The two streams `set_tracing` gates are relayed **before** the gate,
+// and deliberately. Tracing is about whether a reader wants the lines;
+// a second sink is a consumer of the records, and a consumer that only
+// worked under `--trace` would be a feature that turned itself off when
+// nobody was watching.
 void diagnostic_log::report(const service_call& call) {
+  relay_to(call);
   if (!tracing_) {
     return;
   }
@@ -58,18 +77,31 @@ void diagnostic_log::report(const service_call& call) {
 }
 
 void diagnostic_log::report(const file_event& event) {
+  relay_to(event);
   if (!tracing_) {
     return;
   }
   keep(event);
 }
 
-void diagnostic_log::report(const stop_record& stop) { keep(stop); }
+void diagnostic_log::report(const stop_record& stop) {
+  relay_to(stop);
+  keep(stop);
+}
 
-void diagnostic_log::report(const cpu::stop_record& stop) { keep(stop); }
+void diagnostic_log::report(const cpu::stop_record& stop) {
+  relay_to(stop);
+  keep(stop);
+}
 
-void diagnostic_log::report(const device_stop& stop) { keep(stop); }
+void diagnostic_log::report(const device_stop& stop) {
+  relay_to(stop);
+  keep(stop);
+}
 
-void diagnostic_log::report(const seam_event& event) { keep(event); }
+void diagnostic_log::report(const seam_event& event) {
+  relay_to(event);
+  keep(event);
+}
 
 }  // namespace amberfolio::machine

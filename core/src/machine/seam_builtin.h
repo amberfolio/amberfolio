@@ -24,6 +24,9 @@ namespace amberfolio::machine {
 /// PLAN.md §5 item 4, the Encamp (F)ix (seam_encamp_fix.cpp).
 [[nodiscard]] const seam_definition& encamp_fix_seam() noexcept;
 
+/// PLAN.md §5 item 3, the automap panel (seam_automap.cpp).
+[[nodiscard]] const seam_definition& automap_seam() noexcept;
+
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;
 [[nodiscard]] const seam_definition& cheat_kill_all_seam() noexcept;

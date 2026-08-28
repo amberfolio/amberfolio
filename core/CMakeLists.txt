@@ -41,6 +41,7 @@ add_library(amberfolio-core STATIC
   src/cpu/instructions/sub.cpp
   src/cpu/interrupts.cpp
   src/cpu/processor.cpp
+  src/machine/automap.cpp
   src/machine/device.cpp
   src/machine/dos.cpp
   src/machine/document.cpp
@@ -65,6 +66,7 @@ add_library(amberfolio-core STATIC
   src/machine/report.cpp
   src/machine/scheduler.cpp
   src/machine/seam.cpp
+  src/machine/seam_automap.cpp
   src/machine/seam_cheats.cpp
   src/machine/seam_code_wheel.cpp
   src/machine/seam_encamp_fix.cpp

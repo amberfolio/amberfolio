@@ -165,7 +165,8 @@ set(_amberfolio_web_export_names
   # The tick beside it is this implementation's own — the count and the
   # argument are core's, above.
   _af_web_attach_host_services
-  _af_web_host_service_at)
+  _af_web_host_service_at
+  _af_web_automap_store)
 list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
 
 target_link_options(amberfolio-web PRIVATE

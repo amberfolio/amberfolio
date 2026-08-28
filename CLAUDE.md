@@ -44,7 +44,7 @@ What M4 left in place:
   all, a disabled seam's breakpoint is never consulted, and seam state —
   an outstanding pull included — is configuration and not machine state.
   M5's five enhancements add no mechanism; they add handlers.
-- **Five seams this build carries**: `code-wheel` (ungated; its
+- **Six seams this build carries**: `code-wheel` (ungated; its
   possession gate is M5's, #115), `encamp-fix` (M5-E1 #172, M5-E1a #186,
   M5-E1b #189 and M5-E1c #194 — the first M5 enhancement; it puts a `FIX`
   command on the camp screen's own bar by splicing four characters into
@@ -59,6 +59,34 @@ What M4 left in place:
   there instead — `Fix: Interrupted!`, held by the program's own message
   delay — and drops it on any other way out; any key the player types
   stops it),
+  `automap` (M5-E2 #173 — the second M5 enhancement, and the first seam
+  that *draws*: a map of the squares the party has walked, over the party
+  roster on the game's own screen, shown and taken away on **Tab**. The
+  key is claimed by removing it from the BIOS keystroke buffer before the
+  program's own key routine looks, so the program observes exactly what it
+  would have observed had it never been typed; the panel is rendered into
+  the EGA planes a plane at a time, which is what added **port surgery**
+  as `docs/seams.md` §3's eighth primitive; what has been explored lives
+  in `machine::automap()` beside the overlay tracker, as observation and
+  not machine state; and closing it calls the program's own screen
+  composer to put the roster back. M5-E2a adds the colours: a wall is the
+  modal non-black pixel of the very tiles the 3D view blits for it, so
+  the buildings are the colour of the buildings, and a door leaf is drawn
+  where a wall face's *kind* has been seen shut — on this map or in the
+  table of every shut face in the shipped data. M5-E2b puts the zone's
+  name in the band the panel's geometry leaves for it, in the program's
+  own glyphs read out of its own font, off a table of (disk, area) to a
+  short label — because the program holds no such string to read. M5-E2c
+  makes what it has walked outlive the machine: the seam calls
+  `automap_update` when a reveal changes something, and a host writes the
+  table into `\SAVE\AFMAP.DAT` beside the program's saves and never
+  inside one, with a snapshot per save slot so two playthroughs do not
+  share a map. It is off unless a host is asked (`--automap-store`,
+  `af_web_automap_store`), because a file appearing in a player's game
+  directory changes it and every recorded session pins its disk. Telling
+  a slot the program *loaded* from one the load menu merely looked at is
+  what added the two traffic flags to a DOS file-close event. #173 is
+  closed),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine
@@ -74,8 +102,8 @@ What M4 left in place:
   on the wasm module — 101 checkpoints of a 139-million-step run, every
   hash equal. Before it the cross-target claim rested on four frames of
   `JMP $` (#142).
-- **The session library** (`tests/sessions/`, `scripts/sweep.py`). Seven
-  sessions; one has its disk committed and six pin a disk that cannot be
+- **The session library** (`tests/sessions/`, `scripts/sweep.py`). Eleven
+  sessions; one has its disk committed and ten pin a disk that cannot be
   (PLAN.md §6), so the runner is told where a copy is and **skips loudly**
   when it is not. A sweep that verified nothing must never read as a
   sweep that passed.

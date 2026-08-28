@@ -218,6 +218,25 @@ class dos_services {
     bool written{};
   };
 
+  /// Whether any bytes have been **read** through a handle since it was
+  /// opened.
+  ///
+  /// **Not machine state**, on `overlay.h`'s own terms and for its own
+  /// reason: no DOS call reports it, so no program can observe it; a
+  /// `reset()` drops it; `save_state()` below never writes it; and a
+  /// replay reconstructs it, because the same run makes the same reads.
+  /// It is deliberately *not* a field of `handle_state`, every one of
+  /// which is serialized — a flag that is not machine state must not sit
+  /// where the next person to add a field will serialize it.
+  ///
+  /// It is here because a **close** is the only moment at which "this
+  /// file was actually read" can be said, and the difference between a
+  /// program reading a save game and a program merely asking whether one
+  /// exists is invisible without it. The automap's exploration sidecar
+  /// (#173) is what has to tell those apart; the proven design's own file
+  /// layer told them apart the same way, by whether bytes moved.
+  [[nodiscard]] bool read_through(std::uint16_t handle) const noexcept;
+
   dos_services() noexcept { reset(); }
 
   /// Back to power-on: every handle closed, then the five standard ones
@@ -244,6 +263,10 @@ class dos_services {
   /// because the caller has already reported that.
   void note_written(std::uint16_t handle) noexcept;
 
+  /// The same, for bytes read. See `read_through()` for what it is and
+  /// what it deliberately is not.
+  void note_read(std::uint16_t handle) noexcept;
+
   /// The state behind `handle`, or null if it names nothing open.
   [[nodiscard]] const handle_state* find(std::uint16_t handle) const noexcept;
 
@@ -269,6 +292,11 @@ class dos_services {
 
  private:
   std::array<handle_state, max_handles> handles_{};
+
+  /// `read_through()`'s flags — a parallel array rather than a field of
+  /// `handle_state`, because that struct is serialized in full and this
+  /// is not machine state. See `read_through()` above.
+  std::array<bool, max_handles> read_through_{};
   std::uint8_t exit_code_{};
   bool exited_{};
 };

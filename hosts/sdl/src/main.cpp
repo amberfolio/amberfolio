@@ -148,6 +148,21 @@
 //     from, read off the program's own loads rather than inferred from
 //     anything, and they are how the cheats seam's module was found.
 //
+//   --automap-store  keep the automap's exploration beside the save
+//
+//     M5-E2c (#173). What the automap seam has explored is observation
+//     and not machine state, so it is gone when the machine stops. This
+//     writes it into `\SAVE\AFMAP.DAT` — a file of this project's own,
+//     beside the program's saves and never inside one — and reads it
+//     back at startup, with a snapshot per save slot so two playthroughs
+//     do not share one map.
+//
+//     Off by default, and deliberately: this is a real directory of the
+//     player's, and a file appearing in it changes it. Every recorded
+//     session in `tests/sessions` pins its disk by name, size and
+//     SHA-256, so a sidecar written by a verification run would make the
+//     next run's disk a different disk.
+//
 //   --seam ID        turn on one seam, by its config key
 //
 //     PLAN.md §5's opt-in runtime patches, off unless named here — and
@@ -485,6 +500,7 @@
 #include <vector>
 
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/host/automap_store.h"
 #include "amberfolio/host/host_services.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/document.h"
@@ -590,6 +606,17 @@ struct wired_machine {
 /// quietly differ. This host's job is to put the characters on stderr.
 class stderr_diagnostics final : public machine::diagnostics {
  public:
+  /// The exploration sidecar, if this run has one (M5-E2c, #173).
+  ///
+  /// It is fed from here because this is where the DOS layer's file
+  /// events arrive, and the store learns which save slot the program
+  /// touched from nothing else — the program keeps no slot letter in
+  /// memory to read (`hosts/common/.../automap_store.h`). Null on every
+  /// run that did not ask for it, which is every run in `tests/sessions`.
+  void set_automap_store(host::automap_store* store) noexcept {
+    automap_ = store;
+  }
+
   /// Whether to print every service call and file event as it happens.
   /// Off by default, for the reason diagnostics.h gives: a call is
   /// something the program *did*, not a symptom of anything, and a boot
@@ -613,6 +640,9 @@ class stderr_diagnostics final : public machine::diagnostics {
   void report(const machine::seam_event& event) override { write(event); }
 
   void report(const machine::file_event& event) override {
+    if (automap_ != nullptr) {
+      automap_->saw(event);
+    }
     if (!tracing_) {
       return;
     }
@@ -637,6 +667,8 @@ class stderr_diagnostics final : public machine::diagnostics {
     }
     std::fputs(line.data(), stderr);
   }
+
+  host::automap_store* automap_{nullptr};
 
   bool tracing_{false};
 };
@@ -1170,6 +1202,12 @@ struct options {
 
   bool trace{false};
 
+  /// `--automap-store`: keep the automap's exploration beside the save
+  /// (M5-E2c, #173). Off by default — see the usage block at the top of
+  /// this file for why writing into a player's game directory is asked
+  /// for rather than assumed.
+  bool automap_store{false};
+
   /// Everything after `--`, joined with single spaces and with the one
   /// leading space DOS leaves in front of a command tail. Empty when
   /// there was no `--`, which is a program invoked with no arguments
@@ -1420,6 +1458,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.list_seams = true;
     } else if (arg == "--trace") {
       opts.trace = true;
+    } else if (arg == "--automap-store") {
+      opts.automap_store = true;
     } else if (arg == "--dump" && i + 1 < argc) {
       opts.dump_prefix = argv[++i];
     } else if (arg == "--dump-every" && i + 1 < argc) {
@@ -1801,6 +1841,12 @@ int main(int argc, char** argv) try {
   // same thing on both.
   host::host_services services;
   box.seams().set_host(&services);
+  // And the one thing that door drives (M5-E2c, #173). Enabled before
+  // the filesystem is attached would be too early — `attach()` reads the
+  // working table — so the wiring is here and the attach is after the
+  // disk is mounted, below.
+  services.automap().enable(opts.automap_store);
+  log.set_automap_store(&services.automap());
   // The machine to be, before anything runs (machine/clock.h). Printed
   // whenever it is not the default, for the reason a seam is: a run at a
   // speed nobody expected is a different run, and a log that did not say
@@ -1820,6 +1866,11 @@ int main(int argc, char** argv) try {
   }
 
   box.set_filesystem(files);
+  // And now there is a disk to read the exploration sidecar off (M5-E2c,
+  // #173). Before the program is loaded, so a panel opened in the first
+  // seconds of a run already has last night's map in it. A no-op unless
+  // `--automap-store` asked for it.
+  services.automap().attach(box);
 
   const machine::vfs_result<machine::dos_path> where = machine::canonicalize(
       machine::dos_path{},
@@ -2686,6 +2737,22 @@ int main(int argc, char** argv) try {
                  static_cast<unsigned long long>(calls),
                  static_cast<unsigned long>(box.seams().host_argument(which)),
                  static_cast<unsigned long long>(services.record(which).at));
+  }
+
+  // And what the sidecar did with them (M5-E2c, #173). Printed only when
+  // it was asked for, and printed even when it did nothing: a store that
+  // wrote no file is either a run that explored nothing or a run whose
+  // writes were failing, and those are not the same thing.
+  if (services.automap().enabled()) {
+    const host::automap_store& store = services.automap();
+    const char slot = store.slot();
+    std::fprintf(stderr,
+                 "amberfolio: automap-store writes=%lu reads=%lu slot=%c"
+                 " trouble=%s\n",
+                 static_cast<unsigned long>(store.writes()),
+                 static_cast<unsigned long>(store.reads()),
+                 slot != 0 ? slot : '-',
+                 host::automap_trouble_name(store.trouble()));
   }
 
   // The VFS door (M5-D2, #170), over the directory this host was pointed

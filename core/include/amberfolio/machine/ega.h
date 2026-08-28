@@ -528,8 +528,13 @@ class ega final : public device {
   }
   [[nodiscard]] const halt_record& halt() const noexcept { return halt_; }
 
- private:
   // --- The bus cycle this device claims -------------------------------
+  //
+  // The adapter's own numbers. Public because they are the *hardware's*
+  // facts rather than this class's: the automap seam programs the map
+  // mask to reach one plane at a time (`seam_automap.cpp`, and
+  // docs/seams.md §3's eighth primitive), and a second spelling of 3C4h
+  // somewhere else would be two numbers that can disagree.
 
   static constexpr memory_window vram_window{.first = 0xA0000, .last = 0xAFFFF};
 
@@ -538,6 +543,7 @@ class ega final : public device {
   static constexpr std::uint16_t graphics_index_port = 0x3CE;
   static constexpr std::uint16_t graphics_data_port = 0x3CF;
 
+ private:
   /// One port, two roles told apart by the flip-flop — see this file's
   /// top comment. `attribute_data_read_port` is the second, always-data
   /// port real hardware answers 3C1h with; nothing ever writes it.

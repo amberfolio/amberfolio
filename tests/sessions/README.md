@@ -61,6 +61,9 @@ skip.
 | `camp.rec` | external, the shipped save slots | leg 7 without the enhancement — slot B loaded, `ENCAMP`, the party wounded to one hit point each by a pulled `cheat-wound-party`, and `REST` chosen at the camp menu. The rest screen comes up with the duration the program's own wrapper dialled and waits for a key that never comes. 13,401 frames, 112 checkpoints |
 | `camp-fix.rec` | the same | the same script with **`encamp-fix` on** as well, pressing the letter the seam puts on the camp menu instead of the menu's own Rest (M5-E1 #172, M5-E1a #186, M5-E1d #196): the bar is spliced, the letter comes back off the program's own menu-bar routine, the five cures the party holds are spent through the program's own cast driver, thirty days are dialled on the program's own rest clock, and the report is drawn when the game's own wandering-monster check ends the rest. `fired=11` |
 
+| `walk.rec` | external, the shipped save slots | leg 8 without the enhancement — slot A loaded and walked forty-eight moves through New Phlan to the armourer at 8,11, with a `Tab` in the key stream that nothing claims. 19,201 frames, 203 checkpoints, 106 key events |
+| `walk-map.rec` | the same | the same script with **`automap` on**: `Tab` is taken out of the keystroke buffer before the program's own key routine looks, and the panel is drawn into the EGA planes over the party roster — brown streets, white building fronts in the colour of the tiles those buildings are drawn with, and yellow door leaves — filling in behind the party as it walks, under the zone's name set in the game's own font (M5-E2 #173, M5-E2a, M5-E2b). The seam is reached 1,283,230 times |
+
 `save.rec` and `load.rec` are #105's round trip, recorded. They are two
 sessions and not one because they have to be: a load is a fresh run over
 the directory the save left behind, and a recording carries its starting
@@ -133,6 +136,29 @@ the camp screen, because neither half is unaided any more; and it pins
 `cheat-wound-party` as well as `encamp-fix`, so a change to the wounding
 breaks a golden that is not about wounding. Both were judged cheaper than
 a pair that could not tell a working Fix from a broken one.
+
+`walk.rec` and `walk-map.rec` are the third pair, for the automap
+(#173), and the only one so far whose difference is a **picture**:
+
+```
+  walk-map     contrast ok  90 of 203 checkpoints identical, then
+                            divergent from tick 218787888 to the end
+```
+
+The halves differ by **nothing but the flag** — the same disk, the same
+tick budget, the same hundred and six key events including the `Tab`. So
+the ninety identical checkpoints are the fidelity claim made on a real
+game run rather than on a synthetic one: the seam is on, armed at five
+addresses and reached over a million times, and until somebody presses
+`Tab` the machine is the machine it would have been. Tick 218,787,888 is
+three frames after the `Tab`, which is how long the program takes to
+poll.
+
+What only this pair can catch is the panel *itself*. A checkpoint hashes
+the framebuffer, so a map drawn in the wrong place, in the wrong colour,
+one cell out, or not at all moves a checkpoint here and nowhere else —
+the addresses and the mechanism have unit tests, and only this says the
+picture is still the picture.
 
 **This exists because a seam has twice been on, armed, reporting itself,
 and doing nothing at all** — `cheat-invulnerable` pointed at a routine

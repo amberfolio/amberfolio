@@ -223,6 +223,59 @@ TEST(dos_file_events, a_close_carries_the_path_the_handle_was_opened_on) {
   EXPECT_STREQ(text.data(), "\\GAME.DAT");
 }
 
+TEST(dos_file_events, a_close_says_whether_anything_moved_through_it) {
+  rig r;
+  r.write_asciz(path_area, "GAME.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  std::uint16_t handle = r.regs()[cpu::reg16::ax];
+
+  // Written through: four bytes out of the caller's buffer.
+  r.write_asciz(static_cast<std::uint16_t>(path_area + 0x40), "abcd");
+  r.call(ah(0x40), handle, 4, static_cast<std::uint16_t>(path_area + 0x40));
+  ASSERT_FALSE(r.carry());
+  r.log.files.clear();
+  r.call(ah(0x3E), handle);
+  ASSERT_FALSE(r.carry());
+  {
+    const std::vector<file_event> got = events(r);
+    ASSERT_EQ(got.size(), 1U);
+    EXPECT_TRUE(got[0].written_through);
+    EXPECT_FALSE(got[0].read_through);
+  }
+
+  // Opened and given straight back — which is what the program does to
+  // every save slot in turn when it lists them, and is not a read.
+  r.call(ah(0x3D), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  handle = r.regs()[cpu::reg16::ax];
+  r.log.files.clear();
+  r.call(ah(0x3E), handle);
+  ASSERT_FALSE(r.carry());
+  {
+    const std::vector<file_event> got = events(r);
+    ASSERT_EQ(got.size(), 1U);
+    EXPECT_FALSE(got[0].read_through) << "nothing was read out of it";
+    EXPECT_FALSE(got[0].written_through);
+  }
+
+  // And now one that is read.
+  r.call(ah(0x3D), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  handle = r.regs()[cpu::reg16::ax];
+  r.call(ah(0x3F), handle, 4, static_cast<std::uint16_t>(path_area + 0x40));
+  ASSERT_FALSE(r.carry());
+  ASSERT_EQ(r.regs()[cpu::reg16::ax], 4U);
+  r.log.files.clear();
+  r.call(ah(0x3E), handle);
+  ASSERT_FALSE(r.carry());
+  {
+    const std::vector<file_event> got = events(r);
+    ASSERT_EQ(got.size(), 1U);
+    EXPECT_TRUE(got[0].read_through);
+  }
+}
+
 TEST(dos_file_events, mkdir_and_unlink_are_named_too) {
   rig r;
   r.write_asciz(path_area, "SAVE");

@@ -25,6 +25,13 @@ void host_services::serve(machine::machine& box,
   seen.seen = true;
   seen.argument = argument;
   seen.at = box.time();
+
+  // And the one consumer there is (M5-E2c, #173). The store is off
+  // unless a host asked for it, so on every run that has not this is a
+  // branch and nothing else.
+  if (which == machine::seam_host_service::automap_update) {
+    automap_.changed();
+  }
 }
 
 }  // namespace amberfolio::host

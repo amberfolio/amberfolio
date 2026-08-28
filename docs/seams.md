@@ -110,12 +110,13 @@ inside one.
 
 ## 3. The action primitives
 
-Seven things a handler may do, each the smallest honest version of itself
+Eight things a handler may do, each the smallest honest version of itself
 (#96). Four are as old as the engine; the host service had no
 implementation behind it until M5-D1 (#169); the call into the program is
-M5-D4's (#188) and a seam's own words are M5-E1b's (#189). They are in
-the order §8 says to reach for them, which is not the order they were
-built in:
+M5-D4's (#188), a seam's own words are M5-E1b's (#189), and port surgery
+is M5-E2's (#173) — the only one of the eight that was added because an
+enhancement could not be built without it. They are in the order §8 says
+to reach for them, which is not the order they were built in:
 
 **Register surgery** — `box.processor().regs()`. Plain state, edited in
 place. The code-wheel seam is three register writes and nothing else.
@@ -127,6 +128,35 @@ noticed — exactly as the program's own would be. Never `memory().ram()`:
 that back door is for the machine's own writers (the loader, the BIOS
 setup, a test), and a seam is not the machine. It is the program's hand,
 moved from outside.
+
+**Port surgery, as the program** — `machine::write_port8()`, the same
+bus one instruction over. A device answers it exactly as it answers the
+program's own `OUT`, a port nothing claims is noticed rather than
+invented, and — like memory surgery — it is the program's hand moved from
+outside rather than the machine's own writer.
+
+It is here because of one thing an enhancement cannot do without it. The
+EGA reaches a *plane* through the sequencer's map mask, so a byte written
+into the video window with the mask the program leaves behind lands in
+all four planes at once: black and white, and nothing else. A seam that
+draws sixteen colours has to select one plane at a time, and there is no
+other way to say so. `seam_automap.cpp` (M5-E2, #173) is the first and so
+far the only user.
+
+Two rules, both learned from what makes it safe there rather than in
+general:
+
+* **Set what you depend on; do not assume it.** These registers cannot be
+  read back — that is what write-only means — so a seam that assumed the
+  graphics controller was in write mode 0 would be assuming something it
+  has no way to check. Program the four registers your write needs.
+* **Hand back the state you found.** This program resets the graphics
+  controller and the map mask at the head of every drawing primitive and
+  restores the write mode at the end of it, so between commands there is
+  a *resting* state, and a seam that draws there and leaves that state is
+  indistinguishable from one of the program's own primitives having run.
+  A program with no such discipline would need a different argument, and
+  a seam over it would have to make one.
 
 **Synthetic input** — `seam_context::inject_keystroke(scancode, ascii)`.
 The keystroke goes straight into the BIOS buffer at 40:1E, which is the
@@ -921,7 +951,7 @@ Read §3 before building anything. The answer to "can the engine do this"
 is yes more often than it looks, and #165 is the audit that established
 that for all of M5.
 
-The seven primitives (§3), the module qualifiers (§4), the trigger
+The eight primitives (§3), the module qualifiers (§4), the trigger
 (§3a), the address-free point (#163), the document gate (#171). What
 matters more than the list is **the order to reach for them**:
 
@@ -999,6 +1029,16 @@ Every entry names the seam it was learned on.
 - **A fact can be wrong and still work once.** Both cheats were wrong the
   first time they were driven — one in its frame layout, one in its
   module *and* its offset (§10; #103, #129, #131).
+- **A routine's address is a segment and an offset, not a flat one.** A
+  routine of this era reaches its own literals as `CS:<constant>` and its
+  own siblings as `push cs` plus a near call, so it only works when CS is
+  the paragraph it was *linked at*. Called at the image base with the
+  whole offset in IP, the same bytes execute and every CS-relative read
+  lands sixteen kilobytes away: the automap's first driven run put the
+  party roster back drawn out of somebody else's data, in strings that
+  looked like a corrupted machine rather than a wrong call (automap,
+  #173). It is the third fact in this list that was wrong and still
+  ran — check the *frame*, and check the segment.
 
 **The engine itself**
 
@@ -1089,6 +1129,7 @@ boundary, and it needs the argument this document would have to carry.
 |---|---|---|---|
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
+| `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
@@ -1534,6 +1575,230 @@ on all four targets: the stand-in grew a loop condition and a way out of
 camp, and reads the command tail to decide whether its rest is one the
 game interrupts — one image, both ways out, and so no second fingerprint
 to keep in step.
+
+### The automap panel (#173, M5-E2a, M5-E2b, M5-E2c)
+
+PLAN.md §5 item 3, and the first seam in this tree that **draws**.
+
+**What it is.** A sixteen-by-sixteen map of the interior the party is
+walking, filling in behind them, over the party roster on the game's own
+screen — the region the game's own AREA view uses. Tab shows it and Tab
+takes it away again. It is off by default, and closed even when it is on:
+until somebody presses Tab, the seam is armed at five addresses, reached
+about seventy times a virtual second, and has moved nothing.
+
+**Where the design came from.** It is the proven one, carried over as
+PLAN.md §5 says to: the panel's rect, the seven-pixel cell, the reveal
+rule, the settling quarantine after a map change, and the three signals
+that say who owns the pixels. `core/include/amberfolio/machine/automap.h`
+has the derivations; what this section is about is what the *engine* had
+to do to carry it.
+
+**The five points, and what each is for.**
+
+| point | in | what it does |
+| --- | --- | --- |
+| the program's "is a key waiting" routine | the resident image | claims Tab, and is the tick: samples the party, reveals what it can see, draws the panel if anything changed |
+| the program's "give me the next key" routine | the resident image | claims Tab, and nothing else |
+| the box-region clear | the resident image | if the rect meets the panel, something else has taken those cells |
+| the full-screen clear | the resident image | the same, unconditionally |
+| the party-roster draw's `retf` | the resident image | the cells are the panel's again |
+
+The first is the workhorse and the reason the seam works at all: the
+adventuring screen's command loop calls it on every pass, so it is where
+the program *is* between commands. It is the same seam the proven design
+ticks on, reached at an address instead of through a hook.
+
+The last one is at a **return** rather than an entry, and that is a fact
+about the routine rather than a preference: the roster draw clears each
+of its own rows through the box-region clear above, so a point at its
+head would say "the roster is back" and then be contradicted by its own
+clears a hundred instructions later.
+
+**The key is taken out of the buffer, not answered around.** #173
+proposed register surgery inside the INT 16h service — the program sees
+"no key" (AH=01h) or the next key (AH=00h) exactly as often as it polled.
+What is here is one step earlier: the keystroke is removed from the BIOS
+ring at 40:1Eh before the program's own routine looks, so the BIOS
+answers about a buffer that no longer holds it and no register is edited
+at all. The program observes exactly what it would have observed had the
+key never been typed, which is the same sentence with nothing left to
+argue about.
+
+Only the head of the ring is ever taken, so order and count are kept; the
+program's own extended-key pushback slot vetoes the whole thing while it
+is armed; and the *whole* keystroke word is matched, because Ctrl-I is
+the same character under a different scan code and it is the program's.
+
+**Its own memory is `machine::automap()`**, not `scratch()`. A seam has
+`scratch_words` — sixteen bytes — and one map's fog is thirty-two. So the
+exploration store lives in core beside the overlay tracker
+(`automap.h`), on the same terms: observation and not machine state,
+dropped by `reset()`, absent from the serialization, and reconstructed by
+a replay because the same run walks the same squares. That is what lets
+the pair below be a pair.
+
+**A wall is the colour of its own texture** (M5-E2a). Not sampled off the
+screen — histogrammed out of the very 8x8 tiles the 3D renderer blits for
+that kind of wall, so water reads blue because its tiles are blue and
+nothing changes as the party walks. An earlier cut of the proven design
+sampled the rendered ground band off the planes once and latched whatever
+was covering the viewport at the time: on a fresh game, a tour guide's
+blue apron became the colour of the ground for the session.
+
+Only the *largest* shape's tiles are counted. A wall's row of the
+shape-tile table lists the codes for every shape the renderer draws it as
+— the head-on face, the side slivers, the distant variants — and the
+slivers are mostly post and edge, which outvote the face. Water came out
+grey, off its pilings. Black is skipped, because it is the gap between
+things in almost every one of these tiles and it is also the panel's own
+"nobody has been here"; a wall whose tiles are entirely black falls back
+to the area's frame colour, and so does one whose wall set has not
+finished loading.
+
+The answers are cached per map **and per loaded tile set**, because the
+second is what the first was read out of: a wall set swapped under a
+fixed map identity would otherwise keep the colours of the tiles it
+replaced.
+
+**A door is a door because something was seen shut** (M5-E2a). The
+renderer picks a wall's graphic from its face nibble alone and never
+consults the style bits — those govern movement and the prompt that asks
+whether to force a door, and are invisible in the view. So a door *leaf*
+is drawn exactly when the nibble indexes a door graphic, and neither
+"style is not solid" (which paints every archway as a door) nor "style is
+shut" (which drops every open one) can match what the player sees. Both
+test the wrong plane.
+
+Nothing in the data says "this graphic is a door". What there is, is
+evidence: a face that is shut is unarguably one, and it names its nibble.
+Two sources are combined — this map's own shut faces, scanned when the
+party arrives, and a table of every shut face in the shipped data, keyed
+on the durable identity of a wall graphic, which is (disk, WALLDEF block,
+row). The table is there because the evidence is scattered: five sub-maps
+of one castle share a wall set and only three of them have a shut
+instance.
+
+**Twenty-one of the twenty-nine shipped grids carry a shut face**, and
+New Phlan is not one of them — nor does its wall set appear in the table.
+So the city falls through to the older rule, which is that a passable
+face is a door, and the panel in the driven run below is drawing its door
+leaves by that rule. Drawing none would be worse, and it is what the
+proven design does there too.
+
+What this deliberately does not carry is the proven design's runtime
+*learning* across maps — a table that remembers a shut face on one map
+and applies it to another. It is there to be robust against other
+revisions of the data; this seam is unavailable for any binary its
+fingerprint does not name (§5), and the table was derived from that
+binary's own data, so learning could only ever matter for data this seam
+refuses to run against.
+
+**It draws through the bus and through the ports.** The panel is rendered
+into a private buffer of palette indices and blitted a plane at a time —
+the map mask selected with a port write (§3's eighth primitive), the
+bytes written into A000h through `write_byte()`. The rect starts on a
+byte boundary and is twenty-two whole bytes wide, so nothing is shifted
+and nothing is read back to be merged. The registers are handed back in
+the state the program's own drawing primitives leave them.
+
+**The zone label is set in the program's own glyphs** (M5-E2b). The
+band the panel's geometry leaves — eight text columns to the right of the
+sixteen cells — names the place the party is in, because nothing else on
+that screen does: the program's own status row under the panel shows
+coordinates, a compass and the clock, and never a place.
+
+The glyphs are the program's. Its 8x8 font is a far pointer in the data
+segment, sixty-four glyphs indexed by the character upper-cased and taken
+modulo sixty-four, and the seam reads the same bytes the program's own
+text primitive reads and rasterizes them into the panel's linear buffer.
+It does not *call* that primitive, and the reason is the same one that
+makes the panel a buffer at all: the screen is planar and the program's,
+the panel is linear and this seam's, and it goes onto the planes in one
+piece. Same glyphs, so the label is pixel-identical to the text the game
+draws around it. The program treats its font pointer being zero as "not
+loaded yet" and draws nothing; so does this, and the font's segment is in
+the drawing signature so a panel first drawn without one picks the label
+up the moment it arrives.
+
+**The name is a table, and a name is a fact.** The program holds no such
+string anywhere for the panel to read — the names live in its scripts as
+narration — so the only way the band can say where the party is, is a
+table of (disk, area) to a short label. CONTRIBUTING.md's clean-content
+rule permits exactly that: "a SHA-256, a name, and the offsets a fact
+table needs". These are names, of the same kind as the door table beside
+them, and not a line of anybody's prose. A map with no row says `AREA
+<n>` rather than nothing.
+
+Six names have a word longer than eight columns, so a name may carry a
+`|` — a soft break, a point inside a word where the wrap may split it
+with a hyphen. It costs no column and prints nothing where the word fits.
+With no marker at all, a long word is cut where it stops fitting: ugly,
+and deliberately so, because a name nobody has marked yet should still
+appear.
+
+**Closing it calls the program's own screen composer** (#188's door),
+because the panel wrote over the party list and only the program can
+redraw it from live state — the game redraws single roster rows while the
+panel is up, so any snapshot of the pixels would be stale. That call is
+where this seam's day went, and the trap is in §8.4: the composer reaches
+its own literals through CS, so it has to be called at the paragraph it
+was linked at. Called at the image base with the whole offset in IP it
+ran perfectly and drew the roster out of the wrong sixteen kilobytes.
+
+**The fidelity claim, stated for this seam** (§8.5). The plain one holds,
+and it is the strongest in this tree, because the panel is closed until
+somebody asks:
+
+* **on, and Tab never pressed, a run is byte for byte the run with the
+  seam off** — every point reads and none of them writes
+  (`AutomapFidelity.OnAndNeverAskedLeavesTheRunIdentical`, and
+  `tests/programs`' `automap_probe_untouched` sharing its exact step
+  count with `automap_probe_quiet` on all four targets);
+* **pressed, the program's input is what it would have been had the key
+  never been typed** — `automap_probe_tab_claimed` polls exactly as many
+  times as `automap_probe_quiet` and is handed nothing, where
+  `automap_probe_tab_seen` with the seam off is handed the Tab.
+
+**What it has explored outlives the machine** (M5-E2c), and the half of
+that which is the seam's is one call: when a reveal actually changes
+something, the handler calls `automap_update` with the store's serial.
+Everything else is the host's, because files are (PLAN.md §4) —
+`hosts/common/.../automap_store.h` has it, and the shape of what is
+written is decided in `machine/automap.h` rather than by whichever host
+writes it, because the explored overlay (#179) reads the same records.
+
+Three things about it are worth having here:
+
+* **It is off unless a host is asked.** `--automap-store` on the desktop,
+  `af_web_automap_store` in the browser. A file appearing in a player's
+  game directory changes it, and every recorded session pins its disk by
+  name, size and SHA-256 — a sidecar written by a verification run would
+  make the next run's disk a different disk. So every session in
+  `tests/sessions` runs with the seam on and the store off, and the two
+  claims below are unaffected by any of this.
+* **It is scoped to the playthrough.** A working table follows the party;
+  a snapshot per save slot follows the save, and replaces the table when
+  that slot is loaded — over it even when there is no snapshot, because
+  an empty map is the truth about a playthrough nobody recorded one for.
+* **A slot the program only *looked* at is not a slot it loaded.** The
+  load menu opens every save file in the directory in turn to find out
+  which slots exist. Acting on the naming call alone would fire nine
+  times for one load and leave the player looking at the last slot in the
+  directory's map. What tells them apart is whether bytes moved through
+  the handle, which is what `file_event` says since M5-E2c and what the
+  proven design's own file layer counted.
+
+**Driven, and what it found.** Slot A loaded, forty-eight moves through
+New Phlan to the armourer at 8,11, Tab on the way out of the load: the
+streets fill in behind the party, the arrow turns with them, and Tab
+again puts the game's own roster back. The session pair `walk` /
+`walk-map` is that run recorded twice, one flag apart. The same script
+through `drive.mjs` against the wasm module takes the same 95,454,560
+steps and produces a final frame that is **byte for byte** the desktop
+host's, panel included, which is #173's "on both hosts" as a comparison
+of two files. What the driving found that no test could is §8.4's new
+entry, above.
 
 ### The debug cheats (#99, #196)
 

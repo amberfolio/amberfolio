@@ -19,11 +19,19 @@
 
 namespace amberfolio::machine {
 class machine;
+class diagnostic_log;
 }  // namespace amberfolio::machine
 
 namespace amberfolio {
 
 /// The machine behind `box`, or null for a null handle.
 [[nodiscard]] machine::machine* af_machine_unwrap(af_machine* box) noexcept;
+
+/// The diagnostic log behind `box`, or null for a null handle — the sink
+/// that machine was built with, so that a C++ host inside the module can
+/// hang a second consumer of the records off it (`machine/log.h`'s
+/// `set_relay`). The web host's exploration sidecar is what wants it.
+[[nodiscard]] machine::diagnostic_log* af_machine_log_unwrap(
+    af_machine* box) noexcept;
 
 }  // namespace amberfolio

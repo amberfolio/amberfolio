@@ -49,6 +49,7 @@ std::uint16_t dos_services::open_file(file_handle file,
                      .kind = handle_kind::file,
                      .backing = file,
                      .path = path};
+      read_through_[i] = false;
       return i;
     }
   }
@@ -60,7 +61,18 @@ bool dos_services::close(std::uint16_t handle) noexcept {
     return false;
   }
   handles_[handle] = handle_state{};
+  read_through_[handle] = false;
   return true;
+}
+
+bool dos_services::read_through(std::uint16_t handle) const noexcept {
+  return handle < max_handles && read_through_[handle];
+}
+
+void dos_services::note_read(std::uint16_t handle) noexcept {
+  if (handle < max_handles && handles_[handle].in_use) {
+    read_through_[handle] = true;
+  }
 }
 
 void dos_services::note_written(std::uint16_t handle) noexcept {
@@ -306,7 +318,7 @@ void write_console(service_floor& floor, std::uint16_t count) {
 
 // --- File I/O: AH=39h, 3Ch, 3Dh, 3Eh, 3Fh, 40h, 41h, 42h ----------------
 
-void read_file(service_floor& floor, filesystem& fs,
+void read_file(service_floor& floor, filesystem& fs, std::uint16_t handle,
                const dos_services::handle_state& state, std::uint16_t count) {
   cpu::processor& cpu = floor.box().processor();
   const std::uint16_t segment = cpu.regs()[sreg::ds];
@@ -354,6 +366,11 @@ void read_file(service_floor& floor, filesystem& fs,
   if (position.ok() && total != 0) {
     floor.box().note_file_read(state.path, position.value, segment, offset,
                                total, hasher.finish());
+  }
+  if (total != 0) {
+    // Bytes moved, so this handle has been read *through* and its close
+    // can say so (dos.h's `read_through`). Nothing above it changed.
+    floor.box().dos().note_read(handle);
   }
   succeed_with(floor, total);
 }
@@ -505,8 +522,12 @@ void close_fn(service_floor& floor) {
   const bool is_file = state->kind == dos_services::handle_kind::file;
   const file_handle backing = state->backing;
   // Read before `close()` frees the slot: the path is the whole reason a
-  // close is in this channel at all (diagnostics.h).
+  // close is in this channel at all (diagnostics.h), and the two traffic
+  // flags beside it are the whole reason a close can say whether the file
+  // was used or only looked at.
   const dos_path named = state->path;
+  const bool was_written = state->written;
+  const bool was_read = floor.box().dos().read_through(handle);
 
   floor.box().dos().close(handle);
 
@@ -519,7 +540,8 @@ void close_fn(service_floor& floor) {
       fs->close(backing);
     }
   }
-  floor.report_file(file_action::close, named, handle, vfs_error::none);
+  floor.report_file(file_action::close, named, handle, vfs_error::none,
+                    was_read, was_written);
   succeed(floor);
 }
 
@@ -544,7 +566,7 @@ void read_fn(service_floor& floor) {
   if (fs == nullptr) {
     return;
   }
-  read_file(floor, *fs, *state, count);
+  read_file(floor, *fs, handle, *state, count);
 }
 
 void write_fn(service_floor& floor) {

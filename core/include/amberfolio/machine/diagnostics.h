@@ -292,6 +292,23 @@ struct file_event {
   /// which is exactly why the failure has to be visible somewhere.
   vfs_error error{};
 
+  /// Whether any bytes went *through* this handle before it was closed.
+  /// Meaningful for a `close` and false for everything else, because a
+  /// close is the only one of these that names a handle with a history.
+  ///
+  /// They are what tells a program **using** a file from a program
+  /// merely asking whether one exists — the load menu opens every save
+  /// slot in turn to list them, and only one of those opens is a load.
+  /// A consumer that acted on the naming call alone would act nine times
+  /// for one load (M5-E2c, #173; `dos.h`'s `read_through`).
+  ///
+  /// Deliberately not in the printed line (`report.h`): that line is
+  /// quoted as evidence in the docs and compared between the two hosts,
+  /// and these two are what a *consumer* of the record needs rather than
+  /// what a reader of a trace does.
+  bool read_through{};
+  bool written_through{};
+
   /// Where the call came from, the same value `service_call` carries.
   std::uint16_t caller_cs{};
   std::uint16_t caller_ip{};

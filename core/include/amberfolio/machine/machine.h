@@ -49,6 +49,7 @@
 
 #include "amberfolio/cpu/bus.h"
 #include "amberfolio/cpu/processor.h"
+#include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/diagnostics.h"
@@ -392,6 +393,16 @@ class machine final : public cpu::bus {
     return overlays_;
   }
 
+  /// What the automap has seen, and what its panel is doing (automap.h,
+  /// M5-E2 #173). Observation like `overlays()` above, and not machine
+  /// state: `reset()` drops it, the serialization omits it, and a replay
+  /// reconstructs it by walking the same squares again. The automap seam
+  /// is its one writer; a host reads it to persist what was explored.
+  [[nodiscard]] automap_state& automap() noexcept { return automap_; }
+  [[nodiscard]] const automap_state& automap() const noexcept {
+    return automap_;
+  }
+
   /// The DOS read handler's way of telling the tracker a read landed
   /// (dos.cpp): `length` bytes of `file` from `file_offset`, at
   /// `segment:offset`, hashing to `digest`. Re-evaluates the seams'
@@ -699,6 +710,7 @@ class machine final : public cpu::bus {
   /// What the program has loaded where (overlay.h). Fed by the DOS read
   /// handler through `note_file_read()`, read by the seam engine.
   overlay_tracker overlays_;
+  automap_state automap_;
 
   /// The platform interface (platform.h). Members rather than something
   /// a host supplies, because the buffers have to outlive every pull and

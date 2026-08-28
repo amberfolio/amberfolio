@@ -545,8 +545,13 @@ class service_floor {
   /// (trace.h, #121), and the sink, when there is one. Built at all only
   /// when one of the two is listening, which is the rule this call
   /// already had for the sink alone.
+  ///
+  /// `read_through` and `written_through` are meaningful for a `close`
+  /// alone: whether bytes actually moved through the handle being given
+  /// back (`diagnostics.h`, `dos.h`).
   void report_file(file_action what, const dos_path& path, std::uint16_t handle,
-                   vfs_error error);
+                   vfs_error error, bool read_through = false,
+                   bool written_through = false);
 
   // --- The caller's frame ---------------------------------------------
   //

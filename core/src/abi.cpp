@@ -1485,6 +1485,10 @@ uint32_t af_machine_verify_recording(af_machine* handle, const char* text,
 
 namespace amberfolio {
 
+machine::diagnostic_log* af_machine_log_unwrap(af_machine* box) noexcept {
+  return box == nullptr ? nullptr : &box->log;
+}
+
 machine::machine* af_machine_unwrap(af_machine* box) noexcept {
   return box_of(box);
 }

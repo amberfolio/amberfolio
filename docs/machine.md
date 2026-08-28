@@ -317,6 +317,15 @@ it. The rules the channel keeps:
   shows.
 - **After the outcome, not before.** The point of the record is the path
   and the answer, and neither exists until the handler has both.
+- **A close says whether anything moved through the handle.** Two flags,
+  `read_through` and `written_through`, not in the printed line and there
+  for a consumer of the record: they are what tells a program *using* a
+  file from one merely asking whether it exists. The load menu opens
+  every save slot in the directory in turn to list them, and only one of
+  those opens is a load (M5-E2c, #173). `dos.h`'s `read_through` is the
+  bookkeeping under it, and it is **not machine state** on `overlay.h`'s
+  own terms: no DOS call reports it, `reset()` drops it, the
+  serialization never sees it, and a replay reconstructs it.
 - **Refusals are reported, not swallowed.** "Is there a save in slot A"
   is a question a program asks by opening a file, and `file_not_found` is
   the answer — the same rule §5 states for the machine as a whole, one
