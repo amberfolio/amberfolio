@@ -1576,7 +1576,7 @@ camp, and reads the command tail to decide whether its rest is one the
 game interrupts — one image, both ways out, and so no second fingerprint
 to keep in step.
 
-### The automap panel (#173, M5-E2a, M5-E2b)
+### The automap panel (#173, M5-E2a, M5-E2b, M5-E2c)
 
 PLAN.md §5 item 3, and the first seam in this tree that **draws**.
 
@@ -1760,12 +1760,34 @@ somebody asks:
   times as `automap_probe_quiet` and is handed nothing, where
   `automap_probe_tab_seen` with the seam off is handed the Tab.
 
-**What it is not yet.** One thing, the last leg of #173, named here
-rather than discovered later: **nothing is persisted.** What has been
-explored is lost when the machine is reset, and the sidecar beside the
-save that #173 asks for — through #170's VFS door, with `automap_update`
-telling the host it changed — is M5-E2c. The store's shape is decided
-already, because the explored overlay (#179) reads the same records.
+**What it has explored outlives the machine** (M5-E2c), and the half of
+that which is the seam's is one call: when a reveal actually changes
+something, the handler calls `automap_update` with the store's serial.
+Everything else is the host's, because files are (PLAN.md §4) —
+`hosts/common/.../automap_store.h` has it, and the shape of what is
+written is decided in `machine/automap.h` rather than by whichever host
+writes it, because the explored overlay (#179) reads the same records.
+
+Three things about it are worth having here:
+
+* **It is off unless a host is asked.** `--automap-store` on the desktop,
+  `af_web_automap_store` in the browser. A file appearing in a player's
+  game directory changes it, and every recorded session pins its disk by
+  name, size and SHA-256 — a sidecar written by a verification run would
+  make the next run's disk a different disk. So every session in
+  `tests/sessions` runs with the seam on and the store off, and the two
+  claims below are unaffected by any of this.
+* **It is scoped to the playthrough.** A working table follows the party;
+  a snapshot per save slot follows the save, and replaces the table when
+  that slot is loaded — over it even when there is no snapshot, because
+  an empty map is the truth about a playthrough nobody recorded one for.
+* **A slot the program only *looked* at is not a slot it loaded.** The
+  load menu opens every save file in the directory in turn to find out
+  which slots exist. Acting on the naming call alone would fire nine
+  times for one load and leave the player looking at the last slot in the
+  directory's map. What tells them apart is whether bytes moved through
+  the handle, which is what `file_event` says since M5-E2c and what the
+  proven design's own file layer counted.
 
 **Driven, and what it found.** Slot A loaded, forty-eight moves through
 New Phlan to the armourer at 8,11, Tab on the way out of the load: the

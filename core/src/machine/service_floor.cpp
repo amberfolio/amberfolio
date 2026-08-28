@@ -306,7 +306,8 @@ void service_floor::program_hardware() {
 }
 
 void service_floor::report_file(file_action what, const dos_path& path,
-                                std::uint16_t handle, vfs_error error) {
+                                std::uint16_t handle, vfs_error error,
+                                bool read_through, bool written_through) {
   if (log_ == nullptr && !box_->trace().enabled()) {
     // The caller's frame is a stack read; skipping it when nobody is
     // listening keeps a run with a sink and a run without one the same
@@ -320,6 +321,8 @@ void service_floor::report_file(file_action what, const dos_path& path,
                          .path = path,
                          .handle = handle,
                          .error = error,
+                         .read_through = read_through,
+                         .written_through = written_through,
                          .caller_cs = caller_cs(),
                          .caller_ip = caller_ip()};
   // Recorded before it is reported, the same order — and for the same

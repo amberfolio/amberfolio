@@ -98,6 +98,24 @@ class diagnostic_log final : public diagnostics {
   /// The host's call, not the machine's — see the note above.
   void clear() noexcept;
 
+  /// A second sink, handed every record this one is handed, before it is
+  /// rendered.
+  ///
+  /// This exists because of where this object sits. A machine holds one
+  /// sink for its whole life, and in the wasm module that one is *this* —
+  /// it is a member of the ABI's own handle, so that a JS host can read
+  /// as text the account a C++ host is handed as records. A C++ consumer
+  /// inside the same module that also wants those records has nowhere
+  /// else to stand. The automap's exploration sidecar is the first
+  /// (M5-E2c, #173): it learns which save slot the program touched from
+  /// the DOS layer's file events and from nothing else.
+  ///
+  /// Held by reference and never owned, like the sink itself. Null is the
+  /// ordinary state and costs one branch per record. It changes nothing
+  /// about what is kept or dropped here.
+  void set_relay(diagnostics* also) noexcept { relay_ = also; }
+  [[nodiscard]] diagnostics* relay() const noexcept { return relay_; }
+
   void report(const notice& what) override;
   void report(const service_call& call) override;
   void report(const file_event& event) override;
@@ -113,11 +131,18 @@ class diagnostic_log final : public diagnostics {
   template <typename T>
   void keep(const T& record) noexcept;
 
+  /// Hand `record` to `relay_`, if there is one. Every `report()` above
+  /// goes through it, so "the second sink sees everything the first
+  /// does" is written once.
+  template <typename T>
+  void relay_to(const T& record) noexcept;
+
   std::array<char, capacity> chars_{};
   std::size_t first_{};
   std::size_t count_{};
   std::uint64_t dropped_{};
   bool tracing_{false};
+  diagnostics* relay_{nullptr};
 };
 
 }  // namespace amberfolio::machine

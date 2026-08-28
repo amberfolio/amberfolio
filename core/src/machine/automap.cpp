@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 namespace amberfolio::machine {
 namespace {
@@ -269,6 +270,159 @@ void automap_state::unsettle() noexcept {
   // the party — has not arrived anywhere; only `observe()`'s own map
   // change is an arrival, and it sets this again after calling here.
   pending_entrance_ = false;
+}
+
+// ---------------------------------------------------------------------------
+// The sidecar (M5-E2c, #173)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// Where one record's fields sit inside its fixed-width row.
+constexpr std::size_t field_disk = 0;
+constexpr std::size_t field_area = 1;
+constexpr std::size_t field_geo = 2;
+constexpr std::size_t field_marker_count = 3;
+constexpr std::size_t field_seen = 4;
+constexpr std::size_t field_marker_x = field_seen + automap_seen_bytes;
+constexpr std::size_t field_marker_y = field_marker_x + automap_max_markers;
+constexpr std::size_t field_marker_kind = field_marker_y + automap_max_markers;
+
+[[nodiscard]] std::uint16_t word_at(std::span<const std::uint8_t> bytes,
+                                    std::size_t offset) noexcept {
+  return static_cast<std::uint16_t>(
+      bytes[offset] | (static_cast<std::uint16_t>(bytes[offset + 1]) << 8U));
+}
+
+void put_word(std::span<std::uint8_t> bytes, std::size_t offset,
+              std::uint16_t value) noexcept {
+  bytes[offset] = static_cast<std::uint8_t>(value);
+  bytes[offset + 1] = static_cast<std::uint8_t>(value >> 8U);
+}
+
+/// Whether a byte is a marker kind this build knows. An unknown one is
+/// dropped rather than stored: `automap_marker`'s values are part of the
+/// layout, and a renderer switching on one it has never heard of is how a
+/// forward-compatible format becomes a crash.
+[[nodiscard]] bool known_marker(std::uint8_t kind) noexcept {
+  return kind == static_cast<std::uint8_t>(automap_marker::entrance) ||
+         kind == static_cast<std::uint8_t>(automap_marker::exit);
+}
+
+}  // namespace
+
+void automap_state::forget_records() noexcept {
+  records_ = {};
+  next_slot_ = 0;
+  ++serial_;
+  // The map on the screen is not the map in the store any more.
+  drawn_signature_ = 0;
+}
+
+std::size_t automap_state::sidecar_bytes() const noexcept {
+  return automap_sidecar_header_bytes +
+         (records_used() * automap_sidecar_record_bytes);
+}
+
+std::size_t automap_state::write_sidecar(
+    std::span<std::uint8_t> out) const noexcept {
+  const std::size_t wanted = sidecar_bytes();
+  if (out.size() < wanted) {
+    return 0;
+  }
+
+  for (std::size_t i = 0; i < automap_sidecar_magic.size(); ++i) {
+    out[i] = static_cast<std::uint8_t>(automap_sidecar_magic[i]);
+  }
+  out[automap_sidecar_magic.size()] = automap_sidecar_version;
+  put_word(out, 4, static_cast<std::uint16_t>(records_used()));
+  put_word(out, 6, static_cast<std::uint16_t>(automap_sidecar_record_bytes));
+
+  std::size_t at = automap_sidecar_header_bytes;
+  for (const automap_record& map : records_) {
+    if (!map.used) {
+      continue;
+    }
+    const std::span<std::uint8_t> row =
+        out.subspan(at, automap_sidecar_record_bytes);
+    row[field_disk] = map.disk;
+    row[field_area] = map.area;
+    row[field_geo] = map.geo;
+    row[field_marker_count] = map.marker_count;
+    for (std::size_t b = 0; b < automap_seen_bytes; ++b) {
+      row[field_seen + b] = map.seen[b];
+    }
+    for (std::size_t m = 0; m < automap_max_markers; ++m) {
+      row[field_marker_x + m] = map.marker_x[m];
+      row[field_marker_y + m] = map.marker_y[m];
+      row[field_marker_kind + m] =
+          static_cast<std::uint8_t>(map.marker_kind[m]);
+    }
+    at += automap_sidecar_record_bytes;
+  }
+  return wanted;
+}
+
+bool automap_state::read_sidecar(std::span<const std::uint8_t> in) noexcept {
+  if (in.size() < automap_sidecar_header_bytes) {
+    return false;
+  }
+  for (std::size_t i = 0; i < automap_sidecar_magic.size(); ++i) {
+    if (in[i] != static_cast<std::uint8_t>(automap_sidecar_magic[i])) {
+      return false;
+    }
+  }
+  if (in[automap_sidecar_magic.size()] != automap_sidecar_version) {
+    return false;
+  }
+  const std::size_t count = word_at(in, 4);
+  const std::size_t stride = word_at(in, 6);
+  if (stride != automap_sidecar_record_bytes) {
+    return false;
+  }
+  if (count > max_records) {
+    return false;
+  }
+  if (in.size() < automap_sidecar_header_bytes + (count * stride)) {
+    // Truncated. Nothing is taken from it: half a table read as a whole
+    // one is a map with holes in it that nobody can tell from unexplored
+    // ground.
+    return false;
+  }
+
+  records_ = {};
+  next_slot_ = 0;
+  for (std::size_t i = 0; i < count; ++i) {
+    const std::span<const std::uint8_t> row =
+        in.subspan(automap_sidecar_header_bytes + (i * stride), stride);
+    automap_record& map = records_[next_slot_++];
+    map.used = true;
+    map.disk = row[field_disk];
+    map.area = row[field_area];
+    map.geo = row[field_geo];
+    map.marker_count = row[field_marker_count] <= automap_max_markers
+                           ? row[field_marker_count]
+                           : static_cast<std::uint8_t>(automap_max_markers);
+    for (std::size_t b = 0; b < automap_seen_bytes; ++b) {
+      map.seen[b] = row[field_seen + b];
+    }
+    for (std::size_t m = 0; m < automap_max_markers; ++m) {
+      map.marker_x[m] = row[field_marker_x + m];
+      map.marker_y[m] = row[field_marker_y + m];
+      const std::uint8_t kind = row[field_marker_kind + m];
+      map.marker_kind[m] = known_marker(kind)
+                               ? static_cast<automap_marker>(kind)
+                               : automap_marker::none;
+    }
+  }
+  if (next_slot_ >= max_records) {
+    next_slot_ = 0;
+  }
+
+  ++serial_;
+  // The map on the screen is not the map in the store any more.
+  drawn_signature_ = 0;
+  return true;
 }
 
 }  // namespace amberfolio::machine

@@ -76,8 +76,17 @@ What M4 left in place:
   table of every shut face in the shipped data. M5-E2b puts the zone's
   name in the band the panel's geometry leaves for it, in the program's
   own glyphs read out of its own font, off a table of (disk, area) to a
-  short label — because the program holds no such string to read.
-  Persistence is the remaining leg of #173),
+  short label — because the program holds no such string to read. M5-E2c
+  makes what it has walked outlive the machine: the seam calls
+  `automap_update` when a reveal changes something, and a host writes the
+  table into `\SAVE\AFMAP.DAT` beside the program's saves and never
+  inside one, with a snapshot per save slot so two playthroughs do not
+  share a map. It is off unless a host is asked (`--automap-store`,
+  `af_web_automap_store`), because a file appearing in a player's game
+  directory changes it and every recorded session pins its disk. Telling
+  a slot the program *loaded* from one the load menu merely looked at is
+  what added the two traffic flags to a DOS file-close event. #173 is
+  closed),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine

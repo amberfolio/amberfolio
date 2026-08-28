@@ -41,7 +41,9 @@
 
 #include "amberfolio/abi.h"
 #include "amberfolio/abi_bridge.h"
+#include "amberfolio/host/automap_store.h"
 #include "amberfolio/host/host_services.h"
+#include "amberfolio/machine/log.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/seam.h"
 #include "demo_program.h"
@@ -175,6 +177,43 @@ uint32_t af_web_attach_host_services(af_machine* box) {
     return AF_NO_MACHINE;
   }
   pc->seams().set_host(&services());
+  return AF_OK;
+}
+
+/// Keep the automap's exploration beside the save, in this module's own
+/// filesystem (M5-E2c, #173).
+///
+/// The same object the desktop host's `--automap-store` turns on
+/// (`hosts/common`), so a browser and a terminal write the same file with
+/// the same bytes. Off unless a page asks, for the reasons
+/// `automap_store.h` gives — and for one more that is the page's alone: a
+/// browser's filesystem is whatever was dropped into it, and writing into
+/// it is what makes an exploration outlive the tab.
+///
+/// **Call it after the files are in and before the program is loaded.**
+/// Turning it on reads the working table off the filesystem, so a
+/// filesystem that is still empty has nothing to give it.
+///
+/// The file events it needs — which save slot the program touched — reach
+/// it through the diagnostic log's relay (`machine/log.h`), because in
+/// this module that log *is* the machine's sink and there is nowhere else
+/// for a second C++ consumer to stand.
+///
+/// `AF_NO_MACHINE` for a null handle, `AF_OK` otherwise.
+uint32_t af_web_automap_store(af_machine* box, int32_t on) {
+  amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
+  if (pc == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  static amberfolio::host::automap_store::observer watcher{
+      services().automap()};
+  if (amberfolio::machine::diagnostic_log* log =
+          amberfolio::af_machine_log_unwrap(box);
+      log != nullptr) {
+    log->set_relay(on != 0 ? &watcher : nullptr);
+  }
+  services().automap().enable(on != 0);
+  services().automap().attach(*pc);
   return AF_OK;
 }
 

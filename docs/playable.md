@@ -1182,9 +1182,56 @@ the older rule: a passable face is a door. So this leg drives the
 unit suite and by no driven run yet — Kovel Mansion, on the other side of
 this same district, has forty-five shut faces waiting for one.
 
+**And what it walked outlives the machine** (M5-E2c). What the panel has
+explored is observation and not machine state, so it is gone when the
+machine stops — which is right for fidelity and no use to a player. So a
+host writes it beside the save, and the driving is a second run:
+
+```
+--seam code-wheel --seam automap --automap-store
+--press A@7600 --press Return@7650      the code wheel
+--press L@8950 --press A@9200           LOAD SAVED GAME, slot A
+--press Tab@11000                       the panel
+--press Up@11200 ... Right@11350 ...    twelve moves
+--press E@13500 --press S@14500 --press A@15500    ENCAMP, SAVE, slot A
+```
+
+```
+amberfolio: automap-store writes=4 reads=0 slot=A trouble=none
+```
+
+Two files afterwards, both this project's own and neither of them inside
+one of the program's: `\SAVE\AFMAP.DAT`, the working table, and
+`\SAVE\AFMAPA.DAT`, the snapshot that belongs to slot A. Take the
+working table away, so only the snapshot can supply anything, and load
+slot A again:
+
+```
+amberfolio: automap-store reads=1 slot=A
+```
+
+The panel comes up with the streets already on it, and the same script
+through `drive.mjs` against the wasm module produces a final frame that
+is byte for byte the desktop host's — the same object writing the same
+file on both hosts, and both reading it back.
+
+**The store is off unless it is asked for**, and that is a decision
+rather than caution. This is a real directory of the player's; and every
+session in `tests/sessions` pins its disk by name, size and SHA-256, so a
+sidecar written by a verification run would make the next run's disk a
+different disk. The session pair below runs with the seam on and the
+store off, which is why the fidelity numbers are unchanged by any of it.
+
+**What the driving found here**, and no test would have: the load menu
+opens *every* save file in the directory in turn to find out which slots
+exist. A store acting on the naming call alone loads nine slots' maps for
+one load and leaves the player looking at the last one in the directory.
+`file_event` now says whether bytes actually moved through the handle,
+which is what the proven design's own file layer counted, and
+`docs/machine.md`'s file-event section has it.
+
 **What this leg does not cover** is written down in the honest-gaps list
-below and in `docs/seams.md` §10: nothing is persisted. That is the last
-leg of #173, with its own change.
+below.
 
 ---
 
@@ -1306,7 +1353,10 @@ what it skips would be worth less than one that says so.
   twenty-nine names has been seen drawn, and the wrap's other two shapes
   — a name broken at its soft break, and the `AREA <n>` a map with no row
   falls back to — are unit tests over a font a test hands the seam and
-  have never been on a screen.
+  have never been on a screen. The fourth is the **sidecar's second
+  slot**: the driven runs write and read back slot A, and two
+  playthroughs in two slots not sharing one map is a unit test over file
+  events a test hands the store, not a run.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam

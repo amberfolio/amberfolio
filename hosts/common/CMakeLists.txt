@@ -13,7 +13,9 @@
 # adds nothing to the wasm module's dependency footprint that was not
 # already there.
 
-add_library(amberfolio-host-services STATIC src/host_services.cpp)
+add_library(amberfolio-host-services STATIC
+  src/host_services.cpp
+  src/automap_store.cpp)
 add_library(amberfolio::host_services ALIAS amberfolio-host-services)
 
 target_include_directories(amberfolio-host-services PUBLIC include)
@@ -30,7 +32,9 @@ if(AMBERFOLIO_BUILD_TESTS)
   include(AmberfolioGoogleTest)
   include(GoogleTest)
 
-  add_executable(amberfolio-host-services-tests tests/host_services_test.cpp)
+  add_executable(amberfolio-host-services-tests
+    tests/host_services_test.cpp
+    tests/automap_store_test.cpp)
   target_link_libraries(amberfolio-host-services-tests PRIVATE
     amberfolio::core
     amberfolio::host_services

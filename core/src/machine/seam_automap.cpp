@@ -1831,9 +1831,19 @@ void at_key_pending(machine& box, seam_context& ctx) {
     learn_appearance(box, ds, now, grid, banks);
   }
   if (want_reveal) {
+    const std::uint32_t was = state.serial();
     reveal_from(state, state.record_for(now.disk, now.area, now.geo), grid,
                 now.x, now.y, now.facing);
     state.set_revealed_signature(where);
+    if (state.serial() != was) {
+      // Something is explored that was not (M5-E2c). The host is told so
+      // it can persist beside the save, and the serial is the argument
+      // because it is the one number that says *which* version was
+      // handed over. Nothing is done with the answer: a host that has
+      // attached nothing, or has not been asked to store anything, is
+      // the ordinary case and not a failure.
+      (void)ctx.call_host(seam_host_service::automap_update, state.serial());
+    }
   }
   if (!want_draw) {
     return;

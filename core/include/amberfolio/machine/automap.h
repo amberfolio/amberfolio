@@ -68,6 +68,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 namespace amberfolio::machine {
 
@@ -150,6 +151,42 @@ enum class automap_marker : std::uint8_t {
 /// (`seam_engine::max_seams`, the trace ring): a map with more than a
 /// dozen ways in and out is not one this can usefully draw anyway.
 inline constexpr std::size_t automap_max_markers = 12;
+
+/// The sidecar's layout version, and the four bytes that name one.
+///
+/// **The layout is decided here** rather than by whichever host happens
+/// to write it, because two things read these records: the panel (#173)
+/// and the explored overlay (#179), and a host is not the place to settle
+/// what they must agree about. A reader that does not know a version
+/// refuses the file and says so — an exploration table read as the wrong
+/// shape paints a map nobody has walked, which is worse than an empty
+/// one.
+inline constexpr std::uint8_t automap_sidecar_version = 1;
+inline constexpr std::array<char, 3> automap_sidecar_magic{'A', 'F', 'M'};
+
+/// One record on disk, fixed width, little-endian where it is wider than
+/// a byte. Fixed rather than packed: a table of at most sixty-four maps
+/// is four and a half kilobytes at its very largest, and a format a
+/// reader can index into is worth more than the bytes.
+///
+///     0   1   the disk
+///     1   1   the area
+///     2   1   the geometry block
+///     3   1   how many marks are live
+///     4   32  one bit per cell, `y * 16 + x`, low bit of a byte first
+///     36  12  the marks' x
+///     48  12  the marks' y
+///     60  12  the marks' kind
+inline constexpr std::size_t automap_sidecar_record_bytes =
+    4 + automap_seen_bytes + (3 * automap_max_markers);
+
+/// And the header in front of them:
+///
+///     0   3   "AFM"
+///     3   1   the version
+///     4   2   how many records follow
+///     6   2   how many bytes each of them is
+inline constexpr std::size_t automap_sidecar_header_bytes = 8;
 
 /// One map's exploration.
 struct automap_record {
@@ -308,6 +345,43 @@ class automap_state {
     return door_nibbles_;
   }
   void set_door_nibbles(std::uint16_t mask) noexcept { door_nibbles_ = mask; }
+
+  // --- the sidecar (M5-E2c) --------------------------------------------
+  //
+  // What has been seen is the half of this a player would be sorry to
+  // lose, so a host persists it beside the save. Only the records go:
+  // what the panel is doing, what colour this map's walls are and where
+  // the party last stood are a session's business and are worked out
+  // again in the first moments of the next one.
+
+  /// How many bytes `write_sidecar` would fill for the records in hand.
+  [[nodiscard]] std::size_t sidecar_bytes() const noexcept;
+
+  /// The records, into `out`. Answers how many bytes were written, or
+  /// zero if `out` is too small to hold them — which a caller finds out
+  /// by asking `sidecar_bytes()` first, the way the rest of this tree's
+  /// size-then-fill calls work.
+  [[nodiscard]] std::size_t write_sidecar(
+      std::span<std::uint8_t> out) const noexcept;
+
+  /// Drop every record and keep everything else — what a host does when
+  /// a save slot is loaded that has no sidecar beside it.
+  ///
+  /// Deliberately not `clear()`: the panel being open, and where the
+  /// party was last believed to be, are the *session's* and have nothing
+  /// to do with which map is remembered. A player who loads a save with
+  /// the panel up should still have the panel up.
+  void forget_records() noexcept;
+
+  /// Read a sidecar back, **replacing** every record. False when the
+  /// bytes are not a sidecar this build knows how to read, and then
+  /// nothing has been touched: a refusal leaves what was already
+  /// explored alone rather than dropping it.
+  ///
+  /// On success the serial moves and the panel's drawn signature is
+  /// cleared, because the map on the screen is no longer the map in the
+  /// store.
+  [[nodiscard]] bool read_sidecar(std::span<const std::uint8_t> in) noexcept;
 
   // --- where the party was when it last stood still --------------------
 

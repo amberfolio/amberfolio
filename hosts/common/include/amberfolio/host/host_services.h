@@ -30,16 +30,20 @@
 // `seam_host_services::serve()`'s own contract).
 //
 //
-// What it does, and what it deliberately does not do yet
-// -----------------------------------------------------
+// What it does
+// ------------
 //
-// M5-D1 is a door, not a consumer. The journal reader (#175) and the
-// automap panel (#173, with the explored overlay #179 beside it) are the
-// enhancements that will do something with these calls, and each brings
-// its own state and its own drawing. What this object does today is the
-// part that is the *door*: it takes the call, it reads the machine at
-// the moment of the call, and it remembers what it saw, so that a host
-// can say afterwards that the callout arrived and when.
+// M5-D1 built the door and left it with no consumer. What it does in
+// every case is the part that is the *door*: it takes the call, it reads
+// the machine at the moment of the call, and it remembers what it saw, so
+// that a host can say afterwards that the callout arrived and when.
+//
+// **And since M5-E2c it has one consumer**: `automap_update` drives the
+// exploration sidecar (`automap_store.h`), which reads what the panel has
+// explored out of the machine and writes it into a file beside the save.
+// That is a host doing host work — files are a host's, by PLAN.md §4 —
+// and it is off unless a host has been asked for it. The journal reader
+// (#175) is the other, and it does not exist yet.
 //
 // The virtual time is the fact worth keeping, and the one only a
 // synchronous implementation can have: `machine::time()` at the instant
@@ -60,6 +64,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "amberfolio/host/automap_store.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/seam.h"
 
@@ -82,10 +87,15 @@ class host_services final : public machine::seam_host_services {
  public:
   host_services() = default;
 
-  /// Read the machine, remember what was asked, and return. Writes
-  /// nothing: a seam is the only thing that may move this machine
-  /// (PLAN.md §4), and a host service that wrote it would be the
-  /// fidelity boundary's one rule broken from the far side.
+  /// Read the machine, remember what was asked, and return.
+  ///
+  /// **It never writes machine state.** A seam is the only thing that
+  /// may move this machine (PLAN.md §4), and a host service that wrote
+  /// it would be the fidelity boundary's one rule broken from the far
+  /// side. What it may touch, and does since M5-E2c, is the exploration
+  /// store — which is observation and not machine state, on
+  /// `machine/automap.h`'s own three terms — and files, which are a
+  /// host's own business.
   void serve(machine::machine& box, machine::seam_host_service which,
              std::uint32_t argument) override;
 
@@ -94,8 +104,21 @@ class host_services final : public machine::seam_host_services {
     return records_[static_cast<std::size_t>(which)];
   }
 
+  /// The exploration sidecar `automap_update` drives (M5-E2c, #173).
+  ///
+  /// It lives here because this is the object both hosts already attach,
+  /// so a browser gets the persistence with no wiring of its own beyond
+  /// the flag that turns it on and the file events that tell it which
+  /// save slot the program touched. It is off until a host enables it,
+  /// and while it is off `serve()` below still does everything it did.
+  [[nodiscard]] automap_store& automap() noexcept { return automap_; }
+  [[nodiscard]] const automap_store& automap() const noexcept {
+    return automap_;
+  }
+
  private:
   std::array<host_service_record, machine::seam_host_service_count> records_{};
+  automap_store automap_{};
 };
 
 }  // namespace amberfolio::host
