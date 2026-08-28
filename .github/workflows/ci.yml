@@ -9,10 +9,28 @@ on:
   # A branch pushed without a pull request now gets no run until one is
   # opened, which is the intended trade: work that is not up for review
   # does not need four targets built.
+  #
+  # Tags are the exception, and a deliberate one: a `v*` tag is what
+  # publishes a Release (#200), and a tag is pushed rarely and on purpose,
+  # so the second full matrix run it costs is the price of shipping bytes
+  # that every gate below has just agreed about.
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     types: [opened, synchronize, reopened]
+  # For a tag that was pushed before this workflow knew what to do with
+  # one — v0.1.0 and v0.2.0 both predate the release job, and nothing is
+  # ever retagged (CONTRIBUTING.md). Dispatching *at* such a tag would run
+  # that tag's own copy of this file, which has no release job in it, so
+  # the tag is named as an input instead and every job below checks it
+  # out. Leave it empty to run the workflow on the ref as usual.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing v* tag to build and release (e.g. v0.2.0)'
+        required: false
+        default: ''
 
 # The conformance vector cache (issue #14). Written out here rather than
 # taken from a job output because every job that restores it needs it,
@@ -23,6 +41,20 @@ on:
 # cannot go stale unnoticed.
 env:
   CONFORMANCE_CACHE_KEY: conformance-v2-aea84484abc7-c1
+
+  # What every job checks out, in one place because seven of them do it and
+  # a ref that differs between two of them is a release whose manifest
+  # describes a build that never happened.
+  #
+  # `github.sha` is deliberately *not* the whole answer. On a pull request
+  # it is GitHub's synthetic merge commit, which carries no Signed-off-by
+  # and is not the tree the contributor wrote — hence the head sha. And on
+  # a tag push it is the annotated tag object's own sha, not the commit's:
+  # forty lowercase hex characters that look exactly like a commit,
+  # resolve to no tree, and would have gone straight into both the page's
+  # §13 source link and the release manifest's `sourceCommit`. Name the
+  # ref there and let git peel it.
+  BUILD_REF: ${{ github.event.pull_request.head.sha || github.event.inputs.tag && format('refs/tags/{0}', github.event.inputs.tag) || startsWith(github.ref, 'refs/tags/') && github.ref || github.sha }}
 
 # Every job below carries a `timeout-minutes:`. GitHub's default is 360,
 # which is less a timeout than an afternoon: a step that hangs — and the
@@ -44,10 +76,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # On pull_request the default checkout is GitHub's synthetic
-          # merge commit, which carries no Signed-off-by; guard the PR
-          # head instead so the DCO check sees the contributor's commits.
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # BUILD_REF, not the default: on pull_request the default
+          # checkout is GitHub's synthetic merge commit, which carries no
+          # Signed-off-by, so the DCO check would never see the
+          # contributor's own commits.
+          ref: ${{ env.BUILD_REF }}
       # clang-format is pinned so CI and a contributor's machine reach the
       # same verdict; the wheel is the one install that works identically
       # on all three desktop platforms, which is what CONTRIBUTING.md
@@ -71,6 +104,14 @@ jobs:
       # nobody would otherwise assert (#101).
       - name: session-runner self-test (the skip that is not a pass)
         run: bash scripts/test-sweep.sh
+      # And the release bundler's, for the third time for the same reason.
+      # What it stages is what another repository pins by sha256 and
+      # refuses to build without (#200), so its refusals — a build tree
+      # that has drifted from the asset list, a `sourceCommit` that is an
+      # annotated tag object rather than a commit — have to be refusals
+      # here rather than on the one push a year that publishes a tag.
+      - name: release-bundler self-test (the refusals)
+        run: bash scripts/test-release-bundle.sh
       - name: content guard (every commit + index + working tree)
         run: bash scripts/check-clean.sh
       - name: DCO check (every non-merge commit)
@@ -93,7 +134,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.BUILD_REF }}
       - name: SDL3 backend headers
         # apt on these runners stalls mid-fetch and never comes back.
         # Two guesses at the cause have now been wrong: it is not a
@@ -243,7 +284,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.BUILD_REF }}
       # For the fetch script, and so that `python` means the same thing
       # on all three runners.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -307,7 +348,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.BUILD_REF }}
       - name: ccache
         uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
         with:
@@ -402,8 +443,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # Same reasoning as the guards job: build the contributor's head
-          # commit, not GitHub's synthetic merge commit.
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          # commit and not GitHub's synthetic merge commit, and a tag's
+          # commit and not the tag object. See BUILD_REF at the top.
+          ref: ${{ env.BUILD_REF }}
 
       # CMake, Ninja and node come with every runner image; only the SDL3
       # backend headers and the compilers have to be arranged for.
@@ -578,10 +620,21 @@ jobs:
       # than to a branch that will have moved on by the time anyone
       # follows it. Passed to every preset from this one shared step; only
       # the web host reads it (see the top-level CMakeLists).
+      #
+      # The sha comes out of the checkout rather than out of an expression:
+      # HEAD is what was built, whatever kind of ref pointed at it, and on
+      # a tag push an expression would have pinned the offer to the tag
+      # object (see BUILD_REF at the top of this file). The release job
+      # resolves the same commit the same way, which is what makes a
+      # release's `sourceCommit` and the page's own link the same string.
+      - name: The commit this build came from
+        id: commit
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: configure
         run: >
           cmake --preset ${{ matrix.preset }}
-          "-DAMBERFOLIO_SOURCE_URL=${{ github.server_url }}/${{ github.repository }}/tree/${{ github.event.pull_request.head.sha || github.sha }}"
+          "-DAMBERFOLIO_SOURCE_URL=${{ github.server_url }}/${{ github.repository }}/tree/${{ steps.commit.outputs.sha }}"
       - name: build
         run: cmake --build --preset ${{ matrix.preset }}
       # On the native targets this is the GoogleTest suite (one CTest case
@@ -666,7 +719,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.BUILD_REF }}
       - name: ccache
         uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
         with:
@@ -740,7 +793,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ env.BUILD_REF }}
 
       # Production for main, a preview for a pull request from this
       # repository, nothing otherwise. Two cases deliberately pass rather
@@ -770,6 +823,8 @@ jobs:
             target=production
           elif [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             target=preview
+          elif [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            reason="a tag run publishes a Release, not a deployment (see the release job)"
           else
             reason="only main is published; a pull request from this repository gets a preview"
           fi
@@ -853,3 +908,167 @@ jobs:
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Publish a tag: the web host's build output, attached to a GitHub
+  # Release with its hashes (#200).
+  #
+  # The site that hosts the wasm build consumes a release as a pinned
+  # build input — a tag and a sha256 per asset in a lockfile, and a build
+  # that refuses to start when the bytes do not match. Before this, the
+  # only thing to pin was the dev page above, which is redeployed on every
+  # push to main and served `no-store`: every landing here was a red build
+  # downstream and a lockfile bump nobody asked for. A tag is the fix
+  # because a tag is deliberate, rare, and never moved (CONTRIBUTING.md).
+  #
+  # The bytes are the artifact the wasm matrix row uploaded rather than a
+  # rebuild — so the release is literally the bytes this run tested, and
+  # the deployed page and the release can never disagree about what a
+  # commit builds to. Everything about the shape of the bundle lives in
+  # scripts/release-bundle.sh, where it is tested; this job downloads,
+  # calls it, and hands the result to `gh`.
+  release:
+    name: release (${{ github.event.inputs.tag || github.ref_name }})
+    # A `v*` tag push, or a dispatch that named one. Spelled out rather
+    # than taken from BUILD_REF because a job-level `if:` has no `env`
+    # context.
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.event.inputs.tag, 'v')
+    # The same gate the deploy job uses, for the same reason: nothing ships
+    # past a red guard, tidy, build, sanitizer or conformance run. A
+    # release is the more permanent of the two — a deployment is replaced
+    # by the next push; a published sha256 is pinned somewhere else by
+    # morning.
+    needs: [guards, tidy, build, sanitizers, conformance]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The only job in this workflow that writes anything back, and the
+    # narrowest grant that lets it. Everything else runs on the default
+    # token.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_REF }}
+          # The tag *object*, for two things: peeling it to the commit, and
+          # its message. CONTRIBUTING.md asks a tag for one paragraph on
+          # what the milestone means and what it does not; that paragraph
+          # is the release notes, so a milestone has one description rather
+          # than two that can disagree.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: The tag, and the commit it names
+        id: what
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "::error::'$TAG' is not a vMAJOR.MINOR.PATCH tag"
+              exit 1
+              ;;
+          esac
+          commit=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
+          head=$(git rev-parse HEAD)
+          # BUILD_REF is what every job in this run checked out, so this
+          # equality is the whole reason the released manifest may claim
+          # these bytes came from this commit. If it ever fails, the matrix
+          # built one tree and the release is describing another.
+          if [ "$commit" != "$head" ]; then
+            echo "::error::$TAG names $commit but this run built $head"
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "commit=$commit"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download the web host the wasm job built
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-host
+          path: web-host
+
+      - name: Stage the release
+        env:
+          TAG: ${{ steps.what.outputs.tag }}
+          COMMIT: ${{ steps.what.outputs.commit }}
+        run: |
+          bash scripts/release-bundle.sh \
+            web-host "$RUNNER_TEMP/release" "$TAG" "$COMMIT"
+
+      # The tag's own message on top, then what a consumer needs: the
+      # commit, which is the link that discharges AGPL-3.0-only §13 for
+      # anyone serving these bytes over a network, and the hashes in the
+      # form a person checks by hand.
+      - name: Release notes
+        env:
+          TAG: ${{ steps.what.outputs.tag }}
+          COMMIT: ${{ steps.what.outputs.commit }}
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}/tree/${{ steps.what.outputs.commit }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          bt='`'
+          {
+            # Subject and body rather than %(contents), which on a signed
+            # tag would paste the PGP block into the notes as well.
+            git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' "$TAG"
+            echo
+            echo '---'
+            echo
+            echo 'The web host of this project, for a page that wants to run the'
+            echo 'emulator without containing it. `manifest.json` states the sha256'
+            echo 'and the size of each of the six bundle files, and the commit they'
+            echo 'were built from; `SHA256SUMS` covers every asset here, notices'
+            echo 'included.'
+            echo
+            # The backtick comes from a variable because inside double
+            # quotes a pair of them is command substitution, and the sha
+            # would have been run as a command.
+            echo "- Source: [${bt}${COMMIT}${bt}]($SOURCE)"
+            echo "- Built by: [this run]($RUN)"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/release/SHA256SUMS"
+            echo '```'
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
+
+      # `gh` rather than a release action: it is on the runner already, so
+      # there is one less third-party action in the supply chain of the one
+      # job here that can write to the repository — and pinning that action
+      # by sha, which is what this workflow does with everything else,
+      # would have been pinning a wrapper around this same command.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.what.outputs.tag }}
+        run: |
+          # Never over an existing one. The assets are not bit-reproducible
+          # — a different emsdk build of the same source is a different wasm
+          # — so replacing them would change hashes somebody has already
+          # pinned, under a tag they were told never moves. A release that
+          # has to be redone is deleted by hand first, on purpose, by
+          # someone who has checked who is pinning it.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::a release for $TAG already exists; delete it" \
+              "deliberately (gh release delete $TAG) before re-publishing," \
+              "and expect every consumer pinning its hashes to notice"
+            exit 1
+          fi
+          # 0.x is a pre-release by PLAN.md §7 — the milestone tags exist so
+          # that there is always a current, runnable one while the work
+          # converges on 1.0, and none of them is that release.
+          extra=()
+          case "$TAG" in
+            v0.*) extra+=(--prerelease) ;;
+          esac
+          # --verify-tag: make a release for a tag that exists, never a tag
+          # as a side effect of releasing.
+          gh release create "$TAG" \
+            --verify-tag \
+            --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            "${extra[@]}" \
+            "$RUNNER_TEMP/release"/*
