@@ -2009,6 +2009,109 @@ struct probe_layout {
   return built;
 }
 
+// ---------------------------------------------------------------------------
+// The automap's hotkey claim, at program scale (M5-E2, #173)
+// ---------------------------------------------------------------------------
+//
+// The claim `seam_automap.cpp` makes about the keyboard funnel is a claim
+// about a *program*: with the automap on, the number of times the program
+// polls and the sequence of keys it is handed are what they would have
+// been had Tab never been typed. That is not something a handler test can
+// say, so it is said here, where all four targets run it.
+//
+// The stand-in is the real handler at a made-up address — which is what a
+// stand-in is. Its offsets are this assembler's; its behaviour is the
+// seam's own, read out of the definition rather than re-implemented, so
+// nothing here can drift from what ships.
+//
+//         mov  ax, cs / add ax, 0C7Ch / mov ds, ax   ; the data segment
+//         mov  cx, 4000h                             ;  where the seam
+// poll:   mov  ah, 01h / int 16h                     ;  insists it is
+//         jnz  got
+//         loop poll
+//         xor  ax, ax
+//         jmp  done
+// got:    mov  ah, 00h / int 16h
+// done:   push cs / pop ds / mov [result+0], ax
+//         <exit 89h>
+//
+// The data segment it points DS at is untouched RAM, so every byte the
+// seam reads through it is zero — which is not the adventuring mode, so
+// the panel half of the handler does nothing and only the claim runs.
+// That is the half being measured.
+
+/// The paragraph offset of the program's data segment from its image, as
+/// `seam_automap.cpp`'s fact table has it. Restated rather than shared:
+/// this program is standing in for the real one and has to be laid out
+/// the way the facts say, not the way the seam happens to compute.
+constexpr std::uint16_t automap_dgroup_paragraphs = 0xC7C;
+
+/// Tab, as the BIOS hands it over. The scan code the host maps the key to
+/// and the character that goes with it.
+constexpr std::uint8_t automap_tab_scancode = 0x0F;
+constexpr std::uint16_t automap_tab_keystroke = 0x0F09;
+
+/// What the loop costs when the poll finds nothing — which is what the
+/// quiet run costs, what the run with the seam on and no key costs, and
+/// what the run with the seam on and a Tab typed costs. **Three entries
+/// claiming one number** is the whole instrument (`machine_program::steps`).
+constexpr std::uint64_t automap_unheard_steps = 81'934;
+
+struct automap_layout {
+  std::vector<std::uint8_t> file;
+  std::uint32_t poll_offset{};
+};
+
+[[nodiscard]] const automap_layout& automap_probe() {
+  static const automap_layout built = [] {
+    assembler a;
+    a.db({0x8C, 0xC8});  // mov ax, cs
+    a.db({0x05});
+    a.dw(automap_dgroup_paragraphs);  // add ax, 0C7Ch
+    a.db({0x8E, 0xD8});               // mov ds, ax
+    a.db({0xB9});
+    a.dw(0x4000);  // mov cx, 4000h
+    a.label("poll");
+    a.db({0xB4, 0x01, 0xCD, 0x16});  // mov ah, 01h / int 16h
+    a.jump(0x75, "got");             // jnz got
+    a.jump(0xE2, "poll");            // loop poll
+    a.db({0x31, 0xC0});              // xor ax, ax
+    a.jump(0xEB, "done");            // jmp done
+    a.label("got");
+    a.db({0xB4, 0x00, 0xCD, 0x16});  // mov ah, 00h / int 16h
+    a.label("done");
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+    store(a, 0, reg_ax);
+    exit_with(a, 0x89);
+    a.pad_to(machine_layout::result_offset + 0x10);
+
+    automap_layout out;
+    out.poll_offset = static_cast<std::uint32_t>(a.offset_of("poll"));
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x0100,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
+}
+
+/// The automap seam's own handler for the point it claims keys at, taken
+/// from the definition this build ships. Null would be a seam table that
+/// no longer carries an automap, which the definition test would have
+/// failed on first.
+[[nodiscard]] machine::seam_handler automap_key_handler() {
+  for (const machine::seam_definition& seam : machine::all_seams()) {
+    if (seam.id == "automap") {
+      return seam.points.front().run;
+    }
+  }
+  return nullptr;
+}
+
 /// The two handlers. Plain functions with nowhere to keep state, exactly
 /// as a real seam's are (machine/seam.h).
 void probe_edit_ax(machine::machine& box, machine::seam_context& /*ctx*/) {
@@ -3166,6 +3269,70 @@ constexpr std::array<machine::seam_point, 1> door_points{
   }
 
   {
+    // M5-E2 (#173): the automap's key claim, four ways. The three
+    // entries that end with an unheard poll claim the same step count,
+    // and that equality is the invariant — a program cannot tell a key
+    // this seam took from a key nobody typed.
+    machine_program p;
+    p.name = "automap_probe_quiet";
+    p.about = "the poll loop with nothing typed and no seam";
+    p.setup.exe = automap_probe_file();
+    p.setup.exe_path = "\\AUTOMAP.EXE";
+    p.setup.step_cap = 200'000;
+    p.results = {{.what = "no key was waiting", .value = 0}};
+    p.steps = automap_unheard_steps;
+    p.exit_code = 0x89;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "automap_probe_tab_seen";
+    p.about = "Tab reaches a program the automap is not watching";
+    p.setup.exe = automap_probe_file();
+    p.setup.exe_path = "\\AUTOMAP.EXE";
+    p.setup.keys = {
+        {.at = machine::ticks{0}, .scancode = automap_tab_scancode}};
+    p.setup.step_cap = 200'000;
+    p.results = {{.what = "the keystroke the program was handed",
+                  .value = automap_tab_keystroke}};
+    p.exit_code = 0x89;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "automap_probe_tab_claimed";
+    p.about = "the automap takes Tab and the program polls as if none came";
+    p.setup.exe = automap_probe_file();
+    p.setup.exe_path = "\\AUTOMAP.EXE";
+    p.setup.keys = {
+        {.at = machine::ticks{0}, .scancode = automap_tab_scancode}};
+    p.setup.seam_definitions = {&automap_probe_definition()};
+    p.setup.seams = {"automap-probe"};
+    p.setup.step_cap = 200'000;
+    p.results = {{.what = "no key was waiting", .value = 0}};
+    p.steps = automap_unheard_steps;
+    p.exit_code = 0x89;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "automap_probe_untouched";
+    p.about = "the automap on, nothing typed, and the run is the plain one";
+    p.setup.exe = automap_probe_file();
+    p.setup.exe_path = "\\AUTOMAP.EXE";
+    p.setup.seam_definitions = {&automap_probe_definition()};
+    p.setup.seams = {"automap-probe"};
+    p.setup.step_cap = 200'000;
+    p.results = {{.what = "no key was waiting", .value = 0}};
+    p.steps = automap_unheard_steps;
+    p.exit_code = 0x89;
+    list.push_back(std::move(p));
+  }
+
+  {
     // The trigger, both ways (#161). Pulled: the handler runs once and
     // the program stores the seam's word. On and not pulled: the point
     // is reached, nothing happens, and the result block is the plain
@@ -3533,6 +3700,26 @@ const machine::seam_definition& seam_probe_definition() {
   return definition;
 }
 
+const machine::seam_definition& automap_probe_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(automap_probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 1> points{
+      {{.module = machine::resident_image,
+        .offset = automap_probe().poll_offset,
+        .run = automap_key_handler()}}};
+  static const machine::seam_definition definition{
+      .id = "automap-probe",
+      .about = "the automap's own key claim, at a made-up address",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
+
 const machine::seam_definition& seam_probe_unreached_definition() {
   // Same fingerprint as the seam above — it is the same program, and
   // that is the point: this seam is available, enable-able and armable
@@ -3697,6 +3884,10 @@ const machine::seam_definition& seam_camp_definition() {
 const std::vector<std::uint8_t>& seam_camp_file() { return camp_file(); }
 
 const std::vector<std::uint8_t>& seam_probe_file() { return probe().file; }
+
+const std::vector<std::uint8_t>& automap_probe_file() {
+  return automap_probe().file;
+}
 
 std::vector<machine_program> all_machine_programs() { return build_all(); }
 

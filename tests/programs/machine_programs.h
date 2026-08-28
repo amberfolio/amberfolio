@@ -339,6 +339,11 @@ struct machine_program {
 /// host that wants to stage it somewhere of its own (hosts/web).
 [[nodiscard]] const std::vector<std::uint8_t>& seam_probe_file();
 
+/// The automap probe's image, and the seam that claims a key inside it
+/// (M5-E2, #173).
+[[nodiscard]] const std::vector<std::uint8_t>& automap_probe_file();
+[[nodiscard]] const machine::seam_definition& automap_probe_definition();
+
 /// One program by name, or null. The composite is `"composite"` — the
 /// program M2-H2's dev page (#55) embeds, which is why finding one by
 /// name is part of the interface rather than something a caller does with

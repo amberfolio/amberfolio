@@ -161,6 +161,10 @@ void machine::reset() {
   seams_.clear();
   overlays_.clear();
 
+  // And nothing has been explored: the automap's store is derived from a
+  // run, so a machine with no program has none of it (automap.h).
+  automap_.clear();
+
   // The video BIOS's bookkeeping goes back to power-on state along with
   // everything else here: a reset machine has no mode set, exactly as a
   // freshly powered-on one does not.

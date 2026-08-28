@@ -1068,6 +1068,104 @@ point: the suite was green throughout.
 
 ---
 
+## Leg 8 — a map of where you have been (M5-E2, #173)
+
+PLAN.md §5 item 3, the second M5 enhancement, and the first seam in this
+tree that draws. `docs/seams.md` §10 is what it is and how it works; this
+is the driving.
+
+```
+--seam code-wheel --seam automap
+--press A@7600 --press Return@7650      the code wheel
+--press L@8950 --press A@9200           LOAD SAVED GAME, slot A
+--press Tab@11000                       the panel
+--press Up@11200 ... Right@11350 ...    forty-eight moves, 150 frames apart
+--press Tab@19200                       and the party list back
+```
+
+Nothing about the first four lines is new; the fifth is the whole leg.
+Tab is **not a key this game has**, and that is why it is the one: the
+1988 input alphabet has no Tab in it, so a key claimed here cannot also
+be one of the program's. With the seam off it reaches the program, which
+goes round its command loop again and does nothing with it. With the seam
+on it never gets that far — it is taken out of the BIOS keystroke buffer
+before the program's own key routine looks — and a panel appears over the
+party roster.
+
+**What forty-eight moves through New Phlan look like.** The party starts
+at the docks end and walks north and east to the armourer at `8,11`, and
+the streets fill in behind it: floor in the colour the program says the
+3D view's ground is, walls in the area's own frame colour, a way through
+drawn as a gap with a stub at each end, and a white arrow that turns with
+the party. The status row below it — `8,11 E 03:18` — is the *program's*,
+untouched, and the panel stops one row short of it deliberately: that row
+is redrawn as the clock ticks, and a panel that claimed it would flicker
+once a minute for nothing.
+
+**The panel yields to the game, and the game takes it back.** An NPC's
+portrait and a message do not disturb it, because they do not touch those
+cells — which is right, and is what the roster does too. A character
+sheet, an item list or a shop *clears* them first, and the seam hears
+that through the program's own clear routines and stops claiming them;
+when the program repaints the roster, the panel comes back on the next
+poll. Nothing here knows *what* took the screen, only that something did.
+
+**Tab again puts the game's own screen back**, and it is the program that
+draws it: the panel wrote over the party list, so the seam calls the
+program's per-mode screen composer (`docs/seams.md` §3's call door) and
+the roster returns from live state, six names, their armour class and
+their hit points. A snapshot of the pixels could not have done it — the
+game redraws single roster rows while the panel is up, so a snapshot is
+stale the moment somebody takes damage.
+
+**What driving it found**, and no test could: the composer has to be
+called at the paragraph it was *linked at*, not at the image base with
+the whole offset in IP. Both run the same bytes; the second reaches its
+own literals through the wrong CS and puts the roster back drawn out of
+somebody else's data. `docs/seams.md` §8.4 has it as a trap, because the
+next routine a seam calls will have the same property.
+
+**The pair.** `tests/sessions/walk.rec` and `walk-map.rec` are this run
+recorded twice, one flag apart, with the Tab in **both** halves at the
+same tick:
+
+```
+  walk-map  contrast ok  90 of 203 checkpoints identical, then
+                         divergent from tick 218787888 to the end
+```
+
+Ninety identical checkpoints is the fidelity claim on a real game run:
+the seam is on, armed at five addresses and reached over a million times,
+and until somebody presses Tab the machine is the machine it would have
+been. Tick 218,787,888 is frame 11,003 — the Tab, three frames late,
+which is how long it takes the program to poll.
+
+**And it is the same panel in the browser's machine.** Leg 6's method,
+applied to this leg: the identical script through `drive.mjs` against the
+wasm module, and the two hosts' final frames compared as files.
+
+```
+node build/wasm/hosts/web/Debug/drive.mjs <your-directory> START.EXE   --seam code-wheel --seam automap --press A@7600 --press Return@7650   --press L@8950 --press A@9200 --press Tab@11000 <the forty-eight moves>   --until 381818240 --quiet --dump wasmmap
+```
+
+```
+amberfolio: seam automap armed fired=1283132
+amberfolio: throughput virtual=320.000s wall=33.6s factor=9.52x
+            steps=95454560 steps/s=2839333
+```
+
+The same 95,454,560 steps as the desktop run, and `cmp` on the two `.ppm`
+files says nothing: every one of the 64,000 pixels agrees, panel
+included. That is #173's "on both hosts", made as a comparison of two
+files rather than as two people's descriptions of two screens.
+
+**What this leg does not cover** is written down in the honest-gaps list
+below and in `docs/seams.md` §10: the wall colours are one shade, doors
+are not told from archways, the label band is empty, and nothing is
+persisted. Each is a leg of #173 with its own change.
+
+---
+
 ## Presenting a document (M5-D3, #171)
 
 PLAN.md §5 gates two of the enhancements on a document the player holds —
@@ -1171,6 +1269,15 @@ what it skips would be worth less than one that says so.
   mend). The report's reason column for those is drawn by tests over
   rosters the unit suite writes, and by nothing else. The way to close it
   is still the way #196 named: a leg that fights, survives and camps.
+- **The automap, off the city streets** (#173). Leg 8 drives it through
+  New Phlan and nowhere else. What that leaves untested against a real
+  program is the part the store was built for: a **map change**, where
+  the party's position words hold the old cell until the program's
+  arrival script places it and the seam has to wait for the position to
+  stop moving before it believes it. The settling rule and the marks it
+  plants have unit tests over positions a test hands them; nobody has
+  walked through the gate at `0,4` with the panel up and watched the
+  panel change maps. The dungeon gap above is the same door.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam
