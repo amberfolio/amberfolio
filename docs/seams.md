@@ -1091,6 +1091,7 @@ boundary, and it needs the argument this document would have to carry.
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
+| `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
 
 ### The Encamp (F)ix (#172, #186, #189, #194)
 
@@ -1388,10 +1389,15 @@ cures there was no deficit left to close — and the program answered with
 an event of its own, the city watch moving the party along. Its rules,
 running inside the rest the seam asked for.
 
-**What is still not measured**: nobody has driven a party so hurt that
-the cures run out and the days do the rest — the arithmetic for that is
-tested against rosters a test writes, not driven. `docs/playable.md`'s
-leg 7 says the same thing from the run's side.
+**And a party the cures cannot finish** (M5-E1d, #196), which is what
+that had never been driven against. Wounded to one hit point each by the
+third debug cheat, slot B's party spends all five cures it holds through
+the program's own driver, and what is left is a deficit no spell can
+close: the seam dials **thirty** days — the worst survivor's deficit plus
+one — and the program's own rest screen reads `REST TIME: 30:05:15`, the
+thirty this seam's, the 5:15 the program's own wrapper's. That is the
+arithmetic measured on the program's own screen rather than read off its
+rest loop. `docs/playable.md` leg 7 has the run.
 
 #### What it says when it is done (M5-E1b, #189)
 
@@ -1453,14 +1459,11 @@ exactly.
 
 **What is measured and what is read off the program.** The box has been
 looked at, on a player's copy, on the desktop host: the title, the
-summary and the line a whole party gets, in the game's lettering, with
-the live bar under it. The wasm module took the same acts on the same
-script. What has *not* been looked at is the exception list — every
-driven run so far ends with the party whole — so the rows naming who is
-still short are covered by tests over rosters the unit suite writes and
-by the `tests/programs` stand-in's count of the calls, and by nothing
-else. `docs/playable.md`'s honest-gaps list says the same, and #196 is
-the issue.
+summary, the line a whole party gets, and — since #196 — the exception
+list, with its name and current-over-maximum cells, its shortfall column
+and its `...and N more.` tail, in the game's lettering. The wasm module
+took the same acts on the same script. `docs/playable.md` leg 7 has both
+boxes as they were read off the screen.
 
 #### And when the game does not hand the camp screen back (M5-E1c, #194)
 
@@ -1532,12 +1535,19 @@ camp, and reads the command tail to decide whether its rest is one the
 game interrupts — one image, both ways out, and so no second fingerprint
 to keep in step.
 
-### The debug cheats (#99)
+### The debug cheats (#99, #196)
 
-**Two seams, not one with two switches** — PLAN.md §5's first requirement
-is a toggle per seam, and the two are wanted separately: a sweep that
-wants combats won does not want the party unable to lose hit points in
-the saved game it then writes.
+**Three seams, not one with three switches** — PLAN.md §5's first
+requirement is a toggle per seam, and they are wanted separately: a sweep
+that wants combats won does not want the party unable to lose hit points
+in the saved game it then writes.
+
+**PLAN.md §5 names two of them and this build carries three**, which is
+worth saying out loud rather than leaving to be noticed. The entry reads
+"invulnerability and kill-all-enemies, built early because they double as
+test tooling for the playthrough sweeps" — the *reason* is the test
+tooling, and #196 needed a piece of it that did not exist. See the
+wounding seam below.
 
 **Invulnerability** intercepts the one resident routine every kind of
 damage lands in, at its entry, and — when the record on the stack is a
@@ -1747,14 +1757,71 @@ check, and it runs in the guards job on every push
 A seam recorded this way should get a pair. One recording proves a seam
 ran; a pair proves it made the difference it claims.
 
-Both are fail-closed by construction: unavailable on any binary but the
-baseline's, inert with `point_not_recognized` when the frame at a point
-is not the one its facts describe, inert with `module_not_resident` while
+#### Wounding the party (M5-E1d, #196)
+
+The counterpart of invulnerability, and the piece of test tooling the
+`docs/playable.md` legs had been missing. **Pulled at the camp screen, it
+leaves every member of the party on one hit point.**
+
+It exists because of an honest gap in another seam's evidence. The Encamp
+Fix's days arithmetic and its report's exception list had never been
+driven at all: every run of it ended with the party whole, because the
+cures close a shipped slot's deficit before the rest is ever asked for.
+What was needed was a party that had been in a hard fight and survived
+it, and there was no way to get one — `docs/playable.md` leg 2's fight
+*destroys* the party, no shipped save slot holds a hurt one, and a save
+file this project wrote would be a save file nobody else's machine has.
+
+**One byte per record, and it is the byte the program's own damage
+routine writes.** Hand that routine `hit points - 1` for a character it
+accepts and it takes the branch that writes the remainder back, leaves
+the wound status where it found it, and touches nothing else — no held
+flag, no side count, no scratch block. So what this seam leaves behind is
+a machine state the program produces for itself every time somebody is
+hit and survives. There is no damage figure to justify, because "one" is
+a rule rather than a number: it is the most a cheat can take off a
+character without changing anything else about them.
+
+**It only writes to a record that routine would have written to.** The
+gate is the routine's own — unhurt or an animated body — and for any
+other status the routine *downs* the character instead. Wounding those
+would be writing something the program would never write; downing them
+would be kill-all pointed at the party. A member already on one hit point
+or fewer is left alone too: zero damage on a record with no hit points is
+the one input the routine's own arithmetic reads as unconscious.
+
+**The guard is the whole of the address**, because this point has none
+(§3a's address-free point, as `cheat-kill-all`'s immediate one has). What
+it must establish is that DS is the program's data segment — a read
+through a segment that is not is a bus cycle at an address nobody answers
+for, which is exactly what the Encamp Fix's first cut did. Camp is the
+tightest honest answer: the mode byte reads 2 there and nowhere else, the
+camp screen is a menu loop waiting on a key so nothing is part-way
+through editing a record, and it is where a person asking to be hurt is
+asking — because it is where the thing that heals them lives. A pull made
+anywhere else is **kept**, not refused, so pulling this and then pressing
+ENCAMP serves it.
+
+**Pulled rather than left on**, for #161's reason: a wounding left
+switched on would wound the party at every camp for ever, which is a
+curse rather than a cheat.
+
+Driven, it is what makes `docs/playable.md` leg 7's third half possible —
+five cures spent, `REST TIME: 30:05:15` on the program's own rest screen,
+and a report whose exception list has rows in it. It is also in both
+halves of the committed camp pair, which is how that pair went back to
+pinning the Fix *working* (`tests/sessions/README.md`).
+
+#### What all three owe
+
+All three are fail-closed by construction: unavailable on any binary but
+the baseline's, inert with `point_not_recognized` when what a point finds
+is not what its facts describe, inert with `module_not_resident` while
 the end check's module is not loaded — which the program's own record
 answers at the step it is asked — and nothing on the hot path when off.
 
-`tests/core/machine/seam_cheats_test.cpp` drives both handlers at their
-points with records and a roster the test lays down by the facts. That
+`tests/core/machine/seam_cheats_test.cpp` drives every handler at its
+point with records and a roster the test lays down by the facts. That
 suite passed for a month against facts that were wrong, which is the
 thing to take from this section: **a seam's unit tests can only check
 that the handler does what the fact table says, never that the fact table

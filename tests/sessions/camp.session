@@ -5,13 +5,21 @@
 # that never comes. This is the plain half of the Encamp Fix's pair — the
 # run `camp-fix` has to be identical to until the seam acts.
 #
+# **Re-recorded for M5-E1d (#196)**, on slot B and over a party the debug
+# `cheat-wound-party` seam has left on one hit point each. Both halves of
+# the pair enable that seam and pull it at the same tick, so it is part of
+# the run they have in common rather than part of the difference; what the
+# wounding buys is a Fix with something to do, which is what the pair had
+# stopped pinning (#192). `tests/sessions/README.md` has the reasoning.
+#
 # The file and dir lines are names, sizes and SHA-256s of a snapshot of
 # the disk. No byte of the player's installation is here.
 
-about slot C loaded, ENCAMP, and REST pressed at the camp menu. The
-about rest screen comes up with the duration the program's own wrapper
-about dialled and waits: nothing presses Rest. 13,075 frames,
-about 110 checkpoints
+about slot B loaded, ENCAMP, the party wounded to one hit point each by
+about a pulled debug cheat, and REST pressed at the camp menu. The rest
+about screen comes up with the duration the program's own wrapper
+about dialled and waits: nothing presses Rest. 13,401 frames,
+about 112 checkpoints
 disk external
 
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

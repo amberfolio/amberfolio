@@ -58,8 +58,8 @@ skip.
 | `fight.rec` | external, the disk `save.rec` wrote | leg 2 — the saved party loaded, walked twelve steps north into the slums and into a group of orcs, the fight handed to the computer with `QUICK`. A lone first-level fighter does not survive it: `THE END`, the party destroyed. 20,115 frames, 177 checkpoints |
 | `fight-cheat.rec` | the same | the same script, the same disk and the same tick budget with **`cheat-invulnerable` on and nothing else changed**: the fighter comes out standing on his full eight hit points at `CONTINUE BATTLE`. The seam fires nine times |
 | `temple.rec` | external, **the shipped save slots** | leg 5 — slot A loaded, routed to the healing temple at 3,1, and a cure bought: `CURE BLINDNESS` cast on a fighter who is not blind and paid for at a thousand gold, which is two hundred platinum off his sheet. The sheet is read at the end, so the session pins the money as well as the machine. 18,801 frames, 181 checkpoints, 68 key events |
-| `camp.rec` | external, the shipped save slots | leg 7 without the enhancement — slot C loaded, `ENCAMP`, and `REST` chosen at the camp menu. The rest screen comes up with the duration the program's own wrapper dialled and waits for a key that never comes. 13,075 frames, 110 checkpoints |
-| `camp-fix.rec` | the same | the same script with **`encamp-fix` on**, pressing the letter the seam puts on the camp menu instead of the menu's own Rest (M5-E1 #172, M5-E1a #186): the bar is spliced and the letter comes back off the program's own menu-bar routine — and the command then declines, because slot C's party is whole and nothing is pending, so since #192 there is nothing to rest for. `fired=2` |
+| `camp.rec` | external, the shipped save slots | leg 7 without the enhancement — slot B loaded, `ENCAMP`, the party wounded to one hit point each by a pulled `cheat-wound-party`, and `REST` chosen at the camp menu. The rest screen comes up with the duration the program's own wrapper dialled and waits for a key that never comes. 13,401 frames, 112 checkpoints |
+| `camp-fix.rec` | the same | the same script with **`encamp-fix` on** as well, pressing the letter the seam puts on the camp menu instead of the menu's own Rest (M5-E1 #172, M5-E1a #186, M5-E1d #196): the bar is spliced, the letter comes back off the program's own menu-bar routine, the five cures the party holds are spent through the program's own cast driver, thirty days are dialled on the program's own rest clock, and the report is drawn when the game's own wandering-monster check ends the rest. `fired=11` |
 
 `save.rec` and `load.rec` are #105's round trip, recorded. They are two
 sessions and not one because they have to be: a load is a fresh run over
@@ -88,11 +88,11 @@ end, and `scripts/sweep.py` fails the pair if they do not:
 ```
 
 `camp.rec` and `camp-fix.rec` are the second such pair, for the Encamp
-Fix (#172, #186):
+Fix (#172, #186, #196):
 
 ```
-  camp-fix     contrast ok  87 of 110 checkpoints identical, then
-                            divergent from tick 206855088 to the end
+  camp-fix     contrast ok  91 of 112 checkpoints identical, then
+                            divergent from tick 216799088 to the end
 ```
 
 The two halves differ by **one keystroke and nothing else**: where the
@@ -107,15 +107,32 @@ needs arranging when it is an extra input: this pair carried a `--pull`
 at frame 10368 before M5-E1a (#186) took the pull away, and 10368 was a
 multiple of the 128-frame cadence for exactly this reason.
 
-**What this pair pins is less than it was, and saying so is the point.**
-Slot C's party is whole, and since #192 the Fix declines a party with
-nothing to rest for — so the two halves now diverge because one pressed
-`R` and rested and the other pressed `F` and did not, which a seam that
-had stopped working altogether would also produce. The splice is still
-caught: the bar reads `FIX` in one run and not the other, and the
-framebuffer is in every checkpoint. The healing is not. Restoring the
-half that has gone wants a **wounded** party, which no shipped save slot
-has and which #189 owes.
+**What this pair pins, and how it got it back** (M5-E1d, #196). Between
+#192 and #196 it pinned less than it used to: slot C's party is whole and
+the Fix declines a party with nothing to rest for, so the two halves
+diverged because one pressed `R` and rested and the other pressed `F` and
+did not — which a seam that had stopped working altogether would also
+produce. The splice was still caught, because the bar reads `FIX` in one
+run and not the other and the framebuffer is in every checkpoint. The
+healing was not.
+
+What was missing was a **wounded** party, and no shipped save slot holds
+one. It is the third debug cheat that supplies it: both halves enable
+`cheat-wound-party` and pull it at the same tick, and the party is on one
+hit point each by the time either of them presses anything. The wounding
+is therefore part of the run the two have *in common* — the difference
+between them is still exactly one keystroke — and what it buys is a Fix
+with real work to do. Five cures spent, thirty days dialled, a rest the
+game interrupts and a report with an exception list in it are all inside
+the divergent half now, so a seam that quietly stopped doing any of them
+would move a checkpoint.
+
+**A cheat in a golden is not free**, and the two things it costs are
+worth naming. The pair no longer pins what an *unaided* slot B does at
+the camp screen, because neither half is unaided any more; and it pins
+`cheat-wound-party` as well as `encamp-fix`, so a change to the wounding
+breaks a golden that is not about wounding. Both were judged cheaper than
+a pair that could not tell a working Fix from a broken one.
 
 **This exists because a seam has twice been on, armed, reporting itself,
 and doing nothing at all** — `cheat-invulnerable` pointed at a routine

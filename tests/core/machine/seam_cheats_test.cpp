@@ -84,6 +84,30 @@ struct rig {
               seam_reason::none);
   }
 
+  /// The same for the wounding cheat (M5-E1d, #196).
+  void arm_wound_party() const {
+    ASSERT_EQ(box->seams().enable("cheat-wound-party"), seam_reason::none);
+    ASSERT_EQ(box->seams().pull("cheat-wound-party", box->time()),
+              seam_reason::none);
+  }
+
+  /// The camp screen, as far as the wounding cheat's guard can see it:
+  /// the mode byte, and a roster head that points at the first record.
+  void camp(std::uint16_t head = 0x0100) const {
+    put_byte(data_segment, data_mode, 2);
+    put_word(data_segment, data_roster_head, head);
+    put_word(data_segment, data_roster_head + 2,
+             head == 0 ? 0 : record_segment);
+  }
+
+  /// One step at the point that has no address: any instruction will do,
+  /// because that is what "no address" means — the guard is the whole of
+  /// what decides.
+  void step_anywhere() const {
+    halt_at(overlay_segment, 0x0010, data_segment, data_segment, 0x0400);
+    box->step();
+  }
+
   [[nodiscard]] std::uint8_t byte_at(std::uint16_t segment,
                                      std::uint16_t offset) const {
     return box->memory().ram()[cpu::physical_address(segment, offset)];
@@ -189,7 +213,7 @@ struct rig {
 
 // --- The definitions -----------------------------------------------------
 
-TEST(SeamCheats, AreTwoSeamsKeyedToTheBaselineAndQualifiedAsTheFactsSay) {
+TEST(SeamCheats, AreThreeSeamsKeyedToTheBaselineAndQualifiedAsTheFactsSay) {
   const rig r;
   const seam_definition& invulnerable = r.seam("cheat-invulnerable");
   const seam_definition& kill_all = r.seam("cheat-kill-all");
@@ -222,9 +246,22 @@ TEST(SeamCheats, AreTwoSeamsKeyedToTheBaselineAndQualifiedAsTheFactsSay) {
         << "and by the word the program keeps its whereabouts in (#131)";
   }
 
-  // Both keyed to the baseline, and therefore available on this rig.
+  // The wounding cheat (M5-E1d, #196) is one address-free point in the
+  // resident image: always resident, so its `armed` row means "the
+  // program is the program" and its guard is the whole of the rest.
+  const seam_definition& wound = r.seam("cheat-wound-party");
+  EXPECT_FALSE(wound.about.empty());
+  ASSERT_EQ(wound.points.size(), 1u);
+  EXPECT_TRUE(wound.points.front().at_every_step);
+  EXPECT_EQ(wound.points.front().offset, 0u);
+  EXPECT_TRUE(wound.points.front().module.is_resident_image());
+  EXPECT_TRUE(wound.trigger)
+      << "left switched on it would wound the party at every camp for ever";
+
+  // All keyed to the baseline, and therefore available on this rig.
   EXPECT_EQ(r.pc().seams().status("cheat-invulnerable").state, seam_state::off);
   EXPECT_EQ(r.pc().seams().status("cheat-kill-all").state, seam_state::off);
+  EXPECT_EQ(r.pc().seams().status("cheat-wound-party").state, seam_state::off);
 }
 
 TEST(SeamCheats, AreUnavailableOnAnyOtherBinary) {
@@ -236,7 +273,185 @@ TEST(SeamCheats, AreUnavailableOnAnyOtherBinary) {
             seam_reason::wrong_binary);
   EXPECT_EQ(box->seams().status("cheat-kill-all").reason,
             seam_reason::wrong_binary);
+  EXPECT_EQ(box->seams().status("cheat-wound-party").reason,
+            seam_reason::wrong_binary);
   EXPECT_EQ(box->seams().enable("cheat-kill-all"), seam_reason::wrong_binary);
+  EXPECT_EQ(box->seams().enable("cheat-wound-party"),
+            seam_reason::wrong_binary);
+}
+
+// --- Wounding the party (M5-E1d, #196) -------------------------------------
+//
+// The counterpart of invulnerability, and PLAN.md §5 item 6's stated
+// reason for the pair: test tooling. `docs/playable.md` leg 7 needed a
+// party hurt badly enough to make the Encamp Fix's own days arithmetic do
+// something, and no shipped save slot holds one.
+
+TEST(SeamCheatWoundParty, LeavesEveryStandingMemberOnOneHitPoint) {
+  const rig r;
+  r.arm_wound_party();
+  r.camp();
+  r.record(0x0100, 0, true, 17, 0, 0x0300);
+  r.record(0x0300, 0, true, 42, 0, 0x0500);
+  r.record(0x0500, 0, true, 30, 0, 0);
+
+  r.step_anywhere();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 1u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 1u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_hp), 1u);
+  EXPECT_EQ(r.pc().seams().status("cheat-wound-party").fired, 1u);
+}
+
+TEST(SeamCheatWoundParty, TouchesNothingButTheHitPoints) {
+  const rig r;
+  r.arm_wound_party();
+  r.camp();
+  r.record(0x0100, 0, true, 17, 0, 0x0300);
+  r.record(0x0300, 0, true, 42, 0, 0);
+
+  r.step_anywhere();
+
+  // The branch of the program's own damage routine this write imitates
+  // leaves all of these where it found them, so this seam does too.
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_status), 0u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_held), 1u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_side), 0u);
+  EXPECT_EQ(r.word_at(record_segment, 0x0100 + rec_next), 0x0300u);
+  EXPECT_EQ(r.word_at(record_segment, 0x0300 + rec_next), 0u);
+}
+
+TEST(SeamCheatWoundParty, LeavesAnybodyTheDamageRoutineWouldNotWriteBackTo) {
+  const rig r;
+  r.arm_wound_party();
+  r.camp();
+  // Unhurt, an animated body, unconscious, dying and slain. The routine
+  // writes hit points back for the first two and **downs** the rest, so
+  // wounding the rest would be writing something the program would never
+  // have written — and downing them would be kill-all pointed at the
+  // party.
+  r.record(0x0100, 0, true, 17, 0, 0x0300);
+  r.record(0x0300, 0, true, 18, 0, 0x0500);
+  r.put_byte(record_segment, 0x0300 + rec_status, 1);
+  r.record(0x0500, 0, true, 19, 0, 0x0700);
+  r.put_byte(record_segment, 0x0500 + rec_status, 4);
+  r.record(0x0700, 0, true, 20, 0, 0x0900);
+  r.put_byte(record_segment, 0x0700 + rec_status, 5);
+  r.record(0x0900, 0, false, 21, 0, 0);
+
+  r.step_anywhere();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 1u) << "unhurt";
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 1u) << "animated";
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_hp), 19u) << "unconscious";
+  EXPECT_EQ(r.byte_at(record_segment, 0x0700 + rec_hp), 20u) << "dying";
+  EXPECT_EQ(r.byte_at(record_segment, 0x0900 + rec_hp), 21u) << "slain";
+  EXPECT_EQ(r.byte_at(record_segment, 0x0500 + rec_status), 4u)
+      << "and their status is left alone too";
+}
+
+TEST(SeamCheatWoundParty, LeavesSomebodyAlreadyOnOneOrFewerAlone) {
+  const rig r;
+  r.arm_wound_party();
+  r.camp();
+  r.record(0x0100, 0, true, 1, 0, 0x0300);
+  r.record(0x0300, 0, true, 0, 0, 0);
+
+  r.step_anywhere();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 1u);
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_hp), 0u)
+      << "zero damage on a record with no hit points is the one input the "
+         "routine's own arithmetic reads as unconscious";
+  EXPECT_EQ(r.byte_at(record_segment, 0x0300 + rec_status), 0u);
+}
+
+TEST(SeamCheatWoundParty, IsOnAndDoesNothingUntilSomebodyPullsIt) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("cheat-wound-party"), seam_reason::none);
+  r.camp();
+  r.record(0x0100, 0, true, 17, 0, 0);
+
+  r.step_anywhere();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 17u) << "nobody asked";
+  EXPECT_EQ(r.pc().seams().status("cheat-wound-party").fired, 0u);
+}
+
+TEST(SeamCheatWoundParty, WaitsForTheCampScreen) {
+  const rig r;
+  r.arm_wound_party();
+  r.camp();
+  r.record(0x0100, 0, true, 17, 0, 0);
+  // Adventuring, not camp: the guard is the whole of the address, and
+  // outside camp it cannot say DS is the program's data segment.
+  r.put_byte(data_segment, data_mode, 4);
+
+  r.step_anywhere();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 17u);
+  EXPECT_TRUE(r.pc().seams().status("cheat-wound-party").waiting)
+      << "a declined trigger keeps its latch, so pulling this and then "
+         "pressing ENCAMP serves it";
+
+  r.put_byte(data_segment, data_mode, 2);
+  r.step_anywhere();
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 1u);
+  EXPECT_FALSE(r.pc().seams().status("cheat-wound-party").waiting);
+}
+
+TEST(SeamCheatWoundParty, OnePullIsOneWounding) {
+  const rig r;
+  r.arm_wound_party();
+  r.camp();
+  r.record(0x0100, 0, true, 17, 0, 0);
+
+  r.step_anywhere();
+  ASSERT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 1u);
+  r.put_byte(record_segment, 0x0100 + rec_hp, 17);
+  r.step_anywhere();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 17u)
+      << "the party healed between the two, and nobody asked again";
+  EXPECT_EQ(r.pc().seams().status("cheat-wound-party").fired, 1u);
+}
+
+TEST(SeamCheatWoundParty, DeclinesARosterThatIsNotAList) {
+  const rig r;
+  r.arm_wound_party();
+  r.camp();
+  // A record that links to itself: a walk that follows it never ends, and
+  // the guard is what refuses rather than what survives it.
+  r.record(0x0100, 0, true, 17, 0, 0x0100);
+
+  r.step_anywhere();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 17u);
+  EXPECT_TRUE(r.pc().seams().status("cheat-wound-party").waiting)
+      << "and the pull is kept, because the person asked for something";
+}
+
+TEST(SeamCheatWoundParty, DeclinesARosterHeadThatIsNotAPointer) {
+  const rig r;
+  r.arm_wound_party();
+  r.camp(0);
+  r.put_word(data_segment, data_roster_head + 2, 0);
+
+  r.step_anywhere();
+
+  EXPECT_EQ(r.pc().seams().status("cheat-wound-party").fired, 0u);
+  EXPECT_TRUE(r.pc().seams().status("cheat-wound-party").waiting);
+}
+
+TEST(SeamCheatWoundParty, DoesNothingWhenOff) {
+  const rig r;
+  r.camp();
+  r.record(0x0100, 0, true, 17, 0, 0);
+  EXPECT_EQ(r.pc().seams().pull("cheat-wound-party", r.pc().time()),
+            seam_reason::not_enabled);
+
+  r.step_anywhere();
+
+  EXPECT_EQ(r.byte_at(record_segment, 0x0100 + rec_hp), 17u);
 }
 
 // --- Invulnerability -----------------------------------------------------

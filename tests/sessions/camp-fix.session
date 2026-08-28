@@ -16,25 +16,34 @@
 # **Re-recorded for #192**, which is a legitimate re-record and the kind
 # the README's list did not have: a *seam this session enables* changed
 # what it does. The Fix used to dial a day for a party that was already
-# whole; it now declines, so slot C's run is a different run and this
-# recording had to say so. What that costs the pair is written into the
-# `about` below, because a golden that quietly pins less than it did is
-# the failure this directory exists to prevent.
+# whole; it now declines, so slot C's run was a different run and this
+# recording had to say so.
+#
+# **And re-recorded again for M5-E1d (#196)**, which is what put back
+# what that cost. The pair had stopped pinning the command *working*:
+# slot C's party is whole, so its two halves diverged on the keystroke
+# rather than on the healing, which a seam that had stopped working
+# altogether would also have produced. It runs on slot B now, over a
+# party the debug `cheat-wound-party` seam has left on one hit point
+# each — **both halves enable that seam and pull it at the same tick**,
+# so the wounding is part of the run they have in common and the only
+# difference between them is still one keystroke. What the wounding buys
+# is a Fix with real work to do: five cures spent through the program's
+# own cast driver, thirty days dialled on the program's own rest clock,
+# and a report with an exception list in it.
 #
 # The file and dir lines are names, sizes and SHA-256s of a snapshot of
 # the disk. No byte of the player's installation is here.
 
 about the same script with the Encamp Fix on, pressing the letter the
 about seam puts on the camp menu instead of the menu's own Rest. The
-about seam splices the command onto the game's own bar and takes it back
-about off the game's own menu-bar routine — and then declines: slot C's
-about party is whole and nothing is pending, so there is nothing to rest
-about for and the Fix does nothing at all (#192). fired=2, the bar
-about spliced twice and no other act. So what this pair pins is the
-about command appearing on the program's own bar and the run diverging
-about from there; what it no longer pins is the command *working*, which
-about wants a wounded party and is what the shipped slots have never
-about given leg 7 (#189)
+about seam splices the command onto the game's own bar, takes it back
+about off the game's own menu-bar routine, spends the five cures the
+about party holds, dials thirty days — the worst deficit plus one — on
+about the program's own rest clock and presses Rest, and says what it
+about did in a box the game draws when the game's own wandering-monster
+about check ends the rest and takes the party out of camp. fired=11.
+about 13,401 frames, 112 checkpoints
 disk external
 contrast camp
 
