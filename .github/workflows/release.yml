@@ -1,0 +1,197 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# Release a tag that was pushed before ci.yml knew how to release one.
+#
+# ci.yml is the forward path: a `v*` tag push runs every gate and, past
+# all of them, publishes a Release from the artifact that run tested. That
+# works because the workflow and the tree it gates are the same commit.
+# `v0.1.0` and `v0.2.0` are older than that job, and nothing is ever
+# retagged (CONTRIBUTING.md), so they can only be released from a
+# workflow that outlives them — this one.
+#
+# **It does not re-run ci.yml's gates over the tag, and that is the
+# decision rather than a shortcut.** The obvious arrangement — name the
+# tag as an input to ci.yml and let every job check it out — was tried on
+# v0.2.0 and failed three ways, none of which is a fact about the bytes:
+# the guards job ran a self-test script that does not exist at that tag
+# (exit 127), and `sdl-host-records-and-replays` failed on macOS and
+# linux-gcc because it is a bug fixed *after* v0.2.0 and only visible
+# under the `--parallel 4` ci.yml adopted after it too. Running today's
+# gates against yesterday's tree asks whether an old tree satisfies new
+# gates, which is not the question anyone wants answered before
+# publishing bytes that were already green under the gates of their own
+# tag. The gate that means something here is the one below: the module
+# this job is about to publish is built and tested, twice, before `gh`
+# sees it.
+#
+# The one path that has to be checked out twice is the tooling.
+# `scripts/release-bundle.sh` is newer than the tags this workflow
+# exists for, so it comes from the ref the workflow was dispatched on
+# while everything it reads — the version, the notices, the commit — comes
+# from the tag. Current tool, historical content.
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing v* tag to build and release (e.g. v0.2.0)'
+        required: true
+
+jobs:
+  release:
+    name: release (${{ inputs.tag }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The narrowest grant that lets it attach a Release, and the only
+    # permission this workflow has.
+    permissions:
+      contents: write
+    steps:
+      # The tree that is being released.
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          # For the tag object: peeling it to its commit, and its message,
+          # which CONTRIBUTING.md already asks to be one paragraph on what
+          # the milestone means — so it is the release notes rather than a
+          # second description that can disagree with the first.
+          fetch-depth: 0
+          fetch-tags: true
+
+      # And the ref this workflow was dispatched on, for the bundler
+      # alone. A second checkout rather than a `git show` out of the first
+      # because the tag's fetch is not obliged to have brought this
+      # commit with it, and a release is not the place to find that out.
+      - uses: actions/checkout@v4
+        with:
+          path: .release-tooling
+      - name: The bundler comes from this branch, not from the tag
+        run: |
+          cp .release-tooling/scripts/release-bundle.sh scripts/release-bundle.sh
+          echo "release-bundle.sh from ${GITHUB_SHA}, tree from ${TAG}"
+        env:
+          TAG: ${{ inputs.tag }}
+
+      - name: The tag, and the commit it names
+        id: what
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          case "$TAG" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "::error::'$TAG' is not a vMAJOR.MINOR.PATCH tag"
+              exit 1
+              ;;
+          esac
+          commit=$(git rev-parse --verify "refs/tags/$TAG^{commit}")
+          head=$(git rev-parse HEAD)
+          # The tag object's own sha is forty hex characters that are not
+          # a commit; this is the assertion that the checkout peeled it.
+          if [ "$commit" != "$head" ]; then
+            echo "::error::$TAG names $commit but the checkout is at $head"
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "commit=$commit"
+          } >> "$GITHUB_OUTPUT"
+
+      # The pin has one home, .emscripten-version — and here it is read
+      # from the *tag*, which is the point: the module is built by the
+      # toolchain that tag was written against.
+      - name: Read the Emscripten pin
+        id: emsdk-pin
+        run: echo "version=$(cat .emscripten-version)" >> "$GITHUB_OUTPUT"
+      - name: Emscripten ${{ steps.emsdk-pin.outputs.version }}
+        uses: mymindstorm/setup-emsdk@4528d102f7230f0e7b276855c01ea1159be0e984 # v16
+        with:
+          version: ${{ steps.emsdk-pin.outputs.version }}
+          actions-cache-folder: emsdk-${{ steps.emsdk-pin.outputs.version }}
+
+      # AMBERFOLIO_SOURCE_URL is the AGPL-3.0-only §13 offer the page
+      # carries, and it must name the commit being released rather than a
+      # branch that has moved on. Same string the manifest will state.
+      - name: configure
+        env:
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}/tree/${{ steps.what.outputs.commit }}
+        run: cmake --preset wasm "-DAMBERFOLIO_SOURCE_URL=$SOURCE"
+
+      # Both configurations, both tested, exactly as ci.yml's wasm row
+      # does it: Release is what ships, and Debug is the leg that catches
+      # what the optimiser hides (#84). This is the gate on these bytes.
+      - name: build
+        run: cmake --build --preset wasm
+      - name: test
+        run: ctest --preset wasm
+      - name: build (optimised)
+        run: cmake --build --preset wasm-release
+      - name: test (optimised)
+        run: ctest --preset wasm-release
+
+      - name: Stage the release
+        env:
+          TAG: ${{ steps.what.outputs.tag }}
+          COMMIT: ${{ steps.what.outputs.commit }}
+        run: |
+          bash scripts/release-bundle.sh \
+            build/wasm/hosts/web/Release "$RUNNER_TEMP/release" "$TAG" "$COMMIT"
+
+      - name: Release notes
+        env:
+          TAG: ${{ steps.what.outputs.tag }}
+          COMMIT: ${{ steps.what.outputs.commit }}
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}/tree/${{ steps.what.outputs.commit }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          bt='`'
+          {
+            # Subject and body rather than %(contents), which on a signed
+            # tag would paste the PGP block into the notes as well.
+            git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' "$TAG"
+            echo
+            echo '---'
+            echo
+            echo 'The web host of this project, for a page that wants to run the'
+            echo 'emulator without containing it. `manifest.json` states the sha256'
+            echo 'and the size of each of the six bundle files, and the commit they'
+            echo 'were built from; `SHA256SUMS` covers every asset here, notices'
+            echo 'included.'
+            echo
+            # The backtick comes from a variable because inside double
+            # quotes a pair of them is command substitution, and the sha
+            # would have been run as a command.
+            echo "- Source: [${bt}${COMMIT}${bt}]($SOURCE)"
+            echo "- Built by: [this run]($RUN)"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/release/SHA256SUMS"
+            echo '```'
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.what.outputs.tag }}
+        run: |
+          # Never over an existing one. The assets are not bit-reproducible
+          # — a different emsdk build of the same source is a different wasm
+          # — so replacing them would change hashes somebody has already
+          # pinned, under a tag they were told never moves.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::a release for $TAG already exists; delete it" \
+              "deliberately (gh release delete $TAG) before re-publishing," \
+              "and expect every consumer pinning its hashes to notice"
+            exit 1
+          fi
+          extra=()
+          case "$TAG" in
+            v0.*) extra+=(--prerelease) ;;
+          esac
+          gh release create "$TAG" \
+            --verify-tag \
+            --title "$TAG" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            "${extra[@]}" \
+            "$RUNNER_TEMP/release"/*

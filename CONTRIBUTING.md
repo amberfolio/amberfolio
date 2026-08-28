@@ -233,7 +233,9 @@ same three steps with `0.2.0`.
 
 Pushing a `v*` tag runs the whole of `ci.yml` and, past the same gate the
 deploy job waits on, publishes a **GitHub Release** carrying the web
-host's build output (issue #200). Six files — `amberfolio.wasm`,
+host's build output (issue #200). That is the forward path, and it can
+hold the full gate because the workflow and the tree it gates are the
+same commit. Six files — `amberfolio.wasm`,
 `amberfolio.mjs`, `host.mjs`, `app.mjs`, `audio-worklet.mjs`,
 `picker.mjs` — plus `SHA256SUMS`, a `manifest.json`, and the notices
 (`LICENSE`, `NOTICE.md`, and `LICENSES/`) so they can be rendered without
@@ -259,11 +261,28 @@ Two consequences worth knowing before touching any of it:
   would change hashes somebody has already pinned. The job refuses; a
   release that genuinely has to be redone is deleted by hand first, by
   someone who has checked who is pinning it.
-- **A tag pushed before this existed is released by dispatching the
-  workflow with its name** in the `tag` input, from `main` — running
-  `ci.yml` *at* an old tag would run that tag's own copy of the file,
-  which has no release job in it. Every job then builds the named tag.
-  Nothing is retagged either way.
+- **A tag older than the release job is released by `release.yml`**, a
+  workflow of its own, dispatched with the tag's name. Nothing is
+  retagged; `v0.1.0` and `v0.2.0` simply predate the job.
+
+  It builds and tests the wasm module from that tag — both
+  configurations, as `ci.yml` does — and publishes it, but it does *not*
+  re-run `ci.yml`'s gates over the tag, which is a decision and not a
+  shortcut. Naming an old tag as an input to `ci.yml` was tried on
+  `v0.2.0` and failed three ways, none of them a fact about the bytes: a
+  workflow comes from the ref it is dispatched on while the tree comes
+  from the tag, so the guards job ran a self-test script that does not
+  exist at `v0.2.0`, and `sdl-host-records-and-replays` failed on two
+  targets — a bug fixed *after* that tag, visible only under the
+  `--parallel 4` `ci.yml` adopted after it too. Today's gates asked
+  yesterday's question. The gates that mean something for an old tag are
+  the ones that were green when it was tagged, plus the build and test of
+  the module actually being published.
+
+  `release.yml` also checks the repository out twice: the tag, for
+  everything it reads, and the dispatched ref, for
+  `scripts/release-bundle.sh` alone — which is newer than the tags it
+  exists to release. Current tool, historical content.
 
 The bundle's shape lives in
 [`scripts/release-bundle.sh`](scripts/release-bundle.sh) rather than in
