@@ -47,6 +47,14 @@ set -euo pipefail
 # EXPORT_ES6, MODULARIZE) and the four page scripts it copies beside them.
 # Deliberately *not* index.html — the release is the emulator, and the
 # page around it belongs to whoever is hosting it.
+#
+# **These names are keys in somebody else's lockfile.** Renaming one is a
+# breaking change for every consumer pinning it, not a refactor, and the
+# same goes for the hash spelling below: a consumer normalises hex to SRI,
+# so a change there would be invisible to the code and merely confusing to
+# a person reading SHA256SUMS and manifest.json side by side. The list is
+# asserted by name and in order in test-release-bundle.sh, so it cannot
+# move quietly — changing it means editing a test that says why.
 BUNDLE=(
   amberfolio.wasm
   amberfolio.mjs

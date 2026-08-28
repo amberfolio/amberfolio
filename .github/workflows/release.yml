@@ -185,6 +185,16 @@ jobs:
               "and expect every consumer pinning its hashes to notice"
             exit 1
           fi
+          # **Every pre-1.0 tag is a pre-release**, by PLAN.md §7: the
+          # milestone tags exist so that there is always a current,
+          # runnable one while the work converges on 1.0, and none of them
+          # is that release. The rule is here rather than in a person's
+          # habit because it has a consequence worth being deliberate
+          # about — `/releases/latest` *excludes* pre-releases, so a
+          # consumer that tracks "latest" rather than a tag sees nothing
+          # at all until 1.0. That is the right answer for now (there is
+          # no release anyone should be tracking blind) and it flips on
+          # its own at 1.0, when this case stops matching.
           extra=()
           case "$TAG" in
             v0.*) extra+=(--prerelease) ;;
