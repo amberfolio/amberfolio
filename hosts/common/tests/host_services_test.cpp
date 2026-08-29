@@ -23,8 +23,10 @@
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/host/journal_store.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/seam.h"
@@ -179,6 +181,113 @@ TEST(HostServices, ItWritesNothing) {
          " something";
   EXPECT_EQ(plain_hash.whole, machine::hash_state(hosted.pc()).whole);
   EXPECT_EQ(plain.pc().time(), hosted.pc().time());
+}
+
+// ---------------------------------------------------------------------------
+// The journal reader's service (M5-E4, #175)
+// ---------------------------------------------------------------------------
+//
+// The seam that consumes this lives in core and is tested there. What is
+// asserted here is the half this object owns: which of the four answers a
+// given store produces, and that the answer reaches the machine's own
+// delivery buffer rather than being lost in a `void` return.
+//
+// Every byte of text below is this file's own. Nothing in it is a journal
+// or resembles one (`docs/journal.md`).
+
+/// The seam above asks for entry 0xBEEF, which no store here has. These
+/// tests ask directly instead, which is what `serve()`'s contract allows:
+/// it is a plain virtual taking the machine and a number.
+[[nodiscard]] machine::journal_delivery ask(host_services& services,
+                                            machine::machine& box,
+                                            std::uint32_t entry) {
+  services.serve(box, seam_host_service::journal_open, entry);
+  return box.journal().delivery();
+}
+
+TEST(HostServicesJournal, WithNoStoreAtAllNobodyHasReadAJournal) {
+  const rig r;
+  host_services services;
+  EXPECT_EQ(services.journal(), nullptr);
+  EXPECT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::no_journal);
+}
+
+TEST(HostServicesJournal, AnEmptyStoreIsTheSameAnswerAsNoStore) {
+  const rig r;
+  host_services services;
+  const journal_store store;
+  services.set_journal_store(&store);
+  EXPECT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::no_journal);
+}
+
+TEST(HostServicesJournal, AnEntryTheStoreHasComesBackAsItsText) {
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_scan(12, "what the engine read"));
+  services.set_journal_store(&store);
+
+  EXPECT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::ready);
+  EXPECT_EQ(r.pc().journal().text(), "what the engine read");
+  EXPECT_EQ(r.pc().journal().entry(), 0u)
+      << "the entry number is the seam's to record when it asks; this"
+         " object only answers";
+}
+
+TEST(HostServicesJournal, ACorrectionIsWhatTheReaderGets) {
+  // The whole reason a store keeps two texts per entry
+  // (`journal_store.h`): a person's transcription is what a reader shows.
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_scan(12, "vvhat the enginc read"));
+  ASSERT_TRUE(store.correct(12, "what the engine read"));
+  services.set_journal_store(&store);
+
+  EXPECT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::ready);
+  EXPECT_EQ(r.pc().journal().text(), "what the engine read");
+}
+
+TEST(HostServicesJournal, AnEntryTheStoreHasNotIsItsOwnAnswer) {
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_scan(12, "text"));
+  services.set_journal_store(&store);
+
+  EXPECT_EQ(ask(services, r.pc(), 13), machine::journal_delivery::no_entry);
+  EXPECT_EQ(ask(services, r.pc(), 0x1'0000),
+            machine::journal_delivery::no_entry)
+      << "an entry number that is not one is not an entry";
+}
+
+TEST(HostServicesJournal, AnEntryWithNothingInItSaysThatAndNotNoEntry) {
+  // The two are fixed by different things: one by ingesting a journal,
+  // the other by ingesting it with an engine that works.
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_scan(12, "text"));
+  ASSERT_TRUE(store.record_scan(13, ""));
+  services.set_journal_store(&store);
+
+  EXPECT_EQ(ask(services, r.pc(), 13), machine::journal_delivery::no_text);
+}
+
+TEST(HostServicesJournal, AnsweringIsNotWritingMachineState) {
+  // `serve()`'s contract, with the one consumer that writes anything at
+  // all: the delivery buffer is observation, on `machine/journal.h`'s own
+  // three terms, and a machine holding a page of text hashes as the
+  // machine that is not.
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_scan(12, "a whole page of somebody's own text"));
+  services.set_journal_store(&store);
+
+  const machine::state_hashes before = machine::hash_state(r.pc());
+  ASSERT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::ready);
+  EXPECT_EQ(before, machine::hash_state(r.pc()));
 }
 
 }  // namespace

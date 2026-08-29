@@ -223,6 +223,11 @@
 //     store is read before an ingestion and written after, which is what
 //     makes a correction survive one (`host/journal_store.h`).
 //
+//     It is read at the start of **every** run, `--journal` or not: an
+//     ingestion happens once and the reading happens for ever after
+//     (M5-E4, #175), so a player who ingested their journal last week
+//     starts today's run with `--seam journal` able to answer.
+//
 //   --journal-ocr PATH|none  which OCR engine to read with
 //
 //     The player's own Tesseract, `tesseract` off the path by default
@@ -240,6 +245,11 @@
 //     answers for exactly the probe's pixels; a player's build knows
 //     nothing about either, the same way it knows nothing about the web
 //     host's probe seam.
+//
+//   The journal reader itself is a seam, not a flag: `--seam journal`
+//   turns it on, and then the entry the game cites opens on the game's
+//   own screen and F1 opens any other (M5-E4, #175, `machine/journal.h`).
+//   It reads the store above and never writes it.
 //
 //   --seams          list every seam this build carries, and exit
 //
@@ -1673,17 +1683,18 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
     return opts;
   }
 
-  // The journal's three companions are all about an ingestion, so without
-  // one there is nothing for them to be about. Refused rather than
-  // ignored, on the same reasoning as `--dump-every` below — and with
-  // one extra for `--journal-store`, which a person could reasonably
-  // expect to *read* a store rather than say where one goes. Reading is
-  // #175's, and saying so beats accepting a flag that does nothing.
+  // Two of the journal's three companions are about an *ingestion*, so
+  // without one there is nothing for them to be about. Refused rather
+  // than ignored, on the same reasoning as `--dump-every` below.
+  //
+  // `--journal-store` used to be the third, and M5-E4 (#175) is why it is
+  // not any more: the reader reads that file on every run, so saying
+  // where it is means something with no ingestion in sight. The note that
+  // used to be here said reading was #175's; it is, and this is it.
   if (opts.journal.empty() &&
-      (!opts.journal_store.empty() || opts.journal_probe ||
-       opts.journal_ocr != "tesseract")) {
+      (opts.journal_probe || opts.journal_ocr != "tesseract")) {
     std::fprintf(stderr,
-                 "amberfolio: --journal-store, --journal-ocr and"
+                 "amberfolio: --journal-ocr and"
                  " --journal-probe need --journal, whose ingestion they"
                  " are about\n");
     return opts;
@@ -1935,6 +1946,57 @@ void present_document(machine::machine& box, const std::string& path) {
   return path;
 }
 
+/// Where the journal's text is, for this run: `--journal-store` if it was
+/// given, and this platform's per-user data directory otherwise.
+[[nodiscard]] std::string journal_store_path(const options& opts) {
+  return opts.journal_store.empty() ? journal_store_default_path()
+                                    : opts.journal_store;
+}
+
+/// Read a journal store that is already there, for a run that is not
+/// ingesting one (M5-E4, #175).
+///
+/// An ingestion happens once; the reading happens for ever after. So a run
+/// with `--seam journal` and no `--journal` still has to find the text a
+/// previous run wrote, and this is where it does.
+///
+/// Every outcome is a sentence and none of them stops the run, because a
+/// player whose journal could not be read still asked to play. A file that
+/// is not there at all is the ordinary case for somebody who has never
+/// ingested one, and it says so once rather than leaving the reader to
+/// announce it from inside the game later.
+void load_journal_store(const options& opts, host::journal_store& store) {
+  const std::string path = journal_store_path(opts);
+  if (path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: journal this platform does not say where"
+                 " per-user data lives; say --journal-store PATH\n");
+    return;
+  }
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    std::fprintf(stderr,
+                 "amberfolio: journal store %s is not there yet - the"
+                 " reader has nothing to show until --journal reads one\n",
+                 path.c_str());
+    return;
+  }
+  const std::string text((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+  if (const host::journal_trouble why = store.parse(text);
+      why != host::journal_trouble::none) {
+    // Left alone rather than used: whatever that file is, it is not this
+    // build's, and half a transcription is worse than none.
+    store.clear();
+    std::fprintf(stderr, "amberfolio: journal store %s - %s\n", path.c_str(),
+                 host::journal_trouble_name(why));
+    return;
+  }
+  std::fprintf(stderr,
+               "amberfolio: journal store %s entries=%zu corrections=%zu\n",
+               path.c_str(), store.size(), store.corrections());
+}
+
 /// Ingest `opts.journal` (M5-E3, #174): present it, follow its entries,
 /// read them, and keep the text.
 ///
@@ -1943,7 +2005,8 @@ void present_document(machine::machine& box, const std::string& path) {
 /// Every failure here is a sentence and a return: an ingestion that goes
 /// wrong leaves the run alone, because a player who asked to read their
 /// journal and could not still asked to play.
-void ingest_journal(machine::machine& box, const options& opts) {
+void ingest_journal(machine::machine& box, const options& opts,
+                    host::journal_store& store) {
   std::ifstream file(opts.journal, std::ios::binary);
   if (!file) {
     std::fprintf(stderr, "amberfolio: journal %s could not be read\n",
@@ -2006,16 +2069,14 @@ void ingest_journal(machine::machine& box, const options& opts) {
   // Where the text goes, and what is already there. Read first, so a
   // correction a player made survives this ingestion — which is the
   // whole reason the store is read at all rather than written fresh.
-  const std::string path = opts.journal_store.empty()
-                               ? journal_store_default_path()
-                               : opts.journal_store;
+  const std::string path = journal_store_path(opts);
   if (path.empty()) {
     std::fprintf(stderr,
                  "amberfolio: journal this platform does not say where"
                  " per-user data lives; say --journal-store PATH\n");
     return;
   }
-  host::journal_store store;
+  store.clear();
   if (std::ifstream existing(path, std::ios::binary); existing) {
     const std::string text((std::istreambuf_iterator<char>(existing)),
                            std::istreambuf_iterator<char>());
@@ -2092,6 +2153,13 @@ int main(int argc, char** argv) try {
   // disk is mounted, below.
   services.automap().enable(opts.automap_store);
   log.set_automap_store(&services.automap());
+  // And the other thing that door drives (M5-E4, #175): the text the
+  // journal reader is answered out of. It lives here, for the whole run,
+  // because an ingestion is one moment and the reading is every moment
+  // after it — `ingest_journal` fills this object rather than one of its
+  // own, and a run with no `--journal` reads what a previous one wrote.
+  host::journal_store journal_text;
+  services.set_journal_store(&journal_text);
   // The machine to be, before anything runs (machine/clock.h). Printed
   // whenever it is not the default, for the reason a seam is: a run at a
   // speed nobody expected is a different run, and a log that did not say
@@ -2206,7 +2274,14 @@ int main(int argc, char** argv) try {
   // (#174). Here rather than earlier because it presents itself through
   // the same door, and the same sentence about gates applies to it.
   if (!opts.journal.empty()) {
-    ingest_journal(box, opts);
+    ingest_journal(box, opts, journal_text);
+  } else if (std::ranges::find(opts.seams, "journal") != opts.seams.end()) {
+    // Only for a run that asked for the reader. A player who did not is
+    // not owed a line about a file they have no use for, and the seam
+    // being named is the one signal available before `enable()` — which
+    // happens next, and after this so that the store is there the first
+    // time a point can be reached.
+    load_journal_store(opts, journal_text);
   }
 
   for (const std::string& id : opts.seams) {

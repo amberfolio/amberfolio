@@ -50,6 +50,7 @@ add_library(amberfolio-core STATIC
   src/machine/fingerprint.cpp
   src/machine/font.cpp
   src/machine/int10.cpp
+  src/machine/journal.cpp
   src/machine/keyboard.cpp
   src/machine/loader.cpp
   src/machine/log.cpp
@@ -70,6 +71,7 @@ add_library(amberfolio-core STATIC
   src/machine/seam_cheats.cpp
   src/machine/seam_code_wheel.cpp
   src/machine/seam_encamp_fix.cpp
+  src/machine/seam_journal.cpp
   src/machine/seam_table.cpp
   src/machine/service_floor.cpp
   src/machine/speaker.cpp

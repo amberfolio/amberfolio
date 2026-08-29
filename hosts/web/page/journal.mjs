@@ -296,11 +296,26 @@ export async function ingestJournal(
 }
 
 /// What a reader shows for one entry — the correction if there is one,
-/// the scan otherwise. #175 is what will ask for this from inside the
-/// machine; the page uses it to show a player what was read.
+/// the scan otherwise. The in-game reader (M5-E4, #175) asks for the same
+/// thing from inside the module, through the `journal_open` host service;
+/// the page uses this to show a player what was read before they go in.
 export function journalText(module, number) {
   return readText(module, (out, cap) =>
     module._af_web_journal_text(number, out, cap),
+  );
+}
+
+/// A store's own bytes back into the module (M5-E4, #175).
+///
+/// The reader is answered out of this tab's store, so anything that wants
+/// a reader without an ingestion in front of it — a player restoring the
+/// text they exported, `tools/drive.mjs` pointed at a file — puts the
+/// store in here first. Answers a `journal_trouble`: a file that is not
+/// exactly the format is refused whole rather than half-read, which is
+/// `journal_store.h`'s own rule and the reason it is strict.
+export function readStore(module, text) {
+  return withUtf8(module, text, (ptr, size) =>
+    module._af_web_journal_store_read(ptr, size),
   );
 }
 

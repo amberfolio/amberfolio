@@ -107,6 +107,7 @@ import {
   AF_RUN_END_STEP_BUDGET,
   AF_RUN_END_TICK_BUDGET,
 } from './host.mjs';
+import { readStore, troubleName } from './journal.mjs';
 
 /// `AF_SEAM_*` as core spells the states (`machine::seam_state_name`), so
 /// the seam table below reads exactly like the SDL host's `--seams`.
@@ -213,6 +214,11 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
   --document PATH       present a document the player holds, by path on
                         this machine (repeatable) — a possession gate,
                         so the file is hashed and dropped
+  --journal-store PATH  the journal text the reader is answered out of
+                        (M5-E4, #175), as the desktop host's own
+                        --journal-store writes it. A browser gets its
+                        store from the page's file input; this is how a
+                        script gets one.
   --seams               list every seam this build carries, and exit
   --vfs-list            list every file on the disk after the run, at its
                         own path — what the run left behind, including
@@ -242,6 +248,7 @@ export function parseArgs(argv) {
     pulls: [],
     seams: [],
     documents: [],
+    journalStore: null,
     listSeams: false,
     listVfs: false,
     speed: null,
@@ -324,6 +331,8 @@ export function parseArgs(argv) {
       opts.listVfs = true;
     } else if (arg === '--document' && i + 1 < argv.length) {
       opts.documents.push(next());
+    } else if (arg === '--journal-store' && i + 1 < argv.length) {
+      opts.journalStore = next();
     } else if (arg === '--seams') {
       opts.listSeams = true;
     } else if (arg === '--speed' && i + 1 < argv.length) {
@@ -591,6 +600,34 @@ export async function drive(opts) {
       );
     } else {
       say(`amberfolio: document ${path} could not be presented (status ${status})`);
+    }
+  }
+
+  // And the journal's text, before the reader that is answered out of it
+  // (M5-E4, #175). Every outcome is a sentence and none of them stops the
+  // run, in the desktop host's own words, because a script whose journal
+  // could not be read still asked to run the program.
+  if (opts.journalStore !== null) {
+    let text = null;
+    try {
+      text = readFileSync(opts.journalStore, 'utf8');
+    } catch {
+      say(`amberfolio: journal store ${opts.journalStore} could not be read`);
+    }
+    if (text !== null) {
+      const trouble = readStore(module, text);
+      if (trouble !== 0) {
+        say(
+          `amberfolio: journal store ${opts.journalStore} - ` +
+            troubleName(module, trouble),
+        );
+      } else {
+        say(
+          `amberfolio: journal store ${opts.journalStore}` +
+            ` entries=${module._af_web_journal_store_size()}` +
+            ` corrections=${module._af_web_journal_store_corrections()}`,
+        );
+      }
     }
   }
 

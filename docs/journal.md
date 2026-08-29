@@ -4,10 +4,11 @@
 show, and what is deliberately not here. M5-E3, issue #174; PLAN.md §5
 item 2.*
 
-The in-game reader is #175 and is not built yet. This document is the
-half underneath it: locating each entry's scan inside the player's own
-PDF, decoding it, reading it once with an OCR engine, and keeping the
-result on the player's machine.
+This document is the half underneath the reader: locating each entry's
+scan inside the player's own PDF, decoding it, reading it once with an OCR
+engine, and keeping the result on the player's machine. **The reader
+itself is M5-E4 (#175)** — a seam, `docs/seams.md` §10 — and §9 below is
+where the two meet.
 
 **Nothing from a journal is in this repository, and nothing ever will
 be.** Not a page, not an image, not a word of text, not a fixture that
@@ -17,7 +18,7 @@ CONTRIBUTING.md applies to the game binary, and it is reviewed the same
 way. The text a player ends up with is read off their own copy, on their
 own machine, and stays there.
 
-## 1. The five pieces
+## 1. The pieces
 
 | Piece | Where | What it does |
 |---|---|---|
@@ -26,8 +27,11 @@ own machine, and stays there.
 | The extractor | `hosts/common/.../journal_extract.h` | Follows an offset, inflates the stream, undoes the predictor, expands samples to gray, crops the region. |
 | The engine | `hosts/common/.../journal_ocr.h` | One virtual call. The desktop runs the player's own Tesseract; the browser drives tesseract.js. |
 | The store | `hosts/common/.../journal_store.h` | Entry number to text, with what the engine read and what a person corrected kept apart. |
+| The reader | `core/.../machine/seam_journal.cpp` | The seam that shows an entry in the game (§9). The only thing any of the above is *for*. |
 
-`journal_ingest.h` is the order they go in, and its header says why that
+The first five are the ingestion and run once; the sixth is the reader
+and runs for ever after. `journal_ingest.h` is the order the first five
+go in, and its header says why that
 order and no other. `journal_probe.h` is a synthetic document this
 project generates, which is what any of this is tested against.
 
@@ -53,6 +57,15 @@ player who could not read their journal still asked to play.
 In a browser: the dev page's **read your own journal** file input. It
 says what happened in the same words the desktop host prints, because
 both hosts print `journal_trouble_name()`.
+
+And then, on either host, `--seam journal` (or the page's checkbox) turns
+the reader on and the text is reachable from inside the game (§9). The
+store is read at the start of every run that asks for the reader, so an
+ingestion is something a player does once:
+
+```sh
+amberfolio <dir> <program.exe> --seam journal
+```
 
 ## 3. Adding an edition
 
@@ -245,6 +258,12 @@ whether the inverted loop a browser needs actually works.
   untested here is the *plumbing* to it — the PGM this host writes and
   the command it runs, and the three same-origin paths the page hands
   tesseract.js.
+- **No real citation has been seen by the reader.** The recognizer is
+  checked against strings the suite writes and the reader against a
+  synthetic store, on all four targets; what nobody has checked is that
+  this program's own citations have the shape the recognizer expects,
+  because that needs an edition and the table is empty. It is the first
+  thing to look at when somebody has one (`docs/seams.md` §10).
 - **Nobody has opened a browser on the journal panel of the dev page.**
   It is the same open state #147 records for the rest of the page.
 - **Huffman-coded streams are not exercised by our own fixtures.** The
@@ -262,3 +281,45 @@ string, and `journal_store::fingerprint()`. The desktop host prints every
 one of those on its own lines.
 
 Not: any text, any excerpt, any screenshot of an entry, any file. Ever.
+
+## 9. The reader, and the one door between the two halves
+
+The in-game reader is M5-E4 (#175) and is a **seam**, so what it is and
+what it refuses is `docs/seams.md` §10's business rather than this
+document's. What belongs here is the join.
+
+**One host service.** The seam calls `journal_open` with an entry number;
+a host's `serve()` looks it up in the store above and answers. There are
+four answers and each is a different thing for a player to do about it:
+the text, "nobody has read a journal", "this journal has no such entry",
+and "that entry is there and the engine read nothing off it". The last
+two are the same distinction `journal_trouble` makes one layer down, kept
+rather than collapsed, because they are fixed by different things.
+
+**A correction is what the reader gets**, which is the whole reason the
+store keeps two texts per entry (§6). Nothing about the reader knows that
+a text was corrected, and nothing should.
+
+**The answer comes back in a buffer, not a return value.** `serve()`
+answers `void`, so what a host found goes into `machine::journal()` —
+core's own observation buffer, not machine state, dropped by `reset()`
+and absent from the state hash (`machine/journal.h`, `docs/seams.md` §3).
+What crosses is capped at four kilobytes, which is about sixteen screens
+of the panel the reader draws in; a longer entry is delivered truncated
+and the reader says so, because a transcription with a silent hole in it
+is the failure a player finds out about last.
+
+**Both hosts hand over the same store.** The desktop's lives for the run
+and is read at its start, so a player who ingested last week starts today
+with `--seam journal` able to answer; the browser's is the tab's, filled
+by the page's own file input — or, for a script, by `drive.mjs`'s
+`--journal-store`, which reads a store file and hands the module its
+bytes. Neither host writes to it from inside the game: a correction is a
+page's or an editor's, and the reader only reads.
+
+**What it has and has not been driven against** is in `docs/seams.md`
+§10, and the short version belongs here too: the recognizer, the reader
+and the service are checked in CI on all four targets, and the reader has
+been driven against the real program off a store written by hand — but
+**nobody has opened a real journal at a real citation**, because that
+needs an edition and the table is empty (§3).

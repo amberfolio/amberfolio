@@ -340,6 +340,15 @@ page that read it a frame later would be answering a different question
 and could not say by how much. What crosses the boundary to JS is
 therefore not the call but the *record* of it.
 
+**An answer that is not a `bool` comes back in a buffer**, and the
+journal reader (#175) is the first service that needs one: `serve()`
+answers `void` and `call_host()` answers "served", so what a host *found*
+goes into `machine::journal()` — observation, on `machine/journal.h`'s
+three terms, and the same category as the exploration state a host reads
+on the other service. A host writing there is not a host writing machine
+state, and the test that says so is that a machine holding a page of
+somebody's journal hashes as the machine that is not.
+
 That record is **polled**, which is #153's lesson one layer up: a stream
 cannot express "it never asked". `seam_engine::host_calls(which)` counts
 the calls a host actually served and `host_argument(which)` keeps what
@@ -718,8 +727,11 @@ is byte-for-byte the machine without one. That last is a test, not a
 sentence.
 
 **Nothing in this build is gated yet.** The code-wheel seam's gate is
-#115, which is now one field in its definition; the journal's is #174,
-and the table has no journal entry because nobody here has hashed one.
+#115, which is now one field in its definition; the journal reader's is
+one field in its own (§10), and the table has no journal entry because
+nobody here has hashed one — which is why turning that field on today
+would leave the reader inert for every player alive rather than gating
+it.
 
 ---
 
@@ -1130,6 +1142,7 @@ boundary, and it needs the argument this document would have to carry.
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
+| `journal` | the entry the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; **F1** for any other entry | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
@@ -1868,6 +1881,199 @@ steps and produces a final frame that is **byte for byte** the desktop
 host's, panel included, which is #173's "on both hosts" as a comparison
 of two files. What the driving found that no test could is §8.4's new
 entry, above.
+
+### The journal reader (#175)
+
+PLAN.md §5 item 2's in-game half. #174 is the other half and is a host's
+work — a player's own Adventurer's Journal located entry by entry inside
+their own PDF, inflated, read once by an OCR engine and kept as text on
+their own machine (`docs/journal.md`). This is what reads it back.
+
+**The enhancement is mostly not a key.** When the game says to read an
+entry, the entry opens. That is why the first of this seam's points is a
+watch on the program's own text output rather than a convenience on a
+menu: #165 settled the shape (a point plus memory reads, never a reader
+of the host's console ring), and the address was already in this tree —
+it is `image_draw_string`, the routine the Encamp Fix *calls* to write its
+report, watched at its entry instead.
+
+**Not one of its six points is a new address.** Five are the automap's,
+for the same five reasons: the two keyboard entries, the two clears, and
+the roster drawer's return. An enhancement that adds no address is an
+enhancement that cannot be wrong about one, and that is worth more here
+than anywhere else — every fact this seam depends on has already been
+reached on a driven run of the real program.
+
+#### The citation is a shape, not a sentence
+
+What the watch matches is the word this enhancement is named after and a
+decimal number within twelve characters of it. Nothing of the program's
+prose is written down to make that work, which is the same rule the bar
+splice follows (§8.1) and the same reason: a seam that spelled out the
+program's own words would be carrying its text in this repository.
+
+**A citation may arrive in two pieces**, because the string drawer draws
+one string at one cell and a sentence wrapped across two lines of a
+message panel is two calls. So the watch keeps a ninety-six-character
+rolling window of what has been drawn, normalized to upper case and
+single spaces, and matches against that. A match empties the window, so
+one drawing of a citation opens one entry however many times the seam
+looks at it afterwards. `journal_citation_in()` is that pattern as a free
+function precisely so it can be checked against strings a test writes,
+which is what `JournalCitation.*` does.
+
+#### Getting the text across the door
+
+`seam_context::call_host()` answers a `bool` and `serve()` answers
+`void`: between them they can say a call was **served** and not what it
+**found**. The journal reader is the first consumer that needs the
+second, and the answer is a buffer rather than a return type.
+
+`machine::journal()` (`machine/journal.h`) is that buffer, and it is
+`machine::automap()`'s sibling in every respect that matters: dropped by
+`reset()`, absent from the state serialization, reconstructed by a replay,
+and — the test that says so — a machine holding a page of somebody's
+journal hashes as the machine that is not. A host writing there is not a
+host writing machine state, which is the one sentence §3's host-service
+paragraph needed and did not have.
+
+The seam asks; the host's `serve()` looks the entry up in the store it
+was given and calls `deliver()` or `refuse()`; the seam reads the answer
+the instant the callout returns. Nothing is queued, and **"no journal has
+been read" is one of the four answers** rather than a silence.
+
+#### Where it draws, and what that costs
+
+The same rect as the automap's panel (`automap.h` derives it once):
+twenty-two columns of the program's own eight-pixel font by fourteen
+rows, drawn into the planes a plane at a time through §3's port surgery,
+in glyphs read out of the program's own font pointer.
+
+It is there because **it is the one region of this program's screen a
+seam can take and give back**. Those cells are the party roster's, and
+the program can be asked to paint the roster again from live state;
+nothing else on the adventuring screen has that property, and M5-E2d is
+what the alternative costs — closing a panel through the program's screen
+composer painted the 3D view over the vendor the player was talking to.
+Twelve rows of twenty-two characters is what that constraint pays for and
+paging is what makes it enough. A wider reader is a debt, and what it
+needs is a way to give the viewport back.
+
+**The two panels are the same pixels**, so the reader is modal over the
+map: one condition in `seam_automap.cpp` stops the map drawing while an
+entry is up, and the map comes back on its own when the entry is put
+away. Neither seam knows anything else about the other and either works
+with the other switched off.
+
+#### The key, and the ones it leaves alone
+
+**F1 opens the reader, turns its pages and closes it on the last one.**
+It is claimed the automap's way — taken out of the BIOS buffer before the
+program's own key routine looks — and it is safe on a *stronger* argument
+than Tab's: a function key has no character at all (`keyboard.h`), this
+program selects commands off its bars by character, and the extended
+keystrokes it does act on at their scan code are the numeric keypad's.
+F11 and F12 never reach the machine (`docs/hosts.md` §3), so F1 is the
+first key of that row that does.
+
+Everything else is the **modal** claim the automap's roster-cursor keys
+already make, and it lasts exactly as long as the reader is the thing on
+the screen: Escape closes, Backspace goes back a page or rubs out a
+digit, and the digits and Return are the prompt's while the prompt is up.
+Space and Return are deliberately *not* taken while a page is up — a
+citation opens the reader in the middle of a story event, and the key
+that turns the game's own page has to stay the game's.
+
+#### Its fidelity claim is narrower than the automap's, on purpose
+
+On, with no citation drawn and F1 never pressed, a run is byte for byte
+the run with the seam off: every point reads and none of them writes.
+But a citation opens the reader with nobody having asked, which *is* the
+enhancement — from the moment one is drawn the run is a run with a panel
+on its screen. What still holds either way is that the program's own
+input is untouched until the player presses a key at it.
+
+#### Ungated, and why that is a decision
+
+A journal-gated seam would be inert for every player alive: a gate is
+satisfied by a document whose fingerprint is in `known_documents()`, and
+there is no journal row in that table because nobody here has hashed one
+(§5, `docs/journal.md` §3). What this reader is really gated on is
+answered where it can be — the host has text for the entry or it has not,
+and the reader says which. The day an edition is added,
+`document_kind::journal` is one field in the definition.
+
+#### Driven, and what it found
+
+Slot A loaded, then **F1**, `3`, Return at the adventuring screen, with a
+store written by hand for the purpose — this project's own sentences, in
+the store's own format, standing in for a document nobody here has.
+
+The entry came up on the game's screen, in the game's lettering, wrapped
+to the panel and framed by the game's own art, with `ENTRY 3` in the
+yellow the program highlights with and the body in the green it writes
+messages in. `host-service journal-open calls=1 last=3` is the callout
+saying it was served. F1 again put the party roster back, exactly, with
+the 3D viewport untouched — which is the M5-E2d property this seam
+inherited by asking for the roster drawer rather than the screen
+composer.
+
+Run again with **both** panels on, the modal rule is a picture: Tab's map,
+then the entry over it, then — one F1 later — the map back with New
+Phlan's label and the party's square where they were.
+
+**And the watch itself was driven**, which needed one trick, because the
+program has no citation in it to draw. Build it once with the pattern's
+word set to `S` — a letter the program's own status line puts in front of
+the clock — and drive the same session with **no key pressed at all**:
+
+```
+amberfolio: host-service journal-open calls=1 last=2 at=209359552
+```
+
+The watch read `S ... 02` out of a string the program drew and asked the
+host for it. That is the whole of the citation path proven against the
+real program — the point is reached for the program's own text, the frame
+read at its entry (the string's offset at SP+4 and its segment at SP+6)
+lands on a real Pascal string in the program's memory, and the window and
+the recognizer see what the program is actually writing on the screen.
+What is left unproven is only the *word*, and no build in this tree can
+prove that without a document.
+
+Two things the driving found that no test could:
+
+* **The prompt's cursor cannot be a letter.** An underscore reached the
+  program's font at an index nothing has ever needed there and came out as
+  a stray mark. The cursor is a rule this seam draws in its own pixels
+  now, and the reason is written where it is drawn.
+* **The watch does not misfire.** Twelve thousand frames of boot, title,
+  code wheel, load menu and city — every string of which went through the
+  point — produced exactly one `journal_open`, and it was the one a person
+  asked for.
+
+**On, and nothing cited, a real run is unchanged.** Forty million steps of
+the program with the seam armed and reached over half a million times
+produce a final frame and an audio dump that are byte for byte the run
+with the seam off. That is §7's invariant on the real program rather than
+on a synthetic one.
+
+#### What it has not done
+
+**Nobody has driven it against a real citation**, because that needs a
+real journal and the edition table is empty (`docs/journal.md` §3). The
+driving above proves the reader, the key, the host service, the
+give-back and — through the `S` probe above — the watch's own frame read; what it cannot prove is the one thing only a player with their
+own document can — that this program's citations have the shape the
+recognizer expects. That is the first thing to look at when somebody has
+one, and `journal_citation_in()` is one function to change if they do not.
+
+**There is no committed session pair**, and the reason is worth naming
+rather than leaving as an omission: a recording carries keys, ticks and
+hashes (`docs/replay.md`), and this seam's other input is a *file* — the
+player's store — which is host configuration and not in the stream. A
+session that verified a reader would be a session that pinned a store, and
+the runner has no way to say where one is. It is a gap in the harness
+rather than in the seam, and it is #175's one loose end.
 
 ### The debug cheats (#99, #196)
 

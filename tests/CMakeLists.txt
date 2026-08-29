@@ -61,6 +61,7 @@ add_executable(amberfolio-core-tests
   core/machine/seam_call_test.cpp
   core/machine/seam_cheats_test.cpp
   core/machine/seam_encamp_test.cpp
+  core/machine/seam_journal_test.cpp
   core/machine/seam_test.cpp
   core/machine/service_floor_test.cpp
   core/machine/session_test.cpp
@@ -99,9 +100,29 @@ target_link_libraries(amberfolio-core-tests PRIVATE
 # That keeps the build honest under a cross-compiling or emulated toolchain
 # and keeps `cmake --build` from running code. The cost is that a binary
 # which cannot start is reported by ctest instead of by the build.
+# TIMEOUT: the test presets set 120 seconds for everything
+# (CMakePresets.json's `test-base`, whose whole reason is that a hung test
+# must fail and soon). A test's own TIMEOUT property beats that default,
+# and one case in this binary needs it to: nothing else here is close.
+# `AbiVfs.SaysOutOfRoomRatherThanInvalidWhenTheEntryTableIsFull`
+# fills the virtual filesystem's whole entry table to prove that "no room"
+# and "bad name" are different answers, and that fill is quadratic in
+# `max_entries` (memory_vfs.h says why every write is a pass over the
+# offsets). It takes 23 s on an idle desktop in a Debug build, and on the
+# ASan runner under `--parallel 4` it has come in at 119.9 s and been
+# killed — a coin flip, and a gate that fails half the time is worse than
+# no gate.
+#
+# Named here rather than fixed there: the quadratic fill is the
+# filesystem's business and this file has no opinion about it. Three
+# hundred seconds is two and a half times the worst measured run, which is
+# headroom against a loaded runner and still short enough that a genuinely
+# hung case is killed rather than waited out.
 gtest_discover_tests(amberfolio-core-tests
   DISCOVERY_MODE PRE_TEST
-  PROPERTIES LABELS unit)
+  PROPERTIES
+    LABELS unit
+    TIMEOUT 300)
 
 # --- The CPU conformance suite (issue #14) -----------------------------
 #

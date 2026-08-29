@@ -54,6 +54,7 @@
 #include "amberfolio/machine/device.h"
 #include "amberfolio/machine/diagnostics.h"
 #include "amberfolio/machine/dos.h"
+#include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/keyboard.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
@@ -403,6 +404,16 @@ class machine final : public cpu::bus {
     return automap_;
   }
 
+  /// What the game has cited and what the journal reader is showing
+  /// (journal.h, M5-E4 #175). Observation on the same three terms as
+  /// `automap()` above, and the one place a host service hands text back
+  /// across the callout door: `seam_context::call_host()` answers whether
+  /// a call was served, not what it found, so what it found is here.
+  [[nodiscard]] journal_state& journal() noexcept { return journal_; }
+  [[nodiscard]] const journal_state& journal() const noexcept {
+    return journal_;
+  }
+
   /// The DOS read handler's way of telling the tracker a read landed
   /// (dos.cpp): `length` bytes of `file` from `file_offset`, at
   /// `segment:offset`, hashing to `digest`. Re-evaluates the seams'
@@ -711,6 +722,7 @@ class machine final : public cpu::bus {
   /// handler through `note_file_read()`, read by the seam engine.
   overlay_tracker overlays_;
   automap_state automap_;
+  journal_state journal_;
 
   /// The platform interface (platform.h). Members rather than something
   /// a host supplies, because the buffers have to outlive every pull and

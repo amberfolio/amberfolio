@@ -235,6 +235,13 @@ uint32_t af_web_attach_host_services(af_machine* box) {
     return AF_NO_MACHINE;
   }
   pc->seams().set_host(&services());
+  // And where `journal_open` looks an entry up (M5-E4, #175): this tab's
+  // store, which lives for the life of the tab and is filled by
+  // `af_web_journal_ingest`. Attached here rather than at an ingestion so
+  // that the pointer is set once and stays set — the store object does not
+  // move, only its contents change, and a page that ingested a journal
+  // after loading the program should not have to attach anything again.
+  services().set_journal_store(&journal().store);
   return AF_OK;
 }
 

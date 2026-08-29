@@ -163,6 +163,15 @@ missing, and both were passed over for sitting inside the cluster this
 game's movement keys are: a key you can hit by accident mid-fight is the
 wrong key for a cheat.
 
+**Every other key reaches the machine**, and two of the ten function keys
+an 83-key board *does* have are now seams' rather than the program's: the
+automap panel takes **Tab** and the journal reader takes **F1** (§`seams`,
+`docs/seams.md` §10). Neither is a host key — a seam claims them inside
+the emulated machine, out of the BIOS buffer, and only while it is on —
+so nothing in this table changes and `xt_scancode()` still answers for
+both. It is written here because a person looking up "which keys are not
+the game's" should find all four in one place.
+
 F11 and F12 work during a `--replay`, because how loudly a person plays a
 recording back is not something a recording decides. Pause does not: it
 reaches the machine, so a pull at the window during a replay would be an

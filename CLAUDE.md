@@ -44,7 +44,7 @@ What M4 left in place:
   all, a disabled seam's breakpoint is never consulted, and seam state —
   an outstanding pull included — is configuration and not machine state.
   M5's five enhancements add no mechanism; they add handlers.
-- **Six seams this build carries**: `code-wheel` (ungated; its
+- **Seven seams this build carries**: `code-wheel` (ungated; its
   possession gate is M5's, #115), `encamp-fix` (M5-E1 #172, M5-E1a #186,
   M5-E1b #189 and M5-E1c #194 — the first M5 enhancement; it puts a `FIX`
   command on the camp screen's own bar by splicing four characters into
@@ -101,6 +101,26 @@ What M4 left in place:
   gate — the program's own "a script has the message area" byte — was
   measured with `--watch` and thrown away: it oscillates on every step.
   #173 is closed),
+  `journal` (M5-E4 #175 — the third M5 enhancement and the reader half of
+  the journal: when the game cites an entry, the entry opens on the
+  game's own screen, and **F1** opens any other. It adds no address —
+  five of its six points are the automap's and the sixth is the string
+  drawer the Encamp Fix already calls, watched at its entry, so the
+  citation watch is a point on the program's own text output and not a
+  reader of a host's console ring (#165). What it matches is the
+  citation's *shape* — the word and a number within reach of it, over a
+  rolling window, because a sentence wrapped across two lines of a
+  message panel reaches that routine as two calls — and never a word of
+  the program's prose. It draws in the automap's own rect, in the
+  program's own glyphs, and is modal over the map because they are the
+  same pixels. Its text comes from a host through `journal_open`, and
+  that is the first service that had to hand something *back*:
+  `machine::journal()` is the buffer it comes back in, observation on
+  `automap.h`'s three terms and not machine state. **No journal has been
+  ingested by anybody**, so the one thing never driven is a citation in
+  the program's own words — the path itself was, by building once with
+  the pattern's word set to a letter the status line draws, which is
+  `docs/playable.md` Leg 9),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine
@@ -125,8 +145,9 @@ What M4 left in place:
   journal takes the unrecognized path; the whole pipeline is proven in CI
   on all four targets against a synthetic PDF this project generates
   (`journal_probe.h`) with a fixture engine that answers only for the
-  pixels the extraction was supposed to produce. #175 is the in-game
-  reader and does not exist yet.
+  pixels the extraction was supposed to produce. The in-game reader that
+  consumes it is M5-E4 (#175), above, and is a seam rather than host
+  work; `docs/journal.md` §9 is the door between the two halves.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
   canonical machine-state serialization, a recording that is keys, ticks
   and hashes and no content at all, and verification on all four targets
