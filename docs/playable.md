@@ -1385,11 +1385,25 @@ The callout's tick differs by 17,592 — under one frame — because the two
 hosts post a `--press` at slightly different points inside a frame; the
 machines converge, which is what the identical final frame says.
 
-**What this leg did not do, and cannot yet**: it never saw the *game*
-cite an entry. That is the enhancement's other half and it needs a real
-journal, which needs an edition, and the table is empty. Everything up to
-the citation is here; the citation itself is `docs/journal.md` §3's first
-customer.
+**The watch has been driven too**, and it needed one trick, because this
+program has no citation in it to draw. Build once with the pattern's word
+set to `S` — the letter the status line puts in front of the clock — and
+run the same session with **no key pressed at all**:
+
+```
+amberfolio: host-service journal-open calls=1 last=2 at=209359552
+```
+
+The watch read `S ... 02` out of a string the program drew and asked for
+it. That is the citation path against the real program: the point is
+reached for the program's own text, the frame read at its entry lands on
+a real Pascal string in the program's memory, and the recognizer sees
+what the program is actually writing.
+
+**What this leg did not do, and cannot yet**: it never saw the game cite
+an entry *by that word*. Everything else about the path is above; the
+word is the half that needs a real journal, which needs an edition, and
+the table is empty. `docs/journal.md` §3 is its first customer.
 
 ---
 

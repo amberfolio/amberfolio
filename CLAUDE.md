@@ -117,8 +117,10 @@ What M4 left in place:
   that is the first service that had to hand something *back*:
   `machine::journal()` is the buffer it comes back in, observation on
   `automap.h`'s three terms and not machine state. **No journal has been
-  ingested by anybody**, so nothing has ever been driven against a real
-  citation; that is `docs/journal.md` §9's own last paragraph),
+  ingested by anybody**, so the one thing never driven is a citation in
+  the program's own words — the path itself was, by building once with
+  the pattern's word set to a letter the status line draws, which is
+  `docs/playable.md` Leg 9),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine

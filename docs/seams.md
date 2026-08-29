@@ -2022,6 +2022,24 @@ Run again with **both** panels on, the modal rule is a picture: Tab's map,
 then the entry over it, then — one F1 later — the map back with New
 Phlan's label and the party's square where they were.
 
+**And the watch itself was driven**, which needed one trick, because the
+program has no citation in it to draw. Build it once with the pattern's
+word set to `S` — a letter the program's own status line puts in front of
+the clock — and drive the same session with **no key pressed at all**:
+
+```
+amberfolio: host-service journal-open calls=1 last=2 at=209359552
+```
+
+The watch read `S ... 02` out of a string the program drew and asked the
+host for it. That is the whole of the citation path proven against the
+real program — the point is reached for the program's own text, the frame
+read at its entry (the string's offset at SP+4 and its segment at SP+6)
+lands on a real Pascal string in the program's memory, and the window and
+the recognizer see what the program is actually writing on the screen.
+What is left unproven is only the *word*, and no build in this tree can
+prove that without a document.
+
 Two things the driving found that no test could:
 
 * **The prompt's cursor cannot be a letter.** An underscore reached the
@@ -2043,8 +2061,8 @@ on a synthetic one.
 
 **Nobody has driven it against a real citation**, because that needs a
 real journal and the edition table is empty (`docs/journal.md` §3). The
-driving above proves the reader, the key, the host service and the
-give-back, on both hosts; what it cannot prove is the one thing only a player with their
+driving above proves the reader, the key, the host service, the
+give-back and — through the `S` probe above — the watch's own frame read; what it cannot prove is the one thing only a player with their
 own document can — that this program's citations have the shape the
 recognizer expects. That is the first thing to look at when somebody has
 one, and `journal_citation_in()` is one function to change if they do not.
