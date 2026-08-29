@@ -728,10 +728,10 @@ sentence.
 
 **Nothing in this build is gated yet.** The code-wheel seam's gate is
 #115, which is now one field in its definition; the journal reader's is
-one field in its own (§10), and the table has no journal entry because
-nobody here has hashed one — which is why turning that field on today
-would leave the reader inert for every player alive rather than gating
-it.
+one field in its own (§10), and since M5-E3b (#214) the table *does* have
+a journal row — so turning that field on is now a decision about whether
+a player who has not shown their journal should be told by the gate or by
+the reader, rather than a thing that could not be done at all.
 
 ---
 
@@ -1995,13 +1995,14 @@ input is untouched until the player presses a key at it.
 
 #### Ungated, and why that is a decision
 
-A journal-gated seam would be inert for every player alive: a gate is
-satisfied by a document whose fingerprint is in `known_documents()`, and
-there is no journal row in that table because nobody here has hashed one
-(§5, `docs/journal.md` §3). What this reader is really gated on is
-answered where it can be — the host has text for the entry or it has not,
-and the reader says which. The day an edition is added,
-`document_kind::journal` is one field in the definition.
+A journal-gated seam was inert for every player alive when this was
+written: a gate is satisfied by a document whose fingerprint is in
+`known_documents()`, and there was no journal row in that table. There is
+one now (M5-E3b, #214), so the field is a live choice rather than a dead
+one — and it stays off, because what this reader is really gated on is
+answered better where it already is: the host has text for the entry or it
+has not, and the reader says which. A gate would refuse a player who
+ingested their journal on another machine and copied the store across.
 
 #### Driven, and what it found
 

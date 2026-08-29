@@ -29,17 +29,74 @@
 namespace amberfolio::host {
 namespace {
 
-TEST(JournalTable, IsEmptyAndSaysSoRatherThanGuessing) {
-  // The state journal_facts.h describes at length: these are facts about
-  // a document somebody has to sit down with, and nobody has. The
-  // consequence is the fail-closed one — every real journal is an
-  // unrecognized edition until this table gains a row.
-  //
-  // If that ever changes, this is the line that changes with it, and the
-  // rest of this file is what the new row has to satisfy.
-  EXPECT_TRUE(known_journals().empty())
-      << "an edition is here now; check it against the rules below and"
-         " update #174's expectations with it";
+TEST(JournalTable, HasTheOneEditionSomebodySatDownWith) {
+  // It was empty until M5-E3b (#214), and the header said why at length:
+  // these are facts about a document somebody has to sit down with. One
+  // person now has, so the fail-closed state has a row in it — and every
+  // rule below is what that row had to satisfy.
+  ASSERT_EQ(known_journals().size(), 1U)
+      << "an edition came or went; the rules below are what a row has to"
+         " satisfy, and #214 is where this one came from";
+  EXPECT_EQ(known_journals().front().entries.size(), 58U)
+      << "the archive release's journal has fifty-eight numbered entries";
+}
+
+TEST(JournalTable, TheArchiveEditionIsNumberedOneToFiftyEight) {
+  // Sequential and complete: the numbering in this table is a chain that
+  // was read off the printed headings, and a gap or a repeat in it is the
+  // one way that reading could have gone wrong quietly.
+  const journal_edition& edition = known_journals().front();
+  std::uint16_t expected = 1;
+  for (const journal_entry_fact& fact : edition.entries) {
+    EXPECT_EQ(fact.number, expected) << "the entries are not in order";
+    ++expected;
+  }
+}
+
+TEST(JournalTable, TheArchiveEditionsPagesAreAllCarriedNotDecoded) {
+  // Every page of it is `/DCTDecode` (#212), which is the whole reason
+  // that passthrough exists. A row that said otherwise would be a row
+  // whose stream this build would try to inflate.
+  for (const journal_entry_fact& fact : known_journals().front().entries) {
+    for (const journal_fragment& piece : fact.fragments) {
+      EXPECT_EQ(piece.image.filter, journal_filter::dct);
+      EXPECT_FALSE(journal_filter_decoded(piece.image.filter));
+      EXPECT_EQ(piece.image.components, 3U) << "the scans are RGB";
+    }
+  }
+}
+
+TEST(JournalTable, TheArchiveEditionsPiecesAreInReadingOrder) {
+  // What an engine reads out of the pieces is joined in table order
+  // (`journal_facts.h`), so the pieces of one entry have to be in the
+  // order a person reads them: down a column, then the next column, then
+  // the next scan. Anything else is an entry whose sentences are shuffled.
+  for (const journal_entry_fact& fact : known_journals().front().entries) {
+    for (std::size_t i = 1; i < fact.fragments.size(); ++i) {
+      const journal_fragment& before = fact.fragments[i - 1];
+      const journal_fragment& after = fact.fragments[i];
+      const bool later_scan = after.page > before.page;
+      const bool later_column =
+          after.page == before.page && after.region.left > before.region.left;
+      EXPECT_TRUE(later_scan || later_column)
+          << "entry " << fact.number << " has a piece that does not follow"
+          << " the one before it";
+    }
+  }
+}
+
+TEST(JournalTable, TheArchiveEditionIsMostlyButNotAlwaysOnePiece) {
+  // The finding that shaped the schema, as a number: an entry is usually
+  // one rectangle and often is not, so a table of one region per entry
+  // could not have described this document (#214).
+  std::size_t one = 0;
+  std::size_t many = 0;
+  for (const journal_entry_fact& fact : known_journals().front().entries) {
+    (fact.fragments.size() == 1U ? one : many) += 1U;
+  }
+  EXPECT_GT(one, 0U);
+  EXPECT_GT(many, 0U) << "if every entry fits one rectangle, the fragment"
+                         " list has stopped earning its keep";
 }
 
 /// Every rule a row has to satisfy, applied to whatever table is handed
@@ -66,23 +123,34 @@ void CheckRows(std::span<const journal_edition> table) {
     for (const journal_entry_fact& fact : edition.entries) {
       EXPECT_TRUE(numbers.insert(fact.number).second)
           << edition.name << " has two rows for entry " << fact.number;
-      EXPECT_NE(fact.length, 0U) << "entry " << fact.number << " is no bytes";
-      EXPECT_NE(fact.image.width, 0U);
-      EXPECT_NE(fact.image.height, 0U);
-      EXPECT_NE(fact.region.width, 0U);
-      EXPECT_NE(fact.region.height, 0U);
-      // A region has to be inside its image, and this is the one rule a
-      // hand-edited row gets wrong quietly: the extractor would refuse
-      // it, but it would refuse it on a player's machine rather than
-      // here.
-      EXPECT_LE(fact.region.left + fact.region.width, fact.image.width)
-          << "entry " << fact.number << "'s region is off the right of it";
-      EXPECT_LE(fact.region.top + fact.region.height, fact.image.height)
-          << "entry " << fact.number << "'s region is off the bottom of it";
-      EXPECT_TRUE(journal_filter_supported(fact.image.filter))
-          << "entry " << fact.number << " is under a filter this build"
-          << " cannot carry (" << journal_filter_name(fact.image.filter)
-          << "), so shipping the row would ship a promise it cannot keep";
+      EXPECT_FALSE(fact.fragments.empty())
+          << "entry " << fact.number << " is nowhere";
+      for (const journal_fragment& piece : fact.fragments) {
+        EXPECT_NE(piece.length, 0U)
+            << "entry " << fact.number << " has a piece of no bytes";
+        EXPECT_NE(piece.image.width, 0U);
+        EXPECT_NE(piece.image.height, 0U);
+        EXPECT_NE(piece.region.width, 0U);
+        EXPECT_NE(piece.region.height, 0U);
+        // A region has to be inside its image, and this is the one rule a
+        // hand-edited row gets wrong quietly: the extractor would refuse
+        // it, but it would refuse it on a player's machine rather than
+        // here.
+        EXPECT_LE(piece.region.left + piece.region.width, piece.image.width)
+            << "entry " << fact.number << " has a piece off the right of it";
+        EXPECT_LE(piece.region.top + piece.region.height, piece.image.height)
+            << "entry " << fact.number << " has a piece off the bottom of it";
+        EXPECT_TRUE(journal_filter_supported(piece.image.filter))
+            << "entry " << fact.number << " is under a filter this build"
+            << " cannot carry (" << journal_filter_name(piece.image.filter)
+            << "), so shipping the row would ship a promise it cannot keep";
+        // Every piece of one entry is read by one engine call, so an
+        // entry whose pieces disagreed about how they are encoded is one
+        // no engine could be handed (`journal_extract.h`).
+        EXPECT_EQ(journal_filter_decoded(piece.image.filter),
+                  journal_filter_decoded(fact.fragments.front().image.filter))
+            << "entry " << fact.number << " mixes decoded and carried pieces";
+      }
     }
   }
 }

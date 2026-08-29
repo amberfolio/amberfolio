@@ -151,54 +151,62 @@ enum class journal_encoding : std::uint8_t {
   jpeg,
 };
 
-/// One entry's scan, as an engine receives it.
+/// One piece of an entry's scan, as an engine receives it.
 ///
-/// Two shapes and a field that says which — never one buffer meaning two
-/// things by context, because the two are read by different code and a
-/// consumer that guessed wrong would hand an engine a JPEG and call it
-/// pixels.
-struct journal_scan {
-  journal_encoding encoding{journal_encoding::gray};
-
-  /// `gray` only: the samples, cropped to the entry. Empty otherwise.
+/// Two shapes and the scan's own field saying which — never one buffer
+/// meaning two things by context, because the two are read by different
+/// code and a consumer that guessed wrong would hand an engine a JPEG and
+/// call it pixels.
+struct journal_part {
+  /// `gray` only: the samples, cropped to this piece of the entry.
   journal_bitmap gray;
 
-  /// Anything but `gray`: the stream, whole and unaltered. Empty for
-  /// `gray`.
+  /// Anything but `gray`: the stream, whole and unaltered.
   std::vector<std::uint8_t> encoded;
 
-  /// Anything but `gray`: which rectangle of that image is the entry, in
-  /// the image's own samples. Meaningless for `gray`, where the crop has
-  /// already happened and `gray.width`/`gray.height` say everything.
+  /// Anything but `gray`: which rectangle of that image this piece is.
+  /// Meaningless for `gray`, where the crop has already happened and
+  /// `gray.width`/`gray.height` say everything.
   journal_region region{};
-
-  /// Whether there is anything here to read at all.
-  [[nodiscard]] bool empty() const noexcept {
-    return encoding == journal_encoding::gray ? gray.empty() : encoded.empty();
-  }
 };
 
-/// Get entry `fact` out of `document` and into `out`, by whichever of the
-/// two routes its filter takes (#212).
+/// One entry's scan: its pieces, in reading order.
+///
+/// Usually one. An edition whose entries flow between columns has more
+/// (`journal_facts.h`'s `journal_fragment`), and what an engine reads out
+/// of them is joined in this order.
+struct journal_scan {
+  journal_encoding encoding{journal_encoding::gray};
+  std::vector<journal_part> parts;
+
+  /// Whether there is anything here to read at all.
+  [[nodiscard]] bool empty() const noexcept { return parts.empty(); }
+};
+
+/// Get entry `fact` out of `document` and into `out`: every fragment, in
+/// order, by whichever of the two routes its filter takes (#212).
 ///
 /// `out` is cleared first, whether this succeeds or not: a scan left over
 /// from the previous entry is the one thing that could make a failure look
-/// like a success one call later.
+/// like a success one call later. A fragment that fails fails the whole
+/// entry — half an entry read as though it were the whole one is the
+/// outcome nothing downstream could detect.
 [[nodiscard]] journal_trouble extract_scan(
     std::span<const std::uint8_t> document, const journal_entry_fact& fact,
     journal_scan& out);
 
-/// Decode the stream `fact` names inside `document`, crop it to the
-/// entry's region, and leave the result in `out`.
+/// Decode the stream `fragment` names inside `document` and crop it to
+/// that fragment's region.
 ///
-/// The decoding half of `extract_scan()`, and `filter_unsupported` for a
-/// filter this build does not decode — it answers *samples*, and there
-/// are none for a stream that goes through untouched. Kept as its own
-/// call because a test that wants the pixels wants exactly this.
+/// The decoding half of `extract_scan()`, one piece at a time, and
+/// `filter_unsupported` for a filter this build does not decode — it
+/// answers *samples*, and there are none for a stream that goes through
+/// untouched. Kept as its own call because a test that wants the pixels
+/// wants exactly this.
 ///
 /// `out` is cleared first, on the same reasoning as above.
-[[nodiscard]] journal_trouble extract_entry(
-    std::span<const std::uint8_t> document, const journal_entry_fact& fact,
+[[nodiscard]] journal_trouble extract_fragment(
+    std::span<const std::uint8_t> document, const journal_fragment& fragment,
     journal_bitmap& out);
 
 /// The decoded, uncropped image — the step before the crop, exposed
@@ -212,7 +220,7 @@ struct journal_scan {
 /// and has to open the document in something that reads JPEG. Said here
 /// so they find out from the interface rather than from an empty bitmap.
 [[nodiscard]] journal_trouble decode_image(
-    std::span<const std::uint8_t> document, const journal_entry_fact& fact,
+    std::span<const std::uint8_t> document, const journal_fragment& fragment,
     journal_bitmap& out);
 
 /// `region` of `image`, into `out`. `region_outside` if it is not.

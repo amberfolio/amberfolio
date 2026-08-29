@@ -174,10 +174,12 @@ set(_amberfolio_web_export_names
   # last five are the synthetic probe document, which is test apparatus
   # and is a host export for the same reason the probe seam is one.
   #
-  # The seven `encoding`/`encoded`/`region` names are M5-E3a's (#212): an
-  # entry whose filter this module does not decode reaches the page as
-  # the stream's own bytes and a rectangle, and the page's engine reads
-  # the page and keeps the words inside it.
+  # The `encoding`/`encoded`/`region` names are M5-E3a's (#212): an entry
+  # whose filter this module does not decode reaches the page as the
+  # stream's own bytes and a rectangle, and the page's engine reads the
+  # page and keeps the words inside it. `part_count` and the index every
+  # accessor takes are M5-E3b's (#214): an entry that flows between
+  # columns is more than one of them.
   _af_web_journal_ingest
   _af_web_journal_trouble_name
   _af_web_journal_fingerprint
@@ -189,6 +191,7 @@ set(_amberfolio_web_export_names
   _af_web_journal_image_width
   _af_web_journal_image_height
   _af_web_journal_encoding
+  _af_web_journal_part_count
   _af_web_journal_encoded_bytes
   _af_web_journal_encoded_size
   _af_web_journal_region_left

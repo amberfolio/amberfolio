@@ -145,12 +145,20 @@ What M4 left in place:
   `/DCTDecode` on every page, so its stream goes to the engine as its own
   bytes and the entry's rectangle filters the engine's *output* — which
   both engines can do, because both say where each word was. Nothing here
-  learns what a JPEG is. **The edition table is still empty**, because
-  those are facts about a document somebody has to sit down with and
-  nobody has, so every real journal takes the unrecognized path; the whole
-  pipeline is proven in CI on all four targets against a synthetic PDF
-  this project generates (`journal_probe.h`) — three entries now, the
-  third a real baseline JPEG this project encodes — with a fixture engine
+  learns what a JPEG is. **The edition table has one row**
+  (M5-E3b #214), which is the first document anybody sat down with: the
+  archive release's own journal, fifty-eight entries in seventy-eight
+  pieces across nine two-page scans, every rectangle measured off the
+  scans and every number checked against the printed headings. An entry is
+  a *list* of fragments because the entries **flow** — out of a column,
+  onto the facing page — and eighteen of the fifty-eight are in more than
+  one piece; a row of one rectangle could describe none of those.
+  `docs/journal.md` §3 is the method, so the next edition is a procedure
+  rather than an archaeology. What has still never happened is a real
+  engine reading a real page: the pipeline is proven in CI on all four
+  targets against a synthetic PDF this project generates
+  (`journal_probe.h`) — three entries, the third a real baseline JPEG this
+  project encodes and the only one in two pieces — with a fixture engine
   that answers only for the scan the extraction was supposed to produce. The in-game reader that
   consumes it is M5-E4 (#175), above, and is a seam rather than host
   work; `docs/journal.md` §9 is the door between the two halves.

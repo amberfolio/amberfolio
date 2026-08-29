@@ -122,13 +122,18 @@ export function troubleName(module, code) {
 export const JOURNAL_GRAY = 0;
 export const JOURNAL_JPEG = 1;
 
-/// The entry's scan, whichever of the two shapes it is.
+/// The entry's scan: its pieces, in reading order.
 ///
-/// `{ kind: 'gray', image }` for a page this module decoded, already
-/// cropped; `{ kind: 'jpeg', bytes, region }` for one it did not, where
-/// the bytes are the whole page and the region is the part of it that is
-/// the entry (`hosts/common/.../journal_ocr.h` says who applies it).
-/// Null when the last extraction produced nothing.
+/// `{ kind: 'gray', parts: [{ image }] }` for a page this module decoded,
+/// already cropped; `{ kind: 'jpeg', parts: [{ bytes, region }] }` for one
+/// it did not, where the bytes are a whole page and the region is the part
+/// of it that is this piece of the entry
+/// (`hosts/common/.../journal_ocr.h` says who applies it). Null when the
+/// last extraction produced nothing.
+///
+/// Usually one piece. An edition whose entries flow between columns has
+/// more (#214), and what an engine reads out of them is joined in this
+/// order.
 ///
 /// The bytes are **copied** out of the module's heap. A typed array over
 /// wasm memory is detached the moment that memory grows, and the next
@@ -136,23 +141,31 @@ export const JOURNAL_JPEG = 1;
 /// — so a view would be a use-after-free with a stack trace in somebody
 /// else's library.
 export function currentScan(module) {
-  if (module._af_web_journal_encoding() === JOURNAL_JPEG) {
-    const size = module._af_web_journal_encoded_size();
-    if (size === 0) return null;
-    const at = module._af_web_journal_encoded_bytes();
-    return {
-      kind: 'jpeg',
-      bytes: module.HEAPU8.slice(at, at + size),
-      region: {
-        left: module._af_web_journal_region_left(),
-        top: module._af_web_journal_region_top(),
-        width: module._af_web_journal_region_width(),
-        height: module._af_web_journal_region_height(),
-      },
-    };
+  const count = module._af_web_journal_part_count();
+  if (count === 0) return null;
+  const jpeg = module._af_web_journal_encoding() === JOURNAL_JPEG;
+  const parts = [];
+  for (let i = 0; i < count; ++i) {
+    if (jpeg) {
+      const size = module._af_web_journal_encoded_size(i);
+      if (size === 0) return null;
+      const at = module._af_web_journal_encoded_bytes(i);
+      parts.push({
+        bytes: module.HEAPU8.slice(at, at + size),
+        region: {
+          left: module._af_web_journal_region_left(i),
+          top: module._af_web_journal_region_top(i),
+          width: module._af_web_journal_region_width(i),
+          height: module._af_web_journal_region_height(i),
+        },
+      });
+    } else {
+      const image = currentImage(module, i);
+      if (image === null) return null;
+      parts.push({ image });
+    }
   }
-  const image = currentImage(module);
-  return image === null ? null : { kind: 'gray', image };
+  return { kind: jpeg ? 'jpeg' : 'gray', parts };
 }
 
 /// The words of `data` that fall inside `region`, as lines.
@@ -190,11 +203,11 @@ export function wordsWithin(data, region) {
   return lines.map((line) => line.join(' ')).join('\n');
 }
 
-export function currentImage(module) {
-  const width = module._af_web_journal_image_width();
-  const height = module._af_web_journal_image_height();
+export function currentImage(module, which = 0) {
+  const width = module._af_web_journal_image_width(which);
+  const height = module._af_web_journal_image_height(which);
   if (width === 0 || height === 0) return null;
-  const at = module._af_web_journal_image_bytes();
+  const at = module._af_web_journal_image_bytes(which);
   const gray = module.HEAPU8.subarray(at, at + width * height);
   const rgba = new Uint8ClampedArray(width * height * 4);
   for (let i = 0; i < gray.length; ++i) {
@@ -253,20 +266,27 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
     engine: {
       name: `tesseract.js ${lib.version ?? '(unversioned)'}`,
       async recognize(scan) {
-        if (scan.kind === 'jpeg') {
-          // The stream, under its own type, exactly as the document holds
-          // it — this page has not decoded it and has no business
-          // claiming to know more about it than the document did (#212).
-          // The browser decodes it, tesseract.js reads the whole page,
-          // and the region keeps the entry's words.
-          const blob = new Blob([scan.bytes], { type: 'image/jpeg' });
-          const { data } = await worker.recognize(blob);
-          return wordsWithin(data, scan.region).replace(/\s+$/, '');
+        // Every piece, in the order the fact table put them in, joined the
+        // way a reader would read them (#214).
+        const read = [];
+        for (const part of scan.parts) {
+          if (scan.kind === 'jpeg') {
+            // The stream, under its own type, exactly as the document
+            // holds it — this page has not decoded it and has no business
+            // claiming to know more about it than the document did
+            // (#212). The browser decodes it, tesseract.js reads the whole
+            // page, and the region keeps this piece's words.
+            const blob = new Blob([part.bytes], { type: 'image/jpeg' });
+            const { data } = await worker.recognize(blob);
+            read.push(wordsWithin(data, part.region));
+          } else {
+            const bitmap = await createImageBitmap(part.image);
+            const { data } = await worker.recognize(bitmap);
+            bitmap.close();
+            read.push(data?.text ?? '');
+          }
         }
-        const bitmap = await createImageBitmap(scan.image);
-        const { data } = await worker.recognize(bitmap);
-        bitmap.close();
-        return (data?.text ?? '').replace(/\s+$/, '');
+        return read.join('\n').replace(/\s+$/, '');
       },
       async close() {
         await worker.terminate();
@@ -470,19 +490,21 @@ export function probeEngine(module) {
   return {
     name: 'amberfolio journal probe fixture (page)',
     recognize(scan, { index }) {
-      if (!scan) return '';
-      // Whichever shape the entry is (#212): the module hashes the one it
-      // expected, and this hashes the one it was handed. They are the
-      // same FNV-1a over the same bytes, so a passthrough that altered a
-      // single byte of a stream is a mismatch and an empty answer.
-      const hash =
-        scan.kind === 'jpeg'
-          ? hashBytes(scan.bytes)
-          : scan.image && scan.image.width !== 0
-            ? hashPixels(scan.image)
-            : null;
-      if (hash === null || hash !== module._af_web_journal_probe_hash(index)) {
-        return '';
+      if (!scan || scan.parts.length === 0) return '';
+      // Whichever shape the entry is (#212), and every piece of it (#214):
+      // the module hashes the one it expected, and this hashes the ones it
+      // was handed. They are the same FNV-1a over the same bytes, so a
+      // passthrough that altered a single byte of a stream, or dropped a
+      // piece, is a mismatch and an empty answer.
+      const want = module._af_web_journal_probe_hash(index);
+      for (const part of scan.parts) {
+        const hash =
+          scan.kind === 'jpeg'
+            ? hashBytes(part.bytes)
+            : part.image && part.image.width !== 0
+              ? hashPixels(part.image)
+              : null;
+        if (hash === null || hash !== want) return '';
       }
       return readText(module, (out, cap) =>
         module._af_web_journal_probe_text(index, out, cap),

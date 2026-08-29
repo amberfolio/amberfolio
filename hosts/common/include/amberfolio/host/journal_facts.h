@@ -174,17 +174,26 @@ struct journal_region {
   std::uint32_t height{};
 };
 
-/// One entry of one edition: which entry it is, where its scan is, and
-/// what shape it is when it is decoded.
-struct journal_entry_fact {
-  /// The number the game itself uses when it tells a player to read an
-  /// entry. The store is keyed by this, not by the order of this table,
-  /// so an edition that prints its entries out of order is a table that
-  /// is out of order and nothing else.
-  std::uint16_t number{};
-  /// The page of the PDF the scan is on, one-based. Nothing reads this —
-  /// the offset is what the extractor follows — and it is here because
-  /// it is the fact a person needs to check the row by hand.
+/// One piece of one entry's scan: where its bytes are, what shape the
+/// image holding them is, and which rectangle of that image this piece
+/// is.
+///
+/// **An entry is a list of these, not one of them** (M5-E3b, #214), and
+/// the reason is the first real edition. Its entries are set in columns
+/// and they *flow*: an entry runs out of column and resumes at the top of
+/// the next, and four of its fifty-eight resume on the facing page — a
+/// different scan, a different stream. A fact table that gave an entry
+/// one rectangle could describe neither: the bounding box of two columns
+/// swallows the entries between them, and the first piece alone is half a
+/// sentence.
+///
+/// So the offset and the shape live here rather than on the entry. Most
+/// fragments of most editions will repeat their neighbour's, which is the
+/// price of being able to say the thing that is true.
+struct journal_fragment {
+  /// The page of the PDF this piece's scan is on, one-based. Nothing
+  /// reads it — the offset is what the extractor follows — and it is here
+  /// because it is the fact a person needs to check the row by hand.
   std::uint16_t page{};
   /// The byte offset, in the file, of the first byte of the stream's
   /// data: past the `stream` keyword and its end-of-line, and not past
@@ -193,7 +202,22 @@ struct journal_entry_fact {
   /// `/Length` — how many bytes of encoded data there are.
   std::uint32_t length{};
   journal_image image{};
+  /// Which rectangle of that image this piece of the entry is.
   journal_region region{};
+};
+
+/// One entry of one edition: which entry it is, and where its scan is —
+/// in as many pieces as the page it was printed on needed.
+struct journal_entry_fact {
+  /// The number the game itself uses when it tells a player to read an
+  /// entry. The store is keyed by this, not by the order of this table,
+  /// so an edition that prints its entries out of order is a table that
+  /// is out of order and nothing else.
+  std::uint16_t number{};
+  /// Its pieces, **in reading order**: what an engine reads out of them
+  /// is joined in this order, so a table whose fragments are out of order
+  /// is an entry whose sentences are.
+  std::span<const journal_fragment> fragments;
 };
 
 /// One journal edition this build knows the insides of.

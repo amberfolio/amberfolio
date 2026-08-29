@@ -98,7 +98,13 @@ inline constexpr std::size_t journal_probe_entries = 3;
 /// Which of them is the `/DCTDecode` one (#212). Named rather than
 /// spelled `2` at each of its several readers, because "the entry that
 /// goes through undecoded" is the fact and its index is an accident.
+///
+/// It is also the one with **two** fragments (M5-E3b, #214), so the probe
+/// exercises an entry that flows the way a real edition's do.
 inline constexpr std::size_t journal_probe_encoded_entry = 2;
+
+/// How many pieces the three entries have between them: one, one, two.
+inline constexpr std::size_t journal_probe_fragments = 4;
 
 /// The probe document's bytes — the same bytes on every target, every
 /// time. Built once and cached.

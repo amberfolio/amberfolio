@@ -147,11 +147,13 @@ class journal_ingester {
   /// What the last `extract()` produced. Empty if it failed.
   [[nodiscard]] const journal_scan& scan() const noexcept { return scan_; }
 
-  /// Its samples, for a caller that only handles decoded editions — a
-  /// test comparing pixels, or a host preview. Empty for a scan that went
-  /// through as its own bytes, which `scan()` is the way to reach.
+  /// The samples of its first piece, for a caller that only handles
+  /// decoded editions in one rectangle — a test comparing pixels, or a
+  /// host preview. Empty for a scan that went through as its own bytes,
+  /// and for one with no pieces; `scan()` is the way to reach either.
   [[nodiscard]] const journal_bitmap& image() const noexcept {
-    return scan_.gray;
+    static const journal_bitmap nothing;
+    return scan_.parts.empty() ? nothing : scan_.parts.front().gray;
   }
 
   /// The whole loop, for a host whose engine is a C++ object it can call.

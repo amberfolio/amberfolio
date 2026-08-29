@@ -180,9 +180,27 @@ bool tesseract_ocr::recognize(const host::journal_scan& scan,
   if (scan.empty()) {
     return false;
   }
-  return scan.encoding == host::journal_encoding::gray
-             ? recognize_bitmap(scan.gray, out)
-             : recognize_encoded(scan, out);
+  // Every piece, in the order the fact table put them in, joined the way
+  // a reader would read them (M5-E3b, #214). A piece the engine could not
+  // read fails the entry rather than leaving a hole in the middle of it:
+  // half an entry that reads as a whole one is what nothing downstream
+  // could detect (`host/journal_extract.h`).
+  std::string piece;
+  for (const host::journal_part& part : scan.parts) {
+    piece.clear();
+    const bool ok = scan.encoding == host::journal_encoding::gray
+                        ? recognize_bitmap(part.gray, piece)
+                        : recognize_encoded(part, piece);
+    if (!ok) {
+      out.clear();
+      return false;
+    }
+    if (!out.empty()) {
+      out.push_back('\n');
+    }
+    out += piece;
+  }
+  return !out.empty();
 }
 
 bool tesseract_ocr::recognize_bitmap(const host::journal_bitmap& page,
@@ -232,7 +250,7 @@ bool tesseract_ocr::recognize_bitmap(const host::journal_bitmap& page,
   return !out.empty();
 }
 
-bool tesseract_ocr::recognize_encoded(const host::journal_scan& scan,
+bool tesseract_ocr::recognize_encoded(const host::journal_part& part,
                                       std::string& out) {
   std::string where;
   if (!scratch(where)) {
@@ -254,8 +272,8 @@ bool tesseract_ocr::recognize_encoded(const host::journal_scan& scan,
     if (!file) {
       return false;
     }
-    file.write(reinterpret_cast<const char*>(scan.encoded.data()),
-               static_cast<std::streamsize>(scan.encoded.size()));
+    file.write(reinterpret_cast<const char*>(part.encoded.data()),
+               static_cast<std::streamsize>(part.encoded.size()));
     if (!file) {
       return false;
     }
@@ -277,7 +295,7 @@ bool tesseract_ocr::recognize_encoded(const host::journal_scan& scan,
 
   const std::string table = slurp(tsv);
   std::filesystem::remove(tsv, ignored);
-  out = tsv_words_within(table, scan.region);
+  out = tsv_words_within(table, part.region);
   trim_trailing(out);
   return !out.empty();
 }

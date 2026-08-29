@@ -65,7 +65,12 @@ constexpr journal_image probe_image_three{
     .inverted = false,
 };
 constexpr journal_region probe_region_three{
-    .left = 8, .top = 8, .width = 48, .height = 16};
+    .left = 8, .top = 8, .width = 48, .height = 8};
+/// ...and the second piece of it, below the first with a gap between, so
+/// an engine that read one rectangle where two were asked for gives a
+/// visibly different answer (M5-E3b, #214).
+constexpr journal_region probe_region_three_second{
+    .left = 8, .top = 20, .width = 48, .height = 8};
 
 /// The gray of a pixel of entry one's page, and whether a pixel of entry
 /// two's is ink. Two functions, and the document *and* the expectation
@@ -394,6 +399,9 @@ void append_number(std::vector<std::uint8_t>& out, std::uint64_t value) {
 
 struct probe_document {
   std::vector<std::uint8_t> bytes;
+  /// The pieces, and the entries that point into them. Held together so
+  /// the spans in `facts` name storage with the document's own life.
+  std::array<journal_fragment, journal_probe_fragments> fragments{};
   std::array<journal_entry_fact, journal_probe_entries> facts{};
   /// Entry three's stream, kept so the fixture can compare what reached
   /// an engine against what was written (#212).
@@ -476,27 +484,39 @@ struct probe_document {
   append_number(out, xref_at);
   append(out, "\n%%EOF\n");
 
+  // Entries one and two are one fragment each; entry three is **two**
+  // (M5-E3b, #214), so the probe exercises an entry that flows the way a
+  // real edition's do — two rectangles of one page, joined in order.
+  doc.fragments[0] =
+      journal_fragment{.page = 1,
+                       .offset = offset_one,
+                       .length = static_cast<std::uint32_t>(stream_one.size()),
+                       .image = probe_image_one,
+                       .region = probe_region_one};
+  doc.fragments[1] =
+      journal_fragment{.page = 1,
+                       .offset = offset_two,
+                       .length = static_cast<std::uint32_t>(stream_two.size()),
+                       .image = probe_image_two,
+                       .region = probe_region_two};
+  doc.fragments[2] =
+      journal_fragment{.page = 1,
+                       .offset = offset_three,
+                       .length = static_cast<std::uint32_t>(doc.encoded.size()),
+                       .image = probe_image_three,
+                       .region = probe_region_three};
+  doc.fragments[3] =
+      journal_fragment{.page = 1,
+                       .offset = offset_three,
+                       .length = static_cast<std::uint32_t>(doc.encoded.size()),
+                       .image = probe_image_three,
+                       .region = probe_region_three_second};
   doc.facts[0] = journal_entry_fact{
-      .number = 1,
-      .page = 1,
-      .offset = offset_one,
-      .length = static_cast<std::uint32_t>(stream_one.size()),
-      .image = probe_image_one,
-      .region = probe_region_one};
+      .number = 1, .fragments = std::span(doc.fragments).subspan(0, 1)};
   doc.facts[1] = journal_entry_fact{
-      .number = 2,
-      .page = 1,
-      .offset = offset_two,
-      .length = static_cast<std::uint32_t>(stream_two.size()),
-      .image = probe_image_two,
-      .region = probe_region_two};
+      .number = 2, .fragments = std::span(doc.fragments).subspan(1, 1)};
   doc.facts[2] = journal_entry_fact{
-      .number = 3,
-      .page = 1,
-      .offset = offset_three,
-      .length = static_cast<std::uint32_t>(doc.encoded.size()),
-      .image = probe_image_three,
-      .region = probe_region_three};
+      .number = 3, .fragments = std::span(doc.fragments).subspan(2, 2)};
   return doc;
 }
 
@@ -546,7 +566,9 @@ journal_bitmap journal_probe_expected(std::size_t index) {
   if (index >= journal_probe_entries || index == journal_probe_encoded_entry) {
     return out;
   }
-  const journal_region& region = probe().facts[index].region;
+  // Its one fragment's rectangle: the entries with a decoded answer have
+  // exactly one piece (journal_probe.h).
+  const journal_region& region = probe().facts[index].fragments.front().region;
   out.width = region.width;
   out.height = region.height;
   out.pixels.reserve(static_cast<std::size_t>(region.width) * region.height);
@@ -583,43 +605,59 @@ journal_probe_ocr::journal_probe_ocr() {
 }
 
 bool journal_probe_ocr::recognize(const journal_scan& scan, std::string& out) {
+  out.clear();
+  if (scan.parts.empty()) {
+    return false;
+  }
+
   if (scan.encoding == journal_encoding::gray) {
+    if (scan.parts.size() != 1U) {
+      return false;  // no decoded entry of this probe has two pieces
+    }
+    const journal_bitmap& got = scan.parts.front().gray;
     for (std::size_t index = 0; index < expected_.size(); ++index) {
       const journal_bitmap& want = expected_[index];
       if (want.empty()) {
         continue;  // the encoded entry has no bitmap to be
       }
-      if (scan.gray.width == want.width && scan.gray.height == want.height &&
-          scan.gray.pixels == want.pixels) {
+      if (got.width == want.width && got.height == want.height &&
+          got.pixels == want.pixels) {
         out.assign(journal_probe_text(index));
         return true;
       }
     }
-    out.clear();
     return false;
   }
 
   // The encoded entry (#212): the stream this fixture's own encoder wrote,
-  // byte for byte, **and** the region the fact table gave. The region is
-  // checked here because it is the one thing an engine is now responsible
-  // for applying, so a probe that ignored it would be a probe that could
-  // not tell a passthrough which forgot to carry it.
+  // byte for byte, **and** the regions the fact table gave, in order. The
+  // regions are checked here because they are the one thing an engine is
+  // now responsible for applying, so a probe that ignored them would be a
+  // probe that could not tell a passthrough which forgot to carry them —
+  // or one that dropped a fragment (#214).
   const std::span<const std::uint8_t> want =
       journal_probe_encoded(journal_probe_encoded_entry);
-  const journal_region& where =
-      probe().facts[journal_probe_encoded_entry].region;
-  if (!want.empty() && scan.encoded.size() == want.size() &&
-      std::equal(scan.encoded.begin(), scan.encoded.end(), want.begin()) &&
-      scan.region.left == where.left && scan.region.top == where.top &&
-      scan.region.width == where.width && scan.region.height == where.height) {
-    out.assign(journal_probe_text(journal_probe_encoded_entry));
-    return true;
+  const std::span<const journal_fragment> fragments =
+      probe().facts[journal_probe_encoded_entry].fragments;
+  if (want.empty() || scan.parts.size() != fragments.size()) {
+    return false;
   }
-  // Not a stub that says yes to anything: a scan that is not one of the
-  // three this fixture knows is a scan the pipeline got wrong somewhere,
-  // and the honest answer is that nothing was read (journal_probe.h).
-  out.clear();
-  return false;
+  for (std::size_t i = 0; i < scan.parts.size(); ++i) {
+    const journal_part& part = scan.parts[i];
+    const journal_region& where = fragments[i].region;
+    if (part.encoded.size() != want.size() ||
+        !std::equal(part.encoded.begin(), part.encoded.end(), want.begin()) ||
+        part.region.left != where.left || part.region.top != where.top ||
+        part.region.width != where.width ||
+        part.region.height != where.height) {
+      // Not a stub that says yes to anything: a scan that is not the one
+      // this fixture knows is a scan the pipeline got wrong somewhere, and
+      // the honest answer is that nothing was read (journal_probe.h).
+      return false;
+    }
+  }
+  out.assign(journal_probe_text(journal_probe_encoded_entry));
+  return true;
 }
 
 std::string_view journal_probe_ocr::engine() const {

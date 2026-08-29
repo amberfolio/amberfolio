@@ -96,16 +96,21 @@ TEST(DocumentTable, ADocumentIsNotABinaryAndTheTablesDoNotOverlap) {
   }
 }
 
-TEST(DocumentTable, TheJournalHasNoEntryYetAndThatIsSaidRatherThanGuessed) {
-  // A fingerprint is a fact about a file somebody hashed, and nobody has
-  // hashed that one. The consequence is deliberate: the journal reader's
-  // gate (#174) refuses every document until this table gains its line.
-  // If that ever changes, this test is the line that changes with it.
+TEST(DocumentTable, KnowsOneDocumentOfEachKindTheReleaseShipsWith) {
+  // The journal's line arrived with M5-E3b (#214); until then a
+  // fingerprint was a fact about a file nobody had hashed, and this test
+  // said so. Both kinds are here now, one row each, and the count is what
+  // catches a row added without a thought about which kind it is.
+  std::size_t wheels = 0;
+  std::size_t journals = 0;
   for (const document_edition& known : known_documents()) {
-    EXPECT_NE(known.kind, document_kind::journal)
-        << "the journal has an entry now; update this test and #174's"
-           " expectations with it";
+    wheels += known.kind == document_kind::code_wheel ? 1U : 0U;
+    journals += known.kind == document_kind::journal ? 1U : 0U;
+    EXPECT_NE(known.kind, document_kind::none)
+        << known.name << " is in the table as no document at all";
   }
+  EXPECT_EQ(wheels, 1U);
+  EXPECT_EQ(journals, 1U);
 }
 
 TEST(DocumentKindName, IsTheWordsAPersonReads) {

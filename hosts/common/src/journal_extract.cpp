@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "libdeflate.h"
@@ -228,13 +229,13 @@ const char* journal_trouble_name(journal_trouble what) noexcept {
 }
 
 journal_trouble decode_image(std::span<const std::uint8_t> document,
-                             const journal_entry_fact& fact,
+                             const journal_fragment& fragment,
                              journal_bitmap& out) {
   out.pixels.clear();
   out.width = 0;
   out.height = 0;
 
-  const journal_image& image = fact.image;
+  const journal_image& image = fragment.image;
   // Decoded, not merely carried: this call answers samples, and a filter
   // that goes through untouched has none to answer with (#212).
   if (!journal_filter_decoded(image.filter)) {
@@ -243,8 +244,8 @@ journal_trouble decode_image(std::span<const std::uint8_t> document,
   if (!image_supported(image)) {
     return journal_trouble::image_unsupported;
   }
-  if (fact.offset > document.size() ||
-      fact.length > document.size() - fact.offset) {
+  if (fragment.offset > document.size() ||
+      fragment.length > document.size() - fragment.offset) {
     return journal_trouble::stream_out_of_bounds;
   }
 
@@ -260,8 +261,8 @@ journal_trouble decode_image(std::span<const std::uint8_t> document,
 
   std::vector<std::uint8_t> decoded;
   if (const journal_trouble why = decode_stream(
-          document.subspan(static_cast<std::size_t>(fact.offset),
-                           static_cast<std::size_t>(fact.length)),
+          document.subspan(static_cast<std::size_t>(fragment.offset),
+                           static_cast<std::size_t>(fragment.length)),
           image.filter, static_cast<std::size_t>(decoded_bytes), decoded);
       why != journal_trouble::none) {
     return why;
@@ -320,30 +321,32 @@ journal_trouble crop(const journal_bitmap& image, const journal_region& region,
   return journal_trouble::none;
 }
 
-journal_trouble extract_entry(std::span<const std::uint8_t> document,
-                              const journal_entry_fact& fact,
-                              journal_bitmap& out) {
+journal_trouble extract_fragment(std::span<const std::uint8_t> document,
+                                 const journal_fragment& fragment,
+                                 journal_bitmap& out) {
   journal_bitmap page;
-  if (const journal_trouble why = decode_image(document, fact, page);
+  if (const journal_trouble why = decode_image(document, fragment, page);
       why != journal_trouble::none) {
     out.pixels.clear();
     out.width = 0;
     out.height = 0;
     return why;
   }
-  return crop(page, fact.region, out);
+  return crop(page, fragment.region, out);
 }
 
-journal_trouble extract_scan(std::span<const std::uint8_t> document,
-                             const journal_entry_fact& fact,
-                             journal_scan& out) {
-  out = journal_scan{};
+namespace {
 
-  if (journal_filter_decoded(fact.image.filter)) {
-    out.encoding = journal_encoding::gray;
-    return extract_entry(document, fact, out.gray);
+/// One fragment into one part, by whichever route its filter takes.
+[[nodiscard]] journal_trouble extract_one(
+    std::span<const std::uint8_t> document, const journal_fragment& fragment,
+    journal_part& out) {
+  out = journal_part{};
+
+  if (journal_filter_decoded(fragment.image.filter)) {
+    return extract_fragment(document, fragment, out.gray);
   }
-  if (!journal_filter_supported(fact.image.filter)) {
+  if (!journal_filter_supported(fragment.image.filter)) {
     return journal_trouble::filter_unsupported;
   }
 
@@ -360,15 +363,15 @@ journal_trouble extract_scan(std::span<const std::uint8_t> document,
   // rectangle off the edge of the page would reach the engine as a
   // filter that quietly matched no words, which reads exactly like an
   // engine that could not read the page.
-  if (fact.offset > document.size() ||
-      fact.length > document.size() - fact.offset) {
+  if (fragment.offset > document.size() ||
+      fragment.length > document.size() - fragment.offset) {
     return journal_trouble::stream_out_of_bounds;
   }
-  if (fact.length == 0U) {
+  if (fragment.length == 0U) {
     return journal_trouble::stream_size_wrong;
   }
-  const journal_image& image = fact.image;
-  const journal_region& region = fact.region;
+  const journal_image& image = fragment.image;
+  const journal_region& region = fragment.region;
   if (image.width == 0U || image.height == 0U || region.width == 0U ||
       region.height == 0U || region.left > image.width ||
       region.top > image.height || region.width > image.width - region.left ||
@@ -376,13 +379,49 @@ journal_trouble extract_scan(std::span<const std::uint8_t> document,
     return journal_trouble::region_outside;
   }
 
-  const auto at = static_cast<std::size_t>(fact.offset);
-  const auto length = static_cast<std::size_t>(fact.length);
-  out.encoding = journal_encoding::jpeg;
+  const auto at = static_cast<std::size_t>(fragment.offset);
+  const auto length = static_cast<std::size_t>(fragment.length);
   out.encoded.assign(
       document.begin() + static_cast<std::ptrdiff_t>(at),
       document.begin() + static_cast<std::ptrdiff_t>(at + length));
   out.region = region;
+  return journal_trouble::none;
+}
+
+}  // namespace
+
+journal_trouble extract_scan(std::span<const std::uint8_t> document,
+                             const journal_entry_fact& fact,
+                             journal_scan& out) {
+  out = journal_scan{};
+  if (fact.fragments.empty()) {
+    return journal_trouble::no_such_entry;
+  }
+
+  // One encoding for the whole entry. A table that mixed them would be
+  // describing one entry as two kinds of thing, and an engine handed a
+  // scan that was half pixels could not say which half it had read.
+  const journal_filter filter = fact.fragments.front().image.filter;
+  out.encoding = journal_filter_decoded(filter) ? journal_encoding::gray
+                                                : journal_encoding::jpeg;
+
+  for (const journal_fragment& fragment : fact.fragments) {
+    if (journal_filter_decoded(fragment.image.filter) !=
+        journal_filter_decoded(filter)) {
+      out = journal_scan{};
+      return journal_trouble::filter_unsupported;
+    }
+    journal_part part;
+    if (const journal_trouble why = extract_one(document, fragment, part);
+        why != journal_trouble::none) {
+      // A fragment that fails fails the entry: half an entry read as
+      // though it were the whole one is the outcome nothing downstream
+      // could detect (journal_extract.h).
+      out = journal_scan{};
+      return why;
+    }
+    out.parts.push_back(std::move(part));
+  }
   return journal_trouble::none;
 }
 

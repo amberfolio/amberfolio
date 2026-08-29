@@ -181,7 +181,9 @@ TEST(JournalIngest, AHostMayDriveTheLoopItself) {
     if (index == journal_probe_encoded_entry) {
       const std::span<const std::uint8_t> want = journal_probe_encoded(index);
       EXPECT_EQ(ingester.scan().encoding, journal_encoding::jpeg);
-      EXPECT_TRUE(std::ranges::equal(ingester.scan().encoded, want));
+      ASSERT_FALSE(ingester.scan().parts.empty());
+      EXPECT_TRUE(
+          std::ranges::equal(ingester.scan().parts.front().encoded, want));
     } else {
       EXPECT_EQ(ingester.scan().encoding, journal_encoding::gray);
       EXPECT_EQ(ingester.image().pixels, journal_probe_expected(index).pixels);
@@ -212,24 +214,27 @@ TEST(JournalIngest, TheEncodedEntryReachesTheEngineAsItsOwnBytes) {
 
   const journal_scan& scan = ingester.scan();
   EXPECT_EQ(scan.encoding, journal_encoding::jpeg);
-  EXPECT_TRUE(scan.gray.empty()) << "there are no samples for it to have";
+  ASSERT_FALSE(scan.parts.empty());
 
   // Byte for byte what the probe's own encoder wrote, which is the whole
   // claim: the stream is followed to its offset and handed over
-  // unaltered.
+  // unaltered — once per piece of the entry.
   const std::span<const std::uint8_t> want =
       journal_probe_encoded(journal_probe_encoded_entry);
   ASSERT_FALSE(want.empty());
-  EXPECT_EQ(scan.encoded.size(), want.size());
-  EXPECT_TRUE(std::ranges::equal(scan.encoded, want));
+  for (const journal_part& part : scan.parts) {
+    EXPECT_TRUE(part.gray.empty()) << "there are no samples for it to have";
+    EXPECT_EQ(part.encoded.size(), want.size());
+    EXPECT_TRUE(std::ranges::equal(part.encoded, want));
 
-  // And it really is a JPEG, rather than whatever happened to be there:
-  // the two markers a baseline stream begins and ends with.
-  ASSERT_GE(scan.encoded.size(), 4U);
-  EXPECT_EQ(scan.encoded[0], 0xFFU);
-  EXPECT_EQ(scan.encoded[1], 0xD8U);
-  EXPECT_EQ(scan.encoded[scan.encoded.size() - 2U], 0xFFU);
-  EXPECT_EQ(scan.encoded[scan.encoded.size() - 1U], 0xD9U);
+    // And it really is a JPEG, rather than whatever happened to be there:
+    // the two markers a baseline stream begins and ends with.
+    ASSERT_GE(part.encoded.size(), 4U);
+    EXPECT_EQ(part.encoded[0], 0xFFU);
+    EXPECT_EQ(part.encoded[1], 0xD8U);
+    EXPECT_EQ(part.encoded[part.encoded.size() - 2U], 0xFFU);
+    EXPECT_EQ(part.encoded[part.encoded.size() - 1U], 0xD9U);
+  }
 }
 
 TEST(JournalIngest, TheEncodedEntryCarriesItsRegionForTheEngineToApply) {
@@ -244,12 +249,39 @@ TEST(JournalIngest, TheEncodedEntryCarriesItsRegionForTheEngineToApply) {
   const journal_entry_fact* fact =
       ingester.entry_at(journal_probe_encoded_entry);
   ASSERT_NE(fact, nullptr);
-  EXPECT_EQ(ingester.scan().region.left, fact->region.left);
-  EXPECT_EQ(ingester.scan().region.top, fact->region.top);
-  EXPECT_EQ(ingester.scan().region.width, fact->region.width);
-  EXPECT_EQ(ingester.scan().region.height, fact->region.height);
-  EXPECT_LT(ingester.scan().region.width, fact->image.width)
-      << "a region that were the whole page would prove nothing";
+  ASSERT_EQ(ingester.scan().parts.size(), fact->fragments.size());
+  for (std::size_t i = 0; i < fact->fragments.size(); ++i) {
+    const journal_region& got = ingester.scan().parts[i].region;
+    const journal_fragment& want = fact->fragments[i];
+    EXPECT_EQ(got.left, want.region.left);
+    EXPECT_EQ(got.top, want.region.top);
+    EXPECT_EQ(got.width, want.region.width);
+    EXPECT_EQ(got.height, want.region.height);
+    EXPECT_LT(got.width, want.image.width)
+        << "a region that were the whole page would prove nothing";
+  }
+}
+
+TEST(JournalIngest, AnEntryInMoreThanOnePieceArrivesInAllOfThem) {
+  // The shape a real edition needs (M5-E3b, #214): an entry that flows out
+  // of one rectangle and resumes in another comes back as both, in the
+  // order the fact table put them in.
+  journal_ingester ingester(journal_probe_table());
+  ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
+  const journal_entry_fact* fact =
+      ingester.entry_at(journal_probe_encoded_entry);
+  ASSERT_NE(fact, nullptr);
+  ASSERT_GT(fact->fragments.size(), 1U)
+      << "the probe has to carry a multi-piece entry for this to mean"
+         " anything";
+
+  ASSERT_EQ(ingester.extract(journal_probe_encoded_entry),
+            journal_trouble::none);
+  EXPECT_EQ(ingester.scan().parts.size(), fact->fragments.size());
+  // Two pieces of one page, and different parts of it: an extractor that
+  // handed the same rectangle over twice would pass every check above.
+  EXPECT_NE(ingester.scan().parts.front().region.top,
+            ingester.scan().parts.back().region.top);
 }
 
 TEST(JournalIngest, TheFixtureRefusesAStreamThatWasAlteredOrMisplaced) {
@@ -266,12 +298,19 @@ TEST(JournalIngest, TheFixtureRefusesAStreamThatWasAlteredOrMisplaced) {
   EXPECT_EQ(text, journal_probe_text(journal_probe_encoded_entry));
 
   journal_scan altered = ingester.scan();
-  altered.encoded[altered.encoded.size() / 2U] ^= 0x01U;
+  altered.parts.front().encoded[altered.parts.front().encoded.size() / 2U] ^=
+      0x01U;
   EXPECT_FALSE(engine.recognize(altered, text));
 
   journal_scan moved = ingester.scan();
-  moved.region.left += 1U;
+  moved.parts.front().region.left += 1U;
   EXPECT_FALSE(engine.recognize(moved, text));
+
+  // And a piece dropped: an entry read from one of its two rectangles is
+  // half an entry, which the fixture must not accept (#214).
+  journal_scan short_one = ingester.scan();
+  short_one.parts.pop_back();
+  EXPECT_FALSE(engine.recognize(short_one, text));
 }
 
 }  // namespace
