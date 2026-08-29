@@ -801,6 +801,44 @@ TEST(JournalReader, SomethingClearingTheseCellsTakesThePageWithIt) {
 // The keys the program keeps
 // ---------------------------------------------------------------------------
 
+TEST(JournalKeys, OffAScreenWithARosterEvenTheKeyIsNobodys) {
+  // A key claimed where nothing can be drawn is a key the player pressed
+  // and saw no answer to.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.put_byte(rig::dgroup(), data_game_mode, mode_title);
+  r.type(key_f1);
+  r.poll();
+  EXPECT_EQ(r.keys_waiting(), 1u);
+  EXPECT_FALSE(r.reader().reader_open());
+}
+
+TEST(JournalReader, AnEntryOpenedOffARosterScreenComesUpWhenOneReturns) {
+  // A citation is watched wherever the program draws it; only the
+  // presentation waits for a screen this panel can be on.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.number = 1;
+  r.host.text = "text";
+
+  r.adventuring();
+  r.put_byte(rig::dgroup(), data_game_mode, mode_title);
+  r.program_draws("journal 1");
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  r.poll();
+  EXPECT_FALSE(r.reader().on_screen());
+
+  r.adventuring();
+  r.poll();
+  EXPECT_TRUE(r.reader().on_screen());
+}
+
 TEST(JournalKeys, WithTheReaderDownEverythingButTheKeyIsTheProgramsOwn) {
   rig r;
   r.attach_video();

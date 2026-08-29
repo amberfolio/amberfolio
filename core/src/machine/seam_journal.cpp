@@ -916,6 +916,12 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
     case journal_reader_mode::showing:
       break;
   }
+  if (state.page_count() == 0) {
+    // Nothing has been drawn yet, so there is no page to turn and no
+    // picture to put away. Reachable only in the one step between a
+    // citation opening the reader and the arrival that draws it.
+    return;
+  }
   if (state.page() + 1U < state.page_count()) {
     state.set_page(static_cast<std::uint16_t>(state.page() + 1U));
     return;
@@ -1022,6 +1028,15 @@ void at_key_pending(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  if (!has_roster(cpu, ds)) {
+    // Not a screen this reader can be on, so **its keys are nobody's
+    // here**: a key claimed where nothing can be drawn is a key the
+    // player pressed and saw no answer to. An entry a citation opened on
+    // such a screen is not closed, only unrendered — it comes up when a
+    // screen with a roster does, which is the same rule the covered-cells
+    // test follows one step in.
+    return;
+  }
   if (handle_keys(box, ctx, ds)) {
     // The roster is on its way back through a batch. Nothing else this
     // pass.
@@ -1045,6 +1060,9 @@ void at_key_read(machine& box, seam_context& ctx) {
   const std::uint16_t ds = data_segment(cpu, ctx);
   if (ds == 0) {
     ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (!has_roster(cpu, ds)) {
     return;
   }
   if (handle_keys(box, ctx, ds)) {
