@@ -223,7 +223,10 @@ handler, the commands, and how to read a failing vector.
 [`docs/hosts.md`](docs/hosts.md) is the other end: what the hosts' smoke
 checks settle, the windowed and audio paths included, and the two things
 about a host that only a person in front of a display and a speaker can
-ever confirm.
+ever confirm. [`docs/journal.md`](docs/journal.md) is the journal's
+ingestion: how a player's own Adventurer's Journal becomes text, what an
+OCR engine is and is not asked to do on each host, and why the edition
+table is empty.
 
 Formatting (`clang-format`), static analysis (`clang-tidy`), shell linting
 (`shellcheck`), the content guard, the DCO check and the host-time guard

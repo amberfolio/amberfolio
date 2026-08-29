@@ -59,6 +59,7 @@ import {
   MAX_CATCH_UP_SECONDS,
 } from './host.mjs';
 import { wireDirectoryPicker } from './picker.mjs';
+import { ingestJournal, loadEngine } from './journal.mjs';
 
 const CANVAS_ID = 'screen';
 const START_BUTTON_ID = 'start';
@@ -77,6 +78,8 @@ const SPEED_SELECT_ID = 'speed';
 const VOLUME_INPUT_ID = 'volume';
 const MUTE_CHECKBOX_ID = 'mute';
 const HEALTH_ID = 'health';
+const JOURNAL_INPUT_ID = 'journal';
+const JOURNAL_STATUS_ID = 'journal-status';
 
 /// The rate the speaker is rendered and played at. What a callback pulls
 /// is not a fixed number of samples but however many this rate has in the
@@ -217,6 +220,73 @@ export function runDevPage() {
   });
 
   // --- The player's own directory (#84) ----------------------------------
+
+  // --- The journal, read once (M5-E3, #174) -----------------------------
+  //
+  // Nothing to do with the machine: this is onboarding, and it happens
+  // whether or not a game has been loaded. The module does all the
+  // reading — it hashes the document, finds its edition and follows each
+  // entry's offset — and this is the file input and the sentence
+  // afterwards.
+  //
+  // What that sentence says matters more than usual, because there are
+  // three ways an ingestion ends and a player can act on each one: an
+  // edition nobody has fingerprinted (here is its hash), an engine that
+  // is not installed (here is what to do), and entries that were located
+  // and read. `known_journals()` is empty today, so the first is what
+  // every real journal gets — and saying so plainly, with the
+  // fingerprint, is the whole of PLAN.md §9's friendly path.
+  const journalInput = el(JOURNAL_INPUT_ID);
+  const journalStatusEl = el(JOURNAL_STATUS_ID);
+  const setJournalStatus = (text) => {
+    if (journalStatusEl) journalStatusEl.textContent = text;
+    appendConsole(`[journal] ${text}\n`);
+  };
+  if (journalInput) {
+    journalInput.addEventListener('change', async () => {
+      const file = journalInput.files?.[0];
+      if (!file) return;
+      try {
+        setJournalStatus(`reading ${file.name}...`);
+        const box = await ensureMachine();
+        const bytes = new Uint8Array(await file.arrayBuffer());
+
+        // A journal is a document, so it is presented to the gate as
+        // well as read inside — the same thing the desktop host's
+        // `--journal` does, and what a journal-gated seam waits for
+        // (#171). Its answer is not this ingestion's business: an
+        // edition the gate does not know may still be one the fact table
+        // knows, and the other way round, and each says so on its own.
+        box.presentDocument(bytes);
+
+        const { engine, why } = await loadEngine();
+        if (!engine) setJournalStatus(why);
+
+        const report = await ingestJournal(loaded.module, bytes, {
+          engine,
+          onProgress: ({ index, count, number }) =>
+            setJournalStatus(`entry ${number} (${index + 1} of ${count})...`),
+        });
+        if (engine?.close) await engine.close();
+
+        if (!report.ok) {
+          setJournalStatus(
+            `${report.trouble} - sha256=${report.fingerprint}`,
+          );
+          return;
+        }
+        setJournalStatus(
+          `${report.edition}: ${report.recognized} of ${report.entries} entries` +
+            ` read by ${report.engine}` +
+            (report.firstTrouble
+              ? ` (entry ${report.firstTrouble.number}: ${report.firstTrouble.what})`
+              : ''),
+        );
+      } catch (problem) {
+        setJournalStatus(`the ingestion failed: ${problem.message ?? problem}`);
+      }
+    });
+  }
 
   wireDirectoryPicker({
     input: el(DIRECTORY_INPUT_ID),

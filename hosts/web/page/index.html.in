@@ -256,6 +256,31 @@
       </p>
     </fieldset>
 
+    <!-- The M5-E3 (#174) half: the player's own Adventurer's Journal,
+         read once so that the in-game reader has something to show. This
+         is the minimal onboarding surface that issue asks for - a file
+         input - and not the guided flow, which is M6's. -->
+    <fieldset>
+      <legend>read your own journal</legend>
+      <div class="controls">
+        <label>
+          journal PDF
+          <input id="journal" type="file" accept="application/pdf,.pdf" />
+        </label>
+      </div>
+      <div class="controls">
+        <span id="journal-status"></span>
+      </div>
+      <p class="note">
+        Your document is read in your browser and never leaves it, and no
+        page of it is kept — what is kept is the text, in this tab's
+        memory, until you close it. Saving it between visits is M6's.
+        Recognition needs an OCR engine beside this page; without one
+        every entry is still located and decoded, and this page says so
+        rather than quietly finding nothing.
+      </p>
+    </fieldset>
+
     <script type="module">
       // Imported dynamically, inside the try, rather than with a static
       // import at the top: a static one that fails takes the whole module

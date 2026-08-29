@@ -109,6 +109,24 @@ What M4 left in place:
   Encamp Fix's days arithmetic and its report's exception list had no
   other way to be driven). `docs/seams.md` §8 is the house style for the
   next one and §10 is the worked example.
+- **The journal's ingestion** (`hosts/common/.../journal_*.h`,
+  `docs/journal.md`) — M5-E3 (#174), and host work rather than seam work.
+  A player's own Adventurer's Journal, located entry by entry inside
+  their own PDF off a fact table of offsets, inflated, cropped, read once
+  by an OCR engine, and kept as text on their own machine: a file beside
+  the config on the desktop, this tab's memory in a browser (IndexedDB is
+  M6's and the page says so). Corrections are a second field per entry
+  and survive re-ingestion. The OCR engine is Tesseract on both hosts and
+  is linked on neither — the desktop runs the player's own installed one
+  as a program, the page loads the pinned tesseract.js
+  (`.tesseract-version`, `.tesseract-js-version`) from its own origin and
+  **never a CDN**. **The edition table is empty**, because these are
+  facts about a document nobody here has sat down with, so every real
+  journal takes the unrecognized path; the whole pipeline is proven in CI
+  on all four targets against a synthetic PDF this project generates
+  (`journal_probe.h`) with a fixture engine that answers only for the
+  pixels the extraction was supposed to produce. #175 is the in-game
+  reader and does not exist yet.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
   canonical machine-state serialization, a recording that is keys, ticks
   and hashes and no content at all, and verification on all four targets
@@ -287,6 +305,10 @@ bash scripts/test-guards.sh   # guard self-test — run after editing a guard
 bash scripts/test-sweep.sh    # session-runner self-test — after editing sweep.py
 bash scripts/test-release-bundle.sh  # release-bundler self-test — after editing it
 python3 scripts/sweep.py      # every committed session, on every target
+
+python3 scripts/fetch-ocr-engine.py --into <the served web directory>
+                              # the browser's OCR engine (#174), pinned by
+                              # .tesseract-js-version, never committed
 ```
 
 The clang tools are pinned in `.llvm-version` and installed from PyPI

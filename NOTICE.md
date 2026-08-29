@@ -28,13 +28,16 @@ from source, never committed here.
 | [GoogleTest](https://github.com/google/googletest) | v1.18.0 | BSD-3-Clause | the unit-test and conformance harnesses |
 | [SDL3](https://github.com/libsdl-org/SDL) | release-3.4.14 | zlib | the desktop host's window, audio and input |
 | [simdjson](https://github.com/simdjson/simdjson) | v4.6.7 | Apache-2.0 | parsing the condensed CPU conformance vectors |
-| [libdeflate](https://github.com/ebiggers/libdeflate) | v1.25 | MIT | decompressing them |
+| [libdeflate](https://github.com/ebiggers/libdeflate) | v1.25 | MIT | decompressing them, and inflating the journal's image streams |
 
-Only GoogleTest and SDL3 have any bearing on a shipped binary: SDL3 is
-linked into the desktop host, and GoogleTest, simdjson and libdeflate are
-test-only. The pins live in `cmake/AmberfolioGoogleTest.cmake`,
-`cmake/AmberfolioSDL3.cmake` and `cmake/AmberfolioConformance.cmake`; the
-version numbers above are those files' defaults and those files are
+SDL3 and libdeflate have a bearing on a shipped binary; GoogleTest and
+simdjson are test-only. SDL3 is linked into the desktop host. libdeflate
+was test-only until M5-E3 (#174) gave the journal's extractor a use for
+it, and it is now linked into both hosts — decompression only, so the
+half of it that writes a stream is not built at all. The pins live in
+`cmake/AmberfolioGoogleTest.cmake`, `cmake/AmberfolioSDL3.cmake`,
+`cmake/AmberfolioLibdeflate.cmake` and `cmake/AmberfolioConformance.cmake`;
+the version numbers above are those files' defaults and those files are
 authoritative if the two ever disagree.
 
 The WebAssembly host is built with
@@ -47,6 +50,31 @@ The format and lint gates use clang-format and clang-tidy from
 [LLVM](https://llvm.org/) (Apache-2.0 with LLVM exceptions), pinned in
 `.llvm-version` and installed from PyPI. They never become part of a
 build.
+
+---
+
+## The OCR engines (M5-E3, #174)
+
+Reading a player's own Adventurer's Journal needs an OCR engine.
+[Tesseract](https://github.com/tesseract-ocr/tesseract) — **Apache-2.0**
+— is the one, on both hosts, and neither host links it:
+
+* the desktop host **runs the player's own installed `tesseract`** as a
+  program. It is not fetched, not vendored and not linked, so nothing is
+  combined with anything; `.tesseract-version` records the version this
+  host is written against, and the version actually used is asked of the
+  engine at ingestion. `hosts/sdl/src/tesseract_ocr.h` has the reasoning;
+* the web host uses
+  [tesseract.js](https://github.com/naptha/tesseract.js) — **Apache-2.0**,
+  with `tesseract.js-core` and the
+  [tessdata_fast](https://github.com/tesseract-ocr/tessdata) language
+  data, both Apache-2.0 — pinned in `.tesseract-js-version` and fetched
+  by `scripts/fetch-ocr-engine.py` into the served directory. Never
+  committed here, and **never fetched from a CDN by the deployed page**:
+  `docs/journal.md` §5 is that decision and its reasons.
+
+Neither is required. A build with no engine locates and decodes every
+entry, keeps no text, and says so.
 
 ---
 

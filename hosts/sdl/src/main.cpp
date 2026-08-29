@@ -200,6 +200,47 @@
 //     it is not machine state, and a run with a document presented and
 //     every seam off is byte-for-byte the run without one.
 //
+//   --journal PATH   ingest the player's own Adventurer's Journal
+//
+//     M5-E3 (#174), and the one place this host reads *inside* a
+//     document rather than only hashing it. The file is presented as
+//     `--document` presents one — so a journal-gated seam arms — and then
+//     each entry's scan is followed to its offset, decoded, read by an
+//     OCR engine and kept as text (`host/journal_ingest.h`).
+//
+//     An edition this build does not know the insides of is reported
+//     with its fingerprint and nothing is read: the offsets are only
+//     true of one file, and following them into another produces
+//     twenty failures rather than one sentence. `known_journals()` is
+//     empty today, so that is what every real journal gets, and
+//     `docs/journal.md` §3 is how an edition is added.
+//
+//   --journal-store PATH  where the text a journal ingested lives
+//
+//     Defaults to `journal.txt` under this platform's per-user data
+//     directory, beside where M6's configuration will live; the line
+//     this host prints after an ingestion says which file it used. The
+//     store is read before an ingestion and written after, which is what
+//     makes a correction survive one (`host/journal_store.h`).
+//
+//   --journal-ocr PATH|none  which OCR engine to read with
+//
+//     The player's own Tesseract, `tesseract` off the path by default
+//     (`tesseract_ocr.h` says why it is run rather than linked).
+//     `none` ingests every image and stores no text, which is also what
+//     happens when the engine is not installed — said in as many words
+//     rather than quietly recognizing nothing.
+//
+//   --journal-probe  add the synthetic probe edition, for checks
+//
+//     Test apparatus, and named as such: `host/journal_probe.h` builds a
+//     document this project generates, so the whole ingestion can be
+//     driven in CI without a document it did not make. It adds the probe
+//     edition to *this run's* table and installs the fixture engine that
+//     answers for exactly the probe's pixels; a player's build knows
+//     nothing about either, the same way it knows nothing about the web
+//     host's probe seam.
+//
 //   --seams          list every seam this build carries, and exit
 //
 //     The toggle surface M4-F4 (#98) asks for: each seam's id, its
@@ -483,6 +524,7 @@
 #include <charconv>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -496,12 +538,19 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <vector>
 
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/host/automap_store.h"
 #include "amberfolio/host/host_services.h"
+#include "amberfolio/host/journal_extract.h"
+#include "amberfolio/host/journal_facts.h"
+#include "amberfolio/host/journal_ingest.h"
+#include "amberfolio/host/journal_ocr.h"
+#include "amberfolio/host/journal_probe.h"
+#include "amberfolio/host/journal_store.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/dos.h"
@@ -528,6 +577,7 @@
 #include "directory_vfs.h"
 #include "dump.h"
 #include "keymap.h"
+#include "tesseract_ocr.h"
 
 // <cstdio> rather than std::format/std::print, and not only for the wasm
 // host's reason (bundle size). libc++ gates std::format's floating-point
@@ -1143,6 +1193,16 @@ struct options {
   /// lives wherever a person keeps their PDFs, which is very often not
   /// inside the game directory.
   std::vector<std::string> documents;
+
+  /// The journal's ingestion (M5-E3, #174). `journal` is the document to
+  /// read the entries out of; `journal_store` is where the text goes, or
+  /// empty for this platform's default; `journal_ocr` is the engine, or
+  /// `none`; `journal_probe` adds the synthetic edition and its fixture
+  /// engine for a check that has no real document to use.
+  std::string journal;
+  std::string journal_store;
+  std::string journal_ocr{"tesseract"};
+  bool journal_probe{false};
   machine::speed_preset speed{machine::default_speed};
 
   /// Where the speaker's level starts, and whether it starts latched to
@@ -1454,6 +1514,14 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.vfs_removes.emplace_back(argv[++i]);
     } else if (arg == "--document" && i + 1 < argc) {
       opts.documents.emplace_back(argv[++i]);
+    } else if (arg == "--journal" && i + 1 < argc) {
+      opts.journal = argv[++i];
+    } else if (arg == "--journal-store" && i + 1 < argc) {
+      opts.journal_store = argv[++i];
+    } else if (arg == "--journal-ocr" && i + 1 < argc) {
+      opts.journal_ocr = argv[++i];
+    } else if (arg == "--journal-probe") {
+      opts.journal_probe = true;
     } else if (arg == "--seams") {
       opts.list_seams = true;
     } else if (arg == "--trace") {
@@ -1602,6 +1670,22 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
     std::fprintf(stderr,
                  "amberfolio: --dump-every needs --dump, whose prefix it"
                  " writes under\n");
+    return opts;
+  }
+
+  // The journal's three companions are all about an ingestion, so without
+  // one there is nothing for them to be about. Refused rather than
+  // ignored, on the same reasoning as `--dump-every` below — and with
+  // one extra for `--journal-store`, which a person could reasonably
+  // expect to *read* a store rather than say where one goes. Reading is
+  // #175's, and saying so beats accepting a flag that does nothing.
+  if (opts.journal.empty() &&
+      (!opts.journal_store.empty() || opts.journal_probe ||
+       opts.journal_ocr != "tesseract")) {
+    std::fprintf(stderr,
+                 "amberfolio: --journal-store, --journal-ocr and"
+                 " --journal-probe need --journal, whose ingestion they"
+                 " are about\n");
     return opts;
   }
 
@@ -1763,6 +1847,32 @@ void report_vfs(machine::filesystem& files, const options& opts) {
   }
 }
 
+/// Present `digest` to the engine and say what it turned out to be.
+///
+/// Split out of `present_document` below because the journal's ingestion
+/// (#174) has already read and hashed the file it is about to read the
+/// insides of, and hashing it a second time to say the same sentence
+/// would be a second answer that could differ from the first.
+void present_digest(machine::machine& box, const sha256_digest& digest) {
+  std::array<char, sha256_digest::text_length + 1> hex{};
+  static_cast<void>(format_hex(digest, hex));
+
+  const machine::document_edition* known = box.seams().present_document(digest);
+  if (known != nullptr) {
+    std::fprintf(stderr, "amberfolio: document %.*s (%s) sha256=%s\n",
+                 static_cast<int>(known->name.size()), known->name.data(),
+                 machine::document_kind_name(known->kind), hex.data());
+    return;
+  }
+  // Reported, not guessed (machine/document.h). The fingerprint goes on
+  // the line because it is the thing somebody can act on: it is what an
+  // entry in the table is made of.
+  std::fprintf(stderr,
+               "amberfolio: document unrecognized sha256=%s - no gate is"
+               " satisfied by it\n",
+               hex.data());
+}
+
 /// Read `path` off *this* machine's filesystem, hash it, and present it
 /// to the engine (M5-D3, #171).
 ///
@@ -1795,24 +1905,159 @@ void present_document(machine::machine& box, const std::string& path) {
         reinterpret_cast<const std::uint8_t*>(buffer.data()),
         static_cast<std::size_t>(got)));
   }
-  const sha256_digest digest = hasher.finish();
-  std::array<char, sha256_digest::text_length + 1> hex{};
-  static_cast<void>(format_hex(digest, hex));
+  present_digest(box, hasher.finish());
+}
 
-  const machine::document_edition* known = box.seams().present_document(digest);
-  if (known != nullptr) {
-    std::fprintf(stderr, "amberfolio: document %.*s (%s) sha256=%s\n",
-                 static_cast<int>(known->name.size()), known->name.data(),
-                 machine::document_kind_name(known->kind), hex.data());
+/// Where a journal's text lives when `--journal-store` did not say.
+///
+/// The per-user data directory this platform keeps application data in.
+/// Empty if this platform will not say where that is, in which case the
+/// host asks for `--journal-store` rather than picking somewhere.
+[[nodiscard]] std::string journal_store_default_path() {
+  // SDL's own answer, which is the right one on all three desktops and
+  // is one call rather than three `#ifdef`s that would each be wrong on
+  // somebody's machine: `%APPDATA%\\amberfolio\\` on Windows,
+  // `~/Library/Application Support/amberfolio/` on macOS, and
+  // `$XDG_DATA_HOME/amberfolio/` on Linux. It creates the directory, and
+  // it is where M6's configuration will live too -- #174's "beside the
+  // config", written down before there is a config to be beside.
+  //
+  // No organization, because there is no organization: an empty one
+  // leaves the application's own directory directly under the platform's
+  // data root, which is what a single-application project should write.
+  char* where = SDL_GetPrefPath("", "amberfolio");
+  if (where == nullptr) {
+    return {};
+  }
+  std::string path(where);
+  SDL_free(where);
+  path += host::journal_store_filename;
+  return path;
+}
+
+/// Ingest `opts.journal` (M5-E3, #174): present it, follow its entries,
+/// read them, and keep the text.
+///
+/// The whole file is read into memory, which is what the extractor wants
+/// (`host/journal_extract.h` says why) and what a browser has anyway.
+/// Every failure here is a sentence and a return: an ingestion that goes
+/// wrong leaves the run alone, because a player who asked to read their
+/// journal and could not still asked to play.
+void ingest_journal(machine::machine& box, const options& opts) {
+  std::ifstream file(opts.journal, std::ios::binary);
+  if (!file) {
+    std::fprintf(stderr, "amberfolio: journal %s could not be read\n",
+                 opts.journal.c_str());
     return;
   }
-  // Reported, not guessed (machine/document.h). The fingerprint goes on
-  // the line because it is the thing somebody can act on: it is what an
-  // entry in the table is made of.
+  const std::string bytes((std::istreambuf_iterator<char>(file)),
+                          std::istreambuf_iterator<char>());
+  const std::span<const std::uint8_t> document(
+      reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size());
+
+  host::journal_ingester ingester(opts.journal_probe
+                                      ? host::journal_probe_table()
+                                      : host::known_journals());
+  const host::journal_trouble opened = ingester.begin(document);
+
+  // The same sentence `--document` would have printed, off the digest
+  // this already computed: a journal is a document, and presenting it is
+  // what satisfies a journal-gated seam.
+  present_digest(box, ingester.fingerprint());
+
+  if (opened != host::journal_trouble::none) {
+    std::fprintf(stderr, "amberfolio: journal unrecognized sha256=%s - %s\n",
+                 ingester.fingerprint_hex().c_str(),
+                 host::journal_trouble_name(opened));
+    return;
+  }
+  std::fprintf(stderr, "amberfolio: journal %.*s entries=%zu\n",
+               static_cast<int>(ingester.edition()->name.size()),
+               ingester.edition()->name.data(), ingester.entries());
+
+  // The engine, and what it is. Three ways this can go and each is said
+  // out loud: the fixture the probe installs, the player's own engine,
+  // or none — and "none" is a sentence rather than a silence, because a
+  // store with no text in it and no explanation is the failure a player
+  // finds out about last (`tesseract_ocr.h`).
+  host::journal_probe_ocr fixture;
+  sdl::tesseract_ocr tesseract(opts.journal_ocr);
+  host::journal_ocr* engine = nullptr;
+  if (opts.journal_ocr == "none") {
+    std::fprintf(stderr,
+                 "amberfolio: journal no engine asked for - the entries"
+                 " will be read and no text kept\n");
+  } else if (opts.journal_probe) {
+    engine = &fixture;
+  } else if (tesseract.available()) {
+    engine = &tesseract;
+  } else {
+    std::fprintf(stderr,
+                 "amberfolio: journal no engine - '%s' did not answer;"
+                 " install it or say --journal-ocr PATH\n",
+                 opts.journal_ocr.c_str());
+  }
+  if (engine != nullptr) {
+    std::fprintf(stderr, "amberfolio: journal engine %.*s\n",
+                 static_cast<int>(engine->engine().size()),
+                 engine->engine().data());
+  }
+
+  // Where the text goes, and what is already there. Read first, so a
+  // correction a player made survives this ingestion — which is the
+  // whole reason the store is read at all rather than written fresh.
+  const std::string path = opts.journal_store.empty()
+                               ? journal_store_default_path()
+                               : opts.journal_store;
+  if (path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: journal this platform does not say where"
+                 " per-user data lives; say --journal-store PATH\n");
+    return;
+  }
+  host::journal_store store;
+  if (std::ifstream existing(path, std::ios::binary); existing) {
+    const std::string text((std::istreambuf_iterator<char>(existing)),
+                           std::istreambuf_iterator<char>());
+    if (const host::journal_trouble why = store.parse(text);
+        why != host::journal_trouble::none) {
+      // Refused rather than overwritten: whatever that file is, it is
+      // not this build's, and a player's transcription is not something
+      // to write over on a guess.
+      std::fprintf(stderr, "amberfolio: journal store %s - %s\n", path.c_str(),
+                   host::journal_trouble_name(why));
+      return;
+    }
+  }
+
+  const host::journal_ingest_report report = ingester.run(engine, store);
   std::fprintf(stderr,
-               "amberfolio: document unrecognized sha256=%s - no gate is"
-               " satisfied by it\n",
-               hex.data());
+               "amberfolio: journal entries=%u extracted=%u recognized=%u\n",
+               report.entries, report.extracted, report.recognized);
+  if (report.first_trouble != host::journal_trouble::none) {
+    std::fprintf(stderr, "amberfolio: journal entry %u: %s\n",
+                 static_cast<unsigned>(report.first_failure),
+                 host::journal_trouble_name(report.first_trouble));
+  }
+
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  const std::string serialized = store.serialize();
+  out.write(serialized.data(), static_cast<std::streamsize>(serialized.size()));
+  out.flush();
+  if (!out) {
+    std::fprintf(stderr, "amberfolio: journal store %s could not be written\n",
+                 path.c_str());
+    return;
+  }
+  std::array<char, sha256_digest::text_length + 1> hex{};
+  static_cast<void>(format_hex(store.fingerprint(), hex));
+  // The fingerprint, and not a word of what is in it: a store is a
+  // player's own document read off a player's own copy, and a hash names
+  // it without carrying any of it (`host/journal_store.h`).
+  std::fprintf(stderr,
+               "amberfolio: journal store %s entries=%zu corrections=%zu"
+               " sha256=%s\n",
+               path.c_str(), store.size(), store.corrections(), hex.data());
 }
 
 }  // namespace
@@ -1955,6 +2200,13 @@ int main(int argc, char** argv) try {
   // its mind at the first overlay read.
   for (const std::string& path : opts.documents) {
     present_document(box, path);
+  }
+
+  // And the journal, which is a document that is also read inside
+  // (#174). Here rather than earlier because it presents itself through
+  // the same door, and the same sentence about gates applies to it.
+  if (!opts.journal.empty()) {
+    ingest_journal(box, opts);
   }
 
   for (const std::string& id : opts.seams) {

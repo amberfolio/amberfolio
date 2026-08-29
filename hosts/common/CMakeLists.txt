@@ -15,14 +15,32 @@
 
 add_library(amberfolio-host-services STATIC
   src/host_services.cpp
-  src/automap_store.cpp)
+  src/automap_store.cpp
+  # The journal's ingestion (M5-E3, #174): the edition fact table, the
+  # extractor, the text store, and the synthetic document the whole
+  # pipeline is checked against. Here rather than in either host because
+  # both do the identical thing with it -- the only difference between a
+  # desktop ingestion and a browser one is which OCR engine is on the far
+  # side of journal_ocr.h.
+  src/journal_facts.cpp
+  src/journal_extract.cpp
+  src/journal_store.cpp
+  src/journal_ingest.cpp
+  src/journal_probe.cpp)
 add_library(amberfolio::host_services ALIAS amberfolio-host-services)
 
 target_include_directories(amberfolio-host-services PUBLIC include)
 
+# libdeflate is the extractor's inflate, and it is the first third-party
+# library that reaches a shipped host -- cmake/AmberfolioLibdeflate.cmake
+# says why a hand-written one was the wrong call. PRIVATE: it is an
+# implementation detail of journal_extract.cpp and nothing above this
+# library ever names it.
+include(AmberfolioLibdeflate)
+
 target_link_libraries(amberfolio-host-services
   PUBLIC amberfolio::core
-  PRIVATE amberfolio::warnings)
+  PRIVATE amberfolio::warnings libdeflate::libdeflate_static)
 
 # The object's own suite. The *mechanism* it plugs into is core's and is
 # tested there (tests/core/machine/seam_test.cpp); this asserts the thing
@@ -34,7 +52,11 @@ if(AMBERFOLIO_BUILD_TESTS)
 
   add_executable(amberfolio-host-services-tests
     tests/host_services_test.cpp
-    tests/automap_store_test.cpp)
+    tests/automap_store_test.cpp
+    tests/journal_facts_test.cpp
+    tests/journal_extract_test.cpp
+    tests/journal_store_test.cpp
+    tests/journal_ingest_test.cpp)
   target_link_libraries(amberfolio-host-services-tests PRIVATE
     amberfolio::core
     amberfolio::host_services
