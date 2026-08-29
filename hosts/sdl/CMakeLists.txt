@@ -13,7 +13,10 @@ add_executable(amberfolio-sdl
   src/directory_vfs.cpp
   src/dump.cpp
   src/keymap.cpp
-  src/main.cpp)
+  src/main.cpp
+  # The desktop's OCR engine (M5-E3, #174) -- the player's own Tesseract,
+  # run as a program rather than linked; src/tesseract_ocr.h says why.
+  src/tesseract_ocr.cpp)
 
 # The binary players run is just "amberfolio"; the target name distinguishes
 # it from the web host's module, which is called amberfolio too.
@@ -140,6 +143,29 @@ add_test(NAME sdl-host-presents-a-document
     "-DSCRATCH=${CMAKE_CURRENT_BINARY_DIR}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-document-gate.cmake")
 set_tests_properties(sdl-host-presents-a-document PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_smoke_disk
+  RESOURCE_LOCK sdl_smoke_disk_contents)
+
+# --- Ingesting a journal (M5-E3, #174) ---------------------------------
+#
+# The one place this host reads *inside* a document. The document is one
+# this project generates -- no real edition may ever be in this tree
+# (PLAN.md 6) -- written out by the tool below and recognized only
+# because `--journal-probe` asks for the synthetic edition.
+add_executable(amberfolio-sdl-journal-probe tests/make_journal_probe.cpp)
+target_link_libraries(amberfolio-sdl-journal-probe PRIVATE
+  amberfolio::host_services
+  amberfolio::warnings)
+
+add_test(NAME sdl-host-ingests-a-journal
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DPROBE=$<TARGET_FILE:amberfolio-sdl-journal-probe>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/smoke-disk"
+    "-DSCRATCH=${CMAKE_CURRENT_BINARY_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-journal.cmake")
+set_tests_properties(sdl-host-ingests-a-journal PROPERTIES
   LABELS smoke
   FIXTURES_REQUIRED sdl_smoke_disk
   RESOURCE_LOCK sdl_smoke_disk_contents)

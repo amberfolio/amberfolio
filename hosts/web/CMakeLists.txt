@@ -166,7 +166,38 @@ set(_amberfolio_web_export_names
   # argument are core's, above.
   _af_web_attach_host_services
   _af_web_host_service_at
-  _af_web_automap_store)
+  _af_web_automap_store
+  # The M5-E3 (#174) journal ingestion. The loop is inverted here --
+  # tesseract.js is on the far side of this boundary and is
+  # asynchronous, so the page asks for one entry's pixels, recognizes
+  # them, and hands the text back (src/main.cpp says so at length). The
+  # last four are the synthetic probe document, which is test apparatus
+  # and is a host export for the same reason the probe seam is one.
+  _af_web_journal_ingest
+  _af_web_journal_trouble_name
+  _af_web_journal_fingerprint
+  _af_web_journal_edition_name
+  _af_web_journal_entry_count
+  _af_web_journal_entry_number
+  _af_web_journal_extract
+  _af_web_journal_image_bytes
+  _af_web_journal_image_width
+  _af_web_journal_image_height
+  _af_web_journal_set_text
+  _af_web_journal_correct
+  _af_web_journal_text
+  _af_web_journal_set_engine
+  _af_web_journal_store_size
+  _af_web_journal_store_recognized
+  _af_web_journal_store_corrections
+  _af_web_journal_store_write
+  _af_web_journal_store_read
+  _af_web_journal_store_fingerprint
+  _af_web_journal_probe
+  _af_web_journal_probe_bytes
+  _af_web_journal_probe_size
+  _af_web_journal_probe_text
+  _af_web_journal_probe_hash)
 list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
 
 target_link_options(amberfolio-web PRIVATE
@@ -226,6 +257,7 @@ set(_amberfolio_web_files
   "${CMAKE_CURRENT_SOURCE_DIR}/page/app.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/audio-worklet.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/picker.mjs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/page/journal.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/tools/drive.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke.mjs")
 

@@ -10,7 +10,8 @@
 //
 // Usable by hand too: pass no --expect and it just reports what it found.
 //
-// Seven checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84, M4-W1 #108, #157):
+// Eight checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84, M4-W1 #108, #157,
+// M5-E3 #174):
 //
 //   1. The version the module reports is the version CMake built.
 //   2. **Every name in the export list is actually exported.** This is
@@ -53,6 +54,13 @@
 //      virtual time should be, is a pure function in host.mjs and this
 //      drives it. Before #157 the display's refresh rate decided virtual
 //      time, and a 240 Hz monitor ran the machine at 4x.
+//   8. **The journal's ingestion** (M5-E3, #174), over a document this
+//      project generates — because no real edition may ever be in this
+//      tree. The module hashes it, finds its edition, follows each
+//      entry's offset, inflates the stream and crops the region; this
+//      file holds the loop, because a browser's OCR engine is
+//      asynchronous and cannot be called from C++. What only this can
+//      settle is that the inverted loop works across the ABI.
 
 import { spawnSync } from 'node:child_process';
 import {
@@ -190,6 +198,34 @@ const EXPECTED_EXPORTS = [
   // at. The count and the argument are core's, above.
   '_af_web_attach_host_services',
   '_af_web_host_service_at',
+  '_af_web_automap_store',
+  // The M5-E3 (#174) journal ingestion, and the synthetic document the
+  // check below drives it with.
+  '_af_web_journal_ingest',
+  '_af_web_journal_trouble_name',
+  '_af_web_journal_fingerprint',
+  '_af_web_journal_edition_name',
+  '_af_web_journal_entry_count',
+  '_af_web_journal_entry_number',
+  '_af_web_journal_extract',
+  '_af_web_journal_image_bytes',
+  '_af_web_journal_image_width',
+  '_af_web_journal_image_height',
+  '_af_web_journal_set_text',
+  '_af_web_journal_correct',
+  '_af_web_journal_text',
+  '_af_web_journal_set_engine',
+  '_af_web_journal_store_size',
+  '_af_web_journal_store_recognized',
+  '_af_web_journal_store_corrections',
+  '_af_web_journal_store_write',
+  '_af_web_journal_store_read',
+  '_af_web_journal_store_fingerprint',
+  '_af_web_journal_probe',
+  '_af_web_journal_probe_bytes',
+  '_af_web_journal_probe_size',
+  '_af_web_journal_probe_text',
+  '_af_web_journal_probe_hash',
 ];
 
 /// FNV-1a, 32-bit. No third-party dependency (PLAN.md §4's house style,
@@ -2859,6 +2895,116 @@ if (missing.length === 0 && sessions !== null) {
 
   console.log(
     'smoke: the page paces virtual time against the wall, not against the display',
+  );
+}
+
+// --- 8. The journal's ingestion, on the module that will do it (#174) ---
+//
+// The whole pipeline in the browser's own module: hash a document, look
+// its edition up, follow each entry's offset, inflate, undo the
+// predictor, crop, recognize, and keep the text. The desktop suite
+// asserts the same pipeline in C++; what only this can settle is whether
+// it works *here*, across the ABI, with the loop held by JavaScript —
+// which is how a browser has to do it, because its OCR engine is
+// asynchronous and cannot be called from C++.
+//
+// **The document is one this project generates.** `known_journals()` is
+// empty and no real edition may ever be in this tree (CONTRIBUTING.md),
+// so the artifact is the module's own synthetic PDF and the engine is the
+// page's fixture — which answers only for pixels whose hash equals the
+// module's *independent* expectation, so a store with its words in it is
+// evidence the extraction was right rather than evidence a call was made.
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const {
+    ingestJournal,
+    journalText,
+    probeDocument,
+    probeEngine,
+    serializeStore,
+    correctJournalEntry,
+  } = await import('./journal.mjs');
+
+  const document = probeDocument(module);
+  check(document.length > 64, 'the probe document is empty');
+  check(
+    String.fromCharCode(...document.subarray(0, 5)) === '%PDF-',
+    'the probe document is not a PDF',
+  );
+
+  const report = await ingestJournal(module, document, {
+    engine: probeEngine(module),
+  });
+  check(report.ok, `the probe document was not ingested: ${report.trouble}`);
+  check(report.entries === 2, `the probe has ${report.entries} entries, expected 2`);
+  check(report.extracted === 2, `${report.extracted} of 2 entries decoded`);
+  check(
+    report.recognized === 2,
+    `${report.recognized} of 2 entries were read; the fixture only answers for` +
+      ' pixels that match what the extraction was supposed to produce',
+  );
+  check(
+    journalText(module, 1) === 'AMBER FOLIO PROBE ENTRY 1',
+    `entry 1 reads '${journalText(module, 1)}'`,
+  );
+  check(
+    journalText(module, 2) === 'AMBER FOLIO PROBE ENTRY 2',
+    `entry 2 reads '${journalText(module, 2)}'`,
+  );
+  check(report.store.fingerprint.length === 64, 'the store has no fingerprint');
+
+  // A correction is what a reader shows, and it survives the next
+  // ingestion — #174's one behavioural requirement of the store, checked
+  // through the ABI rather than only in C++.
+  module._af_web_journal_probe(1);
+  const corrected = 'A PERSON WROTE THIS';
+  correctJournalEntry(module, 1, corrected);
+  check(journalText(module, 1) === corrected, 'the correction did not take');
+
+  const again = await ingestJournal(module, document, {
+    engine: probeEngine(module),
+  });
+  check(again.ok, 'the second ingestion failed');
+  check(
+    journalText(module, 1) === corrected,
+    'a re-ingestion overwrote a correction',
+  );
+  check(
+    again.store.corrections === 1,
+    `the store reports ${again.store.corrections} corrections after one`,
+  );
+
+  const text = serializeStore(module);
+  check(
+    text.startsWith('amberfolio-journal 1\n'),
+    'the serialized store does not start with its own header',
+  );
+  check(
+    text.includes(corrected),
+    'the serialized store does not carry the correction',
+  );
+
+  // And the shipped table knows nothing about a document this project
+  // made up, which is the state every *real* journal is in too until
+  // somebody fingerprints one.
+  module._af_web_journal_probe(0);
+  const stranger = await ingestJournal(module, document, { engine: null });
+  check(!stranger.ok, 'the shipped table recognized the synthetic probe');
+  check(
+    stranger.fingerprint.length === 64,
+    'an unrecognized document came back without its fingerprint',
+  );
+  check(
+    (stranger.trouble ?? '').includes('not a journal edition this build knows'),
+    `an unrecognized document was reported as '${stranger.trouble}'`,
+  );
+
+  console.log(
+    'smoke: a synthetic journal edition ingested through the ABI, two entries' +
+      ' read, a correction kept across a re-ingestion',
   );
 }
 

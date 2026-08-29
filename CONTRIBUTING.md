@@ -81,6 +81,15 @@ an image, never the text on one. `core/include/amberfolio/machine/
 document.h` is the table that keeps those fingerprints, and a fingerprint
 names a file without carrying a byte of it.
 
+**And it covers the text a journal's ingestion produces** (M5-E3, #174).
+That text is the one thing this project *makes* that is content: it is a
+transcription of a player's own copyrighted document, read on the
+player's own machine, and it stays there. No store, no fragment of one,
+no excerpt and no fixture resembling one may enter this repository, an
+issue, or a commit message. What may be reported about a store is how
+many entries it has and its SHA-256 — `journal_store::fingerprint()`
+exists for exactly that. `docs/journal.md` §8 is the list.
+
 Part of that tripwire is an allowlist, and it is the part you are most
 likely to meet: **anything that is not text is refused unless its path is
 named in the guard.** The repository has one such file today, a 34-byte

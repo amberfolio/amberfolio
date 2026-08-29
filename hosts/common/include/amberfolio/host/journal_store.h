@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The journal text store: what OCR read, what the player fixed, and which
+// of the two the reader shows (M5-E3, #174).
+//
+// This is the product of the whole ingestion. #175's in-game reader has
+// one input and this is it: entry number in, text out.
+//
+//
+// It lives on the player's machine, and only there
+// -----------------------------------------------
+//
+// The text in a store is the player's own document, read off the player's
+// own copy, on the player's own machine. It is the one thing in this
+// project that *is* content, and the rule about it is therefore the
+// strongest one there is: no store, no fragment of one, and no fixture
+// resembling one ever enters this repository, an issue, or a commit
+// message. What may be written down about a store is what may be written
+// down about any artifact — how many entries it has, and its SHA-256
+// (`fingerprint()`, which exists so that a maintainer can report an
+// ingestion on #174 without reporting a word of it).
+//
+// Where it goes is a host's business, because files are (PLAN.md §4):
+//
+//   * the desktop host writes one file, beside where M6's configuration
+//     will live (`--journal-store` overrides it, and the SDL host's
+//     `--help` says where the default is);
+//   * the browser keeps it in memory for the life of the tab and says so
+//     on the page. IndexedDB is M6's, and pretending otherwise would be
+//     the one kind of lie a player finds out about by losing work.
+//
+// So this object holds text and serializes it, and never opens anything.
+//
+//
+// Two texts per entry, and only one of them is ever overwritten
+// -----------------------------------------------------------
+//
+// #174 asks for a store a player can correct, whose corrections survive
+// re-ingestion. That is one sentence and it decides the whole shape: each
+// entry carries what the engine read (`scanned`) and, if a person has
+// been in there, what they wrote (`corrected`). Ingestion replaces the
+// first and never touches the second; the reader asks for `text()`, which
+// is the correction where there is one and the scan otherwise.
+//
+// The alternative — one text, corrected in place — cannot tell "the
+// player fixed this" from "the engine happened to get it right", so a
+// re-ingestion with a better engine either destroys every correction or
+// keeps every mistake. Two fields is the whole fix, and it costs a line.
+//
+//
+// The format is text, on purpose
+// ------------------------------
+//
+// A store is a file a player may want to edit, hand to somebody who is
+// re-transcribing an entry properly, or diff after re-ingesting with a
+// newer engine. So it is UTF-8 lines, with each text length-prefixed so
+// that a transcription containing the word `entry` at the start of a line
+// cannot be mistaken for a header. Strict on the way in: a file that is
+// not exactly this is `not_a_store`, never a file half-read.
+//
+//   amberfolio-journal 1
+//   edition <64 hex>
+//   engine <one line>
+//   scanned <entry> <bytes>
+//   <bytes bytes><newline>
+//   corrected <entry> <bytes>
+//   <bytes bytes><newline>
+//
+// The version is the first token of the first line so that a store from a
+// later format is refused by a build that would misread it, which is the
+// same courtesy `automap_store`'s header pays.
+
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#include "amberfolio/host/journal_extract.h"
+#include "amberfolio/sha256.h"
+
+namespace amberfolio::host {
+
+/// The format version this build writes, and the only one it reads.
+inline constexpr std::uint32_t journal_store_version = 1;
+
+/// The first line's keyword — the thing that says a file is one of ours
+/// before anything else is believed about it.
+inline constexpr std::string_view journal_store_magic = "amberfolio-journal";
+
+/// The file the desktop host writes when it was not told otherwise, under
+/// the per-user data directory M6's configuration will share
+/// (`journal_store_default_path()` in the SDL host).
+inline constexpr std::string_view journal_store_filename = "journal.txt";
+
+/// One entry's text.
+struct journal_text {
+  std::uint16_t number{};
+  /// What the engine read, replaced on every ingestion.
+  std::string scanned;
+  /// What a person wrote, never touched by an ingestion. Empty when
+  /// nobody has been in there.
+  std::string corrected;
+
+  /// What a reader shows: the correction if there is one.
+  [[nodiscard]] std::string_view text() const noexcept {
+    return corrected.empty() ? std::string_view(scanned)
+                             : std::string_view(corrected);
+  }
+};
+
+/// Entry number to text, for one edition.
+class journal_store {
+ public:
+  journal_store() = default;
+
+  /// Which edition this store is of, as 64 lowercase hex characters, and
+  /// what engine last read it.
+  ///
+  /// Recorded rather than checked: a store is a store *of* a document,
+  /// and the ingester refuses to write a store whose edition is not the
+  /// document it was handed (`journal_ingest.h`). Keeping the fingerprint
+  /// here is what makes that check possible at all.
+  [[nodiscard]] std::string_view edition() const noexcept { return edition_; }
+  void set_edition(std::string_view fingerprint) { edition_ = fingerprint; }
+
+  [[nodiscard]] std::string_view engine() const noexcept { return engine_; }
+  void set_engine(std::string_view what) { engine_ = what; }
+
+  [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
+  [[nodiscard]] bool empty() const noexcept { return entries_.empty(); }
+  [[nodiscard]] const std::vector<journal_text>& entries() const noexcept {
+    return entries_;
+  }
+
+  /// The entry numbered `number`, or null.
+  [[nodiscard]] const journal_text* find(std::uint16_t number) const noexcept;
+
+  /// What a reader shows for `number` — empty for an entry that is not
+  /// there or has no text at all.
+  [[nodiscard]] std::string_view text(std::uint16_t number) const noexcept;
+
+  /// Ingestion's write: what the engine read for `number`. Leaves any
+  /// correction alone, which is the whole point of the pair.
+  ///
+  /// False if the store is full or the text is longer than
+  /// `journal_max_entry_bytes`.
+  [[nodiscard]] bool record_scan(std::uint16_t number, std::string_view what);
+
+  /// A person's write.
+  [[nodiscard]] bool correct(std::uint16_t number, std::string_view what);
+
+  /// How many entries have any text at all, and how many have a
+  /// correction — the two numbers a host reports after an ingestion.
+  [[nodiscard]] std::size_t recognized() const noexcept;
+  [[nodiscard]] std::size_t corrections() const noexcept;
+
+  /// Everything gone, header included.
+  void clear();
+
+  /// The file's bytes.
+  [[nodiscard]] std::string serialize() const;
+
+  /// `text` back into this store, replacing everything in it.
+  ///
+  /// Strict: anything that is not exactly the format above leaves the
+  /// store as it was and answers a reason. A partly-read store is the one
+  /// outcome worth going out of the way to make impossible — it is a
+  /// player's transcription with a hole in it, and nothing downstream
+  /// would be able to tell.
+  ///
+  /// Strict about the format, and not about line endings: CRLF is
+  /// normalized to LF first, so a store that has been through an editor
+  /// on Windows still reads. Every length in the format counts bytes, so
+  /// without that a file Notepad had saved would disagree with its own
+  /// counts on every record — a correct refusal, and a useless one.
+  [[nodiscard]] journal_trouble parse(std::string_view whole);
+
+  /// The SHA-256 of `serialize()`.
+  ///
+  /// Present so a maintainer can say what came out of an ingestion of
+  /// their own document without saying any of it: a fingerprint names a
+  /// thing without carrying a byte of it, which is what CONTRIBUTING.md
+  /// permits to be written down about an artifact and is the only kind of
+  /// report #174's exit criterion asks for.
+  [[nodiscard]] sha256_digest fingerprint() const;
+
+ private:
+  [[nodiscard]] journal_text* entry_for(std::uint16_t number);
+
+  std::string edition_;
+  std::string engine_;
+  /// Kept sorted by entry number, so a serialization is a function of
+  /// the content and not of the order things were written in — which is
+  /// what makes `fingerprint()` worth reporting.
+  std::vector<journal_text> entries_;
+};
+
+}  // namespace amberfolio::host
