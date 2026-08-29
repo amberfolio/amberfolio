@@ -105,8 +105,8 @@ struct journal_ingest_report {
 
 /// One ingestion of one document.
 ///
-/// Holds a borrowed view of the document for its life, and one decoded
-/// bitmap at a time. Built, used, and dropped: it is onboarding, not a
+/// Holds a borrowed view of the document for its life, and one entry's
+/// scan at a time. Built, used, and dropped: it is onboarding, not a
 /// resident of a running machine.
 class journal_ingester {
  public:
@@ -140,11 +140,19 @@ class journal_ingester {
   [[nodiscard]] const journal_entry_fact* entry_at(
       std::size_t index) const noexcept;
 
-  /// Decode entry `index`'s scan into `image()`.
+  /// Get entry `index`'s scan into `scan()`, by whichever route its
+  /// filter takes (`journal_extract.h`).
   [[nodiscard]] journal_trouble extract(std::size_t index);
 
-  /// The bitmap the last `extract()` produced. Empty if it failed.
-  [[nodiscard]] const journal_bitmap& image() const noexcept { return image_; }
+  /// What the last `extract()` produced. Empty if it failed.
+  [[nodiscard]] const journal_scan& scan() const noexcept { return scan_; }
+
+  /// Its samples, for a caller that only handles decoded editions — a
+  /// test comparing pixels, or a host preview. Empty for a scan that went
+  /// through as its own bytes, which `scan()` is the way to reach.
+  [[nodiscard]] const journal_bitmap& image() const noexcept {
+    return scan_.gray;
+  }
 
   /// The whole loop, for a host whose engine is a C++ object it can call.
   ///
@@ -165,7 +173,7 @@ class journal_ingester {
   std::span<const std::uint8_t> document_;
   const journal_edition* edition_{nullptr};
   sha256_digest fingerprint_{};
-  journal_bitmap image_;
+  journal_scan scan_;
 };
 
 }  // namespace amberfolio::host

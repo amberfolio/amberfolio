@@ -37,6 +37,37 @@
 // standard luma one, and doing it in one place means the desktop and the
 // browser hand their engines identical bytes. `journal_ocr.h` is what
 // receives it.
+//
+//
+// ...unless this build cannot decode it, and then the bytes go through
+// -------------------------------------------------------------------
+//
+// M5-E3a (#212). The first real edition anybody put in front of this is a
+// PDF whose every page scan is `/DCTDecode` — JPEG — and §4 of
+// `docs/journal.md` had already decided what to do about that day before
+// it came:
+//
+//   > What a `/DCTDecode` edition would want is **not a decoder**: it is
+//   > passing the stream's own bytes through to the engine, which both
+//   > Tesseract and tesseract.js read directly, with the region becoming
+//   > the engine's business rather than the extractor's.
+//
+// So `extract_scan()` answers a `journal_scan`, which is one of two
+// things and says which: samples this build produced, already cropped, or
+// **the stream exactly as the document holds it**, with the entry's
+// rectangle beside it. Nothing in this repository learns what a JPEG is.
+//
+// The cost is real and is worth naming: the crop moves. This build can
+// crop what it decoded and cannot crop what it did not, so for an encoded
+// scan the engine reads the whole page and its *output* is filtered to
+// the rectangle — which both engines can do, because both report where on
+// the page each word was. `journal_ocr.h` is where that contract lives.
+//
+// The gain is that the alternative was a JPEG decoder in a project whose
+// whole argument for owning an inflate library was that a decoder tested
+// only against its own encoder is untested (`cmake/AmberfolioLibdeflate`).
+// A decoder for a format this project has no way to generate would have
+// been worse than that, not better.
 
 #pragma once
 
@@ -108,12 +139,64 @@ struct journal_bitmap {
   [[nodiscard]] bool empty() const noexcept { return pixels.empty(); }
 };
 
+/// How an entry's scan reaches the engine (#212).
+enum class journal_encoding : std::uint8_t {
+  /// Eight bits of gray a pixel, this build's own samples, **already
+  /// cropped** to the entry. Every edition whose filter this build
+  /// decodes.
+  gray,
+  /// The stream's own bytes, exactly as the document holds them, with the
+  /// entry's rectangle beside them for the engine to apply to what it
+  /// reads. A `/DCTDecode` edition.
+  jpeg,
+};
+
+/// One entry's scan, as an engine receives it.
+///
+/// Two shapes and a field that says which — never one buffer meaning two
+/// things by context, because the two are read by different code and a
+/// consumer that guessed wrong would hand an engine a JPEG and call it
+/// pixels.
+struct journal_scan {
+  journal_encoding encoding{journal_encoding::gray};
+
+  /// `gray` only: the samples, cropped to the entry. Empty otherwise.
+  journal_bitmap gray;
+
+  /// Anything but `gray`: the stream, whole and unaltered. Empty for
+  /// `gray`.
+  std::vector<std::uint8_t> encoded;
+
+  /// Anything but `gray`: which rectangle of that image is the entry, in
+  /// the image's own samples. Meaningless for `gray`, where the crop has
+  /// already happened and `gray.width`/`gray.height` say everything.
+  journal_region region{};
+
+  /// Whether there is anything here to read at all.
+  [[nodiscard]] bool empty() const noexcept {
+    return encoding == journal_encoding::gray ? gray.empty() : encoded.empty();
+  }
+};
+
+/// Get entry `fact` out of `document` and into `out`, by whichever of the
+/// two routes its filter takes (#212).
+///
+/// `out` is cleared first, whether this succeeds or not: a scan left over
+/// from the previous entry is the one thing that could make a failure look
+/// like a success one call later.
+[[nodiscard]] journal_trouble extract_scan(
+    std::span<const std::uint8_t> document, const journal_entry_fact& fact,
+    journal_scan& out);
+
 /// Decode the stream `fact` names inside `document`, crop it to the
 /// entry's region, and leave the result in `out`.
 ///
-/// `out` is cleared first, whether this succeeds or not: a bitmap left
-/// over from the previous entry is the one thing that could make a
-/// failure look like a success one call later.
+/// The decoding half of `extract_scan()`, and `filter_unsupported` for a
+/// filter this build does not decode — it answers *samples*, and there
+/// are none for a stream that goes through untouched. Kept as its own
+/// call because a test that wants the pixels wants exactly this.
+///
+/// `out` is cleared first, on the same reasoning as above.
 [[nodiscard]] journal_trouble extract_entry(
     std::span<const std::uint8_t> document, const journal_entry_fact& fact,
     journal_bitmap& out);
@@ -122,6 +205,12 @@ struct journal_bitmap {
 /// because it is the one a person checking a new edition's region wants
 /// to look at, and because the crop is then a pure function of it that a
 /// test can check on its own.
+///
+/// `filter_unsupported` for an edition this build does not decode, and
+/// that is a genuine loss rather than a technicality: the person placing
+/// a `/DCTDecode` edition's rectangles cannot preview a page through this
+/// and has to open the document in something that reads JPEG. Said here
+/// so they find out from the interface rather than from an empty bitmap.
 [[nodiscard]] journal_trouble decode_image(
     std::span<const std::uint8_t> document, const journal_entry_fact& fact,
     journal_bitmap& out);

@@ -39,12 +39,38 @@
 // Why the engine does not see the document
 // ---------------------------------------
 //
-// It is handed one cropped bitmap and nothing else: not the file, not the
+// It is handed one entry's scan and nothing else: not the file, not the
 // path, not the edition. An engine that never sees the document cannot
 // leak it, cannot cache it, and cannot be the reason a page uploads it
 // somewhere. On the desktop that promise is one directory of temporary
-// PGM files this host writes and deletes; in the browser it is a typed
-// array that never leaves the tab.
+// files this host writes and deletes; in the browser it is a typed array
+// that never leaves the tab.
+//
+//
+// Two shapes of scan, and who crops (#212)
+// ----------------------------------------
+//
+// `journal_scan` (`journal_extract.h`) is either samples this build
+// produced or a stream it could not decode, and it says which. The
+// difference reaches an engine as one obligation:
+//
+//   * **`gray`** — the bitmap is already the entry. Read all of it.
+//   * **`jpeg`** — the bytes are the whole *page*, and `scan.region` is
+//     the part of it that is the entry. Read the page and **keep only
+//     what falls inside that rectangle.**
+//
+// The second is not a burden invented here: both engines already report
+// where on the page each word was — Tesseract through its `tsv` output,
+// tesseract.js through `data.words[].bbox` — so filtering by rectangle is
+// reading a number they were going to produce anyway. It is written into
+// this interface rather than left to each host because two hosts that
+// filtered differently would give a player two different transcriptions
+// of one page, and neither could be said to be wrong.
+//
+// An engine that ignores the region is not *broken*, it is imprecise: it
+// returns the whole page's text where the entry's was asked for. That is
+// the failure mode to expect from a new engine, and it looks like a
+// journal entry with its neighbours attached.
 
 #pragma once
 
@@ -70,13 +96,16 @@ class journal_ocr {
   journal_ocr& operator=(journal_ocr&&) = delete;
   virtual ~journal_ocr() = default;
 
-  /// Read `page` and leave its text in `out`.
+  /// Read `scan` and leave its text in `out`.
   ///
-  /// False for an engine that could not read this image — which is a
+  /// For a `gray` scan that is the whole bitmap; for an encoded one it is
+  /// the words inside `scan.region` and no others (see above).
+  ///
+  /// False for an engine that could not read this scan — which is a
   /// finding about one entry and not about the run: the ingester records
   /// it, counts it, and goes on to the next entry. An engine that is not
   /// there at all is a different thing and is `nullptr`, not a false.
-  [[nodiscard]] virtual bool recognize(const journal_bitmap& page,
+  [[nodiscard]] virtual bool recognize(const journal_scan& scan,
                                        std::string& out) = 0;
 
   /// What this engine is, in one line — `tesseract 5.5.1`, or whatever

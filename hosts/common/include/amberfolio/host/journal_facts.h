@@ -103,8 +103,24 @@ enum class journal_filter : std::uint8_t {
 /// The printable name of one, as the PDF spells it. Never null.
 [[nodiscard]] const char* journal_filter_name(journal_filter which) noexcept;
 
-/// Whether this build can decode `which` (`journal_extract.h`).
+/// Whether this build can get an entry under `which` as far as an engine
+/// (`journal_extract.h`).
+///
+/// **Two different questions since #212**, and keeping them apart is what
+/// lets a JPEG-paged edition work without a JPEG decoder in this tree.
+/// This one is "can the pipeline carry it": `none` and `flate`, which are
+/// decoded here, and `dct`, which is not — its stream goes to the engine
+/// as its own bytes. `/CCITTFaxDecode` and `/JBIG2Decode` are still
+/// refused by name, and still not built for on spec.
 [[nodiscard]] bool journal_filter_supported(journal_filter which) noexcept;
+
+/// Whether this build turns `which` into samples of its own.
+///
+/// The other half of the question above. False means the engine is handed
+/// the stream unaltered and told which rectangle of it is the entry —
+/// `journal_extract.h`'s `journal_scan`, and the reason the region became
+/// the engine's business rather than the extractor's.
+[[nodiscard]] bool journal_filter_decoded(journal_filter which) noexcept;
 
 /// The shape of the image an entry's stream decodes to.
 ///
@@ -125,6 +141,9 @@ struct journal_image {
   /// `/DecodeParms /Predictor`: 1 (or 0) for none, 10–15 for the PNG
   /// predictors, which is what a Flate-compressed image almost always
   /// uses. TIFF's predictor 2 is refused rather than guessed at.
+  ///
+  /// Meaningless for a filter this build does not decode: a `/DCTDecode`
+  /// stream carries no predictor and nothing here would apply one.
   std::uint8_t predictor{1};
   /// The filter the stream is under.
   journal_filter filter{journal_filter::flate};
@@ -135,7 +154,13 @@ struct journal_image {
   bool inverted{false};
 };
 
-/// A rectangle of the decoded image, in its own samples.
+/// A rectangle of the image, in its own samples.
+///
+/// Of the *decoded* image where this build decodes one, and of the image
+/// as the document holds it where it does not (#212) — which is the same
+/// rectangle either way, because a decoder does not move pixels around.
+/// That is what lets it be handed to an engine as a fact about a picture
+/// this build never looked at.
 ///
 /// The entry, and not the page: a scanned page carries a heading, a
 /// number, sometimes two entries. What is OCRed is the part that is the

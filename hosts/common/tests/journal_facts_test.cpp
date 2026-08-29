@@ -81,7 +81,7 @@ void CheckRows(std::span<const journal_edition> table) {
           << "entry " << fact.number << "'s region is off the bottom of it";
       EXPECT_TRUE(journal_filter_supported(fact.image.filter))
           << "entry " << fact.number << " is under a filter this build"
-          << " cannot decode (" << journal_filter_name(fact.image.filter)
+          << " cannot carry (" << journal_filter_name(fact.image.filter)
           << "), so shipping the row would ship a promise it cannot keep";
     }
   }
@@ -143,14 +143,31 @@ TEST(JournalFilter, IsNamedAsThePdfSpellsItAndSaysWhatItCanDecode) {
   EXPECT_STREQ(journal_filter_name(journal_filter::ccitt), "CCITTFaxDecode");
   EXPECT_STREQ(journal_filter_name(journal_filter::jbig2), "JBIG2Decode");
 
-  // Two decoded, three named and refused. "Log, don't fake", one level up
-  // from a service: an edition that needs one of the other three learns
-  // which one rather than getting noise.
+  // Two decoded here, one carried to the engine undecoded (#212), two
+  // named and refused. "Log, don't fake", one level up from a service: an
+  // edition that needs one of the last two learns which one rather than
+  // getting noise.
+  EXPECT_TRUE(journal_filter_decoded(journal_filter::none));
+  EXPECT_TRUE(journal_filter_decoded(journal_filter::flate));
+  EXPECT_FALSE(journal_filter_decoded(journal_filter::dct));
+
   EXPECT_TRUE(journal_filter_supported(journal_filter::none));
   EXPECT_TRUE(journal_filter_supported(journal_filter::flate));
-  EXPECT_FALSE(journal_filter_supported(journal_filter::dct));
+  EXPECT_TRUE(journal_filter_supported(journal_filter::dct));
   EXPECT_FALSE(journal_filter_supported(journal_filter::ccitt));
   EXPECT_FALSE(journal_filter_supported(journal_filter::jbig2));
+
+  // And every filter this build carries is one an edition may name, which
+  // is the invariant the two questions have to keep between them: a
+  // supported filter is decoded here or handed over whole, never neither.
+  for (const journal_filter filter :
+       {journal_filter::none, journal_filter::flate, journal_filter::dct,
+        journal_filter::ccitt, journal_filter::jbig2}) {
+    if (journal_filter_decoded(filter)) {
+      EXPECT_TRUE(journal_filter_supported(filter))
+          << journal_filter_name(filter);
+    }
+  }
 }
 
 TEST(JournalTrouble, EveryReasonHasWordsAPersonReads) {

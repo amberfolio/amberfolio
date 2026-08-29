@@ -211,6 +211,13 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_image_bytes',
   '_af_web_journal_image_width',
   '_af_web_journal_image_height',
+  '_af_web_journal_encoding',
+  '_af_web_journal_encoded_bytes',
+  '_af_web_journal_encoded_size',
+  '_af_web_journal_region_left',
+  '_af_web_journal_region_top',
+  '_af_web_journal_region_width',
+  '_af_web_journal_region_height',
   '_af_web_journal_set_text',
   '_af_web_journal_correct',
   '_af_web_journal_text',
@@ -2926,6 +2933,9 @@ if (missing.length === 0 && sessions !== null) {
     probeEngine,
     serializeStore,
     correctJournalEntry,
+    currentScan,
+    wordsWithin,
+    JOURNAL_JPEG,
   } = await import('./journal.mjs');
 
   const document = probeDocument(module);
@@ -2939,21 +2949,70 @@ if (missing.length === 0 && sessions !== null) {
     engine: probeEngine(module),
   });
   check(report.ok, `the probe document was not ingested: ${report.trouble}`);
-  check(report.entries === 2, `the probe has ${report.entries} entries, expected 2`);
-  check(report.extracted === 2, `${report.extracted} of 2 entries decoded`);
+  check(report.entries === 3, `the probe has ${report.entries} entries, expected 3`);
+  check(report.extracted === 3, `${report.extracted} of 3 entries extracted`);
   check(
-    report.recognized === 2,
-    `${report.recognized} of 2 entries were read; the fixture only answers for` +
-      ' pixels that match what the extraction was supposed to produce',
+    report.recognized === 3,
+    `${report.recognized} of 3 entries were read; the fixture only answers for` +
+      ' a scan that matches what the extraction was supposed to produce',
+  );
+  for (const number of [1, 2, 3]) {
+    check(
+      journalText(module, number) === `AMBER FOLIO PROBE ENTRY ${number}`,
+      `entry ${number} reads '${journalText(module, number)}'`,
+    );
+  }
+
+  // Entry 3 is the one this module does **not** decode (M5-E3a, #212):
+  // its stream crosses to the page as its own bytes with the entry's
+  // rectangle beside it, and the page's fixture only answers for the
+  // exact bytes the module's own encoder wrote. That the third entry has
+  // words in the store at all is the whole passthrough, end to end,
+  // through the ABI — which is the one thing the C++ suite cannot say.
+  check(
+    module._af_web_journal_extract(2) === 0,
+    'the encoded entry did not extract',
   );
   check(
-    journalText(module, 1) === 'AMBER FOLIO PROBE ENTRY 1',
-    `entry 1 reads '${journalText(module, 1)}'`,
+    module._af_web_journal_encoding() === JOURNAL_JPEG,
+    'the encoded entry did not come across as an encoded scan',
+  );
+  const encoded = currentScan(module);
+  check(encoded !== null && encoded.kind === 'jpeg', 'no encoded scan');
+  check(encoded.bytes.length > 32, 'the encoded scan is empty');
+  check(
+    encoded.bytes[0] === 0xff &&
+      encoded.bytes[1] === 0xd8 &&
+      encoded.bytes[encoded.bytes.length - 2] === 0xff &&
+      encoded.bytes[encoded.bytes.length - 1] === 0xd9,
+    'the encoded scan is not a JPEG between its own markers',
   );
   check(
-    journalText(module, 2) === 'AMBER FOLIO PROBE ENTRY 2',
-    `entry 2 reads '${journalText(module, 2)}'`,
+    encoded.region.width > 0 &&
+      encoded.region.height > 0 &&
+      encoded.region.left > 0,
+    'the encoded scan carries no region for the engine to apply',
   );
+  check(
+    module._af_web_journal_image_width() === 0,
+    'an encoded scan should have no decoded pixels to offer',
+  );
+
+  // And the region really does filter: words outside it are not the
+  // entry's, which is `journal_ocr.h`'s contract on the page's side.
+  const inside = { x0: 10, y0: 10, x1: 20, y1: 20 };
+  const outside = { x0: 200, y0: 200, x1: 210, y1: 210 };
+  const line = {};
+  const filtered = wordsWithin(
+    {
+      words: [
+        { text: 'kept', bbox: inside, line },
+        { text: 'dropped', bbox: outside, line },
+      ],
+    },
+    { left: 0, top: 0, width: 64, height: 32 },
+  );
+  check(filtered === 'kept', `the region filter answered '${filtered}'`);
   check(report.store.fingerprint.length === 64, 'the store has no fingerprint');
 
   // A correction is what a reader shows, and it survives the next
@@ -3003,7 +3062,7 @@ if (missing.length === 0 && sessions !== null) {
   );
 
   console.log(
-    'smoke: a synthetic journal edition ingested through the ABI, two entries' +
+    'smoke: a synthetic journal edition ingested through the ABI, three entries' +
       ' read, a correction kept across a re-ingestion',
   );
 }

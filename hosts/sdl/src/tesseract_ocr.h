@@ -37,17 +37,40 @@
 // What crosses to the engine, and what does not
 // ---------------------------------------------
 //
-// One entry's cropped bitmap, as a PGM in a directory of this host's own
-// making, deleted as soon as the engine has answered. Never the
-// document, never its path, never anything else about it. That is
-// `journal_ocr.h`'s promise and this is the one implementation where it
-// costs something to keep — and the cost is worth it, because a
-// player's document is a player's document.
+// One entry's scan, in a directory of this host's own making, deleted as
+// soon as the engine has answered. Never the document, never its path,
+// never anything else about it. That is `journal_ocr.h`'s promise and
+// this is the one implementation where it costs something to keep — and
+// the cost is worth it, because a player's document is a player's
+// document.
 //
-// PGM (P5) rather than PNG because it is eight lines to write and
-// Leptonica reads it natively: an image encoder would be code with a
-// bug budget, standing between the pixels this project checked and the
-// engine that reads them.
+// A decoded scan goes over as PGM (P5) rather than PNG because it is
+// eight lines to write and Leptonica reads it natively: an image encoder
+// would be code with a bug budget, standing between the pixels this
+// project checked and the engine that reads them.
+//
+//
+// An encoded scan, and where the crop went (M5-E3a, #212)
+// ------------------------------------------------------
+//
+// A `/DCTDecode` edition's stream is not decoded here, so there is
+// nothing to crop and nothing to re-encode: the bytes are written out
+// under their own name and Tesseract opens them itself. What that costs
+// is that Tesseract reads the **whole page**, and the entry is a
+// rectangle of it.
+//
+// The CLI has no crop flag, and this host is not about to grow an image
+// library to make one. What it has instead is `tsv` output: one line per
+// word with its `left top width height`, which is a documented Tesseract
+// output format and needs no parser worth the name — it is tab-separated
+// and the columns are fixed. So the page is read once and its *output* is
+// filtered to the region, which is `journal_ocr.h`'s contract and gives
+// the same answer a crop would have, without this host ever holding a
+// pixel of the page.
+//
+// It is also the better arrangement of the two: cropping would have meant
+// decoding and re-encoding a scan, and every re-encode is a chance to
+// hand the engine something slightly worse than what the player has.
 
 #pragma once
 
@@ -77,7 +100,7 @@ class tesseract_ocr final : public host::journal_ocr {
   /// two ways of saying the same thing badly.
   [[nodiscard]] bool available();
 
-  [[nodiscard]] bool recognize(const host::journal_bitmap& page,
+  [[nodiscard]] bool recognize(const host::journal_scan& scan,
                                std::string& out) override;
 
   [[nodiscard]] std::string_view engine() const override { return engine_; }
@@ -86,6 +109,14 @@ class tesseract_ocr final : public host::journal_ocr {
   /// A directory of this host's own, made on first use and removed in the
   /// destructor.
   [[nodiscard]] bool scratch(std::string& out);
+
+  /// The two shapes of scan (see above): a decoded bitmap as a PGM, read
+  /// whole; a stream under its own name, read whole and filtered to the
+  /// entry's rectangle afterwards.
+  [[nodiscard]] bool recognize_bitmap(const host::journal_bitmap& page,
+                                      std::string& out);
+  [[nodiscard]] bool recognize_encoded(const host::journal_scan& scan,
+                                       std::string& out);
 
   std::string program_;
   std::string engine_;

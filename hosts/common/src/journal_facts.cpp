@@ -44,6 +44,15 @@ const char* journal_filter_name(journal_filter which) noexcept {
 }
 
 bool journal_filter_supported(journal_filter which) noexcept {
+  // `dct` is here and is **not** decoded (below): its stream goes to the
+  // engine as its own bytes (#212). The two fax filters are still refused
+  // by name, which is `docs/journal.md` §4's rule rather than an
+  // exception to it — a filter is added the day a document in hand asks
+  // for it, and neither has.
+  return journal_filter_decoded(which) || which == journal_filter::dct;
+}
+
+bool journal_filter_decoded(journal_filter which) noexcept {
   return which == journal_filter::none || which == journal_filter::flate;
 }
 
