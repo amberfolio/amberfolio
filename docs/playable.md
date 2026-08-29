@@ -1301,6 +1301,98 @@ it on.
 
 ---
 
+## Leg 9 — an entry of your own journal, in the game (M5-E4, #175)
+
+PLAN.md §5 item 2's in-game half, and the second seam in this tree that
+draws. `docs/seams.md` §10 is what it is; `docs/journal.md` is where its
+text comes from; this is the driving.
+
+**It needs a store, and this is the one leg that can be driven without a
+journal.** The reader is answered out of `journal.txt` — whatever
+`--journal` wrote there, or whatever a person put there by hand in the
+format `docs/journal.md` §6 sets out. Nobody has an ingested edition
+(§3 of that document), so what was driven here was a file of this
+project's own sentences under an entry number: enough to prove the
+reader, the key, the callout and the give-back, and not the recognizer
+against real prose.
+
+```
+--seam code-wheel --seam journal --journal-store ./journal.txt
+--press A@7601 --press Return@7651      the code wheel
+--press L@8951 --press A@9201           LOAD SAVED GAME, slot A
+--press F1@10600                        the reader
+--press 3@10700 --press Return@10800    the entry to open
+--press F1@11200                        and the party list back
+```
+
+The store is read before the run and said so, in the same words an
+ingestion prints:
+
+```
+amberfolio: journal store ./journal.txt entries=1 corrections=0
+```
+
+**F1 is not a key this game can mean**, and that is a stronger version of
+Leg 8's argument for Tab rather than the same one. A function key has no
+character at all — `keyboard.h` answers AL=0 for the whole F1–F10 row —
+and this program picks its commands off its bars *by character*, so a key
+with none cannot be a command on any of them. F11 and F12 never reach the
+machine at all; they are the SDL host's own (`docs/hosts.md` §3).
+
+**Then the entry is on the game's screen**, in the game's own lettering,
+wrapped to twenty-two columns inside the frame the game drew, with
+`ENTRY 3` in the yellow the program highlights with and the body in the
+green it writes messages in. The callout says it was served:
+
+```
+amberfolio: seam journal armed fired=602659
+amberfolio: host-service journal-open calls=1 last=3 at=214790400
+```
+
+**F1 again puts the party list back**, and it is the program that draws
+it — the panel's rect through the program's own region clear, then its
+own roster drawer, from live state. The 3D view is untouched, which is
+the M5-E2d property this seam inherited by asking for the roster drawer
+rather than the screen composer.
+
+**Run it with `--seam automap` as well** and the modal rule is a picture
+rather than a paragraph: Tab's map, the entry drawn over it, and — one F1
+later — the map back, with New Phlan's label and the party's square where
+they were. The two panels are the same pixels and the reader is the thing
+on them while it is up.
+
+**And it is the same reader in the browser's machine.** Leg 6's method
+again, and `tools/drive.mjs` takes `--journal-store` in the desktop
+host's own spelling for exactly this:
+
+```
+node build/wasm/hosts/web/Debug/drive.mjs <your-directory> START.EXE \
+  --seam code-wheel --seam journal --journal-store ./journal.txt \
+  --press A@7601 --press Return@7651 --press L@8951 --press A@9201 \
+  --press F1@10600 --press 3@10700 --press Return@10800 \
+  --until 240000000 --quiet --dump wasmj
+```
+
+```
+amberfolio: journal store ./journal.txt entries=1 corrections=0
+amberfolio: seam journal armed fired=602779
+amberfolio: host-service journal-open calls=1 last=3 at=214772808
+```
+
+`cmp` on the two `.ppm` files says nothing: **every pixel of the entry
+agrees**, which is #175's "on both hosts" as a comparison of two files.
+The callout's tick differs by 17,592 — under one frame — because the two
+hosts post a `--press` at slightly different points inside a frame; the
+machines converge, which is what the identical final frame says.
+
+**What this leg did not do, and cannot yet**: it never saw the *game*
+cite an entry. That is the enhancement's other half and it needs a real
+journal, which needs an edition, and the table is empty. Everything up to
+the citation is here; the citation itself is `docs/journal.md` §3's first
+customer.
+
+---
+
 ## What the run should not say
 
 Three notices, and no others, on a clean run of any of the legs above:

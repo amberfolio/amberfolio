@@ -305,6 +305,20 @@ export function journalText(module, number) {
   );
 }
 
+/// A store's own bytes back into the module (M5-E4, #175).
+///
+/// The reader is answered out of this tab's store, so anything that wants
+/// a reader without an ingestion in front of it — a player restoring the
+/// text they exported, `tools/drive.mjs` pointed at a file — puts the
+/// store in here first. Answers a `journal_trouble`: a file that is not
+/// exactly the format is refused whole rather than half-read, which is
+/// `journal_store.h`'s own rule and the reason it is strict.
+export function readStore(module, text) {
+  return withUtf8(module, text, (ptr, size) =>
+    module._af_web_journal_store_read(ptr, size),
+  );
+}
+
 /// A person's correction to one entry.
 export function correctJournalEntry(module, number, text) {
   return withUtf8(module, text, (ptr) =>

@@ -2044,7 +2044,7 @@ on a synthetic one.
 **Nobody has driven it against a real citation**, because that needs a
 real journal and the edition table is empty (`docs/journal.md` §3). The
 driving above proves the reader, the key, the host service and the
-give-back; what it cannot prove is the one thing only a player with their
+give-back, on both hosts; what it cannot prove is the one thing only a player with their
 own document can — that this program's citations have the shape the
 recognizer expects. That is the first thing to look at when somebody has
 one, and `journal_citation_in()` is one function to change if they do not.

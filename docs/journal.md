@@ -312,8 +312,10 @@ is the failure a player finds out about last.
 **Both hosts hand over the same store.** The desktop's lives for the run
 and is read at its start, so a player who ingested last week starts today
 with `--seam journal` able to answer; the browser's is the tab's, filled
-by the page's own file input. Neither writes to it from inside the game:
-a correction is a page's or an editor's, and the reader only reads.
+by the page's own file input — or, for a script, by `drive.mjs`'s
+`--journal-store`, which reads a store file and hands the module its
+bytes. Neither host writes to it from inside the game: a correction is a
+page's or an editor's, and the reader only reads.
 
 **What it has and has not been driven against** is in `docs/seams.md`
 §10, and the short version belongs here too: the recognizer, the reader
