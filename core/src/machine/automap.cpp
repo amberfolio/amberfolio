@@ -32,6 +32,7 @@ void automap_state::clear() noexcept {
   panel_open_ = false;
   panel_on_screen_ = false;
   panel_covered_ = false;
+  at_command_bar_ = false;
   unsettle();
   appearance_valid_ = false;
   appearance_area_ = 0;

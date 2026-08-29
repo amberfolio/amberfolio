@@ -34,16 +34,20 @@
 // **closed**, and the key is claimed inside the program's own keyboard
 // path rather than taken from a host.
 //
-// **Its points are addresses** — five of them, all in the resident image,
+// **Its points are addresses** — six of them, all in the resident image,
 // none in an overlay. Four are keyboard and drawing routines the program
-// reaches constantly; one is the routine that puts the roster back.
+// reaches constantly; one is the return of the routine that draws the
+// roster; and one is the thunk of the routine every menu bar in the game
+// is put up through, which is how the panel knows whose screen it is on.
 //
 // **What it refuses** is more of it than what it does. It declines when
 // the data segment is not where the fact table says it is, when the
 // program's map pointer does not point inside conventional memory, when
 // the party's facing is not one of the four the map format has, and it
 // simply does nothing at all unless the program is on the 3D adventuring
-// screen with a map loaded and the position settled.
+// screen with a map loaded and the position settled. It also gives the
+// screen back the moment anything other than the party's own command bar
+// starts asking the player questions, which is the paragraph after next.
 //
 //
 // What the program does, stated as facts
@@ -71,14 +75,47 @@
 // points, and the panel knows who owns its pixels without knowing what
 // took them.
 //
-// **The program can put its own screen back.** Its per-mode screen
-// composer repaints the roster, the viewport and the status line from
-// live state, and it is what the program itself uses when a full-screen
-// view is left. It takes no arguments and cleans nothing. That is what
-// the panel calls when the player closes it, because the panel wrote over
-// the roster and something has to redraw it — and a snapshot of the
-// pixels could not, since the program redraws single roster rows while
-// the panel is up.
+// **The program can draw its party roster on demand.** One routine, one
+// argument — a far pointer to the current member, which is all it needs
+// to know which row is white — and it paints the list from live state.
+// That is what the panel calls when the player closes it, because the
+// panel wrote over the roster and something has to redraw it, and a
+// snapshot of the pixels could not: the program redraws single roster
+// rows while the panel is up, so a snapshot is stale the moment a
+// character takes damage.
+//
+// It is deliberately *not* the program's per-mode screen composer, which
+// is the wider routine that would also repaint the viewport and the
+// status line. A vendor's portrait lives in the viewport, and closing the
+// panel through the composer painted the 3D view over the person the
+// player was talking to. The panel covers the roster; the roster is what
+// it owes back. What the drawer does not do is clear the row above the
+// list or the rows below the party, so the panel's own rect is cleared
+// through the program's region clear first — the same routine this seam's
+// third point is the entry of.
+//
+// **Every bar in the game goes up through one routine**, and it is
+// handed the bar as an argument. The adventuring screen hands it one of
+// two strings it keeps in its data segment; a vendor's yes/no, a script's
+// menu, a shop and the camp bar all hand it a copy built on the stack. So
+// a far pointer into the data segment at one of two known offsets is the
+// party's own command bar, and anything else in the world is not.
+//
+// That is how the panel knows a vendor is mid-question, which nothing
+// else can tell it: such a question leaves the game mode at
+// "adventuring", draws its portrait in the viewport and its text on the
+// message row, and touches not one cell of the panel, so neither the mode
+// byte nor the three drawing points above ever hear about it.
+//
+// The obvious cheaper answer was measured and thrown away. The program
+// keeps a byte for "a script has the message area", zeroed by its PRINT
+// opcodes and set back by the adventuring loop when it clears that area
+// on the way out of a command — and driven against the real program in
+// New Phlan it turned out to oscillate on *every step*, and to be down
+// far more often than up at the very moment a player is standing at the
+// bar. A gate on it would have taken the panel away for most of a walk.
+// `--watch 84E4` is what said so, and it is why this seam has a sixth
+// point rather than a fifth fact.
 //
 // **The map is four planes of 256 bytes**, at a far pointer in the data
 // segment. Plane 0's high and low nibbles are the north and east wall
@@ -121,6 +158,16 @@
 //   * **The whole keystroke word, not the character.** Tab is scan code
 //     0x0F with character 0x09; Ctrl-I is the same character under a
 //     different scan code, and it is the program's.
+//
+// Tab is not the only key claimed, though it is the only one claimed
+// unconditionally. **While the panel is up it also takes the two keys
+// that step the program's roster cursor** — the next and previous party
+// member. The adventuring screen answers them by redrawing the party
+// list, which is the block of cells the panel is drawn on: the map is
+// painted over, the seam puts it back on the next pass, and what the
+// player sees is a flash. A command whose whole visible effect is behind
+// the panel is one the panel may decline while it is the thing on the
+// screen. They are given straight back the moment it comes down.
 //
 // The claim at the *read* routine cannot turn a poll that said "a key is
 // waiting" into a wait that never ends, and the argument is worth having
@@ -177,6 +224,13 @@
 //   program observes are unchanged; one keystroke that was never in its
 //   alphabet is gone from the queue before it is asked for.
 //
+// The roster-cursor keys are the one place that second sentence is
+// narrower, and it is narrower on purpose: those keys *are* in the
+// program's alphabet, and while the panel is up one of them is taken
+// instead of delivered. The claim there is the one a modal view makes —
+// with the panel down, which is every run in which Tab was never pressed,
+// not a key of the program's is touched.
+//
 // Both are tests (`tests/core/machine/seam_automap_test.cpp`), and the
 // second is a `tests/programs` stand-in so it runs on all four targets.
 
@@ -226,6 +280,29 @@ constexpr std::uint32_t key_read_entry = 0xA70F;
 constexpr std::uint32_t clear_region_entry = 0x4047;
 constexpr std::uint32_t clear_screen_entry = 0x7D3B;
 
+/// The resident thunk of the program's **one** menu-bar input routine
+/// (M5-E2d): every bar the game puts on the screen and every key it reads
+/// through one goes past here, with the bar itself as an argument. A far
+/// jump into the overlay that holds the routine, so at its entry the
+/// stack is still the caller's frame.
+///
+/// This is how the panel knows whose screen it is on. Three points tell
+/// it when something has taken its *cells*, which is enough for anything
+/// that takes the screen — a character sheet, a shop, a fight. It is not
+/// enough for a vendor's question, which leaves the game mode at
+/// "adventuring", draws its portrait in the viewport and its question on
+/// the message row, and touches not one cell of the panel. The bar does
+/// say: the adventuring screen's own is a pointer into the data segment,
+/// and everybody else's is a string they built on the stack.
+constexpr std::uint32_t command_bar_entry = 0x3C7A;
+
+/// Where the bar is in that frame. The routine takes eleven words and
+/// cleans twenty-two bytes; its callers push them deepest-first, so at
+/// the thunk's entry — the far return address on top and nothing else —
+/// the menu's far pointer is the fourth argument from the far end.
+constexpr std::uint16_t bar_frame_menu_offset = 18;
+constexpr std::uint16_t bar_frame_menu_segment = 20;
+
 /// The far return of the routine that draws the party roster — its
 /// `retf`, not its entry. The entry would be the wrong place: that
 /// routine clears each of its own rows through the box-region clear
@@ -234,23 +311,36 @@ constexpr std::uint32_t clear_screen_entry = 0x7D3B;
 /// is on the screen and every clear it made is behind it.
 constexpr std::uint32_t roster_drawn_return = 0x148A;
 
-/// The program's per-mode screen composer: no arguments, a plain far
-/// return, and the program's own idiom for putting a screen back after
-/// something took it.
+/// The routine that draws the party roster, and how to reach it. Its own
+/// far return is `roster_drawn_return` above, which is this seam's fifth
+/// point: the seam both watches this routine and calls it.
+///
+/// It takes one argument, a far pointer to the current party member, and
+/// cleans four bytes on the way out. All it does with the pointer is
+/// decide which row is drawn white — the list itself it walks from the
+/// party head, which it reads for itself.
 ///
 /// **A paragraph and an offset, not a flat image offset**, and that is
 /// the fact rather than a spelling. This routine reaches its own literals
 /// as `CS:<constant>` and its own siblings as `push cs` plus a near call —
 /// which is what a compiler of this era emits inside a segment — so it
-/// only works when CS is the segment it was linked at. Called at
-/// `image_base:0x3379`, the same bytes execute and every one of those
-/// CS-relative reads lands somewhere else: the screen comes back drawn
-/// out of whatever happens to be sixteen kilobytes lower down. It did,
-/// on the first driven run, and it is written here rather than in a
-/// commit message because the next routine a seam calls will have the
-/// same property.
-constexpr std::uint16_t screen_redraw_paragraph = 0x0BA;
-constexpr std::uint16_t screen_redraw_offset = 0x27D9;
+/// only works when CS is the segment it was linked at. The screen
+/// composer this seam used to call sits in the same segment and has the
+/// same property: called at `image_base:0x3379` the same bytes executed
+/// and drew the roster out of whatever happened to be sixteen kilobytes
+/// lower down, which looked like a corrupted machine. It is written here
+/// rather than in a commit message because the next routine a seam calls
+/// will have it too (`docs/seams.md` §8.4).
+constexpr std::uint16_t roster_draw_paragraph = 0x0BA;
+constexpr std::uint16_t roster_draw_offset = 0x0767;
+
+/// The box-region clear again, as a call target rather than as a place to
+/// stop: the panel's own rect is cleared before the roster is drawn back
+/// over it (see `give_the_roster_back()`). One address, named twice,
+/// because a point is a `std::uint32_t` offset into a module and a call is
+/// a `std::uint16_t` offset into a segment.
+constexpr auto image_clear_region =
+    static_cast<std::uint16_t>(clear_region_entry);
 
 /// Where the data segment begins, as an offset in the image. The seam
 /// reads DS at its points the way the rest of this tree does, and checks
@@ -278,6 +368,25 @@ constexpr std::uint8_t view_kind_area = 1;
 /// Non-zero while the program is running a scripted move between areas.
 /// The party's position words are not to be believed while it is.
 constexpr std::uint16_t data_in_transition = 0x442F;
+
+/// **The adventuring screen's own two command bars** (M5-E2d), as
+/// offsets in the data segment: one for the overhead view and one for the
+/// 3D view. Both are strings the program keeps, and that is the fact this
+/// seam turns into a test — a bar at one of these two offsets is the
+/// party's own command bar and nothing else in the program has one.
+/// Every other bar the game shows, a vendor's yes/no and a script's menu
+/// included, is a copy built on the stack.
+///
+/// Two routes, and the second is the strings themselves: the program's
+/// own menu format is a length byte and its text, and the two lengths at
+/// these offsets are the lengths of the two bars the adventuring screen
+/// draws.
+constexpr std::uint16_t data_menu_area_view = 0x04B6;
+constexpr std::uint16_t data_menu_3d_view = 0x04DF;
+
+/// The current party member: a far pointer, offset then segment. The one
+/// argument the roster drawer takes.
+constexpr std::uint16_t data_current_member = 0x5D92;
 
 /// The current area record: a far pointer, offset then segment. Already
 /// in this tree (`seam_encamp_fix.cpp` reads the game clock through it).
@@ -1592,13 +1701,69 @@ void blit(machine& box, const automap_state& state) {
 /// Ctrl-I, which is the program's key and not this seam's.
 constexpr std::uint16_t key_tab = 0x0F09;
 
-/// Take Tab out of the BIOS keystroke buffer if it is the next key there.
-/// True when one was taken, which is a player asking for the panel.
-[[nodiscard]] bool claim_hotkey(cpu::processor& cpu, std::uint16_t ds) {
+/// The two keystrokes that step the program's roster cursor, which the
+/// panel takes for as long as it is up (M5-E2d).
+///
+/// **Why it takes them at all.** The adventuring screen answers a key it
+/// has no command for by stepping that cursor and then redrawing the
+/// party list — which is the block of cells the panel is drawn on. The
+/// map is painted over, this seam puts it back on the next pass, and what
+/// the player sees is a flash. Most of those keys are a stray press; two
+/// of them are a command a player means, the next and the previous party
+/// member, and a command whose whole visible effect is behind the panel
+/// is one the panel may decline while it is the thing on the screen.
+///
+/// **Why two shapes each.** They reach the program as one of two things.
+/// With Num Lock on the keypad sends the digits, which the program's own
+/// menu reader translates into command letters through a table in its
+/// data segment; with Num Lock off the same keys send extended
+/// keystrokes, and the program takes those at their scan code — which,
+/// for these two keys, *is* the letter the table would have produced.
+/// Hence a character for the one and a scan code for the other. The
+/// character alone is enough here, unlike Tab: nothing else on this
+/// machine makes a '1'.
+constexpr std::uint8_t key_next_member_char = '1';
+constexpr std::uint8_t key_prev_member_char = '7';
+constexpr std::uint8_t key_next_member_scan = 0x4F;
+constexpr std::uint8_t key_prev_member_scan = 0x47;
+
+/// What the keystroke at the head of the buffer is, to this seam.
+enum class claimable : std::uint8_t {
+  /// Somebody else's key. Every key is this one, nearly always.
+  none,
+  /// Tab: show the panel, or take it away.
+  panel,
+  /// A roster-cursor step, which is only this seam's while the panel is
+  /// the thing on those cells.
+  roster_cursor,
+};
+
+[[nodiscard]] claimable claimable_of(std::uint16_t key) noexcept {
+  if (key == key_tab) {
+    return claimable::panel;
+  }
+  const auto character = static_cast<std::uint8_t>(key & 0xFFU);
+  const auto scan = static_cast<std::uint8_t>(key >> 8U);
+  if (character == key_next_member_char || character == key_prev_member_char) {
+    return claimable::roster_cursor;
+  }
+  if (character == 0 &&
+      (scan == key_next_member_scan || scan == key_prev_member_scan)) {
+    return claimable::roster_cursor;
+  }
+  return claimable::none;
+}
+
+/// Take the next keystroke out of the BIOS buffer if it is one this seam
+/// wants **right now** — which is the whole of the fidelity argument: a
+/// key the seam is not going to act on is left exactly where the program
+/// would have found it.
+[[nodiscard]] claimable claim_key(cpu::processor& cpu, std::uint16_t ds,
+                                  bool want_panel, bool want_cursor) {
   if (cpu.read_byte(ds, data_key_pushback) != 0) {
     // The second half of an extended key is waiting. The two halves have
     // to stay adjacent, so nothing is touched on this pass.
-    return false;
+    return claimable::none;
   }
 
   const std::uint16_t head =
@@ -1606,10 +1771,12 @@ constexpr std::uint16_t key_tab = 0x0F09;
   const std::uint16_t tail =
       cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
   if (head == tail) {
-    return false;
+    return claimable::none;
   }
-  if (cpu.read_word(bda::segment, head) != key_tab) {
-    return false;
+  const claimable which = claimable_of(cpu.read_word(bda::segment, head));
+  if (which == claimable::none || (which == claimable::panel && !want_panel) ||
+      (which == claimable::roster_cursor && !want_cursor)) {
+    return claimable::none;
   }
 
   auto next = static_cast<std::uint16_t>(head + 2U);
@@ -1617,7 +1784,7 @@ constexpr std::uint16_t key_tab = 0x0F09;
     next = bda::keyboard_buffer;
   }
   cpu.write_word(bda::segment, bda::keyboard_buffer_head, next);
-  return true;
+  return which;
 }
 
 // ---------------------------------------------------------------------------
@@ -1706,30 +1873,107 @@ constexpr std::uint16_t key_tab = 0x0F09;
   return true;
 }
 
-/// Put the program's own screen back, because the panel wrote over the
-/// party list and only the program can redraw it from live state.
+/// Put the party roster back, because the panel wrote over it and only
+/// the program can redraw it from live state.
 ///
-/// A batch of one call (`seam_context::call_program`, #188). The panel is
-/// marked down *before* it is queued: when the batch finishes the engine
-/// offers this point again, and a handler that had not already recorded
-/// what it was doing would queue the same call a second time.
+/// **The roster and nothing else** (M5-E2d). Until this, the panel closed
+/// by calling the program's per-mode screen composer, which repaints the
+/// viewport and the status line as well. A vendor's portrait lives in the
+/// viewport: closing the panel in the middle of a conversation painted
+/// the 3D view over the person the player was talking to and left the
+/// question on the screen with nothing asking it. The panel covers the
+/// roster, so the roster is what it owes back, and the property the
+/// composer was chosen for survives — the drawer paints from live state,
+/// which a snapshot of the pixels could never do, since the program
+/// redraws single roster rows while the panel is up.
+///
+/// **Two calls, because the drawer alone is not enough.** It puts the
+/// header on the roster's own row and one row per member below it, and
+/// clears exactly one row after the last — so the panel's first row,
+/// which is above that header, and every row below the party would keep
+/// their pixels. The clear ahead of it is the panel's rect exactly, which
+/// is the same rect the covered-cells test is made in.
+///
+/// A batch (`seam_context::call_program`, #188). The panel is marked down
+/// *before* it is queued: when the batch finishes the engine offers this
+/// point again, and a handler that had not already recorded what it was
+/// doing would queue the same calls a second time.
 void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
   automap_state& state = box.automap();
   state.set_panel_on_screen(false);
   state.set_drawn_signature(0);
 
-  const std::uint8_t mode = box.processor().read_byte(ds, data_game_mode);
+  cpu::processor& cpu = box.processor();
+  const std::uint8_t mode = cpu.read_byte(ds, data_game_mode);
   if (mode != mode_camp && mode != mode_adventure_flat &&
       mode != mode_adventure) {
-    // Belt and braces, and the program's own rule: the composer is only
-    // real for the modes that have a screen to compose. A repaint the
+    // Belt and braces, and the program's own rule: the roster is only
+    // there to be redrawn on the modes that have one. A repaint the
     // program cannot perform would leave a corrupted screen, which is a
     // worse answer than a missing one.
     return;
   }
-  ctx.call_program(static_cast<std::uint16_t>((ctx.image_base() / 16U) +
-                                              screen_redraw_paragraph),
-                   screen_redraw_offset, {});
+
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  const std::array<std::uint16_t, 4> clear{
+      automap_panel_left_col, automap_panel_top_row, automap_panel_right_col,
+      automap_panel_bottom_row};
+  const std::array<std::uint16_t, 2> current{
+      cpu.read_word(ds, at(data_current_member, 2)),
+      cpu.read_word(ds, data_current_member)};
+  (void)(ctx.call_program(image, image_clear_region, clear) &&
+         ctx.call_program(
+             static_cast<std::uint16_t>(image + roster_draw_paragraph),
+             roster_draw_offset, current));
+}
+
+/// Take the panel away because somebody other than the adventuring
+/// screen is asking the player something, and the panel is sitting on the
+/// party roster while they answer (M5-E2d).
+///
+/// **Only when it is really on the screen**, and that is the whole of the
+/// distinction. Everything that takes the panel's *cells* cleared them
+/// first and is drawing there: the panel has already stopped claiming
+/// them, the program will repaint the roster when it is done, and the map
+/// comes back the way it always has. What is left over is the case this
+/// is for — a question that takes neither the screen nor the cells, and
+/// would otherwise be answered from behind a map.
+///
+/// True when it acted, and then the handler is finished for this pass: a
+/// batch may be outstanding, and there is nothing to draw while the panel
+/// is coming down anyway.
+[[nodiscard]] bool close_for_the_program(machine& box, seam_context& ctx,
+                                         std::uint16_t ds) {
+  automap_state& state = box.automap();
+  if (!state.panel_open() || !state.panel_on_screen()) {
+    return false;
+  }
+  state.set_panel_open(false);
+  give_the_roster_back(box, ctx, ds);
+  return true;
+}
+
+/// What the panel does with a Tab it has decided is its own. True when
+/// the roster is coming back through a batch, which is the caller's cue
+/// that it is finished for this pass.
+[[nodiscard]] bool toggle_panel(machine& box, seam_context& ctx,
+                                std::uint16_t ds) {
+  automap_state& state = box.automap();
+  const bool open = !state.panel_open();
+  state.set_panel_open(open);
+  if (!open && state.panel_on_screen()) {
+    give_the_roster_back(box, ctx, ds);
+    return true;
+  }
+  state.set_drawn_signature(0);
+  return false;
+}
+
+/// Whether a roster-cursor step is this seam's key on this pass: only
+/// while the panel is the thing on the cells that step would repaint.
+[[nodiscard]] bool cursor_keys_are_the_panels(
+    const automap_state& state) noexcept {
+  return state.panel_open() && !state.panel_covered();
 }
 
 // ---------------------------------------------------------------------------
@@ -1747,14 +1991,34 @@ void at_key_pending(machine& box, seam_context& ctx) {
   }
   automap_state& state = box.automap();
 
-  if (claim_hotkey(cpu, ds)) {
-    const bool open = !state.panel_open();
-    state.set_panel_open(open);
-    if (!open && state.panel_on_screen()) {
-      give_the_roster_back(box, ctx, ds);
+  if (!state.at_command_bar()) {
+    // Somebody other than the adventuring screen is asking the player
+    // something. The panel comes down if it is sitting on the roster
+    // while they answer, and its key is nobody's until the party's own
+    // bar is back. Exploration is deliberately *not* gated on this — the
+    // party can be standing where a script has something to say about,
+    // and a map that skipped that square would stay wrong for the rest of
+    // the session. Only the presentation and the key yield, which is the
+    // line the covered-cells rule draws too.
+    if (close_for_the_program(box, ctx, ds)) {
       return;
     }
-    state.set_drawn_signature(0);
+  } else {
+    switch (claim_key(cpu, ds, true, cursor_keys_are_the_panels(state))) {
+      case claimable::panel:
+        if (toggle_panel(box, ctx, ds)) {
+          // The roster is on its way back through a batch. Nothing else
+          // this pass.
+          return;
+        }
+        break;
+      case claimable::roster_cursor:
+      case claimable::none:
+        // A cursor step taken and nothing done with it — its whole
+        // visible effect is a repaint of the cells the panel is sitting
+        // on — or nobody's key at all. Neither has anything more to do.
+        break;
+    }
   }
 
   if (!adventuring(cpu, ds)) {
@@ -1861,9 +2125,11 @@ void at_key_pending(machine& box, seam_context& ctx) {
   state.set_drawn_signature(drawn);
 }
 
-/// The program is about to wait for a key. Only the claim happens here:
-/// this is not a moment when the program is between commands, and the
-/// panel has nothing to say about it.
+/// The program is about to wait for a key. The claim happens here too,
+/// and so does the yield to a script: the program is not between commands
+/// here so the panel has nothing to *draw*, but a key it wants may arrive
+/// at an unconditional wait that no poll preceded, and a script may be
+/// what is doing the waiting.
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
@@ -1871,17 +2137,42 @@ void at_key_read(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (!claim_hotkey(cpu, ds)) {
-    return;
-  }
   automap_state& state = box.automap();
-  const bool open = !state.panel_open();
-  state.set_panel_open(open);
-  if (!open && state.panel_on_screen()) {
-    give_the_roster_back(box, ctx, ds);
+  if (!state.at_command_bar()) {
+    (void)close_for_the_program(box, ctx, ds);
     return;
   }
-  state.set_drawn_signature(0);
+  if (claim_key(cpu, ds, true, cursor_keys_are_the_panels(state)) !=
+      claimable::panel) {
+    return;
+  }
+  (void)toggle_panel(box, ctx, ds);
+}
+
+/// The program is putting a command bar up. Which bar it is says whose
+/// screen this is (M5-E2d), and that is the only thing this point does.
+///
+/// The adventuring screen hands its input routine one of two strings it
+/// keeps in its data segment; every other caller — a vendor's yes/no, a
+/// script's menu, a shop, the camp bar — hands it a copy built on the
+/// stack. So a far pointer into the data segment at one of two known
+/// offsets is the party's own command bar, and anything else is not.
+void at_command_bar(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t sp = regs[cpu::reg16::sp];
+  const std::uint16_t segment =
+      cpu.read_word(ss, at(sp, bar_frame_menu_segment));
+  const std::uint16_t offset = cpu.read_word(ss, at(sp, bar_frame_menu_offset));
+  box.automap().set_at_command_bar(
+      segment == ds &&
+      (offset == data_menu_area_view || offset == data_menu_3d_view));
 }
 
 /// A box region is about to be cleared. If it meets the panel's cells,
@@ -1934,7 +2225,7 @@ void at_roster_drawn(machine& box, seam_context& ctx) {
 // The definition
 // ---------------------------------------------------------------------------
 
-constexpr std::array<seam_point, 5> automap_points{
+constexpr std::array<seam_point, 6> automap_points{
     {{.module = resident_image,
       .offset = key_pending_entry,
       .run = &at_key_pending},
@@ -1947,7 +2238,10 @@ constexpr std::array<seam_point, 5> automap_points{
       .run = &at_clear_screen},
      {.module = resident_image,
       .offset = roster_drawn_return,
-      .run = &at_roster_drawn}}};
+      .run = &at_roster_drawn},
+     {.module = resident_image,
+      .offset = command_bar_entry,
+      .run = &at_command_bar}}};
 
 constexpr seam_definition automap_definition{
     .id = "automap",

@@ -68,9 +68,10 @@ What M4 left in place:
   the EGA planes a plane at a time, which is what added **port surgery**
   as `docs/seams.md` §3's eighth primitive; what has been explored lives
   in `machine::automap()` beside the overlay tracker, as observation and
-  not machine state; and closing it calls the program's own screen
-  composer to put the roster back. M5-E2a adds the colours: a wall is the
-  modal non-black pixel of the very tiles the 3D view blits for it, so
+  not machine state; and closing it clears the panel's own rect and calls
+  the program's roster drawer to put the party list back. M5-E2a adds the
+  colours: a wall is the modal non-black pixel of the very tiles the 3D
+  view blits for it, so
   the buildings are the colour of the buildings, and a door leaf is drawn
   where a wall face's *kind* has been seen shut — on this map or in the
   table of every shut face in the shipped data. M5-E2b puts the zone's
@@ -85,8 +86,21 @@ What M4 left in place:
   `af_web_automap_store`), because a file appearing in a player's game
   directory changes it and every recorded session pins its disk. Telling
   a slot the program *loaded* from one the load menu merely looked at is
-  what added the two traffic flags to a DOS file-close event. #173 is
-  closed),
+  what added the two traffic flags to a DOS file-close event. M5-E2d is
+  what a player's first hours found: the panel gives back the roster and
+  no more of the screen than that, because the composer it used to call
+  repainted the viewport too and wiped a vendor's NPC out from under a
+  live question; it comes down on its own, and its key goes quiet,
+  whenever the bar on the screen is not the adventuring screen's own —
+  a sixth point, at the thunk every menu bar in the game goes up
+  through, because the party's bar is a string in the data segment and
+  every vendor's is a copy on the stack, and neither the mode byte nor
+  the three drawing points can tell them apart; and while it is up it
+  takes the two keys that step the roster cursor, whose whole visible
+  effect is a repaint of the cells it is sitting on. The obvious cheaper
+  gate — the program's own "a script has the message area" byte — was
+  measured with `--watch` and thrown away: it oscillates on every step.
+  #173 is closed),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine

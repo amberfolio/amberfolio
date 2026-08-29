@@ -301,6 +301,21 @@ class automap_state {
   [[nodiscard]] bool panel_covered() const noexcept { return panel_covered_; }
   void set_panel_covered(bool covered) noexcept;
 
+  /// Whether the bar the program last put up is the adventuring screen's
+  /// own (M5-E2d). **False at power-on**, and false again the moment
+  /// anything else asks the player something — a vendor's yes/no, a
+  /// script's menu, a shop, the camp screen.
+  ///
+  /// It is here rather than read out of the machine each time because the
+  /// machine stops holding it: the program hands its menu to its one
+  /// input routine as an argument, and the argument is gone the moment
+  /// that routine returns. This is the seam noting what it saw go past,
+  /// which is what `seam.h`'s "keep in it only what the machine has
+  /// stopped holding" is for — and it is presentation state exactly as
+  /// the three above are, dropped by `clear()` and never serialized.
+  [[nodiscard]] bool at_command_bar() const noexcept { return at_command_bar_; }
+  void set_at_command_bar(bool at) noexcept { at_command_bar_ = at; }
+
   /// Whether a rect the program is about to clear, in its own text cells,
   /// meets the panel. Static because the region-clear point wants to
   /// answer it before it has decided to touch anything.
@@ -469,6 +484,7 @@ class automap_state {
   bool panel_open_{false};
   bool panel_on_screen_{false};
   bool panel_covered_{false};
+  bool at_command_bar_{false};
 
   bool appearance_valid_{false};
   std::uint8_t appearance_area_{};

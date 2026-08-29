@@ -60,6 +60,11 @@ constexpr std::uint16_t data_map_pointer = 0x6A5C;
 constexpr std::uint16_t data_frame_colour = 0x6A60;
 constexpr std::uint16_t data_ground_colour = 0x6A63;
 constexpr std::uint16_t data_key_pushback = 0x8501;
+constexpr std::uint16_t data_current_member = 0x5D92;
+constexpr std::uint16_t data_menu_area_view = 0x04B6;
+constexpr std::uint16_t data_menu_3d_view = 0x04DF;
+constexpr std::uint16_t bar_frame_menu_offset = 18;
+constexpr std::uint16_t bar_frame_menu_segment = 20;
 constexpr std::uint16_t data_font_pointer = 0x5E20;
 constexpr std::uint16_t data_shape_tiles = 0x6A58;
 constexpr std::uint16_t data_shape_first_slot = 0x0C8C;
@@ -86,8 +91,18 @@ constexpr std::uint16_t map_segment = 0x5000;
 constexpr std::uint16_t map_shape_segment = 0x6000;
 constexpr std::uint16_t map_bank_segment = 0x7000;
 constexpr std::uint16_t font_segment = 0x8000;
+constexpr std::uint16_t member_segment = 0x9000;
 
 constexpr std::uint16_t key_tab = 0x0F09;
+
+/// The roster-cursor keys, in both the shapes they reach the program in.
+/// With Num Lock on the keypad sends the digit, which the program
+/// translates to a command letter; with it off the same key sends an
+/// extended keystroke whose scan code is that letter already.
+constexpr std::uint16_t key_keypad_next_member = 0x4F31;  // '1'
+constexpr std::uint16_t key_keypad_prev_member = 0x4737;  // '7'
+constexpr std::uint16_t key_end = 0x4F00;
+constexpr std::uint16_t key_home = 0x4700;
 
 /// The map's own four planes, and the lane numbering.
 constexpr std::uint16_t plane_faces_ns = 0x000;
@@ -202,7 +217,33 @@ struct rig {
     put_byte(ds, data_frame_colour, 6);
     put_byte(ds, data_ground_colour, 2);
     put_byte(ds, data_key_pushback, 0);
+    put_word(ds, data_current_member, 0x0000);
+    put_word(ds, static_cast<std::uint16_t>(data_current_member + 2),
+             member_segment);
+    put_up_the_bar(dgroup(), data_menu_3d_view);
   }
+
+  /// Put a command bar up, the way the program does: stand on the sixth
+  /// point with the menu's far pointer where its caller's frame would
+  /// have it, and step.
+  ///
+  /// Driven through the point rather than by setting the flag, because
+  /// the point *is* the mechanism: it is the reading of that frame that
+  /// decides whose screen the panel is on.
+  void put_up_the_bar(std::uint16_t segment, std::uint16_t offset) const {
+    constexpr std::uint16_t sp = 0x0400;
+    stand_on(point(5), sp);
+    put_word(dgroup(), static_cast<std::uint16_t>(sp + bar_frame_menu_offset),
+             offset);
+    put_word(dgroup(), static_cast<std::uint16_t>(sp + bar_frame_menu_segment),
+             segment);
+    box->step();
+  }
+
+  /// Somebody other than the adventuring screen asks the player
+  /// something: a vendor's yes/no, a script's menu, a shop. Its bar is a
+  /// string built on the stack, which is what makes it not the party's.
+  void somebody_else_asks() const { put_up_the_bar(dgroup(), 0x03F0); }
 
   /// A wall face on one lane of one cell, with a style: 0 solid, 1 a way
   /// through. The face nibble is what says there is a face at all.
@@ -1216,7 +1257,179 @@ TEST(AutomapPanel, TheWholeScreenGoingTakesThePanelWithIt) {
   EXPECT_FALSE(r.map_state().panel_on_screen());
 }
 
-TEST(AutomapPanel, ClosingItAsksTheProgramToPutItsOwnScreenBack) {
+/// The program's region clear, as far as this test needs it: write the
+/// four cells it was handed where the test can read them, then clean the
+/// eight bytes the real routine cleans.
+///
+/// It has to be witnessed here rather than through the seam's own
+/// covered-cells point, which is armed at this very address: points are
+/// not offered while a batch is running (`seam.h`), because the machine
+/// is inside the program's code at the seam's own request and that is
+/// not a place a seam's facts describe.
+///
+///   mov bp, sp ; mov ax, [bp+4] ; mov [rect+0], ax ; ... ; retf 8
+constexpr std::uint16_t program_clear_offset = 0x4047;
+constexpr std::uint16_t clear_rect_witness = 0x0308;
+constexpr std::array<std::uint8_t, 29> program_clear{
+    0x89, 0xE5,                          // mov bp, sp
+    0x8B, 0x46, 0x04, 0xA3, 0x08, 0x03,  // bottom
+    0x8B, 0x46, 0x06, 0xA3, 0x0A, 0x03,  // right
+    0x8B, 0x46, 0x08, 0xA3, 0x0C, 0x03,  // top
+    0x8B, 0x46, 0x0A, 0xA3, 0x0E, 0x03,  // left
+    0xCA, 0x08, 0x00};
+
+/// The program's roster drawer, as far as this test needs it: write down
+/// the segment it was entered with, then return from the address the
+/// seam's fifth point is on, cleaning the one far pointer it takes.
+///
+/// Both halves matter. The segment, because the real routine reaches its
+/// own literals through CS, so a seam that called it at the image base
+/// rather than at the paragraph it was linked at would run the same bytes
+/// and draw the roster out of the wrong ones. The return address, because
+/// it is how the panel learns the roster is back.
+///
+///   mov ax, cs ; mov [witness], ax ; jmp <the routine's own retf>
+constexpr std::uint16_t roster_witness = 0x0300;
+constexpr std::uint16_t roster_paragraph = 0x0BA;
+constexpr std::uint16_t roster_offset = 0x0767;
+constexpr std::uint16_t roster_return = 0x148A;
+constexpr std::array<std::uint8_t, 8> program_roster{0x8C, 0xC8, 0xA3, 0x00,
+                                                     0x03, 0xE9, 0x7B, 0x01};
+constexpr std::array<std::uint8_t, 3> program_roster_return{0xCA, 0x04, 0x00};
+
+/// Put those two where the seam's fact table says the program keeps them.
+void install_the_programs_repaint(const rig& r) {
+  const auto place = [&r](std::uint32_t at,
+                          std::span<const std::uint8_t> code) {
+    for (std::size_t i = 0; i < code.size(); ++i) {
+      r.pc().memory().ram()[at + i] = code[i];
+    }
+  };
+  const std::uint32_t image = cpu::physical_address(image_load_segment, 0);
+  place(image + program_clear_offset, program_clear);
+  place(cpu::physical_address(
+            static_cast<std::uint16_t>(image_load_segment + roster_paragraph),
+            roster_offset),
+        program_roster);
+  place(image + roster_return, program_roster_return);
+  r.put_word(rig::dgroup(), roster_witness, 0);
+  for (std::uint16_t i = 0; i < 8; i += 2) {
+    r.put_word(rig::dgroup(),
+               static_cast<std::uint16_t>(clear_rect_witness + i), 0xFFFF);
+  }
+}
+
+TEST(AutomapPanel, ClosingItPutsBackTheRosterAndNothingElse) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+  install_the_programs_repaint(r);
+
+  r.type(key_tab);
+  r.stand_on(r.point(0));
+  const cpu::registers before = r.regs();
+  r.pc().step();
+
+  EXPECT_FALSE(r.map_state().panel_open());
+  EXPECT_FALSE(r.map_state().panel_on_screen())
+      << "marked down before the calls are queued, so the point being "
+         "offered again cannot queue a second batch";
+
+  // Let the batch run: the clear first, then the drawer.
+  for (int i = 0; i < 40; ++i) {
+    r.pc().step();
+  }
+
+  // The clear is of the panel's own rect and no more of the screen than
+  // that — the row above the roster and the rows below the party are the
+  // panel's too, and the drawer clears neither.
+  EXPECT_EQ(r.word_at(rig::dgroup(), clear_rect_witness),
+            automap_panel_bottom_row);
+  EXPECT_EQ(r.word_at(rig::dgroup(),
+                      static_cast<std::uint16_t>(clear_rect_witness + 2)),
+            automap_panel_right_col);
+  EXPECT_EQ(r.word_at(rig::dgroup(),
+                      static_cast<std::uint16_t>(clear_rect_witness + 4)),
+            automap_panel_top_row);
+  EXPECT_EQ(r.word_at(rig::dgroup(),
+                      static_cast<std::uint16_t>(clear_rect_witness + 6)),
+            automap_panel_left_col);
+
+  EXPECT_EQ(r.word_at(rig::dgroup(), roster_witness),
+            static_cast<std::uint16_t>(image_load_segment + roster_paragraph))
+      << "the roster drawer ran, at the segment it was linked at";
+  EXPECT_EQ(r.regs()[cpu::sreg::cs], before[cpu::sreg::cs]);
+  EXPECT_EQ(r.regs()[cpu::reg16::sp], before[cpu::reg16::sp])
+      << "both routines cleaned their own frames and the engine put the "
+         "rest back";
+  EXPECT_FALSE(r.map_state().panel_open());
+}
+
+// ---------------------------------------------------------------------------
+// Yielding to the program's own conversation (M5-E2d)
+// ---------------------------------------------------------------------------
+
+TEST(AutomapBar, OnlyThePartysOwnTwoBarsAreThePartys) {
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  EXPECT_TRUE(r.map_state().at_command_bar()) << "the 3D view's own bar";
+
+  r.put_up_the_bar(rig::dgroup(), data_menu_area_view);
+  EXPECT_TRUE(r.map_state().at_command_bar()) << "and the overhead view's";
+
+  r.somebody_else_asks();
+  EXPECT_FALSE(r.map_state().at_command_bar())
+      << "a bar built on the stack is nobody's but its own";
+
+  // The right offset in the wrong segment is not the program's string
+  // either — the same offset in a stack frame that happens to be there
+  // would otherwise read as the party's bar.
+  r.put_up_the_bar(0x1234, data_menu_3d_view);
+  EXPECT_FALSE(r.map_state().at_command_bar());
+}
+
+TEST(AutomapPanel, SomebodyElseAskingTakesThePanelWithIt) {
+  // A vendor's question is the case this is for: it leaves the mode at
+  // "adventuring", draws in the viewport and on the message row, and
+  // never touches a cell of the panel — so neither the mode byte nor any
+  // of the three drawing points can see it happen.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+  ASSERT_TRUE(r.map_state().panel_open());
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+  install_the_programs_repaint(r);
+
+  r.somebody_else_asks();
+  r.stand_on(r.point(0));
+  r.pc().step();
+  EXPECT_FALSE(r.map_state().panel_open()) << "nobody had to press Tab";
+  EXPECT_FALSE(r.map_state().panel_on_screen());
+
+  for (int i = 0; i < 40; ++i) {
+    r.pc().step();
+  }
+  EXPECT_EQ(r.word_at(rig::dgroup(), roster_witness),
+            static_cast<std::uint16_t>(image_load_segment + roster_paragraph))
+      << "and the roster is back under the question";
+}
+
+TEST(AutomapPanel, SomethingThatTookTheCellsIsLeftToPutThemBack) {
+  // The other half of the rule, and the reason it is "on the screen" and
+  // not "open": a character sheet, a shop or a fight cleared these cells
+  // to draw itself there and will repaint the roster when it is done.
+  // The panel has already stopped claiming them, and it comes back the
+  // way it always has — this must not turn into a close.
   rig r;
   r.attach_video();
   r.enable();
@@ -1226,49 +1439,94 @@ TEST(AutomapPanel, ClosingItAsksTheProgramToPutItsOwnScreenBack) {
   r.poll(2);
   ASSERT_TRUE(r.map_state().panel_on_screen());
 
-  // The program's screen composer, as far as this test needs it to be:
-  // something that writes down the segment it was entered with and
-  // returns far. The segment is the point — the real routine reaches its
-  // own literals through CS, so a seam that called it at the image base
-  // rather than at the paragraph it was linked at would run the same
-  // bytes and draw the screen out of the wrong ones.
-  //
-  //   mov ax, cs ; mov [witness], ax ; retf
-  constexpr std::uint16_t witness = 0x0300;
-  constexpr std::uint16_t composer_paragraph = 0x0BA;
-  constexpr std::uint16_t composer_offset = 0x27D9;
-  constexpr std::array<std::uint8_t, 7> composer{0x8C, 0xC8, 0xA3, 0x00,
-                                                 0x03, 0xCB, 0x90};
-  const std::uint32_t at = cpu::physical_address(
-      static_cast<std::uint16_t>(image_load_segment + composer_paragraph),
-      composer_offset);
-  for (std::size_t i = 0; i < composer.size(); ++i) {
-    r.pc().memory().ram()[at + i] = composer[i];
-  }
-  r.put_word(rig::dgroup(), witness, 0);
-
-  r.type(key_tab);
-  r.stand_on(r.point(0));
-  const cpu::registers before = r.regs();
+  r.stand_on(r.point(3));  // the full-screen clear
   r.pc().step();
+  ASSERT_TRUE(r.map_state().panel_covered());
+  ASSERT_FALSE(r.map_state().panel_on_screen());
 
+  r.somebody_else_asks();
+  r.stand_on(r.point(0));
+  r.pc().step();
+  EXPECT_TRUE(r.map_state().panel_open())
+      << "still asked for, and it comes back when the roster does";
+}
+
+TEST(AutomapPanel, SomebodyElseAskingIsNotAReasonToStopExploring) {
+  // The party can be standing where a script has something to say about.
+  // A map that skipped that square would stay wrong for the rest of the
+  // session, so only the presentation and the key yield.
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.somebody_else_asks();
+  r.poll(4);
+  const automap_record* map = r.map_state().find(3, 0, 3);
+  ASSERT_NE(map, nullptr);
+  EXPECT_TRUE(automap_state::seen(*map, 7, 5));
+}
+
+TEST(AutomapHotkey, AwayFromThePartysBarTabIsNotThisSeamsKey) {
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.somebody_else_asks();
+  r.type(key_tab);
+  r.poll(1);
+  EXPECT_EQ(r.keys_waiting(), 1u) << "left where the program would find it";
   EXPECT_FALSE(r.map_state().panel_open());
-  EXPECT_FALSE(r.map_state().panel_on_screen())
-      << "marked down before the call is queued, so the point being offered "
-         "again cannot queue a second one";
 
-  // Let the batch finish: the composer's far return lands on the engine's
-  // sentinel and the snapshot goes back.
-  for (int i = 0; i < 6; ++i) {
-    r.pc().step();
+  r.stand_on(r.point(1));
+  r.pc().step();
+  EXPECT_EQ(r.keys_waiting(), 1u) << "and the read routine declines it too";
+}
+
+TEST(AutomapHotkey, TheRosterCursorKeysAreThePanelsWhileItIsUp) {
+  for (const std::uint16_t key :
+       {key_keypad_next_member, key_keypad_prev_member, key_end, key_home}) {
+    const rig r;
+    r.enable();
+    r.adventuring(7, 5, lane_north);
+    r.type(key_tab);
+    r.poll(1);
+    ASSERT_TRUE(r.map_state().panel_open());
+
+    r.type(key);
+    r.poll(1);
+    EXPECT_EQ(r.keys_waiting(), 0u)
+        << "the whole visible effect of keystroke " << key
+        << " is a repaint of the cells the panel is on";
+    EXPECT_TRUE(r.map_state().panel_open()) << "and it is still up";
   }
-  EXPECT_EQ(r.word_at(rig::dgroup(), witness),
-            static_cast<std::uint16_t>(image_load_segment + composer_paragraph))
-      << "the routine ran, and it ran at the segment it was linked at";
-  EXPECT_EQ(r.regs()[cpu::sreg::cs], before[cpu::sreg::cs]);
-  EXPECT_EQ(r.regs()[cpu::reg16::sp], before[cpu::reg16::sp])
-      << "the routine cleaned its own frame and the engine put the rest back";
-  EXPECT_FALSE(r.map_state().panel_open());
+}
+
+TEST(AutomapHotkey, WithThePanelDownTheRosterCursorKeysAreTheProgramsOwn) {
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.type(key_keypad_next_member);
+  r.poll(1);
+  EXPECT_EQ(r.keys_waiting(), 1u)
+      << "the panel is not up, so stepping the roster cursor is a command "
+         "the player can see the whole of";
+}
+
+TEST(AutomapHotkey, OnceSomethingElseOwnsTheCellsTheyAreItsKeysAgain) {
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.type(key_tab);
+  r.poll(1);
+  ASSERT_TRUE(r.map_state().panel_open());
+
+  // The full-screen clear: something has taken the panel's cells, so
+  // whatever is drawing there is who a roster-cursor key belongs to.
+  r.stand_on(r.point(3));
+  r.pc().step();
+  ASSERT_TRUE(r.map_state().panel_covered());
+
+  r.type(key_keypad_next_member);
+  r.poll(1);
+  EXPECT_EQ(r.keys_waiting(), 1u);
 }
 
 // ---------------------------------------------------------------------------
@@ -1341,7 +1599,7 @@ TEST(AutomapDefinition, ItIsACommandAndNotAPullAndItNamesTheBaseline) {
   EXPECT_FALSE(automap->trigger) << "a key is not a pull";
   EXPECT_EQ(automap->gate, document_kind::none);
   EXPECT_EQ(automap->schema, seam_schema_version);
-  EXPECT_EQ(automap->points.size(), 5u);
+  EXPECT_EQ(automap->points.size(), 6u);
   for (const seam_point& point : automap->points) {
     EXPECT_FALSE(point.at_every_step) << "every point of this seam has an "
                                          "address, which is where its safety "

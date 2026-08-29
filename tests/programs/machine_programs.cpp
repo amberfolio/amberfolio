@@ -2039,12 +2039,27 @@ struct probe_layout {
 // seam reads through it is zero — which is not the adventuring mode, so
 // the panel half of the handler does nothing and only the claim runs.
 // That is the half being measured.
+//
+// One thing it does have to stand in for (M5-E2d): the seam declines its
+// own key unless the bar the program last put up is the adventuring
+// screen's own, and it learns that at a sixth point, from the frame of
+// the routine every bar goes up through. So this program builds that
+// frame — the menu's far pointer where a caller would have left it, and
+// nine words of filler under it — walks through the point, and drops the
+// frame again. A stand-in that skipped it would be measuring a decline
+// rather than a claim. Those instructions are in every step count below.
 
 /// The paragraph offset of the program's data segment from its image, as
 /// `seam_automap.cpp`'s fact table has it. Restated rather than shared:
 /// this program is standing in for the real one and has to be laid out
 /// the way the facts say, not the way the seam happens to compute.
 constexpr std::uint16_t automap_dgroup_paragraphs = 0xC7C;
+
+/// The adventuring screen's own 3D-view command bar, as an offset in
+/// that data segment, and how far up the caller's frame the bar's far
+/// pointer sits. Restated for the same reason.
+constexpr std::uint16_t automap_menu_3d_view = 0x04DF;
+constexpr unsigned automap_bar_frame_filler_words = 9;
 
 /// Tab, as the BIOS hands it over. The scan code the host maps the key to
 /// and the character that goes with it.
@@ -2055,11 +2070,12 @@ constexpr std::uint16_t automap_tab_keystroke = 0x0F09;
 /// quiet run costs, what the run with the seam on and no key costs, and
 /// what the run with the seam on and a Tab typed costs. **Three entries
 /// claiming one number** is the whole instrument (`machine_program::steps`).
-constexpr std::uint64_t automap_unheard_steps = 81'934;
+constexpr std::uint64_t automap_unheard_steps = 81'947;
 
 struct automap_layout {
   std::vector<std::uint8_t> file;
   std::uint32_t poll_offset{};
+  std::uint32_t bar_offset{};
 };
 
 [[nodiscard]] const automap_layout& automap_probe() {
@@ -2069,6 +2085,20 @@ struct automap_layout {
     a.db({0x05});
     a.dw(automap_dgroup_paragraphs);  // add ax, 0C7Ch
     a.db({0x8E, 0xD8});               // mov ds, ax
+
+    // The bar, as its caller leaves it: the far pointer deepest, then
+    // nine words of whatever, then the point.
+    a.db({0x50});  // push ax  (the menu's segment: DS, still in AX)
+    a.db({0xB8});
+    a.dw(automap_menu_3d_view);
+    a.db({0x50});  // push ax  (the menu's offset)
+    for (unsigned i = 0; i < automap_bar_frame_filler_words; ++i) {
+      a.db({0x50});  // push ax
+    }
+    a.label("bar");
+    a.db({0x81, 0xC4});  // add sp, 16h — the frame, cleaned as the routine
+    a.dw(0x0016);        // itself would clean it
+
     a.db({0xB9});
     a.dw(0x4000);  // mov cx, 4000h
     a.label("poll");
@@ -2087,6 +2117,7 @@ struct automap_layout {
 
     automap_layout out;
     out.poll_offset = static_cast<std::uint32_t>(a.offset_of("poll"));
+    out.bar_offset = static_cast<std::uint32_t>(a.offset_of("bar"));
     out.file = build_exe({.initial_cs = 0,
                           .initial_ip = 0,
                           .initial_ss = 0,
@@ -2099,14 +2130,27 @@ struct automap_layout {
   return built;
 }
 
-/// The automap seam's own handler for the point it claims keys at, taken
-/// from the definition this build ships. Null would be a seam table that
-/// no longer carries an automap, which the definition test would have
-/// failed on first.
-[[nodiscard]] machine::seam_handler automap_key_handler() {
+/// One of the automap seam's own handlers, taken from the definition this
+/// build ships — the key claim at its first point, and the bar reader at
+/// its last. Null would be a seam table that no longer carries an
+/// automap, which the definition test would have failed on first.
+[[nodiscard]] machine::seam_handler automap_handler(std::size_t which) {
   for (const machine::seam_definition& seam : machine::all_seams()) {
-    if (seam.id == "automap") {
-      return seam.points.front().run;
+    if (seam.id == "automap" && which < seam.points.size()) {
+      return seam.points[which].run;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] machine::seam_handler automap_key_handler() {
+  return automap_handler(0);
+}
+
+[[nodiscard]] machine::seam_handler automap_bar_handler() {
+  for (const machine::seam_definition& seam : machine::all_seams()) {
+    if (seam.id == "automap" && !seam.points.empty()) {
+      return seam.points.back().run;
     }
   }
   return nullptr;
@@ -3708,8 +3752,11 @@ const machine::seam_definition& automap_probe_definition() {
     return std::string(hex.data(), sha256_digest::text_length);
   }();
   static const std::array<std::string_view, 1> fingerprints{fingerprint};
-  static const std::array<machine::seam_point, 1> points{
+  static const std::array<machine::seam_point, 2> points{
       {{.module = machine::resident_image,
+        .offset = automap_probe().bar_offset,
+        .run = automap_bar_handler()},
+       {.module = machine::resident_image,
         .offset = automap_probe().poll_offset,
         .run = automap_key_handler()}}};
   static const machine::seam_definition definition{

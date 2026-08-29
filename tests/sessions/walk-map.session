@@ -22,6 +22,14 @@
 # and the mechanism have unit tests, and only this says the picture is
 # still the picture.
 #
+# Re-recorded for M5-E2d. The forty-eight moves end on the armourer's
+# square, and the last quarter of this run is his question: the panel
+# takes itself off the roster while the player answers, and gives the
+# roster back without touching the viewport his portrait is drawn in.
+# Nothing before the shop moved — the first 138 of these 203 checkpoints
+# are the ones the M5-E2 recording had, which is the walk itself saying
+# the yield costs it nothing.
+#
 # The file and dir lines are names, sizes and SHA-256s of a snapshot of
 # the disk. No byte of the player's installation is here.
 

@@ -1594,7 +1594,7 @@ that say who owns the pixels. `core/include/amberfolio/machine/automap.h`
 has the derivations; what this section is about is what the *engine* had
 to do to carry it.
 
-**The five points, and what each is for.**
+**The six points, and what each is for.**
 
 | point | in | what it does |
 | --- | --- | --- |
@@ -1603,6 +1603,7 @@ to do to carry it.
 | the box-region clear | the resident image | if the rect meets the panel, something else has taken those cells |
 | the full-screen clear | the resident image | the same, unconditionally |
 | the party-roster draw's `retf` | the resident image | the cells are the panel's again |
+| the menu-bar input routine's thunk | the resident image | which bar is going up, and so whose screen this is (M5-E2d) |
 
 The first is the workhorse and the reason the seam works at all: the
 adventuring screen's command loop calls it on every pass, so it is where
@@ -1737,14 +1738,82 @@ With no marker at all, a long word is cut where it stops fitting: ugly,
 and deliberately so, because a name nobody has marked yet should still
 appear.
 
-**Closing it calls the program's own screen composer** (#188's door),
-because the panel wrote over the party list and only the program can
-redraw it from live state — the game redraws single roster rows while the
-panel is up, so any snapshot of the pixels would be stale. That call is
-where this seam's day went, and the trap is in §8.4: the composer reaches
-its own literals through CS, so it has to be called at the paragraph it
-was linked at. Called at the image base with the whole offset in IP it
-ran perfectly and drew the roster out of the wrong sixteen kilobytes.
+**Closing it asks the program to draw its party roster back** (#188's
+door), because the panel wrote over the party list and only the program
+can redraw it from live state — the game redraws single roster rows while
+the panel is up, so any snapshot of the pixels would be stale. Two calls
+in one batch: the region clear over the panel's own rect, then the roster
+drawer with the current member. The clear is needed because the drawer
+puts the header on the roster's row and one row per member below it and
+clears exactly one row after the last, so the panel's first row and every
+row below the party would otherwise keep their pixels.
+
+It is deliberately *not* the program's per-mode screen composer, which is
+what M5-E2 called and which repaints the viewport and the status line
+too. A vendor's portrait lives in the viewport: closing the panel
+mid-conversation painted the 3D view over the person the player was
+talking to and left the question on screen with nothing asking it. The
+panel covers the roster; the roster is what it owes back. (The proven
+design has the same bug, and for the same reason — it withdraws through
+`screen_redraw()`.)
+
+That call is where this seam's day went, and the trap is in §8.4: these
+routines reach their own literals through CS, so they have to be called
+at the paragraph they were linked at. Called at the image base with the
+whole offset in IP the composer ran perfectly and drew the roster out of
+the wrong sixteen kilobytes; the roster drawer sits in the same segment
+and has the same property.
+
+**It yields to the program's own conversations** (M5-E2d). Three drawing
+points tell the panel when something has taken its cells, and that is
+enough for everything that takes the *screen* — a character sheet, a
+shop, a fight. It is not enough for a vendor's question, which leaves the
+game mode at "adventuring", draws its portrait in the viewport and its
+question on the message row, and touches not one cell of the panel. So
+the seam has a sixth point, and it is a good example of §8.1's "check
+every fact by two routes" paying for itself: **the thunk of the one
+routine every menu bar in the game is put up through**, which is handed
+the bar as an argument.
+
+The adventuring screen hands it one of two strings it keeps in its data
+segment. A vendor's yes/no, a script's menu, a shop and the camp bar all
+hand it a copy built on the stack. So "a far pointer into the data
+segment at one of two known offsets" is the party's own command bar and
+nothing else in the program is, and the panel knows whose screen it is on
+from one comparison.
+
+While it is not the party's bar the panel comes down — without anybody
+pressing anything — and Tab is not this seam's key. It comes down *only
+if it is really on the screen*: everything that took the panel's cells
+cleared them first and will repaint the roster itself, so those keep
+yielding the way they always did and the map comes back. What is left
+over is exactly the case this is for. Exploration is deliberately not
+gated on any of it: the party can be standing where a script has
+something to say about, and a map that skipped that square would stay
+wrong for the rest of the session.
+
+**The cheaper answer was measured and thrown away**, and that is worth
+keeping. The program has a byte for "a script still has the message
+area", which reads like the whole feature for one fact and no new point.
+Driven against the real program in New Phlan with `--watch 84E4` it
+oscillates on *every step* and is down more often than up at the moment a
+player is standing at the bar — a gate on it would have taken the panel
+away for most of a walk. §9's rule, from the other end: the thing that
+said so was a driven run, and no test would have.
+
+**While the panel is up it also takes the two roster-cursor keys**
+(M5-E2d). The adventuring screen answers a key it has no command for by
+stepping that cursor and redrawing the party list — which is the block of
+cells the panel is drawn on, so the map is painted over and the seam puts
+it back on the next pass. What the player sees is a flash. Two of those
+keys are a command a player means, the next and the previous party
+member, and a command whose whole visible effect is behind the panel is
+one the panel may decline while it is the thing on the screen. They are
+the program's again the moment the panel comes down or something else
+takes its cells. It is the one place this seam takes a key that *is* in
+the program's alphabet, and the fidelity pair below is unaffected: with
+the panel down, which is every run in which Tab was never pressed,
+nothing is touched.
 
 **The fidelity claim, stated for this seam** (§8.5). The plain one holds,
 and it is the strongest in this tree, because the panel is closed until

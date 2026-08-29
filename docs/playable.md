@@ -1122,20 +1122,52 @@ that through the program's own clear routines and stops claiming them;
 when the program repaints the roster, the panel comes back on the next
 poll. Nothing here knows *what* took the screen, only that something did.
 
-**Tab again puts the game's own screen back**, and it is the program that
-draws it: the panel wrote over the party list, so the seam calls the
-program's per-mode screen composer (`docs/seams.md` §3's call door) and
-the roster returns from live state, six names, their armour class and
-their hit points. A snapshot of the pixels could not have done it — the
-game redraws single roster rows while the panel is up, so a snapshot is
-stale the moment somebody takes damage.
+**Tab again puts the party list back**, and it is the program that draws
+it: the panel wrote over the roster, so the seam clears the panel's own
+rect and calls the program's roster drawer (`docs/seams.md` §3's call
+door), and the list returns from live state — six names, their armour
+class and their hit points. A snapshot of the pixels could not have done
+it: the game redraws single roster rows while the panel is up, so a
+snapshot is stale the moment somebody takes damage.
 
-**What driving it found**, and no test could: the composer has to be
-called at the paragraph it was *linked at*, not at the image base with
+**The roster and nothing else**, which M5-E2d had to learn from a
+player's screenshot. M5-E2 closed the panel through the program's
+per-mode screen *composer*, which repaints the viewport and the status
+line as well. Standing in front of a vendor, that painted the 3D view
+over the NPC the player was talking to and left the vendor's yes/no
+question on the screen with nothing asking it. The panel covers the
+roster, so the roster is what it gives back.
+
+**What driving it found**, and no test could: these routines have to be
+called at the paragraph they were *linked at*, not at the image base with
 the whole offset in IP. Both run the same bytes; the second reaches its
 own literals through the wrong CS and puts the roster back drawn out of
 somebody else's data. `docs/seams.md` §8.4 has it as a trap, because the
 next routine a seam calls will have the same property.
+
+**It steps aside for the game's own conversations** (M5-E2d). The three
+drawing points catch everything that takes the *screen*; a vendor's
+question takes neither the screen nor the panel's cells, and the panel
+sat over the party roster through the whole conversation. So the seam has
+a sixth point, at the thunk of the one routine every menu bar in the game
+goes up through: the adventuring screen hands it a string out of the data
+segment, and every vendor, script and shop hands it a copy built on the
+stack. Away from the party's own bar the panel comes down on its own and
+Tab is not this seam's key. And while the panel *is* up it takes the two
+keys that step the roster cursor, whose whole visible effect is a repaint
+of the cells it is sitting on — without that, pressing one made the map
+flash for a frame.
+
+**What driving it found, twice.** The first cut of this gated on the byte
+the program keeps for "a script still has the message area", which is one
+fact and no new point. `--watch 84E4` over the walk below showed it
+oscillating on *every step* and sitting down at the bar more often than
+up: the panel would have been gone for most of the walk. The driven run
+is the only thing that could have said so, and the driven run is also
+what says the sixth point is right — at the armourer, the shopkeeper's
+portrait is in the viewport, his question is on the message row, and the
+party roster is under it with no map on top, without Tab having been
+pressed a second time.
 
 **The pair.** `tests/sessions/walk.rec` and `walk-map.rec` are this run
 recorded twice, one flag apart, with the Tab in **both** halves at the
