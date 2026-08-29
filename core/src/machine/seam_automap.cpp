@@ -246,6 +246,7 @@
 #include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/ega.h"
+#include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
@@ -2071,7 +2072,14 @@ void at_key_pending(machine& box, seam_context& ctx) {
     drawn = 1;
   }
 
-  const bool shown = state.panel_open() && !state.panel_covered();
+  // The journal reader is the same cells (M5-E4, #175), and it is modal
+  // over the map: while an entry is up the map does not draw, and it comes
+  // back on its own when the entry is put away — the reader closes by
+  // asking the program to paint the roster again, which is what clears
+  // this seam's own drawn signature. Neither seam knows anything else
+  // about the other and either works with the other switched off.
+  const bool shown = state.panel_open() && !state.panel_covered() &&
+                     !box.journal().reader_open();
   const bool want_reveal = where != state.revealed_signature();
   const bool want_appearance =
       shown && !state.appearance_is_for(now.area, now.geo, banks);

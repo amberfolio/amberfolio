@@ -296,8 +296,9 @@ export async function ingestJournal(
 }
 
 /// What a reader shows for one entry — the correction if there is one,
-/// the scan otherwise. #175 is what will ask for this from inside the
-/// machine; the page uses it to show a player what was read.
+/// the scan otherwise. The in-game reader (M5-E4, #175) asks for the same
+/// thing from inside the module, through the `journal_open` host service;
+/// the page uses this to show a player what was read before they go in.
 export function journalText(module, number) {
   return readText(module, (out, cap) =>
     module._af_web_journal_text(number, out, cap),

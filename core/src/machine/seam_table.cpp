@@ -20,10 +20,10 @@ std::span<const seam_definition> all_seams() {
   // dangles nothing. Built on first use rather than at static-init time,
   // so the order the accessors' own statics are constructed in is decided
   // here and not by link order.
-  static const std::array<seam_definition, 6> table{
-      code_wheel_seam(),     encamp_fix_seam(),
-      automap_seam(),        cheat_invulnerable_seam(),
-      cheat_kill_all_seam(), cheat_wound_party_seam()};
+  static const std::array<seam_definition, 7> table{
+      code_wheel_seam(),       encamp_fix_seam(),         automap_seam(),
+      journal_seam(),          cheat_invulnerable_seam(), cheat_kill_all_seam(),
+      cheat_wound_party_seam()};
   return table;
 }
 
