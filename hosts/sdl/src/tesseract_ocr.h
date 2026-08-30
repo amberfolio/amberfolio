@@ -110,12 +110,13 @@ class tesseract_ocr final : public host::journal_ocr {
   /// destructor.
   [[nodiscard]] bool scratch(std::string& out);
 
-  /// The two shapes of scan (see above): a decoded bitmap as a PGM, read
-  /// whole; a stream under its own name, read whole and filtered to the
-  /// entry's rectangle afterwards.
+  /// The two shapes of a scan's piece (see above): a decoded bitmap as a
+  /// PGM, read whole; a stream under its own name, read whole and
+  /// filtered to that piece's rectangle afterwards. `recognize()` joins
+  /// what they answer, in order.
   [[nodiscard]] bool recognize_bitmap(const host::journal_bitmap& page,
                                       std::string& out);
-  [[nodiscard]] bool recognize_encoded(const host::journal_scan& scan,
+  [[nodiscard]] bool recognize_encoded(const host::journal_part& part,
                                        std::string& out);
 
   std::string program_;

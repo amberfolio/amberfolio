@@ -368,14 +368,14 @@ uint32_t af_web_journal_entry_number(uint32_t index) {
   return fact == nullptr ? 0U : fact->number;
 }
 
-/// Get entry `index`'s scan, by whichever route its filter takes.
+/// Get entry `index`'s scan: every piece of it, by whichever route its
+/// filter takes.
 ///
-/// `af_web_journal_encoding()` then says which of the two shapes it is
-/// (#212): pixels at `af_web_journal_image_bytes()`, `_width()` by
-/// `_height()` of them, eight bits of gray each, top row first — or a
-/// stream at `af_web_journal_encoded_bytes()`, `_encoded_size()` of them,
-/// with `af_web_journal_region_*()` saying which rectangle of the image
-/// it holds is the entry.
+/// `af_web_journal_encoding()` then says which of the two shapes the
+/// pieces are (#212) and `af_web_journal_part_count()` how many there are
+/// (#214); the accessors below take a piece's index. An entry is one piece
+/// unless its edition's entries flow between columns, and the page joins
+/// what it reads out of them in this order.
 uint32_t af_web_journal_extract(uint32_t index) {
   return static_cast<uint32_t>(journal().ingester.extract(index));
 }
@@ -385,58 +385,81 @@ uint32_t af_web_journal_extract(uint32_t index) {
 ///
 /// A number rather than two "is it" predicates, because it is one
 /// question with two answers and a page that asked it twice could get an
-/// impossible pair.
+/// impossible pair. It is the scan's, not a piece's: every piece of one
+/// entry is the same shape (`host/journal_extract.h`).
 uint32_t af_web_journal_encoding(void) {
   return static_cast<uint32_t>(journal().ingester.scan().encoding);
 }
 
-/// The stream, for an encoded scan. Null and zero for a decoded one.
+/// How many pieces the last extraction produced (#214).
+uint32_t af_web_journal_part_count(void) {
+  return static_cast<uint32_t>(journal().ingester.scan().parts.size());
+}
+
+namespace {
+
+/// Piece `which` of the last extraction, or null.
+const amberfolio::host::journal_part* journal_part_at(uint32_t which) {
+  const amberfolio::host::journal_scan& scan = journal().ingester.scan();
+  return which < scan.parts.size() ? &scan.parts[which] : nullptr;
+}
+
+}  // namespace
+
+/// A piece's pixels. Null and zero for an encoded scan, and for a piece
+/// that is not there.
 ///
-/// The same "core-owned, read through a typed array" shape the pixels
-/// have, and the same warning: a view is detached when memory grows, so
-/// re-derive rather than cache.
-const uint8_t* af_web_journal_encoded_bytes(void) {
-  return journal().ingester.scan().encoded.data();
+/// The same "core-owned, read through a typed array" shape abi.h's
+/// framebuffer has, and the same warning: a view is detached when memory
+/// grows, so re-derive rather than cache.
+const uint8_t* af_web_journal_image_bytes(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part == nullptr ? nullptr : part->gray.pixels.data();
 }
 
-uint32_t af_web_journal_encoded_size(void) {
-  return static_cast<uint32_t>(journal().ingester.scan().encoded.size());
+uint32_t af_web_journal_image_width(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part == nullptr ? 0U : part->gray.width;
 }
 
-/// Which rectangle of an encoded scan's image is the entry, in that
+uint32_t af_web_journal_image_height(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part == nullptr ? 0U : part->gray.height;
+}
+
+/// A piece's stream, for an encoded scan. Null and zero for a decoded one.
+const uint8_t* af_web_journal_encoded_bytes(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part == nullptr ? nullptr : part->encoded.data();
+}
+
+uint32_t af_web_journal_encoded_size(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part == nullptr ? 0U : static_cast<uint32_t>(part->encoded.size());
+}
+
+/// Which rectangle of an encoded piece's image that piece is, in that
 /// image's own samples — what the page's engine filters its words by
-/// (`host/journal_ocr.h`). All zero for a decoded scan, where the crop
+/// (`host/journal_ocr.h`). All zero for a decoded piece, where the crop
 /// already happened.
-uint32_t af_web_journal_region_left(void) {
-  return journal().ingester.scan().region.left;
+uint32_t af_web_journal_region_left(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part == nullptr ? 0U : part->region.left;
 }
 
-uint32_t af_web_journal_region_top(void) {
-  return journal().ingester.scan().region.top;
+uint32_t af_web_journal_region_top(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part == nullptr ? 0U : part->region.top;
 }
 
-uint32_t af_web_journal_region_width(void) {
-  return journal().ingester.scan().region.width;
+uint32_t af_web_journal_region_width(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part == nullptr ? 0U : part->region.width;
 }
 
-uint32_t af_web_journal_region_height(void) {
-  return journal().ingester.scan().region.height;
-}
-
-/// A pointer into this module's linear memory, valid until the next
-/// `af_web_journal_extract` — the same "core-owned, read through a typed
-/// array" shape abi.h's framebuffer has, and the same warning: a view is
-/// detached when memory grows, so re-derive rather than cache.
-const uint8_t* af_web_journal_image_bytes(void) {
-  return journal().ingester.image().pixels.data();
-}
-
-uint32_t af_web_journal_image_width(void) {
-  return journal().ingester.image().width;
-}
-
-uint32_t af_web_journal_image_height(void) {
-  return journal().ingester.image().height;
+uint32_t af_web_journal_region_height(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part == nullptr ? 0U : part->region.height;
 }
 
 /// What the page's engine read for the entry *numbered* `number`.

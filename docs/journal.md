@@ -23,7 +23,7 @@ own machine, and stays there.
 | Piece | Where | What it does |
 |---|---|---|
 | The document gate | `core/.../machine/document.h` | Fingerprints a document the player holds, and gates a seam on it (#171). A gate is over bytes; it never looks inside. |
-| The fact table | `hosts/common/.../journal_facts.h` | Per edition, per entry: the page, the stream's offset and length, the image's shape, the region that is the entry. |
+| The fact table | `hosts/common/.../journal_facts.h` | Per edition, per entry, **per piece of it**: the page, the stream's offset and length, the image's shape, the rectangle that is that piece (§3). |
 | The extractor | `hosts/common/.../journal_extract.h` | Follows an offset, inflates the stream, undoes the predictor, expands samples to gray, crops the region. |
 | The engine | `hosts/common/.../journal_ocr.h` | One virtual call. The desktop runs the player's own Tesseract; the browser drives tesseract.js. |
 | The store | `hosts/common/.../journal_store.h` | Entry number to text, with what the engine read and what a person corrected kept apart. |
@@ -69,38 +69,81 @@ amberfolio <dir> <program.exe> --seam journal
 
 ## 3. Adding an edition
 
-Every real journal is an unrecognized edition today. `known_journals()`
-is empty and `known_documents()` has no journal line, for the reason
-`machine/document.cpp` already gives about its own table: a fingerprint
-is a fact about a file somebody actually hashed, and nobody here has
-hashed that one. The offsets are worse — they are facts about a document
-somebody has to sit down with.
+**There is one**, since M5-E3b (#214): the Adventurer's Journal as the
+currently sold archive release ships it — the same release every other
+fact in this tree was gathered against. Its fingerprint is
+`67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c`, which
+is a fact about a file and is all that may be written down about it. Its
+pages are `/DCTDecode` (§4a) and it has **fifty-eight entries in
+seventy-eight pieces**.
 
-So adding an edition is adding data, in two places:
+An edition is data in two places:
 
 1. **The gate**, in `core/src/machine/document.cpp`: the SHA-256 of the
    whole file, a name a player would recognize, and
    `document_kind::journal`.
-
-   The archive release's journal is
-   `67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c`,
-   which is a fact about a file and is all that may be written down about
-   it. Its pages are `/DCTDecode` (§4a).
 2. **The insides**, in `hosts/common/src/journal_facts.cpp`: the same
-   fingerprint, and one `journal_entry_fact` per entry — the entry
-   number the game itself uses, the page it is on, the byte offset of the
-   stream's first data byte, its `/Length`, the image dictionary's
-   `/Width`, `/Height`, `/BitsPerComponent`, component count, filter and
-   `/DecodeParms /Predictor`, whether it is `/Decode [1 0]`, and the
-   rectangle of the decoded image that is the entry.
+   fingerprint, and one `journal_entry_fact` per entry — the entry number
+   the game itself uses, and its `journal_fragment`s, each with the page
+   it is on, the byte offset of the stream's first data byte, its
+   `/Length`, the image dictionary's `/Width`, `/Height`,
+   `/BitsPerComponent`, component count, filter and `/DecodeParms
+   /Predictor`, whether it is `/Decode [1 0]`, and the rectangle of that
+   image which is that piece of the entry.
 
 The suite checks the two against each other, so an edition in one and not
 the other fails in CI rather than on a player's machine. It also checks
 every row's shape: a region inside its image, no two rows for one entry,
-and a filter this build can actually decode.
+pieces in reading order, no entry that mixes a decoded filter with a
+carried one, and a filter this build can carry at all.
 
 `--journal` on a document whose edition is not in the table prints its
 fingerprint, which is the first half of the row somebody has to write.
+
+### An entry is a list of pieces, and this is why
+
+The entries of this edition are set two columns to a printed page and two
+printed pages to a scan, and they **flow**: an entry runs out of its
+column and resumes at the top of the next, and four of the fifty-eight
+resume on the facing page — a different scan, a different stream
+altogether. Eighteen are in more than one piece.
+
+A row of one rectangle could describe none of those: the bounding box of
+two columns swallows the entries between them, and the first piece alone
+is half a sentence. So `journal_entry_fact` carries a span of
+`journal_fragment`, each with its own stream and rectangle, **in reading
+order** — and what an engine reads out of them is joined in that order.
+Most fragments of most editions will repeat their neighbour's offset,
+which is the price of being able to say the thing that is true.
+
+### How this edition's rectangles were found
+
+Written down because the next person needs to know whether to trust them,
+and because the method is the method for any edition:
+
+1. **The scan geometry, measured.** The four column bands of a spread are
+   the blank vertical bands wide enough to be gutters; the body's bottom
+   is above whichever footer rule the printed page carries.
+2. **The headings, matched by their own bitmap.** Every entry opens with
+   the same phrase in the same face at one scan resolution, so one
+   instance of it correlated down each column finds the rest. Gap and
+   line-width rules were tried first and are not good enough: a
+   paragraph's last line is short and starts at the margin exactly as a
+   heading does, and the gap above a heading is not separable from the
+   gap above a paragraph.
+3. **An entry runs from its heading to the next one**, wherever that
+   falls — down its column, on into the next, on into the next scan.
+4. **The numbering is a chain**, so it was checked against the printed
+   numbers on every one of the nine scans. Two of them are where a chain
+   would drift silently and neither did: the maps scan, whose single
+   entry covers it end to end, and the last scan, which has to land on
+   fifty-eight.
+5. **A piece with no ink in it is dropped.** An entry that ends exactly at
+   the foot of its column would otherwise carry an empty rectangle.
+
+The tooling that did this is not in the repository and should not be: it
+reads a document this project does not have and must never carry. What is
+here is its output, which is facts.
 
 ## 4. What the extractor decodes, and what it refuses
 
@@ -312,10 +355,13 @@ whether the inverted loop a browser needs actually works.
 
 **Not checked anywhere, and named rather than implied:**
 
-- **No real edition has been ingested.** The fact table is empty. Until
-  somebody sits down with a document, every real journal takes the
-  unrecognized path, which is the fail-closed direction and is the whole
-  of what this build claims.
+- **No real edition has been ingested *with an engine*.** One edition is
+  in the table now (§3) and its fifty-eight entries extract, on the real
+  document, every fragment located and bounds-checked. What has not
+  happened is a run of that with Tesseract on the far side, because the
+  machine the table was gathered on has none installed. So the rectangles
+  are checked by eye and by construction, and not yet by the words that
+  come out of them.
 - **No real OCR engine has been run by CI.** Neither host's engine is
   exercised by any test: the desktop's needs Tesseract installed, the
   browser's needs 32 MiB of fetched wasm and a browser to run it in.

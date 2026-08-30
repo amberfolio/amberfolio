@@ -212,6 +212,7 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_image_width',
   '_af_web_journal_image_height',
   '_af_web_journal_encoding',
+  '_af_web_journal_part_count',
   '_af_web_journal_encoded_bytes',
   '_af_web_journal_encoded_size',
   '_af_web_journal_region_left',
@@ -2979,23 +2980,34 @@ if (missing.length === 0 && sessions !== null) {
   );
   const encoded = currentScan(module);
   check(encoded !== null && encoded.kind === 'jpeg', 'no encoded scan');
-  check(encoded.bytes.length > 32, 'the encoded scan is empty');
+  // Two pieces: the probe's encoded entry flows the way a real edition's
+  // entries do (#214), so this is the multi-piece path through the ABI.
   check(
-    encoded.bytes[0] === 0xff &&
-      encoded.bytes[1] === 0xd8 &&
-      encoded.bytes[encoded.bytes.length - 2] === 0xff &&
-      encoded.bytes[encoded.bytes.length - 1] === 0xd9,
-    'the encoded scan is not a JPEG between its own markers',
+    encoded.parts.length === 2 &&
+      module._af_web_journal_part_count() === 2,
+    `the encoded entry came across in ${encoded.parts.length} pieces, wanted 2`,
   );
+  for (const part of encoded.parts) {
+    check(part.bytes.length > 32, 'an encoded piece is empty');
+    check(
+      part.bytes[0] === 0xff &&
+        part.bytes[1] === 0xd8 &&
+        part.bytes[part.bytes.length - 2] === 0xff &&
+        part.bytes[part.bytes.length - 1] === 0xd9,
+      'an encoded piece is not a JPEG between its own markers',
+    );
+    check(
+      part.region.width > 0 && part.region.height > 0 && part.region.left > 0,
+      'an encoded piece carries no region for the engine to apply',
+    );
+    check(
+      module._af_web_journal_image_width(0) === 0,
+      'an encoded scan should have no decoded pixels to offer',
+    );
+  }
   check(
-    encoded.region.width > 0 &&
-      encoded.region.height > 0 &&
-      encoded.region.left > 0,
-    'the encoded scan carries no region for the engine to apply',
-  );
-  check(
-    module._af_web_journal_image_width() === 0,
-    'an encoded scan should have no decoded pixels to offer',
+    encoded.parts[0].region.top !== encoded.parts[1].region.top,
+    'the two pieces are the same rectangle, so nothing was joined',
   );
 
   // And the region really does filter: words outside it are not the
