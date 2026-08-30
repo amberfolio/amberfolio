@@ -534,6 +534,25 @@ for the same reason.
 store keeps two texts per entry (§6). Nothing about the reader knows that
 a text was corrected, and nothing should.
 
+**What arrives is what the panel can draw** (M5-E4c, #219). The panel maps
+a *byte* to a glyph, out of the program's table of sixty-four; a store is
+UTF-8 and an OCR engine produces plenty of it. A real ingestion of the one
+tabled edition carries 229 non-ASCII characters and 222 of them are
+quotation marks, so an entry beginning with a curly quote used to begin
+with three pieces of furniture.
+
+So a page is made drawable on the way into the delivery buffer, one glyph
+per code point: the quotation marks and dashes become their plain
+equivalents, an ellipsis becomes three stops, and everything else — a
+character with no glyph, or a byte that is not valid UTF-8 — becomes one
+visible substitute rather than vanishing. Doing it there rather than at the
+drawing step is what also fixes the wrapping, which counts bytes, and stops
+a page longer than the buffer being cut in half through a character.
+
+**The store is not touched.** A player's transcription is theirs, it is
+UTF-8, and somebody editing that file by hand should be able to type a
+curly quote into it. What changes is only what the panel is handed.
+
 **The answer comes back in a buffer, not a return value.** `serve()`
 answers `void`, so what a host found goes into `machine::journal()` —
 core's own observation buffer, not machine state, dropped by `reset()`

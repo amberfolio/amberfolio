@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <utility>
 
@@ -68,7 +69,132 @@ constexpr unsigned citation_max_digits = 4;
   return ' ';
 }
 
+/// What one code point is drawn as. Empty for nothing this build knows,
+/// which the caller turns into the substitute.
+///
+/// The pairs are what an OCR engine actually produces, measured on a real
+/// ingestion rather than guessed: the four quotation marks are ninety-seven
+/// in a hundred of it, the dashes are most of the rest. The neighbours of
+/// each are here too, because a table that handled the left quote and not
+/// the right one would be a table waiting to be surprised by a different
+/// page.
+[[nodiscard]] std::string_view drawn_as(std::uint32_t code) noexcept {
+  switch (code) {
+    case 0x2018:  // ' and its family
+    case 0x2019:
+    case 0x201A:
+    case 0x201B:
+    case 0x2032:
+    case 0x00B4:
+      return "'";
+    case 0x201C:  // " and its family
+    case 0x201D:
+    case 0x201E:
+    case 0x201F:
+    case 0x2033:
+    case 0x00AB:
+    case 0x00BB:
+      return "\"";
+    case 0x2010:  // the dashes, which the program's font has one of
+    case 0x2011:
+    case 0x2012:
+    case 0x2013:
+    case 0x2014:
+    case 0x2015:
+    case 0x2212:
+      return "-";
+    case 0x2026:  // an ellipsis is three stops, and reads as three
+      return "...";
+    case 0x00A0:  // a space that is not one
+    case 0x2007:
+    case 0x2009:
+    case 0x202F:
+      return " ";
+    default:
+      return {};
+  }
+}
+
+/// The substitute: what a code point with no glyph looks like.
+constexpr char no_glyph = '?';
+
 }  // namespace
+
+journal_drawn journal_drawable(std::string_view text,
+                               std::span<char> into) noexcept {
+  journal_drawn out;
+  std::size_t at = 0;
+  while (at < text.size()) {
+    const auto lead = static_cast<std::uint8_t>(text[at]);
+
+    // How many bytes this code point claims, and what it is worth. An
+    // ill-formed lead, a sequence that runs off the end, or a continuation
+    // byte that is not one, all fall back to a single substituted byte -
+    // and always consume exactly one, so nothing here can fail to advance.
+    std::size_t width = 1;
+    std::uint32_t code = lead;
+    if (lead >= 0xC2 && lead <= 0xDF) {
+      width = 2;
+      code = lead & 0x1FU;
+    } else if (lead >= 0xE0 && lead <= 0xEF) {
+      width = 3;
+      code = lead & 0x0FU;
+    } else if (lead >= 0xF0 && lead <= 0xF4) {
+      width = 4;
+      code = lead & 0x07U;
+    } else if (lead >= 0x80) {
+      width = 1;
+      code = 0xFFFFFFFFU;  // a stray continuation or an ill-formed lead
+    }
+    if (width > 1) {
+      if (at + width > text.size()) {
+        width = 1;
+        code = 0xFFFFFFFFU;
+      } else {
+        for (std::size_t i = 1; i < width; ++i) {
+          const auto next = static_cast<std::uint8_t>(text[at + i]);
+          if ((next & 0xC0U) != 0x80U) {
+            width = 1;
+            code = 0xFFFFFFFFU;
+            break;
+          }
+          code = (code << 6U) | (next & 0x3FU);
+        }
+      }
+    }
+
+    // What it draws as. Printable ASCII is itself; a newline is kept
+    // because the layout above reads it; every other control character is
+    // a space, which is what a stray one in a transcription means.
+    std::array<char, 3> one{};
+    std::string_view piece;
+    if (code == '\n') {
+      one[0] = '\n';
+      piece = std::string_view{one.data(), 1};
+    } else if (code >= 0x20 && code < 0x7F) {
+      one[0] = static_cast<char>(code);
+      piece = std::string_view{one.data(), 1};
+    } else if (code < 0x20 || code == 0x7F) {
+      one[0] = ' ';
+      piece = std::string_view{one.data(), 1};
+    } else if (const std::string_view known = drawn_as(code); !known.empty()) {
+      piece = known;
+    } else {
+      one[0] = no_glyph;
+      piece = std::string_view{one.data(), 1};
+    }
+
+    if (out.written + piece.size() > into.size()) {
+      out.complete = false;
+      return out;
+    }
+    for (const char ch : piece) {
+      into[out.written++] = ch;
+    }
+    at += width;
+  }
+  return out;
+}
 
 journal_citation journal_citation_in(std::string_view text) noexcept {
   // Position outermost, word innermost: the answer is the *earliest*
@@ -172,13 +298,15 @@ void journal_state::ask(journal_citation what) noexcept {
 }
 
 void journal_state::deliver(std::string_view what) noexcept {
-  const std::size_t take = std::min(what.size(), journal_page_bytes);
-  for (std::size_t i = 0; i < take; ++i) {
-    text_[i] = what[i];
-  }
-  text_length_ = take;
-  truncated_ = what.size() > take;
-  delivery_ = take == 0 ? journal_delivery::no_text : journal_delivery::ready;
+  // Made drawable on the way in (#219), so what this buffer holds is what
+  // the panel can put on the screen: one glyph per code point, wrapping
+  // that counts the right bytes, and no page cut in half through the
+  // middle of a character.
+  const journal_drawn drawn = journal_drawable(what, text_);
+  text_length_ = drawn.written;
+  truncated_ = !drawn.complete;
+  delivery_ =
+      drawn.written == 0 ? journal_delivery::no_text : journal_delivery::ready;
 }
 
 void journal_state::refuse(journal_delivery why) noexcept {
