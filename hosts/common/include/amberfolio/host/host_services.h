@@ -127,12 +127,15 @@ class host_services final : public machine::seam_host_services {
   ///
   /// Held, never owned, and it must outlive the run: the same contract
   /// `seam_engine::set_host()` has for this object.
-  void set_journal_store(const journal_store* store) noexcept {
-    journal_ = store;
-  }
+  /// **Not const since M5-E4b (#222)**: `journal_open` only reads, but
+  /// `journal_seen` writes the log back into the store, which is where it
+  /// outlives the machine. A host that hands over a store is handing over
+  /// somewhere to put what the game says.
+  void set_journal_store(journal_store* store) noexcept { journal_ = store; }
   [[nodiscard]] const journal_store* journal() const noexcept {
     return journal_;
   }
+  [[nodiscard]] journal_store* journal() noexcept { return journal_; }
 
   /// The exploration sidecar `automap_update` drives (M5-E2c, #173).
   ///
@@ -149,7 +152,7 @@ class host_services final : public machine::seam_host_services {
  private:
   std::array<host_service_record, machine::seam_host_service_count> records_{};
   automap_store automap_{};
-  const journal_store* journal_{nullptr};
+  journal_store* journal_{nullptr};
 };
 
 }  // namespace amberfolio::host

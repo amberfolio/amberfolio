@@ -1005,6 +1005,18 @@ enum class claimable : std::uint8_t {
 // Opening, paging and closing
 // ---------------------------------------------------------------------------
 
+/// The log has changed; a host may want to write it down.
+///
+/// Called only when something actually moved, which is what the flag on
+/// the log is for: a seam that called out on every citation would have a
+/// host rewriting its file for a line that was already at the top.
+void tell_the_host_the_log_moved(machine& box, seam_context& ctx) {
+  if (!box.journal().seen_changed()) {
+    return;
+  }
+  (void)ctx.call_host(seam_host_service::journal_seen, 0);
+}
+
 /// Ask the host for an entry. What it answered is in `journal_state`
 /// afterwards, whichever way it went — a callout nothing served leaves
 /// `no_host`, which `ask()` put there before the call (journal.h).
@@ -1012,6 +1024,12 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
   box.journal().ask(what);
   (void)ctx.call_host(seam_host_service::journal_open,
                       journal_open_argument(what));
+  // Opening it is what takes the `*` off its line (#222). Only a line the
+  // log already has: an entry the player asked for at the prompt was
+  // never cited, so there is nothing to mark and nothing to write down.
+  if (box.journal().mark_seen_read(what)) {
+    tell_the_host_the_log_moved(box, ctx);
+  }
 }
 
 void close_reader(machine& box, seam_context& ctx, std::uint16_t ds) {
@@ -1338,6 +1356,15 @@ void at_draw_string(machine& box, seam_context& ctx) {
   if (!cited) {
     return;
   }
+
+  // Into the log first, with the moment the game said it: the machine's
+  // own seeded wall clock, which is the host's instant plus the virtual
+  // time since (`machine/platform.h`). Derived rather than read, so
+  // nothing here goes near the host's clock and a replay gets the same
+  // answer twice.
+  const wall_time when = box.wall().at(box.time());
+  state.note_seen(cited, when.month, when.day, when.hour, when.minute);
+  tell_the_host_the_log_moved(box, ctx);
 
   // A citation, and the whole enhancement: the entry opens. The reader is
   // not moved onto an entry the host has nothing for — "the seam shows

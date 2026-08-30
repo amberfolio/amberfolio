@@ -60,6 +60,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 
 #include "amberfolio/machine/automap.h"
@@ -178,6 +179,36 @@ struct journal_citation {
           .number = static_cast<std::uint16_t>(argument & 0xFFFFU)};
 }
 
+/// One line of the journal's own log: something the game told the player to
+/// read, and when (M5-E4b, #222).
+///
+/// **A log, not an index.** It fills as a game is played and starts empty,
+/// which is the difference between "here is what you have been told" and
+/// "here is everything the book contains". The second would be a list of
+/// every entry in the journal, which is precisely what that journal's own
+/// introduction tells a player not to read.
+struct journal_seen_row {
+  journal_citation what;
+  /// When the game cited it, off the machine's own seeded wall clock.
+  /// Month and day rather than a full date because the panel has room for
+  /// what a player needs to tell one evening's play from another's, and
+  /// no more.
+  std::uint8_t month{};
+  std::uint8_t day{};
+  std::uint8_t hour{};
+  std::uint8_t minute{};
+  /// Whether the player has opened it since it was cited. The `*` in the
+  /// list, and the only thing here they change by reading rather than by
+  /// playing.
+  bool read{false};
+};
+
+/// How many the log keeps. A cap rather than a promise: the oldest falls
+/// off the end, because a list nobody can page to the bottom of is not a
+/// list, and what a player wants from this is the last few things the game
+/// said rather than a complete history.
+inline constexpr std::size_t journal_log_rows = 64;
+
 /// What the reader is showing.
 enum class journal_reader_mode : std::uint8_t {
   /// Nothing. The state at power-on, which is the whole of this seam's
@@ -255,6 +286,41 @@ class journal_state {
   /// comparison of the pair, because the game citing tale 12 while entry
   /// 12 is on the screen is a fresh citation.
   [[nodiscard]] journal_citation cited() const noexcept { return cited_; }
+
+  // --- the log of what the game has said ---------------------------------
+
+  /// Remember that the game cited `what` at `when`.
+  ///
+  /// Newest first. Citing something already in the log **moves it up and
+  /// re-dates it** rather than adding a second line, and leaves its read
+  /// flag alone: the game repeating itself is the game repeating itself,
+  /// and a player who has read that entry has still read it.
+  ///
+  /// This is observation on `machine/automap.h`'s three terms - dropped
+  /// by `reset()`, absent from the state hash, and rebuilt by a host from
+  /// what it stored. It is not machine state and a host may write it.
+  void note_seen(journal_citation what, std::uint8_t month, std::uint8_t day,
+                 std::uint8_t hour, std::uint8_t minute) noexcept;
+
+  /// Mark one read, if it is in the log. False when it is not, which is
+  /// the ordinary case for an entry the player asked for at the prompt:
+  /// nothing cited it, so there is no line to mark.
+  bool mark_seen_read(journal_citation what) noexcept;
+
+  [[nodiscard]] std::span<const journal_seen_row> seen() const noexcept {
+    return {seen_.data(), seen_count_};
+  }
+
+  /// Everything the log has, gone. What a host calls before handing over
+  /// a stored one, so a store that is read twice does not double.
+  void clear_seen() noexcept;
+
+  /// Whether the log has changed since a host last said it had written it
+  /// down. The same "has it changed" the automap keeps, and for the same
+  /// reason: a host that wrote the file on every citation would write it
+  /// far more often than anything changed.
+  [[nodiscard]] bool seen_changed() const noexcept { return seen_changed_; }
+  void set_seen_changed(bool changed) noexcept { seen_changed_ = changed; }
 
   /// Everything in the window, forgotten. What a match does, and what a
   /// test does between two strings that should not run together.
@@ -362,6 +428,10 @@ class journal_state {
   std::size_t digit_count_{};
   std::array<char, journal_prompt_digits> digits_{};
   journal_kind asked_kind_{journal_kind::entry};
+
+  std::size_t seen_count_{};
+  bool seen_changed_{false};
+  std::array<journal_seen_row, journal_log_rows> seen_{};
 
   bool on_screen_{false};
   bool covered_{false};

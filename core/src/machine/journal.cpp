@@ -155,6 +155,8 @@ void journal_state::clear() noexcept {
   page_count_ = 0;
   digit_count_ = 0;
   asked_kind_ = journal_kind::entry;
+  seen_count_ = 0;
+  seen_changed_ = false;
   on_screen_ = false;
   covered_ = false;
   drawn_signature_ = 0;
@@ -303,6 +305,59 @@ std::uint16_t journal_state::asked_entry() const noexcept {
     value = (value * 10U) + static_cast<unsigned>(digits_[i] - '0');
   }
   return static_cast<std::uint16_t>(value);
+}
+
+void journal_state::note_seen(journal_citation what, std::uint8_t month,
+                              std::uint8_t day, std::uint8_t hour,
+                              std::uint8_t minute) noexcept {
+  if (!what) {
+    return;
+  }
+  // Already there? Take it out, keeping what the player has done with it,
+  // and let it go back on the front re-dated.
+  bool was_read = false;
+  for (std::size_t i = 0; i < seen_count_; ++i) {
+    if (seen_[i].what == what) {
+      was_read = seen_[i].read;
+      for (std::size_t j = i; j + 1 < seen_count_; ++j) {
+        seen_[j] = seen_[j + 1];
+      }
+      --seen_count_;
+      break;
+    }
+  }
+  if (seen_count_ == journal_log_rows) {
+    --seen_count_;  // the oldest falls off the end
+  }
+  for (std::size_t i = seen_count_; i > 0; --i) {
+    seen_[i] = seen_[i - 1];
+  }
+  seen_[0] = journal_seen_row{.what = what,
+                              .month = month,
+                              .day = day,
+                              .hour = hour,
+                              .minute = minute,
+                              .read = was_read};
+  ++seen_count_;
+  seen_changed_ = true;
+}
+
+bool journal_state::mark_seen_read(journal_citation what) noexcept {
+  for (std::size_t i = 0; i < seen_count_; ++i) {
+    if (seen_[i].what == what) {
+      if (!seen_[i].read) {
+        seen_[i].read = true;
+        seen_changed_ = true;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+void journal_state::clear_seen() noexcept {
+  seen_count_ = 0;
+  seen_changed_ = false;
 }
 
 void journal_state::cycle_asked_kind() noexcept {

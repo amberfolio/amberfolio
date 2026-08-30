@@ -1425,5 +1425,131 @@ TEST(JournalNotes, WithTheSeamOffTheBarIsNeverTouched) {
   EXPECT_EQ(r.bar_at(bar_area), area_words);
 }
 
+// ---------------------------------------------------------------------------
+// The log of what the game has said (M5-E4b, #222)
+// ---------------------------------------------------------------------------
+
+TEST(JournalLog, ItStartsEmptyAndFillsNewestFirst) {
+  journal_state state;
+  EXPECT_TRUE(state.seen().empty())
+      << "a player who has been told nothing has read nothing";
+  EXPECT_FALSE(state.seen_changed());
+
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  state.note_seen(Tale(12), 8, 29, 21, 44);
+  state.note_seen(Proclamation(109), 8, 29, 22, 19);
+
+  ASSERT_EQ(state.seen().size(), 3u);
+  EXPECT_EQ(state.seen()[0].what, Proclamation(109));
+  EXPECT_EQ(state.seen()[1].what, Tale(12));
+  EXPECT_EQ(state.seen()[2].what, Entry(3));
+  EXPECT_EQ(state.seen()[0].hour, 22);
+  EXPECT_EQ(state.seen()[0].minute, 19);
+  EXPECT_TRUE(state.seen_changed());
+}
+
+TEST(JournalLog, CitingSomethingTwiceMovesItUpRatherThanRepeatingIt) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  state.note_seen(Tale(12), 8, 29, 21, 44);
+  ASSERT_TRUE(state.mark_seen_read(Entry(3)));
+
+  state.note_seen(Entry(3), 8, 30, 9, 5);
+  ASSERT_EQ(state.seen().size(), 2u) << "one line, not two";
+  EXPECT_EQ(state.seen()[0].what, Entry(3));
+  EXPECT_EQ(state.seen()[0].day, 30) << "re-dated to when it was said again";
+  EXPECT_TRUE(state.seen()[0].read)
+      << "the game repeating itself does not unread what the player read";
+}
+
+TEST(JournalLog, ReadingIsTheOnlyThingThatTakesTheStarOff) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  EXPECT_FALSE(state.seen()[0].read);
+  EXPECT_TRUE(state.mark_seen_read(Entry(3)));
+  EXPECT_TRUE(state.seen()[0].read);
+
+  // Something nothing cited has no line to mark, which is the ordinary
+  // answer for an entry a player asked for at the prompt.
+  EXPECT_FALSE(state.mark_seen_read(Entry(58)));
+  EXPECT_FALSE(state.mark_seen_read(Tale(3)))
+      << "the same number in another section is another thing";
+}
+
+TEST(JournalLog, TheOldestFallsOffTheEnd) {
+  journal_state state;
+  for (unsigned i = 1; i <= journal_log_rows + 5; ++i) {
+    state.note_seen(Entry(static_cast<std::uint16_t>(i)), 8, 30, 10, 0);
+  }
+  ASSERT_EQ(state.seen().size(), journal_log_rows);
+  EXPECT_EQ(state.seen().front().what,
+            Entry(static_cast<std::uint16_t>(journal_log_rows + 5)));
+  EXPECT_EQ(state.seen().back().what, Entry(6))
+      << "the first five are gone, oldest first";
+}
+
+TEST(JournalLog, TheFlagIsWhatStopsAHostWritingOnEveryCitation) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  ASSERT_TRUE(state.seen_changed());
+  state.set_seen_changed(false);
+
+  EXPECT_TRUE(state.mark_seen_read(Entry(3)));
+  EXPECT_TRUE(state.seen_changed()) << "reading it is a change";
+  state.set_seen_changed(false);
+
+  EXPECT_TRUE(state.mark_seen_read(Entry(3)));
+  EXPECT_FALSE(state.seen_changed())
+      << "reading what was already read changes nothing";
+}
+
+TEST(JournalLog, AResetMachineHasBeenToldNothing) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  state.clear();
+  EXPECT_TRUE(state.seen().empty());
+  EXPECT_FALSE(state.seen_changed());
+}
+
+TEST(JournalLog, ACitationGoesIntoItWithTheMachinesOwnClock) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(12);
+  r.host.text = "The twelfth entry.";
+  ASSERT_TRUE(r.pc().set_wall_time(wall_time{
+      .year = 2026, .month = 8, .day = 30, .hour = 22, .minute = 19}));
+
+  r.program_draws("journal entry 12");
+  r.poll();
+
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  const journal_seen_row& row = r.reader().seen().front();
+  EXPECT_EQ(row.what, Entry(12));
+  EXPECT_EQ(row.month, 8);
+  EXPECT_EQ(row.day, 30);
+  EXPECT_EQ(row.hour, 22);
+  EXPECT_EQ(row.minute, 19);
+  EXPECT_TRUE(row.read) << "the citation opened it, so it has been read";
+}
+
+TEST(JournalLog, TheLogIsObservationAndNotMachineState) {
+  // The same three terms the automap's exploration is held to. Told
+  // directly rather than through a citation, because a citation also
+  // *opens* the reader and what that draws is a real difference on a real
+  // screen — the enhancement, not a leak. What is claimed here is
+  // narrower and is the thing that matters: the log itself is not state.
+  rig r;
+  const state_hashes before = hash_state(r.pc());
+
+  r.reader().note_seen(Entry(12), 8, 30, 22, 19);
+  r.reader().note_seen(Tale(4), 8, 30, 22, 20);
+  ASSERT_EQ(r.reader().seen().size(), 2u);
+
+  EXPECT_EQ(before, hash_state(r.pc()));
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

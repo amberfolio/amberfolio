@@ -35,6 +35,18 @@ void host_services::serve(machine::machine& box,
     return;
   }
 
+  // The journal's log moved (M5-E4b, #222). What changed is in the
+  // machine's own log, which is observation rather than machine state, so
+  // this copies it into the store - the thing that outlives the machine -
+  // and clears the flag that said there was something to copy.
+  if (which == machine::seam_host_service::journal_seen) {
+    if (journal_ != nullptr) {
+      journal_->set_seen(box.journal().seen());
+    }
+    box.journal().set_seen_changed(false);
+    return;
+  }
+
   // The journal reader (M5-E4, #175). The answer goes into the machine's
   // own delivery buffer rather than back through `serve()`, which has no
   // way to carry it; `machine/journal.h` is why that buffer is not machine
