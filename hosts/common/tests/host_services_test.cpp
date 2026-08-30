@@ -197,19 +197,34 @@ TEST(HostServices, ItWritesNothing) {
 
 /// The seam above asks for entry 0xBEEF, which no store here has. These
 /// tests ask directly instead, which is what `serve()`'s contract allows:
-/// it is a plain virtual taking the machine and a number.
+/// it is a plain virtual taking the machine and one word.
+///
+/// That word is a *packed citation* since #218 — a section and a number —
+/// so these go through `journal_open_argument` rather than casting, and
+/// the raw-word cases below pass the word itself on purpose.
 [[nodiscard]] machine::journal_delivery ask(host_services& services,
                                             machine::machine& box,
-                                            std::uint32_t entry) {
-  services.serve(box, seam_host_service::journal_open, entry);
+                                            std::uint32_t argument) {
+  services.serve(box, seam_host_service::journal_open, argument);
   return box.journal().delivery();
+}
+
+[[nodiscard]] std::uint32_t Entry(std::uint16_t number) {
+  return machine::journal_open_argument(
+      {.kind = machine::journal_kind::entry, .number = number});
+}
+
+[[nodiscard]] std::uint32_t Tale(std::uint16_t number) {
+  return machine::journal_open_argument(
+      {.kind = machine::journal_kind::tale, .number = number});
 }
 
 TEST(HostServicesJournal, WithNoStoreAtAllNobodyHasReadAJournal) {
   const rig r;
   host_services services;
   EXPECT_EQ(services.journal(), nullptr);
-  EXPECT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::no_journal);
+  EXPECT_EQ(ask(services, r.pc(), Entry(12)),
+            machine::journal_delivery::no_journal);
 }
 
 TEST(HostServicesJournal, AnEmptyStoreIsTheSameAnswerAsNoStore) {
@@ -217,19 +232,20 @@ TEST(HostServicesJournal, AnEmptyStoreIsTheSameAnswerAsNoStore) {
   host_services services;
   const journal_store store;
   services.set_journal_store(&store);
-  EXPECT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::no_journal);
+  EXPECT_EQ(ask(services, r.pc(), Entry(12)),
+            machine::journal_delivery::no_journal);
 }
 
 TEST(HostServicesJournal, AnEntryTheStoreHasComesBackAsItsText) {
   const rig r;
   host_services services;
   journal_store store;
-  ASSERT_TRUE(store.record_scan(12, "what the engine read"));
+  ASSERT_TRUE(store.record_scan({.number = 12}, "what the engine read"));
   services.set_journal_store(&store);
 
-  EXPECT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::ready);
+  EXPECT_EQ(ask(services, r.pc(), Entry(12)), machine::journal_delivery::ready);
   EXPECT_EQ(r.pc().journal().text(), "what the engine read");
-  EXPECT_EQ(r.pc().journal().entry(), 0u)
+  EXPECT_EQ(r.pc().journal().entry(), machine::journal_citation{})
       << "the entry number is the seam's to record when it asks; this"
          " object only answers";
 }
@@ -240,11 +256,11 @@ TEST(HostServicesJournal, ACorrectionIsWhatTheReaderGets) {
   const rig r;
   host_services services;
   journal_store store;
-  ASSERT_TRUE(store.record_scan(12, "vvhat the enginc read"));
-  ASSERT_TRUE(store.correct(12, "what the engine read"));
+  ASSERT_TRUE(store.record_scan({.number = 12}, "vvhat the enginc read"));
+  ASSERT_TRUE(store.correct({.number = 12}, "what the engine read"));
   services.set_journal_store(&store);
 
-  EXPECT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::ready);
+  EXPECT_EQ(ask(services, r.pc(), Entry(12)), machine::journal_delivery::ready);
   EXPECT_EQ(r.pc().journal().text(), "what the engine read");
 }
 
@@ -252,13 +268,39 @@ TEST(HostServicesJournal, AnEntryTheStoreHasNotIsItsOwnAnswer) {
   const rig r;
   host_services services;
   journal_store store;
-  ASSERT_TRUE(store.record_scan(12, "text"));
+  ASSERT_TRUE(store.record_scan({.number = 12}, "text"));
   services.set_journal_store(&store);
 
-  EXPECT_EQ(ask(services, r.pc(), 13), machine::journal_delivery::no_entry);
-  EXPECT_EQ(ask(services, r.pc(), 0x1'0000),
+  EXPECT_EQ(ask(services, r.pc(), Entry(13)),
+            machine::journal_delivery::no_entry);
+  EXPECT_EQ(ask(services, r.pc(), Entry(0)),
             machine::journal_delivery::no_entry)
       << "an entry number that is not one is not an entry";
+  EXPECT_EQ(ask(services, r.pc(), 0x0009'000C),
+            machine::journal_delivery::no_entry)
+      << "a section this build has no name for is not a section";
+
+  // The point of the pair: the same number in another section is another
+  // text, and the store has not got this one.
+  EXPECT_EQ(ask(services, r.pc(), Tale(12)),
+            machine::journal_delivery::no_entry);
+}
+
+TEST(HostServicesJournal, TheSameNumberInTwoSectionsIsTwoTexts) {
+  // #218's whole reason. Before the kind these two rows could not both
+  // exist, and a citation naming either got whichever one was written.
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_scan({.number = 4}, "the fourth entry"));
+  ASSERT_TRUE(store.record_scan(
+      {.kind = machine::journal_kind::tale, .number = 4}, "the fourth tale"));
+  services.set_journal_store(&store);
+
+  EXPECT_EQ(ask(services, r.pc(), Entry(4)), machine::journal_delivery::ready);
+  EXPECT_EQ(r.pc().journal().text(), "the fourth entry");
+  EXPECT_EQ(ask(services, r.pc(), Tale(4)), machine::journal_delivery::ready);
+  EXPECT_EQ(r.pc().journal().text(), "the fourth tale");
 }
 
 TEST(HostServicesJournal, AnEntryWithNothingInItSaysThatAndNotNoEntry) {
@@ -267,11 +309,12 @@ TEST(HostServicesJournal, AnEntryWithNothingInItSaysThatAndNotNoEntry) {
   const rig r;
   host_services services;
   journal_store store;
-  ASSERT_TRUE(store.record_scan(12, "text"));
-  ASSERT_TRUE(store.record_scan(13, ""));
+  ASSERT_TRUE(store.record_scan({.number = 12}, "text"));
+  ASSERT_TRUE(store.record_scan({.number = 13}, ""));
   services.set_journal_store(&store);
 
-  EXPECT_EQ(ask(services, r.pc(), 13), machine::journal_delivery::no_text);
+  EXPECT_EQ(ask(services, r.pc(), Entry(13)),
+            machine::journal_delivery::no_text);
 }
 
 TEST(HostServicesJournal, AnsweringIsNotWritingMachineState) {
@@ -282,11 +325,12 @@ TEST(HostServicesJournal, AnsweringIsNotWritingMachineState) {
   const rig r;
   host_services services;
   journal_store store;
-  ASSERT_TRUE(store.record_scan(12, "a whole page of somebody's own text"));
+  ASSERT_TRUE(
+      store.record_scan({.number = 12}, "a whole page of somebody's own text"));
   services.set_journal_store(&store);
 
   const machine::state_hashes before = machine::hash_state(r.pc());
-  ASSERT_EQ(ask(services, r.pc(), 12), machine::journal_delivery::ready);
+  ASSERT_EQ(ask(services, r.pc(), Entry(12)), machine::journal_delivery::ready);
   EXPECT_EQ(before, machine::hash_state(r.pc()));
 }
 

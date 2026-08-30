@@ -93,7 +93,8 @@ journal_ingest_report journal_ingester::run(journal_ocr* engine,
         text.clear();
         if (!engine->recognize(scan_, text)) {
           why = journal_trouble::engine_failed;
-        } else if (!into.record_scan(fact.number, text)) {
+        } else if (!into.record_scan({.kind = fact.kind, .number = fact.number},
+                                     text)) {
           why = journal_trouble::too_large;
         } else {
           ++report.recognized;
@@ -105,7 +106,7 @@ journal_ingest_report journal_ingester::run(journal_ocr* engine,
     if (why != journal_trouble::none &&
         report.first_trouble == journal_trouble::none) {
       report.first_trouble = why;
-      report.first_failure = fact.number;
+      report.first_failure = {.kind = fact.kind, .number = fact.number};
     }
   }
   return report;

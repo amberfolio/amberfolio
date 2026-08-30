@@ -1142,7 +1142,7 @@ boundary, and it needs the argument this document would have to carry.
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
-| `journal` | the entry the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; **F1** for any other entry | the baseline | the resident image |
+| `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; **F1** for any other entry, tale or proclamation | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
@@ -1967,7 +1967,8 @@ with the other switched off.
 
 #### The key, and the ones it leaves alone
 
-**F1 opens the reader, turns its pages and closes it on the last one.**
+**F1 opens the reader, picks the section, turns its pages and closes it
+on the last one.**
 It is claimed the automap's way — taken out of the BIOS buffer before the
 program's own key routine looks — and it is safe on a *stronger* argument
 than Tab's: a function key has no character at all (`keyboard.h`), this
@@ -1975,6 +1976,16 @@ program selects commands off its bars by character, and the extended
 keystrokes it does act on at their scan code are the numeric keypad's.
 F11 and F12 never reach the machine (`docs/hosts.md` §3), so F1 is the
 first key of that row that does.
+
+**Picking the section is that same key** (M5-E3d, #218), and that is a
+decision about the other seams rather than about this one. The journal
+has three numbered sections and each numbers from its own base, so a
+player typing `4` at the prompt has not yet said what they want. Every
+key that might have been given its own job here is a key another
+enhancement may want — the automap's is Tab — and two seams a player has
+both switched on must never fight over a keystroke. So F1 goes round the
+three while the prompt is up, the panel says so, and Escape is what
+leaves the prompt, as it always was.
 
 Everything else is the **modal** claim the automap's roster-cursor keys
 already make, and it lasts exactly as long as the reader is the thing on

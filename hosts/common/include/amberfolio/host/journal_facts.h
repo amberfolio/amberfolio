@@ -72,6 +72,7 @@
 #include <span>
 #include <string_view>
 
+#include "amberfolio/machine/journal.h"
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
@@ -206,13 +207,32 @@ struct journal_fragment {
   journal_region region{};
 };
 
-/// One entry of one edition: which entry it is, and where its scan is —
-/// in as many pieces as the page it was printed on needed.
+/// Which of the journal's numbered sections an item is in.
+///
+/// `machine::journal_kind`, not a second spelling of it: the recognizer
+/// that decides a kind is in core (`machine/journal.h`), the host callout
+/// carries one, and a table that named them differently would be a table
+/// somebody has to translate. See that header for why a number alone does
+/// not identify anything.
+using journal_kind = machine::journal_kind;
+using machine::journal_kind_from_name;
+using machine::journal_kind_name;
+
+/// One item of one edition: which section it is in, which number it is,
+/// and where its scan is — in as many pieces as the page it was printed
+/// on needed.
 struct journal_entry_fact {
+  /// Which section it is in. See `journal_kind`: without this the number
+  /// below is ambiguous.
+  journal_kind kind{journal_kind::entry};
   /// The number the game itself uses when it tells a player to read an
-  /// entry. The store is keyed by this, not by the order of this table,
-  /// so an edition that prints its entries out of order is a table that
-  /// is out of order and nothing else.
+  /// entry. The store is keyed by this *and the kind*, not by the order
+  /// of this table, so an edition that prints its entries out of order is
+  /// a table that is out of order and nothing else.
+  ///
+  /// A proclamation's number is the value of its Roman numeral, and they
+  /// are neither contiguous nor low: the first real edition's run from 59
+  /// to 214 with gaps.
   std::uint16_t number{};
   /// Its pieces, **in reading order**: what an engine reads out of them
   /// is joined in this order, so a table whose fragments are out of order

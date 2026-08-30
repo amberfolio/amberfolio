@@ -26,7 +26,7 @@ own machine, and stays there.
 | The fact table | `hosts/common/.../journal_facts.h` | Per edition, per entry, **per piece of it**: the page, the stream's offset and length, the image's shape, the rectangle that is that piece (§3). |
 | The extractor | `hosts/common/.../journal_extract.h` | Follows an offset, inflates the stream, undoes the predictor, expands samples to gray, crops the region. |
 | The engine | `hosts/common/.../journal_ocr.h` | One virtual call. The desktop runs the player's own Tesseract; the browser drives tesseract.js. |
-| The store | `hosts/common/.../journal_store.h` | Entry number to text, with what the engine read and what a person corrected kept apart. |
+| The store | `hosts/common/.../journal_store.h` | Section and number to text, with what the engine read and what a person corrected kept apart. |
 | The reader | `core/.../machine/seam_journal.cpp` | The seam that shows an entry in the game (§9). The only thing any of the above is *for*. |
 
 The first five are the ingestion and run once; the sixth is the reader
@@ -83,8 +83,9 @@ An edition is data in two places:
    whole file, a name a player would recognize, and
    `document_kind::journal`.
 2. **The insides**, in `hosts/common/src/journal_facts.cpp`: the same
-   fingerprint, and one `journal_entry_fact` per entry — the entry number
-   the game itself uses, and its `journal_fragment`s, each with the page
+   fingerprint, and one `journal_entry_fact` per item — which of the
+   journal's numbered sections it is in, the number the game itself uses
+   for it, and its `journal_fragment`s, each with the page
    it is on, the byte offset of the stream's first data byte, its
    `/Length`, the image dictionary's `/Width`, `/Height`,
    `/BitsPerComponent`, component count, filter and `/DecodeParms
@@ -93,9 +94,44 @@ An edition is data in two places:
 
 The suite checks the two against each other, so an edition in one and not
 the other fails in CI rather than on a player's machine. It also checks
-every row's shape: a region inside its image, no two rows for one entry,
-pieces in reading order, no entry that mixes a decoded filter with a
-carried one, and a filter this build can carry at all.
+every row's shape: a region inside its image, no two rows for one
+*(section, number)*, pieces in reading order, no entry that mixes a
+decoded filter with a carried one, and a filter this build can carry at
+all.
+
+### Three numbered sections, and why a row says which (M5-E3d, #218)
+
+The journal prints three things the game sends a player to by number, and
+**each numbers from its own base**: journal entries 1–58, tavern tales
+1–23, and proclamations, in Roman numerals, 59–214 with gaps. Tale 4 and
+Journal Entry 4 are both `4` and are not the same text.
+
+So a number identifies nothing on its own. `machine::journal_kind` is the
+other half of the key, and it is the *whole* mechanism this added — it
+rides on the fact table's row, on the store's key, on the citation the
+recognizer answers with, and on the word the reader draws. Everything
+else about the two new sections is data.
+
+It lives in core rather than beside the fact table because the recognizer
+is what decides it, and the recognizer is core. The host's
+`journal_facts.h` re-exports it under its own namespace rather than
+spelling it a second way.
+
+**The seam's callout did not get wider for it.** `journal_open` carries
+one `std::uint32_t` and always did; a citation packs into it as
+`kind << 16 | number` (`journal_open_argument`). The ABI is a cost every
+embedder pays, and a kind is three values.
+
+**The store's format went to version 2** for the same reason, gaining one
+lower-case word per record. A version 1 store is still read — it had no
+kind because there was one section, so every record in one is a journal
+entry and saying so loses nothing — and is written back as version 2.
+Refusing it would have thrown away a player's corrections to make a
+point.
+
+The proclamations are stored as the *value* of their numeral, not its
+spelling: a numeral is a way of writing a number, and the reader does the
+writing.
 
 `--journal` on a document whose edition is not in the table prints its
 fingerprint, which is the first half of the row somebody has to write.
@@ -124,20 +160,41 @@ and because the method is the method for any edition:
 1. **The scan geometry, measured.** The four column bands of a spread are
    the blank vertical bands wide enough to be gutters; the body's bottom
    is above whichever footer rule the printed page carries.
-2. **The headings, matched by their own bitmap.** Every entry opens with
-   the same phrase in the same face at one scan resolution, so one
-   instance of it correlated down each column finds the rest. Gap and
-   line-width rules were tried first and are not good enough: a
-   paragraph's last line is short and starts at the margin exactly as a
-   heading does, and the gap above a heading is not separable from the
-   gap above a paragraph.
+2. **The headings.** Two methods, and which one a section needs is a
+   fact about how it is set.
+
+   The **entries** open with the same long phrase in a display face at
+   the column margin, so one instance of its bitmap correlated down each
+   column finds the rest. Gap and line-width rules were tried first and
+   are not good enough: a paragraph's last line is short and starts at
+   the margin exactly as a heading does, and the gap above a heading is
+   not separable from the gap above a paragraph.
+
+   The **tales** and **proclamations** cannot be found that way at all.
+   "Proclamation" is set in the body face at the body size, so a template
+   for it correlates as well with any line of prose; "Tale" is four
+   characters, indented into its own paragraph. So each column is cut
+   into lines and an *engine* is asked what each line opens with — which
+   is only possible since #216 put one in the build. A line that opens
+   with the section's word is a heading and its number is read again on
+   its own, with a whitelist of the only letters it can contain: without
+   that, `LXXVIII` comes back as `LXXVIIT` and nothing afterwards can
+   know whether that last letter was an `I` or a `T`.
 3. **An entry runs from its heading to the next one**, wherever that
    falls — down its column, on into the next, on into the next scan.
 4. **The numbering is a chain**, so it was checked against the printed
-   numbers on every one of the nine scans. Two of them are where a chain
-   would drift silently and neither did: the maps scan, whose single
-   entry covers it end to end, and the last scan, which has to land on
-   fifty-eight.
+   numbers on every one of the nine entry scans. Two of them are where a
+   chain would drift silently and neither did: the maps scan, whose
+   single entry covers it end to end, and the last scan, which has to
+   land on fifty-eight.
+
+   For the other two sections the number is *read* rather than counted,
+   so the check is different: both ascend in reading order, and 23 of 23
+   tales and 18 of 18 proclamations come back out of their own rectangles
+   beginning with their own printed heading. Ascending order is what
+   caught the one misreading — an italic `CIX` whose `I` carries a swash,
+   called `CLIX` by a plain run and a whitelisted one alike, and settled
+   by eye against the scan.
 5. **A piece with no ink in it is dropped.** An entry that ends exactly at
    the foot of its column would otherwise carry an empty rectangle.
 
@@ -293,16 +350,22 @@ on a mismatch until somebody has looked.
 One file of UTF-8 lines, each text length-prefixed:
 
 ```
-amberfolio-journal 1
+amberfolio-journal 2
 edition <64 hex>
 engine tesseract 5.5.1
-scanned 12 431
+scanned entry 12 431
 <431 bytes><newline>
-corrected 12 438
+corrected entry 12 438
 <438 bytes><newline>
 ```
 
-Two texts per entry, and only one of them is ever overwritten. Ingestion
+The word after the keyword is the section (§3): a number alone names
+three different texts, and `scanned tale 4` says what `scanned 1 4` does
+not — which matters here, because this file is meant to be opened and
+edited by a person. A **version 1** store had no such word, and is read
+as a store of journal entries and written back as version 2.
+
+Two texts per item, and only one of them is ever overwritten. Ingestion
 replaces `scanned` and never touches `corrected`; a reader shows the
 correction where there is one. That is #174's "a player can fix an OCR
 error and the fix survives re-ingestion", and it is the reason there are
@@ -312,7 +375,7 @@ better engine would either destroy every correction or keep every
 mistake.
 
 Length-prefixed so that a transcription containing a line beginning
-`scanned 3 4` cannot be read as a header. Strict on the way in: a file
+`scanned entry 3 4` cannot be read as a header. Strict on the way in: a file
 that is not exactly this is refused whole, never half-read — a player's
 transcription with a hole in it is the one outcome nothing downstream
 could detect. Line endings are the one thing it is not strict about: CRLF
@@ -426,8 +489,12 @@ The in-game reader is M5-E4 (#175) and is a **seam**, so what it is and
 what it refuses is `docs/seams.md` §10's business rather than this
 document's. What belongs here is the join.
 
-**One host service.** The seam calls `journal_open` with an entry number;
-a host's `serve()` looks it up in the store above and answers. There are
+**One host service.** The seam calls `journal_open` with a *citation* —
+a section and a number, packed into the one word the callout has always
+carried (§3) — and a host's `serve()` looks it up in the store above and
+answers. A word that does not decode to a citation this build knows is
+refused exactly like a number that names nothing, because that is what it
+is. There are
 four answers and each is a different thing for a player to do about it:
 the text, "nobody has read a journal", "this journal has no such entry",
 and "that entry is there and the engine read nothing off it". The last

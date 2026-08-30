@@ -11,6 +11,7 @@
 
 #include "amberfolio/host/journal_store.h"
 
+#include <cstdint>
 #include <string>
 
 #include "amberfolio/host/journal_extract.h"
@@ -20,25 +21,41 @@
 namespace amberfolio::host {
 namespace {
 
+/// A citation, spelled out. The store's key is a *pair* since #218 and
+/// these tests say which section they mean rather than relying on a
+/// default — which is the whole point of the change and would be a poor
+/// thing for its own tests to lean on.
+constexpr machine::journal_citation Entry(std::uint16_t number) {
+  return {.kind = journal_kind::entry, .number = number};
+}
+
+constexpr machine::journal_citation Tale(std::uint16_t number) {
+  return {.kind = journal_kind::tale, .number = number};
+}
+
+constexpr machine::journal_citation Proclamation(std::uint16_t number) {
+  return {.kind = journal_kind::proclamation, .number = number};
+}
+
 journal_store Filled() {
   journal_store store;
   store.set_edition(
       "1111111111111111111111111111111111111111111111111111111111111111");
   store.set_engine("test fixture 1.0");
-  EXPECT_TRUE(store.record_scan(2, "second entry, as scanned"));
-  EXPECT_TRUE(store.record_scan(1, "first entry, as scanned"));
+  EXPECT_TRUE(store.record_scan(Entry(2), "second entry, as scanned"));
+  EXPECT_TRUE(store.record_scan(Entry(1), "first entry, as scanned"));
   return store;
 }
 
 TEST(JournalStore, ACorrectionIsWhatTheReaderShows) {
   journal_store store = Filled();
-  EXPECT_EQ(store.text(1), "first entry, as scanned");
-  ASSERT_TRUE(store.correct(1, "first entry, as a person fixed it"));
-  EXPECT_EQ(store.text(1), "first entry, as a person fixed it");
+  EXPECT_EQ(store.text(Entry(1)), "first entry, as scanned");
+  ASSERT_TRUE(store.correct(Entry(1), "first entry, as a person fixed it"));
+  EXPECT_EQ(store.text(Entry(1)), "first entry, as a person fixed it");
 
   // And the scan is still there underneath, which is what makes a
   // re-ingestion able to improve it without destroying the fix.
-  const journal_text* entry = store.find(1);
+  const journal_text* entry = store.find(Entry(1));
   ASSERT_NE(entry, nullptr);
   EXPECT_EQ(entry->scanned, "first entry, as scanned");
   EXPECT_EQ(entry->corrected, "first entry, as a person fixed it");
@@ -48,33 +65,33 @@ TEST(JournalStore, IngestionReplacesTheScanAndNeverTheCorrection) {
   // #174's "a player can fix an OCR error and the fix survives
   // re-ingestion", at the one place it is actually decided.
   journal_store store = Filled();
-  ASSERT_TRUE(store.correct(1, "what a person wrote"));
-  ASSERT_TRUE(store.record_scan(1, "what a better engine read"));
+  ASSERT_TRUE(store.correct(Entry(1), "what a person wrote"));
+  ASSERT_TRUE(store.record_scan(Entry(1), "what a better engine read"));
 
-  const journal_text* entry = store.find(1);
+  const journal_text* entry = store.find(Entry(1));
   ASSERT_NE(entry, nullptr);
   EXPECT_EQ(entry->scanned, "what a better engine read");
   EXPECT_EQ(entry->corrected, "what a person wrote");
-  EXPECT_EQ(store.text(1), "what a person wrote");
+  EXPECT_EQ(store.text(Entry(1)), "what a person wrote");
 }
 
 TEST(JournalStore, AnEntryNobodyHasIsEmptyRatherThanAbsent) {
   const journal_store store = Filled();
-  EXPECT_EQ(store.find(99), nullptr);
-  EXPECT_TRUE(store.text(99).empty());
+  EXPECT_EQ(store.find(Entry(99)), nullptr);
+  EXPECT_TRUE(store.text(Entry(99)).empty());
 }
 
 TEST(JournalStore, TheRoundTripIsExact) {
   journal_store store = Filled();
-  ASSERT_TRUE(store.correct(2, "a correction\nwith a newline in it"));
+  ASSERT_TRUE(store.correct(Entry(2), "a correction\nwith a newline in it"));
 
   journal_store read;
   ASSERT_EQ(read.parse(store.serialize()), journal_trouble::none);
   EXPECT_EQ(read.edition(), store.edition());
   EXPECT_EQ(read.engine(), store.engine());
   ASSERT_EQ(read.size(), store.size());
-  EXPECT_EQ(read.text(1), store.text(1));
-  EXPECT_EQ(read.text(2), store.text(2));
+  EXPECT_EQ(read.text(Entry(1)), store.text(Entry(1)));
+  EXPECT_EQ(read.text(Entry(2)), store.text(Entry(2)));
   EXPECT_EQ(read.serialize(), store.serialize());
   EXPECT_EQ(read.fingerprint(), store.fingerprint());
 }
@@ -87,32 +104,64 @@ TEST(JournalStore, TextThatLooksLikeAHeaderSurvivesTheRoundTrip) {
   journal_store store;
   store.set_edition("abc");
   store.set_engine("test");
-  ASSERT_TRUE(store.record_scan(
-      3, "scanned 4 8\nfake\ncorrected 5 1\nx\namberfolio-journal 1\n"));
+  ASSERT_TRUE(store.record_scan(Entry(3),
+                                "scanned entry 4 8\nfake\ncorrected entry 5 "
+                                "1\nx\namberfolio-journal 2\n"));
 
   journal_store read;
   ASSERT_EQ(read.parse(store.serialize()), journal_trouble::none);
   EXPECT_EQ(read.size(), 1U);
-  EXPECT_EQ(read.text(3), store.text(3));
+  EXPECT_EQ(read.text(Entry(3)), store.text(Entry(3)));
 }
 
 TEST(JournalStore, EntriesComeOutSortedSoAFingerprintMeansSomething) {
   journal_store a;
   a.set_edition("e");
   a.set_engine("g");
-  ASSERT_TRUE(a.record_scan(7, "seven"));
-  ASSERT_TRUE(a.record_scan(3, "three"));
+  ASSERT_TRUE(a.record_scan(Entry(7), "seven"));
+  ASSERT_TRUE(a.record_scan(Entry(3), "three"));
 
   journal_store b;
   b.set_edition("e");
   b.set_engine("g");
-  ASSERT_TRUE(b.record_scan(3, "three"));
-  ASSERT_TRUE(b.record_scan(7, "seven"));
+  ASSERT_TRUE(b.record_scan(Entry(3), "three"));
+  ASSERT_TRUE(b.record_scan(Entry(7), "seven"));
 
   // Same content written in two orders is one file, which is what makes
   // `fingerprint()` worth reporting on an issue.
   EXPECT_EQ(a.serialize(), b.serialize());
   EXPECT_EQ(a.fingerprint(), b.fingerprint());
+}
+
+TEST(JournalStore, TheThreeSectionsAreKeptApartAndComeOutInBlocks) {
+  // #218's whole reason, and the order it settles on. The same number in
+  // three sections is three rows; the store sorts by section and then by
+  // number, so a serialized store reads as three blocks rather than as
+  // an interleaving nobody asked for.
+  journal_store store;
+  store.set_edition("e");
+  store.set_engine("g");
+  ASSERT_TRUE(store.record_scan(Proclamation(4), "a proclamation"));
+  ASSERT_TRUE(store.record_scan(Tale(4), "a tale"));
+  ASSERT_TRUE(store.record_scan(Entry(4), "an entry"));
+  EXPECT_EQ(store.size(), 3U);
+
+  EXPECT_EQ(store.text(Entry(4)), "an entry");
+  EXPECT_EQ(store.text(Tale(4)), "a tale");
+  EXPECT_EQ(store.text(Proclamation(4)), "a proclamation");
+
+  const std::string text = store.serialize();
+  const std::size_t entry = text.find("scanned entry 4 ");
+  const std::size_t tale = text.find("scanned tale 4 ");
+  const std::size_t proclamation = text.find("scanned proclamation 4 ");
+  ASSERT_NE(proclamation, std::string::npos);
+  EXPECT_LT(entry, tale);
+  EXPECT_LT(tale, proclamation);
+
+  journal_store read;
+  ASSERT_EQ(read.parse(text), journal_trouble::none);
+  EXPECT_EQ(read.text(Proclamation(4)), "a proclamation");
+  EXPECT_EQ(read.fingerprint(), store.fingerprint());
 }
 
 TEST(JournalStore, AnEmptyStoreIsStillAStore) {
@@ -129,15 +178,21 @@ TEST(JournalStore, SomethingThatIsNotAStoreIsRefusedWhole) {
 
   for (const std::string& bad :
        {std::string("hello\n"), std::string(""),
-        std::string("amberfolio-journal 1\n"),
-        std::string("amberfolio-journal 1\nedition a\n"),
+        std::string("amberfolio-journal 2\n"),
+        std::string("amberfolio-journal 2\nedition a\n"),
         // A record whose body is shorter than its length says, which is
         // what a truncated write leaves behind.
-        std::string("amberfolio-journal 1\nedition a\nengine b\n"
-                    "scanned 1 40\nshort\n"),
+        std::string("amberfolio-journal 2\nedition a\nengine b\n"
+                    "scanned entry 1 40\nshort\n"),
+        // A kind no build has ever written.
+        std::string("amberfolio-journal 2\nedition a\nengine b\n"
+                    "scanned rumour 1 2\nhi\n"),
+        // A version 2 record wearing version 1's shape.
+        std::string("amberfolio-journal 2\nedition a\nengine b\n"
+                    "scanned 1 2\nhi\n"),
         // A keyword that is not one of the two.
-        std::string("amberfolio-journal 1\nedition a\nengine b\n"
-                    "guessed 1 2\nhi\n")}) {
+        std::string("amberfolio-journal 2\nedition a\nengine b\n"
+                    "guessed entry 1 2\nhi\n")}) {
     EXPECT_EQ(store.parse(bad), journal_trouble::not_a_store) << bad;
     // Refused *whole*: a partly-read store is a player's transcription
     // with a hole in it, and nothing downstream could tell.
@@ -167,31 +222,52 @@ TEST(JournalStore, AStoreAnEditorSavedWithCrlfStillReads) {
 
 TEST(JournalStore, AStoreFromALaterFormatIsRefusedRatherThanMisread) {
   journal_store store;
-  EXPECT_EQ(store.parse("amberfolio-journal 2\nedition a\nengine b\n"),
+  EXPECT_EQ(store.parse("amberfolio-journal 3\nedition a\nengine b\n"),
             journal_trouble::not_a_store);
+}
+
+TEST(JournalStore, AStoreFromVersionOneIsReadRatherThanThrownAway) {
+  // Version 1 had no kind on its records because there was one
+  // section, so every record in one is a journal entry and reading it
+  // as such loses nothing. Refusing it would have thrown a player
+  // away their corrections to make a point.
+  journal_store store;
+  ASSERT_EQ(store.parse("amberfolio-journal 1\nedition a\nengine b\n"
+                        "scanned 4 6\nfourth\n"
+                        "corrected 4 5\nfixed\n"),
+            journal_trouble::none);
+  EXPECT_EQ(store.size(), 1U);
+  EXPECT_EQ(store.text(Entry(4)), "fixed");
+  EXPECT_TRUE(store.text(Tale(4)).empty());
+
+  // And it is written back as version 2, so a store is upgraded by
+  // being opened rather than by anybody being told to do anything.
+  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 2\n"));
+  EXPECT_NE(store.serialize().find("scanned entry 4 6\n"), std::string::npos);
 }
 
 TEST(JournalStore, TextLongerThanTheLimitIsRefused) {
   journal_store store;
   const std::string huge(journal_max_entry_bytes + 1U, 'x');
-  EXPECT_FALSE(store.record_scan(1, huge));
-  EXPECT_FALSE(store.correct(1, huge));
+  EXPECT_FALSE(store.record_scan(Entry(1), huge));
+  EXPECT_FALSE(store.correct(Entry(1), huge));
   EXPECT_TRUE(store.empty());
 
   const std::string just_fits(journal_max_entry_bytes, 'x');
-  EXPECT_TRUE(store.record_scan(1, just_fits));
+  EXPECT_TRUE(store.record_scan(Entry(1), just_fits));
 }
 
 TEST(JournalStore, AStoreFullOfEntriesTakesNoMore) {
   journal_store store;
   for (std::size_t i = 0; i < journal_max_entries; ++i) {
-    ASSERT_TRUE(store.record_scan(static_cast<std::uint16_t>(i), "x")) << i;
+    ASSERT_TRUE(store.record_scan(Entry(static_cast<std::uint16_t>(i)), "x"))
+        << i;
   }
   EXPECT_FALSE(store.record_scan(
-      static_cast<std::uint16_t>(journal_max_entries + 1U), "x"));
+      Entry(static_cast<std::uint16_t>(journal_max_entries + 1U)), "x"));
   // But an entry it already has is still writable, which is what a
   // re-ingestion of a full edition does on every single entry.
-  EXPECT_TRUE(store.record_scan(0, "y"));
+  EXPECT_TRUE(store.record_scan(Entry(0), "y"));
   EXPECT_EQ(store.size(), journal_max_entries);
 }
 
@@ -200,14 +276,14 @@ TEST(JournalStore, TheTwoCountsAreWhatAHostReports) {
   EXPECT_EQ(store.recognized(), 2U);
   EXPECT_EQ(store.corrections(), 0U);
 
-  ASSERT_TRUE(store.correct(2, "fixed"));
+  ASSERT_TRUE(store.correct(Entry(2), "fixed"));
   EXPECT_EQ(store.recognized(), 2U);
   EXPECT_EQ(store.corrections(), 1U);
 
   // An entry the engine could not read is present and empty, and does not
   // count as recognized — which is the number that tells a missing engine
   // from a hard scan.
-  ASSERT_TRUE(store.record_scan(5, ""));
+  ASSERT_TRUE(store.record_scan(Entry(5), ""));
   EXPECT_EQ(store.size(), 3U);
   EXPECT_EQ(store.recognized(), 2U);
 }

@@ -59,7 +59,12 @@ import {
   MAX_CATCH_UP_SECONDS,
 } from './host.mjs';
 import { wireDirectoryPicker } from './picker.mjs';
-import { ingestJournal, loadEngine } from './journal.mjs';
+import {
+  ingestJournal,
+  journalKind,
+  journalNumber,
+  loadEngine,
+} from './journal.mjs';
 
 const CANVAS_ID = 'screen';
 const START_BUTTON_ID = 'start';
@@ -264,8 +269,11 @@ export function runDevPage() {
 
         const report = await ingestJournal(loaded.module, bytes, {
           engine,
-          onProgress: ({ index, count, number }) =>
-            setJournalStatus(`entry ${number} (${index + 1} of ${count})...`),
+          onProgress: ({ index, count, citation }) =>
+            setJournalStatus(
+              `${journalKind(citation)} ${journalNumber(citation)}` +
+                ` (${index + 1} of ${count})...`,
+            ),
         });
         if (engine?.close) await engine.close();
 
@@ -279,7 +287,9 @@ export function runDevPage() {
           `${report.edition}: ${report.recognized} of ${report.entries} entries` +
             ` read by ${report.engine}` +
             (report.firstTrouble
-              ? ` (entry ${report.firstTrouble.number}: ${report.firstTrouble.what})`
+              ? ` (${journalKind(report.firstTrouble.citation)}` +
+                ` ${journalNumber(report.firstTrouble.citation)}:` +
+                ` ${report.firstTrouble.what})`
               : ''),
         );
       } catch (problem) {

@@ -356,16 +356,27 @@ uint32_t af_web_journal_edition_name(char* out, uint32_t cap) {
                   cap);
 }
 
-/// How many entries this edition's fact table has, and the number the
-/// game itself uses for entry `index`.
+/// How many rows this edition's fact table has, and the *citation* the
+/// game itself uses for row `index`.
+///
+/// A citation and not a number since #218: three of the journal's
+/// sections are numbered and each starts from its own base, so the two
+/// travel together. It comes across as the one packed word the seam's own
+/// host callout uses (`machine/journal.h`), which keeps this ABI the
+/// width it was and lets the page treat it as opaque — the page never
+/// needs to take it apart, only to hand it back.
 uint32_t af_web_journal_entry_count(void) {
   return static_cast<uint32_t>(journal().ingester.entries());
 }
 
-uint32_t af_web_journal_entry_number(uint32_t index) {
+uint32_t af_web_journal_entry_citation(uint32_t index) {
   const amberfolio::host::journal_entry_fact* fact =
       journal().ingester.entry_at(index);
-  return fact == nullptr ? 0U : fact->number;
+  if (fact == nullptr) {
+    return 0U;
+  }
+  return amberfolio::machine::journal_open_argument(
+      {.kind = fact->kind, .number = fact->number});
 }
 
 /// Get entry `index`'s scan: every piece of it, by whichever route its
@@ -462,36 +473,41 @@ uint32_t af_web_journal_region_height(uint32_t which) {
   return part == nullptr ? 0U : part->region.height;
 }
 
-/// What the page's engine read for the entry *numbered* `number`.
-/// Replaces the scan and leaves any correction alone, which is what makes
-/// a correction survive a re-ingestion (`host/journal_store.h`).
-uint32_t af_web_journal_set_text(uint32_t number, const char* text) {
-  if (text == nullptr || number > 0xFFFFU) {
+/// What the page's engine read for the item `citation` names. Replaces
+/// the scan and leaves any correction alone, which is what makes a
+/// correction survive a re-ingestion (`host/journal_store.h`).
+///
+/// `citation` is what `af_web_journal_entry_citation()` handed out. A
+/// word that does not decode to one is refused rather than read as some
+/// other item, which is the same answer the seam's callout gives (#218).
+uint32_t af_web_journal_set_text(uint32_t citation, const char* text) {
+  const amberfolio::machine::journal_citation what =
+      amberfolio::machine::journal_open_citation(citation);
+  if (text == nullptr || !what) {
     return AF_INVALID;
   }
-  return journal().store.record_scan(static_cast<std::uint16_t>(number), text)
-             ? AF_OK
-             : AF_NO_ROOM;
+  return journal().store.record_scan(what, text) ? AF_OK : AF_NO_ROOM;
 }
 
-/// A person's correction to entry `number`.
-uint32_t af_web_journal_correct(uint32_t number, const char* text) {
-  if (text == nullptr || number > 0xFFFFU) {
+/// A person's correction to one item.
+uint32_t af_web_journal_correct(uint32_t citation, const char* text) {
+  const amberfolio::machine::journal_citation what =
+      amberfolio::machine::journal_open_citation(citation);
+  if (text == nullptr || !what) {
     return AF_INVALID;
   }
-  return journal().store.correct(static_cast<std::uint16_t>(number), text)
-             ? AF_OK
-             : AF_NO_ROOM;
+  return journal().store.correct(what, text) ? AF_OK : AF_NO_ROOM;
 }
 
-/// What a reader shows for entry `number`: the correction if there is
-/// one, the scan otherwise. This is what #175 will read.
-uint32_t af_web_journal_text(uint32_t number, char* out, uint32_t cap) {
-  if (number > 0xFFFFU) {
+/// What a reader shows for one item: the correction if there is one, the
+/// scan otherwise. This is what #175 reads.
+uint32_t af_web_journal_text(uint32_t citation, char* out, uint32_t cap) {
+  const amberfolio::machine::journal_citation what =
+      amberfolio::machine::journal_open_citation(citation);
+  if (!what) {
     return 0U;
   }
-  return hand_out(journal().store.text(static_cast<std::uint16_t>(number)), out,
-                  cap);
+  return hand_out(journal().store.text(what), out, cap);
 }
 
 /// What the engine that read this store was, as it named itself.

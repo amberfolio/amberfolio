@@ -517,6 +517,19 @@ struct probe_document {
       .number = 2, .fragments = std::span(doc.fragments).subspan(1, 1)};
   doc.facts[2] = journal_entry_fact{
       .number = 3, .fragments = std::span(doc.fragments).subspan(2, 2)};
+  // Tale one (M5-E3d, #218), and deliberately **the same rectangle as
+  // entry one**. Two rows sharing a number is the thing the kind was
+  // added to make possible, and sharing the picture as well is what makes
+  // the test sharp: if anything downstream keyed on the number alone the
+  // two would collapse into one row, and nothing about the text they read
+  // would give it away.
+  //
+  // It adds no fragment and no byte to the document, so the probe's
+  // fingerprint is what it was.
+  doc.facts[3] =
+      journal_entry_fact{.kind = journal_kind::tale,
+                         .number = 1,
+                         .fragments = std::span(doc.fragments).subspan(0, 1)};
   return doc;
 }
 
@@ -549,6 +562,10 @@ constexpr std::array<std::string_view, journal_probe_entries> probe_words{
     "AMBER FOLIO PROBE ENTRY 1",
     "AMBER FOLIO PROBE ENTRY 2",
     "AMBER FOLIO PROBE ENTRY 3",
+    // Tale one reads entry one's rectangle, so it reads entry one's
+    // words. Saying so here rather than leaving it empty keeps
+    // `journal_probe_text()` honest for every index the table has.
+    "AMBER FOLIO PROBE ENTRY 1",
 };
 
 }  // namespace
@@ -562,13 +579,15 @@ std::span<const journal_edition> journal_probe_table() {
 journal_bitmap journal_probe_expected(std::size_t index) {
   journal_bitmap out;
   // Entry three has no decoded answer at all: what the extractor must
-  // produce for it is bytes (journal_probe.h).
+  // produce for it is bytes (journal_probe.h). The tale is entry one's
+  // rectangle, so it has the same one and needs no case of its own.
   if (index >= journal_probe_entries || index == journal_probe_encoded_entry) {
     return out;
   }
   // Its one fragment's rectangle: the entries with a decoded answer have
   // exactly one piece (journal_probe.h).
-  const journal_region& region = probe().facts[index].fragments.front().region;
+  const journal_fragment& piece = probe().facts[index].fragments.front();
+  const journal_region& region = piece.region;
   out.width = region.width;
   out.height = region.height;
   out.pixels.reserve(static_cast<std::size_t>(region.width) * region.height);
@@ -579,8 +598,14 @@ journal_bitmap journal_probe_expected(std::size_t index) {
       // Entry two's page is inverted, so what the extractor must produce
       // is ink black and paper white — the same way round as entry one's,
       // which is the whole reason the flag exists.
-      out.pixels.push_back(index == 0 ? probe_gray(px, py)
-                                      : (probe_ink(px, py) ? 0x00U : 0xFFU));
+      //
+      // The **fragment's** flag and not the row's index: the colliding
+      // tale (#218) is entry one's rectangle under another number, so a
+      // condition that asked which row this was would expect the wrong
+      // page for it. What decides is which page the piece is on.
+      out.pixels.push_back(piece.image.inverted
+                               ? (probe_ink(px, py) ? 0x00U : 0xFFU)
+                               : probe_gray(px, py));
     }
   }
   return out;

@@ -206,7 +206,7 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_fingerprint',
   '_af_web_journal_edition_name',
   '_af_web_journal_entry_count',
-  '_af_web_journal_entry_number',
+  '_af_web_journal_entry_citation',
   '_af_web_journal_extract',
   '_af_web_journal_image_bytes',
   '_af_web_journal_image_width',
@@ -2934,6 +2934,9 @@ if (missing.length === 0 && sessions !== null) {
     probeEngine,
     serializeStore,
     correctJournalEntry,
+    journalCitation,
+    journalKind,
+    journalNumber,
     currentScan,
     wordsWithin,
     JOURNAL_JPEG,
@@ -2950,19 +2953,36 @@ if (missing.length === 0 && sessions !== null) {
     engine: probeEngine(module),
   });
   check(report.ok, `the probe document was not ingested: ${report.trouble}`);
-  check(report.entries === 3, `the probe has ${report.entries} entries, expected 3`);
-  check(report.extracted === 3, `${report.extracted} of 3 entries extracted`);
+  check(report.entries === 4, `the probe has ${report.entries} rows, expected 4`);
+  check(report.extracted === 4, `${report.extracted} of 4 rows extracted`);
   check(
-    report.recognized === 3,
-    `${report.recognized} of 3 entries were read; the fixture only answers for` +
+    report.recognized === 4,
+    `${report.recognized} of 4 rows were read; the fixture only answers for` +
       ' a scan that matches what the extraction was supposed to produce',
   );
   for (const number of [1, 2, 3]) {
+    const cite = journalCitation('entry', number);
     check(
-      journalText(module, number) === `AMBER FOLIO PROBE ENTRY ${number}`,
-      `entry ${number} reads '${journalText(module, number)}'`,
+      journalText(module, cite) === `AMBER FOLIO PROBE ENTRY ${number}`,
+      `entry ${number} reads '${journalText(module, cite)}'`,
     );
   }
+
+  // The fourth row is a **tale** numbered one, over entry one's own
+  // rectangle (M5-E3d, #218). Two rows sharing a number is the thing
+  // the kind was added to make possible, and this is it crossing the
+  // ABI: a module that keyed on the number alone would have written
+  // one row here and this would read nothing.
+  check(
+    journalText(module, journalCitation('tale', 1)) ===
+      'AMBER FOLIO PROBE ENTRY 1',
+    `tale 1 reads '${journalText(module, journalCitation('tale', 1))}'`,
+  );
+  check(
+    journalKind(module._af_web_journal_entry_citation(3)) === 'tale' &&
+      journalNumber(module._af_web_journal_entry_citation(3)) === 1,
+    'the fourth row of the probe is not tale one',
+  );
 
   // Entry 3 is the one this module does **not** decode (M5-E3a, #212):
   // its stream crosses to the page as its own bytes with the entry's
@@ -3032,15 +3052,22 @@ if (missing.length === 0 && sessions !== null) {
   // through the ABI rather than only in C++.
   module._af_web_journal_probe(1);
   const corrected = 'A PERSON WROTE THIS';
-  correctJournalEntry(module, 1, corrected);
-  check(journalText(module, 1) === corrected, 'the correction did not take');
+  correctJournalEntry(module, journalCitation('entry', 1), corrected);
+  check(
+    journalText(module, journalCitation('entry', 1)) === corrected,
+    'the correction did not take',
+  );
+  check(
+    journalText(module, journalCitation('tale', 1)) !== corrected,
+    'correcting entry one changed tale one, which is the same number',
+  );
 
   const again = await ingestJournal(module, document, {
     engine: probeEngine(module),
   });
   check(again.ok, 'the second ingestion failed');
   check(
-    journalText(module, 1) === corrected,
+    journalText(module, journalCitation('entry', 1)) === corrected,
     'a re-ingestion overwrote a correction',
   );
   check(
@@ -3050,8 +3077,12 @@ if (missing.length === 0 && sessions !== null) {
 
   const text = serializeStore(module);
   check(
-    text.startsWith('amberfolio-journal 1\n'),
+    text.startsWith('amberfolio-journal 2\n'),
     'the serialized store does not start with its own header',
+  );
+  check(
+    text.includes('scanned entry 1 ') && text.includes('scanned tale 1 '),
+    'the store did not keep entry one and tale one apart',
   );
   check(
     text.includes(corrected),
@@ -3074,8 +3105,9 @@ if (missing.length === 0 && sessions !== null) {
   );
 
   console.log(
-    'smoke: a synthetic journal edition ingested through the ABI, three entries' +
-      ' read, a correction kept across a re-ingestion',
+    'smoke: a synthetic journal edition ingested through the ABI, four rows' +
+      ' read including two that share a number, a correction kept across a' +
+      ' re-ingestion',
   );
 }
 

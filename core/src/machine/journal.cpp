@@ -14,19 +14,32 @@
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
+#include <utility>
 
 namespace amberfolio::machine {
 namespace {
 
-/// The two words the citation's shape is made of, and how far apart the
-/// first of them and the number may be.
+/// The word each of the journal's numbered sections is cited by, and how
+/// far from it the number may be.
 ///
-/// The second is optional: a citation may name the entry in as many words
-/// as it likes, or in none, and what the recognizer insists on is the
-/// first word and a number within reach of it. Twelve characters is the
-/// reach — enough for the second word and the punctuation around it, and
-/// short enough that a number in the *next* sentence is not a citation.
-constexpr std::string_view citation_word = "JOURNAL";
+/// One word per kind and no more, because everything else about how a
+/// citation is phrased is the program's business: it may name the section
+/// in as many further words as it likes, or in none, and what the
+/// recognizer insists on is one of these and a number within reach.
+/// Twelve characters is the reach — enough for a second word and the
+/// punctuation around it, and short enough that a number in the *next*
+/// sentence is not a citation.
+///
+/// `TALE` rather than `TAVERN TALE` for the same reason: it is the word
+/// that is certainly there, it is a word of the phrase either way, and a
+/// recognizer that insisted on both would miss a program that printed
+/// only one of them.
+constexpr std::array<std::pair<std::string_view, journal_kind>, journal_kinds>
+    citation_words{{
+        {"JOURNAL", journal_kind::entry},
+        {"TALE", journal_kind::tale},
+        {"PROCLAMATION", journal_kind::proclamation},
+    }};
 constexpr unsigned citation_reach = 12;
 
 /// The largest entry number a citation may name. Four digits, which is
@@ -57,68 +70,98 @@ constexpr unsigned citation_max_digits = 4;
 
 }  // namespace
 
-std::uint16_t journal_citation_in(std::string_view text) noexcept {
-  for (std::size_t at = 0; at + citation_word.size() <= text.size(); ++at) {
-    if (text.substr(at, citation_word.size()) != citation_word) {
-      continue;
-    }
-    // A word and not a fragment of a longer one: the character before it
-    // and the one after it must not be letters. Without that a word this
-    // one happens to be inside is a citation.
-    if (at > 0 && is_letter(text[at - 1])) {
-      continue;
-    }
-    std::size_t p = at + citation_word.size();
-    if (p < text.size() && is_letter(text[p])) {
-      continue;
-    }
+journal_citation journal_citation_in(std::string_view text) noexcept {
+  // Position outermost, word innermost: the answer is the *earliest*
+  // citation in the window whichever section it names, which is what it
+  // was when there was one word and what keeps a later sentence from
+  // outranking the one being drawn.
+  for (std::size_t at = 0; at < text.size(); ++at) {
+    for (const auto& [word, kind] : citation_words) {
+      if (text.substr(at, word.size()) != word) {
+        continue;
+      }
+      // A word and not a fragment of a longer one: the character before
+      // it and the one after it must not be letters. Without that a word
+      // this one happens to be inside is a citation.
+      if (at > 0 && is_letter(text[at - 1])) {
+        continue;
+      }
+      std::size_t p = at + word.size();
+      if (p < text.size() && is_letter(text[p])) {
+        continue;
+      }
 
-    const std::size_t limit = std::min(text.size(), p + citation_reach);
-    while (p < limit && !is_digit(text[p])) {
-      ++p;
-    }
-    if (p >= limit) {
-      continue;
-    }
+      const std::size_t limit = std::min(text.size(), p + citation_reach);
+      while (p < limit && !is_digit(text[p])) {
+        ++p;
+      }
+      if (p >= limit) {
+        continue;
+      }
 
-    unsigned digits = 0;
-    unsigned value = 0;
-    while (p < text.size() && is_digit(text[p]) &&
-           digits <= citation_max_digits) {
-      value = (value * 10U) + static_cast<unsigned>(text[p] - '0');
-      ++digits;
-      ++p;
+      unsigned digits = 0;
+      unsigned value = 0;
+      while (p < text.size() && is_digit(text[p]) &&
+             digits <= citation_max_digits) {
+        value = (value * 10U) + static_cast<unsigned>(text[p] - '0');
+        ++digits;
+        ++p;
+      }
+      if (digits == 0 || digits > citation_max_digits || value == 0) {
+        // Zero is not an entry, and a longer run of digits is not an
+        // entry number. Both fall through to the next occurrence of a
+        // word rather than answering, because a second citation later in
+        // the same window is still a citation.
+        continue;
+      }
+      return {.kind = kind, .number = static_cast<std::uint16_t>(value)};
     }
-    if (digits == 0 || digits > citation_max_digits || value == 0) {
-      // Zero is not an entry, and a longer run of digits is not an entry
-      // number. Both fall through to the next occurrence of the word
-      // rather than answering, because a second citation later in the
-      // same window is still a citation.
-      continue;
-    }
-    return static_cast<std::uint16_t>(value);
   }
-  return 0;
+  return {};
+}
+
+const char* journal_kind_name(journal_kind which) noexcept {
+  switch (which) {
+    case journal_kind::entry:
+      return "entry";
+    case journal_kind::tale:
+      return "tale";
+    case journal_kind::proclamation:
+      return "proclamation";
+  }
+  return "entry";
+}
+
+bool journal_kind_from_name(std::string_view word, journal_kind& out) noexcept {
+  for (std::size_t i = 0; i < journal_kinds; ++i) {
+    const auto kind = static_cast<journal_kind>(i);
+    if (word == journal_kind_name(kind)) {
+      out = kind;
+      return true;
+    }
+  }
+  return false;
 }
 
 void journal_state::clear() noexcept {
-  entry_ = 0;
+  entry_ = {};
   delivery_ = journal_delivery::none;
   truncated_ = false;
   text_length_ = 0;
-  cited_ = 0;
+  cited_ = {};
   window_length_ = 0;
   mode_ = journal_reader_mode::closed;
   page_ = 0;
   page_count_ = 0;
   digit_count_ = 0;
+  asked_kind_ = journal_kind::entry;
   on_screen_ = false;
   covered_ = false;
   drawn_signature_ = 0;
 }
 
-void journal_state::ask(std::uint16_t entry) noexcept {
-  entry_ = entry;
+void journal_state::ask(journal_citation what) noexcept {
+  entry_ = what;
   delivery_ = journal_delivery::no_host;
   truncated_ = false;
   text_length_ = 0;
@@ -140,7 +183,8 @@ void journal_state::refuse(journal_delivery why) noexcept {
   delivery_ = why;
 }
 
-std::uint16_t journal_state::note_drawn_text(std::string_view what) noexcept {
+journal_citation journal_state::note_drawn_text(
+    std::string_view what) noexcept {
   // Into the window, normalized, with a space in front of it when there
   // is already something there: two strings the program drew are two
   // words, never one.
@@ -164,7 +208,7 @@ std::uint16_t journal_state::note_drawn_text(std::string_view what) noexcept {
     append(normalized(ch));
   }
   if (length == 0) {
-    return 0;
+    return {};
   }
   // Two strings the program drew are two words, and the separator goes on
   // here rather than in front of the normalizer above — which would have
@@ -197,10 +241,10 @@ std::uint16_t journal_state::note_drawn_text(std::string_view what) noexcept {
     window_length_ += length;
   }
 
-  const std::uint16_t found =
+  const journal_citation found =
       journal_citation_in(std::string_view{window_.data(), window_length_});
-  if (found == 0) {
-    return 0;
+  if (!found) {
+    return {};
   }
   // One drawing of a citation opens one entry: the window is emptied so
   // the same characters cannot match again on the next string the program
@@ -259,6 +303,14 @@ std::uint16_t journal_state::asked_entry() const noexcept {
     value = (value * 10U) + static_cast<unsigned>(digits_[i] - '0');
   }
   return static_cast<std::uint16_t>(value);
+}
+
+void journal_state::cycle_asked_kind() noexcept {
+  const auto next = static_cast<std::size_t>(asked_kind_) + 1U;
+  asked_kind_ = static_cast<journal_kind>(next % journal_kinds);
+  // The panel says which section it is pointed at, so it has to be drawn
+  // again — the digits did not change and nothing else would notice.
+  drawn_signature_ = 0;
 }
 
 void journal_state::set_covered(bool covered) noexcept {

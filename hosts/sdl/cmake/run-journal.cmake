@@ -62,10 +62,10 @@ if(NOT code EQUAL 7)
     "the program exits with code 7; the host returned '${code}'.\n"
     "stdout: ${out}\nstderr: ${err}")
 endif()
-expect("journal Amber Folio journal probe \\(synthetic\\) entries=3")
+expect("journal Amber Folio journal probe \\(synthetic\\) entries=4")
 expect("journal engine amberfolio journal probe fixture")
-expect("journal entries=3 extracted=3 recognized=3")
-expect("journal store .*entries=3 corrections=0 sha256=[0-9a-f][0-9a-f]+")
+expect("journal entries=4 extracted=4 recognized=4")
+expect("journal store .*entries=4 corrections=0 sha256=[0-9a-f][0-9a-f]+")
 
 # The store is a file, and it is the file this says it is. Its words are
 # the probe's own, which is what makes them printable here at all.
@@ -73,8 +73,13 @@ if(NOT EXISTS "${store}")
   message(FATAL_ERROR "no store was written to ${store}")
 endif()
 file(READ "${store}" text)
-foreach(want "amberfolio-journal 1" "AMBER FOLIO PROBE ENTRY 1"
-             "AMBER FOLIO PROBE ENTRY 2")
+# The kind on every record, and the two rows that share a number
+# (#218): the probe carries a tale numbered one over entry one's own
+# rectangle, so a build that keyed on the number alone would write
+# three records here instead of four and this would say so.
+foreach(want "amberfolio-journal 2" "AMBER FOLIO PROBE ENTRY 1"
+             "AMBER FOLIO PROBE ENTRY 2"
+             "scanned entry 1 " "scanned tale 1 ")
   string(FIND "${text}" "${want}" at)
   if(at LESS 0)
     message(FATAL_ERROR "the store does not carry '${want}':\n${text}")
@@ -88,10 +93,10 @@ endforeach()
 # with each record's length in front of it.
 set(correction "A PERSON WROTE THIS")
 string(LENGTH "${correction}" correction_length)
-file(APPEND "${store}" "corrected 1 ${correction_length}\n${correction}\n")
+file(APPEND "${store}" "corrected entry 1 ${correction_length}\n${correction}\n")
 
 run_host(--journal "${document}" --journal-probe --journal-store "${store}")
-expect("journal store .*entries=3 corrections=1")
+expect("journal store .*entries=4 corrections=1")
 file(READ "${store}" text)
 string(FIND "${text}" "${correction}" at)
 if(at LESS 0)
@@ -108,7 +113,7 @@ endif()
 run_host(--journal "${document}" --journal-probe --journal-ocr none
          --journal-store "${SCRATCH}/journal-none.txt")
 expect("journal no engine asked for")
-expect("journal entries=3 extracted=3 recognized=0")
+expect("journal entries=4 extracted=4 recognized=0")
 
 # --- 4. Unrecognized, twice --------------------------------------------
 #

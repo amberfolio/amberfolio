@@ -2137,8 +2137,11 @@ void ingest_journal(machine::machine& box, const options& opts,
                "amberfolio: journal entries=%u extracted=%u recognized=%u\n",
                report.entries, report.extracted, report.recognized);
   if (report.first_trouble != host::journal_trouble::none) {
-    std::fprintf(stderr, "amberfolio: journal entry %u: %s\n",
-                 static_cast<unsigned>(report.first_failure),
+    // The section as well as the number, because three of them number
+    // from their own bases and "entry 4" would name three things (#218).
+    std::fprintf(stderr, "amberfolio: journal %s %u: %s\n",
+                 machine::journal_kind_name(report.first_failure.kind),
+                 static_cast<unsigned>(report.first_failure.number),
                  host::journal_trouble_name(report.first_trouble));
   }
 

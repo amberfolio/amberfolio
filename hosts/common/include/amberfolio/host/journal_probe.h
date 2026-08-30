@@ -93,7 +93,17 @@
 namespace amberfolio::host {
 
 /// How many entries the probe edition has.
-inline constexpr std::size_t journal_probe_entries = 3;
+inline constexpr std::size_t journal_probe_entries = 4;
+
+/// Which row of the probe is the one that collides (M5-E3d, #218): a
+/// **tale** numbered one, over the same rectangle as entry one.
+///
+/// It is what proves the kind end to end on all four targets — extraction
+/// through the engine into the store and back out — and it costs the
+/// document nothing, because it points at a fragment that is already
+/// there. A build that keyed anything on the number alone loses one of
+/// the two rows here, and does it silently.
+inline constexpr std::size_t journal_probe_colliding_entry = 3;
 
 /// Which of them is the `/DCTDecode` one (#212). Named rather than
 /// spelled `2` at each of its several readers, because "the entry that

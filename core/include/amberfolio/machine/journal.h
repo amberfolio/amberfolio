@@ -92,6 +92,92 @@ enum class journal_delivery : std::uint8_t {
   no_text,
 };
 
+/// Which of the journal's numbered sections a citation names (M5-E3d,
+/// #218).
+///
+/// **A number alone does not identify anything.** The document prints
+/// three sections the game sends a player to by number, and each numbers
+/// from its own base: Tale 4 and Journal Entry 4 are both `4` and are not
+/// the same text. So every key that reaches a stored transcription is a
+/// pair, from the word the recognizer matched all the way to the row the
+/// host looks up.
+///
+/// It lives here rather than beside the fact table because the recognizer
+/// below is what decides it, and the recognizer is core.
+enum class journal_kind : std::uint8_t {
+  /// "Journal Entry N" — the section the game refers to most.
+  entry,
+  /// "Tale N" — what a tavern sends a player to read.
+  tale,
+  /// "Proclamation N" — posted by the city council.
+  proclamation,
+};
+
+/// How many there are. A loop's bound and an array's size; nothing reads
+/// it as a kind.
+inline constexpr std::size_t journal_kinds = 3;
+
+/// The one-word name of a kind, lower case. Never null.
+///
+/// This is a *token*, not a caption: it is what a store file writes and
+/// what a host's log line says, so it has to be one word and stable
+/// across versions. The reader draws its own words, in its own case, in
+/// the game's font.
+[[nodiscard]] const char* journal_kind_name(journal_kind which) noexcept;
+
+/// The kind `word` names, or nothing. Case-sensitive and exact — this
+/// reads a file somebody may have edited, and a near miss is a mistake
+/// worth reporting rather than guessing at.
+[[nodiscard]] bool journal_kind_from_name(std::string_view word,
+                                          journal_kind& out) noexcept;
+
+/// What the game just told a player to read: which section, and which
+/// number of it.
+///
+/// A number of zero means *nothing was named* — no section numbers from
+/// zero, so it needs no separate flag, and a citation that failed to
+/// parse and a citation that was never there are the same answer.
+struct journal_citation {
+  journal_kind kind{journal_kind::entry};
+  std::uint16_t number{};
+
+  /// Whether it names anything at all.
+  [[nodiscard]] explicit operator bool() const noexcept { return number != 0; }
+
+  /// Written out rather than defaulted: a defaulted comparison is found
+  /// by argument-dependent lookup alone, and GoogleTest deliberately
+  /// blocks that lookup inside its own comparison helper.
+  [[nodiscard]] friend constexpr bool operator==(
+      const journal_citation& a, const journal_citation& b) noexcept {
+    return a.kind == b.kind && a.number == b.number;
+  }
+};
+
+/// A citation as the one `std::uint32_t` a host callout carries.
+///
+/// `seam_host_service::journal_open`'s argument was a number when there
+/// was one section, and is a pair now. It is packed rather than widened
+/// because the callout's width is ABI (`abi.h`), the top sixteen bits
+/// were never used, and a kind is three values: an ABI change would have
+/// been a cost paid by every embedder for a bit and a half.
+[[nodiscard]] constexpr std::uint32_t journal_open_argument(
+    journal_citation what) noexcept {
+  return (static_cast<std::uint32_t>(what.kind) << 16U) | what.number;
+}
+
+/// The other direction. A kind this build does not know, or a number of
+/// zero, comes back as a zero citation — which every caller already has
+/// to handle, because it is what an unrecognized citation looks like.
+[[nodiscard]] constexpr journal_citation journal_open_citation(
+    std::uint32_t argument) noexcept {
+  const std::uint32_t kind = argument >> 16U;
+  if (kind >= journal_kinds) {
+    return {};
+  }
+  return {.kind = static_cast<journal_kind>(kind),
+          .number = static_cast<std::uint16_t>(argument & 0xFFFFU)};
+}
+
 /// What the reader is showing.
 enum class journal_reader_mode : std::uint8_t {
   /// Nothing. The state at power-on, which is the whole of this seam's
@@ -128,10 +214,10 @@ class journal_state {
 
   // --- what a host was asked, and what it answered ---------------------
 
-  /// About to ask a host for `entry`: the number is remembered and
+  /// About to ask a host for `what`: the citation is remembered and
   /// anything previously delivered is dropped, so a callout that is not
   /// served leaves `no_host` rather than the last entry's text.
-  void ask(std::uint16_t entry) noexcept;
+  void ask(journal_citation what) noexcept;
 
   /// A host's answer. `what` longer than `journal_page_bytes` is kept up
   /// to that and `truncated()` becomes true; empty text is `no_text`
@@ -141,7 +227,8 @@ class journal_state {
   /// A host's other answer.
   void refuse(journal_delivery why) noexcept;
 
-  [[nodiscard]] std::uint16_t entry() const noexcept { return entry_; }
+  /// What was asked for. Its number is zero when nothing has been.
+  [[nodiscard]] journal_citation entry() const noexcept { return entry_; }
   [[nodiscard]] journal_delivery delivery() const noexcept { return delivery_; }
   [[nodiscard]] bool truncated() const noexcept { return truncated_; }
   [[nodiscard]] std::string_view text() const noexcept {
@@ -152,20 +239,22 @@ class journal_state {
 
   /// One string the program has just been asked to draw.
   ///
-  /// Answers the entry number a citation in it names, or zero. The text
-  /// is normalized into the rolling window first (upper case, runs of
-  /// anything that is not a letter or a digit collapsed to one space), so
-  /// a citation split across two draws is recognized on the second of
-  /// them. A match **clears the window**, so one drawing of a citation
-  /// opens one entry however many times the seam looks at it afterwards.
+  /// Answers the citation in it, or a zero one. The text is normalized
+  /// into the rolling window first (upper case, runs of anything that is
+  /// not a letter or a digit collapsed to one space), so a citation split
+  /// across two draws is recognized on the second of them. A match
+  /// **clears the window**, so one drawing of a citation opens one entry
+  /// however many times the seam looks at it afterwards.
   ///
   /// Nothing of the program's text is kept beyond the window and nothing
   /// of it leaves this object.
-  std::uint16_t note_drawn_text(std::string_view what) noexcept;
+  journal_citation note_drawn_text(std::string_view what) noexcept;
 
-  /// The last entry a citation named, or zero. Kept so the reader can
-  /// tell a fresh citation from the one it is already showing.
-  [[nodiscard]] std::uint16_t cited() const noexcept { return cited_; }
+  /// The last citation named, or a zero one. Kept so the reader can tell
+  /// a fresh citation from the one it is already showing — which is a
+  /// comparison of the pair, because the game citing tale 12 while entry
+  /// 12 is on the screen is a fresh citation.
+  [[nodiscard]] journal_citation cited() const noexcept { return cited_; }
 
   /// Everything in the window, forgotten. What a match does, and what a
   /// test does between two strings that should not run together.
@@ -204,6 +293,23 @@ class journal_state {
   /// What the digits say, or zero for none of them.
   [[nodiscard]] std::uint16_t asked_entry() const noexcept;
 
+  /// Which section the prompt is pointed at, and the key that moves it.
+  ///
+  /// The prompt has to have one: a player typing `4` at it has not said
+  /// whether they mean the fourth entry or the fourth tale, and a reader
+  /// that picked for them would be picking wrong two times in three.
+  /// Cycling rather than three keys, because the panel has one line to
+  /// say it in and the seam has few keys it may take.
+  [[nodiscard]] journal_kind asked_kind() const noexcept { return asked_kind_; }
+  void set_asked_kind(journal_kind kind) noexcept { asked_kind_ = kind; }
+  void cycle_asked_kind() noexcept;
+
+  /// The prompt as a citation: the kind it is pointed at, and the number
+  /// typed into it.
+  [[nodiscard]] journal_citation asked() const noexcept {
+    return {.kind = asked_kind_, .number = asked_entry()};
+  }
+
   /// Whether the reader's pixels are on the planes because this seam put
   /// them there and nothing has painted over them since, and whether
   /// something other than the party roster owns those cells. The same
@@ -240,13 +346,13 @@ class journal_state {
   }
 
  private:
-  std::uint16_t entry_{};
+  journal_citation entry_{};
   journal_delivery delivery_{journal_delivery::none};
   bool truncated_{false};
   std::size_t text_length_{};
   std::array<char, journal_page_bytes> text_{};
 
-  std::uint16_t cited_{};
+  journal_citation cited_{};
   std::size_t window_length_{};
   std::array<char, journal_citation_window> window_{};
 
@@ -255,6 +361,7 @@ class journal_state {
   std::uint16_t page_count_{};
   std::size_t digit_count_{};
   std::array<char, journal_prompt_digits> digits_{};
+  journal_kind asked_kind_{journal_kind::entry};
 
   bool on_screen_{false};
   bool covered_{false};
@@ -262,7 +369,7 @@ class journal_state {
   std::array<std::uint8_t, automap_panel_pixels> pixels_{};
 };
 
-/// The entry number a citation in `text` names, or zero for no citation.
+/// The citation in `text`, or a zero one for none.
 ///
 /// Free, and separate from the window above, so that the pattern can be
 /// checked against strings a test writes without a machine anywhere near
@@ -270,11 +377,18 @@ class journal_state {
 /// way `note_drawn_text()` normalizes: upper case, single spaces.
 ///
 /// **What it matches is the citation's shape and not the program's
-/// prose.** The word this project's own enhancement is named after,
-/// optionally the word for one of its entries, and a decimal number
-/// within a short reach of it. Nothing is copied out of the program to
-/// make it work and nothing of the program's text is written down here
-/// (CONTRIBUTING.md).
-[[nodiscard]] std::uint16_t journal_citation_in(std::string_view text) noexcept;
+/// prose.** One of three ordinary English words — the one this project's
+/// own enhancement is named after and the two the document's other
+/// numbered sections are called — and a decimal number within a short
+/// reach of it. Nothing is copied out of the program to make it work and
+/// nothing of the program's text is written down here (CONTRIBUTING.md).
+///
+/// **The longest word wins**, which matters for exactly one pair: a
+/// program that draws "tavern tale" is drawing a tale, and a recognizer
+/// that stopped at the first word it found would be right anyway. It is
+/// the rule rather than the accident because it is what makes adding a
+/// fourth word safe.
+[[nodiscard]] journal_citation journal_citation_in(
+    std::string_view text) noexcept;
 
 }  // namespace amberfolio::machine

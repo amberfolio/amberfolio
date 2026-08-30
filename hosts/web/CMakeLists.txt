@@ -185,7 +185,7 @@ set(_amberfolio_web_export_names
   _af_web_journal_fingerprint
   _af_web_journal_edition_name
   _af_web_journal_entry_count
-  _af_web_journal_entry_number
+  _af_web_journal_entry_citation
   _af_web_journal_extract
   _af_web_journal_image_bytes
   _af_web_journal_image_width
