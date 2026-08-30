@@ -1690,5 +1690,125 @@ TEST(JournalList, ThePaintIsStartedAgainWheneverWhatItShowsChanges) {
   EXPECT_EQ(state.list_drawn(), 0u);
 }
 
+// ---------------------------------------------------------------------------
+// What the panel can draw (M5-E4c, #219)
+// ---------------------------------------------------------------------------
+//
+// Every non-ASCII character below is written as its own bytes rather than
+// as a character in this file, because what is being tested is what
+// happens to *bytes* - and a test whose meaning depended on this file's
+// encoding would be testing the wrong thing.
+
+/// `journal_drawable` over a buffer big enough for anything these cases
+/// hand it, as a string.
+[[nodiscard]] std::string Drawable(std::string_view text) {
+  std::array<char, 256> into{};
+  const journal_drawn out = journal_drawable(text, into);
+  EXPECT_TRUE(out.complete);
+  return {into.data(), out.written};
+}
+
+TEST(JournalDrawable, PlainTextIsItself) {
+  EXPECT_EQ(Drawable("A ROUGHLY DRAWN CLOTH MAP."),
+            "A ROUGHLY DRAWN CLOTH MAP.");
+  EXPECT_EQ(Drawable("two\nlines"), "two\nlines")
+      << "the layout above reads newlines, so they survive";
+}
+
+TEST(JournalDrawable, TheQuotationMarksAnEngineActuallyProduces) {
+  // Two hundred and twenty-two of the two hundred and twenty-nine
+  // non-ASCII characters in a real ingestion are these four.
+  EXPECT_EQ(Drawable("\xE2\x80\x98Tale 4"), "'Tale 4");
+  EXPECT_EQ(Drawable("\xE2\x80\x99"), "'");
+  EXPECT_EQ(Drawable("\xE2\x80\x9CI am Yarash!\xE2\x80\x9D"),
+            "\"I am Yarash!\"");
+}
+
+TEST(JournalDrawable, DashesAndAnEllipsis) {
+  EXPECT_EQ(Drawable("a \xE2\x80\x94 b"), "a - b");
+  EXPECT_EQ(Drawable("a \xE2\x80\x93 b"), "a - b");
+  EXPECT_EQ(Drawable("and so\xE2\x80\xA6"), "and so...")
+      << "three stops, because that is what it reads as";
+}
+
+TEST(JournalDrawable, OneGlyphOutOfOneCodePoint) {
+  // The whole bug: three bytes of UTF-8 drew as three glyphs, so an entry
+  // opening with a curly quote opened with three pieces of furniture.
+  EXPECT_EQ(Drawable("\xE2\x80\x98").size(), 1u);
+  EXPECT_EQ(Drawable("\xE2\x80\x9C").size(), 1u);
+  EXPECT_EQ(Drawable("\xC2\xAE").size(), 1u);
+}
+
+TEST(JournalDrawable, WhatHasNoGlyphLooksLikeIt) {
+  // The other seven characters a real ingestion produced are misreads of
+  // something, and a reader is better told than shown nothing.
+  EXPECT_EQ(Drawable("\xC2\xAE"), "?");
+  EXPECT_EQ(Drawable("\xE2\x84\xA2"), "?");
+  EXPECT_EQ(Drawable("\xE4\xB8\x80"), "?");
+  EXPECT_EQ(Drawable("a\xC2\xA2"
+                     "b"),
+            "a?b")
+      << "and never silently dropped";
+}
+
+TEST(JournalDrawable, ControlCharactersBecomeSpaces) {
+  EXPECT_EQ(Drawable("a\tb"), "a b");
+  EXPECT_EQ(Drawable("a\rb"), "a b");
+}
+
+TEST(JournalDrawable, IllFormedBytesAreSubstitutedAndAlwaysAdvance) {
+  // A store is a file a person may edit, so it may not be valid UTF-8 at
+  // all. Every one of these consumes exactly one byte, so no input can
+  // make the loop stand still.
+  EXPECT_EQ(Drawable("a\x80"
+                     "b"),
+            "a?b")
+      << "a stray continuation byte";
+  EXPECT_EQ(Drawable("a\xC3"), "a?") << "a sequence that runs off the end";
+  EXPECT_EQ(Drawable("a\xE2\x28\xA1"
+                     "b"),
+            "a?(?b")
+      << "a continuation byte that is not one";
+  EXPECT_EQ(Drawable("\xFF\xFE"), "??");
+}
+
+TEST(JournalDrawable, ItStopsOnAFullBufferRatherThanHalfACharacter) {
+  std::array<char, 4> into{};
+  const journal_drawn out = journal_drawable("ab\xE2\x80\xA6", into);
+  EXPECT_EQ(std::string(into.data(), out.written), "ab")
+      << "an ellipsis is three and two were left, so it did not go in";
+  EXPECT_FALSE(out.complete);
+}
+
+TEST(JournalDelivery, APageArrivesAsSomethingThePanelCanDraw) {
+  journal_state state;
+  state.ask(Entry(4));
+  state.deliver(
+      "\xE2\x80\x98"
+      "A roughly drawn cloth map.\xE2\x80\x99");
+  EXPECT_EQ(state.delivery(), journal_delivery::ready);
+  EXPECT_EQ(state.text(), "'A roughly drawn cloth map.'");
+  EXPECT_FALSE(state.truncated());
+}
+
+TEST(JournalDelivery, ALongPageIsNoLongerCutThroughACharacter) {
+  journal_state state;
+  // Fill the buffer to one byte short, then hand it something that draws
+  // as three: it has to be left out whole rather than half written.
+  //
+  // An ellipsis rather than a dash, because a dash *is* one byte once it
+  // has been made drawable - which is the point of doing this here, and
+  // was the first version of this test being wrong about its own subject.
+  std::string page(journal_page_bytes - 1, 'x');
+  page += "\xE2\x80\xA6";
+  state.ask(Entry(4));
+  state.deliver(page);
+  EXPECT_EQ(state.text().size(), journal_page_bytes - 1);
+  EXPECT_TRUE(state.truncated());
+  for (const char ch : state.text()) {
+    ASSERT_EQ(ch, 'x');
+  }
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

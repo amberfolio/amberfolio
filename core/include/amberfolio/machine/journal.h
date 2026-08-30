@@ -464,6 +464,45 @@ class journal_state {
   std::array<std::uint8_t, automap_panel_pixels> pixels_{};
 };
 
+/// What a page came to after being made drawable, and whether all of it
+/// fitted.
+struct journal_drawn {
+  std::size_t written{};
+  /// False when the input ran past the buffer. `truncated()` on the state,
+  /// and the reader says so rather than quietly ending a sentence.
+  bool complete{true};
+};
+
+/// Copy `text` into `into` as bytes the program's font can draw, one glyph
+/// per code point (M5-E4c, #219).
+///
+/// **The panel draws a byte as a glyph**, out of a table of sixty-four
+/// indexed by the character modulo sixty-four. A store is UTF-8 and an OCR
+/// engine emits plenty of it — a real ingestion of one edition carries two
+/// hundred and twenty-nine non-ASCII characters, and two hundred and
+/// twenty-two of them are quotation marks — so an entry opening with a
+/// curly quote opened with three pieces of furniture before this existed.
+///
+/// It is done here, at the point a host's answer becomes the machine's
+/// page, rather than at the point it is drawn. Three things fall out of
+/// that and none of them would if it were done later: wrapping counts
+/// bytes and is now counting the right ones, a page that runs past the
+/// buffer can no longer be cut in half through a multi-byte sequence, and
+/// the reader itself needs to know nothing about encodings.
+///
+/// **The store is not touched.** A player's transcription is theirs, it is
+/// UTF-8, and a person editing that file should be able to type a curly
+/// quote into it. What changes is only what the panel is handed.
+///
+/// Every code point produces something. What has an obvious equivalent
+/// gets it — the quotation marks, the dashes, an ellipsis — and everything
+/// else gets one visible substitute, because a character the panel cannot
+/// draw should look like a character the panel cannot draw rather than
+/// vanishing. A byte that is not valid UTF-8 is substituted too, and one
+/// byte of it is consumed, so no input can make this loop for ever.
+[[nodiscard]] journal_drawn journal_drawable(std::string_view text,
+                                             std::span<char> into) noexcept;
+
 /// The citation in `text`, or a zero one for none.
 ///
 /// Free, and separate from the window above, so that the pattern can be
