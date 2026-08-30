@@ -687,6 +687,27 @@ jobs:
         if: matrix.emscripten
         run: ctest --preset wasm-release
 
+      # The browser's OCR engine, beside the page it is served from
+      # (M5-E3e). Without this the deployed site has no
+      # `vendor/tesseract/` at all, and a player who picks their journal
+      # gets every entry located, every rectangle cropped, and "there is
+      # no OCR engine to read it with" - which is what shipped from #174
+      # until now.
+      #
+      # It is fetched here rather than committed because it is 32 MB of
+      # third-party binaries (`scripts/fetch-ocr-engine.py` has the
+      # argument), and verified against `scripts/ocr-engine.sha256sums`
+      # because a deploy that starts serving different bytes should be a
+      # commit and not a Tuesday - the same sentence the pinned Vercel
+      # CLI below is there for.
+      #
+      # A visitor pays nothing for it. `loadEngine()` is called when a
+      # journal is ingested, not when the page loads, so the cost lands
+      # only on somebody who picks a PDF.
+      - name: Fetch the browser's OCR engine
+        if: matrix.emscripten
+        run: python scripts/fetch-ocr-engine.py --into build/wasm/hosts/web/Release
+
       # What the deploy job ships (deploy/vercel/README.md). Uploaded on
       # every event rather than only on main, because a pull request from
       # this repository gets a preview deployment of exactly the bytes CI

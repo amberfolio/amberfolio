@@ -35,16 +35,33 @@
 # are binaries, and several megabytes each). It goes into the build tree,
 # which is ignored.
 #
-#                       WHY NOT A PINNED DIGEST
+#                          THE PINNED DIGESTS
 #
-# Because this file may not invent one. Every fingerprint in this
-# repository is a fact about a file somebody actually hashed, and nobody
-# here has hashed these. What this does instead is trust on first use and
-# pin afterwards: the first run writes `sha256sums.txt` beside what it
-# fetched, and every later run *verifies* against it and refuses on a
-# mismatch. A maintainer who has checked the digests can commit that file
-# to a release or paste it into an issue; until somebody does, the
-# honest state is that the versions are pinned and the bytes are not.
+# This file may not *invent* a fingerprint: every one in this repository
+# is a fact about a file somebody actually hashed. So it began as trust
+# on first use — the first run writes `sha256sums.txt` beside what it
+# fetched, every later run verifies against it and refuses on a mismatch
+# — with a note saying a maintainer who had checked the digests could
+# commit that file.
+#
+# Somebody has. `scripts/ocr-engine.sha256sums` is the record, and it is
+# a fact rather than a guess: the same files were fetched twice, on
+# different days, and the two digest lists were identical.
+#
+# It records the bytes **as they were served**, not the bytes that end up
+# on disk. The one file this script transforms - the language data, which
+# the page wants gzipped - is recorded uncompressed, because a gzip stream
+# is not reproducible across machines and pinning one would pin the
+# developer's zlib rather than the upstream file. `--digests`
+# is what points a run at it, and the deploy pipeline passes it on every
+# build, so the bytes a player is served are checked against a committed
+# record rather than against whatever the registry answered that morning
+# (`.github/workflows/ci.yml`).
+#
+# The versions are still the pin that decides *what* is fetched; the
+# digests decide whether what arrived is what was expected. When
+# `.tesseract-js-version` moves, this file is stale by design: the run
+# fails, a maintainer looks at both, and `--force` records the new ones.
 #
 # The versions are `.tesseract-js-version` and, for the desktop engine a
 # player installs themselves, `.tesseract-version` — the same shape
@@ -79,6 +96,11 @@ TESSDATA_URL = (
 )
 
 DIGESTS = "sha256sums.txt"
+
+# The committed record, checked when a run is not pointed at another one.
+# A CI runner has no previous fetch to compare against, so without this
+# every deploy would be trust on first use.
+COMMITTED_DIGESTS = Path(__file__).resolve().parent / "ocr-engine.sha256sums"
 
 
 def read_pin(name: str) -> str:
@@ -118,8 +140,27 @@ def npm(package: str, version: str) -> dict[str, bytes]:
     return members(fetch(f"{REGISTRY}/{package}/-/{leaf}-{version}.tgz"))
 
 
-def collect(version: str, language: str) -> dict[str, bytes]:
-    """Everything the page needs, keyed by its name under vendor/tesseract."""
+def collect(version: str, language: str) -> tuple[dict[str, bytes], dict[str, bytes]]:
+    """Everything the page needs, and everything upstream actually served.
+
+    Two dictionaries, because they are not the same thing and only one of
+    them can be pinned. The first is what goes on disk. The second is what
+    the digest record is computed over: the bytes as they arrived, before
+    anything here touched them.
+
+    Fourteen of the fifteen files are identical in both - they are copied
+    verbatim out of the tarballs. The language data is not: the page wants
+    it gzipped, so this script gzips it, and **a gzip stream is not
+    reproducible across machines**. Two correct zlibs compress the same
+    bytes differently; a Python built against zlib-ng and one built
+    against stock zlib disagree, which is exactly how this was found - the
+    record written on a developer's machine failed on a CI runner.
+
+    Hashing the download rather than the recompression is also the more
+    honest record. What a digest is for here is "upstream served what was
+    expected"; what this script then does with those bytes is this
+    script's business, and is checked by the tests that run against it.
+    """
     library = npm("tesseract.js", version)
     manifest = json.loads(library["package.json"])
     # The core's version comes out of what the library itself depends on,
@@ -153,14 +194,18 @@ def collect(version: str, language: str) -> dict[str, bytes]:
     for name in wanted_core:
         files[name] = core[name]
 
+    # Everything above is verbatim, so it is its own record.
+    served = dict(files)
+
     data = fetch(TESSDATA_URL.format(tag=TESSDATA_TAG, lang=language))
     # tesseract.js asks for `<lang>.traineddata.gz` unless it is told
     # otherwise; gzipping here rather than turning that off keeps the
     # page's own configuration to the three paths.
     files[f"{language}.traineddata.gz"] = gzip.compress(data, mtime=0)
+    served[f"{language}.traineddata"] = data
 
     print(f"  tesseract.js {version}, core {core_version}, tessdata {TESSDATA_TAG}")
-    return files
+    return files, served
 
 
 def digests_of(files: dict[str, bytes]) -> str:
@@ -197,6 +242,13 @@ def main() -> int:
         action="store_true",
         help="overwrite files whose digests do not match the recorded ones",
     )
+    parser.add_argument(
+        "--digests",
+        type=Path,
+        help="verify against this digest record instead of one left in the"
+        " target directory (default: scripts/ocr-engine.sha256sums if it"
+        " exists, else the target's own)",
+    )
     args = parser.parse_args()
 
     if args.print_plan:
@@ -211,15 +263,33 @@ def main() -> int:
 
     where = args.into / "vendor" / "tesseract"
     print(f"amberfolio: fetching the OCR engine into {where}")
-    files = collect(version, args.language)
-    sums = digests_of(files)
+    files, served = collect(version, args.language)
+    sums = digests_of(served)
 
-    recorded = where / DIGESTS
+    # Three places a record may be, in the order they are believed: the one
+    # a run was pointed at, the one committed beside this script, and the
+    # one a previous fetch left in the target directory. The committed one
+    # is what makes a CI runner - which has no previous fetch - check
+    # anything at all.
+    # What is checked, and what is written, are deliberately two different
+    # paths. A fetch always leaves its own record beside what it fetched;
+    # it must never write back over the committed one, or the check would
+    # be a check against whatever the last run happened to download.
+    # Moving the committed record is a maintainer copying this file over
+    # it on purpose, and `--force` is how they get one to copy.
+    recorded = args.digests or COMMITTED_DIGESTS
+    if not recorded.exists():
+        recorded = where / DIGESTS
     if recorded.exists() and not args.force:
-        was = recorded.read_text(encoding="utf-8")
+        # Strict about the digests, not about line endings - the same rule
+        # `journal_store` learned the hard way. A record that has been
+        # through an editor on Windows, or checked out with `core.autocrlf`
+        # on, is still that record, and refusing it would be a correct
+        # refusal and a useless one.
+        was = recorded.read_text(encoding="utf-8").replace("\r\n", "\n")
         if was != sums:
             print(
-                "amberfolio: what was fetched does not match the digests already"
+                "amberfolio: what was fetched does not match the digests"
                 f" recorded in {recorded}.\n"
                 "  Nothing was written. Either the pin moved and the recorded"
                 " digests are stale, or something served different bytes.\n"
@@ -228,16 +298,27 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
+    elif not recorded.exists():
+        print(
+            f"amberfolio: no digest record at {COMMITTED_DIGESTS}; what was"
+            " fetched is trusted on first use and pinned afterwards.",
+            file=sys.stderr,
+        )
 
     if where.exists():
         shutil.rmtree(where)
     where.mkdir(parents=True)
     for name, body in sorted(files.items()):
         (where / name).write_bytes(body)
-    recorded.write_text(sums, encoding="utf-8")
+    (where / DIGESTS).write_text(sums, encoding="utf-8")
 
     total = sum(len(body) for body in files.values())
     print(f"amberfolio: {len(files)} files, {total // 1024} KiB, digests in {DIGESTS}")
+    if args.force:
+        print(
+            f"  --force: checked nothing. To move the committed record,"
+            f" copy {where / DIGESTS} over {COMMITTED_DIGESTS}."
+        )
     return 0
 
 

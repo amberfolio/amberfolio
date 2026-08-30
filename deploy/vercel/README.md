@@ -86,3 +86,17 @@ That directory is `build/`-derived and gitignored, so no repository
 content can ride along, and the deploy job lists every file it is about
 to upload into the job summary. The page hosts the emulator and nothing
 else: no game artifacts, ever, here or anywhere.
+
+**And the browser's OCR engine**, under `vendor/tesseract/` (M5-E3e). It
+is fetched into that same build tree by
+`scripts/fetch-ocr-engine.py`, not committed — it is 32 MB of
+third-party binaries, and that script's header has the argument. What
+makes it safe to serve is that the fetch is checked against
+`scripts/ocr-engine.sha256sums`, a record of bytes that were fetched
+twice on different days and hashed the same both times; a mismatch fails
+the build rather than deploying whatever the registry answered.
+
+Its licences are Apache-2.0 throughout — tesseract.js, tesseract.js-core
+and the language data — which `NOTICE.md` records. Nothing about it is a
+game artifact, and it only exists on the page so that a player's own
+journal can be read on their own machine without installing anything.

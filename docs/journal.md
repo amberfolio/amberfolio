@@ -333,17 +333,39 @@ engine is not there, the page says exactly that and names the script that
 fetches it, and the ingestion still runs: every entry is located and
 decoded, nothing is recognized, and both numbers are reported.
 
-**The deployed page ships without an engine.** Nothing in CI runs the
-fetch script, so https://amberfolio.vercel.app locates and decodes a
-recognized journal's entries and recognizes none of them, and says so —
-32 MiB of wasm on every deploy is a packaging decision and packaging is
-M6's. A local build that has run the script has the whole thing.
+**The deployed page ships with the engine** (M5-E3e). It did not until
+now: nothing in CI ran the fetch, so https://amberfolio.vercel.app
+located and decoded a recognized journal's entries, recognized none of
+them, and said so. That was defensible while no edition was in the table
+— there was nothing to read — and indefensible the moment one was
+(#214), because the page then did all the work and threw the answer
+away. The wasm job runs the fetch and the artifact carries
+`vendor/tesseract/`.
 
-The fetch script pins versions and **does not pin digests**, because this
-repository may not carry a fingerprint nobody has computed. It trusts on
-first use and pins afterwards: the first run writes `sha256sums.txt`
-beside what it fetched and every later run verifies against it, refusing
-on a mismatch until somebody has looked.
+**32 MB is what that costs, and almost nobody pays it.** All fifteen
+files have to be deployed, because tesseract.js chooses its core variant
+at run time from what the browser supports. But `loadEngine()` is called
+when a journal is ingested, not when the page loads, so a visitor who
+never picks a PDF downloads none of it, and one who does fetches about
+seven megabytes — the loader, the worker, one core and the language data.
+
+The fetch script pins versions **and now pins digests**. It could not at
+first, because this repository may not carry a fingerprint nobody has
+computed; it trusted on first use and pinned afterwards. Somebody has
+computed them since: `scripts/ocr-engine.sha256sums` records them,
+fetched twice on different days and identical both times. It records the
+bytes **as upstream served them**, not the bytes that reach the disk: the
+language data is gzipped by the script because the page asks for it that
+way, and a gzip stream is not reproducible across machines — a Python
+built against zlib-ng and one built against stock zlib compress the same
+input differently, which is how a record written here first failed on a
+runner. What a digest pins is that upstream served what was expected.
+`--digests` points a run at a record rather than at whatever a previous
+fetch left lying about. A CI runner has no previous fetch, so without a
+committed record every deploy would have been trust on first use — which
+is not a thing to do with somebody else's JavaScript on a page other
+people load. A mismatch fails the build; when `.tesseract-js-version`
+moves, the record is stale by design and `--force` writes the new one.
 
 ## 6. The store
 
