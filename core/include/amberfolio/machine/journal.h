@@ -214,6 +214,9 @@ enum class journal_reader_mode : std::uint8_t {
   /// Nothing. The state at power-on, which is the whole of this seam's
   /// fidelity claim.
   closed,
+  /// The journal's own screen: what the game has cited, newest first
+  /// (M5-E4b, #222). What `Notes` opens.
+  listing,
   /// The entry-number prompt, for a player who wants an entry the game
   /// has not cited.
   asking,
@@ -370,6 +373,26 @@ class journal_state {
   void set_asked_kind(journal_kind kind) noexcept { asked_kind_ = kind; }
   void cycle_asked_kind() noexcept;
 
+  /// Which line of the log the list is pointed at, and the key that moves
+  /// it. Clamped to what the log holds, so a list that shrank under a
+  /// cursor does not leave it past the end.
+  [[nodiscard]] std::size_t list_cursor() const noexcept {
+    return seen_count_ == 0
+               ? 0
+               : (list_cursor_ < seen_count_ ? list_cursor_ : seen_count_ - 1);
+  }
+  void move_list_cursor(int by) noexcept;
+
+  /// How many rows of the list are on the screen so far.
+  ///
+  /// A batch may queue twelve calls and place 256 bytes (`seam.h`), and a
+  /// screen of ten rows is more than that — so it is painted over
+  /// successive arrivals, a few rows at a time, and this is how far it has
+  /// got. Zero means "start again", which is what a moved cursor or a new
+  /// line in the log means.
+  [[nodiscard]] std::size_t list_drawn() const noexcept { return list_drawn_; }
+  void set_list_drawn(std::size_t rows) noexcept { list_drawn_ = rows; }
+
   /// The prompt as a citation: the kind it is pointed at, and the number
   /// typed into it.
   [[nodiscard]] journal_citation asked() const noexcept {
@@ -430,6 +453,8 @@ class journal_state {
   journal_kind asked_kind_{journal_kind::entry};
 
   std::size_t seen_count_{};
+  std::size_t list_cursor_{};
+  std::size_t list_drawn_{};
   bool seen_changed_{false};
   std::array<journal_seen_row, journal_log_rows> seen_{};
 

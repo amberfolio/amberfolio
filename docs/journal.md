@@ -523,6 +523,13 @@ and "that entry is there and the engine read nothing off it". The last
 two are the same distinction `journal_trouble` makes one layer down, kept
 rather than collapsed, because they are fixed by different things.
 
+**And one that carries nothing.** `journal_seen` (M5-E4b, #222) says the
+journal's log has moved — the game cited something, or the player opened
+something it had cited. What changed is in `machine::journal()`'s own log,
+which is observation and not machine state, so the service copies it into
+the store and a host writes that out. `automap_update` is the same shape
+for the same reason.
+
 **A correction is what the reader gets**, which is the whole reason the
 store keeps two texts per entry (§6). Nothing about the reader knows that
 a text was corrected, and nothing should.

@@ -157,6 +157,8 @@ void journal_state::clear() noexcept {
   asked_kind_ = journal_kind::entry;
   seen_count_ = 0;
   seen_changed_ = false;
+  list_cursor_ = 0;
+  list_drawn_ = 0;
   on_screen_ = false;
   covered_ = false;
   drawn_signature_ = 0;
@@ -358,6 +360,35 @@ bool journal_state::mark_seen_read(journal_citation what) noexcept {
 void journal_state::clear_seen() noexcept {
   seen_count_ = 0;
   seen_changed_ = false;
+  list_cursor_ = 0;
+  list_drawn_ = 0;
+}
+
+void journal_state::move_list_cursor(int by) noexcept {
+  if (seen_count_ == 0) {
+    return;
+  }
+  // Stops at the ends rather than wrapping. A log is a list with a top
+  // and a bottom, and a cursor that jumped from one to the other would
+  // lose a player who was holding a key down.
+  //
+  // All of it in one type: the index is a `size_t` and the step is the
+  // only signed thing here, so the step is what gets taken apart rather
+  // than the index being carried through a signed round trip.
+  const std::size_t last = seen_count_ - 1;
+  std::size_t where = list_cursor();
+  if (by < 0) {
+    const auto back = static_cast<std::size_t>(-by);
+    where = back > where ? 0 : where - back;
+  } else {
+    where += static_cast<std::size_t>(by);
+    where = where > last ? last : where;
+  }
+  if (where != list_cursor_) {
+    list_cursor_ = where;
+    list_drawn_ = 0;
+    drawn_signature_ = 0;
+  }
 }
 
 void journal_state::cycle_asked_kind() noexcept {

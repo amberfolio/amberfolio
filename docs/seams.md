@@ -1142,7 +1142,7 @@ boundary, and it needs the argument this document would have to carry.
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
-| `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; a **Notes** command on the party's own bar, or **F1**, for any other entry, tale or proclamation | the baseline | the resident image, and the adventuring loop's module |
+| `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; a **Notes** command on the party's own bar opens a log of everything it has cited, and **F1** the number prompt for anything it has not | the baseline | the resident image, and the adventuring loop's module |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
@@ -1964,6 +1964,53 @@ map: one condition in `seam_automap.cpp` stops the map drawing while an
 entry is up, and the map comes back on its own when the entry is put
 away. Neither seam knows anything else about the other and either works
 with the other switched off.
+
+#### The journal's own screen (M5-E4b, #222)
+
+`Notes` opens a **log**: what the game has told this player to read,
+newest first, with the moment it said so and a `*` on the ones they have
+not opened. It starts empty and fills as a game is played. The
+alternative — every entry the edition holds — is precisely what that
+journal's own introduction tells a player not to read.
+
+**The program draws it.** The panel the reader uses is plane surgery
+because nothing in the game draws twelve rows of text in a box the size of
+the party roster. A full screen is different: the game has a
+bordered-window drawer that every Gold Box screen is made of, and a string
+drawer, and calling those two gets the game's own border art, colours and
+lettering without this project knowing what any of them look like.
+
+**And the program gives it back.** The one thing a full-screen panel needs
+that a roster-sized one does not is a way to restore everything it
+covered, and there is exactly one: the routine the program itself calls to
+compose the adventuring screen, which takes no arguments and repaints the
+viewport, the status line and the roster. M5-E2d is why that is safe here
+and was not before — this screen is only ever opened from the party's own
+command bar (#221), which is the one place in the game where a vendor
+cannot be underneath it.
+
+It comes back with **one injected keystroke** as well, because composing
+the screen is everything *but* the command bar: the bar belongs to the
+menu-bar routine, which is sitting in its key loop and will not draw again
+until it returns. A space makes it return, the loop answers a letter it
+does not know by going round again, and the whole visible effect is the
+bar being redrawn.
+
+**Painted over several arrivals.** A batch queues twelve calls and places
+256 bytes (§3), and a frame, ten rows of forty characters and a way out
+are more than either. So a pass draws what fits and says whether there is
+more; the program draws nothing itself while it waits for a key, so a
+screen that arrives in two pieces arrives as one frame.
+
+**The timestamp needed no new machinery.** The machine already carries a
+seeded wall clock — the host's instant plus the virtual time since — so
+the seam derives a real date rather than reading one, which keeps the
+host-time guard intact and gives a replay the same answer twice.
+
+`Notes` opens the log, **F1 still opens the number prompt**, and F1 from
+the log goes on to it: two questions, two ways in. "What was I told?" is
+the list; "let me look something up" is the prompt, and it is the only way
+to reach the ninety-odd entries nothing has cited.
 
 #### A command on the party's own bar (M5-E4a, #221)
 

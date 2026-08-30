@@ -3077,7 +3077,7 @@ if (missing.length === 0 && sessions !== null) {
 
   const text = serializeStore(module);
   check(
-    text.startsWith('amberfolio-journal 2\n'),
+    text.startsWith('amberfolio-journal 3\n'),
     'the serialized store does not start with its own header',
   );
   check(
