@@ -17,8 +17,10 @@
 #include "amberfolio/host/journal_facts.h"
 
 #include <cstdint>
+#include <map>
 #include <set>
 #include <string_view>
+#include <utility>
 
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/machine/document.h"
@@ -37,20 +39,60 @@ TEST(JournalTable, HasTheOneEditionSomebodySatDownWith) {
   ASSERT_EQ(known_journals().size(), 1U)
       << "an edition came or went; the rules below are what a row has to"
          " satisfy, and #214 is where this one came from";
-  EXPECT_EQ(known_journals().front().entries.size(), 58U)
-      << "the archive release's journal has fifty-eight numbered entries";
+  EXPECT_EQ(known_journals().front().entries.size(), 99U)
+      << "the archive release's journal has fifty-eight entries,"
+         " twenty-three tales and eighteen proclamations";
+
+  std::map<journal_kind, std::size_t> counted;
+  for (const journal_entry_fact& fact : known_journals().front().entries) {
+    ++counted[fact.kind];
+  }
+  EXPECT_EQ(counted[journal_kind::entry], 58U);
+  EXPECT_EQ(counted[journal_kind::tale], 23U);
+  EXPECT_EQ(counted[journal_kind::proclamation], 18U);
 }
 
-TEST(JournalTable, TheArchiveEditionIsNumberedOneToFiftyEight) {
-  // Sequential and complete: the numbering in this table is a chain that
-  // was read off the printed headings, and a gap or a repeat in it is the
-  // one way that reading could have gone wrong quietly.
-  const journal_edition& edition = known_journals().front();
-  std::uint16_t expected = 1;
-  for (const journal_entry_fact& fact : edition.entries) {
-    EXPECT_EQ(fact.number, expected) << "the entries are not in order";
-    ++expected;
+TEST(JournalTable, TheEntriesAndTheTalesAreNumberedWithoutAGap) {
+  // Sequential and complete: the numbering of these two sections is a
+  // chain that was read off the printed headings, and a gap or a repeat
+  // in it is the one way that reading could have gone wrong quietly.
+  //
+  // The proclamations are **not** here, and that is the point of keeping
+  // them apart: they are printed in Roman numerals, they start at 59 and
+  // they skip. A run of them proves nothing, so they get the check they
+  // can pass instead — the one below.
+  for (const auto [kind, last] : {std::pair{journal_kind::entry, 58U},
+                                  std::pair{journal_kind::tale, 23U}}) {
+    std::uint16_t expected = 1;
+    for (const journal_entry_fact& fact : known_journals().front().entries) {
+      if (fact.kind != kind) {
+        continue;
+      }
+      EXPECT_EQ(fact.number, expected)
+          << journal_kind_name(kind) << " rows are not in order";
+      ++expected;
+    }
+    EXPECT_EQ(expected, last + 1U)
+        << journal_kind_name(kind) << " does not run to the end";
   }
+}
+
+TEST(JournalTable, TheProclamationsAscendWithoutRepeating) {
+  // What can be checked about a section whose numbering has gaps in it,
+  // and it is not nothing: the order was what caught a misread numeral
+  // while the table was being gathered (`journal_facts.cpp`).
+  std::uint16_t previous = 0;
+  std::size_t seen = 0;
+  for (const journal_entry_fact& fact : known_journals().front().entries) {
+    if (fact.kind != journal_kind::proclamation) {
+      continue;
+    }
+    EXPECT_GT(fact.number, previous) << "the proclamations are out of order";
+    previous = fact.number;
+    ++seen;
+  }
+  EXPECT_EQ(seen, 18U);
+  EXPECT_EQ(previous, 214U) << "the last proclamation is CCXIV";
 }
 
 TEST(JournalTable, TheArchiveEditionsPagesAreAllCarriedNotDecoded) {
@@ -119,10 +161,14 @@ void CheckRows(std::span<const journal_edition> table) {
         << edition.name << " knows the insides of nothing";
     EXPECT_LE(edition.entries.size(), journal_max_entries);
 
-    std::set<std::uint16_t> numbers;
+    // The *pair*, since #218: two rows may share a number as long as they
+    // are in different sections, and two rows that share both are the
+    // ambiguity the kind was added to remove.
+    std::set<std::pair<journal_kind, std::uint16_t>> numbers;
     for (const journal_entry_fact& fact : edition.entries) {
-      EXPECT_TRUE(numbers.insert(fact.number).second)
-          << edition.name << " has two rows for entry " << fact.number;
+      EXPECT_TRUE(numbers.insert({fact.kind, fact.number}).second)
+          << edition.name << " has two rows for "
+          << journal_kind_name(fact.kind) << ' ' << fact.number;
       EXPECT_FALSE(fact.fragments.empty())
           << "entry " << fact.number << " is nowhere";
       for (const journal_fragment& piece : fact.fragments) {

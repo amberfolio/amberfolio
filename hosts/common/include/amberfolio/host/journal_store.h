@@ -58,17 +58,28 @@
 // cannot be mistaken for a header. Strict on the way in: a file that is
 // not exactly this is `not_a_store`, never a file half-read.
 //
-//   amberfolio-journal 1
+//   amberfolio-journal 2
 //   edition <64 hex>
 //   engine <one line>
-//   scanned <entry> <bytes>
+//   scanned <kind> <number> <bytes>
 //   <bytes bytes><newline>
-//   corrected <entry> <bytes>
+//   corrected <kind> <number> <bytes>
 //   <bytes bytes><newline>
 //
 // The version is the first token of the first line so that a store from a
 // later format is refused by a build that would misread it, which is the
 // same courtesy `automap_store`'s header pays.
+//
+// **Version 1 is still read** (M5-E3d, #218). It had no `<kind>` because
+// there was one section, so every record in one is a journal entry and
+// reading it as such loses nothing. Refusing it instead would have thrown
+// away a player's corrections to make a point, and a version field exists
+// so that a build can tell what it is holding — not so that it can
+// decline to. A store read from version 1 is written back as version 2.
+//
+// `<kind>` is one lower-case word (`machine::journal_kind_name`) rather
+// than a number, because a person is expected to open this file and edit
+// it, and `scanned tale 4` says what `scanned 1 4` does not.
 
 #pragma once
 
@@ -79,12 +90,17 @@
 #include <vector>
 
 #include "amberfolio/host/journal_extract.h"
+#include "amberfolio/host/journal_facts.h"
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
 
-/// The format version this build writes, and the only one it reads.
-inline constexpr std::uint32_t journal_store_version = 1;
+/// The format version this build writes.
+inline constexpr std::uint32_t journal_store_version = 2;
+
+/// The oldest it reads. See the format above: a version 1 store is a
+/// store of journal entries and nothing is lost by saying so.
+inline constexpr std::uint32_t journal_store_oldest_version = 1;
 
 /// The first line's keyword — the thing that says a file is one of ours
 /// before anything else is believed about it.
@@ -95,8 +111,11 @@ inline constexpr std::string_view journal_store_magic = "amberfolio-journal";
 /// (`journal_store_default_path()` in the SDL host).
 inline constexpr std::string_view journal_store_filename = "journal.txt";
 
-/// One entry's text.
+/// One item's text.
 struct journal_text {
+  /// Which section it is in. Without it `number` names three things —
+  /// `journal_facts.h`'s `journal_kind` has the argument.
+  journal_kind kind{journal_kind::entry};
   std::uint16_t number{};
   /// What the engine read, replaced on every ingestion.
   std::string scanned;
@@ -135,22 +154,26 @@ class journal_store {
     return entries_;
   }
 
-  /// The entry numbered `number`, or null.
-  [[nodiscard]] const journal_text* find(std::uint16_t number) const noexcept;
+  /// The item `what` names, or null.
+  [[nodiscard]] const journal_text* find(
+      machine::journal_citation what) const noexcept;
 
-  /// What a reader shows for `number` — empty for an entry that is not
-  /// there or has no text at all.
-  [[nodiscard]] std::string_view text(std::uint16_t number) const noexcept;
+  /// What a reader shows for `what` — empty for an item that is not there
+  /// or has no text at all.
+  [[nodiscard]] std::string_view text(
+      machine::journal_citation what) const noexcept;
 
-  /// Ingestion's write: what the engine read for `number`. Leaves any
+  /// Ingestion's write: what the engine read for `what`. Leaves any
   /// correction alone, which is the whole point of the pair.
   ///
   /// False if the store is full or the text is longer than
   /// `journal_max_entry_bytes`.
-  [[nodiscard]] bool record_scan(std::uint16_t number, std::string_view what);
+  [[nodiscard]] bool record_scan(machine::journal_citation what,
+                                 std::string_view text);
 
   /// A person's write.
-  [[nodiscard]] bool correct(std::uint16_t number, std::string_view what);
+  [[nodiscard]] bool correct(machine::journal_citation what,
+                             std::string_view text);
 
   /// How many entries have any text at all, and how many have a
   /// correction — the two numbers a host reports after an ingestion.
@@ -188,13 +211,13 @@ class journal_store {
   [[nodiscard]] sha256_digest fingerprint() const;
 
  private:
-  [[nodiscard]] journal_text* entry_for(std::uint16_t number);
+  [[nodiscard]] journal_text* entry_for(machine::journal_citation what);
 
   std::string edition_;
   std::string engine_;
-  /// Kept sorted by entry number, so a serialization is a function of
-  /// the content and not of the order things were written in — which is
-  /// what makes `fingerprint()` worth reporting.
+  /// Kept sorted by kind and then by number, so a serialization is a
+  /// function of the content and not of the order things were written in
+  /// — which is what makes `fingerprint()` worth reporting.
   std::vector<journal_text> entries_;
 };
 

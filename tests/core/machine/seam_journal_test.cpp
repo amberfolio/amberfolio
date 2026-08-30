@@ -79,6 +79,7 @@ constexpr std::uint16_t key_return = 0x1C0D;
 constexpr std::uint16_t key_tab = 0x0F09;
 constexpr std::uint16_t key_one = 0x0231;
 constexpr std::uint16_t key_two = 0x0332;
+constexpr std::uint16_t key_four = 0x0534;
 
 /// The panel's layout, restated: a title row, twelve rows of body, and a
 /// footer, eight pixels each, twenty-two glyphs across.
@@ -114,16 +115,21 @@ class one_entry_host final : public seam_host_services {
       box.journal().refuse(journal_delivery::no_journal);
       return;
     }
-    if (argument != number) {
+    if (argument != journal_open_argument(holds)) {
       box.journal().refuse(journal_delivery::no_entry);
       return;
     }
     box.journal().deliver(text);
   }
 
-  /// What this host holds: one entry, or nothing at all.
+  /// What this host holds: one item, or nothing at all.
+  ///
+  /// A *citation* since #218 and not a number, because the argument that
+  /// arrives is a packed pair — so a host that answered on the number
+  /// alone would hand a tale the entry with the same number, which is
+  /// exactly the mistake the pair exists to make impossible.
   bool empty{false};
-  std::uint16_t number{12};
+  journal_citation holds{.kind = journal_kind::entry, .number = 12};
   std::string text;
 
   unsigned calls{0};
@@ -399,71 +405,123 @@ struct rig {
 // The recognizer, against strings this file writes
 // ---------------------------------------------------------------------------
 
+/// A citation, spelled out. Since #218 a citation is a *pair* — which
+/// section and which number — so these tests name the section every time
+/// rather than leaning on a default, which is the thing the change is
+/// about.
+constexpr journal_citation Entry(std::uint16_t number) {
+  return {.kind = journal_kind::entry, .number = number};
+}
+
+constexpr journal_citation Tale(std::uint16_t number) {
+  return {.kind = journal_kind::tale, .number = number};
+}
+
+constexpr journal_citation Proclamation(std::uint16_t number) {
+  return {.kind = journal_kind::proclamation, .number = number};
+}
+
+/// No citation at all.
+constexpr journal_citation Nothing() { return {}; }
+
 TEST(JournalCitation, TheShapeIsTheWordAndANumberNearIt) {
-  EXPECT_EQ(journal_citation_in("READ JOURNAL ENTRY 12"), 12);
-  EXPECT_EQ(journal_citation_in("JOURNAL 7"), 7);
-  EXPECT_EQ(journal_citation_in("SEE JOURNAL ENTRY 103 NOW"), 103);
-  EXPECT_EQ(journal_citation_in("A JOURNAL ENTRY 4 AND MORE TEXT"), 4);
+  EXPECT_EQ(journal_citation_in("READ JOURNAL ENTRY 12"), Entry(12));
+  EXPECT_EQ(journal_citation_in("JOURNAL 7"), Entry(7));
+  EXPECT_EQ(journal_citation_in("SEE JOURNAL ENTRY 103 NOW"), Entry(103));
+  EXPECT_EQ(journal_citation_in("A JOURNAL ENTRY 4 AND MORE TEXT"), Entry(4));
+}
+
+TEST(JournalCitation, EachSectionHasItsOwnWord) {
+  // #218: three sections, each numbering from its own base, so the word
+  // is what says which of them a number belongs to.
+  EXPECT_EQ(journal_citation_in("TALE 4"), Tale(4));
+  EXPECT_EQ(journal_citation_in("YOU HEAR TAVERN TALE 17"), Tale(17));
+  EXPECT_EQ(journal_citation_in("READ PROCLAMATION 214"), Proclamation(214));
+}
+
+TEST(JournalCitation, TheSameNumberInTwoSectionsIsTwoCitations) {
+  // The whole reason the answer is a pair and not a number.
+  EXPECT_NE(journal_citation_in("JOURNAL ENTRY 4"),
+            journal_citation_in("TALE 4"));
+  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 4").number,
+            journal_citation_in("TALE 4").number);
+}
+
+TEST(JournalCitation, TheEarliestOneWinsWhicheverSectionItNames) {
+  // Position outermost, word innermost — what it was when there was one
+  // word, and what keeps a later sentence from outranking the drawn one.
+  EXPECT_EQ(journal_citation_in("TALE 3 AND JOURNAL ENTRY 9"), Tale(3));
+  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 9 AND TALE 3"), Entry(9));
 }
 
 TEST(JournalCitation, WithoutTheWordItIsNotACitation) {
-  EXPECT_EQ(journal_citation_in("ENTRY 12"), 0);
-  EXPECT_EQ(journal_citation_in("YOU FIND 12 GOLD PIECES"), 0);
-  EXPECT_EQ(journal_citation_in("JOURNAL"), 0);
+  EXPECT_EQ(journal_citation_in("ENTRY 12"), Nothing());
+  EXPECT_EQ(journal_citation_in("YOU FIND 12 GOLD PIECES"), Nothing());
+  EXPECT_EQ(journal_citation_in("JOURNAL"), Nothing());
+  EXPECT_EQ(journal_citation_in("TALE"), Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATION"), Nothing());
 }
 
 TEST(JournalCitation, ANumberTooFarAwayIsSomebodyElsesNumber) {
   // Twelve characters of reach: far enough for the word for an entry and
   // the punctuation round it, short enough that the next sentence's
   // numbers are not this citation's.
-  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 9"), 9);
-  EXPECT_EQ(journal_citation_in("JOURNAL AND THEN A LONG WAY OFF 9"), 0);
+  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 9"), Entry(9));
+  EXPECT_EQ(journal_citation_in("JOURNAL AND THEN A LONG WAY OFF 9"),
+            Nothing());
 }
 
 TEST(JournalCitation, ItIsAWholeWordAndNotAFragment) {
-  EXPECT_EQ(journal_citation_in("JOURNALISM 4"), 0);
-  EXPECT_EQ(journal_citation_in("ADJOURNAL 4"), 0);
+  EXPECT_EQ(journal_citation_in("JOURNALISM 4"), Nothing());
+  EXPECT_EQ(journal_citation_in("ADJOURNAL 4"), Nothing());
+  // The two words #218 added are short and ordinary, so this rule is
+  // doing more work than it was: without it a stale tally and a talent
+  // would both be citations.
+  EXPECT_EQ(journal_citation_in("STALE 4"), Nothing());
+  EXPECT_EQ(journal_citation_in("TALES 4"), Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATIONS 4"), Nothing());
 }
 
 TEST(JournalCitation, ZeroAndARunTooLongAreNotEntryNumbers) {
-  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 0"), 0);
-  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 123456"), 0);
-  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 9999"), 9999);
+  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 0"), Nothing());
+  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 123456"), Nothing());
+  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 9999"), Entry(9999));
 }
 
 TEST(JournalCitation, ASecondCitationInTheWindowStillCounts) {
   // The first occurrence has no number near it; the scan carries on
   // rather than answering nothing.
-  EXPECT_EQ(journal_citation_in("JOURNAL AND ALSO THE JOURNAL ENTRY 5"), 5);
+  EXPECT_EQ(journal_citation_in("JOURNAL AND ALSO THE JOURNAL ENTRY 5"),
+            Entry(5));
 }
 
 TEST(JournalWindow, ACitationSplitAcrossTwoDrawsIsStillOne) {
   journal_state state;
-  EXPECT_EQ(state.note_drawn_text("...read the Journal"), 0);
-  EXPECT_EQ(state.note_drawn_text("Entry 21 before going on."), 21);
-  EXPECT_EQ(state.cited(), 21);
+  EXPECT_EQ(state.note_drawn_text("...read the Journal"), Nothing());
+  EXPECT_EQ(state.note_drawn_text("Entry 21 before going on."), Entry(21));
+  EXPECT_EQ(state.cited(), Entry(21));
 }
 
 TEST(JournalWindow, AMatchEmptiesTheWindowSoItCannotFireTwice) {
   journal_state state;
-  EXPECT_EQ(state.note_drawn_text("Journal Entry 3"), 3);
-  EXPECT_EQ(state.note_drawn_text("and nothing more"), 0)
+  EXPECT_EQ(state.note_drawn_text("Journal Entry 3"), Entry(3));
+  EXPECT_EQ(state.note_drawn_text("and nothing more"), Nothing())
       << "the same characters must not match a second time";
 }
 
 TEST(JournalWindow, TwoStringsAreTwoWordsAndNeverOne) {
   journal_state state;
-  EXPECT_EQ(state.note_drawn_text("JOURNA"), 0);
-  EXPECT_EQ(state.note_drawn_text("L 4"), 0)
+  EXPECT_EQ(state.note_drawn_text("JOURNA"), Nothing());
+  EXPECT_EQ(state.note_drawn_text("L 4"), Nothing())
       << "two draws are two words; a citation cannot be spelled across the "
          "seam between them";
 }
 
 TEST(JournalWindow, ForgettingItLeavesNothingToMatchAgainst) {
   journal_state state;
-  EXPECT_EQ(state.note_drawn_text("the journal"), 0);
+  EXPECT_EQ(state.note_drawn_text("the journal"), Nothing());
   state.forget_citation();
-  EXPECT_EQ(state.note_drawn_text("entry 6"), 0);
+  EXPECT_EQ(state.note_drawn_text("entry 6"), Nothing());
 }
 
 // ---------------------------------------------------------------------------
@@ -472,17 +530,17 @@ TEST(JournalWindow, ForgettingItLeavesNothingToMatchAgainst) {
 
 TEST(JournalDelivery, AskingFirstMeansAnUnansweredCallIsNotTheLastAnswer) {
   journal_state state;
-  state.ask(4);
+  state.ask(Entry(4));
   state.deliver("something");
   EXPECT_EQ(state.delivery(), journal_delivery::ready);
-  state.ask(5);
+  state.ask(Entry(5));
   EXPECT_EQ(state.delivery(), journal_delivery::no_host);
   EXPECT_TRUE(state.text().empty());
 }
 
 TEST(JournalDelivery, NoTextIsItsOwnAnswerAndNotAReadyBlank) {
   journal_state state;
-  state.ask(4);
+  state.ask(Entry(4));
   state.deliver("");
   EXPECT_EQ(state.delivery(), journal_delivery::no_text);
 }
@@ -490,7 +548,7 @@ TEST(JournalDelivery, NoTextIsItsOwnAnswerAndNotAReadyBlank) {
 TEST(JournalDelivery, TextLongerThanTheBufferIsTruncatedAndSaysSo) {
   journal_state state;
   const std::string huge(journal_page_bytes + 100, 'x');
-  state.ask(1);
+  state.ask(Entry(1));
   state.deliver(huge);
   EXPECT_EQ(state.delivery(), journal_delivery::ready);
   EXPECT_EQ(state.text().size(), journal_page_bytes);
@@ -521,12 +579,12 @@ TEST(JournalReader, ACitationOpensTheEntryOnTheGamesOwnScreen) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 12;
+  r.host.holds.number = 12;
   r.host.text = "A short line.";
 
   r.program_draws("Read journal entry 12.");
   EXPECT_EQ(r.host.calls, 1u);
-  EXPECT_EQ(r.host.asked, 12u);
+  EXPECT_EQ(r.host.asked, journal_open_argument(Entry(12)));
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
 
   r.adventuring();
@@ -583,7 +641,7 @@ TEST(JournalReader, TheKeyAsksForAnEntryAndReturnOpensIt) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 12;
+  r.host.holds.number = 12;
   r.host.text = "Here is the entry.";
 
   r.type(key_f1);
@@ -602,8 +660,131 @@ TEST(JournalReader, TheKeyAsksForAnEntryAndReturnOpensIt) {
   r.type(key_return);
   r.poll();
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
-  EXPECT_EQ(r.host.asked, 12u);
+  EXPECT_EQ(r.host.asked, journal_open_argument(Entry(12)));
   EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("HERE IS THE ENTRY."));
+}
+
+TEST(JournalReader, TheKeyPicksTheSectionAndTheAnswerIsThePair) {
+  // #218: three numbered sections, so a player typing `4` at the prompt
+  // has not yet said what they want. F1 is what says it — the key this
+  // seam already owns, rather than one the automap might want.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Tale(4);
+  r.host.text = "A tale.";
+
+  r.type(key_f1);
+  r.poll();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
+  EXPECT_EQ(r.reader().asked_kind(), journal_kind::entry)
+      << "the prompt opens on the section the game cites most";
+
+  r.type(key_four);
+  r.poll();
+  EXPECT_EQ(r.row_text(reader_body_y + (4 * glyph_height)),
+            prompt_row("ENTRY 4"));
+
+  // Round the three and back to the start, with the panel saying which.
+  r.type(key_f1);
+  r.poll();
+  EXPECT_EQ(r.reader().asked_kind(), journal_kind::tale);
+  EXPECT_EQ(r.row_text(reader_body_y + (4 * glyph_height)),
+            prompt_row("TALE 4"))
+      << "the digits are kept: picking a section is not retyping a number";
+
+  r.type(key_return);
+  r.poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.host.asked, journal_open_argument(Tale(4)))
+      << "the host is asked for a tale, not for entry four";
+  EXPECT_EQ(r.row_text(reader_title_y), centred("TALE 4"));
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("A TALE."));
+}
+
+TEST(JournalReader, TheSectionGoesRoundAndComesBack) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+
+  r.type(key_f1);
+  r.poll();
+  for (const journal_kind want :
+       {journal_kind::tale, journal_kind::proclamation, journal_kind::entry}) {
+    r.type(key_f1);
+    r.poll();
+    EXPECT_EQ(r.reader().asked_kind(), want);
+  }
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking)
+      << "F1 no longer closes the prompt; escape is what leaves it";
+}
+
+TEST(JournalReader, EscapeIsStillTheWayOutOfThePrompt) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+
+  r.type(key_f1);
+  r.poll();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
+  r.type(key_escape);
+  r.poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalReader, ACitedTaleIsNotTheEntryWithTheSameNumber) {
+  // The whole of #218 in one case. The game cites tale twelve while entry
+  // twelve is what the host holds; a build that carried the number alone
+  // would put entry twelve on the screen and be sure it was right.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(12);
+  r.host.text = "The twelfth entry.";
+
+  r.program_draws("read tale 12");
+  r.poll();
+  EXPECT_EQ(r.host.asked, journal_open_argument(Tale(12)));
+  EXPECT_EQ(r.reader().delivery(), journal_delivery::no_entry);
+}
+
+TEST(JournalReader, TheSameNumberInAnotherSectionIsAFreshCitation) {
+  // The reader leaves an entry alone when the game cites the one already
+  // on the screen. That comparison is of the *pair*: entry twelve is up,
+  // and tale twelve is a different text and has to be asked for.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(12);
+  r.host.text = "The twelfth entry.";
+
+  r.program_draws("journal entry 12");
+  r.poll();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  const unsigned after_first = r.host.calls;
+
+  r.reader().forget_citation();
+  r.program_draws("journal entry 12");
+  r.poll();
+  EXPECT_EQ(r.host.calls, after_first)
+      << "the entry already on the screen is not asked for again";
+
+  r.reader().forget_citation();
+  r.program_draws("tale 12");
+  r.poll();
+  EXPECT_EQ(r.host.calls, after_first + 1U)
+      << "the same number in another section is another text";
+  EXPECT_EQ(r.host.asked, journal_open_argument(Tale(12)));
 }
 
 TEST(JournalReader, BackspaceRubsOutADigit) {
@@ -630,7 +811,7 @@ TEST(JournalReader, AnEntryTheJournalHasNotSaysWhichKindOfNothingItIs) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 12;
+  r.host.holds.number = 12;
   r.host.text = "Something.";
 
   r.type(key_f1);
@@ -652,7 +833,7 @@ TEST(JournalReader, ALongEntryIsWrappedAtTheWordAndPaged) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 1;
+  r.host.holds.number = 1;
   // Two lines' worth, with a word that must not be split across them.
   r.host.text = "aaaa bbbb cccc dddd ee ffffffff gggg";
 
@@ -671,7 +852,7 @@ TEST(JournalReader, AWordLongerThanThePanelIsBrokenRatherThanDropped) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 1;
+  r.host.holds.number = 1;
   r.host.text = std::string(30, 'q');
 
   r.program_draws("journal 1");
@@ -688,7 +869,7 @@ TEST(JournalReader, TheKeyTurnsThePagesAndThenPutsItAway) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 1;
+  r.host.holds.number = 1;
   // Thirteen lines of one word each: one more than a page holds.
   std::string text;
   for (int line = 0; line < 13; ++line) {
@@ -737,7 +918,7 @@ TEST(JournalReader, WithNoFontInstalledNothingIsDrawn) {
   r.enable();
   r.adventuring();
   r.no_font();
-  r.host.number = 1;
+  r.host.holds.number = 1;
   r.host.text = "text";
 
   r.program_draws("journal 1");
@@ -754,7 +935,7 @@ TEST(JournalReader, OffAScreenWithARosterItDrawsNothing) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 1;
+  r.host.holds.number = 1;
   r.host.text = "text";
   r.program_draws("journal 1");
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
@@ -771,7 +952,7 @@ TEST(JournalReader, SomethingClearingTheseCellsTakesThePageWithIt) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 1;
+  r.host.holds.number = 1;
   r.host.text = "text";
   r.program_draws("journal 1");
   r.adventuring();
@@ -824,7 +1005,7 @@ TEST(JournalReader, AnEntryOpenedOffARosterScreenComesUpWhenOneReturns) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 1;
+  r.host.holds.number = 1;
   r.host.text = "text";
 
   r.adventuring();
@@ -862,7 +1043,7 @@ TEST(JournalKeys, WhileAPageIsUpReturnStaysTheProgramsOwn) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 1;
+  r.host.holds.number = 1;
   r.host.text = "text";
   r.program_draws("journal 1");
   r.adventuring();
@@ -949,7 +1130,7 @@ TEST(JournalFidelity, WatchingTheProgramsTextIsNotMachineState) {
   r.enable();
   r.adventuring();
   r.program_draws("nothing to see here at all");
-  ASSERT_EQ(r.reader().cited(), 0u);
+  ASSERT_EQ(r.reader().cited(), Nothing());
 
   rig plain;
   plain.adventuring();
@@ -962,13 +1143,13 @@ TEST(JournalFidelity, AResetMachineHasReadNothing) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.number = 1;
+  r.host.holds.number = 1;
   r.host.text = "text";
   r.program_draws("journal 1");
   ASSERT_TRUE(r.reader().reader_open());
   r.pc().reset();
   EXPECT_FALSE(r.reader().reader_open());
-  EXPECT_EQ(r.reader().cited(), 0u);
+  EXPECT_EQ(r.reader().cited(), Nothing());
   EXPECT_EQ(r.reader().delivery(), journal_delivery::none);
 }
 

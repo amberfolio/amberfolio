@@ -526,6 +526,26 @@ void draw_centred(panel_pixels& panel, int y, std::string_view text,
             text.substr(0, static_cast<std::size_t>(columns)), colour, font);
 }
 
+/// What the panel calls each of the journal's sections.
+///
+/// Separate from `machine::journal_kind_name()`, which is the lower-case
+/// token a store file and a log line use. This is a *caption*: upper case
+/// because that is the case the program's font is legible in, and short
+/// enough that it and a four-digit number fit the panel's twenty-two
+/// columns — which `PROCLAMATION 214` does, with five to spare.
+[[nodiscard]] constexpr std::string_view reader_word(
+    journal_kind which) noexcept {
+  switch (which) {
+    case journal_kind::entry:
+      return "ENTRY";
+    case journal_kind::tale:
+      return "TALE";
+    case journal_kind::proclamation:
+      return "PROCLAMATION";
+  }
+  return "ENTRY";
+}
+
 /// A short line built out of this file's own characters — a title, a
 /// footer, a prompt. Never a word of the program's, which is why it is a
 /// fixed buffer rather than a pointer into the machine.
@@ -600,7 +620,8 @@ struct refusal {
     draw_centred(panel, reader_title_y, title.view(), colour_title, font);
 
     label prompt;
-    prompt.add("ENTRY ");
+    prompt.add(reader_word(state.asked_kind()));
+    prompt.add(" ");
     prompt.add(state.digits());
     // The cursor is **drawn**, not lettered, and that is a fact about the
     // program's font rather than a preference. Its table is sixty-four
@@ -619,6 +640,15 @@ struct refusal {
           prompt_y + glyph_rows - 2, colour_body);
     }
 
+    // The prompt has to say which of the three sections it is pointed at
+    // and how to point it elsewhere, because a number alone names three
+    // different texts (`machine/journal.h`'s `journal_kind`). The word
+    // above *is* the answer to the first, so this line is only the second.
+    label hint;
+    hint.add("F1 PICKS SECTION");
+    draw_centred(panel, reader_body_y + (6 * glyph_rows), hint.view(),
+                 colour_footer, font);
+
     label footer;
     footer.add("RETURN OPENS IT");
     draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
@@ -626,8 +656,9 @@ struct refusal {
   }
 
   label title;
-  title.add("ENTRY ");
-  title.add(state.entry());
+  title.add(reader_word(state.entry().kind));
+  title.add(" ");
+  title.add(state.entry().number);
   draw_centred(panel, reader_title_y, title.view(), colour_title, font);
 
   if (state.delivery() != journal_delivery::ready) {
@@ -883,9 +914,10 @@ enum class claimable : std::uint8_t {
 /// Ask the host for an entry. What it answered is in `journal_state`
 /// afterwards, whichever way it went — a callout nothing served leaves
 /// `no_host`, which `ask()` put there before the call (journal.h).
-void request(machine& box, seam_context& ctx, std::uint16_t entry) {
-  box.journal().ask(entry);
-  (void)ctx.call_host(seam_host_service::journal_open, entry);
+void request(machine& box, seam_context& ctx, journal_citation what) {
+  box.journal().ask(what);
+  (void)ctx.call_host(seam_host_service::journal_open,
+                      journal_open_argument(what));
 }
 
 void close_reader(machine& box, seam_context& ctx, std::uint16_t ds) {
@@ -900,18 +932,27 @@ void close_reader(machine& box, seam_context& ctx, std::uint16_t ds) {
 
 /// F1, wherever the reader happens to be.
 ///
-/// One key that opens the prompt, turns the pages and puts the entry away
-/// on the last of them. It is the whole surface a player has to learn, and
-/// the footer says what it will do next every time it is on the screen.
+/// One key that opens the prompt, points it at each section in turn,
+/// turns the pages and puts the entry away on the last of them. It is the
+/// whole surface a player has to learn, and the panel says what it will do
+/// next every time it is on the screen.
+///
+/// **The section chooser is this key and not another one** (#218). The
+/// prompt needs one — a player typing `4` has not said which section they
+/// mean — and every key this seam might have taken instead is a key some
+/// other seam may want: the automap's is Tab, and two enhancements a
+/// player has both switched on must not fight over a keystroke. Escape is
+/// what leaves the prompt, and always was.
 void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
   journal_state& state = box.journal();
   switch (state.reader()) {
     case journal_reader_mode::closed:
       state.clear_digits();
+      state.set_asked_kind(journal_kind::entry);
       state.set_reader(journal_reader_mode::asking);
       return;
     case journal_reader_mode::asking:
-      close_reader(box, ctx, ds);
+      state.cycle_asked_kind();
       return;
     case journal_reader_mode::showing:
       break;
@@ -953,7 +994,7 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
       }
       return false;
     case claimable::accept:
-      if (const std::uint16_t wanted = state.asked_entry(); wanted != 0) {
+      if (const journal_citation wanted = state.asked(); wanted) {
         request(box, ctx, wanted);
         state.set_reader(journal_reader_mode::showing);
         state.set_page(0);
@@ -985,11 +1026,14 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
     drawn ^= drawn >> 13U;
   };
   mix(static_cast<std::uint32_t>(state.reader()));
-  mix(state.entry());
+  mix(journal_open_argument(state.entry()));
   mix(state.page());
   mix(static_cast<std::uint32_t>(state.delivery()));
   mix(static_cast<std::uint32_t>(state.digits().size()));
-  mix(state.asked_entry());
+  // The prompt's *pair*: pointing it at another section changes what is
+  // drawn without changing a digit, and a signature that mixed only the
+  // number would decide the panel was already right.
+  mix(journal_open_argument(state.asked()));
   mix(cpu.read_word(ds, at(data_font_pointer, 2)));
   if (drawn == 0) {
     // Zero is this seam's "nothing has been drawn" (journal.h), so it is
@@ -1108,9 +1152,9 @@ void at_draw_string(machine& box, seam_context& ctx) {
   }
 
   journal_state& state = box.journal();
-  const std::uint16_t entry =
+  const journal_citation cited =
       state.note_drawn_text(std::string_view{drawn.data(), take});
-  if (entry == 0) {
+  if (!cited) {
     return;
   }
 
@@ -1121,10 +1165,10 @@ void at_draw_string(machine& box, seam_context& ctx) {
   // beats leaving the previous entry up as though it were the answer.
   const bool was_open = state.reader() != journal_reader_mode::closed;
   if (was_open && state.reader() == journal_reader_mode::showing &&
-      state.entry() == entry && state.delivery() == journal_delivery::ready) {
+      state.entry() == cited && state.delivery() == journal_delivery::ready) {
     return;
   }
-  request(box, ctx, entry);
+  request(box, ctx, cited);
   if (state.delivery() == journal_delivery::ready || was_open) {
     state.set_reader(journal_reader_mode::showing);
     state.set_page(0);
@@ -1210,8 +1254,8 @@ constexpr std::array<seam_point, 6> journal_points{
 constexpr seam_definition journal_definition{
     .id = "journal",
     .about =
-        "the entry the game cites, on the game's own screen; F1 for any "
-        "other",
+        "what the game cites, on the game's own screen; F1 for any "
+        "entry, tale or proclamation",
     .fingerprints = journal_binaries,
     .points = journal_points,
     .trigger = false,

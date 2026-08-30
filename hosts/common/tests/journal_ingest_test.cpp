@@ -28,6 +28,11 @@
 namespace amberfolio::host {
 namespace {
 
+/// A citation, spelled out — the store's key is a pair since #218.
+constexpr machine::journal_citation Entry(std::uint16_t number) {
+  return {.kind = journal_kind::entry, .number = number};
+}
+
 TEST(JournalIngest, TheProbeGoesAllTheWayThrough) {
   journal_ingester ingester(journal_probe_table());
   ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
@@ -43,12 +48,12 @@ TEST(JournalIngest, TheProbeGoesAllTheWayThrough) {
   EXPECT_EQ(report.extracted, journal_probe_entries);
   EXPECT_EQ(report.recognized, journal_probe_entries);
   EXPECT_EQ(report.first_trouble, journal_trouble::none);
-  EXPECT_EQ(report.first_failure, 0U);
+  EXPECT_EQ(report.first_failure, machine::journal_citation{});
 
   EXPECT_EQ(store.edition(), ingester.fingerprint_hex());
   EXPECT_EQ(store.engine(), engine.engine());
-  EXPECT_EQ(store.text(1), journal_probe_text(0));
-  EXPECT_EQ(store.text(2), journal_probe_text(1));
+  EXPECT_EQ(store.text(Entry(1)), journal_probe_text(0));
+  EXPECT_EQ(store.text(Entry(2)), journal_probe_text(1));
 }
 
 TEST(JournalIngest, AnUnrecognizedDocumentIsReportedWithItsFingerprint) {
@@ -98,7 +103,7 @@ TEST(JournalIngest, WithNoEngineTheImagesAreStillRead) {
   EXPECT_EQ(report.extracted, journal_probe_entries);
   EXPECT_EQ(report.recognized, 0U);
   EXPECT_EQ(report.first_trouble, journal_trouble::no_engine);
-  EXPECT_EQ(report.first_failure, 1U);
+  EXPECT_EQ(report.first_failure, Entry(1));
   EXPECT_EQ(store.engine(), "none");
   EXPECT_TRUE(store.empty());
 }
@@ -135,12 +140,12 @@ TEST(JournalIngest, ACorrectionSurvivesReIngestion) {
   journal_probe_ocr engine;
   journal_store store;
   static_cast<void>(ingester.run(&engine, store));
-  ASSERT_TRUE(store.correct(1, "what a person wrote instead"));
+  ASSERT_TRUE(store.correct(Entry(1), "what a person wrote instead"));
 
   const journal_ingest_report again = ingester.run(&engine, store);
   EXPECT_EQ(again.recognized, journal_probe_entries);
-  EXPECT_EQ(store.text(1), "what a person wrote instead");
-  const journal_text* entry = store.find(1);
+  EXPECT_EQ(store.text(Entry(1)), "what a person wrote instead");
+  const journal_text* entry = store.find(Entry(1));
   ASSERT_NE(entry, nullptr);
   EXPECT_EQ(entry->scanned, journal_probe_text(0));
 }
@@ -151,8 +156,8 @@ TEST(JournalIngest, AStoreOfAnotherEditionIsClearedRatherThanMerged) {
   journal_store store;
   store.set_edition(
       "9999999999999999999999999999999999999999999999999999999999999999");
-  ASSERT_TRUE(store.record_scan(1, "text from a different printing"));
-  ASSERT_TRUE(store.correct(1, "a correction to it"));
+  ASSERT_TRUE(store.record_scan(Entry(1), "text from a different printing"));
+  ASSERT_TRUE(store.correct(Entry(1), "a correction to it"));
 
   journal_ingester ingester(journal_probe_table());
   ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
@@ -160,8 +165,8 @@ TEST(JournalIngest, AStoreOfAnotherEditionIsClearedRatherThanMerged) {
   static_cast<void>(ingester.run(&engine, store));
 
   EXPECT_EQ(store.edition(), ingester.fingerprint_hex());
-  EXPECT_EQ(store.text(1), journal_probe_text(0));
-  const journal_text* entry = store.find(1);
+  EXPECT_EQ(store.text(Entry(1)), journal_probe_text(0));
+  const journal_text* entry = store.find(Entry(1));
   ASSERT_NE(entry, nullptr);
   EXPECT_TRUE(entry->corrected.empty())
       << "a correction to another edition's entry 1 was kept";
@@ -188,7 +193,8 @@ TEST(JournalIngest, AHostMayDriveTheLoopItself) {
       EXPECT_EQ(ingester.scan().encoding, journal_encoding::gray);
       EXPECT_EQ(ingester.image().pixels, journal_probe_expected(index).pixels);
     }
-    ASSERT_TRUE(store.record_scan(ingester.entry_at(index)->number,
+    ASSERT_TRUE(store.record_scan({.kind = ingester.entry_at(index)->kind,
+                                   .number = ingester.entry_at(index)->number},
                                   journal_probe_text(index)));
   }
   EXPECT_EQ(store.recognized(), journal_probe_entries);

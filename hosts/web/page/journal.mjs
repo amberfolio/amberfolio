@@ -296,6 +296,29 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
   };
 }
 
+/// The journal's numbered sections, in the order the module's own
+/// `machine::journal_kind` has them. A citation carries one of these and
+/// a number, because all three sections number from their own bases and
+/// tale 4 is not journal entry 4 (#218).
+export const JOURNAL_KINDS = ['entry', 'tale', 'proclamation'];
+
+/// Take a citation apart. The module hands these out and takes them back
+/// whole, so a page only needs these to *show* one to a person.
+export function journalKind(citation) {
+  return JOURNAL_KINDS[citation >>> 16] ?? 'entry';
+}
+
+export function journalNumber(citation) {
+  return citation & 0xffff;
+}
+
+/// Put one together — for a page asking for something nobody cited.
+export function journalCitation(kind, number) {
+  const which = JOURNAL_KINDS.indexOf(kind);
+  if (which < 0) throw new Error(`no journal section called '${kind}'`);
+  return (which << 16) | (number & 0xffff);
+}
+
 /// Ingest `bytes` — a whole document, as the player's file input gave it.
 ///
 /// `engine` is anything with a `recognize(scan)` and a `name`; null
@@ -303,9 +326,10 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
 /// extracted and none recognized, which is what a page with no engine
 /// installed should show rather than an error.
 ///
-/// `onProgress({ index, count, number })` is called before each entry, so
-/// a page can say where it is; a hundred entries through a wasm OCR
-/// engine is not a moment.
+/// `onProgress({ index, count, citation })` is called before each entry,
+/// so a page can say where it is; a hundred entries through a wasm OCR
+/// engine is not a moment. A citation is opaque here — `journalKind()`
+/// and `journalNumber()` are what read it.
 export async function ingestJournal(
   module,
   bytes,
@@ -350,17 +374,20 @@ export async function ingestJournal(
   let recognized = 0;
   let firstTrouble = null;
   for (let index = 0; index < count; ++index) {
-    const number = module._af_web_journal_entry_number(index);
-    if (onProgress) onProgress({ index, count, number });
+    const citation = module._af_web_journal_entry_citation(index);
+    if (onProgress) onProgress({ index, count, citation });
 
     const why = module._af_web_journal_extract(index);
     if (why !== JOURNAL_OK) {
-      firstTrouble ??= { number, what: troubleName(module, why) };
+      firstTrouble ??= { citation, what: troubleName(module, why) };
       continue;
     }
     ++extracted;
     if (!engine) {
-      firstTrouble ??= { number, what: 'there is no OCR engine to read it with' };
+      firstTrouble ??= {
+        citation,
+        what: 'there is no OCR engine to read it with',
+      };
       continue;
     }
     const scan = currentScan(module);
@@ -369,12 +396,14 @@ export async function ingestJournal(
     // once (hosts/common/.../journal_ingest.h).
     const text = scan === null
       ? ''
-      : await engine.recognize(scan, { index, number });
+      : await engine.recognize(scan, { index, citation });
     if (!text) {
-      firstTrouble ??= { number, what: 'the OCR engine did not read it' };
+      firstTrouble ??= { citation, what: 'the OCR engine did not read it' };
       continue;
     }
-    withUtf8(module, text, (ptr) => module._af_web_journal_set_text(number, ptr));
+    withUtf8(module, text, (ptr) =>
+      module._af_web_journal_set_text(citation, ptr),
+    );
     ++recognized;
   }
 
@@ -403,9 +432,9 @@ export async function ingestJournal(
 /// the scan otherwise. The in-game reader (M5-E4, #175) asks for the same
 /// thing from inside the module, through the `journal_open` host service;
 /// the page uses this to show a player what was read before they go in.
-export function journalText(module, number) {
+export function journalText(module, citation) {
   return readText(module, (out, cap) =>
-    module._af_web_journal_text(number, out, cap),
+    module._af_web_journal_text(citation, out, cap),
   );
 }
 
@@ -424,9 +453,9 @@ export function readStore(module, text) {
 }
 
 /// A person's correction to one entry.
-export function correctJournalEntry(module, number, text) {
+export function correctJournalEntry(module, citation, text) {
   return withUtf8(module, text, (ptr) =>
-    module._af_web_journal_correct(number, ptr),
+    module._af_web_journal_correct(citation, ptr),
   );
 }
 

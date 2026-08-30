@@ -99,7 +99,7 @@ struct journal_ingest_report {
   /// How many of those the engine read text out of.
   std::uint32_t recognized{0};
   /// The first entry that failed, and how — zero and `none` if none did.
-  std::uint16_t first_failure{0};
+  machine::journal_citation first_failure{};
   journal_trouble first_trouble{journal_trouble::none};
 };
 

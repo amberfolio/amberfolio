@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "amberfolio/host/journal_facts.h"
@@ -63,6 +64,25 @@ namespace {
   return true;
 }
 
+/// One lower-case word, up to but not including the space after it.
+///
+/// The space is left for the caller's `take_literal`, so a record whose
+/// word runs straight into its number is refused rather than read as a
+/// word this build happens not to know.
+[[nodiscard]] bool take_word(std::string_view text, std::size_t& at,
+                             std::string_view& out) noexcept {
+  std::size_t end = at;
+  while (end < text.size() && text[end] >= 'a' && text[end] <= 'z') {
+    ++end;
+  }
+  if (end == at) {
+    return false;
+  }
+  out = text.substr(at, end - at);
+  at = end;
+  return true;
+}
+
 void append_number(std::string& out, std::uint64_t value) {
   char digits[24];
   std::size_t at = sizeof(digits);
@@ -74,13 +94,15 @@ void append_number(std::string& out, std::uint64_t value) {
 }
 
 void append_record(std::string& out, std::string_view keyword,
-                   std::uint16_t number, std::string_view body) {
+                   machine::journal_citation what, std::string_view body) {
   if (body.empty()) {
     return;
   }
   out.append(keyword);
   out.push_back(' ');
-  append_number(out, number);
+  out.append(journal_kind_name(what.kind));
+  out.push_back(' ');
+  append_number(out, what.number);
   out.push_back(' ');
   append_number(out, body.size());
   out.push_back('\n');
@@ -90,56 +112,80 @@ void append_record(std::string& out, std::string_view keyword,
 
 }  // namespace
 
-const journal_text* journal_store::find(std::uint16_t number) const noexcept {
+namespace {
+
+/// The order the store keeps: by section, then by number within it.
+///
+/// A pair and not a number, which is what #218 is about. `kind` first
+/// rather than `number` first only because it makes a serialized store
+/// readable by a person — the three sections come out in blocks — and any
+/// total order would do for `fingerprint()`.
+[[nodiscard]] constexpr auto key_of(machine::journal_citation what) noexcept {
+  return std::pair{static_cast<std::uint8_t>(what.kind), what.number};
+}
+
+[[nodiscard]] constexpr auto key_of(const journal_text& entry) noexcept {
+  return std::pair{static_cast<std::uint8_t>(entry.kind), entry.number};
+}
+
+}  // namespace
+
+const journal_text* journal_store::find(
+    machine::journal_citation what) const noexcept {
   const auto found = std::ranges::lower_bound(
-      entries_, number, {},
-      [](const journal_text& entry) { return entry.number; });
-  if (found == entries_.end() || found->number != number) {
+      entries_, key_of(what), {},
+      [](const journal_text& entry) { return key_of(entry); });
+  if (found == entries_.end() || key_of(*found) != key_of(what)) {
     return nullptr;
   }
   return &*found;
 }
 
-std::string_view journal_store::text(std::uint16_t number) const noexcept {
-  const journal_text* entry = find(number);
+std::string_view journal_store::text(
+    machine::journal_citation what) const noexcept {
+  const journal_text* entry = find(what);
   return entry == nullptr ? std::string_view{} : entry->text();
 }
 
-journal_text* journal_store::entry_for(std::uint16_t number) {
+journal_text* journal_store::entry_for(machine::journal_citation what) {
   const auto at = std::ranges::lower_bound(
-      entries_, number, {},
-      [](const journal_text& entry) { return entry.number; });
-  if (at != entries_.end() && at->number == number) {
+      entries_, key_of(what), {},
+      [](const journal_text& entry) { return key_of(entry); });
+  if (at != entries_.end() && key_of(*at) == key_of(what)) {
     return &*at;
   }
   if (entries_.size() >= journal_max_entries) {
     return nullptr;
   }
-  return &*entries_.insert(
-      at, journal_text{.number = number, .scanned = {}, .corrected = {}});
+  return &*entries_.insert(at, journal_text{.kind = what.kind,
+                                            .number = what.number,
+                                            .scanned = {},
+                                            .corrected = {}});
 }
 
-bool journal_store::record_scan(std::uint16_t number, std::string_view what) {
-  if (what.size() > journal_max_entry_bytes) {
+bool journal_store::record_scan(machine::journal_citation what,
+                                std::string_view text) {
+  if (text.size() > journal_max_entry_bytes) {
     return false;
   }
-  journal_text* entry = entry_for(number);
+  journal_text* entry = entry_for(what);
   if (entry == nullptr) {
     return false;
   }
-  entry->scanned.assign(what);
+  entry->scanned.assign(text);
   return true;
 }
 
-bool journal_store::correct(std::uint16_t number, std::string_view what) {
-  if (what.size() > journal_max_entry_bytes) {
+bool journal_store::correct(machine::journal_citation what,
+                            std::string_view text) {
+  if (text.size() > journal_max_entry_bytes) {
     return false;
   }
-  journal_text* entry = entry_for(number);
+  journal_text* entry = entry_for(what);
   if (entry == nullptr) {
     return false;
   }
-  entry->corrected.assign(what);
+  entry->corrected.assign(text);
   return true;
 }
 
@@ -172,8 +218,10 @@ std::string journal_store::serialize() const {
   out.append(engine_);
   out.push_back('\n');
   for (const journal_text& entry : entries_) {
-    append_record(out, "scanned", entry.number, entry.scanned);
-    append_record(out, "corrected", entry.number, entry.corrected);
+    const machine::journal_citation what{.kind = entry.kind,
+                                         .number = entry.number};
+    append_record(out, "scanned", what, entry.scanned);
+    append_record(out, "corrected", what, entry.corrected);
   }
   return out;
 }
@@ -215,11 +263,15 @@ journal_trouble journal_store::parse(std::string_view whole) {
       !take_literal(text, at, "\n")) {
     return journal_trouble::not_a_store;
   }
-  // A store from a later format is refused rather than read as far as it
-  // parses: what a version number is for.
-  if (version != journal_store_version) {
+  // A store from a *later* format is refused rather than read as far as
+  // it parses: what a version number is for. An older one is read, which
+  // is the other half of what it is for — see the format in the header.
+  if (version > journal_store_version ||
+      version < journal_store_oldest_version) {
     return journal_trouble::not_a_store;
   }
+  // Version 1 predates the sections and so has no kind on its records.
+  const bool kinded = version >= 2U;
 
   std::string_view edition;
   std::string_view engine;
@@ -242,6 +294,15 @@ journal_trouble journal_store::parse(std::string_view whole) {
     }
     at += scanned ? 8U : 10U;
 
+    journal_kind kind = journal_kind::entry;
+    if (kinded) {
+      std::string_view word;
+      if (!take_word(text, at, word) || !journal_kind_from_name(word, kind) ||
+          !take_literal(text, at, " ")) {
+        return journal_trouble::not_a_store;
+      }
+    }
+
     std::uint64_t number = 0;
     std::uint64_t length = 0;
     if (!take_number(text, at, 0xFFFFU, number) ||
@@ -258,9 +319,10 @@ journal_trouble journal_store::parse(std::string_view whole) {
         text.substr(at, static_cast<std::size_t>(length));
     at += static_cast<std::size_t>(length) + 1U;
 
+    const machine::journal_citation what{
+        .kind = kind, .number = static_cast<std::uint16_t>(number)};
     const bool stored =
-        scanned ? read.record_scan(static_cast<std::uint16_t>(number), body)
-                : read.correct(static_cast<std::uint16_t>(number), body);
+        scanned ? read.record_scan(what, body) : read.correct(what, body);
     if (!stored) {
       return journal_trouble::too_large;
     }

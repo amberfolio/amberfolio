@@ -50,12 +50,17 @@ void host_services::serve(machine::machine& box,
       page.refuse(machine::journal_delivery::no_journal);
       return;
     }
-    if (argument > 0xFFFFU) {
+    // The argument is a *pair* since #218 — a section and a number packed
+    // into the one word the callout carries. An argument that does not
+    // decode to a citation this build knows is refused exactly like a
+    // number that names nothing, because that is what it is.
+    const machine::journal_citation what =
+        machine::journal_open_citation(argument);
+    if (!what) {
       page.refuse(machine::journal_delivery::no_entry);
       return;
     }
-    const journal_text* found =
-        journal_->find(static_cast<std::uint16_t>(argument));
+    const journal_text* found = journal_->find(what);
     if (found == nullptr) {
       page.refuse(machine::journal_delivery::no_entry);
       return;
