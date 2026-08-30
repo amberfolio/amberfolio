@@ -61,8 +61,8 @@ TEST(JournalTable, TheEntriesAndTheTalesAreNumberedWithoutAGap) {
   // them apart: they are printed in Roman numerals, they start at 59 and
   // they skip. A run of them proves nothing, so they get the check they
   // can pass instead — the one below.
-  for (const auto [kind, last] : {std::pair{journal_kind::entry, 58U},
-                                  std::pair{journal_kind::tale, 23U}}) {
+  for (const auto& [kind, last] : {std::pair{journal_kind::entry, 58U},
+                                   std::pair{journal_kind::tale, 23U}}) {
     std::uint16_t expected = 1;
     for (const journal_entry_fact& fact : known_journals().front().entries) {
       if (fact.kind != kind) {
