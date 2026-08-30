@@ -171,8 +171,13 @@ set(_amberfolio_web_export_names
   # tesseract.js is on the far side of this boundary and is
   # asynchronous, so the page asks for one entry's pixels, recognizes
   # them, and hands the text back (src/main.cpp says so at length). The
-  # last four are the synthetic probe document, which is test apparatus
+  # last five are the synthetic probe document, which is test apparatus
   # and is a host export for the same reason the probe seam is one.
+  #
+  # The seven `encoding`/`encoded`/`region` names are M5-E3a's (#212): an
+  # entry whose filter this module does not decode reaches the page as
+  # the stream's own bytes and a rectangle, and the page's engine reads
+  # the page and keeps the words inside it.
   _af_web_journal_ingest
   _af_web_journal_trouble_name
   _af_web_journal_fingerprint
@@ -183,6 +188,13 @@ set(_amberfolio_web_export_names
   _af_web_journal_image_bytes
   _af_web_journal_image_width
   _af_web_journal_image_height
+  _af_web_journal_encoding
+  _af_web_journal_encoded_bytes
+  _af_web_journal_encoded_size
+  _af_web_journal_region_left
+  _af_web_journal_region_top
+  _af_web_journal_region_width
+  _af_web_journal_region_height
   _af_web_journal_set_text
   _af_web_journal_correct
   _af_web_journal_text

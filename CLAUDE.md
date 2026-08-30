@@ -140,12 +140,18 @@ What M4 left in place:
   is linked on neither — the desktop runs the player's own installed one
   as a program, the page loads the pinned tesseract.js
   (`.tesseract-version`, `.tesseract-js-version`) from its own origin and
-  **never a CDN**. **The edition table is empty**, because these are
-  facts about a document nobody here has sat down with, so every real
-  journal takes the unrecognized path; the whole pipeline is proven in CI
-  on all four targets against a synthetic PDF this project generates
-  (`journal_probe.h`) with a fixture engine that answers only for the
-  pixels the extraction was supposed to produce. The in-game reader that
+  **never a CDN**. A page this build cannot decode is **carried rather
+  than decoded** (M5-E3a #212): the first real journal anybody produced is
+  `/DCTDecode` on every page, so its stream goes to the engine as its own
+  bytes and the entry's rectangle filters the engine's *output* — which
+  both engines can do, because both say where each word was. Nothing here
+  learns what a JPEG is. **The edition table is still empty**, because
+  those are facts about a document somebody has to sit down with and
+  nobody has, so every real journal takes the unrecognized path; the whole
+  pipeline is proven in CI on all four targets against a synthetic PDF
+  this project generates (`journal_probe.h`) — three entries now, the
+  third a real baseline JPEG this project encodes — with a fixture engine
+  that answers only for the scan the extraction was supposed to produce. The in-game reader that
   consumes it is M5-E4 (#175), above, and is a seam rather than host
   work; `docs/journal.md` §9 is the door between the two halves.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a

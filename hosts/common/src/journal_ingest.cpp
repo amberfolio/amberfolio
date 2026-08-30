@@ -22,7 +22,7 @@ journal_trouble journal_ingester::begin(
     std::span<const std::uint8_t> document) {
   document_ = document;
   edition_ = nullptr;
-  image_ = journal_bitmap{};
+  scan_ = journal_scan{};
   fingerprint_ = sha256(document);
   edition_ = find_journal(table_, fingerprint_);
   return edition_ == nullptr ? journal_trouble::unrecognized_edition
@@ -50,11 +50,11 @@ const journal_entry_fact* journal_ingester::entry_at(
 journal_trouble journal_ingester::extract(std::size_t index) {
   const journal_entry_fact* fact = entry_at(index);
   if (fact == nullptr) {
-    image_ = journal_bitmap{};
+    scan_ = journal_scan{};
     return edition_ == nullptr ? journal_trouble::unrecognized_edition
                                : journal_trouble::no_such_entry;
   }
-  return extract_entry(document_, *fact, image_);
+  return extract_scan(document_, *fact, scan_);
 }
 
 void journal_ingester::adopt(journal_store& into) const {
@@ -91,7 +91,7 @@ journal_ingest_report journal_ingester::run(journal_ocr* engine,
         why = journal_trouble::no_engine;
       } else {
         text.clear();
-        if (!engine->recognize(image_, text)) {
+        if (!engine->recognize(scan_, text)) {
           why = journal_trouble::engine_failed;
         } else if (!into.record_scan(fact.number, text)) {
           why = journal_trouble::too_large;

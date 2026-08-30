@@ -139,7 +139,10 @@ TEST(JournalExtract, AStreamThatDecodesToTheWrongSizeIsRefused) {
             journal_trouble::stream_size_wrong);
 }
 
-TEST(JournalExtract, AFilterThisBuildCannotDecodeIsRefusedByName) {
+TEST(JournalExtract, AFilterThisBuildCannotDecodeHasNoSamplesToAnswerWith) {
+  // `extract_entry` answers *pixels*, so every filter this build does not
+  // decode is refused here — including the one it can still carry (#212),
+  // which `extract_scan` is the way to reach.
   journal_bitmap got;
   for (const journal_filter filter :
        {journal_filter::dct, journal_filter::ccitt, journal_filter::jbig2}) {
@@ -149,6 +152,99 @@ TEST(JournalExtract, AFilterThisBuildCannotDecodeIsRefusedByName) {
               journal_trouble::filter_unsupported)
         << journal_filter_name(filter);
   }
+}
+
+TEST(JournalExtract, AFilterThisBuildCannotCarryAtAllIsRefusedByName) {
+  // The two fax filters are still refused by name and still not built for
+  // on spec (`docs/journal.md` §4). The day a document in hand asks for
+  // one is the day that changes, which is exactly how `dct` got here.
+  journal_scan got;
+  for (const journal_filter filter :
+       {journal_filter::ccitt, journal_filter::jbig2}) {
+    journal_entry_fact fact = ProbeFact(0);
+    fact.image.filter = filter;
+    EXPECT_FALSE(journal_filter_supported(filter))
+        << journal_filter_name(filter);
+    EXPECT_EQ(extract_scan(journal_probe_pdf(), fact, got),
+              journal_trouble::filter_unsupported)
+        << journal_filter_name(filter);
+  }
+}
+
+TEST(JournalExtract, TheTwoQuestionsAboutAFilterAreDifferentQuestions) {
+  // Carried and decoded came apart in #212, and every consumer that read
+  // one of them meaning the other is a consumer that would hand an engine
+  // a JPEG and call it pixels.
+  EXPECT_TRUE(journal_filter_decoded(journal_filter::none));
+  EXPECT_TRUE(journal_filter_decoded(journal_filter::flate));
+  EXPECT_FALSE(journal_filter_decoded(journal_filter::dct));
+
+  EXPECT_TRUE(journal_filter_supported(journal_filter::none));
+  EXPECT_TRUE(journal_filter_supported(journal_filter::flate));
+  EXPECT_TRUE(journal_filter_supported(journal_filter::dct));
+  EXPECT_FALSE(journal_filter_supported(journal_filter::ccitt));
+  EXPECT_FALSE(journal_filter_supported(journal_filter::jbig2));
+}
+
+TEST(JournalExtract, ADecodedEntryComesOutOfExtractScanAsSamples) {
+  // The other half of `extract_scan`: an edition this build *does* decode
+  // takes the same route it always did, and says so.
+  journal_scan got;
+  ASSERT_EQ(extract_scan(journal_probe_pdf(), ProbeFact(0), got),
+            journal_trouble::none);
+  EXPECT_EQ(got.encoding, journal_encoding::gray);
+  EXPECT_TRUE(got.encoded.empty());
+  EXPECT_EQ(got.gray.pixels, journal_probe_expected(0).pixels);
+}
+
+TEST(JournalExtract, AnEncodedEntryIsBoundsCheckedWithoutBeingDecoded) {
+  // What this build can still check about a stream it will not look
+  // inside: that the bytes are this document's, and that the rectangle is
+  // inside the shape the table gives. The second is the check the crop
+  // used to make for free (`journal_extract.h`).
+  journal_scan got;
+  const journal_entry_fact good = ProbeFact(journal_probe_encoded_entry);
+  ASSERT_EQ(extract_scan(journal_probe_pdf(), good, got),
+            journal_trouble::none);
+
+  journal_entry_fact past_the_end = good;
+  past_the_end.offset = journal_probe_pdf().size() - 2U;
+  past_the_end.length = 64U;
+  EXPECT_EQ(extract_scan(journal_probe_pdf(), past_the_end, got),
+            journal_trouble::stream_out_of_bounds);
+
+  journal_entry_fact empty = good;
+  empty.length = 0U;
+  EXPECT_EQ(extract_scan(journal_probe_pdf(), empty, got),
+            journal_trouble::stream_size_wrong);
+
+  journal_entry_fact off_the_page = good;
+  off_the_page.region.left = off_the_page.image.width;
+  EXPECT_EQ(extract_scan(journal_probe_pdf(), off_the_page, got),
+            journal_trouble::region_outside);
+
+  journal_entry_fact too_wide = good;
+  too_wide.region.width = too_wide.image.width + 1U;
+  EXPECT_EQ(extract_scan(journal_probe_pdf(), too_wide, got),
+            journal_trouble::region_outside);
+}
+
+TEST(JournalExtract, AnEncodedScanIsClearedBeforeAFailureLeavesIt) {
+  // The same rule the decoded path has: a scan left over from the
+  // previous entry is the one thing that could make a failure look like a
+  // success one call later.
+  journal_scan got;
+  ASSERT_EQ(extract_scan(journal_probe_pdf(),
+                         ProbeFact(journal_probe_encoded_entry), got),
+            journal_trouble::none);
+  ASSERT_FALSE(got.encoded.empty());
+
+  journal_entry_fact broken = ProbeFact(journal_probe_encoded_entry);
+  broken.offset = journal_probe_pdf().size() + 1U;
+  EXPECT_EQ(extract_scan(journal_probe_pdf(), broken, got),
+            journal_trouble::stream_out_of_bounds);
+  EXPECT_TRUE(got.empty());
+  EXPECT_TRUE(got.encoded.empty());
 }
 
 TEST(JournalExtract, AnImageShapeThisBuildCannotExpandIsRefused) {

@@ -368,11 +368,59 @@ uint32_t af_web_journal_entry_number(uint32_t index) {
   return fact == nullptr ? 0U : fact->number;
 }
 
-/// Decode entry `index`'s scan. The pixels are then at
-/// `af_web_journal_image_bytes()`, `_width()` by `_height()` of them,
-/// eight bits of gray each, top row first.
+/// Get entry `index`'s scan, by whichever route its filter takes.
+///
+/// `af_web_journal_encoding()` then says which of the two shapes it is
+/// (#212): pixels at `af_web_journal_image_bytes()`, `_width()` by
+/// `_height()` of them, eight bits of gray each, top row first — or a
+/// stream at `af_web_journal_encoded_bytes()`, `_encoded_size()` of them,
+/// with `af_web_journal_region_*()` saying which rectangle of the image
+/// it holds is the entry.
 uint32_t af_web_journal_extract(uint32_t index) {
   return static_cast<uint32_t>(journal().ingester.extract(index));
+}
+
+/// Which shape the last `af_web_journal_extract` produced: 0 for gray
+/// samples this module decoded, 1 for a stream it did not (#212).
+///
+/// A number rather than two "is it" predicates, because it is one
+/// question with two answers and a page that asked it twice could get an
+/// impossible pair.
+uint32_t af_web_journal_encoding(void) {
+  return static_cast<uint32_t>(journal().ingester.scan().encoding);
+}
+
+/// The stream, for an encoded scan. Null and zero for a decoded one.
+///
+/// The same "core-owned, read through a typed array" shape the pixels
+/// have, and the same warning: a view is detached when memory grows, so
+/// re-derive rather than cache.
+const uint8_t* af_web_journal_encoded_bytes(void) {
+  return journal().ingester.scan().encoded.data();
+}
+
+uint32_t af_web_journal_encoded_size(void) {
+  return static_cast<uint32_t>(journal().ingester.scan().encoded.size());
+}
+
+/// Which rectangle of an encoded scan's image is the entry, in that
+/// image's own samples — what the page's engine filters its words by
+/// (`host/journal_ocr.h`). All zero for a decoded scan, where the crop
+/// already happened.
+uint32_t af_web_journal_region_left(void) {
+  return journal().ingester.scan().region.left;
+}
+
+uint32_t af_web_journal_region_top(void) {
+  return journal().ingester.scan().region.top;
+}
+
+uint32_t af_web_journal_region_width(void) {
+  return journal().ingester.scan().region.width;
+}
+
+uint32_t af_web_journal_region_height(void) {
+  return journal().ingester.scan().region.height;
 }
 
 /// A pointer into this module's linear memory, valid until the next
@@ -518,10 +566,19 @@ uint32_t af_web_journal_probe_text(uint32_t index, char* out, uint32_t cap) {
 /// (`page/journal.mjs`). FNV-1a because that is the hash `tests/smoke.mjs`
 /// already carries.
 uint32_t af_web_journal_probe_hash(uint32_t index) {
+  // Whichever the entry is (#212): the pixels the probe's own generator
+  // produces for a decoded entry, or the bytes its own encoder wrote for
+  // the one that goes through undecoded. One function, because the page
+  // asks one question — "is this the scan entry `index` should have
+  // been" — and it hashes whichever shape it was handed.
   const amberfolio::host::journal_bitmap want =
       amberfolio::host::journal_probe_expected(index);
+  const std::span<const std::uint8_t> encoded =
+      amberfolio::host::journal_probe_encoded(index);
   std::uint32_t hash = 0x811C9DC5U;
-  for (const std::uint8_t byte : want.pixels) {
+  for (const std::uint8_t byte :
+       want.pixels.empty() ? std::span<const std::uint8_t>(encoded)
+                           : std::span<const std::uint8_t>(want.pixels)) {
     hash ^= byte;
     hash *= 0x01000193U;
   }

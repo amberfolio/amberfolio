@@ -12,6 +12,9 @@
 
 #include "amberfolio/host/journal_ingest.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -103,7 +106,7 @@ TEST(JournalIngest, WithNoEngineTheImagesAreStillRead) {
 /// An engine that reads nothing, for the entry-level failure path.
 class refusing_ocr final : public journal_ocr {
  public:
-  bool recognize(const journal_bitmap&, std::string&) override { return false; }
+  bool recognize(const journal_scan&, std::string&) override { return false; }
   [[nodiscard]] std::string_view engine() const override {
     return "refusing fixture";
   }
@@ -166,7 +169,7 @@ TEST(JournalIngest, AStoreOfAnotherEditionIsClearedRatherThanMerged) {
 
 TEST(JournalIngest, AHostMayDriveTheLoopItself) {
   // The shape the browser needs, where the engine is on the far side of
-  // the ABI: ask for entry i's pixels, recognize them elsewhere, hand the
+  // the ABI: ask for entry i's scan, recognize it elsewhere, hand the
   // text back, ask for the next. Same loop, different holder.
   journal_ingester ingester(journal_probe_table());
   ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
@@ -175,7 +178,14 @@ TEST(JournalIngest, AHostMayDriveTheLoopItself) {
   ingester.adopt(store);
   for (std::size_t index = 0; index < ingester.entries(); ++index) {
     ASSERT_EQ(ingester.extract(index), journal_trouble::none) << index;
-    EXPECT_EQ(ingester.image().pixels, journal_probe_expected(index).pixels);
+    if (index == journal_probe_encoded_entry) {
+      const std::span<const std::uint8_t> want = journal_probe_encoded(index);
+      EXPECT_EQ(ingester.scan().encoding, journal_encoding::jpeg);
+      EXPECT_TRUE(std::ranges::equal(ingester.scan().encoded, want));
+    } else {
+      EXPECT_EQ(ingester.scan().encoding, journal_encoding::gray);
+      EXPECT_EQ(ingester.image().pixels, journal_probe_expected(index).pixels);
+    }
     ASSERT_TRUE(store.record_scan(ingester.entry_at(index)->number,
                                   journal_probe_text(index)));
   }
@@ -188,8 +198,80 @@ TEST(JournalIngest, AnEntryThatIsNotThereIsSaidSo) {
   ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
   EXPECT_EQ(ingester.extract(journal_probe_entries),
             journal_trouble::no_such_entry);
-  EXPECT_TRUE(ingester.image().empty());
+  EXPECT_TRUE(ingester.scan().empty());
   EXPECT_EQ(ingester.entry_at(journal_probe_entries), nullptr);
+}
+
+// --- the entry this build does not decode (M5-E3a, #212) ----------------
+
+TEST(JournalIngest, TheEncodedEntryReachesTheEngineAsItsOwnBytes) {
+  journal_ingester ingester(journal_probe_table());
+  ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
+  ASSERT_EQ(ingester.extract(journal_probe_encoded_entry),
+            journal_trouble::none);
+
+  const journal_scan& scan = ingester.scan();
+  EXPECT_EQ(scan.encoding, journal_encoding::jpeg);
+  EXPECT_TRUE(scan.gray.empty()) << "there are no samples for it to have";
+
+  // Byte for byte what the probe's own encoder wrote, which is the whole
+  // claim: the stream is followed to its offset and handed over
+  // unaltered.
+  const std::span<const std::uint8_t> want =
+      journal_probe_encoded(journal_probe_encoded_entry);
+  ASSERT_FALSE(want.empty());
+  EXPECT_EQ(scan.encoded.size(), want.size());
+  EXPECT_TRUE(std::ranges::equal(scan.encoded, want));
+
+  // And it really is a JPEG, rather than whatever happened to be there:
+  // the two markers a baseline stream begins and ends with.
+  ASSERT_GE(scan.encoded.size(), 4U);
+  EXPECT_EQ(scan.encoded[0], 0xFFU);
+  EXPECT_EQ(scan.encoded[1], 0xD8U);
+  EXPECT_EQ(scan.encoded[scan.encoded.size() - 2U], 0xFFU);
+  EXPECT_EQ(scan.encoded[scan.encoded.size() - 1U], 0xD9U);
+}
+
+TEST(JournalIngest, TheEncodedEntryCarriesItsRegionForTheEngineToApply) {
+  // The crop moved to the engine (`journal_ocr.h`), so the rectangle has
+  // to arrive with the bytes — and it is the table's rectangle, not a
+  // whole-page one.
+  journal_ingester ingester(journal_probe_table());
+  ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
+  ASSERT_EQ(ingester.extract(journal_probe_encoded_entry),
+            journal_trouble::none);
+
+  const journal_entry_fact* fact =
+      ingester.entry_at(journal_probe_encoded_entry);
+  ASSERT_NE(fact, nullptr);
+  EXPECT_EQ(ingester.scan().region.left, fact->region.left);
+  EXPECT_EQ(ingester.scan().region.top, fact->region.top);
+  EXPECT_EQ(ingester.scan().region.width, fact->region.width);
+  EXPECT_EQ(ingester.scan().region.height, fact->region.height);
+  EXPECT_LT(ingester.scan().region.width, fact->image.width)
+      << "a region that were the whole page would prove nothing";
+}
+
+TEST(JournalIngest, TheFixtureRefusesAStreamThatWasAlteredOrMisplaced) {
+  // The fixture is not a stub that says yes: it compares the bytes and
+  // the rectangle, so a passthrough that dropped either is a refusal.
+  journal_probe_ocr engine;
+  journal_ingester ingester(journal_probe_table());
+  ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
+  ASSERT_EQ(ingester.extract(journal_probe_encoded_entry),
+            journal_trouble::none);
+
+  std::string text;
+  ASSERT_TRUE(engine.recognize(ingester.scan(), text));
+  EXPECT_EQ(text, journal_probe_text(journal_probe_encoded_entry));
+
+  journal_scan altered = ingester.scan();
+  altered.encoded[altered.encoded.size() / 2U] ^= 0x01U;
+  EXPECT_FALSE(engine.recognize(altered, text));
+
+  journal_scan moved = ingester.scan();
+  moved.region.left += 1U;
+  EXPECT_FALSE(engine.recognize(moved, text));
 }
 
 }  // namespace

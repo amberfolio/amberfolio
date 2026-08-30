@@ -11,7 +11,7 @@
 // a maintainer's own desk.
 //
 // So this file builds a document. A real PDF, small, deterministic to the
-// byte, with two image XObjects in it and a fact table that says where
+// byte, with three image XObjects in it and a fact table that says where
 // they are; the fingerprint is of the bytes this code produces, so it is
 // a fact about a file that exists rather than an invention. It is the
 // same arrangement `tests/programs` has with the game — a self-written
@@ -20,34 +20,63 @@
 // seam listing.
 //
 //
-// Two entries, chosen for what they exercise
-// -----------------------------------------
+// Three entries, chosen for what they exercise
+// -------------------------------------------
 //
 // Not for realism. Between them they cover every branch the extractor
 // has that a real edition could take:
 //
 //   * entry 1 — eight bits of gray, no predictor. The plain path;
 //   * entry 2 — one bit a pixel, inverted, PNG predictor, and a
-//     different row filter on every row, so all five of them run.
+//     different row filter on every row, so all five of them run;
+//   * entry 3 — `/DCTDecode`, which this build does **not** decode: its
+//     stream goes to the engine as its own bytes with the entry's
+//     rectangle beside it (M5-E3a, #212).
 //
-// Both are FlateDecode, and the streams are **stored** deflate blocks:
-// nothing in this tree compresses anything, so the probe writes the one
-// form of a zlib stream that can be produced without a compressor. That
-// leaves libdeflate's Huffman decoding untested *here*, which is correct
-// — it is tested by libdeflate, against the world's compressors, which is
-// the whole reason for using it (`cmake/AmberfolioLibdeflate.cmake`).
+// The first two are FlateDecode, and their streams are **stored** deflate
+// blocks: nothing in this tree compresses anything, so the probe writes
+// the one form of a zlib stream that can be produced without a
+// compressor. That leaves libdeflate's Huffman decoding untested *here*,
+// which is correct — it is tested by libdeflate, against the world's
+// compressors, which is the whole reason for using it
+// (`cmake/AmberfolioLibdeflate.cmake`).
+//
+//
+// The third one is a real JPEG, and a boring one on purpose
+// --------------------------------------------------------
+//
+// It is a well-formed baseline JPEG this file encodes: a flat field of
+// one gray, at a size that is whole 8x8 blocks, with a flat quantization
+// table and two Huffman tables of two and one code. Every block after the
+// first is a zero DC difference and an end-of-block, which is why the
+// whole encoder is short enough to read.
+//
+// **Flat, and not a picture of words**, and that is the honest shape for
+// what it has to prove. Nothing in this build decodes it — that is the
+// entire point of entry 3 — so what the probe needs is a stream that
+// *is* a JPEG of the right shape, arriving at the engine byte for byte.
+// Whether a real engine reads real words off a real scan is the boundary
+// `docs/journal.md` §7 already names as untested, and a probe that
+// encoded text into a JPEG would not move it: the fixture below would
+// still be answering by fiat, and no real engine runs in CI.
+//
+// What it does prove, and could not before: that a `/DCTDecode` row is
+// followed to the right offset, bounds-checked, refused when its region
+// is off the page, and handed over **unaltered**.
 //
 //
 // The engine, and why it is not a stub
 // -----------------------------------
 //
-// `journal_probe_ocr` answers text for exactly one image: the one the
-// probe's own bitmap generator produces for that entry, compared pixel by
-// pixel. Anything else, it refuses. So it is not a fake OCR that says yes
-// to whatever it is handed — it is a fixture that can only be satisfied
-// by the right offset, the right filter, the right predictor and the
-// right crop, and a text store with its words in it is evidence that all
-// four were right.
+// `journal_probe_ocr` answers text for exactly one scan per entry: for a
+// decoded one, the bitmap the probe's own generator produces, compared
+// pixel by pixel; for entry 3, the exact bytes the probe's own encoder
+// produced, compared byte for byte and with the region checked too.
+// Anything else, it refuses. So it is not a fake OCR that says yes to
+// whatever it is handed — it is a fixture that can only be satisfied by
+// the right offset, the right filter, the right predictor and the right
+// crop, and a text store with its words in it is evidence that all four
+// were right.
 
 #pragma once
 
@@ -64,7 +93,12 @@
 namespace amberfolio::host {
 
 /// How many entries the probe edition has.
-inline constexpr std::size_t journal_probe_entries = 2;
+inline constexpr std::size_t journal_probe_entries = 3;
+
+/// Which of them is the `/DCTDecode` one (#212). Named rather than
+/// spelled `2` at each of its several readers, because "the entry that
+/// goes through undecoded" is the fact and its index is an accident.
+inline constexpr std::size_t journal_probe_encoded_entry = 2;
 
 /// The probe document's bytes — the same bytes on every target, every
 /// time. Built once and cached.
@@ -84,7 +118,17 @@ inline constexpr std::size_t journal_probe_entries = 2;
 /// Generated from the same description the document was generated from,
 /// so a test compares two derivations of one intention rather than a
 /// result against a copy of itself.
+///
+/// **Empty for `journal_probe_encoded_entry`**, which has no decoded
+/// answer at all: what the extractor must produce for it is bytes, and
+/// `journal_probe_encoded()` is that.
 [[nodiscard]] journal_bitmap journal_probe_expected(std::size_t index);
+
+/// What entry `index`'s stream is, byte for byte — the answer the
+/// extractor has to hand an engine for an entry this build does not
+/// decode (#212). Empty for every other entry.
+[[nodiscard]] std::span<const std::uint8_t> journal_probe_encoded(
+    std::size_t index);
 
 /// The text `journal_probe_ocr` answers for entry `index`.
 [[nodiscard]] std::string_view journal_probe_text(std::size_t index);
@@ -95,7 +139,7 @@ class journal_probe_ocr final : public journal_ocr {
  public:
   journal_probe_ocr();
 
-  [[nodiscard]] bool recognize(const journal_bitmap& page,
+  [[nodiscard]] bool recognize(const journal_scan& scan,
                                std::string& out) override;
 
   [[nodiscard]] std::string_view engine() const override;

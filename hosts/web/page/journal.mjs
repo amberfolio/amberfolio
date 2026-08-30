@@ -118,6 +118,78 @@ export function troubleName(module, code) {
 /// there. Nothing downstream needs more than `{ width, height, data }`,
 /// and `createImageBitmap` — which does need the real thing — is only
 /// reached from the browser engine.
+/// Which shape the last extraction produced (#212).
+export const JOURNAL_GRAY = 0;
+export const JOURNAL_JPEG = 1;
+
+/// The entry's scan, whichever of the two shapes it is.
+///
+/// `{ kind: 'gray', image }` for a page this module decoded, already
+/// cropped; `{ kind: 'jpeg', bytes, region }` for one it did not, where
+/// the bytes are the whole page and the region is the part of it that is
+/// the entry (`hosts/common/.../journal_ocr.h` says who applies it).
+/// Null when the last extraction produced nothing.
+///
+/// The bytes are **copied** out of the module's heap. A typed array over
+/// wasm memory is detached the moment that memory grows, and the next
+/// thing this page does with a scan is hand it to an asynchronous engine
+/// — so a view would be a use-after-free with a stack trace in somebody
+/// else's library.
+export function currentScan(module) {
+  if (module._af_web_journal_encoding() === JOURNAL_JPEG) {
+    const size = module._af_web_journal_encoded_size();
+    if (size === 0) return null;
+    const at = module._af_web_journal_encoded_bytes();
+    return {
+      kind: 'jpeg',
+      bytes: module.HEAPU8.slice(at, at + size),
+      region: {
+        left: module._af_web_journal_region_left(),
+        top: module._af_web_journal_region_top(),
+        width: module._af_web_journal_region_width(),
+        height: module._af_web_journal_region_height(),
+      },
+    };
+  }
+  const image = currentImage(module);
+  return image === null ? null : { kind: 'gray', image };
+}
+
+/// The words of `data` that fall inside `region`, as lines.
+///
+/// tesseract.js reports a `bbox` per word for the same reason Tesseract's
+/// `tsv` output does, so this is the browser's half of one rule written
+/// once in `journal_ocr.h`: an encoded scan is a whole page, and the
+/// entry is a rectangle of it. A word counts as inside when its centre
+/// is, which is what gives the same answer a crop would have.
+export function wordsWithin(data, region) {
+  const words = data?.words ?? [];
+  const right = region.left + region.width;
+  const bottom = region.top + region.height;
+  const lines = [];
+  let current = null;
+  let previous = null;
+  for (const word of words) {
+    const box = word?.bbox;
+    const text = word?.text ?? '';
+    if (!box || text === '') continue;
+    const cx = (box.x0 + box.x1) / 2;
+    const cy = (box.y0 + box.y1) / 2;
+    if (cx < region.left || cx >= right || cy < region.top || cy >= bottom) {
+      continue;
+    }
+    // `word.line` is the object tesseract.js groups words by; identity is
+    // what says two words share one, and there is nothing else to compare.
+    if (current === null || word.line !== previous) {
+      current = [];
+      lines.push(current);
+      previous = word.line;
+    }
+    current.push(text);
+  }
+  return lines.map((line) => line.join(' ')).join('\n');
+}
+
 export function currentImage(module) {
   const width = module._af_web_journal_image_width();
   const height = module._af_web_journal_image_height();
@@ -180,8 +252,18 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
   return {
     engine: {
       name: `tesseract.js ${lib.version ?? '(unversioned)'}`,
-      async recognize(image) {
-        const bitmap = await createImageBitmap(image);
+      async recognize(scan) {
+        if (scan.kind === 'jpeg') {
+          // The stream, under its own type, exactly as the document holds
+          // it — this page has not decoded it and has no business
+          // claiming to know more about it than the document did (#212).
+          // The browser decodes it, tesseract.js reads the whole page,
+          // and the region keeps the entry's words.
+          const blob = new Blob([scan.bytes], { type: 'image/jpeg' });
+          const { data } = await worker.recognize(blob);
+          return wordsWithin(data, scan.region).replace(/\s+$/, '');
+        }
+        const bitmap = await createImageBitmap(scan.image);
         const { data } = await worker.recognize(bitmap);
         bitmap.close();
         return (data?.text ?? '').replace(/\s+$/, '');
@@ -196,7 +278,7 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
 
 /// Ingest `bytes` — a whole document, as the player's file input gave it.
 ///
-/// `engine` is anything with a `recognize(ImageData)` and a `name`; null
+/// `engine` is anything with a `recognize(scan)` and a `name`; null
 /// is a legitimate answer and produces a report with every entry
 /// extracted and none recognized, which is what a page with no engine
 /// installed should show rather than an error.
@@ -261,11 +343,13 @@ export async function ingestJournal(
       firstTrouble ??= { number, what: 'there is no OCR engine to read it with' };
       continue;
     }
-    const image = currentImage(module);
+    const scan = currentScan(module);
     // One entry at a time, deliberately: the whole reason the module
-    // extracts on demand is that only one page's pixels are in memory at
+    // extracts on demand is that only one page's scan is in memory at
     // once (hosts/common/.../journal_ingest.h).
-    const text = await engine.recognize(image, { index, number });
+    const text = scan === null
+      ? ''
+      : await engine.recognize(scan, { index, number });
     if (!text) {
       firstTrouble ??= { number, what: 'the OCR engine did not read it' };
       continue;
@@ -348,6 +432,17 @@ export function probeDocument(module) {
 /// FNV-1a, 32-bit, over a bitmap's bytes. The same hash `tests/smoke.mjs`
 /// uses on a framebuffer, and for the same reason: no dependency, and
 /// every implementation of it agrees with every other one.
+/// The same hash over plain bytes, for a scan that is a stream rather
+/// than pixels (#212).
+export function hashBytes(bytes) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; ++i) {
+    hash ^= bytes[i];
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
 export function hashPixels(image) {
   let hash = 0x811c9dc5;
   const { data } = image;
@@ -374,9 +469,19 @@ export function hashPixels(image) {
 export function probeEngine(module) {
   return {
     name: 'amberfolio journal probe fixture (page)',
-    recognize(image, { index }) {
-      if (!image || image.width === 0 || image.height === 0) return '';
-      if (hashPixels(image) !== module._af_web_journal_probe_hash(index)) {
+    recognize(scan, { index }) {
+      if (!scan) return '';
+      // Whichever shape the entry is (#212): the module hashes the one it
+      // expected, and this hashes the one it was handed. They are the
+      // same FNV-1a over the same bytes, so a passthrough that altered a
+      // single byte of a stream is a mismatch and an empty answer.
+      const hash =
+        scan.kind === 'jpeg'
+          ? hashBytes(scan.bytes)
+          : scan.image && scan.image.width !== 0
+            ? hashPixels(scan.image)
+            : null;
+      if (hash === null || hash !== module._af_web_journal_probe_hash(index)) {
         return '';
       }
       return readText(module, (out, cap) =>

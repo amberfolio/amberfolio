@@ -15,6 +15,7 @@
 #include <system_error>
 
 #include "amberfolio/host/journal_extract.h"
+#include "tsv_words.h"
 
 namespace amberfolio::sdl {
 namespace {
@@ -99,6 +100,16 @@ namespace {
                                                    : text.substr(0, end));
 }
 
+/// Trailing blank lines are the engine's page break and not the entry's
+/// text; a store that kept them would diff badly against a corrected copy
+/// of the same entry for no reason at all.
+void trim_trailing(std::string& text) {
+  while (!text.empty() && (text.back() == '\n' || text.back() == '\r' ||
+                           text.back() == ' ' || text.back() == '\f')) {
+    text.pop_back();
+  }
+}
+
 }  // namespace
 
 tesseract_ocr::tesseract_ocr(std::string program)
@@ -163,12 +174,19 @@ bool tesseract_ocr::available() {
   return true;
 }
 
-bool tesseract_ocr::recognize(const host::journal_bitmap& page,
+bool tesseract_ocr::recognize(const host::journal_scan& scan,
                               std::string& out) {
   out.clear();
-  if (page.empty()) {
+  if (scan.empty()) {
     return false;
   }
+  return scan.encoding == host::journal_encoding::gray
+             ? recognize_bitmap(scan.gray, out)
+             : recognize_encoded(scan, out);
+}
+
+bool tesseract_ocr::recognize_bitmap(const host::journal_bitmap& page,
+                                     std::string& out) {
   std::string where;
   if (!scratch(where)) {
     return false;
@@ -210,13 +228,57 @@ bool tesseract_ocr::recognize(const host::journal_bitmap& page,
 
   out = slurp(text);
   std::filesystem::remove(text, ignored);
-  // Trailing blank lines are the engine's page break and not the entry's
-  // text; a store that kept them would diff badly against a corrected
-  // copy of the same entry for no reason at all.
-  while (!out.empty() && (out.back() == '\n' || out.back() == '\r' ||
-                          out.back() == ' ' || out.back() == '\f')) {
-    out.pop_back();
+  trim_trailing(out);
+  return !out.empty();
+}
+
+bool tesseract_ocr::recognize_encoded(const host::journal_scan& scan,
+                                      std::string& out) {
+  std::string where;
+  if (!scratch(where)) {
+    return false;
   }
+
+  const std::filesystem::path root(where);
+  // Under its own name, unaltered — this host has not decoded it and has
+  // no business claiming to know more about it than the document did
+  // (tesseract_ocr.h). Tesseract opens it through Leptonica, which reads
+  // JPEG.
+  const std::string image = (root / "entry.jpg").string();
+  const std::string stem = (root / "entry").string();
+  const std::string tsv = stem + ".tsv";
+  const std::string log = (root / "engine.txt").string();
+
+  {
+    std::ofstream file(image, std::ios::binary | std::ios::trunc);
+    if (!file) {
+      return false;
+    }
+    file.write(reinterpret_cast<const char*>(scan.encoded.data()),
+               static_cast<std::streamsize>(scan.encoded.size()));
+    if (!file) {
+      return false;
+    }
+  }
+
+  // `tsv` rather than the default text: this reads a whole page and only
+  // part of it is the entry, so what is wanted is the words *and where
+  // they were*. `--psm 6` stays what it was — one uniform block of text,
+  // which a journal page is.
+  const bool ok = run(shell_quoted(program_) + " " + shell_quoted(image) + " " +
+                          shell_quoted(stem) + " --psm 6 tsv",
+                      log);
+  std::error_code ignored;
+  std::filesystem::remove(image, ignored);
+  if (!ok) {
+    std::filesystem::remove(tsv, ignored);
+    return false;
+  }
+
+  const std::string table = slurp(tsv);
+  std::filesystem::remove(tsv, ignored);
+  out = tsv_words_within(table, scan.region);
+  trim_trailing(out);
   return !out.empty();
 }
 

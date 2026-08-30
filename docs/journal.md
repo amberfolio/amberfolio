@@ -81,6 +81,11 @@ So adding an edition is adding data, in two places:
 1. **The gate**, in `core/src/machine/document.cpp`: the SHA-256 of the
    whole file, a name a player would recognize, and
    `document_kind::journal`.
+
+   The archive release's journal is
+   `67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c`,
+   which is a fact about a file and is all that may be written down about
+   it. Its pages are `/DCTDecode` (§4a).
 2. **The insides**, in `hosts/common/src/journal_facts.cpp`: the same
    fingerprint, and one `journal_entry_fact` per entry — the entry
    number the game itself uses, the page it is on, the byte offset of the
@@ -99,21 +104,73 @@ fingerprint, which is the first half of the row somebody has to write.
 
 ## 4. What the extractor decodes, and what it refuses
 
-Implemented: `/FlateDecode` and unfiltered streams; 1 and 8 bits per
+**Two questions, not one**, since M5-E3a (#212): whether this build can
+get an entry as far as an engine, and whether it turns the stream into
+samples of its own on the way. `journal_filter_supported()` and
+`journal_filter_decoded()` are those two, and keeping them apart is what
+lets a JPEG-paged edition work with no JPEG decoder in this tree.
+
+**Decoded here**: `/FlateDecode` and unfiltered streams; 1 and 8 bits per
 component; one component (gray or bilevel) and three (RGB, converted to
 gray by the standard luma weights); PNG predictors 10–15, all five row
-filters; `/Decode [1 0]` and `/ImageMask`.
+filters; `/Decode [1 0]` and `/ImageMask`. What comes out is eight bits
+of gray a pixel, cropped to the entry.
+
+**Carried, not decoded**: `/DCTDecode`. Its stream goes to the engine as
+its own bytes with the entry's rectangle beside it (§4a).
 
 Refused **by name**, which is "log, don't fake" one level up from a
-service: `/DCTDecode`, `/CCITTFaxDecode`, `/JBIG2Decode`, TIFF's
-predictor 2, and any bit depth or component count not listed above. None
-of them was built on spec. A scanned journal may well turn out to be
-JPEG or group-4 fax, and the day somebody has a document that says so is
-the day that code gets written — with the document in front of them. What
-a `/DCTDecode` edition would want is not a decoder: it is passing the
-stream's own bytes through to the engine, which both Tesseract and
-tesseract.js read directly, with the region becoming the engine's
-business rather than the extractor's.
+service: `/CCITTFaxDecode`, `/JBIG2Decode`, TIFF's predictor 2, and any
+bit depth or component count not listed above. Neither fax filter was
+built on spec and neither is now. The day somebody has a document that
+needs one is the day that code gets written, with the document in front
+of them — which is exactly how `/DCTDecode` got here, and the shape of
+what got written is §4a.
+
+## 4a. The pages this build does not decode (M5-E3a, #212)
+
+The first real edition anybody put in front of this — the Adventurer's
+Journal as the currently sold archive release ships it — is a 21-page PDF
+whose every page scan is `/DCTDecode`, `/DeviceRGB`, 8 bits a component.
+So the whole pipeline answered `filter_unsupported` for every entry of
+it, and would have with a perfect fact table in front of it.
+
+**What was written is not a decoder.** §4 had already settled that, before
+the document arrived, and the reason holds: this project's argument for
+using libdeflate rather than writing an inflater is that a decoder tested
+only against its own encoder is untested, and a JPEG decoder here would
+have been exactly that, for a format this project has no way to generate
+at scale.
+
+So `extract_scan()` answers one of two things and says which
+(`journal_extract.h`):
+
+| | `gray` | `jpeg` |
+|---|---|---|
+| what the engine gets | samples this build produced | the stream, byte for byte |
+| already cropped | yes | **no** |
+| who applies the region | the extractor, before the engine sees it | the engine, to its own output |
+
+**The crop moves, and that is the whole cost.** This build can crop what
+it decoded and cannot crop what it did not, so an encoded scan reaches
+the engine as a whole page plus a rectangle, and what gets filtered is
+the engine's *output*. Both engines already report where each word was —
+Tesseract through its `tsv` output, tesseract.js through
+`data.words[].bbox` — so the filter reads a number they were producing
+anyway. A word counts as inside when its centre is, which gives the same
+answer a crop would for every word a crop would not have cut in half.
+
+It is written into `journal_ocr.h` rather than left to each host on
+purpose: two hosts that filtered differently would give a player two
+different transcriptions of one page and neither could be called wrong.
+
+**What is still checked about a stream nothing looks inside**: that the
+offset and length name bytes of *this* document, and that the region is
+inside the shape the table gives. The second is the check the crop used to
+make for free, and losing it silently would have been the one real cost of
+not decoding — a rectangle off the edge would have reached the engine as a
+filter that quietly matched nothing, which reads exactly like an engine
+that could not read the page.
 
 It is not a PDF parser and will not become one. The objects are not
 found, the cross-reference table is not resolved, the page tree is not
@@ -224,11 +281,20 @@ exists so a maintainer can report an ingestion of their own document on
 
 **In CI, on every target.** The extractor, the store and the whole
 ingestion, over `journal_probe.h`'s synthetic document: a real, small,
-byte-deterministic PDF this project generates, with two image XObjects in
-it chosen for what they exercise — eight-bit gray with no predictor, and
-one-bit inverted with a different PNG row filter on every row. The fact
-table for it is what the generator *measured while generating*, which is
-what gathering a real edition's facts looks like minus the generator.
+byte-deterministic PDF this project generates, with three image XObjects
+in it chosen for what they exercise — eight-bit gray with no predictor,
+one-bit inverted with a different PNG row filter on every row, and a
+`/DCTDecode` page that goes through undecoded (§4a). The fact table for it
+is what the generator *measured while generating*, which is what gathering
+a real edition's facts looks like minus the generator.
+
+The third one is a **real baseline JPEG this project encodes** — a flat
+field of one gray, whole 8x8 blocks, a flat quantization table and two
+Huffman tables of two codes and one. Flat on purpose: nothing in this
+build decodes it, so what it has to be is a well-formed image of the right
+shape arriving at the engine byte for byte, and a JPEG with words painted
+into it would not move the boundary below, because the fixture answers by
+fiat either way.
 
 The engine in those checks is a fixture that answers for exactly one
 image per entry, compared against a bitmap generated from the same
@@ -267,10 +333,16 @@ whether the inverted loop a browser needs actually works.
 - **Nobody has opened a browser on the journal panel of the dev page.**
   It is the same open state #147 records for the rest of the page.
 - **Huffman-coded streams are not exercised by our own fixtures.** The
-  probe's streams are stored deflate blocks, because nothing in this tree
-  compresses anything. That is libdeflate's business and it is tested
+  probe's Flate streams are stored deflate blocks, because nothing in this
+  tree compresses anything. That is libdeflate's business and it is tested
   against the world's compressors, which is why it is used
   (`cmake/AmberfolioLibdeflate.cmake`).
+- **No engine has read a real JPEG page** (§4a). What CI proves about the
+  passthrough is that the right stream reaches the engine unaltered with
+  the right rectangle; what only a person with a document and an installed
+  engine can prove is that Tesseract reads words off it and that the
+  rectangle picks out the entry. The region filter itself is checked on
+  both hosts against word boxes the tests write.
 
 ## 8. Reporting an ingestion
 

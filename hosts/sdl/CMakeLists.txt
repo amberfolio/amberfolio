@@ -16,7 +16,10 @@ add_executable(amberfolio-sdl
   src/main.cpp
   # The desktop's OCR engine (M5-E3, #174) -- the player's own Tesseract,
   # run as a program rather than linked; src/tesseract_ocr.h says why.
-  src/tesseract_ocr.cpp)
+  # `tsv_words` is the one part of it that can be checked without an
+  # engine installed, which is why it is its own file (M5-E3a, #212).
+  src/tesseract_ocr.cpp
+  src/tsv_words.cpp)
 
 # The binary players run is just "amberfolio"; the target name distinguishes
 # it from the web host's module, which is called amberfolio too.
@@ -379,12 +382,17 @@ if(AMBERFOLIO_BUILD_TESTS)
   add_executable(amberfolio-sdl-tests
     src/audio_gain.cpp
     src/keymap.cpp
+    src/tsv_words.cpp
     tests/audio_gain_test.cpp
-    tests/keymap_test.cpp)
+    tests/keymap_test.cpp
+    tests/tsv_words_test.cpp)
   target_include_directories(amberfolio-sdl-tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(amberfolio-sdl-tests PRIVATE
     amberfolio::core
+    # `tsv_words` takes a `journal_region`, so this suite needs the host
+    # library's headers the way the host itself does (M5-E3a, #212).
+    amberfolio::host_services
     amberfolio::warnings
     SDL3::SDL3
     GTest::gmock_main)

@@ -235,7 +235,9 @@ journal_trouble decode_image(std::span<const std::uint8_t> document,
   out.height = 0;
 
   const journal_image& image = fact.image;
-  if (!journal_filter_supported(image.filter)) {
+  // Decoded, not merely carried: this call answers samples, and a filter
+  // that goes through untouched has none to answer with (#212).
+  if (!journal_filter_decoded(image.filter)) {
     return journal_trouble::filter_unsupported;
   }
   if (!image_supported(image)) {
@@ -330,6 +332,58 @@ journal_trouble extract_entry(std::span<const std::uint8_t> document,
     return why;
   }
   return crop(page, fact.region, out);
+}
+
+journal_trouble extract_scan(std::span<const std::uint8_t> document,
+                             const journal_entry_fact& fact,
+                             journal_scan& out) {
+  out = journal_scan{};
+
+  if (journal_filter_decoded(fact.image.filter)) {
+    out.encoding = journal_encoding::gray;
+    return extract_entry(document, fact, out.gray);
+  }
+  if (!journal_filter_supported(fact.image.filter)) {
+    return journal_trouble::filter_unsupported;
+  }
+
+  // The passthrough (#212). Everything this does is a bounds check and a
+  // copy: the stream is not decoded, not inspected, and not believed —
+  // an engine that is handed something that is not a picture says so,
+  // which is the same answer it gives for a picture it cannot read.
+  //
+  // What *is* checked is what this build can check without looking
+  // inside: that the offset and the length name bytes of this document,
+  // and that the region the table gives is inside the shape the table
+  // gives. The second is the check the crop used to make for free, and
+  // losing it silently would be the one real cost of not decoding — a
+  // rectangle off the edge of the page would reach the engine as a
+  // filter that quietly matched no words, which reads exactly like an
+  // engine that could not read the page.
+  if (fact.offset > document.size() ||
+      fact.length > document.size() - fact.offset) {
+    return journal_trouble::stream_out_of_bounds;
+  }
+  if (fact.length == 0U) {
+    return journal_trouble::stream_size_wrong;
+  }
+  const journal_image& image = fact.image;
+  const journal_region& region = fact.region;
+  if (image.width == 0U || image.height == 0U || region.width == 0U ||
+      region.height == 0U || region.left > image.width ||
+      region.top > image.height || region.width > image.width - region.left ||
+      region.height > image.height - region.top) {
+    return journal_trouble::region_outside;
+  }
+
+  const auto at = static_cast<std::size_t>(fact.offset);
+  const auto length = static_cast<std::size_t>(fact.length);
+  out.encoding = journal_encoding::jpeg;
+  out.encoded.assign(
+      document.begin() + static_cast<std::ptrdiff_t>(at),
+      document.begin() + static_cast<std::ptrdiff_t>(at + length));
+  out.region = region;
+  return journal_trouble::none;
 }
 
 }  // namespace amberfolio::host
