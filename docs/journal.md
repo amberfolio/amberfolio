@@ -352,8 +352,14 @@ seven megabytes — the loader, the worker, one core and the language data.
 The fetch script pins versions **and now pins digests**. It could not at
 first, because this repository may not carry a fingerprint nobody has
 computed; it trusted on first use and pinned afterwards. Somebody has
-computed them since: `scripts/ocr-engine.sha256sums` records the fifteen
-files, fetched twice on different days and identical both times, and
+computed them since: `scripts/ocr-engine.sha256sums` records them,
+fetched twice on different days and identical both times. It records the
+bytes **as upstream served them**, not the bytes that reach the disk: the
+language data is gzipped by the script because the page asks for it that
+way, and a gzip stream is not reproducible across machines — a Python
+built against zlib-ng and one built against stock zlib compress the same
+input differently, which is how a record written here first failed on a
+runner. What a digest pins is that upstream served what was expected.
 `--digests` points a run at a record rather than at whatever a previous
 fetch left lying about. A CI runner has no previous fetch, so without a
 committed record every deploy would have been trust on first use — which

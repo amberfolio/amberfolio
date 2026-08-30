@@ -45,8 +45,14 @@
 # commit that file.
 #
 # Somebody has. `scripts/ocr-engine.sha256sums` is the record, and it is
-# a fact rather than a guess: the same fifteen files were fetched twice,
-# on different days, and the two digest lists were identical. `--digests`
+# a fact rather than a guess: the same files were fetched twice, on
+# different days, and the two digest lists were identical.
+#
+# It records the bytes **as they were served**, not the bytes that end up
+# on disk. The one file this script transforms - the language data, which
+# the page wants gzipped - is recorded uncompressed, because a gzip stream
+# is not reproducible across machines and pinning one would pin the
+# developer's zlib rather than the upstream file. `--digests`
 # is what points a run at it, and the deploy pipeline passes it on every
 # build, so the bytes a player is served are checked against a committed
 # record rather than against whatever the registry answered that morning
@@ -134,8 +140,27 @@ def npm(package: str, version: str) -> dict[str, bytes]:
     return members(fetch(f"{REGISTRY}/{package}/-/{leaf}-{version}.tgz"))
 
 
-def collect(version: str, language: str) -> dict[str, bytes]:
-    """Everything the page needs, keyed by its name under vendor/tesseract."""
+def collect(version: str, language: str) -> tuple[dict[str, bytes], dict[str, bytes]]:
+    """Everything the page needs, and everything upstream actually served.
+
+    Two dictionaries, because they are not the same thing and only one of
+    them can be pinned. The first is what goes on disk. The second is what
+    the digest record is computed over: the bytes as they arrived, before
+    anything here touched them.
+
+    Fourteen of the fifteen files are identical in both - they are copied
+    verbatim out of the tarballs. The language data is not: the page wants
+    it gzipped, so this script gzips it, and **a gzip stream is not
+    reproducible across machines**. Two correct zlibs compress the same
+    bytes differently; a Python built against zlib-ng and one built
+    against stock zlib disagree, which is exactly how this was found - the
+    record written on a developer's machine failed on a CI runner.
+
+    Hashing the download rather than the recompression is also the more
+    honest record. What a digest is for here is "upstream served what was
+    expected"; what this script then does with those bytes is this
+    script's business, and is checked by the tests that run against it.
+    """
     library = npm("tesseract.js", version)
     manifest = json.loads(library["package.json"])
     # The core's version comes out of what the library itself depends on,
@@ -169,14 +194,18 @@ def collect(version: str, language: str) -> dict[str, bytes]:
     for name in wanted_core:
         files[name] = core[name]
 
+    # Everything above is verbatim, so it is its own record.
+    served = dict(files)
+
     data = fetch(TESSDATA_URL.format(tag=TESSDATA_TAG, lang=language))
     # tesseract.js asks for `<lang>.traineddata.gz` unless it is told
     # otherwise; gzipping here rather than turning that off keeps the
     # page's own configuration to the three paths.
     files[f"{language}.traineddata.gz"] = gzip.compress(data, mtime=0)
+    served[f"{language}.traineddata"] = data
 
     print(f"  tesseract.js {version}, core {core_version}, tessdata {TESSDATA_TAG}")
-    return files
+    return files, served
 
 
 def digests_of(files: dict[str, bytes]) -> str:
@@ -234,14 +263,20 @@ def main() -> int:
 
     where = args.into / "vendor" / "tesseract"
     print(f"amberfolio: fetching the OCR engine into {where}")
-    files = collect(version, args.language)
-    sums = digests_of(files)
+    files, served = collect(version, args.language)
+    sums = digests_of(served)
 
     # Three places a record may be, in the order they are believed: the one
     # a run was pointed at, the one committed beside this script, and the
     # one a previous fetch left in the target directory. The committed one
     # is what makes a CI runner - which has no previous fetch - check
     # anything at all.
+    # What is checked, and what is written, are deliberately two different
+    # paths. A fetch always leaves its own record beside what it fetched;
+    # it must never write back over the committed one, or the check would
+    # be a check against whatever the last run happened to download.
+    # Moving the committed record is a maintainer copying this file over
+    # it on purpose, and `--force` is how they get one to copy.
     recorded = args.digests or COMMITTED_DIGESTS
     if not recorded.exists():
         recorded = where / DIGESTS
@@ -275,10 +310,15 @@ def main() -> int:
     where.mkdir(parents=True)
     for name, body in sorted(files.items()):
         (where / name).write_bytes(body)
-    recorded.write_text(sums, encoding="utf-8")
+    (where / DIGESTS).write_text(sums, encoding="utf-8")
 
     total = sum(len(body) for body in files.values())
     print(f"amberfolio: {len(files)} files, {total // 1024} KiB, digests in {DIGESTS}")
+    if args.force:
+        print(
+            f"  --force: checked nothing. To move the committed record,"
+            f" copy {where / DIGESTS} over {COMMITTED_DIGESTS}."
+        )
     return 0
 
 
