@@ -77,7 +77,7 @@ file(READ "${store}" text)
 # (#218): the probe carries a tale numbered one over entry one's own
 # rectangle, so a build that keyed on the number alone would write
 # three records here instead of four and this would say so.
-foreach(want "amberfolio-journal 2" "AMBER FOLIO PROBE ENTRY 1"
+foreach(want "amberfolio-journal 3" "AMBER FOLIO PROBE ENTRY 1"
              "AMBER FOLIO PROBE ENTRY 2"
              "scanned entry 1 " "scanned tale 1 ")
   string(FIND "${text}" "${want}" at)

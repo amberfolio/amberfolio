@@ -798,15 +798,21 @@ enum class seam_host_service : std::uint8_t {
   /// panel (#173) and the explored overlay (#179) — because they share
   /// one exploration state.
   automap_update,
+  /// The journal's log changed: the game cited something, or the player
+  /// opened something it had cited (M5-E4b, #222). The argument carries
+  /// nothing — what changed is in `machine::journal()`'s own log, which
+  /// is observation and not machine state, the same arrangement
+  /// `automap_update` has and for the same reason.
+  journal_seen,
 };
 
 /// How many there are, for an array indexed by one. Not an enumerator:
 /// a `count` in the enumeration would be a value `serve()` could be
 /// handed, and it is not a service.
-inline constexpr std::size_t seam_host_service_count = 2;
+inline constexpr std::size_t seam_host_service_count = 3;
 
 /// The printable name of a `seam_host_service` — `journal-open`,
-/// `automap-update`. Never null.
+/// `automap-update`, `journal-seen`. Never null.
 ///
 /// Kebab-case, and here rather than in a host, for the reason
 /// `seam_event_kind_name` next door gives: both hosts print this in

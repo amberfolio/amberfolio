@@ -74,7 +74,7 @@ export const AF_SEAM_NONE = 3;
 /// it: `save_state_changed` went with the enhancement that would have
 /// called it, because a service with no consumer is a surface built on
 /// spec.
-export const HOST_SERVICES = ['journal-open', 'automap-update'];
+export const HOST_SERVICES = ['journal-open', 'automap-update', 'journal-seen'];
 
 /// What one enabled seam did, as the desktop host says it at the end of a
 /// run (hosts/sdl/src/main.cpp): `armed fired=N`, or `inert fired=N`, and

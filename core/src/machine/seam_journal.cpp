@@ -367,6 +367,79 @@ constexpr std::uint32_t view_bar_after_input = 0x0C45;
 /// key or a key the routine handled itself.
 constexpr std::uint16_t frame_out_flag = 0x04;
 
+// --- The journal's own screen (M5-E4b, #222) -------------------------------
+//
+// **Drawn by the program, not by this seam.** The panel the reader uses is
+// plane surgery because there is no routine that draws twelve rows of text
+// in a box the size of the party roster. A full screen is different: the
+// game has a bordered-window drawer that every Gold Box screen is made of,
+// and a string drawer, and calling those two is how this screen gets the
+// game's own border art, the game's own colours and the game's own
+// lettering without this file knowing what any of them look like.
+//
+// **And it is given back by the program too.** The one thing a full-screen
+// panel needs that the roster-sized one does not is a way to restore
+// everything it covered, and there is exactly one: the routine the program
+// itself calls to compose the adventuring screen. It takes no arguments
+// and repaints the viewport, the status line and the roster.
+//
+// M5-E2d is why that is safe *here* and was not before. Closing a panel
+// through the program's screen composer painted the 3D view over a vendor
+// the player was talking to; this screen is only ever opened from the
+// party's own command bar (#221), which is the one place in the game where
+// a vendor cannot be on the screen.
+
+/// The program's bordered-window drawer and its string drawer - the two
+/// routines this screen is made of, and the same two the Encamp Fix's
+/// report is made of (#188, `docs/seams.md` §3). Flat offsets in the
+/// resident image.
+constexpr std::uint16_t image_draw_frame = 0x041F8;
+
+/// The routine that composes the adventuring screen. In the same paragraph
+/// as the roster drawer, and called the same way - as paragraph plus
+/// offset, never as a flat image offset, which is the CS-relative hazard
+/// the automap records.
+constexpr std::uint16_t screen_setup_offset = 0x2B5E;
+
+/// The screen, in the character cells the frame drawer counts in: the
+/// whole of it but the bottom row, which is where the game keeps its
+/// command bars and where this one puts its way out.
+///
+/// The top is row one and not row zero. The frame puts its title on the
+/// box top row itself rather than on the border, so a box that started at
+/// zero would have its border above the screen and its title clipped by
+/// the edge - which is exactly what the first driven attempt looked like.
+constexpr std::uint16_t list_frame_left = 0;
+constexpr std::uint16_t list_frame_top = 1;
+constexpr std::uint16_t list_frame_right = 0x27;
+constexpr std::uint16_t list_frame_bottom = 0x17;
+constexpr std::uint16_t list_frame_style = 0;
+
+/// The colours: the game's own bright for a title and a highlighted line,
+/// its own green for the rest. The same pair the reader's panel uses, so
+/// the two halves of this enhancement look like one thing.
+constexpr std::uint16_t list_title_colour = 0x0F;
+constexpr std::uint16_t list_row_colour = 0x0A;
+
+/// Where the rows go. The frame puts its title on the box's first interior
+/// row, so the list starts below it.
+constexpr std::uint16_t list_first_row = 3;
+/// Ten, and the number is the batch's. A batch queues twelve calls
+/// (`seam.h`), the frame takes one and the way out takes one, so ten
+/// rows is exactly what is left - and the cursor scrolls the window
+/// over a log that holds far more.
+constexpr unsigned list_rows_visible = 10;
+
+/// How many of them one pass paints. Five rows of forty characters is
+/// under both of a batch's budgets with the frame beside them.
+constexpr std::size_t list_rows_per_pass = 5;
+constexpr std::uint16_t list_name_column = 1;
+constexpr std::uint16_t list_exit_row = 0x18;
+
+/// Where the right-hand column starts: far enough over that the
+/// longest caption and number cannot reach it.
+constexpr std::uint16_t list_when_column = 0x19;
+
 /// The command, as it appears on the bar: a separator and the word, six
 /// characters, **written here and nowhere read from the program**.
 constexpr std::array<std::uint8_t, 6> notes_item{' ', 'N', 'o', 't', 'e', 's'};
@@ -678,6 +751,88 @@ class label {
   std::size_t length_{};
 };
 
+/// A line for the journal's own screen, as a Pascal string.
+///
+/// Wider than `label` because a full screen is wider than the panel, and
+/// length-prefixed because that is what the program's own string drawer
+/// takes. Every character in it is this file's own: the section's caption,
+/// a number, and a date this project computed. Never a word of the
+/// program's.
+class list_line {
+ public:
+  void add(std::string_view what) noexcept {
+    for (const char ch : what) {
+      if (length_ + 1 < text_.size()) {
+        text_[++length_] = static_cast<std::uint8_t>(ch);
+      }
+    }
+  }
+
+  /// A number, optionally padded with leading zeroes - which is what a
+  /// clock wants and a section number does not.
+  void add(unsigned value, unsigned width = 0) noexcept {
+    std::array<char, 5> digits{};
+    std::size_t count = 0;
+    do {
+      digits[count++] = static_cast<char>('0' + (value % 10U));
+      value /= 10U;
+    } while (value != 0 && count < digits.size());
+    while (count < width) {
+      digits[count++] = '0';
+    }
+    while (count > 0) {
+      if (length_ + 1 < text_.size()) {
+        text_[++length_] = static_cast<std::uint8_t>(digits[--count]);
+      } else {
+        --count;
+      }
+    }
+  }
+
+  /// Spaces out to `column`, so a line can carry its own right-hand
+  /// column instead of costing a second call. A batch may queue twelve
+  /// (`seam.h`), and a list that spent two on every row would run out
+  /// halfway down itself - which is exactly what it did before this.
+  void pad_to(std::size_t column) noexcept {
+    while (length_ < column && length_ + 1 < text_.size()) {
+      text_[++length_] = ' ';
+    }
+  }
+
+  [[nodiscard]] std::span<const std::uint8_t> bytes() noexcept {
+    text_[0] = static_cast<std::uint8_t>(length_);
+    return {text_.data(), length_ + 1};
+  }
+
+ private:
+  std::array<std::uint8_t, 41> text_{};
+  std::size_t length_{};
+};
+
+/// One line of the log, as the screen shows it.
+[[nodiscard]] list_line list_row_text(const journal_seen_row& row) {
+  list_line line;
+  // The unread mark, and a space where it is not - so the words line up
+  // whether or not a line has one. Which line the cursor is on is said in
+  // colour instead, the way the program says it on its own menus.
+  line.add(row.read ? "  " : "* ");
+  line.add(reader_word(row.what.kind));
+  line.add(" ");
+  line.add(row.what.number);
+  return line;
+}
+
+/// The moment it was cited, onto the end of the line it belongs to.
+void list_row_when(const journal_seen_row& row, list_line& line) {
+  line.add(row.month, 2);
+  line.add("-");
+  line.add(row.day, 2);
+  line.add("  ");
+  line.add(row.hour, 2);
+  line.add(":");
+  line.add(row.minute, 2);
+}
+
 /// What the reader says instead of a page when the host had nothing.
 /// Two short lines, this file's own words, and the second is what a
 /// player would do about it.
@@ -914,6 +1069,21 @@ void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
 /// F1, as the BIOS hands it over: the scan code in the high byte and no
 /// character at all, which is what makes it nobody else's (the header).
 constexpr std::uint16_t key_f1 = 0x3B00;
+
+/// Up and down the list: the numpad's own eight and two, and the cursor
+/// pad's arrows at the scan codes the same keys send with NumLock off.
+/// Both spellings, because a player has both keys and the program reads
+/// whichever the BIOS gave it.
+/// The keystroke that makes the menu-bar routine return without choosing
+/// anything: the routine answers a space by ending, and the loop above it
+/// answers a letter it does not recognise by going round again.
+constexpr std::uint8_t key_space_scan = 0x39;
+constexpr std::uint8_t key_space_ascii = 0x20;
+
+constexpr std::uint8_t key_step_back_char = '8';
+constexpr std::uint8_t key_step_forward_char = '2';
+constexpr std::uint8_t key_step_back_scan = 0x48;
+constexpr std::uint8_t key_step_forward_scan = 0x50;
 constexpr std::uint16_t key_escape = 0x011B;
 constexpr std::uint16_t key_backspace = 0x0E08;
 constexpr std::uint16_t key_return = 0x1C0D;
@@ -932,6 +1102,11 @@ enum class claimable : std::uint8_t {
   accept,
   /// A digit at the prompt.
   digit,
+  /// A step up or down the list (M5-E4b, #222). The numpad keys the game
+  /// moves the party with, taken only while the list is the thing on the
+  /// screen - the same modal claim the reader's other keys make.
+  step_back,
+  step_forward,
 };
 
 [[nodiscard]] claimable claimable_of(std::uint16_t key,
@@ -950,6 +1125,24 @@ enum class claimable : std::uint8_t {
   }
   if (key == key_backspace) {
     return claimable::back;
+  }
+  if (mode == journal_reader_mode::listing) {
+    if (key == key_return) {
+      return claimable::accept;
+    }
+    // The keys the game itself moves the party with, on the numpad and on
+    // the cursor pad, taken only while the list is up. A player who is
+    // looking at a list expects up and down to move in it.
+    const auto character = static_cast<std::uint8_t>(key & 0xFFU);
+    const auto scan = static_cast<std::uint8_t>(key >> 8U);
+    if (character == key_step_back_char ||
+        (character == 0 && scan == key_step_back_scan)) {
+      return claimable::step_back;
+    }
+    if (character == key_step_forward_char ||
+        (character == 0 && scan == key_step_forward_scan)) {
+      return claimable::step_forward;
+    }
   }
   if (mode == journal_reader_mode::asking) {
     if (key == key_return) {
@@ -1005,6 +1198,139 @@ enum class claimable : std::uint8_t {
 // Opening, paging and closing
 // ---------------------------------------------------------------------------
 
+/// Draw one string with the program's own string drawer.
+[[nodiscard]] bool draw_line(seam_context& ctx, std::uint16_t image,
+                             list_line& line, std::uint16_t colour,
+                             std::uint16_t row, std::uint16_t column) {
+  std::uint16_t segment = 0;
+  std::uint16_t offset = 0;
+  if (!ctx.place_bytes(line.bytes(), segment, offset)) {
+    return false;
+  }
+  const std::array<std::uint16_t, 5> where{column, row, colour, segment,
+                                           offset};
+  return ctx.call_program(image, draw_string_entry, where);
+}
+
+/// One pass of the journal's own screen. True when the screen is finished.
+///
+/// **Painted over several arrivals**, because one batch cannot hold it: a
+/// batch queues twelve calls and places 256 bytes (`seam.h`), and a frame,
+/// ten rows of forty characters and a way out are more than either. So a
+/// pass draws the frame if it has not been drawn, then as many rows as
+/// fit, and says whether there is more to do. The program is sitting in
+/// its own key loop while this happens and draws nothing itself, so a
+/// screen that arrives in two pieces arrives in two pieces of one frame.
+[[nodiscard]] bool draw_the_list(machine& box, seam_context& ctx) {
+  journal_state& state = box.journal();
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  const std::span<const journal_seen_row> rows = state.seen();
+  std::size_t done = state.list_drawn();
+
+  if (done == 0) {
+    list_line title;
+    title.add("ADVENTURER'S JOURNAL");
+    std::uint16_t title_segment = 0;
+    std::uint16_t title_offset = 0;
+    if (!ctx.place_bytes(title.bytes(), title_segment, title_offset)) {
+      return false;
+    }
+    const std::array<std::uint16_t, 8> frame{
+        list_frame_left,   list_frame_top,   list_frame_right,
+        list_frame_bottom, list_frame_style, list_title_colour,
+        title_segment,     title_offset};
+    if (!ctx.call_program(image, image_draw_frame, frame)) {
+      return false;
+    }
+    if (rows.empty()) {
+      list_line nothing;
+      nothing.add("THE GAME HAS NOT SENT YOU HERE YET.");
+      static_cast<void>(draw_line(ctx, image, nothing, list_row_colour,
+                                  list_first_row + 1, list_name_column));
+      list_line exit;
+      exit.add("EXIT");
+      return draw_line(ctx, image, exit, list_title_colour, list_exit_row,
+                       list_name_column);
+    }
+  }
+
+  // A window over the log, scrolled to keep the cursor in it. The log
+  // holds far more than the screen shows, which is what the cursor is for.
+  const std::size_t cursor = state.list_cursor();
+  std::size_t top = 0;
+  if (cursor >= list_rows_visible) {
+    top = cursor - list_rows_visible + 1;
+  }
+  const std::size_t shown = rows.size() - top < list_rows_visible
+                                ? rows.size() - top
+                                : list_rows_visible;
+
+  for (std::size_t drawn = 0; drawn < list_rows_per_pass && done < shown;
+       ++drawn, ++done) {
+    const journal_seen_row& row = rows[top + done];
+    const std::uint16_t colour =
+        top + done == cursor ? list_title_colour : list_row_colour;
+    const auto at_row = static_cast<std::uint16_t>(list_first_row + done);
+    list_line line = list_row_text(row);
+    line.pad_to(list_when_column - list_name_column);
+    list_row_when(row, line);
+    if (!draw_line(ctx, image, line, colour, at_row, list_name_column)) {
+      break;  // the batch is full; the next arrival carries on from here
+    }
+  }
+  state.set_list_drawn(done);
+  if (done < shown) {
+    return false;
+  }
+
+  list_line exit;
+  exit.add("EXIT");
+  return draw_line(ctx, image, exit, list_title_colour, list_exit_row,
+                   list_name_column);
+}
+
+/// Put the whole adventuring screen back, the way the program composes it
+/// for itself.
+///
+/// The counterpart of `give_the_roster_back()` for a panel that took more
+/// than the roster. Safe here for the reason the file's own header gives:
+/// this screen is only opened from the party's own command bar, so there
+/// is no vendor under it to paint over.
+void give_the_screen_back(machine& box, seam_context& ctx) {
+  journal_state& state = box.journal();
+  state.set_on_screen(false);
+  state.set_drawn_signature(0);
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  const std::array<std::uint16_t, 0> nothing{};
+  static_cast<void>(ctx.call_program(
+      static_cast<std::uint16_t>(image + roster_draw_paragraph),
+      screen_setup_offset, nothing));
+
+  // **And one keystroke, so the program redraws its own command bar.**
+  // Composing the screen is everything but the bar: the bar belongs to the
+  // menu-bar routine, which is sitting in its key loop while all of this
+  // happens and will not draw again until it returns. Without this the
+  // screen comes back correctly with this seam's own `EXIT` still on the
+  // bottom row, which is what the first driven attempt looked like.
+  //
+  // A space, because the routine answers a space by returning and the
+  // adventuring loop answers a letter it does not know by going round
+  // again - so the whole visible effect is the bar being drawn.
+  static_cast<void>(ctx.inject_keystroke(key_space_scan, key_space_ascii));
+}
+
+/// The log has changed; a host may want to write it down.
+///
+/// Called only when something actually moved, which is what the flag on
+/// the log is for: a seam that called out on every citation would have a
+/// host rewriting its file for a line that was already at the top.
+void tell_the_host_the_log_moved(machine& box, seam_context& ctx) {
+  if (!box.journal().seen_changed()) {
+    return;
+  }
+  (void)ctx.call_host(seam_host_service::journal_seen, 0);
+}
+
 /// Ask the host for an entry. What it answered is in `journal_state`
 /// afterwards, whichever way it went — a callout nothing served leaves
 /// `no_host`, which `ask()` put there before the call (journal.h).
@@ -1012,14 +1338,30 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
   box.journal().ask(what);
   (void)ctx.call_host(seam_host_service::journal_open,
                       journal_open_argument(what));
+  // Opening it is what takes the `*` off its line (#222). Only a line the
+  // log already has: an entry the player asked for at the prompt was
+  // never cited, so there is nothing to mark and nothing to write down.
+  if (box.journal().mark_seen_read(what)) {
+    tell_the_host_the_log_moved(box, ctx);
+  }
 }
 
 void close_reader(machine& box, seam_context& ctx, std::uint16_t ds) {
   journal_state& state = box.journal();
   const bool was_up = state.on_screen();
+  // What has to be given back depends on what was taken: the list took the
+  // whole screen and the panel took the roster's cells, and asking the
+  // program to repaint more than was covered is the M5-E2d bug.
+  const bool took_the_screen = state.reader() == journal_reader_mode::listing;
   state.set_reader(journal_reader_mode::closed);
   state.clear_digits();
-  if (was_up) {
+  if (!was_up) {
+    return;
+  }
+  if (took_the_screen) {
+    state.set_list_drawn(0);
+    give_the_screen_back(box, ctx);
+  } else {
     give_the_roster_back(box, ctx, ds);
   }
 }
@@ -1130,6 +1472,21 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
     case journal_reader_mode::closed:
       state.clear_digits();
       state.set_asked_kind(journal_kind::entry);
+      // **F1 still opens the prompt**, which is what it has always done.
+      // The list has its own way in - the `Notes` command on the party's
+      // own bar (#221) - and the two are different questions: "what was I
+      // told?" is the list, "let me look something up" is this. A key that
+      // changed what it did would have been a key a player had to relearn
+      // for no reason.
+      state.set_reader(journal_reader_mode::asking);
+      return;
+    case journal_reader_mode::listing:
+      // On from the list to the prompt, which is how a player reaches the
+      // ninety-odd entries nothing has cited yet without leaving the
+      // journal to do it.
+      give_the_screen_back(box, ctx);
+      state.set_list_drawn(0);
+      state.clear_digits();
       state.set_reader(journal_reader_mode::asking);
       return;
     case journal_reader_mode::asking:
@@ -1174,7 +1531,29 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
         state.set_page(static_cast<std::uint16_t>(state.page() - 1U));
       }
       return false;
+    case claimable::step_back:
+      state.move_list_cursor(-1);
+      return false;
+    case claimable::step_forward:
+      state.move_list_cursor(1);
+      return false;
     case claimable::accept:
+      // Return on the list opens the line it is pointing at. The screen
+      // goes back first, because what comes up is the reader's panel and
+      // the panel lives on the adventuring screen.
+      if (state.reader() == journal_reader_mode::listing) {
+        const std::span<const journal_seen_row> rows = state.seen();
+        if (rows.empty()) {
+          return false;
+        }
+        const journal_citation wanted = rows[state.list_cursor()].what;
+        give_the_screen_back(box, ctx);
+        state.set_list_drawn(0);
+        request(box, ctx, wanted);
+        state.set_reader(journal_reader_mode::showing);
+        state.set_page(0);
+        return false;
+      }
       if (const journal_citation wanted = state.asked(); wanted) {
         request(box, ctx, wanted);
         state.set_reader(journal_reader_mode::showing);
@@ -1207,6 +1586,11 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
     drawn ^= drawn >> 13U;
   };
   mix(static_cast<std::uint32_t>(state.reader()));
+  // The list is drawn from the log and the cursor, so both are in the
+  // signature: a line arriving at the top while the screen is up is a
+  // screen that has to be drawn again.
+  mix(static_cast<std::uint32_t>(state.seen().size()));
+  mix(static_cast<std::uint32_t>(state.list_cursor()));
   mix(journal_open_argument(state.entry()));
   mix(state.page());
   mix(static_cast<std::uint32_t>(state.delivery()));
@@ -1222,6 +1606,20 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
     drawn = 1;
   }
   if (drawn == state.drawn_signature() && state.on_screen()) {
+    return;
+  }
+
+  // The list is not this seam's pixels at all: the program draws it, out
+  // of the same two routines every Gold Box screen is made of, so there
+  // is no buffer to rasterize and no font to read (#222).
+  if (state.reader() == journal_reader_mode::listing) {
+    // A pass at a time. Until the last one the signature is left alone, so
+    // the next arrival comes back here and carries on rather than deciding
+    // the screen is already right.
+    if (draw_the_list(box, ctx)) {
+      state.set_on_screen(true);
+      state.set_drawn_signature(drawn);
+    }
     return;
   }
 
@@ -1339,6 +1737,15 @@ void at_draw_string(machine& box, seam_context& ctx) {
     return;
   }
 
+  // Into the log first, with the moment the game said it: the machine's
+  // own seeded wall clock, which is the host's instant plus the virtual
+  // time since (`machine/platform.h`). Derived rather than read, so
+  // nothing here goes near the host's clock and a replay gets the same
+  // answer twice.
+  const wall_time when = box.wall().at(box.time());
+  state.note_seen(cited, when.month, when.day, when.hour, when.minute);
+  tell_the_host_the_log_moved(box, ctx);
+
   // A citation, and the whole enhancement: the entry opens. The reader is
   // not moved onto an entry the host has nothing for — "the seam shows
   // nothing rather than a blank page" (#175) — unless it is already open,
@@ -1452,7 +1859,7 @@ void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
   }
   state.clear_digits();
   state.set_asked_kind(journal_kind::entry);
-  state.set_reader(journal_reader_mode::asking);
+  state.set_reader(journal_reader_mode::listing);
 }
 
 void at_area_bar_before(machine& box, seam_context& ctx) {

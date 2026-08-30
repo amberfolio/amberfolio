@@ -143,6 +143,8 @@ const char* seam_host_service_name(seam_host_service which) noexcept {
       return "journal-open";
     case seam_host_service::automap_update:
       return "automap-update";
+    case seam_host_service::journal_seen:
+      return "journal-seen";
   }
   return "unknown";
 }

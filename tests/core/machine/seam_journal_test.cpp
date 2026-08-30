@@ -80,6 +80,7 @@ constexpr std::uint16_t key_tab = 0x0F09;
 constexpr std::uint16_t key_one = 0x0231;
 constexpr std::uint16_t key_two = 0x0332;
 constexpr std::uint16_t key_four = 0x0534;
+constexpr std::uint16_t key_step_down = 0x5032;
 
 /// The panel's layout, restated: a title row, twelve rows of body, and a
 /// footer, eight pixels each, twenty-two glyphs across.
@@ -1359,9 +1360,9 @@ TEST(JournalNotes, ChoosingItOpensTheReader) {
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::closed);
 
   r.one_bar_pass(area_before, area_after, 'N');
-  EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking);
-  EXPECT_EQ(r.reader().asked_kind(), journal_kind::entry)
-      << "the prompt opens on the section the game cites most";
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing)
+      << "the command opens the journal's own screen, not the prompt";
+  EXPECT_EQ(r.reader().asked_kind(), journal_kind::entry);
   EXPECT_TRUE(r.reader().digits().empty());
 }
 
@@ -1400,18 +1401,19 @@ TEST(JournalNotes, ItIsNotOfferedTwiceWhileTheReaderIsUp) {
   r.enable();
   r.adventuring();
   r.put_bar(bar_area, area_words);
+  r.reader().note_seen(Entry(3), 8, 29, 20, 15);
+  r.reader().note_seen(Tale(12), 8, 29, 21, 44);
 
   r.one_bar_pass(area_before, area_after, 'N');
-  ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
-  r.type(key_one);
-  r.poll();
-  ASSERT_EQ(r.reader().digits(), "1");
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  r.reader().move_list_cursor(1);
+  ASSERT_EQ(r.reader().list_cursor(), 1u);
 
-  // The player can see the reader and the way out of it is the way out of
-  // it; picking the command again must not throw away what they typed.
+  // The player can see the journal and the way out of it is the way out
+  // of it; picking the command again must not put them back at the top.
   r.one_bar_pass(area_before, area_after, 'N');
-  EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking);
-  EXPECT_EQ(r.reader().digits(), "1");
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  EXPECT_EQ(r.reader().list_cursor(), 1u);
 }
 
 TEST(JournalNotes, WithTheSeamOffTheBarIsNeverTouched) {
@@ -1423,6 +1425,269 @@ TEST(JournalNotes, WithTheSeamOffTheBarIsNeverTouched) {
   r.stand_in_adventure(area_before);
   r.box->step();
   EXPECT_EQ(r.bar_at(bar_area), area_words);
+}
+
+// ---------------------------------------------------------------------------
+// The log of what the game has said (M5-E4b, #222)
+// ---------------------------------------------------------------------------
+
+TEST(JournalLog, ItStartsEmptyAndFillsNewestFirst) {
+  journal_state state;
+  EXPECT_TRUE(state.seen().empty())
+      << "a player who has been told nothing has read nothing";
+  EXPECT_FALSE(state.seen_changed());
+
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  state.note_seen(Tale(12), 8, 29, 21, 44);
+  state.note_seen(Proclamation(109), 8, 29, 22, 19);
+
+  ASSERT_EQ(state.seen().size(), 3u);
+  EXPECT_EQ(state.seen()[0].what, Proclamation(109));
+  EXPECT_EQ(state.seen()[1].what, Tale(12));
+  EXPECT_EQ(state.seen()[2].what, Entry(3));
+  EXPECT_EQ(state.seen()[0].hour, 22);
+  EXPECT_EQ(state.seen()[0].minute, 19);
+  EXPECT_TRUE(state.seen_changed());
+}
+
+TEST(JournalLog, CitingSomethingTwiceMovesItUpRatherThanRepeatingIt) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  state.note_seen(Tale(12), 8, 29, 21, 44);
+  ASSERT_TRUE(state.mark_seen_read(Entry(3)));
+
+  state.note_seen(Entry(3), 8, 30, 9, 5);
+  ASSERT_EQ(state.seen().size(), 2u) << "one line, not two";
+  EXPECT_EQ(state.seen()[0].what, Entry(3));
+  EXPECT_EQ(state.seen()[0].day, 30) << "re-dated to when it was said again";
+  EXPECT_TRUE(state.seen()[0].read)
+      << "the game repeating itself does not unread what the player read";
+}
+
+TEST(JournalLog, ReadingIsTheOnlyThingThatTakesTheStarOff) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  EXPECT_FALSE(state.seen()[0].read);
+  EXPECT_TRUE(state.mark_seen_read(Entry(3)));
+  EXPECT_TRUE(state.seen()[0].read);
+
+  // Something nothing cited has no line to mark, which is the ordinary
+  // answer for an entry a player asked for at the prompt.
+  EXPECT_FALSE(state.mark_seen_read(Entry(58)));
+  EXPECT_FALSE(state.mark_seen_read(Tale(3)))
+      << "the same number in another section is another thing";
+}
+
+TEST(JournalLog, TheOldestFallsOffTheEnd) {
+  journal_state state;
+  for (unsigned i = 1; i <= journal_log_rows + 5; ++i) {
+    state.note_seen(Entry(static_cast<std::uint16_t>(i)), 8, 30, 10, 0);
+  }
+  ASSERT_EQ(state.seen().size(), journal_log_rows);
+  EXPECT_EQ(state.seen().front().what,
+            Entry(static_cast<std::uint16_t>(journal_log_rows + 5)));
+  EXPECT_EQ(state.seen().back().what, Entry(6))
+      << "the first five are gone, oldest first";
+}
+
+TEST(JournalLog, TheFlagIsWhatStopsAHostWritingOnEveryCitation) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  ASSERT_TRUE(state.seen_changed());
+  state.set_seen_changed(false);
+
+  EXPECT_TRUE(state.mark_seen_read(Entry(3)));
+  EXPECT_TRUE(state.seen_changed()) << "reading it is a change";
+  state.set_seen_changed(false);
+
+  EXPECT_TRUE(state.mark_seen_read(Entry(3)));
+  EXPECT_FALSE(state.seen_changed())
+      << "reading what was already read changes nothing";
+}
+
+TEST(JournalLog, AResetMachineHasBeenToldNothing) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  state.clear();
+  EXPECT_TRUE(state.seen().empty());
+  EXPECT_FALSE(state.seen_changed());
+}
+
+TEST(JournalLog, ACitationGoesIntoItWithTheMachinesOwnClock) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(12);
+  r.host.text = "The twelfth entry.";
+  ASSERT_TRUE(r.pc().set_wall_time(wall_time{
+      .year = 2026, .month = 8, .day = 30, .hour = 22, .minute = 19}));
+
+  r.program_draws("journal entry 12");
+  r.poll();
+
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  const journal_seen_row& row = r.reader().seen().front();
+  EXPECT_EQ(row.what, Entry(12));
+  EXPECT_EQ(row.month, 8);
+  EXPECT_EQ(row.day, 30);
+  EXPECT_EQ(row.hour, 22);
+  EXPECT_EQ(row.minute, 19);
+  EXPECT_TRUE(row.read) << "the citation opened it, so it has been read";
+}
+
+TEST(JournalLog, TheLogIsObservationAndNotMachineState) {
+  // The same three terms the automap's exploration is held to. Told
+  // directly rather than through a citation, because a citation also
+  // *opens* the reader and what that draws is a real difference on a real
+  // screen — the enhancement, not a leak. What is claimed here is
+  // narrower and is the thing that matters: the log itself is not state.
+  rig r;
+  const state_hashes before = hash_state(r.pc());
+
+  r.reader().note_seen(Entry(12), 8, 30, 22, 19);
+  r.reader().note_seen(Tale(4), 8, 30, 22, 20);
+  ASSERT_EQ(r.reader().seen().size(), 2u);
+
+  EXPECT_EQ(before, hash_state(r.pc()));
+}
+
+// ---------------------------------------------------------------------------
+// The journal's own screen (M5-E4b, #222)
+// ---------------------------------------------------------------------------
+
+TEST(JournalList, TheCursorStepsAndStopsAtTheEnds) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  state.note_seen(Tale(12), 8, 29, 21, 44);
+  state.note_seen(Proclamation(109), 8, 29, 22, 19);
+  EXPECT_EQ(state.list_cursor(), 0u) << "it opens on the newest";
+
+  state.move_list_cursor(1);
+  EXPECT_EQ(state.list_cursor(), 1u);
+  state.move_list_cursor(-1);
+  EXPECT_EQ(state.list_cursor(), 0u);
+
+  // Stops rather than wraps, at both ends: a cursor that jumped from one
+  // to the other would lose a player holding a key down.
+  state.move_list_cursor(-1);
+  EXPECT_EQ(state.list_cursor(), 0u);
+  state.move_list_cursor(9);
+  EXPECT_EQ(state.list_cursor(), 2u);
+  state.move_list_cursor(9);
+  EXPECT_EQ(state.list_cursor(), 2u);
+}
+
+TEST(JournalList, ACursorPastTheEndOfAShrunkenLogIsStillOnIt) {
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  state.note_seen(Tale(12), 8, 29, 21, 44);
+  state.move_list_cursor(1);
+  ASSERT_EQ(state.list_cursor(), 1u);
+
+  state.clear_seen();
+  EXPECT_EQ(state.list_cursor(), 0u) << "an empty log has nowhere to point";
+}
+
+TEST(JournalList, AMovementKeyWithTheJournalDownIsThePartys) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+
+  r.type(key_step_down);
+  r.poll();
+  EXPECT_EQ(r.keys_waiting(), 1u)
+      << "with nothing up, the keys that move the party are the program's";
+}
+
+TEST(JournalList, AMovementKeyWithTheListUpStepsTheList) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.put_bar(bar_area, area_words);
+  r.reader().note_seen(Entry(3), 8, 29, 20, 15);
+  r.reader().note_seen(Tale(12), 8, 29, 21, 44);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+
+  r.type(key_step_down);
+  r.poll();
+  EXPECT_EQ(r.keys_waiting(), 0u)
+      << "and this seam's while the list is the thing on the screen";
+  EXPECT_EQ(r.reader().list_cursor(), 1u);
+}
+
+TEST(JournalList, ReturnOpensTheLineItIsPointingAt) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.put_bar(bar_area, area_words);
+  r.host.holds = Tale(12);
+  r.host.text = "A tale.";
+  r.reader().note_seen(Entry(3), 8, 29, 20, 15);
+  r.reader().note_seen(Tale(12), 8, 29, 21, 44);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  ASSERT_EQ(r.reader().seen().front().what, Tale(12));
+
+  r.type(key_return);
+  r.poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.host.asked, journal_open_argument(Tale(12)))
+      << "the line the cursor was on, not the number the prompt held";
+  EXPECT_TRUE(r.reader().seen().front().read)
+      << "opening it is what takes the star off";
+}
+
+TEST(JournalList, ReturnOnAnEmptyListOpensNothing) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.put_bar(bar_area, area_words);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  r.type(key_return);
+  r.poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  EXPECT_EQ(r.host.calls, 0u);
+}
+
+TEST(JournalList, EscapeLeavesIt) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.put_bar(bar_area, area_words);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  r.type(key_escape);
+  r.poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalList, ThePaintIsStartedAgainWheneverWhatItShowsChanges) {
+  // It is drawn over several arrivals, so "how far have I got" has to go
+  // back to nothing when the thing being drawn is no longer the same.
+  journal_state state;
+  state.note_seen(Entry(3), 8, 29, 20, 15);
+  state.note_seen(Tale(12), 8, 29, 21, 44);
+  state.set_list_drawn(5);
+  state.move_list_cursor(1);
+  EXPECT_EQ(state.list_drawn(), 0u);
 }
 
 }  // namespace

@@ -58,17 +58,33 @@
 // cannot be mistaken for a header. Strict on the way in: a file that is
 // not exactly this is `not_a_store`, never a file half-read.
 //
-//   amberfolio-journal 2
+//   amberfolio-journal 3
 //   edition <64 hex>
 //   engine <one line>
 //   scanned <kind> <number> <bytes>
 //   <bytes bytes><newline>
 //   corrected <kind> <number> <bytes>
 //   <bytes bytes><newline>
+//   seen <kind> <number> <month> <day> <hour> <minute> <read>
+//
+// The `seen` lines are the journal's own log (M5-E4b, #222) — what the
+// game has told this player to read, newest first, with the moment it
+// said so and whether they have opened it since. They carry no text, so
+// they have no length and no body.
+//
+// **It is in this file rather than beside a save**, which is a decision
+// and not an oversight. The automap keeps a snapshot per save slot because
+// a map of explored squares genuinely differs between two parties and
+// showing the wrong one misleads. A journal log does not: the journal is
+// the *player's* book, and what they have read, they have read.
 //
 // The version is the first token of the first line so that a store from a
 // later format is refused by a build that would misread it, which is the
 // same courtesy `automap_store`'s header pays.
+//
+// **Every version this project has written is still read.** A version 2
+// store has no `seen` lines, which is a player who has been cited nothing
+// yet — a true statement about an old store, not an error.
 //
 // **Version 1 is still read** (M5-E3d, #218). It had no `<kind>` because
 // there was one section, so every record in one is a journal entry and
@@ -85,6 +101,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -96,7 +113,7 @@
 namespace amberfolio::host {
 
 /// The format version this build writes.
-inline constexpr std::uint32_t journal_store_version = 2;
+inline constexpr std::uint32_t journal_store_version = 3;
 
 /// The oldest it reads. See the format above: a version 1 store is a
 /// store of journal entries and nothing is lost by saying so.
@@ -201,6 +218,35 @@ class journal_store {
   /// counts on every record — a correct refusal, and a useless one.
   [[nodiscard]] journal_trouble parse(std::string_view whole);
 
+  /// The journal's log: what the game has cited, newest first.
+  ///
+  /// Held here so it outlives the machine, and handed to
+  /// `machine::journal_state` for the reader to draw from — which is the
+  /// same direction the automap's exploration goes, and for the same
+  /// reason: it is observation, not machine state, so a host owns it and
+  /// core borrows it.
+  [[nodiscard]] std::span<const machine::journal_seen_row> seen()
+      const noexcept {
+    return seen_;
+  }
+
+  /// Replace the log wholesale. What `journal_seen` does with what the
+  /// machine's own log holds after a citation.
+  ///
+  /// Keeps at most `machine::journal_log_rows`, because that is what the
+  /// machine will hand back and a store that kept more would grow a tail
+  /// no reader could ever show.
+  void set_seen(std::span<const machine::journal_seen_row> rows);
+
+  /// Whether the log has moved since a host last wrote this store out.
+  ///
+  /// The same shape the automap's sidecar has, and for the same reason: a
+  /// host that wrote the file on every citation would write it far more
+  /// often than anything changed. `set_seen()` raises it; a host lowers it
+  /// when the bytes are on disk.
+  [[nodiscard]] bool changed() const noexcept { return changed_; }
+  void clear_changed() noexcept { changed_ = false; }
+
   /// The SHA-256 of `serialize()`.
   ///
   /// Present so a maintainer can say what came out of an ingestion of
@@ -219,6 +265,12 @@ class journal_store {
   /// function of the content and not of the order things were written in
   /// — which is what makes `fingerprint()` worth reporting.
   std::vector<journal_text> entries_;
+  /// **Not sorted**, unlike the entries: this is a log and its order is
+  /// its content. `fingerprint()` is still a function of the content,
+  /// because the order is part of what was stored rather than an artefact
+  /// of what was written first.
+  std::vector<machine::journal_seen_row> seen_;
+  bool changed_{false};
 };
 
 }  // namespace amberfolio::host

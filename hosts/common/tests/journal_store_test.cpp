@@ -11,8 +11,10 @@
 
 #include "amberfolio/host/journal_store.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
@@ -164,6 +166,87 @@ TEST(JournalStore, TheThreeSectionsAreKeptApartAndComeOutInBlocks) {
   EXPECT_EQ(read.fingerprint(), store.fingerprint());
 }
 
+TEST(JournalStore, TheLogSurvivesTheRoundTripInItsOwnOrder) {
+  // The log is a log: its order is its content, not an artefact of what
+  // was written first, so it comes back exactly as it went in.
+  journal_store store;
+  store.set_edition("e");
+  store.set_engine("g");
+  const std::array<machine::journal_seen_row, 3> rows{
+      {{.what = Proclamation(109),
+        .month = 8,
+        .day = 29,
+        .hour = 22,
+        .minute = 19,
+        .read = false},
+       {.what = Tale(12),
+        .month = 8,
+        .day = 29,
+        .hour = 21,
+        .minute = 44,
+        .read = true},
+       {.what = Entry(3),
+        .month = 8,
+        .day = 29,
+        .hour = 20,
+        .minute = 15,
+        .read = true}}};
+  store.set_seen(rows);
+  ASSERT_EQ(store.seen().size(), 3u);
+
+  journal_store read;
+  ASSERT_EQ(read.parse(store.serialize()), journal_trouble::none);
+  ASSERT_EQ(read.seen().size(), 3u);
+  for (std::size_t i = 0; i < rows.size(); ++i) {
+    EXPECT_EQ(read.seen()[i].what, rows[i].what) << i;
+    EXPECT_EQ(read.seen()[i].month, rows[i].month) << i;
+    EXPECT_EQ(read.seen()[i].day, rows[i].day) << i;
+    EXPECT_EQ(read.seen()[i].hour, rows[i].hour) << i;
+    EXPECT_EQ(read.seen()[i].minute, rows[i].minute) << i;
+    EXPECT_EQ(read.seen()[i].read, rows[i].read) << i;
+  }
+  EXPECT_EQ(read.fingerprint(), store.fingerprint());
+}
+
+TEST(JournalStore, AVersionTwoStoreIsAPlayerNothingHasCitedYet) {
+  journal_store store;
+  ASSERT_EQ(store.parse("amberfolio-journal 2\nedition a\nengine b\n"
+                        "scanned entry 4 6\nfourth\n"),
+            journal_trouble::none);
+  EXPECT_EQ(store.size(), 1u);
+  EXPECT_TRUE(store.seen().empty()) << "no log is not a broken store";
+  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 3\n"));
+}
+
+TEST(JournalStore, ALogLineThatIsNotOneIsRefusedWhole) {
+  journal_store store = Filled();
+  const std::string before = store.serialize();
+  for (const std::string& bad :
+       {// a kind no build has ever written
+        std::string("amberfolio-journal 3\nedition a\nengine b\n"
+                    "seen rumour 1 8 29 22 19 0\n"),
+        // a field short
+        std::string("amberfolio-journal 3\nedition a\nengine b\n"
+                    "seen entry 1 8 29 22 0\n"),
+        // number zero names nothing
+        std::string("amberfolio-journal 3\nedition a\nengine b\n"
+                    "seen entry 0 8 29 22 19 0\n")}) {
+    EXPECT_EQ(store.parse(bad), journal_trouble::not_a_store) << bad;
+    EXPECT_EQ(store.serialize(), before);
+  }
+}
+
+TEST(JournalStore, TheLogIsCappedAtWhatAReaderCouldShow) {
+  journal_store store;
+  std::vector<machine::journal_seen_row> many;
+  for (std::uint16_t i = 1; i <= machine::journal_log_rows + 10; ++i) {
+    many.push_back({.what = Entry(i), .month = 8, .day = 30, .hour = 10});
+  }
+  store.set_seen(many);
+  EXPECT_EQ(store.seen().size(), machine::journal_log_rows);
+  EXPECT_EQ(store.seen().front().what, Entry(1)) << "the front is kept";
+}
+
 TEST(JournalStore, AnEmptyStoreIsStillAStore) {
   journal_store store;
   journal_store read;
@@ -178,20 +261,20 @@ TEST(JournalStore, SomethingThatIsNotAStoreIsRefusedWhole) {
 
   for (const std::string& bad :
        {std::string("hello\n"), std::string(""),
-        std::string("amberfolio-journal 2\n"),
-        std::string("amberfolio-journal 2\nedition a\n"),
+        std::string("amberfolio-journal 3\n"),
+        std::string("amberfolio-journal 3\nedition a\n"),
         // A record whose body is shorter than its length says, which is
         // what a truncated write leaves behind.
-        std::string("amberfolio-journal 2\nedition a\nengine b\n"
+        std::string("amberfolio-journal 3\nedition a\nengine b\n"
                     "scanned entry 1 40\nshort\n"),
         // A kind no build has ever written.
-        std::string("amberfolio-journal 2\nedition a\nengine b\n"
+        std::string("amberfolio-journal 3\nedition a\nengine b\n"
                     "scanned rumour 1 2\nhi\n"),
         // A version 2 record wearing version 1's shape.
-        std::string("amberfolio-journal 2\nedition a\nengine b\n"
+        std::string("amberfolio-journal 3\nedition a\nengine b\n"
                     "scanned 1 2\nhi\n"),
         // A keyword that is not one of the two.
-        std::string("amberfolio-journal 2\nedition a\nengine b\n"
+        std::string("amberfolio-journal 3\nedition a\nengine b\n"
                     "guessed entry 1 2\nhi\n")}) {
     EXPECT_EQ(store.parse(bad), journal_trouble::not_a_store) << bad;
     // Refused *whole*: a partly-read store is a player's transcription
@@ -222,7 +305,7 @@ TEST(JournalStore, AStoreAnEditorSavedWithCrlfStillReads) {
 
 TEST(JournalStore, AStoreFromALaterFormatIsRefusedRatherThanMisread) {
   journal_store store;
-  EXPECT_EQ(store.parse("amberfolio-journal 3\nedition a\nengine b\n"),
+  EXPECT_EQ(store.parse("amberfolio-journal 4\nedition a\nengine b\n"),
             journal_trouble::not_a_store);
 }
 
@@ -242,7 +325,7 @@ TEST(JournalStore, AStoreFromVersionOneIsReadRatherThanThrownAway) {
 
   // And it is written back as version 2, so a store is upgraded by
   // being opened rather than by anybody being told to do anything.
-  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 2\n"));
+  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 3\n"));
   EXPECT_NE(store.serialize().find("scanned entry 4 6\n"), std::string::npos);
 }
 

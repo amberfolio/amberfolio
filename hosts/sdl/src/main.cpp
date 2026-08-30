@@ -2021,8 +2021,31 @@ void load_journal_store(const options& opts, host::journal_store& store) {
     return;
   }
   std::fprintf(stderr,
-               "amberfolio: journal store %s entries=%zu corrections=%zu\n",
-               path.c_str(), store.size(), store.corrections());
+               "amberfolio: journal store %s entries=%zu corrections=%zu"
+               " seen=%zu\n",
+               path.c_str(), store.size(), store.corrections(),
+               store.seen().size());
+}
+
+/// Write the store back, for the log's sake (M5-E4b, #222).
+///
+/// Ingestion writes this file too, and writes it once at the end of a job
+/// that has just done the expensive part. This is the other writer: the
+/// log changes while a game is being played, so it is written when the
+/// machine says it moved and not on a timer.
+void save_journal_store(const options& opts, const host::journal_store& store) {
+  const std::string path = journal_store_path(opts);
+  if (path.empty()) {
+    return;
+  }
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  const std::string text = store.serialize();
+  file.write(text.data(), static_cast<std::streamsize>(text.size()));
+  file.flush();
+  if (!file) {
+    std::fprintf(stderr, "amberfolio: journal store %s could not be written\n",
+                 path.c_str());
+  }
 }
 
 /// Ingest `opts.journal` (M5-E3, #174): present it, follow its entries,
@@ -2326,6 +2349,25 @@ int main(int argc, char** argv) try {
     // happens next, and after this so that the store is there the first
     // time a point can be reached.
     load_journal_store(opts, journal_text);
+    // What the store remembers about what the game has said, back into
+    // the machine the reader draws from. It is observation there and
+    // configuration here, which is why it travels this way round rather
+    // than living in either place alone (`machine/journal.h`).
+    // **Oldest first**, which is backwards through the store. The store
+    // holds the log newest first and so does the machine, but `note_seen`
+    // puts each one on the *front* - so feeding them in the order they
+    // are stored would hand the reader its own list upside down.
+    const std::span<const machine::journal_seen_row> stored =
+        journal_text.seen();
+    for (std::size_t i = stored.size(); i > 0; --i) {
+      const machine::journal_seen_row& row = stored[i - 1];
+      box.journal().note_seen(row.what, row.month, row.day, row.hour,
+                              row.minute);
+      if (row.read) {
+        static_cast<void>(box.journal().mark_seen_read(row.what));
+      }
+    }
+    box.journal().set_seen_changed(false);
   }
 
   for (const std::string& id : opts.seams) {
@@ -2737,6 +2779,14 @@ int main(int argc, char** argv) try {
   }
 
   for (;;) {
+    // The journal's log, if the machine has said it moved (M5-E4b, #222).
+    // Once a frame rather than once a citation, because a citation is one
+    // instruction and a file write is not; and a flag rather than a timer,
+    // because most frames have nothing to say.
+    if (journal_text.changed()) {
+      save_journal_store(opts, journal_text);
+      journal_text.clear_changed();
+    }
     if (box.stopped()) {
       ended = machine::run_end::stopped;
       break;

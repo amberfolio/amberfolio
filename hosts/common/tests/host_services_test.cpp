@@ -230,7 +230,7 @@ TEST(HostServicesJournal, WithNoStoreAtAllNobodyHasReadAJournal) {
 TEST(HostServicesJournal, AnEmptyStoreIsTheSameAnswerAsNoStore) {
   const rig r;
   host_services services;
-  const journal_store store;
+  journal_store store;
   services.set_journal_store(&store);
   EXPECT_EQ(ask(services, r.pc(), Entry(12)),
             machine::journal_delivery::no_journal);

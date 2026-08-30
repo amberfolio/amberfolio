@@ -6,6 +6,7 @@
 #include "amberfolio/host/journal_store.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -189,6 +190,13 @@ bool journal_store::correct(machine::journal_citation what,
   return true;
 }
 
+void journal_store::set_seen(std::span<const machine::journal_seen_row> rows) {
+  seen_.assign(rows.begin(), rows.size() > machine::journal_log_rows
+                                 ? rows.begin() + machine::journal_log_rows
+                                 : rows.end());
+  changed_ = true;
+}
+
 std::size_t journal_store::recognized() const noexcept {
   return static_cast<std::size_t>(std::ranges::count_if(
       entries_, [](const journal_text& e) { return !e.text().empty(); }));
@@ -203,6 +211,7 @@ void journal_store::clear() {
   edition_.clear();
   engine_.clear();
   entries_.clear();
+  seen_.clear();
 }
 
 std::string journal_store::serialize() const {
@@ -222,6 +231,23 @@ std::string journal_store::serialize() const {
                                          .number = entry.number};
     append_record(out, "scanned", what, entry.scanned);
     append_record(out, "corrected", what, entry.corrected);
+  }
+  // The log last, so a store reads as its texts and then what the game has
+  // said about them. No length and no body: a `seen` line carries facts
+  // about an entry and not a word of one.
+  for (const machine::journal_seen_row& row : seen_) {
+    out.append("seen ");
+    out.append(journal_kind_name(row.what.kind));
+    out.push_back(' ');
+    append_number(out, row.what.number);
+    for (const std::uint8_t field :
+         {row.month, row.day, row.hour, row.minute}) {
+      out.push_back(' ');
+      append_number(out, field);
+    }
+    out.push_back(' ');
+    append_number(out, row.read ? 1U : 0U);
+    out.push_back('\n');
   }
   return out;
 }
@@ -289,8 +315,44 @@ journal_trouble journal_store::parse(std::string_view whole) {
   while (at < text.size()) {
     const bool scanned = text.compare(at, 8, "scanned ") == 0;
     const bool corrected = text.compare(at, 10, "corrected ") == 0;
-    if (!scanned && !corrected) {
+    const bool seen = kinded && text.compare(at, 5, "seen ") == 0;
+    if (!scanned && !corrected && !seen) {
       return journal_trouble::not_a_store;
+    }
+    if (seen) {
+      at += 5U;
+      machine::journal_seen_row row;
+      std::uint64_t number = 0;
+      std::array<std::uint64_t, 5> fields{};
+      std::string_view word;
+      if (!take_word(text, at, word) ||
+          !journal_kind_from_name(word, row.what.kind) ||
+          !take_literal(text, at, " ") ||
+          !take_number(text, at, 0xFFFFU, number)) {
+        return journal_trouble::not_a_store;
+      }
+      row.what.number = static_cast<std::uint16_t>(number);
+      for (std::uint64_t& field : fields) {
+        if (!take_literal(text, at, " ") ||
+            !take_number(text, at, 0xFFU, field)) {
+          return journal_trouble::not_a_store;
+        }
+      }
+      if (!take_literal(text, at, "\n")) {
+        return journal_trouble::not_a_store;
+      }
+      row.month = static_cast<std::uint8_t>(fields[0]);
+      row.day = static_cast<std::uint8_t>(fields[1]);
+      row.hour = static_cast<std::uint8_t>(fields[2]);
+      row.minute = static_cast<std::uint8_t>(fields[3]);
+      row.read = fields[4] != 0;
+      if (!row.what) {
+        return journal_trouble::not_a_store;
+      }
+      if (read.seen_.size() < machine::journal_log_rows) {
+        read.seen_.push_back(row);
+      }
+      continue;
     }
     at += scanned ? 8U : 10U;
 
