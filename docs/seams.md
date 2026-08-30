@@ -1142,7 +1142,7 @@ boundary, and it needs the argument this document would have to carry.
 | `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
-| `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; **F1** for any other entry, tale or proclamation | the baseline | the resident image |
+| `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; a **Notes** command on the party's own bar, or **F1**, for any other entry, tale or proclamation | the baseline | the resident image, and the adventuring loop's module |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
@@ -1965,6 +1965,46 @@ entry is up, and the map comes back on its own when the entry is put
 away. Neither seam knows anything else about the other and either works
 with the other switched off.
 
+#### A command on the party's own bar (M5-E4a, #221)
+
+F1 opened this reader and still does. What F1 is not is **discoverable**:
+a player looking at the adventuring screen sees six commands on a bar and
+no reason to believe a seventh exists. The game's own answer to "how do I
+do a thing" is a word on the bar, so the journal has one — `Notes`, put
+there by §3's splice, drawn by the program, in the program's font, and
+handed back like any other command.
+
+Three facts made it safe, and all three were measured rather than assumed:
+
+* **The slot is a Pascal `string[40]`,** and the two bars — one per view
+  mode, in the data segment at the two offsets the automap already uses to
+  tell the party's bar from a vendor's — are thirty-three and twenty-seven
+  characters. Six more fit on either, and the splice refuses rather than
+  overruns anything else.
+* **`N` is unreachable on both authentic bars.** The menu-bar routine's
+  command letters are an *upper case only* class, and the bars are mixed
+  case — which is why each word draws with a large initial and a small
+  remainder. The letters that select are the six initials; the `n` in the
+  fourth word is lower case and selects nothing.
+* **So the casing is not a preference.** `Notes`, one capital and a lower
+  case tail, exactly as `Fix` is. An all-caps item would make four more
+  command letters, and the routine's key scan does not stop at its first
+  match — the *last* one wins — so a spliced capital `E` would quietly
+  steal the fourth command.
+
+**The splice comes out in the same call that drew it.** The pair of points
+per view mode is in the adventuring loop's own module rather than the
+resident image, and that is the whole reason they are there: only a point
+at the call's own return can keep §3's promise that the program's string
+is unchanged byte for byte outside it. The second of each pair is also
+where the letter comes back, still in `AL`, with the routine's
+out-parameter below the loop's frame pointer saying whether it was a
+command off the bar at all.
+
+The program is never stopped from seeing the `N`. It compares what came
+back against its own commands, matches none, and goes round the loop
+again — which is what makes adding a letter safe in the first place.
+
 #### The key, and the ones it leaves alone
 
 **F1 opens the reader, picks the section, turns its pages and closes it
@@ -2016,6 +2056,15 @@ has not, and the reader says which. A gate would refuse a player who
 ingested their journal on another machine and copied the store across.
 
 #### Driven, and what it found
+
+Since #221 the same run has been driven through the bar as well: slot A
+loaded, then `N` off the party's own command bar, `4`, Return. `NOTES`
+draws at the end of the game's own bar in the game's own lettering, the
+prompt comes up, and `host-service journal-open calls=1 last=4` is the
+callout saying entry four was asked for — out of a real ingested journal,
+whose text then came up on the game's screen. The bar keeps the command
+while the reader is up, and the string is the program's own again the
+moment the routine returns.
 
 Slot A loaded, then **F1**, `3`, Return at the adventuring screen, with a
 store written by hand for the purpose — this project's own sentences, in

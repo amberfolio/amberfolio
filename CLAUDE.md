@@ -103,7 +103,12 @@ What M4 left in place:
   #173 is closed),
   `journal` (M5-E4 #175 — the third M5 enhancement and the reader half of
   the journal: when the game cites an entry, the entry opens on the
-  game's own screen, and **F1** opens any other. It adds no address —
+  game's own screen, a **`Notes`** command on the party's own command bar
+  opens the reader (M5-E4a, #221 — spliced onto the game's own bar the way
+  the Encamp Fix splices `FIX`, in the one case where `N` is unreachable
+  because the bars are mixed case and the routine's command letters are
+  upper case only), and **F1** opens any other. Its citation watch adds no
+  address —
   five of its six points are the automap's and the sixth is the string
   drawer the Encamp Fix already calls, watched at its entry, so the
   citation watch is a point on the program's own text output and not a
