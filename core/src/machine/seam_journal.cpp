@@ -282,6 +282,100 @@ constexpr std::uint8_t colour_body = 10;
 constexpr std::uint8_t colour_title = 14;
 
 // ---------------------------------------------------------------------------
+// The command on the adventuring bar (M5-E4a, #221)
+// ---------------------------------------------------------------------------
+//
+// F1 opens this reader and always has. What F1 is not is *discoverable*:
+// a player looking at the adventuring screen sees six commands on a bar
+// and no reason to believe a seventh exists. The game's own answer to
+// "how do I do a thing" is a word on the bar, so the journal has one.
+//
+// This is `docs/seams.md` §3's mechanism and `seam_encamp_fix.cpp` is the
+// worked example: the bars are Pascal strings in the data segment, handed
+// to the program's own menu-bar input routine, and a seam that splices
+// characters in before the bar goes out - and takes them back out when
+// the routine returns - has added a command **the program draws**, in its
+// own font and highlighting, and hands back like any other.
+//
+// Three rules go with it, and all three are facts here rather than hopes:
+//
+//  * **check the room.** The slot is a Pascal `string[40]`. The two bars
+//    are thirty-three and twenty-seven characters, so six more fit on
+//    either; the splice refuses rather than overruns when handed anything
+//    else.
+//  * **add a letter the program does not use.** The routine's command
+//    letters are an *upper case only* class, and both bars are mixed
+//    case - which is why each word draws with a large initial and a small
+//    remainder. So the letters that select are the six initials, and the
+//    `n` in the fourth word is lower case and selects nothing. `N` is
+//    unreachable on both authentic bars.
+//  * **splice, never compose.** Nothing below reads a word of the
+//    program's bar or reproduces one. The item is this file's own six
+//    characters, appended after the string's last, and the leading space
+//    is its own separator - which is less than the Fix has to know, since
+//    appending does not even have to find one.
+//
+// **The casing is not a preference.** One capital and a lower-case tail,
+// exactly as `Fix` is. An all-caps item would make `O T E S` command
+// letters too, and the routine's key scan does not stop at its first
+// match - the *last* one wins - so a spliced capital `E` would quietly
+// steal the fourth command.
+
+/// The module the adventuring screen's input loop lives in: overlay 14,
+/// whose facts the overlay tracker records (overlay.h) plus the word
+/// below. The digest is of those bytes as read, so a copy whose overlay
+/// file does not match is not this module.
+constexpr std::uint32_t adventure_load_segment_at = 0x730;
+
+constexpr seam_module adventure_module{
+    .file = "GAME.OVR",
+    .file_offset = 91851,
+    .length = 4268,
+    .digest =
+        "ce2018e8e9d51d422d12e2a8e60837322af70639bcbca2b9fe34ccfd333e2d3a",
+    .load_segment_at = adventure_load_segment_at};
+
+/// The party's own two command bars, in the data segment: one for the
+/// overhead view and one for the 3D view. The automap already tells this
+/// pair from a vendor's, because every other bar in the game is a copy
+/// built on the stack (M5-E2d) - these two offsets are the whole of that
+/// distinction, and they are why a `Notes` command appears on the party's
+/// screen and on nobody's shop.
+constexpr std::uint16_t data_menu_area_bar = 0x04B6;
+constexpr std::uint16_t data_menu_view_bar = 0x04DF;
+
+/// The capacity of the slot either sits in: a Pascal `string[40]`, a
+/// length byte and forty characters, which is also the width of the
+/// screen in characters.
+constexpr std::uint8_t menu_bar_capacity = 40;
+
+/// In the adventuring input loop, the instruction that calls the menu-bar
+/// routine, and the instruction it returns to - one pair per view mode.
+/// Offsets from the start of the module above, which is to say from the
+/// segment the manager has most recently put it at.
+///
+/// The second of each pair runs *before* the instruction that stores what
+/// the routine answered, so the letter is still in AL.
+constexpr std::uint32_t area_bar_before_input = 0x09D0;
+constexpr std::uint32_t area_bar_after_input = 0x09D5;
+constexpr std::uint32_t view_bar_before_input = 0x0C40;
+constexpr std::uint32_t view_bar_after_input = 0x0C45;
+
+/// Where the loop keeps the routine's out-parameter, below its own frame
+/// pointer. Zero means "a letter was selected off the bar", which is the
+/// only case this seam has any business in: anything else is a movement
+/// key or a key the routine handled itself.
+constexpr std::uint16_t frame_out_flag = 0x04;
+
+/// The command, as it appears on the bar: a separator and the word, six
+/// characters, **written here and nowhere read from the program**.
+constexpr std::array<std::uint8_t, 6> notes_item{' ', 'N', 'o', 't', 'e', 's'};
+constexpr unsigned notes_item_length = 6;
+
+/// The letter the routine answers with when it is chosen.
+constexpr std::uint8_t notes_key_ascii = 'N';
+
+// ---------------------------------------------------------------------------
 // Reading the machine
 // ---------------------------------------------------------------------------
 
@@ -930,6 +1024,93 @@ void close_reader(machine& box, seam_context& ctx, std::uint16_t ds) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// The bar splice
+// ---------------------------------------------------------------------------
+
+/// Where the command sits in `bar` right now: the one-based index of its
+/// separator, or zero if it is not there.
+///
+/// Both the test for "is it already spliced in" and the answer to "where
+/// do I take it out from", which is why it is one function.
+[[nodiscard]] unsigned find_notes(cpu::processor& cpu, std::uint16_t ds,
+                                  std::uint16_t bar, std::uint8_t length) {
+  if (length < notes_item_length) {
+    return 0;
+  }
+  for (unsigned index = 1; index + notes_item_length - 1 <= length; ++index) {
+    bool all = true;
+    for (unsigned nth = 0; nth < notes_item_length && all; ++nth) {
+      all =
+          cpu.read_byte(ds, at(bar, static_cast<std::uint16_t>(index + nth))) ==
+          notes_item[nth];
+    }
+    if (all) {
+      return index;
+    }
+  }
+  return 0;
+}
+
+/// Put the command on `bar`, after its last. False and nothing written if
+/// the string is not the shape the facts say - empty, longer than the slot
+/// it sits in, too long to take six more characters, or already carrying
+/// this command.
+///
+/// **Appended rather than inserted**, which is the one place this departs
+/// from `seam_encamp_fix.cpp`. The Fix inserts before its bar's last
+/// command because that bar ends with the way out of the screen and a
+/// command after it would read oddly; this bar has no such item, the
+/// mock-up this was designed from puts the new word at the end, and
+/// appending has to know even less about the program's string than
+/// inserting does - it never looks for a separator, because the item
+/// carries its own.
+[[nodiscard]] bool splice_in(cpu::processor& cpu, std::uint16_t ds,
+                             std::uint16_t bar) {
+  const std::uint8_t length = cpu.read_byte(ds, bar);
+  if (length == 0 || length > menu_bar_capacity ||
+      length + notes_item_length > menu_bar_capacity) {
+    return false;
+  }
+  if (find_notes(cpu, ds, bar, length) != 0) {
+    return false;  // already there: this pass is not the first.
+  }
+  for (unsigned nth = 0; nth < notes_item_length; ++nth) {
+    cpu.write_byte(ds, at(bar, static_cast<std::uint16_t>(length + 1U + nth)),
+                   notes_item[nth]);
+  }
+  cpu.write_byte(ds, bar,
+                 static_cast<std::uint8_t>(length + notes_item_length));
+  return true;
+}
+
+/// Take it back out, leaving the program's own string exactly as it was.
+/// False if it was not there, which is not an error: the pass that could
+/// not splice it in is the pass that has nothing to take out.
+[[nodiscard]] bool splice_out(cpu::processor& cpu, std::uint16_t ds,
+                              std::uint16_t bar) {
+  const std::uint8_t length = cpu.read_byte(ds, bar);
+  if (length > menu_bar_capacity) {
+    return false;
+  }
+  const unsigned index = find_notes(cpu, ds, bar, length);
+  if (index == 0) {
+    return false;
+  }
+  // Everything after the item moves down over it. Appending means there is
+  // normally nothing to move, but taking it out from wherever it is found
+  // costs one loop and does not care how it got there.
+  for (unsigned nth = index + notes_item_length; nth <= length; ++nth) {
+    const std::uint8_t byte =
+        cpu.read_byte(ds, at(bar, static_cast<std::uint16_t>(nth)));
+    cpu.write_byte(
+        ds, at(bar, static_cast<std::uint16_t>(nth - notes_item_length)), byte);
+  }
+  cpu.write_byte(ds, bar,
+                 static_cast<std::uint8_t>(length - notes_item_length));
+  return true;
+}
+
 /// F1, wherever the reader happens to be.
 ///
 /// One key that opens the prompt, points it at each section in turn,
@@ -1222,7 +1403,75 @@ void at_roster_drawn(machine& box, seam_context& ctx) {
 // The definition
 // ---------------------------------------------------------------------------
 
-constexpr std::array<seam_point, 6> journal_points{
+/// A command bar is about to go out: put the command on it.
+///
+/// Declines quietly on anything unexpected - a data segment that is not
+/// where the fact table says, a string that is not the shape the facts
+/// say - and the player sees the game's own bar, which is the failure
+/// this mechanism is supposed to have (`docs/seams.md` §2).
+void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(cpu, ctx);
+  if (ds == 0) {
+    return;
+  }
+  static_cast<void>(splice_in(cpu, ds, bar));
+}
+
+/// The bar has come back with a letter. Take the command off it, and if
+/// the letter is this seam's, open the reader.
+///
+/// The splice comes out **unconditionally and first**: outside the one
+/// call that drew it, the program's string is the program's string, byte
+/// for byte. Everything after that is allowed to decline.
+///
+/// A letter this seam does not own is left entirely alone. So is this
+/// seam's own letter when the reader is already up - the player can see
+/// the reader, and the way out of it is the way out of it. And the
+/// program is *never* stopped from seeing the `N`: it compares what came
+/// back against its own commands, matches none of them, and goes round
+/// the loop again, which is what makes adding a letter safe at all.
+void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(cpu, ctx);
+  if (ds == 0) {
+    return;
+  }
+  static_cast<void>(splice_out(cpu, ds, bar));
+
+  const cpu::registers& regs = cpu.regs();
+  const std::uint8_t out_flag = cpu.read_byte(
+      regs[cpu::sreg::ss],
+      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - frame_out_flag));
+  if (out_flag != 0 || regs.get(cpu::reg8::al) != notes_key_ascii) {
+    return;
+  }
+  journal_state& state = box.journal();
+  if (state.reader() != journal_reader_mode::closed) {
+    return;
+  }
+  state.clear_digits();
+  state.set_asked_kind(journal_kind::entry);
+  state.set_reader(journal_reader_mode::asking);
+}
+
+void at_area_bar_before(machine& box, seam_context& ctx) {
+  bar_before(box, ctx, data_menu_area_bar);
+}
+
+void at_area_bar_after(machine& box, seam_context& ctx) {
+  bar_after(box, ctx, data_menu_area_bar);
+}
+
+void at_view_bar_before(machine& box, seam_context& ctx) {
+  bar_before(box, ctx, data_menu_view_bar);
+}
+
+void at_view_bar_after(machine& box, seam_context& ctx) {
+  bar_after(box, ctx, data_menu_view_bar);
+}
+
+constexpr std::array<seam_point, 10> journal_points{
     {{.module = resident_image,
       .offset = key_pending_entry,
       .run = &at_key_pending},
@@ -1238,7 +1487,23 @@ constexpr std::array<seam_point, 6> journal_points{
       .run = &at_clear_screen},
      {.module = resident_image,
       .offset = roster_drawn_return,
-      .run = &at_roster_drawn}}};
+      .run = &at_roster_drawn},
+     // The four that put `Notes` on the party's own bar (#221). A pair per
+     // view mode, and both pairs are in the adventuring loop's own module
+     // rather than the resident image - which is what makes the splice
+     // come out in the same call that drew it.
+     {.module = adventure_module,
+      .offset = area_bar_before_input,
+      .run = &at_area_bar_before},
+     {.module = adventure_module,
+      .offset = area_bar_after_input,
+      .run = &at_area_bar_after},
+     {.module = adventure_module,
+      .offset = view_bar_before_input,
+      .run = &at_view_bar_before},
+     {.module = adventure_module,
+      .offset = view_bar_after_input,
+      .run = &at_view_bar_after}}};
 
 /// **Ungated**, and that is a decision rather than an omission.
 ///
@@ -1254,8 +1519,9 @@ constexpr std::array<seam_point, 6> journal_points{
 constexpr seam_definition journal_definition{
     .id = "journal",
     .about =
-        "what the game cites, on the game's own screen; F1 for any "
-        "entry, tale or proclamation",
+        "what the game cites, on the game's own screen; a Notes command "
+        "on the party's own bar, or F1, for any entry, tale or "
+        "proclamation",
     .fingerprints = journal_binaries,
     .points = journal_points,
     .trigger = false,

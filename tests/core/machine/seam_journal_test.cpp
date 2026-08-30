@@ -193,6 +193,76 @@ struct rig {
   /// Put a HLT at a point's address and stand the processor on it, with a
   /// stack and the program's own data segment. Stepping then runs the
   /// handler and, if it returns, the HLT.
+  /// Where a test pretends the overlay manager has put the adventuring
+  /// module. Any segment clear of the image and the stack will do; the
+  /// engine only cares that the word the module's facts name holds it.
+  static constexpr std::uint16_t adventure_segment = 0x6000;
+
+  /// Write what the program's overlay manager writes: the segment the
+  /// adventuring module begins at right now. Zero is "not loaded", and is
+  /// what a machine that has never been there reads.
+  void manager_says_adventure_at(std::uint16_t segment) const {
+    const seam_definition* journal = box->seams().find("journal");
+    ASSERT_NE(journal, nullptr);
+    for (const seam_point& point : journal->points) {
+      if (point.module.has_load_segment()) {
+        put_word(image_load_segment,
+                 static_cast<std::uint16_t>(point.module.load_segment_at),
+                 segment);
+        return;
+      }
+    }
+    FAIL() << "no point of this seam names an overlaid module";
+  }
+
+  /// Stand on a point inside the adventuring module, with the registers
+  /// the loop has there: the data segment, its own frame, and — where the
+  /// menu-bar routine returns — the letter it answered with in AL.
+  void stand_in_adventure(std::uint16_t offset, std::uint8_t al = 0) const {
+    manager_says_adventure_at(adventure_segment);
+    box->memory().ram()[cpu::physical_address(adventure_segment, offset)] =
+        0xF4;
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = adventure_segment;
+    r.ip = offset;
+    r[cpu::sreg::ds] = dgroup();
+    r[cpu::sreg::ss] = dgroup();
+    r[cpu::reg16::sp] = 0x0700;
+    r[cpu::reg16::bp] = 0x0600;
+    r.set(cpu::reg8::al, al);
+  }
+
+  /// The bar as the program keeps it: a Pascal string at `offset`.
+  void put_bar(std::uint16_t offset, std::string_view text) const {
+    put_byte(dgroup(), offset, static_cast<std::uint8_t>(text.size()));
+    for (std::size_t i = 0; i < text.size(); ++i) {
+      put_byte(dgroup(), static_cast<std::uint16_t>(offset + 1 + i),
+               static_cast<std::uint8_t>(text[i]));
+    }
+  }
+
+  [[nodiscard]] std::string bar_at(std::uint16_t offset) const {
+    const std::uint8_t length = byte_at(dgroup(), offset);
+    std::string out;
+    for (unsigned i = 1; i <= length; ++i) {
+      out.push_back(static_cast<char>(
+          byte_at(dgroup(), static_cast<std::uint16_t>(offset + i))));
+    }
+    return out;
+  }
+
+  /// One whole pass of the adventuring menu loop: the bar goes out, the
+  /// routine answers with `letter`, and the bar comes back.
+  void one_bar_pass(std::uint16_t before, std::uint16_t after,
+                    std::uint8_t letter, std::uint8_t out_flag = 0) const {
+    stand_in_adventure(before);
+    box->step();
+    stand_in_adventure(after, letter);
+    put_byte(dgroup(), static_cast<std::uint16_t>(0x0600 - 0x04), out_flag);
+    box->step();
+  }
+
   void stand_on(std::uint32_t address, std::uint16_t sp = 0x0400) const {
     box->memory().ram()[address] = 0xF4;
     box->processor().reset();
@@ -1162,16 +1232,197 @@ TEST(JournalDefinition, ItIsACommandAndNotAPullAndItNamesTheBaseline) {
   // would leave this seam inert for every player alive (seam_journal.cpp).
   EXPECT_EQ(journal->gate, document_kind::none);
   EXPECT_EQ(journal->schema, seam_schema_version);
-  EXPECT_EQ(journal->points.size(), 6u);
+  EXPECT_EQ(journal->points.size(), 10u);
+  std::size_t resident = 0;
+  std::size_t overlaid = 0;
   for (const seam_point& point : journal->points) {
     EXPECT_FALSE(point.at_every_step) << "every point of this seam has an "
                                          "address, which is where its safety "
                                          "comes from";
-    EXPECT_EQ(point.module.file, resident_image.file);
+    if (point.module.file == resident_image.file) {
+      ++resident;
+    } else {
+      ++overlaid;
+    }
   }
+  // Six in the resident image, and four in the adventuring loop's own
+  // module (#221) — a splice-in and a splice-out per view mode. The pairs
+  // have to be in the overlay: the promise is that the program's own bar
+  // string is unchanged outside the one call that drew it, and only a
+  // point at the call's own return can keep it.
+  EXPECT_EQ(resident, 6u);
+  EXPECT_EQ(overlaid, 4u);
   ASSERT_EQ(journal->fingerprints.size(), 1u);
   EXPECT_EQ(journal->fingerprints.front(),
             known_editions().front().fingerprint);
+}
+
+// ---------------------------------------------------------------------------
+// The command on the party's own bar (M5-E4a, #221)
+// ---------------------------------------------------------------------------
+
+/// The two bars and their points, as the seam's facts have them. Restated
+/// here rather than shared, so a change to either has to be made twice on
+/// purpose (`docs/seams.md` §8.1).
+constexpr std::uint16_t bar_area = 0x04B6;
+constexpr std::uint16_t bar_view = 0x04DF;
+constexpr std::uint16_t area_before = 0x09D0;
+constexpr std::uint16_t area_after = 0x09D5;
+constexpr std::uint16_t view_before = 0x0C40;
+constexpr std::uint16_t view_after = 0x0C45;
+
+/// Stand-ins for the program's own two bars: the same shape and the same
+/// lengths, in this file's own words. Nothing of the program's text is
+/// here, which is the whole reason the splice appends rather than
+/// composes — it does not care what the bar says.
+constexpr std::string_view area_words = "Aaaa Bbbb Cccc Dddddd Eeeeee Ffff";
+constexpr std::string_view view_words = "Bbbb Cccc Dddddd Eeeeee Ffff";
+
+TEST(JournalNotes, TheCommandGoesOnTheBarAndComesOffAgain) {
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+
+  r.stand_in_adventure(area_before);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), std::string(area_words) + " Notes")
+      << "the program draws the bar it is handed, so the command has to be"
+         " in the string before the call";
+
+  r.stand_in_adventure(area_after, 'X');
+  r.put_byte(r.dgroup(), 0x0600 - 0x04, 0);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), area_words)
+      << "outside the one call that drew it, the program's string is the"
+         " program's string";
+}
+
+TEST(JournalNotes, BothViewModesHaveIt) {
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  r.put_bar(bar_view, view_words);
+
+  r.stand_in_adventure(area_before);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), std::string(area_words) + " Notes");
+  EXPECT_EQ(r.bar_at(bar_view), view_words) << "one point, one bar";
+
+  r.stand_in_adventure(view_before);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_view), std::string(view_words) + " Notes");
+
+  // And each mode takes its own back off at its own return.
+  r.stand_in_adventure(view_after, 0);
+  r.put_byte(r.dgroup(), 0x0600 - 0x04, 1);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_view), view_words);
+  EXPECT_EQ(r.bar_at(bar_area), std::string(area_words) + " Notes")
+      << "one point, one bar, on the way out as well as the way in";
+}
+
+TEST(JournalNotes, SplicingTwiceDoesNotDoubleIt) {
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+
+  r.stand_in_adventure(area_before);
+  r.box->step();
+  r.stand_in_adventure(area_before);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), std::string(area_words) + " Notes");
+}
+
+TEST(JournalNotes, ABarWithNoRoomIsLeftAlone) {
+  // The slot is a Pascal string[40]; the splice refuses rather than
+  // overruns, and the player sees the game's own bar.
+  rig r;
+  r.attach_host();
+  r.enable();
+  const std::string full(36, 'A');
+  r.put_bar(bar_area, full);
+
+  r.stand_in_adventure(area_before);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), full) << "36 + 6 is over the forty it has";
+}
+
+TEST(JournalNotes, ChoosingItOpensTheReader) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::closed);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking);
+  EXPECT_EQ(r.reader().asked_kind(), journal_kind::entry)
+      << "the prompt opens on the section the game cites most";
+  EXPECT_TRUE(r.reader().digits().empty());
+}
+
+TEST(JournalNotes, AnotherLetterIsNoneOfThisSeamsBusiness) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+
+  for (const std::uint8_t letter : {'A', 'C', 'V', 'E', 'S', 'L'}) {
+    r.one_bar_pass(area_before, area_after, letter);
+    EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed)
+        << "letter " << static_cast<char>(letter);
+  }
+}
+
+TEST(JournalNotes, AKeyTheRoutineHandledItselfIsNotACommand) {
+  // The loop's out-parameter is non-zero for a movement key the routine
+  // translated, and the letter in AL is then not a command off the bar at
+  // all. Reading it as one would open the reader on a keypad press.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+
+  r.one_bar_pass(area_before, area_after, 'N', 1);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalNotes, ItIsNotOfferedTwiceWhileTheReaderIsUp) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.put_bar(bar_area, area_words);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
+  r.type(key_one);
+  r.poll();
+  ASSERT_EQ(r.reader().digits(), "1");
+
+  // The player can see the reader and the way out of it is the way out of
+  // it; picking the command again must not throw away what they typed.
+  r.one_bar_pass(area_before, area_after, 'N');
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking);
+  EXPECT_EQ(r.reader().digits(), "1");
+}
+
+TEST(JournalNotes, WithTheSeamOffTheBarIsNeverTouched) {
+  // The fidelity invariant, on the one thing this addition writes.
+  rig r;
+  r.attach_host();
+  r.put_bar(bar_area, area_words);
+
+  r.stand_in_adventure(area_before);
+  r.box->step();
+  EXPECT_EQ(r.bar_at(bar_area), area_words);
 }
 
 }  // namespace
