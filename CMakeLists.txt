@@ -58,6 +58,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(AMBERFOLIO_WERROR "Treat compiler warnings as errors" ON)
 
+# The desktop host's OCR engine, if this build is to carry one at all
+# (M5-E3c, #216). Declared here so `cmake -L` shows it beside the other
+# build-shaping options; `cmake/AmberfolioTesseract.cmake` is what it does
+# and why it is off.
+
 # One host per target family, and they do not overlap: SDL3 on the desktop,
 # the hand-written JS host on wasm (PLAN.md §4 — deliberately not
 # SDL-through-Emscripten).

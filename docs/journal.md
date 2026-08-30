@@ -229,8 +229,22 @@ which — it cannot quietly produce a picture of something else.
 `.emscripten-version` pins emsdk. Both are Apache-2.0, which
 CONTRIBUTING.md's inbound rule allows.
 
-**Desktop: the player's own Tesseract, run as a program.** Not linked,
-not vendored, not fetched by the build. Tesseract is a large C++
+**Desktop: the player's own Tesseract, run as a program — or one this
+build carries.** Two engines, one interface, chosen by a build option
+(M5-E3c, #216).
+
+`AMBERFOLIO_LINK_TESSERACT=ON` builds Tesseract, Leptonica and
+libjpeg-turbo once and links them in, so a player who has installed
+nothing still gets a reader. It is **off by default**, because it is a
+long one-time build and a contributor who did not ask for it should not
+pay for it; `cmake/AmberfolioTesseract.cmake` is the whole argument. What
+that build gets is also slightly better: the linked API can crop to a
+fragment's rectangle directly (`SetRectangle`), where the program-driven
+one must read the whole page and filter the words afterwards.
+
+Everything below is about the program-driven engine, which is what a
+default build uses and what the argument was originally about. **Not
+linked, not vendored, not fetched by the build.** Tesseract is a large C++
 dependency with a large C++ dependency of its own, and every contributor
 would pay for it at every configure — for a feature that runs once,
 during onboarding. Nothing is combined with anything, so there is no
@@ -355,13 +369,19 @@ whether the inverted loop a browser needs actually works.
 
 **Not checked anywhere, and named rather than implied:**
 
-- **No real edition has been ingested *with an engine*.** One edition is
-  in the table now (§3) and its fifty-eight entries extract, on the real
-  document, every fragment located and bounds-checked. What has not
-  happened is a run of that with Tesseract on the far side, because the
-  machine the table was gathered on has none installed. So the rectangles
-  are checked by eye and by construction, and not yet by the words that
-  come out of them.
+- **A real edition has now been ingested with a real engine**, which is
+  the line that used to say the opposite. `--journal` over the archive
+  release's own journal, against a build with `AMBERFOLIO_LINK_TESSERACT`
+  on: `entries=58 extracted=58 recognized=58`, fifty seconds, 36,865
+  characters. Fifty-seven of the fifty-eight come back beginning with
+  their own printed heading, which is a self-check on every rectangle in
+  the table; the one that does not is the engine reading a printed `57`
+  as `37`, and the rectangle is right.
+
+  What is still not covered *in CI* is any of that: the engine is off by
+  default, no runner has the document, and neither will change. This is a
+  thing a maintainer does on their own machine and reports, the way
+  §8 says.
 - **No real OCR engine has been run by CI.** Neither host's engine is
   exercised by any test: the desktop's needs Tesseract installed, the
   browser's needs 32 MiB of fetched wasm and a browser to run it in.
