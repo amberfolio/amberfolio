@@ -85,7 +85,11 @@ Reading a player's own Adventurer's Journal needs an OCR engine.
   data, both Apache-2.0 — pinned in `.tesseract-js-version` and fetched
   by `scripts/fetch-ocr-engine.py` into the served directory. Never
   committed here, and **never fetched from a CDN by the deployed page**:
-  `docs/journal.md` §5 is that decision and its reasons.
+  `docs/journal.md` §5 is that decision and its reasons. Since M5-E3e the
+  deploy pipeline fetches it on every build and **checks it against
+  `scripts/ocr-engine.sha256sums`**, so the Apache-2.0 bytes a visitor is
+  served are the ones recorded here rather than whatever a registry
+  answered that morning.
 
 Neither is required. A build with no engine locates and decodes every
 entry, keeps no text, and says so.

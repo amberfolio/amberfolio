@@ -35,16 +35,27 @@
 # are binaries, and several megabytes each). It goes into the build tree,
 # which is ignored.
 #
-#                       WHY NOT A PINNED DIGEST
+#                          THE PINNED DIGESTS
 #
-# Because this file may not invent one. Every fingerprint in this
-# repository is a fact about a file somebody actually hashed, and nobody
-# here has hashed these. What this does instead is trust on first use and
-# pin afterwards: the first run writes `sha256sums.txt` beside what it
-# fetched, and every later run *verifies* against it and refuses on a
-# mismatch. A maintainer who has checked the digests can commit that file
-# to a release or paste it into an issue; until somebody does, the
-# honest state is that the versions are pinned and the bytes are not.
+# This file may not *invent* a fingerprint: every one in this repository
+# is a fact about a file somebody actually hashed. So it began as trust
+# on first use — the first run writes `sha256sums.txt` beside what it
+# fetched, every later run verifies against it and refuses on a mismatch
+# — with a note saying a maintainer who had checked the digests could
+# commit that file.
+#
+# Somebody has. `scripts/ocr-engine.sha256sums` is the record, and it is
+# a fact rather than a guess: the same fifteen files were fetched twice,
+# on different days, and the two digest lists were identical. `--digests`
+# is what points a run at it, and the deploy pipeline passes it on every
+# build, so the bytes a player is served are checked against a committed
+# record rather than against whatever the registry answered that morning
+# (`.github/workflows/ci.yml`).
+#
+# The versions are still the pin that decides *what* is fetched; the
+# digests decide whether what arrived is what was expected. When
+# `.tesseract-js-version` moves, this file is stale by design: the run
+# fails, a maintainer looks at both, and `--force` records the new ones.
 #
 # The versions are `.tesseract-js-version` and, for the desktop engine a
 # player installs themselves, `.tesseract-version` — the same shape
@@ -79,6 +90,11 @@ TESSDATA_URL = (
 )
 
 DIGESTS = "sha256sums.txt"
+
+# The committed record, checked when a run is not pointed at another one.
+# A CI runner has no previous fetch to compare against, so without this
+# every deploy would be trust on first use.
+COMMITTED_DIGESTS = Path(__file__).resolve().parent / "ocr-engine.sha256sums"
 
 
 def read_pin(name: str) -> str:
@@ -197,6 +213,13 @@ def main() -> int:
         action="store_true",
         help="overwrite files whose digests do not match the recorded ones",
     )
+    parser.add_argument(
+        "--digests",
+        type=Path,
+        help="verify against this digest record instead of one left in the"
+        " target directory (default: scripts/ocr-engine.sha256sums if it"
+        " exists, else the target's own)",
+    )
     args = parser.parse_args()
 
     if args.print_plan:
@@ -214,12 +237,24 @@ def main() -> int:
     files = collect(version, args.language)
     sums = digests_of(files)
 
-    recorded = where / DIGESTS
+    # Three places a record may be, in the order they are believed: the one
+    # a run was pointed at, the one committed beside this script, and the
+    # one a previous fetch left in the target directory. The committed one
+    # is what makes a CI runner - which has no previous fetch - check
+    # anything at all.
+    recorded = args.digests or COMMITTED_DIGESTS
+    if not recorded.exists():
+        recorded = where / DIGESTS
     if recorded.exists() and not args.force:
-        was = recorded.read_text(encoding="utf-8")
+        # Strict about the digests, not about line endings - the same rule
+        # `journal_store` learned the hard way. A record that has been
+        # through an editor on Windows, or checked out with `core.autocrlf`
+        # on, is still that record, and refusing it would be a correct
+        # refusal and a useless one.
+        was = recorded.read_text(encoding="utf-8").replace("\r\n", "\n")
         if was != sums:
             print(
-                "amberfolio: what was fetched does not match the digests already"
+                "amberfolio: what was fetched does not match the digests"
                 f" recorded in {recorded}.\n"
                 "  Nothing was written. Either the pin moved and the recorded"
                 " digests are stale, or something served different bytes.\n"
@@ -228,6 +263,12 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
+    elif not recorded.exists():
+        print(
+            f"amberfolio: no digest record at {COMMITTED_DIGESTS}; what was"
+            " fetched is trusted on first use and pinned afterwards.",
+            file=sys.stderr,
+        )
 
     if where.exists():
         shutil.rmtree(where)
