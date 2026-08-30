@@ -11,9 +11,14 @@
 // Run, not linked
 // ---------------
 //
-// Tesseract is Apache-2.0, so linking it would be allowed
-// (CONTRIBUTING.md's inbound rule). It is not linked anyway, for reasons
-// that are about this project rather than about licences:
+// This is the engine a **default** build uses. Since M5-E3c (#216) there
+// is another, `tesseract_linked_ocr.h`, behind a CMake option that is off
+// unless somebody asks — so what follows is the argument for this one
+// being the default rather than an argument that linking is wrong.
+//
+// Tesseract is Apache-2.0, so linking it is allowed (CONTRIBUTING.md's
+// inbound rule). It is not linked *by default*, for reasons that are
+// about this project rather than about licences:
 //
 //   * it is a large C++ dependency with a large C++ dependency of its
 //     own (Leptonica), and every contributor would pay for it at every
@@ -28,10 +33,11 @@
 //
 // What that costs is honest and is stated to the player: an engine that
 // is not installed is an engine that is not there, and this host says so
-// in as many words rather than quietly recognizing nothing. Packaging —
-// whether a desktop build should ship an engine of its own — is M6's
-// question, and `journal_ocr.h`'s interface is what makes it answerable
-// without touching anything above it.
+// in as many words rather than quietly recognizing nothing. That cost is
+// what #216 was filed about, and the answer was the build option rather
+// than a change here — `journal_ocr.h`'s one virtual call is what made it
+// answerable without touching anything above it, which is exactly what
+// this paragraph used to predict.
 //
 //
 // What crosses to the engine, and what does not

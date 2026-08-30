@@ -7,6 +7,10 @@
 # neither.
 
 include(AmberfolioSDL3)
+# The OCR engine, if this build was asked to carry one (M5-E3c, #216).
+# Off by default and returns immediately when it is, so a contributor who
+# did not ask pays nothing.
+include(AmberfolioTesseract)
 
 add_executable(amberfolio-sdl
   src/audio_gain.cpp
@@ -20,6 +24,22 @@ add_executable(amberfolio-sdl
   # engine installed, which is why it is its own file (M5-E3a, #212).
   src/tesseract_ocr.cpp
   src/tsv_words.cpp)
+
+# ...and the linked one beside it when there is one. Both implement
+# `journal_ocr`, `main.cpp` picks between them, and the program-driven one
+# stays in the build either way: a linked build should still be able to
+# run a player's own newer engine if they ask for it.
+if(AMBERFOLIO_LINK_TESSERACT)
+  target_sources(amberfolio-sdl PRIVATE src/tesseract_linked_ocr.cpp)
+  target_compile_definitions(amberfolio-sdl PRIVATE
+    AMBERFOLIO_HAVE_LINKED_TESSERACT=1
+    AMBERFOLIO_TESSDATA_DIR="${AMBERFOLIO_TESSDATA_DIR}")
+  target_link_libraries(amberfolio-sdl PRIVATE
+    amberfolio::tesseract amberfolio::leptonica amberfolio::jpeg)
+  # ExternalProject builds at build time, so the ordering is a target
+  # dependency rather than anything `find_package` could have answered.
+  add_dependencies(amberfolio-sdl amberfolio-ocr-engine)
+endif()
 
 # The binary players run is just "amberfolio"; the target name distinguishes
 # it from the web host's module, which is called amberfolio too.

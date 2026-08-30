@@ -31,7 +31,8 @@ from source, never committed here.
 | [libdeflate](https://github.com/ebiggers/libdeflate) | v1.25 | MIT | decompressing them, and inflating the journal's image streams |
 
 SDL3 and libdeflate have a bearing on a shipped binary; GoogleTest and
-simdjson are test-only. SDL3 is linked into the desktop host. libdeflate
+simdjson are test-only. A build with `AMBERFOLIO_LINK_TESSERACT` on
+carries three more, listed below. SDL3 is linked into the desktop host. libdeflate
 was test-only until M5-E3 (#174) gave the journal's extractor a use for
 it, and it is now linked into both hosts — decompression only, so the
 half of it that writes a stream is not built at all. The pins live in
@@ -57,13 +58,26 @@ build.
 
 Reading a player's own Adventurer's Journal needs an OCR engine.
 [Tesseract](https://github.com/tesseract-ocr/tesseract) — **Apache-2.0**
-— is the one, on both hosts, and neither host links it:
+— is the one, on both hosts:
 
 * the desktop host **runs the player's own installed `tesseract`** as a
-  program. It is not fetched, not vendored and not linked, so nothing is
-  combined with anything; `.tesseract-version` records the version this
-  host is written against, and the version actually used is asked of the
-  engine at ingestion. `hosts/sdl/src/tesseract_ocr.h` has the reasoning;
+  program by default. It is then not fetched, not vendored and not
+  linked, so nothing is combined with anything; `.tesseract-version`
+  records the version this host is written against, and the version
+  actually used is asked of the engine at ingestion.
+  `hosts/sdl/src/tesseract_ocr.h` has the reasoning;
+* **or it links one, when asked** (M5-E3c, #216). `-D AMBERFOLIO_LINK_TESSERACT=ON`
+  builds and statically links Tesseract, together with
+  [Leptonica](https://github.com/DanBloomberg/leptonica) —
+  **BSD-2-Clause** — and
+  [libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) —
+  **BSD-3-Clause and the IJG licence** — and fetches
+  [tessdata_fast](https://github.com/tesseract-ocr/tessdata)'s
+  `eng.traineddata`, **Apache-2.0**. All four are compatible with this
+  project's AGPL-3.0-only outbound licence (CONTRIBUTING.md), and a
+  binary built that way carries them, so its own distribution carries
+  their notices with it. Off by default, never committed here, and
+  `cmake/AmberfolioTesseract.cmake` is the decision;
 * the web host uses
   [tesseract.js](https://github.com/naptha/tesseract.js) — **Apache-2.0**,
   with `tesseract.js-core` and the

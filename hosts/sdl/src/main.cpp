@@ -588,6 +588,9 @@
 #include "dump.h"
 #include "keymap.h"
 #include "tesseract_ocr.h"
+#if AMBERFOLIO_HAVE_LINKED_TESSERACT
+#include "tesseract_linked_ocr.h"
+#endif
 
 // <cstdio> rather than std::format/std::print, and not only for the wasm
 // host's reason (bundle size). libc++ gates std::format's floating-point
@@ -1132,6 +1135,11 @@ void print_overlay_loads(const machine::machine& box, std::uint64_t& printed) {
   }
   printed = newest;
 }
+/// What `--journal-ocr` means when nobody said otherwise: the program to
+/// run. A build that carries its own engine takes this value as "use the
+/// one you carry", because a player who typed nothing did not ask for a
+/// program (`tesseract_linked_ocr.h`).
+constexpr std::string_view default_journal_ocr = "tesseract";
 
 /// Where this run slice has to stop: the next frame boundary, or a
 /// budget, whichever comes first.
@@ -1211,7 +1219,7 @@ struct options {
   /// engine for a check that has no real document to use.
   std::string journal;
   std::string journal_store;
-  std::string journal_ocr{"tesseract"};
+  std::string journal_ocr{default_journal_ocr};
   bool journal_probe{false};
   machine::speed_preset speed{machine::default_speed};
 
@@ -1692,7 +1700,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
   // where it is means something with no ingestion in sight. The note that
   // used to be here said reading was #175's; it is, and this is it.
   if (opts.journal.empty() &&
-      (opts.journal_probe || opts.journal_ocr != "tesseract")) {
+      (opts.journal_probe || opts.journal_ocr != default_journal_ocr)) {
     std::fprintf(stderr,
                  "amberfolio: --journal-ocr and"
                  " --journal-probe need --journal, whose ingestion they"
@@ -1919,6 +1927,26 @@ void present_document(machine::machine& box, const std::string& path) {
   present_digest(box, hasher.finish());
 }
 
+#if AMBERFOLIO_HAVE_LINKED_TESSERACT
+/// Where a linked build looks for `eng.traineddata`.
+///
+/// Beside the executable first, because that is where a packaged build
+/// would put it and a player's copy must not depend on a path from the
+/// machine it was built on; then the build tree's own fetched copy, which
+/// is what a developer has and what CMake compiled in.
+[[nodiscard]] std::string linked_tessdata_path() {
+  std::error_code why;
+  const char* base = SDL_GetBasePath();
+  if (base != nullptr) {
+    std::filesystem::path beside = std::filesystem::path(base) / "tessdata";
+    if (std::filesystem::exists(beside / "eng.traineddata", why)) {
+      return beside.string();
+    }
+  }
+  return AMBERFOLIO_TESSDATA_DIR;
+}
+#endif
+
 /// Where a journal's text lives when `--journal-store` did not say.
 ///
 /// The per-user data directory this platform keeps application data in.
@@ -2038,13 +2066,22 @@ void ingest_journal(machine::machine& box, const options& opts,
                static_cast<int>(ingester.edition()->name.size()),
                ingester.edition()->name.data(), ingester.entries());
 
-  // The engine, and what it is. Three ways this can go and each is said
-  // out loud: the fixture the probe installs, the player's own engine,
-  // or none — and "none" is a sentence rather than a silence, because a
-  // store with no text in it and no explanation is the failure a player
-  // finds out about last (`tesseract_ocr.h`).
+  // The engine, and what it is. Each way this can go is said out loud:
+  // the fixture the probe installs, the engine built into this binary,
+  // the player's own installed one, or none — and "none" is a sentence
+  // rather than a silence, because a store with no text in it and no
+  // explanation is the failure a player finds out about last
+  // (`tesseract_ocr.h`).
   host::journal_probe_ocr fixture;
   sdl::tesseract_ocr tesseract(opts.journal_ocr);
+#if AMBERFOLIO_HAVE_LINKED_TESSERACT
+  // A build that carries its own engine uses it, because a player who has
+  // installed nothing is the reason it was carried (#216). Saying
+  // `--journal-ocr PATH` still reaches for a program: a player with a
+  // newer engine than the one this was built against should be able to
+  // ask for it.
+  sdl::tesseract_linked_ocr linked(linked_tessdata_path());
+#endif
   host::journal_ocr* engine = nullptr;
   if (opts.journal_ocr == "none") {
     std::fprintf(stderr,
@@ -2052,6 +2089,10 @@ void ingest_journal(machine::machine& box, const options& opts,
                  " will be read and no text kept\n");
   } else if (opts.journal_probe) {
     engine = &fixture;
+#if AMBERFOLIO_HAVE_LINKED_TESSERACT
+  } else if (opts.journal_ocr == default_journal_ocr && linked.available()) {
+    engine = &linked;
+#endif
   } else if (tesseract.available()) {
     engine = &tesseract;
   } else {
