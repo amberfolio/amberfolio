@@ -79,15 +79,32 @@ handler simply becomes unreachable. Nothing detects hooking, because
 detecting hooking is guessing.
 
 `service_floor::reset()` is also this machine's **power-on self test**,
-and both halves of it matter. It lays the vector table, the stubs and the
-BDA down in memory — and then it programs the hardware a PC's ROM
-programs before the first program runs: PIT channel 0 at 18.2 Hz and the
-8259's ICW sequence, as real bus cycles, to whichever of the two are
-attached. M2 had only the memory half, and the shape of that gap is worth
+and every part of it matters. It lays the vector table, the stubs and the
+BDA down in memory; then it programs the hardware a PC's ROM programs
+before the first program runs — PIT channel 0 at 18.2 Hz and the 8259's
+ICW sequence, as real bus cycles, to whichever of the two are attached;
+and then it clears the display buffer through the video card's own write
+pipeline, putting the two sequencer registers it had to touch back
+afterwards.
+
+M2 had only the memory half, and the shape of that gap is worth
 remembering: nothing refused anything, no line was logged, and M3's first
 boot simply sat in a two-instruction loop watching `40:6C` for a change
 that had no way to arrive. Log-don't-fake cannot catch a program that
 never asked.
+
+The display half arrived the same way and from a player rather than a
+boot log: reset the machine, start again, and the previous run's picture
+was still there under the new one. Every piece of that was behaving
+correctly on its own. `machine::reset()` blanks the frame it publishes;
+the card keeps its planes, because RESET does not wipe VRAM on real
+hardware either (`ega.h`'s "Reset"); the renderer composes the next frame
+from those planes. What was missing was the ROM writing over the buffer
+afterwards, which is where a real machine clears it — inside the mode set
+its POST performs — and which nothing else in this machine was going to
+do. A host cannot fix it from its side: by the time those pixels are in
+the published frame they are indistinguishable from pixels the new run
+drew.
 
 ### The platform interface — `platform.h`
 

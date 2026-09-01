@@ -462,6 +462,17 @@ inline constexpr std::uint8_t cascade_on_irq2 = 0x04;
 /// and the boot log that demanded it is the reason it may.
 inline constexpr std::uint8_t interrupt_mask = 0xFE;
 
+/// The sequencer register the display clear writes through, and the value
+/// that opens all four planes to it at once. A card fresh off its own
+/// reset has every plane gated shut (ega.h's map mask), so a clear that
+/// did not write this first would reach nothing at all and read as if it
+/// had worked. Named here rather than at the call site for the same
+/// reason the three above are: these are the bytes this machine's self
+/// test writes, and what each one means is a fact about the hardware
+/// rather than about the loop that sends it.
+inline constexpr std::uint8_t video_map_mask_index = 0x02;
+inline constexpr std::uint8_t video_all_planes = 0x0F;
+
 }  // namespace post
 
 /// The interrupt controller's acknowledge, until M2-D1 (#46) brings a

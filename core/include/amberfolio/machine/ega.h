@@ -311,6 +311,18 @@
 // "wiring survives, state does not" split `machine::reset()` documents for
 // attached devices in general.
 //
+// What does clear the buffer is the machine's self test, immediately
+// afterwards: it opens the map mask and writes zeroes over the whole
+// window through the pipeline below, then puts the two sequencer
+// registers back (service_floor.cpp's `program_hardware()`). That is
+// where a real machine clears it too — inside the mode set its POST
+// performs — and the split is worth keeping straight, because both halves
+// are load-bearing. A card that wiped its own planes on RESET would be
+// inventing hardware behaviour; a machine whose warm boot came up still
+// showing the previous run's picture would be a bug no host can fix from
+// its side, since by then the stale pixels are in the published frame and
+// look exactly like pixels the new run drew.
+//
 //
 // Memory footprint
 // -----------------

@@ -9,6 +9,8 @@
 #include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/device.h"
+#include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/font.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
@@ -302,6 +304,58 @@ void service_floor::program_hardware() {
     box.write_port8(pic::data_port, post::cascade_on_irq2);
     box.write_port8(pic::data_port, pic::icw4_8086_mode);
     box.write_port8(pic::data_port, post::interrupt_mask);
+  }
+
+  // And the display buffer, which is the last thing a self test leaves
+  // clear. The RESET line does not wipe video memory — the card keeps its
+  // planes across it on purpose (ega.h's "Reset"), the same way this
+  // machine keeps its RAM — so unless the ROM writes over the buffer
+  // afterwards, nothing does. `machine::reset()` blanks the frame it
+  // publishes, but the frame after that is composed from the planes
+  // again, and the previous run's picture comes back underneath whatever
+  // the next program draws: invisible at first, because the palette went
+  // back to power-on with everything else, and then lit the moment that
+  // program sets one. A host that offers a reset button sees exactly
+  // that, and has nothing it can honestly do about it from its side —
+  // the stale pixels arrive in the published frame indistinguishable
+  // from pixels the new run drew.
+  //
+  // A real POST clears the buffer as part of the mode set it performs.
+  // This one sets no mode: it finishes with the machine's video-mode
+  // discipline still saying nothing has been set, and the BDA video block
+  // above is a description of the one mode this machine can display
+  // rather than a mode anybody asked for (service_floor.h). So it clears
+  // the buffer on its own and puts the two sequencer registers it had to
+  // touch back where the card's own reset left them. A warm boot's video
+  // state is then a cold boot's exactly, register for register and plane
+  // for plane — which is what lets this be added without moving a single
+  // recorded state hash (replay.h): on a cold boot the planes it writes
+  // zeroes over are already zero.
+  //
+  // Through the card's own write pipeline, so that the map mask and the
+  // ALU are what clear it rather than this function reaching into planes
+  // it does not own. But at the device rather than through
+  // `machine::write_memory`, because that path notices a write into the
+  // video window before a mode has been set (machine.h's "Video mode
+  // discipline") — and it is right to, since it is there to catch a
+  // *program* drawing off-plan. Routed through it, this clear would put a
+  // notice at the top of every boot log for every page of the buffer,
+  // reporting the BIOS as the program running off-plan. That is the same
+  // hazard `present()` above exists for, in the other half of the address
+  // space.
+  device* const card = box.memory().owner(ega::vram_window.first);
+  if (card != nullptr && present(ega::sequencer_index_port)) {
+    box.write_port8(ega::sequencer_index_port, post::video_map_mask_index);
+    box.write_port8(ega::sequencer_data_port, post::video_all_planes);
+    for (std::uint32_t at = ega::vram_window.first; at <= ega::vram_window.last;
+         ++at) {
+      card->write_memory(at, 0x00);
+    }
+    // Back to the power-on state, index register included: the data port
+    // first, while the index still selects the map mask, and then the
+    // index itself.
+    box.write_port8(ega::sequencer_data_port, 0x00);
+    box.write_port8(ega::sequencer_index_port, 0x00);
   }
 }
 

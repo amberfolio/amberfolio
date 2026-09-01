@@ -25,6 +25,7 @@
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/interrupts.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/font.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/pic.h"
@@ -298,6 +299,54 @@ TEST(service_post, the_tick_arrives_without_the_program_asking_for_it) {
 
   EXPECT_EQ(box->memory().ram()[at], 1);
   EXPECT_FALSE(box->stopped());
+  EXPECT_TRUE(log.notices.empty());
+}
+
+TEST(service_post, the_last_run_s_picture_does_not_survive_the_reset_line) {
+  recording_diagnostics log;
+  auto box = std::make_unique<machine>(memory_layout::pc, &log);
+  auto card = std::make_unique<ega>(*box);
+  ASSERT_TRUE(box->attach(*card));
+
+  // A previous run, drawing the way a program in mode 0Dh draws: the map
+  // mask open to all four planes, then bytes into the window. Two of
+  // them, at the two ends of it, because "the buffer" is the whole 64 KiB
+  // the card answers for and not only the 8,000 bytes a 320x200 frame is
+  // composed from — INT 10h AH=05h can page any of it into view.
+  box->write_port8(0x3C4, 0x02);
+  box->write_port8(0x3C5, 0x0F);
+  card->write_memory(0xA0000, 0xFF);
+  card->write_memory(0xAFFFF, 0x5A);
+  ASSERT_EQ(card->plane_byte(0, 0x0000), 0xFF);
+  ASSERT_EQ(card->plane_byte(3, 0xFFFF), 0x5A);
+
+  box->reset();
+
+  // Not one byte of it left. The card did not forget its planes — RESET
+  // does not do that on real hardware and ega.h says why this one does
+  // not either — the self test wrote over them, which is where a real
+  // machine clears them too.
+  std::uint32_t nonzero = 0;
+  for (unsigned plane = 0; plane < ega::plane_count; ++plane) {
+    for (std::uint32_t at = 0; at < ega::plane_size; ++at) {
+      if (card->plane_byte(plane, static_cast<std::uint16_t>(at)) != 0) {
+        ++nonzero;
+      }
+    }
+  }
+  EXPECT_EQ(nonzero, 0u);
+
+  // And the card is where its own reset left it, not where the clear
+  // needed it: this self test sets no video mode, so it may not leave the
+  // sequencer looking as though one had been set. That is what makes a
+  // warm boot's device state a cold boot's exactly (replay.h) — the
+  // property this clear had to be added without breaking.
+  EXPECT_EQ(card->map_mask(), 0x00);
+
+  // Nothing to report. A self test that clears the buffer through the
+  // machine's own bus would trip the video-mode discipline notice on
+  // every page of it (machine.h) and put the BIOS in the boot log as a
+  // program drawing before it asked for a mode.
   EXPECT_TRUE(log.notices.empty());
 }
 

@@ -1979,4 +1979,65 @@ TEST(Abi, AttachReferenceDevicesUnlocksTheDeviceSetAndIsIdempotent) {
   EXPECT_EQ(af_machine_stopped(box.get()), 0);
 }
 
+// What a player reported as "I reset and start, and the frame buffer is
+// not deleted": the previous run's picture reappears under the new one,
+// black on black until the new program sets a palette and then lit.
+//
+// This is the whole path a host drives, which is why it is here and not
+// only in service_floor_test.cpp: the frame af_machine_reset() publishes
+// was always blank, and that was never the question — the question is
+// what the *next* frame is composed from, since a host has no way to tell
+// those pixels from pixels the new run drew.
+TEST(Abi, ResetLeavesNothingOfTheLastRunOnTheScreen) {
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+  ASSERT_EQ(af_machine_attach_reference_devices(box.get()), AF_OK);
+
+  // mov ax, 0x000D ; int 10h — the mode set, which is what opens the map
+  // mask — then mov ax, 0xA000 ; mov es, ax ; mov di, 0 ; mov al, 0xFF ;
+  // mov es:[di], al ; hlt. Eight lit pixels at the top left, in all four
+  // planes: a picture, as far as the renderer is concerned.
+  const std::array<std::uint8_t, 19> draw{
+      0xB8, 0x0D, 0x00, 0xCD, 0x10, 0xB8, 0x00, 0xA0, 0x8E, 0xC0,
+      0xBF, 0x00, 0x00, 0xB0, 0xFF, 0x26, 0x88, 0x05, 0xF4};
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, draw.data(),
+                                    static_cast<std::uint32_t>(draw.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  ASSERT_EQ(af_machine_run_until(box.get(), 25'000.0), AF_OK);
+  ASSERT_EQ(af_machine_stopped(box.get()), 0);
+
+  const std::uint32_t pixels = af_frame_width() * af_frame_height();
+  const auto lit = [&box, pixels] {
+    const std::uint8_t* frame = af_machine_framebuffer(box.get());
+    std::uint32_t count = 0;
+    for (std::uint32_t i = 0; i < pixels; ++i) {
+      if (frame[i] != 0) {
+        ++count;
+      }
+    }
+    return count;
+  };
+  ASSERT_GT(lit(), 0u);
+
+  // The reset button, and then a start: a program that draws nothing at
+  // all, so that every lit pixel after this would have to be the previous
+  // run's.
+  ASSERT_EQ(af_machine_reset(box.get()), AF_OK);
+  const double blanked = af_machine_frame_generation(box.get());
+
+  const std::array<std::uint8_t, 1> halt{0xF4};
+  ASSERT_EQ(af_machine_write_memory(box.get(), 0x10000, halt.data(),
+                                    static_cast<std::uint32_t>(halt.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_set_entry(box.get(), 0x1000, 0, 0x1000, 0xFFFE), AF_OK);
+  ASSERT_EQ(af_machine_run_until(box.get(), 25'000.0), AF_OK);
+
+  // A frame was composed after the blank one the reset published — this
+  // is the assertion the rest of the test rests on, because without it
+  // "still blank" would only be saying that nothing had been drawn yet.
+  ASSERT_GT(af_machine_frame_generation(box.get()), blanked);
+  EXPECT_EQ(lit(), 0u);
+}
+
 }  // namespace
