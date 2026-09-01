@@ -81,6 +81,10 @@ constexpr std::uint16_t key_one = 0x0231;
 constexpr std::uint16_t key_two = 0x0332;
 constexpr std::uint16_t key_four = 0x0534;
 constexpr std::uint16_t key_step_down = 0x5032;
+/// What the seam answers the program's blocking read with when it has
+/// taken the key that read was going to be handed: `-`, which is on none
+/// of the program's bars.
+constexpr std::uint16_t key_ignored = 0x0C2D;
 
 /// The panel's layout, restated: a title row, twelve rows of body, and a
 /// footer, eight pixels each, twenty-two glyphs across.
@@ -1163,6 +1167,42 @@ TEST(JournalKeys, TheBlockingReadClaimsToo) {
   r.type(key_f1);
   r.stand_on(r.point(1));
   r.pc().step();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking);
+}
+
+TEST(JournalKeys, TheBlockingReadIsAnsweredWithSomethingIgnorable) {
+  // The one thing the poll may not do and this point must: put a key back.
+  // The program at a blocking read has committed to being handed one, and
+  // a read the seam empties goes to sleep inside the BIOS - where no point
+  // of this engine is reached, and the *next* key the player types is
+  // handed to the program unseen. So exactly one keystroke comes back, and
+  // it is the one the program's own menu-bar routine throws away.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.type(key_f1);
+  r.stand_on(r.point(1));
+  r.pc().step();
+
+  ASSERT_EQ(r.keys_waiting(), 1u) << "the read is answered, not emptied";
+  const std::uint16_t head = r.word_at(bda::segment, bda::keyboard_buffer_head);
+  EXPECT_EQ(r.word_at(bda::segment, head), key_ignored);
+}
+
+TEST(JournalKeys, ThePollLeavesNothingBehind) {
+  // The counterpart, and the reason the answer belongs at the read alone:
+  // at the poll the program has asked a question it can be told "no" to,
+  // so a claimed key leaves an empty buffer and the program goes round its
+  // own loop none the wiser.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.type(key_f1);
+  r.poll();
   EXPECT_EQ(r.keys_waiting(), 0u);
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking);
 }
@@ -1677,6 +1717,59 @@ TEST(JournalList, EscapeLeavesIt) {
   r.type(key_escape);
   r.poll();
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalList, TheLetterOnItsOwnBottomRowLeavesIt) {
+  // The screen says `EXIT`, and the letter of a word on a bar is how this
+  // game leaves every screen it has. Without this the only way out was a
+  // key nothing on the screen named, and `E` reached the program's own
+  // bar underneath and encamped instead.
+  for (const std::uint16_t key :
+       {std::uint16_t{0x1245}, std::uint16_t{0x1265}}) {
+    rig r;
+    r.attach_video();
+    r.attach_host();
+    r.enable();
+    r.adventuring();
+    r.put_bar(bar_area, area_words);
+
+    r.one_bar_pass(area_before, area_after, 'N');
+    ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+    r.type(key);
+    r.poll();
+    EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed)
+        << "either case of the letter the screen names";
+  }
+}
+
+TEST(JournalList, NoKeyAtAllReachesTheProgramWhileItIsUp) {
+  // The list covers the program's own screen and the program's own command
+  // bar goes on being live underneath it, so a key this seam left alone
+  // chose a command, or walked the party, where nobody could see it - and
+  // the program then drew its bar and its status line back over the
+  // journal to prove it. Nothing gets past.
+  // `S`earch, `C`ast, `V`iew, the left arrow that turns the party, and the
+  // space the bar routine ends on - a fresh machine each, because what one
+  // key does to a screen is not what this is asking.
+  for (const std::uint16_t key :
+       {std::uint16_t{0x1F73}, std::uint16_t{0x2E43}, std::uint16_t{0x2F56},
+        std::uint16_t{0x4B00}, std::uint16_t{0x3920}}) {
+    rig r;
+    r.attach_video();
+    r.attach_host();
+    r.enable();
+    r.adventuring();
+    r.put_bar(bar_area, area_words);
+
+    r.one_bar_pass(area_before, area_after, 'N');
+    ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+
+    r.type(key);
+    r.poll();
+    EXPECT_EQ(r.keys_waiting(), 0u) << "key " << key;
+    EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing)
+        << "and none of them is a way out either: key " << key;
+  }
 }
 
 TEST(JournalList, ThePaintIsStartedAgainWheneverWhatItShowsChanges) {

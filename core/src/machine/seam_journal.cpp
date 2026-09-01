@@ -123,6 +123,16 @@
 // citation opens the reader in the middle of a story event, and the key
 // that turns the game's own page has to stay the game's.
 //
+// **The list is the exception, and takes every key there is.** It is the
+// one thing this seam draws that covers the program's own screen, and the
+// program's own command bar goes on running underneath it — so a key it
+// left alone chose a command, or walked the party, on a screen nobody
+// could see, and the program then painted its own bar and status line back
+// over the journal to prove it. Nothing reaches the program while the list
+// is up; `E` and Escape are the way out, and `E` because that is the word
+// the screen puts on its bottom row and the letter of a word on a bar is
+// how this game leaves every screen it has.
+//
 //
 // The fidelity claim, stated for this seam (docs/seams.md §8.5)
 // -------------------------------------------------------------
@@ -395,11 +405,23 @@ constexpr std::uint16_t frame_out_flag = 0x04;
 /// resident image.
 constexpr std::uint16_t image_draw_frame = 0x041F8;
 
-/// The routine that composes the adventuring screen. In the same paragraph
-/// as the roster drawer, and called the same way - as paragraph plus
-/// offset, never as a flat image offset, which is the CS-relative hazard
-/// the automap records.
-constexpr std::uint16_t screen_setup_offset = 0x2B5E;
+/// The program's own way of leaving a full-screen view: the per-mode screen
+/// composer. It draws the scaffold — the outer frame, the bottom panel, the
+/// viewport box and its inset — and then, for whichever mode the program is
+/// in, the view, the party roster and the status line. It takes nothing and
+/// cleans nothing, and it is reached as paragraph plus offset rather than as
+/// a flat image offset, because it reaches its own literals as `CS:<constant>`
+/// - the CS-relative hazard the automap records.
+///
+/// **Not the routine that *enters* the adventuring screen** (`0x2B5E`), which
+/// is what this seam called first and what #175's teardown got wrong. That
+/// one sets the mode byte to the alternate adventuring screen whether or not
+/// the player was on it, and it draws the bottom panel alone - so the outer
+/// frame, the viewport box and its ornaments never came back, and whatever
+/// this screen had drawn above the panel stayed on the glass. This one is
+/// the routine the program itself calls on the way out of every full-screen
+/// view it has, and it repaints all of them.
+constexpr std::uint16_t screen_redraw_offset = 0x27D9;
 
 /// The screen, in the character cells the frame drawer counts in: the
 /// whole of it but the bottom row, which is where the game keeps its
@@ -1084,6 +1106,37 @@ constexpr std::uint8_t key_step_back_char = '8';
 constexpr std::uint8_t key_step_forward_char = '2';
 constexpr std::uint8_t key_step_back_scan = 0x48;
 constexpr std::uint8_t key_step_forward_scan = 0x50;
+
+/// What a key claimed at the program's own **blocking read** is answered
+/// with.
+///
+/// The poll is where a key is meant to be taken: the program asks whether
+/// one is waiting, this seam takes it, and the program is told no. But a
+/// key that lands in the step between that question and its answer arrives
+/// at the *read* instead - and a read is the program having already
+/// committed to being handed one. Take it there and put nothing back and
+/// the program goes to sleep inside the BIOS, where **no point of this
+/// engine is reached at all**, and the next key the player types is handed
+/// straight to it, unseen. That is what made every second keystroke fall
+/// through this seam's claim, and it is why "a seam-claimed key sometimes
+/// needs a second press" was ever a thing anybody noticed.
+///
+/// So the read is answered, with a character the program throws away.
+/// `-` is on none of its bars - their command letters are `0-9A-Z` - it is
+/// neither of the two that step a bar's highlight, and it is not one of
+/// the keypad characters the input routine remaps. Its menu-bar routine
+/// therefore does not even return: it goes back to waiting, which is
+/// exactly where it was.
+constexpr std::uint8_t key_ignored_scan = 0x0C;
+constexpr std::uint8_t key_ignored_ascii = '-';
+
+/// The letter the list's own way out is named after, in both the cases a
+/// player's keyboard sends. The screen says `EXIT`, and the letter of a
+/// word on a bar is how every way out of every screen in this game is
+/// taken - so it has to be one here too, and a player who reads the screen
+/// must not have to guess at Escape.
+constexpr std::uint8_t key_exit_upper = 'E';
+constexpr std::uint8_t key_exit_lower = 'e';
 constexpr std::uint16_t key_escape = 0x011B;
 constexpr std::uint16_t key_backspace = 0x0E08;
 constexpr std::uint16_t key_return = 0x1C0D;
@@ -1107,6 +1160,26 @@ enum class claimable : std::uint8_t {
   /// screen - the same modal claim the reader's other keys make.
   step_back,
   step_forward,
+  /// Anything else, while the list has the whole screen: taken and
+  /// dropped.
+  ///
+  /// The list is the only thing this seam draws that covers the program's
+  /// own screen, and the program's own command bar goes on being live
+  /// underneath it - the menu-bar routine is sitting in its key loop the
+  /// whole time. Every key this seam did not want therefore *acted*, on a
+  /// screen the player could not see: a letter picked a command off the
+  /// bar the list was drawn over, and an arrow walked the party. Worse, it
+  /// showed: the loop repaints its status line every time round and the
+  /// bar routine repaints its bar, so the program drew its own screen back
+  /// over the list a piece at a time and left something that looked like a
+  /// corrupted game rather than a journal.
+  ///
+  /// So while the list is up, no keystroke reaches the program at all.
+  /// That is a wider claim than any other this seam makes, and it is the
+  /// one screen that has earned it: it is opened deliberately from the
+  /// party's own bar, it covers everything, and it has its own way out.
+  /// The panel modes make no such claim, and the file's header says why.
+  swallow,
 };
 
 [[nodiscard]] claimable claimable_of(std::uint16_t key,
@@ -1143,6 +1216,11 @@ enum class claimable : std::uint8_t {
         (character == 0 && scan == key_step_forward_scan)) {
       return claimable::step_forward;
     }
+    if (character == key_exit_upper || character == key_exit_lower) {
+      return claimable::close;
+    }
+    // And nothing else gets past. See `claimable::swallow`.
+    return claimable::swallow;
   }
   if (mode == journal_reader_mode::asking) {
     if (key == key_return) {
@@ -1289,13 +1367,18 @@ enum class claimable : std::uint8_t {
                    list_name_column);
 }
 
-/// Put the whole adventuring screen back, the way the program composes it
-/// for itself.
+/// Put the whole screen back, through the routine the program itself
+/// leaves a full-screen view by.
 ///
 /// The counterpart of `give_the_roster_back()` for a panel that took more
 /// than the roster. Safe here for the reason the file's own header gives:
 /// this screen is only opened from the party's own command bar, so there
 /// is no vendor under it to paint over.
+///
+/// It repaints for whatever mode the program is in rather than putting it
+/// on one, and it starts from the scaffold - so every cell this screen
+/// covered is drawn again, which is what makes it a teardown rather than a
+/// partial one.
 void give_the_screen_back(machine& box, seam_context& ctx) {
   journal_state& state = box.journal();
   state.set_on_screen(false);
@@ -1304,7 +1387,7 @@ void give_the_screen_back(machine& box, seam_context& ctx) {
   const std::array<std::uint16_t, 0> nothing{};
   static_cast<void>(ctx.call_program(
       static_cast<std::uint16_t>(image + roster_draw_paragraph),
-      screen_setup_offset, nothing));
+      screen_redraw_offset, nothing));
 
   // **And one keystroke, so the program redraws its own command bar.**
   // Composing the screen is everything but the bar: the bar belongs to the
@@ -1511,11 +1594,17 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
 /// Everything one arrival does with the keyboard. True when the roster is
 /// on its way back through a batch, which is the caller's cue that it is
 /// finished for this pass.
+///
+/// `claimed` says whether a keystroke was taken off the buffer at all,
+/// which the poll point does not care about and the blocking read must
+/// (`key_ignored_ascii`).
 [[nodiscard]] bool handle_keys(machine& box, seam_context& ctx,
-                               std::uint16_t ds) {
+                               std::uint16_t ds, bool& claimed) {
   journal_state& state = box.journal();
   std::uint16_t key = 0;
-  switch (claim_key(box.processor(), ds, state.reader(), key)) {
+  const claimable which = claim_key(box.processor(), ds, state.reader(), key);
+  claimed = which != claimable::none;
+  switch (which) {
     case claimable::none:
       return false;
     case claimable::reader:
@@ -1536,6 +1625,11 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
       return false;
     case claimable::step_forward:
       state.move_list_cursor(1);
+      return false;
+    case claimable::swallow:
+      // Taken off the buffer and dropped. Nothing on the screen changes,
+      // so nothing is drawn: the signature the next arrival computes is
+      // the one already on the glass.
       return false;
     case claimable::accept:
       // Return on the list opens the line it is pointing at. The screen
@@ -1660,7 +1754,8 @@ void at_key_pending(machine& box, seam_context& ctx) {
     // test follows one step in.
     return;
   }
-  if (handle_keys(box, ctx, ds)) {
+  bool claimed = false;
+  if (handle_keys(box, ctx, ds, claimed)) {
     // The roster is on its way back through a batch. Nothing else this
     // pass.
     return;
@@ -1678,6 +1773,11 @@ void at_key_pending(machine& box, seam_context& ctx) {
 /// poll point is not reached again until a key arrives. A reader that only
 /// drew at the poll would appear when the player pressed something, which
 /// is one press too late.
+///
+/// **And a key taken here is answered**, because the program is already
+/// committed to being handed one. `key_ignored_ascii` is the whole of
+/// that argument; without it this point takes one key and the program
+/// sleeps through the next.
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
@@ -1688,7 +1788,13 @@ void at_key_read(machine& box, seam_context& ctx) {
   if (!has_roster(cpu, ds)) {
     return;
   }
-  if (handle_keys(box, ctx, ds)) {
+  bool claimed = false;
+  const bool batched = handle_keys(box, ctx, ds, claimed);
+  if (claimed) {
+    static_cast<void>(
+        ctx.inject_keystroke(key_ignored_scan, key_ignored_ascii));
+  }
+  if (batched) {
     return;
   }
   draw_if_wanted(box, ctx, ds);

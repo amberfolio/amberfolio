@@ -1982,12 +1982,23 @@ lettering without this project knowing what any of them look like.
 
 **And the program gives it back.** The one thing a full-screen panel needs
 that a roster-sized one does not is a way to restore everything it
-covered, and there is exactly one: the routine the program itself calls to
-compose the adventuring screen, which takes no arguments and repaints the
-viewport, the status line and the roster. M5-E2d is why that is safe here
-and was not before — this screen is only ever opened from the party's own
+covered, and there is exactly one: the routine the program itself calls
+on the way out of every full-screen view it has, which takes no arguments
+and repaints, for whichever mode the program is in, the scaffold — the
+outer frame, the bottom panel, the viewport box and its inset — then the
+view, the roster and the status line. M5-E2d is why that is safe here and
+was not before — this screen is only ever opened from the party's own
 command bar (#221), which is the one place in the game where a vendor
 cannot be underneath it.
+
+**Not the routine that *enters* the adventuring screen**, which is what
+this called first and got wrong. That one puts the mode byte on the
+alternate adventuring screen whether or not the player was on it, and it
+draws the bottom panel alone — so the outer frame and the viewport's own
+box and ornaments never came back, and whatever the journal had drawn
+above the panel stayed on the glass. Two routines a paragraph apart, one
+of which the program uses for exactly this and the other of which it does
+not.
 
 It comes back with **one injected keystroke** as well, because composing
 the screen is everything *but* the command bar: the bar belongs to the
@@ -2081,6 +2092,34 @@ digit, and the digits and Return are the prompt's while the prompt is up.
 Space and Return are deliberately *not* taken while a page is up — a
 citation opens the reader in the middle of a story event, and the key
 that turns the game's own page has to stay the game's.
+
+**The log takes every key there is**, and it is the one screen that has
+earned that. It covers the program's own, and the program's own command
+bar goes on running underneath it — so a key this seam left alone chose a
+command, or walked the party, where nobody could see it, and the program
+then drew its bar and its status line back over the journal a piece at a
+time. What a player saw was not a journal and not a game: it was the two
+of them on the same glass, and a forward step that did nothing while a
+turn still worked, because up and down were the list's and left and right
+were not. Nothing reaches the program while the log is up. **`E` leaves
+it**, because `EXIT` is the word on its bottom row and the letter of a
+word on a bar is how this game leaves every screen it has — and because
+`E` was reaching `ENCAMP` on the bar underneath.
+
+**A key taken at the program's blocking read is answered.** The poll is
+where a key is meant to be taken: the program asks whether one is
+waiting, the seam takes it, the program is told no. But a key landing in
+the step between that question and its answer arrives at the *read*
+instead — and a read is the program already committed to being handed
+one. Take it there and put nothing back and the program sleeps inside the
+BIOS, where **no point of this engine is reached at all**, so the next key
+the player types is handed straight to it, unseen. That is what made every
+second keystroke fall through the claim, and it is the mechanism behind
+"a seam-claimed key sometimes needs a second press". So the read gets a
+`-` back: on none of the program's bars, neither of the two that step a
+bar's highlight, and not one of the keypad characters its input routine
+remaps — so the routine does not even return, it goes back to waiting.
+`seam_automap.cpp` claims at the same point and owes the same answer.
 
 #### Its fidelity claim is narrower than the automap's, on purpose
 
