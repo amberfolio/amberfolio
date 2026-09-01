@@ -106,7 +106,14 @@ import {
 
 /// The ABI's guest list, as hosts/web/CMakeLists.txt sets it. Keep the
 /// two in step; that is the whole job of this array.
+///
+/// It is a *presence* check, so the drift it cannot see is an export
+/// added there and never named here — which is exactly what had happened
+/// to `_main` and to the six pull calls below by the time #211 came to
+/// read the same list for the release manifest. Adding an export means
+/// adding a line here in the same change.
 const EXPECTED_EXPORTS = [
+  '_main',
   '_malloc',
   '_free',
   '_af_version',
@@ -172,6 +179,15 @@ const EXPECTED_EXPORTS = [
   '_af_machine_seam_fired',
   '_af_machine_seam_enable',
   '_af_machine_seam_disable',
+  // The host-pulled trigger and what it reports (#161, #163): the seam
+  // the player pulls is latched here and the four counters say whether
+  // it was offered a point, waited for one, and at which tick.
+  '_af_machine_seam_triggered',
+  '_af_machine_seam_waiting',
+  '_af_machine_seam_reached',
+  '_af_machine_seam_waited',
+  '_af_machine_seam_pulled_at',
+  '_af_machine_seam_pull',
   '_af_machine_seam_host_calls',
   '_af_machine_seam_host_argument',
   '_af_machine_seam_gate',

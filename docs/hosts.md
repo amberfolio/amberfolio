@@ -663,6 +663,85 @@ cmake --build --preset wasm
 python3 scripts/serve-web.py
 ```
 
+### Two things a page serving this module has to know (#211)
+
+Neither is checkable by a test here, and both are the kind of fact a
+consumer would otherwise discover from a lockfile bump that fails to
+instantiate. They are stated rather than checked, which is why they are
+in this document and not in a script.
+
+**Single-threaded, and that holds through 1.0.** The module is built with
+no `-pthread` and no shared memory: there is no `SharedArrayBuffer`
+anywhere in the glue or the page, no worker pool behind the machine, and
+the one worker the page does run — the AudioWorklet — receives each chunk
+by `postMessage()` with its buffer *transferred*, never shared
+(`audio-worklet.mjs`'s own top comment is the long version, and
+`machine/platform.h`'s "one thread, any thread" is the contract it
+implements). `af_machine_run_until()` is called on the main thread and
+`af_machine_render_audio()` beside it.
+
+The consequence is the one a host cares about: **a route serving this
+module does not need `Cross-Origin-Opener-Policy: same-origin` and
+`Cross-Origin-Embedder-Policy: require-corp`.** Cross-origin isolation is
+what threads would cost, and it is not free — it takes the page out of
+third-party embeds and makes every asset on it prove it wants to be
+there. This build does not ask for it.
+
+That is a decision and not a gap waiting to be filled. The machine is an
+interpreter with one instruction stream and a deadline scheduler
+(`docs/machine.md`), so there is no second thing for a second thread to
+do; and virtual time is the only clock, which is what the recordings rest
+on (`docs/replay.md`) and what is easiest to keep true with one thread in
+the picture. If it ever changes, those two headers become mandatory on
+the route, that route stops being embeddable, and this paragraph is where
+it will say so.
+
+**The ABI states its own version, in the manifest, before anything is
+loaded.** `af_version()` says which *build* this is — it tracks
+`project(VERSION ...)` and moves every milestone, so it answers nothing
+about whether a loader can drive the module. The ABI's own major/minor is
+`AF_ABI_VERSION_MAJOR`/`_MINOR` in `core/include/amberfolio/abi.h`, with
+the bump rule stated at the point of definition, and
+`scripts/release-bundle.sh` reads it out of that header — along with the
+module's whole export list, read out of the `set()` block in
+`hosts/web/CMakeLists.txt` that feeds `-sEXPORTED_FUNCTIONS` — into the
+release's `manifest.json`:
+
+```json
+{
+  "version": "0.3.0",
+  "abi": { "major": 1, "minor": 0 },
+  "sourceCommit": "a827d9ea…",
+  "files": [ { "name": "amberfolio.wasm", "sha256": "…", "size": 0 } ],
+  "exports": [ "_main", "_malloc", "_free", "_af_version", "…" ]
+}
+```
+
+**major** moves when an entry point is removed or renamed or changes what
+it means; **minor** moves when entry points are added and nothing that
+was there changed. So a loader compares `major` against what it was
+written for, refuses a bundle it cannot drive before it fetches a
+megabyte of wasm, and has `exports` to say which entry point it wanted
+when it wants to be specific — all without instantiating anything.
+
+Both are read rather than repeated, and `scripts/test-release-bundle.sh`
+refuses a release whose header talks about the version without defining
+one, whose export block has moved out from under the parser, or whose
+export list comes back without `_af_version` in it. A manifest that
+disagrees with the module it describes would be worse than one that said
+nothing: it would be believed.
+
+One case is deliberately *not* a refusal. `release.yml` runs the current
+bundler against the tree of an older tag — current tool, historical
+content — and `v0.1.0` and `v0.2.0` predate the declaration entirely. A
+tree with no `AF_ABI_VERSION_*` in it stages with a notice and **no
+`abi` key**, because saying nothing about a contract that did not exist
+yet is the honest answer and inventing 1.0 for it is not. Its `exports`
+are still that tree's own: re-staging `v0.2.0` today lists the
+seventy-eight entry points it had, not the hundred and twenty-four this
+branch has. A consumer reads an absent `abi` as "older than the
+declaration" rather than as 1.0.
+
 ### Running your own copy in a browser
 
 The page has two halves. **start** runs the embedded demo program — a

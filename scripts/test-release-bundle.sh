@@ -57,7 +57,8 @@ fi
 # the annotated-tag trap this script exists to pin only exists in one.
 mkrepo() { # mkrepo <name> <version> -> prints repo path
   local d="$tmp/$1" version="$2"
-  mkdir -p "$d/scripts" "$d/LICENSES"
+  mkdir -p "$d/scripts" "$d/LICENSES" "$d/core/include/amberfolio" \
+    "$d/hosts/web"
   cp "$here/release-bundle.sh" "$d/scripts/"
   cat >"$d/CMakeLists.txt" <<CMAKE
 cmake_minimum_required(VERSION 3.25)
@@ -68,6 +69,33 @@ CMAKE
   echo "the outbound licence" >"$d/LICENSE"
   echo "the notices" >"$d/NOTICE.md"
   echo "the inbound licence" >"$d/LICENSES/Apache-2.0.txt"
+  # The ABI's declared version. Deliberately not 1.0, so the manifest
+  # below proves the numbers were read out of this header rather than
+  # defaulted; and with a `#define` inside a comment above them, because
+  # the real header is four hundred lines of prose and the parser has to
+  # tell a definition from a mention of one.
+  cat >"$d/core/include/amberfolio/abi.h" <<'ABI'
+// SPDX-License-Identifier: AGPL-3.0-only
+/// Prose about the contract. A line here saying #define AF_ABI_VERSION_MAJOR 9
+/// is a mention and not a definition, and must not be read as one.
+#define AF_ABI_VERSION_MAJOR 1u
+#define AF_ABI_VERSION_MINOR 4u
+ABI
+  # The export list, in the shape the real one has and not a tidied
+  # version of it: a comment with a paren in it, a blank line, and the
+  # closing paren on the last name rather than a line of its own. Each of
+  # those three has a way of breaking a list parser that a clean fixture
+  # would never have caught.
+  cat >"$d/hosts/web/CMakeLists.txt" <<'WEBCMAKE'
+set(_amberfolio_web_export_names
+  _main
+  _af_version
+  # A comment (with a paren in it) inside the list, which is really there.
+
+  _af_machine_create
+  _af_web_demo_program_size)
+list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
+WEBCMAKE
   git -C "$d" init -q -b main
   git -C "$d" config user.email test@example.com
   git -C "$d" config user.name "Release Test"
@@ -138,7 +166,11 @@ expected = [
     "app.mjs", "audio-worklet.mjs", "picker.mjs",
 ]
 assert manifest["version"] == "0.2.0", manifest["version"]
+assert manifest["abi"] == {"major": 1, "minor": 4}, manifest["abi"]
 assert manifest["sourceCommit"] == commit, manifest["sourceCommit"]
+assert manifest["exports"] == [
+    "_main", "_af_version", "_af_machine_create", "_af_web_demo_program_size",
+], manifest["exports"]
 assert [f["name"] for f in manifest["files"]] == expected, manifest["files"]
 for entry in manifest["files"]:
     blob = open(os.path.join(out, entry["name"]), "rb").read()
@@ -181,6 +213,61 @@ expect "an annotated tag object's sha is refused as sourceCommit" 1 \
 expect "an abbreviated sha is refused as sourceCommit" 1 \
   bash "$repo/scripts/release-bundle.sh" "$build" "$tmp/short-sha-out" v0.2.0 \
   "${commit:0:12}"
+
+# A tree from before the declaration is not an error, and this is the one
+# green path among the new checks. `release.yml` runs the current bundler
+# against the tree of an older tag, and v0.1.0 and v0.2.0 have no ABI
+# version in them; the manifest says nothing rather than inventing 1.0,
+# and a consumer reads the absent key as "older than the declaration".
+older=$(mkrepo older 0.2.0)
+cat >"$older/core/include/amberfolio/abi.h" <<'OLDABI'
+// SPDX-License-Identifier: AGPL-3.0-only
+/// A header from before anyone thought to version the contract.
+OLDABI
+expect "a tree from before the declaration still stages" 0 \
+  bash "$older/scripts/release-bundle.sh" "$build" "$tmp/older-out" v0.2.0
+check "and its manifest carries no abi key at all" python3 -c \
+  'import json,sys; m=json.load(open(sys.argv[1])); assert "abi" not in m, m; \
+assert m["exports"], m' "$tmp/older-out/manifest.json"
+
+# Whereas a header that talks about the version without defining one is a
+# botched edit, and dropping the key quietly would hide it. A manifest
+# that states the wrong contract — or silently states none where one was
+# meant — is worse than a release that states none on purpose: a
+# consumer's loader accepts a bundle it cannot drive and fails somewhere
+# later, with nothing pointing back at here.
+noabi=$(mkrepo noabi 0.2.0)
+cat >"$noabi/core/include/amberfolio/abi.h" <<'NOABI'
+// SPDX-License-Identifier: AGPL-3.0-only
+/// Prose that mentions AF_ABI_VERSION_MAJOR and then never defines it.
+NOABI
+expect "a header that mentions the version but defines none is refused" 1 \
+  bash "$noabi/scripts/release-bundle.sh" "$build" "$tmp/noabi-out" v0.2.0
+
+# The export list is parsed out of the CMake block, so that block's shape
+# is load-bearing. Renaming the variable — a refactor, from inside
+# hosts/web — must stop the release rather than quietly produce a
+# manifest with no exports in it.
+moved=$(mkrepo moved 0.2.0)
+cat >"$moved/hosts/web/CMakeLists.txt" <<'MOVED'
+set(_amberfolio_web_exports_renamed
+  _main
+  _af_version)
+MOVED
+expect "an export block the parser cannot find is refused" 1 \
+  bash "$moved/scripts/release-bundle.sh" "$build" "$tmp/moved-out" v0.2.0
+
+# And a parser that half works is the case an emptiness check cannot see:
+# some names came back, so the list looks like a list, and the module's
+# own ABI is not in it.
+partial=$(mkrepo partial 0.2.0)
+cat >"$partial/hosts/web/CMakeLists.txt" <<'PARTIAL'
+set(_amberfolio_web_export_names
+  _main
+  _malloc)
+PARTIAL
+expect "an export list with no _af_version in it is refused" 1 \
+  bash "$partial/scripts/release-bundle.sh" "$build" "$tmp/partial-out" v0.2.0
 
 # A flat asset namespace has no directories in it, so LICENSES/NOTICE.md
 # and NOTICE.md would be one name for two files. Refuse, never overwrite.

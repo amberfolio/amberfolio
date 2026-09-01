@@ -263,6 +263,53 @@ extern "C" {
 /// headers it was compiled against.
 uint32_t af_version(void);
 
+// --- The ABI's own version --------------------------------------------
+
+/// The version of *this contract*, which is not the version of the core.
+///
+/// `af_version` answers "which build is this" — the milestone's number,
+/// tied to `project(VERSION ...)` and to the tag. It moves whenever
+/// anything in the repository moves, which makes it useless for the one
+/// question a consumer has to answer before it loads a module: **do I
+/// speak what this bundle exports?** A site that pins a release and
+/// refuses to build on a hash mismatch (#200) still has to decide, at
+/// load time and before instantiating anything, whether the entry points
+/// its loader calls are the entry points that are there.
+///
+/// So the two numbers are separate, and this pair is the one carrying the
+/// compatibility rule:
+///
+///   * **major** moves when an entry point that existed is removed or
+///     renamed, or when what one does — or what its arguments mean —
+///     changes. A host written against major N may not assume it can
+///     drive major N+1.
+///   * **minor** moves when entry points are added and nothing that was
+///     already there changed. A host written against 1.0 still drives
+///     1.3, and merely does not know what 1.3 grew.
+///
+/// **The surface this covers is the module's, not this header's.** The
+/// wasm build exports what `hosts/web/CMakeLists.txt` lists, which is this
+/// header's functions *plus* that host's own `af_web_*` ones, and a
+/// consumer calls both kinds without being able to tell them apart. Both
+/// are in the release manifest's `exports`, and a change to either moves
+/// these numbers. A function added *here* and not added *there* is simply
+/// absent from the module and moves nothing — the trap the top of this
+/// header states, and what the smoke check exists to catch.
+///
+/// **1.0 is the first declared ABI, and claims nothing retroactively.**
+/// Releases staged before it carry no `abi` in their manifest, and a
+/// consumer reads that absence as "older than the declaration" rather
+/// than as 1.0. The numbers are the ABI's alone: 1.0 does not say the
+/// project reached 1.0, and PLAN.md's own 1.0 is a different milestone
+/// that will not move them by arriving.
+///
+/// Read by `scripts/release-bundle.sh`, which puts them in
+/// `manifest.json` so that decision can be made from a file that costs a
+/// fetch rather than from a module that costs an instantiation. Nothing
+/// in core reads them.
+#define AF_ABI_VERSION_MAJOR 1u
+#define AF_ABI_VERSION_MINOR 0u
+
 // --- Facts about the machine ------------------------------------------
 //
 // Constants a host would otherwise hard-code. They are functions and not

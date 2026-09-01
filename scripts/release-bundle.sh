@@ -18,7 +18,23 @@
 #      published `smoke.mjs`, `drive.mjs` and whatever else a preset
 #      happens to leave there — the wasm tree carries five such files
 #      today.
-#   2. **`sourceCommit` is a commit and nothing else.** It is what the
+#   2. **The ABI's version travels with the bytes.** A consumer decides
+#      whether it speaks a bundle *before* instantiating it, and it can
+#      only do that from a file: manifest.json carries the ABI's own
+#      major/minor (`AF_ABI_VERSION_*` in core/include/amberfolio/abi.h)
+#      and the module's whole export list, both read out of the tree here
+#      rather than spelled a second time. #211 is the consumer asking for
+#      exactly this, and the reason they are read rather than repeated is
+#      that a manifest disagreeing with the module it describes is worse
+#      than one that says nothing at all.
+#
+#      Which is also why a tree that declares no ABI version gets a
+#      manifest with no `abi` key rather than a refusal. `release.yml`
+#      runs *this* script against the tree of an older tag — current
+#      tool, historical content — and v0.1.0 and v0.2.0 predate the
+#      declaration. Saying nothing about a contract that did not exist
+#      yet is the honest answer; inventing 1.0 for them would not be.
+#   3. **`sourceCommit` is a commit and nothing else.** It is what the
 #      hosting page turns into a `tree/<sha>` link, and that link is how
 #      AGPL-3.0-only §13's offer is discharged for someone running the
 #      program over a network. A tag can be moved and an abbreviated sha
@@ -124,6 +140,70 @@ if [ "$declared" != "$version" ]; then
     "reports the CMake one across the C ABI"
 fi
 
+# The ABI's own version, which is not the one above and does not move with
+# it: abi.h states the rule at the point of definition. Read here so a
+# manifest cannot drift from the header its module was compiled against.
+abi_header=$repo_root/core/include/amberfolio/abi.h
+read_abi_number() { # read_abi_number <macro-name>
+  sed -n "s/^#define[[:space:]]\{1,\}$1[[:space:]]\{1,\}\([0-9]\{1,\}\)u\{0,1\}[[:space:]]*$/\1/p" \
+    "$abi_header" | head -n 1
+}
+abi_major=$(read_abi_number AF_ABI_VERSION_MAJOR)
+abi_minor=$(read_abi_number AF_ABI_VERSION_MINOR)
+if [ -z "$abi_major" ] || [ -z "$abi_minor" ]; then
+  # Two quite different trees arrive here and only one of them is a bug.
+  # A header that *talks about* AF_ABI_VERSION without defining it is a
+  # botched edit, and shipping a manifest that quietly drops the key
+  # would hide it. A header that has never heard of it is simply older
+  # than the declaration, which is a tree this script is expected to be
+  # pointed at.
+  if grep -q 'AF_ABI_VERSION' "$abi_header"; then
+    die "$abi_header mentions AF_ABI_VERSION but defines no" \
+      "AF_ABI_VERSION_MAJOR/MINOR: manifest.json states the ABI a" \
+      "consumer has to speak, and a guessed one would be worse than a" \
+      "release that does not state it at all"
+  fi
+  abi_major=
+  abi_minor=
+  echo "release-bundle: $abi_header declares no ABI version, so" \
+    "manifest.json will carry no \"abi\" key — which is what a consumer" \
+    "reads as \"older than the declaration\" rather than as 1.0" >&2
+fi
+
+# The module's export list, taken from the one place that decides it — the
+# CMake variable joined into -sEXPORTED_FUNCTIONS. Anything else here
+# would be a second spelling; hosts/web/tests/smoke.mjs already keeps the
+# only other one, and that one asserts *presence*, so it cannot see an
+# export that was added.
+#
+# Comments and blank lines live inside that set() block, and its closing
+# paren sits on the last name rather than on a line of its own.
+web_cmake=$repo_root/hosts/web/CMakeLists.txt
+exports=$(awk '
+  /^set\(_amberfolio_web_export_names/ { inside = 1; next }
+  inside {
+    line = $0
+    sub(/#.*/, "", line)
+    closing = (index(line, ")") > 0)
+    gsub(/[()]/, " ", line)
+    count = split(line, token, /[ \t]+/)
+    for (i = 1; i <= count; i++) {
+      if (token[i] ~ /^_[A-Za-z0-9_]+$/) print token[i]
+    }
+    if (closing) exit
+  }
+' "$web_cmake")
+if [ -z "$exports" ]; then
+  die "no export names found in $web_cmake: manifest.json states what the" \
+    "module exports, and an empty list would be a lie about the bundle"
+fi
+# A canary against a parser that half works: a list with no af_version in
+# it is not this module's list, however many names came back.
+if ! printf '%s\n' "$exports" | grep -qx '_af_version'; then
+  die "the export list read from $web_cmake has no _af_version in it, so" \
+    "it is not the module's list — the set() block's shape has moved"
+fi
+
 if [ -z "$commit" ]; then
   commit=$(git -C "$repo_root" rev-parse --verify "refs/tags/$tag^{commit}" \
     2>/dev/null) || die "tag $tag does not name a commit in $repo_root"
@@ -199,6 +279,10 @@ done < <(printf '%s\n' "${staged[@]}" | sort)
 {
   printf '{\n'
   printf '  "version": "%s",\n' "$version"
+  # Absent, rather than guessed, on a tree from before the declaration.
+  if [ -n "$abi_major" ]; then
+    printf '  "abi": { "major": %s, "minor": %s },\n' "$abi_major" "$abi_minor"
+  fi
   printf '  "sourceCommit": "%s",\n' "$commit"
   printf '  "files": [\n'
   last=$((${#BUNDLE[@]} - 1))
@@ -210,6 +294,16 @@ done < <(printf '%s\n' "${staged[@]}" | sort)
       "$name" "$(sha256_of "$out/$name")" \
       "$(wc -c <"$out/$name" | tr -d ' ')" "$comma"
   done
+  printf '  ],\n'
+  # Every entry point the module exports, in the order the link line
+  # takes them. `abi` above is what a loader compares; this is what it
+  # prints when the comparison fails, and what a host checks a single
+  # name against without instantiating anything.
+  printf '  "exports": [\n'
+  printf '%s\n' "$exports" | awk '
+    NR > 1 { printf(",\n") }
+    { printf("    \"%s\"", $0) }
+    END { printf("\n") }'
   printf '  ]\n'
   printf '}\n'
 } >"$out/manifest.json"
