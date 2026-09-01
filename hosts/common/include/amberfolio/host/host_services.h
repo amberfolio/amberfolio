@@ -121,7 +121,7 @@ class host_services final : public machine::seam_host_services {
   /// A pointer and not a member, unlike the exploration sidecar next door,
   /// because the store is already somewhere in both hosts by the time this
   /// object exists: the desktop host reads one off the player's disk and
-  /// the browser keeps one for the life of the tab (`journal_store.h`).
+  /// the browser keeps one in its own storage (`journal_store.h`).
   /// Null — which is the default — is "no journal has been read", and the
   /// reader says so rather than showing a blank page.
   ///

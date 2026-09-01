@@ -408,11 +408,42 @@ A store of a *different* edition is cleared rather than merged. Entry 12
 of one printing is not entry 12 of another.
 
 Where it lives is a host's business, because files are (PLAN.md §4). The
-desktop writes the file above. **The browser keeps it in memory for the
-life of the tab, and the page says so**: IndexedDB is M6's, and
-pretending otherwise would be the one kind of lie a player finds out
-about by losing work. The module can serialize its store, so M6's
-persistence is two lines rather than a format decision.
+desktop writes the file above. **The browser writes the same text into
+its own `localStorage` and reads it back when the page next loads**
+(M5-E3f) — the module still opens nothing, because serializing is all a
+store does and the page is the host that decides where the bytes rest.
+An ingestion of a real edition is fifty-eight entries through a wasm OCR
+engine, which is minutes; asking for that on every visit was the one part
+of this pipeline a player would have felt every day.
+
+`localStorage` rather than IndexedDB, and that is a decision rather than
+a placeholder for M6's. What M6 owes a browser is the player's *disk* —
+megabytes of binary, kept between visits, which genuinely needs a
+database. This is one string of a few tens of kilobytes, wanted
+synchronously at the instant the module comes up and before anything can
+look at the store. A key-value drawer is the right size for it.
+
+One slot, not one per edition: the module holds one store and clears it
+when a document of another printing is ingested, so a second slot could
+only ever hold a store the first would refuse to mix with. A player who
+alternates between two editions re-reads the second one; a player with
+one journal — everyone this is for — never OCRs twice.
+
+Nothing about it is quiet. A drawer that is full, a browser that refuses
+one (a private window, blocked site data), or a store from a format this
+build cannot read: each is a sentence on the page rather than a silence,
+and a store this build could not read back is **left where it is** — a
+build that cannot read somebody's corrections has no business being the
+thing that deletes them. The page carries a *Forget it* button, which
+empties both the drawer and the tab's own copy, because a reset that took
+effect only after a reload would be the page claiming to have forgotten
+something it was still showing the reader.
+
+What is *not* kept between visits is the journal's read log — the `seen`
+lines. The desktop feeds them back into `machine::journal_state` at boot;
+the web module has no ABI to do that, so a browser's log still starts
+empty on every visit. That is a gap and not a decision, and it is one
+piece of ABI rather than a design question.
 
 The only thing that may be written down about a store, anywhere, is how
 many entries it has and its SHA-256 — `journal_store::fingerprint()`

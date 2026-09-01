@@ -64,6 +64,10 @@ import {
   journalKind,
   journalNumber,
   loadEngine,
+  keepStore,
+  restoreStore,
+  forgetStore,
+  clearStore,
 } from './journal.mjs';
 
 const CANVAS_ID = 'screen';
@@ -85,6 +89,7 @@ const MUTE_CHECKBOX_ID = 'mute';
 const HEALTH_ID = 'health';
 const JOURNAL_INPUT_ID = 'journal';
 const JOURNAL_STATUS_ID = 'journal-status';
+const JOURNAL_FORGET_ID = 'journal-forget';
 
 /// The rate the speaker is rendered and played at. What a callback pulls
 /// is not a fixed number of samples but however many this rate has in the
@@ -155,6 +160,19 @@ export function runDevPage() {
     const { major, minor, patch } = loaded.version;
     appendConsole(`[host] amberfolio ${major}.${minor}.${patch}\n`);
     if (speedSelect && speedSelect.value !== 'xt') applySpeed();
+
+    // The journal this browser already read, back into the module's store
+    // (M5-E3f). Here rather than at an ingestion because the point of it
+    // is the visit where there *is* no ingestion: the in-game reader asks
+    // the store, and a player who read their journal last week should
+    // find it there without picking a file at all.
+    //
+    // After the module exists and before anything can look at the store,
+    // which is the one moment that is both. It cannot land on top of an
+    // ingestion — `restoreStore` declines when the store already holds
+    // something — and a module that comes up twice is not a thing this
+    // page does.
+    reportRestoredJournal(restoreStore(loaded.module));
     return machine;
   };
 
@@ -241,12 +259,51 @@ export function runDevPage() {
   // and read. `known_journals()` is empty today, so the first is what
   // every real journal gets — and saying so plainly, with the
   // fingerprint, is the whole of PLAN.md §9's friendly path.
+  //
+  // **Read once, now, rather than once per visit** (M5-E3f). What comes
+  // out of an ingestion is a store, and the store goes into the browser's
+  // own key-value drawer the moment it is made and comes back the moment
+  // the module next loads (`journal.mjs`'s own section on it says why the
+  // drawer and not M6's database). So this input is a thing a player uses
+  // on their first visit and then does not think about again — which is
+  // the whole feature, because a real edition through a wasm OCR engine
+  // is minutes rather than moments.
   const journalInput = el(JOURNAL_INPUT_ID);
   const journalStatusEl = el(JOURNAL_STATUS_ID);
+  const journalForgetButton = el(JOURNAL_FORGET_ID);
   const setJournalStatus = (text) => {
     if (journalStatusEl) journalStatusEl.textContent = text;
     appendConsole(`[journal] ${text}\n`);
   };
+
+  // What a restore has to say, if anything.
+  //
+  // A `function` rather than a `const` on purpose: `ensureMachine` calls
+  // it and `ensureMachine` is written above this block, so hoisting is
+  // what lets the wiring stay in the order a reader wants it in.
+  //
+  // Silence is the common case and the right one — a player with no
+  // stored journal is not owed a line about a feature they have not used.
+  // Two cases speak: a store that came back, and one that could not be
+  // read back at all.
+  function reportRestoredJournal(restored) {
+    if (restored.why) {
+      setJournalStatus(
+        `${restored.why} - it is still in this browser, untouched;` +
+          ' reading your journal again replaces it',
+      );
+      return;
+    }
+    if (!restored.restored) return;
+    setJournalStatus(
+      `${restored.entries} entries kept in this browser` +
+        ` (${restored.recognized} read` +
+        (restored.corrections > 0
+          ? `, ${restored.corrections} corrected`
+          : '') +
+        `) - sha256=${restored.fingerprint}`,
+    );
+  }
   if (journalInput) {
     journalInput.addEventListener('change', async () => {
       const file = journalInput.files?.[0];
@@ -283,6 +340,13 @@ export function runDevPage() {
           );
           return;
         }
+        // Into the drawer before the sentence, so that the sentence can
+        // say whether it got there (M5-E3f). A store that would not fit
+        // is not a failed ingestion — the text is in this tab and the
+        // reader will show it — but it *is* the difference between doing
+        // this once and doing it every visit, so it is said out loud
+        // rather than left for a player to discover next week.
+        const kept = keepStore(loaded.module);
         setJournalStatus(
           `${report.edition}: ${report.recognized} of ${report.entries} entries` +
             ` read by ${report.engine}` +
@@ -290,11 +354,59 @@ export function runDevPage() {
               ? ` (${journalKind(report.firstTrouble.citation)}` +
                 ` ${journalNumber(report.firstTrouble.citation)}:` +
                 ` ${report.firstTrouble.what})`
-              : ''),
+              : '') +
+            (kept.kept
+              ? ' - kept in this browser for next time'
+              : kept.why
+                ? ` - NOT kept for next time: ${kept.why}`
+                : ''),
         );
       } catch (problem) {
         setJournalStatus(`the ingestion failed: ${problem.message ?? problem}`);
       }
+    });
+  }
+
+  // Reset: the drawer emptied and the tab's own copy with it (M5-E3f).
+  //
+  // Both halves, because a button that emptied only the drawer would
+  // leave the reader showing text the page had just said it had
+  // forgotten. The module's store is cleared through the ABI rather than
+  // by reloading, so the reset is done when the sentence appears.
+  //
+  // No confirmation prompt, and that is a decision: what is destroyed is
+  // a transcription of a document the player still has, and the way to
+  // get it back is the file input immediately above. Corrections are the
+  // one thing that is genuinely theirs, so the sentence counts them.
+  if (journalForgetButton) {
+    journalForgetButton.addEventListener('click', () => {
+      // The module is *not* loaded to do this. A player who pressed this
+      // before touching anything else wants the drawer emptied, and
+      // fetching two megabytes of wasm to clear a store that does not yet
+      // exist would be this page doing work on their behalf that they can
+      // see and did not ask for. When there is no module there is no
+      // tab-side copy either, so the drawer is the whole of it.
+      const had = loaded ? loaded.module._af_web_journal_store_size() : 0;
+      const corrections = loaded
+        ? loaded.module._af_web_journal_store_corrections()
+        : 0;
+      const { forgotten, why } = forgetStore();
+      if (loaded) clearStore(loaded.module);
+      if (why) {
+        setJournalStatus(why);
+        return;
+      }
+      if (!forgotten && had === 0) {
+        setJournalStatus('there was no journal to forget');
+        return;
+      }
+      setJournalStatus(
+        `forgotten${had > 0 ? `: ${had} entries` : ''}` +
+          (corrections > 0
+            ? `, including ${corrections} you corrected`
+            : '') +
+          ' - read your journal again to put it back',
+      );
     });
   }
 

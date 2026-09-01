@@ -97,10 +97,12 @@ amberfolio::host::host_services& services() {
 /// player just chose is the cheapest possible way for that not to be
 /// something a host author has to remember.
 ///
-/// The store lives here too, in memory, for the life of the tab. That is
-/// #174's stated M5 state for the browser and the page says so out loud:
-/// IndexedDB is M6's, and quietly losing a player's corrections would be
-/// the one kind of failure they find out about by losing work.
+/// The store lives here too, in memory. What outlives the tab is the
+/// page's copy of it: `af_web_journal_store_write` out into the browser's
+/// key-value drawer, `_read` back in when the module next comes up
+/// (`page/journal.mjs`). This module still opens nothing, which is the
+/// arrangement `host/journal_store.h` asks for — a store holds text and
+/// serializes it, and where the bytes rest is a host's decision.
 struct journal_session {
   std::vector<std::uint8_t> document;
   amberfolio::host::journal_ingester ingester;
@@ -236,8 +238,9 @@ uint32_t af_web_attach_host_services(af_machine* box) {
   }
   pc->seams().set_host(&services());
   // And where `journal_open` looks an entry up (M5-E4, #175): this tab's
-  // store, which lives for the life of the tab and is filled by
-  // `af_web_journal_ingest`. Attached here rather than at an ingestion so
+  // store, filled by `af_web_journal_ingest` or by the page handing back
+  // what it kept from the last visit (`af_web_journal_store_read`).
+  // Attached here rather than at an ingestion so
   // that the pointer is set once and stays set — the store object does not
   // move, only its contents change, and a page that ingested a journal
   // after loading the program should not have to attach anything again.
@@ -535,12 +538,18 @@ uint32_t af_web_journal_store_corrections(void) {
 
 /// The store as its file would be, and the same bytes back in.
 ///
-/// The browser keeps its store in memory in M5 (#174), so nothing here
-/// writes a file — but a page that can serialize can offer a player the
-/// text they just spent an hour correcting, and M6's IndexedDB is then
-/// two lines rather than a format decision. `_read` answers a
-/// `journal_trouble`, so a store from a later version is refused with a
-/// reason rather than half-read.
+/// This module holds no file and opens nothing — where a store goes is a
+/// host's business (`host/journal_store.h`), and in a browser that host
+/// is the page. These two are the whole door it needs: the page keeps
+/// what comes out of `_write` in the browser's own key-value drawer and
+/// hands it back through `_read` on the next visit, so that an ingestion
+/// of a real edition is something a player does once rather than every
+/// time they open the tab (`page/journal.mjs`).
+///
+/// `_read` answers a `journal_trouble`, so a store from a later version
+/// is refused with a reason rather than half-read — which is the property
+/// that lets a page report "the journal kept in this browser could not be
+/// read back" and leave the bytes alone.
 uint32_t af_web_journal_store_write(char* out, uint32_t cap) {
   return hand_out(journal().store.serialize(), out, cap);
 }
@@ -552,6 +561,20 @@ uint32_t af_web_journal_store_read(const char* text, uint32_t size) {
   }
   return static_cast<uint32_t>(
       journal().store.parse(std::string_view(text, size)));
+}
+
+/// Everything in this tab's store gone, header included.
+///
+/// The module's half of the page's "forget what you read off my journal".
+/// A page can empty the drawer on its own, but the store it emptied the
+/// drawer *from* is in here, and a reset that only took effect after a
+/// reload would be the page saying it had forgotten something it was
+/// still showing the reader.
+///
+/// Always `AF_OK`: there is no way for a store to decline to be empty.
+uint32_t af_web_journal_store_clear(void) {
+  journal().store.clear();
+  return AF_OK;
 }
 
 /// The SHA-256 of the store's own bytes: what a maintainer reports about

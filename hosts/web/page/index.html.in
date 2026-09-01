@@ -8,8 +8,10 @@
      had no web half without it.
 
      Deliberately bare, still: this is scaffolding, not the M6 reference
-     shell (no onboarding, no persistence, no touch, no styling worth the
-     name). Nothing a player drops here is kept; a reload starts over.
+     shell (no onboarding, no touch, no styling worth the name). A reload
+     starts over, with one exception: the text an ingestion read out of a
+     player's own journal is kept in this browser (M5-E3f), because doing
+     that again on every visit is minutes of OCR nobody asked for.
 
      ES modules need a real origin, so open it over HTTP, not file://:
          cmake --build --preset wasm
@@ -259,7 +261,12 @@
     <!-- The M5-E3 (#174) half: the player's own Adventurer's Journal,
          read once so that the in-game reader has something to show. This
          is the minimal onboarding surface that issue asks for - a file
-         input - and not the guided flow, which is M6's. -->
+         input - and not the guided flow, which is M6's.
+
+         "Read once" means once, not once per visit (M5-E3f): the text
+         goes into this browser's own key-value store and comes back when
+         the page next loads, so the Forget button beside the input is the
+         only way it goes away. -->
     <fieldset>
       <legend>read your own journal</legend>
       <div class="controls">
@@ -267,17 +274,22 @@
           journal PDF
           <input id="journal" type="file" accept="application/pdf,.pdf" />
         </label>
+        <button id="journal-forget" type="button">Forget it</button>
       </div>
       <div class="controls">
         <span id="journal-status"></span>
       </div>
       <p class="note">
         Your document is read in your browser and never leaves it, and no
-        page of it is kept — what is kept is the text, in this tab's
-        memory, until you close it. Saving it between visits is M6's.
-        Recognition needs an OCR engine beside this page; without one
-        every entry is still located and decoded, and this page says so
-        rather than quietly finding nothing.
+        page of it is kept — what is kept is the text it was read into,
+        in this browser's own storage, so that reading a journal is
+        something you do once rather than every visit. It stays on this
+        machine, in this browser, and <em>Forget it</em> removes it and
+        anything you corrected. (The game's own files are still this
+        tab's alone; keeping those between visits is M6's.) Recognition
+        needs an OCR engine beside this page; without one every entry is
+        still located and decoded, and this page says so rather than
+        quietly finding nothing.
       </p>
     </fieldset>
 
