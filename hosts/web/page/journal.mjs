@@ -11,8 +11,10 @@
 //
 // DOM-free, like host.mjs and for the same reason: `ctest --preset wasm`
 // imports it under node, where there is no `document`. What it does touch
-// is `fetch` and `createImageBitmap`, and both are behind a guard,
-// because the engine is optional.
+// is `fetch`, `createImageBitmap` and `localStorage`, and all three are
+// behind a guard — the engine is optional, and so is a browser that will
+// keep anything. The storage functions take the drawer as an argument for
+// the same reason, so that the smoke check can hand them one.
 //
 //
 // The engine: pinned, served from here, never a CDN
@@ -460,12 +462,187 @@ export function correctJournalEntry(module, citation, text) {
 }
 
 /// The store as its file would be, so a page can hand a player the text
-/// they spent an hour correcting. The browser keeps no file in M5 (#174)
-/// and the page says so; this is what makes that survivable.
+/// they spent an hour correcting, and so that `keepStore` below has
+/// something to put in the browser's own drawer.
 export function serializeStore(module) {
   return readText(module, (out, cap) =>
     module._af_web_journal_store_write(out, cap),
   );
+}
+
+/// Everything in the module's store gone, header included.
+///
+/// The in-memory half of a reset. `forgetStore()` empties the drawer; this
+/// empties the tab, so that "forget what you read off my journal" does not
+/// mean "forget it after you reload".
+export function clearStore(module) {
+  return module._af_web_journal_store_clear();
+}
+
+//
+// Keeping a store between visits
+// ------------------------------
+//
+// An ingestion of a real edition is fifty-odd entries through a wasm OCR
+// engine and takes minutes. Doing that again on every visit is not a
+// thing to ask of a player, and the store is the one artifact of it: a
+// few tens of kilobytes of text, already serialized, already strict about
+// what it will read back.
+//
+// **`localStorage`, and IndexedDB is still M6's.** Those are not in
+// competition. What M6 owes is the *disk* — a player's installation kept
+// between visits, which is megabytes of binary and needs a real database.
+// What this is, is one small string, wanted synchronously at the moment
+// the module comes up and before anything can look at the store. A
+// key-value drawer is the right size for it, and reaching for the
+// database now would be borrowing M6's complexity to solve a problem it
+// does not have.
+//
+// **One slot, not one per edition.** The module holds one store and
+// clears it when a document of another edition is ingested
+// (`journal_ingester::adopt`), so a second slot could only ever hold a
+// store the module would refuse to mix with the first. A player who
+// alternates between two printings re-reads the second one; a player who
+// has one journal — which is everyone this is for — never OCRs twice.
+//
+// **Nothing here is quiet about failing.** A drawer that is full, a
+// browser that refuses one, a store from a format this build cannot read:
+// each answers a sentence a page shows, because the whole reason #174
+// would not claim persistence is that losing an hour of somebody's
+// corrections silently is the one failure they find out about too late.
+
+/// Where a store goes. Versioned in the key rather than checked after
+/// reading, so that a future format which this one could not parse is a
+/// different drawer rather than a puzzle — the store's own header
+/// versions the contents (`host/journal_store.h`).
+export const JOURNAL_STORE_KEY = 'amberfolio.journal.store.v1';
+
+/// The browser's drawer, or null where there is none.
+///
+/// Behind a try: `localStorage` is not merely absent under node, it
+/// *throws* on access in a browser told to block site data, and a page
+/// that let that escape would fail to load a machine over a stored
+/// journal it was never going to have.
+export function browserStorage() {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/// Put the module's store in the drawer.
+///
+/// Answers `{ kept, characters, why }`. `kept: false` with a `why` is the
+/// only failure shape — an empty store is not written and not an error,
+/// because a page that ingested nothing has nothing to keep.
+export function keepStore(
+  module,
+  { storage = browserStorage(), key = JOURNAL_STORE_KEY } = {},
+) {
+  if (!storage) {
+    return { kept: false, characters: 0, why: 'this browser keeps nothing' };
+  }
+  if (module._af_web_journal_store_size() === 0) {
+    return { kept: false, characters: 0, why: null };
+  }
+  const text = serializeStore(module);
+  try {
+    storage.setItem(key, text);
+  } catch (problem) {
+    // Overwhelmingly a quota: a drawer with about five megabytes in it,
+    // and a store is a hundredth of that, so this is a drawer somebody
+    // else filled. Either way the player is told, and the old copy — if
+    // there is one — is still there.
+    return {
+      kept: false,
+      characters: text.length,
+      why: `this browser would not keep it: ${problem?.name ?? problem}`,
+    };
+  }
+  return { kept: true, characters: text.length, why: null };
+}
+
+/// What is in the drawer, without putting it anywhere. Null for nothing.
+export function storedStore({
+  storage = browserStorage(),
+  key = JOURNAL_STORE_KEY,
+} = {}) {
+  if (!storage) return null;
+  try {
+    return storage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/// The drawer's store back into the module.
+///
+/// Answers `{ restored, characters, entries, recognized, corrections,
+/// fingerprint, why }`. Three of the four ways it declines are ordinary
+/// and carry no `why` at all — no drawer, nothing in it, or a module that
+/// already holds a store, which is the guard that stops a restore landing
+/// on top of an ingestion. The fourth is a store this build could not
+/// read, and that one is a sentence: the bytes are **left where they
+/// are**, because a build that cannot read a player's corrections has no
+/// business being the thing that deletes them.
+export function restoreStore(
+  module,
+  { storage = browserStorage(), key = JOURNAL_STORE_KEY } = {},
+) {
+  const nothing = {
+    restored: false,
+    characters: 0,
+    entries: 0,
+    recognized: 0,
+    corrections: 0,
+    fingerprint: '',
+    why: null,
+  };
+  const text = storedStore({ storage, key });
+  if (text === null || text === '') return nothing;
+  if (module._af_web_journal_store_size() !== 0) return nothing;
+
+  const why = readStore(module, text);
+  if (why !== JOURNAL_OK) {
+    return {
+      ...nothing,
+      characters: text.length,
+      why: `the journal kept in this browser could not be read back:` +
+        ` ${troubleName(module, why)}`,
+    };
+  }
+  return {
+    restored: true,
+    characters: text.length,
+    entries: module._af_web_journal_store_size(),
+    recognized: module._af_web_journal_store_recognized(),
+    corrections: module._af_web_journal_store_corrections(),
+    fingerprint: readText(module, (out, cap) =>
+      module._af_web_journal_store_fingerprint(out, cap),
+    ),
+    why: null,
+  };
+}
+
+/// The drawer emptied. The module's own copy is `clearStore`'s to empty;
+/// a page doing a reset wants both, and they are separate because only
+/// one of them survives a reload.
+export function forgetStore({
+  storage = browserStorage(),
+  key = JOURNAL_STORE_KEY,
+} = {}) {
+  if (!storage) return { forgotten: false, why: 'this browser keeps nothing' };
+  try {
+    const had = storage.getItem(key) !== null;
+    storage.removeItem(key);
+    return { forgotten: had, why: null };
+  } catch (problem) {
+    return {
+      forgotten: false,
+      why: `this browser would not forget it: ${problem?.name ?? problem}`,
+    };
+  }
 }
 
 /// The probe: a synthetic document this project generates, so the whole

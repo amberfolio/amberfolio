@@ -25,9 +25,13 @@
 //   * the desktop host writes one file, beside where M6's configuration
 //     will live (`--journal-store` overrides it, and the SDL host's
 //     `--help` says where the default is);
-//   * the browser keeps it in memory for the life of the tab and says so
-//     on the page. IndexedDB is M6's, and pretending otherwise would be
-//     the one kind of lie a player finds out about by losing work.
+//   * the browser serializes one into its own key-value storage and reads
+//     it back when the page next loads (M5-E3f), because an ingestion of
+//     a real edition is minutes of OCR and asking for it on every visit
+//     is not a thing to ask. It is `localStorage` and not IndexedDB, and
+//     that is not a downpayment on M6: what M6 owes a browser is the
+//     player's *disk*, which is megabytes of binary; this is one small
+//     string wanted synchronously the moment the module comes up.
 //
 // So this object holds text and serializes it, and never opens anything.
 //

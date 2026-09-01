@@ -217,8 +217,9 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
   --journal-store PATH  the journal text the reader is answered out of
                         (M5-E4, #175), as the desktop host's own
                         --journal-store writes it. A browser gets its
-                        store from the page's file input; this is how a
-                        script gets one.
+                        store out of its own localStorage, put there by
+                        the page's file input (M5-E3f); this is how a
+                        script with neither gets one.
   --seams               list every seam this build carries, and exit
   --vfs-list            list every file on the disk after the run, at its
                         own path — what the run left behind, including

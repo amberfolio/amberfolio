@@ -60,7 +60,10 @@
 //      entry's offset, inflates the stream and crops the region; this
 //      file holds the loop, because a browser's OCR engine is
 //      asynchronous and cannot be called from C++. What only this can
-//      settle is that the inverted loop works across the ABI.
+//      settle is that the inverted loop works across the ABI — and, since
+//      M5-E3f, that the store it produces goes out to a browser's own
+//      key-value drawer and comes back with its corrections intact, which
+//      is what makes an ingestion a thing a player does once.
 
 import { spawnSync } from 'node:child_process';
 import {
@@ -244,6 +247,7 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_store_corrections',
   '_af_web_journal_store_write',
   '_af_web_journal_store_read',
+  '_af_web_journal_store_clear',
   '_af_web_journal_store_fingerprint',
   '_af_web_journal_probe',
   '_af_web_journal_probe_bytes',
@@ -2956,6 +2960,12 @@ if (missing.length === 0 && sessions !== null) {
     currentScan,
     wordsWithin,
     JOURNAL_JPEG,
+    keepStore,
+    restoreStore,
+    storedStore,
+    forgetStore,
+    clearStore,
+    JOURNAL_STORE_KEY,
   } = await import('./journal.mjs');
 
   const document = probeDocument(module);
@@ -3105,6 +3115,130 @@ if (missing.length === 0 && sessions !== null) {
     'the serialized store does not carry the correction',
   );
 
+  // --- Kept between visits (M5-E3f) --------------------------------------
+  //
+  // The drawer is a fake one: `localStorage` is a browser's and this runs
+  // under node, and the page's own functions take the storage rather than
+  // reaching for the global precisely so that this can be checked at all.
+  // What it settles is the round trip — a store out, the tab's copy gone,
+  // the same store back with the correction still in it — which is the
+  // whole of "you do not have to OCR your journal again".
+  const drawer = new Map();
+  const storage = {
+    getItem: (key) => (drawer.has(key) ? drawer.get(key) : null),
+    setItem: (key, value) => drawer.set(key, String(value)),
+    removeItem: (key) => drawer.delete(key),
+  };
+
+  const put = keepStore(module, { storage });
+  check(put.kept, `the store was not kept: ${put.why}`);
+  check(
+    storedStore({ storage }) === text,
+    'what went into the drawer is not what the module serialized',
+  );
+
+  // The tab's copy gone. This is the half of a reset that a reload would
+  // otherwise be needed for, and it is also what makes the restore below
+  // evidence rather than a no-op.
+  clearStore(module);
+  check(
+    module._af_web_journal_store_size() === 0,
+    'clearing the store left entries in it',
+  );
+  check(
+    journalText(module, journalCitation('entry', 1)) === '',
+    'a cleared store still answers for entry one',
+  );
+
+  const back = restoreStore(module, { storage });
+  check(back.restored, `the kept store did not come back: ${back.why}`);
+  check(
+    back.entries === 4 && back.corrections === 1,
+    `the restored store has ${back.entries} entries and` +
+      ` ${back.corrections} corrections, wanted 4 and 1`,
+  );
+  check(
+    journalText(module, journalCitation('entry', 1)) === corrected,
+    'a correction did not survive the drawer',
+  );
+  check(
+    journalText(module, journalCitation('tale', 1)) === 'AMBER FOLIO PROBE ENTRY 1',
+    'the restored store lost the row that shares a number with entry one',
+  );
+  check(back.fingerprint.length === 64, 'the restored store has no fingerprint');
+
+  // A restore never lands on top of a store that is already there — the
+  // guard that keeps a page's load-time restore from overwriting an
+  // ingestion. Ordinary, so it carries no complaint.
+  const overwrite = restoreStore(module, { storage });
+  check(
+    !overwrite.restored && overwrite.why === null,
+    'a restore overwrote a store that was already loaded',
+  );
+
+  // A drawer with something else in it: a reason, and the bytes left
+  // exactly where they were. A build that cannot read a player's
+  // corrections has no business being the thing that deletes them.
+  const rubbish = 'this is not a journal store';
+  const strangeDrawer = new Map([[JOURNAL_STORE_KEY, rubbish]]);
+  const strange = {
+    getItem: (key) => (strangeDrawer.has(key) ? strangeDrawer.get(key) : null),
+    setItem: (key, value) => strangeDrawer.set(key, String(value)),
+    removeItem: (key) => strangeDrawer.delete(key),
+  };
+  clearStore(module);
+  const refused = restoreStore(module, { storage: strange });
+  check(!refused.restored, 'a drawer full of rubbish was read as a store');
+  check(
+    (refused.why ?? '').includes('could not be read back'),
+    `an unreadable store was reported as '${refused.why}'`,
+  );
+  check(
+    strange.getItem(JOURNAL_STORE_KEY) === rubbish,
+    'a store this build could not read was deleted rather than reported',
+  );
+
+  // An empty store is not written, and that is not a failure: a page that
+  // ingested nothing has nothing to keep.
+  const untouched = new Map();
+  const nothingYet = {
+    getItem: () => null,
+    setItem: (key, value) => untouched.set(key, value),
+    removeItem: (key) => untouched.delete(key),
+  };
+  const nothing = keepStore(module, { storage: nothingYet });
+  check(
+    !nothing.kept && nothing.why === null && untouched.size === 0,
+    'an empty store was written to the drawer',
+  );
+
+  // And a browser that keeps nothing is a sentence rather than a throw,
+  // which is what a private window or blocked site data looks like.
+  check(
+    keepStore(module, { storage: null }).why !== null,
+    'keeping a store with nowhere to put it did not say so',
+  );
+  check(
+    restoreStore(module, { storage: null }).restored === false,
+    'a restore from nowhere claimed to have restored something',
+  );
+
+  // Forget: the drawer emptied, and saying whether there was anything in
+  // it. Twice, because the second time there is not.
+  restoreStore(module, { storage });
+  const gone = forgetStore({ storage });
+  check(gone.forgotten, 'forgetting a kept store said there was none');
+  check(storedStore({ storage }) === null, 'a forgotten store is still there');
+  check(
+    !forgetStore({ storage }).forgotten,
+    'forgetting nothing claimed to have forgotten something',
+  );
+  clearStore(module);
+  check(
+    restoreStore(module, { storage }).restored === false,
+    'a forgotten store came back',
+  );
+
   // And the shipped table knows nothing about a document this project
   // made up, which is the state every *real* journal is in too until
   // somebody fingerprints one.
@@ -3123,7 +3257,7 @@ if (missing.length === 0 && sessions !== null) {
   console.log(
     'smoke: a synthetic journal edition ingested through the ABI, four rows' +
       ' read including two that share a number, a correction kept across a' +
-      ' re-ingestion',
+      ' re-ingestion, and the whole store out to a browser drawer and back',
   );
 }
 
