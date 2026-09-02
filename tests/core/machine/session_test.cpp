@@ -174,6 +174,38 @@ TEST(SessionLibrary, EveryCommittedRecordingIsAFormatThisBuildStillReads) {
   }
 }
 
+// And the ones recorded since the format moved on, named the same way and
+// for the same reason. They are format 3 because that is what the host
+// writes now; what matters is that a build still reads every recording
+// this tree carries, whichever format it was written in.
+TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
+  for (const std::string_view name : {"reader.rec", "notes.rec", "cite.rec"}) {
+    const std::string text = read_session_file(name);
+    ASSERT_FALSE(text.empty()) << name;
+    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 3 state=1\n"))
+        << name;
+  }
+}
+
+// A journal session names the store it was recorded over, and a store it
+// carries is a store that has to be there: the reader replays with no
+// text without one, and a recording of the reader would then diverge for
+// a reason that is not the machine (#235).
+TEST(SessionLibrary, AJournalSessionNamesAStoreThatIsThere) {
+  for (const std::string_view name : {"reader.session", "notes.session"}) {
+    const std::string text = read_session_file(name);
+    ASSERT_FALSE(text.empty()) << name;
+    EXPECT_THAT(text, ::testing::HasSubstr(
+                          "journal-store tests/visual/reader-store.txt"))
+        << name;
+  }
+  EXPECT_FALSE(read_session_file("../visual/reader-store.txt").empty())
+      << "the store those two name";
+  EXPECT_THAT(read_session_file("cite.session"),
+              ::testing::HasSubstr("journal-store external "))
+      << "a real ingestion is pinned by digest and never carried here";
+}
+
 // And so does the other half of an initial condition: the same recording
 // against a machine with no program loaded is refused before a step is
 // taken, naming the condition rather than a state that differs.
