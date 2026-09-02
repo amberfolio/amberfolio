@@ -125,6 +125,15 @@ jobs:
       # status and not only a line of text (#233).
       - name: stills-tool self-test (the rect convention, and confinement)
         run: bash scripts/test-frames.sh
+      # And the visual runner's, for the fifth. It has the sweep's three
+      # outcomes and the sweep's rule about the third — a run that
+      # checked nothing must never read as a pass — and CI is a machine
+      # with no disk, so every leg here skips and the whole point is that
+      # skipping is loud. It also parses every committed leg, so a typo
+      # in one is caught here rather than on the one machine that can run
+      # it (#234).
+      - name: visual-leg self-test (the skip that is not a pass)
+        run: bash scripts/test-visual-legs.sh
       - name: content guard (every commit + index + working tree)
         run: bash scripts/check-clean.sh
       - name: DCO check (every non-merge commit)
