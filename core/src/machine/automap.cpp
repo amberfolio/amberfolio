@@ -28,6 +28,28 @@ std::size_t automap_cell_index(automap_map_kind kind, unsigned x,
          (x & 0x0FU);
 }
 
+namespace {
+
+[[nodiscard]] constexpr int clamped(int value, int low, int high) noexcept {
+  if (value < low) {
+    return low;
+  }
+  return value > high ? high : value;
+}
+
+/// The two clamps the program's own composer applies, spelled out of the
+/// arithmetic rather than out of any helper of this project's.
+constexpr int explored_max_col = 0x27;
+constexpr int explored_max_row = 0x1F;
+
+}  // namespace
+
+explored_window explored_window_top_left(int bias, int column,
+                                         int row) noexcept {
+  return {.col = clamped(bias + column - 2, 0, explored_max_col),
+          .row = clamped(row - 2, 0, explored_max_row)};
+}
+
 void automap_state::clear() noexcept {
   records_ = {};
   next_slot_ = 0;

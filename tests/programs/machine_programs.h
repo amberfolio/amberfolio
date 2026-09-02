@@ -343,6 +343,8 @@ struct machine_program {
 /// (M5-E2, #173).
 [[nodiscard]] const std::vector<std::uint8_t>& automap_probe_file();
 [[nodiscard]] const machine::seam_definition& automap_probe_definition();
+[[nodiscard]] const std::vector<std::uint8_t>& explored_probe_file();
+[[nodiscard]] const machine::seam_definition& explored_probe_definition();
 
 /// One program by name, or null. The composite is `"composite"` — the
 /// program M2-H2's dev page (#55) embeds, which is why finding one by

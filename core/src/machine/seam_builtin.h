@@ -30,6 +30,9 @@ namespace amberfolio::machine {
 /// PLAN.md §5 item 2's in-game half, the journal reader (seam_journal.cpp).
 [[nodiscard]] const seam_definition& journal_seam() noexcept;
 
+/// PLAN.md §5 item 5, the explored overlay (seam_explored.cpp).
+[[nodiscard]] const seam_definition& explored_seam() noexcept;
+
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;
 [[nodiscard]] const seam_definition& cheat_kill_all_seam() noexcept;

@@ -2072,6 +2072,13 @@ constexpr std::uint16_t automap_tab_keystroke = 0x0F09;
 /// claiming one number** is the whole instrument (`machine_program::steps`).
 constexpr std::uint64_t automap_unheard_steps = 81'947;
 
+/// What the explored overlay's stand-in costs, both ways. **Two entries
+/// claiming each number** is the instrument: a seam that draws a shade
+/// over a screen costs the program no step at all, so the run with it on
+/// and the run without take exactly as long.
+constexpr std::uint64_t explored_arrived_steps = 32'846;
+constexpr std::uint64_t explored_walked_steps = 32'851;
+
 struct automap_layout {
   std::vector<std::uint8_t> file;
   std::uint32_t poll_offset{};
@@ -2723,6 +2730,204 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
                       .image = a.assemble()});
   }();
   return built;
+}
+
+// ---------------------------------------------------------------------------
+// The explored overlay, at program scale (M5-E5, #179)
+// ---------------------------------------------------------------------------
+//
+// The two claims `seam_explored.cpp` makes are claims about a *program*
+// and a *screen*, so they are made here, where all four targets run them:
+//
+//   * on, the overworld shown, and nothing walked but the square under
+//     the party — the frame is the frame the seam-off run composed, and
+//     the run takes the same number of steps;
+//   * on, and one square walked and left behind — that square, and
+//     nothing else on the screen, is a shade brighter.
+//
+// The stand-in is the real handlers at made-up addresses. It sets the
+// video mode, lays out the data segment and an area record the way the
+// facts say the program lays them out (`docs/explored-overlay.md` §2),
+// puts the party's own command bar up through the bar point, polls the
+// key routine so the position settles and the trail is recorded, and
+// then runs an instruction at the address this seam calls "the present
+// has returned". It ends with a spin long enough for a frame boundary to
+// fall after its last write, because a frame nobody composed is not a
+// picture anybody can assert.
+//
+// **A key decides whether the party walks.** One image, four entries: a
+// run with no key stays on the square it arrived on and must compose the
+// blank frame whether the seam is on or off, and a run with a key steps
+// one square north and leaves the one it came from behind.
+
+/// The paragraph offset of the program's data segment from its image,
+/// and the offsets in it, as `seam_explored.cpp`'s fact table has them.
+/// Restated rather than shared: this program is standing in for the real
+/// one and has to be laid out the way the facts say.
+constexpr std::uint16_t explored_dgroup_paragraphs = 0xC7C;
+constexpr std::uint16_t explored_data_game_mode = 0x49F3;
+constexpr std::uint16_t explored_data_view_kind = 0x49FA;
+constexpr std::uint16_t explored_data_in_transition = 0x442F;
+constexpr std::uint16_t explored_data_area_record = 0x49D2;
+constexpr std::uint16_t explored_data_disk_number = 0x5376;
+constexpr std::uint16_t explored_data_area_id = 0x84DC;
+constexpr std::uint16_t explored_data_column_bias = 0x3C76;
+constexpr std::uint16_t explored_menu_area_view = 0x04B6;
+constexpr unsigned explored_bar_frame_filler_words = 9;
+
+/// Where this program puts the area record, and the offsets inside it.
+/// An offset in the data segment below everything else the seam reads,
+/// so the record and the fields cannot overlap.
+constexpr std::uint16_t explored_record_offset = 0x1000;
+constexpr std::uint16_t explored_record_column = 0x186;
+constexpr std::uint16_t explored_record_row = 0x188;
+constexpr std::uint16_t explored_record_shown_in_3d = 0x1CC;
+
+/// The wilderness area, the party's square, and the square it walks to.
+constexpr std::uint8_t explored_mode_overland = 3;
+constexpr std::uint8_t explored_view_kind = 2;
+constexpr std::uint8_t explored_disk = 6;
+constexpr std::uint8_t explored_area = 0x19;
+constexpr std::uint8_t explored_bias = 0;
+constexpr std::uint16_t explored_start_column = 3;
+constexpr std::uint16_t explored_start_row = 32;
+constexpr std::uint16_t explored_walked_row = 31;
+
+/// The cell the walk leaves behind, in the window the program is showing
+/// afterwards, and the rect it occupies. Worked out from the facts and
+/// not from the seam: the party ends at (3, 31), so the window's top-left
+/// is (0 + 3 - 2, 31 - 2) = (1, 29), and the square it came from — (3,
+/// 32) — is window column 2, row 3. At 24 pixels a cell from (8, 8) that
+/// is x in [64, 87] and y in [80, 103].
+constexpr unsigned explored_lifted_x = 8 + (2 * 24);
+constexpr unsigned explored_lifted_y = 8 + (3 * 24);
+constexpr unsigned explored_lifted_side = 24;
+
+/// A key, to make the party walk.
+constexpr std::uint8_t explored_walk_scancode = 0x1E;
+
+struct explored_layout {
+  std::vector<std::uint8_t> file;
+  std::uint32_t present_offset{};
+  std::uint32_t poll_offset{};
+  std::uint32_t bar_offset{};
+};
+
+[[nodiscard]] const explored_layout& explored_probe() {
+  static const explored_layout built = [] {
+    assembler a;
+    mov_ax(a, 0x000D);   // the 320x200 graphics mode the program runs in
+    a.db({0xCD, 0x10});  // int 10h
+
+    a.db({0x8C, 0xC8});  // mov ax, cs
+    a.db({0x05});
+    a.dw(explored_dgroup_paragraphs);  // add ax, 0C7Ch
+    a.db({0x8E, 0xD8});                // mov ds, ax
+
+    // The data segment and the area record, laid out from the facts.
+    store_word_at(a, explored_data_area_record, explored_record_offset);
+    store_ds_at(a, static_cast<std::uint16_t>(explored_data_area_record + 2));
+    store_byte_at(a, explored_data_game_mode, explored_mode_overland);
+    store_byte_at(a, explored_data_view_kind, explored_view_kind);
+    store_byte_at(a, explored_data_in_transition, 0);
+    store_byte_at(a, explored_data_disk_number, explored_disk);
+    store_byte_at(a, explored_data_area_id, explored_area);
+    store_byte_at(a,
+                  static_cast<std::uint16_t>(explored_data_column_bias +
+                                             explored_view_kind),
+                  explored_bias);
+    store_word_at(a,
+                  static_cast<std::uint16_t>(explored_record_offset +
+                                             explored_record_column),
+                  explored_start_column);
+    store_word_at(a,
+                  static_cast<std::uint16_t>(explored_record_offset +
+                                             explored_record_row),
+                  explored_start_row);
+    store_word_at(a,
+                  static_cast<std::uint16_t>(explored_record_offset +
+                                             explored_record_shown_in_3d),
+                  0);
+
+    // The bar, as its caller leaves it: the far pointer deepest, then
+    // nine words of whatever, then the point. The menu's segment is the
+    // data segment, which is what the seam compares it against.
+    a.db({0x8C, 0xD8});  // mov ax, ds
+    a.db({0x50});        // push ax  (the menu's segment)
+    mov_ax(a, explored_menu_area_view);
+    a.db({0x50});  // push ax  (the menu's offset)
+    for (unsigned i = 0; i < explored_bar_frame_filler_words; ++i) {
+      a.db({0x50});
+    }
+    a.label("bar");
+    a.db({0x81, 0xC4});  // add sp, 16h — the frame, cleaned as the routine
+    a.dw(0x0016);        // itself would clean it
+
+    // Two passes of polls, with the walk between them. Both passes go
+    // through the *same* armed address, because both have to be seen:
+    // the first settles the position and records the square the party
+    // arrived on, the second records the one it walked to.
+    a.db({0xBB});
+    a.dw(0x0002);  // mov bx, 2
+    a.label("pass");
+    a.db({0xB9});
+    a.dw(0x0004);  // mov cx, 4
+    a.label("poll");
+    a.db({0xB4, 0x01, 0xCD, 0x16});  // mov ah, 01h / int 16h
+    a.jump(0xE2, "poll");            // loop poll
+    a.db({0x4B});                    // dec bx
+    a.jump(0x74, "walked");          // jz walked
+    a.db({0xB4, 0x01, 0xCD, 0x16});  // mov ah, 01h / int 16h — a key?
+    a.jump(0x74, "pass");            // jz pass — no key, no walk
+    a.db({0xB4, 0x00, 0xCD, 0x16});  // mov ah, 00h / int 16h — take it
+    store_word_at(a,
+                  static_cast<std::uint16_t>(explored_record_offset +
+                                             explored_record_row),
+                  explored_walked_row);
+    a.jump(0xEB, "pass");  // jmp pass
+
+    a.label("walked");
+    // The program has just put the screen up, as far as this stand-in is
+    // concerned. One instruction, at the address the seam calls the
+    // present's return.
+    a.label("present");
+    a.db({0x90});  // nop
+
+    // Long enough for a frame boundary to fall after the last write.
+    a.db({0xB9});
+    a.dw(0x8000);  // mov cx, 8000h
+    a.label("spin");
+    a.jump(0xE2, "spin");  // loop spin
+
+    exit_with(a, 0x8A);
+    a.pad_to(machine_layout::result_offset + 0x10);
+
+    explored_layout out;
+    out.present_offset = static_cast<std::uint32_t>(a.offset_of("present"));
+    out.poll_offset = static_cast<std::uint32_t>(a.offset_of("poll"));
+    out.bar_offset = static_cast<std::uint32_t>(a.offset_of("bar"));
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x1600,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
+}
+
+/// One of the explored overlay's own handlers, taken from the definition
+/// this build ships. Null would be a seam table that no longer carries
+/// one, which the definition test would have failed on first.
+[[nodiscard]] machine::seam_handler explored_handler(std::size_t which) {
+  for (const machine::seam_definition& seam : machine::all_seams()) {
+    if (seam.id == "explored" && which < seam.points.size()) {
+      return seam.points[which].run;
+    }
+  }
+  return nullptr;
 }
 
 // --- 11. The call door ----------------------------------------------------
@@ -3377,6 +3582,94 @@ constexpr std::array<machine::seam_point, 1> door_points{
   }
 
   {
+    // M5-E5 (#179): the explored overlay, four ways. Two pairs, and each
+    // pair is one of the seam's two fidelity sentences: with nothing
+    // walked the picture and the step count are the plain machine's
+    // whether the seam is on or off, and with a square walked and left
+    // behind exactly that square is a shade brighter.
+    machine_program p;
+    p.name = "explored_probe_quiet";
+    p.about = "the overworld, nothing walked, and no seam";
+    p.setup.exe = explored_probe_file();
+    p.setup.exe_path = "\\EXPLORED.EXE";
+    p.setup.step_cap = 200'000;
+    p.steps = explored_arrived_steps;
+    p.areas = {{.index = 0, .count = pixels_per_frame}};
+    p.least_frames = 1;
+    p.exit_code = 0x8A;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "explored_probe_arrived";
+    p.about = "on, the overworld shown, nothing walked: the same picture";
+    p.setup.exe = explored_probe_file();
+    p.setup.exe_path = "\\EXPLORED.EXE";
+    p.setup.seam_definitions = {&explored_probe_definition()};
+    p.setup.seams = {"explored-probe"};
+    p.setup.step_cap = 200'000;
+    p.steps = explored_arrived_steps;
+    p.areas = {{.index = 0, .count = pixels_per_frame}};
+    p.least_frames = 1;
+    p.exit_code = 0x8A;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "explored_probe_walked";
+    p.about = "a square walked and left behind, with no seam to notice";
+    p.setup.exe = explored_probe_file();
+    p.setup.exe_path = "\\EXPLORED.EXE";
+    p.setup.keys = {
+        {.at = machine::ticks{0}, .scancode = explored_walk_scancode}};
+    p.setup.step_cap = 200'000;
+    p.steps = explored_walked_steps;
+    p.areas = {{.index = 0, .count = pixels_per_frame}};
+    p.least_frames = 1;
+    p.exit_code = 0x8A;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "explored_probe_drawn";
+    p.about = "the square the party left, a shade brighter, and nothing else";
+    p.setup.exe = explored_probe_file();
+    p.setup.exe_path = "\\EXPLORED.EXE";
+    p.setup.keys = {
+        {.at = machine::ticks{0}, .scancode = explored_walk_scancode}};
+    p.setup.seam_definitions = {&explored_probe_definition()};
+    p.setup.seams = {"explored-probe"};
+    p.setup.step_cap = 200'000;
+    p.steps = explored_walked_steps;
+    // Nothing was on the screen, so the lift makes the cell dark grey —
+    // colour 0 with the intensity bit set — and leaves every other pixel
+    // of the frame black. One cell is 24 by 24.
+    constexpr std::size_t lifted =
+        std::size_t{explored_lifted_side} * explored_lifted_side;
+    p.pixels = {
+        {.x = explored_lifted_x, .y = explored_lifted_y, .index = 8},
+        {.x = explored_lifted_x + explored_lifted_side - 1,
+         .y = explored_lifted_y + explored_lifted_side - 1,
+         .index = 8},
+        {.x = explored_lifted_x - 1, .y = explored_lifted_y, .index = 0},
+        {.x = explored_lifted_x + explored_lifted_side,
+         .y = explored_lifted_y,
+         .index = 0},
+        {.x = explored_lifted_x, .y = explored_lifted_y - 1, .index = 0},
+        {.x = explored_lifted_x,
+         .y = explored_lifted_y + explored_lifted_side,
+         .index = 0}};
+    p.areas = {{.index = 8, .count = lifted},
+               {.index = 0, .count = pixels_per_frame - lifted}};
+    p.least_frames = 1;
+    p.exit_code = 0x8A;
+    list.push_back(std::move(p));
+  }
+
+  {
     // The trigger, both ways (#161). Pulled: the handler runs once and
     // the program stores the seam's word. On and not pulled: the point
     // is reached, nothing happens, and the result block is the plain
@@ -3767,6 +4060,32 @@ const machine::seam_definition& automap_probe_definition() {
   return definition;
 }
 
+const machine::seam_definition& explored_probe_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(explored_probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 3> points{
+      {{.module = machine::resident_image,
+        .offset = explored_probe().present_offset,
+        .run = explored_handler(0)},
+       {.module = machine::resident_image,
+        .offset = explored_probe().poll_offset,
+        .run = explored_handler(1)},
+       {.module = machine::resident_image,
+        .offset = explored_probe().bar_offset,
+        .run = explored_handler(2)}}};
+  static const machine::seam_definition definition{
+      .id = "explored-probe",
+      .about = "the explored overlay's own handlers, at made-up addresses",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
+
 const machine::seam_definition& seam_probe_unreached_definition() {
   // Same fingerprint as the seam above — it is the same program, and
   // that is the point: this seam is available, enable-able and armable
@@ -3934,6 +4253,10 @@ const std::vector<std::uint8_t>& seam_probe_file() { return probe().file; }
 
 const std::vector<std::uint8_t>& automap_probe_file() {
   return automap_probe().file;
+}
+
+const std::vector<std::uint8_t>& explored_probe_file() {
+  return explored_probe().file;
 }
 
 std::vector<machine_program> all_machine_programs() { return build_all(); }

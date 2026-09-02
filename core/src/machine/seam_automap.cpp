@@ -298,12 +298,11 @@ constexpr std::uint32_t clear_screen_entry = 0x7D3B;
 /// and everybody else's is a string they built on the stack.
 constexpr std::uint32_t command_bar_entry = 0x3C7A;
 
-/// Where the bar is in that frame. The routine takes eleven words and
-/// cleans twenty-two bytes; its callers push them deepest-first, so at
-/// the thunk's entry — the far return address on top and nothing else —
-/// the menu's far pointer is the fourth argument from the far end.
-constexpr std::uint16_t bar_frame_menu_offset = 18;
-constexpr std::uint16_t bar_frame_menu_segment = 20;
+/// Where the bar is in that frame, and the two data-segment offsets that
+/// say it is the party's own, are `automap_overland.h`'s: the explored
+/// overlay (#179) has the same point for the same reason, and one reader
+/// is what stops the two seams coming to different conclusions about
+/// whose screen this is.
 
 /// The far return of the routine that draws the party roster — its
 /// `retf`, not its entry. The entry would be the wrong place: that
@@ -370,21 +369,6 @@ constexpr std::uint8_t view_kind_area = 1;
 /// Non-zero while the program is running a scripted move between areas.
 /// The party's position words are not to be believed while it is.
 constexpr std::uint16_t data_in_transition = 0x442F;
-
-/// **The adventuring screen's own two command bars** (M5-E2d), as
-/// offsets in the data segment: one for the overhead view and one for the
-/// 3D view. Both are strings the program keeps, and that is the fact this
-/// seam turns into a test — a bar at one of these two offsets is the
-/// party's own command bar and nothing else in the program has one.
-/// Every other bar the game shows, a vendor's yes/no and a script's menu
-/// included, is a copy built on the stack.
-///
-/// Two routes, and the second is the strings themselves: the program's
-/// own menu format is a length byte and its text, and the two lengths at
-/// these offsets are the lengths of the two bars the adventuring screen
-/// draws.
-constexpr std::uint16_t data_menu_area_view = 0x04B6;
-constexpr std::uint16_t data_menu_3d_view = 0x04DF;
 
 /// The current party member: a far pointer, offset then segment. The one
 /// argument the roster drawer takes.
@@ -2183,15 +2167,11 @@ void at_command_bar(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  const cpu::registers& regs = cpu.regs();
-  const std::uint16_t ss = regs[cpu::sreg::ss];
-  const std::uint16_t sp = regs[cpu::reg16::sp];
-  const std::uint16_t segment =
-      cpu.read_word(ss, at(sp, bar_frame_menu_segment));
-  const std::uint16_t offset = cpu.read_word(ss, at(sp, bar_frame_menu_offset));
-  box.automap().set_at_command_bar(
-      segment == ds &&
-      (offset == data_menu_area_view || offset == data_menu_3d_view));
+  // The reading itself is shared with the explored overlay (#179), which
+  // has the same point for the same reason: one reader, so the two seams
+  // cannot come to different conclusions about whose screen this is
+  // (`automap_overland.h`).
+  note_command_bar(box, ds);
 }
 
 /// A box region is about to be cleared. If it meets the panel's cells,
