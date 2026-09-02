@@ -1310,11 +1310,16 @@ text comes from; this is the driving.
 **It needs a store, and this is the one leg that can be driven without a
 journal.** The reader is answered out of `journal.txt` — whatever
 `--journal` wrote there, or whatever a person put there by hand in the
-format `docs/journal.md` §6 sets out. Nobody has an ingested edition
-(§3 of that document), so what was driven here was a file of this
-project's own sentences under an entry number: enough to prove the
-reader, the key, the callout and the give-back, and not the recognizer
-against real prose.
+format `docs/journal.md` §6 sets out. What was driven *here* is a file of
+this project's own sentences under an entry number: enough to prove the
+reader, the key, the callout and the give-back, and deliberately not the
+recognizer against real prose.
+
+A real ingestion and a real citation came later and are elsewhere:
+`docs/seams.md` §10's "What a real citation did" (#232) is the game's own
+words opening a player's own ninety-nine entries, and
+`tests/sessions/cite.rec` is that run as a session, over a store this
+tree pins by digest and does not carry.
 
 ```
 --seam code-wheel --seam journal --journal-store ./journal.txt
@@ -1401,6 +1406,61 @@ The position line does not go through the routine the game's narration
 goes through, and the probe proved the point was reachable rather than
 that it was the right point. A probe that reaches a routine says nothing
 about whether that routine sees the thing you are watching for.
+
+---
+
+## Leg 10 — the journal's own log (M5-E4a #221, M5-E4b #222, #230)
+
+The other half of the reader, and the half a person reaches on purpose:
+**`Notes`** on the party's own command bar opens a full-screen log of
+everything the game has cited, newest first, with a `*` on what has not
+been read.
+
+Leg 9's prefix, and then the log with nothing in it:
+
+```
+--seam code-wheel --seam journal --journal-store ./journal.txt
+--document "<the code wheel>"
+--press A@7601 --press Return@7651 --press L@8951 --press A@9201
+--press N@10600 --press Escape@11400
+```
+
+The screen it draws is the game's own frame with
+`ADVENTURER'S JOURNAL` at the top, one sentence — the game has not sent
+you anywhere yet — and `EXIT` on the bottom row. A log with something in
+it wants a citation, which is `tests/sessions/cite.rec`'s run: the city
+hall's four proclamations, in the order the game said them, with the `*`
+on the three not read and the cursor row in the program's highlight
+colour.
+
+**The three things worth pressing while it is up**, because each was a
+bug once:
+
+- `S`, `C`, `L` and the arrows. The program's own command bar is what
+  answers those, and until #230 it was still running underneath: `E`
+  encamped, arrows walked, and the program then repainted its bar over
+  the journal a piece at a time. Nothing reaches it now, and the
+  measurement is in `tests/visual/not-log-modal.leg` — one digest across
+  1,475 frames while all six are pressed.
+- `E`, which is the word on the log's own bottom row and is how this game
+  leaves every screen it has.
+- **Escape**, which is what a *script* should use instead. `E` on the
+  party's own bar is ENCAMP, so a run that presses it with the seam off
+  ends up somewhere else entirely — which is why the confinement legs and
+  `notes.rec` all leave by Escape.
+
+**What comes back is everything except one thing.** The frame after the
+log closes is the frame before it opened — viewport, roster, status line,
+ornaments, every pixel — except *which command the bar's highlight is
+sitting on*: the give-back injects a space to make the menu-bar routine
+draw itself again, and it draws itself with the highlight at its first
+command. 951 pixels, all on the bar row
+(`tests/visual/not-log-giveback.leg`). A player who had stepped the
+highlight along finds it back at the start.
+
+`N` is ignored while a page is up, deliberately — the way out of the
+reader is the way out of the reader — so a script that wants the log
+after a citation closes the panel first.
 
 ---
 

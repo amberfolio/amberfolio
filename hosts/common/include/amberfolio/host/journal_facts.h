@@ -48,17 +48,24 @@
 // facts too and every one of them is checked.
 //
 //
-// The table is empty, and that is the honest state
-// -----------------------------------------------
+// One row, and what it took to put it there
+// -----------------------------------------
 //
-// `machine/document.cpp` has no journal line, for a stated reason: "a
-// fingerprint is a fact about a file somebody actually hashed, and nobody
-// here has hashed that one". The same is true one level further in, and
-// more so — these offsets are facts about a document somebody has to sit
-// down with. So `known_journals()` is empty, every real journal is
-// therefore an unrecognized edition, and the mechanism is proven against
-// a synthetic document this project builds itself
-// (`journal_probe.h`).
+// This table had no rows for a stated reason: these offsets are facts
+// about a document somebody has to sit down with, and nobody had. M5-E3b
+// (#214) is somebody sitting down with one — the archive release's own
+// journal, fifty-eight entries in seventy-eight pieces across nine
+// two-page scans, every rectangle measured off the scans and every
+// number checked against the printed headings. `docs/journal.md` §3 is
+// the method, so the next edition is a procedure rather than an
+// archaeology.
+//
+// Every *other* journal is still an unrecognized edition, which is the
+// fail-closed direction: the offsets are true of one file and following
+// them into another produces twenty failures rather than one sentence.
+// And the mechanism is still proven in CI against a synthetic document
+// this project builds itself (`journal_probe.h`), because the real one
+// cannot be committed and CI has never seen it.
 //
 // **Adding an edition is adding data**: a fingerprint that also goes into
 // `known_documents()` as a `journal` (the two tables are checked against

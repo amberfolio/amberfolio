@@ -211,9 +211,10 @@
 //     An edition this build does not know the insides of is reported
 //     with its fingerprint and nothing is read: the offsets are only
 //     true of one file, and following them into another produces
-//     twenty failures rather than one sentence. `known_journals()` is
-//     empty today, so that is what every real journal gets, and
-//     `docs/journal.md` §3 is how an edition is added.
+//     twenty failures rather than one sentence. `known_journals()` has
+//     one row — the archive release's own journal (#214) — so that is
+//     what every *other* journal gets, and `docs/journal.md` §3 is how
+//     an edition is added.
 //
 //   --journal-store PATH  where the text a journal ingested lives
 //
