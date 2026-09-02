@@ -740,12 +740,27 @@ serialization, and a machine with a document presented and every seam off
 is byte-for-byte the machine without one. That last is a test, not a
 sentence.
 
-**Nothing in this build is gated yet.** The code-wheel seam's gate is
-#115, which is now one field in its definition; the journal reader's is
-one field in its own (§10), and since M5-E3b (#214) the table *does* have
-a journal row — so turning that field on is now a decision about whether
-a player who has not shown their journal should be told by the gate or by
-the reader, rather than a thing that could not be done at all.
+**One seam in this build is gated, and it is the one PLAN.md §5 item 1
+asks to be** (#115). `code-wheel`'s definition names
+`.gate = document_kind::code_wheel`, so until a person presents the wheel
+the seam is on, **inert**, and says `document_not_presented` — and
+because a shut gate arms no points, its address is never in the table
+`dispatch()` compares against. The journal reader's gate is one field in
+its own definition (§10) and is deliberately **not** set: since M5-E3b
+(#214) the table *does* have a journal row, so setting it is a decision
+about whether a player who has not shown their journal should be told by
+the gate or by the reader, rather than a thing that could not be done at
+all.
+
+**A gate outlives the run it was applied to.** `verify_recording` applies
+a recording's own preamble seams, so a replay of a session whose seams
+are gated and whose player has presented nothing is **refused before a
+step is taken**, naming the condition — `a recorded seam is gated on a
+document that has not been presented` — rather than left to diverge
+somewhere in the middle. That is why a session descriptor carries a
+`document` line, by digest and by nothing else
+([`tests/sessions/README.md`](../tests/sessions/README.md)), and it is
+observable: replaying `camp-fix.rec` with no `--document` stops there.
 
 ---
 
@@ -773,9 +788,17 @@ expose, and a count that went up for it made the failure look like
 success. A point offered at every step declines at most of them, which is
 what turned an arguable choice into a wrong one. One consequence to know
 about: any `fired` figure written down before #163 that came from a run
-in which a handler declined reads lower now — including the "fires nine
-times" in `tests/sessions/fight-cheat.session`, which nobody has
-re-measured.
+in which a handler declined reads lower now.
+
+The one such figure this tree carries — the "fires nine times" in
+`tests/sessions/fight-cheat.session` — **was re-measured at the M5
+closeout and is still nine**: `cheat-invulnerable armed fired=9`, with
+`replay verified checkpoints=177` over the same recording. So the three
+places that write the number down are right, and were right by luck as
+much as by anything, because nothing had checked them since the count
+changed meaning. #271 carries the note and the two numbers beside it that
+have *not* been measured (`cheat-kill-all`'s 120, and the Fix's one hit
+point per member per day).
 
 The desktop host prints a line per enabled seam when a run ends:
 
@@ -1261,6 +1284,84 @@ boundary, and it needs the argument this document would have to carry.
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
+
+### The code-wheel bypass (#94, #119; the gate #115)
+
+PLAN.md §5 item 1, and the **first seam this project ever wrote** — it
+landed in M3, in the engine's deliberately smallest first slice and
+before half of §3's eight primitives existed, and it still uses only the
+first of them — register surgery, three writes. It went unwritten here for two milestones
+because there seemed to be nothing to say about it; it is worth the
+section, because it is the smallest complete example of everything §8
+asks for — a handler of nine lines, a qualifier that is the whole of its
+correctness, and a gate that decides who may have it at all.
+
+**What the program does, as facts.** The challenge is answered by typing
+a word. The program keeps thirteen candidate words in its resident data
+as length-prefixed strings twenty-one bytes apart, and compares what was
+typed against the one the challenge picked — through its own *general*
+string-compare routine, which puts the smaller of the two lengths in CX,
+runs a `REPE CMPSB` over that many characters, branches if they differed,
+and otherwise compares the two lengths, returning its answer in ZF alone.
+The point is that `REPE CMPSB`, at `0xBBB0` from the image segment; the
+word table is at `0xC7C2`, thirteen entries of stride 21 and six
+characters each. Addresses, offsets, a stride and a count — the whole
+entry is facts of the kind CONTRIBUTING.md names, and not one byte of the
+program or one word of the table is reproduced anywhere in this tree.
+
+**Where those facts came from, and how the point is qualified.** The
+compare loop is in the resident image and cannot be overlaid, so the
+point is qualified by `resident_image` and nothing more (§4). That is not
+the qualifier that matters, though: the routine is the program's
+*general* string compare, called about a hundred and fifty times during
+the boot before the gate is even reached, so the address alone would
+corrupt every string comparison the program makes. **The real qualifier
+is the operand** — ES:DI must point inside the word table's character
+span, computed from `image_base()` so the offsets stay the program's
+rather than this machine's. Nothing but the code-wheel check compares
+against those words; a comparison that does not is returned from
+untouched, which is what makes a hot resident address safe to sit on.
+
+**The surgery is three registers and no memory at all.** `CX = 0`, so the
+`REPE CMPSB` performs no iteration and therefore changes no flag and
+moves neither pointer; `ZF` set, which is what the untaken branch after
+it wants to see; and `AL = AH`, so the length comparison that follows
+agrees too. The program then runs its own code, reaches its own
+conclusion and returns "equal" through its own convention. Nothing is
+written into the input buffer, so the seam assumes nothing about how
+large that buffer is or what shares the record it sits in — and it works
+whatever the player typed, including nothing. This is PLAN.md §5 item 1's
+preference honoured at the register level rather than at the flag: the
+program exercises its own success path, and the rest of it cannot tell.
+
+**The gate is the enhancement's whole claim about a person** (M5-D3
+#171, turned on by #115). `.gate = document_kind::code_wheel`: present
+your own wheel with `--document`, and until you do the seam is on,
+**inert**, and says `document_not_presented` — its own reason and not
+`module_not_resident`'s, because a module arrives when the program loads
+it and a document when a person presents one (§5). It is a *possession*
+gate and nothing else. The host reads the file, hashes it, and drops it;
+nothing is parsed and nothing is kept, so what the seam knows about the
+player is one digest and one bit.
+
+**The fidelity claim.** The usual one, in its strongest form, and this is
+the seam that can carry it: on and never triggered, the run is byte for
+byte the run with it off — and *gated* off, it is stronger still, because
+a shut gate arms no points at all, so there is no address for `dispatch()`
+to compare against and no handler that could decline. Its idle half in the
+matrix is therefore the gate rather than a session
+(`tests/sessions/README.md`), which is the one place §7's per-seam pair
+is answered by the mechanism instead of by a recording. Its *exercised*
+half is every game session in the library: they all drive the real
+program past the challenge, and their descriptors all name the document.
+
+**What it is not yet.** Nothing outstanding for the seam. What is left is
+a person's, and it is not this seam's alone: a browser has never been
+opened on the toggle that turns it on, or on the file input that presents
+the wheel (#147, #274), and putting a face on presenting a document —
+rather than a flag — is M6's (#265).
+
+---
 
 ### The Encamp (F)ix (#172, #186, #189, #194)
 

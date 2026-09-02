@@ -355,27 +355,36 @@ Each phase is an issue, and #239 tracks them in this order: #232,
    notation the booklet numbers that section in. Had any of the sessions
    in step 4 been recorded first they would have pinned a watch that
    could never fire.
-2. **The frames tool and the first contact sheets** (#233) — §5 item 1. Produce
-   sheets for RDR-2 to RDR-8 and NOT-2 to NOT-10 and look at each once.
-   This is the visual pass a person does; everything after it is a hash.
-3. **Confinement legs** (#234) — §5 item 3 and the `.leg` files for the reader
-   and log rows. NOT-8 and NOT-9 are the regression net for #230 and the
-   first legs to write.
+2. **The frames tool and the first contact sheets** (#233) — **done**.
+   §5 item 1: sheets for RDR-2 to RDR-8 and NOT-2 to NOT-10, each looked
+   at once. This is the visual pass a person does; everything after it is
+   a hash.
+3. **Confinement legs** (#234) — **done**. §5 item 3 and the `.leg` files
+   for the reader and log rows; NOT-8 and NOT-9 are the regression net for
+   #230 and were the first legs written.
 4. **Sessions** (#235) — **done for three of the four**. §5 item 2, then
    `reader`, `notes` and `cite`, with their rows in
    `tests/sessions/README.md`. `walk-journal` is not among them: FID-1's
    claim is not reachable and the row says why.
 
-   What is still owed is verifying the three on the **wasm module**.
-   `sweep.py`'s wasm target is the module smoke test rather than a
-   session replay, and `drive.mjs` is the door to the second — RDR-12 and
-   NOT-11 want the same thing and can be one piece of work.
+   Verifying the three on the **wasm module** is done too, at the M5
+   closeout audit (#177): `reader`, `notes` and `cite` were replayed
+   through `drive.mjs` on the Release module and their seam and
+   host-service lines diffed against the desktop host's, down to
+   `journal-open calls=1 last=131136 at=424917732`. RDR-12 and NOT-11
+   were the same piece of work and both are answered.
+   `tests/sessions/README.md` carries the counts.
 5. **The browser** (#236) — §7 in full, once, written up in `docs/hosts.md` §3
    the way the rest of that section is. Install Tesseract for ING-3 in
    the same sitting.
-6. **Unit-level gaps and documents** (#237, #238) — STO-4, STO-5, then §8. Add a Leg
-   10 to `docs/playable.md` for Notes and the log, with the confinement
-   numbers rather than adjectives.
+6. **Unit-level gaps and documents** (#237, #238) — **done**. STO-4,
+   STO-5, then §8, and `docs/playable.md`'s Leg 10 for Notes and the log
+   with the confinement numbers rather than adjectives.
+
+**What the phases left owed is #270**, filed at the M5 closeout: the rows
+of §4's matrix that phases 1, 3 and 4 did not reach. Phase 5 (#236) is
+the only one of the seven still open, and it is the one that needs a
+person and a browser rather than a runner.
 
 ## 7. The browser, by hand
 
@@ -436,18 +445,19 @@ ING-2 or CIT-2.
 
 **All of these are corrected now** — three by #232's own PR (#241) and
 the rest by #238, which also added `docs/playable.md`'s Leg 10 for the
-log. What is left of this section is the record of what was wrong and
-why, because the failure mode is worth remembering: every one of these
-sentences was true when it was written, and each became false through
-somebody else's change rather than through anybody editing it.
+log. Nothing in the list above is outstanding, and this section is kept
+only as the record of what was wrong and why, because the failure mode is
+worth remembering: every one of these sentences was true when it was
+written, and each became false through somebody else's change rather than
+through anybody editing it.
 
 **Three of these were corrected by #232's own PR (#241)**, because that
 change made them wrong in a second way and leaving them would have been
 worse than the first: `docs/journal.md` §7 and §9, `docs/seams.md` §10's
 "What it has not done", and `docs/playable.md` Leg 9 — which had claimed
 the citation path was proven by building the pattern wrong on purpose so
-that the position line would match it. Phase 6 still owns the rest, and
-the reason that leg was wrong is worth carrying into it: a probe that
+that the position line would match it. Phase 6 took the rest, and the
+reason that leg was wrong is the one to carry forward: a probe that
 reaches a routine says nothing about whether that routine sees the thing
 you are watching for.
 

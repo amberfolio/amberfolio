@@ -261,7 +261,7 @@ by every milestone after.
 
 So M3's closeout was: bump `VERSION` to `0.1.0` in the closeout PR, merge
 it, and `git tag -a v0.1.0` on the resulting merge commit. M4's was the
-same three steps with `0.2.0`.
+same three steps with `0.2.0`, and M5's with `0.3.0`.
 
 ### What a tag publishes
 
@@ -269,12 +269,18 @@ Pushing a `v*` tag runs the whole of `ci.yml` and, past the same gate the
 deploy job waits on, publishes a **GitHub Release** carrying the web
 host's build output (issue #200). That is the forward path, and it can
 hold the full gate because the workflow and the tree it gates are the
-same commit. Six files — `amberfolio.wasm`,
+same commit. Seven files — `amberfolio.wasm`,
 `amberfolio.mjs`, `host.mjs`, `app.mjs`, `audio-worklet.mjs`,
-`picker.mjs` — plus `SHA256SUMS`, a `manifest.json`, and the notices
-(`LICENSE`, `NOTICE.md`, and `LICENSES/`) so they can be rendered without
-cloning. The tag's own message becomes the release notes, which is why it
-is worth writing one. A `0.x` tag is marked a pre-release.
+`picker.mjs`, `journal.mjs` — plus `SHA256SUMS`, a `manifest.json`, and
+the notices (`LICENSE`, `NOTICE.md`, and `LICENSES/`) so they can be
+rendered without cloning. **`journal.mjs` joined the list at M5's
+closeout (#229) and was owed before it**: `app.mjs` has imported it by
+name since #174 and it was never staged, so a consumer serving the
+released `app.mjs` got a 404 for a file the page asks for. A seventh
+filename is a lockfile key like the other six, and `v0.3.0` is the first
+release that has it. The tag's own message becomes the release notes,
+which is why it is worth writing one. A `0.x` tag is marked a
+pre-release.
 
 Nothing here is for a player: there is no desktop binary in it (that is
 M7, PLAN.md §7). It exists because a **site that hosts the wasm build
@@ -332,7 +338,7 @@ Confirmed against a first real consumer, which read `v0.2.0` cold and
 needed nothing changed. These are the parts that are somebody else's
 problem the moment they move.
 
-- **The six filenames are keys in a consumer's lockfile.** Renaming one
+- **The seven filenames are keys in a consumer's lockfile.** Renaming one
   is a breaking change for everyone pinning it, not a refactor. The same
   goes for the hash spelling: `SHA256SUMS` is hex and `manifest.json` is
   whatever is natural, and a consumer normalises both, so a change there

@@ -2,15 +2,25 @@
 
 A low-level emulator for the SSI Gold Box games.
 
-**Status: early development — but the game plays.** M4's exit criterion
-is met and tagged `v0.2.0`: the full loop runs on a player-supplied copy
-on all four targets. A party is made and added, the city and its opening
-story event play, movement works, a random encounter fights to a finish
-with and without the debug cheats seam, a game saves and loads, a shop
-sells, a temple heals, a gem is sold, and the map's edge is walked
-across — and the same loop runs in a browser, from the same core.
-`docs/playable.md` is that procedure, leg by leg, with the keystrokes
-that drive it and — its last section — what it has *not* covered.
+**Status: early development — but the game plays, and it plays
+enhanced.** M5's exit criterion is met and tagged `v0.3.0`: all six of
+the v1 enhancements work and toggle independently on desktop and in the
+browser — the code-wheel bypass, the Encamp Fix, the automap, the
+journal, fog of war on the overworld, and the debug cheats. Each is an
+opt-in seam, each is **off by default**, and each is built to feel like
+something the game shipped with rather than a layer over it.
+`docs/enhancements.md` is the set as a player meets them, one entry each,
+ending with what it is not yet.
+
+M4's criterion still holds underneath: the full loop runs on a
+player-supplied copy on all four targets. A party is made and added, the
+city and its opening story event play, movement works, a random encounter
+fights to a finish with and without the debug cheats seam, a game saves
+and loads, a shop sells, a temple heals, a gem is sold, and the map's
+edge is walked across — and the same loop runs in a browser, from the
+same core. `docs/playable.md` is that procedure, leg by leg, with the
+keystrokes that drive it and — its last section — what it has *not*
+covered.
 
 Underneath it are the two instruments M4 needed: a **replay harness**
 (`docs/replay.md`) that makes a run into keys, ticks and hashes, so a
@@ -52,20 +62,28 @@ log line and a clean stop, never a guessed answer — which is why a boot
 log reads as a worklist and why the three notices a healthy run prints
 are each a true statement about what this machine does not have.
 
-That is M0 through M4 done. Next is M5 — the player enhancements, each
-one an opt-in seam and each off by default: the code-wheel bypass, the
-journal (OCR at ingestion, an in-game reader, auto-open), the automap
-panel drawn into the emulated EGA planes, the Encamp (F)ix, and fog of
-war on the overworld map. Each is built to feel native — as
-the original developers would have built it. The engine they all reuse
-is already here; M5 adds no new mechanism. The shape of the work is in the [project plan](PLAN.md).
+That is M0 through M5 done, and M5 kept the promise it was planned on:
+the five enhancements it added are handlers over primitives the seam
+engine already had, and **not one new mechanism**. What they did need was
+doors — a host service both hosts implement, a document gate, and a call
+into the program so that text a seam puts on the game's screen is drawn
+by the game, in the game's font.
+
+Next is M6 — onboarding, shells and gamepad: a real web shell with
+file-picker onboarding and a clear unrecognized-edition path, persistence
+in the browser, a toggle panel instead of command-line flags, desktop
+first-run polish, and gamepad and virtual-keyboard input on both hosts.
+The worklist it starts from is
+[#265](https://github.com/amberfolio/amberfolio/issues/265) — every door
+and gate M5 built, inventoried against what each host actually shows a
+person. The shape of the work is in the [project plan](PLAN.md).
 
 **Try it in a browser:** <https://amberfolio.vercel.app> — the wasm host,
-published automatically from `main` on every push. It is a developer
-page rather than a shell: point it at a directory holding your own copy
-and it will boot it, report the same stop line the desktop host does,
-and let you read it. Onboarding, persistence and a real interface are
-M6.
+published automatically from `main` on every push. It is still a
+developer page rather than a shell: point it at a directory holding your
+own copy and it will boot it, report the same stop line the desktop host
+does, and let you read it. Onboarding, persistence and a real interface
+are M6.
 
 ## What this will be
 

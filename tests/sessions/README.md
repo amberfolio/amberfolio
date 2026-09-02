@@ -310,23 +310,36 @@ would read as a table of everything. **So a game session is checked by
 the desktop host only**, and the cross-target claim below rests on the
 sessions whose disks are here.
 
-## And every one of them on the wasm module (#177)
+## And 21 of the 23 on the wasm module (#177)
 
 `docs/replay.md`'s claim is that a recording is keys, ticks and hashes,
 so a *different build of the machine* either reproduces it or does not.
 `hosts/web/tools/drive.mjs --replay` is the door to saying that about a
-game session, and ten of them go through it:
+game session, and at the M5 closeout audit (#177) **21 of the 23 game
+sessions went through it** — every one of them replayed on both hosts and
+their seam `fired=` and host-service lines diffed line for line, the
+desktop host's `--headless --replay` against `drive.mjs --replay` on the
+Release wasm module. The 21 agree exactly, seam for seam and call for
+call, down to `automap-update calls=2 last=3 at=220978596` and
+`journal-open calls=1 last=131136 at=424917732`. Each of the six
+enhancements has both an exercised session and an idle one inside them.
 
-    quiet              replay verified checkpoints=126
-    quiet-automap      replay verified checkpoints=126
-    quiet-encamp       replay verified checkpoints=126
-    quiet-cheats       replay verified checkpoints=126
-    quiet-journal      replay verified checkpoints=126
-    quiet-all          replay verified checkpoints=126
-    subset-map-reader  replay verified checkpoints=146
-    reader             replay verified checkpoints=156
-    notes              replay verified checkpoints=146
-    cite               replay verified checkpoints=291
+**The two that do not go through are a finding about a host's door and
+not about a machine**, and the machine's answer is the good kind —
+refused by name before a step is taken:
+
+    party  replay refused line=126 why=the filesystem holds a different number of files value=120
+    save   replay refused line=126 why=the filesystem holds a different number of files value=120
+
+Both are recorded over the **pristine** disk, whose `\SAVE\` is an
+*empty* directory. `drive.mjs` puts a directory into the module one file
+at a time, because that is what a browser has to do, and an empty
+directory has no file to carry. So the file count differs, the preamble
+catches it, and the replay stops rather than diverging. It is the one
+shape of session the wasm module cannot be handed, and a browser meets it
+the first time somebody drops a freshly installed copy. Every session
+recorded over a disk with files in its `\SAVE\` — which is every seam's
+pair, both halves — goes through.
 
 Each was recorded by the desktop host — MSVC over SDL — and reproduced by
 Emscripten's toolchain, a second compilation of the core and a second

@@ -56,8 +56,9 @@ right" path. There is no dialogue, no message, and nothing on the screen
 that the game did not draw: the challenge appears and is passed, exactly
 as it is for somebody with the wheel in front of them.
 
-**What it is not yet.** Nothing outstanding. Its gate was the last of it
-(#115).
+**What it is not yet.** Nothing outstanding in the seam: its gate was the
+last of it (#115). Presenting a document is still a flag rather than
+something a page asks you for, and that is M6's onboarding (#265).
 
 ---
 
@@ -89,7 +90,14 @@ And when the game interrupts a rest — a wandering monster — the fix says
 so, in the game's own words' place: `Fix: Interrupted!`. It does not
 retry, and it does not pretend the rest finished.
 
-**What it is not yet.** Nothing outstanding.
+**What it is not yet.** Nothing outstanding in the mechanism. Two
+residuals are filed as **#269**: a party hurt by *combat* rather than by
+a debug seam has never camped, so the wound statuses a fight leaves
+behind — the ones resting cannot mend — reach the report's reason column
+only through rosters the unit suite writes; and a rest of a day or more
+cannot print its elapsed time, because the game's clock has no day
+counter and the summary drops the clause rather than print the remainder
+of a wrap as though it were an answer.
 
 ---
 
@@ -108,6 +116,20 @@ two playthroughs do not share a map.
 That is **off unless you ask**, deliberately: a file appearing in your
 game directory changes your game directory, and every recorded session
 pins its disk.
+
+**If you are writing a host, the store has one trap**, and it is the
+kind that costs a player their map rather than an error. Ask for it
+**unconditionally at install** — after the files are in the machine and
+before the program is loaded out of them — whatever the automap seam's
+own state. The store and the seam are two independent flags, not a
+feature and its switch; `hosts/web/tools/drive.mjs` is the reference and
+treats them as two. Turning it on *later* is worse than late: every call
+re-attaches, and reading the sidecar **replaces** every record in the
+table, so a store switched on mid-session discards everything the player
+has walked up to that point. The consequence of doing it right is worth
+accepting out loud: with the store on and the seam off, a save still
+writes a header-only `\SAVE\AFMAP.DAT`, so that file appears in a copy
+the host persists even for a player who never opened the map.
 
 **Where its facts came from.** Six addresses in the resident image, the
 overlay tracker, and the shipped data's own table of shut wall faces. The
@@ -135,6 +157,13 @@ covering the game with something the game did not ask for.
 **What it is not yet.** It marks where you have been on the *city* and
 dungeon screens. The overworld map is the explored overlay below, which
 is a separate seam and shares this one's store.
+
+The rest is **#268**: the door rule has only ever been driven through its
+*fallback*, because New Phlan has no shut wall face anywhere on it, so
+what a driven run proves is the table of shut faces and not the seeing;
+nobody has walked through the gate at `0,4` with the panel up and watched
+it change maps; and two playthroughs in two slots not sharing one map is
+a test over file events rather than a run.
 
 ---
 
@@ -208,7 +237,7 @@ by looking at it is worth more than a design nobody tried.
 **The square you are standing on is never covered**, and that is not a
 detail: your party's icon is drawn there.
 
-**What it is not yet.** **Nobody has played with the fog.** Somebody has
+**What it is not yet** (**#267**). **Nobody has played with the fog.** Somebody has
 now looked at it — that is how the colour was chosen — but on stills, and
 the question this whole document is organised around, does it read as
 something the game drew, is one only a person with the game running can
@@ -258,7 +287,9 @@ never from a CDN.
 **What it is not yet.** The edition table has one row. And no test has
 ever run a real engine over a real page — CI proves the pipeline on all
 four targets against a synthetic PDF this project generates, with a
-fixture engine.
+fixture engine. Both live on **#236**, with the browser half of it: the
+page's own ingestion has never been driven by a person in a browser, only
+by a node harness.
 
 ### The reader: the entry, on the game's own screen
 
@@ -308,7 +339,10 @@ enhancement being visible rather than a leak, and
 
 And only one real citation has been driven: the city hall's four
 proclamations. The entry and tale forms are the pattern's word rather
-than a measured sentence.
+than a measured sentence. **Nobody has read an entry off a display**
+(#236) — the reader has been driven, dumped and confined by rect, all of
+it file against file — and the rows the journal's own test plan still
+owes are **#270**.
 
 ---
 
@@ -331,6 +365,13 @@ program would accept.
 presented as one. `cheat-wound-party` exists because the Encamp Fix's
 days arithmetic and its report's exception list had no other way to be
 driven.
+
+**What they are not yet.** Three numbers underneath them are chosen
+rather than measured, and **#271** is the list. One of the three was
+measured at this milestone's closeout and was right — `cheat-invulnerable`
+still fires nine times over `fight-cheat.rec` — which leaves
+`cheat-kill-all`'s 120 points and the Encamp Fix's one hit point per
+member per day.
 
 ---
 
