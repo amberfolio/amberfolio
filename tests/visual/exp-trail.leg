@@ -18,6 +18,15 @@
 # now diverge at frame 10,275, which is where the arrival settles, and
 # what this leg confines is the fog rather than the trail.
 #
+# **What the fog is, since this leg is what confines it.** A covered
+# square is *half* covered: a one-pixel checkerboard of palette index 8,
+# the game's own dark grey, with the program's own pixel on the other
+# half (M5-E5f, #263, after the maintainer chose it off five coverings
+# composited over a real frame). The rects below did not move for that —
+# confinement is about the window, and a checker reaches exactly the
+# squares a solid fill reached — but the picture inside them did, which
+# is why `wild-trail.rec` was recorded again and this file was not.
+#
 # **The rects are the fogged squares and not a box round them.** At a
 # reveal radius of one the party sees the three-by-three it is standing
 # in, so on this walk the window's outer ring is covered and its middle

@@ -1496,19 +1496,31 @@ one.
 
 **What it does.** It is **fog of war** (M5-E5f, #263). The square the
 party is standing on and the eight around it are the game's own map,
-untouched; every other square of the window is covered with black — which
-is the colour the message rows, the panel beside the window and the
-game's own 3D view already are, so the window reads as the game's own
-border framing a smaller opening. The fog lifts as the party goes, and
-the square under the party is never covered because the party's icon is
-drawn there.
+untouched; every other square of the window is hazed over with a
+**one-pixel checkerboard of dark grey** — palette index 8, on half the
+square's pixels, with the program's own pixel on the other half — so the
+terrain is faintly there under the fog rather than gone. The fog lifts as
+the party goes, and the square under the party is never covered because
+the party's icon is drawn there.
+
+**The colour was chosen by looking at it.** The first fog was solid
+black, and five coverings were then composited over one real dumped
+frame — solid black, a black checker, a dark-grey checker, a light-grey
+checker and a two-by-two dark-grey one — and the maintainer picked the
+dark-grey checker. A solid cover throws away the shape of the country the
+party is standing at the edge of; a black checker collapses against the
+grass's own two-green dither into a flat mesh; light grey reads as paler
+ground. `docs/explored-overlay.md` §5.2 has all five, black's four
+reasons included, because it is the rejected alternative.
 
 **How far it sees is one constant**, `explored_reveal_radius` in
 `machine/automap.h`, and it is 1. Two and three were asked for and cover
 nothing: the window is five squares across with the party in the middle,
 so every square on the screen is already within two. Driven, with the
 constant set to 2: **523 dumped frames of this walk, and not one of them
-differs from the same walk with the seam off.**
+differs from the same walk with the seam off.** The maintainer confirmed
+one on the same look that chose the colour, so the radius is settled and
+not a placeholder.
 
 **The first design was the other way round**, and this leg used to
 describe it: the whole map on the screen with the walked squares one
@@ -1524,7 +1536,10 @@ whenever that screen is; off, it is not.
 off: **411 byte for byte identical, and every one of the 112 that differ
 differing only inside the squares the party has not been near** — sixteen
 of them until the first step and thirteen from then on, and **not one
-pixel outside the window at any frame**. From the frame the arrival
+pixel outside the window at any frame**. On the last of them, 3,166
+pixels differ from the seam-off frame, every one of them palette index 8,
+and not one pixel of the checker's other half — the program's own — has
+moved anywhere on the screen. From the frame the arrival
 settles at to the end of the run every still has the fog on it, and the
 fifty-one after the last step are one still repeated
 (`tests/visual/exp-trail.leg` and `exp-steady.leg` are those two as
@@ -1654,18 +1669,21 @@ what it skips would be worth less than one that says so.
   the program rather than carried, and is zero on the one area driven.
   The second gap is narrower and named for the same reason: the fog has
   been over grass, coast water and the grey shore between them and over
-  no other terrain. It cannot fail on one — it covers rather than
-  recolours, so it does not depend on what is underneath — but nobody has
-  seen it on rough ground or a road. **The gap that is gone** is worth
+  no other terrain. It cannot fail on one — the checker is the same grey
+  on the same half of the pixels whatever is underneath — but how legibly
+  a haze reads depends on the colour it is hazing, and nobody has seen it
+  over ground that is already grey. **The gap that is gone** is worth
   saying, because it is what changing the marking bought: the lift was
   measured *visible* on 2,800 window cells and a tile whose art was
   entirely bright would have carried no mark at all with nothing to say
   so. A covering has no such failure.
-- **Whether the fog reads as something the game drew** (#263). The same
-  unticked clause the lift had, about the second design. Every picture in
-  Leg 11 is a file compared with another file; the question needs a
-  person and a display, and the last time it was asked the answer changed
-  the enhancement.
+- **Whether the fog reads as something the game drew *in play*** (#263).
+  Narrower than it was. The lift's version of this clause was answered by
+  a person and the answer changed the enhancement; the fog's colour was
+  then chosen by the same person off five coverings composited over a
+  real frame. What is left is that a composite is a picture beside
+  another picture — nobody has walked a wilderness map with the haze
+  moving in front of them. That is #179's last unticked clause.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam

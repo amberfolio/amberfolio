@@ -269,11 +269,17 @@ Design requirements:
    a square the party has been near is the game's own square, untouched,
    and every other square in the window is covered. **The marking,
    settled at the point of definition** as this item's own rule requires
-   (#179, `docs/explored-overlay.md`): the cover is *solid black*, which
-   is the colour the rest of that screen already is and the game's own
-   colour for what has not been seen, and how far a party sees is one
-   named constant, a Chebyshev radius of one square
-   (`explored_reveal_radius`).
+   (#179, `docs/explored-overlay.md`): the cover is a *one-pixel
+   checkerboard of the game's own dark grey* — palette index 8 on half
+   the square's pixels and the program's own pixel on the other half, so
+   the terrain is faintly there under the fog rather than gone — and how
+   far a party sees is one named constant, a Chebyshev radius of one
+   square (`explored_reveal_radius`). Both were chosen by the maintainer
+   off five coverings composited over a real frame (#263), which is this
+   item's exit rule doing its work a second time: the fog was solid black
+   first, on an argument that was right about everything except that a
+   player needs to see the *shape* of the country they are standing at
+   the edge of.
 
    **This item read the other way round until #263**, and the sentence it
    lost was "nothing the game draws is hidden — the overlay marks the
@@ -287,7 +293,9 @@ Design requirements:
    and the ten candidates prototyped over real frames between them, are
    in `docs/explored-overlay.md` §5 with their reasons; the first one is
    kept there rather than deleted, because a design that was rejected by
-   looking at it is evidence and not noise.
+   looking at it is evidence and not noise. The same is true of the
+   solid-black fog, which is kept in §5.2 as the rejected alternative
+   with all four of its arguments intact.
 6. **Debug cheats** — invulnerability and kill-all-enemies, built
    early because they double as test tooling for the playthrough
    sweeps. A third, wound-the-party, was added for that stated reason

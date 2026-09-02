@@ -3,12 +3,22 @@
 // The explored overlay (seam_explored.cpp, M5-E5 #179, the fog M5-E5f
 // #263), exercised through its mechanism and not through any program.
 //
-// **The screen is filled before anything is asserted**, which is new with
-// the fog: this seam's drawing is black, and black on a blank screen is
-// no picture at all. So `fill()` paints every plane of the whole frame
-// white first, the way the program's own composition would leave the
-// window painted, and what the assertions read is where that went back to
-// black.
+// **The screen is filled before anything is asserted**, which is what the
+// fog needs: this seam draws over what the program drew, so a blank
+// screen is no picture at all. `fill()` paints every plane of the whole
+// frame white first, the way the program's own composition would leave
+// the window painted, and what the assertions read is where that went
+// grey.
+//
+// **The fog is a checker and the assertions are pixel-exact about it**
+// (M5-E5f, #263). A covered square is *half* covered: palette index 8 —
+// the program's own dark grey — wherever `x + y` is even in screen
+// coordinates, and the fill's own colour 15 on the other half. So a
+// square that came out solid, a square whose checker restarted at its own
+// left edge instead of running on from its neighbour's, and a square
+// drawn in the wrong colour are three different failures here rather than
+// one, and `TheCheckerRunsUnbrokenAcrossTheSquareBoundaries` is the one
+// that would catch a parity taken from the square instead of the screen.
 //
 // Two halves, and the split is `seam_automap_test.cpp`'s: the geometry is
 // a pure function and is checked against arithmetic, and the seam is
@@ -274,14 +284,37 @@ struct rig {
   std::unique_ptr<ega> video;
 };
 
-/// Is every pixel of one cell of the window black — which is what this
-/// seam's fog is, and nothing else on this screen is once `fill()` has
-/// run.
+/// The fog's colour: palette index 8, the program's own dark grey. Stated
+/// here rather than read out of the seam, which is this file's rule.
+constexpr std::uint8_t fog_index = 8;
+
+/// The colour `fill()` leaves, which is what an uncovered pixel must
+/// still be.
+constexpr std::uint8_t filled_index = 0x0F;
+
+/// How many pixels of a 24 by 24 cell the checker covers: half of them.
+constexpr std::size_t fogged_pixels_per_cell =
+    std::size_t{cell_pixels} * cell_pixels / 2;
+
+/// Is one cell of the window fogged — every pixel of it either the fog's
+/// dark grey or the colour the fill put there, in the checker's own
+/// pattern?
+///
+/// The parity is the **screen's** and not the cell's: a pixel is covered
+/// when `x + y` is even in screen coordinates. The window begins at (8,
+/// 8) and a cell is 24 across, so both are even and every cell's own
+/// top-left corner is a covered pixel — which is exactly why a seam that
+/// computed the parity from the cell would pass this and fail
+/// `TheCheckerRunsUnbrokenAcrossTheSquareBoundaries`, and why that test
+/// exists.
 [[nodiscard]] bool cell_is_fogged(const rig& r, unsigned column, unsigned row) {
   for (unsigned y = 0; y < cell_pixels; ++y) {
     for (unsigned x = 0; x < cell_pixels; ++x) {
-      if (r.screen_pixel(window_x + (column * cell_pixels) + x,
-                         window_y + (row * cell_pixels) + y) != 0) {
+      const unsigned screen_x = window_x + (column * cell_pixels) + x;
+      const unsigned screen_y = window_y + (row * cell_pixels) + y;
+      const std::uint8_t wanted =
+          ((screen_x + screen_y) % 2 == 0) ? fog_index : filled_index;
+      if (r.screen_pixel(screen_x, screen_y) != wanted) {
         return false;
       }
     }
@@ -296,7 +329,7 @@ struct rig {
   for (unsigned y = 0; y < cell_pixels; ++y) {
     for (unsigned x = 0; x < cell_pixels; ++x) {
       if (r.screen_pixel(window_x + (column * cell_pixels) + x,
-                         window_y + (row * cell_pixels) + y) != 0x0F) {
+                         window_y + (row * cell_pixels) + y) != filled_index) {
         return false;
       }
     }
@@ -312,11 +345,11 @@ struct rig {
   std::uint32_t fogged = 0;
   for (unsigned row = 0; row < window_cells; ++row) {
     for (unsigned column = 0; column < window_cells; ++column) {
-      const bool black = cell_is_fogged(r, column, row);
-      EXPECT_TRUE(black || cell_is_clear(r, column, row))
+      const bool hazed = cell_is_fogged(r, column, row);
+      EXPECT_TRUE(hazed || cell_is_clear(r, column, row))
           << "cell " << column << "," << row << " is neither covered nor "
           << "untouched";
-      if (black) {
+      if (hazed) {
         fogged |= 1U << ((row * window_cells) + column);
       }
     }
@@ -344,12 +377,14 @@ constexpr std::uint32_t every_cell = (1U << (window_cells * window_cells)) - 1U;
   return mask;
 }
 
-/// How many pixels of the whole 320 by 200 screen are black.
+/// How many pixels of the whole 320 by 200 screen the fog is on: pixels
+/// of palette index 8, which is a colour `fill()` puts nowhere, so every
+/// one of them is this seam's.
 [[nodiscard]] std::size_t pixels_covered(const rig& r) {
   std::size_t covered = 0;
   for (unsigned y = 0; y < 200; ++y) {
     for (unsigned x = 0; x < 320; ++x) {
-      if (r.screen_pixel(x, y) == 0) {
+      if (r.screen_pixel(x, y) == fog_index) {
         ++covered;
       }
     }
@@ -411,8 +446,77 @@ TEST(ExploredOverlay, ArrivingCoversEverythingButTheThreeByThreeAround) {
   // the party is window column 2, row 2. The reveal is map columns 2..4
   // and rows 31..33, which is window columns 1..3 and rows 1..3.
   EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 1, 3));
-  // Sixteen cells of 24 by 24, and not a pixel of the rest of the frame.
-  EXPECT_EQ(pixels_covered(r), 16U * cell_pixels * cell_pixels);
+  // Sixteen cells, half of each of them, and not a pixel of the rest of
+  // the frame.
+  EXPECT_EQ(pixels_covered(r), 16U * fogged_pixels_per_cell);
+}
+
+TEST(ExploredOverlay, TheFogIsADarkGreyCheckerOverThePixelsTheProgramDrew) {
+  // **The marking itself** (M5-E5f, #263), asserted on one square rather
+  // than through the bitmap the other tests use. A covered square keeps
+  // half of its pixels exactly as the program drew them; the other half
+  // are palette index 8 — plane 3 set, planes 0 to 2 clear — which is the
+  // program's own dark grey and is what makes this a haze the terrain
+  // shows through rather than a hole in the screen.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+  r.fill();
+  r.present();
+
+  // Window cell (0, 0) is the corner of the outer ring, which the party
+  // has not been near.
+  std::size_t hazed = 0;
+  std::size_t untouched = 0;
+  for (unsigned y = 0; y < cell_pixels; ++y) {
+    for (unsigned x = 0; x < cell_pixels; ++x) {
+      const unsigned screen_x = window_x + x;
+      const unsigned screen_y = window_y + y;
+      const std::uint8_t colour = r.screen_pixel(screen_x, screen_y);
+      if ((screen_x + screen_y) % 2 == 0) {
+        ASSERT_EQ(colour, fog_index)
+            << "the covered half, at " << screen_x << "," << screen_y;
+        ++hazed;
+      } else {
+        ASSERT_EQ(colour, filled_index)
+            << "the program's own pixel, at " << screen_x << "," << screen_y;
+        ++untouched;
+      }
+    }
+  }
+  EXPECT_EQ(hazed, fogged_pixels_per_cell);
+  EXPECT_EQ(untouched, fogged_pixels_per_cell);
+}
+
+TEST(ExploredOverlay, TheCheckerRunsUnbrokenAcrossTheSquareBoundaries) {
+  // **The parity is the screen's, not the square's.** Every square of the
+  // window is 24 pixels across and the window starts at an even x, so a
+  // checker computed from a square's own corner would look right inside
+  // every square and still be the same picture — unless the drawing were
+  // ever moved, or a square's own origin were ever odd. This asserts the
+  // rule rather than the accident: over the window's whole top row, which
+  // is five fogged squares side by side, every pixel with an even `x + y`
+  // is the fog's and every pixel with an odd one is the program's, with
+  // no doubled line and no gap at any of the four boundaries.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+  r.fill();
+  r.present();
+
+  for (unsigned column = 0; column < window_cells; ++column) {
+    ASSERT_TRUE(cell_is_fogged(r, column, 0)) << "the whole top row is fog";
+  }
+  for (unsigned y = window_y; y < window_y + cell_pixels; ++y) {
+    for (unsigned x = window_x; x < window_x + (window_cells * cell_pixels);
+         ++x) {
+      ASSERT_EQ(r.screen_pixel(x, y),
+                ((x + y) % 2 == 0) ? fog_index : filled_index)
+          << "at " << x << "," << y;
+    }
+  }
 }
 
 TEST(ExploredOverlay, AStepUncoversTheRowTheWindowScrolledOnto) {
@@ -448,7 +552,7 @@ TEST(ExploredOverlay, ThePartysOwnCellIsNeverCovered) {
     for (unsigned x = 0; x < cell_pixels; ++x) {
       ASSERT_EQ(r.screen_pixel(window_x + (2 * cell_pixels) + x,
                                window_y + (2 * cell_pixels) + y),
-                0x0F)
+                filled_index)
           << "not one pixel of it";
     }
   }
@@ -468,7 +572,7 @@ TEST(ExploredOverlay, NothingOutsideTheWindowIsTouched) {
           y >= window_y && y < window_y + (window_cells * cell_pixels)) {
         continue;
       }
-      ASSERT_EQ(r.screen_pixel(x, y), 0x0F) << "at " << x << "," << y;
+      ASSERT_EQ(r.screen_pixel(x, y), filled_index) << "at " << x << "," << y;
     }
   }
 }
@@ -811,7 +915,9 @@ TEST(ExploredDefinition, TheRevealRadiusIsOne) {
   // that each look like a wrong picture (M5-E5f, #263). One is also the
   // only value that covers anything on a five-by-five window centred on
   // the party: at two, every cell on the screen is already within the
-  // radius and the fog never appears except at a map's own edge.
+  // radius and the fog never appears except at a map's own edge. **The
+  // maintainer has confirmed one** on the same look that chose the
+  // checker, so this is now a settled number and not a placeholder.
   EXPECT_EQ(explored_reveal_radius, 1);
 }
 

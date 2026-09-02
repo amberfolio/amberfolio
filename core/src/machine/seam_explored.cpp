@@ -5,9 +5,10 @@
 //
 // Where the party has walked, on the game's own overworld screen. The
 // program shows a five-by-five window of a wilderness area's overhead
-// map, scrolling with the party; this seam **covers every cell of that
-// window the party has not been near with fog**, so what is on the
-// screen is the country the party has seen and nothing else.
+// map, scrolling with the party; this seam **hazes every cell of that
+// window the party has not been near over with fog**, so what is plainly
+// on the screen is the country the party has seen and the rest of it is
+// under a covering.
 //
 // **This is the second marking, and the first one shipped.** M5-E5c drew
 // the opposite picture: the game's whole window as the game drew it, with
@@ -102,49 +103,70 @@
 // only if a driven run shows this path flickering (#256).
 //
 //
-// The marking: fog, and why it is solid black
-// -------------------------------------------
+// The marking: fog, and why it is a dark-grey checker
+// ---------------------------------------------------
 //
-// A cell the party has not been near is **covered with black** — all four
-// planes cleared over its 24 by 24 pixels, so it is colour 0, which is
-// the colour the rest of this very screen already is.
+// A cell the party has not been near is **hazed over with a one-pixel
+// checkerboard of palette index 8** — the program's own dark grey — laid
+// over half of its 24 by 24 pixels. The other half are the pixels the
+// program drew, untouched, so the terrain is still faintly there under
+// the haze rather than gone.
 //
-// Ten markings have now been prototyped over real dumped frames of this
-// screen: seven for the lift M5-E5c shipped, and, after the maintainer's
-// look, six for the fog that replaced it. `docs/explored-overlay.md` §5
-// has all of them with their reasons. The four that decided this one:
+// **This is the third design and the second look.** M5-E5c shipped a
+// lift and the maintainer said it did not read; M5-E5f first replaced it
+// with a *solid black* cover, and the maintainer looked at five
+// coverings composited over a real dumped frame — solid black, a
+// one-pixel black checker, a one-pixel dark-grey checker, a one-pixel
+// light-grey checker and a two-by-two dark-grey checker — and chose this
+// one. Fifteen markings have now been prototyped over real frames of
+// this screen: seven for the lift, six for the black fog, and the five
+// of that composite. `docs/explored-overlay.md` §5 has all of them with
+// their reasons, including black's, which are kept in full because black
+// is the rejected alternative and a rejected candidate with its cost is
+// what made each of these changes an edit rather than a
+// re-investigation.
 //
-//   * **it is the one colour that cannot read as terrain.** The nearer
-//     candidates — a checkerboard of black over the tile at one pixel in
-//     two, at two-by-two blocks, at four-by-four, and a dither at one
-//     pixel in four — all leave the tile's own hue showing through, and
-//     at the resolution this game runs at a half-covered green tile
-//     reads as *a different kind of green tile*. That is the same
-//     objection that rejected the sparse dither as a marking in #253,
-//     and it is worse here, because a fog covers most of the window
-//     rather than a square of it;
-//   * **it is the game's own vocabulary for the unknown.** Black is
-//     already most of this screen: the message rows under the window and
-//     the panel beside it are black, the game's 3D view draws black
-//     beyond what the party can see, and the window sits inside the
-//     game's own drawn border. So the fogged window reads as the border
-//     framing a smaller opening, which is a thing this screen already
-//     looks like — not as a pattern laid over it;
-//   * **it is the same on every terrain.** A fog that lets the tile show
-//     through is a different fog on grass, on water and on rough ground,
-//     and a player would have to learn three of them. This one covers,
-//     so there is one thing to learn. It is also the answer to the
-//     failure the lift had: dimming was invisible on water because water
-//     is a solid dark blue already, and no such case exists here;
-//   * **it costs four planes and no read-back.** `map mask = 0x0F` and a
-//     run of `0x00` bytes: a cell is three whole bytes by 24 scanlines,
-//     so 72 byte writes, and 1,728 for a window with 24 cells fogged —
-//     the same cost the lift had, against the automap panel's 9,856.
-//     **Every fog that shows the terrain through needs a read of the
-//     video window before each write**, to load the adapter's latches
-//     for the pixels it is leaving alone; this one needs none, so no
-//     latch of the program's is disturbed by a seam that is only looking
-//     at a screen.
+// What the composite showed, and what none of the arithmetic had:
+//
+//   * **a one-pixel checker of *black* collapses.** The terrain here is
+//     itself a two-green dither at one-pixel granularity, so a black
+//     checker over it interferes with that dither into a flat dark mesh:
+//     it neither covers nor veils, it makes a new texture that reads as
+//     one more kind of ground;
+//   * **light grey reads as paler terrain**, for the same reason a
+//     lift did — a covering whose value is near the tile's own is a
+//     variation on the tile;
+//   * **dark grey reads as haze.** It is far enough from the terrain's
+//     own greens and blues to be plainly a covering, and it lets enough
+//     of the tile through that a coastline is still a coastline under
+//     it. That is what was wanted: not "this square is gone" but "this
+//     square has not been seen".
+//
+// **What black had going for it, and lost on:** it is the one colour
+// that cannot read as terrain at all, it is the game's own vocabulary
+// for the unknown — the message rows, the panel beside the window and
+// the 3D view's own distance are all black — it is the same on every
+// terrain, and it costs no read-back. Every one of those is still true.
+// The one it could not answer is the one a display settles: a solid
+// cover throws away the *shape* of the country the party is standing at
+// the edge of, and a player who cannot see a coast through the fog
+// cannot see that there is a coast to walk to. The maintainer looked at
+// both and picked the haze.
+//
+// **The third reason survives intact.** The checker does not depend on
+// what is underneath: it is index 8 on the same half of the pixels
+// whatever the tile is, so there is still one fog to learn and it is
+// still not the failure the lift's *dim* direction had on water.
+//
+// **The fourth reason is what this now pays.** A checker keeps the
+// pixels it is not covering, and keeping them means loading the
+// adapter's latches from the screen first: one read and one write per
+// byte instead of one write, 72 reads and 72 writes a cell, 1,728 of
+// each for a window with 24 cells fogged, against the automap panel's
+// 9,856 writes. `fog_cell` below is where that is spelt out. A seam that
+// draws now disturbs the latches; a seam that is only *looking* at a
+// screen still does not, because nothing here reads a pixel unless it is
+// about to cover one.
 //
 //
 // How far the party sees
@@ -222,12 +244,19 @@
 //   * The fog has been prototyped and driven over **grass, coast water
 //     and the grey shore between them**, which is what the one area a
 //     shipped save reaches has near its start. No frame of rough ground,
-//     forest or a road has been under it. It cannot fail on one — the fog
-//     does not depend on what it covers, which is the third reason it was
-//     chosen — but nobody has seen it there.
-//   * The radius is one, and one is the only radius that covers anything
-//     on this screen. Whether one is the *right* amount of country to
-//     hand a player is a judgement, and #263 is where it is asked.
+//     forest or a road has been under it. It cannot fail on one — the
+//     checker is index 8 on the same half of the pixels whatever the
+//     tile is, which is the reason its colour survived the second look —
+//     but nobody has seen it there.
+//   * **The radius is one and the maintainer has confirmed it** (#263),
+//     which is the half of that judgement that is now settled. One is
+//     also the only radius that covers anything on this screen: at two,
+//     every cell of a five-wide window centred on the party is already
+//     within the radius.
+//   * The maintainer chose this covering off **composites over a real
+//     dumped frame**, five of them side by side, which is a stronger
+//     look than the lift ever got and is still not somebody playing.
+//     #179's remaining clause is that verdict.
 
 #include <array>
 #include <cstddef>
@@ -306,16 +335,33 @@ constexpr int max_column_bias = 0x2B;
 /// recorder and come back in its answer (`automap_overland.h`), so this
 /// file does not name their offsets a second time.
 
-/// All four EGA planes cleared over a pixel is colour 0, which is black
-/// in the program's own palette and is the whole of this seam's drawing.
+/// **The fog's colour: palette index 8**, the program's own dark grey —
+/// plane 3 set and planes 0, 1 and 2 clear. It is laid as a one-pixel
+/// checkerboard, half of the square's pixels covered and half of them
+/// left exactly as the program drew them, which is the marking the
+/// maintainer chose over a solid fill on a side-by-side of five
+/// (M5-E5f, #263; `docs/explored-overlay.md` §5.2).
+constexpr std::uint8_t fog_colour = 0x08;
 constexpr std::uint8_t all_planes = 0x0F;
 constexpr std::uint8_t all_bits = 0xFF;
-constexpr std::uint8_t no_pixels = 0x00;
+constexpr std::uint8_t no_planes = 0x00;
+
+/// **The checker's two masks, and why the parity is the screen's.** A
+/// covered pixel is one whose `x + y` is even in *screen* coordinates and
+/// not in the square's own, so the pattern runs unbroken across the
+/// boundary between two fogged squares instead of restarting at each of
+/// them. A byte column begins at an x that is a multiple of eight, so the
+/// parity of `x + y` inside a byte is the parity of the bit's position
+/// plus the scanline's: on an even scanline the covered pixels are bits
+/// 7, 5, 3 and 1, and on an odd one they are the other four.
+constexpr std::uint8_t checker_even_line = 0xAA;
+constexpr std::uint8_t checker_odd_line = 0x55;
 
 /// The graphics-controller registers a plane-selected byte write needs,
 /// and the values a plain write-mode-0 copy wants. Set rather than
 /// assumed: they cannot be read back, and assuming a register you cannot
 /// read is not a check (docs/seams.md §3).
+constexpr std::uint8_t gc_set_reset_index = 0;
 constexpr std::uint8_t gc_enable_set_reset_index = 1;
 constexpr std::uint8_t gc_data_rotate_index = 3;
 constexpr std::uint8_t gc_write_mode_index = 5;
@@ -358,28 +404,50 @@ void write_register(machine& box, std::uint16_t index_port,
 // ---------------------------------------------------------------------------
 
 /// One cell of the window, covered: 24 scanlines of three whole bytes,
-/// written into every plane the sequencer's map mask has already
-/// selected.
+/// every other pixel of them turned to the fog's colour and the rest left
+/// exactly as the program drew them.
 ///
-/// No read-back, because none is needed: the byte written is `0x00` and
-/// the mask is all four planes, so every pixel of the cell becomes colour
-/// 0 whatever it was. That is also why the rect's byte alignment matters
-/// — a cell begins at x = 8 + 24j, which is byte column 1 + 3j, and is
-/// three whole bytes across (`automap.h`) — and it is the whole of the
-/// argument for a fog that covers rather than one that veils: a veil has
-/// to keep the pixels it is not covering, and keeping them means reading
-/// the video window back into the adapter's latches first.
+/// **This is a masked write, and a masked write reads first.** The
+/// graphics controller's bit mask decides, bit by bit, which pixels of a
+/// byte take what the CPU is writing; every bit it clears takes its pixel
+/// from the adapter's *latches* instead. So the latches have to be
+/// holding the byte that is already on the screen, and the only way to
+/// load them is to read that byte through the bus — one read and one
+/// write per byte, where the solid fill this replaced needed the write
+/// alone. That read is the whole extra cost of a veil over a cover; it is
+/// what `docs/explored-overlay.md` §5.2 counted against every checker
+/// before the maintainer looked at them, and it is the reason this file
+/// reads the video window at all.
+///
+/// **The colour comes from set/reset, not from the byte written.** With
+/// enable-set/reset on all four planes each plane takes its bit from the
+/// set/reset register, so one CPU write paints index 8 across the planes
+/// and the byte handed to it is immaterial. The bit mask is set once per
+/// scanline, because the checker alternates with the scanline's parity.
+///
+/// The rect's byte alignment is what makes any of this three whole bytes
+/// rather than a shift: a cell begins at x = 8 + 24j, which is byte
+/// column 1 + 3j, and is three whole bytes across (`automap.h`).
 void fog_cell(machine& box, unsigned column, unsigned row) {
   cpu::processor& cpu = box.processor();
   constexpr unsigned bytes_across = explored_cell_pixels / 8;
   const unsigned first_byte = (explored_window_x / 8) + (column * bytes_across);
   const unsigned first_line = explored_window_y + (row * explored_cell_pixels);
   for (unsigned line = 0; line < explored_cell_pixels; ++line) {
+    const unsigned screen_line = first_line + line;
+    write_register(
+        box, ega::graphics_index_port, ega::graphics_data_port,
+        gc_bit_mask_index,
+        (screen_line % 2) == 0 ? checker_even_line : checker_odd_line);
     const auto base = static_cast<std::uint16_t>(
-        ((first_line + line) * plane_bytes_per_row) + first_byte);
+        (screen_line * plane_bytes_per_row) + first_byte);
     for (unsigned byte = 0; byte < bytes_across; ++byte) {
-      cpu.write_byte(video_window_segment,
-                     at(base, static_cast<std::uint16_t>(byte)), no_pixels);
+      const std::uint16_t offset = at(base, static_cast<std::uint16_t>(byte));
+      // The read is the write's other half: it loads the latches with the
+      // pixels this write is going to keep. What it hands back is of no
+      // interest, and the latches load whatever the read mode is.
+      static_cast<void>(cpu.read_byte(video_window_segment, offset));
+      cpu.write_byte(video_window_segment, offset, all_bits);
     }
   }
 }
@@ -541,14 +609,17 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
     return;
   }
 
+  // Set/reset carries the colour, so one CPU write puts index 8 on every
+  // plane at once; the bit mask is the checker and `fog_cell` sets it per
+  // scanline.
   write_register(box, ega::graphics_index_port, ega::graphics_data_port,
-                 gc_enable_set_reset_index, 0);
+                 gc_set_reset_index, fog_colour);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_enable_set_reset_index, all_planes);
   write_register(box, ega::graphics_index_port, ega::graphics_data_port,
                  gc_data_rotate_index, 0);
   write_register(box, ega::graphics_index_port, ega::graphics_data_port,
                  gc_write_mode_index, 0);
-  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
-                 gc_bit_mask_index, all_bits);
   write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
                  sequencer_map_mask_index, all_planes);
 
@@ -563,7 +634,18 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
   }
 
   // Handed back in the state the program's own drawing primitives leave,
-  // which is the state this found them in (docs/seams.md §3).
+  // which is the state this found them in (docs/seams.md §3): no
+  // set/reset substitution, every bit of a written byte the CPU's own,
+  // and every plane enabled. The adapter's *latches* cannot be handed
+  // back — loading them is what a read is — so they are left holding the
+  // last byte of the window this read, which is exactly what the
+  // program's own read-modify-write primitives leave in them.
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_enable_set_reset_index, no_planes);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_set_reset_index, no_planes);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_bit_mask_index, all_bits);
   write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
                  sequencer_map_mask_index, all_planes);
   state.set_explored_signature(signature);

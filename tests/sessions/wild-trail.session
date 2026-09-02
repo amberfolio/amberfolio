@@ -26,9 +26,16 @@
 #
 # **The 33 that differ are the picture.** A checkpoint hashes the
 # framebuffer, so a fog drawn in the wrong place, one square out, over the
-# party's own icon, in the wrong colour or not at all moves one — the
-# geometry and the mechanism have unit tests, and only this says the
-# picture is still the picture.
+# party's own icon, in the wrong colour, on the wrong half of the pixels
+# or not at all moves one — the geometry and the mechanism have unit
+# tests, and only this says the picture is still the picture.
+#
+# **Re-recorded a second time for M5-E5f's own second look.** The fog was
+# solid black when this pair was first recorded as a fog; the maintainer
+# chose a one-pixel dark-grey checker off five coverings composited over
+# a real frame, so every one of the 33 moved and neither the 107 nor the
+# tick did. Where the two halves start disagreeing is the *marking's*
+# reversal; what they disagree about is the covering.
 #
 # The two halves differ by nothing but the flag: the same disk, the same
 # tick budget, the same twenty-four key events. There is no key to press:

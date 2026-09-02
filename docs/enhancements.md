@@ -143,8 +143,10 @@ is a separate seam and shares this one's store.
 **What it does.** On the game's own overworld map — the five-by-five
 window of a wilderness area you travel across — the country your party
 has been near is the game's own map, and **everything else is under
-fog**. The fog lifts as you go, a square at a time, so what is on the
-screen is where you have been and nothing else.
+fog**: a fine dark-grey haze, laid on every other pixel, so you can still
+make out the shape of what is out there without being able to read it.
+The fog lifts as you go, a square at a time, so what is plainly on the
+screen is where you have been.
 
 **How much you see.** The square you are standing on and the eight around
 it. That is a reveal radius of one, and one is not an arbitrary choice:
@@ -152,7 +154,7 @@ the game shows you five squares across with your party in the middle, so
 at a radius of two every square on the screen would already be uncovered
 and the fog would never appear at all. Measured — 523 frames of a real
 walk at radius 2, and not one of them different from the same walk with
-this off.
+this off. It is one named constant if a later run says otherwise.
 
 **How you turn it on.** `--seam explored`, and that is the whole of it.
 There is no key: it is a setting, not a command. On, it is there whenever
@@ -172,23 +174,27 @@ that agreed for every line of it, and the pixel geometry measured off a
 real frame rather than derived: the window is 120 by 120 pixels at
 (8, 8), and a square is 24 by 24.
 
-**What makes it native.** The fog is solid black, which is the colour the
-rest of that screen already is: the message rows under the window, the
-panel of names beside it, and the game's own 3D view beyond what the
-party can see are all black, and the window sits inside the game's own
-drawn border. So a fogged window reads as that border framing a smaller
-opening — a thing this screen already looks like — rather than as a
-pattern somebody laid over the art. Nothing is added to the screen that
-the game does not already have on it.
+**What makes it native.** The fog's colour is one of the game's own
+sixteen — index 8, the dark grey it draws with elsewhere — and it is laid
+one pixel on, one pixel off, so half of what is under it is the game's
+own picture, untouched. Nothing is added to the screen that the game does
+not already have on it, and no shape is drawn that the game does not
+draw: no grid, no border, no lettering on the map.
 
-Six coverings were prototyped over a real frame that has grass, coast
-water and the shore between them on it — solid black, three densities of
-checkerboard, a light dither, and dropping the picture's brightness —
-and `docs/explored-overlay.md` §5 says why each of the five was rejected.
-They come down to two things: anything that lets the terrain show through
-is *green over grass and blue over water*, so it reads as a different
-kind of ground rather than as a covering, and it is a different fog on
-every terrain when there should be one thing to learn.
+**Why a haze and not a solid cover.** The fog was solid black first, on
+a good argument — black is the colour the rest of that screen already is,
+so a covered window reads as the game's own border framing a smaller
+opening. Then five coverings were put side by side over a real frame with
+grass, coast water and the shore between them on it — solid black, a
+black checker, a dark-grey checker, a light-grey checker and a coarser
+dark-grey one — and looked at. The haze won, and the reason is the one an
+argument had missed: a solid cover throws away the *shape* of the country
+you are standing at the edge of, and you cannot see there is a coast to
+walk to if you cannot see the coast. A black checker turned out to
+collapse into a flat dark mesh against the grass's own two-green dither,
+and a light-grey one just read as paler ground.
+`docs/explored-overlay.md` §5 has all of them, black included, with what
+each of them cost.
 
 **This is the second design, and the first one is still written down.**
 Until #263 the overlay did the opposite: it left the whole map on the
@@ -202,19 +208,21 @@ by looking at it is worth more than a design nobody tried.
 **The square you are standing on is never covered**, and that is not a
 detail: your party's icon is drawn there.
 
-**What it is not yet.** **Nobody with a display has looked at the fog.**
-Every picture of it so far is a file compared with another file, and the
-question this whole document is organised around — does it read as
-something the game drew — is one only a person can answer. That is
-exactly how the first design was replaced, and #263 is where this one is
-asked. It has been driven on one of the three wilderness
-areas — the one the shipped save slot J starts on. The other two are the
-same arithmetic with a different column bias and nobody has stood on
-them (`docs/playable.md`'s honest gaps says how to, without playing for
+**What it is not yet.** **Nobody has played with the fog.** Somebody has
+now looked at it — that is how the colour was chosen — but on stills, and
+the question this whole document is organised around, does it read as
+something the game drew, is one only a person with the game running can
+finish answering. That is exactly how the first design was replaced. It
+has been driven on one of the three wilderness areas — the one the
+shipped save slot J starts on. The other two are the same arithmetic with
+a different column bias and nobody has stood on them
+(`docs/playable.md`'s honest gaps says how to, without playing for
 hours). And the fog has only been over grass, coast water and the grey
 shore between them, which is what that area has near its start: it cannot
-fail on rough ground or a road, because it does not depend on what it
-covers, but nobody has seen it there.
+fail on rough ground or a road, because it is the same grey on the same
+half of the pixels whatever is underneath, but how well a haze reads
+depends on the colour it is hazing and nobody has seen it over ground
+that is already grey.
 
 ---
 

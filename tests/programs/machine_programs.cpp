@@ -2755,19 +2755,22 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
 // facts say the program lays them out (`docs/explored-overlay.md` §2),
 // puts the party's own command bar up through the bar point, polls the
 // key routine so the position settles and the square is recorded,
-// **paints the window white** — because this seam's drawing is black and
-// black on a blank screen is no picture at all — and then runs an
+// **paints the window white** — because this seam draws over what the
+// program drew and a blank screen is no picture at all — and then runs an
 // instruction at the address this seam calls "the present has returned".
 // It ends with a spin long enough for a frame boundary to fall after its
 // last write, because a frame nobody composed is not a picture anybody
 // can assert.
 //
 // **The paint goes immediately before the present**, which is where the
-// program's own composition goes, and it has to: fog is black and black
-// does not come off. A stand-in that painted once at the start would
-// carry the fog it laid on arrival under the fog it lays after a step,
-// and a run that walked would compose the same frame as a run that stood
-// still — which is exactly the failure it was written to catch.
+// program's own composition goes, and it has to: the fog does not come
+// off by itself. A stand-in that painted once at the start would carry
+// the fog it laid on arrival under the fog it lays after a step, and a
+// run that walked would compose the same frame as a run that stood still
+// — which is exactly the failure it was written to catch. The checker
+// makes that worse rather than better: two passes of a checker over one
+// cell agree pixel for pixel, so the stale fog would be *invisible*
+// rather than merely wrong.
 //
 // **A key decides whether the party walks.** One image, four entries: a
 // run with no key stays on the square it arrived on, and a run with a key
@@ -2820,6 +2823,16 @@ constexpr std::size_t explored_cell_area =
 constexpr std::size_t explored_window_area =
     explored_cell_area * explored_window_across * explored_window_across;
 
+/// **The fog's colour and how much of a cell it is on** (M5-E5f, #263).
+/// A covered cell is *half* covered: palette index 8, the program's own
+/// dark grey, wherever `x + y` is even in screen coordinates, and the
+/// pixel the program drew on the other half. So a cell contributes half
+/// its area to index 8 and half of it back to whatever was painted
+/// there — which is what the area counts below are worked out from, by
+/// hand, from the facts and not from the seam.
+constexpr std::uint8_t explored_fog_index = 8;
+constexpr std::size_t explored_fogged_per_cell = explored_cell_area / 2;
+
 /// **How many of the twenty-five are left uncovered**, worked out from
 /// the facts rather than from the seam. At a reveal radius of one, a
 /// party standing at (3, 32) with a window whose top-left cell is
@@ -2831,11 +2844,24 @@ constexpr unsigned explored_clear_on_arrival = 3 * 3;
 constexpr unsigned explored_clear_after_a_step = 3 * 4;
 
 /// One pixel inside a cell of the window, by the cell's column and row.
+///
+/// **It is a pixel the checker covers**, deliberately: the window's
+/// origin (8, 8) and the cell side 24 are both even, so `(x, y) =
+/// (9 + 24c, 9 + 24r)` has an even `x + y` and is therefore on the
+/// covered half of a fogged cell. A cell that is *not* fogged has the
+/// program's own pixel there instead, so the same coordinate answers both
+/// questions.
 [[nodiscard]] constexpr unsigned explored_pixel_x(unsigned column) {
   return explored_window_left + (column * explored_cell_side) + 1;
 }
 [[nodiscard]] constexpr unsigned explored_pixel_y(unsigned row) {
   return explored_window_top + (row * explored_cell_side) + 1;
+}
+
+/// The one pixel *beside* that one, which the checker never covers — the
+/// other half of the marking, so a fog that came out solid fails here.
+[[nodiscard]] constexpr unsigned explored_kept_pixel_x(unsigned column) {
+  return explored_pixel_x(column) + 1;
 }
 
 /// A key, to make the party walk.
@@ -3651,6 +3677,14 @@ constexpr std::array<machine::seam_point, 1> door_points{
     // off in one half and on in the other. The step count is claimed by
     // both halves of each pair, which is what says a seam that lays fog
     // over a screen costs the program nothing.
+    //
+    // **The fog is a one-pixel checker of palette index 8**, so a covered
+    // cell gives back half of its pixels to the white the program painted
+    // and the area counts are halves. The pixel probes name one pixel of
+    // each half: `explored_pixel_x/y` is on the covered parity and
+    // `explored_kept_pixel_x` is the pixel beside it, which the fog never
+    // touches — which is how a solid cover fails here and a checker does
+    // not.
     machine_program p;
     p.name = "explored_probe_quiet";
     p.about = "the overworld painted whole, nothing stood on, and no seam";
@@ -3675,22 +3709,36 @@ constexpr std::array<machine::seam_point, 1> door_points{
     p.setup.seams = {"explored-probe"};
     p.setup.step_cap = 200'000;
     p.steps = explored_arrived_steps;
-    constexpr std::size_t clear =
-        explored_cell_area * explored_clear_on_arrival;
+    constexpr std::size_t fogged =
+        explored_fogged_per_cell *
+        ((explored_window_across * explored_window_across) -
+         explored_clear_on_arrival);
     p.pixels = {
         // The party's own cell, and the eight around it.
         {.x = explored_pixel_x(2), .y = explored_pixel_y(2), .index = 15},
         {.x = explored_pixel_x(1), .y = explored_pixel_y(1), .index = 15},
         {.x = explored_pixel_x(3), .y = explored_pixel_y(3), .index = 15},
-        // The window's outer ring, which the party has not been near.
-        {.x = explored_pixel_x(0), .y = explored_pixel_y(0), .index = 0},
-        {.x = explored_pixel_x(4), .y = explored_pixel_y(2), .index = 0},
-        {.x = explored_pixel_x(2), .y = explored_pixel_y(4), .index = 0},
+        // The window's outer ring, which the party has not been near: the
+        // covered half of the checker.
+        {.x = explored_pixel_x(0),
+         .y = explored_pixel_y(0),
+         .index = explored_fog_index},
+        {.x = explored_pixel_x(4),
+         .y = explored_pixel_y(2),
+         .index = explored_fog_index},
+        {.x = explored_pixel_x(2),
+         .y = explored_pixel_y(4),
+         .index = explored_fog_index},
+        // And its other half, one pixel to the right of each: still the
+        // white the program painted.
+        {.x = explored_kept_pixel_x(0), .y = explored_pixel_y(0), .index = 15},
+        {.x = explored_kept_pixel_x(4), .y = explored_pixel_y(2), .index = 15},
         // And the pixel one to the left of the window, which the paint
         // never reached and the fog must not either.
         {.x = explored_window_left - 1, .y = explored_pixel_y(2), .index = 0}};
-    p.areas = {{.index = 15, .count = clear},
-               {.index = 0, .count = pixels_per_frame - clear}};
+    p.areas = {{.index = 15, .count = explored_window_area - fogged},
+               {.index = explored_fog_index, .count = fogged},
+               {.index = 0, .count = pixels_per_frame - explored_window_area}};
     p.least_frames = 1;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
@@ -3730,23 +3778,34 @@ constexpr std::array<machine::seam_point, 1> door_points{
     // corners of that block are checked as pixels, and the row ahead of
     // the party is checked as fog, because a reveal one cell out would
     // otherwise keep the same area.
-    constexpr std::size_t clear =
-        explored_cell_area * explored_clear_after_a_step;
+    constexpr std::size_t fogged =
+        explored_fogged_per_cell *
+        ((explored_window_across * explored_window_across) -
+         explored_clear_after_a_step);
     p.pixels = {
         {.x = explored_pixel_x(1), .y = explored_pixel_y(1), .index = 15},
         {.x = explored_pixel_x(3), .y = explored_pixel_y(4), .index = 15},
         // The row the window scrolled onto, which nothing has been near.
-        {.x = explored_pixel_x(2), .y = explored_pixel_y(0), .index = 0},
+        {.x = explored_pixel_x(2),
+         .y = explored_pixel_y(0),
+         .index = explored_fog_index},
         // And its two flanking columns, all the way down.
-        {.x = explored_pixel_x(0), .y = explored_pixel_y(4), .index = 0},
-        {.x = explored_pixel_x(4), .y = explored_pixel_y(4), .index = 0},
+        {.x = explored_pixel_x(0),
+         .y = explored_pixel_y(4),
+         .index = explored_fog_index},
+        {.x = explored_pixel_x(4),
+         .y = explored_pixel_y(4),
+         .index = explored_fog_index},
+        // The checker's other half, beside the first of those.
+        {.x = explored_kept_pixel_x(2), .y = explored_pixel_y(0), .index = 15},
         // A pixel outside the window on each side of it.
         {.x = explored_window_left - 1, .y = explored_pixel_y(2), .index = 0},
         {.x = explored_window_left + 120,
          .y = explored_pixel_y(2),
          .index = 0}};
-    p.areas = {{.index = 15, .count = clear},
-               {.index = 0, .count = pixels_per_frame - clear}};
+    p.areas = {{.index = 15, .count = explored_window_area - fogged},
+               {.index = explored_fog_index, .count = fogged},
+               {.index = 0, .count = pixels_per_frame - explored_window_area}};
     p.least_frames = 1;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));

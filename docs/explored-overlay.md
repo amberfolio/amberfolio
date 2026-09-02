@@ -215,11 +215,11 @@ looking at a picture; filter the lines on the data segment, which is
 
 ---
 
-## 5. The marking, decided — twice
+## 5. The marking, decided — twice, and then looked at again
 
 This is the decision with no proven design behind it, and the one a
-person has to judge in the end (#257). It has now been made twice,
-because the person judged.
+person has to judge in the end (#257). It has now been made twice and
+adjusted a third time, because the person judged both times.
 
 **The first design was a lift** and it shipped in M5-E5c: the game's
 whole window as the game drew it, with every square the party had walked
@@ -237,10 +237,19 @@ That is a finding and not a preference to argue with — PLAN.md §5 item 5
 makes a person with a display the exit criterion for this item precisely
 because nobody had built it before. So the marking is **reversed**: what
 the party has been near is drawn by the game, untouched, and everything
-else in the window is covered. §5.2 is the fog, the six candidates
-prototyped for *it*, and the radius. PLAN.md §5 item 5 carries the change
-too, because the sentence it used to end with — "it never obscures the
+else in the window is covered. §5.2 is the fog, the candidates prototyped
+for *it*, and the radius. PLAN.md §5 item 5 carries the change too,
+because the sentence it used to end with — "it never obscures the
 unknown" — is exactly what this now does.
+
+**And the covering itself was then chosen the same way.** The first fog
+was solid black, on the arithmetic in §5.2's second half. The maintainer
+was shown five coverings composited over one real dumped frame and
+picked a **one-pixel checkerboard of dark grey** — the terrain half
+covered rather than gone. §5.2 is written round that choice, with
+black's four reasons kept in full as the rejected alternative's, because
+a rejected candidate with its cost is the thing that has now twice made
+a change of mind an edit instead of a re-investigation.
 
 The stills that decided both are on the machine that made them and are
 never committed (PLAN.md §6); what follows is the decision in words and
@@ -307,68 +316,107 @@ different patch of the same grass. The measurement was answering
   a cell, through the graphics controller's read-map-select, with the
   adapter's latches loaded on every read.
 
-### 5.2 The design that shipped: fog, and it is solid black
+### 5.2 The design that shipped: fog, and it is a dark-grey checker
 
-**A cell the party has not been near is covered with black** — all four
-planes cleared over its 24 by 24 pixels. Six candidates were prototyped
-over one real dumped frame that has grass, coast water and the grey shore
-between them in it, and four reasons decided this one.
+**A cell the party has not been near is hazed over with a one-pixel
+checkerboard of palette index 8** — the program's own dark grey — laid on
+half of its 24 by 24 pixels. The other half are the pixels the program
+drew, untouched, so the terrain is faintly there under the haze instead
+of gone.
 
-1. **It is the one colour that cannot read as terrain.** Every candidate
-   that leaves the tile's own hue showing through is, at this
-   resolution, *a different kind of tile*: a half-covered green square
-   reads as a duller green square. That is the same objection that
-   rejected the sparse dither in §5.1, and it is worse for a fog than for
-   a mark, because a fog covers most of the window rather than a square
-   of it.
+The parity is the **screen's**: a pixel is covered when `x + y` is even in
+screen coordinates, not in the cell's own, so the pattern runs unbroken
+across the boundary between two fogged cells rather than restarting at
+each of them. The window's origin (8, 8) and the cell side 24 are both
+even, so a cell's own corner is a covered pixel either way — which is
+precisely why the rule is asserted rather than left to the accident
+(`TheCheckerRunsUnbrokenAcrossTheSquareBoundaries`).
+
+**How it was chosen.** The first fog was **solid black**, decided on the
+four arguments below, and it was never looked at either — it was
+arithmetic and a file compared with another file. Five coverings were
+then composited over one real dumped frame of this screen, with grass,
+coast water and the grey shore between them in it, and put in front of
+the maintainer side by side: solid black, a one-pixel checker of black, a
+one-pixel checker of dark grey, a one-pixel checker of light grey, and a
+two-by-two checker of dark grey. The dark-grey one-pixel checker was
+chosen, at a reveal radius of one.
+
+**What the composite showed that no argument had:**
+
+* **a one-pixel checker of *black* collapses.** The terrain here is
+  itself a two-green dither at one-pixel granularity, so a black checker
+  laid over it interferes with that dither into a flat dark mesh. It
+  neither covers nor veils; it makes a third texture, and a third texture
+  reads as one more kind of ground.
+* **light grey reads as paler terrain.** Its value is near the grass's
+  own, and a covering whose value is near the tile's is a variation on
+  the tile — which is the lift's failure in §5.1, arrived at from the
+  other direction.
+* **dark grey reads as haze.** It is far enough from the terrain's greens
+  and blues to be plainly a covering, and it lets enough of the tile
+  through that a coastline is still a coastline under it. That turned out
+  to be the thing that was wanted, and no argument on this page had
+  identified it: not "this square is gone" but "this square has not been
+  seen".
+* **two-by-two is a pattern rather than a haze.** At twice the period the
+  eye stops integrating it and starts reading the blocks, and blocks on a
+  map are a modern UI grid — which is the border candidate's rejection in
+  §5.1, smaller.
+
+**What black had going for it**, all four of it still true, because this
+is the rejected alternative and it is kept with its reasons:
+
+1. **It is the one colour that cannot read as terrain.** Anything that
+   leaves the tile's own hue showing through is, at this resolution, *a
+   different kind of tile*. The dark-grey checker is the smallest
+   possible concession to that: it is not the tile's hue, it is a fixed
+   grey, and it is on half the pixels rather than a quarter of them.
 2. **It is the game's own vocabulary for the unknown.** Black is already
    most of this screen — the message rows under the window, the panel
    beside it, and the game's own 3D view beyond what the party can see —
-   and the window sits inside the game's own drawn border. A fogged
-   window therefore reads as that border framing a smaller opening,
-   which is a thing this screen already looks like, rather than as a
-   pattern laid over it. This is §5.1's first and strongest reason,
-   surviving: there is no foreign artwork, rather than none that looks
-   foreign.
-3. **It is the same on every terrain.** A fog that lets the tile through
-   is a different fog on grass, on water and on rough ground, and a
-   player would have to learn three of them. This one covers, so there is
-   one thing to learn — and it is also the answer to the failure that
-   killed the *dim* direction in §5.1, since nothing here depends on what
-   is underneath.
+   and the window sits inside the game's own drawn border, so a fogged
+   window reads as that border framing a smaller opening. Index 8 is
+   still the program's own palette and still no foreign artwork, but it
+   is not *that*.
+3. **It is the same on every terrain.** The checker keeps this: index 8
+   on the same half of the pixels whatever the tile is. There are not
+   three fogs to learn, and it is not the failure the lift's *dim*
+   direction had on water.
 4. **It costs four planes and no read-back.** `map mask = 0x0F` and a run
    of `0x00` bytes: 72 byte writes a cell, 1,728 for a window with 24
-   cells covered — the same cost the lift had, against the automap
-   panel's 9,856. **Every fog that shows the terrain through needs a
-   read of the video window before each write**, to load the adapter's
-   latches for the pixels it is leaving alone. That is not expensive, but
-   it is a seam disturbing the adapter's latches in order to draw, and
-   this one does not have to.
+   cells covered. **This is what the checker pays.** A covering that
+   keeps the pixels it is not covering has to load the adapter's latches
+   from the screen first, so it is one read and one write per byte
+   instead of one write — 72 of each a cell, 1,728 of each for that same
+   window, against the automap panel's 9,856 writes. `fog_cell` in
+   `seam_explored.cpp` is where that is spelt out, and the colour itself
+   comes out of the graphics controller's set/reset register so one CPU
+   write still paints all four planes.
 
-**The five that were rejected**, all prototyped over the same frame:
+**And the reason black lost, which only a display could say:** a solid
+cover throws away the *shape* of the country the party is standing at the
+edge of. A player who cannot see a coastline through the fog cannot see
+that there is a coast to walk to, and the argument that black "cannot
+read as terrain" is the same fact stated as a virtue. The maintainer
+looked at both and picked the haze.
 
-* **A checkerboard of black at one pixel in two.** At 320 by 200 this is
-  not a texture at all: the eye integrates it and a green tile becomes a
-  flat grey-green one. It reads as terrain, and it interferes with the
-  terrain's own one-pixel dither into a moiré that differs from tile to
-  tile.
-* **A checkerboard at two-by-two blocks.** The best of the veils: the
-  period is different from the terrain's dither so there is no moiré, and
-  the coastline stays faintly visible through it. Rejected on reason 1
-  and reason 3 — it is still green over grass and still blue over water,
-  and a fog whose colour is the colour of what it hides is a fog a player
-  has to be told about.
-* **A checkerboard at four-by-four blocks.** Unmistakably deliberate, and
-  the loudest thing on the screen: it reads as a modern UI grid laid over
-  the art, which is the border candidate's rejection in §5.1 at
-  twenty-five times the size.
-* **A dither at one pixel in four.** Too light to read as anything; it
-  looks like a rendering fault.
-* **Dropping the intensity plane** — the lift's own inverse, and the
-  cheapest of all. It is invisible on water for the reason §5.1 measured,
-  it flattens the grass's dither into a solid mid-green rather than
-  darkening it, and what it produces reads as a *terrain type* and not as
-  a covering.
+**Measured on the real screen**, the final frame of the §4 walk with the
+seam on against the same frame with it off: **3,166 pixels differ, every
+one of them palette index 8, every one of them inside the window, and not
+one pixel of the checker's other half — the program's own — changed
+anywhere on the frame.** Eleven of the twenty-five cells are covered at
+that point in the walk, at 288 pixels each; the two the arithmetic does
+not account for were index 8 on the screen already.
+
+**The two that were rejected before the composite**, prototyped over the
+same frame when the fog was still being argued rather than looked at: a
+dither at one pixel in four (too light to read as anything; it looks like
+a rendering fault) and dropping the intensity plane — the lift's own
+inverse, and the cheapest of all — which is invisible on water for the
+reason §5.1 measured, flattens the grass's dither into a solid mid-green
+rather than darkening it, and produces something that reads as a
+*terrain type* and not as a covering.
 
 ### 5.3 How far the party sees, and why the radius is one
 
@@ -398,11 +446,17 @@ At a radius of one, on the §4 walk, the window shows **9 uncovered cells
 on arrival** and **12 from the first step onwards** — the outer ring is
 fog, and so is the row the party is walking towards.
 
+**The maintainer has confirmed one** (#263), on the same look that chose
+the checker: the composites were all at a reveal radius of one and the
+answer was to keep it. So the half of this judgement that a measurement
+could not settle — whether one square of sight is the right amount of
+country to hand a player — is now settled too, and what is left open on
+#179 is the verdict on the whole thing in play.
+
 ### The two constraints, and what became of them
 
 **The party's own cell is never covered.** The party's icon is drawn
-there, and a black square over it would be a black square over the
-player's own sprite. At any radius of one or more the cell is revealed
+there, and fog over it would be a haze over the player's own sprite. At any radius of one or more the cell is revealed
 anyway — the party is standing on it — but the rule is written down as
 its own line in `cells_to_fog`, because it is the one mistake here that
 would be a bug and not a preference.
@@ -531,18 +585,19 @@ open rather than be refused.
   whether the argument was right (#257). `tests/visual/exp-steady.leg`
   says the screen holds still on a run, which is the file-against-file
   half of it.
-* **Whether the fog reads as the game's own.** The lift's version of this
-  line said 2,800 cells made it *visible* and that nobody had said it was
-  *right* — and when somebody did, the answer was no (§5). This one is
-  the same line about the second design, and it is the same unticked
-  clause of #179: the fog has been prototyped and driven and compared
-  frame against frame, and no session can say whether it reads. #263 is
-  where that is asked.
-* **The reveal radius.** §5.3 settles that one is the only radius that
-  covers anything on this screen, and it does not settle whether one
-  square of sight is the right amount of country to hand a player. That
-  is the other half of the same judgement #263 asks for, and turning it
-  is one constant.
+* **Whether the fog reads as the game's own *in play*.** The lift's
+  version of this line said 2,800 cells made it *visible* and that nobody
+  had said it was *right* — and when somebody did, the answer was no
+  (§5). The fog then got a look of its own: five coverings composited
+  over a real frame, and the maintainer picked the dark-grey checker at a
+  radius of one. So this line is narrower than it was, and it is what is
+  left of #179's unticked clause — a composite is still a picture beside
+  another picture, and nobody has walked a wilderness map with the haze
+  moving in front of them.
+* **The reveal radius is settled.** §5.3 measures that one is the only
+  radius that covers anything on this screen, and the maintainer has
+  confirmed one on the composites. It is still one constant if a real
+  session says otherwise.
 * **The other two wilderness areas.** Everything driven here was view
   kind 2 on disk 6. Kinds 3 and 4 are the same arithmetic with a
   different bias and have not been stood on.
@@ -569,8 +624,11 @@ open rather than be refused.
   driven has been grass, coast water and the grey shore between them,
   which is what the area slot J starts on has near its start. Rough
   ground, forest and roads have not been under it. The fog cannot fail on
-  one — it does not depend on what it covers, which is §5.2's third
-  reason — but nobody has seen it there.
+  one — the checker is index 8 on the same half of the pixels whatever is
+  underneath, which is §5.2's third reason and the one of black's four
+  that survived the second look — but how legibly it *hazes* a terrain is
+  a property of that terrain's own colours, and nobody has seen it over
+  one that is already grey.
 
   The lift's version of this gap was sharper and is worth keeping as a
   contrast: **a cell whose art was entirely bright could carry no lift at

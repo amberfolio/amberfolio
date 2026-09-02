@@ -145,23 +145,37 @@ the five are in.
   **overworld** map: the wilderness travel view, a 5x5 window of a 16x36
   area that scrolls with the party. It is **fog of war**: the square the
   party is standing on and the eight around it are the game's own map,
-  untouched, and every other square of the window is covered with black —
-  which is the colour the message rows, the panel beside the window and
-  the game's own 3D view already are, so a fogged window reads as the
-  game's own border framing a smaller opening. How far a party sees is
-  one named constant, `explored_reveal_radius`, a Chebyshev 1; **2 and 3
-  were asked for and cover nothing**, because the window is five squares
-  across with the party in the middle, and 523 driven frames at radius 2
-  are byte for byte the seam-off run. It is the one v1 enhancement with
-  no proven prior design, so the marking was settled at the point of
-  definition — and then **changed by somebody looking at it**, which is
-  that item's own exit rule. The first marking lifted the walked squares
-  one shade; it was measured visible on 2,800 window cells and it still
-  did not read, because a shade is a difference a player has to be told
-  about before they can see it. `docs/explored-overlay.md` §5 keeps both
-  designs and the ten candidates prototyped over real frames between
-  them, and PLAN.md §5 item 5 carries the reversal, since the sentence it
-  used to end with was "it never obscures the unknown". The facts were
+  untouched, and every other square of the window is **hazed over with a
+  one-pixel checkerboard of palette index 8**, the game's own dark grey,
+  on half its pixels — the program's own pixel on the other half, so the
+  terrain is faintly there under the fog rather than gone. How far a
+  party sees is one named constant, `explored_reveal_radius`, a Chebyshev
+  1; **2 and 3 were asked for and cover nothing**, because the window is
+  five squares across with the party in the middle, and 523 driven frames
+  at radius 2 are byte for byte the seam-off run. It is the one v1
+  enhancement with no proven prior design, so the marking was settled at
+  the point of definition — and then **changed twice by somebody looking
+  at it**, which is that item's own exit rule working. The first marking
+  lifted the walked squares one shade; it was measured visible on 2,800
+  window cells and it still did not read, because a shade is a difference
+  a player has to be told about before they can see it. The fog that
+  replaced it was **solid black**, argued for on four grounds and never
+  looked at either; five coverings were then composited over one real
+  dumped frame — solid black, a black checker, a dark-grey checker, a
+  light-grey checker and a two-by-two dark-grey one — and the maintainer
+  picked the dark-grey checker and confirmed the radius. What the
+  composite said and no argument had: a solid cover throws away the
+  *shape* of the country the party is standing at the edge of, a black
+  checker collapses against the grass's own two-green dither into a flat
+  mesh, and light grey reads as paler ground. The checker is the first
+  drawing here that is a **masked** write, so it reads each byte of the
+  video window to load the adapter's latches before writing it — a veil
+  keeps the pixels it is not covering, and keeping them costs a read
+  (`docs/seams.md` §3's third port-surgery rule).
+  `docs/explored-overlay.md` §5 keeps every design and every candidate
+  prototyped over real frames, black's four reasons included, and
+  PLAN.md §5 item 5 carries the reversal, since the sentence it used to
+  end with was "it never obscures the unknown". The facts were
   checked twice before a line of it was written: the position is two
   words in the *area record* and not the bytes every other screen uses,
   and the pixel geometry — 120x120 at (8, 8), 24-pixel cells, every cell
