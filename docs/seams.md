@@ -838,6 +838,20 @@ config file and the shell's toggle panel are M6's.
 
 ---
 
+## 6a. The enhancements themselves
+
+This file is the mechanism. [`enhancements.md`](enhancements.md) is the
+other side of it: the five enhancements this build carries as a *player*
+meets them — what each does, how it is turned on, what it will not do
+without, where its facts came from, what makes it feel like something the
+game shipped with, and what it is not yet.
+
+Read it before adding one. It is where the native-feel requirement stops
+being an adjective, and where each seam's honest "not yet" is written
+down in one place instead of six.
+
+---
+
 ## 7. The fidelity invariant
 
 PLAN.md §4's boundary, as the three things a test can say:
