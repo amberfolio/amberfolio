@@ -83,6 +83,16 @@ constexpr std::uint16_t tile_first_frame = 0x17;
 constexpr std::uint8_t mode_adventure = 4;
 constexpr std::uint8_t view_kind_area = 1;
 
+/// The wilderness travel view (M5-E5b, #254), and what it reads out of
+/// the area record. `docs/explored-overlay.md` §2 has the second route
+/// for each of these; they are restated here rather than read out of the
+/// code under test.
+constexpr std::uint8_t mode_overland = 3;
+constexpr std::uint8_t view_kind_overland = 2;
+constexpr std::uint16_t record_overland_column = 0x186;
+constexpr std::uint16_t record_overland_row = 0x188;
+constexpr std::uint16_t record_shown_in_3d = 0x1CC;
+
 /// Where the test puts the things the data segment points at. Segments of
 /// their own, so a handler that used the wrong one gives a wrong answer
 /// rather than a lucky one.
@@ -221,6 +231,30 @@ struct rig {
     put_word(ds, static_cast<std::uint16_t>(data_current_member + 2),
              member_segment);
     put_up_the_bar(dgroup(), data_menu_3d_view);
+  }
+
+  /// The wilderness travel view, as far as the overland recorder's guards
+  /// can see it: the mode, one of the three view kinds, no transition, an
+  /// area record holding the party's column and row, and the word that
+  /// would say the program is drawing this area in the interior view
+  /// left at zero.
+  void travelling(std::uint8_t column, std::uint8_t row,
+                  std::uint8_t view_kind = view_kind_overland,
+                  std::uint8_t disk = 6, std::uint8_t area = 0x19) const {
+    const std::uint16_t ds = dgroup();
+    put_byte(ds, data_game_mode, mode_overland);
+    put_byte(ds, data_view_kind, view_kind);
+    put_byte(ds, data_in_transition, 0);
+    put_word(ds, data_area_record, 0x0000);
+    put_word(ds, static_cast<std::uint16_t>(data_area_record + 2),
+             record_segment);
+    put_word(record_segment, record_overland_column, column);
+    put_word(record_segment, record_overland_row, row);
+    put_word(record_segment, record_shown_in_3d, 0);
+    put_byte(ds, data_disk_number, disk);
+    put_byte(ds, data_area_id, area);
+    put_byte(ds, data_key_pushback, 0);
+    put_up_the_bar(dgroup(), data_menu_area_view);
   }
 
   /// Put a command bar up, the way the program does: stand on the sixth
@@ -494,6 +528,72 @@ TEST(AutomapState, TheStatusRowIsNotThePanels) {
       << "the left-hand viewport is not the panel's";
 }
 
+TEST(AutomapState, AnOverlandMapIsSixteenBySixAndThirtyAndDoesNotWrap) {
+  // The grid's coordinates wrap at four bits because the program's own
+  // addressing does. The overland's must not: a row of 36 is off the map,
+  // and wrapping it would reveal a cell nobody has walked.
+  EXPECT_EQ(automap_cell_index(automap_map_kind::grid, 2, 3), 3u * 16u + 2u);
+  EXPECT_EQ(automap_cell_index(automap_map_kind::grid, 2 + 16, 3 + 16),
+            3u * 16u + 2u);
+  EXPECT_EQ(automap_cell_index(automap_map_kind::overland, 2, 35),
+            35u * 16u + 2u);
+  EXPECT_EQ(automap_cell_index(automap_map_kind::overland, 2, 36),
+            automap_no_cell);
+  EXPECT_EQ(automap_cell_index(automap_map_kind::overland, 16, 3),
+            automap_no_cell);
+
+  automap_state state;
+  automap_record& map = state.record_for_overland(6, 0x19);
+  EXPECT_TRUE(state.reveal(map, 15, 35)) << "the far corner is on the map";
+  EXPECT_TRUE(automap_state::seen(map, 15, 35));
+  EXPECT_FALSE(state.reveal(map, 0, 36)) << "and this one is not";
+  EXPECT_FALSE(automap_state::seen(map, 0, 36));
+  EXPECT_FALSE(automap_state::seen(map, 15, 3)) << "and nothing wrapped onto";
+}
+
+TEST(AutomapState, AnOverlandRecordIsNotAGridRecordOnTheSameDiskAndArea) {
+  automap_state state;
+  state.reveal(state.record_for_overland(6, 0x19), 3, 32);
+  state.reveal(state.record_for(6, 0x19, 0), 3, 12);
+  EXPECT_EQ(state.records_used(), 2u) << "the kind is part of the key";
+
+  const automap_record* overland = state.find_overland(6, 0x19);
+  ASSERT_NE(overland, nullptr);
+  EXPECT_TRUE(automap_state::seen(*overland, 3, 32));
+  EXPECT_FALSE(automap_state::seen(*overland, 3, 12));
+
+  const automap_record* grid = state.find(6, 0x19, 0);
+  ASSERT_NE(grid, nullptr);
+  EXPECT_TRUE(automap_state::seen(*grid, 3, 12));
+}
+
+TEST(AutomapState, SteppingBetweenTheOverlandAndAnInteriorIsAMapChange) {
+  automap_state state;
+  for (int i = 0; i < 3; ++i) {
+    state.observe_overland(6, 0x19, 3, 32);
+  }
+  ASSERT_TRUE(state.settled());
+  EXPECT_EQ(state.settled_kind(), automap_map_kind::overland);
+
+  // The same disk, the same area, the same cell — and a different screen.
+  // Believing it straight away would put the party's overland cell onto
+  // an interior map.
+  EXPECT_FALSE(state.observe(6, 0x19, 0, 3, 32));
+  EXPECT_FALSE(state.observe(6, 0x19, 0, 3, 32));
+  EXPECT_TRUE(state.observe(6, 0x19, 0, 3, 32));
+  EXPECT_EQ(state.settled_kind(), automap_map_kind::grid);
+}
+
+TEST(AutomapState, TheOverlandCarriesNoMarks) {
+  // Nothing draws them there, and a marker's coordinates are four-bit,
+  // which a row of 32 is not. A silent wrap would mark a cell nobody has
+  // been to.
+  automap_state state;
+  automap_record& map = state.record_for_overland(6, 0x19);
+  state.mark(map, 3, 32, automap_marker::entrance);
+  EXPECT_EQ(map.marker_count, 0u);
+}
+
 TEST(AutomapState, ClearingDropsEverything) {
   automap_state state;
   automap_record& map = state.record_for(1, 2, 3);
@@ -674,6 +774,106 @@ TEST(AutomapWalk, AnOverlandViewIsNotThisPanelsMap) {
   r.adventuring(7, 5, lane_north);
   r.put_byte(rig::dgroup(), data_view_kind, 2);
   r.poll(6);
+  EXPECT_EQ(r.map_state().records_used(), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// The overland, recorded by this seam and drawn by neither (M5-E5b, #254)
+// ---------------------------------------------------------------------------
+
+TEST(AutomapOverland, TheTrailIsRecordedWithThePanelNeverAskedFor) {
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+
+  const automap_record* map = r.map_state().find_overland(6, 0x19);
+  ASSERT_NE(map, nullptr) << "a player with only the automap on still has one";
+  EXPECT_EQ(map->kind, automap_map_kind::overland);
+  EXPECT_TRUE(automap_state::seen(*map, 3, 32));
+  EXPECT_FALSE(r.map_state().panel_open());
+  EXPECT_FALSE(r.map_state().panel_on_screen()) << "and nothing was drawn";
+}
+
+TEST(AutomapOverland, OnlyTheCellThePartyStandsOn) {
+  // There is no fog on this screen — all twenty-five cells of the window
+  // are drawn whatever the party has done — so "explored" can only mean
+  // walked, and the neighbours are not it.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+  const automap_record* map = r.map_state().find_overland(6, 0x19);
+  ASSERT_NE(map, nullptr);
+  EXPECT_TRUE(automap_state::seen(*map, 3, 32));
+  EXPECT_FALSE(automap_state::seen(*map, 3, 31));
+  EXPECT_FALSE(automap_state::seen(*map, 2, 32));
+}
+
+TEST(AutomapOverland, AWalkLeavesATrail) {
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+  for (std::uint8_t row = 31; row >= 29; --row) {
+    r.put_word(record_segment, record_overland_row, row);
+    r.poll(2);
+  }
+  const automap_record* map = r.map_state().find_overland(6, 0x19);
+  ASSERT_NE(map, nullptr);
+  EXPECT_TRUE(automap_state::seen(*map, 3, 32));
+  EXPECT_TRUE(automap_state::seen(*map, 3, 31));
+  EXPECT_TRUE(automap_state::seen(*map, 3, 30));
+  EXPECT_TRUE(automap_state::seen(*map, 3, 29));
+  EXPECT_FALSE(automap_state::seen(*map, 3, 28));
+}
+
+TEST(AutomapOverland, NothingIsRecordedWhileTheAreaIsShownInTheInteriorView) {
+  // The word in the area record that makes the program draw these areas
+  // in 3D leaves the view-kind byte reading 2, 3 or 4. A recorder that
+  // trusted the kind byte would be reading a position the screen is not
+  // about.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.put_word(record_segment, record_shown_in_3d, 1);
+  r.poll(6);
+  EXPECT_EQ(r.map_state().records_used(), 0u);
+}
+
+TEST(AutomapOverland, NothingIsRecordedOffTheTravelView) {
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.put_byte(rig::dgroup(), data_view_kind, 1);  // the interior kind
+  r.poll(6);
+  EXPECT_EQ(r.map_state().records_used(), 0u);
+
+  const rig other;
+  other.enable();
+  other.travelling(3, 32);
+  other.put_byte(rig::dgroup(), data_in_transition, 1);
+  other.poll(6);
+  EXPECT_EQ(other.map_state().records_used(), 0u);
+}
+
+TEST(AutomapOverland, APositionOutsideTheMapIsDeclinedRatherThanRecorded) {
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.put_word(record_segment, record_overland_row, 200);
+  r.poll(4);
+  EXPECT_EQ(r.map_state().records_used(), 0u);
+  EXPECT_GT(r.pc().seams().status("automap").declined, 0u);
+}
+
+TEST(AutomapOverland, AnAreaRecordOutsideConventionalMemoryIsNotFollowed) {
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.put_word(rig::dgroup(), static_cast<std::uint16_t>(data_area_record + 2),
+             0xA000);
+  r.poll(4);
   EXPECT_EQ(r.map_state().records_used(), 0u);
 }
 

@@ -79,8 +79,55 @@ inline constexpr unsigned automap_map_side = 16;
 inline constexpr unsigned automap_map_cells =
     automap_map_side * automap_map_side;
 
-/// One bit per cell.
-inline constexpr std::size_t automap_seen_bytes = automap_map_cells / 8;
+/// The overland map a wilderness area is (M5-E5b, #254): the same sixteen
+/// columns and **thirty-six** rows, addressed `row * 16 + column` with
+/// neither coordinate wrapping. The program clamps the party's column to
+/// 0..15 and its row to 0..35 in its own move step, which is where both
+/// numbers come from; `docs/explored-overlay.md` §2 has the offsets they
+/// live at and the second route for each.
+inline constexpr unsigned automap_overland_columns = 16;
+inline constexpr unsigned automap_overland_rows = 36;
+inline constexpr unsigned automap_overland_cells =
+    automap_overland_columns * automap_overland_rows;
+
+/// Which kind of map a record is about, and therefore how its bitmap is
+/// addressed and what its identity means. Values are part of the
+/// persisted layout, so they are spelled rather than left to the
+/// enumeration's order.
+enum class automap_map_kind : std::uint8_t {
+  /// One of the program's interior grids: sixteen by sixteen, identified
+  /// by (disk, area, geometry block).
+  grid = 0,
+  /// One wilderness area's overland map: sixteen by thirty-six,
+  /// identified by (disk, area) — there is no geometry block to swap out
+  /// there, so the third byte is zero and means nothing.
+  overland = 1,
+};
+
+/// One bit per cell, at the width of the **widest** kind, because a
+/// record is one fixed width whatever it is about.
+///
+/// A grid uses the first `automap_grid_seen_bytes` of it and leaves the
+/// rest zero. The alternative — two record widths in one table — buys
+/// forty bytes a record and costs the property the fixed width was chosen
+/// for: that a reader can index into the table rather than walk it. Sixty-
+/// four records at this width is about seven kilobytes.
+inline constexpr std::size_t automap_grid_seen_bytes = automap_map_cells / 8;
+inline constexpr std::size_t automap_overland_seen_bytes =
+    automap_overland_cells / 8;
+inline constexpr std::size_t automap_seen_bytes = automap_overland_seen_bytes;
+
+/// The bit index of a cell on a map of this kind, or `automap_no_cell`
+/// when the coordinates are not on such a map.
+///
+/// A grid's coordinates **wrap at four bits**, which is what the
+/// program's own map addressing does and is therefore not an error there.
+/// An overland map's do not: a row of 36 is off the map, and revealing
+/// some wrapped-around cell instead would paint a square nobody has
+/// walked, which is the failure `automap.h` refuses everywhere else.
+inline constexpr std::size_t automap_no_cell = static_cast<std::size_t>(-1);
+[[nodiscard]] std::size_t automap_cell_index(automap_map_kind kind, unsigned x,
+                                             unsigned y) noexcept;
 
 /// Where the panel goes, in framebuffer pixels, and why it goes there.
 ///
@@ -161,7 +208,14 @@ inline constexpr std::size_t automap_max_markers = 12;
 /// refuses the file and says so — an exploration table read as the wrong
 /// shape paints a map nobody has walked, which is worse than an empty
 /// one.
-inline constexpr std::uint8_t automap_sidecar_version = 1;
+///
+/// **Version 2 is the overland's** (M5-E5b, #254): a kind byte, and a
+/// bitmap wide enough for 576 cells. A reader here reads 1 *and* 2 and
+/// writes 2, because a player's existing `AFMAP.DAT` has to open rather
+/// than be refused — a version bump that threw the map away would be the
+/// same loss the sidecar exists to prevent.
+inline constexpr std::uint8_t automap_sidecar_version = 2;
+inline constexpr std::uint8_t automap_sidecar_first_version = 1;
 inline constexpr std::array<char, 3> automap_sidecar_magic{'A', 'F', 'M'};
 
 /// One record on disk, fixed width, little-endian where it is wider than
@@ -171,14 +225,34 @@ inline constexpr std::array<char, 3> automap_sidecar_magic{'A', 'F', 'M'};
 ///
 ///     0   1   the disk
 ///     1   1   the area
+///     2   1   the geometry block (zero on an overland record)
+///     3   1   the map kind (`automap_map_kind`)
+///     4   1   how many marks are live
+///     5   72  one bit per cell, `y * 16 + x`, low bit of a byte first
+///     77  12  the marks' x
+///     89  12  the marks' y
+///     101 12  the marks' kind
+///
+/// **The kind byte is part of the key, not decoration.** An overland
+/// record is keyed (disk, area) with its geometry block zero, and an
+/// interior record on the same disk and area whose geometry block happens
+/// to be zero would otherwise be the same record.
+inline constexpr std::size_t automap_sidecar_record_bytes =
+    5 + automap_seen_bytes + (3 * automap_max_markers);
+
+/// And version 1's, which this build still reads: no kind byte, and a
+/// bitmap of 32. Every record in such a file is a grid.
+///
+///     0   1   the disk
+///     1   1   the area
 ///     2   1   the geometry block
 ///     3   1   how many marks are live
-///     4   32  one bit per cell, `y * 16 + x`, low bit of a byte first
+///     4   32  one bit per cell
 ///     36  12  the marks' x
 ///     48  12  the marks' y
 ///     60  12  the marks' kind
-inline constexpr std::size_t automap_sidecar_record_bytes =
-    4 + automap_seen_bytes + (3 * automap_max_markers);
+inline constexpr std::size_t automap_sidecar_v1_record_bytes =
+    4 + automap_grid_seen_bytes + (3 * automap_max_markers);
 
 /// And the header in front of them:
 ///
@@ -193,15 +267,21 @@ struct automap_record {
   /// Whether this slot holds a map at all.
   bool used{false};
 
+  /// Which kind of map this is, and therefore how `seen` is addressed and
+  /// whether `geo` means anything.
+  automap_map_kind kind{automap_map_kind::grid};
+
   /// The map's identity, three bytes (see the header comment): the disk
   /// the area's files come from, the area id, and the loaded geometry
   /// block that distinguishes an in-place grid swap from the area it
-  /// swapped inside.
+  /// swapped inside. On an overland record the third is zero and is not
+  /// part of the identity.
   std::uint8_t disk{};
   std::uint8_t area{};
   std::uint8_t geo{};
 
-  /// One bit per cell, `y * 16 + x`, low bit of a byte first.
+  /// One bit per cell, `y * 16 + x`, low bit of a byte first. A grid
+  /// leaves everything past `automap_grid_seen_bytes` zero.
   std::array<std::uint8_t, automap_seen_bytes> seen{};
 
   /// The marks, and how many of them are live.
@@ -233,21 +313,48 @@ class automap_state {
 
   /// The record for this map identity, claiming a slot if there is not
   /// one yet. Never null.
-  [[nodiscard]] automap_record& record_for(std::uint8_t disk, std::uint8_t area,
+  [[nodiscard]] automap_record& record_for(automap_map_kind kind,
+                                           std::uint8_t disk, std::uint8_t area,
                                            std::uint8_t geo) noexcept;
+
+  /// The interior grid's form of it, which is what every caller before
+  /// M5-E5b meant.
+  [[nodiscard]] automap_record& record_for(std::uint8_t disk, std::uint8_t area,
+                                           std::uint8_t geo) noexcept {
+    return record_for(automap_map_kind::grid, disk, area, geo);
+  }
+
+  /// The overland's form: keyed (disk, area), with no geometry block.
+  [[nodiscard]] automap_record& record_for_overland(
+      std::uint8_t disk, std::uint8_t area) noexcept {
+    return record_for(automap_map_kind::overland, disk, area, 0);
+  }
 
   /// The record for this map identity, or null if none has been claimed.
   /// The const half, for a host that is persisting and a test that is
   /// asking.
-  [[nodiscard]] const automap_record* find(std::uint8_t disk, std::uint8_t area,
+  [[nodiscard]] const automap_record* find(automap_map_kind kind,
+                                           std::uint8_t disk, std::uint8_t area,
                                            std::uint8_t geo) const noexcept;
 
-  /// Whether a cell has been seen. Coordinates wrap at four bits, the way
-  /// the program's own do.
+  [[nodiscard]] const automap_record* find(std::uint8_t disk, std::uint8_t area,
+                                           std::uint8_t geo) const noexcept {
+    return find(automap_map_kind::grid, disk, area, geo);
+  }
+
+  [[nodiscard]] const automap_record* find_overland(
+      std::uint8_t disk, std::uint8_t area) const noexcept {
+    return find(automap_map_kind::overland, disk, area, 0);
+  }
+
+  /// Whether a cell has been seen. On a grid the coordinates wrap at four
+  /// bits, the way the program's own do; on an overland map a cell off
+  /// the map is answered `false` rather than wrapped.
   [[nodiscard]] static bool seen(const automap_record& map, unsigned x,
                                  unsigned y) noexcept;
 
-  /// Mark a cell seen. True if it had not been.
+  /// Mark a cell seen. True if it had not been — and false, touching
+  /// nothing, for a cell that is not on this kind of map.
   bool reveal(automap_record& map, unsigned x, unsigned y) noexcept;
 
   /// Put a mark on a cell. Deduplicated by position, first kind winning,
@@ -409,6 +516,9 @@ class automap_state {
   /// the position to stop moving before it believes it, and this is what
   /// it believes.
   [[nodiscard]] bool settled() const noexcept { return settled_; }
+  [[nodiscard]] automap_map_kind settled_kind() const noexcept {
+    return settled_kind_;
+  }
   [[nodiscard]] std::uint8_t settled_disk() const noexcept {
     return settled_disk_;
   }
@@ -428,8 +538,26 @@ class automap_state {
   /// Answers whether the seam may now act on it — which is false while
   /// the position is still settling after a map change, and true from the
   /// moment it has held still.
+  ///
+  /// **The kind is part of the identity here too**, so that stepping off
+  /// an overland map into an interior one is a map change and is waited
+  /// out, exactly as a geometry-block swap is. The two seams that call
+  /// this share one settling state, which is right: the party is in one
+  /// place, and only one of the two screens is ever up.
+  bool observe(automap_map_kind kind, std::uint8_t disk, std::uint8_t area,
+               std::uint8_t geo, std::uint8_t x, std::uint8_t y) noexcept;
+
   bool observe(std::uint8_t disk, std::uint8_t area, std::uint8_t geo,
-               std::uint8_t x, std::uint8_t y) noexcept;
+               std::uint8_t x, std::uint8_t y) noexcept {
+    return observe(automap_map_kind::grid, disk, area, geo, x, y);
+  }
+
+  /// The overland's form: keyed (disk, area), no geometry block, and the
+  /// row may be up to 35.
+  bool observe_overland(std::uint8_t disk, std::uint8_t area, std::uint8_t x,
+                        std::uint8_t y) noexcept {
+    return observe(automap_map_kind::overland, disk, area, 0, x, y);
+  }
 
   /// Forget the settled position without forgetting anything explored:
   /// what a map change and a loaded save both want.
@@ -495,6 +623,7 @@ class automap_state {
   std::uint16_t door_nibbles_{};
 
   bool settled_{false};
+  automap_map_kind settled_kind_{automap_map_kind::grid};
   std::uint8_t settled_disk_{};
   std::uint8_t settled_area_{};
   std::uint8_t settled_geo_{};

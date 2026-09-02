@@ -35,7 +35,9 @@
 namespace amberfolio::host {
 namespace {
 
+using machine::automap_map_kind;
 using machine::automap_marker;
+using machine::automap_max_markers;
 using machine::automap_record;
 using machine::automap_state;
 using machine::dos_path;
@@ -182,7 +184,7 @@ TEST(AutomapSidecar, ItSaysWhatItIsAndRefusesWhatItIsNot) {
   EXPECT_EQ(bytes[0], 'A');
   EXPECT_EQ(bytes[1], 'F');
   EXPECT_EQ(bytes[2], 'M');
-  EXPECT_EQ(bytes[3], 1);
+  EXPECT_EQ(bytes[3], machine::automap_sidecar_version);
 
   automap_state other;
   other.reveal(other.record_for(9, 9, 9), 5, 5);
@@ -203,6 +205,100 @@ TEST(AutomapSidecar, ItSaysWhatItIsAndRefusesWhatItIsNot) {
   // that nobody could tell from unexplored ground.
   EXPECT_FALSE(other.read_sidecar({bytes.data(), size - 1}));
   EXPECT_NE(other.find(9, 9, 9), nullptr);
+}
+
+TEST(AutomapSidecar, AnOverlandRecordSurvivesTheRoundTrip) {
+  automap_state before;
+  automap_record& wilderness = before.record_for_overland(6, 0x19);
+  before.reveal(wilderness, 3, 32);
+  before.reveal(wilderness, 15, 35);
+  // The same disk and area as an interior record whose geometry block is
+  // zero: only the kind keeps them apart.
+  before.reveal(before.record_for(6, 0x19, 0), 3, 12);
+
+  std::array<std::uint8_t, automap_store_capacity> bytes{};
+  const std::size_t size = before.write_sidecar(bytes);
+  ASSERT_GT(size, 0u);
+
+  automap_state after;
+  ASSERT_TRUE(after.read_sidecar({bytes.data(), size}));
+  EXPECT_EQ(after.records_used(), 2u);
+
+  const automap_record* back = after.find_overland(6, 0x19);
+  ASSERT_NE(back, nullptr);
+  EXPECT_EQ(back->kind, automap_map_kind::overland);
+  EXPECT_TRUE(automap_state::seen(*back, 3, 32));
+  EXPECT_TRUE(automap_state::seen(*back, 15, 35))
+      << "the far corner, which is past where a grid's bitmap ends";
+  EXPECT_FALSE(automap_state::seen(*back, 3, 12));
+
+  const automap_record* grid = after.find(6, 0x19, 0);
+  ASSERT_NE(grid, nullptr);
+  EXPECT_EQ(grid->kind, automap_map_kind::grid);
+  EXPECT_TRUE(automap_state::seen(*grid, 3, 12));
+}
+
+TEST(AutomapSidecar, AFileFromTheVersionBeforeTheOverlandStillOpens) {
+  // Laid out from version 1's own documented shape (automap.h) rather
+  // than written by anything here: the point is that a player's existing
+  // `AFMAP.DAT` opens, and a test that produced it with today's writer
+  // would only be agreeing with itself.
+  constexpr std::size_t header = machine::automap_sidecar_header_bytes;
+  constexpr std::size_t stride = machine::automap_sidecar_v1_record_bytes;
+  std::vector<std::uint8_t> file(header + stride, 0);
+  file[0] = 'A';
+  file[1] = 'F';
+  file[2] = 'M';
+  file[3] = machine::automap_sidecar_first_version;
+  file[4] = 1;  // one record
+  file[5] = 0;
+  file[6] = static_cast<std::uint8_t>(stride);
+  file[7] = static_cast<std::uint8_t>(stride >> 8U);
+
+  std::uint8_t* row = file.data() + header;
+  row[0] = 3;  // disk
+  row[1] = 0;  // area
+  row[2] = 3;  // geometry block
+  row[3] = 1;  // one mark
+  // Cell (8, 11) of a sixteen-by-sixteen grid, bit `y * 16 + x`.
+  constexpr unsigned cell = (11U * 16U) + 8U;
+  row[4 + (cell / 8U)] = static_cast<std::uint8_t>(1U << (cell % 8U));
+  row[4 + machine::automap_grid_seen_bytes] = 8;  // mark x
+  row[4 + machine::automap_grid_seen_bytes + automap_max_markers] = 11;
+  row[4 + machine::automap_grid_seen_bytes + (2 * automap_max_markers)] =
+      static_cast<std::uint8_t>(automap_marker::entrance);
+
+  automap_state state;
+  ASSERT_TRUE(state.read_sidecar(file));
+  EXPECT_EQ(state.records_used(), 1u);
+  const automap_record* back = state.find(3, 0, 3);
+  ASSERT_NE(back, nullptr);
+  EXPECT_EQ(back->kind, automap_map_kind::grid) << "a version-1 record is one";
+  EXPECT_TRUE(automap_state::seen(*back, 8, 11));
+  EXPECT_FALSE(automap_state::seen(*back, 0, 0));
+  EXPECT_EQ(automap_state::marker_at(*back, 8, 11), automap_marker::entrance);
+
+  // And what is written back out is version 2, whatever was read in.
+  std::array<std::uint8_t, automap_store_capacity> out{};
+  const std::size_t size = state.write_sidecar(out);
+  ASSERT_GT(size, 0u);
+  EXPECT_EQ(out[3], machine::automap_sidecar_version);
+}
+
+TEST(AutomapSidecar, AVersionOneHeaderWithTodaysStrideIsRefused) {
+  // The version and the record width have to agree, or a reader indexes
+  // into the wrong rows and paints a map nobody has walked.
+  automap_state state;
+  state.reveal(state.record_for(3, 0, 0), 1, 1);
+  std::array<std::uint8_t, automap_store_capacity> bytes{};
+  const std::size_t size = state.write_sidecar(bytes);
+  ASSERT_GT(size, 0u);
+  bytes[3] = machine::automap_sidecar_first_version;
+
+  automap_state other;
+  other.reveal(other.record_for(9, 9, 9), 5, 5);
+  EXPECT_FALSE(other.read_sidecar({bytes.data(), size}));
+  EXPECT_NE(other.find(9, 9, 9), nullptr) << "and nothing was lost saying so";
 }
 
 TEST(AutomapSidecar, AnEmptyTableIsAFileAndNotNothing) {

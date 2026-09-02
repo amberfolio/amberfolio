@@ -252,6 +252,7 @@
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
+#include "automap_overland.h"
 #include "seam_builtin.h"
 
 namespace amberfolio::machine {
@@ -2021,6 +2022,16 @@ void at_key_pending(machine& box, seam_context& ctx) {
         break;
     }
   }
+
+  // **The overland is recorded here too** (M5-E5b, #254). It is not this
+  // panel's screen and never will be — the panel stays gated on the
+  // interior view below — but it is the same *store*, so a player who has
+  // only the automap switched on still has a wilderness trail when they
+  // switch the explored overlay on. One recorder, two callers
+  // (`automap_overland.h`); this caller draws nothing with what it
+  // returns, and on any screen but the travel view it costs three bytes
+  // of the data segment and returns.
+  (void)observe_overland(box, ctx, ds);
 
   if (!adventuring(cpu, ds)) {
     return;
