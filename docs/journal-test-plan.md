@@ -119,6 +119,17 @@ text is external and pinned by digest, exactly like the game disk.
    therefore blanks every allowed rect in the difference and asserts what
    survives is empty.
 
+   **A screen can appear in the two runs a dump apart** (#234). Claiming
+   a keystroke changes *when* the program does its own next repaint, by
+   less than the gap between two dumped stills, so an on still can be
+   settled while the off still of the same number is caught mid-repaint.
+   Over a reader leg exactly one still in hundreds had that shape, and
+   the status line's digest was equal 25 frames before it and 25 frames
+   after. So a leg may declare `slack 1`, and a frame passes when it is
+   confined against the off run at its own number *or* one dump either
+   side. That says what is true — the same screen, a moment apart —
+   rather than standing back from a range and checking nothing in it.
+
    **A leg cannot both swallow keys and diff against an off run** (#233).
    The seam-off run has no journal to take a keystroke, so every key the
    seam would have swallowed reaches the program instead and the two runs
@@ -129,6 +140,15 @@ text is external and pinned by digest, exactly like the game disk.
    own frames against each other. NOT-8 is the second kind and always
    was: "nothing reaches the program" is one digest holding still, not a
    difference from anything.
+
+   **And the log's give-back is the second kind too** (#234), which was
+   not obvious: the key that *opens* the log reaches the program in the
+   seam-off run, where the adventuring bar answers an unknown letter by
+   stepping its own highlight. From that moment the two runs differ on
+   the bar row whatever the give-back does. So it is stated directly and
+   more strongly instead — the frame after the log closes is the same
+   screen as the frame before it opened — which is what `equal` in a leg
+   file says.
 
 2. **Cross-host equality.** The wasm module driven by `drive.mjs` over
    the same script and store writes a final frame that must `cmp` equal
@@ -223,13 +243,13 @@ presses.
 | ID | Case | How | Visual check | Tier | Status |
 | --- | --- | --- | --- | --- | --- |
 | RDR-1 | Unit suite | As today | Pixel buffer against a test font | A | exists |
-| RDR-2 | F1 opens the prompt | Still at F1+50 | On/off diff confined to the panel; `JOURNAL` caption row is index 14; footer row present; the cursor rule drawn in the seam's own pixels, no stray glyph | B | **seen** (#233) |
-| RDR-3 | Digits, Backspace, Return open an entry | `4`, `3`, Backspace, Return; assert `last=4` | Panel: `ENTRY 4` in 14, body in 2, no row wider than 22 cells, no half glyph at the right edge | B | **seen** (#233) |
-| RDR-4 | F1 cycles the section at the prompt | F1 four times; stills after each | Caption reads ENTRY, TALE, PROCLAMATION, ENTRY; the fourth still equals the first | B | **seen** (#233) |
-| RDR-5 | Paging a long entry | Open the longest entry in ING-2's store; F1 per page; assert the page count matches the footer's `n/m` | Each page still differs from the last; the last F1 gives the roster back (diff ∅) | B | **seen** (#233) |
-| RDR-6 | Escape from the prompt and from a page; Backspace back a page | Three short scripts | Diff ∅ after each Escape; the Backspace still equals the earlier page's | B | **seen** (#233): after Escape the whole difference is the six `NOTES` cells |
+| RDR-2 | F1 opens the prompt | `tests/visual/rdr-prompt.leg` | On/off diff confined to the panel; `JOURNAL` caption row is index 14; footer row present; the cursor rule drawn in the seam's own pixels, no stray glyph | B | **held by a leg** (#234) |
+| RDR-3 | Digits, Backspace, Return open an entry | `tests/visual/rdr-prompt.leg` | Panel: `ENTRY 4` in 14, body in 2, no row wider than 22 cells, no half glyph at the right edge | B | **held by a leg** (#234) |
+| RDR-4 | F1 cycles the section at the prompt | F1 four times; stills after each | Caption reads ENTRY, TALE, PROCLAMATION, ENTRY; the fourth still equals the first | B | **held by a leg** (#234) |
+| RDR-5 | Paging a long entry | `tests/visual/rdr-page.leg` | Each page still differs from the last; the last F1 gives the roster back (diff ∅) | B | **held by a leg** (#234) |
+| RDR-6 | Escape from the prompt and from a page; Backspace back a page | `tests/visual/rdr-page.leg` | Diff ∅ after each Escape; the Backspace still equals the earlier page's | B | **held by a leg** (#234): after Escape the whole difference is the six `NOTES` cells |
 | RDR-7 | The four refusals | No store; entry 999; a store with an entry whose scan is empty; an entry over 4 KiB | Each refusal's two lines in the panel; the truncated entry's last page says so | B | new |
-| RDR-8 | Give-back is exact | Close by every route | Whole-frame diff against the off run is ∅ apart from `Notes`; the 3D viewport never differed at any frame | B | **seen** (#233) for Escape and for the last F1 |
+| RDR-8 | Give-back is exact | `tests/visual/rdr-page.leg` | Whole-frame diff against the off run is ∅ apart from `Notes`; the 3D viewport never differed at any frame | B | **held by a leg** (#234) for Escape and for the last F1 |
 | RDR-9 | Modal over the automap | `--seam automap` too: Tab, F1, 3, Return, F1 | Map, entry over it, map back with the label and the party's square; the third still equals the first | B | exists by hand |
 | RDR-10 | Off a roster screen the key is nobody's | Walk into a shop (Leg 4's route), press F1, assert `calls=0`; leave the shop with an entry cited on the way and assert it comes up when the roster returns | Shop still unchanged by F1; the entry over the roster on the street | B | new |
 | RDR-11 | Transliteration on the glass | Two hand-written stores: one with curly quotes, an em dash, an ellipsis and a CJK character, one with their plain forms and `?`. Open each | The two panel rects are byte-identical | B | new |
@@ -241,14 +261,14 @@ presses.
 | ID | Case | How | Visual check | Tier | Status |
 | --- | --- | --- | --- | --- | --- |
 | NOT-1 | Unit suite | As today | None | A | exists |
-| NOT-2 | `Notes` on both bars | Slot A (3D mode), then `A` for area mode; stills of each | On/off diff confined to six cells on the bar row in both modes; the word is the program's lettering, big initial and small tail | B | new |
+| NOT-2 | `Notes` on both bars | `tests/visual/not-bars.leg` | On/off diff confined to six cells on the bar row in both modes; the word is the program's lettering, big initial and small tail | B | new |
 | NOT-3 | Not on a vendor's bar | In a shop, still of the bar | Diff ∅ against the off run | B | new |
-| NOT-4 | The empty log | Fresh store, `N` | Frame, title, the one sentence, `EXIT`; arrives as one frame (`--dump-every 1` around the press shows no partial screen) | B | **seen** (#233) |
-| NOT-5 | A filled log | After CIT-2: `N`. **Not** after opening entries by F1 — an entry the player asked for was never cited, so nothing goes on the log (#233) | The four proclamations in the order the game said them, `*` on the three unread, the cursor row in 14 and the rest in 2, timestamps from the seeded clock | B | **seen** (#233) |
+| NOT-4 | The empty log | `tests/visual/not-log-giveback.leg` | Frame, title, the one sentence, `EXIT`; arrives as one frame (`--dump-every 1` around the press shows no partial screen) | B | **held by a leg** (#234) |
+| NOT-5 | A filled log | After CIT-2: `N`. **Not** after opening entries by F1 — an entry the player asked for was never cited, so nothing goes on the log (#233) | The four proclamations in the order the game said them, `*` on the three unread, the cursor row in 14 and the rest in 2, timestamps from the seeded clock | B | **held by a leg** (#234) |
 | NOT-6 | Cursor and scrolling | Down past the end, Up past the start, a log longer than the window | Stills: cursor stops at the ends; the window scrolls to keep it | B | new |
 | NOT-7 | Return opens the line; the star comes off | `N`, Return, then back to the log | The entry over the roster; the log's row without its `*` | B | **seen, and it was broken** (#233): the entry never appeared, because the give-back's batch had not run and the panel was painted over. Fixed with it |
-| NOT-8 | **Nothing reaches the program while the log is up** (#230) | `N`, then `S`, `C`, `L`, Left, Right, Up. A **single-run** leg, not an on/off pair: the off run has no log and every one of those keys reaches the program (§3) | Every still after `N` and before `E` is identical. Measured (#233): one digest across 1,475 frames | B | **seen** (#233) |
-| NOT-9 | Give-back in every mode | `E` and Escape, from 3D mode, area mode, and the alternate adventuring screen | Whole-frame diff ∅ against the off run apart from `Notes`, including the outer frame and the viewport's ornaments | B | new |
+| NOT-8 | **Nothing reaches the program while the log is up** (#230) | `tests/visual/not-log-modal.leg`, a single-run leg (§3) | Every still after `N` and before `E` is identical. Measured (#233): one digest across 1,475 frames | B | **held by a leg** (#234) |
+| NOT-9 | Give-back in every mode | `tests/visual/not-log-giveback.leg` for the 3D mode, as a **single** leg (§3). Area mode and the alternate screen are still owed | The frame after the log closes is the frame before it opened — viewport, roster, status line and ornaments — **except which command the bar's highlight sits on**, which the give-back's injected space resets (#234) | B | **held for 3D mode** (#234) |
 | NOT-10 | F1 from the log goes to the prompt | `N`, F1 | The log gone, the prompt in the panel | B | new |
 | NOT-11 | The log on the wasm module | NOT-4, NOT-5 and NOT-9 via `drive.mjs` | `cmp` equal, timestamp column included when the wall seed is shared | B | new |
 
@@ -282,16 +302,32 @@ mechanism to the seam or the core.
    from hand runs into goldens. Check first that `--replay` honours
    `--journal-store`; the store is read at the start of every run, so it
    should.
-3. **`scripts/visual-legs.py`.** The on/off confinement runner: takes a
-   leg's key script, runs it off and on, dumps at the named frames, and
-   asserts each diff's bounding box lies inside the rects the leg allows
-   at that frame. Reads a small table of legs from `tests/visual/*.leg`.
-   Runs under the sweep's disk rules.
-4. **A shared wall seed for on/off pairs.** The log's timestamp column
-   comes from the seeded wall clock, so two hand runs disagree there.
-   Either the confinement runner masks the column, or the host grows a
-   test-only way to fix the seed. A replay already pins it, so FID-3 is
-   unaffected; only NOT-9's whole-frame diff needs one of the two.
+3. **`scripts/visual-legs.py`** — **done** (#234). Takes a leg's key
+   script, runs it with the seam off and on under the dummy drivers, and
+   asserts that at every frame the leg names, nothing differs outside the
+   rects it allows there. `tests/visual/*.leg` are the legs and
+   `tests/visual/reader-store.txt` is a store in this project's own words
+   for them to open. It has the sweep's three outcomes and the sweep's
+   rule about the third, and `scripts/test-visual-legs.sh` asserts that
+   rule in CI — which is a machine with no disk, so every leg skips there
+   and the point is that skipping is loud.
+
+   A leg says `kind pair` or `kind single`, and the difference is §3's:
+   `allow <range> <rects>` for a pair, `same <range>` and
+   `equal <before> <after> [rects to leave out]` for a single.
+4. **A shared wall seed for on/off pairs** — **not needed, measured**
+   (#234). The premise was that the log's timestamp column comes from the
+   seeded wall clock and so two runs disagree. Neither host seeds that
+   clock at all: nothing in the SDL host calls it, nothing on the page
+   calls `setWallClock`, and both therefore count from `wall_clock`'s own
+   1980-01-01 default. Two runs of a leg minutes apart produce byte-equal
+   log screens, which is what the measurement showed.
+
+   So there is nothing to build, and the runner does not mask a column it
+   has no reason to. If a host ever seeds from the real calendar, this is
+   the item to reopen, and masking is the cheaper of the two answers —
+   a test-only way to fix the seed would be a new host surface for one
+   column of one screen.
 
 ## 6. Order of work, and the issues
 

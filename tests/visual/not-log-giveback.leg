@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# NOT-4 and NOT-9: the empty log takes the whole screen, and gives every
+# pixel of it back.
+#
+# **A single leg, and it has to be one.** The obvious form is a pair —
+# run it with the seam off and diff — and it cannot work here, for a
+# reason worth writing down rather than discovering twice. The key that
+# opens the log reaches the program in the seam-off run, where the
+# adventuring bar answers an unknown letter by stepping its own
+# highlight. From that moment the two runs differ on the bar row
+# whatever the give-back does, and the difference measured is the
+# highlight rather than the journal (#234).
+#
+# So the give-back is stated directly instead, and more strongly: the
+# frame after the log closes is the same screen as the frame before it
+# opened.
+about the log takes the whole screen and gives every pixel of it back
+kind single
+program START.EXE
+store tests/visual/reader-store.txt
+both code-wheel
+seam journal
+until 260000000
+every 25
+
+key A@7601
+key Return@7651
+key L@8951
+key A@9201
+key N@10600
+key Escape@11400
+
+rect bar 0,190,319,199
+
+# The log up, holding still, with nothing pressed.
+same 10800-11375
+
+# And the screen before it, back again after it: viewport, roster,
+# status line, ornaments, every pixel — **except the bar row**, and that
+# exception is a finding rather than a convenience.
+#
+# What comes back on the bar is the right bar, in the right place, with
+# the right words. What does not come back is *which of them the
+# highlight is sitting on*: the give-back injects a space to make the
+# menu-bar routine return and draw itself again, and the routine draws
+# itself with the highlight at its first command. A player who had
+# stepped it along finds it back at the start after using the journal.
+#
+# Measured here (#234): before the log and after it, 951 pixels differ
+# and every one of them is on the bar row. NOT-2's leg is what asserts
+# the bar itself.
+equal 10600 11800 bar

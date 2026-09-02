@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# NOT-2: `Notes` is on the party's own bar in both of the adventuring
+# screen's modes, and nothing else on either screen is the seam's.
+#
+# The two bars are two strings in two places — the 3D view's and the area
+# map's — and the splice is a separate pair of points for each (#221), so
+# one of them working says nothing about the other. `A` is the game's own
+# AREA command and swaps between them; both runs receive it, which is
+# what lets this be a pair leg at all.
+about Notes is on the 3D bar and on the area bar, and nowhere else
+kind pair
+program START.EXE
+store tests/visual/reader-store.txt
+both code-wheel
+seam journal
+until 260000000
+every 25
+# A screen may appear in the two runs a dump apart, because claiming a
+# keystroke changes when the program does its own next repaint by less
+# than the gap between two stills. One dump of slack, measured (#234).
+slack 1
+
+key A@7601
+key Return@7651
+key L@8951
+key A@9201
+key A@10600
+
+rect notes 273,192,311,199
+rect bar 0,190,319,199
+
+allow 0-9000 none
+# The 3D view's bar: the difference is the six cells at its end.
+allow 9025-10599 notes
+# The swap itself redraws the whole screen and the two runs do it a few
+# frames apart, so the frames it takes are named by nobody. What matters
+# is on either side of it.
+#
+# The area map's bar: its own words are a different length, so where the
+# splice falls is its own question and the assertion here is the row.
+# Measuring that word's exact cells is what the sheet is for, and it is
+# RDR-13's kind of question rather than this one.
+allow 11200-end bar

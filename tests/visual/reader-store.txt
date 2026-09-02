@@ -1,0 +1,28 @@
+amberfolio-journal 3
+edition 0000000000000000000000000000000000000000000000000000000000000000
+engine hand
+scanned entry 3 867
+Entry three, and every word of it belongs to this repository.
+It exists so that a leg has something to open, page and put away
+without a single character of anybody's booklet being committed here.
+
+The paragraph below is long on purpose. A page of the reader holds
+twelve rows of twenty-two cells, so a note of a few hundred bytes
+becomes several pages, and several pages are what the paging leg
+needs in order to have anything to turn.
+
+Wrapping happens at a space, so a run of ordinary words is what
+proves it: alpha bravo charlie delta echo foxtrot golf hotel india
+juliett kilo lima mike november oscar papa quebec romeo sierra
+tango uniform victor whiskey xray yankee zulu, and round again,
+alpha bravo charlie delta echo foxtrot golf hotel india juliett.
+
+The last line of the last page is here so that a leg can tell the
+end of the note from the end of a page.
+corrected entry 3 0
+
+scanned entry 4 39
+Entry four is short.
+One page, no more.
+corrected entry 4 0
+

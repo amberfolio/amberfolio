@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# NOT-8, the regression net for #230: while the log is up, nothing
+# reaches the program. Six keys the adventuring screen would answer —
+# search, cast, look, and three the party walks by — and the screen does
+# not move.
+#
+# A **single** leg and not a pair, and that is not a shortcut. The
+# seam-off run has no log to swallow those keys, so every one of them
+# reaches the program: it searches, it casts, it walks. The two runs end
+# in different game states and a diff between them means nothing
+# (`docs/journal-test-plan.md` §3).
+about nothing reaches the program while the log is up
+kind single
+program START.EXE
+store tests/visual/reader-store.txt
+both code-wheel
+seam journal
+until 300000000
+every 25
+
+key A@7601
+key Return@7651
+key L@8951
+key A@9201
+# The log, then the barrage.
+key N@10600
+key S@10900
+key C@11100
+key L@11300
+key Left@11500
+key Right@11700
+key Up@11900
+key E@12200
+
+# From the log settling to the last of the barrage, one frame.
+same 10900-12100

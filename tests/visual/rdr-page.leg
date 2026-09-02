@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# RDR-5, RDR-6 and RDR-8: page a long entry with F1, step back with
+# Backspace, and leave. The give-back is the point — after the last page
+# the panel is gone and the only difference left from the seam-off run is
+# the six cells of `Notes` on the bar.
+about paging a long entry, and giving the screen back exactly
+kind pair
+program START.EXE
+store tests/visual/reader-store.txt
+both code-wheel
+seam journal
+until 300000000
+every 25
+# A screen may appear in the two runs a dump apart, because claiming a
+# keystroke changes when the program does its own next repaint by less
+# than the gap between two stills. One dump of slack, measured (#234).
+slack 1
+
+key A@7601
+key Return@7651
+key L@8951
+key A@9201
+key F1@10600
+key 3@10700
+key Return@10800
+# Forward, forward, back a page, then out through the far end.
+key F1@11200
+key F1@11600
+key Backspace@12000
+key Escape@12400
+
+rect panel 136,8,311,119
+rect notes 273,192,311,199
+
+allow 0-9000 none
+allow 9025-10599 notes
+allow 10600-12400 panel notes
+# After Escape the panel is gone and the bar is all that is left.
+allow 12600-end notes
