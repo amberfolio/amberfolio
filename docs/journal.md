@@ -439,11 +439,22 @@ empties both the drawer and the tab's own copy, because a reset that took
 effect only after a reload would be the page claiming to have forgotten
 something it was still showing the reader.
 
-What is *not* kept between visits is the journal's read log — the `seen`
-lines. The desktop feeds them back into `machine::journal_state` at boot;
-the web module has no ABI to do that, so a browser's log still starts
-empty on every visit. That is a gap and not a decision, and it is one
-piece of ABI rather than a design question.
+The read log — the `seen` lines — is kept too, and was not until #237.
+A store holds two things and only one of them used to arrive: the text
+reaches the reader through the host-service pointer, and the log lives in
+`machine::journal_state`, where it is observation. The desktop put it
+there and the browser had no ABI to, so a terminal restored a player's
+`*` marks across runs and a browser silently did not. That was a gap
+rather than a decision, and it was one call:
+`af_web_journal_seen_restore`.
+
+The ordering it has to get right is easy to get wrong in a way nothing
+notices — the store holds the log newest first and so does the machine,
+and `note_seen` puts each row on the *front*, so feeding them in stored
+order hands the reader its own list upside down. It was written twice and
+then only one of the two was written at all, so it is
+`host::restore_journal_log()` in `hosts/common` now, with both hosts
+calling it and `JournalLogRestore` holding it down.
 
 The only thing that may be written down about a store, anywhere, is how
 many entries it has and its SHA-256 — `journal_store::fingerprint()`

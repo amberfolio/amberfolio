@@ -379,5 +379,101 @@ TEST(JournalStore, ClearingLeavesNoHeaderBehind) {
   EXPECT_TRUE(store.engine().empty());
 }
 
+// ---------------------------------------------------------------------------
+// The read log, back into the machine (STO-4, #237)
+// ---------------------------------------------------------------------------
+
+/// A store holding three cited things, newest first, with the middle one
+/// read — the shape a real store has after a session.
+[[nodiscard]] journal_store three_seen() {
+  journal_store store;
+  // Newest first, which is the order a store holds and hands back, and
+  // the order the machine's own log is in. The middle one has been read.
+  const std::array<machine::journal_seen_row, 3> rows{{
+      {.what = {.kind = machine::journal_kind::proclamation, .number = 64},
+       .month = 1,
+       .day = 1,
+       .hour = 0,
+       .minute = 7,
+       .read = false},
+      {.what = {.kind = machine::journal_kind::tale, .number = 3},
+       .month = 1,
+       .day = 1,
+       .hour = 0,
+       .minute = 6,
+       .read = true},
+      {.what = {.kind = machine::journal_kind::entry, .number = 7},
+       .month = 1,
+       .day = 1,
+       .hour = 0,
+       .minute = 5,
+       .read = false},
+  }};
+  store.set_seen(rows);
+  store.clear_changed();
+  return store;
+}
+
+TEST(JournalLogRestore, TheMachineGetsTheStoresLogInTheStoresOrder) {
+  // The bug this exists for is invisible to anything that only counts
+  // rows: the store holds the log newest first and so does the machine,
+  // and `note_seen` puts each row on the *front* — so feeding them in
+  // stored order hands the reader its own list upside down. That is one
+  // reversed loop in eight lines, and it was written twice.
+  const journal_store store = three_seen();
+  ASSERT_EQ(store.seen().size(), 3u);
+
+  machine::journal_state into;
+  restore_journal_log(into, store);
+
+  const std::span<const machine::journal_seen_row> got = into.seen();
+  ASSERT_EQ(got.size(), 3u);
+  for (std::size_t i = 0; i < got.size(); ++i) {
+    EXPECT_EQ(got[i].what, store.seen()[i].what) << "row " << i;
+    EXPECT_EQ(got[i].month, store.seen()[i].month) << "row " << i;
+    EXPECT_EQ(got[i].day, store.seen()[i].day) << "row " << i;
+    EXPECT_EQ(got[i].hour, store.seen()[i].hour) << "row " << i;
+    EXPECT_EQ(got[i].minute, store.seen()[i].minute) << "row " << i;
+  }
+}
+
+TEST(JournalLogRestore, TheStarComesBackOffWhatWasAlreadyRead) {
+  // The half a player sees. Without it every entry they had opened is
+  // unread again on the next run, which is what a browser did until #237.
+  const journal_store store = three_seen();
+  machine::journal_state into;
+  restore_journal_log(into, store);
+
+  const std::span<const machine::journal_seen_row> got = into.seen();
+  ASSERT_EQ(got.size(), 3u);
+  for (const machine::journal_seen_row& row : got) {
+    const bool wanted = row.what.kind == machine::journal_kind::tale;
+    EXPECT_EQ(row.read, wanted) << "the tale was the one that had been opened";
+  }
+}
+
+TEST(JournalLogRestore, RestoringIsNotTheLogMoving) {
+  // A host writes its store back when the log changes. Restoring what the
+  // store already holds must not look like a change, or every run would
+  // rewrite the file it had just read.
+  const journal_store store = three_seen();
+  machine::journal_state into;
+  restore_journal_log(into, store);
+  EXPECT_FALSE(into.seen_changed());
+
+  // And a real citation afterwards still does look like one.
+  into.note_seen({.kind = machine::journal_kind::entry, .number = 9}, 1, 1, 0,
+                 8);
+  EXPECT_TRUE(into.seen_changed());
+}
+
+TEST(JournalLogRestore, AnEmptyStoreLeavesAnEmptyLog) {
+  const journal_store store;
+  machine::journal_state into;
+  restore_journal_log(into, store);
+  EXPECT_TRUE(into.seen().empty());
+  EXPECT_FALSE(into.seen_changed());
+}
+
 }  // namespace
 }  // namespace amberfolio::host

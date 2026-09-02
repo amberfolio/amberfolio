@@ -400,4 +400,17 @@ sha256_digest journal_store::fingerprint() const {
       reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()));
 }
 
+void restore_journal_log(machine::journal_state& into,
+                         const journal_store& from) noexcept {
+  const std::span<const machine::journal_seen_row> stored = from.seen();
+  for (std::size_t i = stored.size(); i > 0; --i) {
+    const machine::journal_seen_row& row = stored[i - 1];
+    into.note_seen(row.what, row.month, row.day, row.hour, row.minute);
+    if (row.read) {
+      static_cast<void>(into.mark_seen_read(row.what));
+    }
+  }
+  into.set_seen_changed(false);
+}
+
 }  // namespace amberfolio::host

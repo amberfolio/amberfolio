@@ -454,6 +454,20 @@ export function readStore(module, text) {
   );
 }
 
+/// The store's read log, into the machine the reader draws from.
+///
+/// `readStore()` above puts the *text* where the reader can ask for it.
+/// The log — what the game has cited and which of it this player has
+/// opened — lives in the machine, and this is what puts it there. Without
+/// it a browser forgets every `*` on reload while a terminal does not,
+/// which was a gap rather than a decision (#237).
+///
+/// Wants a machine, so it is called once one exists; `readStore()` can be
+/// called before that and often is.
+export function restoreSeen(module, box) {
+  return module._af_web_journal_seen_restore(box);
+}
+
 /// A person's correction to one entry.
 export function correctJournalEntry(module, citation, text) {
   return withUtf8(module, text, (ptr) =>
