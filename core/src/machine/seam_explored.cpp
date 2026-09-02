@@ -29,7 +29,8 @@
 // **Its points are addresses**, three of them, all resident, and two of
 // the three are the automap's (#173) — which is nothing new; several
 // seams in this tree share those. The one that is this seam's own is the
-// **return of the program's back-buffer present**.
+// **return of the program's back-buffer present**. It draws at two of
+// them and the paragraph after next says why two.
 //
 // **What it refuses** is longer than what it does, which is the usual
 // proportion here. In order, cheapest first: the data segment not being
@@ -61,6 +62,21 @@
 // animation, which advances a phase and presents again — so the overlay
 // is repainted after each of them and no captured frame can catch it half
 // drawn.
+//
+// **And that is not enough on its own**, which a driven run found and no
+// test had (M5-E5d, #256). A party that loads a saved game and stands
+// still gives the program nothing to redraw — so no present ever comes,
+// and the trail the host had just read in beside the save stayed
+// invisible until the player took a step. A seam that paints only where
+// the program paints cannot show state that arrived without a redraw.
+//
+// So it paints at the keyboard poll as well, which is where the program
+// is between commands. That point is reached thousands of times a virtual
+// second, so it paints there only when something has moved: where the
+// party is, and the exploration store's serial, which moves both when a
+// cell is revealed and when a host reads a slot's table in. The present's
+// return does not consult that signature at all, because the program has
+// just wiped whatever was on those rows.
 //
 // The alternative, painting into the program's own back buffer so that
 // the program's own present carries the marks, is memory surgery on a
@@ -212,10 +228,10 @@ constexpr std::uint32_t dgroup_offset = 0xC7C0;
 constexpr std::uint16_t data_game_mode = 0x49F3;
 constexpr std::uint8_t mode_overland = 3;
 
-/// Which view is up: 2, 3 and 4 are the three wilderness areas.
-constexpr std::uint16_t data_view_kind = 0x49FA;
-constexpr std::uint8_t view_kind_first_overland = 2;
-constexpr std::uint8_t view_kind_last_overland = 4;
+/// Which view is up — 2, 3 and 4 are the three wilderness areas — is
+/// the shared recorder's to check, and it hands the answer back in its
+/// `overland_look` (`automap_overland.h`), so this file does not name
+/// that offset a second time.
 
 /// The per-view-kind **column bias**, a byte table indexed by the view
 /// kind. It puts each of the three areas in its own sixteen-column band
@@ -357,51 +373,39 @@ constexpr int window_cells = static_cast<int>(explored_window_cells);
 // The handlers
 // ---------------------------------------------------------------------------
 
-/// The program has just put the screen up. If it is the overworld and the
-/// party has walked any of the cells on it, they go up a shade.
-void at_present_return(machine& box, seam_context& ctx) {
+/// A cheap mixed hash of the few things a repaint depends on. Not a
+/// digest of anything and not compared against anything outside this
+/// file.
+[[nodiscard]] std::uint32_t mix(std::uint32_t seed,
+                                std::uint32_t value) noexcept {
+  std::uint32_t hash = seed ^ value;
+  hash *= 16777619U;
+  return hash ^ (hash >> 13U);
+}
+
+/// Paint the trail, if the guard lets it and there is anything to paint.
+///
+/// `after_a_present` says the program has just put the screen up and
+/// whatever this seam had drawn on those rows is gone, so the answer is
+/// not compared against what was drawn last time. Everywhere else it is:
+/// the keyboard poll is reached thousands of times a virtual second, and
+/// a repaint on every pass would be that many.
+///
+/// **What the signature has in it, and why each.** Where the party is,
+/// because the window scrolls with it; the store's serial, because that
+/// moves when a cell is revealed *and* when a host reads a saved slot's
+/// table in (M5-E2c) — which is the case a present alone never covers,
+/// since a party that loads a save and stands still gives the program
+/// nothing to redraw.
+void paint(machine& box, seam_context& ctx, std::uint16_t ds,
+           const overland_look& look, bool after_a_present) {
   cpu::processor& cpu = box.processor();
-  const std::uint16_t ds = data_segment(cpu, ctx);
-  if (ds == 0) {
-    ctx.decline(seam_reason::point_not_recognized);
-    return;
-  }
+  automap_state& state = box.automap();
 
-  // The cheapest byte first. This routine is the program's one present
-  // and is reached from every screen it draws, so the common case by an
-  // enormous margin is one read and a return.
-  if (cpu.read_byte(ds, data_game_mode) != mode_overland) {
-    return;
-  }
-  const std::uint8_t view_kind = cpu.read_byte(ds, data_view_kind);
-  if (view_kind < view_kind_first_overland ||
-      view_kind > view_kind_last_overland) {
-    return;
-  }
-
-  const automap_state& state = box.automap();
   if (!state.at_command_bar()) {
     // Somebody other than the adventuring screen is asking the player
     // something — a script's menu, an encounter's prompt — and whatever
     // it has drawn in the viewport is not this seam's to paint over.
-    return;
-  }
-  if (!state.settled() || state.settled_kind() != automap_map_kind::overland) {
-    return;
-  }
-
-  // The rest of the guard is the recorder's, and it is the same guard,
-  // so it is asked rather than repeated: the transition byte, the area
-  // record's far pointer and its bounds, the word that says these areas
-  // are being drawn in the interior view, and the position's range.
-  const overland_look look = observe_overland(box, ctx, ds);
-  if (!look.on_screen || !look.settled) {
-    return;
-  }
-
-  const int bias = cpu.read_byte(ds, at(data_view_column_bias, view_kind));
-  if (bias > max_column_bias) {
-    ctx.decline(seam_reason::point_not_recognized);
     return;
   }
 
@@ -409,12 +413,37 @@ void at_present_return(machine& box, seam_context& ctx) {
   if (map == nullptr) {
     return;
   }
+
+  std::uint32_t signature = mix(2166136261U, look.disk);
+  signature = mix(signature, look.area);
+  signature = mix(signature, look.x);
+  signature = mix(signature, look.y);
+  signature = mix(signature, state.serial());
+  if (signature == 0) {
+    // Zero is this seam's "nothing has been drawn", so it is not allowed
+    // to be a real answer.
+    signature = 1;
+  }
+  if (!after_a_present && signature == state.explored_signature()) {
+    // The common case by a wide margin: the program is polling and
+    // nothing about the party or the store has moved. Six bytes of the
+    // data segment were read to decide it.
+    return;
+  }
+
+  const int bias = cpu.read_byte(ds, at(data_view_column_bias, look.view_kind));
+  if (bias > max_column_bias) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
   const std::uint32_t lifted = cells_to_lift(*map, bias, look.x, look.y);
   if (lifted == 0) {
     // Nothing walked but the square under the party's feet, which is the
     // state a player arrives in. **Not a port is written**, which is what
     // makes the stronger of this seam's two fidelity claims a test rather
     // than an argument.
+    state.set_explored_signature(signature);
     return;
   }
 
@@ -429,10 +458,12 @@ void at_present_return(machine& box, seam_context& ctx) {
   write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
                  sequencer_map_mask_index, intensity_plane_mask);
 
-  for (unsigned row = 0; row < explored_window_cells; ++row) {
-    for (unsigned column = 0; column < explored_window_cells; ++column) {
-      if ((lifted & (1U << ((row * explored_window_cells) + column))) != 0) {
-        lift_cell(box, column, row);
+  for (int row = 0; row < window_cells; ++row) {
+    for (int column = 0; column < window_cells; ++column) {
+      if ((lifted &
+           (1U << static_cast<unsigned>((row * window_cells) + column))) != 0) {
+        lift_cell(box, static_cast<unsigned>(column),
+                  static_cast<unsigned>(row));
       }
     }
   }
@@ -441,11 +472,43 @@ void at_present_return(machine& box, seam_context& ctx) {
   // which is the state this found them in (docs/seams.md §3).
   write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
                  sequencer_map_mask_index, all_planes);
+  state.set_explored_signature(signature);
+}
+
+/// The program has just put the screen up. If it is the overworld and the
+/// party has walked any of the squares on it, they go up a shade.
+void at_present_return(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  // The cheapest byte first. This routine is the program's one present
+  // and is reached from every screen it draws, so the common case by an
+  // enormous margin is one read and a return.
+  if (cpu.read_byte(ds, data_game_mode) != mode_overland) {
+    return;
+  }
+
+  // The rest of the guard is the recorder's, and it is the same guard,
+  // so it is asked rather than repeated: the view kind, the transition
+  // byte, the area record's far pointer and its bounds, the word that
+  // says these areas are being drawn in the interior view, and the
+  // position's range and settling.
+  const overland_look look = observe_overland(box, ctx, ds);
+  if (!look.on_screen || !look.settled) {
+    return;
+  }
+  paint(box, ctx, ds, look, true);
 }
 
 /// The program is asking whether a key is waiting, which is where it is
-/// between commands — and therefore where the trail is recorded. This
-/// seam claims no key and takes nothing.
+/// between commands. Two things happen here and this seam claims no key:
+/// the trail is recorded, and it is drawn when something has changed
+/// that no repaint of the program's would have shown — a saved slot's
+/// table read in under a party that is standing still, most of all.
 void at_key_pending(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
@@ -453,7 +516,14 @@ void at_key_pending(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  (void)observe_overland(box, ctx, ds);
+  const overland_look look = observe_overland(box, ctx, ds);
+  if (!look.on_screen || !look.settled) {
+    // Not this seam's screen. What was drawn last is gone or is about to
+    // be, so the next pass that *is* on the overworld draws again.
+    box.automap().set_explored_signature(0);
+    return;
+  }
+  paint(box, ctx, ds, look, false);
 }
 
 /// The program is putting a command bar up, and which bar it is says
