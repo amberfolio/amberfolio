@@ -10,12 +10,15 @@
 # times over the run, and the first thing every one of them does is read
 # the game-mode byte and return.
 #
-# It is the *weaker* of this seam's two fidelity claims, and it is here
-# because it is the one the whole matrix is made of. The stronger one —
-# the overworld shown, nothing walked, and the screen still the screen it
-# would have been — is the identical prefix of the `wild` / `wild-trail`
-# pair beside it, which is where it belongs: it can only be said on a run
-# that reaches the overworld at all.
+# It used to be the *weaker* of this seam's two fidelity claims and it is
+# now the only one. The stronger one — the overworld shown, nothing
+# walked, and the screen still the screen it would have been — belonged
+# to a marking that lifted the *known*, and M5-E5f (#263) reversed the
+# enhancement to a fog that covers the unknown: a map nobody has walked
+# is nearly all fog the moment it appears. `wild-trail.session` beside it
+# has the paragraph. This one is untouched by that, because the run it
+# describes never shows the overworld at all — which is exactly why it is
+# the claim the whole matrix is made of.
 
 about the explored overlay on and the overworld never shown: the seam is
 about reached half a million times and the machine is the machine it

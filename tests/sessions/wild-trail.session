@@ -1,38 +1,49 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # The same script, the same disk and the same tick budget as `wild.rec`,
-# with `explored` on and nothing else changed (M5-E5, #179). The
-# `contrast` line below is the assertion that this made a difference, and
-# it says two things at once.
+# with `explored` on and nothing else changed (M5-E5, #179; the marking
+# reversed to fog of war by M5-E5f, #263). The `contrast` line below is
+# the assertion that this made a difference, and it says two things at
+# once.
 #
-# **The 111 identical checkpoints are the stronger fidelity claim, on the
-# real program.** They run from the power-on to tick 212,821,488, which
-# is the frame after the party's first step — and they include the whole
-# of the arrival on the wilderness map at frame 9,552 and the fifteen
-# hundred frames of standing on it. The seam is on, armed at three
-# addresses and reached three quarters of a million times, the overworld
-# is on the screen, and until the party walks off the square it arrived
-# on the machine is the machine it would have been. That holds only
-# because the square under the party is never marked, and a change that
-# started marking it would move a checkpoint here.
+# **The 107 identical checkpoints run to the arrival, and no further.**
+# They are the power-on, the title, the code wheel and the load, and they
+# end at tick 204,866,288 — the frame the wilderness screen settles at,
+# which is where the fog first appears. Everything after it differs,
+# because a fog covers what the party has *not* been near and a map
+# nobody has walked is nearly all of that.
 #
-# **The 29 that differ are the picture.** A checkpoint hashes the
-# framebuffer, so a trail drawn in the wrong place, one cell out, in the
-# wrong shade or not at all moves one — the geometry and the mechanism
-# have unit tests, and only this says the picture is still the picture.
+# **This used to be 111, and the difference is the whole change of
+# mind.** Under the lift the two halves agreed through the arrival and
+# the fifteen hundred frames of standing on it, and this file said so as
+# the stronger of the seam's two fidelity claims. A fog cannot make that
+# claim, so it is gone rather than loosened — `tests/sessions/README.md`
+# has the paragraph, `docs/seams.md` §10 has the reason, and the unit
+# suite asserts the arrival is *not* the seam-off screen so that nothing
+# re-acquires it by accident. The claim that survives is
+# `quiet-explored.rec`: on, the overworld never shown, all 126
+# checkpoints of the baseline.
+#
+# **The 33 that differ are the picture.** A checkpoint hashes the
+# framebuffer, so a fog drawn in the wrong place, one square out, over the
+# party's own icon, in the wrong colour or not at all moves one — the
+# geometry and the mechanism have unit tests, and only this says the
+# picture is still the picture.
 #
 # The two halves differ by nothing but the flag: the same disk, the same
 # tick budget, the same twenty-four key events. There is no key to press:
 # this seam is a setting, so what the pair compares is a screen and not
 # an input.
 #
-# Driven, and byte for byte on both hosts: the same script through
-# `drive.mjs` against the wasm module composes a final frame identical to
-# this one's.
+# Recorded by the desktop host and reproduced by the wasm module through
+# `hosts/web/tools/drive.mjs --replay`: all 140 checkpoints, which is
+# every byte of RAM, every device's registers and the framebuffer at each
+# of them, out of a second compilation of the core.
 
-about the same eight steps with the explored overlay on: the squares the
-about party has walked are redrawn a shade brighter on the game's own
-about overworld map, behind it as it goes. 140 checkpoints, 24 key events
+about the same eight steps with the explored overlay on: every square of
+about the game's own overworld window the party has not been near is
+about covered with fog, and the fog lifts behind it as it goes. 140
+about checkpoints, 24 key events
 disk external
 document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
 contrast wild
