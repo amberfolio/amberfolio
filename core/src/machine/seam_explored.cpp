@@ -1,0 +1,503 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The explored overlay: PLAN.md §5 item 5, M5-E5 (#179), the seam itself
+// is M5-E5c (#255).
+//
+// Where the party has walked, on the game's own overworld screen. The
+// program shows a five-by-five window of a wilderness area's overhead
+// map, scrolling with the party; this seam redraws the cells the party
+// has stood on **one shade brighter**, so a player can see where they
+// have been and where they have not.
+//
+// The facts, the geometry and the three decisions are
+// `docs/explored-overlay.md` (M5-E5a, #253), which was written before a
+// line of this file. What this comment is about is what the seam does
+// with them.
+//
+//
+// The three decisions (docs/seams.md §8)
+// --------------------------------------
+//
+// **Its surface is a setting.** No key, no pull, no panel, no chrome. On,
+// it is there whenever the game is showing the overworld; off, it is not.
+// So the definition is not a `trigger`, it claims no keystroke, and there
+// is nothing for a player to learn beyond switching it on. That is also
+// what makes the fidelity claims below the shape they are: this seam is
+// *visible* the moment the party stands on a square it has stood on
+// before, and no amount of not-pressing-anything hides it.
+//
+// **Its points are addresses**, three of them, all resident, and two of
+// the three are the automap's (#173) — which is nothing new; several
+// seams in this tree share those. The one that is this seam's own is the
+// **return of the program's back-buffer present**.
+//
+// **What it refuses** is longer than what it does, which is the usual
+// proportion here. In order, cheapest first: the data segment not being
+// where `image_base()` says; the game mode not being the travel view; the
+// view kind not being one of the three wilderness areas; a scripted move
+// in flight; the area record's far pointer not pointing inside
+// conventional memory; **the word in that record that says the program is
+// drawing these areas in the interior view instead**; the party's
+// position not being on a 16-by-36 map; the column bias not being one a
+// 44-column table could hold; the bar on the screen not being the
+// adventuring screen's own; the position not having settled; and nothing
+// explored on this map at all. Every one of those returns having touched
+// no port and no pixel.
+//
+//
+// Why the present's return, and not the painter
+// ---------------------------------------------
+//
+// The program does not draw this screen where a reader would expect. It
+// composes the whole thing — the twenty-five tiles and the party's icon —
+// into an off-screen buffer, and a resident routine then **presents** it,
+// flushing only the scanlines something dirtied, through a second display
+// page and a latch copy.
+//
+// So the entry of that routine is the wrong place: the flush has not
+// happened, and anything painted there is about to be copied over. Its
+// *return* is the right one. Every path that repaints the window ends
+// there — the composer's own redraw, and each step of the icon's
+// animation, which advances a phase and presents again — so the overlay
+// is repainted after each of them and no captured frame can catch it half
+// drawn.
+//
+// The alternative, painting into the program's own back buffer so that
+// the program's own present carries the marks, is memory surgery on a
+// buffer the program reads back: its dirty tracking, its save-under path
+// and its next composition all read it, and the marks would become part
+// of what the program believes it drew. It is rejected here and revisited
+// only if a driven run shows this path flickering (#256).
+//
+//
+// The marking: an intensity lift, and why there is no mark at all
+// ---------------------------------------------------------------
+//
+// An explored cell is redrawn one shade brighter. Every pixel of it stays
+// a pixel the *program* drew, in the program's own sixteen-colour
+// palette, one step up: dark green becomes bright green, blue becomes
+// bright blue, black becomes dark grey.
+//
+// Seven candidates were prototyped over a real dumped frame and six were
+// rejected; `docs/explored-overlay.md` §5 has them and their reasons. The
+// four that decided it:
+//
+//   * **it draws no shape of its own.** Every other candidate puts a mark
+//     on the game's screen that the game has no vocabulary for. This one
+//     has no mark; it has a shade. That is the argument docs/seams.md §3
+//     makes for calling the program's own text drawer rather than
+//     rasterizing glyphs, one layer further along — there is no foreign
+//     artwork rather than none that looks foreign;
+//   * **it is the game's own idiom.** The program recolours this very
+//     screen through a palette mapping of its own, in an overlay of its
+//     own, as part of one of its set pieces;
+//   * **it costs one plane and no read-back.** Sixteen EGA colours are
+//     four planes and the top bit of the index is plane 3, so "one shade
+//     brighter" is `map mask = 8` and a run of `0xFF` bytes. A cell is
+//     three whole bytes by 24 scanlines: 72 byte writes, and 1,728 for a
+//     window with every cell but the party's marked. The automap panel's
+//     blit is 9,856 for comparison;
+//   * **the terrain stays legible.** A coastline, a road and a tile's
+//     outline survive a shade change; they do not survive a hatch or a
+//     dither drawn over them.
+//
+// Measured, because "one shade" invites the question: across 112 overland
+// frames and 2,800 window cells of a real run, the cell with the fewest
+// pixels whose intensity bit was clear still had 198 of its 576. The
+// direction matters too — *lowering* the bit looks better on grass and is
+// invisible on water, which is a solid dark blue already.
+//
+//
+// Two cells this never touches
+// ----------------------------
+//
+// **The party's own**, which is where the program draws the party's icon.
+// A lift there would recolour the party's own sprite, and it would cost
+// the stronger of the two fidelity claims below. The cell is *recorded*
+// the moment the party stands on it and appears, marked, when the party
+// moves off — which is what makes the thing a trail rather than a
+// highlight.
+//
+// **Any cell the party has not walked.** Not one pixel, which is what
+// lets a confinement leg (#256) mask exactly the explored cells and
+// assert that the rest of the frame is byte for byte the seam-off run.
+//
+//
+// The fidelity claim, stated for this seam (docs/seams.md §8.5)
+// -------------------------------------------------------------
+//
+// The plain one does not survive a seam that is visible without being
+// asked for, so it is two narrower ones, and both are tests:
+//
+//   **On, and the overworld never shown, a run is byte for byte the run
+//   with no engine at all.** Every point reads; the two shared with the
+//   automap write only `machine::automap()`, which is observation and not
+//   machine state (`automap.h`); and the third returns on the mode byte.
+//
+//   **On, the overworld shown, and nothing explored but the cell the
+//   party is standing on — the run is byte for byte the run with the seam
+//   off.** This is the one that holds only because the party's own cell
+//   is never marked: it is the state a player is in the moment they
+//   arrive on a wilderness map they have never walked, and until they
+//   take their first step the screen is the screen they would have seen.
+//
+//
+// What it is not yet, at the point of definition (docs/seams.md §8.5)
+// -------------------------------------------------------------------
+//
+//   * Everything driven so far has been view kind 2 on disk 6. The other
+//     two wilderness areas are the same arithmetic with a different bias
+//     and nobody has stood on them (#256).
+//   * The bar test is the automap's — a far pointer into the data segment
+//     at one of two known offsets. If the travel view hands its input
+//     routine a third string, this seam paints nothing there and a driven
+//     run is what will say so (#256).
+//   * Nobody with a display has looked at it. #179's exit requires that
+//     somebody does (#257).
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+
+#include "amberfolio/cpu/address.h"
+#include "amberfolio/cpu/processor.h"
+#include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/automap.h"
+#include "amberfolio/machine/document.h"
+#include "amberfolio/machine/ega.h"
+#include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/seam.h"
+#include "automap_overland.h"
+#include "seam_builtin.h"
+
+namespace amberfolio::machine {
+namespace {
+
+// ---------------------------------------------------------------------------
+// The facts (docs/explored-overlay.md §2)
+// ---------------------------------------------------------------------------
+
+/// The SHA-256 of the program image every offset below is a fact about —
+/// the baseline edition (edition.h), and only it.
+constexpr std::array<std::string_view, 1> explored_binaries{
+    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+
+/// **The points**, as offsets from the image segment, all three resident.
+///
+/// The first is this seam's own: the far return of the routine that
+/// presents the composed back buffer — the `mov sp, bp / pop bp / retf`
+/// that is the only far return in it. Its second route is the
+/// disassembly, which opens `push bp / mov bp, sp` and immediately reads
+/// the six data-segment words the theory said it must: the adapter byte,
+/// the back buffer's far pointer, the per-row dirty flags, the per-row
+/// minimum and maximum x, and the per-row destination x.
+///
+/// The other two are the automap's (`seam_automap.cpp`), shared: the
+/// program's "is a key waiting" routine, which is where the program is
+/// between commands and therefore where the trail is recorded, and the
+/// thunk every menu bar in the game goes up through, which is how any
+/// seam here knows whose screen it is on.
+constexpr std::uint32_t present_return = 0x649B;
+constexpr std::uint32_t key_pending_entry = 0xA6FD;
+constexpr std::uint32_t command_bar_entry = 0x3C7A;
+
+/// Where the data segment begins, as an offset in the image — the one
+/// fact every data-segment offset is relative to, checked against the DS
+/// the program is actually holding rather than trusted.
+constexpr std::uint32_t dgroup_offset = 0xC7C0;
+
+/// The game mode, and the value that is the wilderness travel view.
+constexpr std::uint16_t data_game_mode = 0x49F3;
+constexpr std::uint8_t mode_overland = 3;
+
+/// Which view is up: 2, 3 and 4 are the three wilderness areas.
+constexpr std::uint16_t data_view_kind = 0x49FA;
+constexpr std::uint8_t view_kind_first_overland = 2;
+constexpr std::uint8_t view_kind_last_overland = 4;
+
+/// The per-view-kind **column bias**, a byte table indexed by the view
+/// kind. It puts each of the three areas in its own sixteen-column band
+/// of the one 44-column terrain table, and the seam reads it out of the
+/// program rather than carrying its values.
+constexpr std::uint16_t data_view_column_bias = 0x3C76;
+
+/// The widest bias a 44-column table could carry, which is what says a
+/// byte read here is the byte the facts describe.
+constexpr int max_column_bias = 0x2B;
+
+/// The two halves of an overland record's identity — the disk the area's
+/// files come from and the area's own id — are read by the shared
+/// recorder and come back in its answer (`automap_overland.h`), so this
+/// file does not name their offsets a second time.
+
+/// EGA plane 3 is the intensity bit of a sixteen-colour index, which is
+/// the whole of this seam's drawing.
+constexpr std::uint8_t intensity_plane_mask = 0x08;
+constexpr std::uint8_t all_planes = 0x0F;
+constexpr std::uint8_t all_bits = 0xFF;
+constexpr std::uint8_t all_pixels = 0xFF;
+
+/// The graphics-controller registers a plane-selected byte write needs,
+/// and the values a plain write-mode-0 copy wants. Set rather than
+/// assumed: they cannot be read back, and assuming a register you cannot
+/// read is not a check (docs/seams.md §3).
+constexpr std::uint8_t gc_enable_set_reset_index = 1;
+constexpr std::uint8_t gc_data_rotate_index = 3;
+constexpr std::uint8_t gc_write_mode_index = 5;
+constexpr std::uint8_t gc_bit_mask_index = 8;
+constexpr std::uint8_t sequencer_map_mask_index = 2;
+
+/// Bytes per scanline of one plane in the 320-pixel graphics mode the
+/// program runs in, and the window it displays through.
+constexpr std::uint16_t plane_bytes_per_row = 40;
+constexpr std::uint16_t video_window_segment = 0xA000;
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
+
+/// The data segment, derived from where the loader put the image and
+/// checked against what the program is holding. Zero means "not it", and
+/// every handler declines on that.
+[[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
+                                         const seam_context& ctx) noexcept {
+  const auto wanted = static_cast<std::uint16_t>((ctx.image_base() / 16U) +
+                                                 (dgroup_offset / 16U));
+  const std::uint16_t held = cpu.regs()[cpu::sreg::ds];
+  return held == wanted ? held : static_cast<std::uint16_t>(0);
+}
+
+[[nodiscard]] std::uint16_t at(std::uint16_t base, std::uint16_t by) noexcept {
+  return static_cast<std::uint16_t>(base + by);
+}
+
+void write_register(machine& box, std::uint16_t index_port,
+                    std::uint16_t data_port, std::uint8_t index,
+                    std::uint8_t value) {
+  box.write_port8(index_port, index);
+  box.write_port8(data_port, value);
+}
+
+// ---------------------------------------------------------------------------
+// The drawing
+// ---------------------------------------------------------------------------
+
+/// One cell of the window, lifted a shade: 24 scanlines of three whole
+/// bytes, written into the plane the sequencer's map mask has already
+/// selected.
+///
+/// No read-back, because none is needed: the byte written is `0xFF` and
+/// the mask is one plane, so the effect on every pixel of the cell is
+/// exactly "set the intensity bit" whatever was there. That is also why
+/// the rect's byte alignment matters — a cell begins at x = 8 + 24j,
+/// which is byte column 1 + 3j, and is three whole bytes across
+/// (`automap.h`).
+void lift_cell(machine& box, unsigned column, unsigned row) {
+  cpu::processor& cpu = box.processor();
+  constexpr unsigned bytes_across = explored_cell_pixels / 8;
+  const unsigned first_byte = (explored_window_x / 8) + (column * bytes_across);
+  const unsigned first_line = explored_window_y + (row * explored_cell_pixels);
+  for (unsigned line = 0; line < explored_cell_pixels; ++line) {
+    const auto base = static_cast<std::uint16_t>(
+        ((first_line + line) * plane_bytes_per_row) + first_byte);
+    for (unsigned byte = 0; byte < bytes_across; ++byte) {
+      cpu.write_byte(video_window_segment,
+                     at(base, static_cast<std::uint16_t>(byte)), all_pixels);
+    }
+  }
+}
+
+/// Which of the twenty-five cells of the window are lifted, as a bitmap
+/// of `row * 5 + column`. Pure, so a test can check it against a store it
+/// laid out itself.
+///
+/// A cell is lifted when it is on this area's own sixteen columns, the
+/// party has walked it, and it is not the cell the party is standing on.
+/// Columns outside the area's band belong to a neighbouring wilderness
+/// area — the three of them are bands of one table and the window may
+/// overhang — and this seam has no record for them and never marks one.
+/// The map's own bounds, as the signed type the arithmetic above is in.
+/// Named rather than cast at the comparison, which is what
+/// `modernize-use-integer-sign-comparison` actually wants.
+constexpr int overland_rows = static_cast<int>(automap_overland_rows);
+constexpr int overland_columns = static_cast<int>(automap_overland_columns);
+constexpr int window_cells = static_cast<int>(explored_window_cells);
+
+[[nodiscard]] std::uint32_t cells_to_lift(const automap_record& map, int bias,
+                                          int party_x, int party_y) noexcept {
+  const explored_window origin =
+      explored_window_top_left(bias, party_x, party_y);
+  std::uint32_t lifted = 0;
+  for (int row = 0; row < window_cells; ++row) {
+    const int map_row = origin.row + row;
+    if (map_row < 0 || map_row >= overland_rows) {
+      continue;
+    }
+    for (int column = 0; column < window_cells; ++column) {
+      const int map_col = origin.col + column - bias;
+      if (map_col < 0 || map_col >= overland_columns) {
+        continue;
+      }
+      if (map_col == party_x && map_row == party_y) {
+        continue;
+      }
+      if (!automap_state::seen(map, static_cast<unsigned>(map_col),
+                               static_cast<unsigned>(map_row))) {
+        continue;
+      }
+      lifted |= 1U << static_cast<unsigned>((row * window_cells) + column);
+    }
+  }
+  return lifted;
+}
+
+// ---------------------------------------------------------------------------
+// The handlers
+// ---------------------------------------------------------------------------
+
+/// The program has just put the screen up. If it is the overworld and the
+/// party has walked any of the cells on it, they go up a shade.
+void at_present_return(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  // The cheapest byte first. This routine is the program's one present
+  // and is reached from every screen it draws, so the common case by an
+  // enormous margin is one read and a return.
+  if (cpu.read_byte(ds, data_game_mode) != mode_overland) {
+    return;
+  }
+  const std::uint8_t view_kind = cpu.read_byte(ds, data_view_kind);
+  if (view_kind < view_kind_first_overland ||
+      view_kind > view_kind_last_overland) {
+    return;
+  }
+
+  const automap_state& state = box.automap();
+  if (!state.at_command_bar()) {
+    // Somebody other than the adventuring screen is asking the player
+    // something — a script's menu, an encounter's prompt — and whatever
+    // it has drawn in the viewport is not this seam's to paint over.
+    return;
+  }
+  if (!state.settled() || state.settled_kind() != automap_map_kind::overland) {
+    return;
+  }
+
+  // The rest of the guard is the recorder's, and it is the same guard,
+  // so it is asked rather than repeated: the transition byte, the area
+  // record's far pointer and its bounds, the word that says these areas
+  // are being drawn in the interior view, and the position's range.
+  const overland_look look = observe_overland(box, ctx, ds);
+  if (!look.on_screen || !look.settled) {
+    return;
+  }
+
+  const int bias = cpu.read_byte(ds, at(data_view_column_bias, view_kind));
+  if (bias > max_column_bias) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  const automap_record* map = state.find_overland(look.disk, look.area);
+  if (map == nullptr) {
+    return;
+  }
+  const std::uint32_t lifted = cells_to_lift(*map, bias, look.x, look.y);
+  if (lifted == 0) {
+    // Nothing walked but the square under the party's feet, which is the
+    // state a player arrives in. **Not a port is written**, which is what
+    // makes the stronger of this seam's two fidelity claims a test rather
+    // than an argument.
+    return;
+  }
+
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_enable_set_reset_index, 0);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_data_rotate_index, 0);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_write_mode_index, 0);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_bit_mask_index, all_bits);
+  write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
+                 sequencer_map_mask_index, intensity_plane_mask);
+
+  for (unsigned row = 0; row < explored_window_cells; ++row) {
+    for (unsigned column = 0; column < explored_window_cells; ++column) {
+      if ((lifted & (1U << ((row * explored_window_cells) + column))) != 0) {
+        lift_cell(box, column, row);
+      }
+    }
+  }
+
+  // Handed back in the state the program's own drawing primitives leave,
+  // which is the state this found them in (docs/seams.md §3).
+  write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
+                 sequencer_map_mask_index, all_planes);
+}
+
+/// The program is asking whether a key is waiting, which is where it is
+/// between commands — and therefore where the trail is recorded. This
+/// seam claims no key and takes nothing.
+void at_key_pending(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  (void)observe_overland(box, ctx, ds);
+}
+
+/// The program is putting a command bar up, and which bar it is says
+/// whose screen this is. The same point, the same reading and the same
+/// note as the automap's (M5-E2d): either seam alone keeps it current,
+/// and both together write it twice with the same answer.
+void at_command_bar(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  const std::uint16_t ds = data_segment(cpu, ctx);
+  if (ds == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  note_command_bar(box, ds);
+}
+
+// ---------------------------------------------------------------------------
+// The definition
+// ---------------------------------------------------------------------------
+
+constexpr std::array<seam_point, 3> explored_points{
+    {{.module = resident_image,
+      .offset = present_return,
+      .run = &at_present_return},
+     {.module = resident_image,
+      .offset = key_pending_entry,
+      .run = &at_key_pending},
+     {.module = resident_image,
+      .offset = command_bar_entry,
+      .run = &at_command_bar}}};
+
+constexpr seam_definition explored_definition{
+    .id = "explored",
+    .about =
+        "the squares the party has walked, a shade brighter, on the "
+        "overworld map",
+    .fingerprints = explored_binaries,
+    .points = explored_points,
+    .trigger = false,
+    .gate = document_kind::none,
+    .schema = seam_schema_version};
+
+}  // namespace
+
+const seam_definition& explored_seam() noexcept { return explored_definition; }
+
+}  // namespace amberfolio::machine

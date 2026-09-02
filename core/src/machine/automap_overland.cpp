@@ -9,6 +9,7 @@
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/processor.h"
+#include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
@@ -51,6 +52,20 @@ constexpr std::uint16_t record_shown_in_3d = 0x1CC;
 /// How far into the record this reads, which is what the bounds check
 /// below is about.
 constexpr std::uint16_t record_reach = record_shown_in_3d + 2;
+
+/// **The adventuring screen's own two command bars** (M5-E2d), as offsets
+/// in the data segment: one for the overhead view and one for the 3D
+/// view. Both are strings the program keeps; every other bar in the game
+/// is a copy built on the stack.
+constexpr std::uint16_t data_menu_area_view = 0x04B6;
+constexpr std::uint16_t data_menu_3d_view = 0x04DF;
+
+/// Where the bar is in the input routine's frame. It takes eleven words
+/// and cleans twenty-two bytes; its callers push them deepest-first, so
+/// at the thunk's entry — the far return address on top and nothing else
+/// — the menu's far pointer is the fourth argument from the far end.
+constexpr std::uint16_t bar_frame_menu_offset = 18;
+constexpr std::uint16_t bar_frame_menu_segment = 20;
 
 [[nodiscard]] std::uint16_t at(std::uint16_t base, std::uint16_t by) noexcept {
   return static_cast<std::uint16_t>(base + by);
@@ -141,6 +156,19 @@ overland_look observe_overland(machine& box, seam_context& ctx,
     (void)ctx.call_host(seam_host_service::automap_update, state.serial());
   }
   return found;
+}
+
+void note_command_bar(machine& box, std::uint16_t ds) {
+  cpu::processor& cpu = box.processor();
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t sp = regs[cpu::reg16::sp];
+  const std::uint16_t segment =
+      cpu.read_word(ss, at(sp, bar_frame_menu_segment));
+  const std::uint16_t offset = cpu.read_word(ss, at(sp, bar_frame_menu_offset));
+  box.automap().set_at_command_bar(
+      segment == ds &&
+      (offset == data_menu_area_view || offset == data_menu_3d_view));
 }
 
 }  // namespace amberfolio::machine

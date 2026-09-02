@@ -182,6 +182,53 @@ inline constexpr std::uint8_t automap_panel_bottom_row = 0x0E;
 inline constexpr std::uint8_t automap_panel_left_col = 0x11;
 inline constexpr std::uint8_t automap_panel_right_col = 0x26;
 
+// ---------------------------------------------------------------------------
+// The overworld screen's geometry (the explored overlay, #179)
+// ---------------------------------------------------------------------------
+//
+// The other screen these records are drawn on, and the other seam that
+// reads them (`seam_explored.cpp`). It is here for the reason the panel's
+// rect above is: it is arithmetic about the program's screen that a test
+// has to be able to check without a machine, and it belongs beside the
+// records it addresses.
+//
+// **Measured, not derived** (`docs/explored-overlay.md` §3). The program
+// composes a five-by-five window of overhead tiles into its back buffer
+// and presents it; on the screen that window is 120 by 120 pixels at
+// (8, 8), so a cell is 24 by 24. Three routes agreed: the pixels on a
+// real dumped frame, the pixels one move repaints, and the composition
+// arithmetic — three units a cell, a unit one byte column across and
+// eight scanlines down, with the present adding one of each.
+//
+// **Every cell begins on a byte boundary and is three whole bytes wide**,
+// which is what lets a marking be written into the planes without
+// shifting anything and without reading anything back.
+
+inline constexpr unsigned explored_window_cells = 5;
+inline constexpr unsigned explored_window_x = 8;
+inline constexpr unsigned explored_window_y = 8;
+inline constexpr unsigned explored_cell_pixels = 24;
+
+/// The top-left cell of the window, in the program's own terms: a column
+/// of the 44-column overland terrain table and a row of the map.
+struct explored_window {
+  int col{};
+  int row{};
+};
+
+/// Where the window's top-left cell is, exactly as the program's own
+/// per-mode composer computes it: `bias + column - 2` clamped to
+/// [0, 0x27] across, and `row - 2` clamped to [0, 0x1F] down. The bias is
+/// the byte the program keeps per view kind, which puts each of the three
+/// wilderness areas in its own sixteen-column band of the one table; a
+/// seam reads it out of the program rather than carrying it.
+///
+/// A pure function, with the clamps that decide where the party's own
+/// icon sits in the window — the middle cell in open country, and the
+/// second or the fourth against an edge.
+[[nodiscard]] explored_window explored_window_top_left(int bias, int column,
+                                                       int row) noexcept;
+
 /// What a marked cell is. Values are part of the persisted layout, so
 /// they are spelled rather than left to the enumeration's order.
 enum class automap_marker : std::uint8_t {
