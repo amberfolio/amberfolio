@@ -220,6 +220,13 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
                         store out of its own localStorage, put there by
                         the page's file input (M5-E3f); this is how a
                         script with neither gets one.
+  --replay PATH         be the run a recording describes, and check it.
+                        The recording decides the seams and the speed, so
+                        --seam is refused beside it; a document or a
+                        journal store the recording needs is still this
+                        side's to hand over, because neither is in the
+                        stream. Nothing else runs: the answer is the
+                        verdict.
   --seams               list every seam this build carries, and exit
   --vfs-list            list every file on the disk after the run, at its
                         own path — what the run left behind, including
@@ -250,6 +257,7 @@ export function parseArgs(argv) {
     seams: [],
     documents: [],
     journalStore: null,
+    replay: null,
     listSeams: false,
     listVfs: false,
     speed: null,
@@ -334,6 +342,8 @@ export function parseArgs(argv) {
       opts.documents.push(next());
     } else if (arg === '--journal-store' && i + 1 < argv.length) {
       opts.journalStore = next();
+    } else if (arg === '--replay' && i + 1 < argv.length) {
+      opts.replay = argv[++i];
     } else if (arg === '--seams') {
       opts.listSeams = true;
     } else if (arg === '--speed' && i + 1 < argv.length) {
@@ -364,6 +374,16 @@ export function parseArgs(argv) {
   }
   if (opts.dumpEvery !== 0 && opts.dumpPrefix === null) {
     return { error: '--dump-every needs --dump, whose prefix it shares' };
+  }
+  // The recording decides the seams and the speed (docs/replay.md), the
+  // same rule the SDL host states, and for the same reason: a replay is
+  // the run the recording names, so a flag that would make it a different
+  // run is refused rather than quietly ignored.
+  if (opts.replay !== null && opts.seams.length !== 0) {
+    return { error: 'the recording decides the seams; --seam cannot be given with --replay' };
+  }
+  if (opts.replay !== null && opts.speed !== null) {
+    return { error: 'the recording decides the speed; --speed cannot be given with --replay' };
   }
   opts.dir = positional[0];
   opts.program = positional[1];
@@ -642,6 +662,37 @@ export async function drive(opts) {
       machine.destroy();
       return 1;
     }
+  }
+
+  // --- Replay: the recording is the run, and the verdict is the output --
+  //
+  // Why here, after the disk, the program, the documents and the store
+  // and before anything else: `verify_recording` applies the recording's
+  // own speed and seams itself (core's `replay.cpp`), so a seam gated on
+  // a document needs that document presented *first* or it will not arm
+  // and the check refuses by name. Everything above this line is what a
+  // person hands over; everything the recording says is the recording's.
+  //
+  // This is the wasm half of `docs/replay.md`'s claim. A desktop
+  // recording verified here has been reproduced by a second compilation
+  // of the core, a second SHA-256, and a second toolchain — which is the
+  // whole reason the harness exists.
+  if (opts.replay !== null) {
+    let text = null;
+    try {
+      text = readFileSync(opts.replay, 'latin1');
+    } catch (why) {
+      say(`amberfolio: the recording ${opts.replay} could not be read: ${why.message}`);
+      machine.destroy();
+      return 1;
+    }
+    const verdict = machine.verifyRecording(text);
+    say(verdict.report.trimEnd());
+    reportSeams(machine);
+    reportSeamsFired(machine);
+    reportHostServices(machine);
+    machine.destroy();
+    return verdict.ok ? 0 : 1;
   }
 
   if (opts.listSeams) {
