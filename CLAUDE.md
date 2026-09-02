@@ -11,18 +11,25 @@ Radiance. **PLAN.md is the plan of record** — scope, architecture,
 milestones, and settled decisions live there; don't re-litigate them
 here or in PRs.
 
-**Status: M4 complete, tagged `v0.2.0`. M5 — player enhancements — is
-the current milestone.**
-The game plays. A player-supplied copy runs its own unpacker and overlay
-manager, renders its title sequence, answers its menus, makes a party,
-walks the city, plays its opening story event, fights an encounter to a
-finish with and without the debug cheats seam, saves, loads, buys, heals,
-sells, and walks off the edge of a map — on the desktop host and in a
-browser, from the same core. That is PLAN.md §7's M4 exit criterion, met.
+**Status: M5 complete, tagged `v0.3.0`. M6 — onboarding, shells and
+gamepad — is the current milestone, and #265 is the worklist it starts
+from.**
+The game plays, and it plays *enhanced*. All six of PLAN.md §5's v1
+enhancements work and toggle independently on both hosts — the code-wheel
+bypass, the Encamp Fix, the automap, the journal, the explored overlay's
+fog of war and the debug cheats — which is §7's M5 exit criterion, met.
+Under that, M4's still holds: a player-supplied copy runs its own
+unpacker and overlay manager, renders its title sequence, answers its
+menus, makes a party, walks the city, plays its opening story event,
+fights an encounter to a finish with and without the debug cheats seam,
+saves, loads, buys, heals, sells, and walks off the edge of a map — on
+the desktop host and in a browser, from the same core.
 `docs/playable.md` is the procedure, leg by leg, with the keystrokes that
 drive it and what each leg is evidence for; its last section is what it
 has *not* covered, and the gaps there that are decisions rather than
-debts say so. `docs/first-light.md` is the M3 sibling, the boot alone.
+debts say so. `docs/enhancements.md` is the enhancements as a player
+meets them, each with its own honest "not yet". `docs/first-light.md` is
+the M3 sibling, the boot alone.
 **No test in this repository runs the game, and none ever will.**
 
 The 8086 interpreter underneath is still exact — all 323 vector files of
@@ -30,7 +37,7 @@ the pinned SingleStepTests/8088 v2 set pass in CI on every push,
 undefined flag behaviour included — and stayed exact through every
 device, service and seam that grew around it.
 
-What M4 left in place:
+What M5 left in place:
 
 - **The seam engine** (`machine/seam.h`, `docs/seams.md`), which is
   PLAN.md §5's mechanism and the only way anything but the program may
@@ -43,8 +50,14 @@ What M4 left in place:
   run's state hash equals the same run's on a build with no engine at
   all, a disabled seam's breakpoint is never consulted, and seam state —
   an outstanding pull included — is configuration and not machine state.
-  M5's five enhancements add no mechanism; they add handlers, and four of
-the five are in.
+  It landed in M4 as a mechanism and M5 added no more of one: **all five
+  of M5's enhancements are handlers over primitives that already
+  existed**, which is the claim #165 audited before the first of them was
+  written and the claim the finished five keep. What M5 did add to the
+  engine is the door #165 said it owed — a host that implements
+  `seam_host_services::serve`, on both hosts and across the ABI — plus
+  the two things a person needs on the far side of one: a document gate
+  (M5-D3, #171) and the call into the program above.
 - **Eight seams this build carries**: `code-wheel` (**gated on the wheel
   itself** since #115: with no document presented the seam is inert and
   says `document_not_presented`, so the challenge is answered for a
@@ -242,6 +255,32 @@ the five are in.
   that answers only for the scan the extraction was supposed to produce. The in-game reader that
   consumes it is M5-E4 (#175), above, and is a seam rather than host
   work; `docs/journal.md` §9 is the door between the two halves.
+- **The doors the site asked for, and one ABI bump for both** (#228,
+  #229). `af_machine_vfs_generation()` is a monotonic counter a page can
+  ask once a frame instead of walking `\\SAVE\\` on a timer;
+  `af_web_journal_store_changed()` / `_clear_changed()` plus five
+  `Machine` methods put the journal store on the façade it was the only
+  exception to. Adding entry points and changing nothing that was there
+  is `AF_ABI_VERSION_MINOR` by #211's own rule, so **the ABI is 1.1** and
+  `v0.3.0`'s manifest says so. What was asked for and stays declined is
+  in PLAN.md §5 with its reasoning: a machine-state export/import (#209)
+  and a host-supplied VFS adapter (#206). The release bundle is **seven
+  files, not six** — `journal.mjs` joined it in the same change, and was
+  owed from #174, because `app.mjs` had imported it by name for a
+  milestone and the bundler never staged it.
+- **The matrix, and CI running the half of it that needs no disk.** Each
+  of the six enhancements has a session where its seam is **on and
+  exercised** and one where it is **on and never triggered**; the first
+  is a `contrast` against the same script without the seam and the second
+  an `identical` against `quiet`. Both relations are checked on the
+  *recordings*, so `scripts/sweep.py --targets contrast` runs in the
+  `guards` job on every push (#277) — 24 sessions, 10 checks, 0 failures,
+  no disk anywhere. `tests/sessions/README.md`'s "The matrix, by seam" is
+  the whole of it in one table. 21 of the 23 game sessions were also
+  replayed on the wasm module and diffed against the desktop host's seam
+  and host-service lines, call for call and tick for tick; the two that
+  were not are refused by name before a step is taken, over a `\\SAVE\\`
+  a browser cannot carry because it is empty.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
   canonical machine-state serialization, a recording that is keys, ticks
   and hashes and no content at all, and verification on all four targets
@@ -249,9 +288,9 @@ the five are in.
   on the wasm module — 101 checkpoints of a 139-million-step run, every
   hash equal. Before it the cross-target claim rested on four frames of
   `JMP $` (#142).
-- **The session library** (`tests/sessions/`, `scripts/sweep.py`).
-  Twenty-four sessions; one has its disk committed and the rest pin a
-  disk that cannot be
+- **The session library** (`tests/sessions/`, `scripts/sweep.py`), seven
+  sessions at M4's close and twenty-four now. One has its disk committed
+  and the rest pin a disk that cannot be
   (PLAN.md §6), so the runner is told where a copy is and **skips loudly**
   when it is not. A sweep that verified nothing must never read as a
   sweep that passed.
@@ -270,13 +309,32 @@ the five are in.
   filter's DC offset and its agreement across the two hosts' sample rates
   are numbers in the unit suite (`docs/hosts.md` §4).
 
-What M4 did **not** settle, and is honest about: the dungeon and two city
-services were closed as decisions rather than debts (#144, #145); nobody
-has opened a browser on the dev page (#147); the game's own tones have
-been heard but not measured, and a resync has never been produced on
-purpose (#148). `docs/playable.md`'s last section and `docs/hosts.md` §3
-and §4 carry those lists, above a sentence saying whether anyone is
-coming.
+What M5 did **not** settle, and is honest about. Every line has an issue,
+because a milestone closed on a list nobody wrote down is a milestone
+whose gaps get rediscovered. **#274** is the person's list — an entry
+read on a display, the fog walked rather than looked at in a still, a
+rest heard, and any of it in a browser — and it is the successor to #147
+and #148, which had nothing else left in them. **#267** is the fog over
+ground that is already grey and the two wilderness areas nobody has stood
+on; **#268** the automap's door rule, driven only through its fallback;
+**#269** a party hurt by combat rather than by a debug seam; **#236** the
+journal's browser sitting and its installed engine; **#270** to **#273**
+the narrower ones. **#275** is the standing inventory of what this
+machine deliberately refuses, successor to #166 — and its finding is that
+the DOS/BIOS surface is byte-identical to `v0.2.0` but for the two
+file-close traffic flags M5-E2c needed. **#134** waits on GitHub Support
+and nothing in this tree moves it. `docs/playable.md`'s last section,
+`docs/enhancements.md` and `docs/hosts.md` §3 and §4 carry those lists,
+above a sentence saying whether anyone is coming.
+
+What M4 did **not** settle stays where it was: the dungeon and two city
+services were closed as decisions rather than debts (#144, #145), and
+nobody is coming for either.
+
+The last four bullets above are **M4's** rather than M5's — the replay
+harness, the session library, the instruments and the speaker are what
+`v0.2.0` left in place, along with the seam engine at the top of the
+list, and M5 grew each of them rather than replacing any.
 
 What M3 left in place:
 
