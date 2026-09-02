@@ -130,7 +130,8 @@ vfs_result<file_handle> directory_filesystem::open(const dos_path& path,
   return {.error = vfs_error::too_many_open_files};
 }
 
-vfs_result<file_handle> directory_filesystem::create(const dos_path& path) {
+vfs_result<file_handle> directory_filesystem::create_file(
+    const dos_path& path) {
   const std::filesystem::path where = host_path(path);
   if (path.depth() == 0) {
     return {.error = vfs_error::access_denied};
@@ -188,7 +189,7 @@ vfs_result<std::size_t> directory_filesystem::read(
   return {.value = got};
 }
 
-vfs_result<std::size_t> directory_filesystem::write(
+vfs_result<std::size_t> directory_filesystem::write_file(
     file_handle handle, std::span<const std::uint8_t> in) {
   open_file* file = find(handle);
   if (file == nullptr) {
@@ -247,7 +248,7 @@ vfs_result<std::uint32_t> directory_filesystem::seek(file_handle handle,
   return {.value = static_cast<std::uint32_t>(clamped)};
 }
 
-vfs_error directory_filesystem::truncate(file_handle handle) {
+vfs_error directory_filesystem::truncate_file(file_handle handle) {
   open_file* file = find(handle);
   if (file == nullptr) {
     return vfs_error::invalid_handle;
@@ -292,7 +293,7 @@ vfs_error directory_filesystem::close(file_handle handle) {
   return vfs_error::none;
 }
 
-vfs_error directory_filesystem::unlink(const dos_path& path) {
+vfs_error directory_filesystem::unlink_file(const dos_path& path) {
   if (path.depth() == 0) {
     return vfs_error::access_denied;
   }
@@ -320,7 +321,7 @@ vfs_error directory_filesystem::unlink(const dos_path& path) {
   return from_host(ec);
 }
 
-vfs_error directory_filesystem::mkdir(const dos_path& path) {
+vfs_error directory_filesystem::make_directory(const dos_path& path) {
   if (path.depth() == 0) {
     return vfs_error::access_denied;
   }

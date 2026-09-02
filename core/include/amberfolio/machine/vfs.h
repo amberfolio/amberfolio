@@ -516,6 +516,37 @@ struct directory_entry {
 /// operations (`exists`, `stat`, `entry_count`, `entry_at`) are, because
 /// they are pure accessors and calling one for its side effect (there is
 /// none) would always be a mistake.
+///
+///
+/// The generation counter, and why five operations are not virtual
+/// -----------------------------------------------------------------
+///
+/// `generation()` (M5-C1, #228) is a monotonic count of the times what
+/// this filesystem *holds* has changed — the number a host keeps a copy
+/// of and compares, so that "did the disk move since the last frame" is
+/// one integer rather than a walk of the tree. It is the same pattern
+/// `display::generation()` already has one layer over (platform.h), and
+/// it carries the same rule: the number is meaningless in absolute
+/// terms, and a caller compares it against the last one it saw.
+///
+/// The five operations that can change what a host would persist —
+/// `create`, `write`, `truncate`, `unlink`, `mkdir` — are therefore
+/// **non-virtual wrappers** here around protected virtuals a backend
+/// implements, and the wrapper is what moves the counter. The
+/// alternative, a protected `note_change()` every backend calls for
+/// itself, is a rule that can be forgotten: a backend that missed one
+/// call would answer "nothing changed" about a file it had just written,
+/// and nothing in a test that only exercises the interface could tell.
+/// This way a new backend cannot forget, because it is never given the
+/// chance.
+///
+/// Everything else stays a plain public virtual, and the line is exactly
+/// "does it change what a host would persist". `open` does not — DOS
+/// 3Dh neither creates nor truncates. `read`, `seek` and `close` do not;
+/// they move a handle's position or release it, which is state of the
+/// open file and not of the disk. A backend that does its own
+/// bookkeeping outside the five (`memory_filesystem::clear()` is the one
+/// in this tree) calls `note_change()` itself.
 class filesystem {
  public:
   filesystem() = default;
@@ -523,6 +554,47 @@ class filesystem {
   filesystem(filesystem&&) = delete;
   filesystem& operator=(const filesystem&) = delete;
   filesystem& operator=(filesystem&&) = delete;
+
+  /// How many times what this filesystem holds has changed.
+  ///
+  /// **What moves it**: a `create` that made or truncated a file, a
+  /// `write` that landed at least one byte, a `truncate` that succeeded,
+  /// an `unlink` that removed a file, a `mkdir` that made a directory —
+  /// and whatever a backend's own `note_change()` calls are about
+  /// (`memory_filesystem::clear()`).
+  ///
+  /// **What does not**: `open`, `read`, `seek`, `close`, `exists`,
+  /// `stat`, `entry_count`, `entry_at`. A close moves nothing because
+  /// there is nothing left to commit — no backend here buffers, so the
+  /// bytes landed at the `write` that moved it, and a close with nothing
+  /// written has nothing to say. An operation that *failed* moves
+  /// nothing either, with one honest exception: a `write` that ran out of
+  /// room after landing some of its bytes is a success with a short count
+  /// (see `write` below), and those bytes are a change.
+  ///
+  /// Enumeration is the case this is careful about. The game's own load
+  /// menu walks `\SAVE\` every time it is opened, and a counter that
+  /// moved when a directory was listed would be a counter a host's write
+  /// loop could not use at all — `automap_store` already has to defend
+  /// against exactly that traffic.
+  ///
+  /// **Monotonic, and it starts at zero on a fresh object.** There is no
+  /// RESET line for a filesystem: `machine::reset()` does not touch one,
+  /// because PLAN.md §4 makes VFS contents part of a run's *initial*
+  /// conditions rather than machine state. `memory_filesystem::clear()`
+  /// empties one, and moves this *forward* — a host that saw the counter
+  /// go back would read an emptied disk as an unchanged one.
+  ///
+  /// **It counts operations, not changes.** One host-level call can move
+  /// it more than once (a put is a create and a write), and it can move
+  /// for a change that was then undone (a put that ran out of room
+  /// creates the file and takes it away again, and both moved it). The
+  /// question it answers is "is what I last read still current", never
+  /// "how many things changed" — this is a counter, not a change journal
+  /// (#228 says so at length, and says why the walk is the caller's).
+  [[nodiscard]] std::uint64_t generation() const noexcept {
+    return generation_;
+  }
 
   /// Open an existing file. `vfs_error::access_denied` if `path` names a
   /// directory or is the root — this interface has no directory handles,
@@ -535,7 +607,18 @@ class filesystem {
   /// because the name is taken), opened `read_write` either way.
   /// `vfs_error::access_denied` if `path` names an existing directory or
   /// is the root.
-  virtual vfs_result<file_handle> create(const dos_path& path) = 0;
+  ///
+  /// Moves `generation()` when it succeeded — including for a file that
+  /// was already there and already empty, because DOS 3Ch is a write
+  /// whatever it found and this layer does not go looking for whether it
+  /// happened to be a no-op.
+  vfs_result<file_handle> create(const dos_path& path) {
+    const vfs_result<file_handle> made = create_file(path);
+    if (made.ok()) {
+      note_change();
+    }
+    return made;
+  }
 
   /// Read up to `out.size()` bytes at the handle's current position,
   /// advancing it by however many were actually read. Zero at end of
@@ -550,8 +633,18 @@ class filesystem {
   /// same "ran out of room, said so honestly in the count" answer real
   /// DOS gives for a full disk; a backend's capacity is not a program's
   /// concern.
-  virtual vfs_result<std::size_t> write(file_handle handle,
-                                        std::span<const std::uint8_t> in) = 0;
+  ///
+  /// Moves `generation()` when at least one byte landed. A write of
+  /// nothing — an empty `in`, or a short write that got zero bytes in —
+  /// changed nothing on the disk and says so.
+  vfs_result<std::size_t> write(file_handle handle,
+                                std::span<const std::uint8_t> in) {
+    const vfs_result<std::size_t> wrote = write_file(handle, in);
+    if (wrote.ok() && wrote.value != 0) {
+      note_change();
+    }
+    return wrote;
+  }
 
   /// Move the handle's position. The new position is always clamped to
   /// zero at the low end (DOS's own behaviour here is not consistent
@@ -573,21 +666,53 @@ class filesystem {
   /// `handle` is not open, `vfs_error::access_denied` for a handle opened
   /// `read_only` — the same guard `write()` has, because DOS counts this
   /// as a write.
-  virtual vfs_error truncate(file_handle handle) = 0;
+  ///
+  /// Moves `generation()` when it succeeded, a truncation to the length
+  /// the file already had included: DOS counts it as a write, and so
+  /// does this.
+  vfs_error truncate(file_handle handle) {
+    const vfs_error trouble = truncate_file(handle);
+    if (trouble == vfs_error::none) {
+      note_change();
+    }
+    return trouble;
+  }
 
   /// Release the handle. `vfs_error::invalid_handle` if it was not open.
+  ///
+  /// Moves nothing: no backend built to this interface buffers a write,
+  /// so a close has nothing left to commit — `generation()` says why.
   virtual vfs_error close(file_handle handle) = 0;
 
   /// Delete a file. `vfs_error::access_denied` for a directory, the root,
   /// or a file with a handle still open on it — this interface has no
   /// "delete on last close"; a caller closes first.
-  virtual vfs_error unlink(const dos_path& path) = 0;
+  ///
+  /// Moves `generation()` when the file is gone.
+  vfs_error unlink(const dos_path& path) {
+    const vfs_error trouble = unlink_file(path);
+    if (trouble == vfs_error::none) {
+      note_change();
+    }
+    return trouble;
+  }
 
   /// Create a directory. `vfs_error::access_denied` if `path` already
   /// names anything, `vfs_error::path_not_found` if its parent does not
   /// exist, `vfs_error::directory_full` if the backend has no room for
   /// another entry.
-  virtual vfs_error mkdir(const dos_path& path) = 0;
+  ///
+  /// Moves `generation()` when the directory is there. A host persisting
+  /// a disk cares: a directory is not a file and a tree walk cannot see
+  /// an empty one (`tree_file` below), so the counter is the only thing
+  /// that says one appeared.
+  vfs_error mkdir(const dos_path& path) {
+    const vfs_error trouble = make_directory(path);
+    if (trouble == vfs_error::none) {
+      note_change();
+    }
+    return trouble;
+  }
 
   /// Whether anything answers to `path` — a file, a directory, or the
   /// root. No error channel: a malformed or absent path both simply do
@@ -617,9 +742,30 @@ class filesystem {
       const dos_path& dir, std::size_t index) const = 0;
 
  protected:
+  // The five a backend implements instead. Same contracts as the public
+  // wrappers above, which are where they are documented; the wrapper is
+  // what moves `generation()`, and that is the whole reason for the
+  // split (see this class's own comment).
+  virtual vfs_result<file_handle> create_file(const dos_path& path) = 0;
+  virtual vfs_result<std::size_t> write_file(
+      file_handle handle, std::span<const std::uint8_t> in) = 0;
+  virtual vfs_error truncate_file(file_handle handle) = 0;
+  virtual vfs_error unlink_file(const dos_path& path) = 0;
+  virtual vfs_error make_directory(const dos_path& path) = 0;
+
+  /// Move `generation()` for a change made by some route of this
+  /// backend's own, outside the five above. `memory_filesystem::clear()`
+  /// is the one such route in this tree — a host affordance rather than
+  /// anything a DOS program can ask for, which is why it is not on this
+  /// interface and cannot be wrapped here.
+  void note_change() noexcept { ++generation_; }
+
   // See device.h / diagnostics.h: held by reference, never deleted
   // through this type.
   ~filesystem() = default;
+
+ private:
+  std::uint64_t generation_{};
 };
 
 // --- Reading the whole of one, from above it (M5-D2, #170) --------------

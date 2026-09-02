@@ -173,6 +173,11 @@ class memory_filesystem final : public filesystem {
   /// rather than something the machine itself ever resets — but a test,
   /// or a dev page taking a second directory from the player, wants a
   /// clean slate without paying for a new 8 MiB object.
+  ///
+  /// Moves `generation()` (vfs.h): an emptied filesystem is a changed
+  /// one, and it moves *forward* like every other change — a host that
+  /// saw the counter go back to zero would read a wiped disk as one
+  /// nothing had happened to.
   void clear() noexcept;
 
   /// Bytes of the arena currently held by files. What a dev page shows a
@@ -182,24 +187,27 @@ class memory_filesystem final : public filesystem {
 
   [[nodiscard]] vfs_result<file_handle> open(const dos_path& path,
                                              open_mode mode) override;
-  [[nodiscard]] vfs_result<file_handle> create(const dos_path& path) override;
   [[nodiscard]] vfs_result<std::size_t> read(
       file_handle handle, std::span<std::uint8_t> out) override;
-  [[nodiscard]] vfs_result<std::size_t> write(
-      file_handle handle, std::span<const std::uint8_t> in) override;
   [[nodiscard]] vfs_result<std::uint32_t> seek(file_handle handle,
                                                seek_origin origin,
                                                std::int32_t offset) override;
-  vfs_error truncate(file_handle handle) override;
   vfs_error close(file_handle handle) override;
-  vfs_error unlink(const dos_path& path) override;
-  vfs_error mkdir(const dos_path& path) override;
   [[nodiscard]] bool exists(const dos_path& path) const override;
   [[nodiscard]] vfs_result<file_stat> stat(const dos_path& path) const override;
   [[nodiscard]] vfs_result<std::size_t> entry_count(
       const dos_path& dir) const override;
   [[nodiscard]] vfs_result<directory_entry> entry_at(
       const dos_path& dir, std::size_t index) const override;
+
+ protected:
+  // The five vfs.h wraps so that `generation()` cannot be forgotten.
+  vfs_result<file_handle> create_file(const dos_path& path) override;
+  vfs_result<std::size_t> write_file(file_handle handle,
+                                     std::span<const std::uint8_t> in) override;
+  vfs_error truncate_file(file_handle handle) override;
+  vfs_error unlink_file(const dos_path& path) override;
+  vfs_error make_directory(const dos_path& path) override;
 
  private:
   struct entry {
