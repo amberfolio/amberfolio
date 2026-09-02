@@ -984,7 +984,17 @@ export async function drive(opts) {
 /// act on (abi.h).
 function reportVfs(machine) {
   const listing = machine.vfsList();
-  say(`amberfolio: vfs ${listing.length} file(s)`);
+  // The generation counter beside the listing (M5-C1, #228). Absolute,
+  // and that is all it can be here: a run starts with a fresh machine, so
+  // this number is how many times the disk changed over the whole run —
+  // the put per file the disk was staged with, and then whatever the
+  // program did. A page compares successive values instead; a run has no
+  // predecessor to compare against, and printing it is what lets two
+  // hosts' runs be diffed on whether the program wrote at all.
+  say(
+    `amberfolio: vfs ${listing.length} file(s)` +
+      ` generation=${machine.vfsGeneration()}`,
+  );
   for (const entry of listing) {
     say(`amberfolio: vfs ${entry.path} ${entry.size}`);
   }

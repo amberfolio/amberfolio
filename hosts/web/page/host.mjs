@@ -17,6 +17,25 @@
 // file at build time, hence the relative import.
 
 import createModule from './amberfolio.mjs';
+// The journal store's own wrappers, delegated to rather than duplicated
+// (M5-C1, #229). `journal.mjs` stays the implementation and stays where
+// the ingestion lives; what this file adds is a door, so that a save
+// layer built on `Machine` never has to import a second file and reach
+// past the façade for the one thing that was not behind it. The
+// ingestion itself is asynchronous, engine-driven and page-shaped, and
+// has no business becoming `Machine` methods — the dev page and
+// `tools/drive.mjs` go on calling `journal.mjs` directly.
+//
+// Safe under node, where `tests/smoke.mjs` imports this file: journal.mjs
+// is DOM-free for the same reason this one is, and imports nothing
+// itself, so there is no cycle.
+import {
+  clearStoreChanged,
+  readStore,
+  serializeStore,
+  storeChanged,
+  storeStats,
+} from './journal.mjs';
 
 // --- Status codes and constants -----------------------------------------
 //
@@ -809,6 +828,30 @@ export class Machine {
     return this.module._af_machine_vfs_bytes_used(this.handle);
   }
 
+  /// How many times what the filesystem holds has changed (M5-C1, #228).
+  ///
+  /// One integer, so a write-back loop can ask every frame whether the
+  /// disk moved and walk it only when the answer differs from the last
+  /// one it saw. The same shape `frameGeneration()` has, and the same
+  /// rule: **the number means nothing on its own** — the first value read
+  /// is a baseline, not a claim, and zero is what a machine with no
+  /// filesystem answers as well as what one nothing has happened to
+  /// answers.
+  ///
+  /// Moved by a write that landed bytes, a create, a truncate, an
+  /// unlink and a mkdir, whether the program made them or this host did
+  /// through `vfsPut()` / `vfsRemove()` / `vfsClear()`. **Not** moved by
+  /// a read, an open, a close or a directory listing — the game's own
+  /// load menu walks `\\SAVE\\` every time a player opens it, and a
+  /// counter that moved for that would be one a save loop could not use.
+  ///
+  /// Not an mtime and not a diff: it says something changed, never what.
+  /// Finding out is the walk this is meant to save you from doing sixty
+  /// times a second.
+  vfsGeneration() {
+    return this.module._af_machine_vfs_generation(this.handle);
+  }
+
   /// The SHA-256 of `name` as 64 lowercase hex characters, or null if the
   /// file could not be read. The identity of a player's file (PLAN.md
   /// §2), and the same digest the desktop host prints at load.
@@ -998,6 +1041,64 @@ export class Machine {
   /// not something to do unasked.
   automapStore(on) {
     return this.module._af_web_automap_store(this.handle, on ? 1 : 0);
+  }
+
+  // --- The journal store (M5-C1, #229) ----------------------------------
+  //
+  // The store was the one thing a page needed that was not on this
+  // façade: its wrappers are module-level functions in `journal.mjs` that
+  // take the emscripten module object. That works — `machine.module` is
+  // public — but it makes a save layer import a second file and reach
+  // through the façade for the thing the façade exists to be.
+  //
+  // These five delegate. They are the *store*, not the ingestion: what
+  // comes out, what goes back in, what is in there, and whether it has
+  // moved since it was last kept.
+
+  /// The store as its file would be, ready to go in a drawer or a file.
+  /// An empty store serializes to its header, so a caller with nowhere to
+  /// put a header checks `journalStoreStats().size` first.
+  journalStoreWrite() {
+    return serializeStore(this.module);
+  }
+
+  /// A store's own bytes back in, answering a `journal_trouble` — zero
+  /// for read, and one of a dozen reasons otherwise. Strict: a file that
+  /// is not exactly the format is refused whole rather than half-read, so
+  /// a page can say "the journal kept in this browser could not be read
+  /// back" and leave the bytes where they are.
+  ///
+  /// Does **not** raise the changed flag: a store that was read in came
+  /// from the caller, which therefore already holds it.
+  journalStoreRead(text) {
+    return readStore(this.module, text);
+  }
+
+  /// `{ size, recognized, corrections, fingerprint }` — how many entries
+  /// the store holds, how many have text, how many carry a person's
+  /// correction, and the SHA-256 of the store's own bytes. The fingerprint
+  /// is the only thing about a store that may be written down anywhere
+  /// (`host/journal_store.h`).
+  journalStoreStats() {
+    return storeStats(this.module);
+  }
+
+  /// Whether the store has moved since it was last kept, as a boolean.
+  ///
+  /// The cheap answer to "should I persist this", and the reason #229
+  /// exists: the alternative is serializing the whole store to a string
+  /// and comparing it against what was last written, every frame, to
+  /// learn a fact the store had already raised.
+  journalStoreChanged() {
+    return storeChanged(this.module);
+  }
+
+  /// Say the bytes are somewhere. **Call it after the write, never
+  /// before**: the store cannot know whether a drawer accepted them, and
+  /// a flag that lowered itself on read would lose a correction made
+  /// between the read and the write.
+  journalStoreClearChanged() {
+    return clearStoreChanged(this.module);
   }
 
   /// What this machine's seams have asked of the host, per service

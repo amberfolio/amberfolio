@@ -154,6 +154,7 @@ TEST(Abi, EveryCallToleratesANullHandle) {
   EXPECT_EQ(af_machine_vfs_count(nullptr), 0u);
   EXPECT_EQ(af_machine_vfs_size_at(nullptr, 0), 0u);
   EXPECT_EQ(af_machine_vfs_bytes_used(nullptr), 0.0);
+  EXPECT_EQ(af_machine_vfs_generation(nullptr), 0.0);
 
   std::array<char, 128> text{};
   EXPECT_EQ(af_machine_vfs_name_at(nullptr, 0, text.data(),
@@ -786,6 +787,10 @@ TEST(AbiVfs, EveryCallHereNeedsAFilesystem) {
   EXPECT_EQ(af_machine_vfs_remove(bare, "X.DAT"), AF_NO_FILESYSTEM);
   EXPECT_EQ(af_machine_vfs_size(bare, "X.DAT"), 0u);
   EXPECT_EQ(af_machine_vfs_count(bare), 0u);
+  // Zero, which is also what a filesystem nothing has happened to
+  // answers — abi.h says why that is not an ambiguity a caller can be
+  // hurt by, since the first value read is a baseline and not a claim.
+  EXPECT_EQ(af_machine_vfs_generation(bare), 0.0);
   af_machine_destroy(bare);
 }
 
@@ -838,6 +843,88 @@ TEST(AbiVfs, ClearingEmptiesIt) {
   ASSERT_EQ(af_machine_vfs_clear(box.get()), AF_OK);
   EXPECT_EQ(af_machine_vfs_count(box.get()), 0u);
   EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), 0.0);
+}
+
+// --- The generation counter (M5-C1, #228) ----------------------------------
+
+TEST(AbiVfs, TheGenerationCounterMovesForEveryDoorThatChangesTheDisk) {
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+
+  // The absolute value means nothing (abi.h); every claim here is about a
+  // difference from what the caller last saw.
+  const double fresh = af_machine_vfs_generation(box.get());
+
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+  const double after_put = af_machine_vfs_generation(box.get());
+  EXPECT_GT(after_put, fresh);
+
+  ASSERT_EQ(af_machine_vfs_remove(box.get(), "SAVE/SAVE1.DAT"), AF_OK);
+  const double after_remove = af_machine_vfs_generation(box.get());
+  EXPECT_GT(after_remove, after_put);
+
+  ASSERT_EQ(af_machine_vfs_clear(box.get()), AF_OK);
+  EXPECT_GT(af_machine_vfs_generation(box.get()), after_remove);
+}
+
+TEST(AbiVfs, TheGenerationCounterDoesNotMoveForReadingOrListing) {
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+
+  const double settled = af_machine_vfs_generation(box.get());
+
+  // The load menu's traffic: count, rows, sizes, a read, a fingerprint.
+  // A counter that moved for any of it is a counter a write-back loop
+  // would walk the disk for on every frame the player spent in a menu.
+  ASSERT_EQ(af_machine_vfs_count(box.get()), 1u);
+  std::array<char, 128> text{};
+  EXPECT_NE(af_machine_vfs_path_at(box.get(), 0, text.data(),
+                                   static_cast<std::uint32_t>(text.size())),
+            0u);
+  EXPECT_EQ(af_machine_vfs_size_at(box.get(), 0), 3u);
+  EXPECT_EQ(af_machine_vfs_size(box.get(), "SAVE/SAVE1.DAT"), 3u);
+  std::array<std::uint8_t, 3> out{};
+  EXPECT_EQ(af_machine_vfs_get(box.get(), "SAVE/SAVE1.DAT", out.data(), 3),
+            AF_OK);
+  EXPECT_NE(af_machine_vfs_fingerprint(box.get(), "SAVE/SAVE1.DAT", text.data(),
+                                       static_cast<std::uint32_t>(text.size())),
+            0u);
+  EXPECT_EQ(af_machine_vfs_bytes_used(box.get()), 3.0);
+
+  EXPECT_EQ(af_machine_vfs_generation(box.get()), settled);
+}
+
+TEST(AbiVfs, TheGenerationCounterDoesNotMoveForARefusedPut) {
+  const equipped_machine box;
+  const std::array<std::uint8_t, 3> bytes{'a', 'b', 'c'};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "SAVE/SAVE1.DAT", bytes.data(), 3),
+            AF_OK);
+  const double settled = af_machine_vfs_generation(box.get());
+
+  // A path no DOS path can equal never reaches the filesystem at all.
+  EXPECT_EQ(af_machine_vfs_put(box.get(), "code wheel.pdf", bytes.data(), 3),
+            AF_INVALID);
+  EXPECT_EQ(af_machine_vfs_remove(box.get(), "NOPE.DAT"), AF_INVALID);
+  EXPECT_EQ(af_machine_vfs_generation(box.get()), settled);
+}
+
+TEST(AbiVfs, TheGenerationCounterSurvivesAReset) {
+  // There is no RESET line for a filesystem: PLAN.md §4 makes its
+  // contents a run's initial conditions, so `af_machine_reset` neither
+  // empties it nor moves the counter. A host that reset a machine and saw
+  // the counter restart would read the next write as an old number it had
+  // already seen.
+  const equipped_machine box;
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "A.DAT", nullptr, 0), AF_OK);
+  const double before = af_machine_vfs_generation(box.get());
+  EXPECT_GT(before, 0.0);
+
+  ASSERT_EQ(af_machine_reset(box.get()), AF_OK);
+  EXPECT_EQ(af_machine_vfs_generation(box.get()), before);
+  EXPECT_EQ(af_machine_vfs_count(box.get()), 1u);
 }
 
 TEST(AbiVfs, LoadsAnMzProgramOffTheFilesystem) {

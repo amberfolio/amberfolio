@@ -563,6 +563,35 @@ uint32_t af_web_journal_store_read(const char* text, uint32_t size) {
       journal().store.parse(std::string_view(text, size)));
 }
 
+/// Whether this tab's store has moved since the page last kept it, and
+/// the page saying it has now (M5-C1, #229).
+///
+/// **The flag was already there and simply had no door.** A page that
+/// wanted to know serialized the whole store to a JS string and compared
+/// it against what it last persisted — a hash over everything, every
+/// frame, to answer a boolean the store had already raised
+/// (`host/journal_store.h`). These two are that door.
+///
+/// `_changed` answers 1 or 0. Every write to the store raises it — a
+/// scan recorded, a correction, the edition or engine set, a clear, a
+/// citation logged — and `_read` alone does not, because a store read in
+/// from the drawer came from the page and the page already holds it.
+///
+/// **The lowering is the caller's, and that is the design.** A store has
+/// no idea whether `localStorage` accepted the bytes, so it cannot clear
+/// the flag on its own; and a flag that cleared itself when it was
+/// *read* would lose a correction made between the read and the write.
+/// So a page reads it, writes the store out, and calls `_clear_changed`
+/// only once the bytes are somewhere — never before.
+uint32_t af_web_journal_store_changed(void) {
+  return journal().store.changed() ? 1U : 0U;
+}
+
+uint32_t af_web_journal_store_clear_changed(void) {
+  journal().store.clear_changed();
+  return AF_OK;
+}
+
 /// The store's read log, back into the machine the reader draws from
 /// (M5-E4b, #222; STO-4, #237).
 ///

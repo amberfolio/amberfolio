@@ -307,8 +307,19 @@ uint32_t af_version(void);
 /// `manifest.json` so that decision can be made from a file that costs a
 /// fetch rather than from a module that costs an instantiation. Nothing
 /// in core reads them.
+///
+/// What has moved them, so far:
+///
+///   * **1.0** — the first declared ABI (#211), shipped with `v0.3.0`'s
+///     predecessor's surface.
+///   * **1.1** — M5-C1 (#228, #229), three added entry points and
+///     nothing changed: `af_machine_vfs_generation` here, and
+///     `af_web_journal_store_changed` / `_clear_changed` on the web
+///     host's own surface. One bump and not two, because both landed
+///     before the tag — which is the whole reason minor is a number
+///     rather than a count of pull requests.
 #define AF_ABI_VERSION_MAJOR 1u
-#define AF_ABI_VERSION_MINOR 0u
+#define AF_ABI_VERSION_MINOR 1u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -864,6 +875,52 @@ uint32_t af_machine_vfs_remove(af_machine* box, const char* path);
 
 /// Bytes the filesystem is holding, across every file.
 double af_machine_vfs_bytes_used(const af_machine* box);
+
+/// How many times what the filesystem holds has changed (M5-C1, #228).
+///
+/// **What this is for.** A host that persists what the program wrote —
+/// a browser's save write-back, running inside its own frame loop —
+/// needs to know whether the disk moved since the last frame, and needs
+/// to ask cheaply. Walking the tree sixty times a second to answer a
+/// boolean is not that. This is one number: keep the last one you saw,
+/// compare, and walk only when it differs.
+///
+/// The pattern is `af_machine_frame_generation`'s, one layer over, and
+/// the rule is the same: **the value is meaningless in absolute terms**
+/// and only differences mean anything. Zero is what a machine with no
+/// filesystem answers and also what a filesystem nothing has happened to
+/// answers, so a caller reads the first value it sees as a baseline
+/// rather than as a claim.
+///
+/// **What moves it**: a write that landed bytes, a create, a truncate,
+/// an unlink, a mkdir — from the program through INT 21h or from the
+/// host through `af_machine_vfs_put` / `_remove` / `_clear`, without
+/// distinction. That last part is deliberate: a host that hands over an
+/// installation and then reads this **sees it move**. A counter that
+/// tracked only the program's own writes would be a second, subtler
+/// answer to "did the disk change", and #209's decline is exactly about
+/// not keeping two answers to one question where they can disagree.
+///
+/// **What does not**: opening a file, reading one, seeking, closing one,
+/// asking whether one exists, and enumerating a directory. The game's
+/// own load menu walks `\SAVE\` every time a player opens it, and a
+/// counter that moved for that is a counter a write-back loop cannot
+/// use.
+///
+/// **Not an mtime and not a diff.** It says something changed, never
+/// what or when; the walk that finds out is the caller's, and one
+/// host-level call can move it more than once (a put is a create and a
+/// write). `machine/vfs.h` states the whole rule at the interface that
+/// owns it.
+///
+/// A `double` for the reason every other 64-bit count here is one — see
+/// this file's "Tick quantities are doubles".
+///
+/// Unlike the rest of this family, it answers about **the filesystem the
+/// machine actually has** rather than about the reference backend: the
+/// counter is on `machine::filesystem` itself, so there is nothing to
+/// reach past. On the wasm host those are the same object.
+double af_machine_vfs_generation(const af_machine* box);
 
 /// The SHA-256 of `name`, as 64 lowercase hex characters written into
 /// `out` and NUL-terminated; answers the length, or zero if the file

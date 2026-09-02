@@ -1023,6 +1023,22 @@ double af_machine_vfs_bytes_used(const af_machine* handle) {
   return fs == nullptr ? 0.0 : static_cast<double>(fs->bytes_used());
 }
 
+double af_machine_vfs_generation(const af_machine* handle) {
+  // `machine::vfs()` and not `vfs_of()`: the counter is on the interface
+  // (machine/vfs.h), so this is the one call in the family with nothing
+  // to reach past — it answers about whatever filesystem the machine was
+  // attached to, which is what a caller asking "did the disk move" means
+  // by "the disk". A machine with none answers zero, which is also what
+  // a filesystem nothing has happened to answers; abi.h says why that is
+  // not an ambiguity a caller can be hurt by.
+  const machine* box = box_of(handle);
+  if (box == nullptr) {
+    return 0.0;
+  }
+  const amberfolio::machine::filesystem* fs = box->vfs();
+  return fs == nullptr ? 0.0 : static_cast<double>(fs->generation());
+}
+
 uint32_t af_machine_vfs_fingerprint(af_machine* handle, const char* name,
                                     char* out, uint32_t max) {
   amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
