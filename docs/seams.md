@@ -859,6 +859,39 @@ PLAN.md §4's boundary, as the three things a test can say:
 `tests/programs` runs the probe program with its seam on and off on all
 four targets.
 
+### And on the real program, once per seam (M5-V1, #177)
+
+Those three are about the *engine*. The claim a person actually cares
+about is about their seam — that turning it on and not using it changes
+nothing — and no synthetic program can make it, because a synthetic
+program does not have the menus, the timing or the overlays a real one
+has. So the session library carries it as a pair per seam:
+`tests/sessions/quiet.rec` is the baseline, and each sibling is that same
+script with one more seam armed and nothing done to trigger it.
+
+    quiet-automap   identical quiet          all 126 checkpoints equal
+    quiet-encamp    identical quiet          all 126 checkpoints equal
+    quiet-cheats    identical quiet          all 126 checkpoints equal
+    quiet-all       identical quiet-journal  every seam at once, and no more
+    quiet-journal   contrast  quiet          111 of 126, then divergent
+
+The automap's is the one worth having most: its hotkey claim at the
+INT 16h funnel is the one place a seam can change what the *program*
+observes, and that line is the run which says it does not when nobody
+presses the key.
+
+**And one of them is a contrast, which is the honest answer rather than a
+gap.** The journal reader splices `Notes` onto the party's own command
+bar, so it changes the machine on any run that reaches that bar, cited or
+not — the tick it first differs at is the tick the bar is first drawn.
+A seam that draws the moment it is on cannot claim `identical`, and
+`tests/sessions/quiet-journal.session` says so at length. Loosening what
+`identical` means so it could would have cost the other three theirs.
+
+`identical` and `contrast` are both checked on the recordings themselves,
+with no disk, so CI checks them on every push. CONTRIBUTING.md makes the
+pair a condition of merging a seam.
+
 ---
 
 ## 8. Writing a seam
