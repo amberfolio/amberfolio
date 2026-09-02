@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# EXP-2: the trail does not flicker.
+#
+# This seam repaints at the *return* of the program's own back-buffer
+# present, which is reached by every path that puts a screen up — the
+# window's redraw and each step of the party icon's animation. The design
+# decision behind that is in `seam_explored.cpp`, and the risk it names
+# is the one only a run can answer: a repaint that lands a moment after
+# the program's own would show as the trail blinking off and on.
+#
+# **A single leg, because a pair cannot say it.** A pair compares two
+# runs; this is a claim about one run over time. It is `same`: with the
+# party standing still and nothing pressed, fifty-two consecutive stills
+# of the screen are the same screen. A repaint that arrived late, or a
+# present the seam did not paint after, would move one of them.
+#
+# Measured before it was written down: over the walk in `exp-trail.leg`
+# the seam's points are reached 746,746 times and no dumped still after
+# the first marked square is ever missing its mark.
+about the trail holds still while the party does
+kind single
+program START.EXE
+both code-wheel
+# The code-wheel bypass is gated on the wheel itself (#115). Pinned by
+# digest because a document never enters this tree.
+document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+seam explored
+until 260000000
+every 25
+
+key A@7601
+key Return@7651
+key L@8951
+key J@9201
+key Up@10600
+key Up@10750
+key Up@10900
+key Up@11050
+key Up@11200
+key Up@11350
+key Up@11500
+key Up@11650
+
+# From the frame after the last step to the end of the run: the party is
+# standing on the wilderness map with two marked squares behind it, and
+# nothing about the screen may change.
+same 11750-13000

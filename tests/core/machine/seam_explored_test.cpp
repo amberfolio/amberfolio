@@ -206,6 +206,22 @@ struct rig {
     box->step();
   }
 
+  /// Blank the window's pixels on every plane, the way the program's own
+  /// redraw would. Written through the bus, as a program would write
+  /// them, so what comes back afterwards is what the seam put there and
+  /// nothing left over from an earlier pass.
+  void wipe() const {
+    cpu::processor& cpu = box->processor();
+    box->write_port8(ega::sequencer_index_port, 2);
+    box->write_port8(ega::sequencer_data_port, 0x0F);
+    for (unsigned line = 0; line < 200; ++line) {
+      for (unsigned byte = 0; byte < 40; ++byte) {
+        cpu.write_byte(0xA000, static_cast<std::uint16_t>((line * 40) + byte),
+                       0);
+      }
+    }
+  }
+
   /// One pixel of the screen, out of the planes.
   [[nodiscard]] std::uint8_t screen_pixel(unsigned x, unsigned y) const {
     const auto offset = static_cast<std::uint16_t>((y * 40U) + (x / 8U));
@@ -401,9 +417,13 @@ TEST(ExploredOverlay, NothingIsDrawnOffTheTravelView) {
   r.poll(4);
   r.put_word(record_segment, record_overland_row, 31);
   r.poll(2);
+  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
+  r.wipe();
+  ASSERT_EQ(pixels_drawn(r), 0u);
 
   r.put_byte(rig::dgroup(), data_game_mode, mode_adventure);
   r.put_byte(rig::dgroup(), data_view_kind, view_kind_area);
+  r.poll(2);
   r.present();
   EXPECT_EQ(pixels_drawn(r), 0u);
 }
@@ -415,8 +435,12 @@ TEST(ExploredOverlay, NothingIsDrawnWhileSomebodyElseAsksThePlayer) {
   r.poll(4);
   r.put_word(record_segment, record_overland_row, 31);
   r.poll(2);
+  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
+  r.wipe();
+  ASSERT_EQ(pixels_drawn(r), 0u);
 
   r.somebody_else_asks();
+  r.poll(2);
   r.present();
   EXPECT_EQ(pixels_drawn(r), 0u) << "a script's portrait is not this seam's to "
                                     "paint over";
@@ -434,11 +458,15 @@ TEST(ExploredOverlay, NothingIsDrawnWhileTheAreaIsShownInTheInteriorView) {
   r.poll(4);
   r.put_word(record_segment, record_overland_row, 31);
   r.poll(2);
+  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
+  r.wipe();
+  ASSERT_EQ(pixels_drawn(r), 0u);
 
   // The word in the area record that makes the program draw this area in
   // 3D leaves the view-kind byte reading 2. A seam that trusted the kind
   // byte would paint its marks over the interior view.
   r.put_word(record_segment, record_shown_in_3d, 1);
+  r.poll(2);
   r.present();
   EXPECT_EQ(pixels_drawn(r), 0u);
 }
@@ -450,8 +478,12 @@ TEST(ExploredOverlay, NothingIsDrawnWhileTheProgramIsMovingTheParty) {
   r.poll(4);
   r.put_word(record_segment, record_overland_row, 31);
   r.poll(2);
+  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
+  r.wipe();
+  ASSERT_EQ(pixels_drawn(r), 0u);
 
   r.put_byte(rig::dgroup(), data_in_transition, 1);
+  r.poll(2);
   r.present();
   EXPECT_EQ(pixels_drawn(r), 0u);
 }
@@ -463,11 +495,15 @@ TEST(ExploredOverlay, AWildAreaRecordIsNotFollowed) {
   r.poll(4);
   r.put_word(record_segment, record_overland_row, 31);
   r.poll(2);
+  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
+  r.wipe();
+  ASSERT_EQ(pixels_drawn(r), 0u);
 
   // The video window. Reading it would load the adapter's latches, which
   // is a seam changing the machine in order to look at it.
   r.put_word(rig::dgroup(), static_cast<std::uint16_t>(data_area_record + 2),
              0xA000);
+  r.poll(2);
   r.present();
   EXPECT_EQ(pixels_drawn(r), 0u);
 }
@@ -479,6 +515,9 @@ TEST(ExploredOverlay, ABiasNoTableCouldHoldIsDeclined) {
   r.poll(4);
   r.put_word(record_segment, record_overland_row, 31);
   r.poll(2);
+  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
+  r.wipe();
+  ASSERT_EQ(pixels_drawn(r), 0u);
 
   r.put_byte(
       rig::dgroup(),
@@ -499,6 +538,48 @@ TEST(ExploredOverlay, WithTheSeamOffNothingIsDrawnAtAll) {
   EXPECT_EQ(pixels_drawn(r), 0u);
   EXPECT_EQ(r.map_state().records_used(), 0u)
       << "and nothing was recorded either";
+}
+
+TEST(ExploredOverlay, ATableThatArrivesUnderAStandingPartyIsDrawn) {
+  // The finding a driven run made, as a test (M5-E5d, #256). A seam that
+  // painted only where the program paints could not show this: a party
+  // that loads a saved game and stands still gives the program nothing
+  // to redraw, so no present ever comes, and the trail the host had just
+  // read in beside the save stayed invisible until the player moved.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+  ASSERT_EQ(pixels_drawn(r), 0u) << "nothing walked but its own square";
+
+  // What a host does when the program loads a save slot: it replaces the
+  // table, which moves the store's serial.
+  automap_record& map = r.map_state().record_for_overland(6, 0x19);
+  ASSERT_TRUE(r.map_state().reveal(map, 3, 33));
+  r.poll(1);
+  EXPECT_EQ(pixels_drawn(r), cell_pixels * cell_pixels)
+      << "and no present was needed to show it";
+}
+
+TEST(ExploredOverlay, APollThatChangesNothingRepaintsNothing) {
+  // The other half of the same decision: the keyboard poll is reached
+  // thousands of times a virtual second, so it repaints only when
+  // something has moved.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+  r.put_word(record_segment, record_overland_row, 31);
+  r.poll(2);
+  ASSERT_GT(pixels_drawn(r), 0u);
+  r.wipe();
+  r.poll(8);
+  EXPECT_EQ(pixels_drawn(r), 0u) << "nothing moved, so nothing was drawn";
+
+  // And the program's own present says the screen was repainted under
+  // it, which is what brings the trail back.
+  r.present();
+  EXPECT_EQ(pixels_drawn(r), cell_pixels * cell_pixels);
 }
 
 TEST(ExploredOverlay, ItRecordsTheTrailItself) {

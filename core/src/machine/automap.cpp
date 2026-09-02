@@ -70,6 +70,7 @@ void automap_state::clear() noexcept {
   pixels_ = {};
   drawn_signature_ = 0;
   revealed_signature_ = 0;
+  explored_signature_ = 0;
 }
 
 automap_record& automap_state::record_for(automap_map_kind kind,

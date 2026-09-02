@@ -1088,6 +1088,16 @@ Every entry names the seam it was learned on.
 - **A fact can be wrong and still work once.** Both cheats were wrong the
   first time they were driven — one in its frame layout, one in its
   module *and* its offset (§10; #103, #129, #131).
+- **A seam that paints where the program paints cannot show what
+  arrived without a repaint.** The explored overlay drew at the return of
+  the program's own screen present, which is right and was not enough: a
+  party that loads a saved game and stands still gives the program
+  nothing to redraw, so no present comes, and the trail a host had just
+  read in beside the save stayed invisible until the player took a step.
+  A drawing seam needs a point where the program is *idle* as well as one
+  where it is drawing — and, because the idle one is reached thousands of
+  times a second, a signature of what it last drew from (explored
+  overlay, #256).
 - **A routine's address is a segment and an offset, not a flat one.** A
   routine of this era reaches its own literals as `CS:<constant>` and its
   own siblings as `push cs` plus a near call, so it only works when CS is

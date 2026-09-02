@@ -637,6 +637,27 @@ class automap_state {
     drawn_signature_ = value;
   }
 
+  /// What the **explored overlay** last drew from (#179), and the reason
+  /// it needs one of its own.
+  ///
+  /// That seam paints at two points: the return of the program's own
+  /// present, where the program has just wiped whatever was there, and
+  /// the keyboard poll, where nothing has been wiped and a repaint on
+  /// every pass would be thousands of them a second. The second is what
+  /// this is for — it is the difference between "something changed"
+  /// (the party moved, a cell was revealed, a saved slot's table was
+  /// read in) and "the program is polling".
+  ///
+  /// Zero means "nothing has been drawn", which no real signature is; a
+  /// pass on which the overworld is not on the screen sets it back to
+  /// zero, so coming back to the same square later still draws.
+  [[nodiscard]] std::uint32_t explored_signature() const noexcept {
+    return explored_signature_;
+  }
+  void set_explored_signature(std::uint32_t value) noexcept {
+    explored_signature_ = value;
+  }
+
   /// What the *fog* was last brought up to date from — where the party
   /// stood and which way it faced. Kept apart from the drawing signature
   /// because the two are asked at different times: the map keeps
@@ -685,6 +706,7 @@ class automap_state {
   std::array<std::uint8_t, automap_panel_pixels> pixels_{};
   std::uint32_t drawn_signature_{0};
   std::uint32_t revealed_signature_{0};
+  std::uint32_t explored_signature_{0};
 };
 
 }  // namespace amberfolio::machine

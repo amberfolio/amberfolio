@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# EXP-1: the explored overlay draws inside the squares the party has
+# walked, and nowhere else on the screen.
+#
+# **A pair leg, and it can be one.** This seam claims no key — it is a
+# setting, not a command (`seam_explored.cpp`) — so every keystroke in
+# the script below reaches the program in both halves and the two runs
+# differ by the flag alone. That is the one thing the journal's legs
+# could not have (#234).
+#
+# The party is on the wilderness travel view from frame 9,552, which the
+# first `allow` covers in full: **on, the overworld shown, and nothing
+# walked but the square under the party's feet, the two runs are byte for
+# byte the same screen.** That is the stronger of this seam's two
+# fidelity claims, as a picture, and it holds only because the square the
+# party is standing on is never marked.
+#
+# From the first step the two rects below are the only pixels that may
+# differ, and they are the two squares the party has left behind. They
+# have fixed screen positions for this walk because the window scrolls
+# with the party: at every frame after the first step the party is the
+# middle cell of the five and the squares it came from are the two below
+# it. Measured on a real run (M5-E5d, #256).
+about the trail is drawn inside the squares the party walked, and nowhere else
+kind pair
+program START.EXE
+both code-wheel
+# The code-wheel bypass is gated on the wheel itself (#115), and both
+# sides of this pair drive past the challenge, so both need it. Pinned
+# by digest because a document never enters this tree.
+document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+seam explored
+until 260000000
+every 25
+# A screen may appear in the two runs a dump apart, because a repaint
+# lands where it lands. One dump of slack, the same as every other leg.
+slack 1
+
+# Slot J: the one shipped save whose party is already standing on a
+# wilderness area (`docs/explored-overlay.md` §4). Eight steps north,
+# 150 frames apart, which is the cadence every driven walk in this tree
+# uses.
+key A@7601
+key Return@7651
+key L@8951
+key J@9201
+key Up@10600
+key Up@10750
+key Up@10900
+key Up@11050
+key Up@11200
+key Up@11350
+key Up@11500
+key Up@11650
+
+# The square the party left on its last step, and the one before that:
+# window column 2, rows 3 and 4, at 24 pixels a cell from (8, 8).
+rect behind 56,80,79,103
+rect behind2 56,104,79,127
+
+# The whole run up to the first step, the arrival on the wilderness map
+# included: not one pixel.
+allow 0-10650 none
+# One square walked and left behind.
+allow 10675-10800 behind
+# And from the second step on, two — which is all the window can show of
+# a trail that is walking off the top of it.
+allow 10825-end behind behind2
