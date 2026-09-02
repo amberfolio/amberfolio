@@ -146,6 +146,9 @@ class Descriptor:
         # The session this one is the same run as, with one thing
         # changed. See `contrast_of()` below for what that buys.
         self.contrast = ""
+        # The session this one must be checkpoint-for-checkpoint equal to:
+        # the fidelity invariant as a pair. See `identical_to()`.
+        self.identical = ""
         # The journal store this recording was made over, if any: a path
         # in the tree, or EXTERNAL with a digest. See `store()` below for
         # why a recording needs to name one at all.
@@ -177,6 +180,8 @@ class Descriptor:
                 self.disk = word[1]
             elif word[0] == "contrast" and len(word) == 2:
                 self.contrast = word[1]
+            elif word[0] == "identical" and len(word) == 2:
+                self.identical = word[1]
             elif word[0] == "document" and len(word) == 2:
                 self.documents.append(word[1])
             elif word[0] == "journal-store" and len(word) in (2, 3):
@@ -506,6 +511,45 @@ def contrast_of(session: Session,
                         " state; the difference did not last")
     return "ok", (f"{same} of {len(mine)} checkpoints identical, then"
                   f" divergent from tick {mine[same][0]} to the end")
+
+
+def identical_to(session: Session, partner: Session) -> tuple[str, str]:
+    """Is this pair the *same run*, hash for hash?
+
+    `contrast_of()` above asks whether a seam that is on did something.
+    This asks the opposite and it is the more important question: a seam
+    that is on and was **never triggered** must leave a machine
+    indistinguishable from one where it was off. That is the fidelity
+    invariant PLAN.md §5 and `docs/seams.md` §7 state, and #177 asks for
+    it once per seam on the real program rather than once on a synthetic
+    one.
+
+    The two failures it exists to catch are opposite and both real. A
+    seam that moves the machine while idle is a seam that is not off when
+    it says it is. And a pair that checkpoints at different ticks is not
+    a pair at all — it would "pass" by comparing nothing, which is the
+    shape every check in this file is arranged against.
+
+    Note what this cannot be used for. A seam that *draws* the moment it
+    is on — one that splices a word onto a menu the game keeps
+    redrawing — changes the machine on any run that reaches that menu,
+    triggered or not, and honestly cannot be paired this way. Saying so
+    in the descriptor is the answer, not loosening this.
+    """
+    mine = checkpoints_of(session.path)
+    theirs = checkpoints_of(partner.path)
+    if not mine or not theirs:
+        return "FAIL", "one of the pair carries no checkpoints"
+    if [t for t, _ in mine] != [t for t, _ in theirs]:
+        return "FAIL", (f"{session.name} and {partner.name} checkpoint at"
+                        " different ticks; they are not the same run")
+    for (tick, a), (_, b) in zip(mine, theirs):
+        if a != b:
+            return "FAIL", (f"{session.name} differs from {partner.name} at"
+                            f" tick {tick}: a seam that was never triggered"
+                            " moved the machine anyway")
+    return "ok", (f"all {len(mine)} checkpoints identical to"
+                  f" {partner.name}: on, idle, and indistinguishable")
 
 
 def find_sessions(only: str | None) -> list[Session]:
@@ -854,6 +898,21 @@ def main() -> int:
             else:
                 state, detail = contrast_of(session, partner)
                 rows.append((session.name, "contrast", state, detail))
+                failures += state == "FAIL"
+                verified += state == "ok"
+
+        # The other half of a seam's pair, and the same argument: it needs
+        # no disk, so CI checks it on every push (#177).
+        if "contrast" in wanted and session.descriptor.identical:
+            partner = by_name.get(session.descriptor.identical)
+            if partner is None:
+                rows.append((session.name, "identical", "FAIL",
+                             "no session called"
+                             f" {session.descriptor.identical}"))
+                failures += 1
+            else:
+                state, detail = identical_to(session, partner)
+                rows.append((session.name, "identical", state, detail))
                 failures += state == "FAIL"
                 verified += state == "ok"
 
