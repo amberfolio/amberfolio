@@ -8,12 +8,24 @@
 # is the claim. The journal reader alone moves an idle machine, because
 # it splices `Notes` onto a bar the game keeps redrawing
 # (`quiet-journal.session` has the whole of that). Adding the automap,
-# the Encamp Fix and all three cheats on top of it changes **nothing** —
-# checkpoint for checkpoint, all 126 of them.
+# the Encamp Fix, the explored overlay and all three cheats on top of it
+# changes **nothing** - checkpoint for checkpoint, all 126 of them.
 #
 # That is what "individually toggleable" has to mean if it is to mean
 # anything: not that each seam is harmless alone, but that a subset of
 # them is no more than the sum of what each one does.
+#
+# **Re-recorded for M5-V1's own audit (#177), and for a reason the
+# README's list of legitimate re-records did not have: a seam was added
+# to the build after this session was made.** `explored` (#179) landed
+# five sessions later, and until now "every seam this build carries" was
+# a sentence this file made and its recording did not - seven `seam`
+# lines against a build that has eight. What the re-record cost is
+# nothing, and that is the finding: with the sixth enhancement armed,
+# reached 508,166 times over the run and never given an overworld to
+# draw on, the recording is byte for byte the one without it apart from
+# the `seam explored` line itself. The `identical quiet-journal`
+# relation is unchanged, and so are all 126 checkpoints.
 
 about every seam on at once with none of them triggered: the same
 about machine as the journal alone, checkpoint for checkpoint
