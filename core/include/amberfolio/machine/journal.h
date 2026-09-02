@@ -106,11 +106,12 @@ enum class journal_delivery : std::uint8_t {
 /// It lives here rather than beside the fact table because the recognizer
 /// below is what decides it, and the recognizer is core.
 enum class journal_kind : std::uint8_t {
-  /// "Journal Entry N" — the section the game refers to most.
+  /// "Entry N" — the section the game refers to most, cited in decimal.
   entry,
-  /// "Tale N" — what a tavern sends a player to read.
+  /// "Tavern Tale N" — what a tavern sends a player to read, in decimal.
   tale,
-  /// "Proclamation N" — posted by the city council.
+  /// "Proclamation N" — posted by the city council, and cited the way the
+  /// booklet numbers them: in Roman numerals, often several at once.
   proclamation,
 };
 
@@ -229,15 +230,28 @@ enum class journal_reader_mode : std::uint8_t {
 /// still cannot overflow the number it is parsed into.
 inline constexpr std::size_t journal_prompt_digits = 4;
 
-/// How much of the program's own drawn text the citation watch keeps.
+/// The most citations one drawing can name. Four is what the city hall
+/// names in one sentence (#232); eight is room for a longer list without
+/// making the state that holds it wide.
+inline constexpr std::size_t journal_citations_at_once = 8;
+
+/// How much of the program's own narration the citation watch keeps.
 ///
 /// A window rather than a string, because a citation is not guaranteed to
-/// reach the program's text primitive in one piece: that routine draws a
-/// Pascal string at a cell, and a sentence wrapped across two lines of a
-/// message panel is two calls. Ninety-six characters is three lines of
-/// the widest panel the program has, which is as far apart as the two
-/// halves of one sentence can be.
-inline constexpr std::size_t journal_citation_window = 96;
+/// reach the program's message box in one piece: the script prints a
+/// sentence as one operand and the number it cites as the next, so the
+/// box is called twice and the two halves have to meet somewhere. The
+/// window is emptied when the box is told a *new* message has begun,
+/// which is the program's own boundary and not a guess at one, so what
+/// it holds is one message and never two.
+///
+/// Two hundred and fifty-six characters, because that is the longest a
+/// Pascal string can be and the box takes one of those: a message that
+/// fills the box entirely still fits, and the longest the real program
+/// was seen to send was a hundred and ninety-seven (#232). A message
+/// longer than the window keeps its tail, which is the end a number
+/// arrives at in every split form there is.
+inline constexpr std::size_t journal_citation_window = 256;
 
 /// Everything the journal reader knows, for one machine.
 class journal_state {
@@ -271,14 +285,16 @@ class journal_state {
 
   // --- the citation watch ----------------------------------------------
 
-  /// One string the program has just been asked to draw.
+  /// One piece of narration the program has just been asked to print.
   ///
-  /// Answers the citation in it, or a zero one. The text is normalized
-  /// into the rolling window first (upper case, runs of anything that is
-  /// not a letter or a digit collapsed to one space), so a citation split
-  /// across two draws is recognized on the second of them. A match
-  /// **clears the window**, so one drawing of a citation opens one entry
-  /// however many times the seam looks at it afterwards.
+  /// Answers the first citation in it, or a zero one. The text is
+  /// normalized into the rolling window first (upper case, runs of
+  /// anything that is not a letter, a digit or a comma collapsed to one
+  /// space), so a citation whose number arrives as the next piece is
+  /// recognized on that one. A match **clears the window**, so one
+  /// message citing something opens one entry however many times the seam
+  /// looks at it afterwards — and a message that names several
+  /// (`cited_all()`) is one message.
   ///
   /// Nothing of the program's text is kept beyond the window and nothing
   /// of it leaves this object.
@@ -289,6 +305,12 @@ class journal_state {
   /// comparison of the pair, because the game citing tale 12 while entry
   /// 12 is on the screen is a fresh citation.
   [[nodiscard]] journal_citation cited() const noexcept { return cited_; }
+
+  /// Everything the last matching drawing named, in the order it named
+  /// them; `cited()` is the first. Empty until something has matched.
+  [[nodiscard]] std::span<const journal_citation> cited_all() const noexcept {
+    return {cited_all_.data(), cited_count_};
+  }
 
   // --- the log of what the game has said ---------------------------------
 
@@ -325,7 +347,8 @@ class journal_state {
   [[nodiscard]] bool seen_changed() const noexcept { return seen_changed_; }
   void set_seen_changed(bool changed) noexcept { seen_changed_ = changed; }
 
-  /// Everything in the window, forgotten. What a match does, and what a
+  /// Everything in the window, forgotten. What a match does, what the
+  /// watch does when the program says a new message has begun, and what a
   /// test does between two strings that should not run together.
   void forget_citation() noexcept;
 
@@ -442,6 +465,8 @@ class journal_state {
   std::array<char, journal_page_bytes> text_{};
 
   journal_citation cited_{};
+  std::size_t cited_count_{};
+  std::array<journal_citation, journal_citations_at_once> cited_all_{};
   std::size_t window_length_{};
   std::array<char, journal_citation_window> window_{};
 
@@ -503,25 +528,40 @@ struct journal_drawn {
 [[nodiscard]] journal_drawn journal_drawable(std::string_view text,
                                              std::span<char> into) noexcept;
 
-/// The citation in `text`, or a zero one for none.
+/// Every citation in `text`, in the order named, into `out`; how many.
 ///
 /// Free, and separate from the window above, so that the pattern can be
 /// checked against strings a test writes without a machine anywhere near
 /// it — which is what #175 asks for. `text` is expected normalized the
-/// way `note_drawn_text()` normalizes: upper case, single spaces.
+/// way `note_drawn_text()` normalizes: upper case, single spaces, commas
+/// kept.
 ///
 /// **What it matches is the citation's shape and not the program's
-/// prose.** One of three ordinary English words — the one this project's
-/// own enhancement is named after and the two the document's other
-/// numbered sections are called — and a decimal number within a short
-/// reach of it. Nothing is copied out of the program to make it work and
-/// nothing of the program's text is written down here (CONTRIBUTING.md).
+/// prose.** The word a numbered section of the document is called by —
+/// entry, tale, proclamation, each with its plural — and a number after
+/// it in the notation that section is numbered in: decimal for entries
+/// and tales, a Roman numeral for proclamations. After a plural, a list
+/// joined by commas and "and". Nothing is copied out of the program to
+/// make it work and nothing of the program's text is written down here
+/// (CONTRIBUTING.md).
 ///
-/// **The longest word wins**, which matters for exactly one pair: a
-/// program that draws "tavern tale" is drawing a tale, and a recognizer
-/// that stopped at the first word it found would be right anyway. It is
-/// the rule rather than the accident because it is what makes adding a
-/// fourth word safe.
+/// **A list that runs off the end is not answered yet.** A sentence
+/// wrapped across two lines of the message panel reaches the watch as
+/// two draws, and where the wrap falls inside a list the first draw ends
+/// in a comma or an "and". That is *nothing* — not the first three of
+/// four — until the rest of the list has been drawn, which is why the
+/// window keeps its commas.
+///
+/// That the program cites in these shapes is a measured fact and not a
+/// guess: the first real citation anybody drove the reader against was
+/// four proclamations in one sentence at the city hall, in Roman numerals,
+/// and a recognizer that wanted the book's own word and a decimal number
+/// saw nothing (#232).
+[[nodiscard]] std::size_t journal_citations_in(
+    std::string_view text, std::span<journal_citation> out) noexcept;
+
+/// The first citation in `text`, or a zero one. `journal_citations_in()`
+/// with room for one answer.
 [[nodiscard]] journal_citation journal_citation_in(
     std::string_view text) noexcept;
 

@@ -112,24 +112,28 @@ What M4 left in place:
   drawn by the game's own frame and string routines and given back by the
   routine the program composes the adventuring screen with (M5-E4b, #222).
   **F1** opens the number prompt, for the ninety-odd entries nothing has
-  cited. Its citation watch adds no address —
-  five of its six points are the automap's and the sixth is the string
-  drawer the Encamp Fix already calls, watched at its entry, so the
-  citation watch is a point on the program's own text output and not a
-  reader of a host's console ring (#165). What it matches is the
-  citation's *shape* — the word and a number within reach of it, over a
-  rolling window, because a sentence wrapped across two lines of a
-  message panel reaches that routine as two calls — and never a word of
-  the program's prose. It draws in the automap's own rect, in the
-  program's own glyphs, and is modal over the map because they are the
-  same pixels. Its text comes from a host through `journal_open`, and
-  that is the first service that had to hand something *back*:
-  `machine::journal()` is the buffer it comes back in, observation on
-  `automap.h`'s three terms and not machine state. **No journal has been
-  ingested by anybody**, so the one thing never driven is a citation in
-  the program's own words — the path itself was, by building once with
-  the pattern's word set to a letter the status line draws, which is
-  `docs/playable.md` Leg 9),
+  cited. Five of its six points are the automap's and the sixth is the
+  program's word-wrapping **message box**, where the script's every PRINT
+  ends, so the citation watch is a point on the program's own narration
+  and not a reader of a host's console ring (#165). What it matches is
+  the citation's *shape* — the word a numbered section of the document is
+  called by, each with its plural, and a number after it in the notation
+  that section is numbered in, over a rolling window the program's own
+  message boundary empties — and never a word of the program's prose. It
+  draws in the automap's own rect, in the program's own glyphs, and is
+  modal over the map because they are the same pixels. Its text comes
+  from a host through `journal_open`, and that is the first service that
+  had to hand something *back*: `machine::journal()` is the buffer it
+  comes back in, observation on `automap.h`'s three terms and not machine
+  state. **A real journal has now been opened at a real citation** (#232),
+  and both of those facts are what that run bought: the watch had been on
+  the string drawer, which draws the credits, the menus and the position
+  line and no narration at all, and the shape had wanted the word this
+  enhancement is named after and a decimal number where the game writes
+  the section's own word and Roman numerals. The city hall names four
+  proclamations in one sentence and the reader opened on the first, off a
+  player's own ninety-nine ingested entries, with nobody having pressed a
+  key),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine

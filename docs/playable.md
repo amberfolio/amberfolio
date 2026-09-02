@@ -1385,25 +1385,22 @@ The callout's tick differs by 17,592 — under one frame — because the two
 hosts post a `--press` at slightly different points inside a frame; the
 machines converge, which is what the identical final frame says.
 
-**The watch has been driven too**, and it needed one trick, because this
-program has no citation in it to draw. Build once with the pattern's word
-set to `S` — the letter the status line puts in front of the clock — and
-run the same session with **no key pressed at all**:
+**What this leg does not drive is the watch.** The keys above open the
+reader at the prompt, which is the half a person asks for; the other half
+is the game citing something with nobody having pressed anything, and no
+key sequence can make that happen here — it wants a square where the game
+cites, and a journal to answer with.
 
-```
-amberfolio: host-service journal-open calls=1 last=2 at=209359552
-```
-
-The watch read `S ... 02` out of a string the program drew and asked for
-it. That is the citation path against the real program: the point is
-reached for the program's own text, the frame read at its entry lands on
-a real Pascal string in the program's memory, and the recognizer sees
-what the program is actually writing.
-
-**What this leg did not do, and cannot yet**: it never saw the game cite
-an entry *by that word*. Everything else about the path is above; the
-word is the half that needs a real journal, which needs an edition, and
-the table is empty. `docs/journal.md` §3 is its first customer.
+That was driven later, on a player's own ingested journal, and it is
+`docs/seams.md` §10's "What a real citation did" (#232). It is worth
+reading beside this leg for one reason: an earlier version of this
+section drove the watch by *building it wrong on purpose* — the pattern's
+word set to a letter the position line puts in front of the clock — and
+reported the resulting callout as the citation path proven. It was not.
+The position line does not go through the routine the game's narration
+goes through, and the probe proved the point was reachable rather than
+that it was the right point. A probe that reaches a routine says nothing
+about whether that routine sees the thing you are watching for.
 
 ---
 
