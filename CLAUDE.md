@@ -43,8 +43,9 @@ What M4 left in place:
   run's state hash equals the same run's on a build with no engine at
   all, a disabled seam's breakpoint is never consulted, and seam state —
   an outstanding pull included — is configuration and not machine state.
-  M5's five enhancements add no mechanism; they add handlers.
-- **Seven seams this build carries**: `code-wheel` (**gated on the wheel
+  M5's five enhancements add no mechanism; they add handlers, and four of
+the five are in.
+- **Eight seams this build carries**: `code-wheel` (**gated on the wheel
   itself** since #115: with no document presented the seam is inert and
   says `document_not_presented`, so the challenge is answered for a
   player who holds the wheel and for nobody else. A recording of one
@@ -139,6 +140,28 @@ What M4 left in place:
   proclamations in one sentence and the reader opened on the first, off a
   player's own ninety-nine ingested entries, with nobody having pressed a
   key),
+  `explored` (M5-E5 #179 — the fourth M5 enhancement and the third seam
+  that draws, on the game's own **overworld** map: the wilderness travel
+  view, a 5x5 window of a 16x36 area that scrolls with the party. Every
+  square the party has walked is redrawn **one shade brighter** — the
+  EGA's intensity plane set over the square's 24x24 pixels, so every
+  pixel stays a pixel the *program* drew, one step up in the program's
+  own palette, and nothing foreign is added to the screen at all. It is
+  the one v1 enhancement with no proven prior design, so the marking was
+  settled at the point of definition against six prototyped candidates
+  (`docs/explored-overlay.md`) and the facts were checked twice before a
+  line of it was written: the position is two words in the *area record*
+  and not the bytes every other screen uses, and the pixel geometry —
+  120x120 at (8, 8), 24-pixel cells, every cell three whole bytes wide —
+  was measured off a real dumped frame rather than derived. There is no
+  key: it is a setting. It records through the automap's own store, so a
+  player with only the automap on keeps the trail too (M5-E5b), and the
+  square under the party is never marked, which is what makes "arrived on
+  a fresh map, and pixel-identical to off" a test. Driven, it found what
+  no test had: a seam that paints only where the program paints cannot
+  show a trail a host read in beside a save under a party that is
+  standing still, so it paints at the keyboard poll as well —
+  `docs/seams.md` §8.4's newest entry),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine
@@ -192,8 +215,9 @@ What M4 left in place:
   on the wasm module — 101 checkpoints of a 139-million-step run, every
   hash equal. Before it the cross-target claim rested on four frames of
   `JMP $` (#142).
-- **The session library** (`tests/sessions/`, `scripts/sweep.py`). Eleven
-  sessions; one has its disk committed and ten pin a disk that cannot be
+- **The session library** (`tests/sessions/`, `scripts/sweep.py`).
+  Twenty-four sessions; one has its disk committed and the rest pin a
+  disk that cannot be
   (PLAN.md §6), so the runner is told where a copy is and **skips loudly**
   when it is not. A sweep that verified nothing must never read as a
   sweep that passed.

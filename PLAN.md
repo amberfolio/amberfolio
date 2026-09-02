@@ -267,7 +267,13 @@ Design requirements:
    game itself is showing that screen; from the same exploration state
    the automap keeps, persisted alongside the save. Nothing the game
    draws is hidden — the overlay marks the known, it never obscures the
-   unknown.
+   unknown. **The marking, settled at the point of definition** as this
+   item's own rule requires (#179, `docs/explored-overlay.md`): an
+   explored square is redrawn *one shade brighter* — the intensity plane
+   set over it — so every pixel of it is still a pixel the program drew,
+   one step up in the program's own palette, and no shape the game has no
+   vocabulary for is added to its screen. Six other candidates were
+   prototyped over a real frame and are named with their reasons.
 6. **Debug cheats** — invulnerability and kill-all-enemies, built
    early because they double as test tooling for the playthrough
    sweeps. A third, wound-the-party, was added for that stated reason

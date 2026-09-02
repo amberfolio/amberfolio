@@ -18,7 +18,7 @@ because everything below assumes them.
 of them off, the machine is a plain machine, and that is a test rather
 than a claim: a run's state hash with the engine present and idle equals
 the hash of the same run on a build with no engine at all
-(`docs/seams.md` §7). Six sessions in `tests/sessions/` say the same
+(`docs/seams.md` §7). Seven sessions in `tests/sessions/` say the same
 thing about each seam on the real program.
 
 **Nothing here is code injected into the game.** A seam is native C++
@@ -133,8 +133,78 @@ quiet, whenever the bar on the screen is not the adventuring screen's own
 covering the game with something the game did not ask for.
 
 **What it is not yet.** It marks where you have been on the *city* and
-dungeon screens. The overworld map is a separate enhancement and is not
-built (#179).
+dungeon screens. The overworld map is the explored overlay below, which
+is a separate seam and shares this one's store.
+
+---
+
+## The explored overlay
+
+**What it does.** On the game's own overworld map — the five-by-five
+window of a wilderness area you travel across — every square your party
+has walked is redrawn one shade brighter. The trail follows you as you
+go, so you can tell at a glance where you have been and where you have
+not.
+
+**How you turn it on.** `--seam explored`, and that is the whole of it.
+There is no key: it is a setting, not a command. On, it is there whenever
+the game is showing that screen; off, it is not.
+
+Its trail survives the machine on the same terms the automap's does —
+`--automap-store` on the desktop, `af_web_automap_store` on the page,
+writing `\SAVE\AFMAP.DAT` beside the game's saves and never inside one,
+with a snapshot per save slot. It is the same table: the automap records
+the wilderness too, so if you have been playing with that on and turn
+this on later, the squares you walked are already marked.
+
+**Where its facts came from.** Three addresses in the resident image, a
+handful of data-segment offsets, and two words inside the game's own area
+record. `docs/explored-overlay.md` is the table, with the second route
+that agreed for every line of it, and the pixel geometry measured off a
+real frame rather than derived: the window is 120 by 120 pixels at
+(8, 8), and a square is 24 by 24.
+
+**What makes it native.** It draws no shape of its own. Every pixel of a
+marked square is still a pixel the *game* drew, in the game's own
+sixteen-colour palette, one step up — its dark green becomes bright
+green, its blue becomes bright blue. Nothing is added to the screen that
+the game does not already have on it, which is a stronger version of the
+argument that has the journal reader ask the game to set its own text:
+there is no foreign artwork rather than none that looks foreign. The game
+itself recolours this very screen through a palette mapping of its own,
+in one of its set pieces, so a marking that is a shade rather than a
+symbol is something this program does.
+
+Seven markings were prototyped over a real frame before this one was
+chosen — a border, a dither, a hatch, a glyph in the game's own font, a
+solid mark at the square's centre, and the two directions of the shade.
+`docs/explored-overlay.md` §5 says why each of the six was rejected. The
+closest was the glyph, and it was rejected because the game writes words
+in its message rows and its menus and never on its terrain: a letter
+there is exactly the foreign thing the font was supposed to avoid.
+
+**The square you are standing on is never marked**, and that is not a
+detail. Your party's icon is drawn there, and a shade over it would
+recolour your own sprite. It also makes a promise a test can keep:
+arriving on a wilderness map you have never walked, the screen is
+*pixel-identical* to the same run with the overlay off, and stays so
+until you take your first step. The square is recorded the moment you
+stand on it and appears, marked, when you move off — which is what makes
+this a trail rather than a highlight.
+
+**What it is not yet.** **Nobody with a display has looked at it.** Every
+picture of it so far is a file compared with another file, and the
+question this whole document is organised around — does it read as
+something the game drew — is one only a person can answer. It has been
+driven on one of the three wilderness
+areas — the one the shipped save slot J starts on. The other two are the
+same arithmetic with a different column bias and nobody has stood on
+them (`docs/playable.md`'s honest gaps says how to, without playing for
+hours). And "one shade brighter" is measured *visible* — across 2,800
+window squares of a real run the faintest still had 198 of its 576 pixels
+changed — but no shipped tile has been examined directly, so a square
+whose art was entirely bright already would carry no mark and nothing
+would say so.
 
 ---
 
@@ -247,13 +317,6 @@ driven.
 ---
 
 ## What is not here
-
-**The explored overlay** (#179) — the areas you have already been to,
-marked on the game's own overworld map — is the sixth v1 enhancement and
-is **not built**. It is the one item of the five with no proven prior
-design, and PLAN.md §5's rule for that case is that the marking is
-settled at the point of definition, with the reasoning and a dump beside
-it, and judged native by a person before it ships.
 
 **Save and roster management** was withdrawn from v1 by decision rather
 than deferral: it was the one item that was not an in-game enhancement,
