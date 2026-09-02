@@ -841,7 +841,7 @@ config file and the shell's toggle panel are M6's.
 ## 6a. The enhancements themselves
 
 This file is the mechanism. [`enhancements.md`](enhancements.md) is the
-other side of it: the five enhancements this build carries as a *player*
+other side of it: the six enhancements this build carries as a *player*
 meets them — what each does, how it is turned on, what it will not do
 without, where its facts came from, what makes it feel like something the
 game shipped with, and what it is not yet.
@@ -1200,6 +1200,7 @@ boundary, and it needs the argument this document would have to carry.
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
 | `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; a **Notes** command on the party's own bar opens a log of everything it has cited, and **F1** the number prompt for anything it has not | the baseline | the resident image, and the adventuring loop's module |
+| `explored` | on the game's own overworld map, every square the party has walked redrawn one shade brighter — a setting, with no key and nothing to press | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
@@ -2329,6 +2330,159 @@ ticks and hashes (`docs/replay.md`), and this seam's other input is a
 stream. A session that verified a reader would be a session that pinned a
 store, and the runner has no way to say where one is. It is a gap in the
 harness rather than in the seam, and #239 is where it is being closed.
+
+### The explored overlay (#179, M5-E5a to M5-E5e)
+
+PLAN.md §5 item 5, the third seam in this tree that **draws**, and the
+one item of the six with **no proven prior design** — so the marking was
+settled at the point of definition, with the reasoning written down and
+the six candidates it beat named.
+
+**What it is.** On the program's own overworld screen — a five-by-five
+window of a wilderness area's overhead map, scrolling with the party —
+every square the party has walked is redrawn **one shade brighter**. It
+is a *setting*: no key, no pull, no panel. On, it is there whenever that
+screen is; off, it is not.
+
+**Where the design came from.** Nowhere, which is what made M5-E5a (#253)
+a phase of its own. [`docs/explored-overlay.md`](explored-overlay.md) is
+its output: the fact table with a second route for every line, the pixel
+geometry measured off a real dumped frame, the keystroke recipe, and the
+three decisions with what each of them rejects. Nothing here was written
+before that was.
+
+**The screen, as facts.** The mode byte is 3 and the view kind is 2, 3 or
+4 — one per wilderness area. The party's position is **two words in the
+area record**, not the two data-segment bytes every other screen uses:
+driven, with the program's own status line printing the record's `3, 32`,
+those two bytes held `0x0B` and `0x0D`. An area is 16 columns by **36**
+rows, and the three of them are three sixteen-column bands of one
+44-column terrain table at biases the program keeps per view kind, which
+the seam reads out of the program rather than carrying.
+
+**The geometry was measured, not derived**, and three routes agreed: the
+pixels on a real frame, the pixels one move repaints (exactly
+`8,8,127,127`), and the composition arithmetic. The window is **120 by
+120 pixels at (8, 8)** and a cell is **24 by 24** — which begins on a
+byte boundary and is three whole bytes wide, so a marking confined to a
+cell shifts nothing and reads nothing back.
+
+**The three points.**
+
+| point | in | what it does |
+| --- | --- | --- |
+| the return of the back-buffer present | the resident image | the program has just put the screen up; the trail goes back on |
+| the program's "is a key waiting" routine | the resident image | records the square the party is standing on, and draws when something has moved that no repaint of the program's would have shown |
+| the menu-bar input routine's thunk | the resident image | which bar is going up, and so whose screen this is |
+
+The last two are the automap's, shared, and the bar reading is now one
+function both call (`automap_overland.h`) so the two seams cannot come to
+different conclusions about it.
+
+**Why the present's *return*.** The program composes the whole screen
+off-screen and flushes only the scanlines something dirtied. At the entry
+of that routine the flush has not happened and anything painted there is
+about to be copied over; at its return every path that repaints the
+window has finished — the composer's own redraw, and each step of the
+icon's animation, which advances a phase and presents again. Painting
+there is painting last, and no captured frame can catch it half drawn.
+Painting into the program's own back buffer instead, so its own present
+carries the marks, was rejected: that buffer is one the program reads
+back, and the marks would become part of what it believes it drew.
+
+**And why that was not enough**, which is §8.4's newest entry and the
+thing the driven run found that no test had. A party that loads a saved
+game and stands still gives the program **nothing to redraw** — so no
+present ever comes, and the trail a host had just read in beside the save
+stayed invisible until the player took a step. A seam that paints where
+the program paints cannot show what arrived without a repaint. It paints
+at the keyboard poll as well now, and because that point is reached
+thousands of times a virtual second it paints there only when something
+has moved: where the party is, and the store's serial, which moves both
+when a cell is revealed and when a host reads a slot's table in.
+
+**The marking, and the six it beat.** An **intensity lift**: the map's
+plane 3 set over the cell's 24 by 24 pixels, so every pixel stays a pixel
+the *program* drew, one step up in the program's own palette. Four
+reasons decided it, and the first is the one that matters:
+
+* **it draws no shape of its own.** Every other candidate puts a mark on
+  the game's screen that the game has no vocabulary for. This one has no
+  mark; it has a shade. That is the argument §3 makes for calling the
+  program's own text drawer rather than rasterizing glyphs, one layer
+  further along — there is no foreign artwork rather than none that looks
+  foreign;
+* **it is the game's own idiom** — the program recolours this very screen
+  through a palette mapping of its own, in an overlay of its own, as part
+  of one of its set pieces;
+* **it costs one plane and no read-back**: 72 byte writes a cell, 1,728
+  for a window with every cell but the party's marked, against the
+  automap panel's 9,856;
+* **the terrain stays legible.** A coastline, a road and a tile's outline
+  survive a shade change; they do not survive a hatch or a dither drawn
+  over them.
+
+Rejected, each for its own reason and each prototyped over a real frame:
+a one-pixel border (reads as a modern overlay grid, and two adjacent
+squares give a doubled line); a sparse dither (reads as a different
+terrain rather than as a trail, over a terrain that is itself a dither);
+a diagonal hatch (the cartographer's idiom, and clearly not this game's);
+**a glyph in the program's own font**, which was the closest and is
+byte-aligned and cheap — rejected because the game writes words in its
+message rows and its menus and never on its terrain, so a letter there is
+exactly the foreign thing the font was supposed to avoid; a solid block,
+ring or diamond at the cell's centre; and a full palette remap read back
+off the planes, which is the same idea at 288 reads and 288 writes a cell
+with the adapter's latches loaded on every one.
+
+**Measured, because "one shade" invites the question.** Across 112
+overland frames and 2,800 window cells of a real run, the cell with the
+fewest pixels whose intensity bit was clear still had **198 of its 576**.
+The direction matters too: *lowering* the bit looks better on grass and
+is invisible on water, which is a solid dark blue already.
+
+**Two cells are never touched.** The party's own, which is where the
+program draws its icon — a lift there would recolour the party's own
+sprite — and any cell the party has not walked, not one pixel, which is
+what lets the confinement leg mask exactly the explored cells.
+
+**The fidelity claim, stated for this seam** (§8.5). The plain one does
+not survive a seam that is visible without being asked for, so it is two
+narrower ones and both are tests:
+
+* **on, and the overworld never shown, a run is byte for byte the run
+  with no engine at all** — `ExploredFidelity.OnAndTheOverworldNeverShown
+  LeavesTheRunIdentical`, and `tests/sessions/quiet-explored.rec` saying
+  it on the real program, all 126 checkpoints;
+* **on, the overworld shown, and nothing walked but the square under the
+  party — the run is byte for byte the run with the seam off.** That one
+  holds *only* because the party's own cell is unmarked. It is a unit
+  test, a `tests/programs` pair on all four targets
+  (`explored_probe_quiet` and `_arrived`, the same 32,846 steps and the
+  same blank frame), and the 111 identical checkpoints at the head of the
+  `wild` / `wild-trail` pair — which include the arrival on the
+  wilderness map and the fifteen hundred frames of standing on it.
+
+**Driven, and what it found.** Slot J loaded — the one shipped save whose
+party is already standing on a wilderness area, which is why the recipe
+is four keystrokes and not an afternoon — and eight steps north. 523
+stills against the same run with the seam off: 427 byte for byte
+identical, and every one of the 96 that differ differing only inside the
+squares the party had walked. No still after the first marked square is
+ever missing its mark, which is the flicker question answered. The same
+script through `drive.mjs` composes a final frame **byte for byte** the
+desktop host's. What the driving found that no test could is the
+present-return paragraph above, and §8.4's entry.
+
+**What it is not yet.** **Nobody with a display has looked at it** —
+every picture above is a file compared with another file, and #179's exit
+asks a person whether it reads as something the game drew. That is the
+one line no session can tick and it is unticked. One wilderness area of
+three has been stood on; the other two are the same arithmetic with a
+different bias, and `docs/explored-overlay.md` §8 says how to reach them
+without playing for hours. And no shipped overhead tile has been examined
+directly, so a tile whose art is entirely bright would carry no mark and
+nothing would say so.
 
 ### The debug cheats (#99, #196)
 

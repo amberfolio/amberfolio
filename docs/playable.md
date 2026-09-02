@@ -1464,6 +1464,67 @@ after a citation closes the panel first.
 
 ---
 
+## Leg 11 — the overworld, and where you have been (M5-E5, #179)
+
+PLAN.md §5 item 5, and the third seam in this tree that draws.
+`docs/seams.md` §10 is what it is and
+[`docs/explored-overlay.md`](explored-overlay.md) is the fact table it was
+built from; this is the driving.
+
+**The screen is the wilderness travel view**, which nothing above ever
+reaches: a five-by-five window of a wilderness area's overhead map,
+scrolling with the party. It is not the 3D screen Legs 1 to 10 are on and
+it is not the automap's grid.
+
+**Getting there costs four keystrokes.** Slot **J** of the edition's own
+shipped saves has a party already standing on one of the three wilderness
+areas, so there is no walk out of a city and no hours of play:
+
+```
+--seam code-wheel --seam explored --document "<the code wheel>"
+--press A@7601 --press Return@7651      the code wheel
+--press L@8951 --press J@9201           LOAD SAVED GAME, slot J
+--press Up@10600 ... every 150 frames   eight steps north
+```
+
+The mode byte becomes 3 at frame **9,552** and the screen has settled by
+**10,275**; `--watch 49F3:1 --watch 49FA:1` is how that is seen without
+looking at a picture, filtered on the data segment (`0CDC`). Moves are 150
+frames apart, the cadence every driven walk here uses. Wandering brings
+an encounter within a few virtual minutes, so a quiet walk is a short
+one.
+
+**What it does.** Each square the party leaves behind is redrawn one shade
+brighter — the game's own pixels, in the game's own palette, one step up.
+Nothing is added to the screen that the game does not have on it, and the
+square under the party is never marked, so a fresh wilderness map looks
+exactly as it would with the seam off until the first step is taken.
+
+**Nothing is pressed.** It is a setting, not a command: on, it is there
+whenever that screen is; off, it is not.
+
+**What the driving says.** 523 stills against the same run with the seam
+off: 427 byte for byte identical — the whole arrival on the map included
+— and every one of the 96 that differ differs only inside the squares the
+party had walked. No still after the first marked square is ever missing
+its mark. The same script through `drive.mjs` composes a final frame
+identical to the desktop host's, and `tests/sessions/wild.rec` and
+`wild-trail.rec` are the run recorded twice, one flag apart.
+
+**Keeping the trail.** `--automap-store` writes it into `\SAVE\AFMAP.DAT`
+beside the game's saves, with a snapshot per save slot. Two things about
+it were driven and are worth knowing:
+
+* the **automap alone**, with this seam off, records the wilderness too —
+  one recorder, two callers (#254) — so a player who turns this on later
+  finds the squares they walked already marked;
+* loading a slot that has **no** snapshot beside it empties the table, so
+  the arrival is byte for byte the seam-off one. That is the store's own
+  rule and not a fault: an empty map is the truth about a playthrough
+  nobody recorded one for.
+
+---
+
 ## What the run should not say
 
 Three notices, and no others, on a clean run of any of the legs above:
@@ -1552,6 +1613,18 @@ what it skips would be worth less than one that says so.
   slot**: the driven runs write and read back slot A, and two
   playthroughs in two slots not sharing one map is a unit test over file
   events a test hands the store, not a run.
+- **The explored overlay, on one wilderness area of three** (#179). Leg
+  11 drives it on the area slot J starts on, which is view kind 2 on disk
+  6. The other two are the same arithmetic with a different column bias
+  and nobody has stood on them. `docs/explored-overlay.md` §8 says how a
+  person with their own copy reaches them without playing for hours — the
+  party's whole overland position is four numbers a save restores — and
+  what is untested until somebody does is the bias, which is read out of
+  the program rather than carried, and is zero on the one area driven.
+  The second gap is narrower and named for the same reason: the marking
+  is measured *visible* on 2,800 window cells and no shipped overhead
+  tile has been examined directly, so a tile whose art is entirely bright
+  would have no mark and nothing would say so.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam
