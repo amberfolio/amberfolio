@@ -187,11 +187,11 @@ display. Status is *exists* or *new*.
 | ID | Case | How | Visual check | Tier | Status |
 | --- | --- | --- | --- | --- | --- |
 | CIT-1 | Recognizer and window over test strings | As today | None | A | exists |
-| CIT-2 | **A real citation opens a real entry** | Find the nearest square to a shipped slot where the game cites an entry, tale or proclamation: drive with `--seam journal`, ING-2's store and `--dump-every 25`, watching the `journal-open` count. Candidates: the city council clerk in the civilised district (proclamations), the story squares Leg 1 walks. Then a script that reaches it with no journal key pressed; assert `calls=1 last=N` with the expected N and kind | Contact sheet around the callout: the message panel with the citation, then the entry over the roster with nobody having pressed anything. Hash the panel rect | B | new |
-| CIT-3 | A citation wrapped over two lines | From CIT-2's trace note whether the citation arrived as one draw or two; if the first found is one call, find one that wraps | Same as CIT-2 | B | new |
-| CIT-4 | No false positives across the library | Re-run every committed session's script with `--seam journal` and a store; assert `calls=0` for each, or record the expected count where a leg genuinely cites | None | B | new |
-| CIT-5 | A citation while a story page is up keeps Space and Return the program's | At CIT-2's square, after the panel opens, press Space; assert the story advances and the panel is still up or comes back when the roster returns | Two stills: the page turned, the entry still over the roster | B | new |
-| CIT-6 | A citation with an empty store | CIT-2's script with no `--journal-store`; assert the panel says no journal has been read | Panel rect: the two-line refusal in yellow, nothing else | B | new |
+| CIT-2 | **A real citation opens a real entry** | Done (#232, PR #241). The square is `3,4` facing east outside the city hall, reached by Leg 1's tour and then east; one press of Up and a Return runs the entrance event, whose last page cites four proclamations. Drive with `--seam journal`, ING-2's store and `--dump-every 25`; assert `journal-open calls=1 last=131136` — proclamation 64, the first of the four | Contact sheet around the callout: the message panel with the citation, then the entry over the roster with nobody having pressed anything. Hash the panel rect | B | **driven** |
+| CIT-3 | A citation in more than one piece | Done (#232). It arrives as **two message-box calls** — a sentence, then the numerals appended with the box's clear flag down — and not as a line wrap: the box word-wraps a whole operand itself, so what splits a citation is the script printing its number as the next operand. A leg asserts the pair, and that the first alone opens nothing | Same as CIT-2 | B | **driven** |
+| CIT-4 | No false positives across the library | **Not runnable as written**: the host refuses `--seam` beside `--replay`, because a recording owns its seams (#232). It needs #235 first — a `journal-store` line in the descriptor and sessions recorded with the seam on — and then the assertion is `calls=0` on the ten that do not cite. What stands in the meantime is #232's own drive: one open across boot, party creation, credits, menus and twelve story messages | None | B | blocked on #235 |
+| CIT-5 | A citation while a story page is up keeps Space and Return the program's | **Not drivable at CIT-2's square** (#232): the citation is on the event's *last* page, so there is no story page left to turn. What that square can assert is the weaker half — Space reaches the program and the panel stays up. The stronger claim wants a square where the game cites mid-event, and none has been found yet | Two stills: the page turned, the entry still over the roster | B | needs a square |
+| CIT-6 | A citation with an empty store | Done (#232), and the expectation here was wrong: the service is still called once and the seam draws **nothing at all**, because #175's rule is that a citation never takes the screen for a refusal. The refusal panel is the F1 path only. The leg asserts `calls=1` and a roster the seam did not touch | Panel rect: unchanged — the roster, with nothing drawn over it | B | **driven** |
 
 ### Reader panel
 
@@ -277,17 +277,18 @@ mechanism to the seam or the core.
 Each phase is an issue, and #239 tracks them in this order: #232,
 #233, #234, #235, #236, #237 and #238.
 
-1. **Find the citation** (#232) — CIT-2 to CIT-6. First, before any tooling,
-   because it is the one result that changes what the rest of the plan
-   means. Build ING-2's store once with the linked engine, then drive
-   from slot A with the seam on and read the `journal-open` count while
-   walking the routes Legs 1, 4 and 5 already know. The first non-zero
-   count says where the game cites, whether the recognizer's shape
-   matches the program's own prose, and whether it arrived in one draw
-   or two. If the count stays zero on a square where the game visibly
-   cites something, the recognizer is wrong about the shape and
-   `journal_citation_in()` is the one function to change. That is worth
-   knowing before writing sessions that pin the current behaviour.
+1. **Find the citation** (#232) — **done**, and it earned its place at the
+   front twice over. The count stayed zero on a square where the game
+   visibly cited four proclamations, and the recognizer's shape was only
+   the *second* thing wrong with it. The first was the address: the watch
+   was on the per-cell string drawer, which on this program draws the
+   credits, the menus and the position line and no narration whatever.
+   The narration goes to the word-wrapping message box, where the
+   script's every PRINT ends. PR #241 moved the watch there and rewrote
+   the shape — the section's own word rather than the book's, and the
+   notation the booklet numbers that section in. Had any of the sessions
+   in step 4 been recorded first they would have pinned a watch that
+   could never fire.
 2. **The frames tool and the first contact sheets** (#233) — §5 item 1. Produce
    sheets for RDR-2 to RDR-8 and NOT-2 to NOT-10 and look at each once.
    This is the visual pass a person does; everything after it is a hash.
@@ -360,6 +361,16 @@ ING-2 or CIT-2.
   now asserts the opposite.
 - `docs/playable.md` has no leg for `Notes` and the log, though #221,
   #222 and #230 were all driven. Leg 10 in phase 6.
+
+**Three of these were corrected by #232's own PR (#241)**, because that
+change made them wrong in a second way and leaving them would have been
+worse than the first: `docs/journal.md` §7 and §9, `docs/seams.md` §10's
+"What it has not done", and `docs/playable.md` Leg 9 — which had claimed
+the citation path was proven by building the pattern wrong on purpose so
+that the position line would match it. Phase 6 still owns the rest, and
+the reason that leg was wrong is worth carrying into it: a probe that
+reaches a routine says nothing about whether that routine sees the thing
+you are watching for.
 
 ## 9. Running it from a session on this machine
 
