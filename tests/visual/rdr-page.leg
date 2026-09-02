@@ -9,6 +9,10 @@ kind pair
 program START.EXE
 store tests/visual/reader-store.txt
 both code-wheel
+# The code-wheel bypass is gated on the wheel itself (#115), and both
+# sides of this pair drive past the challenge, so both need it. Pinned
+# by digest because a document never enters this tree.
+document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
 seam journal
 until 300000000
 every 25

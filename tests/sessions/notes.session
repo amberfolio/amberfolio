@@ -18,6 +18,7 @@
 about the log with nothing in it, six keys that must reach nothing while
 about it is up, and Escape to give the screen back
 disk external
+document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
 journal-store tests/visual/reader-store.txt
 
 dir SAVE

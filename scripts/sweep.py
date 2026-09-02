@@ -110,6 +110,7 @@ HEADLESS_ENV = {
 # normal case and has to be cheap.
 GAME_DISK_ENV = "AMBERFOLIO_GAME_DISK"
 STORE_ENV = "AMBERFOLIO_JOURNAL_STORE"
+DOCUMENT_ENV = "AMBERFOLIO_DOCUMENT"
 
 # What `disk` says when the disk is the player's own and not in the tree.
 EXTERNAL = "external"
@@ -150,6 +151,10 @@ class Descriptor:
         # why a recording needs to name one at all.
         self.store = ""
         self.store_digest = ""
+        # Documents this recording's seams are gated on, by digest. A
+        # document is never committed here (PLAN.md §6), so there is one
+        # form and it is a fingerprint.
+        self.documents: list[str] = []
         # DOS path (upper case, backslash-separated) -> (size, digest), and
         # the set of directories. A directory has no digest; a digest of a
         # directory is not a thing (the recording's preamble says the same).
@@ -172,6 +177,8 @@ class Descriptor:
                 self.disk = word[1]
             elif word[0] == "contrast" and len(word) == 2:
                 self.contrast = word[1]
+            elif word[0] == "document" and len(word) == 2:
+                self.documents.append(word[1])
             elif word[0] == "journal-store" and len(word) in (2, 3):
                 self.store = word[1]
                 self.store_digest = word[2] if len(word) == 3 else ""
@@ -298,6 +305,33 @@ class Session:
                 return candidate, ""
         return None, (f"no journal store with digest {want[:12]}...; pass"
                       f" --journal-store, or set {STORE_ENV}")
+
+    def documents(self, held: list[Path]) -> tuple[list[Path], str]:
+        """The documents this recording's seams are gated on.
+
+        A possession gate is a seam refusing to arm until the player
+        presents the document the enhancement is *for* (#115, #171,
+        PLAN.md §5). So a recording made with a gated seam on cannot be
+        replayed by somebody who does not hold that document — and the
+        machine says so rather than diverging: the replay is **refused**,
+        naming the condition.
+
+        A document is bytes of somebody's own PDF and never enters this
+        tree, so the descriptor pins it the way it pins an external disk
+        or an external store: by digest, and the sweep looks for a file
+        with that digest among the ones it was given.
+        """
+        if self.descriptor is None or not self.descriptor.documents:
+            return [], ""
+        found: list[Path] = []
+        for want in self.descriptor.documents:
+            here = next((c for c in held
+                         if c.is_file() and digest_of(c) == want), None)
+            if here is None:
+                return [], (f"no document with digest {want[:12]}...; pass"
+                            f" --document, or set {DOCUMENT_ENV}")
+            found.append(here)
+        return found, ""
 
     def problems(self) -> list[str]:
         """What is wrong with this session as a *session*, before any
@@ -562,7 +596,8 @@ def run(command: list[str], env: dict[str, str] | None = None):
 
 
 def sweep_desktop(host: Path, session: Session, disk: Path,
-                  store: Path | None) -> tuple[str, str]:
+                  store: Path | None,
+                  documents: list[Path]) -> tuple[str, str]:
     """The desktop host replaying the session over a copy of its disk.
 
     A copy, because a program may write to it: a replay is a run of the
@@ -583,6 +618,10 @@ def sweep_desktop(host: Path, session: Session, disk: Path,
         try:
             command = [str(host), str(copy), str(session.program),
                        "--headless", "--replay", str(session.path)]
+            for one in documents:
+                # Presented rather than copied: a host hashes what it is
+                # handed and never writes to it (`present_document`).
+                command += ["--document", str(one)]
             if store is not None:
                 # The recording's other input (`Session.store()`). The
                 # host reads it whenever it is named, which is what a
@@ -711,6 +750,11 @@ def main() -> int:
     parser.add_argument("--targets", default="sdl,ctest,contrast",
                         help="comma-separated: sdl, ctest, contrast"
                              " (default: all three)")
+    parser.add_argument("--document", action="append", default=[],
+                        metavar="PATH",
+                        help="a document a seam is gated on, or a directory "
+                             "of them; repeatable, or set "
+                             f"{DOCUMENT_ENV}")
     parser.add_argument("--journal-store", action="append", default=[],
                         metavar="PATH",
                         help="a journal store a session may be pinned to, "
@@ -741,6 +785,19 @@ def main() -> int:
     stores: list[Path] = []
     for one in given:
         stores += sorted(one.glob("*.txt")) if one.is_dir() else [one]
+
+    # And the documents a gated seam needs. A directory of them counts as
+    # all of them, because a player who holds two documents has a folder;
+    # the pin is a digest either way, so nothing here has to know which
+    # file is which.
+    shown = [Path(p) for p in args.document]
+    if not shown:
+        shown = [Path(p) for p
+                 in os.environ.get(DOCUMENT_ENV, "").split(os.pathsep) if p]
+    held: list[Path] = []
+    for one in shown:
+        held += sorted(p for p in one.iterdir() if p.is_file()) \
+            if one.is_dir() else [one]
 
     if args.pin is not None:
         if len(game_disks) != 1:
@@ -831,6 +888,12 @@ def main() -> int:
             skipped.append(session.name)
             continue
 
+        documents, document_trouble = session.documents(held)
+        if document_trouble:
+            rows.append((session.name, "sdl", "SKIP", document_trouble))
+            skipped.append(session.name)
+            continue
+
         host = find_desktop_host(trees)
         if host is None:
             rows.append((session.name, "sdl", "SKIP",
@@ -838,7 +901,7 @@ def main() -> int:
             skipped.append(session.name)
             continue
         host_used = host
-        state, detail = sweep_desktop(host, session, disk, store)
+        state, detail = sweep_desktop(host, session, disk, store, documents)
         rows.append((session.name, "sdl", state, detail))
         failures += state == "FAIL"
         verified += state == "ok"

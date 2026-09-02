@@ -44,8 +44,13 @@ What M4 left in place:
   all, a disabled seam's breakpoint is never consulted, and seam state —
   an outstanding pull included — is configuration and not machine state.
   M5's five enhancements add no mechanism; they add handlers.
-- **Seven seams this build carries**: `code-wheel` (ungated; its
-  possession gate is M5's, #115), `encamp-fix` (M5-E1 #172, M5-E1a #186,
+- **Seven seams this build carries**: `code-wheel` (**gated on the wheel
+  itself** since #115: with no document presented the seam is inert and
+  says `document_not_presented`, so the challenge is answered for a
+  player who holds the wheel and for nobody else. A recording of one
+  names the document by digest, which is why a session descriptor has a
+  `document` line and why a replay without it is *refused* rather than
+  left to diverge), `encamp-fix` (M5-E1 #172, M5-E1a #186,
   M5-E1b #189 and M5-E1c #194 — the first M5 enhancement; it puts a `FIX`
   command on the camp screen's own bar by splicing four characters into
   the string the program draws that bar from, and when the player presses

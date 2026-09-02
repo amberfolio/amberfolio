@@ -797,7 +797,7 @@ beside the fingerprint at load. Every transition is a line on stderr:
 amberfolio: edition Pool of Radiance, archive release (START.EXE)
 amberfolio: seam code-wheel on
 amberfolio: seam code-wheel armed
-amberfolio: seams code-wheel on armed - answer the code-wheel challenge (ungated; M5 owes the gate)
+amberfolio: seams code-wheel on armed - answer the code-wheel challenge, for a player holding the wheel
 ```
 
 On the web host: `af_machine_edition`, `af_machine_program_fingerprint`,
@@ -1139,7 +1139,7 @@ boundary, and it needs the argument this document would have to carry.
 
 | id | what | keyed to | qualified by |
 |---|---|---|---|
-| `code-wheel` | answers the copy-protection challenge (ungated; the gate mechanism is built, and turning it on is #115) | the baseline | the resident image |
+| `code-wheel` | answers the copy-protection challenge, **gated on the code wheel** (#115): inert, and saying `document_not_presented`, until a person presents it | the baseline | the resident image |
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
 | `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; a **Notes** command on the party's own bar opens a log of everything it has cited, and **F1** the number prompt for anything it has not | the baseline | the resident image, and the adventuring loop's module |

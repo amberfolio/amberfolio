@@ -50,6 +50,7 @@ script and a list of rectangles, which are facts.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
 import subprocess
@@ -67,6 +68,7 @@ except ImportError as why:  # pragma: no cover - the message is the handler
 ROOT = Path(__file__).resolve().parent.parent
 LEGS = ROOT / "tests" / "visual"
 GAME_DISK_ENV = "AMBERFOLIO_GAME_DISK"
+DOCUMENT_ENV = "AMBERFOLIO_DOCUMENT"
 
 # The dummy drivers are what make `--press` work with no display, and a
 # headless run refuses `--press` outright (`docs/journal-test-plan.md`
@@ -92,6 +94,8 @@ class Leg:
         self.kind = ""
         self.program = ""
         self.store: str | None = None
+        #: Digests of documents the seams here are gated on (#115).
+        self.documents: list[str] = []
         self.seams: list[str] = []
         self.both: list[str] = []
         self.until = 0
@@ -154,6 +158,8 @@ class Leg:
             self.program = word[1]
         elif head == "store":
             self.store = None if word[1] == "none" else word[1]
+        elif head == "document":
+            self.documents.append(word[1])
         elif head == "seam":
             self.seams.append(word[1])
         elif head == "both":
@@ -205,7 +211,8 @@ def host_of(build: Path) -> Path | None:
 
 
 def run_side(host: Path, disk: Path, leg: Leg, into: Path,
-             seams: list[str], store: Path | None) -> tuple[int, str]:
+             seams: list[str], store: Path | None,
+             documents: list[Path]) -> tuple[int, str]:
     """One run of a leg's script, dumping into `into`.
 
     The disk is copied first, because a run writes to it — a save, the
@@ -221,6 +228,11 @@ def run_side(host: Path, disk: Path, leg: Leg, into: Path,
                "--dump-every", str(leg.every)]
     for seam in seams:
         command += ["--seam", seam]
+    for one in documents:
+        # A seam with a possession gate does nothing until the player
+        # presents the document (#115), and both sides of a pair need it:
+        # the seam-off side still drives past the code-wheel challenge.
+        command += ["--document", str(one)]
     if store is not None:
         command += ["--journal-store", str(store)]
     for key in leg.keys:
@@ -340,10 +352,39 @@ def check_single(leg: Leg, run: Path) -> tuple[list[str], str]:
     return wrong, note
 
 
-def run_leg(leg: Leg, host: Path, disk: Path, keep: Path | None
-            ) -> tuple[str, str]:
+def documents_for(leg: Leg, held: list[Path]) -> tuple[list[Path], str]:
+    """The documents this leg's seams are gated on, among those held.
+
+    Pinned by digest, because a document is somebody's own PDF and never
+    enters this tree (PLAN.md §6) — the same shape `sweep.py` uses for an
+    external disk or an external store.
+    """
+    found: list[Path] = []
+    for want in leg.documents:
+        here = next((c for c in held
+                     if c.is_file() and sha256_of(c) == want), None)
+        if here is None:
+            return [], (f"no document with digest {want[:12]}...; pass"
+                        f" --document, or set {DOCUMENT_ENV}")
+        found.append(here)
+    return found, ""
+
+
+def sha256_of(path: Path) -> str:
+    sha = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            sha.update(block)
+    return sha.hexdigest()
+
+
+def run_leg(leg: Leg, host: Path, disk: Path, keep: Path | None,
+            held: list[Path]) -> tuple[str, str]:
     if leg.problems:
         return "SKIP", "; ".join(leg.problems)
+    documents, document_trouble = documents_for(leg, held)
+    if document_trouble:
+        return "SKIP", document_trouble
     store = None
     if leg.store is not None:
         store = ROOT / leg.store
@@ -355,7 +396,8 @@ def run_leg(leg: Leg, host: Path, disk: Path, keep: Path | None
     try:
         on = work / f"{leg.name}-on"
         on.mkdir(parents=True, exist_ok=True)
-        code, said = run_side(host, disk, leg, on, leg.both + leg.seams, store)
+        code, said = run_side(host, disk, leg, on, leg.both + leg.seams,
+                              store, documents)
         if not stills(str(on / "stills")):
             head = said.strip().splitlines()[-1] if said.strip() else ""
             return "FAIL", f"the on run dumped nothing (exit {code}) {head}"
@@ -365,7 +407,8 @@ def run_leg(leg: Leg, host: Path, disk: Path, keep: Path | None
         else:
             off = work / f"{leg.name}-off"
             off.mkdir(parents=True, exist_ok=True)
-            code, said = run_side(host, disk, leg, off, leg.both, None)
+            code, said = run_side(host, disk, leg, off, leg.both, None,
+                                  documents)
             if not stills(str(off / "stills")):
                 head = said.strip().splitlines()[-1] if said.strip() else ""
                 return "FAIL", f"the off run dumped nothing (exit {code}) {head}"
@@ -388,6 +431,10 @@ def main() -> int:
     parser.add_argument("--game-disk", action="append", default=[],
                         help="a directory holding a copy of the program; "
                              f"or set {GAME_DISK_ENV}")
+    parser.add_argument("--document", action="append", default=[],
+                        metavar="PATH",
+                        help="a document a seam is gated on, or a directory "
+                             f"of them; repeatable, or set {DOCUMENT_ENV}")
     parser.add_argument("--leg", help="only this one, by stem")
     parser.add_argument("--keep", metavar="DIR",
                         help="keep the stills here instead of deleting them, "
@@ -398,6 +445,15 @@ def main() -> int:
     if not disks and os.environ.get(GAME_DISK_ENV):
         disks = [Path(os.environ[GAME_DISK_ENV])]
     disk = next((d for d in disks if d.is_dir()), None)
+
+    shown = [Path(p) for p in args.document]
+    if not shown:
+        shown = [Path(p) for p
+                 in os.environ.get(DOCUMENT_ENV, "").split(os.pathsep) if p]
+    held: list[Path] = []
+    for one in shown:
+        held += sorted(p for p in one.iterdir() if p.is_file()) \
+            if one.is_dir() else [one]
     host = host_of(ROOT / args.build)
 
     found = sorted(LEGS.glob("*.leg"))
@@ -423,7 +479,8 @@ def main() -> int:
                                     f"{GAME_DISK_ENV}")
         else:
             verdict, why = run_leg(leg, host, disk,
-                                   Path(args.keep) if args.keep else None)
+                                   Path(args.keep) if args.keep else None,
+                                   held)
         verdicts.append(verdict)
         print(f"{verdict:5} {leg.name:22} {why}")
 

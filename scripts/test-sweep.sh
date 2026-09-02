@@ -400,6 +400,47 @@ sweep "$r"
 expect_code "a store in the tree with a digest is refused" 1
 expect_says "and says why one pin is enough" "pinned by git"
 
+# --- A document a gated seam needs (#115) ------------------------------
+#
+# A possession gate is a seam refusing to arm until the player presents
+# the document the enhancement is *for*. So a recording made with a gated
+# seam on cannot be replayed by somebody who does not hold that document,
+# and the machine refuses it by name rather than diverging. The sweep's
+# job is to find the file and to be loud when it cannot.
+
+r=$(mkrepo doc-out)
+mkrec "$r" gated
+mkdisk "$r/tests/sessions/disk"
+printf 'not a real document, and not from any game' > "$tmp/held.pdf"
+dwant=$("$python" - "$tmp/held.pdf" <<'PY2'
+import hashlib, sys
+print(hashlib.sha256(open(sys.argv[1], 'rb').read()).hexdigest())
+PY2
+)
+{
+  echo "about a session whose seam is gated on a document"
+  echo "disk disk"
+  echo "document $dwant"
+} > "$r/tests/sessions/gated.session"
+
+sweep "$r"
+expect_code "a document nobody pointed at is a skip" 1
+expect_says "and says what would find it" "AMBERFOLIO_DOCUMENT"
+expect_says "and does not read as a pass" "every check was skipped"
+
+sweep "$r" --document "$tmp/held.pdf"
+expect_silent "and the right document is not a skip" "no document with digest"
+
+printf 'a different file entirely' > "$tmp/other.pdf"
+sweep "$r" --document "$tmp/other.pdf"
+expect_code "a document that is not that document is a skip" 1
+expect_says "and says which digest it wanted" "${dwant:0:12}"
+
+mkdir -p "$tmp/doc-dir"
+cp "$tmp/other.pdf" "$tmp/held.pdf" "$tmp/doc-dir/"
+sweep "$r" --document "$tmp/doc-dir"
+expect_silent "a directory of documents finds the right one" "no document with digest"
+
 # --- And the committed pair, in this tree ------------------------------
 #
 # The one case here that is about the real session library rather than an

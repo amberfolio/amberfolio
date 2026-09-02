@@ -1223,20 +1223,38 @@ TEST(AbiDocuments, ARecognizedDocumentIsHeldAndNamed) {
 }
 
 TEST(AbiSeams, EverySeamSaysWhatDocumentItNeeds) {
-  // Every seam in this build says `no document` today, and a page shows
-  // that rather than working it out: the words are core's, so a browser
-  // and a desktop say the same thing (machine/document.h).
+  // A page shows this rather than working it out: the words are core's,
+  // so a browser and a desktop say the same thing (machine/document.h).
+  //
+  // One seam is gated now — the code-wheel bypass, on the wheel itself
+  // (#115) — and the rest say `no document`. Checked against each seam's
+  // own definition rather than against a list written here, so that the
+  // day a second gate goes on this test is about the door and not about
+  // which seams happen to use it.
   const equipped_machine box;
   const std::uint32_t count = af_machine_seam_count(box.get());
   ASSERT_GT(count, 0u);
+  bool gated_at_least_one = false;
   for (std::uint32_t i = 0; i < count; ++i) {
     std::array<char, 64> gate{};
     EXPECT_GT(af_machine_seam_gate(box.get(), i, gate.data(),
                                    static_cast<std::uint32_t>(gate.size())),
               0u)
         << i;
-    EXPECT_STREQ(gate.data(), "no document") << i;
+    std::array<char, 64> id{};
+    EXPECT_GT(af_machine_seam_id(box.get(), i, id.data(),
+                                 static_cast<std::uint32_t>(id.size())),
+              0u)
+        << i;
+    if (std::string_view(id.data()) == "code-wheel") {
+      EXPECT_STREQ(gate.data(), "code wheel") << i;
+      gated_at_least_one = true;
+    } else {
+      EXPECT_STREQ(gate.data(), "no document") << i;
+    }
   }
+  EXPECT_TRUE(gated_at_least_one)
+      << "the gate door has a user, which is what makes this a test of it";
   std::array<char, 64> gate{};
   EXPECT_EQ(af_machine_seam_gate(box.get(), count, gate.data(),
                                  static_cast<std::uint32_t>(gate.size())),

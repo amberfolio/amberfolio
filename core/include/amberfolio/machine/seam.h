@@ -458,7 +458,8 @@ struct seam_definition {
 
   /// The document the player must hold for this seam to do anything
   /// (PLAN.md §5, #171), or `document_kind::none` for a seam that is not
-  /// gated — which is every seam in this build today.
+  /// gated. **One seam in this build names one**: the code-wheel bypass
+  /// is gated on the code wheel (#115).
   ///
   /// **A possession gate: it demonstrates the player holds the document,
   /// no more.** PLAN.md §5's sentence, and the whole of what this field
