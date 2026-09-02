@@ -187,9 +187,10 @@ starts here. On the desktop host, under SDL's dummy drivers:
 
 * The disk is a copy of the edition's own installation **with its shipped
   save slots** — the snapshot `tests/sessions/temple.rec` pins. **Slot J
-  is the one**: its party is already standing on a wilderness area, which
-  is why no walk out of a city is needed and why the recipe is four
-  keystrokes long.
+  is the one**, and it is the whole reason this section is short: its
+  party is already standing on a wilderness area, so no walk out of a
+  city is needed, no hours of play, and no save had to be constructed.
+  §8 says how to build one for the two areas no shipped slot reaches.
 * `--document` is not optional. Without it the code-wheel seam is inert
   by design (#115) and the run waits at the copy-protection challenge for
   ever, with every downstream symptom looking like something else
@@ -425,6 +426,25 @@ open rather than be refused.
 * **The other two wilderness areas.** Everything driven here was view
   kind 2 on disk 6. Kinds 3 and 4 are the same arithmetic with a
   different bias and have not been stood on.
+
+  **Reaching them does not need hours of play either**, and the way is
+  worth writing down before somebody spends them. The party's whole
+  overland position is four numbers, all of them in memory the save
+  restores: the area id the adventuring loop reads into `0x84DC` comes
+  from the area record at `+0x1E4`; the position is the two words at
+  `+0x186` and `+0x188`; the word at `+0x1CC` must be zero for the travel
+  view rather than the interior one; and the disk number at `0x5376` has
+  to be the area's own — `0x19` on disk 6, `0x1A` on disk 7, `0x1B` on
+  disk 8. So a **scratch copy** of the disk with one slot's save files
+  edited to those values puts a party on any of the three, and
+  `--watch 49F3:1 --watch 49FA:1` says whether it worked before anything
+  else is believed. Such a save stays on the machine that made it and is
+  never committed; what travels is the recipe, which is the sentence
+  above.
+
+  Nothing here needed it, because slot **J** of the edition's own shipped
+  saves is already standing on view kind 2 — which is why §4 is four
+  keystrokes rather than a walk.
 * **A cell whose art is entirely bright.** None of the 2,800 measured
   was, and no tile set was examined directly. If one exists, its cell
   cannot be marked by this method and the mark would silently be absent
