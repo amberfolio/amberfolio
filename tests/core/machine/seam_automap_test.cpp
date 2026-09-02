@@ -114,6 +114,11 @@ constexpr std::uint16_t key_keypad_prev_member = 0x4737;  // '7'
 constexpr std::uint16_t key_end = 0x4F00;
 constexpr std::uint16_t key_home = 0x4700;
 
+/// What the seam hands the program's blocking read back when it has taken
+/// the key that read was going to be answered with (#266, seam_key_read.h):
+/// the scan code and character of `-`, which the program throws away.
+constexpr std::uint16_t key_ignored = 0x0C2D;
+
 /// The map's own four planes, and the lane numbering.
 constexpr std::uint16_t plane_faces_ns = 0x000;
 constexpr std::uint16_t plane_faces_sw = 0x100;
@@ -679,8 +684,70 @@ TEST(AutomapHotkey, TheReadRoutineClaimsItToo) {
   r.type(key_tab);
   r.stand_on(r.point(1));
   r.pc().step();
-  EXPECT_EQ(r.keys_waiting(), 0u);
   EXPECT_TRUE(r.map_state().panel_open());
+  EXPECT_EQ(r.keys_waiting(), 1u) << "and the read is answered, not emptied";
+}
+
+TEST(AutomapHotkey, TheBlockingReadIsAnsweredWithSomethingIgnorable) {
+  // The one thing the poll may not do and this point must: put a key back
+  // (#266). The program at a blocking read has committed to being handed
+  // one, and a read this seam empties goes to sleep inside the BIOS -
+  // where no point of this engine is reached, and the *next* key the
+  // player types is handed to the program unseen. So exactly one keystroke
+  // comes back, and it is the one the program's own menu-bar routine
+  // throws away.
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.type(key_tab);
+  r.stand_on(r.point(1));
+  r.pc().step();
+
+  ASSERT_EQ(r.keys_waiting(), 1u) << "the read is answered, not emptied";
+  const std::uint16_t head = r.word_at(bda::segment, bda::keyboard_buffer_head);
+  EXPECT_EQ(r.word_at(bda::segment, head), key_ignored);
+}
+
+TEST(AutomapHotkey, TheKeyBehindOneClaimedAtTheReadStillReachesTheProgram) {
+  // The defect #266 was filed for, from the player's end: Tab claimed at
+  // the blocking read and nothing put back left the program asleep in the
+  // BIOS, and the keystroke typed after it went straight past every point
+  // this seam has. The letter is still at the head of the ring, which is
+  // where the program's own read will find it.
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.type(key_tab);
+  r.type(0x1E61);  // an ordinary letter, typed while the program waits
+  r.stand_on(r.point(1));
+  r.pc().step();
+
+  ASSERT_TRUE(r.map_state().panel_open());
+  ASSERT_EQ(r.keys_waiting(), 2u);
+  const std::uint16_t head = r.word_at(bda::segment, bda::keyboard_buffer_head);
+  EXPECT_EQ(r.word_at(bda::segment, head), 0x1E61)
+      << "the program is handed the key it would have been handed";
+}
+
+TEST(AutomapHotkey, ARosterCursorKeyTakenAtTheReadIsAnsweredToo) {
+  // Every claim at this point is answered, not only Tab's: the same call
+  // takes a roster-cursor key off the ring while the panel is up, and a
+  // key taken is a key the read is short whichever one it was.
+  const rig r;
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.type(key_tab);
+  r.poll(1);
+  ASSERT_TRUE(r.map_state().panel_open());
+
+  r.type(key_keypad_next_member);
+  r.stand_on(r.point(1));
+  r.pc().step();
+
+  ASSERT_EQ(r.keys_waiting(), 1u);
+  const std::uint16_t head = r.word_at(bda::segment, bda::keyboard_buffer_head);
+  EXPECT_EQ(r.word_at(bda::segment, head), key_ignored);
+  EXPECT_TRUE(r.map_state().panel_open()) << "and it is still up";
 }
 
 TEST(AutomapHotkey, ADataSegmentThatIsNotTheProgramsIsDeclined) {

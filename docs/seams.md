@@ -1128,6 +1128,19 @@ Every entry names the seam it was learned on.
   picked a different one in a sentence. The argument had never asked the
   question a display answers, which was whether a player should still be
   able to see the *shape* of the country under the fog.
+- **A key taken at a blocking read has to be put back.** The keyboard
+  poll and the "give me the next key" read look like the same claim and
+  are not: a poll is a question the program can be told "no" to, a read is
+  the program already committed to being handed something. Empty a read
+  and the program sleeps inside the BIOS, where no point of this engine is
+  reached at all — so the *next* key the player types is delivered unseen,
+  and what a player sees is a seam key that sometimes needs a second press
+  and eats whatever came after the first. It is timing-dependent, so no
+  session catches it: the key has to land in the step between the poll's
+  question and its answer. The answer is one keystroke back, chosen for
+  being one the program throws away (`seam_key_read.h`; journal reader,
+  #175, and the automap, which claimed at the same address
+  from the day it was built without answering — #266).
 - **A seam that paints where the program paints cannot show what
   arrived without a repaint.** The explored overlay drew at the return of
   the program's own screen present, which is right and was not enough: a
@@ -1714,7 +1727,7 @@ to do to carry it.
 | point | in | what it does |
 | --- | --- | --- |
 | the program's "is a key waiting" routine | the resident image | claims Tab, and is the tick: samples the party, reveals what it can see, draws the panel if anything changed |
-| the program's "give me the next key" routine | the resident image | claims Tab, and nothing else |
+| the program's "give me the next key" routine | the resident image | claims Tab, and answers the read with a character the program throws away (#266) |
 | the box-region clear | the resident image | if the rect meets the panel, something else has taken those cells |
 | the full-screen clear | the resident image | the same, unconditionally |
 | the party-roster draw's `retf` | the resident image | the cells are the panel's again |
@@ -1745,6 +1758,24 @@ Only the head of the ring is ever taken, so order and count are kept; the
 program's own extended-key pushback slot vetoes the whole thing while it
 is armed; and the *whole* keystroke word is matched, because Ctrl-I is
 the same character under a different scan code and it is the program's.
+
+**A key taken at the second point is answered** (#266), and that
+is the one thing the second point does that the first may not. A poll is
+a question the program can be told "no" to, so a claim there leaves an
+empty buffer and the program goes round its own loop none the wiser. A
+*read* is the program already committed to being handed a key: empty it
+and the program sleeps inside the BIOS, where no point of this engine is
+reached at all, and the next key the player types is delivered to it
+unseen. What a player saw was Tab needing a second press, and the first
+press eating whatever they typed after it. So the read gets a `-` back —
+on none of the program's bars, neither of the two that step a bar's
+highlight, and not one of the keypad characters its input routine remaps,
+so the routine does not even return: it goes back to waiting. The journal
+reader had this from the day it was built and this seam did not; the
+constant and its argument now live once, in `seam_key_read.h`, and both
+seams include it. Every claim is answered and not only Tab's — the
+roster-cursor keys come off the ring through the same call, and a key
+taken is a key the read is short whichever one it was.
 
 **Its own memory is `machine::automap()`**, not `scratch()`. A seam has
 `scratch_words` — sixteen bytes — and one map's fog is thirty-two. So the
@@ -1942,7 +1973,11 @@ somebody asks:
 * **pressed, the program's input is what it would have been had the key
   never been typed** — `automap_probe_tab_claimed` polls exactly as many
   times as `automap_probe_quiet` and is handed nothing, where
-  `automap_probe_tab_seen` with the seam off is handed the Tab.
+  `automap_probe_tab_seen` with the seam off is handed the Tab. That is
+  exact at the poll, which is where a key is meant to be taken, and it is
+  one character wide of exact at the blocking read: a program that has
+  committed to being handed a key is handed a `-` rather than nothing,
+  because nothing is a program asleep in the BIOS (#266).
 
 **What it has explored outlives the machine** (M5-E2c), and the half of
 that which is the seam's is one call: when a reveal actually changes
@@ -2255,7 +2290,8 @@ second keystroke fall through the claim, and it is the mechanism behind
 `-` back: on none of the program's bars, neither of the two that step a
 bar's highlight, and not one of the keypad characters its input routine
 remaps — so the routine does not even return, it goes back to waiting.
-`seam_automap.cpp` claims at the same point and owes the same answer.
+`seam_automap.cpp` claims at the same point and now answers it the same
+way, out of the same header (#266).
 
 #### Its fidelity claim is narrower than the automap's, on purpose
 

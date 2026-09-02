@@ -188,6 +188,7 @@
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
+#include "seam_key_read.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -1129,27 +1130,9 @@ constexpr std::uint8_t key_step_back_scan = 0x48;
 constexpr std::uint8_t key_step_forward_scan = 0x50;
 
 /// What a key claimed at the program's own **blocking read** is answered
-/// with.
-///
-/// The poll is where a key is meant to be taken: the program asks whether
-/// one is waiting, this seam takes it, and the program is told no. But a
-/// key that lands in the step between that question and its answer arrives
-/// at the *read* instead - and a read is the program having already
-/// committed to being handed one. Take it there and put nothing back and
-/// the program goes to sleep inside the BIOS, where **no point of this
-/// engine is reached at all**, and the next key the player types is handed
-/// straight to it, unseen. That is what made every second keystroke fall
-/// through this seam's claim, and it is why "a seam-claimed key sometimes
-/// needs a second press" was ever a thing anybody noticed.
-///
-/// So the read is answered, with a character the program throws away.
-/// `-` is on none of its bars - their command letters are `0-9A-Z` - it is
-/// neither of the two that step a bar's highlight, and it is not one of
-/// the keypad characters the input routine remaps. Its menu-bar routine
-/// therefore does not even return: it goes back to waiting, which is
-/// exactly where it was.
-constexpr std::uint8_t key_ignored_scan = 0x0C;
-constexpr std::uint8_t key_ignored_ascii = '-';
+/// with: `key_ignored_scan` and `key_ignored_ascii`, which the automap
+/// claims at the same address and so shares (`seam_key_read.h`, where the
+/// argument is kept).
 
 /// The letter the list's own way out is named after, in both the cases a
 /// player's keyboard sends. The screen says `EXIT`, and the letter of a
