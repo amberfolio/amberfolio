@@ -302,6 +302,104 @@ contrast "$r"
 expect_code "a contrast naming no session fails" 1
 expect_says "and says which name" "no session called nobody"
 
+# --- The journal store a recording was made over (#235) ----------------
+#
+# A recording is keys, ticks and hashes, and the journal reader's other
+# input is a *file*. What it draws out of that file is in the
+# framebuffer, and the framebuffer is in every checkpoint hash — so a
+# replay handed a different store than the recording was made over
+# diverges, and the divergence is about the store rather than the
+# machine. The `journal-store` line is what stops that being possible to
+# get wrong quietly.
+
+# One in the tree: found by path, no digest wanted.
+r=$(mkrepo store-here)
+mkrec "$r" reads
+mkdisk "$r/tests/sessions/disk"
+mkdir -p "$r/tests/visual"
+printf 'amberfolio-journal 3
+' > "$r/tests/visual/a-store.txt"
+{
+  echo "about a session over a store this repository carries"
+  echo "disk disk"
+  echo "journal-store tests/visual/a-store.txt"
+} > "$r/tests/sessions/reads.session"
+sweep "$r"
+expect_silent "a store in the tree is not a reason to skip" "no store at"
+
+# And when somebody deletes it, that is a skip with the path in it, not a
+# replay against whatever the host would have found on its own.
+rm "$r/tests/visual/a-store.txt"
+sweep "$r"
+expect_code "a store the descriptor names and nobody committed is a skip" 1
+expect_says "and says which file" "a-store.txt"
+expect_says "and does not read as a pass" "every check was skipped"
+
+# An external one: pinned by digest, exactly as an external disk is.
+r=$(mkrepo store-out)
+mkrec "$r" cites
+mkdisk "$r/tests/sessions/disk"
+printf 'amberfolio-journal 3
+' > "$tmp/players-store.txt"
+want=$("$python" - "$tmp/players-store.txt" <<'PY2'
+import hashlib, sys
+print(hashlib.sha256(open(sys.argv[1], 'rb').read()).hexdigest())
+PY2
+)
+{
+  echo "about a session over a store this repository may not carry"
+  echo "disk disk"
+  echo "journal-store external $want"
+} > "$r/tests/sessions/cites.session"
+
+sweep "$r"
+expect_code "an external store nobody pointed at is a skip" 1
+expect_says "and says what would find it" "AMBERFOLIO_JOURNAL_STORE"
+expect_says "and does not read as a pass" "every check was skipped"
+
+sweep "$r" --journal-store "$tmp/players-store.txt"
+expect_silent "and the right store is not a skip" "no journal store"
+
+# The whole point of a digest: a store that is not that store is refused
+# rather than replayed against.
+printf 'amberfolio-journal 3
+edition x
+' > "$tmp/other-store.txt"
+sweep "$r" --journal-store "$tmp/other-store.txt"
+expect_code "a store that is not that store is a skip" 1
+expect_says "and says which digest it wanted" "${want:0:12}"
+
+# A directory of stores counts as all of them, because a player with two
+# ingested editions has a folder rather than a list.
+mkdir -p "$tmp/store-dir"
+cp "$tmp/other-store.txt" "$tmp/store-dir/"
+cp "$tmp/players-store.txt" "$tmp/store-dir/"
+sweep "$r" --journal-store "$tmp/store-dir"
+expect_silent "a directory of stores finds the right one" "no journal store"
+
+# And the two ways a descriptor can be wrong about a store.
+r=$(mkrepo store-bad)
+mkrec "$r" wrong
+mkdisk "$r/tests/sessions/disk"
+{
+  echo "disk disk"
+  echo "journal-store external"
+} > "$r/tests/sessions/wrong.session"
+sweep "$r"
+expect_code "an external store with no digest is refused" 1
+expect_says "and says what is missing" "wants a sha256"
+
+r=$(mkrepo store-both)
+mkrec "$r" both
+mkdisk "$r/tests/sessions/disk"
+{
+  echo "disk disk"
+  echo "journal-store tests/visual/a.txt 00"
+} > "$r/tests/sessions/both.session"
+sweep "$r"
+expect_code "a store in the tree with a digest is refused" 1
+expect_says "and says why one pin is enough" "pinned by git"
+
 # --- And the committed pair, in this tree ------------------------------
 #
 # The one case here that is about the real session library rather than an

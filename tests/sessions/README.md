@@ -63,6 +63,9 @@ skip.
 
 | `walk.rec` | external, the shipped save slots | leg 8 without the enhancement — slot A loaded and walked forty-eight moves through New Phlan to the armourer at 8,11, with a `Tab` in the key stream that nothing claims. 19,201 frames, 203 checkpoints, 106 key events |
 | `walk-map.rec` | the same | the same script with **`automap` on**: `Tab` is taken out of the keystroke buffer before the program's own key routine looks, and the panel is drawn into the EGA planes over the party roster — brown streets, white building fronts in the colour of the tiles those buildings are drawn with, and yellow door leaves — filling in behind the party as it walks, under the zone's name set in the game's own font (M5-E2 #173, M5-E2a, M5-E2b). The seam is reached 1,283,230 times |
+| `reader.rec` | external, the shipped save slots | **the journal reader** (M5-E4 #175), over `tests/visual/reader-store.txt` — a store of this project's own sentences, named by the descriptor's `journal-store` line. F1 to the prompt, the section cycled through ENTRY, TALE and PROCLAMATION and back, Escape out of it, entry three opened by its number, paged forward with F1 and back with Backspace, and Escape again. 156 checkpoints, 30 key events. The panel's pixels are in every hash from the entry opening onwards |
+| `notes.rec` | the same | **the journal's log** (M5-E4b #222, #230) — `Notes` on the party's own bar opens a log with nothing in it, and then six keys the adventuring screen would answer (`S`, `C`, `L` and three that walk) reach nothing at all while it is up. 146 checkpoints, 24 key events. This is #230's regression net as a hash rather than as a still |
+| `cite.rec` | external, pristine | **a real citation** (#232) — a new party through the city to the hall at 3,4 facing east, whose entrance event names four proclamations in one sentence, and the first of them on the screen with nobody having pressed a key. 291 checkpoints, 158 key events. Its store is **external too**, pinned by digest in the descriptor: it is a real ingestion of a real player's own journal and no byte of it may enter this tree |
 
 `save.rec` and `load.rec` are #105's round trip, recorded. They are two
 sessions and not one because they have to be: a load is a fresh run over
@@ -264,6 +267,33 @@ session rather than leaving the rows out — a table that omitted them
 would read as a table of everything. **So a game session is checked by
 the desktop host only**, and the cross-target claim below rests on the
 sessions whose disks are here.
+
+## A store a session cannot carry either (#235)
+
+A recording is keys, ticks and hashes, and for three of the sessions
+above there is a second input: the journal reader's **store**. What the
+reader draws out of it is in the framebuffer, the framebuffer is in every
+checkpoint hash, and so a replay handed a different store than the
+recording was made over diverges. Measured while `reader.rec` was made:
+replayed against another store, or against none, it parts company at the
+first checkpoint after the entry opens, in the `devices` section — the
+EGA planes, which is the panel.
+
+That was #175's one loose end, and the fix is one line in a descriptor,
+shaped exactly like the `disk` line above it:
+
+    journal-store tests/visual/reader-store.txt
+    journal-store external <sha256>
+
+The first is a store this repository carries, because it is this
+project's own sentences. The second is a player's own ingestion, which
+never enters this tree: the digest is the only thing about it that may be
+written down, and it is what says the store on this machine is the store
+the recording was made over. `scripts/sweep.py` takes `--journal-store`
+(a file or a directory of them, repeatable) or `$AMBERFOLIO_JOURNAL_STORE`,
+**copies** the one it finds before running — a run writes its own log back
+into a store when it ends — and when it finds none, the session is
+skipped and said so.
 
 ## How often a session checkpoints
 

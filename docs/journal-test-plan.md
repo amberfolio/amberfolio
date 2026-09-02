@@ -276,10 +276,10 @@ presses.
 
 | ID | Case | How | Visual check | Tier | Status |
 | --- | --- | --- | --- | --- | --- |
-| FID-1 | On, nothing cited, no key: identical | Record `walk.rec`'s script with `--seam journal` as `walk-journal.rec`; every checkpoint hash equals `walk.rec`'s | The framebuffer is inside the hash | B | new |
-| FID-2 | The reader as a session | `reader.rec` over a committed hand-written store: Leg 9's keys plus RDR-4's cycle | Checkpoints pin the panel on all four targets | B | new |
-| FID-3 | The log as a session | `notes.rec`: NOT-4, NOT-8's key barrage, NOT-9 | Same | B | new |
-| FID-4 | The citation as a session | `cite.rec` over an external store pinned by digest | Same; skips loudly without the store | B | new |
+| FID-1 | On, nothing cited, no key: identical | **Not reachable, and not a bug** (#235). Driven: `walk.rec`'s own key stream re-pressed with `--seam journal` differs from it at 51 of 59 shared checkpoints, in `cpu` and `ram` as well as `display`. It has to — `Notes` is spliced into the string the program draws its bar from and the reader calls the program's own routines, so the seam changes the machine the moment the party's bar is drawn, cited or not. The invariant that does hold is the seam-**off** one, which is `docs/seams.md` §7's and already tested. The confinement legs (§3) are what states the on-run's version of it | The framebuffer is inside the hash | B | **answered, negatively** |
+| FID-2 | The reader as a session | `reader.rec` over `tests/visual/reader-store.txt`: the prompt, RDR-4's cycle, entry three, paging and Backspace | 156 checkpoints; the panel's pixels are in every one from the entry opening onwards | B | **recorded** (#235) |
+| FID-3 | The log as a session | `notes.rec`: NOT-4's empty log, NOT-8's key barrage, and Escape | 146 checkpoints. #230's regression net as a hash rather than as a still | B | **recorded** (#235) |
+| FID-4 | The citation as a session | `cite.rec` over an external store pinned by digest | 291 checkpoints, the citation of #232 among them; skips loudly without the store | B | **recorded** (#235) |
 
 ## 5. Harness work the matrix needs
 
@@ -293,15 +293,24 @@ mechanism to the seam or the core.
    three. Rects are inclusive on both sides, which is how §3's table
    writes them and is *not* PIL's convention; the tool's own docstring
    says so and the self-test pins it.
-2. **A store line in a session descriptor.** `journal-store
-   tests/sessions/reader-store.txt` for a committed hand-written store,
-   or `journal-store external` with a `sha256`, mirroring how `disk
-   external` pins a disk. `sweep.py` passes it as `--journal-store` to
-   the host and to `drive.mjs`, and skips loudly when an external one is
-   absent. This is the loose end #175 named, and it turns FID-2 to FID-4
-   from hand runs into goldens. Check first that `--replay` honours
-   `--journal-store`; the store is read at the start of every run, so it
-   should.
+2. **A store line in a session descriptor** — **done** (#235).
+   `journal-store tests/visual/reader-store.txt`, or `journal-store
+   external <sha256>`, mirroring how `disk external` pins a disk.
+   `sweep.py` passes it to the host, **copies** it first (a run writes
+   its own log back into a store when it ends), and skips loudly when an
+   external one is absent.
+
+   `--replay` did **not** honour `--journal-store`, and the reason was
+   worth finding: the host loaded a store only when the journal seam was
+   named on the command line, and a replay takes its seams from the
+   recording. So the flag was accepted, the store was never read, and the
+   reader would have replayed with no text. It loads whenever a store is
+   named now.
+
+   That the pin is necessary rather than decorative is measured:
+   `reader.rec` replayed against a different store, or against none,
+   parts company at the first checkpoint after the entry opens, in the
+   `devices` section — the EGA planes, which is the panel.
 3. **`scripts/visual-legs.py`** — **done** (#234). Takes a leg's key
    script, runs it with the seam off and on under the dummy drivers, and
    asserts that at every frame the leg names, nothing differs outside the
@@ -352,9 +361,15 @@ Each phase is an issue, and #239 tracks them in this order: #232,
 3. **Confinement legs** (#234) — §5 item 3 and the `.leg` files for the reader
    and log rows. NOT-8 and NOT-9 are the regression net for #230 and the
    first legs to write.
-4. **Sessions** (#235) — §5 item 2, then record `walk-journal`, `reader`,
-   `notes` and `cite`. Verify all four on the wasm module. Add the four
-   rows to `tests/sessions/README.md`.
+4. **Sessions** (#235) — **done for three of the four**. §5 item 2, then
+   `reader`, `notes` and `cite`, with their rows in
+   `tests/sessions/README.md`. `walk-journal` is not among them: FID-1's
+   claim is not reachable and the row says why.
+
+   What is still owed is verifying the three on the **wasm module**.
+   `sweep.py`'s wasm target is the module smoke test rather than a
+   session replay, and `drive.mjs` is the door to the second — RDR-12 and
+   NOT-11 want the same thing and can be one piece of work.
 5. **The browser** (#236) — §7 in full, once, written up in `docs/hosts.md` §3
    the way the rest of that section is. Install Tesseract for ING-3 in
    the same sitting.

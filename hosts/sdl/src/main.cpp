@@ -2342,12 +2342,20 @@ int main(int argc, char** argv) try {
   // the same door, and the same sentence about gates applies to it.
   if (!opts.journal.empty()) {
     ingest_journal(box, opts, journal_text);
-  } else if (std::ranges::find(opts.seams, "journal") != opts.seams.end()) {
-    // Only for a run that asked for the reader. A player who did not is
-    // not owed a line about a file they have no use for, and the seam
-    // being named is the one signal available before `enable()` — which
-    // happens next, and after this so that the store is there the first
-    // time a point can be reached.
+  } else if (!opts.journal_store.empty() ||
+             std::ranges::find(opts.seams, "journal") != opts.seams.end()) {
+    // Only for a run that asked for the reader, or one that said where a
+    // store is. A player who did neither is not owed a line about a file
+    // they have no use for, and the seam being named is the one signal
+    // available before `enable()` — which happens next, and after this so
+    // that the store is there the first time a point can be reached.
+    //
+    // **And `--journal-store` is the other signal, because of `--replay`**
+    // (#235). A replay takes its seams from the recording, which is read
+    // further down, so at this point `opts.seams` is empty however many
+    // seams the run is about to turn on — and the reader would replay
+    // with no text and hash differently than it recorded. Somebody who
+    // named a store meant it.
     load_journal_store(opts, journal_text);
     // What the store remembers about what the game has said, back into
     // the machine the reader draws from. It is observation there and
