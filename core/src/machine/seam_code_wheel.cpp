@@ -59,6 +59,24 @@
 // input buffer, so no assumption is made about how large that buffer is
 // or what else shares the record it sits in — and the seam works whatever
 // the player typed, including nothing.
+//
+//
+// What it is not yet, at the point of definition (docs/seams.md §8.5)
+// -------------------------------------------------------------------
+//
+// **Nothing outstanding in the seam**, and saying so is the whole reason
+// this section is here: an absent one and a satisfied one look identical,
+// and this is the file §8.5 cites as the pattern (#272). The last of it
+// was the possession gate — the paragraph at the top of this file is M3's
+// and calls this seam *not* gated, which #115 overtook in M5-D3, and the
+// gate is a field in the definition below (`document_kind::code_wheel`)
+// and the enhancement's whole claim about a person.
+//
+// What is left is not the seam's. Presenting a document is still a flag
+// on a command line rather than something a page asks you for, which is
+// M6's onboarding (#265), and a browser has never been opened on the
+// toggle that turns this on or on the file input that takes the wheel
+// (#147, #274).
 
 #include <array>
 #include <cstdint>

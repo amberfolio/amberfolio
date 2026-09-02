@@ -252,6 +252,32 @@
 //
 // Both are tests (`tests/core/machine/seam_automap_test.cpp`), and the
 // second is a `tests/programs` stand-in so it runs on all four targets.
+//
+//
+// What it is not yet, at the point of definition (docs/seams.md §8.5)
+// -------------------------------------------------------------------
+//
+//   * **The door rule has only ever been driven through its fallback**
+//     (#268). A leaf is drawn where a wall face's *kind* has been seen
+//     shut — on this map, or in the table of every shut face in the
+//     shipped data, below. New Phlan has no shut face anywhere on it, so
+//     leg 8 and every still taken off it exercise the table and not the
+//     rule. Kovel Mansion has forty-five, and is where a routed leg
+//     would close it.
+//   * **Learning across maps is deliberately not carried** (#268, and
+//     #199 before it). The proven design learns at runtime across maps;
+//     this one does not, and that is a decision rather than a debt.
+//     It is written down here so that the next person to ask why the
+//     panel does not do it finds the answer at the panel, and PLAN.md
+//     §5's "designs are settled, not reopened" is what an argument to
+//     carry it would have to get past.
+//   * **Nobody has watched this panel move.** Its colours, its zone
+//     label and its door leaves were each chosen and checked off dumped
+//     frames, and every leg that has driven it ran headless; the
+//     browser's checkbox that turns it on has not been ticked by a
+//     person either (#274). #263 is the standing lesson there:
+//     "measurably different" is not "legible", and only somebody looking
+//     can say which one this is.
 
 #include <array>
 #include <cstddef>
