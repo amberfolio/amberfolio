@@ -92,6 +92,12 @@ jobs:
           python-version: '3.12'
       - name: clang-format (pinned by .llvm-version)
         run: pip install "clang-format==$(cat .llvm-version)"
+      # Pillow is the stills tool's one dependency, and it is pinned for
+      # the same reason the clang tools are: a gate whose version floats
+      # is a gate that can start disagreeing with the machine a person
+      # ran it on.
+      - name: Pillow (pinned by .pillow-version)
+        run: pip install "pillow==$(cat .pillow-version)"
       # Before the gates themselves, because a gate that cannot fail is
       # worse than no gate: this asserts each one rejects what it exists
       # to reject.
@@ -111,6 +117,14 @@ jobs:
       # here rather than on the one push a year that publishes a tag.
       - name: release-bundler self-test (the refusals)
         run: bash scripts/test-release-bundle.sh
+      # And the stills tool's, for the fourth time for the same reason.
+      # Every visual claim the journal test plan makes is a number this
+      # tool printed — a pixel count, a box, a digest — and the two with
+      # a convention in them would drift silently: a rect is inclusive on
+      # both sides, unlike PIL's own boxes, and "confined" is an exit
+      # status and not only a line of text (#233).
+      - name: stills-tool self-test (the rect convention, and confinement)
+        run: bash scripts/test-frames.sh
       - name: content guard (every commit + index + working tree)
         run: bash scripts/check-clean.sh
       - name: DCO check (every non-merge commit)

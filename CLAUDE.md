@@ -354,8 +354,14 @@ bash scripts/check-tidy.sh    # clang-tidy; needs a configured build tree
 bash scripts/check-shell.sh   # shellcheck over scripts/
 bash scripts/test-guards.sh   # guard self-test — run after editing a guard
 bash scripts/test-sweep.sh    # session-runner self-test — after editing sweep.py
+bash scripts/test-frames.sh   # stills-tool self-test — after editing frames.py
 bash scripts/test-release-bundle.sh  # release-bundler self-test — after editing it
 python3 scripts/sweep.py      # every committed session, on every target
+
+python3 scripts/frames.py diff off/f-11000.ppm on/f-11000.ppm --allow 136,8,311,119
+                              # the stills a --dump run left: look at them,
+                              # crop, hash, diff, contact-sheet. Rects are
+                              # inclusive. Nothing it writes is committable
 
 python3 scripts/fetch-ocr-engine.py --into <the served web directory>
                               # the browser's OCR engine (#174), pinned by

@@ -110,6 +110,26 @@ text is external and pinned by digest, exactly like the game disk.
    from the off-run in exactly two rects at every frame after the entry
    opens — the panel, and `NOTES` on the bar — and in none before F1.
 
+   **Confinement is a masking question, not a bounding-box one** (#233).
+   Those two rects are far apart — the panel high on the screen, `NOTES`
+   on the bottom bar — so the difference's bounding box spans almost the
+   whole frame and lies inside neither. A check that asked whether the
+   box fitted one allowed rect would call the correct behaviour a
+   failure, and nothing would ever pass. `scripts/frames.py diff --allow`
+   therefore blanks every allowed rect in the difference and asserts what
+   survives is empty.
+
+   **A leg cannot both swallow keys and diff against an off run** (#233).
+   The seam-off run has no journal to take a keystroke, so every key the
+   seam would have swallowed reaches the program instead and the two runs
+   end in different game states — a `SEARCH` on the status line of one
+   and not the other, and a whole-frame diff that means nothing. So there
+   are two kinds of leg: an **on/off pair**, whose script may press only
+   keys the seam lets through, and a **single run**, which asserts its
+   own frames against each other. NOT-8 is the second kind and always
+   was: "nothing reaches the program" is one digest holding still, not a
+   difference from anything.
+
 2. **Cross-host equality.** The wasm module driven by `drive.mjs` over
    the same script and store writes a final frame that must `cmp` equal
    to the desktop's. Leg 9 already does this by hand; the plan makes it
@@ -203,13 +223,13 @@ presses.
 | ID | Case | How | Visual check | Tier | Status |
 | --- | --- | --- | --- | --- | --- |
 | RDR-1 | Unit suite | As today | Pixel buffer against a test font | A | exists |
-| RDR-2 | F1 opens the prompt | Still at F1+50 | On/off diff confined to the panel; `JOURNAL` caption row is index 14; footer row present; the cursor rule drawn in the seam's own pixels, no stray glyph | B | new |
-| RDR-3 | Digits, Backspace, Return open an entry | `4`, `3`, Backspace, Return; assert `last=4` | Panel: `ENTRY 4` in 14, body in 2, no row wider than 22 cells, no half glyph at the right edge | B | new |
-| RDR-4 | F1 cycles the section at the prompt | F1 four times; stills after each | Caption reads ENTRY, TALE, PROCLAMATION, ENTRY; the fourth still equals the first | B | new |
-| RDR-5 | Paging a long entry | Open the longest entry in ING-2's store; F1 per page; assert the page count matches the footer's `n/m` | Each page still differs from the last; the last F1 gives the roster back (diff ∅) | B | new |
-| RDR-6 | Escape from the prompt and from a page; Backspace back a page | Three short scripts | Diff ∅ after each Escape; the Backspace still equals the earlier page's | B | new |
+| RDR-2 | F1 opens the prompt | Still at F1+50 | On/off diff confined to the panel; `JOURNAL` caption row is index 14; footer row present; the cursor rule drawn in the seam's own pixels, no stray glyph | B | **seen** (#233) |
+| RDR-3 | Digits, Backspace, Return open an entry | `4`, `3`, Backspace, Return; assert `last=4` | Panel: `ENTRY 4` in 14, body in 2, no row wider than 22 cells, no half glyph at the right edge | B | **seen** (#233) |
+| RDR-4 | F1 cycles the section at the prompt | F1 four times; stills after each | Caption reads ENTRY, TALE, PROCLAMATION, ENTRY; the fourth still equals the first | B | **seen** (#233) |
+| RDR-5 | Paging a long entry | Open the longest entry in ING-2's store; F1 per page; assert the page count matches the footer's `n/m` | Each page still differs from the last; the last F1 gives the roster back (diff ∅) | B | **seen** (#233) |
+| RDR-6 | Escape from the prompt and from a page; Backspace back a page | Three short scripts | Diff ∅ after each Escape; the Backspace still equals the earlier page's | B | **seen** (#233): after Escape the whole difference is the six `NOTES` cells |
 | RDR-7 | The four refusals | No store; entry 999; a store with an entry whose scan is empty; an entry over 4 KiB | Each refusal's two lines in the panel; the truncated entry's last page says so | B | new |
-| RDR-8 | Give-back is exact | Close by every route | Whole-frame diff against the off run is ∅ apart from `Notes`; the 3D viewport never differed at any frame | B | new |
+| RDR-8 | Give-back is exact | Close by every route | Whole-frame diff against the off run is ∅ apart from `Notes`; the 3D viewport never differed at any frame | B | **seen** (#233) for Escape and for the last F1 |
 | RDR-9 | Modal over the automap | `--seam automap` too: Tab, F1, 3, Return, F1 | Map, entry over it, map back with the label and the party's square; the third still equals the first | B | exists by hand |
 | RDR-10 | Off a roster screen the key is nobody's | Walk into a shop (Leg 4's route), press F1, assert `calls=0`; leave the shop with an entry cited on the way and assert it comes up when the roster returns | Shop still unchanged by F1; the entry over the roster on the street | B | new |
 | RDR-11 | Transliteration on the glass | Two hand-written stores: one with curly quotes, an em dash, an ellipsis and a CJK character, one with their plain forms and `?`. Open each | The two panel rects are byte-identical | B | new |
@@ -223,11 +243,11 @@ presses.
 | NOT-1 | Unit suite | As today | None | A | exists |
 | NOT-2 | `Notes` on both bars | Slot A (3D mode), then `A` for area mode; stills of each | On/off diff confined to six cells on the bar row in both modes; the word is the program's lettering, big initial and small tail | B | new |
 | NOT-3 | Not on a vendor's bar | In a shop, still of the bar | Diff ∅ against the off run | B | new |
-| NOT-4 | The empty log | Fresh store, `N` | Frame, title, the one sentence, `EXIT`; arrives as one frame (`--dump-every 1` around the press shows no partial screen) | B | new |
-| NOT-5 | A filled log | After CIT-2, or after opening 4 and 43 by F1: `N` | Newest first, `*` on unread, kind and number, timestamp; the cursor row in 14 and the rest in 2 | B | new |
+| NOT-4 | The empty log | Fresh store, `N` | Frame, title, the one sentence, `EXIT`; arrives as one frame (`--dump-every 1` around the press shows no partial screen) | B | **seen** (#233) |
+| NOT-5 | A filled log | After CIT-2: `N`. **Not** after opening entries by F1 — an entry the player asked for was never cited, so nothing goes on the log (#233) | The four proclamations in the order the game said them, `*` on the three unread, the cursor row in 14 and the rest in 2, timestamps from the seeded clock | B | **seen** (#233) |
 | NOT-6 | Cursor and scrolling | Down past the end, Up past the start, a log longer than the window | Stills: cursor stops at the ends; the window scrolls to keep it | B | new |
-| NOT-7 | Return opens the line; the star comes off | `N`, Return, then back to the log | The entry over the roster; the log's row without its `*` | B | new |
-| NOT-8 | **Nothing reaches the program while the log is up** (#230) | `N`, then `S`, `C`, `L`, Left, Right, Up; `--watch` the party's position and facing words | Every still after `N` and before `E` is identical except the cursor row; no bar or status line appears over the journal | B | new |
+| NOT-7 | Return opens the line; the star comes off | `N`, Return, then back to the log | The entry over the roster; the log's row without its `*` | B | **seen, and it was broken** (#233): the entry never appeared, because the give-back's batch had not run and the panel was painted over. Fixed with it |
+| NOT-8 | **Nothing reaches the program while the log is up** (#230) | `N`, then `S`, `C`, `L`, Left, Right, Up. A **single-run** leg, not an on/off pair: the off run has no log and every one of those keys reaches the program (§3) | Every still after `N` and before `E` is identical. Measured (#233): one digest across 1,475 frames | B | **seen** (#233) |
 | NOT-9 | Give-back in every mode | `E` and Escape, from 3D mode, area mode, and the alternate adventuring screen | Whole-frame diff ∅ against the off run apart from `Notes`, including the outer frame and the viewport's ornaments | B | new |
 | NOT-10 | F1 from the log goes to the prompt | `N`, F1 | The log gone, the prompt in the panel | B | new |
 | NOT-11 | The log on the wasm module | NOT-4, NOT-5 and NOT-9 via `drive.mjs` | `cmp` equal, timestamp column included when the wall seed is shared | B | new |
@@ -246,12 +266,13 @@ presses.
 Four pieces, in the order they unblock the most rows. None adds
 mechanism to the seam or the core.
 
-1. **`scripts/frames.py`.** PPM to PNG for looking, crop to a rect,
-   SHA-256 of a rect, diff two stills into a count and a bounding box,
-   and a contact sheet of the frames that changed. The scratchpad has
-   had this rewritten four times; it belongs in the tree with a
-   `test-frames.sh` self-test over stills it generates itself. §9 has
-   the twenty lines it grows from.
+1. **`scripts/frames.py`** — **done** (#233). Six subcommands: `png`,
+   `crop`, `hash`, `diff` (with `--allow`, the confinement check),
+   `changed`, and `sheet`. `scripts/test-frames.sh` is its self-test over
+   stills it draws itself, and runs in CI's guards job beside the other
+   three. Rects are inclusive on both sides, which is how §3's table
+   writes them and is *not* PIL's convention; the tool's own docstring
+   says so and the self-test pins it.
 2. **A store line in a session descriptor.** `journal-store
    tests/sessions/reader-store.txt` for a committed hand-written store,
    or `journal-store external` with a `sha256`, mirroring how `disk
@@ -431,23 +452,30 @@ amberfolio: stop reason=tick_budget steps=60000000 ticks=240000000 frames=12069
 The exit code is 1, which is the tick budget and not a failure; a
 `stop` line with any other reason is.
 
-**The diff.** PIL is installed. This is the seed of `scripts/frames.py`:
+**The diff.** `scripts/frames.py` is the tool now (#233); Pillow is its
+one dependency and `.pillow-version` pins it.
 
-```python
-from PIL import Image, ImageChops
-a = Image.open("on-011000.ppm").convert("RGB")
-b = Image.open("off-011000.ppm").convert("RGB")
-print(ImageChops.difference(a, b).getbbox())
-a.resize((960, 600), Image.NEAREST).save("on-11000.png")   # to look at
+```sh
+python3 scripts/frames.py diff "$SCR/off/f-011000.ppm" "$SCR/on/f-011000.ppm" \
+  --allow 136,8,311,119 --allow 273,192,311,199
+python3 scripts/frames.py sheet "$SCR/on" --against "$SCR/off" --out "$SCR/s.png"
+python3 scripts/frames.py changed "$SCR/on"        # the stills that differ
 ```
 
-What it printed on 2026-09-01, for every still from 10,700 to 12,000:
-`(136, 8, 312, 199)` — the panel's x range exactly, and a y range that
-reaches the bar because the bar row carries `NOTES`. Split by rect, the
-difference outside the panel is x 273..311 by y 192..199 and nothing
-else; before F1 there is no difference at all. That is assertion form 1
-of §3 working on the real program, and it is the measurement §3's table
-of rects records.
+`diff` prints the pixel count and the bounding box, and with `--allow`
+answers the confinement question by masking: exit 0 when nothing differs
+outside the allowed rects, 2 when something does. `sheet` collapses the
+consecutive stills that show the same thing into one tile, so a run of a
+thousand becomes a dozen pictures a person can actually read.
+
+What that measured on 2026-09-01, for every still from 10,700 to 12,000:
+a bounding box of `136,8,311,198` — the panel's x range exactly, and a y
+range that reaches the bar because the bar row carries `NOTES`. Split by
+rect, the difference outside the panel is x 273..311 by y 192..199 and
+nothing else; before F1 there is no difference at all. (That box is
+written half-open — `(136, 8, 312, 199)` — by PIL and by the twenty-line
+seed this section used to carry; `frames.py` prints it inclusive, which
+is the form §3's table of rects uses.)
 
 **The wasm side.** `build/wasm/hosts/web/Debug/drive.mjs` takes the same
 flags; note the wasm preset builds Debug only unless told otherwise, and
