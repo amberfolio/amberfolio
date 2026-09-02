@@ -291,6 +291,18 @@ either of the two things that could make it meaningless — a pair that
 differs, and a pair that checkpoints at different ticks and would
 otherwise "pass" by comparing nothing.
 
+### And the subsets
+
+| Session | Relation | What it says |
+| --- | --- | --- |
+| `quiet-all.rec` | `identical quiet-journal` | **every seam on at once, none triggered**, is the same machine as the journal alone — all 126 checkpoints. Adding the automap, the Encamp Fix and all three cheats on top of the one seam that does move an idle machine changes nothing |
+| `subset-map-reader.rec` | — | the automap panel up, an entry opened over it, the map given back, the map put away: the one subset where two seams want the same pixels. 146 checkpoints, the framebuffer in every one |
+
+`quiet-all`'s line is the point of the whole set. "Individually
+toggleable" has to mean more than "each seam is harmless alone": it has
+to mean a subset is no more than the sum of what each one does, and that
+is a hash rather than an argument.
+
 ### The one that is a contrast, and why that is the honest answer
 
 `quiet-journal.rec` agrees with the baseline for its first **111 of 126**
