@@ -80,10 +80,12 @@ TEST(JournalIngest, AnUnrecognizedDocumentIsReportedWithItsFingerprint) {
   EXPECT_TRUE(store.edition().empty());
 }
 
-TEST(JournalIngest, TheShippedTableRecognizesNothingYet) {
-  // The state of the world, asserted rather than assumed: with no edition
-  // in `known_journals()`, the default ingester refuses every document,
-  // the probe's included.
+TEST(JournalIngest, TheShippedTableDoesNotRecognizeTheProbe) {
+  // The state of the world, asserted rather than assumed. The shipped
+  // table has a row now (#214), and this is still the right assertion
+  // and for a better reason: the probe's document is a synthetic one
+  // this project builds, and a table that recognized it would be a table
+  // matching something other than the edition it names.
   journal_ingester ingester;
   EXPECT_EQ(ingester.begin(journal_probe_pdf()),
             journal_trouble::unrecognized_edition);

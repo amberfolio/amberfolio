@@ -434,6 +434,13 @@ ING-2 or CIT-2.
 - `docs/playable.md` has no leg for `Notes` and the log, though #221,
   #222 and #230 were all driven. Leg 10 in phase 6.
 
+**All of these are corrected now** — three by #232's own PR (#241) and
+the rest by #238, which also added `docs/playable.md`'s Leg 10 for the
+log. What is left of this section is the record of what was wrong and
+why, because the failure mode is worth remembering: every one of these
+sentences was true when it was written, and each became false through
+somebody else's change rather than through anybody editing it.
+
 **Three of these were corrected by #232's own PR (#241)**, because that
 change made them wrong in a second way and leaving them would have been
 worse than the first: `docs/journal.md` §7 and §9, `docs/seams.md` §10's

@@ -396,8 +396,8 @@ converges on **1.0** — the release the gate in §1 defines.
 - Which **document** editions to fingerprint (§2's optional two). M5-D3
   (#171) built the table and started it with the code wheel of the
   archive release, which is the copy every other fact in the tree was
-  gathered against. The Adventurer's Journal has no entry: a fingerprint
-  is a fact about a file somebody hashed, and nobody has hashed that one
-  — so the journal's gate (#174) refuses everything until it does, which
-  is the fail-closed direction and not a bug. Which re-scanned or reissued
-  editions to add beyond those is the open half.
+  gathered against. The Adventurer's Journal has one too now (M5-E3b,
+  #214), measured off the same release. Every other journal is an
+  unrecognized edition and is refused, which is the fail-closed direction
+  and not a bug. Which re-scanned or reissued editions to add beyond
+  those is the open half.
