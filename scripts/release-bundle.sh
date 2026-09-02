@@ -58,11 +58,20 @@
 # Self-tested by scripts/test-release-bundle.sh — run it after editing.
 set -euo pipefail
 
-# The six files hosts/web/CMakeLists.txt emits for a page to run the
+# The seven files hosts/web/CMakeLists.txt emits for a page to run the
 # module: the Emscripten pair (OUTPUT_NAME amberfolio, SUFFIX .mjs,
-# EXPORT_ES6, MODULARIZE) and the four page scripts it copies beside them.
+# EXPORT_ES6, MODULARIZE) and the five page scripts it copies beside them.
 # Deliberately *not* index.html — the release is the emulator, and the
 # page around it belongs to whoever is hosting it.
+#
+# **journal.mjs joined the list in M5-C1 (#229), and was owed before
+# that.** app.mjs has imported it since #174 and it was never staged, so
+# a consumer serving the released app.mjs got a 404 for a file it asks
+# for by name; #229 makes host.mjs import it too, which turns a latent
+# gap in the page into a hard requirement for anything loading the
+# façade. Adding a file is additive for a consumer that reads
+# manifest.json (which lists them) and a fetch it has to add for one that
+# spells the names out.
 #
 # **These names are keys in somebody else's lockfile.** Renaming one is a
 # breaking change for every consumer pinning it, not a refactor, and the
@@ -78,6 +87,7 @@ BUNDLE=(
   app.mjs
   audio-worklet.mjs
   picker.mjs
+  journal.mjs
 )
 
 # Shipped beside the bundle so a consumer can render the notices without
