@@ -119,7 +119,15 @@ What M5 left in place:
   effect is a repaint of the cells it is sitting on. The obvious cheaper
   gate — the program's own "a script has the message area" byte — was
   measured with `--watch` and thrown away: it oscillates on every step.
-  #173 is closed),
+  M5-E2e (#266) is the defect the closeout audit found and the last thing
+  in it: the panel's key was claimed at the program's blocking *read* as
+  well as at its poll, and a read handed nothing puts the program to
+  sleep inside the BIOS where no point of this engine is reached — so the
+  next key the player typed was delivered unseen. The answer is one
+  keystroke back, chosen for being one the program throws away
+  (`seam_key_read.h`), and `docs/seams.md` §8.4 carries the trap because
+  the journal reader had already met it and the automap had claimed at
+  the same address since the day it was built. #173 is closed),
   `journal` (M5-E4 #175 — the third M5 enhancement and the reader half of
   the journal: when the game cites an entry, the entry opens on the
   game's own screen. A **`Notes`** command on the party's own command bar
