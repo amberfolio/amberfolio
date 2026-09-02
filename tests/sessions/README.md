@@ -268,6 +268,43 @@ would read as a table of everything. **So a game session is checked by
 the desktop host only**, and the cross-target claim below rests on the
 sessions whose disks are here.
 
+## And every one of them on the wasm module (#177)
+
+`docs/replay.md`'s claim is that a recording is keys, ticks and hashes,
+so a *different build of the machine* either reproduces it or does not.
+`hosts/web/tools/drive.mjs --replay` is the door to saying that about a
+game session, and ten of them go through it:
+
+    quiet              replay verified checkpoints=126
+    quiet-automap      replay verified checkpoints=126
+    quiet-encamp       replay verified checkpoints=126
+    quiet-cheats       replay verified checkpoints=126
+    quiet-journal      replay verified checkpoints=126
+    quiet-all          replay verified checkpoints=126
+    subset-map-reader  replay verified checkpoints=146
+    reader             replay verified checkpoints=156
+    notes              replay verified checkpoints=146
+    cite               replay verified checkpoints=291
+
+Each was recorded by the desktop host — MSVC over SDL — and reproduced by
+Emscripten's toolchain, a second compilation of the core and a second
+build of SHA-256. Every byte of RAM, every device's registers, the
+scheduler's deadlines and the framebuffer, at every checkpoint.
+
+It is not a CI check and cannot be: it needs the player's disk, their
+code wheel and, for `cite`, their own ingested journal. It is the sweep's
+job on a machine that has them:
+
+```sh
+node build/wasm/hosts/web/<config>/drive.mjs <disk> START.EXE   --replay tests/sessions/reader.rec   --document "<the code wheel>"   --journal-store tests/visual/reader-store.txt --quiet
+```
+
+**A document has to be presented before the recording's seams go on.**
+`verify_recording` applies the preamble's seams itself, so a seam gated
+on a document that has not been presented refuses the whole replay by
+name (#115) — which is why `--document` is this side's to hand over
+while the seams are the recording's.
+
 ## The fidelity pairs, one per seam (#177)
 
 PLAN.md §5's invariant is that a seam which is **on and never triggered**
