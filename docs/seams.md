@@ -900,6 +900,7 @@ script with one more seam armed and nothing done to trigger it.
     quiet-automap   identical quiet          all 126 checkpoints equal
     quiet-encamp    identical quiet          all 126 checkpoints equal
     quiet-cheats    identical quiet          all 126 checkpoints equal
+    quiet-explored  identical quiet          all 126 checkpoints equal
     quiet-all       identical quiet-journal  every seam at once, and no more
     quiet-journal   contrast  quiet          111 of 126, then divergent
 
@@ -918,7 +919,11 @@ A seam that draws the moment it is on cannot claim `identical`, and
 
 `identical` and `contrast` are both checked on the recordings themselves,
 with no disk, so CI checks them on every push. CONTRIBUTING.md makes the
-pair a condition of merging a seam.
+pair a condition of merging a seam, and
+[`tests/sessions/README.md`](../tests/sessions/README.md)'s "The matrix,
+by seam" is the whole of it in one table — each seam's exercised half
+beside its idle one, the subsets, and the one seam whose idle half is the
+gate rather than a session.
 
 ---
 

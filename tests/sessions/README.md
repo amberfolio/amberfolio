@@ -347,6 +347,38 @@ on a document that has not been presented refuses the whole replay by
 name (#115) — which is why `--document` is this side's to hand over
 while the seams are the recording's.
 
+## The matrix, by seam (M5-V1, #177)
+
+Everything below this line, gathered into the shape #177 asks for. Each
+of the six v1 enhancements has two sessions — one where the seam is **on
+and exercised**, one where it is **on and never triggered** — and the two
+halves are asserted in different places, the first as a `contrast`
+against the same script without the seam and the second as an `identical`
+against `quiet`. A reader who wants a *seam* rather than a mechanism
+should not have to assemble that from three sections, so here it is
+assembled. Every number in it is a line `scripts/sweep.py` prints.
+
+| Seam | On and exercised | On and never triggered | What the pair is worth |
+| --- | --- | --- | --- |
+| `code-wheel` | `party`, `save`, `load` — and, at the challenge itself, every other game session here | *there is none, and there cannot be* | the challenge is the first thing the program asks, so a run that reaches anything at all has already answered it. Its idle half is the **gate** instead (#115): with no document presented the seam is on, inert, and its point is never put in the armed table — which is §7's second invariant exactly, asserted in `SeamGate.ThePointsOfAGatedSeamAreNeverArmedWhileItIsShut`. And a replay whose recording names it without a document presented is refused by name before a step is taken, rather than left to diverge |
+| `encamp-fix` | `camp-fix` — `contrast camp`, 91 of 112 identical, divergent from tick 216,799,088; `fired=11` | `quiet-encamp` — `identical quiet`, all 126 | the splice, the cures, the days and the report are all inside the divergent half; the camp screen never opened is the whole of the other |
+| `automap` | `walk-map` — `contrast walk`, 90 of 203, divergent from tick 218,787,888, three frames after the `Tab` | `quiet-automap` — `identical quiet`, all 126 | the one place a seam can change what the *program* observes is this seam's hotkey claim, and the idle half is the run that says it does not when nobody presses it |
+| `journal` | `reader` (156 checkpoints, the panel in every hash from the entry opening on), `notes` (146), `cite` (291 — a real citation, no key pressed) | `quiet-journal` — **`contrast quiet`**, 111 of 126 | the only one of the six that cannot claim `identical`, and that is the enhancement rather than a leak: `Notes` goes on the party's bar the moment that bar is drawn. Its own descriptor says so at length |
+| `explored` | `wild-trail` — `contrast wild`, 107 of 140, divergent from tick 204,866,288, which is the **arrival** on the wilderness map | `quiet-explored` — `identical quiet`, all 126 | fog marks the unknown, so the divergence moved to the arrival when the marking was reversed (M5-E5f, #263). The claim that survives untouched is the idle one: the seam's points are reached about half a million times over that run and the machine is the machine it would have been |
+| the cheats | `fight-cheat` — `contrast fight`, 126 of 177, divergent from tick 274,951,600, `cheat-invulnerable` firing nine times; and `camp-fix`, which pulls `cheat-wound-party` | `quiet-cheats` — `identical quiet`, all 126, all three on and none pulled | a pull is a host-side trigger, so an unpulled cheat is a seam whose handler never runs — and #161's rule that an outstanding pull is configuration rather than machine state is the same claim one layer down |
+
+### The three pairings the issue names, and the all-on run
+
+"Individually toggleable" has to mean more than "each seam is harmless
+alone". The three pairings the issue names are each a session:
+
+| Subset | Session | What it says |
+| --- | --- | --- |
+| every seam at once | `quiet-all` — `identical quiet-journal`, all 126 | eight seams armed, none triggered, and no more machine than the one seam that does move an idle run. Since M5-V1 that list includes `explored`, and adding it changed the recording by exactly its own `seam` line — see `quiet-all.session` |
+| the automap panel up while the journal reader opens | `subset-map-reader` — 146 checkpoints, the framebuffer in every one | the one subset where two seams want the same pixels: the panel up, an entry opened over it, the map given back, the map put away |
+| the Encamp Fix with a cheat | `camp-fix` — both halves enable `cheat-wound-party` and pull it at the same tick | the Fix with real work to do. What it costs is named where it is paid: the pair now pins a cheat as well as the Fix (see above) |
+| the explored overlay with the automap off | `wild-trail` — `explored` on, `automap` not in the preamble at all | they share a store (#254), and this is the half that says a player with only one of them still keeps the trail. The mirror — the automap alone writing the same nine cells — was driven on a scratch copy and is not committed, because its disk cannot be |
+
 ## The fidelity pairs, one per seam (#177)
 
 PLAN.md §5's invariant is that a seam which is **on and never triggered**
@@ -375,7 +407,7 @@ otherwise "pass" by comparing nothing.
 
 | Session | Relation | What it says |
 | --- | --- | --- |
-| `quiet-all.rec` | `identical quiet-journal` | **every seam on at once, none triggered**, is the same machine as the journal alone — all 126 checkpoints. Adding the automap, the Encamp Fix and all three cheats on top of the one seam that does move an idle machine changes nothing |
+| `quiet-all.rec` | `identical quiet-journal` | **every seam on at once, none triggered**, is the same machine as the journal alone — all 126 checkpoints. Adding the automap, the Encamp Fix, the explored overlay and all three cheats on top of the one seam that does move an idle machine changes nothing |
 | `subset-map-reader.rec` | — | the automap panel up, an entry opened over it, the map given back, the map put away: the one subset where two seams want the same pixels. 146 checkpoints, the framebuffer in every one |
 
 `quiet-all`'s line is the point of the whole set. "Individually
@@ -566,6 +598,16 @@ legitimately changes:
 - what `machine::reset()` leaves behind changes — the self test programs
   the PIT and the 8259 through real bus cycles, and that is where a
   session's device state starts;
+- **a seam this build carries is added after the session was made, and
+  the session claims to carry them all.** M5-V1 (#177) is where this one
+  came from: `quiet-all` is the all-on run, `explored` (#179) landed five
+  sessions later, and until the audit its preamble named seven seams
+  against a build with eight — so the sentence its descriptor made was
+  true of the library and not of the file. Narrow by construction: it
+  applies to that one session and to nothing else here, and what the
+  re-record produced was the same recording with one more `seam` line in
+  it. If it ever produces more than that, the finding is real and the
+  seam is not as idle as its own pair says;
 - **a seam the session turns on legitimately changes what it does.** This
   entry was missing until #192, and its absence is why `camp-fix.rec` sat
   stale across two commits: the Fix stopped dialling a day for a party

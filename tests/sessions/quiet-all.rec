@@ -6,6 +6,7 @@ seam code-wheel
 seam encamp-fix
 seam automap
 seam journal
+seam explored
 seam cheat-invulnerable
 seam cheat-kill-all
 seam cheat-wound-party
