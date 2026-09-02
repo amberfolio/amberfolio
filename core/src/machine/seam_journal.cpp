@@ -1667,7 +1667,15 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
         request(box, ctx, wanted);
         state.set_reader(journal_reader_mode::showing);
         state.set_page(0);
-        return false;
+        // **Batched, so nothing is drawn this pass.** The give-back is a
+        // call into the program, and the program's own screen composer
+        // has not run yet. A panel drawn now is a panel the composer
+        // paints over a moment later, which leaves the reader saying it
+        // is showing an entry while the glass shows the roster — and no
+        // test of this seam's *state* can see the difference. #233's
+        // contact sheet is what saw it: the log's Return called the host
+        // and gave the screen back, and the entry never appeared.
+        return true;
       }
       if (const journal_citation wanted = state.asked(); wanted) {
         request(box, ctx, wanted);
