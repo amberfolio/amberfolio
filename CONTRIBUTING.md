@@ -132,6 +132,31 @@ change, and [`docs/seams.md`](docs/seams.md) is the shape that argument
 takes. §8 there is the house style for writing a seam and §9 is this
 rule at length.
 
+**A seam pull request is not mergeable without its pair** (M5-V1, #177).
+The invariant above is a claim about *your* seam too, and the only way to
+see it is to run the same script twice. So a change that adds or alters a
+seam brings two recordings into `tests/sessions/`:
+
+- one where the seam is **on and never triggered**, carrying
+  `identical <baseline>` in its descriptor — every checkpoint equal to
+  the run without it;
+- one where it is **on and exercised**, carrying `contrast <baseline>` —
+  agreeing until the seam first matters and differing from there to the
+  end.
+
+Both are checked on the files, with no disk, so CI checks them on every
+push: `python3 scripts/sweep.py --targets contrast`. The second is not
+optional politeness — a seam can be on, armed, and reporting itself while
+doing nothing at all, which is what happened twice to the cheats (#129,
+#130) with a green suite throughout.
+
+If your seam genuinely cannot carry the first — because it *draws* the
+moment it is on, the way a splice onto a menu the game keeps redrawing
+does — then say so in the descriptor and pair it with a `contrast`
+instead. `tests/sessions/quiet-journal.session` is the worked example.
+What is not acceptable is loosening what `identical` means so that it
+fits, because that costs every other seam its meaning.
+
 Two corollaries that come up more often than the rule itself:
 
 - **An observation is not part of the run.** A trace ring, an edge log, a
