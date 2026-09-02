@@ -109,6 +109,18 @@ jobs:
       # nobody would otherwise assert (#101).
       - name: session-runner self-test (the skip that is not a pass)
         run: bash scripts/test-sweep.sh
+      # And then the real library's own pairs (M5-V1, #177). The fidelity
+      # invariant on the real program is a `contrast` or an `identical`
+      # line in a descriptor, and both are decided by comparing two
+      # recordings — no disk, no build tree, no game. So this is the one
+      # part of a game session CI can check, and CONTRIBUTING.md's rule
+      # that a seam pull request is not mergeable without its pair is
+      # only a rule while something runs it. It used to be checked on a
+      # throwaway library above and nowhere on the committed one, which
+      # made three documents say "CI checks them on every push" about a
+      # thing CI did not do.
+      - name: the session library's own pairs (the fidelity invariant)
+        run: python3 scripts/sweep.py --targets contrast
       # And the release bundler's, for the third time for the same reason.
       # What it stages is what another repository pins by sha256 and
       # refuses to build without (#200), so its refusals — a build tree
