@@ -2362,21 +2362,12 @@ int main(int argc, char** argv) try {
     // the machine the reader draws from. It is observation there and
     // configuration here, which is why it travels this way round rather
     // than living in either place alone (`machine/journal.h`).
-    // **Oldest first**, which is backwards through the store. The store
-    // holds the log newest first and so does the machine, but `note_seen`
-    // puts each one on the *front* - so feeding them in the order they
-    // are stored would hand the reader its own list upside down.
-    const std::span<const machine::journal_seen_row> stored =
-        journal_text.seen();
-    for (std::size_t i = stored.size(); i > 0; --i) {
-      const machine::journal_seen_row& row = stored[i - 1];
-      box.journal().note_seen(row.what, row.month, row.day, row.hour,
-                              row.minute);
-      if (row.read) {
-        static_cast<void>(box.journal().mark_seen_read(row.what));
-      }
-    }
-    box.journal().set_seen_changed(false);
+    //
+    // These eight lines were here and nowhere else, so the browser did
+    // not have them and forgot every `*` on reload (#237). They are
+    // `host::restore_journal_log()` now, in `hosts/common`, where both
+    // hosts reach them and a test holds the ordering down.
+    host::restore_journal_log(box.journal(), journal_text);
   }
 
   for (const std::string& id : opts.seams) {

@@ -66,6 +66,7 @@ import {
   loadEngine,
   keepStore,
   restoreStore,
+  restoreSeen,
   forgetStore,
   clearStore,
 } from './journal.mjs';
@@ -173,6 +174,11 @@ export function runDevPage() {
     // something — and a module that comes up twice is not a thing this
     // page does.
     reportRestoredJournal(restoreStore(loaded.module));
+    // And its *read log* into the machine, which is a second call because
+    // the store is the module's and the log is the machine's (#237).
+    // Without it a player's `*` marks came back on the desktop and not
+    // here, which was a gap rather than a decision.
+    restoreSeen(loaded.module, machine.handle);
     return machine;
   };
 

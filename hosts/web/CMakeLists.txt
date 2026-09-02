@@ -207,6 +207,7 @@ set(_amberfolio_web_export_names
   _af_web_journal_store_corrections
   _af_web_journal_store_write
   _af_web_journal_store_read
+  _af_web_journal_seen_restore
   _af_web_journal_store_clear
   _af_web_journal_store_fingerprint
   _af_web_journal_probe

@@ -87,6 +87,7 @@ import {
   scancodeFor,
   AF_OK,
   AF_INVALID,
+  AF_NO_MACHINE,
   AF_NO_FILESYSTEM,
   AF_NO_ROOM,
   describeSkip,
@@ -247,6 +248,7 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_store_corrections',
   '_af_web_journal_store_write',
   '_af_web_journal_store_read',
+  '_af_web_journal_seen_restore',
   '_af_web_journal_store_clear',
   '_af_web_journal_store_fingerprint',
   '_af_web_journal_probe',
@@ -2978,6 +2980,7 @@ if (missing.length === 0 && sessions !== null) {
     storedStore,
     forgetStore,
     clearStore,
+    restoreSeen,
     JOURNAL_STORE_KEY,
   } = await import('./journal.mjs');
 
@@ -3210,6 +3213,42 @@ if (missing.length === 0 && sessions !== null) {
     strange.getItem(JOURNAL_STORE_KEY) === rubbish,
     'a store this build could not read was deleted rather than reported',
   );
+
+  // --- The read log survives a reload (STO-4, #237) --------------------
+  //
+  // A store holds two things and only one of them used to arrive. The
+  // text reaches the reader through the host-service pointer; the log —
+  // what the game has cited and which of it this player has opened —
+  // lives in the machine, and nothing was putting it there. So a
+  // terminal restored a player's `*` marks across runs and a browser
+  // silently did not.
+  //
+  // What can be checked from here is the door: that it exists, that it
+  // refuses a machine it was not given, and that it takes one. The
+  // ordering it has to get right — the store's log is newest first and
+  // `note_seen` puts each row on the front — is held down where it can
+  // be seen, in `hosts/common/tests/journal_store_test.cpp`'s
+  // `JournalLogRestore` cases, because the machine's own log is not
+  // readable across the ABI.
+  check(
+    restoreSeen(module, 0) === AF_NO_MACHINE,
+    'restoring a read log into no machine was not refused',
+  );
+  {
+    const box = new Machine(module);
+    check(box.attachReferenceDevices() === AF_OK, 'attaching for the read log failed');
+    check(
+      restoreSeen(module, box.handle) === AF_OK,
+      'a read log could not be restored into a machine',
+    );
+    // Twice is harmless: a page that reloads its store and then restores
+    // again must not hand the reader two of every row.
+    check(
+      restoreSeen(module, box.handle) === AF_OK,
+      'restoring a read log twice was refused',
+    );
+    box.destroy();
+  }
 
   // An empty store is not written, and that is not a failure: a page that
   // ingested nothing has nothing to keep.

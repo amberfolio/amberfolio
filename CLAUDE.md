@@ -155,8 +155,10 @@ What M4 left in place:
   the config on the desktop, this browser's own `localStorage` on the web
   (M5-E3f — read once means once, not once per visit; the page carries a
   *Forget it* button that empties both the drawer and the tab, and the
-  read log is the one part of a store that still does not survive a
-  reload there). Corrections are a second field per entry
+  read log survives a reload there too since #237 — it is
+  `host::restore_journal_log()`, called by both hosts, because the text
+  travels to the reader through the host-service pointer and the log has
+  to be *put* into the machine). Corrections are a second field per entry
   and survive re-ingestion. The OCR engine is Tesseract on both hosts and
   is linked on neither — the desktop runs the player's own installed one
   as a program, the page loads the pinned tesseract.js

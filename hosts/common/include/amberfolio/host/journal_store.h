@@ -112,6 +112,7 @@
 
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
+#include "amberfolio/machine/journal.h"
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
@@ -276,5 +277,29 @@ class journal_store {
   std::vector<machine::journal_seen_row> seen_;
   bool changed_{false};
 };
+
+/// A store's read log, into the machine the reader draws it from.
+///
+/// **The one line of a store that does not travel through
+/// `set_journal_store()`.** A store holds two things: the text of each
+/// entry, which the reader asks for by number through the host-service
+/// pointer, and the log of what the game has told this player to read.
+/// The log lives in `machine::journal_state`, where it is *observation*
+/// (`machine/journal.h`) — so it has to be *put* there, once, when a
+/// store is loaded.
+///
+/// Here rather than in either host because both need it and the ordering
+/// is easy to get wrong in a way nothing would notice: the store holds
+/// the log newest first and so does the machine, and `note_seen` puts
+/// each row on the **front**, so feeding them in stored order hands the
+/// reader its own list upside down. It was written twice, and then only
+/// one of the two was written at all (#237) — a browser forgot every `*`
+/// on reload while a terminal did not.
+///
+/// Restoring what a store already holds is not the log *moving*, so the
+/// changed flag is cleared: a host that wrote the file back afterwards
+/// would be writing what it had just read.
+void restore_journal_log(machine::journal_state& into,
+                         const journal_store& from) noexcept;
 
 }  // namespace amberfolio::host

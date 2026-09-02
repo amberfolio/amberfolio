@@ -563,6 +563,41 @@ uint32_t af_web_journal_store_read(const char* text, uint32_t size) {
       journal().store.parse(std::string_view(text, size)));
 }
 
+/// The store's read log, back into the machine the reader draws from
+/// (M5-E4b, #222; STO-4, #237).
+///
+/// **What a store keeps and this module was throwing away.** A store
+/// holds two things: the text of each entry, and the log of what the game
+/// has told this player to read — `seen` lines, with the moment the game
+/// said so and whether they have opened it since. The text reaches the
+/// reader through `set_journal_store()`, because the reader asks for it
+/// by number. The log does not: it lives in `machine::journal_state`,
+/// where it is *observation* (`machine/journal.h`), and nothing was
+/// putting it there. So the desktop host restored a player's `*` marks
+/// across runs and a browser silently did not, which
+/// `docs/journal.md` §6 called a gap rather than a decision. It was a
+/// gap.
+///
+/// Separate from `_read` because that call has no machine to put it in,
+/// and widening its signature would break a page that already calls it.
+/// Call this after `_read` and after the machine exists; calling it twice
+/// is harmless, because a log that already holds a row does not gain a
+/// second copy of it.
+///
+/// The ordering that makes it right — oldest first, backwards through the
+/// store — is `host::restore_journal_log()`'s, in `hosts/common`, so that
+/// both hosts get it from one place and a test can hold it down.
+///
+/// `AF_NO_MACHINE` for a null handle, `AF_OK` otherwise.
+uint32_t af_web_journal_seen_restore(af_machine* box) {
+  amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
+  if (pc == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  amberfolio::host::restore_journal_log(pc->journal(), journal().store);
+  return AF_OK;
+}
+
 /// Everything in this tab's store gone, header included.
 ///
 /// The module's half of the page's "forget what you read off my journal".
