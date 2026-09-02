@@ -506,12 +506,14 @@ whether the inverted loop a browser needs actually works.
   untested here is the *plumbing* to it — the PGM this host writes and
   the command it runs, and the three same-origin paths the page hands
   tesseract.js.
-- **No real citation has been seen by the reader.** The recognizer is
-  checked against strings the suite writes and the reader against a
-  synthetic store, on all four targets; what nobody has checked is that
-  this program's own citations have the shape the recognizer expects,
-  because that needs an edition and the table is empty. It is the first
-  thing to look at when somebody has one (`docs/seams.md` §10).
+- **A real citation has now been seen by the reader** (#232), and it
+  cost the seam two facts to learn: the watch was on a routine that draws
+  no narration, and the shape it wanted was not the shape the game
+  writes. Both are `docs/seams.md` §10. What is still only checked
+  against strings the suite writes is every *other* citation this game
+  has: the one driven is the city hall's four proclamations, and the
+  entry and tale forms are the pattern's word rather than a measured
+  sentence.
 - **Nobody has opened a browser on the journal panel of the dev page.**
   It is the same open state #147 records for the rest of the page.
 - **Huffman-coded streams are not exercised by our own fixtures.** The
@@ -603,7 +605,11 @@ page's or an editor's, and the reader only reads.
 
 **What it has and has not been driven against** is in `docs/seams.md`
 §10, and the short version belongs here too: the recognizer, the reader
-and the service are checked in CI on all four targets, and the reader has
-been driven against the real program off a store written by hand — but
-**nobody has opened a real journal at a real citation**, because that
-needs an edition and the table is empty (§3).
+and the service are checked in CI on all four targets, and **a real
+journal has now been opened at a real citation** (#232) — a player's own
+ninety-nine entries, ingested against an installed Tesseract, opened by
+the game's own words at the city hall with nobody having pressed a key.
+What has still not been driven is a citation of an *entry* or a *tale*:
+the one the game gave up was four proclamations, and the other two
+sections' shapes are the pattern's word rather than a measured
+sentence.

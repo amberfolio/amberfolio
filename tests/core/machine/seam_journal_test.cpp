@@ -61,10 +61,12 @@ constexpr std::uint16_t data_font_pointer = 0x5E20;
 constexpr std::uint8_t mode_adventure = 4;
 constexpr std::uint8_t mode_title = 0;
 
-/// The string drawer's frame at its entry, from the far return address
-/// upwards: the string's offset, then its segment.
-constexpr std::uint16_t draw_frame_string_offset = 4;
-constexpr std::uint16_t draw_frame_string_segment = 6;
+/// The message box's frame at its entry, from the far return address
+/// upwards: the string's offset, then its segment, then the flag that
+/// says this message is a new one.
+constexpr std::uint16_t box_frame_string_offset = 4;
+constexpr std::uint16_t box_frame_string_segment = 6;
+constexpr std::uint16_t box_frame_clear = 8;
 
 /// Where the test puts the things the data segment points at.
 constexpr std::uint16_t font_segment = 0x8000;
@@ -345,27 +347,42 @@ struct rig {
     }
   }
 
-  /// The program draws `what`: stand on the string-drawer point with the
-  /// far pointer where its caller's frame would have it, and step.
+  /// The program prints `what` into its message box: stand on the box's
+  /// point with the far pointer and the flag where its caller's frame
+  /// would have them, and step.
   ///
   /// Driven through the point rather than by calling the recognizer,
   /// because the point *is* the mechanism — the reading of that frame is
-  /// what turns a string the program drew into a citation.
-  void program_draws(std::string_view what,
+  /// what turns a message the program printed into a citation.
+  ///
+  /// `fresh` is the program's own flag: set, the box homes its cursor and
+  /// clears itself, which is a message beginning; clear, this is the same
+  /// message continuing. A test that says nothing means a new one, which
+  /// is the case that needs no setting up.
+  void program_draws(std::string_view what, bool fresh = true,
                      std::uint16_t where = 0x0100) const {
     constexpr std::uint16_t sp = 0x0400;
     stand_on(point(2), sp);
+    put_word(dgroup(), static_cast<std::uint16_t>(sp + box_frame_string_offset),
+             where);
     put_word(dgroup(),
-             static_cast<std::uint16_t>(sp + draw_frame_string_offset), where);
-    put_word(dgroup(),
-             static_cast<std::uint16_t>(sp + draw_frame_string_segment),
+             static_cast<std::uint16_t>(sp + box_frame_string_segment),
              string_segment);
+    put_word(dgroup(), static_cast<std::uint16_t>(sp + box_frame_clear),
+             fresh ? 1U : 0U);
     put_byte(string_segment, where, static_cast<std::uint8_t>(what.size()));
     for (std::size_t i = 0; i < what.size(); ++i) {
       put_byte(string_segment, static_cast<std::uint16_t>(where + 1 + i),
                static_cast<std::uint8_t>(what[i]));
     }
     box->step();
+  }
+
+  /// The same message, continuing: what the script does when it prints a
+  /// sentence and then the number it cites.
+  void program_draws_more(std::string_view what,
+                          std::uint16_t where = 0x0100) const {
+    program_draws(what, false, where);
   }
 
   /// One pixel of the rendered panel, before it reaches the planes.
@@ -499,19 +516,130 @@ constexpr journal_citation Proclamation(std::uint16_t number) {
 /// No citation at all.
 constexpr journal_citation Nothing() { return {}; }
 
-TEST(JournalCitation, TheShapeIsTheWordAndANumberNearIt) {
+TEST(JournalCitation, TheShapeIsTheSectionsWordAndANumberAfterIt) {
   EXPECT_EQ(journal_citation_in("READ JOURNAL ENTRY 12"), Entry(12));
-  EXPECT_EQ(journal_citation_in("JOURNAL 7"), Entry(7));
+  EXPECT_EQ(journal_citation_in("YOU RECORD IT AS ENTRY 43."), Entry(43));
+  EXPECT_EQ(journal_citation_in("(ENTRY 33)"), Entry(33));
   EXPECT_EQ(journal_citation_in("SEE JOURNAL ENTRY 103 NOW"), Entry(103));
   EXPECT_EQ(journal_citation_in("A JOURNAL ENTRY 4 AND MORE TEXT"), Entry(4));
+}
+
+TEST(JournalCitation, TheBooksOwnWordIsNotTheShape) {
+  // #232: the word this enhancement is named after is in a citation as
+  // often as not ("in your journal you note...") and never names a
+  // section. Before the first real citation was seen it was the word.
+  EXPECT_EQ(journal_citation_in("JOURNAL 7"), Nothing());
+  EXPECT_EQ(journal_citation_in("IN YOUR JOURNAL YOU NOTE ENTRY 7"), Entry(7));
 }
 
 TEST(JournalCitation, EachSectionHasItsOwnWord) {
   // #218: three sections, each numbering from its own base, so the word
   // is what says which of them a number belongs to.
   EXPECT_EQ(journal_citation_in("TALE 4"), Tale(4));
-  EXPECT_EQ(journal_citation_in("YOU HEAR TAVERN TALE 17"), Tale(17));
-  EXPECT_EQ(journal_citation_in("READ PROCLAMATION 214"), Proclamation(214));
+  EXPECT_EQ(journal_citation_in("YOU OVERHEAR TAVERN TALE 17"), Tale(17));
+  EXPECT_EQ(journal_citation_in("READ PROCLAMATION CCXIV"), Proclamation(214));
+}
+
+TEST(JournalCitation, AProclamationIsNumberedTheWayTheBookletNumbersIt) {
+  // #232: the first citation anybody drove the reader against was four
+  // proclamations at the city hall, every one a Roman numeral.
+  EXPECT_EQ(journal_citation_in("PROCLAMATION LIX"), Proclamation(59));
+  EXPECT_EQ(journal_citation_in("PROCLAMATION LXIV."), Proclamation(64));
+  EXPECT_EQ(journal_citation_in("PROCLAMATION LXXVIII"), Proclamation(78));
+  EXPECT_EQ(journal_citation_in("PROCLAMATION CIX"), Proclamation(109));
+  EXPECT_EQ(journal_citation_in("PROCLAMATION MMMCMXCIX"), Proclamation(3999));
+  // Digits are not how a proclamation is numbered, and a numeral is not
+  // how an entry or a tale is.
+  EXPECT_EQ(journal_citation_in("PROCLAMATION 214"), Nothing());
+  EXPECT_EQ(journal_citation_in("ENTRY XII"), Nothing());
+  EXPECT_EQ(journal_citation_in("TALE IV"), Nothing());
+}
+
+TEST(JournalCitation, AProclamationAndItsNumeralMayTouch) {
+  // The program prints the word and the numeral as two operands with
+  // nothing between them, so the screen reads them as one word.
+  EXPECT_EQ(journal_citation_in("PROCLAMATIONCI."), Proclamation(101));
+  EXPECT_EQ(journal_citation_in("PROCLAMATIONSLXIV"), Proclamation(64));
+}
+
+TEST(JournalCitation, OnlyACanonicalNumeralIsANumber) {
+  // A word spelled out of the seven letters is not a number, and neither
+  // is a run that is nearly one.
+  EXPECT_EQ(journal_citation_in("PROCLAMATION CIVIL"), Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATION DID"), Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATION MILD"), Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATION IIII"), Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATION VV"), Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATION IL"), Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATIONS ARE POSTED ON THE WALLS"),
+            Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATION XLIX"), Proclamation(49));
+  EXPECT_EQ(journal_citation_in("PROCLAMATION CDXLIV"), Proclamation(444));
+}
+
+TEST(JournalCitation, ANumeralHasNoReach) {
+  // Any word spelled out of the seven letters would otherwise be a
+  // number: the numeral is the next word or it is nothing. Punctuation
+  // between them is not a word.
+  EXPECT_EQ(journal_citation_in("PROCLAMATION NUMBER XII"), Nothing());
+  EXPECT_EQ(journal_citation_in("PROCLAMATION: XII"), Proclamation(12));
+}
+
+TEST(JournalCitation, APluralNamesAList) {
+  std::array<journal_citation, journal_citations_at_once> found{};
+  ASSERT_EQ(journal_citations_in("IN YOUR JOURNAL YOU NOTE PROCLAMATIONS "
+                                 "LXIV, LXXVIII, CIX, AND LIX.",
+                                 found),
+            4u);
+  EXPECT_EQ(found[0], Proclamation(64));
+  EXPECT_EQ(found[1], Proclamation(78));
+  EXPECT_EQ(found[2], Proclamation(109));
+  EXPECT_EQ(found[3], Proclamation(59));
+
+  ASSERT_EQ(journal_citations_in("UNDER ENTRIES 23 AND 14.", found), 2u);
+  EXPECT_EQ(found[0], Entry(23));
+  EXPECT_EQ(found[1], Entry(14));
+
+  ASSERT_EQ(journal_citations_in("TALES 3, 5 AND 7", found), 3u);
+  EXPECT_EQ(found[2], Tale(7));
+}
+
+TEST(JournalCitation, AListEndsAtTheFirstThingThatIsNotANumber) {
+  std::array<journal_citation, journal_citations_at_once> found{};
+  ASSERT_EQ(journal_citations_in("ENTRIES 23 AND 14, AND THEN 9 MORE", found),
+            2u);
+  EXPECT_EQ(found[1], Entry(14));
+  // A singular names one, whatever follows it.
+  ASSERT_EQ(journal_citations_in("ENTRY 43 AND 2 GOLD PIECES", found), 1u);
+  EXPECT_EQ(found[0], Entry(43));
+}
+
+TEST(JournalCitation, AListThatRunsOffTheEndIsNotAnsweredYet) {
+  // The wrap at the city hall falls after the "and" (#232): the first
+  // draw is three proclamations and the promise of a fourth, and three of
+  // four is not the answer.
+  std::array<journal_citation, journal_citations_at_once> found{};
+  EXPECT_EQ(
+      journal_citations_in("PROCLAMATIONS LXIV, LXXVIII, CIX, AND", found), 0u);
+  EXPECT_EQ(journal_citations_in("PROCLAMATIONS LXIV, LXXVIII,", found), 0u);
+  EXPECT_EQ(journal_citations_in("ENTRIES 23 AND", found), 0u);
+  // ...and everything else in the window waits with it.
+  EXPECT_EQ(journal_citations_in("TALE 7 AND PROCLAMATIONS LXIV,", found), 0u);
+  // A list that simply ends is a list.
+  EXPECT_EQ(journal_citations_in("PROCLAMATIONS LXIV, LXXVIII.", found), 2u);
+  EXPECT_EQ(journal_citations_in("PROCLAMATIONS LXIV AND LXXVIII", found), 2u);
+}
+
+TEST(JournalCitation, ANumberNamedTwiceIsNamedOnce) {
+  std::array<journal_citation, journal_citations_at_once> found{};
+  ASSERT_EQ(journal_citations_in("ENTRIES 4, 4 AND 5", found), 2u);
+  EXPECT_EQ(found[1], Entry(5));
+}
+
+TEST(JournalCitation, MoreThanThereIsRoomForIsTheFirstOfThem) {
+  std::array<journal_citation, 2> two{};
+  EXPECT_EQ(journal_citations_in("ENTRIES 1, 2, 3 AND 4", two), 2u);
+  EXPECT_EQ(two[1], Entry(2));
 }
 
 TEST(JournalCitation, TheSameNumberInTwoSectionsIsTwoCitations) {
@@ -527,34 +655,38 @@ TEST(JournalCitation, TheEarliestOneWinsWhicheverSectionItNames) {
   // word, and what keeps a later sentence from outranking the drawn one.
   EXPECT_EQ(journal_citation_in("TALE 3 AND JOURNAL ENTRY 9"), Tale(3));
   EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 9 AND TALE 3"), Entry(9));
+  std::array<journal_citation, journal_citations_at_once> found{};
+  ASSERT_EQ(journal_citations_in("TALE 3 AND JOURNAL ENTRY 9", found), 2u);
+  EXPECT_EQ(found[1], Entry(9));
 }
 
 TEST(JournalCitation, WithoutTheWordItIsNotACitation) {
-  EXPECT_EQ(journal_citation_in("ENTRY 12"), Nothing());
+  EXPECT_EQ(journal_citation_in("12"), Nothing());
+  EXPECT_EQ(journal_citation_in("LXIV"), Nothing());
   EXPECT_EQ(journal_citation_in("YOU FIND 12 GOLD PIECES"), Nothing());
-  EXPECT_EQ(journal_citation_in("JOURNAL"), Nothing());
+  EXPECT_EQ(journal_citation_in("ENTRY"), Nothing());
   EXPECT_EQ(journal_citation_in("TALE"), Nothing());
   EXPECT_EQ(journal_citation_in("PROCLAMATION"), Nothing());
 }
 
 TEST(JournalCitation, ANumberTooFarAwayIsSomebodyElsesNumber) {
-  // Twelve characters of reach: far enough for the word for an entry and
-  // the punctuation round it, short enough that the next sentence's
-  // numbers are not this citation's.
-  EXPECT_EQ(journal_citation_in("JOURNAL ENTRY 9"), Entry(9));
-  EXPECT_EQ(journal_citation_in("JOURNAL AND THEN A LONG WAY OFF 9"),
-            Nothing());
+  // Twelve characters of reach: far enough for a word and the
+  // punctuation round it, short enough that the next sentence's numbers
+  // are not this citation's.
+  EXPECT_EQ(journal_citation_in("ENTRY NUMBER 9"), Entry(9));
+  EXPECT_EQ(journal_citation_in("ENTRY AND THEN A LONG WAY OFF 9"), Nothing());
 }
 
 TEST(JournalCitation, ItIsAWholeWordAndNotAFragment) {
-  EXPECT_EQ(journal_citation_in("JOURNALISM 4"), Nothing());
-  EXPECT_EQ(journal_citation_in("ADJOURNAL 4"), Nothing());
-  // The two words #218 added are short and ordinary, so this rule is
-  // doing more work than it was: without it a stale tally and a talent
-  // would both be citations.
+  EXPECT_EQ(journal_citation_in("ENTRYWAY 4"), Nothing());
+  EXPECT_EQ(journal_citation_in("REENTRY 4"), Nothing());
+  // The words are short and ordinary, so this rule is doing real work:
+  // without it a stale tally and a talent would both be citations.
   EXPECT_EQ(journal_citation_in("STALE 4"), Nothing());
-  EXPECT_EQ(journal_citation_in("TALES 4"), Nothing());
-  EXPECT_EQ(journal_citation_in("PROCLAMATIONS 4"), Nothing());
+  EXPECT_EQ(journal_citation_in("TALENT 4"), Nothing());
+  // The plurals are words of their own and not fragments of anything.
+  EXPECT_EQ(journal_citation_in("TALES 4"), Tale(4));
+  EXPECT_EQ(journal_citation_in("ENTRIES 4"), Entry(4));
 }
 
 TEST(JournalCitation, ZeroAndARunTooLongAreNotEntryNumbers) {
@@ -566,15 +698,49 @@ TEST(JournalCitation, ZeroAndARunTooLongAreNotEntryNumbers) {
 TEST(JournalCitation, ASecondCitationInTheWindowStillCounts) {
   // The first occurrence has no number near it; the scan carries on
   // rather than answering nothing.
-  EXPECT_EQ(journal_citation_in("JOURNAL AND ALSO THE JOURNAL ENTRY 5"),
+  EXPECT_EQ(journal_citation_in("ENTRY AND ALSO THE JOURNAL ENTRY 5"),
             Entry(5));
+  EXPECT_EQ(
+      journal_citation_in("PROCLAMATIONS ARE POSTED; SEE PROCLAMATION LIX"),
+      Proclamation(59));
 }
 
 TEST(JournalWindow, ACitationSplitAcrossTwoDrawsIsStillOne) {
   journal_state state;
-  EXPECT_EQ(state.note_drawn_text("...read the Journal"), Nothing());
-  EXPECT_EQ(state.note_drawn_text("Entry 21 before going on."), Entry(21));
+  EXPECT_EQ(state.note_drawn_text("...you record it in your journal under"
+                                  " entry"),
+            Nothing());
+  EXPECT_EQ(state.note_drawn_text("21 before going on."), Entry(21));
   EXPECT_EQ(state.cited(), Entry(21));
+  ASSERT_EQ(state.cited_all().size(), 1u);
+}
+
+TEST(JournalWindow, AListSplitAcrossTwoDrawsIsWholeOnTheSecond) {
+  // The city hall, as the message panel wraps it (#232).
+  journal_state state;
+  EXPECT_EQ(state.note_drawn_text("PROCLAMATIONS ARE POSTED ON THE WALLS,"),
+            Nothing());
+  EXPECT_EQ(state.note_drawn_text("IN YOUR JOURNAL YOU NOTE"), Nothing());
+  EXPECT_EQ(state.note_drawn_text("PROCLAMATIONS LXIV, LXXVIII, CIX, AND"),
+            Nothing())
+      << "three of four is not the answer";
+  EXPECT_EQ(state.note_drawn_text("LIX."), Proclamation(64));
+  ASSERT_EQ(state.cited_all().size(), 4u);
+  EXPECT_EQ(state.cited_all()[1], Proclamation(78));
+  EXPECT_EQ(state.cited_all()[2], Proclamation(109));
+  EXPECT_EQ(state.cited_all()[3], Proclamation(59));
+  EXPECT_EQ(state.note_drawn_text("PRESS <ENTER>/<RETURN> TO CONTINUE"),
+            Nothing())
+      << "the match emptied the window";
+}
+
+TEST(JournalWindow, AListLeftHangingIsAnsweredOnWhateverIsDrawnNext) {
+  journal_state state;
+  EXPECT_EQ(state.note_drawn_text("PROCLAMATIONS LXIV, LXXVIII, AND"),
+            Nothing());
+  EXPECT_EQ(state.note_drawn_text("PRESS <ENTER>/<RETURN> TO CONTINUE"),
+            Proclamation(64));
+  EXPECT_EQ(state.cited_all().size(), 2u);
 }
 
 TEST(JournalWindow, AMatchEmptiesTheWindowSoItCannotFireTwice) {
@@ -586,17 +752,22 @@ TEST(JournalWindow, AMatchEmptiesTheWindowSoItCannotFireTwice) {
 
 TEST(JournalWindow, TwoStringsAreTwoWordsAndNeverOne) {
   journal_state state;
-  EXPECT_EQ(state.note_drawn_text("JOURNA"), Nothing());
-  EXPECT_EQ(state.note_drawn_text("L 4"), Nothing())
+  EXPECT_EQ(state.note_drawn_text("ENT"), Nothing());
+  EXPECT_EQ(state.note_drawn_text("RY 4"), Nothing())
       << "two draws are two words; a citation cannot be spelled across the "
          "seam between them";
+  // A word and its numeral drawn separately are two words, and that is a
+  // citation.
+  EXPECT_EQ(state.note_drawn_text("PROCLAMATION"), Nothing());
+  EXPECT_EQ(state.note_drawn_text("CI"), Proclamation(101));
 }
 
 TEST(JournalWindow, ForgettingItLeavesNothingToMatchAgainst) {
   journal_state state;
-  EXPECT_EQ(state.note_drawn_text("the journal"), Nothing());
+  EXPECT_EQ(state.note_drawn_text("in your journal you note proclamations"),
+            Nothing());
   state.forget_citation();
-  EXPECT_EQ(state.note_drawn_text("entry 6"), Nothing());
+  EXPECT_EQ(state.note_drawn_text("LXIV"), Nothing());
 }
 
 // ---------------------------------------------------------------------------
@@ -912,7 +1083,7 @@ TEST(JournalReader, ALongEntryIsWrappedAtTheWordAndPaged) {
   // Two lines' worth, with a word that must not be split across them.
   r.host.text = "aaaa bbbb cccc dddd ee ffffffff gggg";
 
-  r.program_draws("journal 1");
+  r.program_draws("entry 1");
   r.adventuring();
   r.poll();
   EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAA BBBB CCCC DDDD EE"));
@@ -930,7 +1101,7 @@ TEST(JournalReader, AWordLongerThanThePanelIsBrokenRatherThanDropped) {
   r.host.holds.number = 1;
   r.host.text = std::string(30, 'q');
 
-  r.program_draws("journal 1");
+  r.program_draws("entry 1");
   r.adventuring();
   r.poll();
   EXPECT_EQ(r.row_text(reader_body_y), as_glyphs(std::string(22, 'q')));
@@ -952,7 +1123,7 @@ TEST(JournalReader, TheKeyTurnsThePagesAndThenPutsItAway) {
   }
   r.host.text = text;
 
-  r.program_draws("journal 1");
+  r.program_draws("entry 1");
   r.adventuring();
   r.poll();
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
@@ -996,7 +1167,7 @@ TEST(JournalReader, WithNoFontInstalledNothingIsDrawn) {
   r.host.holds.number = 1;
   r.host.text = "text";
 
-  r.program_draws("journal 1");
+  r.program_draws("entry 1");
   r.adventuring();
   r.no_font();
   r.poll();
@@ -1012,7 +1183,7 @@ TEST(JournalReader, OffAScreenWithARosterItDrawsNothing) {
   r.adventuring();
   r.host.holds.number = 1;
   r.host.text = "text";
-  r.program_draws("journal 1");
+  r.program_draws("entry 1");
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
 
   r.adventuring();
@@ -1029,7 +1200,7 @@ TEST(JournalReader, SomethingClearingTheseCellsTakesThePageWithIt) {
   r.adventuring();
   r.host.holds.number = 1;
   r.host.text = "text";
-  r.program_draws("journal 1");
+  r.program_draws("entry 1");
   r.adventuring();
   r.poll();
   ASSERT_TRUE(r.reader().on_screen());
@@ -1085,7 +1256,7 @@ TEST(JournalReader, AnEntryOpenedOffARosterScreenComesUpWhenOneReturns) {
 
   r.adventuring();
   r.put_byte(rig::dgroup(), data_game_mode, mode_title);
-  r.program_draws("journal 1");
+  r.program_draws("entry 1");
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
   r.poll();
   EXPECT_FALSE(r.reader().on_screen());
@@ -1120,7 +1291,7 @@ TEST(JournalKeys, WhileAPageIsUpReturnStaysTheProgramsOwn) {
   r.adventuring();
   r.host.holds.number = 1;
   r.host.text = "text";
-  r.program_draws("journal 1");
+  r.program_draws("entry 1");
   r.adventuring();
   r.poll();
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
@@ -1256,7 +1427,7 @@ TEST(JournalFidelity, AResetMachineHasReadNothing) {
   r.adventuring();
   r.host.holds.number = 1;
   r.host.text = "text";
-  r.program_draws("journal 1");
+  r.program_draws("entry 1");
   ASSERT_TRUE(r.reader().reader_open());
   r.pc().reset();
   EXPECT_FALSE(r.reader().reader_open());
@@ -1575,6 +1746,73 @@ TEST(JournalLog, ACitationGoesIntoItWithTheMachinesOwnClock) {
   EXPECT_EQ(row.hour, 22);
   EXPECT_EQ(row.minute, 19);
   EXPECT_TRUE(row.read) << "the citation opened it, so it has been read";
+}
+
+TEST(JournalLog, EverythingOneMessageNamesGoesInAndTheFirstOpens) {
+  // The city hall, as the real program prints it (#232): a sentence, and
+  // then the proclamations it cites appended to it as a second message
+  // box call with the flag clear. The first opens; all four are on the
+  // list, in the order the game said them, with the `*` on the three the
+  // player has not read.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Proclamation(64);
+  r.host.text = "The sixty-fourth.";
+
+  r.program_draws(
+      "Proclamations are posted on the walls, in your journal you note ");
+  r.poll();
+  EXPECT_TRUE(r.reader().seen().empty())
+      << "a sentence about proclamations names none";
+  EXPECT_FALSE(r.reader().reader_open());
+
+  r.program_draws_more("Proclamations LXIV, LXXVIII, CIX, and LIX.");
+  r.poll();
+  ASSERT_EQ(r.reader().seen().size(), 4u);
+  const std::span<const journal_seen_row> seen = r.reader().seen();
+  EXPECT_EQ(seen[0].what, Proclamation(64));
+  EXPECT_TRUE(seen[0].read) << "the citation opened it";
+  EXPECT_EQ(seen[1].what, Proclamation(78));
+  EXPECT_FALSE(seen[1].read);
+  EXPECT_EQ(seen[2].what, Proclamation(109));
+  EXPECT_FALSE(seen[2].read);
+  EXPECT_EQ(seen[3].what, Proclamation(59));
+  EXPECT_FALSE(seen[3].read);
+  EXPECT_EQ(r.reader().entry(), Proclamation(64));
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+}
+
+TEST(JournalLog, ANewMessageIsNotReadAgainstTheOneBeforeIt) {
+  // The flag the box is told to clear itself with is the program's own
+  // message boundary. Without it a number that opens one message would be
+  // read against a word left over from the last (#232).
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(7);
+  r.host.text = "The seventh.";
+
+  r.program_draws("You read the notice board. Entry");
+  r.poll();
+  EXPECT_TRUE(r.reader().seen().empty()) << "no number yet";
+
+  r.program_draws("7 gold pieces are missing.");
+  r.poll();
+  EXPECT_TRUE(r.reader().seen().empty())
+      << "a new message, so the word before it is not this number's";
+
+  // The same two strings, the second continuing the first, are one
+  // citation.
+  r.program_draws("You read the notice board. Entry");
+  r.program_draws_more("7.");
+  r.poll();
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  EXPECT_EQ(r.reader().seen()[0].what, Entry(7));
 }
 
 TEST(JournalLog, TheLogIsObservationAndNotMachineState) {

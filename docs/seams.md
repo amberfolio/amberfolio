@@ -1892,35 +1892,69 @@ their own machine (`docs/journal.md`). This is what reads it back.
 **The enhancement is mostly not a key.** When the game says to read an
 entry, the entry opens. That is why the first of this seam's points is a
 watch on the program's own text output rather than a convenience on a
-menu: #165 settled the shape (a point plus memory reads, never a reader
-of the host's console ring), and the address was already in this tree —
-it is `image_draw_string`, the routine the Encamp Fix *calls* to write its
-report, watched at its entry instead.
+menu: #165 settled the shape — a point plus memory reads, never a reader
+of the host's console ring.
 
-**Not one of its six points is a new address.** Five are the automap's,
-for the same five reasons: the two keyboard entries, the two clears, and
-the roster drawer's return. An enhancement that adds no address is an
-enhancement that cannot be wrong about one, and that is worth more here
-than anywhere else — every fact this seam depends on has already been
-reached on a driven run of the real program.
+**Which text output is the whole of it, and #232 is what settled that.**
+The watch began on an address that was already in this tree —
+`image_draw_string`, the routine the Encamp Fix *calls* to write its
+report, watched at its entry instead — and reusing it was the reason to
+believe the seam added no address it could be wrong about. On the real
+program that routine draws the credits, the menus and the position line
+above the viewport, and **not one word of the story**. Driving a new
+party to the city hall, where the game names four proclamations in one
+sentence, produced no citation at all.
+
+The narration goes somewhere else: to the word-wrapping **message box**,
+which is where the script's every PRINT ends, the number form and the
+string form alike. So five of this seam's six points are still the
+automap's, for the same five reasons — the two keyboard entries, the two
+clears, and the roster drawer's return — and the sixth is now an address
+of its own, reached and read on a driven run before it was written down
+(§8.1's rule about checking a fact by two routes: the box's own four
+cells and its colour, read off that run's frame, are the ones the
+program's message panel has).
 
 #### The citation is a shape, not a sentence
 
-What the watch matches is the word this enhancement is named after and a
-decimal number within twelve characters of it. Nothing of the program's
-prose is written down to make that work, which is the same rule the bar
-splice follows (§8.1) and the same reason: a seam that spelled out the
-program's own words would be carrying its text in this repository.
+What the watch matches is the word a numbered section of the document is
+called by — entry, tale, proclamation, each with its plural — and a
+number after it in the notation that section is numbered in: decimal for
+entries and tales, a Roman numeral for proclamations, and after a plural
+a list of them joined by commas and "and". Nothing of the program's prose
+is written down to make that work, which is the same rule the bar splice
+follows (§8.1) and the same reason: a seam that spelled out the program's
+own words would be carrying its text in this repository.
 
-**A citation may arrive in two pieces**, because the string drawer draws
-one string at one cell and a sentence wrapped across two lines of a
-message panel is two calls. So the watch keeps a ninety-six-character
-rolling window of what has been drawn, normalized to upper case and
-single spaces, and matches against that. A match empties the window, so
-one drawing of a citation opens one entry however many times the seam
-looks at it afterwards. `journal_citation_in()` is that pattern as a free
-function precisely so it can be checked against strings a test writes,
-which is what `JournalCitation.*` does.
+**The word this enhancement is named after is not part of the shape**,
+and used to be the whole of it. It appears in a citation as often as not
+and never names a section; what names a section is the section's own
+word. #232 is where that was measured rather than assumed, on the one
+sentence the game had to say about it.
+
+**A citation may arrive in two pieces**, and the box says so itself. The
+script prints a sentence as one operand and the number it cites as the
+next — sometimes appended with no space at all — so the box is called
+twice: once told to home its cursor and clear itself, which is a message
+beginning, and once not, which is the rest of the same message. The watch
+keeps a rolling window of what has been printed, normalized to upper case
+and single spaces with the commas kept, and empties it when the flag says
+a new message has begun. That is the program's own message boundary
+rather than a guess at one, and it is what stops a number opening one
+message from being read against a word left at the end of the last.
+
+A match empties the window too, so one message citing something opens one
+entry however many times the seam looks at it afterwards — and a message
+naming several is one message: they all go on the log, in the order they
+were named, and the first opens. `journal_citations_in()` is that pattern
+as a free function precisely so it can be checked against strings a test
+writes, which is what `JournalCitation.*` does.
+
+**A list that runs off the end of what has been printed is not answered
+yet.** Where a split falls inside a list the first piece ends in a comma
+or an "and", and three proclamations of four is not the answer: the watch
+holds everything until the rest arrives, which is why the window keeps
+its commas.
 
 #### Getting the text across the door
 
@@ -2204,23 +2238,40 @@ produce a final frame and an audio dump that are byte for byte the run
 with the seam off. That is §7's invariant on the real program rather than
 on a synthetic one.
 
-#### What it has not done
+#### What a real citation did (#232)
 
-**Nobody has driven it against a real citation**, because that needs a
-real journal and the edition table is empty (`docs/journal.md` §3). The
-driving above proves the reader, the key, the host service, the
-give-back and — through the `S` probe above — the watch's own frame read; what it cannot prove is the one thing only a player with their
-own document can — that this program's citations have the shape the
-recognizer expects. That is the first thing to look at when somebody has
-one, and `journal_citation_in()` is one function to change if they do not.
+**It has now been driven against one**, which is what #232 existed to do,
+and it found two things rather than none. A player's own journal —
+ninety-nine entries, ingested by the desktop host against an installed
+Tesseract — and a new party walked through the city to the hall at the
+square `3,4` facing east. The game's own entrance event names four
+proclamations in one sentence, in Roman numerals and in the plural. The
+first run of it opened nothing at all.
 
-**There is no committed session pair**, and the reason is worth naming
-rather than leaving as an omission: a recording carries keys, ticks and
-hashes (`docs/replay.md`), and this seam's other input is a *file* — the
-player's store — which is host configuration and not in the stream. A
-session that verified a reader would be a session that pinned a store, and
-the runner has no way to say where one is. It is a gap in the harness
-rather than in the seam, and it is #175's one loose end.
+The first finding was the **address**: the watch was on the string
+drawer, which on this program draws the credits, the menus and the
+position line and no narration whatever. It is on the message box now,
+and that is above.
+
+The second was the **shape**: the watch wanted the word this enhancement
+is named after and a decimal number, and the game writes the section's
+own word and the notation the booklet numbers that section in. Both are
+above.
+
+With both fixed the same drive answers `host-service journal-open
+calls=1` with the argument for the first proclamation named, the log
+holds all four in the order the game said them with the `*` on the three
+not read, and the page comes up over the roster in the game's own font
+with nobody having pressed a key. That is the whole enhancement, end to
+end, on the real program.
+
+**There is still no committed session pair**, and the reason is worth
+naming rather than leaving as an omission: a recording carries keys,
+ticks and hashes (`docs/replay.md`), and this seam's other input is a
+*file* — the player's store — which is host configuration and not in the
+stream. A session that verified a reader would be a session that pinned a
+store, and the runner has no way to say where one is. It is a gap in the
+harness rather than in the seam, and #239 is where it is being closed.
 
 ### The debug cheats (#99, #196)
 

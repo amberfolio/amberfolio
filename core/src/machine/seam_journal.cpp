@@ -77,21 +77,36 @@
 // CONTRIBUTING.md allows. Not a byte of the program is reproduced here,
 // and — this is the part that matters for a *reader* — not a word of the
 // program's text either. The citation watch matches a shape, not a
-// sentence: the word this enhancement is named after and a number within
-// reach of it (`journal_citation_in()`, journal.h).
+// sentence: the word a numbered section of the document is called by —
+// entry, tale, proclamation, each with its plural — and a number after it
+// in the notation that section is numbered in (`journal_citations_in()`,
+// journal.h).
 //
-// **Every string the program draws goes through one routine.** It takes a
-// column, a row, a colour and a far pointer to a Pascal string, and cleans
-// ten bytes; the Encamp Fix calls it to write its report and this watches
-// it. At its entry the stack is the caller's frame with the far return
-// address on top, so the arguments are at fixed offsets from SP.
+// **Every word of the program's narration goes through one routine**, and
+// it is not the one that draws a string at a cell. The message panel is
+// drawn by a word-wrapping *box*: one far pointer to a Pascal string, a
+// flag saying whether to home the cursor and clear the box first, a
+// colour, and the box's four cells. The script's every PRINT ends there,
+// the number form and the string form alike, so watching it is watching
+// the narration itself rather than a routine that happens to be nearby.
 //
-// **A citation may arrive in two pieces.** The routine draws one string at
-// one cell, so a sentence wrapped across two lines of a message panel is
-// two calls. The watch therefore keeps a short rolling window of what has
-// been drawn and matches against that (journal.h), which costs ninety-six
-// bytes and removes a whole class of "it works on one screen and not the
-// next".
+// That is #232's finding, and it cost a driven run to learn: the watch
+// used to be on the string drawer — a column, a row, a colour and a far
+// Pascal string, the routine the Encamp Fix calls to write its report —
+// and on the real program that routine draws the credits, the menus and
+// the position line at the top of the viewport, and **not one word of the
+// story**. A tour of the city that ends at the city hall with four
+// proclamations named in one sentence produced no citation at all, and
+// the reason was the address rather than the pattern.
+//
+// **A citation may arrive in two pieces**, and the box says so itself.
+// The script prints a sentence as one operand and the number it cites as
+// the next, appended with no space at all, so the box is called twice:
+// once with the flag set, which is the message beginning, and once
+// without, which is the rest of it. The watch keeps a rolling window of
+// what has been drawn and empties it when the flag says a new message has
+// begun (journal.h), which is the program's own message boundary rather
+// than a guess about one.
 //
 // Everything else — the two keyboard entries, the two clears, the roster
 // drawer and its return — is `seam_automap.cpp`'s fact table, restated
@@ -187,24 +202,35 @@ constexpr std::array<std::string_view, 1> journal_binaries{
     "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
 /// **The points**, as offsets from the image segment, all in the resident
-/// image. Five of the six are `seam_automap.cpp`'s and the sixth is
-/// `seam_encamp_fix.cpp`'s call target watched at its entry, so every one
-/// of them has been reached on a driven run of the real program before
-/// this file existed.
+/// image. Five of them are `seam_automap.cpp`'s, so those have been
+/// reached on a driven run of the real program since before this file
+/// existed; the sixth is the message box, and #232 is the run that
+/// reached it.
 constexpr std::uint32_t key_pending_entry = 0xA6FD;
 constexpr std::uint32_t key_read_entry = 0xA70F;
 constexpr std::uint32_t clear_region_entry = 0x4047;
 constexpr std::uint32_t clear_screen_entry = 0x7D3B;
 constexpr std::uint32_t roster_drawn_return = 0x148A;
+constexpr std::uint32_t message_box_entry = 0x77F8;
+
+/// The string drawer, which this file **calls** and does not watch: the
+/// Encamp Fix's call target, used here to put a page of somebody's
+/// journal on the screen in the program's own font.
 constexpr std::uint32_t draw_string_entry = 0x076B6;
 
-/// The string drawer's frame at its entry: the far return address on top,
-/// then its five arguments, pushed deepest first — column, row, colour,
-/// string segment, string offset — so the last one pushed is nearest SP.
-/// The frame `docs/seams.md` §3 tabulates for calling it, read from the
-/// other side.
-constexpr std::uint16_t draw_frame_string_offset = 4;
-constexpr std::uint16_t draw_frame_string_segment = 6;
+/// The message box's frame at its entry, in the same convention: the far
+/// return address on top, then the arguments with the first of them
+/// nearest SP — the string, then the flag that says to home the cursor
+/// and clear the box, then the colour, then the box's own four cells.
+/// Only the first three are wanted here; the colour and the cells were
+/// read on the run that found this address and are what identified it as
+/// the message panel's own box, which is why they are named and not taken.
+constexpr std::uint16_t box_frame_string_offset = 4;
+constexpr std::uint16_t box_frame_string_segment = 6;
+constexpr std::uint16_t box_frame_clear = 8;
+
+/// The longest Pascal string there can be, which is what the box takes.
+constexpr std::size_t longest_message = 255;
 
 /// The routine that draws the party roster, as a paragraph and an offset
 /// rather than a flat image offset: it reaches its own literals as
@@ -250,11 +276,6 @@ constexpr std::uint16_t data_font_pointer = 0x5E20;
 constexpr std::uint16_t font_glyphs = 64;
 constexpr std::uint16_t font_glyph_bytes = 8;
 constexpr std::uint16_t font_bytes = font_glyphs * font_glyph_bytes;
-
-/// The longest Pascal string this seam will copy out of the program to
-/// look at. The program's own screen is forty characters wide, so a
-/// string longer than one line of it is not a line of text it drew.
-constexpr std::size_t longest_drawn_string = 64;
 
 // ---------------------------------------------------------------------------
 // The page, in the panel
@@ -1800,8 +1821,9 @@ void at_key_read(machine& box, seam_context& ctx) {
   draw_if_wanted(box, ctx, ds);
 }
 
-/// The program is about to draw a string. Is it citing an entry?
-void at_draw_string(machine& box, seam_context& ctx) {
+/// The program is about to put a message in its message box. Is it citing
+/// an entry?
+void at_message_box(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
   if (ds == 0) {
@@ -1813,30 +1835,42 @@ void at_draw_string(machine& box, seam_context& ctx) {
   const std::uint16_t ss = regs[cpu::sreg::ss];
   const std::uint16_t sp = regs[cpu::reg16::sp];
   const far_pointer where{
-      .offset = cpu.read_word(ss, at(sp, draw_frame_string_offset)),
-      .segment = cpu.read_word(ss, at(sp, draw_frame_string_segment))};
+      .offset = cpu.read_word(ss, at(sp, box_frame_string_offset)),
+      .segment = cpu.read_word(ss, at(sp, box_frame_string_segment))};
   if (!followable(where, 1)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+
+  journal_state& state = box.journal();
+
+  // The program's own message boundary, taken rather than guessed: the
+  // flag the box is asked to home and clear itself with is the script's
+  // "this is a new message", and everything after it without the flag is
+  // the same message continuing. Emptying the window here is what stops
+  // a number appended to one sentence from being read against the one
+  // before it.
+  if (cpu.read_word(ss, at(sp, box_frame_clear)) != 0) {
+    state.forget_citation();
+  }
+
   const std::uint8_t length = cpu.read_byte(where.segment, where.offset);
   if (length == 0) {
     return;
   }
-  const auto take = static_cast<std::uint8_t>(
-      std::min<std::size_t>(length, longest_drawn_string));
+  const auto take =
+      static_cast<std::uint8_t>(std::min<std::size_t>(length, longest_message));
   if (!followable(where, static_cast<std::uint32_t>(take) + 1U)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
 
-  std::array<char, longest_drawn_string> drawn{};
+  std::array<char, longest_message> drawn{};
   for (std::uint8_t i = 0; i < take; ++i) {
     drawn[i] = static_cast<char>(cpu.read_byte(
         where.segment, at(where.offset, static_cast<std::uint16_t>(i + 1))));
   }
 
-  journal_state& state = box.journal();
   const journal_citation cited =
       state.note_drawn_text(std::string_view{drawn.data(), take});
   if (!cited) {
@@ -1848,8 +1882,16 @@ void at_draw_string(machine& box, seam_context& ctx) {
   // time since (`machine/platform.h`). Derived rather than read, so
   // nothing here goes near the host's clock and a replay gets the same
   // answer twice.
+  // Every one the drawing named, not only the first: the city hall
+  // names four proclamations in one sentence (#232), and a player who
+  // reads the first wants the other three on the list with their `*`.
+  // Last-named first, because the log puts each new line on top and the
+  // list should read in the order the game said them.
   const wall_time when = box.wall().at(box.time());
-  state.note_seen(cited, when.month, when.day, when.hour, when.minute);
+  const std::span<const journal_citation> all = state.cited_all();
+  for (std::size_t i = all.size(); i > 0; --i) {
+    state.note_seen(all[i - 1], when.month, when.day, when.hour, when.minute);
+  }
   tell_the_host_the_log_moved(box, ctx);
 
   // A citation, and the whole enhancement: the entry opens. The reader is
@@ -1990,8 +2032,8 @@ constexpr std::array<seam_point, 10> journal_points{
       .run = &at_key_pending},
      {.module = resident_image, .offset = key_read_entry, .run = &at_key_read},
      {.module = resident_image,
-      .offset = draw_string_entry,
-      .run = &at_draw_string},
+      .offset = message_box_entry,
+      .run = &at_message_box},
      {.module = resident_image,
       .offset = clear_region_entry,
       .run = &at_clear_region},

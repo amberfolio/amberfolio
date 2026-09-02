@@ -20,33 +20,84 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The word each of the journal's numbered sections is cited by, and how
-/// far from it the number may be.
+/// How a section numbers what it holds, which is the notation a citation
+/// of it is written in.
 ///
-/// One word per kind and no more, because everything else about how a
-/// citation is phrased is the program's business: it may name the section
-/// in as many further words as it likes, or in none, and what the
-/// recognizer insists on is one of these and a number within reach.
-/// Twelve characters is the reach — enough for a second word and the
-/// punctuation around it, and short enough that a number in the *next*
-/// sentence is not a citation.
+/// The one printed journal this build has a fact table for numbers its
+/// entries and its tales in decimal and its proclamations in Roman
+/// numerals, and the program cites each the way the booklet prints it.
+/// That is the fact the first driven citation established (#232): at the
+/// city hall the program names four proclamations in one sentence, every
+/// one of them a Roman numeral, and a recognizer that wanted digits saw
+/// nothing at all.
+enum class citation_notation : std::uint8_t { decimal, roman };
+
+/// One word a citation is built on.
+struct citation_word {
+  std::string_view word;
+  journal_kind kind;
+  citation_notation notation;
+  /// A plural names several at once, and a list may follow it: "entries
+  /// 23 and 14", "proclamations LXIV, LXXVIII, CIX, and LIX". A singular
+  /// names one, and the number after it is the whole citation — anything
+  /// after that number is the next sentence's business.
+  bool plural;
+};
+
+/// The words each of the journal's numbered sections is cited by.
 ///
-/// `TALE` rather than `TAVERN TALE` for the same reason: it is the word
-/// that is certainly there, it is a word of the phrase either way, and a
-/// recognizer that insisted on both would miss a program that printed
-/// only one of them.
-constexpr std::array<std::pair<std::string_view, journal_kind>, journal_kinds>
-    citation_words{{
-        {"JOURNAL", journal_kind::entry},
-        {"TALE", journal_kind::tale},
-        {"PROCLAMATION", journal_kind::proclamation},
-    }};
+/// **The section's own word and not the book's.** The word this
+/// enhancement is named after appears in a citation as often as not
+/// ("in your journal you note...") and is no part of the citation's
+/// shape: what names the section is `ENTRY`, `TALE` or `PROCLAMATION`,
+/// each with its plural, and the number belongs to whichever of those it
+/// follows. `TALE` rather than `TAVERN TALE` because it is the word that
+/// is certainly there, and a recognizer that insisted on both would miss
+/// a program that printed only one of them.
+///
+/// **A plural before its singular**, because the scan takes the first
+/// word in this table that matches at a position and a plural is its
+/// singular with a letter on the end. Nothing else about the order is
+/// load-bearing.
+constexpr std::array<citation_word, 6> citation_words{{
+    {.word = "ENTRIES",
+     .kind = journal_kind::entry,
+     .notation = citation_notation::decimal,
+     .plural = true},
+    {.word = "ENTRY",
+     .kind = journal_kind::entry,
+     .notation = citation_notation::decimal,
+     .plural = false},
+    {.word = "TALES",
+     .kind = journal_kind::tale,
+     .notation = citation_notation::decimal,
+     .plural = true},
+    {.word = "TALE",
+     .kind = journal_kind::tale,
+     .notation = citation_notation::decimal,
+     .plural = false},
+    {.word = "PROCLAMATIONS",
+     .kind = journal_kind::proclamation,
+     .notation = citation_notation::roman,
+     .plural = true},
+    {.word = "PROCLAMATION",
+     .kind = journal_kind::proclamation,
+     .notation = citation_notation::roman,
+     .plural = false},
+}};
+
+/// How far past a decimal word its number may be. Twelve characters is
+/// enough for a second word and the punctuation around it, and short
+/// enough that a number in the *next* sentence is not a citation. A Roman
+/// numeral has no reach: it must be the next word, because any word
+/// spelled out of the seven Roman letters would otherwise be one.
 constexpr unsigned citation_reach = 12;
 
-/// The largest entry number a citation may name. Four digits, which is
-/// what the prompt takes (journal.h), and a run of more than that is not
-/// an entry number — it is a year, a coin count, or a number that has run
-/// into the one before it.
+/// The largest entry number a decimal citation may name. Four digits,
+/// which is what the prompt takes (journal.h), and a run of more than
+/// that is not an entry number — it is a year, a coin count, or a number
+/// that has run into the one before it. A Roman numeral's own grammar
+/// caps it lower than this.
 constexpr unsigned citation_max_digits = 4;
 
 [[nodiscard]] constexpr bool is_digit(char ch) noexcept {
@@ -57,16 +108,139 @@ constexpr unsigned citation_max_digits = 4;
   return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
 }
 
-/// One character, as the window keeps it: upper case for a letter, itself
-/// for a digit, and a space for everything else.
+/// One character, as the window keeps it: upper case for a letter,
+/// itself for a digit or a comma, and a space for everything else.
+///
+/// The comma stays because it is how a list says it is not finished. A
+/// sentence wrapped across two lines of the message panel reaches the
+/// watch as two draws, and where the wrap falls inside a list of
+/// proclamations the first draw ends in a comma or an "and": the watch
+/// holds its answer until the rest arrives rather than opening the first
+/// three of four (`journal_citations_in()`).
 [[nodiscard]] constexpr char normalized(char ch) noexcept {
   if (ch >= 'a' && ch <= 'z') {
     return static_cast<char>(ch - ('a' - 'A'));
   }
-  if (is_letter(ch) || is_digit(ch)) {
+  if (is_letter(ch) || is_digit(ch) || ch == ',') {
     return ch;
   }
   return ' ';
+}
+
+/// The value of a canonical Roman numeral, or zero when `run` is not one.
+///
+/// Canonical means the form a printed booklet sets — up to three of a
+/// symbol in a row, the six subtractive pairs and nothing else — checked
+/// against the whole run: a word that merely happens to be spelled out of
+/// the seven letters (`CIVIL`, `DID`, `MILD`) is not a number, and a run
+/// that parses only as far as its first mistake is not one either. The
+/// grammar caps what it can say at 3999.
+[[nodiscard]] constexpr unsigned roman_value(std::string_view run) noexcept {
+  std::size_t at = 0;
+  unsigned value = 0;
+  const auto take = [&run, &at](std::string_view symbol) noexcept {
+    if (run.substr(at, symbol.size()) != symbol) {
+      return false;
+    }
+    at += symbol.size();
+    return true;
+  };
+  for (unsigned n = 0; n < 3 && take("M"); ++n) {
+    value += 1000;
+  }
+  if (take("CM")) {
+    value += 900;
+  } else if (take("CD")) {
+    value += 400;
+  } else {
+    if (take("D")) {
+      value += 500;
+    }
+    for (unsigned n = 0; n < 3 && take("C"); ++n) {
+      value += 100;
+    }
+  }
+  if (take("XC")) {
+    value += 90;
+  } else if (take("XL")) {
+    value += 40;
+  } else {
+    if (take("L")) {
+      value += 50;
+    }
+    for (unsigned n = 0; n < 3 && take("X"); ++n) {
+      value += 10;
+    }
+  }
+  if (take("IX")) {
+    value += 9;
+  } else if (take("IV")) {
+    value += 4;
+  } else {
+    if (take("V")) {
+      value += 5;
+    }
+    for (unsigned n = 0; n < 3 && take("I"); ++n) {
+      value += 1;
+    }
+  }
+  return at == run.size() ? value : 0;
+}
+
+/// A number read at `at`: its value, or zero for none there, and where
+/// it ended.
+struct number_read {
+  unsigned value{};
+  std::size_t end{};
+};
+
+/// A decimal number starting exactly at `at`.
+[[nodiscard]] constexpr number_read read_decimal(std::string_view text,
+                                                 std::size_t at) noexcept {
+  unsigned digits = 0;
+  unsigned value = 0;
+  std::size_t p = at;
+  while (p < text.size() && is_digit(text[p]) &&
+         digits <= citation_max_digits) {
+    value = (value * 10U) + static_cast<unsigned>(text[p] - '0');
+    ++digits;
+    ++p;
+  }
+  if (digits == 0 || digits > citation_max_digits || value == 0) {
+    // Zero is not an entry, and a longer run of digits is not an entry
+    // number.
+    return {};
+  }
+  return {.value = value, .end = p};
+}
+
+/// A Roman numeral starting exactly at `at`: the run of letters there,
+/// whole, and only if all of it is a canonical numeral.
+[[nodiscard]] constexpr number_read read_roman(std::string_view text,
+                                               std::size_t at) noexcept {
+  std::size_t p = at;
+  while (p < text.size() && is_letter(text[p])) {
+    ++p;
+  }
+  const unsigned value = roman_value(text.substr(at, p - at));
+  if (value == 0) {
+    return {};
+  }
+  return {.value = value, .end = p};
+}
+
+[[nodiscard]] constexpr number_read read_number(
+    std::string_view text, std::size_t at,
+    citation_notation notation) noexcept {
+  return notation == citation_notation::roman ? read_roman(text, at)
+                                              : read_decimal(text, at);
+}
+
+/// Whether `text` has the whole word `AND` at `at`.
+[[nodiscard]] constexpr bool and_at(std::string_view text,
+                                    std::size_t at) noexcept {
+  return text.substr(at, 3) == "AND" &&
+         (at + 3 == text.size() || !is_letter(text[at + 3]));
 }
 
 /// What one code point is drawn as. Empty for nothing this build knows,
@@ -196,54 +370,124 @@ journal_drawn journal_drawable(std::string_view text,
   return out;
 }
 
-journal_citation journal_citation_in(std::string_view text) noexcept {
-  // Position outermost, word innermost: the answer is the *earliest*
-  // citation in the window whichever section it names, which is what it
-  // was when there was one word and what keeps a later sentence from
-  // outranking the one being drawn.
+std::size_t journal_citations_in(std::string_view text,
+                                 std::span<journal_citation> out) noexcept {
+  std::size_t count = 0;
+  const auto emit = [&out, &count](journal_kind kind, unsigned value) noexcept {
+    const journal_citation one{.kind = kind,
+                               .number = static_cast<std::uint16_t>(value)};
+    // Once per drawing: a sentence that names the same number twice has
+    // named it once.
+    for (std::size_t i = 0; i < count; ++i) {
+      if (out[i] == one) {
+        return;
+      }
+    }
+    if (count < out.size()) {
+      out[count++] = one;
+    }
+  };
+
+  // Position outermost, word innermost: the answer is in the order the
+  // text names things, whichever section each names, which is what keeps
+  // a later sentence from outranking the one being drawn.
   for (std::size_t at = 0; at < text.size(); ++at) {
-    for (const auto& [word, kind] : citation_words) {
-      if (text.substr(at, word.size()) != word) {
+    for (const citation_word& w : citation_words) {
+      if (text.substr(at, w.word.size()) != w.word) {
         continue;
       }
-      // A word and not a fragment of a longer one: the character before
-      // it and the one after it must not be letters. Without that a word
-      // this one happens to be inside is a citation.
+      // A word and not the tail of a longer one.
       if (at > 0 && is_letter(text[at - 1])) {
         continue;
       }
-      std::size_t p = at + word.size();
-      if (p < text.size() && is_letter(text[p])) {
-        continue;
-      }
+      std::size_t p = at + w.word.size();
 
-      const std::size_t limit = std::min(text.size(), p + citation_reach);
-      while (p < limit && !is_digit(text[p])) {
-        ++p;
+      number_read first{};
+      if (w.notation == citation_notation::decimal) {
+        // A word and not the head of a longer one either: an entryway is
+        // not an entry and a talent is not a tale.
+        if (p < text.size() && is_letter(text[p])) {
+          continue;
+        }
+        const std::size_t limit = std::min(text.size(), p + citation_reach);
+        while (p < limit && !is_digit(text[p])) {
+          ++p;
+        }
+        if (p >= limit) {
+          continue;
+        }
+        first = read_decimal(text, p);
+      } else {
+        // The numeral is the next word — or, when the program printed
+        // the word and the numeral as two operands with nothing between
+        // them, the rest of this one. Either way the letters after the
+        // word have to *be* a numeral, which is also what makes the
+        // plural-before-singular order in the table safe: `PROCLAMATIONS`
+        // is not `PROCLAMATION` followed by the numeral `S`.
+        while (p < text.size() && !is_letter(text[p]) && !is_digit(text[p])) {
+          ++p;
+        }
+        first = read_roman(text, p);
       }
-      if (p >= limit) {
+      if (first.value == 0) {
+        // Fall through to the next occurrence of a word rather than
+        // answering, because a second citation later in the same window
+        // is still a citation.
         continue;
       }
+      emit(w.kind, first.value);
+      p = first.end;
 
-      unsigned digits = 0;
-      unsigned value = 0;
-      while (p < text.size() && is_digit(text[p]) &&
-             digits <= citation_max_digits) {
-        value = (value * 10U) + static_cast<unsigned>(text[p] - '0');
-        ++digits;
-        ++p;
+      // After a plural, a list: numbers joined by commas and the word
+      // "and", in the same notation. The list ends at the first thing
+      // that is neither.
+      if (w.plural) {
+        for (;;) {
+          std::size_t r = p;
+          bool joined = false;
+          for (;;) {
+            while (r < text.size() && !is_letter(text[r]) &&
+                   !is_digit(text[r])) {
+              joined = joined || text[r] == ',';
+              ++r;
+            }
+            if (!and_at(text, r)) {
+              break;
+            }
+            joined = true;
+            r += 3;
+          }
+          if (r >= text.size()) {
+            if (joined) {
+              // The list runs off the end of what has been drawn: a
+              // comma or an "and" with nothing after it. The rest is on
+              // its way, and an answer now would be three proclamations
+              // of four. Nothing, until it arrives — and that is the
+              // whole window's answer, because the window is emptied on
+              // a match and the tail of this list would go with it.
+              return 0;
+            }
+            break;
+          }
+          const number_read next = read_number(text, r, w.notation);
+          if (next.value == 0) {
+            break;
+          }
+          emit(w.kind, next.value);
+          p = next.end;
+        }
       }
-      if (digits == 0 || digits > citation_max_digits || value == 0) {
-        // Zero is not an entry, and a longer run of digits is not an
-        // entry number. Both fall through to the next occurrence of a
-        // word rather than answering, because a second citation later in
-        // the same window is still a citation.
-        continue;
-      }
-      return {.kind = kind, .number = static_cast<std::uint16_t>(value)};
+      // Carry on after the citation, not inside it.
+      at = p - 1;
+      break;
     }
   }
-  return {};
+  return count;
+}
+
+journal_citation journal_citation_in(std::string_view text) noexcept {
+  std::array<journal_citation, journal_citations_at_once> found{};
+  return journal_citations_in(text, found) == 0 ? journal_citation{} : found[0];
 }
 
 const char* journal_kind_name(journal_kind which) noexcept {
@@ -275,6 +519,7 @@ void journal_state::clear() noexcept {
   truncated_ = false;
   text_length_ = 0;
   cited_ = {};
+  cited_count_ = 0;
   window_length_ = 0;
   mode_ = journal_reader_mode::closed;
   page_ = 0;
@@ -373,17 +618,19 @@ journal_citation journal_state::note_drawn_text(
     window_length_ += length;
   }
 
-  const journal_citation found =
-      journal_citation_in(std::string_view{window_.data(), window_length_});
-  if (!found) {
+  const std::size_t found = journal_citations_in(
+      std::string_view{window_.data(), window_length_}, cited_all_);
+  if (found == 0) {
     return {};
   }
   // One drawing of a citation opens one entry: the window is emptied so
   // the same characters cannot match again on the next string the program
-  // draws beside them.
-  cited_ = found;
+  // draws beside them. Everything the drawing named is kept beside the
+  // first, in the order it was named, for the log.
+  cited_count_ = found;
+  cited_ = cited_all_[0];
   window_length_ = 0;
-  return found;
+  return cited_;
 }
 
 void journal_state::forget_citation() noexcept { window_length_ = 0; }
