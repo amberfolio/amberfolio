@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The explored overlay (seam_explored.cpp, M5-E5 #179), exercised through
-// its mechanism and not through any program.
+// The explored overlay (seam_explored.cpp, M5-E5 #179, the fog M5-E5f
+// #263), exercised through its mechanism and not through any program.
+//
+// **The screen is filled before anything is asserted**, which is new with
+// the fog: this seam's drawing is black, and black on a blank screen is
+// no picture at all. So `fill()` paints every plane of the whole frame
+// white first, the way the program's own composition would leave the
+// window painted, and what the assertions read is where that went back to
+// black.
 //
 // Two halves, and the split is `seam_automap_test.cpp`'s: the geometry is
 // a pure function and is checked against arithmetic, and the seam is
@@ -206,21 +213,42 @@ struct rig {
     box->step();
   }
 
-  /// Blank the window's pixels on every plane, the way the program's own
-  /// redraw would. Written through the bus, as a program would write
-  /// them, so what comes back afterwards is what the seam put there and
-  /// nothing left over from an earlier pass.
-  void wipe() const {
+  /// Paint every plane of the whole frame, the way the program's own
+  /// composition leaves the window painted. Written through the bus, as a
+  /// program would write it, so what comes back afterwards is the seam's
+  /// work over a screen that had something on it.
+  ///
+  /// `0xFF` on four planes is colour 15, and this seam's drawing is
+  /// colour 0 — so a fogged pixel is unmistakable and so is one that was
+  /// left alone.
+  void paint_screen(std::uint8_t value) const {
     cpu::processor& cpu = box->processor();
+    // A plain write-mode-0 copy to every plane. Set rather than assumed,
+    // because the seam sets them too and a helper that inherited its
+    // state would be reading its own leftovers.
+    box->write_port8(ega::graphics_index_port, 1);
+    box->write_port8(ega::graphics_data_port, 0);
+    box->write_port8(ega::graphics_index_port, 3);
+    box->write_port8(ega::graphics_data_port, 0);
+    box->write_port8(ega::graphics_index_port, 5);
+    box->write_port8(ega::graphics_data_port, 0);
+    box->write_port8(ega::graphics_index_port, 8);
+    box->write_port8(ega::graphics_data_port, 0xFF);
     box->write_port8(ega::sequencer_index_port, 2);
     box->write_port8(ega::sequencer_data_port, 0x0F);
     for (unsigned line = 0; line < 200; ++line) {
       for (unsigned byte = 0; byte < 40; ++byte) {
         cpu.write_byte(0xA000, static_cast<std::uint16_t>((line * 40) + byte),
-                       0);
+                       value);
       }
     }
   }
+
+  /// The screen as the program would have left it: everything lit.
+  void fill() const { paint_screen(0xFF); }
+
+  /// The screen with nothing on it.
+  void wipe() const { paint_screen(0x00); }
 
   /// One pixel of the screen, out of the planes.
   [[nodiscard]] std::uint8_t screen_pixel(unsigned x, unsigned y) const {
@@ -246,15 +274,14 @@ struct rig {
   std::unique_ptr<ega> video;
 };
 
-/// Every pixel of one cell of the window, and whether all of them carry
-/// the intensity bit.
-[[nodiscard]] bool cell_is_lifted(const rig& r, unsigned column, unsigned row) {
+/// Is every pixel of one cell of the window black — which is what this
+/// seam's fog is, and nothing else on this screen is once `fill()` has
+/// run.
+[[nodiscard]] bool cell_is_fogged(const rig& r, unsigned column, unsigned row) {
   for (unsigned y = 0; y < cell_pixels; ++y) {
     for (unsigned x = 0; x < cell_pixels; ++x) {
-      const std::uint8_t colour =
-          r.screen_pixel(window_x + (column * cell_pixels) + x,
-                         window_y + (row * cell_pixels) + y);
-      if ((colour & 0x08U) == 0) {
+      if (r.screen_pixel(window_x + (column * cell_pixels) + x,
+                         window_y + (row * cell_pixels) + y) != 0) {
         return false;
       }
     }
@@ -262,18 +289,74 @@ struct rig {
   return true;
 }
 
-/// How many pixels of the whole 320 by 200 screen are not black.
-[[nodiscard]] std::size_t pixels_drawn(const rig& r) {
-  std::size_t drawn = 0;
-  for (unsigned y = 0; y < 200; ++y) {
-    for (unsigned x = 0; x < 320; ++x) {
-      if (r.screen_pixel(x, y) != 0) {
-        ++drawn;
+/// The opposite, and not the negation of it: every pixel of the cell is
+/// still the colour the fill put there. A cell that was half covered
+/// would fail both.
+[[nodiscard]] bool cell_is_clear(const rig& r, unsigned column, unsigned row) {
+  for (unsigned y = 0; y < cell_pixels; ++y) {
+    for (unsigned x = 0; x < cell_pixels; ++x) {
+      if (r.screen_pixel(window_x + (column * cell_pixels) + x,
+                         window_y + (row * cell_pixels) + y) != 0x0F) {
+        return false;
       }
     }
   }
-  return drawn;
+  return true;
 }
+
+/// Which of the twenty-five cells of the window are fogged, as a bitmap
+/// of `row * 5 + column` — the same numbering the seam uses. Asserted as
+/// a whole, so a cell that should have been covered and was not is as
+/// much a failure as one that should not have been and was.
+[[nodiscard]] std::uint32_t fogged_cells(const rig& r) {
+  std::uint32_t fogged = 0;
+  for (unsigned row = 0; row < window_cells; ++row) {
+    for (unsigned column = 0; column < window_cells; ++column) {
+      const bool black = cell_is_fogged(r, column, row);
+      EXPECT_TRUE(black || cell_is_clear(r, column, row))
+          << "cell " << column << "," << row << " is neither covered nor "
+          << "untouched";
+      if (black) {
+        fogged |= 1U << ((row * window_cells) + column);
+      }
+    }
+  }
+  return fogged;
+}
+
+/// Every cell of the window, as that bitmap.
+constexpr std::uint32_t every_cell = (1U << (window_cells * window_cells)) - 1U;
+
+/// The rectangle of window cells `[first_column, last_column] x
+/// [first_row, last_row]`, which is the shape a reveal radius makes on
+/// this screen: the party's own three-by-three, grown by a step of the
+/// walk and clipped by the map's own edges.
+[[nodiscard]] constexpr std::uint32_t block(unsigned first_column,
+                                            unsigned last_column,
+                                            unsigned first_row,
+                                            unsigned last_row) {
+  std::uint32_t mask = 0;
+  for (unsigned row = first_row; row <= last_row; ++row) {
+    for (unsigned column = first_column; column <= last_column; ++column) {
+      mask |= 1U << ((row * window_cells) + column);
+    }
+  }
+  return mask;
+}
+
+/// How many pixels of the whole 320 by 200 screen are black.
+[[nodiscard]] std::size_t pixels_covered(const rig& r) {
+  std::size_t covered = 0;
+  for (unsigned y = 0; y < 200; ++y) {
+    for (unsigned x = 0; x < 320; ++x) {
+      if (r.screen_pixel(x, y) == 0) {
+        ++covered;
+      }
+    }
+  }
+  return covered;
+}
+
 
 // ---------------------------------------------------------------------------
 // The geometry, on its own
@@ -311,103 +394,147 @@ TEST(ExploredGeometry, TheWindowFollowsThePartyAndStopsAtTheEdges) {
 // The seam
 // ---------------------------------------------------------------------------
 
-TEST(ExploredOverlay, NothingIsDrawnOnArrivalWithNothingWalked) {
-  // The stronger of this seam's two fidelity claims, as a picture: the
-  // party has just arrived, the only cell it has walked is the one it is
-  // standing on, and that one is never marked.
+TEST(ExploredOverlay, ArrivingCoversEverythingButTheThreeByThreeAround) {
+  // The picture a player meets: the party has just arrived, the only
+  // cell it has stood on is the one under its feet, and at a reveal
+  // radius of one the three-by-three around that is the country it can
+  // see. Everything else in the window goes under fog.
   const rig r;
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
   ASSERT_NE(r.map_state().find_overland(overland_disk, overland_area), nullptr)
-      << "it was recorded all the same";
+      << "it was recorded on arrival";
+  r.fill();
   r.present();
-  EXPECT_EQ(pixels_drawn(r), 0u);
+
+  // The party is at (3, 32), so the window's top-left cell is (1, 30) and
+  // the party is window column 2, row 2. The reveal is map columns 2..4
+  // and rows 31..33, which is window columns 1..3 and rows 1..3.
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 1, 3));
+  // Sixteen cells of 24 by 24, and not a pixel of the rest of the frame.
+  EXPECT_EQ(pixels_covered(r), 16U * cell_pixels * cell_pixels);
 }
 
-TEST(ExploredOverlay, ACellThePartyHasLeftIsLiftedAShade) {
+TEST(ExploredOverlay, AStepUncoversTheRowTheWindowScrolledOnto) {
   const rig r;
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  // North one square. The cell it left is now a neighbour, and the one it
-  // is standing on is still its own.
+  // North one square. The window scrolls with the party, and what the
+  // party can now see is the union of the two three-by-threes.
   r.put_word(record_segment, record_overland_row, 31);
   r.poll(2);
+  r.fill();
   r.present();
 
-  // The party is at (3, 31), so the window's top-left is (1, 29) and the
-  // cell it left — (3, 32) — is window column 2, row 3.
-  EXPECT_TRUE(cell_is_lifted(r, 2, 3));
-  // And exactly one cell's worth of pixels was touched: 24 by 24.
-  EXPECT_EQ(pixels_drawn(r), cell_pixels * cell_pixels);
+  // The party is at (3, 31): the window's top-left is (1, 29), the reveal
+  // is map columns 2..4 and rows 30..33, which is window columns 1..3 and
+  // rows 1..4. The row ahead of the party — window row 0 — is still fog.
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 1, 4));
 }
 
-TEST(ExploredOverlay, ThePartysOwnCellIsNeverMarked) {
+TEST(ExploredOverlay, ThePartysOwnCellIsNeverCovered) {
   const rig r;
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
+  r.fill();
   r.present();
 
-  // (3, 31) is walked and is where the party is: window column 2, row 2.
-  EXPECT_FALSE(cell_is_lifted(r, 2, 2));
+  // (3, 32) is where the party is standing and where the program draws
+  // its icon: window column 2, row 2.
+  EXPECT_TRUE(cell_is_clear(r, 2, 2));
   for (unsigned y = 0; y < cell_pixels; ++y) {
     for (unsigned x = 0; x < cell_pixels; ++x) {
       ASSERT_EQ(r.screen_pixel(window_x + (2 * cell_pixels) + x,
                                window_y + (2 * cell_pixels) + y),
-                0)
+                0x0F)
           << "not one pixel of it";
     }
   }
 }
 
-TEST(ExploredOverlay, AnUnwalkedCellIsNotTouched) {
+TEST(ExploredOverlay, NothingOutsideTheWindowIsTouched) {
   const rig r;
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
+  r.fill();
   r.present();
 
-  // Every cell of the window except the one the party left.
-  for (unsigned row = 0; row < window_cells; ++row) {
-    for (unsigned column = 0; column < window_cells; ++column) {
-      if (row == 3 && column == 2) {
+  for (unsigned y = 0; y < 200; ++y) {
+    for (unsigned x = 0; x < 320; ++x) {
+      if (x >= window_x && x < window_x + (window_cells * cell_pixels) &&
+          y >= window_y && y < window_y + (window_cells * cell_pixels)) {
         continue;
       }
-      for (unsigned y = 0; y < cell_pixels; ++y) {
-        for (unsigned x = 0; x < cell_pixels; ++x) {
-          ASSERT_EQ(r.screen_pixel(window_x + (column * cell_pixels) + x,
-                                   window_y + (row * cell_pixels) + y),
-                    0)
-              << "cell " << column << "," << row;
-        }
-      }
+      ASSERT_EQ(r.screen_pixel(x, y), 0x0F) << "at " << x << "," << y;
     }
   }
 }
 
-TEST(ExploredOverlay, ACellOfANeighbouringAreaIsNeverMarked) {
-  // The three wilderness areas are three sixteen-column bands of one
-  // table, so the window can overhang into a neighbour's columns. This
-  // seam has no record for those and must not mark one.
+TEST(ExploredOverlay, TheDilationIsClippedAtTheMapsOwnEdge) {
+  // The party against the bottom of a 36-row map. The window cannot
+  // scroll any further, so the party is its *fifth* row rather than its
+  // third, and the reveal has no row below it to include.
   const rig r;
   r.enable();
-  r.travelling(0, 20);
+  r.travelling(3, 35);
   r.poll(4);
-  r.put_word(record_segment, record_overland_column, 1);
-  r.poll(2);
+  r.fill();
   r.present();
 
-  // The party is at column 1, so the window's top-left column is 0 and it
-  // covers columns 0..4 of this area — nothing overhangs, and the cell it
-  // left, column 0, is window column 0, row 2.
-  EXPECT_TRUE(cell_is_lifted(r, 0, 2));
-  EXPECT_EQ(pixels_drawn(r), cell_pixels * cell_pixels);
+  // The window's top-left is (1, 31), so the party — (3, 35) — is window
+  // column 2, row 4. The reveal is map columns 2..4 and rows 34..35,
+  // which is window columns 1..3 and rows 3..4.
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 3, 4));
+}
+
+TEST(ExploredOverlay, ACellOfANeighbouringAreaIsCovered) {
+  // The three wilderness areas are three sixteen-column bands of one
+  // 44-column table, so the window can overhang into a neighbour's
+  // columns. This seam has no record for those, so nothing has been
+  // stood near them and they are covered like any other unknown — which
+  // is the reversal: with a lift, marking them would have claimed
+  // knowledge; with a fog, *not* covering them would.
+  const rig r;
+  r.enable();
+  r.travelling(15, 20);
+  r.poll(4);
+  r.fill();
+  r.present();
+
+  // The party is at column 15, so the window's top-left column is 13 and
+  // it covers columns 13..17 — 16 and 17 belong to the next area. The
+  // reveal is map columns 14..15 (16 is off this map) and rows 19..21,
+  // which is window columns 1..2 and rows 1..3.
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 2, 1, 3));
+  EXPECT_TRUE(cell_is_fogged(r, 3, 2)) << "the neighbour's column 16";
+  EXPECT_TRUE(cell_is_fogged(r, 4, 2)) << "and its column 17";
+}
+
+TEST(ExploredOverlay, AWellWalkedStretchOfCountryIsNotCoveredAtAll) {
+  // The other end of the same rule, and the case that keeps the early
+  // return honest: with every cell of the window within a step of
+  // somewhere the party has stood, there is nothing to cover and not a
+  // port is written.
+  const rig r;
+  r.enable();
+  r.travelling(3, 32);
+  r.poll(4);
+  automap_record& map =
+      r.map_state().record_for_overland(overland_disk, overland_area);
+  for (unsigned column = 0; column < 8; ++column) {
+    for (unsigned row = 28; row < 36; ++row) {
+      (void)r.map_state().reveal(map, column, row);
+    }
+  }
+  r.poll(2);
+  r.fill();
+  r.present();
+  EXPECT_EQ(fogged_cells(r), 0u);
+  EXPECT_EQ(pixels_covered(r), 0u);
 }
 
 TEST(ExploredOverlay, NothingIsDrawnOffTheTravelView) {
@@ -415,17 +542,17 @@ TEST(ExploredOverlay, NothingIsDrawnOffTheTravelView) {
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
-  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
-  r.wipe();
-  ASSERT_EQ(pixels_drawn(r), 0u);
+  r.fill();
+  r.present();
+  ASSERT_GT(pixels_covered(r), 0u) << "it was drawing a moment ago";
+  r.fill();
+  ASSERT_EQ(pixels_covered(r), 0u);
 
   r.put_byte(rig::dgroup(), data_game_mode, mode_adventure);
   r.put_byte(rig::dgroup(), data_view_kind, view_kind_area);
   r.poll(2);
   r.present();
-  EXPECT_EQ(pixels_drawn(r), 0u);
+  EXPECT_EQ(pixels_covered(r), 0u);
 }
 
 TEST(ExploredOverlay, NothingIsDrawnWhileSomebodyElseAsksThePlayer) {
@@ -433,22 +560,23 @@ TEST(ExploredOverlay, NothingIsDrawnWhileSomebodyElseAsksThePlayer) {
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
-  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
-  r.wipe();
-  ASSERT_EQ(pixels_drawn(r), 0u);
+  r.fill();
+  r.present();
+  const std::size_t covered = pixels_covered(r);
+  ASSERT_GT(covered, 0u) << "it was drawing a moment ago";
+  r.fill();
+  ASSERT_EQ(pixels_covered(r), 0u);
 
   r.somebody_else_asks();
   r.poll(2);
   r.present();
-  EXPECT_EQ(pixels_drawn(r), 0u) << "a script's portrait is not this seam's to "
-                                    "paint over";
+  EXPECT_EQ(pixels_covered(r), 0u)
+      << "a script's portrait is not this seam's to paint over";
 
   // And it comes back when the party's own bar does.
   r.put_up_the_bar(rig::dgroup(), data_menu_area_view);
   r.present();
-  EXPECT_EQ(pixels_drawn(r), cell_pixels * cell_pixels);
+  EXPECT_EQ(pixels_covered(r), covered);
 }
 
 TEST(ExploredOverlay, NothingIsDrawnWhileTheAreaIsShownInTheInteriorView) {
@@ -456,19 +584,18 @@ TEST(ExploredOverlay, NothingIsDrawnWhileTheAreaIsShownInTheInteriorView) {
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
-  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
-  r.wipe();
-  ASSERT_EQ(pixels_drawn(r), 0u);
+  r.fill();
+  r.present();
+  ASSERT_GT(pixels_covered(r), 0u) << "it was drawing a moment ago";
+  r.fill();
 
   // The word in the area record that makes the program draw this area in
   // 3D leaves the view-kind byte reading 2. A seam that trusted the kind
-  // byte would paint its marks over the interior view.
+  // byte would fog the interior view.
   r.put_word(record_segment, record_shown_in_3d, 1);
   r.poll(2);
   r.present();
-  EXPECT_EQ(pixels_drawn(r), 0u);
+  EXPECT_EQ(pixels_covered(r), 0u);
 }
 
 TEST(ExploredOverlay, NothingIsDrawnWhileTheProgramIsMovingTheParty) {
@@ -476,16 +603,15 @@ TEST(ExploredOverlay, NothingIsDrawnWhileTheProgramIsMovingTheParty) {
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
-  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
-  r.wipe();
-  ASSERT_EQ(pixels_drawn(r), 0u);
+  r.fill();
+  r.present();
+  ASSERT_GT(pixels_covered(r), 0u) << "it was drawing a moment ago";
+  r.fill();
 
   r.put_byte(rig::dgroup(), data_in_transition, 1);
   r.poll(2);
   r.present();
-  EXPECT_EQ(pixels_drawn(r), 0u);
+  EXPECT_EQ(pixels_covered(r), 0u);
 }
 
 TEST(ExploredOverlay, AWildAreaRecordIsNotFollowed) {
@@ -493,11 +619,10 @@ TEST(ExploredOverlay, AWildAreaRecordIsNotFollowed) {
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
-  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
-  r.wipe();
-  ASSERT_EQ(pixels_drawn(r), 0u);
+  r.fill();
+  r.present();
+  ASSERT_GT(pixels_covered(r), 0u) << "it was drawing a moment ago";
+  r.fill();
 
   // The video window. Reading it would load the adapter's latches, which
   // is a seam changing the machine in order to look at it.
@@ -505,7 +630,7 @@ TEST(ExploredOverlay, AWildAreaRecordIsNotFollowed) {
              0xA000);
   r.poll(2);
   r.present();
-  EXPECT_EQ(pixels_drawn(r), 0u);
+  EXPECT_EQ(pixels_covered(r), 0u);
 }
 
 TEST(ExploredOverlay, ABiasNoTableCouldHoldIsDeclined) {
@@ -513,18 +638,17 @@ TEST(ExploredOverlay, ABiasNoTableCouldHoldIsDeclined) {
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
-  ASSERT_GT(pixels_drawn(r), 0u) << "it was drawing a moment ago";
-  r.wipe();
-  ASSERT_EQ(pixels_drawn(r), 0u);
+  r.fill();
+  r.present();
+  ASSERT_GT(pixels_covered(r), 0u) << "it was drawing a moment ago";
+  r.fill();
 
   r.put_byte(
       rig::dgroup(),
       static_cast<std::uint16_t>(data_view_column_bias + view_kind_overland),
       0xF0);
   r.present();
-  EXPECT_EQ(pixels_drawn(r), 0u);
+  EXPECT_EQ(pixels_covered(r), 0u);
   EXPECT_GT(r.pc().seams().status("explored").declined, 0u);
 }
 
@@ -532,10 +656,9 @@ TEST(ExploredOverlay, WithTheSeamOffNothingIsDrawnAtAll) {
   const rig r;  // not enabled
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
+  r.fill();
   r.present();
-  EXPECT_EQ(pixels_drawn(r), 0u);
+  EXPECT_EQ(pixels_covered(r), 0u);
   EXPECT_EQ(r.map_state().records_used(), 0u)
       << "and nothing was recorded either";
 }
@@ -544,20 +667,26 @@ TEST(ExploredOverlay, ATableThatArrivesUnderAStandingPartyIsDrawn) {
   // The finding a driven run made, as a test (M5-E5d, #256). A seam that
   // painted only where the program paints could not show this: a party
   // that loads a saved game and stands still gives the program nothing
-  // to redraw, so no present ever comes, and the trail the host had just
-  // read in beside the save stayed invisible until the player moved.
+  // to redraw, so no present ever comes, and the map the host had just
+  // read in beside the save stayed unshown until the player moved.
   const rig r;
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  ASSERT_EQ(pixels_drawn(r), 0u) << "nothing walked but its own square";
+  r.fill();
+  r.present();
+  ASSERT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 1, 3))
+      << "nothing stood on but its own square";
 
   // What a host does when the program loads a save slot: it replaces the
-  // table, which moves the store's serial.
-  automap_record& map = r.map_state().record_for_overland(6, 0x19);
+  // table, which moves the store's serial. (3, 33) is one square south,
+  // and at a radius of one it uncovers the window's bottom row of three.
+  automap_record& map =
+      r.map_state().record_for_overland(overland_disk, overland_area);
   ASSERT_TRUE(r.map_state().reveal(map, 3, 33));
+  r.fill();
   r.poll(1);
-  EXPECT_EQ(pixels_drawn(r), cell_pixels * cell_pixels)
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 1, 4))
       << "and no present was needed to show it";
 }
 
@@ -569,22 +698,27 @@ TEST(ExploredOverlay, APollThatChangesNothingRepaintsNothing) {
   r.enable();
   r.travelling(3, 32);
   r.poll(4);
-  r.put_word(record_segment, record_overland_row, 31);
-  r.poll(2);
-  ASSERT_GT(pixels_drawn(r), 0u);
-  r.wipe();
+  r.fill();
+  r.present();
+  const std::size_t covered = pixels_covered(r);
+  ASSERT_GT(covered, 0u);
+  r.fill();
   r.poll(8);
-  EXPECT_EQ(pixels_drawn(r), 0u) << "nothing moved, so nothing was drawn";
+  EXPECT_EQ(pixels_covered(r), 0u) << "nothing moved, so nothing was drawn";
 
   // And the program's own present says the screen was repainted under
-  // it, which is what brings the trail back.
+  // it, which is what brings the fog back.
   r.present();
-  EXPECT_EQ(pixels_drawn(r), cell_pixels * cell_pixels);
+  EXPECT_EQ(pixels_covered(r), covered);
 }
 
-TEST(ExploredOverlay, ItRecordsTheTrailItself) {
+TEST(ExploredOverlay, ItRecordsWhereThePartyStoodAndNotWhatItCouldSee) {
   // The recorder is shared with the automap (#254), and this seam calls
-  // it from its own tick — so a player with only this one on has a trail.
+  // it from its own tick — so a player with only this one on has a
+  // trail. What it stores is the cell the party stood on and nothing
+  // derived from it: the reveal radius is applied when the window is
+  // drawn, which is what lets the knob move without invalidating a
+  // sidecar (`automap.h`).
   const rig r;
   r.enable();
   r.travelling(3, 32);
@@ -594,10 +728,11 @@ TEST(ExploredOverlay, ItRecordsTheTrailItself) {
   ASSERT_NE(map, nullptr);
   EXPECT_EQ(map->kind, automap_map_kind::overland);
   EXPECT_TRUE(automap_state::seen(*map, 3, 32));
+  EXPECT_FALSE(automap_state::seen(*map, 3, 31));
 }
 
 // ---------------------------------------------------------------------------
-// The fidelity pair (docs/seams.md §8.5)
+// The fidelity claim (docs/seams.md §8.5)
 // ---------------------------------------------------------------------------
 
 TEST(ExploredFidelity, OnAndTheOverworldNeverShownLeavesTheRunIdentical) {
@@ -626,10 +761,16 @@ TEST(ExploredFidelity, OnAndTheOverworldNeverShownLeavesTheRunIdentical) {
   EXPECT_EQ(run(false), run(true));
 }
 
-TEST(ExploredFidelity, OnTheOverworldWithNothingWalkedTheScreenIsTheSame) {
-  // The stronger claim, and the one that holds only because the party's
-  // own cell is never marked: arriving on a wilderness map nobody has
-  // walked, the machine is the machine it would have been.
+TEST(ExploredFidelity, TheArrivalIsNoLongerTheScreenItWouldHaveBeen) {
+  // **The claim M5-E5c had and M5-E5f gives up**, asserted in the
+  // direction it now holds. A lift marks what is known, and a map nobody
+  // has walked has nothing known on it, so arriving used to be
+  // pixel-identical to the seam-off run. A fog marks what is *not*
+  // known, and a map nobody has walked is nearly all of that: the outer
+  // ring of the window is covered the moment the party gets there.
+  // Saying so as a test is what keeps a later change from quietly
+  // re-acquiring a claim this enhancement can no longer make
+  // (docs/seams.md §8.5).
   const auto run = [](bool on) {
     const rig r;
     if (on) {
@@ -637,24 +778,42 @@ TEST(ExploredFidelity, OnTheOverworldWithNothingWalkedTheScreenIsTheSame) {
     }
     r.travelling(3, 32);
     r.poll(4);
+    r.fill();
     r.present();
     return hash_state(r.pc());
   };
 
-  EXPECT_EQ(run(false), run(true));
+  EXPECT_NE(run(false), run(true));
 }
 
 TEST(ExploredFidelity, WhatItLearnsIsNotMachineState) {
+  // The store is observation and not machine state (`automap.h`), and
+  // this says so on the one path where the seam records without drawing:
+  // somebody other than the adventuring screen is asking the player
+  // something, so the trail is written down and no pixel is.
   const rig r;
   r.enable();
   r.travelling(3, 32);
+  r.somebody_else_asks();
   r.poll(4);
   ASSERT_GT(r.map_state().records_used(), 0u);
 
   const rig plain;
   plain.travelling(3, 32);
+  plain.somebody_else_asks();
   plain.poll(4);
+  EXPECT_EQ(plain.map_state().records_used(), 0u);
   EXPECT_EQ(hash_state(r.pc()), hash_state(plain.pc()));
+}
+
+TEST(ExploredDefinition, TheRevealRadiusIsOne) {
+  // The one number in this enhancement a person is meant to turn, so a
+  // change to it fails here, by name, rather than in nine expectations
+  // that each look like a wrong picture (M5-E5f, #263). One is also the
+  // only value that covers anything on a five-by-five window centred on
+  // the party: at two, every cell on the screen is already within the
+  // radius and the fog never appears except at a map's own edge.
+  EXPECT_EQ(explored_reveal_radius, 1);
 }
 
 TEST(ExploredDefinition, ItIsASettingAndNotAPullAndItNamesTheBaseline) {

@@ -61,12 +61,13 @@ struct overland_look {
 /// it, because the seam that called it has already refused if DS is not
 /// where the facts say.
 ///
-/// It reveals the party's own cell and no other. The overland view has no
-/// fog: every one of the twenty-five cells in the window is drawn
-/// whatever the party has done, so "explored" here can only mean *walked*
-/// — which is what makes the record a trail and what lets the overlay
-/// leave the cell under the party unmarked (`docs/explored-overlay.md`
-/// §5).
+/// It reveals the party's own cell and no other. The *program* shows all
+/// twenty-five cells of the window whatever the party has done, so
+/// "explored" here can only mean *walked*, and this records exactly that
+/// and nothing derived from it. How far a party is taken to see around a
+/// cell it stood on is the overlay's own knob (`explored_reveal_radius`,
+/// `automap.h`), applied when the window is drawn — so a change to it
+/// costs nobody the map they walked (`docs/explored-overlay.md` §5).
 overland_look observe_overland(machine& box, seam_context& ctx,
                                std::uint16_t ds);
 
