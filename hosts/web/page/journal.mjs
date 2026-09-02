@@ -419,14 +419,7 @@ export async function ingestJournal(
     extracted,
     recognized,
     engine: engineName,
-    store: {
-      size: module._af_web_journal_store_size(),
-      recognized: module._af_web_journal_store_recognized(),
-      corrections: module._af_web_journal_store_corrections(),
-      fingerprint: readText(module, (out, cap) =>
-        module._af_web_journal_store_fingerprint(out, cap),
-      ),
-    },
+    store: storeStats(module),
   };
 }
 
@@ -491,6 +484,46 @@ export function serializeStore(module) {
 /// mean "forget it after you reload".
 export function clearStore(module) {
   return module._af_web_journal_store_clear();
+}
+
+/// What the store holds, as `{ size, recognized, corrections,
+/// fingerprint }` — the four numbers a page reports about an ingestion
+/// without reporting a word of what was read.
+///
+/// One function rather than four call sites: `ingestJournal()` above and
+/// `restoreStore()` below both answer this shape, and a third caller
+/// (`Machine.journalStoreStats()`, host.mjs) would have been a third
+/// spelling of it.
+export function storeStats(module) {
+  return {
+    size: module._af_web_journal_store_size(),
+    recognized: module._af_web_journal_store_recognized(),
+    corrections: module._af_web_journal_store_corrections(),
+    fingerprint: readText(module, (out, cap) =>
+      module._af_web_journal_store_fingerprint(out, cap),
+    ),
+  };
+}
+
+/// Whether the store has moved since it was last kept, and the caller
+/// saying it has now (M5-C1, #229).
+///
+/// The cheap half of "should I persist this". Every write to the store
+/// raises the flag — a scan, a correction, the edition or engine, a
+/// clear, a citation logged — and `readStore()` does not, because a store
+/// read in came from the page.
+///
+/// **Lower it only once the bytes are somewhere.** The module cannot know
+/// whether `localStorage` took them, so it will not lower the flag for
+/// you; and clearing it on read would lose a correction made between the
+/// read and the write. `keepStore()` does not touch it either, for the
+/// same reason it does not decide where a store goes.
+export function storeChanged(module) {
+  return module._af_web_journal_store_changed() !== 0;
+}
+
+export function clearStoreChanged(module) {
+  return module._af_web_journal_store_clear_changed();
 }
 
 //

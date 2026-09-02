@@ -380,6 +380,108 @@ TEST(JournalStore, ClearingLeavesNoHeaderBehind) {
 }
 
 // ---------------------------------------------------------------------------
+// changed() — the flag a host persists on (M5-C1, #229)
+// ---------------------------------------------------------------------------
+//
+// It was the *log's* flag until #229 and is the *store's* now, because
+// the caller it exists for is a host deciding whether to write the store
+// out. A correction that did not raise it is a correction that quietly
+// never gets saved, and the site's alternative — serializing the whole
+// store every frame and comparing it against what was last persisted —
+// is a hash over everything to answer a boolean the store already knew.
+
+TEST(JournalStoreChanged, ACorrectionRaisesItAndOnlyTheCallerLowersIt) {
+  journal_store store = Filled();
+  store.clear_changed();
+  ASSERT_FALSE(store.changed());
+
+  ASSERT_TRUE(store.correct(Entry(1), "a person fixed this"));
+  EXPECT_TRUE(store.changed());
+
+  // Reading it does not lower it: a flag that cleared itself on read
+  // would lose a correction made between the read and the write, which is
+  // exactly the window a host's persist step lives in.
+  EXPECT_TRUE(store.changed());
+
+  store.clear_changed();
+  EXPECT_FALSE(store.changed());
+
+  // And it stays down until the next write — reads of every kind leave
+  // it alone.
+  EXPECT_EQ(store.text(Entry(1)), "a person fixed this");
+  EXPECT_NE(store.find(Entry(1)), nullptr);
+  EXPECT_EQ(store.size(), 2u);
+  EXPECT_EQ(store.recognized(), 2u);
+  EXPECT_EQ(store.corrections(), 1u);
+  EXPECT_FALSE(store.serialize().empty());
+  static_cast<void>(store.fingerprint());
+  EXPECT_FALSE(store.changed());
+
+  ASSERT_TRUE(store.correct(Entry(2), "and this one too"));
+  EXPECT_TRUE(store.changed());
+}
+
+TEST(JournalStoreChanged, EveryOtherWriteRaisesItToo) {
+  journal_store store;
+
+  store.set_edition(
+      "2222222222222222222222222222222222222222222222222222222222222222");
+  EXPECT_TRUE(store.changed());
+  store.clear_changed();
+
+  store.set_engine("test fixture 1.0");
+  EXPECT_TRUE(store.changed());
+  store.clear_changed();
+
+  EXPECT_TRUE(store.record_scan(Entry(1), "as scanned"));
+  EXPECT_TRUE(store.changed());
+  store.clear_changed();
+
+  const std::array<machine::journal_seen_row, 1> rows{{
+      {.what = Entry(1),
+       .month = 1,
+       .day = 1,
+       .hour = 0,
+       .minute = 5,
+       .read = false},
+  }};
+  store.set_seen(rows);
+  EXPECT_TRUE(store.changed());
+  store.clear_changed();
+
+  store.clear();
+  EXPECT_TRUE(store.changed());
+}
+
+TEST(JournalStoreChanged, AWriteThatWasRefusedRaisesNothing) {
+  journal_store store = Filled();
+  store.clear_changed();
+
+  const std::string too_long(journal_max_entry_bytes + 1, 'x');
+  EXPECT_FALSE(store.record_scan(Entry(3), too_long));
+  EXPECT_FALSE(store.correct(Entry(3), too_long));
+  EXPECT_FALSE(store.changed());
+}
+
+TEST(JournalStoreChanged, ReadingAStoreInIsTheOneWriteThatDoesNotRaiseIt) {
+  // The bytes came *from* a host, which therefore already holds them.
+  // Without this every host would write back, on startup, the file it had
+  // just read — and the log's own restore has the same rule for the same
+  // reason (`RestoringIsNotTheLogMoving`, above).
+  const std::string text = Filled().serialize();
+
+  journal_store store;
+  ASSERT_EQ(store.parse(text), journal_trouble::none);
+  EXPECT_FALSE(store.changed());
+
+  // A refused parse leaves the store as it was, flag included.
+  ASSERT_TRUE(store.correct(Entry(1), "a person fixed this"));
+  ASSERT_TRUE(store.changed());
+  EXPECT_NE(store.parse("not a store at all"), journal_trouble::none);
+  EXPECT_TRUE(store.changed());
+}
+
+// ---------------------------------------------------------------------------
 // The read log, back into the machine (STO-4, #237)
 // ---------------------------------------------------------------------------
 

@@ -168,6 +168,7 @@ const EXPECTED_EXPORTS = [
   '_af_machine_vfs_get',
   '_af_machine_vfs_remove',
   '_af_machine_vfs_bytes_used',
+  '_af_machine_vfs_generation',
   '_af_machine_vfs_fingerprint',
   '_af_machine_load_from_vfs',
   '_af_machine_load_error',
@@ -248,6 +249,8 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_store_corrections',
   '_af_web_journal_store_write',
   '_af_web_journal_store_read',
+  '_af_web_journal_store_changed',
+  '_af_web_journal_store_clear_changed',
   '_af_web_journal_seen_restore',
   '_af_web_journal_store_clear',
   '_af_web_journal_store_fingerprint',
@@ -976,7 +979,18 @@ if (missing.length === 0) {
   }
   const exe = makeMzImage(image);
 
+  // --- The generation counter (M5-C1, #228) ----------------------------
+  //
+  // The one number a page's write-back loop asks per frame instead of
+  // walking the disk. Read here before anything is put, so that every
+  // claim below is about a difference and never about the value.
+  const genFresh = machine.vfsGeneration();
+
   check(machine.vfsPut('READSAVE.EXE', exe) === AF_OK, 'putting READSAVE.EXE failed');
+  check(
+    machine.vfsGeneration() > genFresh,
+    'putting a file did not move the generation counter',
+  );
 
   // The put a browser makes: the browser's separator, the player's own
   // capitalization, and a directory nothing has made yet.
@@ -991,6 +1005,8 @@ if (missing.length === 0) {
     machine.vfsPut('SAVE/code wheel.pdf', slot) === AF_INVALID,
     'a path with a space in a component was accepted',
   );
+
+  const genPut = machine.vfsGeneration();
 
   // The listing walks the whole tree since #170: the program at the
   // root, and the save one directory down at its own path — where
@@ -1046,6 +1062,16 @@ if (missing.length === 0) {
     "the browser's spelling and DOS's spelling fingerprint differently",
   );
 
+  // Everything since the put has been a listing, a size, a read and two
+  // fingerprints — the traffic the game's own load menu makes — and none
+  // of it changed the disk. A counter that moved for any of it is a
+  // counter a write-back loop would walk the disk for on every frame a
+  // player spent in a menu.
+  check(
+    machine.vfsGeneration() === genPut,
+    'listing and reading the filesystem moved the generation counter',
+  );
+
   const loadStatus = machine.loadFromVfs('READSAVE.EXE', '');
   check(
     loadStatus === AF_OK,
@@ -1084,6 +1110,15 @@ if (missing.length === 0) {
     afterRun.some((entry) => entry.path === '\\SAVE\\ECHO.DAT'),
     `the program's own file is not in the tree: ${JSON.stringify(afterRun.map((e) => e.path))}`,
   );
+  // The half a host cannot get any other way cheaply: the *program*
+  // wrote a file, and the counter moved for it exactly as it moved for
+  // the page's own put.
+  check(
+    machine.vfsGeneration() > genPut,
+    "the program's own write did not move the generation counter",
+  );
+  const genWrote = machine.vfsGeneration();
+
   const echoed = machine.vfsGet('save/echo.dat');
   check(
     echoed !== null && echoed.length === 1 && echoed[0] === 0x53,
@@ -1100,6 +1135,10 @@ if (missing.length === 0) {
   check(
     machine.vfsGet('\\SAVE\\SAVE1.DAT') !== null,
     'the file beside it went too',
+  );
+  check(
+    machine.vfsGeneration() > genWrote,
+    'removing a file did not move the generation counter',
   );
 
   console.log(
@@ -2324,6 +2363,14 @@ if (missing.length === 0 && sessions !== null) {
   ]) {
     check(afterSaid.includes(line), `--vfs-list never said "${line}": ${afterSaid}`);
   }
+  // The generation counter travels with the listing (M5-C1, #228). The
+  // value is the driver's own staging — a create and a write per file,
+  // plus the directory — so what is asserted is that it is there and is
+  // not zero, which is the only claim a run with no predecessor can make.
+  check(
+    /amberfolio: vfs 2 file\(s\) generation=[1-9][0-9]*/.test(afterSaid),
+    `--vfs-list printed no generation counter: ${afterSaid}`,
+  );
   // --- Presenting a document (M5-D3, #171) ------------------------------
   //
   // The driver's `--document` is the SDL host's flag of the same name,
@@ -3290,6 +3337,77 @@ if (missing.length === 0 && sessions !== null) {
     restoreStore(module, { storage }).restored === false,
     'a forgotten store came back',
   );
+
+  // --- The store on the facade, and its flag (M5-C1, #229) -------------
+  //
+  // Five methods on `Machine`, so a save layer built on the facade never
+  // has to import this file and reach past it for the one thing that was
+  // not behind it. They delegate — `journal.mjs` stays the
+  // implementation — and what is checked here is the door, not the
+  // store, which `hosts/common/tests/journal_store_test.cpp` holds down.
+  //
+  // The store is empty at this point (the forget above cleared it), and
+  // this block leaves it holding `text` again; nothing below reads it.
+  {
+    const box = new Machine(module);
+    check(
+      box.attachReferenceDevices() === AF_OK,
+      'attaching for the store facade failed',
+    );
+
+    check(
+      box.journalStoreRead(text) === 0,
+      'the facade could not read a store back in',
+    );
+    // The one write that raises nothing: those bytes came from the
+    // caller, which therefore already holds them. Without this rule a
+    // page would write back, on every load, the store it had just read.
+    check(
+      !box.journalStoreChanged(),
+      'reading a store in raised the changed flag',
+    );
+    check(
+      box.journalStoreWrite() === text,
+      'what the facade wrote out is not what went in',
+    );
+
+    const stats = box.journalStoreStats();
+    check(
+      stats.size === 4 && stats.recognized === 4 && stats.corrections === 1,
+      `the facade reports ${JSON.stringify(stats)}, wanted 4/4/1`,
+    );
+    check(
+      stats.fingerprint.length === 64,
+      'the facade reported a store with no fingerprint',
+    );
+
+    // A correction raises it, reading it does not lower it, and only the
+    // caller does — the whole of #229's second half.
+    correctJournalEntry(
+      module,
+      journalCitation('entry', 2),
+      'fixed through the facade',
+    );
+    check(
+      box.journalStoreChanged(),
+      'a correction did not raise the changed flag',
+    );
+    check(
+      box.journalStoreChanged(),
+      'reading the changed flag lowered it',
+    );
+    box.journalStoreClearChanged();
+    check(
+      !box.journalStoreChanged(),
+      'clearing the changed flag did not lower it',
+    );
+    check(
+      box.journalStoreStats().corrections === 2,
+      'the correction made through the facade is not in the store',
+    );
+
+    box.destroy();
+  }
 
   // And the shipped table knows nothing about a document this project
   // made up, which is the state every *real* journal is in too until

@@ -61,6 +61,12 @@ void memory_filesystem::clear() noexcept {
   // prove it would only cost time. What makes the *next* file's bytes
   // defined is that `write()` fills every gap it opens.
   used_ = 0;
+
+  // An emptied filesystem is a changed one (memory_vfs.h). This is the
+  // one route in this tree that changes what a filesystem holds without
+  // going through one of the five vfs.h wraps, so it is the one place
+  // that has to say so for itself.
+  note_change();
 }
 
 std::uint32_t memory_filesystem::growth_ceiling(const entry& e) const noexcept {
@@ -194,27 +200,50 @@ vfs_result<file_handle> memory_filesystem::open(const dos_path& path,
           .error = vfs_error::none};
 }
 
-vfs_result<file_handle> memory_filesystem::create(const dos_path& path) {
+vfs_result<file_handle> memory_filesystem::create_file(const dos_path& path) {
   if (path.is_root()) {
     return {.error = vfs_error::access_denied};
   }
 
   entry* e = find(path);
-  if (e != nullptr) {
-    if (e->is_directory) {
-      return {.error = vfs_error::access_denied};
+  if (e != nullptr && e->is_directory) {
+    return {.error = vfs_error::access_denied};
+  }
+  if (e == nullptr && !parent_exists(path)) {
+    return {.error = vfs_error::path_not_found};
+  }
+
+  // Every refusal is decided before anything is written, which it was
+  // not until M5-C1 (#228): the handle check used to come last, so a
+  // create that ran out of handles had already truncated the file it
+  // found — or, worse, already claimed an entry, leaving a zero-length
+  // file under a name whose creation had just been refused. Nothing
+  // could see it, because the caller had an error in hand and no reason
+  // to look. `generation()` is what made it worth finding: a failed
+  // create moves the counter by nothing, so a failure that changed the
+  // disk would be a change no host could be told about.
+  //
+  // The one visible consequence is which exhaustion is reported when
+  // both are exhausted at once — handles now, entries before. Neither
+  // caller can act on the difference: DOS reports one error code, and
+  // abi.h calls both AF_NO_ROOM.
+  const std::size_t slot = free_handle_slot();
+  if (slot == max_open_handles) {
+    return {.error = vfs_error::too_many_open_files};
+  }
+  std::size_t idx = max_entries;
+  if (e == nullptr) {
+    idx = free_entry_slot();
+    if (idx == max_entries) {
+      return {.error = vfs_error::directory_full};
     }
+  }
+
+  if (e != nullptr) {
     // DOS 3Ch: creating an existing file truncates it. Shrinking always
     // fits, so the answer is not checked.
     static_cast<void>(resize(*e, 0));
   } else {
-    if (!parent_exists(path)) {
-      return {.error = vfs_error::path_not_found};
-    }
-    const std::size_t idx = free_entry_slot();
-    if (idx == max_entries) {
-      return {.error = vfs_error::directory_full};
-    }
     e = &entries_[idx];
     e->in_use = true;
     e->is_directory = false;
@@ -223,11 +252,6 @@ vfs_result<file_handle> memory_filesystem::create(const dos_path& path) {
     // freshly created file free: there is no tail to move.
     e->offset = static_cast<std::uint32_t>(used_);
     e->length = 0;
-  }
-
-  const std::size_t slot = free_handle_slot();
-  if (slot == max_open_handles) {
-    return {.error = vfs_error::too_many_open_files};
   }
 
   handles_[slot].in_use = true;
@@ -263,7 +287,7 @@ vfs_result<std::size_t> memory_filesystem::read(file_handle handle,
   return {.value = count, .error = vfs_error::none};
 }
 
-vfs_result<std::size_t> memory_filesystem::write(
+vfs_result<std::size_t> memory_filesystem::write_file(
     file_handle handle, std::span<const std::uint8_t> in) {
   if (handle.slot >= max_open_handles || !handles_[handle.slot].in_use) {
     return {.error = vfs_error::invalid_handle};
@@ -352,7 +376,7 @@ vfs_result<std::uint32_t> memory_filesystem::seek(file_handle handle,
   return {.value = h.position, .error = vfs_error::none};
 }
 
-vfs_error memory_filesystem::truncate(file_handle handle) {
+vfs_error memory_filesystem::truncate_file(file_handle handle) {
   if (handle.slot >= max_open_handles || !handles_[handle.slot].in_use) {
     return vfs_error::invalid_handle;
   }
@@ -390,7 +414,7 @@ vfs_error memory_filesystem::close(file_handle handle) {
   return vfs_error::none;
 }
 
-vfs_error memory_filesystem::unlink(const dos_path& path) {
+vfs_error memory_filesystem::unlink_file(const dos_path& path) {
   if (path.is_root()) {
     return vfs_error::access_denied;
   }
@@ -425,7 +449,7 @@ vfs_error memory_filesystem::unlink(const dos_path& path) {
   return vfs_error::none;
 }
 
-vfs_error memory_filesystem::mkdir(const dos_path& path) {
+vfs_error memory_filesystem::make_directory(const dos_path& path) {
   if (path.is_root()) {
     return vfs_error::access_denied;
   }

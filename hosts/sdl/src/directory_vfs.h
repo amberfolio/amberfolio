@@ -106,19 +106,12 @@ class directory_filesystem final : public machine::filesystem {
 
   machine::vfs_result<machine::file_handle> open(
       const machine::dos_path& path, machine::open_mode mode) override;
-  machine::vfs_result<machine::file_handle> create(
-      const machine::dos_path& path) override;
   machine::vfs_result<std::size_t> read(machine::file_handle handle,
                                         std::span<std::uint8_t> out) override;
-  machine::vfs_result<std::size_t> write(
-      machine::file_handle handle, std::span<const std::uint8_t> in) override;
   machine::vfs_result<std::uint32_t> seek(machine::file_handle handle,
                                           machine::seek_origin origin,
                                           std::int32_t offset) override;
-  machine::vfs_error truncate(machine::file_handle handle) override;
   machine::vfs_error close(machine::file_handle handle) override;
-  machine::vfs_error unlink(const machine::dos_path& path) override;
-  machine::vfs_error mkdir(const machine::dos_path& path) override;
 
   [[nodiscard]] bool exists(const machine::dos_path& path) const override;
   [[nodiscard]] machine::vfs_result<machine::file_stat> stat(
@@ -127,6 +120,18 @@ class directory_filesystem final : public machine::filesystem {
       const machine::dos_path& dir) const override;
   [[nodiscard]] machine::vfs_result<machine::directory_entry> entry_at(
       const machine::dos_path& dir, std::size_t index) const override;
+
+ protected:
+  // The five machine::filesystem wraps so that `generation()` cannot be
+  // forgotten (machine/vfs.h). Nothing here buffers, so there is nothing
+  // for a close to commit and no sixth.
+  machine::vfs_result<machine::file_handle> create_file(
+      const machine::dos_path& path) override;
+  machine::vfs_result<std::size_t> write_file(
+      machine::file_handle handle, std::span<const std::uint8_t> in) override;
+  machine::vfs_error truncate_file(machine::file_handle handle) override;
+  machine::vfs_error unlink_file(const machine::dos_path& path) override;
+  machine::vfs_error make_directory(const machine::dos_path& path) override;
 
  private:
   struct open_file {

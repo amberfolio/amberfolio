@@ -852,5 +852,176 @@ TEST(memory_vfs_clear, empties_every_entry_and_every_handle) {
   EXPECT_EQ(fs->bytes_used(), 0u);
 }
 
+// --- generation() (M5-C1, #228) --------------------------------------------
+//
+// One test per kind of operation, because the counter's whole value is
+// that a caller can trust which ones move it: a host's write-back loop
+// walks the disk when it moves, so an operation that moved it wrongly is
+// a walk per frame and an operation that failed to move it is a save
+// nobody was told about. `filesystem::generation()` states the rule;
+// these hold each half of it down.
+
+TEST(memory_vfs_generation, is_zero_on_a_fresh_filesystem) {
+  // There is no RESET line for a filesystem — PLAN.md §4 makes its
+  // contents a run's initial conditions rather than machine state — so
+  // "at reset" is "as constructed", and this is the only place the
+  // absolute value means anything.
+  const auto fs = make();
+  EXPECT_EQ(fs->generation(), 0u);
+}
+
+TEST(memory_vfs_generation, moves_for_a_create) {
+  const auto fs = make();
+  const auto made = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(made.ok());
+  EXPECT_EQ(fs->generation(), 1u);
+
+  // DOS 3Ch on a file that is already there truncates it, which is a
+  // write whatever it found.
+  ASSERT_EQ(fs->close(made.value), vfs_error::none);
+  ASSERT_TRUE(fs->create(path({"GAME.DAT"})).ok());
+  EXPECT_EQ(fs->generation(), 2u);
+}
+
+TEST(memory_vfs_generation, moves_for_a_write_that_landed_bytes) {
+  const auto fs = make();
+  const auto made = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(made.ok());
+  const std::uint64_t after_create = fs->generation();
+
+  const std::array<std::uint8_t, 3> bytes{1, 2, 3};
+  ASSERT_TRUE(fs->write(made.value, bytes).ok());
+  EXPECT_EQ(fs->generation(), after_create + 1u);
+
+  // Nothing to land, nothing to say.
+  ASSERT_TRUE(fs->write(made.value, std::span<const std::uint8_t>{}).ok());
+  EXPECT_EQ(fs->generation(), after_create + 1u);
+}
+
+TEST(memory_vfs_generation, moves_for_a_truncate) {
+  const auto fs = make();
+  const auto made = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(made.ok());
+  const std::array<std::uint8_t, 4> bytes{1, 2, 3, 4};
+  ASSERT_TRUE(fs->write(made.value, bytes).ok());
+  ASSERT_TRUE(fs->seek(made.value, seek_origin::begin, 2).ok());
+
+  const std::uint64_t before = fs->generation();
+  ASSERT_EQ(fs->truncate(made.value), vfs_error::none);
+  EXPECT_EQ(fs->generation(), before + 1u);
+}
+
+TEST(memory_vfs_generation, moves_for_an_unlink) {
+  const auto fs = make();
+  const auto made = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(made.ok());
+  ASSERT_EQ(fs->close(made.value), vfs_error::none);
+
+  const std::uint64_t before = fs->generation();
+  ASSERT_EQ(fs->unlink(path({"GAME.DAT"})), vfs_error::none);
+  EXPECT_EQ(fs->generation(), before + 1u);
+}
+
+TEST(memory_vfs_generation, moves_for_a_mkdir) {
+  const auto fs = make();
+  const std::uint64_t before = fs->generation();
+  ASSERT_EQ(fs->mkdir(path({"SAVE"})), vfs_error::none);
+  EXPECT_EQ(fs->generation(), before + 1u);
+}
+
+TEST(memory_vfs_generation, moves_forward_for_a_clear) {
+  const auto fs = make();
+  ASSERT_TRUE(fs->create(path({"GAME.DAT"})).ok());
+  const std::uint64_t before = fs->generation();
+
+  fs->clear();
+
+  // Forward, and never back to zero: a host that saw the counter restart
+  // would read a wiped disk as one nothing had happened to.
+  EXPECT_GT(fs->generation(), before);
+}
+
+TEST(memory_vfs_generation, does_not_move_for_a_read_or_any_other_query) {
+  const auto fs = make();
+  const auto made = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(made.ok());
+  const std::array<std::uint8_t, 3> bytes{1, 2, 3};
+  ASSERT_TRUE(fs->write(made.value, bytes).ok());
+  ASSERT_EQ(fs->close(made.value), vfs_error::none);
+  ASSERT_EQ(fs->mkdir(path({"SAVE"})), vfs_error::none);
+
+  const std::uint64_t settled = fs->generation();
+
+  const auto opened = fs->open(path({"GAME.DAT"}), open_mode::read_only);
+  ASSERT_TRUE(opened.ok());
+  std::array<std::uint8_t, 3> out{};
+  ASSERT_TRUE(fs->read(opened.value, out).ok());
+  ASSERT_TRUE(fs->seek(opened.value, seek_origin::begin, 0).ok());
+  ASSERT_EQ(fs->close(opened.value), vfs_error::none);
+
+  EXPECT_TRUE(fs->exists(path({"GAME.DAT"})));
+  ASSERT_TRUE(fs->stat(path({"GAME.DAT"})).ok());
+
+  // The one this is really about: the game's own load menu enumerates
+  // \SAVE\ every time a player opens it, and a counter that moved for a
+  // listing is a counter a write-back loop cannot use at all.
+  const auto count = fs->entry_count(dos_path{});
+  ASSERT_TRUE(count.ok());
+  for (std::size_t i = 0; i < count.value; ++i) {
+    ASSERT_TRUE(fs->entry_at(dos_path{}, i).ok());
+  }
+
+  EXPECT_EQ(fs->generation(), settled);
+}
+
+TEST(memory_vfs_generation, does_not_move_for_an_operation_that_failed) {
+  const auto fs = make();
+  const auto made = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(made.ok());
+  const std::uint64_t settled = fs->generation();
+
+  // Open, so unlink refuses it; and the rest are simply not there.
+  EXPECT_EQ(fs->unlink(path({"GAME.DAT"})), vfs_error::access_denied);
+  EXPECT_EQ(fs->unlink(path({"NOPE.DAT"})), vfs_error::file_not_found);
+  EXPECT_EQ(fs->mkdir(path({"GAME.DAT"})), vfs_error::access_denied);
+  EXPECT_EQ(fs->truncate(invalid_file_handle), vfs_error::invalid_handle);
+  EXPECT_FALSE(
+      fs->write(invalid_file_handle, std::span<const std::uint8_t>{}).ok());
+
+  EXPECT_EQ(fs->generation(), settled);
+}
+
+TEST(memory_vfs_generation, a_create_that_ran_out_of_handles_changed_nothing) {
+  // The counter is what made this worth finding. `create` used to claim
+  // its entry — or truncate the file it found — before checking for a
+  // free handle, so a refused create left a zero-length file behind under
+  // a name whose creation had just failed. Nobody could see it: the
+  // caller had an error in hand and no reason to look.
+  const auto fs = make();
+  const std::array<std::uint8_t, 3> bytes{1, 2, 3};
+  const auto first = fs->create(path({"GAME.DAT"}));
+  ASSERT_TRUE(first.ok());
+  ASSERT_TRUE(fs->write(first.value, bytes).ok());
+  ASSERT_EQ(fs->close(first.value), vfs_error::none);
+
+  for (std::size_t i = 1; i < memory_filesystem::max_open_handles + 1; ++i) {
+    const auto held = fs->open(path({"GAME.DAT"}), open_mode::read_only);
+    ASSERT_TRUE(held.ok()) << i;
+  }
+  const std::uint64_t settled = fs->generation();
+
+  const auto refused_new = fs->create(path({"OTHER.DAT"}));
+  EXPECT_EQ(refused_new.error, vfs_error::too_many_open_files);
+  EXPECT_FALSE(fs->exists(path({"OTHER.DAT"})));
+
+  const auto refused_old = fs->create(path({"GAME.DAT"}));
+  EXPECT_EQ(refused_old.error, vfs_error::too_many_open_files);
+  const auto still = fs->stat(path({"GAME.DAT"}));
+  ASSERT_TRUE(still.ok());
+  EXPECT_EQ(still.value.size, bytes.size());
+
+  EXPECT_EQ(fs->generation(), settled);
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

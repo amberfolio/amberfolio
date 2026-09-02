@@ -2178,6 +2178,12 @@ void ingest_journal(machine::machine& box, const options& opts,
                  path.c_str());
     return;
   }
+  // The bytes are on disk, so the flag comes down (M5-C1, #229). It is
+  // raised by every write to a store now rather than by the log alone,
+  // and an ingestion is a few hundred of them — so without this the run
+  // loop below would write this same file again on its first frame.
+  store.clear_changed();
+
   std::array<char, sha256_digest::text_length + 1> hex{};
   static_cast<void>(format_hex(store.fingerprint(), hex));
   // The fingerprint, and not a word of what is in it: a store is a
@@ -2779,7 +2785,10 @@ int main(int argc, char** argv) try {
   }
 
   for (;;) {
-    // The journal's log, if the machine has said it moved (M5-E4b, #222).
+    // The store, if it has said it moved (M5-E4b, #222). In a run that
+    // is what the journal's log does — a citation, or the player opening
+    // one — and since M5-C1 (#229) the flag is the store's rather than
+    // the log's, so a correction made any other way would be written too.
     // Once a frame rather than once a citation, because a citation is one
     // instruction and a file write is not; and a flag rather than a timer,
     // because most frames have nothing to say.

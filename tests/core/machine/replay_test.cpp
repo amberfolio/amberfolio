@@ -672,26 +672,14 @@ class bottomless final : public filesystem {
   vfs_result<file_handle> open(const dos_path&, open_mode) override {
     return {.value = {}, .error = vfs_error::access_denied};
   }
-  vfs_result<file_handle> create(const dos_path&) override {
-    return {.value = {}, .error = vfs_error::access_denied};
-  }
   vfs_result<std::size_t> read(file_handle, std::span<std::uint8_t>) override {
-    return {.value = 0, .error = vfs_error::invalid_handle};
-  }
-  vfs_result<std::size_t> write(file_handle,
-                                std::span<const std::uint8_t>) override {
     return {.value = 0, .error = vfs_error::invalid_handle};
   }
   vfs_result<std::uint32_t> seek(file_handle, seek_origin,
                                  std::int32_t) override {
     return {.value = 0, .error = vfs_error::invalid_handle};
   }
-  vfs_error truncate(file_handle) override { return vfs_error::invalid_handle; }
   vfs_error close(file_handle) override { return vfs_error::invalid_handle; }
-  vfs_error unlink(const dos_path&) override {
-    return vfs_error::access_denied;
-  }
-  vfs_error mkdir(const dos_path&) override { return vfs_error::access_denied; }
   [[nodiscard]] bool exists(const dos_path&) const override { return true; }
   [[nodiscard]] vfs_result<file_stat> stat(const dos_path&) const override {
     return {.value = {.size = 0, .is_directory = true},
@@ -711,6 +699,26 @@ class bottomless final : public filesystem {
         dos_name::parse(std::span<const char>(name.data(), name.size()));
     return {.value = {.name = parsed.value, .size = 0, .is_directory = true},
             .error = vfs_error::none};
+  }
+
+ protected:
+  // Refuses everything, so nothing here can move `generation()` — which
+  // is the point of a backend that only exists to be walked.
+  vfs_result<file_handle> create_file(const dos_path&) override {
+    return {.value = {}, .error = vfs_error::access_denied};
+  }
+  vfs_result<std::size_t> write_file(file_handle,
+                                     std::span<const std::uint8_t>) override {
+    return {.value = 0, .error = vfs_error::invalid_handle};
+  }
+  vfs_error truncate_file(file_handle) override {
+    return vfs_error::invalid_handle;
+  }
+  vfs_error unlink_file(const dos_path&) override {
+    return vfs_error::access_denied;
+  }
+  vfs_error make_directory(const dos_path&) override {
+    return vfs_error::access_denied;
   }
 };
 

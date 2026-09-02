@@ -174,6 +174,7 @@ bool journal_store::record_scan(machine::journal_citation what,
     return false;
   }
   entry->scanned.assign(text);
+  changed_ = true;
   return true;
 }
 
@@ -187,6 +188,7 @@ bool journal_store::correct(machine::journal_citation what,
     return false;
   }
   entry->corrected.assign(text);
+  changed_ = true;
   return true;
 }
 
@@ -212,6 +214,7 @@ void journal_store::clear() {
   engine_.clear();
   entries_.clear();
   seen_.clear();
+  changed_ = true;
 }
 
 std::string journal_store::serialize() const {
@@ -391,6 +394,13 @@ journal_trouble journal_store::parse(std::string_view whole) {
   }
 
   *this = std::move(read);
+  // Down, and not carried over from the scratch store the records were
+  // built into: what this store now holds is exactly the bytes a host
+  // just handed it, so there is nothing for that host to write back
+  // (journal_store.h says why `parse` is the one write that does not
+  // raise the flag). Without this line every host would save, on
+  // startup, the file it had just read.
+  changed_ = false;
   return journal_trouble::none;
 }
 

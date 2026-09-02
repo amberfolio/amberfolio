@@ -116,6 +116,7 @@ set(_amberfolio_web_export_names
   _af_machine_vfs_get
   _af_machine_vfs_remove
   _af_machine_vfs_bytes_used
+  _af_machine_vfs_generation
   _af_machine_vfs_fingerprint
   _af_machine_load_from_vfs
   _af_machine_load_error
@@ -207,6 +208,8 @@ set(_amberfolio_web_export_names
   _af_web_journal_store_corrections
   _af_web_journal_store_write
   _af_web_journal_store_read
+  _af_web_journal_store_changed
+  _af_web_journal_store_clear_changed
   _af_web_journal_seen_restore
   _af_web_journal_store_clear
   _af_web_journal_store_fingerprint
