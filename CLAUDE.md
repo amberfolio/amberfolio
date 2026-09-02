@@ -265,7 +265,7 @@ What M5 left in place:
   work; `docs/journal.md` §9 is the door between the two halves.
 - **The doors the site asked for, and one ABI bump for both** (#228,
   #229). `af_machine_vfs_generation()` is a monotonic counter a page can
-  ask once a frame instead of walking `\\SAVE\\` on a timer;
+  ask once a frame instead of walking `\SAVE\` on a timer;
   `af_web_journal_store_changed()` / `_clear_changed()` plus five
   `Machine` methods put the journal store on the façade it was the only
   exception to. Adding entry points and changing nothing that was there
@@ -287,7 +287,7 @@ What M5 left in place:
   the whole of it in one table. 21 of the 23 game sessions were also
   replayed on the wasm module and diffed against the desktop host's seam
   and host-service lines, call for call and tick for tick; the two that
-  were not are refused by name before a step is taken, over a `\\SAVE\\`
+  were not are refused by name before a step is taken, over a `\SAVE\`
   a browser cannot carry because it is empty.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
   canonical machine-state serialization, a recording that is keys, ticks
@@ -317,6 +317,11 @@ What M5 left in place:
   filter's DC offset and its agreement across the two hosts' sample rates
   are numbers in the unit suite (`docs/hosts.md` §4).
 
+The last four bullets are **M4's** rather than M5's — the replay harness,
+the session library, the instruments and the speaker are what `v0.2.0`
+left in place, along with the seam engine at the top of the list, and M5
+grew each of them rather than replacing any.
+
 What M5 did **not** settle, and is honest about. Every line has an issue,
 because a milestone closed on a list nobody wrote down is a milestone
 whose gaps get rediscovered. **#274** is the person's list — an entry
@@ -338,11 +343,6 @@ above a sentence saying whether anyone is coming.
 What M4 did **not** settle stays where it was: the dungeon and two city
 services were closed as decisions rather than debts (#144, #145), and
 nobody is coming for either.
-
-The last four bullets above are **M4's** rather than M5's — the replay
-harness, the session library, the instruments and the speaker are what
-`v0.2.0` left in place, along with the seam engine at the top of the
-list, and M5 grew each of them rather than replacing any.
 
 What M3 left in place:
 

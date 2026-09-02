@@ -1288,8 +1288,9 @@ boundary, and it needs the argument this document would have to carry.
 ### The code-wheel bypass (#94, #119; the gate #115)
 
 PLAN.md §5 item 1, and the **first seam this project ever wrote** — it
-landed in M3, before four of the primitives §3 now lists existed, and it
-still uses only one of them. It went unwritten here for two milestones
+landed in M3, in the engine's deliberately smallest first slice and
+before half of §3's eight primitives existed, and it still uses only the
+first of them — register surgery, three writes. It went unwritten here for two milestones
 because there seemed to be nothing to say about it; it is worth the
 section, because it is the smallest complete example of everything §8
 asks for — a handler of nine lines, a qualifier that is the whole of its
