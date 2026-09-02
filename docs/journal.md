@@ -606,6 +606,26 @@ of the panel the reader draws in; a longer entry is delivered truncated
 and the reader says so, because a transcription with a silent hole in it
 is the failure a player finds out about last.
 
+**A page reaches the store through `Machine` now** (M5-C1, #229). Five
+methods — `journalStoreWrite`, `journalStoreRead`, `journalStoreStats`,
+`journalStoreChanged`, `journalStoreClearChanged` — delegate to
+`page/journal.mjs`, which stays the implementation. What moved is the
+door and not the code: everything else a save layer needs was already a
+`Machine` method and the store was the exception, so a page had to import
+a second file and reach past the façade for it. The ingestion itself
+stays where it is, because it is asynchronous and page-shaped and is not
+a thing to wrap.
+
+The pair worth reading the rule for is `journalStoreChanged()` /
+`journalStoreClearChanged()`, over `host::journal_store`'s own flag.
+**Every write raises it** — a scan recorded, a correction, the edition or
+the engine, a clear, a citation logged — and `journalStoreRead()` is the
+one that does not, because a store read in came from the caller and the
+caller already holds those bytes. **The lowering is the caller's**: a
+store cannot know whether a drawer or a disk accepted the bytes, and a
+flag that cleared itself on read would lose a correction made between the
+read and the write. So: read the flag, write the store, *then* lower it.
+
 **Both hosts hand over the same store.** The desktop's lives for the run
 and is read at its start, so a player who ingested last week starts today
 with `--seam journal` able to answer; the browser's is the tab's, filled

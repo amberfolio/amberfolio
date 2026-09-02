@@ -710,7 +710,7 @@ release's `manifest.json`:
 ```json
 {
   "version": "0.3.0",
-  "abi": { "major": 1, "minor": 0 },
+  "abi": { "major": 1, "minor": 1 },
   "sourceCommit": "a827d9ea…",
   "files": [ { "name": "amberfolio.wasm", "sha256": "…", "size": 0 } ],
   "exports": [ "_main", "_malloc", "_free", "_af_version", "…" ]
@@ -741,6 +741,72 @@ are still that tree's own: re-staging `v0.2.0` today lists the
 seventy-eight entry points it had, not the hundred and twenty-four this
 branch has. A consumer reads an absent `abi` as "older than the
 declaration" rather than as 1.0.
+
+### Two doors a consuming site asked for (#228, #229)
+
+Both landed together in M5-C1 and are the first change to move
+`AF_ABI_VERSION_MINOR`: 1.0 to 1.1, once, because they were both in the
+bundle before the tag. Each adds entry points and changes nothing that
+was already there, which is exactly what minor is for.
+
+**`af_machine_vfs_generation()` — did the disk move?** A host that
+persists what the program wrote runs that write-back inside its own frame
+loop, and needs a cheap answer sixty times a second. Walking `\SAVE\`
+per frame is not cheap, and polling at quiet moments cannot tell "nothing
+changed" from "we did not look" — the save a player made two seconds
+before closing the tab being exactly the one they care about. So the
+filesystem gets the counter `machine::display` has had since M2: one
+monotonic number, kept by the caller, compared against the last one it
+saw. `Machine.vfsGeneration()` is the page's spelling and
+`tools/drive.mjs` prints it beside `--vfs-list`.
+
+It moves for a write that landed bytes, a create, a truncate, an unlink
+and a mkdir — whether the program made them through INT 21h or a host
+made them through `vfsPut()`, `vfsRemove()` or `vfsClear()`. That last
+part is deliberate: a host that hands over an installation and then reads
+the counter sees it move, because a counter that tracked only the
+program's own writes would be a second, subtler answer to the same
+question. It does **not** move for an open, a read, a seek, a close, an
+`exists`, a `stat`, or a directory listing. The listing is the one this is
+careful about: the game's own load menu enumerates the save directory
+every time a player opens it, and a counter that moved for that would be
+one a write-back loop could not use at all.
+
+What it is *not*: an mtime, and not a diff. It says something changed,
+never what or when, and one host-level call can move it more than once (a
+put is a create and a write). The walk that finds out what changed is the
+caller's — the counter exists so that the walk happens when something
+happened, rather than on a timer. `machine/vfs.h` states the whole rule
+at the interface that owns it, and the five operations that move it are
+non-virtual wrappers there around protected virtuals, so a new backend
+cannot forget to move it.
+
+**`af_web_journal_store_changed()` / `_clear_changed()` — should I save
+the journal?** `host::journal_store` has carried the flag since M5-E4b
+and nothing exported it, so a page's only way to ask was to serialize the
+whole store to a string and compare it against what it last persisted: a
+hash over everything, every interval, to learn a boolean the store had
+already raised. Every write to the store raises it now, not just the
+citation log — a correction that did not raise it is a correction that
+quietly never gets saved — and reading a store *in* is the one write that
+does not, because those bytes came from the caller.
+
+**The lowering is the caller's, and that is the design, not an
+omission.** A store cannot know whether `localStorage` accepted the
+bytes, and a flag that cleared itself when it was read would lose a
+correction made between the read and the write. So a host reads the flag,
+writes the store out, and lowers it once the bytes are somewhere.
+
+Both of the journal calls, plus `journalStoreWrite`, `journalStoreRead`
+and `journalStoreStats`, are `Machine` methods now. They delegate to
+`page/journal.mjs`, which stays the implementation: the ingestion there
+is asynchronous, engine-driven and page-shaped and has no business
+becoming `Machine` methods, but the *store* was the one thing a page
+needed that was not behind the façade. `host.mjs` therefore imports
+`journal.mjs`, which is why **`journal.mjs` is in the release bundle**
+from this release on. It was owed before: `app.mjs` has imported it since
+M5-E3 and it was never staged, so a consumer serving the released
+`app.mjs` got a 404 for a file it asks for by name.
 
 ### Running your own copy in a browser
 
