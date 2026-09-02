@@ -123,7 +123,8 @@ The manifest is therefore some tens of kilobytes of fixed storage in a
 in static storage rather than on the stack (`core/src/abi.cpp`, the same
 reasoning the machine handle itself is there for).
 
-Version 1 recordings — the seven in `tests/sessions/` — name the root and
+Version 1 recordings — seven of the twenty-four in `tests/sessions/`,
+M4's whole library, made before #155 grew the grammar — name the root and
 nothing below it, and are read that way. §7 is the rule.
 
 A checkpoint is the tick, the step count, the whole-state hash, and
@@ -370,18 +371,20 @@ keep verifying, new ones say more. Only bumping
 `recording_format_oldest_read` — retiring a version — does, and that is
 the deliberate act, not the grammar change.
 
-The constituency is why. The seven recordings in `tests/sessions/` are
-version 1, and **six of them are of a game whose disk is nobody's in this
-tree to re-record** (PLAN.md §6; `tests/sessions/README.md`). A player
-that dropped version 1 would not be reading an old format wrongly; it
-would be refusing evidence that cannot be remade.
+The constituency is why. Seven of the twenty-four recordings in
+`tests/sessions/` are version 1 — the library has grown past them and
+none of the seventeen since is — and **six of those seven are of a game
+whose disk is nobody's in this tree to re-record** (PLAN.md §6;
+`tests/sessions/README.md`). A player that dropped version 1 would not be
+reading an old format wrongly; it would be refusing evidence that cannot
+be remade.
 `SessionLibrary.EveryCommittedRecordingIsAFormatThisBuildStillReads`
 asserts the version on the files, so a change that would strand them
 fails there rather than being discovered by whoever next verified one.
 
 #161 is the second grammar growth this rule has survived, and it did so
-untouched: the seven sessions carry no `pull` line, none of them enables
-a seam that takes a trigger, and all seven go on verifying byte for byte.
+untouched: those seven carry no `pull` line, none of them enables a seam
+that takes a trigger, and all seven go on verifying byte for byte.
 A version-2 recording that *did* carry one would be refused — a version
 says what a file may contain, and half a grammar is not a grammar.
 

@@ -300,11 +300,17 @@
 // **Hit points have come back on a driven run**, which they had not when
 // this comment was first written: `docs/playable.md` leg 7's second half
 // drives a wounded party on a player's copy and watches two of the
-// program's own cures land. What has *not* been driven is a party hurt
-// badly enough that the cures run out and the days have to finish the
-// job — so the arithmetic below, the worst deficit plus one, is still
-// only exercised against rosters the unit suite writes. The mechanism
-// has a public test either way
+// program's own cures land. **And a party the cures cannot finish has
+// been driven too**, which it had not when the sentence that used to be
+// here was written: leg 7's third half puts the party on one hit point
+// each with `cheat-wound-party` (#196), so the cures run out, the days
+// arithmetic below runs for real, and the report's exception list comes
+// out with rows in it. What is left is narrower and is #269: the party
+// is hurt by a debug seam rather than by combat, so the wound *statuses*
+// a fight leaves behind — unconscious, dying, the conditions resting
+// cannot mend — still reach the report's reason column only through
+// rosters the unit suite writes. The mechanism has a public test either
+// way
 // (`tests/core/machine/seam_encamp_test.cpp` drives the handlers over a
 // camp the test writes, and `tests/programs`' camp stand-in drives the
 // same shape through the whole machine on all four targets), and one

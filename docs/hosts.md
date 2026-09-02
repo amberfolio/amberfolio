@@ -389,6 +389,17 @@ continuously (§5), and the page is the thin layer over it. What is
 unchecked is the layer where a browser API is used, and browsers are
 exactly the thing a headless harness stubs.
 
+**Who is coming for this list, as of the M5 closeout: #274.** It outlived
+its own issues — every unticked line here belongs to #147 or #148, both
+of which have had nothing else in them for two milestones — so #274 is
+the one place that carries them forward, together with the two lines M5
+added and could not tick: an entry read on a display, and the overworld's
+fog walked rather than looked at in a still. Two of M5's own person-items
+*were* ticked, and both changed an enhancement rather than confirming
+one — the Encamp Fix's report box, and the automap panel in play, which
+is why M5-E2d exists (#199). That is the argument for keeping the list:
+it is the only kind of finding no runner here has ever made.
+
 ### Recording what you found
 
 The last inch is the part that stays a person's word. When you have run it

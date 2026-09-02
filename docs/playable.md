@@ -1602,12 +1602,17 @@ worklist line, and `docs/machine.md` §5 is what to do with it.
 
 Honest gaps, so nobody reads more into a green run than is there.
 
-**This list is M4's closeout input and it was taken as such** (#109): the
+**This list was M4's closeout input and is M5's** (#109, #178): each
 milestone was closed with every line below still standing, deliberately,
 because a milestone closed on a list nobody wrote down is a milestone
 whose gaps get rediscovered. The two marked *by decision* are closed and
-nobody is coming; the rest live on in #147, #148 and — as the standing
-inventory of what this machine does and does not do — #166.
+nobody is coming. The rest have homes, and at M5's closeout they were
+given fresher ones: the person's items are #274 (successor to #147 and
+#148, which had nothing else left in them), the standing inventory of
+what this machine refuses is #275 (successor to #166, which is closed),
+and each seam's own residual is its own issue — #267 for the fog, #268
+for the automap, #269 for the Encamp Fix, #236 and #270 for the journal,
+#273 for legs 3 to 5 on the web.
 
 Two of them are **decisions** rather than a worklist — nobody is coming,
 and the entries stay because a procedure that quietly stopped mentioning
