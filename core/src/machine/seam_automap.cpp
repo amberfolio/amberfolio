@@ -177,6 +177,17 @@
 // successful poll — an unconditional wait, which is exactly the case that
 // wants the key taken.
 //
+// **A key taken there is put back** (#266) — not that key, a character
+// the program throws away. The argument does not depend on anything
+// above: a read is the program already committed to being handed a key,
+// so a read this seam empties is a program asleep inside the BIOS, where
+// no point of this engine is reached at all and the next key the player
+// types is delivered unseen. What a player saw was Tab needing a second
+// press, and the first press eating whatever they typed after it.
+// `seam_key_read.h` has the character and why it is that one; the journal
+// reader claims at the same address and answers with the same one, which
+// is why it is spelled once and not twice.
+//
 //
 // The eighth primitive: port surgery (docs/seams.md §3)
 // -----------------------------------------------------
@@ -224,6 +235,14 @@
 //   program observes are unchanged; one keystroke that was never in its
 //   alphabet is gone from the queue before it is asked for.
 //
+// That second sentence is exact at the *poll*, which is where a key is
+// meant to be taken, and it is one character wide of exact at the
+// blocking read: a program that has committed to being handed a key is
+// handed a `-` rather than nothing, because nothing is a program asleep
+// in the BIOS (#266). The `-` is on none of its bars and its menu-bar
+// routine does not even return on one, so what it does with the
+// difference is go back to waiting.
+//
 // The roster-cursor keys are the one place that second sentence is
 // narrower, and it is narrower on purpose: those keys *are* in the
 // program's alphabet, and while the panel is up one of them is taken
@@ -254,6 +273,7 @@
 #include "amberfolio/machine/service_floor.h"
 #include "automap_overland.h"
 #include "seam_builtin.h"
+#include "seam_key_read.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -2133,6 +2153,15 @@ void at_key_pending(machine& box, seam_context& ctx) {
 /// here so the panel has nothing to *draw*, but a key it wants may arrive
 /// at an unconditional wait that no poll preceded, and a script may be
 /// what is doing the waiting.
+///
+/// **And a key taken here is answered** (#266), which is the one thing
+/// this point does that the poll may not: the program has already
+/// committed to being handed a key, so a read this seam empties puts it
+/// to sleep inside the BIOS where no point of this engine is reached, and
+/// the *next* key the player types reaches it unseen.
+/// `seam_key_read.h` is the whole of that argument. Every claim is
+/// answered and not just Tab's: the roster-cursor keys are taken off the
+/// ring by the same call, and a key taken is a key the read is short.
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
@@ -2145,11 +2174,15 @@ void at_key_read(machine& box, seam_context& ctx) {
     (void)close_for_the_program(box, ctx, ds);
     return;
   }
-  if (claim_key(cpu, ds, true, cursor_keys_are_the_panels(state)) !=
-      claimable::panel) {
+  const claimable which =
+      claim_key(cpu, ds, true, cursor_keys_are_the_panels(state));
+  if (which == claimable::none) {
     return;
   }
-  (void)toggle_panel(box, ctx, ds);
+  if (which == claimable::panel) {
+    (void)toggle_panel(box, ctx, ds);
+  }
+  static_cast<void>(ctx.inject_keystroke(key_ignored_scan, key_ignored_ascii));
 }
 
 /// The program is putting a command bar up. Which bar it is says whose
