@@ -223,7 +223,10 @@ handler, the commands, and how to read a failing vector.
 [`docs/hosts.md`](docs/hosts.md) is the other end: what the hosts' smoke
 checks settle, the windowed and audio paths included, and the two things
 about a host that only a person in front of a display and a speaker can
-ever confirm. [`docs/journal.md`](docs/journal.md) is the journal's
+ever confirm. [`docs/enhancements.md`](docs/enhancements.md) is the enhancements as a
+player meets them — what each one does, how to turn it on, what it will
+not do without, and what it is not yet.
+[`docs/journal.md`](docs/journal.md) is the journal's
 ingestion: how a player's own Adventurer's Journal becomes text, what an
 OCR engine is and is not asked to do on each host, and how an edition is
 measured and added to the table.
