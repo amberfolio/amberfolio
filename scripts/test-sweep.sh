@@ -441,6 +441,63 @@ cp "$tmp/other.pdf" "$tmp/held.pdf" "$tmp/doc-dir/"
 sweep "$r" --document "$tmp/doc-dir"
 expect_silent "a directory of documents finds the right one" "no document with digest"
 
+# --- The other half of a pair: identical (#177) ------------------------
+#
+# `contrast` asks whether a seam that is on did something. `identical`
+# asks the opposite and it is the more important question: a seam on and
+# never triggered must leave a machine indistinguishable from one where
+# it was off. Both failures it exists to catch are checked here, because
+# the second one — a pair that is not the same run at all — would
+# otherwise "pass" by comparing nothing.
+
+r=$(mkrepo same)
+mkrec "$r" base
+mkrec "$r" idle
+mkdisk "$r/tests/sessions/disk"
+{ echo "disk disk"; } > "$r/tests/sessions/base.session"
+{ echo "disk disk"; echo "identical base"; } > "$r/tests/sessions/idle.session"
+
+# Two recordings with the same checkpoints: identical holds.
+for n in base idle; do
+  {
+    echo "amberfolio-recording 1 state=1"
+    echo "program MADEUP.EXE 00"
+    echo "file MADEUP.EXE 4 00"
+    echo "checkpoint 10 1 aaaa"
+    echo "checkpoint 20 2 bbbb"
+    echo "end 1 1"
+  } > "$r/tests/sessions/$n.rec"
+done
+sweep "$r" --targets contrast
+expect_code "a seam on and idle that moved nothing passes" 0
+expect_says "and says how many checkpoints agreed" "all 2 checkpoints identical"
+
+# One that moved the machine anyway is the failure this exists for.
+sed -i 's/checkpoint 20 2 bbbb/checkpoint 20 2 cccc/' "$r/tests/sessions/idle.rec"
+sweep "$r" --targets contrast
+expect_code "a seam on and idle that moved the machine fails" 1
+expect_says "and says at which tick" "at tick 20"
+expect_says "and what that means" "never triggered moved the machine"
+
+# And a pair that is not the same run cannot pass by comparing nothing.
+{
+  echo "amberfolio-recording 1 state=1"
+  echo "program MADEUP.EXE 00"
+  echo "file MADEUP.EXE 4 00"
+  echo "checkpoint 10 1 aaaa"
+  echo "checkpoint 30 3 bbbb"
+  echo "end 1 1"
+} > "$r/tests/sessions/idle.rec"
+sweep "$r" --targets contrast
+expect_code "a pair checkpointing at different ticks fails as identical" 1
+expect_says "and says they are not the same run" "not the same run"
+
+# An identical naming nothing is a mistake in the tree, not a skip.
+{ echo "disk disk"; echo "identical nobody"; } > "$r/tests/sessions/idle.session"
+sweep "$r" --targets contrast
+expect_code "an identical naming no session fails" 1
+expect_says "and says which name" "no session called nobody"
+
 # --- And the committed pair, in this tree ------------------------------
 #
 # The one case here that is about the real session library rather than an

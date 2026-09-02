@@ -268,6 +268,51 @@ would read as a table of everything. **So a game session is checked by
 the desktop host only**, and the cross-target claim below rests on the
 sessions whose disks are here.
 
+## The fidelity pairs, one per seam (#177)
+
+PLAN.md §5's invariant is that a seam which is **on and never triggered**
+leaves a machine indistinguishable from one where it was off. Five
+sessions state it on the real program: `quiet.rec` is the baseline —
+slot A loaded, four steps walked, only the code-wheel bypass on — and
+each sibling is that same script with one more seam armed and nothing
+done to trigger it.
+
+| Session | Relation | What it says |
+| --- | --- | --- |
+| `quiet.rec` | — | the baseline |
+| `quiet-automap.rec` | `identical quiet` | the automap on, Tab never pressed: **all 126 checkpoints equal**. Its hotkey is the one place a seam can change what the program observes, and this is the run that says it does not when nobody presses it |
+| `quiet-encamp.rec` | `identical quiet` | the Encamp Fix on, the camp screen never opened: all 126 equal. It splices a command onto that screen's own bar, and a run that never goes there never splices |
+| `quiet-cheats.rec` | `identical quiet` | all three cheats on, none pulled: all 126 equal |
+| `quiet-journal.rec` | **`contrast quiet`** | the journal reader on, nothing cited, no key — and **not** equal. See below |
+
+`identical` is `contrast`'s opposite number and is checked the same way:
+on the files, with no disk, so CI checks both on every push. It fails on
+either of the two things that could make it meaningless — a pair that
+differs, and a pair that checkpoints at different ticks and would
+otherwise "pass" by comparing nothing.
+
+### The one that is a contrast, and why that is the honest answer
+
+`quiet-journal.rec` agrees with the baseline for its first **111 of 126**
+checkpoints and differs from there to the end, in `cpu`, `ram`,
+`devices`, `display` and `audio` — and in none of `clock`, `console`,
+`dos`, `input`, `keyboard`, `scheduler`, `stop` or `wall`.
+
+That is the enhancement and not a leak. M5-E4a splices `Notes` onto the
+party's own command bar, and the tick it first differs at is the tick
+that bar is first drawn. A seam that puts a word on a menu the game keeps
+redrawing changes the machine on **any** run that reaches the menu,
+triggered or not.
+
+So it carries a `contrast` line instead, which asserts the true thing
+positively: it agrees until the bar appears and differs after. Loosening
+what `identical` means, so that this one could claim it, would have cost
+the other three their meaning.
+
+The invariant that does hold for this seam is the one with it *off*,
+which is `docs/seams.md` §7's; and what it draws while on is confined to
+the rects it owns, which is `tests/visual/*.leg`.
+
 ## A document a session cannot carry at all (#115)
 
 Every session above that drives the real program past its copy-protection

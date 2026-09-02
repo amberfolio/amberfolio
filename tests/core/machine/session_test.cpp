@@ -179,7 +179,9 @@ TEST(SessionLibrary, EveryCommittedRecordingIsAFormatThisBuildStillReads) {
 // writes now; what matters is that a build still reads every recording
 // this tree carries, whichever format it was written in.
 TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
-  for (const std::string_view name : {"reader.rec", "notes.rec", "cite.rec"}) {
+  for (const std::string_view name :
+       {"reader.rec", "notes.rec", "cite.rec", "quiet.rec", "quiet-automap.rec",
+        "quiet-encamp.rec", "quiet-cheats.rec", "quiet-journal.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
     EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 3 state=1\n"))
