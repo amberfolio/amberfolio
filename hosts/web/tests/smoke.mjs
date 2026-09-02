@@ -1757,14 +1757,27 @@ if (missing.length === 0) {
   const nothing = machine.presentDocument(new Uint8Array(0));
   check(nothing.status === AF_INVALID, `a document of no bytes answered ${nothing.status}`);
 
-  // Every seam says what it is gated on, in core's words — `no document`
-  // for all of them today, and the point of asking is that a page shows
-  // the answer rather than working it out (#163's argument, one field
-  // over).
-  const gates = machine.seamList().map((seam) => seam.gate);
+  // Every seam says what it is gated on, in core's words, and the point
+  // of asking is that a page shows the answer rather than working it out
+  // (#163's argument, one field over).
+  //
+  // One seam is gated now — the code-wheel bypass, on the wheel itself
+  // (#115) — and the rest say `no document`. Checked per seam against its
+  // own id rather than against a list written here, so that the day a
+  // second gate goes on this is a test of the door and not of which seams
+  // happen to use it.
+  const seams = machine.seamList();
+  check(seams.length > 0, 'no seams to ask about their gates');
+  for (const seam of seams) {
+    const wanted = seam.id === 'code-wheel' ? 'code wheel' : 'no document';
+    check(
+      seam.gate === wanted,
+      `seam ${JSON.stringify(seam.id)} reports gate ${JSON.stringify(seam.gate)}, wanted ${JSON.stringify(wanted)}`,
+    );
+  }
   check(
-    gates.length > 0 && gates.every((gate) => gate === 'no document'),
-    `the seams report gates ${JSON.stringify(gates)}, expected every one to be "no document"`,
+    seams.some((seam) => seam.gate !== 'no document'),
+    'no seam is gated, so this checks the field and not the door',
   );
 
   machine.destroy();
