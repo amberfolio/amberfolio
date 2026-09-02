@@ -15,15 +15,18 @@
 #include <span>
 
 namespace amberfolio::machine {
-namespace {
 
-/// The bit index of a cell. Coordinates wrap at four bits, which is what
-/// the program's own map addressing does.
-[[nodiscard]] constexpr unsigned cell_index(unsigned x, unsigned y) noexcept {
-  return ((y & 0x0FU) * automap_map_side) + (x & 0x0FU);
+std::size_t automap_cell_index(automap_map_kind kind, unsigned x,
+                               unsigned y) noexcept {
+  if (kind == automap_map_kind::overland) {
+    if (x >= automap_overland_columns || y >= automap_overland_rows) {
+      return automap_no_cell;
+    }
+    return (static_cast<std::size_t>(y) * automap_overland_columns) + x;
+  }
+  return ((static_cast<std::size_t>(y) & 0x0FU) * automap_map_side) +
+         (x & 0x0FU);
 }
-
-}  // namespace
 
 void automap_state::clear() noexcept {
   records_ = {};
@@ -34,6 +37,7 @@ void automap_state::clear() noexcept {
   panel_covered_ = false;
   at_command_bar_ = false;
   unsettle();
+  settled_kind_ = automap_map_kind::grid;
   appearance_valid_ = false;
   appearance_area_ = 0;
   appearance_geo_ = 0;
@@ -46,10 +50,12 @@ void automap_state::clear() noexcept {
   revealed_signature_ = 0;
 }
 
-automap_record& automap_state::record_for(std::uint8_t disk, std::uint8_t area,
+automap_record& automap_state::record_for(automap_map_kind kind,
+                                          std::uint8_t disk, std::uint8_t area,
                                           std::uint8_t geo) noexcept {
   for (automap_record& map : records_) {
-    if (map.used && map.disk == disk && map.area == area && map.geo == geo) {
+    if (map.used && map.kind == kind && map.disk == disk && map.area == area &&
+        map.geo == geo) {
       return map;
     }
   }
@@ -57,6 +63,7 @@ automap_record& automap_state::record_for(std::uint8_t disk, std::uint8_t area,
     if (!map.used) {
       map = {};
       map.used = true;
+      map.kind = kind;
       map.disk = disk;
       map.area = area;
       map.geo = geo;
@@ -72,6 +79,7 @@ automap_record& automap_state::record_for(std::uint8_t disk, std::uint8_t area,
   next_slot_ = (next_slot_ + 1) % max_records;
   map = {};
   map.used = true;
+  map.kind = kind;
   map.disk = disk;
   map.area = area;
   map.geo = geo;
@@ -79,10 +87,12 @@ automap_record& automap_state::record_for(std::uint8_t disk, std::uint8_t area,
   return map;
 }
 
-const automap_record* automap_state::find(std::uint8_t disk, std::uint8_t area,
+const automap_record* automap_state::find(automap_map_kind kind,
+                                          std::uint8_t disk, std::uint8_t area,
                                           std::uint8_t geo) const noexcept {
   for (const automap_record& map : records_) {
-    if (map.used && map.disk == disk && map.area == area && map.geo == geo) {
+    if (map.used && map.kind == kind && map.disk == disk && map.area == area &&
+        map.geo == geo) {
       return &map;
     }
   }
@@ -91,13 +101,19 @@ const automap_record* automap_state::find(std::uint8_t disk, std::uint8_t area,
 
 bool automap_state::seen(const automap_record& map, unsigned x,
                          unsigned y) noexcept {
-  const unsigned index = cell_index(x, y);
+  const std::size_t index = automap_cell_index(map.kind, x, y);
+  if (index == automap_no_cell) {
+    return false;
+  }
   return ((map.seen[index / 8] >> (index % 8)) & 1U) != 0;
 }
 
 bool automap_state::reveal(automap_record& map, unsigned x,
                            unsigned y) noexcept {
-  const unsigned index = cell_index(x, y);
+  const std::size_t index = automap_cell_index(map.kind, x, y);
+  if (index == automap_no_cell) {
+    return false;
+  }
   const auto bit = static_cast<std::uint8_t>(1U << (index % 8));
   if ((map.seen[index / 8] & bit) != 0) {
     return false;
@@ -110,6 +126,13 @@ bool automap_state::reveal(automap_record& map, unsigned x,
 void automap_state::mark(automap_record& map, unsigned x, unsigned y,
                          automap_marker kind) noexcept {
   if (kind == automap_marker::none) {
+    return;
+  }
+  if (map.kind != automap_map_kind::grid) {
+    // The overland carries no marks. Nothing draws them there — the
+    // explored overlay (#179) has no panel to put a way-in glyph on — and
+    // the marker coordinates are four-bit, which a row of 35 is not. A
+    // silent wrap would put a mark on a cell nobody has been to.
     return;
   }
   const auto cx = static_cast<std::uint8_t>(x & 0x0FU);
@@ -207,16 +230,16 @@ bool automap_state::rect_meets_panel(std::uint8_t bottom, std::uint8_t right,
          left <= automap_panel_right_col && right >= automap_panel_left_col;
 }
 
-bool automap_state::observe(std::uint8_t disk, std::uint8_t area,
-                            std::uint8_t geo, std::uint8_t x,
+bool automap_state::observe(automap_map_kind kind, std::uint8_t disk,
+                            std::uint8_t area, std::uint8_t geo, std::uint8_t x,
                             std::uint8_t y) noexcept {
-  if (settled_ &&
-      (disk != settled_disk_ || area != settled_area_ || geo != settled_geo_)) {
+  if (settled_ && (kind != settled_kind_ || disk != settled_disk_ ||
+                   area != settled_area_ || geo != settled_geo_)) {
     // The map changed under the party. The cell it *left* is the last one
     // that was ever true, so it is the one worth marking, and everything
     // about the new map has to be waited for.
     automap_record& previous =
-        record_for(settled_disk_, settled_area_, settled_geo_);
+        record_for(settled_kind_, settled_disk_, settled_area_, settled_geo_);
     mark(previous, settled_x_, settled_y_, automap_marker::exit);
     unsettle();
     // ...and wherever the party turns out to be standing when it stops
@@ -245,13 +268,14 @@ bool automap_state::observe(std::uint8_t disk, std::uint8_t area,
   }
 
   settled_ = true;
+  settled_kind_ = kind;
   settled_disk_ = disk;
   settled_area_ = area;
   settled_geo_ = geo;
   settled_x_ = x;
   settled_y_ = y;
   if (pending_entrance_) {
-    mark(record_for(disk, area, geo), x, y, automap_marker::entrance);
+    mark(record_for(kind, disk, area, geo), x, y, automap_marker::entrance);
     pending_entrance_ = false;
   }
   return true;
@@ -279,15 +303,35 @@ void automap_state::unsettle() noexcept {
 
 namespace {
 
-/// Where one record's fields sit inside its fixed-width row.
+/// Where one record's fields sit inside its fixed-width row, at the
+/// version this build writes (automap.h).
 constexpr std::size_t field_disk = 0;
 constexpr std::size_t field_area = 1;
 constexpr std::size_t field_geo = 2;
-constexpr std::size_t field_marker_count = 3;
-constexpr std::size_t field_seen = 4;
+constexpr std::size_t field_kind = 3;
+constexpr std::size_t field_marker_count = 4;
+constexpr std::size_t field_seen = 5;
 constexpr std::size_t field_marker_x = field_seen + automap_seen_bytes;
 constexpr std::size_t field_marker_y = field_marker_x + automap_max_markers;
 constexpr std::size_t field_marker_kind = field_marker_y + automap_max_markers;
+
+/// And where they sat in version 1, which had no kind byte and a bitmap
+/// of thirty-two. Every record in such a file is a grid.
+constexpr std::size_t v1_field_marker_count = 3;
+constexpr std::size_t v1_field_seen = 4;
+constexpr std::size_t v1_field_marker_x =
+    v1_field_seen + automap_grid_seen_bytes;
+constexpr std::size_t v1_field_marker_y =
+    v1_field_marker_x + automap_max_markers;
+constexpr std::size_t v1_field_marker_kind =
+    v1_field_marker_y + automap_max_markers;
+
+/// Whether a byte is a map kind this build knows. Same rule as the
+/// marker kinds below: an unknown one is not guessed at.
+[[nodiscard]] bool known_map_kind(std::uint8_t kind) noexcept {
+  return kind == static_cast<std::uint8_t>(automap_map_kind::grid) ||
+         kind == static_cast<std::uint8_t>(automap_map_kind::overland);
+}
 
 [[nodiscard]] std::uint16_t word_at(std::span<const std::uint8_t> bytes,
                                     std::size_t offset) noexcept {
@@ -349,6 +393,7 @@ std::size_t automap_state::write_sidecar(
     row[field_disk] = map.disk;
     row[field_area] = map.area;
     row[field_geo] = map.geo;
+    row[field_kind] = static_cast<std::uint8_t>(map.kind);
     row[field_marker_count] = map.marker_count;
     for (std::size_t b = 0; b < automap_seen_bytes; ++b) {
       row[field_seen + b] = map.seen[b];
@@ -373,12 +418,22 @@ bool automap_state::read_sidecar(std::span<const std::uint8_t> in) noexcept {
       return false;
     }
   }
-  if (in[automap_sidecar_magic.size()] != automap_sidecar_version) {
+
+  // **Two versions are read and one is written** (automap.h). A player's
+  // `AFMAP.DAT` from the build before the overland existed has to open:
+  // a version bump that refused it would throw away exactly what the
+  // sidecar is for. Anything else is still refused with nothing touched.
+  const std::uint8_t version = in[automap_sidecar_magic.size()];
+  if (version != automap_sidecar_version &&
+      version != automap_sidecar_first_version) {
     return false;
   }
+  const bool first = version == automap_sidecar_first_version;
+
   const std::size_t count = word_at(in, 4);
   const std::size_t stride = word_at(in, 6);
-  if (stride != automap_sidecar_record_bytes) {
+  if (stride != (first ? automap_sidecar_v1_record_bytes
+                       : automap_sidecar_record_bytes)) {
     return false;
   }
   if (count > max_records) {
@@ -396,21 +451,39 @@ bool automap_state::read_sidecar(std::span<const std::uint8_t> in) noexcept {
   for (std::size_t i = 0; i < count; ++i) {
     const std::span<const std::uint8_t> row =
         in.subspan(automap_sidecar_header_bytes + (i * stride), stride);
+    const std::size_t at_count =
+        first ? v1_field_marker_count : field_marker_count;
+    const std::size_t at_seen = first ? v1_field_seen : field_seen;
+    const std::size_t at_marker_x = first ? v1_field_marker_x : field_marker_x;
+    const std::size_t at_marker_y = first ? v1_field_marker_y : field_marker_y;
+    const std::size_t at_marker_kind =
+        first ? v1_field_marker_kind : field_marker_kind;
+    const std::size_t seen_bytes =
+        first ? automap_grid_seen_bytes : automap_seen_bytes;
+
     automap_record& map = records_[next_slot_++];
     map.used = true;
+    // A version-1 record is a grid by construction; a version-2 one whose
+    // kind byte is not one this build knows is *dropped to a grid* rather
+    // than guessed at, and its bitmap comes across unchanged — the row is
+    // still a row, and a reader that invented a kind would address it
+    // wrongly.
+    map.kind = (!first && known_map_kind(row[field_kind]))
+                   ? static_cast<automap_map_kind>(row[field_kind])
+                   : automap_map_kind::grid;
     map.disk = row[field_disk];
     map.area = row[field_area];
     map.geo = row[field_geo];
-    map.marker_count = row[field_marker_count] <= automap_max_markers
-                           ? row[field_marker_count]
+    map.marker_count = row[at_count] <= automap_max_markers
+                           ? row[at_count]
                            : static_cast<std::uint8_t>(automap_max_markers);
-    for (std::size_t b = 0; b < automap_seen_bytes; ++b) {
-      map.seen[b] = row[field_seen + b];
+    for (std::size_t b = 0; b < seen_bytes; ++b) {
+      map.seen[b] = row[at_seen + b];
     }
     for (std::size_t m = 0; m < automap_max_markers; ++m) {
-      map.marker_x[m] = row[field_marker_x + m];
-      map.marker_y[m] = row[field_marker_y + m];
-      const std::uint8_t kind = row[field_marker_kind + m];
+      map.marker_x[m] = row[at_marker_x + m];
+      map.marker_y[m] = row[at_marker_y + m];
+      const std::uint8_t kind = row[at_marker_kind + m];
       map.marker_kind[m] = known_marker(kind)
                                ? static_cast<automap_marker>(kind)
                                : automap_marker::none;
