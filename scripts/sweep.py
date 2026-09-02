@@ -109,6 +109,7 @@ HEADLESS_ENV = {
 # the path, and because CI will never have one — the absence is the
 # normal case and has to be cheap.
 GAME_DISK_ENV = "AMBERFOLIO_GAME_DISK"
+STORE_ENV = "AMBERFOLIO_JOURNAL_STORE"
 
 # What `disk` says when the disk is the player's own and not in the tree.
 EXTERNAL = "external"
@@ -144,6 +145,11 @@ class Descriptor:
         # The session this one is the same run as, with one thing
         # changed. See `contrast_of()` below for what that buys.
         self.contrast = ""
+        # The journal store this recording was made over, if any: a path
+        # in the tree, or EXTERNAL with a digest. See `store()` below for
+        # why a recording needs to name one at all.
+        self.store = ""
+        self.store_digest = ""
         # DOS path (upper case, backslash-separated) -> (size, digest), and
         # the set of directories. A directory has no digest; a digest of a
         # directory is not a thing (the recording's preamble says the same).
@@ -166,6 +172,9 @@ class Descriptor:
                 self.disk = word[1]
             elif word[0] == "contrast" and len(word) == 2:
                 self.contrast = word[1]
+            elif word[0] == "journal-store" and len(word) in (2, 3):
+                self.store = word[1]
+                self.store_digest = word[2] if len(word) == 3 else ""
             elif word[0] == "dir" and len(word) == 2:
                 self.dirs.add(word[1].upper())
             elif word[0] == "file" and len(word) == 4:
@@ -176,6 +185,18 @@ class Descriptor:
 
         if not self.disk:
             self.problems.append(f"{rel(path)}: no disk line")
+        if self.store == EXTERNAL and not self.store_digest:
+            # The whole point of pinning it: a store outside the tree is
+            # a file nobody here can see, so the digest is the only thing
+            # that says the one on this machine is the one the recording
+            # was made over.
+            self.problems.append(
+                f"{rel(path)}: `journal-store external` wants a sha256"
+                " after it")
+        if self.store and self.store != EXTERNAL and self.store_digest:
+            self.problems.append(
+                f"{rel(path)}: a store in the tree is pinned by git;"
+                " a digest belongs to an external one")
         if self.disk != EXTERNAL and (self.files or self.dirs):
             # A committed disk is pinned by being committed. Two pins that
             # could disagree is one pin too many.
@@ -186,6 +207,10 @@ class Descriptor:
     @property
     def external(self) -> bool:
         return self.disk == EXTERNAL
+
+    @property
+    def external_store(self) -> bool:
+        return self.store == EXTERNAL
 
 
 class Session:
@@ -241,6 +266,38 @@ class Session:
                                                    candidate)[0]:
                 return candidate
         return None
+
+    def store(self, stores: list[Path]) -> tuple[Path | None, str]:
+        """The journal store this recording wants, and what is wrong.
+
+        A recording is keys, ticks and hashes (`docs/replay.md`), and the
+        journal reader's other input is a *file* — the player's own store.
+        What the reader draws out of it is in the framebuffer, and the
+        framebuffer is in every checkpoint hash, so a replay handed a
+        different store than the recording was made over diverges. That
+        is #175's loose end, and a `journal-store` line is the whole of
+        the fix: the descriptor names the file the way it already names
+        the disk.
+
+        A store committed here is found by its path. An external one — a
+        player's own ingestion, which may never enter this tree — is
+        pinned by digest and looked for among the `--journal-store`
+        directories or files this run was given, and when none of them is
+        it, the session is **skipped and said so**.
+        """
+        if self.descriptor is None or not self.descriptor.store:
+            return None, ""
+        if not self.descriptor.external_store:
+            here = ROOT / self.descriptor.store
+            if not here.is_file():
+                return None, f"no store at {rel(here)}"
+            return here, ""
+        want = self.descriptor.store_digest
+        for candidate in stores:
+            if candidate.is_file() and digest_of(candidate) == want:
+                return candidate, ""
+        return None, (f"no journal store with digest {want[:12]}...; pass"
+                      f" --journal-store, or set {STORE_ENV}")
 
     def problems(self) -> list[str]:
         """What is wrong with this session as a *session*, before any
@@ -504,7 +561,8 @@ def run(command: list[str], env: dict[str, str] | None = None):
     )
 
 
-def sweep_desktop(host: Path, session: Session, disk: Path) -> tuple[str, str]:
+def sweep_desktop(host: Path, session: Session, disk: Path,
+                  store: Path | None) -> tuple[str, str]:
     """The desktop host replaying the session over a copy of its disk.
 
     A copy, because a program may write to it: a replay is a run of the
@@ -523,13 +581,25 @@ def sweep_desktop(host: Path, session: Session, disk: Path) -> tuple[str, str]:
         copy = Path(work) / "disk"
         shutil.copytree(disk, copy)
         try:
-            done = run(
-                [
-                    str(host), str(copy), str(session.program),
-                    "--headless", "--replay", str(session.path),
-                ],
-                HEADLESS_ENV,
-            )
+            command = [str(host), str(copy), str(session.program),
+                       "--headless", "--replay", str(session.path)]
+            if store is not None:
+                # The recording's other input (`Session.store()`). The
+                # host reads it whenever it is named, which is what a
+                # replay needs it to do — a replay's seams come from the
+                # recording, so "the journal seam was asked for" is not a
+                # thing this command line says (#235).
+                #
+                # **Copied, for the same reason the disk is.** A run
+                # writes its journal log back into the store when it
+                # ends, so replaying over the player's own file would
+                # change the file the digest pins and the second sweep of
+                # the day would skip. The copy is thrown away with the
+                # disk.
+                here = Path(work) / "journal-store.txt"
+                shutil.copyfile(store, here)
+                command += ["--journal-store", str(here)]
+            done = run(command, HEADLESS_ENV)
         except OSError as why:
             # A host that will not start is a finding about the build
             # tree, and it belongs in the table beside the others. It
@@ -641,6 +711,11 @@ def main() -> int:
     parser.add_argument("--targets", default="sdl,ctest,contrast",
                         help="comma-separated: sdl, ctest, contrast"
                              " (default: all three)")
+    parser.add_argument("--journal-store", action="append", default=[],
+                        metavar="PATH",
+                        help="a journal store a session may be pinned to, "
+                             "or a directory of them; repeatable, or set "
+                             f"{STORE_ENV}")
     parser.add_argument("--game-disk", action="append", default=[],
                         help="a copy of a disk the game sessions were"
                              f" recorded against; repeatable (or"
@@ -655,6 +730,17 @@ def main() -> int:
         game_disks = [Path(p) for p
                       in os.environ.get(GAME_DISK_ENV, "").split(os.pathsep)
                       if p]
+
+    # Journal stores, the same way, and a directory of them counts as
+    # all of them: a player who has ingested more than one edition has a
+    # folder rather than a list, and the pin is a digest either way.
+    given = [Path(p) for p in args.journal_store]
+    if not given:
+        given = [Path(p) for p
+                 in os.environ.get(STORE_ENV, "").split(os.pathsep) if p]
+    stores: list[Path] = []
+    for one in given:
+        stores += sorted(one.glob("*.txt")) if one.is_dir() else [one]
 
     if args.pin is not None:
         if len(game_disks) != 1:
@@ -734,6 +820,17 @@ def main() -> int:
             skipped.append(session.name)
             continue
 
+        # Before the host, because it is a fact about this session and
+        # this machine rather than about the build tree: a descriptor
+        # naming a store nobody committed is wrong wherever it is read,
+        # and reporting "no host here" instead would hide it on every
+        # machine without one.
+        store, store_trouble = session.store(stores)
+        if store_trouble:
+            rows.append((session.name, "sdl", "SKIP", store_trouble))
+            skipped.append(session.name)
+            continue
+
         host = find_desktop_host(trees)
         if host is None:
             rows.append((session.name, "sdl", "SKIP",
@@ -741,7 +838,7 @@ def main() -> int:
             skipped.append(session.name)
             continue
         host_used = host
-        state, detail = sweep_desktop(host, session, disk)
+        state, detail = sweep_desktop(host, session, disk, store)
         rows.append((session.name, "sdl", state, detail))
         failures += state == "FAIL"
         verified += state == "ok"
