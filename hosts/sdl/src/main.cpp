@@ -172,9 +172,9 @@
 //     startup, because a run that had one on is not the same run as one
 //     that did not and the log has to say so.
 //
-//     `code-wheel` is ungated, and seam.h is honest about what it is not
-//     yet: the possession gate PLAN.md §5 requires is M5's, so today it
-//     is a maintainer's switch on a maintainer's own copy.
+//     `code-wheel` is **gated on the code wheel** (#115): turning it on
+//     without `--document` leaves it inert and saying so, because the
+//     possession gate PLAN.md §5 requires is applied where residency is.
 //
 //   --document PATH  present a document the player holds
 //

@@ -268,6 +268,29 @@ would read as a table of everything. **So a game session is checked by
 the desktop host only**, and the cross-target claim below rests on the
 sessions whose disks are here.
 
+## A document a session cannot carry at all (#115)
+
+Every session above that drives the real program past its copy-protection
+challenge does so with `--seam code-wheel` on, and since #115 that seam
+has a **possession gate**: it does nothing until the player presents the
+code wheel the enhancement is *for* (PLAN.md §5 item 1). So those
+descriptors name it:
+
+    document 0db301ae...6586fd
+
+By digest and by nothing else, because a document is somebody's own PDF
+and no byte of it enters this tree. `scripts/sweep.py` takes `--document`
+(a file or a directory of them, repeatable) or `$AMBERFOLIO_DOCUMENT`,
+and when it finds none with that digest the session is skipped and said
+so.
+
+The machine's own answer is worth knowing, because it is the good kind: a
+replay whose recording names a gated seam and whose player has not
+presented the document is **refused before a step is taken**, naming the
+condition — `a recorded seam is gated on a document that has not been
+presented`. Not a divergence halfway through, which is what a gate
+applied silently would have produced.
+
 ## A store a session cannot carry either (#235)
 
 A recording is keys, ticks and hashes, and for three of the sessions

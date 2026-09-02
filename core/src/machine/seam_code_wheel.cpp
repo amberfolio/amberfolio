@@ -130,21 +130,27 @@ constexpr std::array<seam_point, 1> code_wheel_points{
 
 constexpr seam_definition code_wheel_definition{
     .id = "code-wheel",
-    .about = "answer the code-wheel challenge (ungated; #115 owes the gate)",
+    .about = "answer the code-wheel challenge, for a player holding the wheel",
     .fingerprints = code_wheel_binaries,
     .points = code_wheel_points,
-    // Still ungated, and now that is a *choice made here* rather than a
-    // mechanism that does not exist. M5-D3 (#171) built the gate:
-    // `.gate = document_kind::code_wheel` is the whole of what #115 has
-    // left to do, and the table already knows the code wheel this
-    // release ships (machine/document.cpp).
+    // **The possession gate PLAN.md §5 item 1 asks for** (#115). M5-D3
+    // (#171) built the mechanism and machine/document.cpp knows the wheel
+    // this release ships; this line is what turns it on, and turning it
+    // on is a change to what a person can do rather than a change to how
+    // anything works — which is why it waited for an issue of its own.
     //
-    // It is not done in the same change deliberately. This seam is the
-    // one a maintainer runs against their own copy today, and turning
-    // its gate on is a change to what a person can do — which is #115's
-    // to make, with its own issue, rather than something that arrives
-    // inside a door.
-    .gate = document_kind::none,
+    // What it means in practice: with no document presented the seam is
+    // **inert**, reports `document_not_presented`, and its point is never
+    // consulted, so the challenge is answered by a player who has the
+    // wheel in front of them and by nobody else. That is the whole of the
+    // claim — it demonstrates possession and nothing more, and it decides
+    // nothing about who may own a copy (machine/document.h).
+    //
+    // It also changes what a *recording* needs, which is the part that
+    // costs something: a session driven past the challenge is a session
+    // whose descriptor has to name the document, exactly as one that
+    // reads a journal names its store (tests/sessions/README.md).
+    .gate = document_kind::code_wheel,
     .schema = seam_schema_version};
 
 }  // namespace

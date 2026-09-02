@@ -1747,11 +1747,37 @@ TEST(SeamOverlay, TheTrackerIsNotConsultedWhileNothingIsOn) {
 // two lengths equal.
 
 /// A machine with the code-wheel seam's own binary claimed to be loaded.
+/// The code wheel this build knows, out of the engine's own table rather
+/// than spelled again here: a fingerprint written twice is a fingerprint
+/// that can disagree with itself.
+[[nodiscard]] std::string_view wheel_fingerprint() {
+  for (const document_edition& one : known_documents()) {
+    if (one.kind == document_kind::code_wheel) {
+      return one.fingerprint;
+    }
+  }
+  ADD_FAILURE() << "this build knows no code wheel to be gated on";
+  return {};
+}
+
 struct wheel_rig : rig {
-  wheel_rig() {
+  /// The program loaded, and **the wheel in the player's hand** (#115).
+  ///
+  /// Both, because since the possession gate went on they are two
+  /// separate conditions and the seam needs each: the fingerprint says
+  /// this is the program its addresses are facts about, and the document
+  /// says the person running it holds the wheel. A rig that presented
+  /// only the first would test a seam that is inert, which is what
+  /// `AnUnpresentedWheelIsAnInertSeam` below is for.
+  explicit wheel_rig(bool present = true) {
     sha256_digest digest;
     EXPECT_TRUE(parse_digest(code_wheel().fingerprints.front(), digest));
     pc().seams().loaded(digest, image_load_segment);
+    if (present) {
+      sha256_digest wheel;
+      EXPECT_TRUE(parse_digest(wheel_fingerprint(), wheel));
+      EXPECT_NE(pc().seams().present_document(wheel), nullptr);
+    }
   }
 };
 
@@ -1791,6 +1817,44 @@ TEST(SeamCodeWheel, MakesTheProgramsOwnCompareReportEqual) {
   EXPECT_TRUE(regs.flag_set(cpu::flag::zf));
   EXPECT_EQ(regs.get(cpu::reg8::al), regs.get(cpu::reg8::ah))
       << "and the length comparison after it agrees too";
+}
+
+TEST(SeamCodeWheel, AnUnpresentedWheelIsAnInertSeam) {
+  // The gate itself (#115, PLAN.md §5 item 1). The program is the right
+  // program and the seam is on; what is missing is the document, and
+  // that is the whole difference between answering the challenge and
+  // leaving it exactly as the program wrote it.
+  const wheel_rig r(false);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+
+  r.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
+  cpu::registers& regs = r.regs();
+  regs[cpu::reg16::cx] = 6;
+  regs.set(cpu::reg8::al, 1);
+  regs.set(cpu::reg8::ah, 6);
+  regs[cpu::sreg::es] = image_load_segment;
+  regs[cpu::reg16::di] = in_the_table;
+  regs[cpu::sreg::ds] = image_load_segment;
+  regs[cpu::reg16::si] = 0x0200;
+  regs.set_flag(cpu::flag::zf, false);
+
+  r.pc().step();
+
+  EXPECT_NE(regs[cpu::reg16::cx], 0u)
+      << "the compare ran, because nothing intercepted it";
+  EXPECT_NE(regs.get(cpu::reg8::al), regs.get(cpu::reg8::ah));
+}
+
+TEST(SeamCodeWheel, SaysWhichDocumentItIsWaitingFor) {
+  const wheel_rig r(false);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+  EXPECT_EQ(code_wheel().gate, document_kind::code_wheel);
+  EXPECT_FALSE(r.pc().seams().holds_document(document_kind::code_wheel));
+
+  sha256_digest wheel;
+  ASSERT_TRUE(parse_digest(wheel_fingerprint(), wheel));
+  EXPECT_NE(r.pc().seams().present_document(wheel), nullptr);
+  EXPECT_TRUE(r.pc().seams().holds_document(document_kind::code_wheel));
 }
 
 TEST(SeamCodeWheel, LeavesEveryOtherStringComparisonAlone) {
