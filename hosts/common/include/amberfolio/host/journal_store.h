@@ -165,10 +165,16 @@ class journal_store {
   /// document it was handed (`journal_ingest.h`). Keeping the fingerprint
   /// here is what makes that check possible at all.
   [[nodiscard]] std::string_view edition() const noexcept { return edition_; }
-  void set_edition(std::string_view fingerprint) { edition_ = fingerprint; }
+  void set_edition(std::string_view fingerprint) {
+    edition_ = fingerprint;
+    changed_ = true;
+  }
 
   [[nodiscard]] std::string_view engine() const noexcept { return engine_; }
-  void set_engine(std::string_view what) { engine_ = what; }
+  void set_engine(std::string_view what) {
+    engine_ = what;
+    changed_ = true;
+  }
 
   [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
   [[nodiscard]] bool empty() const noexcept { return entries_.empty(); }
@@ -243,12 +249,30 @@ class journal_store {
   /// no reader could ever show.
   void set_seen(std::span<const machine::journal_seen_row> rows);
 
-  /// Whether the log has moved since a host last wrote this store out.
+  /// Whether this store has moved since a host last wrote it out.
   ///
   /// The same shape the automap's sidecar has, and for the same reason: a
   /// host that wrote the file on every citation would write it far more
-  /// often than anything changed. `set_seen()` raises it; a host lowers it
-  /// when the bytes are on disk.
+  /// often than anything changed.
+  ///
+  /// **Every write raises it**, which is more than it used to be: it was
+  /// `set_seen()` alone (M5-E4b, #222), because the log was the only
+  /// thing that moved while a machine was running. #229 made it the
+  /// store's flag rather than the log's, because the caller it exists for
+  /// now is a host deciding whether to *persist the store* — and a
+  /// player's correction that did not raise it is a correction that
+  /// quietly does not get saved. So `record_scan`, `correct`,
+  /// `set_edition`, `set_engine`, `clear` and `set_seen` all raise it,
+  /// and a write that was refused (too long, no room) raises nothing.
+  ///
+  /// **`parse()` is the exception**, and deliberately: a store read in
+  /// from a file or a browser's drawer came *from* a host, which
+  /// therefore already holds those bytes. Raising it there would have
+  /// every host write back, on startup, exactly what it had just read.
+  ///
+  /// **The lowering is the caller's.** A store cannot know whether a host
+  /// got the bytes to disk, and a flag that cleared itself on read would
+  /// lose a correction made between the read and the write.
   [[nodiscard]] bool changed() const noexcept { return changed_; }
   void clear_changed() noexcept { changed_ = false; }
 
