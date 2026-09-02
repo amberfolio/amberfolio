@@ -11,14 +11,16 @@
 #
 # **A single leg, because a pair cannot say it.** A pair compares two
 # runs; this is a claim about one run over time. It is `same`: with the
-# party standing still and nothing pressed, fifty-two consecutive stills
+# party standing still and nothing pressed, fifty-one consecutive stills
 # of the screen are the same screen. A repaint that arrived late, or a
 # present the seam did not paint after, would move one of them.
 #
 # Measured before it was written down: over the walk in `exp-trail.leg`
-# the seam's points are reached 746,746 times and no dumped still after
-# the first marked square is ever missing its mark.
-about the trail holds still while the party does
+# the seam's points are reached 746,746 times, and from the frame the
+# arrival settles at to the end of the run every dumped still has the fog
+# on it — none of the 112 that differ from the seam-off run is missing
+# it, and the 51 in the range below are one still repeated.
+about the fog holds still while the party does
 kind single
 program START.EXE
 both code-wheel
@@ -43,6 +45,6 @@ key Up@11500
 key Up@11650
 
 # From the frame after the last step to the end of the run: the party is
-# standing on the wilderness map with two marked squares behind it, and
-# nothing about the screen may change.
+# standing on the wilderness map inside the corridor it uncovered, with
+# the fog round it, and nothing about the screen may change.
 same 11750-13000

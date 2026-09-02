@@ -1464,7 +1464,7 @@ after a citation closes the panel first.
 
 ---
 
-## Leg 11 — the overworld, and where you have been (M5-E5, #179)
+## Leg 11 — the overworld, and where you have been (M5-E5, #179; the fog M5-E5f, #263)
 
 PLAN.md §5 item 5, and the third seam in this tree that draws.
 `docs/seams.md` §10 is what it is and
@@ -1494,22 +1494,66 @@ frames apart, the cadence every driven walk here uses. Wandering brings
 an encounter within a few virtual minutes, so a quiet walk is a short
 one.
 
-**What it does.** Each square the party leaves behind is redrawn one shade
-brighter — the game's own pixels, in the game's own palette, one step up.
-Nothing is added to the screen that the game does not have on it, and the
-square under the party is never marked, so a fresh wilderness map looks
-exactly as it would with the seam off until the first step is taken.
+**What it does.** It is **fog of war** (M5-E5f, #263). The square the
+party is standing on and the eight around it are the game's own map,
+untouched; every other square of the window is hazed over with a
+**one-pixel checkerboard of dark grey** — palette index 8, on half the
+square's pixels, with the program's own pixel on the other half — so the
+terrain is faintly there under the fog rather than gone. The fog lifts as
+the party goes, and the square under the party is never covered because
+the party's icon is drawn there.
+
+**The colour was chosen by looking at it.** The first fog was solid
+black, and five coverings were then composited over one real dumped
+frame — solid black, a black checker, a dark-grey checker, a light-grey
+checker and a two-by-two dark-grey one — and the maintainer picked the
+dark-grey checker. A solid cover throws away the shape of the country the
+party is standing at the edge of; a black checker collapses against the
+grass's own two-green dither into a flat mesh; light grey reads as paler
+ground. `docs/explored-overlay.md` §5.2 has all five, black's four
+reasons included, because it is the rejected alternative.
+
+**How far it sees is one constant**, `explored_reveal_radius` in
+`machine/automap.h`, and it is 1. Two and three were asked for and cover
+nothing: the window is five squares across with the party in the middle,
+so every square on the screen is already within two. Driven, with the
+constant set to 2: **523 dumped frames of this walk, and not one of them
+differs from the same walk with the seam off.** The maintainer confirmed
+one on the same look that chose the colour, so the radius is settled and
+not a placeholder.
+
+**The first design was the other way round**, and this leg used to
+describe it: the whole map on the screen with the walked squares one
+shade brighter. It was measured visible on 2,800 squares and it did not
+read when somebody looked at it, which is the exit rule this item has for
+exactly that reason (PLAN.md §5 item 5). `docs/explored-overlay.md` §5
+keeps both.
 
 **Nothing is pressed.** It is a setting, not a command: on, it is there
 whenever that screen is; off, it is not.
 
 **What the driving says.** 523 stills against the same run with the seam
-off: 427 byte for byte identical — the whole arrival on the map included
-— and every one of the 96 that differ differs only inside the squares the
-party had walked. No still after the first marked square is ever missing
-its mark. The same script through `drive.mjs` composes a final frame
-identical to the desktop host's, and `tests/sessions/wild.rec` and
-`wild-trail.rec` are the run recorded twice, one flag apart.
+off: **411 byte for byte identical, and every one of the 112 that differ
+differing only inside the squares the party has not been near** — sixteen
+of them until the first step and thirteen from then on, and **not one
+pixel outside the window at any frame**. On the last of them, 3,166
+pixels differ from the seam-off frame, every one of them palette index 8,
+and not one pixel of the checker's other half — the program's own — has
+moved anywhere on the screen. From the frame the arrival
+settles at to the end of the run every still has the fog on it, and the
+fifty-one after the last step are one still repeated
+(`tests/visual/exp-trail.leg` and `exp-steady.leg` are those two as
+assertions). `tests/sessions/wild.rec` and `wild-trail.rec` are the run
+recorded twice, one flag apart: **107 of 140 checkpoints identical, then
+divergent from tick 204,866,288**, which is the arrival — under the lift
+it was 111 and the first step, and that difference is the enhancement's
+whole change of mind.
+
+**And one claim went away with it.** Arriving on a wilderness map nobody
+has walked is no longer pixel-identical to the seam-off run, because a
+fog covers what is *not* known and a fresh map is nearly all of that. The
+weaker claim stands and is a session: on, with the overworld never shown,
+`quiet-explored.rec` is all 126 checkpoints of the baseline.
 
 **Keeping the trail.** `--automap-store` writes it into `\SAVE\AFMAP.DAT`
 beside the game's saves, with a snapshot per save slot. Two things about
@@ -1517,11 +1561,13 @@ it were driven and are worth knowing:
 
 * the **automap alone**, with this seam off, records the wilderness too —
   one recorder, two callers (#254) — so a player who turns this on later
-  finds the squares they walked already marked;
+  finds the squares they walked already clear;
 * loading a slot that has **no** snapshot beside it empties the table, so
-  the arrival is byte for byte the seam-off one. That is the store's own
-  rule and not a fault: an empty map is the truth about a playthrough
-  nobody recorded one for.
+  the arrival is the arrival: the party's own three-by-three and fog
+  everywhere else. That is the store's own rule and not a fault — an
+  empty map is the truth about a playthrough nobody recorded one for —
+  and under the lift the same sentence ended "so the arrival is byte for
+  byte the seam-off one", which is the claim the fog gave up.
 
 ---
 
@@ -1621,10 +1667,23 @@ what it skips would be worth less than one that says so.
   party's whole overland position is four numbers a save restores — and
   what is untested until somebody does is the bias, which is read out of
   the program rather than carried, and is zero on the one area driven.
-  The second gap is narrower and named for the same reason: the marking
-  is measured *visible* on 2,800 window cells and no shipped overhead
-  tile has been examined directly, so a tile whose art is entirely bright
-  would have no mark and nothing would say so.
+  The second gap is narrower and named for the same reason: the fog has
+  been over grass, coast water and the grey shore between them and over
+  no other terrain. It cannot fail on one — the checker is the same grey
+  on the same half of the pixels whatever is underneath — but how legibly
+  a haze reads depends on the colour it is hazing, and nobody has seen it
+  over ground that is already grey. **The gap that is gone** is worth
+  saying, because it is what changing the marking bought: the lift was
+  measured *visible* on 2,800 window cells and a tile whose art was
+  entirely bright would have carried no mark at all with nothing to say
+  so. A covering has no such failure.
+- **Whether the fog reads as something the game drew *in play*** (#263).
+  Narrower than it was. The lift's version of this clause was answered by
+  a person and the answer changed the enhancement; the fog's colour was
+  then chosen by the same person off five coverings composited over a
+  real frame. What is left is that a composite is a picture beside
+  another picture — nobody has walked a wilderness map with the haze
+  moving in front of them. That is #179's last unticked clause.
 - **The dev page itself** (#108). Leg 6 drives the wasm module headless
   and the module is the same one the page loads, but nobody has run any
   of this in a browser: the canvas, the AudioWorklet, the seam

@@ -1,13 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The explored overlay: PLAN.md §5 item 5, M5-E5 (#179), the seam itself
-// is M5-E5c (#255).
+// is M5-E5c (#255) and the marking it draws now is M5-E5f (#263).
 //
 // Where the party has walked, on the game's own overworld screen. The
 // program shows a five-by-five window of a wilderness area's overhead
-// map, scrolling with the party; this seam redraws the cells the party
-// has stood on **one shade brighter**, so a player can see where they
-// have been and where they have not.
+// map, scrolling with the party; this seam **hazes every cell of that
+// window the party has not been near over with fog**, so what is plainly
+// on the screen is the country the party has seen and the rest of it is
+// under a covering.
+//
+// **This is the second marking, and the first one shipped.** M5-E5c drew
+// the opposite picture: the game's whole window as the game drew it, with
+// the squares the party had walked lifted one shade brighter. The
+// maintainer looked at that on a real run and the answer was that it does
+// not read — a shade is a difference a player has to be told about before
+// they can see it, and PLAN.md §5's rule for this item is that a person
+// with a display decides. So the marking was reversed: what is known is
+// drawn by the game, untouched, and what is not is covered. PLAN.md §5
+// item 5 carries the change, because the sentence it used to end with
+// — "it never obscures the unknown" — is exactly what this now does.
+// `docs/explored-overlay.md` §5 keeps the lift as the first design with
+// the reason it was rejected, and the fog candidates that were prototyped
+// over a real frame beside it.
 //
 // The facts, the geometry and the three decisions are
 // `docs/explored-overlay.md` (M5-E5a, #253), which was written before a
@@ -22,9 +37,10 @@
 // it is there whenever the game is showing the overworld; off, it is not.
 // So the definition is not a `trigger`, it claims no keystroke, and there
 // is nothing for a player to learn beyond switching it on. That is also
-// what makes the fidelity claims below the shape they are: this seam is
-// *visible* the moment the party stands on a square it has stood on
-// before, and no amount of not-pressing-anything hides it.
+// what makes the fidelity claim below the shape it is: this seam is
+// *visible* the moment the program shows the overworld at all — a map
+// nobody has walked is a window that is almost entirely fog — and no
+// amount of not-pressing-anything hides it.
 //
 // **Its points are addresses**, three of them, all resident, and two of
 // the three are the automap's (#173) — which is nothing new; several
@@ -41,9 +57,10 @@
 // drawing these areas in the interior view instead**; the party's
 // position not being on a 16-by-36 map; the column bias not being one a
 // 44-column table could hold; the bar on the screen not being the
-// adventuring screen's own; the position not having settled; and nothing
-// explored on this map at all. Every one of those returns having touched
-// no port and no pixel.
+// adventuring screen's own; the position not having settled; and the
+// party having been near every cell the window is showing, which is the
+// one case where there is nothing to cover. Every one of those returns
+// having touched no port and no pixel.
 //
 //
 // Why the present's return, and not the painter
@@ -86,76 +103,132 @@
 // only if a driven run shows this path flickering (#256).
 //
 //
-// The marking: an intensity lift, and why there is no mark at all
-// ---------------------------------------------------------------
+// The marking: fog, and why it is a dark-grey checker
+// ---------------------------------------------------
 //
-// An explored cell is redrawn one shade brighter. Every pixel of it stays
-// a pixel the *program* drew, in the program's own sixteen-colour
-// palette, one step up: dark green becomes bright green, blue becomes
-// bright blue, black becomes dark grey.
+// A cell the party has not been near is **hazed over with a one-pixel
+// checkerboard of palette index 8** — the program's own dark grey — laid
+// over half of its 24 by 24 pixels. The other half are the pixels the
+// program drew, untouched, so the terrain is still faintly there under
+// the haze rather than gone.
 //
-// Seven candidates were prototyped over a real dumped frame and six were
-// rejected; `docs/explored-overlay.md` §5 has them and their reasons. The
-// four that decided it:
+// **This is the third design and the second look.** M5-E5c shipped a
+// lift and the maintainer said it did not read; M5-E5f first replaced it
+// with a *solid black* cover, and the maintainer looked at five
+// coverings composited over a real dumped frame — solid black, a
+// one-pixel black checker, a one-pixel dark-grey checker, a one-pixel
+// light-grey checker and a two-by-two dark-grey checker — and chose this
+// one. Fifteen markings have now been prototyped over real frames of
+// this screen: seven for the lift, six for the black fog, and the five
+// of that composite. `docs/explored-overlay.md` §5 has all of them with
+// their reasons, including black's, which are kept in full because black
+// is the rejected alternative and a rejected candidate with its cost is
+// what made each of these changes an edit rather than a
+// re-investigation.
 //
-//   * **it draws no shape of its own.** Every other candidate puts a mark
-//     on the game's screen that the game has no vocabulary for. This one
-//     has no mark; it has a shade. That is the argument docs/seams.md §3
-//     makes for calling the program's own text drawer rather than
-//     rasterizing glyphs, one layer further along — there is no foreign
-//     artwork rather than none that looks foreign;
-//   * **it is the game's own idiom.** The program recolours this very
-//     screen through a palette mapping of its own, in an overlay of its
-//     own, as part of one of its set pieces;
-//   * **it costs one plane and no read-back.** Sixteen EGA colours are
-//     four planes and the top bit of the index is plane 3, so "one shade
-//     brighter" is `map mask = 8` and a run of `0xFF` bytes. A cell is
-//     three whole bytes by 24 scanlines: 72 byte writes, and 1,728 for a
-//     window with every cell but the party's marked. The automap panel's
-//     blit is 9,856 for comparison;
-//   * **the terrain stays legible.** A coastline, a road and a tile's
-//     outline survive a shade change; they do not survive a hatch or a
-//     dither drawn over them.
+// What the composite showed, and what none of the arithmetic had:
 //
-// Measured, because "one shade" invites the question: across 112 overland
-// frames and 2,800 window cells of a real run, the cell with the fewest
-// pixels whose intensity bit was clear still had 198 of its 576. The
-// direction matters too — *lowering* the bit looks better on grass and is
-// invisible on water, which is a solid dark blue already.
+//   * **a one-pixel checker of *black* collapses.** The terrain here is
+//     itself a two-green dither at one-pixel granularity, so a black
+//     checker over it interferes with that dither into a flat dark mesh:
+//     it neither covers nor veils, it makes a new texture that reads as
+//     one more kind of ground;
+//   * **light grey reads as paler terrain**, for the same reason a
+//     lift did — a covering whose value is near the tile's own is a
+//     variation on the tile;
+//   * **dark grey reads as haze.** It is far enough from the terrain's
+//     own greens and blues to be plainly a covering, and it lets enough
+//     of the tile through that a coastline is still a coastline under
+//     it. That is what was wanted: not "this square is gone" but "this
+//     square has not been seen".
+//
+// **What black had going for it, and lost on:** it is the one colour
+// that cannot read as terrain at all, it is the game's own vocabulary
+// for the unknown — the message rows, the panel beside the window and
+// the 3D view's own distance are all black — it is the same on every
+// terrain, and it costs no read-back. Every one of those is still true.
+// The one it could not answer is the one a display settles: a solid
+// cover throws away the *shape* of the country the party is standing at
+// the edge of, and a player who cannot see a coast through the fog
+// cannot see that there is a coast to walk to. The maintainer looked at
+// both and picked the haze.
+//
+// **The third reason survives intact.** The checker does not depend on
+// what is underneath: it is index 8 on the same half of the pixels
+// whatever the tile is, so there is still one fog to learn and it is
+// still not the failure the lift's *dim* direction had on water.
+//
+// **The fourth reason is what this now pays.** A checker keeps the
+// pixels it is not covering, and keeping them means loading the
+// adapter's latches from the screen first: one read and one write per
+// byte instead of one write, 72 reads and 72 writes a cell, 1,728 of
+// each for a window with 24 cells fogged, against the automap panel's
+// 9,856 writes. `fog_cell` below is where that is spelt out. A seam that
+// draws now disturbs the latches; a seam that is only *looking* at a
+// screen still does not, because nothing here reads a pixel unless it is
+// about to cover one.
 //
 //
-// Two cells this never touches
+// How far the party sees
+// ----------------------
+//
+// `explored_reveal_radius` (`automap.h`) — a Chebyshev distance, and one
+// by default. A cell is shown when the party has stood within that many
+// cells of it, so standing on a cell uncovers the three-by-three around
+// it, and the trail a walk leaves is a three-wide corridor.
+//
+// **The record still holds only the cells the party stood on.** The
+// reveal is the *dilation* of that by the radius, worked out here when
+// the window is drawn, so a player who turns the knob up tomorrow sees
+// more of the map they already walked rather than a map that has to be
+// walked again. It is also why nothing in `automap.h`'s stored layout
+// moved for this change and no sidecar anybody has is invalidated.
+//
+// **Why one and not the two or three that were asked for.** The window
+// is five cells across and the party is its middle cell in open country,
+// so every cell on the screen is already within two of the party. At a
+// radius of two this seam covers nothing at all except where a map's own
+// edge pushes the party off centre — measured, on the same walk: eight
+// steps, and not one fogged cell until the party reaches the map's edge.
+// One is the largest radius that leaves anything to cover.
+//
+//
+// Two things this never covers
 // ----------------------------
 //
-// **The party's own**, which is where the program draws the party's icon.
-// A lift there would recolour the party's own sprite, and it would cost
-// the stronger of the two fidelity claims below. The cell is *recorded*
-// the moment the party stands on it and appears, marked, when the party
-// moves off — which is what makes the thing a trail rather than a
-// highlight.
+// **The party's own cell**, which is where the program draws the party's
+// icon. At any radius of one or more it is revealed anyway — the party is
+// standing on it — but the check is written down as its own line rather
+// than left to arithmetic, because a fog over the party's own sprite is
+// the one mistake here that would be a bug and not a preference.
 //
-// **Any cell the party has not walked.** Not one pixel, which is what
-// lets a confinement leg (#256) mask exactly the explored cells and
-// assert that the rest of the frame is byte for byte the seam-off run.
+// **Every pixel outside the five-by-five window.** The window is 120 by
+// 120 at (8, 8) and every cell of it begins on a byte boundary and is
+// three whole bytes wide, so the fog is written into whole bytes inside
+// that rect and reaches nothing else — which is what lets a confinement
+// leg (#256) mask the window and assert that the rest of the frame is
+// byte for byte the seam-off run.
 //
 //
 // The fidelity claim, stated for this seam (docs/seams.md §8.5)
 // -------------------------------------------------------------
 //
-// The plain one does not survive a seam that is visible without being
-// asked for, so it is two narrower ones, and both are tests:
+// **One claim, not two.** M5-E5c had a second and stronger one — on, the
+// overworld shown, nothing walked, and the screen still the screen it
+// would have been — which held only because a lift marks what is known
+// and a map nobody has walked has nothing known on it. A fog marks what
+// is *not* known, and a map nobody has walked is all of that: the outer
+// ring of the window is covered the moment the party arrives. So that
+// claim is gone rather than weakened, here, in `docs/seams.md` §10 and
+// §8.5, and in the `wild` / `wild-trail` pair, which now diverges at the
+// arrival rather than at the first step. What remains is true and is a
+// test:
 //
 //   **On, and the overworld never shown, a run is byte for byte the run
 //   with no engine at all.** Every point reads; the two shared with the
 //   automap write only `machine::automap()`, which is observation and not
 //   machine state (`automap.h`); and the third returns on the mode byte.
-//
-//   **On, the overworld shown, and nothing explored but the cell the
-//   party is standing on — the run is byte for byte the run with the seam
-//   off.** This is the one that holds only because the party's own cell
-//   is never marked: it is the state a player is in the moment they
-//   arrive on a wilderness map they have never walked, and until they
-//   take their first step the screen is the screen they would have seen.
+//   `tests/sessions/quiet-explored.rec` says it on the real program.
 //
 //
 // What it is not yet, at the point of definition (docs/seams.md §8.5)
@@ -168,8 +241,22 @@
 //     at one of two known offsets. If the travel view hands its input
 //     routine a third string, this seam paints nothing there and a driven
 //     run is what will say so (#256).
-//   * Nobody with a display has looked at it. #179's exit requires that
-//     somebody does (#257).
+//   * The fog has been prototyped and driven over **grass, coast water
+//     and the grey shore between them**, which is what the one area a
+//     shipped save reaches has near its start. No frame of rough ground,
+//     forest or a road has been under it. It cannot fail on one — the
+//     checker is index 8 on the same half of the pixels whatever the
+//     tile is, which is the reason its colour survived the second look —
+//     but nobody has seen it there.
+//   * **The radius is one and the maintainer has confirmed it** (#263),
+//     which is the half of that judgement that is now settled. One is
+//     also the only radius that covers anything on this screen: at two,
+//     every cell of a five-wide window centred on the party is already
+//     within the radius.
+//   * The maintainer chose this covering off **composites over a real
+//     dumped frame**, five of them side by side, which is a stronger
+//     look than the lift ever got and is still not somebody playing.
+//     #179's remaining clause is that verdict.
 
 #include <array>
 #include <cstddef>
@@ -248,17 +335,33 @@ constexpr int max_column_bias = 0x2B;
 /// recorder and come back in its answer (`automap_overland.h`), so this
 /// file does not name their offsets a second time.
 
-/// EGA plane 3 is the intensity bit of a sixteen-colour index, which is
-/// the whole of this seam's drawing.
-constexpr std::uint8_t intensity_plane_mask = 0x08;
+/// **The fog's colour: palette index 8**, the program's own dark grey —
+/// plane 3 set and planes 0, 1 and 2 clear. It is laid as a one-pixel
+/// checkerboard, half of the square's pixels covered and half of them
+/// left exactly as the program drew them, which is the marking the
+/// maintainer chose over a solid fill on a side-by-side of five
+/// (M5-E5f, #263; `docs/explored-overlay.md` §5.2).
+constexpr std::uint8_t fog_colour = 0x08;
 constexpr std::uint8_t all_planes = 0x0F;
 constexpr std::uint8_t all_bits = 0xFF;
-constexpr std::uint8_t all_pixels = 0xFF;
+constexpr std::uint8_t no_planes = 0x00;
+
+/// **The checker's two masks, and why the parity is the screen's.** A
+/// covered pixel is one whose `x + y` is even in *screen* coordinates and
+/// not in the square's own, so the pattern runs unbroken across the
+/// boundary between two fogged squares instead of restarting at each of
+/// them. A byte column begins at an x that is a multiple of eight, so the
+/// parity of `x + y` inside a byte is the parity of the bit's position
+/// plus the scanline's: on an even scanline the covered pixels are bits
+/// 7, 5, 3 and 1, and on an odd one they are the other four.
+constexpr std::uint8_t checker_even_line = 0xAA;
+constexpr std::uint8_t checker_odd_line = 0x55;
 
 /// The graphics-controller registers a plane-selected byte write needs,
 /// and the values a plain write-mode-0 copy wants. Set rather than
 /// assumed: they cannot be read back, and assuming a register you cannot
 /// read is not a check (docs/seams.md §3).
+constexpr std::uint8_t gc_set_reset_index = 0;
 constexpr std::uint8_t gc_enable_set_reset_index = 1;
 constexpr std::uint8_t gc_data_rotate_index = 3;
 constexpr std::uint8_t gc_write_mode_index = 5;
@@ -300,73 +403,131 @@ void write_register(machine& box, std::uint16_t index_port,
 // The drawing
 // ---------------------------------------------------------------------------
 
-/// One cell of the window, lifted a shade: 24 scanlines of three whole
-/// bytes, written into the plane the sequencer's map mask has already
-/// selected.
+/// One cell of the window, covered: 24 scanlines of three whole bytes,
+/// every other pixel of them turned to the fog's colour and the rest left
+/// exactly as the program drew them.
 ///
-/// No read-back, because none is needed: the byte written is `0xFF` and
-/// the mask is one plane, so the effect on every pixel of the cell is
-/// exactly "set the intensity bit" whatever was there. That is also why
-/// the rect's byte alignment matters — a cell begins at x = 8 + 24j,
-/// which is byte column 1 + 3j, and is three whole bytes across
-/// (`automap.h`).
-void lift_cell(machine& box, unsigned column, unsigned row) {
+/// **This is a masked write, and a masked write reads first.** The
+/// graphics controller's bit mask decides, bit by bit, which pixels of a
+/// byte take what the CPU is writing; every bit it clears takes its pixel
+/// from the adapter's *latches* instead. So the latches have to be
+/// holding the byte that is already on the screen, and the only way to
+/// load them is to read that byte through the bus — one read and one
+/// write per byte, where the solid fill this replaced needed the write
+/// alone. That read is the whole extra cost of a veil over a cover; it is
+/// what `docs/explored-overlay.md` §5.2 counted against every checker
+/// before the maintainer looked at them, and it is the reason this file
+/// reads the video window at all.
+///
+/// **The colour comes from set/reset, not from the byte written.** With
+/// enable-set/reset on all four planes each plane takes its bit from the
+/// set/reset register, so one CPU write paints index 8 across the planes
+/// and the byte handed to it is immaterial. The bit mask is set once per
+/// scanline, because the checker alternates with the scanline's parity.
+///
+/// The rect's byte alignment is what makes any of this three whole bytes
+/// rather than a shift: a cell begins at x = 8 + 24j, which is byte
+/// column 1 + 3j, and is three whole bytes across (`automap.h`).
+void fog_cell(machine& box, unsigned column, unsigned row) {
   cpu::processor& cpu = box.processor();
   constexpr unsigned bytes_across = explored_cell_pixels / 8;
   const unsigned first_byte = (explored_window_x / 8) + (column * bytes_across);
   const unsigned first_line = explored_window_y + (row * explored_cell_pixels);
   for (unsigned line = 0; line < explored_cell_pixels; ++line) {
+    const unsigned screen_line = first_line + line;
+    write_register(
+        box, ega::graphics_index_port, ega::graphics_data_port,
+        gc_bit_mask_index,
+        (screen_line % 2) == 0 ? checker_even_line : checker_odd_line);
     const auto base = static_cast<std::uint16_t>(
-        ((first_line + line) * plane_bytes_per_row) + first_byte);
+        (screen_line * plane_bytes_per_row) + first_byte);
     for (unsigned byte = 0; byte < bytes_across; ++byte) {
-      cpu.write_byte(video_window_segment,
-                     at(base, static_cast<std::uint16_t>(byte)), all_pixels);
+      const std::uint16_t offset = at(base, static_cast<std::uint16_t>(byte));
+      // The read is the write's other half: it loads the latches with the
+      // pixels this write is going to keep. What it hands back is of no
+      // interest, and the latches load whatever the read mode is.
+      static_cast<void>(cpu.read_byte(video_window_segment, offset));
+      cpu.write_byte(video_window_segment, offset, all_bits);
     }
   }
 }
 
-/// Which of the twenty-five cells of the window are lifted, as a bitmap
-/// of `row * 5 + column`. Pure, so a test can check it against a store it
-/// laid out itself.
-///
-/// A cell is lifted when it is on this area's own sixteen columns, the
-/// party has walked it, and it is not the cell the party is standing on.
-/// Columns outside the area's band belong to a neighbouring wilderness
-/// area — the three of them are bands of one table and the window may
-/// overhang — and this seam has no record for them and never marks one.
-/// The map's own bounds, as the signed type the arithmetic above is in.
+/// The map's own bounds, as the signed type the arithmetic below is in.
 /// Named rather than cast at the comparison, which is what
 /// `modernize-use-integer-sign-comparison` actually wants.
 constexpr int overland_rows = static_cast<int>(automap_overland_rows);
 constexpr int overland_columns = static_cast<int>(automap_overland_columns);
 constexpr int window_cells = static_cast<int>(explored_window_cells);
 
-[[nodiscard]] std::uint32_t cells_to_lift(const automap_record& map, int bias,
-                                          int party_x, int party_y) noexcept {
-  const explored_window origin =
-      explored_window_top_left(bias, party_x, party_y);
-  std::uint32_t lifted = 0;
-  for (int row = 0; row < window_cells; ++row) {
-    const int map_row = origin.row + row;
-    if (map_row < 0 || map_row >= overland_rows) {
+/// Has the party stood within `explored_reveal_radius` of this cell?
+///
+/// **The dilation, computed rather than stored** — the record holds the
+/// cells the party walked and nothing else, so a radius that changes
+/// tomorrow changes what a player sees of the map they already have
+/// rather than what they have to walk again (`automap.h`).
+///
+/// The neighbourhood is clipped to the map, because a cell off the map is
+/// a cell nobody stood on, and the record cannot answer for one.
+[[nodiscard]] bool revealed(const automap_record& map, int column,
+                            int row) noexcept {
+  for (int dy = -explored_reveal_radius; dy <= explored_reveal_radius; ++dy) {
+    const int near_row = row + dy;
+    if (near_row < 0 || near_row >= overland_rows) {
       continue;
     }
-    for (int column = 0; column < window_cells; ++column) {
-      const int map_col = origin.col + column - bias;
-      if (map_col < 0 || map_col >= overland_columns) {
+    for (int dx = -explored_reveal_radius; dx <= explored_reveal_radius; ++dx) {
+      const int near_col = column + dx;
+      if (near_col < 0 || near_col >= overland_columns) {
         continue;
       }
+      if (automap_state::seen(map, static_cast<unsigned>(near_col),
+                              static_cast<unsigned>(near_row))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Which of the twenty-five cells of the window are covered, as a bitmap
+/// of `row * 5 + column`. Pure, so a test can check it against a store it
+/// laid out itself.
+///
+/// A cell is fogged unless the party has stood within the reveal radius
+/// of it — so fog is the default and being shown is what has to be
+/// earned, which is the reversal M5-E5f is.
+///
+/// Two cells are never fogged, and they are different in kind. The one
+/// the party is **standing on** is where the program draws the party's
+/// icon, and covering it would cover the player's own sprite; it is
+/// revealed by the radius as well, at any radius at all, and is written
+/// here anyway because that is a rule and not an accident. A cell off
+/// this area's own sixteen columns belongs to a **neighbouring
+/// wilderness area** — the three of them are bands of one 44-column
+/// table and the window may overhang — and this seam has no record for
+/// one, so nothing has been stood near it and it is covered like any
+/// other unknown.
+[[nodiscard]] std::uint32_t cells_to_fog(const automap_record& map, int bias,
+                                         int party_x, int party_y) noexcept {
+  const explored_window origin =
+      explored_window_top_left(bias, party_x, party_y);
+  std::uint32_t fogged = 0;
+  for (int row = 0; row < window_cells; ++row) {
+    const int map_row = origin.row + row;
+    for (int column = 0; column < window_cells; ++column) {
+      const int map_col = origin.col + column - bias;
+      const bool off_this_area = map_col < 0 || map_col >= overland_columns ||
+                                 map_row < 0 || map_row >= overland_rows;
       if (map_col == party_x && map_row == party_y) {
         continue;
       }
-      if (!automap_state::seen(map, static_cast<unsigned>(map_col),
-                               static_cast<unsigned>(map_row))) {
+      if (!off_this_area && revealed(map, map_col, map_row)) {
         continue;
       }
-      lifted |= 1U << static_cast<unsigned>((row * window_cells) + column);
+      fogged |= 1U << static_cast<unsigned>((row * window_cells) + column);
     }
   }
-  return lifted;
+  return fogged;
 }
 
 // ---------------------------------------------------------------------------
@@ -383,7 +544,7 @@ constexpr int window_cells = static_cast<int>(explored_window_cells);
   return hash ^ (hash >> 13U);
 }
 
-/// Paint the trail, if the guard lets it and there is anything to paint.
+/// Lay the fog down, if the guard lets it and there is anything to cover.
 ///
 /// `after_a_present` says the program has just put the screen up and
 /// whatever this seam had drawn on those rows is gone, so the answer is
@@ -437,46 +598,61 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
     return;
   }
 
-  const std::uint32_t lifted = cells_to_lift(*map, bias, look.x, look.y);
-  if (lifted == 0) {
-    // Nothing walked but the square under the party's feet, which is the
-    // state a player arrives in. **Not a port is written**, which is what
-    // makes the stronger of this seam's two fidelity claims a test rather
-    // than an argument.
+  const std::uint32_t fogged = cells_to_fog(*map, bias, look.x, look.y);
+  if (fogged == 0) {
+    // The party has been near every cell on the screen, so there is
+    // nothing to cover and **not a port is written**. On a five-by-five
+    // window at a radius of one this is the state of a well-walked
+    // stretch of country; at a radius of two it is nearly every frame,
+    // which is the measurement that settled the radius (`automap.h`).
     state.set_explored_signature(signature);
     return;
   }
 
+  // Set/reset carries the colour, so one CPU write puts index 8 on every
+  // plane at once; the bit mask is the checker and `fog_cell` sets it per
+  // scanline.
   write_register(box, ega::graphics_index_port, ega::graphics_data_port,
-                 gc_enable_set_reset_index, 0);
+                 gc_set_reset_index, fog_colour);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_enable_set_reset_index, all_planes);
   write_register(box, ega::graphics_index_port, ega::graphics_data_port,
                  gc_data_rotate_index, 0);
   write_register(box, ega::graphics_index_port, ega::graphics_data_port,
                  gc_write_mode_index, 0);
-  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
-                 gc_bit_mask_index, all_bits);
   write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
-                 sequencer_map_mask_index, intensity_plane_mask);
+                 sequencer_map_mask_index, all_planes);
 
   for (int row = 0; row < window_cells; ++row) {
     for (int column = 0; column < window_cells; ++column) {
-      if ((lifted &
+      if ((fogged &
            (1U << static_cast<unsigned>((row * window_cells) + column))) != 0) {
-        lift_cell(box, static_cast<unsigned>(column),
-                  static_cast<unsigned>(row));
+        fog_cell(box, static_cast<unsigned>(column),
+                 static_cast<unsigned>(row));
       }
     }
   }
 
   // Handed back in the state the program's own drawing primitives leave,
-  // which is the state this found them in (docs/seams.md §3).
+  // which is the state this found them in (docs/seams.md §3): no
+  // set/reset substitution, every bit of a written byte the CPU's own,
+  // and every plane enabled. The adapter's *latches* cannot be handed
+  // back — loading them is what a read is — so they are left holding the
+  // last byte of the window this read, which is exactly what the
+  // program's own read-modify-write primitives leave in them.
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_enable_set_reset_index, no_planes);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_set_reset_index, no_planes);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_bit_mask_index, all_bits);
   write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
                  sequencer_map_mask_index, all_planes);
   state.set_explored_signature(signature);
 }
 
-/// The program has just put the screen up. If it is the overworld and the
-/// party has walked any of the squares on it, they go up a shade.
+/// The program has just put the screen up. If it is the overworld, the
+/// country the party has not been near goes back under fog.
 void at_present_return(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
@@ -506,9 +682,10 @@ void at_present_return(machine& box, seam_context& ctx) {
 
 /// The program is asking whether a key is waiting, which is where it is
 /// between commands. Two things happen here and this seam claims no key:
-/// the trail is recorded, and it is drawn when something has changed
-/// that no repaint of the program's would have shown — a saved slot's
-/// table read in under a party that is standing still, most of all.
+/// the party's square is recorded, and the fog is laid down when
+/// something has changed that no repaint of the program's would have
+/// shown — a saved slot's table read in under a party that is standing
+/// still, most of all.
 void at_key_pending(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
@@ -558,8 +735,8 @@ constexpr std::array<seam_point, 3> explored_points{
 constexpr seam_definition explored_definition{
     .id = "explored",
     .about =
-        "the squares the party has walked, a shade brighter, on the "
-        "overworld map",
+        "fog of war on the overworld map: the country the party has "
+        "walked is the game's own, and the rest is covered",
     .fingerprints = explored_binaries,
     .points = explored_points,
     .trigger = false,

@@ -7,6 +7,12 @@ the record shape decided with what each of them rejects. M5-E5a (#253) of
 #179, PLAN.md §5 item 5, and step 1 of `docs/seams.md` §8.3 for the one
 enhancement in the plan with no proven prior design.*
 
+*§5 has been decided twice. The marking that shipped was an intensity
+lift; the maintainer looked at it on a real run and it did not read, so
+the enhancement is **fog of war** now (M5-E5f, #263). The lift is kept in
+§5.1 with the six candidates it beat, because a design rejected by
+looking at it is evidence.*
+
 Nothing here is seam code. This is the fact table M5-E5b (#254) and
 M5-E5c (#255) build from, and it is written down rather than carried in a
 head because §8.1 says every address needs the method that found it *and*
@@ -21,7 +27,7 @@ appears here or in anything this document leads to (CONTRIBUTING.md).
 2. [The fact table, each fact twice](#2-the-fact-table-each-fact-twice)
 3. [The geometry, measured](#3-the-geometry-measured)
 4. [The recipe that reaches the screen](#4-the-recipe-that-reaches-the-screen)
-5. [The marking, decided](#5-the-marking-decided)
+5. [The marking, decided — twice](#5-the-marking-decided--twice)
 6. [The redraw point, decided](#6-the-redraw-point-decided)
 7. [The record's shape, decided](#7-the-records-shape-decided)
 8. [What this does not settle](#8-what-this-does-not-settle)
@@ -209,59 +215,78 @@ looking at a picture; filter the lines on the data segment, which is
 
 ---
 
-## 5. The marking, decided
+## 5. The marking, decided — twice, and then looked at again
 
 This is the decision with no proven design behind it, and the one a
-person has to judge in the end (#257). Seven candidates were prototyped
-over a real dumped frame — the stills stay on the machine, and what
-follows is the decision in words and numbers.
+person has to judge in the end (#257). It has now been made twice and
+adjusted a third time, because the person judged both times.
 
-### What was chosen
+**The first design was a lift** and it shipped in M5-E5c: the game's
+whole window as the game drew it, with every square the party had walked
+redrawn one shade brighter. Seven candidates were prototyped over a real
+dumped frame before it was chosen, and §5.1 keeps it, in full, with the
+six it beat.
 
-**The explored cell is redrawn one shade brighter, by setting the EGA
-intensity plane over its 24 by 24 pixels.** Every pixel of it stays a
+**The maintainer looked at it on a real run** (#263) and the answer was:
+
+> Yeah, this does not seem to read super well. Ideally there would be a
+> radius of 2 or 3 tiles that get uncovered as I traverse the terrain.
+> And everything stays covered with "fog" beyond that.
+
+That is a finding and not a preference to argue with — PLAN.md §5 item 5
+makes a person with a display the exit criterion for this item precisely
+because nobody had built it before. So the marking is **reversed**: what
+the party has been near is drawn by the game, untouched, and everything
+else in the window is covered. §5.2 is the fog, the candidates prototyped
+for *it*, and the radius. PLAN.md §5 item 5 carries the change too,
+because the sentence it used to end with — "it never obscures the
+unknown" — is exactly what this now does.
+
+**And the covering itself was then chosen the same way.** The first fog
+was solid black, on the arithmetic in §5.2's second half. The maintainer
+was shown five coverings composited over one real dumped frame and
+picked a **one-pixel checkerboard of dark grey** — the terrain half
+covered rather than gone. §5.2 is written round that choice, with
+black's four reasons kept in full as the rejected alternative's, because
+a rejected candidate with its cost is the thing that has now twice made
+a change of mind an edit instead of a re-investigation.
+
+The stills that decided both are on the machine that made them and are
+never committed (PLAN.md §6); what follows is the decision in words and
+numbers.
+
+### 5.1 The first design: an intensity lift, rejected by looking at it
+
+**The explored cell was redrawn one shade brighter, by setting the EGA
+intensity plane over its 24 by 24 pixels.** Every pixel of it stayed a
 pixel the *program* drew, in the program's own sixteen-colour palette,
-one step up: its dark green becomes bright green, its blue becomes bright
-blue, its black becomes dark grey. Nothing is added to the screen that
-the game does not already have on it.
+one step up: its dark green became bright green, its blue bright blue,
+its black dark grey. Nothing was added to the screen that the game did
+not already have on it.
 
-Four reasons, in the order they decided it:
+Four reasons chose it, and they are worth keeping because three of them
+survive into the fog: it **drew no shape of its own**; it was **the
+game's own idiom**, since the program recolours this very screen through
+a palette mapping of its own (overlay 18 rel `0x06B3`); it **cost one
+plane and no read-back**, 72 byte writes a cell and 1,728 for a window;
+and **the terrain stayed legible**.
 
-1. **It draws no shape of its own.** Every other candidate puts a mark on
-   the game's screen that the game has no vocabulary for. This one has no
-   mark; it has a shade. That is the strongest form of the argument
-   `docs/seams.md` §3 makes for calling the program's own text drawer
-   rather than rasterizing glyphs — one layer further, because there is
-   no foreign artwork at all rather than none that looks foreign.
-2. **It is the game's own idiom.** The program recolours this very screen
-   through a palette mapping of its own (overlay 18 rel `0x06B3`, which
-   recolours the overland tile sets and redraws the window). A seam that
-   recolours is doing a thing this program does.
-3. **It costs one plane and no read-back.** The intensity plane is plane
-   3; a cell is three whole bytes by 24 scanlines; so a marked cell is
-   one sequencer map-mask write away from **72 byte writes**, and a full
-   window of 24 marked cells is **1,728**. The automap's panel blit is
-   9,856 for comparison. Nothing is read from the video window, so no
-   adapter latch is touched.
-4. **The terrain stays legible.** A coastline, a road and a tile's
-   outline all survive a shade change; they do not survive a hatch or a
-   dither drawn over them.
+It was measured, too, because "one shade" invites the question: across
+112 overland frames and 2,800 window cells, the cell with the fewest
+pixels whose intensity bit was clear still had **198 of its 576**. Every
+cell measured was visibly lifted. *Lowering* the bit instead — a worn,
+darker path — looked better on grass and was **broken on water**, which
+is a solid dark blue and unchanged by clearing a bit that is already
+clear.
 
-**How visible is it?** Measured, because "one shade" invites the
-question: across **112 overland frames and 2,800 window cells**, the cell
-with the fewest pixels whose intensity bit was clear still had **198 of
-its 576**. Every cell measured is visibly lifted. The failure mode it
-cannot have is a cell whose art is *entirely* bright already, which none
-of the 2,800 was.
+**And it still did not read.** Being measurably different is not the same
+as being legible: a shade is a difference a player has to be told about
+before they can see it, and on a screen where the terrain is itself a
+two-colour dither, "one step up in the palette" reads as a slightly
+different patch of the same grass. The measurement was answering
+"is it visible?" and the question was "does it say anything?".
 
-**Which direction, and why not the other one.** Lowering the intensity
-bit instead — a worn, darker path — looked better on grass and is
-**broken on water**: the water tiles are a solid dark blue, which is
-unchanged by clearing a bit that is already clear. Measured on the same
-frames: a lift changes every cell, a dim changes none of the water ones.
-A marking that is invisible on a fifth of the map is not a marking.
-
-### What was rejected, and why
+**What was rejected alongside it**, each prototyped over a real frame:
 
 * **A one-pixel border inside the cell**, in white or yellow. Legible,
   and it reads as a modern overlay grid drawn on top of somebody else's
@@ -276,12 +301,10 @@ A marking that is invisible on a fifth of the map is not a marking.
   game's; 144 read-modify-writes a cell.
 * **A glyph at a corner or the centre of the cell, from the program's own
   font** (the far pointer at `0x5E20`, the same glyphs M5-E2b sets the
-  automap's zone label in). Byte-aligned and cheap — an eight-by-eight
-  glyph centred in a 24-pixel cell starts on a byte boundary — and it is
-  the game's own lettering, which is a real argument. Rejected because
-  lettering on a *map* reads as an annotation: the game writes words in
-  its message rows and its menus and never on its terrain, so a letter
-  here is exactly the foreign thing the font was supposed to avoid.
+  automap's zone label in). Byte-aligned and cheap, and it is the game's
+  own lettering, which is a real argument. Rejected because lettering on
+  a *map* reads as an annotation: the game writes words in its message
+  rows and its menus and never on its terrain.
 * **A small solid block, ring or diamond at the cell's centre.** The
   cheapest legible mark, and where the party icon itself sits, so it
   reads as a footprint. Rejected on the same ground as the border: it is
@@ -291,32 +314,170 @@ A marking that is invisible on a fifth of the map is not a marking.
   read back off the planes.** The most faithful re-expression of overlay
   18's precedent and by far the most expensive: 288 reads and 288 writes
   a cell, through the graphics controller's read-map-select, with the
-  adapter's latches loaded on every read. The intensity lift is the same
-  idea with the mapping fixed at `| 8`, which needs no read at all.
+  adapter's latches loaded on every read.
 
-### The two constraints, confirmed
+### 5.2 The design that shipped: fog, and it is a dark-grey checker
 
-**The party's own cell is never marked.** Two reasons, and the second is
-what makes M5-E5c's stronger claim a test rather than an argument:
+**A cell the party has not been near is hazed over with a one-pixel
+checkerboard of palette index 8** — the program's own dark grey — laid on
+half of its 24 by 24 pixels. The other half are the pixels the program
+drew, untouched, so the terrain is faintly there under the haze instead
+of gone.
 
-* the party's icon is drawn in that cell, and a lift would recolour the
-  party's own sprite — its greys and whites would go up a shade with
-  everything else, which is loud and says nothing;
-* with it unmarked, **arriving on a fresh overland map with nothing
-  explored is pixel-identical to the run with the seam off**, and stays
-  so until the party takes its first step. That is the fidelity pair
-  M5-E5c asserts, and it is only true because the cell under the party is
-  left alone.
+The parity is the **screen's**: a pixel is covered when `x + y` is even in
+screen coordinates, not in the cell's own, so the pattern runs unbroken
+across the boundary between two fogged cells rather than restarting at
+each of them. The window's origin (8, 8) and the cell side 24 are both
+even, so a cell's own corner is a covered pixel either way — which is
+precisely why the rule is asserted rather than left to the accident
+(`TheCheckerRunsUnbrokenAcrossTheSquareBoundaries`).
 
-The cell is still *recorded* the moment the party stands on it. It simply
-appears, marked, when the party moves off it — which is what makes the
-thing a trail.
+**How it was chosen.** The first fog was **solid black**, decided on the
+four arguments below, and it was never looked at either — it was
+arithmetic and a file compared with another file. Five coverings were
+then composited over one real dumped frame of this screen, with grass,
+coast water and the grey shore between them in it, and put in front of
+the maintainer side by side: solid black, a one-pixel checker of black, a
+one-pixel checker of dark grey, a one-pixel checker of light grey, and a
+two-by-two checker of dark grey. The dark-grey one-pixel checker was
+chosen, at a reveal radius of one.
 
-**An unexplored cell is never touched.** Not one pixel, which is what
-lets M5-E5d's confinement leg mask exactly the explored cells and assert
-that everything else is byte for byte the seam-off run.
+**What the composite showed that no argument had:**
 
----
+* **a one-pixel checker of *black* collapses.** The terrain here is
+  itself a two-green dither at one-pixel granularity, so a black checker
+  laid over it interferes with that dither into a flat dark mesh. It
+  neither covers nor veils; it makes a third texture, and a third texture
+  reads as one more kind of ground.
+* **light grey reads as paler terrain.** Its value is near the grass's
+  own, and a covering whose value is near the tile's is a variation on
+  the tile — which is the lift's failure in §5.1, arrived at from the
+  other direction.
+* **dark grey reads as haze.** It is far enough from the terrain's greens
+  and blues to be plainly a covering, and it lets enough of the tile
+  through that a coastline is still a coastline under it. That turned out
+  to be the thing that was wanted, and no argument on this page had
+  identified it: not "this square is gone" but "this square has not been
+  seen".
+* **two-by-two is a pattern rather than a haze.** At twice the period the
+  eye stops integrating it and starts reading the blocks, and blocks on a
+  map are a modern UI grid — which is the border candidate's rejection in
+  §5.1, smaller.
+
+**What black had going for it**, all four of it still true, because this
+is the rejected alternative and it is kept with its reasons:
+
+1. **It is the one colour that cannot read as terrain.** Anything that
+   leaves the tile's own hue showing through is, at this resolution, *a
+   different kind of tile*. The dark-grey checker is the smallest
+   possible concession to that: it is not the tile's hue, it is a fixed
+   grey, and it is on half the pixels rather than a quarter of them.
+2. **It is the game's own vocabulary for the unknown.** Black is already
+   most of this screen — the message rows under the window, the panel
+   beside it, and the game's own 3D view beyond what the party can see —
+   and the window sits inside the game's own drawn border, so a fogged
+   window reads as that border framing a smaller opening. Index 8 is
+   still the program's own palette and still no foreign artwork, but it
+   is not *that*.
+3. **It is the same on every terrain.** The checker keeps this: index 8
+   on the same half of the pixels whatever the tile is. There are not
+   three fogs to learn, and it is not the failure the lift's *dim*
+   direction had on water.
+4. **It costs four planes and no read-back.** `map mask = 0x0F` and a run
+   of `0x00` bytes: 72 byte writes a cell, 1,728 for a window with 24
+   cells covered. **This is what the checker pays.** A covering that
+   keeps the pixels it is not covering has to load the adapter's latches
+   from the screen first, so it is one read and one write per byte
+   instead of one write — 72 of each a cell, 1,728 of each for that same
+   window, against the automap panel's 9,856 writes. `fog_cell` in
+   `seam_explored.cpp` is where that is spelt out, and the colour itself
+   comes out of the graphics controller's set/reset register so one CPU
+   write still paints all four planes.
+
+**And the reason black lost, which only a display could say:** a solid
+cover throws away the *shape* of the country the party is standing at the
+edge of. A player who cannot see a coastline through the fog cannot see
+that there is a coast to walk to, and the argument that black "cannot
+read as terrain" is the same fact stated as a virtue. The maintainer
+looked at both and picked the haze.
+
+**Measured on the real screen**, the final frame of the §4 walk with the
+seam on against the same frame with it off: **3,166 pixels differ, every
+one of them palette index 8, every one of them inside the window, and not
+one pixel of the checker's other half — the program's own — changed
+anywhere on the frame.** Eleven of the twenty-five cells are covered at
+that point in the walk, at 288 pixels each; the two the arithmetic does
+not account for were index 8 on the screen already.
+
+**The two that were rejected before the composite**, prototyped over the
+same frame when the fog was still being argued rather than looked at: a
+dither at one pixel in four (too light to read as anything; it looks like
+a rendering fault) and dropping the intensity plane — the lift's own
+inverse, and the cheapest of all — which is invisible on water for the
+reason §5.1 measured, flattens the grass's dither into a solid mid-green
+rather than darkening it, and produces something that reads as a
+*terrain type* and not as a covering.
+
+### 5.3 How far the party sees, and why the radius is one
+
+`explored_reveal_radius` in `machine/automap.h`, a **Chebyshev distance**,
+default **1**: standing on a cell shows it and the eight around it, so a
+walk leaves a corridor three cells wide.
+
+**The record still holds only the cells the party stood on.** The reveal
+is the *dilation* of that by the radius, computed when the window is
+drawn. Two things follow, and both are the reason it is done that way:
+turning the knob up changes what a player sees of the map they already
+walked rather than what they have to walk again, and nothing in the
+sidecar's layout (§7) moved for this change, so no sidecar anybody has is
+invalidated.
+
+**Two and three were asked for and cover nothing.** The window is five
+cells across and the party is its middle cell in open country, so every
+cell on the screen is already within two of the party. Measured on the
+§4 walk with the constant set to 2: **523 dumped frames, and not one of
+them differs from the same walk with the seam off.** At a radius of two
+this enhancement is invisible except where a map's own edge pushes the
+party off centre. One is the largest radius that leaves anything to
+cover, and it is why the maintainer's "2 or 3" is answered with 1 and a
+measurement rather than with 2.
+
+At a radius of one, on the §4 walk, the window shows **9 uncovered cells
+on arrival** and **12 from the first step onwards** — the outer ring is
+fog, and so is the row the party is walking towards.
+
+**The maintainer has confirmed one** (#263), on the same look that chose
+the checker: the composites were all at a reveal radius of one and the
+answer was to keep it. So the half of this judgement that a measurement
+could not settle — whether one square of sight is the right amount of
+country to hand a player — is now settled too, and what is left open on
+#179 is the verdict on the whole thing in play.
+
+### The two constraints, and what became of them
+
+**The party's own cell is never covered.** The party's icon is drawn
+there, and fog over it would be a haze over the player's own sprite. At any radius of one or more the cell is revealed
+anyway — the party is standing on it — but the rule is written down as
+its own line in `cells_to_fog`, because it is the one mistake here that
+would be a bug and not a preference.
+
+**An unexplored cell used to be untouched, and now it is the only thing
+that is touched.** That reversal costs this enhancement a fidelity claim
+and `docs/seams.md` §10 says so: with the lift, arriving on a wilderness
+map nobody had walked was pixel-identical to the run with the seam off,
+because a lift marks what is *known* and nothing was. A fog marks what is
+not, and a fresh map is nearly all of that. What is left is the honest
+pair: nothing outside the window is ever touched — 523 stills of a real
+run say so, at every frame — and the run with the overworld never shown
+is byte for byte the run with no engine at all.
+
+**A cell of a neighbouring area is covered.** The three wilderness areas
+are three sixteen-column bands of one 44-column table and the window can
+overhang, and this seam has no record for a neighbour's columns. Under
+the lift, marking them would have claimed knowledge nobody had; under the
+fog, *not* covering them would claim the opposite. Fog is the default
+state, so an unknown cell is fogged and a cell nothing can answer for is
+an unknown cell.
 
 ## 6. The redraw point, decided
 
@@ -336,9 +497,9 @@ scanlines something dirtied. So:
 
 **What was rejected.** Painting into the program's own back buffer after
 the window painter returns, so that the program's own present carries the
-marks, is memory surgery on a buffer the program reads back — its dirty
+fog, is memory surgery on a buffer the program reads back — its dirty
 tracking, its save-under path and its next composition all read it — and
-it would make the marks part of what the program believes it drew. It is
+it would make the fog part of what the program believes it drew. It is
 rejected unless a driven run shows the present-return path visibly
 flickering, which M5-E5d will say.
 
@@ -353,7 +514,7 @@ holds:
   a mode-and-kind test alone would miss: with it non-zero the program
   shows these same areas in the interior view, with the view kind still
   reading 2, 3 or 4, and an overlay that trusted the kind byte would
-  paint its marks over the 3D view;
+  lay its fog over the 3D view;
 * no scripted move is in flight (`0x442F`);
 * the area-record far pointer is inside conventional memory — §8.4's
   wild-read rule, which cost the Encamp Fix seven notices on its first
@@ -416,13 +577,27 @@ open rather than be refused.
 ## 8. What this does not settle
 
 * **The arrival count at the present's return.** §6 gives the cost of one
-  repaint and not how many there are a second. M5-E5c measures it.
+  repaint and not how many there are a second. M5-E5c measures it; driven
+  on the §4 walk, the seam's three points are reached **746,746** times
+  over 13,075 frames.
 * **Whether the present-return path flickers.** The alternative in §6 is
   rejected on an argument; only a person watching a real walk can say
-  whether the argument was right (#257).
-* **Whether the lift reads as the game's own.** 2,800 cells say it is
-  *visible*; nobody has yet said it is *right*, and #179's exit requires
-  that somebody with a display does.
+  whether the argument was right (#257). `tests/visual/exp-steady.leg`
+  says the screen holds still on a run, which is the file-against-file
+  half of it.
+* **Whether the fog reads as the game's own *in play*.** The lift's
+  version of this line said 2,800 cells made it *visible* and that nobody
+  had said it was *right* — and when somebody did, the answer was no
+  (§5). The fog then got a look of its own: five coverings composited
+  over a real frame, and the maintainer picked the dark-grey checker at a
+  radius of one. So this line is narrower than it was, and it is what is
+  left of #179's unticked clause — a composite is still a picture beside
+  another picture, and nobody has walked a wilderness map with the haze
+  moving in front of them.
+* **The reveal radius is settled.** §5.3 measures that one is the only
+  radius that covers anything on this screen, and the maintainer has
+  confirmed one on the composites. It is still one constant if a real
+  session says otherwise.
 * **The other two wilderness areas.** Everything driven here was view
   kind 2 on disk 6. Kinds 3 and 4 are the same arithmetic with a
   different bias and have not been stood on.
@@ -445,7 +620,18 @@ open rather than be refused.
   Nothing here needed it, because slot **J** of the edition's own shipped
   saves is already standing on view kind 2 — which is why §4 is four
   keystrokes rather than a walk.
-* **A cell whose art is entirely bright.** None of the 2,800 measured
-  was, and no tile set was examined directly. If one exists, its cell
-  cannot be marked by this method and the mark would silently be absent
-  there.
+* **A terrain the fog has not been over.** Everything prototyped and
+  driven has been grass, coast water and the grey shore between them,
+  which is what the area slot J starts on has near its start. Rough
+  ground, forest and roads have not been under it. The fog cannot fail on
+  one — the checker is index 8 on the same half of the pixels whatever is
+  underneath, which is §5.2's third reason and the one of black's four
+  that survived the second look — but how legibly it *hazes* a terrain is
+  a property of that terrain's own colours, and nobody has seen it over
+  one that is already grey.
+
+  The lift's version of this gap was sharper and is worth keeping as a
+  contrast: **a cell whose art was entirely bright could carry no lift at
+  all**, and nothing would have said so. None of the 2,800 cells measured
+  was, and no tile set was examined directly. A marking that depends on
+  what is underneath has failure modes a marking that covers does not.

@@ -209,6 +209,26 @@ inline constexpr unsigned explored_window_x = 8;
 inline constexpr unsigned explored_window_y = 8;
 inline constexpr unsigned explored_cell_pixels = 24;
 
+/// **How far a party sees**, in cells, as a Chebyshev distance: standing
+/// on a cell reveals it and everything within this many cells of it, and
+/// the rest of the window is fogged (M5-E5f, #263). It is the one number
+/// in this enhancement a person is meant to turn, so it is named here
+/// rather than buried in the seam, and the record stores only the cells
+/// the party actually *stood* on — the reveal is the dilation of that,
+/// computed when the window is drawn, so turning this knob does not
+/// invalidate anybody's stored map.
+///
+/// **Why one and not two**, which is the question the number invites.
+/// The program's window is five by five and the party is its middle cell
+/// in open country, so every cell on the screen is already within two of
+/// the party: at a radius of two nothing on that screen is ever fogged
+/// except where a map's own edge pushes the party off centre, and the
+/// enhancement would be invisible for the whole of a walk across the
+/// middle of an area. One is the largest radius that leaves anything to
+/// cover. Two and three were asked for and were measured to fog nothing
+/// (`docs/explored-overlay.md` §5).
+inline constexpr int explored_reveal_radius = 1;
+
 /// The top-left cell of the window, in the program's own terms: a column
 /// of the 44-column overland terrain table and a row of the map.
 struct explored_window {

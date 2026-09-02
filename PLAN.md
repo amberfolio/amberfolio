@@ -265,15 +265,37 @@ Design requirements:
    into the emulated EGA planes over the game's own overworld screen,
    in the game's palette and at the game's resolution, only while the
    game itself is showing that screen; from the same exploration state
-   the automap keeps, persisted alongside the save. Nothing the game
-   draws is hidden — the overlay marks the known, it never obscures the
-   unknown. **The marking, settled at the point of definition** as this
-   item's own rule requires (#179, `docs/explored-overlay.md`): an
-   explored square is redrawn *one shade brighter* — the intensity plane
-   set over it — so every pixel of it is still a pixel the program drew,
-   one step up in the program's own palette, and no shape the game has no
-   vocabulary for is added to its screen. Six other candidates were
-   prototyped over a real frame and are named with their reasons.
+   the automap keeps, persisted alongside the save. **It is fog of war**:
+   a square the party has been near is the game's own square, untouched,
+   and every other square in the window is covered. **The marking,
+   settled at the point of definition** as this item's own rule requires
+   (#179, `docs/explored-overlay.md`): the cover is a *one-pixel
+   checkerboard of the game's own dark grey* — palette index 8 on half
+   the square's pixels and the program's own pixel on the other half, so
+   the terrain is faintly there under the fog rather than gone — and how
+   far a party sees is one named constant, a Chebyshev radius of one
+   square (`explored_reveal_radius`). Both were chosen by the maintainer
+   off five coverings composited over a real frame (#263), which is this
+   item's exit rule doing its work a second time: the fog was solid black
+   first, on an argument that was right about everything except that a
+   player needs to see the *shape* of the country they are standing at
+   the edge of.
+
+   **This item read the other way round until #263**, and the sentence it
+   lost was "nothing the game draws is hidden — the overlay marks the
+   known, it never obscures the unknown". The first build obeyed it: an
+   explored square was redrawn one shade brighter and nothing was ever
+   covered. The maintainer looked at that on a real run — which is this
+   item's own exit rule, since it is the one enhancement with no proven
+   prior design — and a shade turned out to be a difference a player has
+   to be told about before they can see it. Fog is what was asked for
+   instead, and it obscures the unknown by definition. Both markings,
+   and the ten candidates prototyped over real frames between them, are
+   in `docs/explored-overlay.md` §5 with their reasons; the first one is
+   kept there rather than deleted, because a design that was rejected by
+   looking at it is evidence and not noise. The same is true of the
+   solid-black fog, which is kept in §5.2 as the rejected alternative
+   with all four of its arguments intact.
 6. **Debug cheats** — invulnerability and kill-all-enemies, built
    early because they double as test tooling for the playthrough
    sweeps. A third, wound-the-party, was added for that stated reason

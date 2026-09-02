@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# EXP-1: the explored overlay draws inside the squares the party has
-# walked, and nowhere else on the screen.
+# EXP-1: the fog covers the squares the party has not been near, and
+# nothing else on the screen.
 #
 # **A pair leg, and it can be one.** This seam claims no key — it is a
 # setting, not a command (`seam_explored.cpp`) — so every keystroke in
@@ -9,20 +9,35 @@
 # differ by the flag alone. That is the one thing the journal's legs
 # could not have (#234).
 #
-# The party is on the wilderness travel view from frame 9,552, which the
-# first `allow` covers in full: **on, the overworld shown, and nothing
-# walked but the square under the party's feet, the two runs are byte for
-# byte the same screen.** That is the stronger of this seam's two
-# fidelity claims, as a picture, and it holds only because the square the
-# party is standing on is never marked.
+# **What changed with M5-E5f (#263).** The marking used to be a lift:
+# the game's whole window as the game drew it, with the squares the party
+# had walked one shade brighter. So the two runs were identical until the
+# party took its first step, and the first `allow` below covered the
+# whole arrival with `none`. The fog is the other way round — a map
+# nobody has walked is a window that is nearly all fog — so the two runs
+# now diverge at frame 10,275, which is where the arrival settles, and
+# what this leg confines is the fog rather than the trail.
 #
-# From the first step the two rects below are the only pixels that may
-# differ, and they are the two squares the party has left behind. They
-# have fixed screen positions for this walk because the window scrolls
-# with the party: at every frame after the first step the party is the
-# middle cell of the five and the squares it came from are the two below
-# it. Measured on a real run (M5-E5d, #256).
-about the trail is drawn inside the squares the party walked, and nowhere else
+# **What the fog is, since this leg is what confines it.** A covered
+# square is *half* covered: a one-pixel checkerboard of palette index 8,
+# the game's own dark grey, with the program's own pixel on the other
+# half (M5-E5f, #263, after the maintainer chose it off five coverings
+# composited over a real frame). The rects below did not move for that —
+# confinement is about the window, and a checker reaches exactly the
+# squares a solid fill reached — but the picture inside them did, which
+# is why `wild-trail.rec` was recorded again and this file was not.
+#
+# **The rects are the fogged squares and not a box round them.** At a
+# reveal radius of one the party sees the three-by-three it is standing
+# in, so on this walk the window's outer ring is covered and its middle
+# three columns are not — and for the frames before the first step the
+# row *behind* the party is covered too, because the reveal has not
+# reached it yet. Naming the window as one rectangle would have passed
+# whatever the seam drew inside it; these four say where the boundary is.
+# Measured on a real run: 523 dumped frames, 112 of them differing from
+# the seam-off run, every difference inside the four rects below and not
+# one pixel outside the window at any frame.
+about the fog covers the squares the party has not been near, and nothing else
 kind pair
 program START.EXE
 both code-wheel
@@ -54,16 +69,21 @@ key Up@11350
 key Up@11500
 key Up@11650
 
-# The square the party left on its last step, and the one before that:
-# window column 2, rows 3 and 4, at 24 pixels a cell from (8, 8).
-rect behind 56,80,79,103
-rect behind2 56,104,79,127
+# The window is 120 by 120 at (8, 8) and a square is 24 by 24, so these
+# are whole squares of it: the row the party is walking towards, the two
+# flanking columns beside its corridor, and — until the first step — the
+# row behind it.
+rect ahead 8,8,127,31
+rect west 8,32,31,127
+rect east 104,32,127,127
+rect behind 32,104,103,127
 
-# The whole run up to the first step, the arrival on the wilderness map
-# included: not one pixel.
-allow 0-10650 none
-# One square walked and left behind.
-allow 10675-10800 behind
-# And from the second step on, two — which is all the window can show of
-# a trail that is walking off the top of it.
-allow 10825-end behind behind2
+# The whole run up to the arrival on the wilderness map: not one pixel.
+# The mode byte becomes 3 at frame 9,552 and the screen settles at
+# 10,275, which is where the fog first appears.
+allow 0-10250 none
+# Arrived, with one square stood on: the outer ring and the row behind.
+allow 10275-10650 ahead west east behind
+# And from the first step on, the reveal has caught up with the row
+# behind and the corridor is three wide for the rest of the walk.
+allow 10675-end ahead west east

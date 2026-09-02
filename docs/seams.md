@@ -140,10 +140,11 @@ EGA reaches a *plane* through the sequencer's map mask, so a byte written
 into the video window with the mask the program leaves behind lands in
 all four planes at once: black and white, and nothing else. A seam that
 draws sixteen colours has to select one plane at a time, and there is no
-other way to say so. `seam_automap.cpp` (M5-E2, #173) is the first and so
-far the only user.
+other way to say so. `seam_automap.cpp` (M5-E2, #173) was the first user;
+`seam_explored.cpp` (M5-E5, #179) is the second, and it needs the
+graphics controller as well as the sequencer.
 
-Two rules, both learned from what makes it safe there rather than in
+Three rules, all learned from what makes it safe there rather than in
 general:
 
 * **Set what you depend on; do not assume it.** These registers cannot be
@@ -157,6 +158,19 @@ general:
   indistinguishable from one of the program's own primitives having run.
   A program with no such discipline would need a different argument, and
   a seam over it would have to make one.
+* **A masked write reads first, and the read is not free.** If a seam
+  draws over only *some* of the pixels of a byte — the explored overlay's
+  fog is a one-pixel checker, half of each covered square — then the bits
+  the graphics controller's bit mask clears come from the adapter's
+  **latches**, and the only way to put the screen's own bytes into the
+  latches is to read them through the bus. So a veil costs a read and a
+  write per byte where a solid fill costs a write, and, unlike the
+  registers, **the latches cannot be handed back**: loading them *is* a
+  read. That is tolerable here for the same reason the resting state is —
+  the program's own read-modify-write primitives leave them in exactly
+  the same condition — but it is a thing a seam is doing to the machine
+  in order to draw, and a seam that is only *looking* at a screen must
+  still never read the video window (§8.4's wild-read rule).
 
 **Synthetic input** — `seam_context::inject_keystroke(scancode, ascii)`.
 The keystroke goes straight into the BIOS buffer at 40:1E, which is the
@@ -1088,6 +1102,27 @@ Every entry names the seam it was learned on.
 - **A fact can be wrong and still work once.** Both cheats were wrong the
   first time they were driven — one in its frame layout, one in its
   module *and* its offset (§10; #103, #129, #131).
+- **"Measurably different" is not "legible", and only a person can tell
+  you which one you built.** The explored overlay's first marking lifted
+  an explored square one shade and was measured on 2,800 window cells of
+  a real run: the faintest still had 198 of its 576 pixels changed, so it
+  was visible on every one of them. It still did not read — on a screen
+  whose terrain is a two-colour dither, one step up in the palette is a
+  slightly different patch of the same grass. The measurement was
+  answering "can this be seen?" and the question was "does this say
+  anything?", and no number and no session can answer the second one
+  (explored overlay, #257 asked, #263 is the answer). Three things follow
+  for the next drawing seam: keep every rejected candidate with its cost
+  and its reason, so a change of mind is an edit and not a
+  re-investigation; expect the fidelity claims to move with the picture —
+  this one lost a claim it could make about a *lift* the moment the
+  marking became a *fog* (§10); and **show a person the candidates rather
+  than the winner**. The fog's first covering was solid black, argued for
+  on four grounds that were all true, and when five coverings were
+  composited over one real frame and put side by side the maintainer
+  picked a different one in a sentence. The argument had never asked the
+  question a display answers, which was whether a player should still be
+  able to see the *shape* of the country under the fog.
 - **A seam that paints where the program paints cannot show what
   arrived without a repaint.** The explored overlay drew at the return of
   the program's own screen present, which is right and was not enough: a
@@ -1164,7 +1199,11 @@ The symptom vocabulary, because it is what turns a day into an hour:
   unused hashes the same as off" — cannot survive a seam that is
   *visible* before it is used, and the Encamp Fix's replacement is two
   narrower claims that are each tested (§10, #186). Say which one applies
-  and why.
+  and why. **And when a design changes, say which claim it costs**: the
+  explored overlay had a second, stronger one that belonged to the
+  marking rather than to the mechanism, and reversing the marking
+  retired it. It is asserted in the direction it now holds rather than
+  deleted, so that nothing can quietly re-acquire it (§10, #263).
 - **The facts checked against the program**, not only against the
   handler. A unit test proves the handler; only a driven run proves the
   table.
@@ -1200,7 +1239,7 @@ boundary, and it needs the argument this document would have to carry.
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
 | `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; a **Notes** command on the party's own bar opens a log of everything it has cited, and **F1** the number prompt for anything it has not | the baseline | the resident image, and the adventuring loop's module |
-| `explored` | on the game's own overworld map, every square the party has walked redrawn one shade brighter — a setting, with no key and nothing to press | the baseline | the resident image |
+| `explored` | fog of war on the game's own overworld map: the country the party has been near is the game's own, and every other square of the window is hazed over with a dark-grey checker — a setting, with no key and nothing to press | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
@@ -2331,25 +2370,159 @@ stream. A session that verified a reader would be a session that pinned a
 store, and the runner has no way to say where one is. It is a gap in the
 harness rather than in the seam, and #239 is where it is being closed.
 
-### The explored overlay (#179, M5-E5a to M5-E5e)
+### The explored overlay (#179, M5-E5a to M5-E5f)
 
 PLAN.md §5 item 5, the third seam in this tree that **draws**, and the
 one item of the six with **no proven prior design** — so the marking was
 settled at the point of definition, with the reasoning written down and
-the six candidates it beat named.
+the candidates it beat named. It is also, so far, the only enhancement
+here whose design has been **changed by somebody looking at it**, which
+is what the rest of this entry is mostly about.
 
 **What it is.** On the program's own overworld screen — a five-by-five
 window of a wilderness area's overhead map, scrolling with the party —
-every square the party has walked is redrawn **one shade brighter**. It
-is a *setting*: no key, no pull, no panel. On, it is there whenever that
-screen is; off, it is not.
+every square the party has not been near is **hazed over with a one-pixel
+checkerboard of dark grey**, palette index 8, on half its pixels; the
+other half stay exactly as the program drew them, so the terrain is
+faintly there under the fog rather than gone. It is a *setting*: no key,
+no pull, no panel. On, it is there whenever that screen is; off, it is
+not.
 
-**Where the design came from.** Nowhere, which is what made M5-E5a (#253)
-a phase of its own. [`docs/explored-overlay.md`](explored-overlay.md) is
-its output: the fact table with a second route for every line, the pixel
-geometry measured off a real dumped frame, the keystroke recipe, and the
-three decisions with what each of them rejects. Nothing here was written
-before that was.
+**How far the party sees.** `explored_reveal_radius` in
+`machine/automap.h`, a Chebyshev distance, **one**. Standing on a square
+shows it and the eight around it, so a walk leaves a corridor three
+squares wide and the row the party is walking towards stays covered.
+
+**The record holds only where the party stood**, and the reveal is the
+dilation of that computed when the window is drawn. Turning the radius up
+therefore shows more of a map somebody already walked instead of asking
+them to walk it again, and nothing in the sidecar's layout moved for the
+change from a lift to a fog, or for the change of the fog's own colour.
+
+#### The marking was reversed, and by whom
+
+M5-E5c shipped the opposite picture: the game's whole window as the game
+drew it, with the squares the party had walked lifted **one shade
+brighter** — the EGA intensity plane set over 24 by 24 pixels, so every
+pixel stayed a pixel the program drew, one step up in the program's own
+palette. Seven candidates had been prototyped over a real frame before it
+was chosen and it was measured to be visible on 2,800 window cells.
+
+The maintainer ran it on a display, which is what PLAN.md §5 item 5 makes
+this item's exit criterion, and said it did not read — that what was
+wanted was a radius of two or three squares uncovered as the party
+travels, with everything beyond it under fog. Being *measurably*
+different turned out not to be the same as saying something: on a screen
+whose terrain is itself a two-colour dither, one step up in the palette
+reads as a slightly different patch of the same grass.
+
+**That is the design rule working, not failing.** This is the one item in
+the plan with nothing to re-express, so the plan puts a person with a
+display in the loop and `docs/explored-overlay.md` §5 was written to keep
+every rejected candidate with its cost and its reason — expressly so that
+a second choice would be an edit rather than a re-investigation. It was:
+§5 now has both designs, the lift with the six it beat and the fog with
+the five *it* beat, and the change cost one function, one constant and a
+day of re-recording rather than a phase.
+
+**PLAN.md §5 item 5 changed in the same PR**, because the item used to
+end "nothing the game draws is hidden — the overlay marks the known, it
+never obscures the unknown", and obscuring the unknown is now the whole
+of it. A design change that contradicts the plan of record belongs in the
+plan of record.
+
+#### The fog was looked at too, and its colour changed
+
+The first fog was **solid black** — all four planes cleared over a
+square's 24 by 24 pixels — chosen on four arguments and never seen by
+anybody. Then five coverings were composited over one real dumped frame
+with grass, coast water and the grey shore between them in it and put in
+front of the maintainer side by side: solid black, a one-pixel checker of
+black, a one-pixel checker of dark grey, a one-pixel checker of light
+grey, and a two-by-two checker of dark grey. The **one-pixel dark-grey
+checker** was chosen, at the same reveal radius of one.
+
+What the composite said and no argument had:
+
+* a one-pixel checker of *black* **collapses**: the terrain here is
+  itself a two-green dither at one-pixel granularity, so black over it
+  interferes into a flat dark mesh — a third texture, which reads as one
+  more kind of ground;
+* **light grey reads as paler terrain**, which is the lift's own failure
+  reached from the other side: a covering whose value is near the tile's
+  is a variation on the tile;
+* **dark grey reads as haze.** Far enough from the terrain's greens and
+  blues to be plainly a covering, and open enough that a coastline is
+  still a coastline under it;
+* **two-by-two is a pattern**: at twice the period the eye reads the
+  blocks instead of integrating them, and blocks on a map are a modern UI
+  grid.
+
+**Black's four reasons are kept rather than deleted**, because it is the
+rejected alternative and every one of them is still true: it is the one
+colour that cannot read as terrain at all; it is the game's own
+vocabulary for the unknown, since the message rows, the panel beside the
+window and the 3D view's own distance are already black and the window
+sits inside the game's own drawn border; it is the same on every terrain,
+so there is one thing to learn; and it costs no read-back. The third
+survives into the checker unchanged — index 8 on the same half of the
+pixels whatever the tile is. **The reason black lost is the one only a
+display could give:** a solid cover throws away the *shape* of the
+country the party is standing at the edge of, and a player who cannot see
+a coast through the fog cannot see there is a coast to walk to.
+
+**What the checker costs, which is §3's new rule.** A covering that keeps
+the pixels it is not covering is a *masked* write: the bits the graphics
+controller's bit mask clears take their pixels from the adapter's
+latches, so the latches have to be loaded from the screen first. That is
+one read and one write per byte instead of one write — 72 of each a
+square, 1,728 of each for a window with 24 squares covered, against the
+automap panel's 9,856 writes — and the latches, unlike the registers,
+cannot be handed back, because loading them is what a read *is*. The
+colour itself comes out of the set/reset register, so one CPU write still
+paints all four planes, and the bit mask alternates `0xAA` and `0x55`
+with the scanline. The parity is the **screen's**, not the square's, so
+the pattern runs unbroken across the boundary between two fogged squares.
+
+Rejected before the composite, when the fog was still being argued rather
+than looked at: a dither at one pixel in four (too light to read as
+anything) and dropping the intensity plane, the lift's own inverse, which
+is invisible on water and turns grass into a flat mid-green that reads as
+a terrain type.
+
+**Measured on the real screen**, the final frame of the driven walk with
+the seam on against the same frame with it off: **3,166 pixels differ,
+every one of them palette index 8, every one inside the window, and not
+one pixel of the checker's other half changed anywhere on the frame.**
+
+#### The radius is one, and that is a measurement
+
+The window is five squares across and the party is its middle square in
+open country, so **every square on the screen is already within two of
+the party**. Driven on the same eight-step walk with the constant set to
+2: 523 dumped frames, and **not one of them differs from the same walk
+with the seam off**. At a radius of two this enhancement is invisible
+except where a map's own edge pushes the party off centre. One is the
+largest radius that covers anything, which is why the "two or three"
+that was asked for is answered with one and a number.
+
+**And the maintainer has confirmed one**, on the same look that chose the
+checker: the composites were all at a radius of one and the answer was to
+keep it. So the half of this that a measurement could not settle — whether
+one square of sight is the right amount of country to hand a player — is
+settled as well.
+
+**The three points.**
+
+| point | in | what it does |
+| --- | --- | --- |
+| the return of the back-buffer present | the resident image | the program has just put the screen up; the fog goes back on |
+| the program's "is a key waiting" routine | the resident image | records the square the party is standing on, and draws when something has moved that no repaint of the program's would have shown |
+| the menu-bar input routine's thunk | the resident image | which bar is going up, and so whose screen this is |
+
+The last two are the automap's, shared, and the bar reading is now one
+function both call (`automap_overland.h`) so the two seams cannot come to
+different conclusions about it.
 
 **The screen, as facts.** The mode byte is 3 and the view kind is 2, 3 or
 4 — one per wilderness area. The party's position is **two words in the
@@ -2363,21 +2536,16 @@ the seam reads out of the program rather than carrying.
 **The geometry was measured, not derived**, and three routes agreed: the
 pixels on a real frame, the pixels one move repaints (exactly
 `8,8,127,127`), and the composition arithmetic. The window is **120 by
-120 pixels at (8, 8)** and a cell is **24 by 24** — which begins on a
-byte boundary and is three whole bytes wide, so a marking confined to a
-cell shifts nothing and reads nothing back.
+120 pixels at (8, 8)** and a square is **24 by 24** — which begins on a
+byte boundary and is three whole bytes wide, so a fog confined to a
+square shifts nothing and reads nothing back.
 
-**The three points.**
-
-| point | in | what it does |
-| --- | --- | --- |
-| the return of the back-buffer present | the resident image | the program has just put the screen up; the trail goes back on |
-| the program's "is a key waiting" routine | the resident image | records the square the party is standing on, and draws when something has moved that no repaint of the program's would have shown |
-| the menu-bar input routine's thunk | the resident image | which bar is going up, and so whose screen this is |
-
-The last two are the automap's, shared, and the bar reading is now one
-function both call (`automap_overland.h`) so the two seams cannot come to
-different conclusions about it.
+**Where the design came from.** Nowhere, which is what made M5-E5a (#253)
+a phase of its own. [`docs/explored-overlay.md`](explored-overlay.md) is
+its output: the fact table with a second route for every line, the pixel
+geometry measured off a real dumped frame, the keystroke recipe, and the
+three decisions with what each of them rejects. Nothing here was written
+before that was.
 
 **Why the present's *return*.** The program composes the whole screen
 off-screen and flushes only the scanlines something dirtied. At the entry
@@ -2387,102 +2555,79 @@ window has finished — the composer's own redraw, and each step of the
 icon's animation, which advances a phase and presents again. Painting
 there is painting last, and no captured frame can catch it half drawn.
 Painting into the program's own back buffer instead, so its own present
-carries the marks, was rejected: that buffer is one the program reads
-back, and the marks would become part of what it believes it drew.
+carries the fog, was rejected: that buffer is one the program reads back,
+and the fog would become part of what it believes it drew.
 
 **And why that was not enough**, which is §8.4's newest entry and the
 thing the driven run found that no test had. A party that loads a saved
 game and stands still gives the program **nothing to redraw** — so no
-present ever comes, and the trail a host had just read in beside the save
-stayed invisible until the player took a step. A seam that paints where
-the program paints cannot show what arrived without a repaint. It paints
-at the keyboard poll as well now, and because that point is reached
+present ever comes, and the map a host had just read in beside the save
+stayed unshown until the player took a step. A seam that paints where the
+program paints cannot show what arrived without a repaint. It paints at
+the keyboard poll as well now, and because that point is reached
 thousands of times a virtual second it paints there only when something
 has moved: where the party is, and the store's serial, which moves both
 when a cell is revealed and when a host reads a slot's table in.
 
-**The marking, and the six it beat.** An **intensity lift**: the map's
-plane 3 set over the cell's 24 by 24 pixels, so every pixel stays a pixel
-the *program* drew, one step up in the program's own palette. Four
-reasons decided it, and the first is the one that matters:
+**Two things are never covered.** The party's own square, which is where
+the program draws its icon — the reveal radius covers it at any radius of
+one or more, and the rule is written down as its own line all the same,
+because fog over the player's own sprite is the one mistake here that
+would be a bug rather than a preference. And **every pixel outside
+the window**, not one, which is what lets the confinement leg mask the
+squares the fog is allowed in and assert the rest of the frame byte for
+byte.
 
-* **it draws no shape of its own.** Every other candidate puts a mark on
-  the game's screen that the game has no vocabulary for. This one has no
-  mark; it has a shade. That is the argument §3 makes for calling the
-  program's own text drawer rather than rasterizing glyphs, one layer
-  further along — there is no foreign artwork rather than none that looks
-  foreign;
-* **it is the game's own idiom** — the program recolours this very screen
-  through a palette mapping of its own, in an overlay of its own, as part
-  of one of its set pieces;
-* **it costs one plane and no read-back**: 72 byte writes a cell, 1,728
-  for a window with every cell but the party's marked, against the
-  automap panel's 9,856;
-* **the terrain stays legible.** A coastline, a road and a tile's outline
-  survive a shade change; they do not survive a hatch or a dither drawn
-  over them.
+**A square of a neighbouring area *is* covered**, which is the reversal in
+one line. The three wilderness areas are bands of one table and the
+window can overhang; this seam has no record for a neighbour's columns.
+Under the lift, marking them would have claimed knowledge nobody had;
+under the fog, not covering them would claim the opposite.
 
-Rejected, each for its own reason and each prototyped over a real frame:
-a one-pixel border (reads as a modern overlay grid, and two adjacent
-squares give a doubled line); a sparse dither (reads as a different
-terrain rather than as a trail, over a terrain that is itself a dither);
-a diagonal hatch (the cartographer's idiom, and clearly not this game's);
-**a glyph in the program's own font**, which was the closest and is
-byte-aligned and cheap — rejected because the game writes words in its
-message rows and its menus and never on its terrain, so a letter there is
-exactly the foreign thing the font was supposed to avoid; a solid block,
-ring or diamond at the cell's centre; and a full palette remap read back
-off the planes, which is the same idea at 288 reads and 288 writes a cell
-with the adapter's latches loaded on every one.
+**The fidelity claim, stated for this seam** (§8.5). **It is one claim
+now, and it used to be two.**
 
-**Measured, because "one shade" invites the question.** Across 112
-overland frames and 2,800 window cells of a real run, the cell with the
-fewest pixels whose intensity bit was clear still had **198 of its 576**.
-The direction matters too: *lowering* the bit looks better on grass and
-is invisible on water, which is a solid dark blue already.
-
-**Two cells are never touched.** The party's own, which is where the
-program draws its icon — a lift there would recolour the party's own
-sprite — and any cell the party has not walked, not one pixel, which is
-what lets the confinement leg mask exactly the explored cells.
-
-**The fidelity claim, stated for this seam** (§8.5). The plain one does
-not survive a seam that is visible without being asked for, so it is two
-narrower ones and both are tests:
-
-* **on, and the overworld never shown, a run is byte for byte the run
+* **On, and the overworld never shown, a run is byte for byte the run
   with no engine at all** — `ExploredFidelity.OnAndTheOverworldNeverShown
   LeavesTheRunIdentical`, and `tests/sessions/quiet-explored.rec` saying
-  it on the real program, all 126 checkpoints;
-* **on, the overworld shown, and nothing walked but the square under the
-  party — the run is byte for byte the run with the seam off.** That one
-  holds *only* because the party's own cell is unmarked. It is a unit
-  test, a `tests/programs` pair on all four targets
-  (`explored_probe_quiet` and `_arrived`, the same 32,846 steps and the
-  same blank frame), and the 111 identical checkpoints at the head of the
-  `wild` / `wild-trail` pair — which include the arrival on the
-  wilderness map and the fifteen hundred frames of standing on it.
+  it on the real program, all 126 checkpoints.
+* **The claim that is gone**: "on, the overworld shown, and nothing
+  walked but the square under the party, the run is byte for byte the run
+  with the seam off". It held only because a *lift* marks what is known
+  and a map nobody has walked has nothing known on it. A fog marks what
+  is not known, and a fresh map is nearly all of that — the outer ring of
+  the window is covered the moment the party arrives. Rather than delete
+  it quietly, it is asserted in the direction it now holds
+  (`ExploredFidelity.TheArrivalIsNoLongerTheScreenItWouldHaveBeen`), so
+  that a later change cannot re-acquire a claim this enhancement cannot
+  make. The `wild` / `wild-trail` pair moved with it: 107 of 140
+  checkpoints identical rather than 111, diverging at the arrival rather
+  than at the first step.
 
 **Driven, and what it found.** Slot J loaded — the one shipped save whose
 party is already standing on a wilderness area, which is why the recipe
 is four keystrokes and not an afternoon — and eight steps north. 523
-stills against the same run with the seam off: 427 byte for byte
-identical, and every one of the 96 that differ differing only inside the
-squares the party had walked. No still after the first marked square is
-ever missing its mark, which is the flicker question answered. The same
-script through `drive.mjs` composes a final frame **byte for byte** the
-desktop host's. What the driving found that no test could is the
-present-return paragraph above, and §8.4's entry.
+stills against the same run with the seam off: **411 byte for byte
+identical, and every one of the 112 that differ differing only inside the
+squares the party has not been near** — 16 of them until the first step,
+13 from then on, and **not one pixel outside the window at any frame**.
+`tests/visual/exp-trail.leg` is that as an assertion, with the fogged
+squares named rather than a box drawn round them. What the driving found
+that no test could is the present-return paragraph above, and §8.4's
+entry.
 
-**What it is not yet.** **Nobody with a display has looked at it** —
-every picture above is a file compared with another file, and #179's exit
-asks a person whether it reads as something the game drew. That is the
-one line no session can tick and it is unticked. One wilderness area of
-three has been stood on; the other two are the same arithmetic with a
-different bias, and `docs/explored-overlay.md` §8 says how to reach them
-without playing for hours. And no shipped overhead tile has been examined
-directly, so a tile whose art is entirely bright would carry no mark and
-nothing would say so.
+**What it is not yet.** **Nobody has played with the fog** — the
+maintainer has looked at five coverings composited over a real frame and
+chosen one, which is a stronger look than the lift ever got and is still
+a picture beside another picture. That is what is left of #179's unticked
+clause. One wilderness area of three has been stood on; the other two are
+the same arithmetic with a different bias, and
+`docs/explored-overlay.md` §8 says how to reach them without playing for
+hours. And the fog has only been over grass, coast water and the grey
+shore between them: it cannot fail on rough ground or a road, since the
+checker is index 8 on the same half of the pixels whatever is underneath,
+but how legibly it hazes a terrain depends on that terrain's own colours
+and nobody has seen it over one that is already grey.
 
 ### The debug cheats (#99, #196)
 
