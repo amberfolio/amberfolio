@@ -141,21 +141,29 @@ is a separate seam and shares this one's store.
 ## The explored overlay
 
 **What it does.** On the game's own overworld map — the five-by-five
-window of a wilderness area you travel across — every square your party
-has walked is redrawn one shade brighter. The trail follows you as you
-go, so you can tell at a glance where you have been and where you have
-not.
+window of a wilderness area you travel across — the country your party
+has been near is the game's own map, and **everything else is under
+fog**. The fog lifts as you go, a square at a time, so what is on the
+screen is where you have been and nothing else.
+
+**How much you see.** The square you are standing on and the eight around
+it. That is a reveal radius of one, and one is not an arbitrary choice:
+the game shows you five squares across with your party in the middle, so
+at a radius of two every square on the screen would already be uncovered
+and the fog would never appear at all. Measured — 523 frames of a real
+walk at radius 2, and not one of them different from the same walk with
+this off.
 
 **How you turn it on.** `--seam explored`, and that is the whole of it.
 There is no key: it is a setting, not a command. On, it is there whenever
 the game is showing that screen; off, it is not.
 
-Its trail survives the machine on the same terms the automap's does —
+Its map survives the machine on the same terms the automap's does —
 `--automap-store` on the desktop, `af_web_automap_store` on the page,
 writing `\SAVE\AFMAP.DAT` beside the game's saves and never inside one,
 with a snapshot per save slot. It is the same table: the automap records
 the wilderness too, so if you have been playing with that on and turn
-this on later, the squares you walked are already marked.
+this on later, the squares you walked are already clear.
 
 **Where its facts came from.** Three addresses in the resident image, a
 handful of data-segment offsets, and two words inside the game's own area
@@ -164,47 +172,49 @@ that agreed for every line of it, and the pixel geometry measured off a
 real frame rather than derived: the window is 120 by 120 pixels at
 (8, 8), and a square is 24 by 24.
 
-**What makes it native.** It draws no shape of its own. Every pixel of a
-marked square is still a pixel the *game* drew, in the game's own
-sixteen-colour palette, one step up — its dark green becomes bright
-green, its blue becomes bright blue. Nothing is added to the screen that
-the game does not already have on it, which is a stronger version of the
-argument that has the journal reader ask the game to set its own text:
-there is no foreign artwork rather than none that looks foreign. The game
-itself recolours this very screen through a palette mapping of its own,
-in one of its set pieces, so a marking that is a shade rather than a
-symbol is something this program does.
+**What makes it native.** The fog is solid black, which is the colour the
+rest of that screen already is: the message rows under the window, the
+panel of names beside it, and the game's own 3D view beyond what the
+party can see are all black, and the window sits inside the game's own
+drawn border. So a fogged window reads as that border framing a smaller
+opening — a thing this screen already looks like — rather than as a
+pattern somebody laid over the art. Nothing is added to the screen that
+the game does not already have on it.
 
-Seven markings were prototyped over a real frame before this one was
-chosen — a border, a dither, a hatch, a glyph in the game's own font, a
-solid mark at the square's centre, and the two directions of the shade.
-`docs/explored-overlay.md` §5 says why each of the six was rejected. The
-closest was the glyph, and it was rejected because the game writes words
-in its message rows and its menus and never on its terrain: a letter
-there is exactly the foreign thing the font was supposed to avoid.
+Six coverings were prototyped over a real frame that has grass, coast
+water and the shore between them on it — solid black, three densities of
+checkerboard, a light dither, and dropping the picture's brightness —
+and `docs/explored-overlay.md` §5 says why each of the five was rejected.
+They come down to two things: anything that lets the terrain show through
+is *green over grass and blue over water*, so it reads as a different
+kind of ground rather than as a covering, and it is a different fog on
+every terrain when there should be one thing to learn.
 
-**The square you are standing on is never marked**, and that is not a
-detail. Your party's icon is drawn there, and a shade over it would
-recolour your own sprite. It also makes a promise a test can keep:
-arriving on a wilderness map you have never walked, the screen is
-*pixel-identical* to the same run with the overlay off, and stays so
-until you take your first step. The square is recorded the moment you
-stand on it and appears, marked, when you move off — which is what makes
-this a trail rather than a highlight.
+**This is the second design, and the first one is still written down.**
+Until #263 the overlay did the opposite: it left the whole map on the
+screen and redrew the squares you had walked one shade brighter. It was
+measured to be visible on 2,800 squares of a real run, and when somebody
+finally sat in front of it, it did not read — a shade is a difference you
+have to be told about before you can see it. `docs/explored-overlay.md`
+§5.1 keeps it with the six candidates it beat, because a design rejected
+by looking at it is worth more than a design nobody tried.
 
-**What it is not yet.** **Nobody with a display has looked at it.** Every
-picture of it so far is a file compared with another file, and the
+**The square you are standing on is never covered**, and that is not a
+detail: your party's icon is drawn there.
+
+**What it is not yet.** **Nobody with a display has looked at the fog.**
+Every picture of it so far is a file compared with another file, and the
 question this whole document is organised around — does it read as
-something the game drew — is one only a person can answer. It has been
-driven on one of the three wilderness
+something the game drew — is one only a person can answer. That is
+exactly how the first design was replaced, and #263 is where this one is
+asked. It has been driven on one of the three wilderness
 areas — the one the shipped save slot J starts on. The other two are the
 same arithmetic with a different column bias and nobody has stood on
 them (`docs/playable.md`'s honest gaps says how to, without playing for
-hours). And "one shade brighter" is measured *visible* — across 2,800
-window squares of a real run the faintest still had 198 of its 576 pixels
-changed — but no shipped tile has been examined directly, so a square
-whose art was entirely bright already would carry no mark and nothing
-would say so.
+hours). And the fog has only been over grass, coast water and the grey
+shore between them, which is what that area has near its start: it cannot
+fail on rough ground or a road, because it does not depend on what it
+covers, but nobody has seen it there.
 
 ---
 

@@ -140,28 +140,48 @@ the five are in.
   proclamations in one sentence and the reader opened on the first, off a
   player's own ninety-nine ingested entries, with nobody having pressed a
   key),
-  `explored` (M5-E5 #179 — the fourth M5 enhancement and the third seam
-  that draws, on the game's own **overworld** map: the wilderness travel
-  view, a 5x5 window of a 16x36 area that scrolls with the party. Every
-  square the party has walked is redrawn **one shade brighter** — the
-  EGA's intensity plane set over the square's 24x24 pixels, so every
-  pixel stays a pixel the *program* drew, one step up in the program's
-  own palette, and nothing foreign is added to the screen at all. It is
-  the one v1 enhancement with no proven prior design, so the marking was
-  settled at the point of definition against six prototyped candidates
-  (`docs/explored-overlay.md`) and the facts were checked twice before a
-  line of it was written: the position is two words in the *area record*
-  and not the bytes every other screen uses, and the pixel geometry —
-  120x120 at (8, 8), 24-pixel cells, every cell three whole bytes wide —
-  was measured off a real dumped frame rather than derived. There is no
-  key: it is a setting. It records through the automap's own store, so a
-  player with only the automap on keeps the trail too (M5-E5b), and the
-  square under the party is never marked, which is what makes "arrived on
-  a fresh map, and pixel-identical to off" a test. Driven, it found what
-  no test had: a seam that paints only where the program paints cannot
-  show a trail a host read in beside a save under a party that is
-  standing still, so it paints at the keyboard poll as well —
-  `docs/seams.md` §8.4's newest entry),
+  `explored` (M5-E5 #179, the marking reversed by M5-E5f #263 — the
+  fourth M5 enhancement and the third seam that draws, on the game's own
+  **overworld** map: the wilderness travel view, a 5x5 window of a 16x36
+  area that scrolls with the party. It is **fog of war**: the square the
+  party is standing on and the eight around it are the game's own map,
+  untouched, and every other square of the window is covered with black —
+  which is the colour the message rows, the panel beside the window and
+  the game's own 3D view already are, so a fogged window reads as the
+  game's own border framing a smaller opening. How far a party sees is
+  one named constant, `explored_reveal_radius`, a Chebyshev 1; **2 and 3
+  were asked for and cover nothing**, because the window is five squares
+  across with the party in the middle, and 523 driven frames at radius 2
+  are byte for byte the seam-off run. It is the one v1 enhancement with
+  no proven prior design, so the marking was settled at the point of
+  definition — and then **changed by somebody looking at it**, which is
+  that item's own exit rule. The first marking lifted the walked squares
+  one shade; it was measured visible on 2,800 window cells and it still
+  did not read, because a shade is a difference a player has to be told
+  about before they can see it. `docs/explored-overlay.md` §5 keeps both
+  designs and the ten candidates prototyped over real frames between
+  them, and PLAN.md §5 item 5 carries the reversal, since the sentence it
+  used to end with was "it never obscures the unknown". The facts were
+  checked twice before a line of it was written: the position is two
+  words in the *area record* and not the bytes every other screen uses,
+  and the pixel geometry — 120x120 at (8, 8), 24-pixel cells, every cell
+  three whole bytes wide — was measured off a real dumped frame rather
+  than derived. There is no key: it is a setting. It records **where the
+  party stood** and derives the reveal at draw time, so the radius can be
+  turned without invalidating a sidecar, and it records through the
+  automap's own store, so a player with only the automap on keeps the
+  trail too (M5-E5b). The reversal **cost it a fidelity claim**, which is
+  said out loud rather than quietly dropped: "arrived on a fresh map, and
+  pixel-identical to off" belonged to a marking of the *known* and a fog
+  marks the unknown, so the unit suite now asserts the arrival is *not*
+  the seam-off screen and the `wild`/`wild-trail` pair diverges at the
+  arrival — 107 of 140 checkpoints — instead of at the first step.
+  Driven, it found what no test had: a seam that paints only where the
+  program paints cannot show a trail a host read in beside a save under a
+  party that is standing still, so it paints at the keyboard poll as well
+  — `docs/seams.md` §8.4, which also carries #263's lesson that
+  "measurably different" is not "legible" and only a person can tell you
+  which one you built),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine
