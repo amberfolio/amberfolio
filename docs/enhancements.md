@@ -242,16 +242,13 @@ now looked at it — that is how the colour was chosen — but on stills, and
 the question this whole document is organised around, does it read as
 something the game drew, is one only a person with the game running can
 finish answering. That is exactly how the first design was replaced. It
-has been driven on one of the three wilderness areas — the one the
-shipped save slot J starts on. The other two are the same arithmetic with
-a different column bias and nobody has stood on them
-(`docs/playable.md`'s honest gaps says how to, without playing for
-hours). And the fog has only been over grass, coast water and the grey
-shore between them, which is what that area has near its start: it cannot
-fail on rough ground or a road, because it is the same grey on the same
-half of the pixels whatever is underneath, but how well a haze reads
-depends on the colour it is hazing and nobody has seen it over ground
-that is already grey.
+has been driven on all three wilderness areas, and over mountain rock —
+the terrain whose own art is largely the covering's own grey, which is
+the case the composites never showed. It reads there: the tile's bright
+half goes to a one-pixel mesh and the edge between covered and clear is a
+straight cut on a cell boundary. What it costs is that a third of the
+covering writes grey onto grey and does nothing, so the haze is thinner
+over rock than over grass. Forest and roads are still not under it.
 
 ---
 

@@ -1697,24 +1697,30 @@ what it skips would be worth less than one that says so.
   slot**: the driven runs write and read back slot A, and two
   playthroughs in two slots not sharing one map is a unit test over file
   events a test hands the store, not a run.
-- **The explored overlay, on one wilderness area of three** (#179). Leg
-  11 drives it on the area slot J starts on, which is view kind 2 on disk
-  6. The other two are the same arithmetic with a different column bias
-  and nobody has stood on them. `docs/explored-overlay.md` §8 says how a
-  person with their own copy reaches them without playing for hours — the
-  party's whole overland position is four numbers a save restores — and
-  what is untested until somebody does is the bias, which is read out of
-  the program rather than carried, and is zero on the one area driven.
-  The second gap is narrower and named for the same reason: the fog has
-  been over grass, coast water and the grey shore between them and over
-  no other terrain. It cannot fail on one — the checker is the same grey
-  on the same half of the pixels whatever is underneath — but how legibly
-  a haze reads depends on the colour it is hazing, and nobody has seen it
-  over ground that is already grey. **The gap that is gone** is worth
-  saying, because it is what changing the marking bought: the lift was
-  measured *visible* on 2,800 window cells and a tile whose art was
-  entirely bright would have carried no mark at all with nothing to say
-  so. A covering has no such failure.
+- **The explored overlay's two driven gaps are closed** (#267 items 2
+  and 3), and what they cost is worth keeping. Leg 11 drives the area
+  slot J starts on, which is view kind 2 on disk 6; the other two have
+  now been stood on as well, off a save edited on a scratch copy of the
+  disk by the offset table in `docs/explored-overlay.md` §8 — which had to
+  be **corrected first**, because the recipe published there named a
+  data-segment global with no save field behind it and an area id that
+  moves nobody. The column bias needed no change: it is read out of the
+  program, and the program's own status line prints it back, reading
+  `16, 32` on kind 3 and `29, 32` on kind 4 where the record holds column
+  3. On both areas the arrival, and a twelve-keystroke walk from a rock
+  square, keep every difference from the seam-off run inside the window's
+  own `8,8,127,127`.
+
+  The fog has also now been over **mountain rock** — the terrain whose own
+  art is largely the fog's own palette index 8, and the case the five
+  composites never showed. It reads: the tile's bright half goes to a
+  one-pixel mesh and the cell edge between covered and clear is a
+  straight cut the eye follows. What it costs is that **a third of the
+  covering is invisible** there, 1,526 of 4,608 pixels writing grey onto
+  grey, so the haze is thinner over rock than over anything driven before
+  it. Forest and roads are still not under it, and no shipped tile set
+  has been read directly for a tile drawn *entirely* in that grey, which
+  would carry nothing and say nothing (#267 item 4).
 - **Whether the fog reads as something the game drew *in play*** (#263).
   Narrower than it was. The lift's version of this clause was answered by
   a person and the answer changed the enhancement; the fog's colour was

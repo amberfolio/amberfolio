@@ -2766,14 +2766,17 @@ entry.
 maintainer has looked at five coverings composited over a real frame and
 chosen one, which is a stronger look than the lift ever got and is still
 a picture beside another picture. That is what is left of #179's unticked
-clause. One wilderness area of three has been stood on; the other two are
-the same arithmetic with a different bias, and
-`docs/explored-overlay.md` §8 says how to reach them without playing for
-hours. And the fog has only been over grass, coast water and the grey
-shore between them: it cannot fail on rough ground or a road, since the
-checker is index 8 on the same half of the pixels whatever is underneath,
-but how legibly it hazes a terrain depends on that terrain's own colours
-and nobody has seen it over one that is already grey.
+clause, and #267 item 1 is where it lives now. **All three wilderness
+areas have been stood on** (#267), off a save edited by
+`docs/explored-overlay.md` §8's offset table — which that run had to
+correct before it worked — and the column bias needed no change, because
+it is read out of the program and the program's own status line prints it
+back. The fog has also been driven over **mountain rock**, the terrain
+whose art is largely the covering's own grey: it reads there, the tile's
+bright half going to a one-pixel mesh with the cell edge a straight cut,
+but a third of the covering writes grey onto grey and does nothing, so
+the haze is thinner there than anywhere the composites showed. Forest and
+roads are still not under it.
 
 ### The debug cheats (#99, #196)
 
