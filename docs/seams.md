@@ -1938,6 +1938,26 @@ face is a door, and the panel in the driven run below is drawing its door
 leaves by that rule. Drawing none would be worse, and it is what the
 proven design does there too.
 
+**The evidence path has now been driven** (#268). `docs/playable.md`'s
+leg 12 walks the Kobold Caves off the shipped slot C, where the map's own
+scan finds a shut face and names its kind, and every leaf on that panel
+is drawn from that kind and none from the city's fallback. All four rules
+draw the same two yellow pixels, so the seam counts the leaves it draws
+by which rule drew each and the SDL host prints them under `--trace`:
+
+```
+amberfolio: automap doors frame=011000 disk=8 area=0D geo=0D seen=0200 table=0200 drawn shut=0 kind-seen=1 kind-table=0 no-evidence=0
+```
+
+A counter and a line, and neither is machine state: the tally sits beside
+the exploration table in `machine::automap()`, is started again at the
+top of every draw, is never serialized, and is read by nothing but a host
+that was asked to trace. What the leg still cannot show is a leaf the
+map's own scan drew and the table would not have — the table was swept
+from the same shut faces, so it knows every kind a map's scan can find
+wherever the wall-set slot names a block. The two can only part where a
+slot was filled from a multi-block load, and that is a unit test.
+
 What this deliberately does not carry is the proven design's runtime
 *learning* across maps — a table that remembers a shut face on one map
 and applies it to another. It is there to be robust against other

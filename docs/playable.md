@@ -1243,9 +1243,9 @@ the table of every shut face in the shipped data (`docs/seams.md` §10).
 Twenty-one of the twenty-nine shipped grids carry one. **New Phlan does
 not**, and its wall set is not in the table, so the city falls through to
 the older rule: a passable face is a door. So this leg drives the
-*picture* and the fallback, and the evidence path is exercised by the
-unit suite and by no driven run yet — Kovel Mansion, on the other side of
-this same district, has forty-five shut faces waiting for one.
+*picture* and the fallback, and the evidence path is driven by **leg 12**
+instead, in the Kobold Caves, where the party's own map names a door kind
+and the trace says so leaf by leaf (#268).
 
 **And what it walked outlives the machine** (M5-E2c). What the panel has
 explored is observation and not machine state, so it is gone when the
@@ -1604,6 +1604,88 @@ it were driven and are worth knowing:
 
 ---
 
+## Leg 12 — the automap's door rule, on a map that has shut doors (#268)
+
+Leg 8 drives the panel through New Phlan and nowhere else, and the
+sentence above admits what follows: the city has no shut face anywhere on
+it and its wall set is not in the seam's table, so every leaf on that
+leg's panel was drawn by the oldest rule of the four — *a passable face
+is a door* — and the evidence path had never run at all. This leg is the
+map that has one.
+
+**Not Kovel Mansion.** #199 named it because it carries forty-five shut
+faces, and routing there is a walk across a district. It was not needed:
+the shipped `SAVE` directory's **slot C** stands in the **Kobold Caves**
+(disk 8, area 13), which carries shut faces of its own, so the leg is the
+same four lines every other leg starts with and a short walk.
+
+```
+--seam code-wheel --seam automap --trace
+--press A@7600 --press Return@7650      the code wheel
+--press L@8950 --press C@9200           LOAD SAVED GAME, slot C
+--press Tab@11000                       the panel
+--press Up@11200 Up@11350 Up@11500      west along the corridor
+--press Right@11650                     turn north
+--press Up@11800 Up@11950               north to 1,1
+--press Left@12100 --press Up@12250     west to 0,1
+--press Right@12400 --press Up@12550    and north through the door
+--until 290000000
+```
+
+Moves are 150 frames apart, as everywhere else. Slot C's party is deep
+enough that nothing wandered into this walk; if something does,
+`--seam cheat-kill-all` and a `--pull cheat-kill-all` at the fight is
+leg 6's method and clears it.
+
+**What `--trace` says, which is the point of the leg.** All four rules
+draw the same two yellow pixels, so a still of a leaf cannot say which
+one put it there. Since #268 the trace prints the evidence instead — the
+two masks, and a count of the leaves on the panel by the rule that drew
+each:
+
+```
+amberfolio: automap doors frame=011000 disk=8 area=0D geo=0D seen=0200 table=0200 drawn shut=0 kind-seen=1 kind-table=0 no-evidence=0
+amberfolio: automap doors frame=011885 ... drawn shut=0 kind-seen=2 kind-table=0 no-evidence=0
+amberfolio: automap doors frame=012647 ... drawn shut=0 kind-seen=3 kind-table=0 no-evidence=0
+```
+
+`seen=0200` is the line that had never been printed before: **bit 9, from
+this map's own shut faces**, scanned when the party arrived. Every leaf
+the panel draws on this walk is `kind-seen` — a way through whose *kind*
+was seen shut somewhere on this grid — and `no-evidence=0` says the city
+leg's fallback drew nothing here. The rule has run.
+
+**The still.** Twelve virtual seconds after the last move the panel is a
+five-cell corridor along row 3 and a two-cell passage north up column 0,
+under the label `KOBOLD CAVES` in the game's own font, the caves' walls
+in the caves' own red and the floor in its brown. Three leaves: one on
+the **east face of `3,3`**, the cell the party started on, and one on
+each side of the border between `0,1` and `0,0` — the door the party
+walked north through at frame 12,558, which is why the third line above
+appears when it does. The party arrow is on `0,0` and the 3D view beside
+it is the wall the party is now facing.
+
+**What this leg does *not* show, said plainly.** It shows a leaf drawn by
+the rule; it does not show a leaf the rule drew *and the table would not
+have*. The table cannot disagree here, and on this data it can hardly
+ever: it was built by sweeping every shut face in the shipped areas, so
+the kinds one map's own scan can find are kinds the table already knows,
+wherever the wall-set slot names a block it can be looked up by. `seen`
+and `table` are both `0200` on this map, which is #199's offline
+cross-check of the two disk-8 rows now made by a running machine instead.
+The one case where the two really can differ — a slot filled from a
+multi-block load, where the table cannot be consulted and the map's own
+scan still works — is a unit test and not a run, and there is no known
+save that stands on one.
+
+**The counters are not machine state.** They are counted while the panel
+is drawn, live beside the exploration table in `machine::automap()`
+(`automap.h`), are never serialized, and are read only by a host that was
+asked for `--trace`. The panel's pixels are what they were before anybody
+counted them.
+
+---
+
 ## What the run should not say
 
 Three notices, and no others, on a clean run of any of the legs above:
@@ -1686,11 +1768,17 @@ what it skips would be worth less than one that says so.
   moving before it believes it. The settling rule and the marks it plants
   have unit tests over positions a test hands them; nobody has walked
   through the gate at `0,4` with the panel up and watched the panel
-  change maps. The second is **door detection from evidence**: New Phlan
-  has no shut face anywhere on it, so the driven run exercises the
-  fallback and not the rule. Both close the same way, and the dungeon gap
-  above is the same door. The third is the **zone label**: one of the
-  twenty-nine names has been seen drawn, and the wrap's other two shapes
+  change maps. The second **was** door detection from evidence, and
+  leg 12 closed it (#268): New Phlan has no shut face anywhere on it, so
+  leg 8 exercises the oldest of the four rules and nothing else, and it
+  took a walk in the Kobold Caves off slot C to run the evidence path on
+  a machine. What is left of it is narrower and is said in leg 12: no run
+  has ever drawn a leaf the map's own scan found and the shipped table
+  did not, because the table was swept from the same shut faces — that
+  case needs a wall-set slot filled from a multi-block load, which is a
+  unit test and no save stands on one. The third is the **zone label**:
+  one of the twenty-nine names has been seen drawn — two of them now, and
+  the second is leg 12's `KOBOLD CAVES` — and the wrap's other two shapes
   — a name broken at its soft break, and the `AREA <n>` a map with no row
   falls back to — are unit tests over a font a test hands the seam and
   have never been on a screen. The fourth is the **sidecar's second

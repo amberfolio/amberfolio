@@ -66,7 +66,9 @@ void automap_state::clear() noexcept {
   appearance_banks_ = 0;
   wall_colour_ = {};
   wall_colour_known_ = {};
-  door_nibbles_ = 0;
+  door_nibbles_seen_ = 0;
+  door_nibbles_table_ = 0;
+  doors_drawn_ = {};
   pixels_ = {};
   drawn_signature_ = 0;
   revealed_signature_ = 0;
@@ -213,7 +215,9 @@ void automap_state::begin_appearance(std::uint8_t area, std::uint8_t geo,
   appearance_banks_ = banks;
   wall_colour_ = {};
   wall_colour_known_ = {};
-  door_nibbles_ = 0;
+  door_nibbles_seen_ = 0;
+  door_nibbles_table_ = 0;
+  doors_drawn_ = {};
 }
 
 bool automap_state::wall_colour_known(unsigned nibble) const noexcept {
@@ -231,6 +235,23 @@ void automap_state::set_wall_colour(unsigned nibble,
   }
   wall_colour_[nibble] = colour;
   wall_colour_known_[nibble] = true;
+}
+
+void automap_state::count_door_drawn(automap_door_evidence why) noexcept {
+  switch (why) {
+    case automap_door_evidence::shut:
+      ++doors_drawn_.shut;
+      break;
+    case automap_door_evidence::seen_kind:
+      ++doors_drawn_.seen_kind;
+      break;
+    case automap_door_evidence::table_kind:
+      ++doors_drawn_.table_kind;
+      break;
+    case automap_door_evidence::no_evidence:
+      ++doors_drawn_.no_evidence;
+      break;
+  }
 }
 
 void automap_state::set_panel_covered(bool covered) noexcept {

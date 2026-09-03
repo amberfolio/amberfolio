@@ -358,6 +358,45 @@ struct automap_record {
   std::array<automap_marker, automap_max_markers> marker_kind{};
 };
 
+/// Why the panel drew a door leaf on a face (#268).
+///
+/// Four rules answer "is this face a door", and they draw the same two
+/// yellow pixels. Which of them drew a given leaf is not recoverable from
+/// the picture, and until #268 it was not recoverable from anything: the
+/// only maps ever driven were New Phlan's, where the last of the four is
+/// the only one that ever ran. So the panel counts them as it draws, and
+/// a host prints the tally — which is what makes a screenshot of a leaf
+/// evidence for a rule rather than an inference about one.
+enum class automap_door_evidence : std::uint8_t {
+  /// The face itself is shut. Unarguably a door, and it needs no rule.
+  shut,
+  /// A way through, whose *kind* was seen shut somewhere on this map.
+  /// This is the rule M5-E2a is built on.
+  seen_kind,
+  /// A way through, whose kind only the seam's table of every shut face
+  /// in the shipped data names. The fallback.
+  table_kind,
+  /// A way through on a map where nothing at all is known about the wall
+  /// sets, so the pre-nibble rule stands: a passable face is a door.
+  no_evidence,
+};
+
+/// How many leaves the last drawn panel drew, by evidence.
+///
+/// Presentation state, in the sense the drawn signature is: reset at the
+/// top of every draw, never serialized, and nothing in the machine reads
+/// it. A counter, not a decision — the panel's pixels are exactly what
+/// they would be without it.
+struct automap_door_tally {
+  std::uint16_t shut{};
+  std::uint16_t seen_kind{};
+  std::uint16_t table_kind{};
+  std::uint16_t no_evidence{};
+
+  friend constexpr bool operator==(const automap_door_tally&,
+                                   const automap_door_tally&) = default;
+};
+
 /// Everything the automap knows, for one machine.
 class automap_state {
  public:
@@ -516,6 +555,16 @@ class automap_state {
   [[nodiscard]] bool appearance_is_for(std::uint8_t area, std::uint8_t geo,
                                        std::uint16_t banks) const noexcept;
 
+  /// Whether it has been worked out for *any* map yet.
+  ///
+  /// For a host printing what the door rule decided (#268): "no door
+  /// kinds on this map" and "the seam has never looked at a map" are the
+  /// same two zero words, and a `--trace` line that could not tell them
+  /// apart would be worse than none.
+  [[nodiscard]] bool appearance_learned() const noexcept {
+    return appearance_valid_;
+  }
+
   /// Forget it and start again for this map and these banks.
   void begin_appearance(std::uint8_t area, std::uint8_t geo,
                         std::uint16_t banks) noexcept;
@@ -531,9 +580,40 @@ class automap_state {
   /// wall or an archway. Zero is "nothing on this map says which", which
   /// is a state the renderer has its own answer for.
   [[nodiscard]] std::uint16_t door_nibbles() const noexcept {
-    return door_nibbles_;
+    return static_cast<std::uint16_t>(door_nibbles_seen_ | door_nibbles_table_);
   }
-  void set_door_nibbles(std::uint16_t mask) noexcept { door_nibbles_ = mask; }
+
+  /// The two sources of that mask, kept apart (#268).
+  ///
+  /// The renderer wants their union and nothing else — a door is a door
+  /// whichever piece of evidence named it. What wants them apart is a
+  /// person looking at a still and asking *why* a leaf is there: the
+  /// first is this map's own shut faces, scanned on arrival, and the
+  /// second is the shipped table of shut faces. Until #268 the two were
+  /// added into one word on the way in, and every driven run to that
+  /// point had been over a map with no shut face on it, so a leaf on a
+  /// screenshot could not be told from a leaf the table had guessed.
+  /// A host prints them (`--trace`), which is what makes a still
+  /// evidence; nothing in this machine reads them apart.
+  [[nodiscard]] std::uint16_t door_nibbles_seen() const noexcept {
+    return door_nibbles_seen_;
+  }
+  [[nodiscard]] std::uint16_t door_nibbles_table() const noexcept {
+    return door_nibbles_table_;
+  }
+  void set_door_nibbles(std::uint16_t seen, std::uint16_t from_table) noexcept {
+    door_nibbles_seen_ = seen;
+    door_nibbles_table_ = from_table;
+  }
+
+  /// The leaves the last draw drew, by evidence
+  /// (`automap_door_evidence`). Started again at the top of each draw,
+  /// so it always describes the panel as it stands.
+  [[nodiscard]] const automap_door_tally& doors_drawn() const noexcept {
+    return doors_drawn_;
+  }
+  void begin_doors_drawn() noexcept { doors_drawn_ = {}; }
+  void count_door_drawn(automap_door_evidence why) noexcept;
 
   // --- the sidecar (M5-E2c) --------------------------------------------
   //
@@ -708,7 +788,9 @@ class automap_state {
   std::uint16_t appearance_banks_{};
   std::array<std::uint8_t, 16> wall_colour_{};
   std::array<bool, 16> wall_colour_known_{};
-  std::uint16_t door_nibbles_{};
+  std::uint16_t door_nibbles_seen_{};
+  std::uint16_t door_nibbles_table_{};
+  automap_door_tally doors_drawn_{};
 
   bool settled_{false};
   automap_map_kind settled_kind_{automap_map_kind::grid};
