@@ -140,7 +140,11 @@
 //     own greens and blues to be plainly a covering, and it lets enough
 //     of the tile through that a coastline is still a coastline under
 //     it. That is what was wanted: not "this square is gone" but "this
-//     square has not been seen".
+//     square has not been seen". Driven since over **mountain rock**,
+//     which is the one terrain whose own art is largely this very grey,
+//     it still reads — but a third of the covering writes grey onto
+//     grey and does nothing, so the haze is thinner there than anywhere
+//     the composite showed (#267, `docs/explored-overlay.md` §8).
 //
 // **What black had going for it, and lost on:** it is the one colour
 // that cannot read as terrain at all, it is the game's own vocabulary
@@ -234,20 +238,11 @@
 // What it is not yet, at the point of definition (docs/seams.md §8.5)
 // -------------------------------------------------------------------
 //
-//   * Everything driven so far has been view kind 2 on disk 6. The other
-//     two wilderness areas are the same arithmetic with a different bias
-//     and nobody has stood on them (#256).
 //   * The bar test is the automap's — a far pointer into the data segment
 //     at one of two known offsets. If the travel view hands its input
 //     routine a third string, this seam paints nothing there and a driven
-//     run is what will say so (#256).
-//   * The fog has been prototyped and driven over **grass, coast water
-//     and the grey shore between them**, which is what the one area a
-//     shipped save reaches has near its start. No frame of rough ground,
-//     forest or a road has been under it. It cannot fail on one — the
-//     checker is index 8 on the same half of the pixels whatever the
-//     tile is, which is the reason its colour survived the second look —
-//     but nobody has seen it there.
+//     run is what will say so. #256 closed with it unticked and #267 is
+//     the open issue it hangs off now.
 //   * **The radius is one and the maintainer has confirmed it** (#263),
 //     which is the half of that judgement that is now settled. One is
 //     also the only radius that covers anything on this screen: at two,
@@ -256,7 +251,9 @@
 //   * The maintainer chose this covering off **composites over a real
 //     dumped frame**, five of them side by side, which is a stronger
 //     look than the lift ever got and is still not somebody playing.
-//     #179's remaining clause is that verdict.
+//     #267 item 1 is that verdict, and it is the last of these left:
+//     kinds 3 and 4 have been stood on and the fog has been driven over
+//     rough ground (#267 items 2 and 3, `docs/explored-overlay.md` §8).
 
 #include <array>
 #include <cstddef>

@@ -612,6 +612,15 @@ open rather than be refused.
   whole difference in the box `8,8,127,127`: 4,530 pixels on kind 3 and
   4,608 on kind 4, out of a frame of 64,000.
 
+  **And walked, not only arrived on.** Slot J's party lands on open water
+  on both of the other two, and a party on water does not walk; from the
+  rock squares the terrain bullet below names it does. Twelve keystrokes
+  at the usual 150-frame cadence move it over four cells on each area,
+  and every dumped frame of both walks keeps the difference from the
+  seam-off run inside `8,8,127,127` — 3,082 pixels at the arrival and
+  1,599 from the first step onward on kind 3, 3,021 and 1,715 on kind 4,
+  the drop being the cells the walk reveals.
+
   **The recipe this section used to carry did not work, and the corrected
   one is below.** What was written was that four numbers a save restores
   put a party on any of the three: the area id at record `+0x1E4`, the
@@ -654,29 +663,46 @@ open rather than be refused.
   Nothing before #267 needed any of this, because slot **J** of the
   edition's own shipped saves is already standing on view kind 2 — which
   is why §4 is four keystrokes rather than a walk.
-* **A terrain the fog has not been over.** Everything prototyped and
-  driven has been grass, coast water and the grey shore between them,
-  which is what the area slot J starts on has near its start. Rough
-  ground, forest and roads have not been under it. The fog cannot fail on
-  one — the checker is index 8 on the same half of the pixels whatever is
-  underneath, which is §5.2's third reason and the one of black's four
-  that survived the second look — but how legibly it *hazes* a terrain is
-  a property of that terrain's own colours, and nobody has seen it over
-  one that is already grey.
+* **The fog over ground that is already grey — driven, and it reads**
+  (#267 item 3). Everything prototyped and composited was grass, coast
+  water and the grey shore between them, which is what the area slot J
+  starts on has near its start; the terrain whose own art is largely
+  palette index 8 is the case the composite never showed, and §5.2's
+  argument for the colour — that it is far enough from the terrain's own
+  greens and blues to be plainly a covering — is exactly the argument
+  that has no force there.
 
-  **What #267 measured of it, and what it did not.** On the kind-3
-  arrival the fog covers sixteen whole cells — 16 x 24 x 24 / 2 = 4,608
-  pixels — and `frames.py diff` against the seam-off frame counts 4,530.
-  The seventy-eight that are missing are pixels the program had already
-  drawn in palette index 8, where the checker writes the colour that is
-  already there: over ground that is *exactly* the fog's own grey the
-  haze contributes nothing, pixel for pixel, and the cell is marked only
-  by the half of it that is not. On kind 4 the same count is 4,608 of
-  4,608 — no pixel of that window was already index 8. That is arithmetic
-  and not legibility: what is still not settled is a still of rough
-  ground, forest or a road under it, which needs a party standing
-  somewhere those are, and slot J's party stands on water on both of the
-  areas #267 reached.
+  A save edited by the table above put the party on **mountain rock** on
+  kind 3 at column 2, row 4 and on kind 4 at column 12, row 12: a window
+  of rock in four values — the fog's own dark grey, a light grey, white
+  peaks and brown veins — with no grass or water in it at all. The
+  arrival was dumped with the seam on and with it off.
+
+  **It reads, and it does not collapse.** Under the fog the tile's bright
+  half — the white peaks, the light grey, the brown — goes to a fine
+  one-pixel mesh, and the boundary between the party's clear
+  three-by-three and the ring around it is a straight cut on a cell edge
+  that the eye follows without being told where to look. The covered
+  cells read as the same rock seen through a screen door, which is what
+  a haze is supposed to be, and not as a different kind of ground, which
+  is what killed the black checker over grass (§5.2).
+
+  **What it costs, in numbers.** Sixteen cells are covered on each
+  arrival, so the checker writes 16 x 24 x 24 / 2 = 4,608 pixels.
+  `frames.py diff` against the seam-off frame counts **3,082** changed on
+  kind 3 and **3,021** on kind 4: **a third of the covering is invisible**
+  — 1,526 and 1,587 pixels the program had already drawn in index 8,
+  where the fog writes the colour that is already there. So the haze is
+  thinner over rock than over anything driven before it, and what carries
+  it is the tile's bright half rather than the covering's own density.
+  Over a hypothetical tile drawn *entirely* in index 8 it would carry
+  nothing at all and nothing would say so — which is the one failure
+  mode the lift had that a covering was supposed not to, narrowed from
+  "cannot happen" to "has not been found". No shipped tile set has been
+  read directly for one (#267 item 4).
+
+  Forest and roads are still not under it. This is one terrain, driven,
+  and the one that was argued about.
 
   The lift's version of this gap was sharper and is worth keeping as a
   contrast: **a cell whose art was entirely bright could carry no lift at
