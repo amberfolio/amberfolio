@@ -175,8 +175,28 @@
 // because the end check is arrived at exactly once per encounter.
 // `docs/seams.md` §10 has the table.
 //
-// What is still unmeasured is `debug_damage` itself: whether 120
-// finishes those seven soldiers in one pull.
+// **`debug_damage` has now been measured** (#271), on 2026-09-02, on a
+// player's copy, driving the wilderness from the shipped slot J — three
+// characters, `HULK`, `MULE` and `THIEF`. Two encounters, both pulled
+// with the tactical map already up, and the instrument is `--watch
+// 6814:2`, the program's own body counts for the two sides:
+//
+//   * a group of **seven soldiers** at 9,2 N — `6814=0703` before the
+//     pull, `6814=0003` at the frame of it (`fired=1 reached=1
+//     waited=0`), and the fight ended `THE PARTY HAS WON. EACH
+//     CHARACTER RECEIVES 107 EXPERIENCE POINTS.`;
+//   * a group of **two centaurs** at 10,2 N, which the program's own
+//     combat roster panel puts at `CENTAUR HITPOINTS 20 AC 5` — the one
+//     encounter reached whose hit points the game states. `6814=0203`
+//     before the pull, `6814=0003` at the frame of it, and the party
+//     won again.
+//
+// So one pull finished every combatant in both, and 120 is enough for
+// what a routed walk from the committed slots reaches. What it does
+// *not* do is find the ceiling: nothing met had more than twenty stated
+// hit points, and the field is a byte, so a combatant between 121 and
+// 255 is possible and has not been seen. A pull that leaves an enemy
+// standing is still `debug_damage` being wrong rather than the seam.
 //
 // Both are fail-closed by construction (#99): unavailable on any binary
 // but the baseline's (the fingerprint), inert while the end check's
@@ -573,12 +593,18 @@ void strike_the_enemies(cpu::processor& cpu, std::uint16_t ds) {
 /// A stale count *within* the round is the real exposure, and it is the
 /// reason the decrement in `strike_the_enemies` is not optional.
 ///
-/// **What it assumes**, so the next person can check it: that the party
-/// is on this roster. Everything in this file reads as though it is —
-/// the walk exists to tell party from enemy — and the fact table says
-/// side 0 is the party's, but nobody has watched it. If that is wrong,
-/// condition 4 never holds, this point declines and says so once, and
-/// the end check serves the pull as it did before.
+/// **What it assumed**, and what settled it: that the party is on this
+/// roster, and that side 0 is the party's. The fact table said so and
+/// nobody had watched it. **Watched, on 2026-09-02, in the wilderness
+/// leg of `docs/playable.md` §"A fight the pull ends"** (#271):
+/// `--watch 6814:2` through two driven fights on the shipped slot J,
+/// whose party is three characters. The byte at `data_side_counts`
+/// itself held **3** — the party's own size — from the moment the
+/// counts were set to the end of both combats, while the byte beside it
+/// held the enemies' count (7 soldiers, then 2 centaurs) and was the one
+/// a pull took to zero. If it had been the other way round, condition 4
+/// would never have held, this point would have declined and said so
+/// once, and the end check would have served the pull as it did before.
 [[nodiscard]] bool combat_roster_ready(cpu::processor& cpu, std::uint16_t ds) {
   if (cpu.read_byte(ds, data_game_mode) != mode_combat) {
     return false;

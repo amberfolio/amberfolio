@@ -796,9 +796,10 @@ closeout and is still nine**: `cheat-invulnerable armed fired=9`, with
 `replay verified checkpoints=177` over the same recording. So the three
 places that write the number down are right, and were right by luck as
 much as by anything, because nothing had checked them since the count
-changed meaning. #271 carries the note and the two numbers beside it that
-have *not* been measured (`cheat-kill-all`'s 120, and the Fix's one hit
-point per member per day).
+changed meaning. #271 carried the note and the number beside it, and
+`cheat-kill-all`'s 120 has since been measured too — §10 has the two
+fights and what they say. The Fix's one hit point per member per day is
+what is left.
 
 The desktop host prints a line per enabled seam when a run ends:
 
@@ -2916,9 +2917,31 @@ end check is arrived at exactly once per encounter. That is the
 measurement §3a's `reached` was built to make possible, and it is why
 `reached` stays a count of arrivals at the addressed point.
 
-**What is still unmeasured** is the number: whether 120 finishes what a
-party actually meets. A pull that leaves an enemy standing is
-`debug_damage` being wrong rather than the seam.
+**The number has now been measured** (#271), on 2026-09-02, on a
+player's copy: the shipped slot J's three characters walked out across
+the wilderness into two encounters, each pulled with the tactical map
+already up. The instrument is `--watch 6814:2` — the program's own body
+count for each side, a byte apiece.
+
+| the fight | before the pull | at the frame of the pull | the end |
+| --- | --- | --- | --- |
+| a group of **seven soldiers**, 9,2 N | `6814=0703` | `6814=0003`, `fired=1 reached=1 waited=0` | `THE PARTY HAS WON. EACH CHARACTER RECEIVES 107 EXPERIENCE POINTS.` |
+| a group of **two centaurs**, 10,2 N — `CENTAUR HITPOINTS 20 AC 5` on the program's own roster panel | `6814=0203` | `6814=0003`, served at the instant of the pull | the party won again |
+
+One pull finished every combatant in both, so 120 is enough for what a
+routed walk from the committed slots reaches. It does not find the
+ceiling, and that is the honest limit of it: the centaurs are the only
+thing met whose hit points the game states, at twenty, and the field is
+a byte — a combatant between 121 and 255 is possible and has not been
+seen. A pull that leaves an enemy standing is still `debug_damage` being
+wrong rather than the seam.
+
+The same two runs are what settled the other assumption in this file:
+that **side 0 is the party's**. The low byte held 3 — the party's own
+size — from the moment the counts were set to the end of both combats,
+and the byte beside it held the enemies' count and was the one that went
+to zero. `combat_roster_ready()` had taken that from the fact table and
+nobody had watched it.
 
 **"Standing" is the wound status, not the byte beside it.** The record
 carries a *held* byte immediately before the combat-side index, and the

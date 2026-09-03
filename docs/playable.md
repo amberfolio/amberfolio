@@ -229,10 +229,43 @@ check is arrived at exactly once per encounter. `waited=` is the answer
 to "was it immediate"; `reached=` is what the pull would have cost with
 only the old point, and the two together are the comparison.
 
-**What is still unmeasured** is `debug_damage` itself: whether 120
-finishes what a party actually meets. The wilderness encounter above is
-seven soldiers; if one pull leaves any of them standing, that is the
-number being wrong rather than the seam.
+**`debug_damage` is measured** (#271), and so is the thing the seam's
+guard had assumed about which side the party is on. Both came out of two
+driven fights on 2026-09-02, from the shipped **slot J**, whose party of
+three — `HULK`, `MULE`, `THIEF` — starts on the wilderness:
+
+```
+--press L@8950 --press J@9200            LOAD SAVED GAME, slot J
+--press Up@10650 ... every 150 frames    walk north across the wilderness,
+--press Return@+50 --press N@+100          answering anything that asks
+--press C@17500                          COMBAT, at the encounter prompt
+--pull cheat-kill-all@18400              with the tactical map up
+--watch 49F3 --watch 6814:2              the mode byte, and both body counts
+```
+
+`6814` and the byte after it are the program's own count of who is still
+standing on each side, and reading them as one word is the whole
+measurement:
+
+| the fight | before the pull | at the frame of the pull |
+| --- | --- | --- |
+| a group of **seven soldiers** at 9,2 N | `6814=0703` | `6814=0003`, and `fired=1 reached=1 waited=0` |
+| a group of **two centaurs** at 10,2 N, the roster panel showing `CENTAUR HITPOINTS 20 AC 5` | `6814=0203` | `6814=0003`, served at the instant of the pull |
+
+Both ended `THE PARTY HAS WON` — the soldiers at 107 experience points
+each, which is the same encounter the seam's own note was written from.
+So one pull finishes what a routed walk reaches, and the low byte of the
+pair — 3, the party's own size — is **side 0 watched** rather than taken
+from the fact table.
+
+What it does not do is find the ceiling. The centaurs at twenty are the
+only hit points anything on this route states, the field is a byte, and
+a combatant between 121 and 255 has not been met. A pull that leaves an
+enemy standing is still the number being wrong rather than the seam.
+
+Getting somewhere tougher costs more than a `--press` route: slot E's
+party stands in a city area that produced no encounter in twenty-seven
+moves, and the slums from `fight.rec`'s own disk produce a single orc.
 
 A party that reaches this leg from a *saved game* is the practical way to
 see it. A first-level character made in leg 0 does not survive the slums
