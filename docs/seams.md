@@ -1248,9 +1248,12 @@ The symptom vocabulary, because it is what turns a day into an hour:
 - **The facts checked against the program**, not only against the
   handler. A unit test proves the handler; only a driven run proves the
   table.
-- **What it is not yet, at the point of definition.** `seam_code_wheel.cpp`
-  naming #115 is the pattern, and it is why that gap is a filed issue
-  rather than a surprise.
+- **What it is not yet, at the point of definition.** `seam_explored.cpp`
+  naming #256 and #179's last clause is the pattern, and it is why those
+  gaps are filed issues rather than surprises. A seam with nothing
+  outstanding says *that*, in the section — `seam_code_wheel.cpp` since
+  its gate closed (#115) — rather than dropping the heading, because an
+  absent section and a satisfied one otherwise look identical (#272).
 - **An honest-gaps entry** in `docs/playable.md`, saying what has been
   driven and what has only been tested.
 

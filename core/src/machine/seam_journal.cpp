@@ -167,6 +167,35 @@
 // takes nothing, until F1.
 //
 // Both are tests (`tests/core/machine/seam_journal_test.cpp`).
+//
+//
+// What it is not yet, at the point of definition (docs/seams.md §8.5)
+// -------------------------------------------------------------------
+//
+//   * **Of the three citation shapes this watch answers, one is a
+//     measured sentence and two are the pattern's own word** (#270).
+//     What has been opened at a real citation is the city hall's four
+//     proclamations — a Roman numeral after the section's own word. The
+//     **entry** and **tale** forms have never been read off the program,
+//     and that is exactly the state #232 caught wrong once already: the
+//     shape wanted a decimal number where the game writes numerals, and
+//     it took a driven run rather than a test to find out.
+//     `docs/journal.md` §7 carries the same sentence.
+//   * **The rows the test plan's phases 1, 3 and 4 left owed** are #270
+//     as well, each named there by its matrix ID: NOT-9, because the
+//     give-back is checked in one of the three screen modes; RDR-11's
+//     two-store comparison; RDR-12 and NOT-11's cross-host `cmp`; CIT-5,
+//     which wants a citation that is not on an event's last page so that
+//     there is a page left to turn; and CIT-6, where it is the plan that
+//     wants correcting rather than a run.
+//   * **The half of this on the other side of `docs/journal.md` §9's
+//     door has never been run by a person** (#236, on the list #274 keeps). The text this
+//     reader draws is handed to it by a host, and the two paths that
+//     produce it for a player — the dev page's journal panel in a real
+//     browser, and the desktop's shipping OCR path, which runs the
+//     player's *own* installed engine as a program — are exercised by
+//     nothing but a fixture engine in CI. This seam cannot be wrong
+//     about them, and cannot vouch for them either.
 
 #include <algorithm>
 #include <array>
