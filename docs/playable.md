@@ -754,7 +754,8 @@ The two sections above are doors. This is the walk through them: legs 3,
 4 and 5 driven on the wasm module against a player's copy, from the same
 script the desktop host was given, and the artefacts diffed —
 `docs/hosts.md` §4's method, which is `--dump` on both and compare the
-files. Four scripts, because leg 5 is two transactions:
+files. Five scripts, because leg 3 is a round trip and leg 5 is two
+transactions:
 
 | | disk it starts from | what the script does |
 | --- | --- | --- |
@@ -764,7 +765,7 @@ files. Four scripts, because leg 5 is two transactions:
 | leg 5, the cure | the same | slot A, the route to Sune's temple at 3,1, `HEAL`, `CURE BLINDNESS` cast anyway and paid for, `VIEW` |
 | leg 5, the sale | the same | slot A, leg 4's route, `APPRAISE`, `GEMS`, `SELL`, out, `VIEW` |
 
-And the results, which are the same five words each time:
+And the results, which are the same word each time:
 
 | | stop line | final still | `.edges` | files written |
 | --- | --- | --- | --- | --- |
