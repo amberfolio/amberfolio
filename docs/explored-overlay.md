@@ -598,28 +598,62 @@ open rather than be refused.
   radius that covers anything on this screen, and the maintainer has
   confirmed one on the composites. It is still one constant if a real
   session says otherwise.
-* **The other two wilderness areas.** Everything driven here was view
-  kind 2 on disk 6. Kinds 3 and 4 are the same arithmetic with a
-  different bias and have not been stood on.
+* **The other two wilderness areas, stood on** (#267). Kinds 3 and 4 are
+  the same arithmetic with a different bias, and they have now been
+  arrived on and dumped. **The bias needed no correction**: the seam
+  reads it out of the program at `0x3C76` and the program's own status
+  line is the check, because for kinds 3 and 4 it prints the column with
+  the bias already added. Driven at record column 3, the line read
+  `16, 32` on kind 3 and `29, 32` on kind 4, which are 3 + 13 and 3 + 26
+  — the table's two live entries, confirmed against the screen rather
+  than against the table. On both arrivals the party's own three-by-three
+  is the program's map untouched, the sixteen cells around it are hazed,
+  and `frames.py diff` against the same run with the seam off puts the
+  whole difference in the box `8,8,127,127`: 4,530 pixels on kind 3 and
+  4,608 on kind 4, out of a frame of 64,000.
 
-  **Reaching them does not need hours of play either**, and the way is
-  worth writing down before somebody spends them. The party's whole
-  overland position is four numbers, all of them in memory the save
-  restores: the area id the adventuring loop reads into `0x84DC` comes
-  from the area record at `+0x1E4`; the position is the two words at
-  `+0x186` and `+0x188`; the word at `+0x1CC` must be zero for the travel
-  view rather than the interior one; and the disk number at `0x5376` has
-  to be the area's own — `0x19` on disk 6, `0x1A` on disk 7, `0x1B` on
-  disk 8. So a **scratch copy** of the disk with one slot's save files
-  edited to those values puts a party on any of the three, and
-  `--watch 49F3:1 --watch 49FA:1` says whether it worked before anything
-  else is believed. Such a save stays on the machine that made it and is
-  never committed; what travels is the recipe, which is the sentence
-  above.
+  **The recipe this section used to carry did not work, and the corrected
+  one is below.** What was written was that four numbers a save restores
+  put a party on any of the three: the area id at record `+0x1E4`, the
+  position words at `+0x186` and `+0x188`, the interior word at `+0x1CC`,
+  and "the disk number at `0x5376`". Two of those five are wrong as an
+  instruction. `0x5376` is a **data-segment global and not a save
+  field**, so nothing can be edited there; and the area id at `+0x1E4` is
+  only the byte the adventuring loop copies into `0x84DC` — driven, it
+  changes what the automap records the map *under* and moves nothing.
+  With it alone set to `0x1A` the program still comes up on view kind 2,
+  on disk 6, drawing area 25's country.
 
-  Nothing here needed it, because slot **J** of the edition's own shipped
-  saves is already standing on view kind 2 — which is why §4 is four
-  keystrokes rather than a walk.
+  What actually moves a party between the three, measured by grafting a
+  second slot's file over the first in halves until the byte that carried
+  the view kind fell out, is **one byte in the slot's `savgam?.dat`**:
+
+  | file offset | what | how it was read |
+  | --- | --- | --- |
+  | `0x3206` | **the view kind** — 1 is the interior grid, 2, 3 and 4 the three wilderness areas | it is the only byte in the file whose change makes `0x49FA` come up 3 or 4; across the edition's own five shipped slots it is 1 on the four interiors and 2 on the wilderness one |
+  | `0xE25` | the disk the area's files are loaded from, and the one that **sticks** | driven, `0x5376` holds it from the end of the load onward; it is 3, 3, 8, 8 and 6 on the five shipped slots, which is each slot's own disk |
+  | `0x0` | the disk the save was **made** on | it reaches `0x5376` while the load runs and is overwritten before the travel view comes up, so on its own it changes nothing that lasts |
+  | `0x1` | where the **area record's image** begins, so record `+0x186`, `+0x188`, `+0x1CC` and `+0x1E4` are file `0x187`, `0x189`, `0x1CD` and `0x1E5` | the one offset in the file where the four record facts agree at once — column 0..15, row 0..35, the interior word zero, and an area id the zone table has a wilderness row for |
+
+  So the edit that reaches kind 3 is `0x3206` = 3, `0xE25` = `0x0` = 7 and
+  `0x1E5` = `0x1A`; kind 4 is 4, 8 and `0x1B`. The area ids are the zone
+  table's own (`seam_automap.cpp`): 25 on disk 6, 26 on disk 7, 27 on
+  disk 8. `--watch 49F3:1 --watch 49FA:1 --watch 5376:1 --watch 84DC:1`
+  is what says it worked before anything else is believed — all four
+  become 3, 3, 7, `0x1A` at frame 9,552 for kind 3 and 3, 4, 8, `0x1B`
+  for kind 4. Such a save stays on the machine that made it and is never
+  committed; what travels is the table above.
+
+  The position words are the party's **local** column and row on the band
+  it is on, not a column in the 44-wide table: a party left at column 3
+  arrives at column 3 of each of the three, which the status line then
+  prints as 3, 16 and 29. Slot J's own party stands on water on both of
+  the other two, which is a fact about where it stands and not about the
+  seam.
+
+  Nothing before #267 needed any of this, because slot **J** of the
+  edition's own shipped saves is already standing on view kind 2 — which
+  is why §4 is four keystrokes rather than a walk.
 * **A terrain the fog has not been over.** Everything prototyped and
   driven has been grass, coast water and the grey shore between them,
   which is what the area slot J starts on has near its start. Rough
@@ -629,6 +663,20 @@ open rather than be refused.
   that survived the second look — but how legibly it *hazes* a terrain is
   a property of that terrain's own colours, and nobody has seen it over
   one that is already grey.
+
+  **What #267 measured of it, and what it did not.** On the kind-3
+  arrival the fog covers sixteen whole cells — 16 x 24 x 24 / 2 = 4,608
+  pixels — and `frames.py diff` against the seam-off frame counts 4,530.
+  The seventy-eight that are missing are pixels the program had already
+  drawn in palette index 8, where the checker writes the colour that is
+  already there: over ground that is *exactly* the fog's own grey the
+  haze contributes nothing, pixel for pixel, and the cell is marked only
+  by the half of it that is not. On kind 4 the same count is 4,608 of
+  4,608 — no pixel of that window was already index 8. That is arithmetic
+  and not legibility: what is still not settled is a still of rough
+  ground, forest or a road under it, which needs a party standing
+  somewhere those are, and slot J's party stands on water on both of the
+  areas #267 reached.
 
   The lift's version of this gap was sharper and is worth keeping as a
   contrast: **a cell whose art was entirely bright could carry no lift at
