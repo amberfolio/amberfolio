@@ -375,14 +375,18 @@ desktop list above asks.
 And one item that is not the page's and needs no browser, added at the M4
 closeout because the instrument for it landed there (#148):
 
-- [ ] **The two hosts' edge lists, diffed.** Run one leg with `--dump` on
-      the desktop host and the same leg with `--dump` through
-      `tools/drive.mjs`, and `diff` the two `.edges` files. They must be
-      identical — the same ticks, the same levels. Two WAVs agreeing is
-      two renderings agreeing; this compares the machines. §4 has the
-      format and what the trailer is for. Doing it against the *game*
-      also answers §4's first open question, because the divisors in the
-      file are the ones the program actually programmed.
+- [x] **The two hosts' edge lists, diffed** — done, against the game, and
+      it failed the first time (#273). Legs 3, 4 and 5 of
+      [`docs/playable.md`](playable.md) were driven on both hosts off one
+      script each, and the `.edges` files disagreed on every tick in them
+      while agreeing on every count and duration: the two hosts' frame *N*
+      was not the same tick, so the same script pressed its keys at
+      different moments. §4's "What the first diff of two hosts' edge
+      lists found" has what differed, by how much, and why nothing else
+      here could have shown it. All three legs' files are identical now.
+      What is **not** done is §4's first open question — reading the
+      divisors out of one of those files to say which tones this program
+      programs. The files exist; nobody has run `awk` over them.
 
 Nothing above is a blocker for anything: the wasm module itself is checked
 continuously (§5), and the page is the thin layer over it. What is
@@ -496,7 +500,74 @@ The three-writer rule has a use beyond tidiness. A run dumped on both
 hosts produces two `.edges` files that must be **identical** — the same
 ticks, the same levels — and that is a stronger statement than two WAVs
 agreeing, because it compares the machines rather than two renderings of
-them. Diffing them is a person's step and it is in §3's list.
+them.
+
+### What the first diff of two hosts' edge lists found (#273)
+
+The paragraph above stood for two milestones as a thing that *must* be
+true and had never been done against the game. Driving
+[`docs/playable.md`](playable.md)'s legs 3 to 5 on both hosts is where it
+finally was, and it failed — for a reason that was in neither speaker, and
+that nothing else in this apparatus could have shown.
+
+**What differed.** One script, one disk, one leg: leg 3's save. Both hosts
+reported the same stop reason at the same tick and the same step count,
+both wrote the same four files into `\SAVE\`, and three of the four had
+equal digests. The fourth — the slot file itself — did not. The two runs
+stopped on different instructions. The final stills differed by 36 pixels,
+all of them inside the camp screen's animated fire. And the two `.edges`
+files disagreed on **every tick in them**, by 65,536 at the first edge and
+by varying amounts after, while agreeing exactly on how many edges there
+were and what their levels and durations were. That last shape is the
+tell: not a different sound, the *same* sound at a different moment.
+
+**By how much, and why.** `--press KEY@FRAME` did not name the same tick
+on the two hosts. `tools/drive.mjs` kept an absolute schedule — `next +=
+af_ticks_per_second() / 60`, which is `abi.h`'s own run-loop snippet — and
+the SDL host takes its boundary off the machine's clock each time round,
+`box.time() + machine::ega::frame_period`. Those differ because **a slice
+does not end where it was asked to**: a step is atomic, so `run_until`
+finishes the one it is in and overshoots by a step's worth of ticks. The
+SDL host carries that overshoot into the next boundary and the driver
+threw it away, so the desktop's frame ran 19,888 ticks against the
+driver's 19,886.37 and frame *N* drifted apart by about a tick and a half
+a frame — **15,200 ticks by frame 7,600**, which is where leg 0 answers
+the code wheel, and 8,000 more by the end of the leg. Three quarters of a
+frame, at the end of a run twenty-three thousand frames long.
+
+**Why it was invisible until now.** Nothing in the tree drove a program
+long enough or key-heavy enough to feel it. The wasm smoke test's runs are
+four frames; the cross-host comparison §5 ends on is a stop line, which
+this does not move, because a tick budget decides the step count whatever
+happened inside it — `steps=` matched exactly in the failing case and
+proves nothing on its own. And the sessions all replay rather than drive:
+`--replay` takes its key ticks out of the recording and never asks either
+host what a frame is, so the twenty-one game sessions that went through
+the wasm module at the M5 closeout (#177) were silent about it by
+construction. It took a driven run, of a program with a clock in it, with
+the `.edges` file beside the still.
+
+**What it was not.** Not the machine. The same desktop run, recorded and
+handed to the wasm module, verified at 183 checkpoints while its driven
+twin was diverging — every byte of RAM, every device register, at every
+one of them. The two hosts were told to press a key at frame 20,400 and
+pressed it at two different moments; everything downstream is the program
+answering an earlier or later keystroke, exactly as it would have on a
+real machine.
+
+The driver takes its frame off the machine's clock now, as the SDL host
+does. With that one line changed, all three legs' final stills are
+byte-identical, all three `.edges` files are identical, and every file the
+program wrote has the same digest on both hosts. `abi.h`'s advice is not
+wrong where it is aimed — an absolute schedule is what stops a *paced*
+caller drifting against the wall clock, and that is the dev page through
+`pacedAdvance()` (#157). It is wrong for a driver whose whole job is to be
+the other host's twin, and which has no wall clock to drift against.
+
+The lesson is the cheap one and the expensive one at once: **an invariant
+that is only asserted in prose is not asserted.** This one had a tool, a
+format and a paragraph saying the files must be identical, for two
+milestones, and was false the first time somebody ran `diff`.
 
 ### What the box filter actually does
 
@@ -1018,11 +1089,29 @@ why it imports `./host.mjs` with no path in it.
 | `--automap-store` | the exploration sidecar, as `--automap-store` does there — the same object, the same filenames and the same bytes, in this module's own filesystem rather than a directory. Turned on after the files are in and before the program is loaded, because turning it on is what reads the working table back. |
 | `--dump PREFIX` | `PREFIX.ppm` (the last composed frame), `PREFIX.wav` (the speaker rendered) and `PREFIX.edges` (the speaker as the machine published it, #148) — the same three files the SDL host's `--dump` writes, in the same formats, so a leg run on both hosts can be diffed rather than described. |
 | `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames — the "what did the screen *do*" instrument, which the browser had no equivalent of. |
+| `--replay PATH` | be the run a recording describes, and check it. The recording decides the seams and the speed; nothing else runs, and the answer is the verdict. |
+| `--vfs-list` | every file on the disk after the run, at its own path — what the run left behind, `\SAVE\` included, in the SDL host's spelling. |
+| `--vfs-get PATH` | one file read back through the door after the run, printed as its size and the SHA-256 of the bytes that came back and never as bytes (#273). Repeatable, and the SDL host's flag spelled identically — it is how "the two hosts wrote the same save" becomes a comparison of two digests. |
 | `-- ARGUMENTS` | the command tail, with DOS's leading space. |
 
 Two differences from the desktop host, both deliberate and both worth
-knowing before a comparison is made:
+knowing before a comparison is made — and one that used to be here by
+accident:
 
+- **A frame is the same tick on both hosts**, and was not until #273. The
+  boundary is `machine.time() + Math.trunc(ticksPerSecond() / 60)`, taken
+  off the machine's clock each iteration exactly as the SDL host's
+  `box.time() + ega::frame_period` is, so a slice's overshoot is carried
+  rather than dropped and `--press E@20400` names one tick rather than
+  two. §4's "What the first diff of two hosts' edge lists found" is what
+  that cost while it was untrue.
+- **It carries an empty directory** (#273). A directory the walk put
+  nothing into is made anyway — a put and the remove that leaves the name,
+  because the ABI has no `mkdir` and should not grow one — and the disk
+  line says how many with `dirs=`. A freshly installed copy's `\SAVE\` is
+  empty, so this is not a corner: it is the first disk anybody drops on
+  the page, and until it was carried the two committed sessions recorded
+  over a pristine disk were refused here before a step was taken.
 - **Key names take either spelling.** `--press KeyA@60` is the browser's
   name for the key and `--press A@60` is SDL's; both resolve, through
   `host.mjs`'s one scancode table and no second one. That is so a leg
@@ -1074,15 +1163,16 @@ node .../drive.mjs <dir> P.EXE --until 40000000 >web.txt
 diff <(grep '^amberfolio: stop' desktop.txt) <(grep '^amberfolio: stop' web.txt)
 ```
 
-**It does not replay a recording, and that is a decision** (#147). The
-wasm module verifies recordings through `af_machine_verify_recording`,
-and `hosts/web/tests/smoke.mjs` asks it that on every CI run — over
-`spin.rec` and over a recording built through the ABI — so the question
-"does this target reproduce a recorded run" is already asked of the web
-host continuously. Adding a `--replay` here would change which process
-asks it, not whether it is asked. This tool is for *driving* a program:
-keys, seams, dumps and a throughput number, which is what the web host
-did not have.
+**It replays a recording too**, since the M5 closeout audit. It did not,
+and the paragraph here used to say that was a decision (#147): the wasm
+module verifies recordings through `af_machine_verify_recording` and
+`hosts/web/tests/smoke.mjs` asks it that on every CI run, so a `--replay`
+would change which process asked, not whether it was asked. What changed
+the answer is that a **game** session cannot be asked by CI at all — its
+disk is a player's — so the only place the question can be put to the
+wasm module about a real run is a command somebody types.
+`tests/sessions/README.md` is where the answers are kept, and they are now
+23 of 23.
 
 **It reads nothing but the directory it is given.** No game content is in
 it and none may ever be — not bytes, not names, not screen text
