@@ -475,17 +475,42 @@ constexpr std::uint16_t image_draw_frame = 0x041F8;
 constexpr std::uint16_t screen_redraw_offset = 0x27D9;
 
 /// The screen, in the character cells the frame drawer counts in: the
-/// whole of it but the bottom row, which is where the game keeps its
-/// command bars and where this one puts its way out.
+/// interior, because **the drawer's border falls outside the rectangle
+/// on all four sides**. A box of (left, top, right, bottom) puts its
+/// horizontal runs on rows `top - 1` and `bottom + 1` and its two
+/// vertical runs in columns `left - 1` and `right + 1`, and the cells
+/// named are what is left for a title and for text.
 ///
-/// The top is row one and not row zero. The frame puts its title on the
-/// box top row itself rather than on the border, so a box that started at
-/// zero would have its border above the screen and its title clipped by
-/// the edge - which is exactly what the first driven attempt looked like.
-constexpr std::uint16_t list_frame_left = 0;
+/// So the widest a full screen can be is one in and one up from the
+/// edges, which is the camp panel's own rectangle in
+/// `seam_encamp_fix.cpp` and is where these numbers now come from. The
+/// first version of this screen asked for the whole of it — column zero
+/// to column `0x27`, and a bottom of `0x17` — and got both of the
+/// defects a person looking at it reported:
+///
+///   * **The corners were busted.** A vertical run in column `-1` or
+///     column `0x28` is not clipped: the video window is row-major and
+///     eight pixels to a byte, so the byte before a scanline's first is
+///     the *previous* scanline's last. The left border came out at the
+///     right-hand edge one pixel row high and the right border at the
+///     left-hand edge one pixel row low — which is why the two chains
+///     were two pixel rows out of phase with each other, and why each
+///     showed only one of its two end caps.
+///   * **The way out sat on the border.** A bottom of `0x17` puts the
+///     lower run on row `0x18`, and row `0x18` is the screen's last —
+///     the row every bar in this game is drawn on and the row this
+///     screen puts `EXIT` on. One row up is `0x16`, which leaves the
+///     border on `0x17` and the whole of the bottom row to the way out.
+///
+/// The top is row one and not row zero, and that one is not new. The
+/// frame puts its title on the box top row itself rather than on the
+/// border, so a box that started at zero would have its border above
+/// the screen and its title clipped by the edge - which is exactly what
+/// the first driven attempt looked like.
+constexpr std::uint16_t list_frame_left = 1;
 constexpr std::uint16_t list_frame_top = 1;
-constexpr std::uint16_t list_frame_right = 0x27;
-constexpr std::uint16_t list_frame_bottom = 0x17;
+constexpr std::uint16_t list_frame_right = 0x26;
+constexpr std::uint16_t list_frame_bottom = 0x16;
 constexpr std::uint16_t list_frame_style = 0;
 
 /// The colours: the game's own bright for a title and a highlighted line,
@@ -507,7 +532,13 @@ constexpr unsigned list_rows_visible = 10;
 /// under both of a batch's budgets with the frame beside them.
 constexpr std::size_t list_rows_per_pass = 5;
 constexpr std::uint16_t list_name_column = 1;
+
+/// The way out, on the screen's own last row - below the frame, where
+/// this game draws every bar it has. It starts at column zero and spans
+/// the row, because clearing the bar it covers is its second job.
 constexpr std::uint16_t list_exit_row = 0x18;
+constexpr std::uint16_t list_exit_column = 0;
+constexpr std::size_t list_row_cells = 40;
 
 /// Where the right-hand column starts: far enough over that the
 /// longest caption and number cannot reach it.
@@ -1323,6 +1354,23 @@ enum class claimable : std::uint8_t {
   return ctx.call_program(image, draw_string_entry, where);
 }
 
+/// The way out, and the whole of the row it is on.
+///
+/// **Padded across all forty cells and drawn from column zero**, which is
+/// not decoration. The frame's lower border now stops at row `0x17`
+/// (above), so row `0x18` is no longer painted by the box — and what was
+/// on it is the adventuring screen's own command bar, which this screen
+/// is opened from. Four characters at column one leave the rest of that
+/// bar's words standing beside them. The program's string drawer paints
+/// a cell rather than only its lit pixels, so a line of spaces is the
+/// clear, and it costs no extra call.
+[[nodiscard]] list_line exit_line() {
+  list_line line;
+  line.add(" EXIT");
+  line.pad_to(list_row_cells);
+  return line;
+}
+
 /// One pass of the journal's own screen. True when the screen is finished.
 ///
 /// **Painted over several arrivals**, because one batch cannot hold it: a
@@ -1358,10 +1406,9 @@ enum class claimable : std::uint8_t {
       nothing.add("THE GAME HAS NOT SENT YOU HERE YET.");
       static_cast<void>(draw_line(ctx, image, nothing, list_row_colour,
                                   list_first_row + 1, list_name_column));
-      list_line exit;
-      exit.add("EXIT");
+      list_line exit = exit_line();
       return draw_line(ctx, image, exit, list_title_colour, list_exit_row,
-                       list_name_column);
+                       list_exit_column);
     }
   }
 
@@ -1394,10 +1441,9 @@ enum class claimable : std::uint8_t {
     return false;
   }
 
-  list_line exit;
-  exit.add("EXIT");
+  list_line exit = exit_line();
   return draw_line(ctx, image, exit, list_title_colour, list_exit_row,
-                   list_name_column);
+                   list_exit_column);
 }
 
 /// Put the whole screen back, through the routine the program itself
