@@ -284,11 +284,12 @@ What M5 left in place:
   *recordings*, so `scripts/sweep.py --targets contrast` runs in the
   `guards` job on every push (#277) — 24 sessions, 10 checks, 0 failures,
   no disk anywhere. `tests/sessions/README.md`'s "The matrix, by seam" is
-  the whole of it in one table. 21 of the 23 game sessions were also
+  the whole of it in one table. **All 23** game sessions have been
   replayed on the wasm module and diffed against the desktop host's seam
-  and host-service lines, call for call and tick for tick; the two that
-  were not are refused by name before a step is taken, over a `\SAVE\`
-  a browser cannot carry because it is empty.
+  and host-service lines, call for call and tick for tick; the last two
+  went through in #273, which taught `drive.mjs` to carry the empty
+  `\SAVE\` a fresh installation has — a put and the remove that leaves
+  the name, since the ABI has no `mkdir` and is not getting one.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
   canonical machine-state serialization, a recording that is keys, ticks
   and hashes and no content at all, and verification on all four targets

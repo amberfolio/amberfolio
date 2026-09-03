@@ -748,6 +748,84 @@ of its own that writes a file below the root, then lists it, reads it
 back and removes it; the SDL host's own smoke case does the same three
 against a directory on disk and then looks at the disk.
 
+### Legs 3, 4 and 5, on both hosts, compared (#273)
+
+The two sections above are doors. This is the walk through them: legs 3,
+4 and 5 driven on the wasm module against a player's copy, from the same
+script the desktop host was given, and the artefacts diffed —
+`docs/hosts.md` §4's method, which is `--dump` on both and compare the
+files. Five scripts, because leg 3 is a round trip and leg 5 is two
+transactions:
+
+| | disk it starts from | what the script does |
+| --- | --- | --- |
+| leg 3, save | pristine | legs 0 and 1, then `ENCAMP`, `SAVE`, slot A — 74 keys, to tick 458,181,888 |
+| leg 3, load | the directory that run wrote | the code wheel, `LOAD SAVED GAME`, slot A |
+| leg 4 | the shipped save slots | slot A, the twenty-one moves to the armourer, `Y`, `BUY`, `BUY`, out, `VIEW`, `ITEMS` |
+| leg 5, the cure | the same | slot A, the route to Sune's temple at 3,1, `HEAL`, `CURE BLINDNESS` cast anyway and paid for, `VIEW` |
+| leg 5, the sale | the same | slot A, leg 4's route, `APPRAISE`, `GEMS`, `SELL`, out, `VIEW` |
+
+And the results, which are the same word each time:
+
+| | stop line | final still | `.edges` | files written |
+| --- | --- | --- | --- | --- |
+| leg 3, save | identical | identical | identical | identical |
+| leg 3, load | identical | identical | identical | identical |
+| leg 4 | identical | identical | identical | — |
+| leg 5, the cure | identical | identical | identical | — |
+| leg 5, the sale | identical | identical | identical | — |
+
+"Identical" is meant literally. The stop line is core's own and matches
+character for character, `cs:ip` included — leg 3's save ends at
+`steps=114545472 ticks=458181888 frames=23041 cs=04C4 ip=1AA5` on both.
+The stills are compared with `scripts/frames.py diff`, which says `same`
+rather than a pixel count. The `.edges` files differ only in line endings,
+because the desktop host writes them through a Windows text stream. The
+files are compared by SHA-256 through `--vfs-get` on both hosts (#273's
+addition to `drive.mjs`): leg 3's save writes four files into `\SAVE\`
+and all four digests agree, the slot file's included.
+
+The `.wav` files do **not** agree and are not expected to: the desktop
+renders at 48 kHz and the page at 44.1 kHz. That is why the edge list
+exists (`docs/hosts.md` §4).
+
+Reading the numbers off the stills, since a matching still is only worth
+what is on it: leg 4 ends on `FIGHTER1'S ITEMS` with `HAND AXE` at the
+bottom of the pack; leg 5's cure ends on the sheet at `PLATINUM 1386`,
+which is this document's own recorded figure for the paid case, two
+hundred platinum below the 1586 a declined run leaves; leg 5's sale ends
+on the same sheet at `GEMS 3` and `PLATINUM 1606`, having started at
+`GEMS 4` and 1586.
+
+Two honest notes on that last row. The sale was driven at the
+**armourer**, not at the general store at 12,10 where this document first
+recorded it — the two have the same five-word bar and `APPRAISE` is on
+both, and reusing leg 4's proven route is a shorter script than a second
+walk across the district. And the gem fetched 100 gp here against the 10
+recorded above, because the screen shows a rolled valuation
+(`THE GEM IS VALUED AT 100 GP.`) and this run rolled differently: the
+transaction is the claim, the price is not. There is one more prompt than
+this document had: `G` opens the valuation over a `YOU CAN : SELL KEEP`
+bar, and `S` is what sells.
+
+**And the recordings, which are the stronger claim.** Every committed
+session over these legs' disks was handed to the wasm module through
+`--replay` and verified — `save` at 254 checkpoints, `party` at 144,
+`load` at 100, `temple` at 181. `save` and `party` are the two that could
+not be handed to it at all before (`tests/sessions/README.md`), and what
+was in the way was an empty `\SAVE\`, which a directory-walking host had
+no file to carry. It carries one now.
+
+**What driving them found, and no replay could have.** The two hosts'
+frame *N* was not the same tick, so "the same script on both hosts" was
+not the same run: `--press E@20400` reached the program at two different
+moments, and leg 3's save wrote a different slot file on each. The
+recording verified while the driven pair diverged, because a recording
+names ticks and never asks a host what a frame is. `docs/hosts.md` §4's
+"What the first diff of two hosts' edge lists found" is the whole of it —
+what differed, by how much, and why nothing already in the tree could
+have shown it.
+
 ---
 
 ## Leg 7 — a camp, and the Encamp Fix (M5-E1 #172, M5-E1a #186)
@@ -1727,7 +1805,8 @@ given fresher ones: the person's items are #274 (successor to #147 and
 what this machine refuses is #275 (successor to #166, which is closed),
 and each seam's own residual is its own issue — #267 for the fog, #268
 for the automap, #269 for the Encamp Fix, #236 and #270 for the journal,
-#273 for legs 3 to 5 on the web.
+and #273 for legs 3 to 5 on the web — which is closed, and its line
+below says what the walk through it turned up.
 
 Two of them are **decisions** rather than a worklist — nobody is coming,
 and the entries stay because a procedure that quietly stopped mentioning
@@ -1822,12 +1901,20 @@ what it skips would be worth less than one that says so.
   checkboxes and the directory drop are checked by a node harness and by
   reading, not by looking. `docs/hosts.md` §3 is still where a person
   closes that.
-- **Legs 3 to 5 on the web.** The door that blocked them is open (#146,
-  leg 6's last section): a path goes into the VFS, the directories on the
-  way are made in core, and both web hosts hand over what is below the
-  root. Nobody has driven those three legs against a player's copy on the
-  wasm module and diffed them against the desktop runs above, which is
-  what would make them legs rather than a mechanism.
+- **Legs 3 to 5 on the web — done, and it found something** (#273). All
+  three were driven on the wasm module against a player's copy from the
+  same scripts the desktop host was given, and every artefact agrees:
+  identical stop lines, identical final stills, identical `.edges`, and
+  identical SHA-256s for the four files leg 3's save writes. Leg 6's
+  "Legs 3, 4 and 5, on both hosts, compared" has the table. Two things
+  had to change for it and both were the driver's rather than the
+  machine's: `--press KEY@FRAME` named a different tick on each host, and
+  a directory-walking host could not carry the empty `\SAVE\` a fresh
+  installation has. What is left of this line is narrow and named
+  elsewhere: the sale was driven at the armourer rather than at the
+  general store at 12,10 — same bar, same command, shorter route — and
+  nobody has driven leg 5's `--watch` half on the web, because `--watch`
+  is the desktop host's flag and no web equivalent has been asked for.
 - **Audio beyond "there was one."** The first sound this program makes is
   in combat. `docs/hosts.md` §4 now measures the speaker — the edge list
   a run published, the box filter's DC offset, the two hosts' sample

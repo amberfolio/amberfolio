@@ -310,7 +310,7 @@ would read as a table of everything. **So a game session is checked by
 the desktop host only**, and the cross-target claim below rests on the
 sessions whose disks are here.
 
-## And 21 of the 23 on the wasm module (#177)
+## And 23 of the 23 on the wasm module (#177, #273)
 
 `docs/replay.md`'s claim is that a recording is keys, ticks and hashes,
 so a *different build of the machine* either reproduces it or does not.
@@ -324,9 +324,10 @@ call, down to `automap-update calls=2 last=3 at=220978596` and
 `journal-open calls=1 last=131136 at=424917732`. Each of the six
 enhancements has both an exercised session and an idle one inside them.
 
-**The two that do not go through are a finding about a host's door and
-not about a machine**, and the machine's answer is the good kind —
-refused by name before a step is taken:
+**The other two go through since #273**, and what was in the way was a
+host's door rather than a machine. Until it, they were refused by name
+before a step was taken — which is the good kind of answer, and is the
+only reason this paragraph is a history rather than a bug report:
 
     party  replay refused line=126 why=the filesystem holds a different number of files value=120
     save   replay refused line=126 why=the filesystem holds a different number of files value=120
@@ -334,12 +335,32 @@ refused by name before a step is taken:
 Both are recorded over the **pristine** disk, whose `\SAVE\` is an
 *empty* directory. `drive.mjs` puts a directory into the module one file
 at a time, because that is what a browser has to do, and an empty
-directory has no file to carry. So the file count differs, the preamble
-catches it, and the replay stops rather than diverging. It is the one
-shape of session the wasm module cannot be handed, and a browser meets it
-the first time somebody drops a freshly installed copy. Every session
-recorded over a disk with files in its `\SAVE\` — which is every seam's
-pair, both halves — goes through.
+directory has no file to carry. So the root held 120 entries where the
+recording named 121, the preamble caught it, and the replay stopped
+rather than diverging.
+
+The fix is in the driver and not in core, and the shape of it is worth
+keeping. The ABI has no `mkdir` and is not getting one: nothing in
+PLAN.md §3's INT 21h subset removes a directory either, and
+`af_machine_vfs_remove` says at length why neither belongs above the
+interface that owns path semantics. What it does have is both halves of
+one — a put makes the directories on the way to a file, and a remove
+takes the file and leaves the directory ("an empty directory left behind
+is a name with nothing in it", abi.h). So `drive.mjs` makes an empty
+directory by putting a zero-byte placeholder in it and taking it away
+again; the placeholder's name is the driver's own and never survives the
+call, and the disk line reports how many with `dirs=`. The other
+candidate — a placeholder left in the player's own `\SAVE\` — is worse
+for a reason this library cares about above all others: it would change
+the player's installation, and every session here pins its disk by name,
+size and SHA-256.
+
+    save    replay verified checkpoints=254 keys=148 pulls=0
+    party   replay verified checkpoints=144 keys=40  pulls=0
+
+So the shape of session the wasm module could not be handed — the one a
+browser meets the first time somebody drops a freshly installed copy — is
+gone, and 23 of the 23 go through.
 
 Each was recorded by the desktop host — MSVC over SDL — and reproduced by
 Emscripten's toolchain, a second compilation of the core and a second

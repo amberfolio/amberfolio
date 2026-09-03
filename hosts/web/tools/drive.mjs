@@ -48,11 +48,41 @@
 // `--press KEY@FRAME` counts in 60 Hz frames of *virtual* time, and so
 // does `--dump-every`, for the same reason the SDL host does: a keystroke
 // and the still that shows what it did should be named in the same units,
-// and virtual frames are the only units both hosts agree on. One frame is
-// `af_ticks_per_second() / 60` ticks, advanced by exactly one slice per
-// iteration — abi.h's own run-loop snippet, which is also what app.mjs
-// does. A key is posted at the top of its frame, before that frame's
-// slice runs.
+// and virtual frames are the only units both hosts agree on. A frame is
+// one slice per iteration, ending `Math.trunc(af_ticks_per_second() / 60)`
+// ticks after **where the last slice actually stopped**, and a key is
+// posted at the top of its frame, before that frame's slice runs.
+//
+// **That last clause is the whole of #273, and it cost a leg.** The
+// boundary used to be an absolute schedule — `next += ticksPerSecond() /
+// 60`, abi.h's own run-loop snippet, the fraction and all. The SDL host's
+// is `box.time() + machine::ega::frame_period`, taken off the machine's
+// own clock each time round. Those are not the same schedule, because a
+// slice does not end where it was asked to: a step is atomic, so
+// `run_until` finishes the one it is in and overshoots by a step's worth
+// of ticks. The SDL host carries that overshoot into the next boundary
+// and this loop threw it away, so the desktop's frame was 19,888 ticks
+// against this one's 19,886.37 and the two hosts' frame *N* drifted apart
+// by about a tick and a half a frame — 15,200 ticks by frame 7,600, where
+// `docs/playable.md`'s leg 0 answers the code wheel.
+//
+// What that bought, driving leg 3 on both hosts off one script: the same
+// four files written into `\SAVE\`, three of them byte for byte, a
+// `SAVGAMA.DAT` that was not, a stop on a different instruction, and a
+// final still whose campfire was on a different frame of its animation.
+// Nothing was wrong with the machine — the desktop run of that script
+// recorded and handed to this module verifies, 183 checkpoints — and
+// nothing was wrong with the script. The two hosts were told to press a
+// key at frame 20,400 and pressed it at two different moments.
+//
+// So the frame comes off the machine's clock here too, and the same
+// script on the two hosts is now the same run: byte-identical final
+// still, identical `.edges`, identical digests for every file the program
+// wrote. abi.h's advice is not wrong where it is aimed — an absolute
+// schedule is what keeps a *paced* caller from drifting against the wall
+// clock, which is the dev page through `pacedAdvance()` (#157). This
+// program is unpaced and has no wall clock to drift against; what it has
+// to agree with is the other host.
 //
 // One budget is coarser here than on the desktop, and the difference is
 // the ABI's rather than this program's: `af_machine_run_until` takes a
@@ -85,6 +115,7 @@
 // preset needs; a factor below 1 means a browser cannot keep up and the
 // number says by how much.
 
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -124,6 +155,12 @@ const AUDIO_SAMPLE_RATE = 44100;
 /// A minute of it, at most, when `--dump` asks for a WAV — the same bound
 /// and the same `(truncated)` the SDL host's capture has.
 const AUDIO_CAPTURE_LIMIT = AUDIO_SAMPLE_RATE * 60;
+
+/// The file an empty directory is made with and then unmade (#273). A
+/// legal DOS short name, this program's own rather than anything off the
+/// caller's disk, and never on the machine after `putDirectory()`
+/// returns — see there for why the ABI has no `mkdir` to call instead.
+const emptyDirectoryPlaceholder = 'AFMKDIR.TMP';
 
 // --- Key names -----------------------------------------------------------
 //
@@ -231,6 +268,8 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
   --vfs-list            list every file on the disk after the run, at its
                         own path — what the run left behind, including
                         anything the program wrote below the root
+  --vfs-get PATH        read one file back after the run and print its
+                        size and SHA-256, never its bytes (repeatable)
   --speed xt|turbo|at|386
   --trace               keep the trace ring and the service-call channel
   --dump PREFIX         write PREFIX.ppm, PREFIX.wav and PREFIX.edges
@@ -260,6 +299,7 @@ export function parseArgs(argv) {
     replay: null,
     listSeams: false,
     listVfs: false,
+    vfsGets: [],
     speed: null,
     trace: false,
     automapStore: false,
@@ -338,6 +378,8 @@ export function parseArgs(argv) {
       opts.seams.push(next());
     } else if (arg === '--vfs-list') {
       opts.listVfs = true;
+    } else if (arg === '--vfs-get' && i + 1 < argv.length) {
+      opts.vfsGets.push(next());
     } else if (arg === '--document' && i + 1 < argv.length) {
       opts.documents.push(next());
     } else if (arg === '--journal-store' && i + 1 < argv.length) {
@@ -471,9 +513,30 @@ export function encodeWav(samples, rate) {
 ///
 /// A refusal is the useful answer and not a failure: a real installation
 /// has files in it DOS could never have named, and core's own
-/// canonicalizer is the one thing entitled to say which (abi.h). A
-/// directory with nothing in it simply never comes up — a VFS holds what
-/// a run reads, and nothing reads an empty directory.
+/// canonicalizer is the one thing entitled to say which (abi.h).
+///
+/// **An empty directory is carried too** (#273), and it used not to be.
+/// A freshly installed copy of this game has an empty `\SAVE\`, so a
+/// directory with nothing in it is not a curiosity — it is what the first
+/// disk anybody drops on the page looks like. What that cost was named in
+/// `tests/sessions/README.md`: `party` and `save` are the two committed
+/// sessions recorded over a pristine disk, and both were refused here
+/// before a step was taken, `the filesystem holds a different number of
+/// files value=120`, because the desktop's root had a `SAVE` entry and
+/// this one did not.
+///
+/// The ABI has no `mkdir`, deliberately — nothing in PLAN.md §3's INT 21h
+/// subset removes a directory either, and `af_machine_vfs_remove` says at
+/// length why neither belongs above the interface that owns path
+/// semantics. What it does have is the two halves of one: a put makes the
+/// directories on the way to a file, and a remove takes the file and
+/// leaves the directory ("an empty directory left behind is a name with
+/// nothing in it", abi.h). So an empty directory is made by putting a
+/// zero-byte file inside it under a name of this host's own choosing and
+/// taking it away again, and what is left is what a browser's picker
+/// would have to leave behind too. Nothing about the path is invented:
+/// the directory's own components are the caller's and core canonicalizes
+/// them, and the placeholder's name never survives the call.
 ///
 /// **Except when the refusal is "no room" (#158).** That one is not the
 /// machine working; it is a file the program will ask for later that is
@@ -486,12 +549,39 @@ function putDirectory(machine, dir) {
   const skipped = [];
   const statuses = [];
   let taken = 0;
+  let made = 0;
 
+  // A put, and then the remove that leaves the name behind. Answers
+  // whether the directory is there afterwards; a path core refuses is
+  // refused here for the same reasons a file's is, and says so in the
+  // same list.
+  const makeDirectory = (path) => {
+    const status = machine.vfsPut(`${path}/${emptyDirectoryPlaceholder}`, new Uint8Array(0));
+    if (status !== AF_OK) {
+      statuses.push(status);
+      skipped.push(`${path}/ (${describeSkip(status)})`);
+      return false;
+    }
+    machine.vfsRemove(`${path}/${emptyDirectoryPlaceholder}`);
+    made += 1;
+    return true;
+  };
+
+  // How many things beneath `at` the machine now has — files put and
+  // directories made. Zero means the subtree contributed nothing, and a
+  // directory that contributed nothing is one the machine would not
+  // otherwise hold: an installation's empty `\SAVE\` is the case, and a
+  // directory whose every file core refused is the other.
   const walk = (at, prefix) => {
+    let here = 0;
     for (const entry of readdirSync(at, { withFileTypes: true })) {
       const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
       if (entry.isDirectory()) {
-        walk(join(at, entry.name), path);
+        const beneath = walk(join(at, entry.name), path);
+        // A subtree that put anything has already made this directory on
+        // the way; one that put nothing needs it made, and only then is
+        // it something the machine holds.
+        if (beneath !== 0 || makeDirectory(path)) here += 1;
         continue;
       }
       if (!entry.isFile()) {
@@ -502,15 +592,17 @@ function putDirectory(machine, dir) {
       const status = machine.vfsPut(path, bytes);
       if (status === AF_OK) {
         taken += 1;
+        here += 1;
         continue;
       }
       statuses.push(status);
       skipped.push(`${path} (${describeSkip(status)})`);
     }
+    return here;
   };
 
   walk(dir, '');
-  return { taken, skipped, incomplete: anySkipLostAFile(statuses) };
+  return { taken, made, skipped, incomplete: anySkipLostAFile(statuses) };
 }
 
 /// Stand a machine up, run the program, and report. Answers the process
@@ -535,9 +627,13 @@ export async function drive(opts) {
   // (docs/hosts.md §4).
   machine.reset();
 
-  const { taken, skipped, incomplete } = putDirectory(machine, opts.dir);
+  const { taken, made, skipped, incomplete } = putDirectory(machine, opts.dir);
+  // `dirs=` is the directories that had to be made because nothing went
+  // into them (#273). Always printed, including as `dirs=0`: a field that
+  // appears only sometimes is one a script has to guess about, and on a
+  // freshly installed copy of this game the number is one.
   say(
-    `amberfolio: disk files=${taken} skipped=${skipped.length} ` +
+    `amberfolio: disk files=${taken} dirs=${made} skipped=${skipped.length} ` +
       `bytes=${machine.vfsBytesUsed()}`,
   );
   for (const name of skipped) say(`amberfolio: disk skipped ${name}`);
@@ -704,7 +800,9 @@ export async function drive(opts) {
     return 0;
   }
 
-  const perFrame = machine.ticksPerSecond() / 60;
+  // The machine's own frame, in whole ticks: `machine::ega::frame_period`,
+  // which is `pit_input_hz / 60` and is what the SDL host advances by.
+  const perFrame = Math.trunc(machine.ticksPerSecond() / 60);
   const audioPerFrame = Math.round(AUDIO_SAMPLE_RATE / 60);
   const captured = opts.dumpPrefix === null ? null : [];
   let capturedSamples = 0;
@@ -789,7 +887,7 @@ export async function drive(opts) {
       ended = AF_RUN_END_TICK_BUDGET;
       break;
     }
-    if (opts.until !== 0 && next >= opts.until) {
+    if (opts.until !== 0 && machine.time() >= opts.until) {
       ended = AF_RUN_END_TICK_BUDGET;
       break;
     }
@@ -821,13 +919,19 @@ export async function drive(opts) {
       }
     }
 
+    // The next boundary is a frame past **where the machine actually is**,
+    // not a frame past where the last one was asked to stop — the SDL
+    // host's `box.time() + frame_ticks`, and the difference between the
+    // two is a run that agrees with the desktop's and one that does not
+    // (#273, "Frames are the unit" above).
+    //
     // The last slice is clamped into the budget rather than allowed to
     // overshoot it by most of a frame, so `--until T` asks the machine
     // for tick T and no further and the stop can be reproduced. What it
     // then ends on is T or the first tick past it, because a step is
     // atomic and `run_until` finishes the one it is in — the machine's
     // granularity, which the stop report states, and not this loop's.
-    next += perFrame;
+    next = machine.time() + perFrame;
     if (opts.until !== 0 && next > opts.until) next = opts.until;
     const status = machine.runUntil(next);
     frame += 1;
@@ -893,6 +997,7 @@ export async function drive(opts) {
   reportSeamsFired(machine);
   reportHostServices(machine);
   if (opts.listVfs) reportVfs(machine);
+  for (const path of opts.vfsGets) reportVfsGet(machine, path);
 
   // --- Throughput --------------------------------------------------------
   //
@@ -998,6 +1103,30 @@ function reportVfs(machine) {
   for (const entry of listing) {
     say(`amberfolio: vfs ${entry.path} ${entry.size}`);
   }
+}
+
+/// One file read back through the door after the run, as its size and
+/// the SHA-256 of the bytes that came back — the SDL host's `--vfs-get`,
+/// spelled identically (#273).
+///
+/// **The digest, and never the bytes.** A player's file has no business
+/// in a log, and the digest of what was read is the stronger claim
+/// anyway: it says the whole file came back through `vfsGet()` and says
+/// what it was. Which is what a leg needs, because "the two hosts wrote
+/// the same save" is a comparison of two digests and nothing else — the
+/// desktop's over a real directory, this one's over the in-memory
+/// filesystem a browser handed a file at a time.
+///
+/// Hashed here rather than through `vfsFingerprint()`, which hashes the
+/// file inside core without the read: what is being checked is the door.
+function reportVfsGet(machine, path) {
+  const bytes = machine.vfsGet(path);
+  if (bytes === null) {
+    say(`amberfolio: vfs ${path} is not a file here`);
+    return;
+  }
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  say(`amberfolio: vfs ${path} ${bytes.length} sha256=${digest}`);
 }
 
 /// One line per seam, in the shape the SDL host's `--seams` prints —

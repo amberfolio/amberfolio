@@ -2335,7 +2335,7 @@ if (missing.length === 0 && sessions !== null) {
   // Two files taken, nothing skipped: the program at the top and the one
   // in the subdirectory, whose bytes are counted in the total.
   check(
-    /^amberfolio: disk files=2 skipped=0 bytes=35$/m.test(walkedSaid),
+    /^amberfolio: disk files=2 dirs=0 skipped=0 bytes=35$/m.test(walkedSaid),
     `the driver did not walk the subdirectory:\n${walkedSaid}`,
   );
   check(
@@ -2441,7 +2441,7 @@ if (missing.length === 0 && sessions !== null) {
   // exiting now. Counting the lines against the number the report claims
   // is the assertion that would have caught it: a truncated list is a
   // count that does not add up, whichever line it stopped at.
-  const claimed = /^amberfolio: disk files=\d+ skipped=(\d+) /m.exec(overrunSaid);
+  const claimed = /^amberfolio: disk files=\d+ dirs=\d+ skipped=(\d+) /m.exec(overrunSaid);
   check(claimed !== null, `the overrun disk printed no report:\n${overrunSaid.slice(0, 2000)}`);
   if (claimed !== null) {
     const printed = overrunSaid
