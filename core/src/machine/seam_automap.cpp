@@ -963,6 +963,15 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
 //     set and the shut instances are on three of them; without the table
 //     the other two draw their doors as archways.
 //
+// All four rules that can end in a leaf — a shut face, a kind seen shut
+// on this map, a kind only the table names, and a map nothing is known
+// about — draw the same two yellow pixels, so the panel **counts** the
+// leaves it draws by which rule drew each (`automap_door_evidence`). It
+// is a counter and not a decision: the pixels are what they were before
+// it was kept, nothing in the machine reads it, and it exists because
+// every driven run up to #268 was over New Phlan, where the last of the
+// four is the only one that ever ran, and a still could not say so.
+//
 // The durable identity of a wall graphic is (disk, WALLDEF block, row):
 // the same block reused in another slot or another area is the same
 // pictures. That is what the table is keyed on, and it is why it is a
@@ -1027,19 +1036,35 @@ constexpr std::array<door_graphics, 19> door_table{
   return block > 0xFF ? wall_set_unknown : block;
 }
 
+/// The two sources' answers, kept apart (#268).
+///
+/// The renderer wants the union and asks `automap_state` for it. What
+/// wants them apart is a person looking at a still: a leaf drawn because
+/// *this map* had a shut face of that kind and a leaf drawn because the
+/// shipped table said so are the same yellow pixels, and until they were
+/// counted separately no screenshot could tell you which rule had run.
+struct door_evidence {
+  /// Kinds seen shut on this map, scanned on arrival — the rule.
+  std::uint16_t seen{};
+  /// Kinds the shipped table names for the wall sets this map has
+  /// loaded — the fallback.
+  std::uint16_t from_table{};
+};
+
 /// Which wall faces of this map are doors: the map's own shut faces, and
 /// the table's answer for the wall sets this map has loaded.
-[[nodiscard]] std::uint16_t door_nibbles_of(cpu::processor& cpu,
+[[nodiscard]] door_evidence door_nibbles_of(cpu::processor& cpu,
                                             std::uint16_t ds,
                                             const map_grid& grid,
                                             std::uint8_t disk) {
-  std::uint16_t mask = 0;
+  door_evidence evidence;
   for (unsigned y = 0; y < automap_map_side; ++y) {
     for (unsigned x = 0; x < automap_map_side; ++x) {
       for (const unsigned lane : lanes) {
         const std::uint8_t face = face_of(grid, x, y, lane);
         if (face != 0 && style_of(grid, x, y, lane) >= face_shut_door) {
-          mask = static_cast<std::uint16_t>(mask | (1U << face));
+          evidence.seen =
+              static_cast<std::uint16_t>(evidence.seen | (1U << face));
         }
       }
     }
@@ -1053,11 +1078,12 @@ constexpr std::array<door_graphics, 19> door_table{
     for (const door_graphics& known : door_table) {
       if (known.disk == disk && known.block == block &&
           ((known.rows >> row) & 1U) != 0) {
-        mask = static_cast<std::uint16_t>(mask | (1U << nibble));
+        evidence.from_table =
+            static_cast<std::uint16_t>(evidence.from_table | (1U << nibble));
       }
     }
   }
-  return mask;
+  return evidence;
 }
 
 /// Is this face a door?
@@ -1078,6 +1104,25 @@ constexpr std::array<door_graphics, 19> door_table{
     return true;
   }
   return ((doors >> face) & 1U) != 0;
+}
+
+/// Which of the four rules made this face a door (#268).
+///
+/// Called only where `is_door` has already said yes, so it is a
+/// classification and not a second decision: nothing it answers is read
+/// back by anything that draws. `seen` is the map's own shut kinds, and
+/// a kind in it is the rule's however many other witnesses agree.
+[[nodiscard]] automap_door_evidence door_evidence_for(
+    std::uint8_t face, std::uint8_t style, std::uint16_t doors,
+    std::uint16_t seen) noexcept {
+  if (style >= face_shut_door) {
+    return automap_door_evidence::shut;
+  }
+  if (doors == 0) {
+    return automap_door_evidence::no_evidence;
+  }
+  return ((seen >> face) & 1U) != 0 ? automap_door_evidence::seen_kind
+                                    : automap_door_evidence::table_kind;
 }
 
 // ---------------------------------------------------------------------------
@@ -1502,7 +1547,9 @@ void learn_appearance(machine& box, std::uint16_t ds, const sample& now,
                       const map_grid& grid, std::uint16_t banks) {
   automap_state& state = box.automap();
   state.begin_appearance(now.area, now.geo, banks);
-  state.set_door_nibbles(door_nibbles_of(box.processor(), ds, grid, now.disk));
+  const door_evidence doors =
+      door_nibbles_of(box.processor(), ds, grid, now.disk);
+  state.set_door_nibbles(doors.seen, doors.from_table);
 
   std::uint16_t wanted = 0;
   for (unsigned y = 0; y < automap_map_side; ++y) {
@@ -1548,6 +1595,8 @@ void render(automap_state& state, const automap_record& map,
   }
 
   const std::uint16_t doors = state.door_nibbles();
+  const std::uint16_t seen_kinds = state.door_nibbles_seen();
+  state.begin_doors_drawn();
   const auto cell = static_cast<int>(automap_cell_pixels);
 
   for (unsigned cy = 0; cy < automap_map_side; ++cy) {
@@ -1598,15 +1647,31 @@ void render(automap_state& state, const automap_record& map,
         // property of the border rather than of a side: one recorded only
         // on the far cell would otherwise draw as a blank wall.
         const bool far_shut = far_face != 0 && far_style >= face_shut_door;
-        const bool door =
-            near_face != 0 ? (is_door(near_face, near_style, doors) || far_shut)
-                           : is_door(far_face, far_style, doors);
+        bool door = false;
+        automap_door_evidence why = automap_door_evidence::shut;
+        if (near_face != 0) {
+          if (is_door(near_face, near_style, doors)) {
+            door = true;
+            why = door_evidence_for(near_face, near_style, doors, seen_kinds);
+          } else if (far_shut) {
+            door = true;
+          }
+        } else if (is_door(far_face, far_style, doors)) {
+          door = true;
+          why = door_evidence_for(far_face, far_style, doors, seen_kinds);
+        }
         const std::uint8_t face_style = near_face != 0 ? near_style : far_style;
         const std::uint8_t wall =
             wall_colour(state, near_face != 0 ? near_face : far_face,
                         frame_colour, floor_colour);
 
         if (door) {
+          // Which of the four rules put it there (#268). A counter and
+          // nothing else: the pixels below are what they were before it
+          // was kept, and a host prints it so a still of a leaf is
+          // evidence for a rule rather than an inference about one.
+          state.count_door_drawn(why);
+
           // The wall-colour flanks first, at the ordinary one-pixel
           // thickness, so the leaf stays joined to the wall on either
           // side of it rather than floating in a gap; then the leaf over

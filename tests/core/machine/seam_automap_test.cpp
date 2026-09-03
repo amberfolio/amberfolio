@@ -1159,6 +1159,50 @@ TEST(AutomapPanel, WithNoEvidenceAtAllAWayThroughIsDrawnAsADoor) {
             14);
 }
 
+TEST(AutomapPanel, ThePanelCountsWhichRuleDrewEachLeaf) {
+  // All four rules draw the same yellow, and #268 is the issue that says
+  // so: every driven run before it was over a map where only the last of
+  // them could run, and no still could tell you that. So the panel keeps
+  // a tally, and this is the one that says the tally names the rule.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.face(7, 5, lane_west, 4, 1);  // a way through, kind 4
+  r.face(7, 4, lane_west, 4, 2);  // and kind 4 is shut on the cell ahead
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  const automap_door_tally& drawn = r.map_state().doors_drawn();
+  EXPECT_EQ(drawn.shut, 1u) << "the shut face itself needs no rule";
+  EXPECT_EQ(drawn.seen_kind, 1u) << "the way through, by this map's own "
+                                    "evidence";
+  EXPECT_EQ(drawn.table_kind, 0u);
+  EXPECT_EQ(drawn.no_evidence, 0u) << "the mask is not empty, so the "
+                                      "pre-nibble rule is off";
+  EXPECT_EQ(r.map_state().door_nibbles_seen(), 1U << 4U);
+  EXPECT_EQ(r.map_state().door_nibbles_table(), 0u);
+}
+
+TEST(AutomapPanel, WithNoEvidenceTheTallySaysTheOldestRuleDrewIt) {
+  // The counterpart, and the state every driven leg before #268 was in.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.face(7, 5, lane_west, 4, 1);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+
+  const automap_door_tally& drawn = r.map_state().doors_drawn();
+  EXPECT_EQ(drawn.no_evidence, 1u);
+  EXPECT_EQ(drawn.seen_kind, 0u);
+  EXPECT_EQ(drawn.table_kind, 0u);
+  EXPECT_EQ(drawn.shut, 0u);
+}
+
 TEST(AutomapPanel, AShutDoorRecordedOnlyOnTheFarCellStillShows) {
   // Being shut is a property of the border rather than of a side, and
   // four half-edges in the shipped data are recorded on one cell only.

@@ -148,6 +148,18 @@
 //     from, read off the program's own loads rather than inferred from
 //     anything, and they are how the cheats seam's module was found.
 //
+//     And since #268, when the automap seam is on, which evidence made
+//     that map's door leaves — the map's own shut faces, and the seam's
+//     table of every shut face in the shipped data:
+//
+//         amberfolio: automap doors frame=011000 disk=8 area=0D geo=0D seen=0200 table=0200 drawn shut=1 kind-seen=1 kind-table=0 no-evidence=0
+//
+//     `seen` and `table` are the two sources' masks and `drawn` counts
+//     the leaves on the panel by which of the four rules put each one
+//     there. Printed when any of it moves. All four rules draw the same
+//     yellow, so without this a leaf on a screenshot cannot be told from
+//     a leaf the table guessed — which is exactly what #268 was about.
+//
 //   --automap-store  keep the automap's exploration beside the save
 //
 //     M5-E2c (#173). What the automap seam has explored is observation
@@ -562,6 +574,7 @@
 #include "amberfolio/host/journal_ocr.h"
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/host/journal_store.h"
+#include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/dos.h"
@@ -1136,6 +1149,68 @@ void print_overlay_loads(const machine::machine& box, std::uint64_t& printed) {
   }
   printed = newest;
 }
+
+/// What the last `--trace` line said about the automap's door rule, so
+/// the next one is printed only if something moved.
+struct door_rule_log {
+  bool said{false};
+  std::uint8_t disk{};
+  std::uint8_t area{};
+  std::uint8_t geo{};
+  std::uint16_t seen{};
+  std::uint16_t from_table{};
+  machine::automap_door_tally drawn;
+
+  friend bool operator==(const door_rule_log&, const door_rule_log&) = default;
+};
+
+/// Which evidence made the automap's door leaves on this map (#268).
+///
+/// The panel draws a leaf where a wall face's *kind* has been seen shut —
+/// on this map, or in the seam's table of every shut face in the shipped
+/// data — and the two are the same yellow pixels. Every driven leg up to
+/// #268 was over New Phlan, which has no shut face on it and whose wall
+/// set is not in the table, so the panel there fell all the way through
+/// to the older "every passable face is a door" rule and no still could
+/// show otherwise. This line is what makes a still evidence: `seen` is
+/// the map's own shut kinds and `table` is the shipped table's, and
+/// `drawn` counts the leaves actually on the panel by which of the four
+/// rules put each one there — a shut face, a way through whose kind was
+/// seen shut on this map, a way through only the table names, and a way
+/// through on a map where nothing is known at all.
+///
+/// `machine::automap()` and not a bus cycle, for `print_watch`'s reason:
+/// a `--trace` that changed what the machine did could not be used to
+/// say a run was clean. It is observation the seam already keeps
+/// (`automap.h`) — nothing here is machine state, and with the automap
+/// seam off there is nothing to print.
+void print_door_rule(const machine::machine& box, door_rule_log& log,
+                     std::uint64_t frame_index) {
+  const machine::automap_state& map = box.automap();
+  if (!map.appearance_learned()) {
+    return;
+  }
+  const door_rule_log now{.said = true,
+                          .disk = map.settled_disk(),
+                          .area = map.settled_area(),
+                          .geo = map.settled_geo(),
+                          .seen = map.door_nibbles_seen(),
+                          .from_table = map.door_nibbles_table(),
+                          .drawn = map.doors_drawn()};
+  if (log == now) {
+    return;
+  }
+  log = now;
+  std::fprintf(stderr,
+               "amberfolio: automap doors frame=%06llu disk=%u area=%02X"
+               " geo=%02X seen=%04X table=%04X drawn shut=%u kind-seen=%u"
+               " kind-table=%u no-evidence=%u\n",
+               static_cast<unsigned long long>(frame_index), now.disk, now.area,
+               now.geo, now.seen, now.from_table, now.drawn.shut,
+               now.drawn.seen_kind, now.drawn.table_kind,
+               now.drawn.no_evidence);
+}
+
 /// What `--journal-ocr` means when nobody said otherwise: the program to
 /// run. A build that carries its own engine takes this value as "use the
 /// one you carry", because a player who typed nothing did not ask for a
@@ -2775,6 +2850,7 @@ int main(int argc, char** argv) try {
 
   machine::run_end ended = machine::run_end::stopped;
   std::uint64_t overlays_printed = 0;
+  door_rule_log doors_printed;
 
   // The player is primed before the first slice: `next_tick()` answers
   // only once `apply()` has looked at the recording, and an event
@@ -2960,6 +3036,7 @@ int main(int argc, char** argv) try {
     drain_edges();
     if (opts.trace) {
       print_overlay_loads(box, overlays_printed);
+      print_door_rule(box, doors_printed, frame_index);
     }
     if (!opts.watches.empty()) {
       print_watch(box, opts.watches, watch_seen, frame_index);
