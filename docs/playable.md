@@ -1117,7 +1117,7 @@ fourth point draws on the way out:
 
 ```
                  FIX: INTERRUPTED!
-HEALED 17 HP WITH 5 SPELLS.
+HEALED 17 HP WITH 5 SPELLS IN 0:05.
 FIGHTER1          1/17      SHORT 16
 FIGHTER2          1/18      SHORT 17
 ...AND 4 MORE.
@@ -1130,10 +1130,12 @@ program's own font at the program's own column positions. The list is
 **two rows and a tail**, not six, because the box holds four rows and the
 pending-cures warning owns one of them; the `...and N more.` line is the
 proven design's own answer to a list that does not fit, and it is drawn
-rather than paged. The summary has no time clause, which is correct and
-deliberate: the command dialled days, and the game's clock is an hour and
-two minute digits with no day counter, so a number there would be a wrap
-printed as an answer.
+rather than paged. **The summary's `IN 0:05` is five minutes and not
+thirty days**, which is the distinction to hold on to: the clause says
+how long the rest *took*, and the game's own watch ended this one five
+minutes in. The clause used to be absent here entirely {D} the command had
+dialled days, and this seam believed the game kept no day count. It does
+(#269), and `docs/seams.md` §10 has where.
 
 Two other things this leg settled by being run:
 
@@ -1175,6 +1177,127 @@ the seam. The points have addresses now and every read still refuses one
 outside conventional memory, and the run is back to the three notices
 below. That is the cheapest possible instance of this document's whole
 point: the suite was green throughout.
+
+### A party the game hurt (#269)
+
+Everything above is a party a **seam** hurt: `cheat-wound-party` writes
+the hit point, and what it cannot stand in for is the wound *statuses* a
+fight leaves behind. This is the same command over a party the **game**
+put down, in a fight the game started, and it is the last half leg 7 was
+missing.
+
+**The fight is four squares from where slot B stands, and it is not a
+wandering encounter.** Walking south out of `4,3` is met at `4,6` by the
+council guard — *"Halt. Your presence is not authorized. Leave."* over a
+`YES NO` bar. Answering `N` is a battle, against a garrison of twenty-odd
+guards, and slot B's six are outnumbered from the first round. No hours
+of play and no wandering: it is six keystrokes past the load.
+
+```
+--seam code-wheel --seam encamp-fix --seam cheat-kill-all
+--press A@7600 --press Return@7650        the code wheel
+--press L@8950 --press B@9200             LOAD SAVED GAME, slot B
+--press Right@10600 --press Right@10850   turn south
+--press Up@11100 --press Up@11850 --press Up@12100      4,3 -> 4,6
+--press N@12600                           refuse the guard
+--press Q@13500 ... 910 of them, 150 apart      QUICK, round after round
+--pull cheat-kill-all@150000              survive it
+--press Q/N/Return@150200 ... 400 apart   the end of the battle
+--press E@181500 --press N@182500         EXIT the loot, leave the rest
+--press E@184000                          ENCAMP
+--press F@186000                          the Fix
+```
+
+Three of those want explaining.
+
+**`Q` is pressed nine hundred times because `QUICK` is one round, not the
+battle.** It hands the party's turn to the computer and comes back to the
+tactical bar, so a script that presses it once watches the same prompt for
+twenty thousand frames — which reads exactly like a seam that broke, and
+did for one afternoon here. The damage tracks presses and not elapsed
+time: 88 presses left the party 15 hit points short of full, 310 left it
+24, and 910 left it 73 — the last of which counts the maxima the fight's
+own experience raised as well as the damage.
+
+**`cheat-kill-all` is pulled to survive and not to win.** It does 120
+points to every standing enemy (`docs/seams.md` §10) and touches nothing
+on the party's side, so every hit point the party is missing at the camp
+screen was taken off it by the game's own combat, by the game's own
+rolls. Without it the guards win: this is leg 2's method with a party
+worth camping afterwards.
+
+**`E` twice and `N` once is the way out of a won battle**: `EXIT` on the
+loot bar, `NO` to *"there is still treasure left, do you want to go back
+and claim it"*, and then `ENCAMP` on the party's own bar. Two of those
+are the same letter, which is a coincidence and not a trick.
+
+What the fight left, off the loot screen at frame 181,000:
+
+```
+FIGHTER1  7    FIGHTER2 10    FIGHTER3 25
+THIEF     0    CLERIC   30    MAGIC-USER 12
+```
+
+**The THIEF is drawn in red on nothing**, which is the game saying they
+went down in the fight. Two others are more than half gone, and the
+maxima have moved since the earlier halves of this leg — the experience
+from a fight this size levels the front rank, so the deficits below are
+against 17, 18, 42, 31, 30 and 19.
+
+Then ENCAMP at 184,021 and the Fix at 186,000:
+
+```
+amberfolio: watch frame=184021 ds=0CDC 49F3=02 6DCA=00 6DDA=00
+amberfolio: watch frame=187585 ds=0CDC 49F3=02 6DCA=11 6DDA=00
+amberfolio: watch frame=187638 ds=0CDC 49F3=02 6DCA=11 6DDA=01
+amberfolio: watch frame=196113 ds=0CDC 49F3=02 6DCA=00 6DDA=00
+```
+
+`6DCA=11` is **seventeen days**, dialled on the program's own rest clock
+after the five cures the cleric held were spent — the worst deficit left
+after them was the THIEF's sixteen, plus the day of slack. The rest
+screen says so in the program's own hand:
+
+```
+REST TIME:  17:05:15
+```
+
+and the rest runs to the end without the game interrupting it, which is
+the first driven camp here that does.
+
+**And the report, on the pass of the menu after it:**
+
+```
+                 FIX: PARTY HEALED
+HEALED 73 HP WITH 5 SPELLS IN 17:05:15.
+THE PARTY IS AT FULL HIT POINTS.
+```
+
+Read the last clause first, because it is #269's other half. **`IN
+17:05:15` is a duration the box could not print until now**, and the
+number is checkable twice over: it is the rest screen's own `17:05:15`
+above, and it is the game's clock going from `14:31` at the camp to
+`19:46` at the report, seventeen days apart. `docs/seams.md` §10 has
+where the days come from and the two routes that found them.
+
+**And then the finding this leg was not filed to make.** The exception
+list is empty and the reason column is not reached: the party comes out
+17/18/42/31/30/19, the THIEF included. **A fight's own wound statuses are
+inside the healing gate.** Unconscious and dying are two of the four
+codes the program's own Cure Wounds applier accepts, and its own rule is
+to promote a dying character to unconscious and then revive them — so a
+member a fight leaves down is a member this command *mends*, counted in
+the 73 hit points and never named. What reaches the reason column is
+dead, stoned or gone, and a party that survived a fight is not carrying
+those.
+
+So #196's clause is closed and what replaces it is narrower and different
+in kind: the report's reason column is still drawn only over rosters the
+unit suite writes, and the way to reach it on the program is a **death**
+rather than a knockdown. Two deeper runs of this same fight were made
+looking for one — 1,150 presses with the pull at 186,000, and the same
+again — and both came out with the party whole and nobody dead. The
+honest-gaps entry below says so.
 
 
 ---
@@ -1828,17 +1951,24 @@ what it skips would be worth less than one that says so.
   through. What a dungeon exercises is the same 3D view, the same ECL
   events and the same movement code the city already runs over different
   data — and the map edge itself, which *was* a mechanism, is covered.
-- **A party hurt by the game rather than by a cheat** (#196). Leg 7's
-  third half closes the days arithmetic and the exception list, and it
-  does it with `cheat-wound-party` rather than with a fight: the party is
-  put on one hit point by a debug seam, not by anything in the game. What
-  that leaves open is narrow and worth naming — nobody has driven a party
-  hurt by **combat** and then camped, so the one thing this substitution
-  cannot speak for is a roster carrying the wound *statuses* a fight
-  leaves behind (unconscious, dying, and the conditions resting cannot
-  mend). The report's reason column for those is drawn by tests over
-  rosters the unit suite writes, and by nothing else. The way to close it
-  is still the way #196 named: a leg that fights, survives and camps.
+- **The Encamp Fix's report, on a member no cure can reach** (#269).
+  **The gap that is gone** is the one that used to be here: a party hurt
+  by the game rather than by a cheat. Leg 7's fourth half fights the
+  council guard with slot B, survives it, and camps {D} the party comes to
+  the camp screen with four members down and the thief on nothing, all of
+  it taken off them by the game's own combat, and the Fix puts every one
+  of them right. What that leg found is why this entry is narrower rather
+  than closed. **A fight's wound statuses are inside the healing gate**:
+  unconscious and dying are two of the four codes the program's own cure
+  applier accepts, so a member a fight leaves down is one the command
+  mends and never names. The report's reason column is reached by dead,
+  stoned and gone, and a party that survived its fight carries none of
+  them {D} so that column is still drawn only over rosters the unit suite
+  writes. Closing it wants a **death** on a party that lives, which two
+  deeper runs of the same fight did not produce, and it is a question
+  whether it is worth the hours: what the column prints is a pointer into
+  the program's own status table, so what a driven run would add is that
+  the pointer arithmetic is right rather than that the seam is.
 - **The automap, off the city streets** (#173). Leg 8 drives it through
   New Phlan and nowhere else, and two things follow from that. The first
   is the part the store was built for: a **map change**, where the

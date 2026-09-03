@@ -290,27 +290,42 @@
 // and the prompt is a stack byte in a frame that is gone before the loop
 // turns over.
 //
-// **The elapsed time cannot express a rest of a day or more.** The
-// game's clock is an hour and two minute digits with no day counter, so
-// the summary drops its time clause whenever the command dialled days
-// (`scratch_days_asked`) rather than print the remainder of a wrap as
-// though it were an answer. A rest under a day — the memorization the
-// cures queue back, which is the usual one — reports exactly.
+// **The elapsed time says days now** (#269), and the sentence that used
+// to be here said it could not. It claimed the game's clock was an hour
+// and two minute digits with no day counter, so the summary dropped its
+// time clause whenever the command dialled days rather than print the
+// remainder of a wrap as though it were an answer. Dropping was the right
+// answer to the premise and **the premise was wrong**: the clock is seven
+// words and a calendar, and three of them were all this seam had ever
+// read. `area_clock_slots` below has the two routes that settled it. What
+// the summary prints is the program's own `DD:HH:MM` shape, days first,
+// for exactly the rests that used to get nothing.
 //
 // **Hit points have come back on a driven run**, which they had not when
 // this comment was first written: `docs/playable.md` leg 7's second half
 // drives a wounded party on a player's copy and watches two of the
 // program's own cures land. **And a party the cures cannot finish has
-// been driven too**, which it had not when the sentence that used to be
-// here was written: leg 7's third half puts the party on one hit point
+// been driven too**: leg 7's third half puts the party on one hit point
 // each with `cheat-wound-party` (#196), so the cures run out, the days
 // arithmetic below runs for real, and the report's exception list comes
-// out with rows in it. What is left is narrower and is #269: the party
-// is hurt by a debug seam rather than by combat, so the wound *statuses*
-// a fight leaves behind — unconscious, dying, the conditions resting
-// cannot mend — still reach the report's reason column only through
-// rosters the unit suite writes. The mechanism has a public test either
-// way
+// out with rows in it. **And a party the game itself hurt** (#269), which
+// is what that substitution could not speak for: leg 7's fourth half
+// takes slot B into the council guard's own fight, comes out with four
+// members down and one of them on nothing, and the Fix puts every one of
+// them right.
+//
+// What that leg found is worth keeping, because it is not what it was
+// filed to find. **A fight's own wound statuses are inside the healing
+// gate.** Unconscious and dying are two of the four codes the program's
+// own Cure Wounds applier accepts, so a member a fight leaves down is a
+// member this command *mends* {D} the report counts them in its hit points
+// and never names them. The reason column is reached by the codes a fight
+// does not leave behind on a party that survived it (dead, stoned, gone),
+// and it is still drawn only over rosters the unit suite writes. That is
+// narrower than the gap it replaces and it is somebody else's issue to
+// close, if it is worth closing at all.
+//
+// The mechanism has a public test either way
 // (`tests/core/machine/seam_encamp_test.cpp` drives the handlers over a
 // camp the test writes, and `tests/programs`' camp stand-in drives the
 // same shape through the whole machine on all four targets), and one
@@ -592,18 +607,51 @@ constexpr std::uint16_t report_frame_colour = 0x0F;
 constexpr std::uint16_t report_body_colour = 0x0A;
 constexpr std::uint16_t report_warning_colour = 0x0E;
 
-/// The game's clock, three words in the area record: the hour, and the
-/// minutes as tens and units. The same three the program's own status
-/// line reads, and the reason the report can say how long the rests took
-/// when the clock on screen can only say what time it is now.
-constexpr std::uint16_t area_clock_minute_units = 0x018E;
-constexpr std::uint16_t area_clock_minute_tens = 0x0190;
-constexpr std::uint16_t area_clock_hours = 0x0192;
+/// The game's clock: **seven words in the area record**, at `0x018C + 2n`,
+/// which the program treats as one counter and carry-normalizes in a
+/// single forward pass against the caps below.
+///
+/// Slot 1 is minute units — the slot a step of the party bumps — and above
+/// it are minute tens, hours, **days**, months and years. Slot 0 is a
+/// sub-minute unit nothing in the program bumps directly, and this seam
+/// ignores it for the same reason the program's own status line does.
+///
+/// **This seam used to read three of the seven** (#269), and concluded
+/// from the three that the game keeps no day count, which cost the report
+/// its elapsed clause whenever the command dialled days. Two routes say
+/// otherwise. The first is the program's own clock-advance routine, which
+/// loads all seven words, bumps the named slot and normalizes after every
+/// bump. The second is what the **top** slot's overflow does: rather than
+/// carry, it walks the roster and adds one to each member's `+0x30` word,
+/// and `+0x30` is the **Age** the character sheet draws. A counter whose
+/// overflow ages the party by a year is a year, which fixes the two below
+/// it as months and days.
+constexpr std::uint16_t area_clock_slots = 0x018C;
+constexpr unsigned clock_slots = 7;
+constexpr unsigned clock_minute_units_slot = 1;
+constexpr unsigned clock_days_slot = 4;
 
-/// Minutes in a day, for a run that crosses midnight — the clock carries
-/// no day counter here, so an elapsed time that reads backwards is one
-/// wrap and not a fault.
+/// The seven caps the program carries that clock against, in its own data
+/// segment: `10, 10, 6, 24, 30, 12, 256` as this edition ships them.
+///
+/// **Read rather than written down**, on the same reasoning as
+/// `max_rest_days`: how many minutes are in this world's hour and how many
+/// days in its month are the program's numbers, and a seam that read the
+/// clock through its own copy of them would be doing arithmetic the
+/// program had not agreed to.
+constexpr std::uint16_t data_clock_caps = 0x363A;
+
+/// Minutes in a day, which the caps above also say (`10 * 6 * 24`). Named
+/// here because the summary divides by it to split an elapsed time into
+/// days and a time of day, and **checked** against them where the clock is
+/// read rather than assumed to agree.
 constexpr unsigned minutes_in_a_day = 24 * 60;
+
+/// What `scratch_clock_before` holds when the clock could not be read at
+/// the instant the command began. A minute of the day is at most 1439, so
+/// this is a value the reading cannot produce, and the summary drops its
+/// elapsed clause rather than difference against a zero it invented.
+constexpr std::uint16_t clock_unreadable = 0xFFFF;
 
 /// The program's own wound-status names, and the stride between them: a
 /// table of Pascal strings in the data segment, indexed by the status
@@ -636,18 +684,20 @@ constexpr unsigned scratch_state = 2;
 constexpr unsigned scratch_points_before = 3;
 constexpr unsigned scratch_clock_before = 4;
 
-/// The days the command dialled, kept from the ask to the report.
+/// The **day** of the game's own calendar the command began on, beside
+/// the minute of that day above.
 ///
-/// **Not for the arithmetic — for knowing when not to print a number.**
-/// The game's clock is an hour and two minute digits and carries no day
-/// counter (`area_clock_*` below), so a difference between two readings
-/// can only express less than a day. A rest of one day or more comes back
-/// with a clock that says something true about the time of day and
-/// nothing about how long the party slept, and the summary drops its
-/// elapsed clause rather than print the remainder as though it were the
-/// answer. A wrong number is worse than no number, and the days the
-/// command asked for are on the game's own calendar anyway.
-constexpr unsigned scratch_days_asked = 5;
+/// Two words rather than one because an elapsed time is a difference and
+/// this seam's words are sixteen bits: the calendar reaches about ninety
+/// thousand days, which does not fit, while the day count **truncated to
+/// a word** differences correctly for any rest shorter than sixty-five
+/// thousand days. `max_rest_days` is 99, so the truncation cannot be
+/// wrong here.
+///
+/// This slot used to hold the days the command dialled, and its only use
+/// was knowing when *not* to print a number (#269). The clock can answer
+/// now, so the slot holds the other half of the answer instead.
+constexpr unsigned scratch_days_before = 5;
 
 /// How the command is going, in `scratch_state`.
 ///
@@ -1339,37 +1389,88 @@ class report_line {
   }
 }
 
-/// The game's clock in minutes, from the three words of the area record
-/// the program's own status line reads. Zero when it cannot be read,
-/// which costs the summary its elapsed clause and nothing else.
-[[nodiscard]] unsigned clock_minutes(cpu::processor& cpu, std::uint16_t ds) {
+/// The game's clock, split the way an elapsed time needs it: where in the
+/// day the party is, and which day of the program's own calendar that is.
+///
+/// `readable` false costs the summary its elapsed clause and nothing
+/// else, which is the fail-quiet direction every read in this file takes.
+struct clock_reading {
+  bool readable{false};
+  unsigned minute_of_day{0};
+  std::uint16_t day{0};
+};
+
+/// Read it, out of the program's own seven words and against the
+/// program's own seven caps.
+///
+/// The place value of each slot is the product of the caps below it, so
+/// the arithmetic is the one the program's own carry does and no constant
+/// here says how long an hour is. A cap of zero would make that product
+/// collapse, so a table with one in it is refused rather than used.
+[[nodiscard]] clock_reading read_clock(cpu::processor& cpu, std::uint16_t ds) {
   std::uint16_t offset = 0;
   std::uint16_t segment = 0;
   if (!read_word(cpu, ds, data_area_record, offset) ||
       !read_word(cpu, ds, word_after(data_area_record, 2), segment) ||
       segment == 0) {
-    return 0;
+    return {};
   }
-  std::uint16_t hours = 0;
-  std::uint16_t tens = 0;
-  std::uint16_t units = 0;
-  if (!read_word(cpu, segment, word_after(offset, area_clock_hours), hours) ||
-      !read_word(cpu, segment, word_after(offset, area_clock_minute_tens),
-                 tens) ||
-      !read_word(cpu, segment, word_after(offset, area_clock_minute_units),
-                 units)) {
-    return 0;
+
+  std::array<std::uint16_t, clock_slots> cap{};
+  std::array<std::uint16_t, clock_slots> slot{};
+  for (unsigned nth = 0; nth < clock_slots; ++nth) {
+    const auto step = static_cast<std::uint16_t>(nth * 2);
+    if (!read_word(cpu, ds, word_after(data_clock_caps, step), cap[nth]) ||
+        cap[nth] == 0 ||
+        !read_word(cpu, segment,
+                   word_after(offset, static_cast<std::uint16_t>(
+                                          area_clock_slots + step)),
+                   slot[nth])) {
+      return {};
+    }
   }
-  return (unsigned{hours} * 60U) + (unsigned{tens} * 10U) + unsigned{units};
+
+  clock_reading out;
+  unsigned place = 1;
+  for (unsigned nth = clock_minute_units_slot; nth < clock_days_slot; ++nth) {
+    out.minute_of_day += unsigned{slot[nth]} * place;
+    place *= unsigned{cap[nth]};
+  }
+  if (place != minutes_in_a_day) {
+    // The caps below the day slot are how long this world's day is, and
+    // `minutes_in_a_day` is what the summary divides by. A table that
+    // disagreed would be a clock this report does not know how to print,
+    // and the honest answer to one is no clause rather than a number in
+    // units nobody named.
+    return {};
+  }
+  out.readable = true;
+  unsigned day_place = 1;
+  unsigned days = 0;
+  for (unsigned nth = clock_days_slot; nth < clock_slots; ++nth) {
+    days += unsigned{slot[nth]} * day_place;
+    day_place *= unsigned{cap[nth]};
+  }
+  out.day = static_cast<std::uint16_t>(days);
+  return out;
 }
 
-/// Minutes from `began` to `now`. **The clock wraps at midnight and
-/// carries no day counter here**, so a run that crossed it reads
-/// backwards; one day added back is the answer, and one wrap is the only
-/// case there is — a command that rested a whole day would have stopped
-/// when the party came whole long before.
-[[nodiscard]] unsigned minutes_since(unsigned began, unsigned now) {
-  return now >= began ? now - began : (now + minutes_in_a_day) - began;
+/// Minutes from `began` to `now`, over a calendar that does not wrap.
+///
+/// The day counts are words and the subtraction is done in one, so a
+/// calendar that has run past sixty-five thousand days still differences
+/// correctly for a rest of at most `max_rest_days`. A reading that comes
+/// back **before** the one it started from is a fact that has gone wrong
+/// rather than a midnight, and the answer is no clause at all.
+[[nodiscard]] unsigned minutes_between(const clock_reading& began,
+                                       const clock_reading& now) {
+  if (!began.readable || !now.readable) {
+    return 0;
+  }
+  const auto days =
+      static_cast<unsigned>(static_cast<std::uint16_t>(now.day - began.day));
+  const unsigned reached = (days * minutes_in_a_day) + now.minute_of_day;
+  return reached >= began.minute_of_day ? reached - began.minute_of_day : 0U;
 }
 
 /// Whether the report names this member: somebody the command could not
@@ -1385,7 +1486,9 @@ class report_line {
 ///
 /// A rest restores hit points with no spell spent, so the spell clause is
 /// dropped rather than printed as "with 0 spells"; and a command that
-/// healed nobody says so rather than printing a zero.
+/// healed nobody says so rather than printing a zero. A rest of a day or
+/// more prints its days, which it could not until #269 found where the
+/// program keeps them.
 [[nodiscard]] report_line summary_line(unsigned restored, unsigned casts,
                                        unsigned minutes) {
   report_line line;
@@ -1403,10 +1506,23 @@ class report_line {
     line.add(std::string_view{"No hit points restored"});
   }
   if (minutes != 0) {
+    // The program's own notation for a rest, which is the notation the
+    // player has just watched count down: the rest screen writes
+    // `REST TIME: DD:HH:MM` and leaves the days field off nothing. So a
+    // rest that crossed a day says days first and pads the hours, and one
+    // that did not keeps the two fields it always had.
     line.add(std::string_view{" in "});
-    line.add_number(minutes / 60U);
+    const unsigned days = minutes / minutes_in_a_day;
+    const unsigned time_of_day = minutes % minutes_in_a_day;
+    if (days != 0) {
+      line.add_number(days);
+      line.add(std::string_view{":"});
+      line.add_two_digits(time_of_day / 60U);
+    } else {
+      line.add_number(time_of_day / 60U);
+    }
     line.add(std::string_view{":"});
-    line.add_two_digits(minutes % 60U);
+    line.add_two_digits(time_of_day % 60U);
   }
   line.add(std::string_view{"."});
   line.seal();
@@ -1707,13 +1823,15 @@ class report_line {
 
   const unsigned before = ctx.scratch(scratch_points_before);
   const unsigned restored = party.points > before ? party.points - before : 0U;
-  // Zero minutes means "say nothing about the time", and a command that
-  // dialled days is exactly the case where the clock cannot answer.
-  const unsigned minutes =
-      ctx.scratch(scratch_days_asked) != 0
-          ? 0U
-          : minutes_since(ctx.scratch(scratch_clock_before),
-                          clock_minutes(cpu, ds));
+  // Zero minutes means "say nothing about the time". The before-half is
+  // two of this seam's words and the after-half is read here; a rest of
+  // days differences correctly because the program's own calendar counts
+  // them (#269).
+  const clock_reading began{
+      .readable = ctx.scratch(scratch_clock_before) != clock_unreadable,
+      .minute_of_day = ctx.scratch(scratch_clock_before),
+      .day = ctx.scratch(scratch_days_before)};
+  const unsigned minutes = minutes_between(began, read_clock(cpu, ds));
   const unsigned casts = ctx.scratch(scratch_casts);
 
   // Cleared before the drawing and not after it. A report that could not
@@ -1937,10 +2055,13 @@ void take_the_answer(machine& box, seam_context& ctx) {
     ctx.set_scratch(scratch_state, as_word(run_state::running));
     ctx.set_scratch(scratch_points_before,
                     static_cast<std::uint16_t>(party.points));
+    const clock_reading began = read_clock(cpu, ds);
     ctx.set_scratch(scratch_clock_before,
-                    static_cast<std::uint16_t>(clock_minutes(cpu, ds)));
+                    began.readable
+                        ? static_cast<std::uint16_t>(began.minute_of_day)
+                        : clock_unreadable);
+    ctx.set_scratch(scratch_days_before, began.day);
     ctx.set_scratch(scratch_casts, 0);
-    ctx.set_scratch(scratch_days_asked, 0);
   }
   if (!keyboard_buffer_empty(cpu)) {
     // **This is where the player stops it.** The Fix decides one act per
@@ -1999,7 +2120,6 @@ void take_the_answer(machine& box, seam_context& ctx) {
   // rest the player's own Rest key would have given them.
   const std::uint16_t days = days_to_dial(party);
   cpu.write_word(ds, data_rest_days, days);
-  ctx.set_scratch(scratch_days_asked, days);
   // The rest that is about to happen is this seam's, and point 3 reads
   // that here rather than guessing it from the clock.
   ctx.set_scratch(scratch_rest_is_ours, 1);

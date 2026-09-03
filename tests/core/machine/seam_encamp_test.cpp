@@ -119,6 +119,13 @@ constexpr std::uint16_t draw_string_cleans = 0x0A;
 constexpr std::uint16_t image_message_delay = 0x7E4E;
 constexpr std::uint16_t message_delay_cleans = 0;
 
+/// The game's own clock, and the table it carries itself against (#269):
+/// seven words in the area record at `0x018C + 2n`, and seven caps in the
+/// data segment. Slot 1 is minute units and slot 4 is the day.
+constexpr std::uint16_t area_clock_slots = 0x018C;
+constexpr std::uint16_t data_clock_caps = 0x363A;
+constexpr std::array<std::uint16_t, 7> clock_caps{10, 10, 6, 24, 30, 12, 256};
+
 /// Where this file's stand-in routines count their own entries — two
 /// words of the data segment the seam's facts do not name, so that "the
 /// report was drawn" is a thing the *machine* says rather than a thing
@@ -126,6 +133,13 @@ constexpr std::uint16_t message_delay_cleans = 0;
 constexpr std::uint16_t frame_calls = 0x7000;
 constexpr std::uint16_t string_calls = 0x7002;
 constexpr std::uint16_t delay_calls = 0x7004;
+
+/// And where the string stand-in leaves the **first** line it was handed,
+/// which is the summary. Kept the way the title is and for the same
+/// reason: the elapsed clause is a sentence this seam composes, so it is
+/// one of the two things in the box a test may read (#269).
+constexpr std::uint16_t summary_offset_seen = 0x700C;
+constexpr std::uint16_t summary_segment_seen = 0x700E;
 
 /// And where the frame stand-in leaves the title it was handed, as the
 /// far pointer it arrived as. The title is the one part of the box a test
@@ -247,6 +261,26 @@ struct rig {
     put_word(data_segment, data_cast_anchor, 0);
     put_word(data_segment, static_cast<std::uint16_t>(data_cast_anchor + 2), 0);
     area(true);
+    clock(0, 0);
+  }
+
+  /// The game's own clock, as the program keeps it: the caps table in the
+  /// data segment, and the seven slots in the area record carrying `day`
+  /// and `minute` of that day. Written normalized, which is the only state
+  /// the program's own carry ever leaves it in.
+  void clock(unsigned day, unsigned minute) const {
+    const std::array<unsigned, 7> slot{
+        0,         minute % 10U,      (minute / 10U) % 6U, minute / 60U,
+        day % 30U, (day / 30U) % 12U, day / 360U};
+    for (unsigned nth = 0; nth < clock_caps.size(); ++nth) {
+      const auto step = static_cast<std::uint16_t>(nth * 2);
+      put_word(data_segment, static_cast<std::uint16_t>(data_clock_caps + step),
+               clock_caps[nth]);
+      put_word(
+          area_segment,
+          static_cast<std::uint16_t>(area_offset + area_clock_slots + step),
+          static_cast<std::uint16_t>(slot[nth]));
+    }
   }
 
   /// A party: one record per entry, linked in order and terminated, with
@@ -378,9 +412,9 @@ struct rig {
   /// the last one returned.
   void drawing_routines() const {
     frame_routine();
+    string_routine();
     for (const auto& [at, cleans, counter] :
-         {std::tuple{image_draw_string, draw_string_cleans, string_calls},
-          std::tuple{image_message_delay, message_delay_cleans, delay_calls}}) {
+         {std::tuple{image_message_delay, message_delay_cleans, delay_calls}}) {
       std::uint16_t put = at;
       put_byte(image_load_segment, put++, 0xFF);  // inc word [imm16]
       put_byte(image_load_segment, put++, 0x06);
@@ -399,6 +433,44 @@ struct rig {
     put_word(data_segment, delay_calls, 0);
     put_word(data_segment, title_offset_seen, 0);
     put_word(data_segment, title_segment_seen, 0);
+    put_word(data_segment, summary_offset_seen, 0);
+    put_word(data_segment, summary_segment_seen, 0);
+  }
+
+  /// The string drawer's stand-in, which keeps the **first** line of the
+  /// box — the summary, and the one line in the report whose words are
+  /// this seam's own rather than the program's (#269).
+  ///
+  ///     push bp / mov bp, sp
+  ///     if [string_calls] == 0:
+  ///        [bp+6] -> summary_offset_seen        ; pushed last, so lowest
+  ///        [bp+8] -> summary_segment_seen
+  ///     inc word [string_calls]
+  ///     pop bp / retf 0Ah
+  void string_routine() const {
+    std::uint16_t put = image_draw_string;
+    const auto emit = [&](std::initializer_list<std::uint8_t> bytes) {
+      for (const std::uint8_t byte : bytes) {
+        put_byte(image_load_segment, put++, byte);
+      }
+    };
+    const auto emit_word = [&](std::uint16_t value) {
+      emit({static_cast<std::uint8_t>(value & 0xFFU),
+            static_cast<std::uint8_t>(value >> 8U)});
+    };
+    emit({0x55, 0x89, 0xE5});
+    emit({0x83, 0x3E});  // cmp word [string_calls], 0
+    emit_word(string_calls);
+    emit({0x00});
+    emit({0x75, 0x0C});  // jne over the twelve bytes below
+    emit({0x8B, 0x46, 0x06, 0xA3});
+    emit_word(summary_offset_seen);
+    emit({0x8B, 0x46, 0x08, 0xA3});
+    emit_word(summary_segment_seen);
+    emit({0xFF, 0x06});
+    emit_word(string_calls);
+    emit({0x5D, 0xCA});
+    emit_word(draw_string_cleans);
   }
 
   /// The frame drawer's stand-in, which does one thing the others do not:
@@ -496,6 +568,12 @@ struct rig {
   [[nodiscard]] std::string title() const {
     return pascal_at(word_at(data_segment, title_segment_seen),
                      word_at(data_segment, title_offset_seen));
+  }
+
+  /// And its summary, the same way.
+  [[nodiscard]] std::string summary() const {
+    return pascal_at(word_at(data_segment, summary_segment_seen),
+                     word_at(data_segment, summary_offset_seen));
   }
 
   /// What the BIOS keystroke buffer holds, as a program would read it: the
@@ -1222,6 +1300,92 @@ TEST(SeamEncampFix, ReportsOnTheMenuPassAfterTheRest) {
       << "the party came out of the rest still short";
   EXPECT_EQ(r.lines_drawn(), 2u)
       << "the summary, and the one member still short";
+}
+
+// **How long it took** (#269). The summary is the one line in the box
+// whose words this seam composes, so it is the one line a test may read;
+// what the box looks like around it is still the program's.
+
+TEST(SeamEncampFix, SaysHowLongARestUnderADayTook) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.clock(5, 10 * 60);
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  // The program's own rest, as the clock sees it: seven hours and
+  // thirty-two minutes later on the same day.
+  r.clock(5, (17 * 60) + 32);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.summary(), "No hit points restored in 7:32.")
+      << "hours and minutes, which is what it has always said";
+}
+
+TEST(SeamEncampFix, SaysHowLongARestOfDaysTook) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.clock(5, 10 * 60);
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  // Forty days later, which crosses one of the program's own months — so
+  // the day this reads is the month slot carried into the day slot, and a
+  // reader of the day slot alone would say ten.
+  r.clock(45, (17 * 60) + 32);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.summary(), "No hit points restored in 40:07:32.")
+      << "the program's own DD:HH:MM, which used to be no clause at all";
+}
+
+TEST(SeamEncampFix, SaysNothingAboutTheTimeWhenTheClockDidNotMove) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.clock(5, 10 * 60);
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.summary(), "No hit points restored.")
+      << "no time passed, so there is no clause rather than a zero";
+}
+
+TEST(SeamEncampFix, DropsTheTimeWhenTheClockCouldNotBeRead) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  // A caps table of zeroes is a table this seam refuses rather than
+  // divides by, and the fail-quiet direction costs the clause and
+  // nothing else.
+  for (unsigned nth = 0; nth < clock_caps.size(); ++nth) {
+    r.put_word(data_segment,
+               static_cast<std::uint16_t>(data_clock_caps + (nth * 2)), 0);
+  }
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  r.clock(45, (17 * 60) + 32);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.summary(), "No hit points restored.")
+      << "a clock that could not be read says nothing, not zero";
 }
 
 TEST(SeamEncampFix, ReportsWhatTheCommandDeclinedToDo) {

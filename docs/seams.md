@@ -1724,20 +1724,69 @@ cleric knows a cure and has none memorized can do something about it, and
 one whose nobody knows it cannot. `Interrupted!` is the seventh and it is
 the fourth point's, below.
 
-**The clock cannot say how long a rest of a day or more took.** It is an
-hour and two minute digits with no day counter, so the summary drops its
-time clause whenever the command dialled days rather than print the
-remainder of a wrap as though it were the answer. A rest under a day —
-the memorization the cures queue back, which is the usual one — reports
-exactly.
+**The clock says how long a rest of a day or more took** (#269), and the
+sentence here used to say it could not. The claim was that the game's
+clock is an hour and two minute digits with no day counter, so the
+summary dropped its time clause whenever the command dialled days rather
+than print the remainder of a wrap as though it were the answer.
+Dropping was the right answer to that premise, and **the premise was
+wrong**: three words were all this seam had ever read of a clock that is
+seven.
+
+The clock is a **seven-slot counter** in the area record at `0x018C + 2n`,
+carry-normalized in one forward pass against a table of seven caps in the
+data segment at `0x363A` — `10, 10, 6, 24, 30, 12, 256` as this edition
+ships them. Slot 1 is minute units, and above it are minute tens, hours,
+**days**, months and years. Two routes settle that reading, which is
+§8.1's rule. The first is the program's own clock-advance routine, which
+loads all seven words, bumps the named slot and normalizes after every
+bump. The second is what the **top** slot's overflow does: instead of
+carrying it walks the roster and adds one to each member's `+0x30` word,
+and `+0x30` is the **Age** the character sheet draws — a counter whose
+overflow ages the party by a year is a year, which fixes the two below it
+as months and days.
+
+So the summary prints the elapsed time in the program's own `DD:HH:MM`
+shape, days first, for exactly the rests that used to get nothing — the
+same shape the player has just watched count down on the rest screen. A
+rest under a day keeps the two fields it always had. The seam reads the
+caps rather than carrying its own copy, on the same reasoning as
+`max_rest_days`: how many days are in this world's month is the
+program's number.
 
 **What is measured and what is read off the program.** The box has been
 looked at, on a player's copy, on the desktop host: the title, the
-summary, the line a whole party gets, and — since #196 — the exception
+summary, the line a whole party gets, and {D} since #196 {D} the exception
 list, with its name and current-over-maximum cells, its shortfall column
 and its `...and N more.` tail, in the game's lettering. The wasm module
-took the same acts on the same script. `docs/playable.md` leg 7 has both
+took the same acts on the same script. `docs/playable.md` leg 7 has the
 boxes as they were read off the screen.
+
+**And the elapsed clause, on a party the game itself hurt** (#269). Leg
+7's fourth half takes slot B into the council guard's own fight, survives
+it with `cheat-kill-all` and no help of any other kind, and camps with
+four members down and the thief on nothing:
+
+```
+                 FIX: PARTY HEALED
+HEALED 73 HP WITH 5 SPELLS IN 17:05:15.
+THE PARTY IS AT FULL HIT POINTS.
+```
+
+The duration is checkable twice {D} it is the `REST TIME: 17:05:15` the
+program's own rest screen showed, and it is the game's clock going from
+`14:31` to `19:46` seventeen days apart.
+
+**What that leg found and no test had.** The exception list is empty, and
+that is correct: **a fight's wound statuses are inside the healing gate**.
+Unconscious and dying are two of the four codes the cure applier accepts,
+and its own rule promotes a dying character to unconscious and revives
+them, so a member a fight leaves down is one this command *mends* rather
+than names. The reason column is reached by dead, stoned and gone {D}
+which a party that survived its fight is not carrying {D} and it is
+therefore still drawn only over rosters the unit suite writes.
+`docs/playable.md`'s honest gaps carries that, narrower than the clause
+it replaces.
 
 #### And when the game does not hand the camp screen back (M5-E1c, #194)
 

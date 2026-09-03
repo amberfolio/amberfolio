@@ -32,6 +32,15 @@
 # own cast driver, thirty days dialled on the program's own rest clock,
 # and a report with an exception list in it.
 #
+# **And re-recorded again for #269**, which is the same entry in the
+# README's list once more: the Fix's report can say how long a rest of a
+# day or more took, and this run's rest is thirty days. The recording is
+# the same run to the tick — the same keys, the same 266,477,308 ticks and
+# the same 66,619,327 steps — and **six of its 112 checkpoints moved**,
+# the last six, from tick 254,586,288, which is the box being drawn with
+# one clause more in it. A re-record that had moved anything earlier
+# would have been a finding rather than a re-record.
+#
 # The file and dir lines are names, sizes and SHA-256s of a snapshot of
 # the disk. No byte of the player's installation is here.
 

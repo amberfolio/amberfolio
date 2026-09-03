@@ -2440,6 +2440,14 @@ constexpr std::uint16_t camp_delay_calls = 0x6E0A;
 /// What the report draws for this program's party: the frame once, and
 /// then the summary and one exception line — the hurt member, who is
 /// still seven short because nothing here heals anybody.
+///
+/// **The summary carries no elapsed clause** (#269), and that is a fact
+/// about this program rather than about the seam: it lays down no area
+/// record, so there is no game clock to read and the seam says nothing
+/// about the time rather than differencing a zero it invented. The clause
+/// itself is driven in `tests/core/machine/seam_encamp_test.cpp`, over a
+/// clock the test writes, and looked at on the program in
+/// `docs/playable.md` leg 7.
 constexpr std::uint16_t camp_wanted_frame_calls = 1;
 constexpr std::uint16_t camp_wanted_string_calls = 2;
 
