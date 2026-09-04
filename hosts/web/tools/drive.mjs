@@ -251,6 +251,12 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
   --document PATH       present a document the player holds, by path on
                         this machine (repeatable) — a possession gate,
                         so the file is hashed and dropped
+  --code-wheel-answered say the code-wheel challenge has already been
+                        answered on this copy (#291). Without it the
+                        code-wheel seam is on and watching, and a driven
+                        run sits at the challenge for ever; with it the
+                        challenge is never drawn. Nothing writes it down
+                        yet (#292)
   --journal-store PATH  the journal text the reader is answered out of
                         (M5-E4, #175), as the desktop host's own
                         --journal-store writes it. A browser gets its
@@ -295,6 +301,7 @@ export function parseArgs(argv) {
     pulls: [],
     seams: [],
     documents: [],
+    codeWheelAnswered: false,
     journalStore: null,
     replay: null,
     listSeams: false,
@@ -382,6 +389,8 @@ export function parseArgs(argv) {
       opts.vfsGets.push(next());
     } else if (arg === '--document' && i + 1 < argv.length) {
       opts.documents.push(next());
+    } else if (arg === '--code-wheel-answered') {
+      opts.codeWheelAnswered = true;
     } else if (arg === '--journal-store' && i + 1 < argv.length) {
       opts.journalStore = next();
     } else if (arg === '--replay' && i + 1 < argv.length) {
@@ -718,6 +727,13 @@ export async function drive(opts) {
     } else {
       say(`amberfolio: document ${path} could not be presented (status ${status})`);
     }
+  }
+
+  // And the one thing a person shows this machine that is not a file:
+  // that they have already answered the code-wheel challenge (#291).
+  if (opts.codeWheelAnswered) {
+    machine.setCodeWheelAnswered(true);
+    say('amberfolio: code wheel answered - the challenge will not be drawn');
   }
 
   // And the journal's text, before the reader that is answered out of it

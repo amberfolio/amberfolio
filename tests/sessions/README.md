@@ -20,6 +20,19 @@ committable at all (PLAN.md §6: "hashes are committable; screen content
 never is"), and it is why the programs recorded here are the
 repository's own.
 
+> **Every game session here is stale, and #293 is where they come
+> back.** All 23 of them boot past the code-wheel challenge with
+> `seam code-wheel` on and the wheel presented by digest, and they get
+> past it because the seam *answered* the challenge for them. Since #291
+> it watches for a person answering it instead, and steps over the call
+> that draws it once somebody has — so the recorded keys arrive at a
+> screen that is still waiting, or at a menu that came up sooner. What CI
+> checks is unaffected, because `--targets contrast` reads the recordings
+> and never runs the machine; a replay **with a disk** is affected, and
+> that is the whole of the damage. #293 re-records them on the shorter
+> boot, and replaces the `document` line below with one that says the
+> challenge had already been answered.
+
 ## What a session is
 
 Three things, named alike:

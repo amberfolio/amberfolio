@@ -1313,35 +1313,27 @@ TEST(AbiSeams, EverySeamSaysWhatDocumentItNeeds) {
   // A page shows this rather than working it out: the words are core's,
   // so a browser and a desktop say the same thing (machine/document.h).
   //
-  // One seam is gated now — the code-wheel bypass, on the wheel itself
-  // (#115) — and the rest say `no document`. Checked against each seam's
-  // own definition rather than against a list written here, so that the
-  // day a second gate goes on this test is about the door and not about
-  // which seams happen to use it.
+  // **No seam in this build is gated**, and that is the answer since
+  // #290: the code-wheel bypass was the one that was, on a PDF of the
+  // wheel, and the releases sold today ship a code generator application
+  // instead of that file — so the proof moved from the artifact to the
+  // act, and the seam waits for a person rather than for a document
+  // (#291). The door is unchanged and still answers for every seam;
+  // what exercises it *with* a gate is `SeamGate.*` in
+  // `machine/seam_test.cpp`, over a fixture seam and a synthetic
+  // document, which is where a test of a door belongs when no shipped
+  // seam happens to use it.
   const equipped_machine box;
   const std::uint32_t count = af_machine_seam_count(box.get());
   ASSERT_GT(count, 0u);
-  bool gated_at_least_one = false;
   for (std::uint32_t i = 0; i < count; ++i) {
     std::array<char, 64> gate{};
     EXPECT_GT(af_machine_seam_gate(box.get(), i, gate.data(),
                                    static_cast<std::uint32_t>(gate.size())),
               0u)
         << i;
-    std::array<char, 64> id{};
-    EXPECT_GT(af_machine_seam_id(box.get(), i, id.data(),
-                                 static_cast<std::uint32_t>(id.size())),
-              0u)
-        << i;
-    if (std::string_view(id.data()) == "code-wheel") {
-      EXPECT_STREQ(gate.data(), "code wheel") << i;
-      gated_at_least_one = true;
-    } else {
-      EXPECT_STREQ(gate.data(), "no document") << i;
-    }
+    EXPECT_STREQ(gate.data(), "no document") << i;
   }
-  EXPECT_TRUE(gated_at_least_one)
-      << "the gate door has a user, which is what makes this a test of it";
   std::array<char, 64> gate{};
   EXPECT_EQ(af_machine_seam_gate(box.get(), count, gate.data(),
                                  static_cast<std::uint32_t>(gate.size())),

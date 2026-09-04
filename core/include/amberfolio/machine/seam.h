@@ -458,8 +458,14 @@ struct seam_definition {
 
   /// The document the player must hold for this seam to do anything
   /// (PLAN.md §5, #171), or `document_kind::none` for a seam that is not
-  /// gated. **One seam in this build names one**: the code-wheel bypass
-  /// is gated on the code wheel (#115).
+  /// gated. **No seam in this build names one.** The code-wheel bypass
+  /// did, on the wheel itself (#115), until the releases sold today
+  /// turned out to ship a code generator application rather than a PDF
+  /// of it (#290): what it waits for now is a person answering the
+  /// program's own challenge, once (#291, seam_code_wheel.cpp). The
+  /// mechanism stays because the argument for it did — the journal's own
+  /// gate is a field away, and a table with a row and no user is a table
+  /// that still describes what a gate is.
   ///
   /// **A possession gate: it demonstrates the player holds the document,
   /// no more.** PLAN.md §5's sentence, and the whole of what this field
@@ -805,15 +811,23 @@ enum class seam_host_service : std::uint8_t {
   /// is observation and not machine state, the same arrangement
   /// `automap_update` has and for the same reason.
   journal_seen,
+  /// The code-wheel challenge has just been answered — by a person, at
+  /// the program's own prompt, correctly (M6-C1a, #291). The argument
+  /// carries nothing, for `journal_seen`'s reason: what changed is the
+  /// engine's own latch, and a host that wants to know reads it.
+  ///
+  /// Called **once**, on the transition, so a host writes its file once
+  /// and not once per attempt.
+  code_wheel_answered,
 };
 
 /// How many there are, for an array indexed by one. Not an enumerator:
 /// a `count` in the enumeration would be a value `serve()` could be
 /// handed, and it is not a service.
-inline constexpr std::size_t seam_host_service_count = 3;
+inline constexpr std::size_t seam_host_service_count = 4;
 
 /// The printable name of a `seam_host_service` — `journal-open`,
-/// `automap-update`, `journal-seen`. Never null.
+/// `automap-update`, `journal-seen`, `code-wheel-answered`. Never null.
 ///
 /// Kebab-case, and here rather than in a host, for the reason
 /// `seam_event_kind_name` next door gives: both hosts print this in
@@ -1204,6 +1218,40 @@ class seam_engine {
   [[nodiscard]] std::size_t document_count() const noexcept {
     return documents_;
   }
+
+  // --- The code wheel, answered (M6-C1a, #291) ---------------------------
+  //
+  // The gate this replaced asked a player for a *file* — a PDF of the
+  // code wheel — and the releases sold today do not ship one: they ship
+  // a code generator application instead (#290). So the proof moved from
+  // the artifact to the act. A player answers the program's own
+  // challenge once, correctly, off whatever they own; the seam sees the
+  // program's own comparison come out equal and latches it here; a host
+  // remembers it; and from the next launch the challenge is not drawn.
+  //
+  // It is **configuration**, in exactly the sense a presented document
+  // was and for the same reasons: `clear()` and `reset()` leave it
+  // alone (a reset machine has no program, and the person running it
+  // still answered the question last Tuesday), the serialization never
+  // sees it, and a machine with it set and every seam off is
+  // byte-for-byte a machine without it.
+  //
+  // *Which* copy this is, is not asked here. A host keys what it
+  // remembers by the program's fingerprint (#292), and the seam refuses
+  // any binary its own fingerprints do not name.
+
+  /// Whether the code-wheel challenge has been answered on this machine
+  /// — set by a host from what it remembered, before the run, or by the
+  /// seam during one, at the moment a person gets it right.
+  [[nodiscard]] bool code_wheel_answered() const noexcept {
+    return code_wheel_answered_;
+  }
+
+  /// Say so, or unsay it. A host sets it from its store and clears it
+  /// when a person asks to be asked again; the seam only ever sets it.
+  void set_code_wheel_answered(bool answered) noexcept {
+    code_wheel_answered_ = answered;
+  }
   [[nodiscard]] const document_edition* document_at(
       std::size_t nth) const noexcept;
 
@@ -1445,6 +1493,11 @@ class seam_engine {
   std::size_t documents_{};
   std::array<const document_edition*, max_documents> extra_documents_{};
   std::size_t extra_documents_count_{};
+
+  /// The code wheel's challenge, answered (#291). Configuration of the
+  /// same kind as `presented_` above, and left alone by `clear()` and
+  /// `reset()` for the same reason.
+  bool code_wheel_answered_{false};
 
   /// The machine's RAM, read-only and read at one word at a time
   /// (`watch_memory`). Empty until `machine` hands it over, and an empty

@@ -26,10 +26,23 @@ under SDL's `dummy` drivers so it needs no display and no speaker:
 ```sh
 SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
   ./build/<preset>/hosts/sdl/<config>/amberfolio <your-directory> START.EXE \
-    --seam code-wheel --fast max \
+    --seam code-wheel --code-wheel-answered --fast max \
     --press KEY@FRAME ... \
     --until <ticks> --dump run --dump-every 90
 ```
+
+> **Every script below this line is one version out of date, and #293
+> is where they are brought back.** They were written when the
+> code-wheel seam *answered* the challenge, so each of them presses two
+> keys at it (`A@7600`, `Return@7650`) and everything after those keys
+> is timed against a boot that drew that screen. Since #291 the seam
+> only watches, and `--code-wheel-answered` — the flag above — makes
+> the program skip the challenge outright instead. So a driven run
+> needs that flag, the two presses at the challenge come out, and
+> **every frame number after them moves earlier**. The keystrokes
+> themselves, and what each leg is evidence for, are unchanged; the
+> numbers are what #293 re-derives, one session at a time, against the
+> recordings it re-makes.
 
 Three flags carry it:
 
@@ -215,7 +228,10 @@ standing.
 
 **Measured, on a player's copy**, by driving `fight.rec`'s own key
 script. Note the `--seam code-wheel`: a live driven run without it sits
-at the copy-protection challenge for ever and never reaches a fight.
+at the copy-protection challenge for ever and never reaches a fight —
+and since #291 it needs `--code-wheel-answered` beside it, because the
+seam watches for a person answering the question rather than answering
+it.
 
 | pulled at | the seam's end-of-run line | |
 | --- | --- | --- |
