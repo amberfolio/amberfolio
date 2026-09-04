@@ -650,7 +650,14 @@ legitimately changes:
   seam is only ever as current as that seam. It is also the entry most
   easily abused, so the test is the same one as above — the change was
   *chosen*, argued on an issue and visible in the seam's own source — and
-  never that a red line went green.
+  never that a red line went green. `notes.rec` moved for the same reason
+  a milestone later: the log's own frame was asked for the whole screen,
+  and the box drawer's border falls *outside* the rectangle it is given
+  — so the two vertical runs wrapped around the video window's own rows
+  and the lower one landed on the row `EXIT` is drawn on. The rectangle
+  is one in and one up now, and the way out clears the bar it uncovers
+  (`docs/seams.md` §3). The divergence tick did not move with it: what
+  the log draws changed, and when it starts drawing did not.
 
 Re-recording is not a way to make a red test green. If a session stops
 verifying and none of the above changed, the machine changed and the

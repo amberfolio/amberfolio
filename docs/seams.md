@@ -331,6 +331,19 @@ order the routine's own source lists them, with a far pointer's segment
 before its offset so the offset lands at the lower address, which is
 where a `les` looks for one.
 
+**The box drawer's rectangle is the interior.** Its border lands *outside*
+what it is given, on all four sides: the horizontal runs on rows
+`top - 1` and `bottom + 1`, the vertical runs in columns `left - 1` and
+`right + 1`. The widest a full screen can be is therefore `(1, 1, 0x26,
+0x16)` and not `(0, 1, 0x27, 0x17)`, and the difference is not cosmetic —
+a vertical run asked for in column `-1` or column `0x28` is not clipped.
+The video window is row-major at eight pixels to a byte, so the byte
+before a scanline's first is the previous scanline's last: the left
+border comes out at the right-hand edge one pixel row high, the right
+border at the left-hand edge one pixel row low, and the two chains stand
+two rows out of phase with an end cap at one end each. The journal's own
+screen shipped that way and #222's rectangle is the fix.
+
 **It has been driven against the program.** A seam at the camp screen
 placed a four-character string, called the drawer at `0x076B6` with
 `(1, 13h, 0Fh, …)`, and the word appeared on the game's own screen in the
