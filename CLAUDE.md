@@ -11,13 +11,16 @@ Radiance. **PLAN.md is the plan of record** — scope, architecture,
 milestones, and settled decisions live there; don't re-litigate them
 here or in PRs.
 
-**Status: M5 complete, tagged `v0.3.0`. M6 — onboarding, shells and
-gamepad — is the current milestone, and #265 is the worklist it starts
-from. In flight beside it: #290, the code wheel's *once* — the one v1
-enhancement whose design changed after M5, because the releases sold
-today ship a code generator application where the gate expected a PDF.
-#291 is its mechanism and has landed; #292 remembers it between runs and
-#293 re-records the session library on the boot it shortens.**
+**Status: M5 complete; `v0.4.0` is the current tag. M6 — onboarding,
+shells and gamepad — is the current milestone, and #265 is the worklist
+it starts from. In flight beside it: #290, the code wheel's *once* — the
+one v1 enhancement whose design changed after M5, because the releases
+sold today ship a code generator application where the gate expected a
+PDF. #291 is its mechanism and has landed; #292 remembers it between
+runs and #293 re-records the session library on the boot it shortens.
+`v0.4.0` is an **interim** tag and not a milestone's: PLAN.md §7 gives
+each milestone a 0.x pre-release, and this one exists because a shipped
+enhancement changed under a consumer rather than because M6 ended.**
 The game plays, and it plays *enhanced*. All six of PLAN.md §5's v1
 enhancements work and toggle independently on both hosts — the code-wheel
 bypass, the Encamp Fix, the automap, the journal, the explored overlay's
@@ -291,7 +294,7 @@ What M5 left in place:
   `Machine` methods put the journal store on the façade it was the only
   exception to. Adding entry points and changing nothing that was there
   is `AF_ABI_VERSION_MINOR` by #211's own rule, so the ABI was **1.1** at
-  `v0.3.0` and its manifest says so. It is **1.2** on `main` now:
+  `v0.3.0` and its manifest says so. It is **1.2** as of `v0.4.0`:
   `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
   joined it with the code wheel's once (#291), two added entry points
   and nothing changed. What was asked for and stays declined is
