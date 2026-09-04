@@ -3,7 +3,7 @@
 A low-level emulator for the SSI Gold Box games.
 
 **Status: early development — but the game plays, and it plays
-enhanced.** M5's exit criterion is met and tagged `v0.3.0`: all six of
+enhanced.** M5's exit criterion was met and tagged `v0.3.0`: all six of
 the v1 enhancements work and toggle independently on desktop and in the
 browser — the code-wheel bypass, the Encamp Fix, the automap, the
 journal, fog of war on the overworld, and the debug cheats. Each is an
@@ -11,6 +11,15 @@ opt-in seam, each is **off by default**, and each is built to feel like
 something the game shipped with rather than a layer over it.
 `docs/enhancements.md` is the set as a player meets them, one entry each,
 ending with what it is not yet.
+
+`v0.4.0` is the current tag, and it is an interim one rather than a
+milestone's: the **code-wheel bypass changed shape** under it (#290).
+It used to be gated on a PDF of the wheel, and the releases sold today
+ship a code generator application instead of that file — so the proof
+moved from the artifact to the act. The game now asks its question
+**once**: answer it off whatever form of the wheel you own, and it is
+never drawn again. Beside it are six fixes and a good deal of walking
+about that M5's follow-ups called for.
 
 M4's criterion still holds underneath: the full loop runs on a
 player-supplied copy on all four targets. A party is made and added, the
