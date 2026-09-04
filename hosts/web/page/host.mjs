@@ -1011,8 +1011,9 @@ export class Machine {
         waited: this.module._af_machine_seam_waited(this.handle, i),
         pulledAt: this.module._af_machine_seam_pulled_at(this.handle, i),
         // What document this seam is gated on, in core's words (#171).
-        // `no document` for every seam but the code-wheel bypass, which
-        // is gated on the wheel itself (#115).
+        // `no document` for every seam in this build since #290: the
+        // code-wheel bypass was the one gate, and it waits for a person
+        // answering the challenge now rather than for a PDF (#291).
         gate: this.#text((out, max) => this.module._af_machine_seam_gate(this.handle, i, out, max), 64) ?? '',
       });
     }
@@ -1202,6 +1203,25 @@ export class Machine {
       );
     }
     return held;
+  }
+
+  /// Whether the code-wheel challenge has been answered on this machine
+  /// (#291), and saying so before a run from whatever the page
+  /// remembered.
+  ///
+  /// The seam waits for a person: with it on and this false, the game
+  /// asks the question exactly as it always did and the seam only
+  /// watches; with it true the challenge is never drawn. Where a page
+  /// keeps the answer between visits is #292.
+  codeWheelAnswered() {
+    return this.module._af_machine_code_wheel_answered(this.handle) !== 0;
+  }
+
+  setCodeWheelAnswered(answered) {
+    return this.module._af_machine_set_code_wheel_answered(
+      this.handle,
+      answered ? 1 : 0,
+    );
   }
 
   /// Turn a seam on or off by id. `AF_OK` if it took, `AF_INVALID` if

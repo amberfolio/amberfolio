@@ -184,18 +184,32 @@
 //     startup, because a run that had one on is not the same run as one
 //     that did not and the log has to say so.
 //
-//     `code-wheel` is **gated on the code wheel** (#115): turning it on
-//     without `--document` leaves it inert and saying so, because the
-//     possession gate PLAN.md §5 requires is applied where residency is.
+//     `code-wheel` asks **once** (#291): with it on, the first launch
+//     shows the challenge exactly as the machine always did, and the
+//     seam does nothing but watch; answer it and the seam latches that,
+//     and a launch after that is not asked at all. It was gated on a PDF
+//     of the wheel until #290, and nothing in this build is gated now.
+//
+//   --code-wheel-answered
+//                    say the code-wheel challenge has already been
+//                    answered on this copy
+//
+//     What the `code-wheel` seam waits for (#291). Without it the seam
+//     is on and watching: the game asks the question as it always did,
+//     and answering it correctly is what turns this on for the rest of
+//     the run. With it, the challenge is never drawn. **Nothing writes
+//     it down yet** — #292 is the file beside this host's other per-user
+//     data — so a driven run that wants to get past the challenge on its
+//     own says so here.
 //
 //   --document PATH  present a document the player holds
 //
-//     PLAN.md §5 gates two enhancements on a fingerprint-verified
-//     document — the code-wheel bypass on the code wheel, the journal on
-//     the journal — and the rule is exact: a possession gate, which
-//     demonstrates the player holds the document and no more. This is
-//     the presenting side (#171): the file is read, hashed, and dropped.
-//     Nothing is parsed and nothing is kept.
+//     A possession gate, which demonstrates the player holds the
+//     document and no more (PLAN.md §5). This is the presenting side
+//     (#171): the file is read, hashed, and dropped. Nothing is parsed
+//     and nothing is kept. **No seam is gated today** — the code wheel's
+//     was the one, and #290 took it off — so what this does now is name
+//     what it was handed.
 //
 //     `PATH` is a path on *this* machine, not on the emulated one: a
 //     code wheel lives wherever a person keeps their PDFs, which is very
@@ -1288,6 +1302,14 @@ struct options {
   /// inside the game directory.
   std::vector<std::string> documents;
 
+  /// The code wheel's challenge, already answered (M6-C1a, #291). The
+  /// seam watches for a person answering it and remembers it for the
+  /// rest of the run; this is how a *later* run says it was answered
+  /// before, and until #292 lands it is the only way — nothing on this
+  /// host writes the answer down yet, so a run that wants the challenge
+  /// skipped says so on its own command line.
+  bool code_wheel_answered{false};
+
   /// The journal's ingestion (M5-E3, #174). `journal` is the document to
   /// read the entries out of; `journal_store` is where the text goes, or
   /// empty for this platform's default; `journal_ocr` is the engine, or
@@ -1608,6 +1630,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.vfs_removes.emplace_back(argv[++i]);
     } else if (arg == "--document" && i + 1 < argc) {
       opts.documents.emplace_back(argv[++i]);
+    } else if (arg == "--code-wheel-answered") {
+      opts.code_wheel_answered = true;
     } else if (arg == "--journal" && i + 1 < argc) {
       opts.journal = argv[++i];
     } else if (arg == "--journal-store" && i + 1 < argc) {
@@ -2417,6 +2441,17 @@ int main(int argc, char** argv) try {
   // its mind at the first overlay read.
   for (const std::string& path : opts.documents) {
     present_document(box, path);
+  }
+
+  // And the one thing a person shows this machine that is not a file:
+  // that they have already answered the code-wheel challenge (#291).
+  // Before the seams, for the reason above — a run that says it, and
+  // turns the seam on, never reaches the challenge at all.
+  if (opts.code_wheel_answered) {
+    box.seams().set_code_wheel_answered(true);
+    std::fprintf(stderr,
+                 "amberfolio: code wheel answered - the challenge will not be"
+                 " drawn\n");
   }
 
   // And the journal, which is a document that is also read inside

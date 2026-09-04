@@ -15,6 +15,7 @@
 
 #include "amberfolio/machine/seam.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -1741,48 +1742,39 @@ TEST(SeamOverlay, TheTrackerIsNotConsultedWhileNothingIsOn) {
 
 // --- The code-wheel handler ---------------------------------------------
 //
-// Its whole contract: at the compare loop, when the expected operand
-// points into the candidate-word table, leave the program's own routine
-// nothing to disagree about — no iterations, the zero flag set, and the
-// two lengths equal.
-
-/// A machine with the code-wheel seam's own binary claimed to be loaded.
-/// The code wheel this build knows, out of the engine's own table rather
-/// than spelled again here: a fingerprint written twice is a fingerprint
-/// that can disagree with itself.
-[[nodiscard]] std::string_view wheel_fingerprint() {
-  for (const document_edition& one : known_documents()) {
-    if (one.kind == document_kind::code_wheel) {
-      return one.fingerprint;
-    }
-  }
-  ADD_FAILURE() << "this build knows no code wheel to be gated on";
-  return {};
-}
+// Its whole contract, since M6-C1a (#291): at the compare loop, when the
+// expected operand points into the candidate-word table and the
+// challenge has not been answered yet, work out what the program's own
+// comparison is about to conclude and — if a person got it right —
+// latch it and tell the host, writing nothing either way. At the boot's
+// own call into the protection overlay, when it *has* been answered, go
+// on at the instruction after it.
+//
+// What it must never do is answer the challenge for anybody, and the
+// tests below are mostly that sentence from different angles.
 
 struct wheel_rig : rig {
-  /// The program loaded, and **the wheel in the player's hand** (#115).
+  /// The program loaded, and a latch in whichever position the test
+  /// wants it.
   ///
-  /// Both, because since the possession gate went on they are two
-  /// separate conditions and the seam needs each: the fingerprint says
-  /// this is the program its addresses are facts about, and the document
-  /// says the person running it holds the wheel. A rig that presented
-  /// only the first would test a seam that is inert, which is what
-  /// `AnUnpresentedWheelIsAnInertSeam` below is for.
-  explicit wheel_rig(bool present = true) {
+  /// It used to present a document too: the seam was gated on a PDF of
+  /// the wheel from #115 until #290 found that the releases sold today
+  /// ship a code generator application instead of that file. There is no
+  /// gate now, and what this seam waits for is a person.
+  explicit wheel_rig(bool answered = false) {
     sha256_digest digest;
     EXPECT_TRUE(parse_digest(code_wheel().fingerprints.front(), digest));
     pc().seams().loaded(digest, image_load_segment);
-    if (present) {
-      sha256_digest wheel;
-      EXPECT_TRUE(parse_digest(wheel_fingerprint(), wheel));
-      EXPECT_NE(pc().seams().present_document(wheel), nullptr);
-    }
+    pc().seams().set_code_wheel_answered(answered);
   }
 };
 
 [[nodiscard]] std::uint32_t interception_offset() {
   return code_wheel().points.front().offset;
+}
+
+[[nodiscard]] std::uint32_t call_offset() {
+  return code_wheel().points.back().offset;
 }
 
 /// Inside the candidate-word table, comfortably: the first entry's
@@ -1791,70 +1783,141 @@ struct wheel_rig : rig {
 constexpr std::uint16_t in_the_table = 0xC7C3;
 constexpr std::uint16_t not_in_the_table = 0x0100;
 
-TEST(SeamCodeWheel, IsQualifiedByTheResidentImage) {
-  EXPECT_TRUE(code_wheel().points.front().module.is_resident_image());
-  EXPECT_EQ(code_wheel().schema, seam_schema_version);
+/// Where a test puts the word it pretends was typed.
+constexpr std::uint16_t typed_at = 0x0200;
+
+/// Put `word` where the typed answer goes and `expected` where the
+/// table's own characters are, and set the machine up mid-compare
+/// exactly as the program's own routine leaves it: the two lengths in AL
+/// and AH, the smaller of them in CX, and both pointers at the
+/// characters.
+void mid_compare(const wheel_rig& r, std::string_view typed,
+                 std::string_view expected) {
+  cpu::registers& regs = r.regs();
+  const std::uint32_t base = cpu::physical_address(image_load_segment, 0);
+  for (std::size_t i = 0; i < typed.size(); ++i) {
+    r.pc().memory().ram()[base + typed_at + i] =
+        static_cast<std::uint8_t>(typed[i]);
+  }
+  for (std::size_t i = 0; i < expected.size(); ++i) {
+    r.pc().memory().ram()[base + in_the_table + i] =
+        static_cast<std::uint8_t>(expected[i]);
+  }
+  regs.set(cpu::reg8::al, static_cast<std::uint8_t>(typed.size()));
+  regs.set(cpu::reg8::ah, static_cast<std::uint8_t>(expected.size()));
+  regs[cpu::reg16::cx] =
+      static_cast<std::uint16_t>(std::min(typed.size(), expected.size()));
+  regs[cpu::sreg::es] = image_load_segment;
+  regs[cpu::reg16::di] = in_the_table;
+  regs[cpu::sreg::ds] = image_load_segment;
+  regs[cpu::reg16::si] = typed_at;
 }
 
-TEST(SeamCodeWheel, MakesTheProgramsOwnCompareReportEqual) {
+/// The far call the second point sits on, as the program's relocations
+/// leave it: `9A` and the stub's own offset and segment. The two operand
+/// words are what the handler checks, and a test that spelled them
+/// itself would be a test that could not tell a right one from a wrong
+/// one — so they come off the definition's own facts, one indirection
+/// away, the way `interception_offset()` does.
+constexpr std::uint16_t stub_paragraph = 0x001C;
+constexpr std::uint16_t stub_offset = 0x0025;
+
+/// The call at the point, and — where the program would go on — a
+/// `MOV AX, 3333h ; HLT` to say the skip landed there.
+void far_call_at(const wheel_rig& r, std::uint32_t offset,
+                 std::uint16_t paragraph) {
+  const auto segment =
+      static_cast<std::uint16_t>(image_load_segment + paragraph);
+  r.program_at(offset + 5, {0xB8, 0x33, 0x33, 0xF4});
+  r.program_at(offset, {0x9A, static_cast<std::uint8_t>(stub_offset),
+                        static_cast<std::uint8_t>(stub_offset >> 8U),
+                        static_cast<std::uint8_t>(segment),
+                        static_cast<std::uint8_t>(segment >> 8U)});
+}
+
+TEST(SeamCodeWheel, IsQualifiedByTheResidentImage) {
+  EXPECT_TRUE(code_wheel().points.front().module.is_resident_image());
+  EXPECT_TRUE(code_wheel().points.back().module.is_resident_image());
+  EXPECT_EQ(code_wheel().schema, seam_schema_version);
+  EXPECT_EQ(code_wheel().gate, document_kind::none)
+      << "the wheel PDF gated this seam until #290; nothing does now";
+}
+
+TEST(SeamCodeWheel, TheRightAnswerIsLatchedAndTheHostIsToldOnce) {
+  const wheel_rig r;
+  counting_host host;
+  r.pc().seams().set_host(&host);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+  ASSERT_FALSE(r.pc().seams().code_wheel_answered());
+
+  r.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
+  mid_compare(r, "SILVER", "SILVER");
+  r.pc().step();
+
+  EXPECT_TRUE(r.pc().seams().code_wheel_answered());
+  ASSERT_EQ(host.served.size(), 1U);
+  EXPECT_EQ(host.served.front().first, seam_host_service::code_wheel_answered);
+  EXPECT_EQ(host.served.front().second, 0U) << "the call carries nothing";
+
+  // And a second arrival at the same compare does not say it twice: a
+  // host writes its file once, not once per string comparison.
+  r.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
+  mid_compare(r, "SILVER", "SILVER");
+  r.pc().step();
+  EXPECT_EQ(host.served.size(), 1U);
+}
+
+TEST(SeamCodeWheel, AWrongAnswerLatchesNothing) {
+  const wheel_rig r;
+  counting_host host;
+  r.pc().seams().set_host(&host);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+
+  r.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
+  mid_compare(r, "SILVER", "COPPER");
+  r.pc().step();
+
+  EXPECT_FALSE(r.pc().seams().code_wheel_answered());
+  EXPECT_TRUE(host.served.empty());
+}
+
+TEST(SeamCodeWheel, TheLengthsHaveToAgreeToo) {
+  // The program's own routine compares the shorter length's worth of
+  // characters and *then* the two lengths, so a prefix is not an answer.
   const wheel_rig r;
   ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
 
   r.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
-  cpu::registers& regs = r.regs();
-  regs[cpu::reg16::cx] = 6;
-  regs.set(cpu::reg8::al, 1);  // one character typed
-  regs.set(cpu::reg8::ah, 6);  // six expected
-  regs[cpu::sreg::es] = image_load_segment;
-  regs[cpu::reg16::di] = in_the_table;
-  regs[cpu::sreg::ds] = image_load_segment;
-  regs[cpu::reg16::si] = 0x0200;
-  regs.set_flag(cpu::flag::zf, false);
-
+  mid_compare(r, "SILV", "SILVER");
   r.pc().step();
 
-  EXPECT_EQ(regs[cpu::reg16::cx], 0u) << "no iteration to disagree over";
-  EXPECT_TRUE(regs.flag_set(cpu::flag::zf));
-  EXPECT_EQ(regs.get(cpu::reg8::al), regs.get(cpu::reg8::ah))
-      << "and the length comparison after it agrees too";
+  EXPECT_FALSE(r.pc().seams().code_wheel_answered());
 }
 
-TEST(SeamCodeWheel, AnUnpresentedWheelIsAnInertSeam) {
-  // The gate itself (#115, PLAN.md §5 item 1). The program is the right
-  // program and the seam is on; what is missing is the document, and
-  // that is the whole difference between answering the challenge and
-  // leaving it exactly as the program wrote it.
-  const wheel_rig r(false);
+TEST(SeamCodeWheel, NothingTypedIsNotAnAnswer) {
+  const wheel_rig r;
   ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
 
   r.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
-  cpu::registers& regs = r.regs();
-  regs[cpu::reg16::cx] = 6;
-  regs.set(cpu::reg8::al, 1);
-  regs.set(cpu::reg8::ah, 6);
-  regs[cpu::sreg::es] = image_load_segment;
-  regs[cpu::reg16::di] = in_the_table;
-  regs[cpu::sreg::ds] = image_load_segment;
-  regs[cpu::reg16::si] = 0x0200;
-  regs.set_flag(cpu::flag::zf, false);
-
+  mid_compare(r, "", "");
   r.pc().step();
 
-  EXPECT_NE(regs[cpu::reg16::cx], 0u)
-      << "the compare ran, because nothing intercepted it";
-  EXPECT_NE(regs.get(cpu::reg8::al), regs.get(cpu::reg8::ah));
+  EXPECT_FALSE(r.pc().seams().code_wheel_answered());
 }
 
-TEST(SeamCodeWheel, SaysWhichDocumentItIsWaitingFor) {
-  const wheel_rig r(false);
+TEST(SeamCodeWheel, ACountLongerThanAWordIsNotTheComparisonItDescribes) {
+  const wheel_rig r;
   ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
-  EXPECT_EQ(code_wheel().gate, document_kind::code_wheel);
-  EXPECT_FALSE(r.pc().seams().holds_document(document_kind::code_wheel));
 
-  sha256_digest wheel;
-  ASSERT_TRUE(parse_digest(wheel_fingerprint(), wheel));
-  EXPECT_NE(r.pc().seams().present_document(wheel), nullptr);
-  EXPECT_TRUE(r.pc().seams().holds_document(document_kind::code_wheel));
+  r.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
+  mid_compare(r, "SILVER", "SILVER");
+  r.regs()[cpu::reg16::cx] = 64;
+  r.pc().step();
+
+  EXPECT_FALSE(r.pc().seams().code_wheel_answered());
+  EXPECT_EQ(r.pc().seams().status("code-wheel").declined, 1U);
+  EXPECT_EQ(r.pc().seams().status("code-wheel").fired, 0U)
+      << "a decline is a handler saying it did not act";
 }
 
 TEST(SeamCodeWheel, LeavesEveryOtherStringComparisonAlone) {
@@ -1862,19 +1925,12 @@ TEST(SeamCodeWheel, LeavesEveryOtherStringComparisonAlone) {
   ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
 
   r.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
-  cpu::registers& regs = r.regs();
-  regs[cpu::reg16::cx] = 6;
-  regs.set(cpu::reg8::al, 1);
-  regs.set(cpu::reg8::ah, 6);
-  regs[cpu::sreg::es] = image_load_segment;
-  regs[cpu::reg16::di] = not_in_the_table;
-  regs[cpu::sreg::ds] = image_load_segment;
-  regs[cpu::reg16::si] = 0x0200;
-
+  mid_compare(r, "SILVER", "SILVER");
+  r.regs()[cpu::reg16::di] = not_in_the_table;
   r.pc().step();
 
-  EXPECT_NE(regs[cpu::reg16::cx], 0u) << "the compare should have run";
-  EXPECT_EQ(regs.get(cpu::reg8::al), 1) << "and AL should be untouched";
+  EXPECT_FALSE(r.pc().seams().code_wheel_answered())
+      << "the program compares against those words for one reason only";
 }
 
 TEST(SeamCodeWheel, DoesNothingAnywhereButItsOwnAddress) {
@@ -1884,20 +1940,106 @@ TEST(SeamCodeWheel, DoesNothingAnywhereButItsOwnAddress) {
   // The identical instruction, one paragraph earlier. A seam is a point,
   // not a pattern.
   r.program_at(interception_offset() - 0x10, {0xF3, 0xA6, 0xF4});
-  cpu::registers& regs = r.regs();
-  regs[cpu::reg16::cx] = 6;
-  regs.set(cpu::reg8::al, 1);
-  regs.set(cpu::reg8::ah, 6);
-  regs[cpu::sreg::es] = image_load_segment;
-  regs[cpu::reg16::di] = in_the_table;
-  regs[cpu::sreg::ds] = image_load_segment;
-  regs[cpu::reg16::si] = 0x0200;
-
+  mid_compare(r, "SILVER", "SILVER");
   r.pc().step();
 
-  EXPECT_NE(regs[cpu::reg16::cx], 0u);
-  EXPECT_EQ(regs.get(cpu::reg8::al), 1);
+  EXPECT_FALSE(r.pc().seams().code_wheel_answered());
 }
 
+TEST(SeamCodeWheel, WatchingCannotMoveTheMachine) {
+  // The claim the once buys, and the reason it is worth having: on, and
+  // unanswered, this seam is the machine with no seam at all. Not the
+  // registers, not the clock, not a byte anywhere.
+  const wheel_rig off;
+  off.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
+  mid_compare(off, "SILVER", "COPPER");
+  off.pc().step();
+  const cpu::registers off_regs = off.regs();
+  const state_hashes off_hash = hash_state(off.pc());
+  const ticks off_time = off.pc().time();
+
+  const wheel_rig on;
+  ASSERT_EQ(on.pc().seams().enable("code-wheel"), seam_reason::none);
+  on.program_at(interception_offset(), {0xF3, 0xA6, 0xF4});
+  mid_compare(on, "SILVER", "COPPER");
+  on.pc().step();
+
+  EXPECT_EQ(off_regs, on.regs());
+  EXPECT_EQ(off_time, on.pc().time());
+  EXPECT_EQ(off_hash.whole, hash_state(on.pc()).whole);
+}
+
+TEST(SeamCodeWheel, TheAnsweredMachineNeverCallsTheChallenge) {
+  const wheel_rig r(true);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+
+  far_call_at(r, call_offset(), stub_paragraph);
+  r.pc().step();
+
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x3333)
+      << "the instruction the program goes on at ran instead";
+  EXPECT_EQ(r.regs()[cpu::sreg::cs], image_load_segment);
+  EXPECT_EQ(r.regs().ip, static_cast<std::uint16_t>(call_offset() + 8));
+  EXPECT_EQ(r.pc().seams().status("code-wheel").fired, 1U);
+}
+
+TEST(SeamCodeWheel, TheUnansweredMachineAsksAsItAlwaysDid) {
+  const wheel_rig r;
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+
+  far_call_at(r, call_offset(), stub_paragraph);
+  r.pc().step();
+
+  // The call ran: CS:IP is at the stub, and the return address is on the
+  // stack. This is the whole of the first launch.
+  EXPECT_EQ(r.regs()[cpu::sreg::cs],
+            static_cast<std::uint16_t>(image_load_segment + stub_paragraph));
+  EXPECT_EQ(r.regs().ip, stub_offset);
+}
+
+TEST(SeamCodeWheel, ACallSomewhereElseIsDeclinedRatherThanJumpedOver) {
+  const wheel_rig r(true);
+  ASSERT_EQ(r.pc().seams().enable("code-wheel"), seam_reason::none);
+
+  // The same instruction at the same address, going somewhere else. A
+  // seam that jumped five bytes over this would do its damage three
+  // layers from here.
+  far_call_at(r, call_offset(), stub_paragraph + 1);
+  r.pc().step();
+
+  EXPECT_EQ(r.regs()[cpu::sreg::cs],
+            static_cast<std::uint16_t>(image_load_segment + stub_paragraph + 1))
+      << "the call ran, as it would have with no seam at all";
+  EXPECT_NE(r.regs()[cpu::reg16::ax], 0x3333);
+  EXPECT_EQ(r.pc().seams().status("code-wheel").declined, 1U);
+  EXPECT_EQ(r.pc().seams().status("code-wheel").fired, 0U);
+}
+
+TEST(SeamCodeWheel, TheLatchIsConfigurationAndSurvivesAReset) {
+  // A reset machine has no program; the person running it still answered
+  // the question last Tuesday. The same sentence a presented document
+  // gets, one artifact over (SeamGate above).
+  const wheel_rig r(true);
+  ASSERT_TRUE(r.pc().seams().code_wheel_answered());
+  r.pc().reset();
+  EXPECT_TRUE(r.pc().seams().code_wheel_answered());
+}
+
+TEST(SeamCodeWheel, AnAnsweredChallengeWithEverySeamOffChangesNothing) {
+  const wheel_rig plain;
+  plain.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    plain.pc().step();
+  }
+  const state_hashes plain_hash = hash_state(plain.pc());
+
+  const wheel_rig answered(true);
+  answered.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xA3, 0x00, 0x02, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    answered.pc().step();
+  }
+
+  EXPECT_EQ(plain_hash.whole, hash_state(answered.pc()).whole);
+}
 }  // namespace
 }  // namespace amberfolio::machine

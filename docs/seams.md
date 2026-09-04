@@ -119,7 +119,7 @@ enhancement could not be built without it. They are in the order §8 says
 to reach for them, which is not the order they were built in:
 
 **Register surgery** — `box.processor().regs()`. Plain state, edited in
-place. The code-wheel seam is three register writes and nothing else.
+place. The cheats seam's whole act is a byte and a word.
 
 **Memory surgery, as the program** — `box.processor().read_byte()` and
 `write_byte()`, through the bus. A write into the video window reaches
@@ -753,17 +753,25 @@ serialization, and a machine with a document presented and every seam off
 is byte-for-byte the machine without one. That last is a test, not a
 sentence.
 
-**One seam in this build is gated, and it is the one PLAN.md §5 item 1
-asks to be** (#115). `code-wheel`'s definition names
-`.gate = document_kind::code_wheel`, so until a person presents the wheel
-the seam is on, **inert**, and says `document_not_presented` — and
-because a shut gate arms no points, its address is never in the table
-`dispatch()` compares against. The journal reader's gate is one field in
-its own definition (§10) and is deliberately **not** set: since M5-E3b
-(#214) the table *does* have a journal row, so setting it is a decision
-about whether a player who has not shown their journal should be told by
-the gate or by the reader, rather than a thing that could not be done at
-all.
+**No seam in this build is gated, and one used to be** (#290). `code-wheel`
+named `.gate = document_kind::code_wheel` from M5-D3 until the releases
+sold today turned out to ship a **code generator application** rather
+than a PDF of the wheel: an artifact a player cannot hold is not a
+possession gate, so that enhancement asks a person to answer the
+program's own challenge once instead (§10, #291). The journal reader's
+gate is one field in its own definition and is deliberately **not** set:
+since M5-E3b (#214) the table *does* have a journal row, so setting it is
+a decision about whether a player who has not shown their journal should
+be told by the gate or by the reader, rather than a thing that could not
+be done at all.
+
+So everything in this section is a mechanism with no user in this build,
+and it is written down as one rather than deleted: the argument for it
+did not change, the journal is a field away from using it, and a door
+that was built, tested and then left unlocked should say so. What
+exercises it is `SeamGate.*` in `tests/core/machine/seam_test.cpp`, over
+a fixture seam and a synthetic document — which is where a test of a door
+belongs when no shipped seam happens to use it.
 
 **A gate outlives the run it was applied to.** `verify_recording` applies
 a recording's own preamble seams, so a replay of a session whose seams
@@ -772,8 +780,10 @@ step is taken**, naming the condition — `a recorded seam is gated on a
 document that has not been presented` — rather than left to diverge
 somewhere in the middle. That is why a session descriptor carries a
 `document` line, by digest and by nothing else
-([`tests/sessions/README.md`](../tests/sessions/README.md)), and it is
-observable: replaying `camp-fix.rec` with no `--document` stops there.
+([`tests/sessions/README.md`](../tests/sessions/README.md)). Since #290
+no committed session needs it: those lines were the code wheel's, the
+seam they armed is not gated any more, and what the sessions want in
+their place is #293's.
 
 ---
 
@@ -1243,9 +1253,12 @@ The symptom vocabulary, because it is what turns a day into an hour:
 - A press that lands while the game is still drawing is **drained and
   lost**; a six-character party loads slower than a four-character one,
   so the same script needs later presses.
-- A live `--press` run needs `--seam code-wheel`, or it waits at the
-  copy-protection challenge for ever and every downstream symptom looks
-  like something else.
+- A live `--press` run needs `--seam code-wheel` **and
+  `--code-wheel-answered`**, or it waits at the copy-protection
+  challenge for ever and every downstream symptom looks like something
+  else. The seam stopped answering the challenge in #291 and started
+  watching for a person answering it; the flag is how a driven run says
+  a person already did.
 
 ### 8.5 What a seam owes when it is done
 
@@ -1293,7 +1306,7 @@ boundary, and it needs the argument this document would have to carry.
 
 | id | what | keyed to | qualified by |
 |---|---|---|---|
-| `code-wheel` | answers the copy-protection challenge, **gated on the code wheel** (#115): inert, and saying `document_not_presented`, until a person presents it | the baseline | the resident image |
+| `code-wheel` | **asks the copy-protection challenge once** (#291): unanswered it only watches, and the run is the run with no seam; answered — by a person, at the program's own prompt — it steps over the boot's own call and the challenge is never drawn again | the baseline | the resident image |
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
 | `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; a **Notes** command on the party's own bar opens a log of everything it has cited, and **F1** the number prompt for anything it has not | the baseline | the resident image, and the adventuring loop's module |
@@ -1302,16 +1315,37 @@ boundary, and it needs the argument this document would have to carry.
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
 
-### The code-wheel bypass (#94, #119; the gate #115)
+### The code-wheel bypass (#94, #119; the once #290, #291)
 
 PLAN.md §5 item 1, and the **first seam this project ever wrote** — it
 landed in M3, in the engine's deliberately smallest first slice and
-before half of §3's eight primitives existed, and it still uses only the
-first of them — register surgery, three writes. It went unwritten here for two milestones
-because there seemed to be nothing to say about it; it is worth the
-section, because it is the smallest complete example of everything §8
-asks for — a handler of nine lines, a qualifier that is the whole of its
-correctness, and a gate that decides who may have it at all.
+before half of §3's eight primitives existed. It is worth its section for
+what it is now as much as for that: the one seam whose whole job is to
+*watch*, and the smallest complete example of everything §8 asks for — a
+qualifier that is the whole of its correctness, a second point that
+checks the instruction under it before it moves anything, and a claim
+about a person that is made by the person rather than by a file.
+
+**What it does, in three sentences.** With it on and the challenge
+unanswered, the game asks as it always did and the seam writes nothing
+anywhere: it works out what the program's own comparison is about to
+conclude, and if a person got it right it latches that and tells the
+host. With it answered, the far call that puts the challenge on the
+screen is stepped over, so the routine is never entered and nothing it
+draws is drawn. It never answers the challenge for anybody, in either
+state.
+
+**Why it is not a gate any more** (#290, decided 2026-09-04). It was one,
+from M5-D3 (#171) and #115: `.gate = document_kind::code_wheel`, a
+fingerprint over the player's own PDF of the wheel, inert and saying
+`document_not_presented` until they presented it. The releases sold today
+do not ship that PDF — they ship a **code generator application** — so
+the artifact the gate asked for is one that a player who bought the game
+cannot hold, and a possession gate that cannot be satisfied by a
+possessor is not a possession gate. The claim is unchanged and the route
+is different: *answer the question once*. The mechanism stays exactly
+where it was (§5), the wheel's row in `known_documents()` stays a fact,
+and **no seam in this build names a gate**.
 
 **What the program does, as facts.** The challenge is answered by typing
 a word. The program keeps thirteen candidate words in its resident data
@@ -1320,63 +1354,63 @@ typed against the one the challenge picked — through its own *general*
 string-compare routine, which puts the smaller of the two lengths in CX,
 runs a `REPE CMPSB` over that many characters, branches if they differed,
 and otherwise compares the two lengths, returning its answer in ZF alone.
-The point is that `REPE CMPSB`, at `0xBBB0` from the image segment; the
-word table is at `0xC7C2`, thirteen entries of stride 21 and six
-characters each. Addresses, offsets, a stride and a count — the whole
-entry is facts of the kind CONTRIBUTING.md names, and not one byte of the
-program or one word of the table is reproduced anywhere in this tree.
+The first point is that `REPE CMPSB`, at `0xBBB0` from the image segment;
+the word table is at `0xC7C2`, thirteen entries of stride 21 and six
+characters each. The challenge reaches the screen through **one far
+call** in the boot's own tail, five bytes at `0x0122`, into the overlay
+stub at `0x1c:0x0025`; that is the second point. Addresses, offsets, a
+stride and a count — the whole entry is facts of the kind
+CONTRIBUTING.md names, and not one byte of the program or one word of the
+table is reproduced anywhere in this tree.
 
-**Where those facts came from, and how the point is qualified.** The
-compare loop is in the resident image and cannot be overlaid, so the
-point is qualified by `resident_image` and nothing more (§4). That is not
-the qualifier that matters, though: the routine is the program's
-*general* string compare, called about a hundred and fifty times during
-the boot before the gate is even reached, so the address alone would
-corrupt every string comparison the program makes. **The real qualifier
-is the operand** — ES:DI must point inside the word table's character
-span, computed from `image_base()` so the offsets stay the program's
-rather than this machine's. Nothing but the code-wheel check compares
-against those words; a comparison that does not is returned from
-untouched, which is what makes a hot resident address safe to sit on.
+**Where those facts came from, and how the points are qualified.** Both
+are in the resident image and neither can be overlaid, so both are
+qualified by `resident_image` and nothing more (§4). That is not the
+qualifier that matters for the first: the compare routine is the
+program's *general* string compare, called about a hundred and fifty
+times during the boot before the challenge is even reached, so the
+address alone would have this seam reading every string comparison the
+program makes. **The real qualifier is the operand** — ES:DI must point
+inside the word table's character span, computed from `image_base()` so
+the offsets stay the program's rather than this machine's. Nothing but
+the code-wheel check compares against those words; a comparison that does
+not is returned from untouched.
 
-**The surgery is three registers and no memory at all.** `CX = 0`, so the
-`REPE CMPSB` performs no iteration and therefore changes no flag and
-moves neither pointer; `ZF` set, which is what the untaken branch after
-it wants to see; and `AL = AH`, so the length comparison that follows
-agrees too. The program then runs its own code, reaches its own
-conclusion and returns "equal" through its own convention. Nothing is
-written into the input buffer, so the seam assumes nothing about how
-large that buffer is or what shares the record it sits in — and it works
-whatever the player typed, including nothing. This is PLAN.md §5 item 1's
-preference honoured at the register level rather than at the flag: the
-program exercises its own success path, and the rest of it cannot tell.
+**The second point checks the instruction under it** (§2's rule, and the
+first seam here to need it). A far call's operand is two words, and both
+are known: the stub's own offset, and its paragraph counted from wherever
+the loader put the image — which is what the program's relocations left
+in that word. If they are not what the facts say, the handler
+`decline()`s `point_not_recognized` and jumps over nothing. Addresses
+compared against addresses; no byte pattern is written down and none is
+matched.
 
-**The gate is the enhancement's whole claim about a person** (M5-D3
-#171, turned on by #115). `.gate = document_kind::code_wheel`: present
-your own wheel with `--document`, and until you do the seam is on,
-**inert**, and says `document_not_presented` — its own reason and not
-`module_not_resident`'s, because a module arrives when the program loads
-it and a document when a person presents one (§5). It is a *possession*
-gate and nothing else. The host reads the file, hashes it, and drops it;
-nothing is parsed and nothing is kept, so what the seam knows about the
-player is one digest and one bit.
+**Why stepping over the call is honest.** The routine behind it **sets no
+persistent state and returns on success**, so a program that never called
+it is indistinguishable from one that called it and got it right. The
+program's own documented boot word skips the same call — which is
+PLAN.md §5 item 1's "engage the program's own built-in skip", paid off at
+the call site. This build does not use that word itself: it skips the
+title sequence as well and switches on the original's debug keys, which
+is three changes where a player asked for one.
 
-**The fidelity claim.** The usual one, in its strongest form, and this is
-the seam that can carry it: on and never triggered, the run is byte for
-byte the run with it off — and *gated* off, it is stronger still, because
-a shut gate arms no points at all, so there is no address for `dispatch()`
-to compare against and no handler that could decline. Its idle half in the
-matrix is therefore the gate rather than a session
-(`tests/sessions/README.md`), which is the one place §7's per-seam pair
-is answered by the mechanism instead of by a recording. Its *exercised*
-half is every game session in the library: they all drive the real
-program past the challenge, and their descriptors all name the document.
+**The fidelity claim, in its strongest form yet.** On and *unanswered*,
+this seam cannot move the machine at all — no register, no byte, no port,
+no keystroke — so such a run is byte for byte the run with the seam off.
+That is §7's invariant holding for an **enabled** seam, and it is a unit
+test rather than a sentence
+(`SeamCodeWheel.WatchingCannotMoveTheMachine`). The latch itself is
+configuration in exactly the sense a presented document was: it survives
+`reset()`, the serialization never sees it, and a machine that has it set
+with every seam off hashes equal to one that does not.
 
-**What it is not yet.** Nothing outstanding for the seam. What is left is
-a person's, and it is not this seam's alone: a browser has never been
-opened on the toggle that turns it on, or on the file input that presents
-the wheel (#147, #274), and putting a face on presenting a document —
-rather than a flag — is M6's (#265).
+**What it is not yet.** Nothing outstanding in the seam. **Nothing
+remembers the latch across a run** — that is #292, one file beside the
+host's other per-user data on the desktop and this browser's own storage
+on the web — and the committed sessions still boot past a challenge this
+seam no longer answers, which is #293. A browser has never been opened on
+the toggle that turns it on (#147, #274), and putting a face on any of
+this is M6's onboarding (#265).
 
 ---
 
@@ -2986,9 +3020,10 @@ one healed, and never the party.
 still the trigger itself.
 
 **It has been run against the program**, driving `fight.rec`'s own key
-script on a player-supplied copy. `--seam code-wheel` is needed as well:
-without it a live driven run sits at the copy-protection challenge for
-ever and never reaches a fight at all. Three pulls, at three moments:
+script on a player-supplied copy. `--seam code-wheel` is needed as well —
+with `--code-wheel-answered` beside it since #291 — because without them
+a live driven run sits at the copy-protection challenge for ever and
+never reaches a fight at all. Three pulls, at three moments:
 
 | pulled | row at the end of the run | what it says |
 | --- | --- | --- |

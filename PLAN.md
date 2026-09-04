@@ -38,14 +38,25 @@ graceful "unrecognized artifact" path for editions we don't know yet:
 |---|---|---|
 | Game binaries + data files | **Yes** — nothing runs without them | The game itself |
 | Adventurer's Journal (PDF) | Optional | The in-game journal enhancement |
-| Code wheel (PDF) | Optional | The copy-protection bypass |
+| Code wheel (any form) | Optional | The copy-protection bypass, which asks for it **once** |
 
-The policy is progressive: missing PDFs simply leave their enhancement
-unavailable — without the code wheel PDF, the wheel challenge appears
-exactly as it did on the real machine. Fingerprints identify known
-editions (e.g. the officially sold archive releases); they are facts
-about the player's files, and the only thing the project ever stores
-about the originals.
+The policy is progressive: a missing artifact simply leaves its
+enhancement unavailable — without the journal there is no in-game
+journal, and without the wheel the wheel challenge appears exactly as it
+did on the real machine. Fingerprints identify known editions (e.g. the
+officially sold archive releases); they are facts about the player's
+files, and the only thing the project ever stores about the originals.
+
+**The code wheel is the one artifact that is not a file** (#290, decided
+2026-09-04). It was: a PDF of the wheel, fingerprinted like the journal,
+and the bypass was gated on it. But the releases sold today do not ship
+that PDF — they ship a **code generator application** instead — so the
+file names an artifact a player who buys the game has no way to hold.
+The proof therefore moved from the artifact to the **act**: the player
+answers the program's own challenge once, off whatever form of the wheel
+they own, and the enhancement remembers it (§5 item 1). It is the same
+possession claim by a different route, and it is the only one of the
+three artifacts this project never sees.
 
 ## 3. The machine (v1 scope)
 
@@ -230,13 +241,21 @@ Design requirements:
 
 ### The v1 seam set
 
-1. **Code-wheel bypass** — gated on a fingerprint-verified code wheel
-   PDF: a possession gate (it demonstrates the player holds the
-   document, no more). Once verified, the seam skips the challenge —
-   preferring to engage the program's own built-in skip (a launch
-   parameter long documented in the game's cheat lore) over patching
-   the check, so the unmodified program simply exercises its own
-   functionality. (No OCR involved.)
+1. **Code-wheel bypass** — **it asks once** (#290, #291). With the seam
+   on, the first launch is the machine's own: the challenge appears and
+   the seam does nothing but watch. When the player answers it
+   correctly — off the cardboard wheel, off the manual, off the code
+   generator application the current releases ship — the seam sees the
+   program's own comparison come out equal, and a host writes that down.
+   Every launch after that skips the challenge outright, at the program's
+   own call site, which is the built-in skip this item always preferred
+   over patching a check: the unmodified program simply does not ask.
+   The possession claim is unchanged and so is its limit — it
+   demonstrates the player holds the wheel, no more — but it is
+   demonstrated by answering rather than by presenting a file, because
+   the file is no longer something a copy comes with (§2). **The seam
+   never answers the challenge for anybody**, and no OCR is involved in
+   any of it.
 2. **Adventurer's Journal** — gated on a fingerprint-verified journal
    PDF. At onboarding, a fact-table (page regions and stream offsets
    keyed by the known PDF editions' fingerprints) locates each journal
@@ -421,11 +440,13 @@ converges on **1.0** — the release the gate in §1 defines.
   during the 0.x run, or ship 1.0 unsigned with instructions too?
 - Which game-binary editions to fingerprint at launch (the currently
   sold archive release is the baseline — which others?).
-- Which **document** editions to fingerprint (§2's optional two). M5-D3
-  (#171) built the table and started it with the code wheel of the
-  archive release, which is the copy every other fact in the tree was
-  gathered against. The Adventurer's Journal has one too now (M5-E3b,
-  #214), measured off the same release. Every other journal is an
+- Which **document** editions to fingerprint (§2's optional two, of
+  which one is now a single artifact — the journal — since the code
+  wheel stopped being a file, #290). M5-D3 (#171) built the table and
+  started it with the code wheel of the archive release, which is the
+  copy every other fact in the tree was gathered against; that row stays
+  a fact and gates nothing. The Adventurer's Journal has one too now
+  (M5-E3b, #214), measured off the same release. Every other journal is an
   unrecognized edition and is refused, which is the fail-closed direction
   and not a bug. Which re-scanned or reissued editions to add beyond
   those is the open half.

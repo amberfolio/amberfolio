@@ -1355,6 +1355,20 @@ uint32_t af_machine_present_document(af_machine* handle, const uint8_t* bytes,
                                                           : AF_OK;
 }
 
+uint32_t af_machine_code_wheel_answered(const af_machine* handle) {
+  const machine* box = box_of(handle);
+  return box != nullptr && box->seams().code_wheel_answered() ? 1u : 0u;
+}
+
+uint32_t af_machine_set_code_wheel_answered(af_machine* handle, int answered) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  box->seams().set_code_wheel_answered(answered != 0);
+  return AF_OK;
+}
+
 uint32_t af_machine_document_count(const af_machine* handle) {
   const machine* box = box_of(handle);
   return box == nullptr ? 0

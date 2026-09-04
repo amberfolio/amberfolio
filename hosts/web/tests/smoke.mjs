@@ -199,6 +199,8 @@ const EXPECTED_EXPORTS = [
   '_af_machine_present_document',
   '_af_machine_document_count',
   '_af_machine_document_name_at',
+  '_af_machine_code_wheel_answered',
+  '_af_machine_set_code_wheel_answered',
   '_af_machine_write_memory',
   '_af_machine_read_memory',
   '_af_machine_set_entry',
@@ -1802,24 +1804,21 @@ if (missing.length === 0) {
   // of asking is that a page shows the answer rather than working it out
   // (#163's argument, one field over).
   //
-  // One seam is gated now — the code-wheel bypass, on the wheel itself
-  // (#115) — and the rest say `no document`. Checked per seam against its
-  // own id rather than against a list written here, so that the day a
-  // second gate goes on this is a test of the door and not of which seams
-  // happen to use it.
+  // **No seam in this build is gated**, and that is the answer since
+  // #290: the code-wheel bypass was the one that was, on a PDF of the
+  // wheel, and the releases sold today ship a code generator application
+  // instead of that file — so it waits for a person answering the
+  // program's own challenge instead (#291). The door is unchanged, and
+  // what exercises it with a gate is `SeamGate.*` in the native suite,
+  // over a fixture seam and a synthetic document.
   const seams = machine.seamList();
   check(seams.length > 0, 'no seams to ask about their gates');
   for (const seam of seams) {
-    const wanted = seam.id === 'code-wheel' ? 'code wheel' : 'no document';
     check(
-      seam.gate === wanted,
-      `seam ${JSON.stringify(seam.id)} reports gate ${JSON.stringify(seam.gate)}, wanted ${JSON.stringify(wanted)}`,
+      seam.gate === 'no document',
+      `seam ${JSON.stringify(seam.id)} reports gate ${JSON.stringify(seam.gate)}, wanted "no document"`,
     );
   }
-  check(
-    seams.some((seam) => seam.gate !== 'no document'),
-    'no seam is gated, so this checks the field and not the door',
-  );
 
   machine.destroy();
   console.log(

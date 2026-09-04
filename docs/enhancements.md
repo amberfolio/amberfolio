@@ -31,34 +31,56 @@ modified, and neither is any file the game owns.
 ## The code-wheel bypass
 
 **What it does.** The game asks you to look up a word on a cardboard
-wheel before it will start. This answers it for you.
+wheel before it will start. **It asks you once.**
 
 **How you turn it on.** `--seam code-wheel` on the desktop host, or the
 toggle on the web page.
 
-**What it will not do without.** The code wheel itself. This enhancement
-is **gated on the document**: present your own copy with `--document`,
-and until you do the seam is inert and says so —
-`seam code-wheel inert document_not_presented`. It is a *possession*
-gate, which is the whole of what it claims: it demonstrates you hold the
-wheel, and decides nothing else about you. Nothing reads inside the file;
-a host hashes what it is handed and presents the digest (`machine/
-document.h`).
+**How it goes, the first time.** Exactly as it always did. The challenge
+comes up and the seam does nothing at all but watch: it does not answer
+it, it does not hint, and it cannot — with this seam on and the question
+unanswered the machine is byte for byte the machine with no seam. Look
+the word up on whatever form of the wheel you own — the cardboard one,
+the manual, the code generator application the current releases ship
+instead of a wheel — and type it. Get it right and the seam sees the
+program's own comparison come out equal, and says so once.
 
-**Where its facts came from.** One address: the instruction where the
-program compares what you typed against its own table. It is answered by
-making the program's own comparison report equal — the flags and the
-count it would have had, had you got it right — rather than by skipping
-the check. The rest of the program cannot tell.
+**How it goes after that.** The challenge is not drawn. The seam moves
+the program past its own call into the copy-protection routine, so the
+game goes from its titles to its menu and nothing asks you anything.
 
-**What makes it native.** It engages the program's own "you got it
-right" path. There is no dialogue, no message, and nothing on the screen
-that the game did not draw: the challenge appears and is passed, exactly
-as it is for somebody with the wheel in front of them.
+**What it will not do.** Answer the challenge for you. There is no path
+through this build that gets past the wheel without a person having
+answered it once — which is the same possession claim the old gate made
+(*you hold the wheel*, and nothing else about you), by the one route
+that still works. It was gated on a **PDF** of the wheel until #290:
+present the file, arm the seam. The releases sold today do not ship that
+PDF, so the file demonstrated nothing about the player who most needed
+it.
 
-**What it is not yet.** Nothing outstanding in the seam: its gate was the
-last of it (#115). Presenting a document is still a flag rather than
-something a page asks you for, and that is M6's onboarding (#265).
+**Where it is remembered.** Nowhere yet — #292 is the host half, one
+file beside your other per-user data on the desktop and this browser's
+own storage on the web, keyed by the fingerprint of the program you
+answered for. Until it lands, the answer lasts as long as the process
+does.
+
+**Where its facts came from.** Two addresses. The instruction where the
+program compares what you typed against its own table, which is where
+the seam watches; and the far call in the boot that puts the challenge
+on the screen, which is where it steps over. The routine behind that
+call sets nothing and returns on success, so a program that never called
+it is a program that called it and got it right.
+
+**What makes it native.** Nothing is drawn that the game does not draw,
+and nothing is skipped that the game does not skip: the call the seam
+steps over is the same one the program's own documented boot word steps
+over. There is no dialogue, no message, and no acknowledgement on the
+game's screen — the answer is remembered by the host, not announced by
+the machine.
+
+**What it is not yet.** Nothing outstanding in the seam. Where the
+answer is kept is #292, and the committed sessions still boot past a
+challenge this seam no longer answers, which is #293.
 
 ---
 

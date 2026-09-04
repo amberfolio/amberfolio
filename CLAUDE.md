@@ -13,7 +13,11 @@ here or in PRs.
 
 **Status: M5 complete, tagged `v0.3.0`. M6 — onboarding, shells and
 gamepad — is the current milestone, and #265 is the worklist it starts
-from.**
+from. In flight beside it: #290, the code wheel's *once* — the one v1
+enhancement whose design changed after M5, because the releases sold
+today ship a code generator application where the gate expected a PDF.
+#291 is its mechanism and has landed; #292 remembers it between runs and
+#293 re-records the session library on the boot it shortens.**
 The game plays, and it plays *enhanced*. All six of PLAN.md §5's v1
 enhancements work and toggle independently on both hosts — the code-wheel
 bypass, the Encamp Fix, the automap, the journal, the explored overlay's
@@ -58,13 +62,30 @@ What M5 left in place:
   `seam_host_services::serve`, on both hosts and across the ABI — plus
   the two things a person needs on the far side of one: a document gate
   (M5-D3, #171) and the call into the program above.
-- **Eight seams this build carries**: `code-wheel` (**gated on the wheel
-  itself** since #115: with no document presented the seam is inert and
-  says `document_not_presented`, so the challenge is answered for a
-  player who holds the wheel and for nobody else. A recording of one
-  names the document by digest, which is why a session descriptor has a
-  `document` line and why a replay without it is *refused* rather than
-  left to diverge), `encamp-fix` (M5-E1 #172, M5-E1a #186,
+- **Eight seams this build carries**: `code-wheel` (**it asks once**,
+  since M6-C1a #291, and it was gated on a PDF of the wheel from #115
+  until then. The releases sold today ship a **code generator
+  application** rather than that PDF, so the file named an artifact the
+  player who most needed it could not hold, and the proof moved from the
+  artifact to the act (#290). On and unanswered the seam only *watches*:
+  the game asks the challenge exactly as it always did, and such a run
+  is byte for byte the run with the seam off, which is the fidelity
+  invariant holding for an *enabled* seam. When a person answers it
+  correctly — off the wheel, the manual, or that application — the seam
+  sees the program's own comparison come out equal, latches it and calls
+  the new `code_wheel_answered` host service; from then on it steps over
+  the boot's own five-byte call into the protection overlay, checking the
+  call's own target words first, so the challenge is never drawn. The
+  routine behind that call sets nothing and returns on success, which is
+  what makes stepping over it equivalent to passing it. **It never
+  answers the challenge for anybody.** No seam in this build is gated
+  now; the gate mechanism, the wheel's row in `known_documents()` and
+  the `document` line in a session descriptor all stay, the first two as
+  a door and a fact and the third as something #293 replaces. Where the
+  answer is *remembered* is #292 — until it lands the latch lives as long
+  as the process, and `--code-wheel-answered` on the desktop host (or
+  `setCodeWheelAnswered()` on the web façade) is how a run says it was
+  answered before), `encamp-fix` (M5-E1 #172, M5-E1a #186,
   M5-E1b #189 and M5-E1c #194 — the first M5 enhancement; it puts a `FIX`
   command on the camp screen's own bar by splicing four characters into
   the string the program draws that bar from, and when the player presses
@@ -269,8 +290,11 @@ What M5 left in place:
   `af_web_journal_store_changed()` / `_clear_changed()` plus five
   `Machine` methods put the journal store on the façade it was the only
   exception to. Adding entry points and changing nothing that was there
-  is `AF_ABI_VERSION_MINOR` by #211's own rule, so **the ABI is 1.1** and
-  `v0.3.0`'s manifest says so. What was asked for and stays declined is
+  is `AF_ABI_VERSION_MINOR` by #211's own rule, so the ABI was **1.1** at
+  `v0.3.0` and its manifest says so. It is **1.2** on `main` now:
+  `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
+  joined it with the code wheel's once (#291), two added entry points
+  and nothing changed. What was asked for and stays declined is
   in PLAN.md §5 with its reasoning: a machine-state export/import (#209)
   and a host-supplied VFS adapter (#206). The release bundle is **seven
   files, not six** — `journal.mjs` joined it in the same change, and was
@@ -290,6 +314,12 @@ What M5 left in place:
   went through in #273, which taught `drive.mjs` to carry the empty
   `\SAVE\` a fresh installation has — a put and the remove that leaves
   the name, since the ABI has no `mkdir` and is not getting one.
+  **Every one of those 23 is a recording of a run that no longer
+  happens**, as of #291: they all booted past the code-wheel challenge by
+  the seam answering it, and the seam watches now. The relations CI
+  checks are over the recordings and are unaffected; a replay *with a
+  disk* is not, and re-recording the library on the shorter boot is #293.
+  Nothing else in this list moved.
 - **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
   canonical machine-state serialization, a recording that is keys, ticks
   and hashes and no content at all, and verification on all four targets

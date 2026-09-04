@@ -318,8 +318,14 @@ uint32_t af_version(void);
 ///     host's own surface. One bump and not two, because both landed
 ///     before the tag — which is the whole reason minor is a number
 ///     rather than a count of pull requests.
+///   * **1.2** — M6-C1a (#291), two added entry points and nothing
+///     changed: `af_machine_code_wheel_answered` and
+///     `af_machine_set_code_wheel_answered`, the door the code-wheel
+///     seam's once needs. What *did* change under it is behaviour rather
+///     than surface — no seam is gated any more (#290) — and behaviour
+///     is what a build's own version says, not what an ABI's does.
 #define AF_ABI_VERSION_MAJOR 1u
-#define AF_ABI_VERSION_MINOR 1u
+#define AF_ABI_VERSION_MINOR 2u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -1150,7 +1156,8 @@ uint32_t af_machine_seam_pull(af_machine* box, const char* id);
 // `af_machine_seam_fired` sits beside the `seam_event` stream.
 //
 // `which` is a `machine::seam_host_service`: 0 for the journal reader's
-// `journal_open`, 1 for `automap_update`. There were three until #169;
+// `journal_open`, 1 for `automap_update`, 2 for `journal_seen`, 3 for
+// `code_wheel_answered` (#291). There were three until #169;
 // `save_state_changed` went with the enhancement that would have called
 // it (#176, withdrawn), because a service with no consumer is a surface
 // built on spec.
@@ -1221,6 +1228,12 @@ uint32_t af_machine_set_entry(af_machine* box, uint32_t cs, uint32_t ip,
 // `document_not_presented`. It is not refused — the seam took, and the
 // player has not shown the thing PLAN.md §5 requires them to hold.
 //
+// **No seam in this build is gated** (#290). The code-wheel bypass was,
+// on a PDF of the wheel, until the releases sold today turned out to
+// ship a code generator application instead of one; it asks a person to
+// answer the challenge once now (#291). The door stays, and the journal
+// is a field away from using it.
+//
 // Presenting is **configuration**, like a seam toggle: a host does it
 // between `af_machine_run_until` slices and never from inside one, it is
 // not machine state, it is not in the state hash, and a machine with a
@@ -1257,6 +1270,34 @@ uint32_t af_machine_present_document(af_machine* box, const uint8_t* bytes,
 uint32_t af_machine_document_count(const af_machine* box);
 uint32_t af_machine_document_name_at(const af_machine* box, uint32_t index,
                                      char* out, uint32_t max);
+
+// --- The code wheel, answered (M6-C1a, #291) --------------------------
+//
+// The door that replaced the gate above for one seam. `code-wheel` waits
+// for a person to answer the program's own challenge once, off whatever
+// form of the wheel they own — the releases sold today ship a code
+// generator application rather than the PDF the gate asked for (#290).
+// A host sets this before the run from whatever it remembered, and reads
+// it back when the seam says a person just got it right (the
+// `code_wheel_answered` host service, index 3).
+//
+// It is **configuration**, exactly as presenting a document is: set
+// between `af_machine_run_until` slices and never from inside one, not
+// machine state, not in the state hash, and a machine that has it set
+// with every seam off is byte-for-byte one that does not.
+//
+// **Where it is remembered is the host's** (#292): a file beside the
+// host's other per-user data on the desktop, this browser's own storage
+// on the web, keyed by the program's fingerprint. Nothing here persists
+// anything.
+
+/// Whether the code-wheel challenge has been answered on this machine.
+/// Zero for a null handle, which is also what a machine that has not
+/// been told answers.
+uint32_t af_machine_code_wheel_answered(const af_machine* box);
+
+/// Say so, or unsay it. `AF_OK`, or `AF_NO_MACHINE` for a null handle.
+uint32_t af_machine_set_code_wheel_answered(af_machine* box, int answered);
 
 /// What document seam `index` is gated on, as a name a host shows
 /// (`machine::document_kind_name`) — `code wheel`, `journal`, or `no

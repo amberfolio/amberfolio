@@ -831,6 +831,15 @@ Both landed together in M5-C1 and are the first change to move
 bundle before the tag. Each adds entry points and changes nothing that
 was already there, which is exactly what minor is for.
 
+**1.2 is the code wheel's once** (#291): `af_machine_code_wheel_answered`
+and `af_machine_set_code_wheel_answered`, two more entry points and
+nothing changed. The *behaviour* under them changed a good deal — no
+seam is gated any more, and the one that was now waits for a person to
+answer the program's own challenge (#290) — but behaviour is what a
+build's own version says, not what an ABI's does: a consumer that calls
+the same entry points in the same way still gets an answer of the same
+shape.
+
 **`af_machine_vfs_generation()` — did the disk move?** A host that
 persists what the program wrote runs that write-back inside its own frame
 loop, and needs a cheap answer sixty times a second. Walking `\SAVE\`
