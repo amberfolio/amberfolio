@@ -246,6 +246,31 @@ Two things, and no runner anywhere can check either: **that a photon left
 a display, and that a pressure wave left a speaker.** Everything up to the
 device is now asserted; the device itself is not.
 
+**And since M6-C1 (#290) there is a third, of a different kind: that the
+second launch does not ask.** The code-wheel bypass now waits for a
+person to answer the game's own question, so the one moment the whole
+enhancement is about cannot be driven by a test — a correct answer needs
+somebody holding a wheel, a manual or the code generator application
+their copy came with. It is one run, with `--seam code-wheel` on and the
+answer typed:
+
+```
+amberfolio: host-service code-wheel-answered calls=1 last=0 at=<tick>
+amberfolio: code wheel answered - remembered for this copy
+```
+
+and then a second run of the same command, which should print
+
+```
+amberfolio: code wheel answered on this copy already - the challenge will not be drawn
+```
+
+and go from the titles to the menu. Everything under that is checked
+without a person: the watch at the register level (`SeamCodeWheel.*`),
+the skip driven on a real copy (#291), and the store out to a drawer and
+back on both hosts. What is missing is a human being getting it right,
+and it stays here until somebody has (#292).
+
 It is worth doing on each desktop target you care about, and it takes two
 commands.
 

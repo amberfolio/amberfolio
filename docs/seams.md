@@ -1404,13 +1404,24 @@ configuration in exactly the sense a presented document was: it survives
 `reset()`, the serialization never sees it, and a machine that has it set
 with every seam off hashes equal to one that does not.
 
-**What it is not yet.** Nothing outstanding in the seam. **Nothing
-remembers the latch across a run** — that is #292, one file beside the
-host's other per-user data on the desktop and this browser's own storage
-on the web — and the committed sessions still boot past a challenge this
-seam no longer answers, which is #293. A browser has never been opened on
-the toggle that turns it on (#147, #274), and putting a face on any of
-this is M6's onboarding (#265).
+**Where the latch is kept** (M6-C1b, #292). The engine's latch lives as
+long as the machine; what outlives it is a host's — `host/code_wheel_store.h`,
+one digest per copy, a file in the desktop host's per-user data directory
+and a key in the browser's own storage. The seam's callout is what puts a
+copy in it; `apply_code_wheel_store()` is what tells the next machine,
+before its first instruction, and it is one function both hosts call so
+that a lookup cannot mean two things. The store never holds the question,
+the answer, or a time.
+
+**What it is not yet.** Nothing outstanding in the seam, and one thing
+outstanding for a person: **nobody has typed a correct answer into the
+real program yet**. Everything below that is tested — the watch at the
+register level, the skip driven on a real copy, the store round-tripped
+on both hosts — but the moment the whole enhancement is about needs
+somebody holding a wheel, and it is on `docs/hosts.md` §3's list. The
+committed sessions still boot past a challenge this seam no longer
+answers, which is #293; the toggle that turns it on has never been
+pressed in a browser (#147, #274).
 
 ---
 

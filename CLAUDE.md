@@ -85,10 +85,17 @@ What M5 left in place:
   now; the gate mechanism, the wheel's row in `known_documents()` and
   the `document` line in a session descriptor all stay, the first two as
   a door and a fact and the third as something #293 replaces. Where the
-  answer is *remembered* is #292 — until it lands the latch lives as long
-  as the process, and `--code-wheel-answered` on the desktop host (or
-  `setCodeWheelAnswered()` on the web façade) is how a run says it was
-  answered before), `encamp-fix` (M5-E1 #172, M5-E1a #186,
+  answer is **remembered** by a host since M6-C1b (#292):
+  `hosts/common/.../code_wheel_store.h`, one digest per copy and nothing
+  else — not the question, not the answer, not a time — in
+  `code-wheel.txt` beside the desktop host's other per-user data
+  (`--code-wheel-store`, `--forget-code-wheel`) and in this browser's own
+  storage on the web, where the page carries an *Ask me again* button.
+  `apply_code_wheel_store()` is the one function both hosts call to tell
+  the next machine, before its first instruction. What no test can do is
+  the moment it is all for: **nobody has typed a correct answer into the
+  real program yet**, which is `docs/hosts.md` §3's third by-hand check),
+  `encamp-fix` (M5-E1 #172, M5-E1a #186,
   M5-E1b #189 and M5-E1c #194 — the first M5 enhancement; it puts a `FIX`
   command on the camp screen's own bar by splicing four characters into
   the string the program draws that bar from, and when the player presses

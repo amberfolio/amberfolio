@@ -58,11 +58,18 @@ present the file, arm the seam. The releases sold today do not ship that
 PDF, so the file demonstrated nothing about the player who most needed
 it.
 
-**Where it is remembered.** Nowhere yet — #292 is the host half, one
-file beside your other per-user data on the desktop and this browser's
-own storage on the web, keyed by the fingerprint of the program you
-answered for. Until it lands, the answer lasts as long as the process
-does.
+**Where it is remembered.** On the desktop, one small text file in the
+place this program keeps your per-user data — `%APPDATA%\amberfolio\` on
+Windows, `~/Library/Application Support/amberfolio/` on macOS,
+`$XDG_DATA_HOME/amberfolio/` on Linux — called `code-wheel.txt`, or
+wherever `--code-wheel-store` says. In a browser, this browser's own
+storage. Either way it holds the **SHA-256 of the copy you answered for**
+and nothing else: not the question, not the answer, not when. Keyed by
+the copy, so answering for one edition does not answer for another.
+
+**How to be asked again.** `--forget-code-wheel` on the desktop host, the
+*Ask me again* button on the web page, or delete the file — it is a text
+file with one line per copy, and you are meant to be able to read it.
 
 **Where its facts came from.** Two addresses. The instruction where the
 program compares what you typed against its own table, which is where

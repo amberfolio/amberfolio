@@ -215,6 +215,16 @@ set(_amberfolio_web_export_names
   _af_web_journal_seen_restore
   _af_web_journal_store_clear
   _af_web_journal_store_fingerprint
+  # The code wheel's answer, kept between visits (M6-C1b, #292): the
+  # journal store's four doors, one artifact over, plus the lookup that
+  # tells a machine what this tab remembers about the copy it is
+  # running.
+  _af_web_code_wheel_store_write
+  _af_web_code_wheel_store_read
+  _af_web_code_wheel_store_changed
+  _af_web_code_wheel_store_clear_changed
+  _af_web_code_wheel_store_clear
+  _af_web_code_wheel_apply
   _af_web_journal_probe
   _af_web_journal_probe_bytes
   _af_web_journal_probe_size

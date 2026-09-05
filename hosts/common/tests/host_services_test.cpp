@@ -23,6 +23,7 @@
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/host/code_wheel_store.h"
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/edition.h"
@@ -66,12 +67,24 @@ void ask_for_automap(machine::machine& /*box*/, seam_context& ctx) {
       ctx.call_host(seam_host_service::automap_update, automap_argument));
 }
 
-constexpr std::array<seam_point, 2> points{{{.module = machine::resident_image,
-                                             .offset = 0x0000,
-                                             .run = &ask_for_journal},
-                                            {.module = machine::resident_image,
-                                             .offset = 0x0001,
-                                             .run = &ask_for_automap}}};
+/// The third call, and the one that carries nothing (M6-C1b, #292): a
+/// person has just answered the code-wheel challenge. What that means is
+/// entirely in the machine — *which copy* asked the question — so the
+/// argument is zero and the service's whole job is to look there.
+void say_the_wheel_was_answered(machine::machine& /*box*/, seam_context& ctx) {
+  static_cast<void>(ctx.call_host(seam_host_service::code_wheel_answered, 0));
+}
+
+constexpr std::array<seam_point, 3> points{
+    {{.module = machine::resident_image,
+      .offset = 0x0000,
+      .run = &ask_for_journal},
+     {.module = machine::resident_image,
+      .offset = 0x0001,
+      .run = &ask_for_automap},
+     {.module = machine::resident_image,
+      .offset = 0x0002,
+      .run = &say_the_wheel_was_answered}}};
 constexpr seam_definition calling_seam{
     .id = "test-calls-out",
     .about = "asks for both host services, one at each of two points",
@@ -332,6 +345,70 @@ TEST(HostServicesJournal, AnsweringIsNotWritingMachineState) {
   const machine::state_hashes before = machine::hash_state(r.pc());
   ASSERT_EQ(ask(services, r.pc(), Entry(12)), machine::journal_delivery::ready);
   EXPECT_EQ(before, machine::hash_state(r.pc()));
+}
+
+// --- The code wheel's answer (M6-C1b, #292) --------------------------------
+
+TEST(HostServices, ItWritesTheAnsweredCopyIntoTheStore) {
+  // What the seam latched lives as long as the machine; this is where it
+  // starts outliving it. The key is the machine's own: the fingerprint of
+  // the program that asked the question.
+  const rig r;
+  host_services services;
+  code_wheel_store store;
+  services.set_code_wheel_store(&store);
+  r.pc().seams().set_host(&services);
+  r.program();
+  ASSERT_EQ(r.pc().seams().enable("test-calls-out"), seam_reason::none);
+
+  sha256_digest program;
+  ASSERT_TRUE(machine::parse_digest(claimed_hex, program));
+  EXPECT_FALSE(store.answered(program));
+
+  r.pc().step();  // journal
+  r.pc().step();  // automap
+  r.pc().step();  // the code wheel
+
+  EXPECT_TRUE(services.record(seam_host_service::code_wheel_answered).seen);
+  EXPECT_TRUE(store.answered(program));
+  EXPECT_TRUE(store.changed()) << "and a host is told there is a file to write";
+}
+
+TEST(HostServices, ItServesTheCodeWheelWithNoStoreAtAll) {
+  // A host that keeps no store is a host where the answer lasts as long
+  // as the machine, which is honest and is not an error. What must not
+  // happen is a crash or a refusal: the seam has already latched, and the
+  // callout is telling somebody, not asking.
+  const rig r;
+  host_services services;
+  r.pc().seams().set_host(&services);
+  r.program();
+  ASSERT_EQ(r.pc().seams().enable("test-calls-out"), seam_reason::none);
+
+  r.pc().step();
+  r.pc().step();
+  r.pc().step();
+
+  EXPECT_TRUE(services.record(seam_host_service::code_wheel_answered).seen);
+  EXPECT_EQ(services.code_wheel(), nullptr);
+}
+
+TEST(HostServices, ItWritesNothingIntoTheStoreForAMachineWithNoProgram) {
+  // The engine keeps a program's digest from `loaded()`; a machine that
+  // has never been given one has nothing to write down, and a store that
+  // gained an entry here would be claiming a copy nobody ran.
+  const auto held =
+      std::make_unique<machine::machine>(machine::memory_layout::pc);
+  machine::machine& box = *held;
+  host_services services;
+  code_wheel_store store;
+  services.set_code_wheel_store(&store);
+  box.seams().set_host(&services);
+
+  services.serve(box, seam_host_service::code_wheel_answered, 0);
+
+  EXPECT_TRUE(store.empty());
+  EXPECT_FALSE(store.changed());
 }
 
 }  // namespace

@@ -48,6 +48,7 @@
 #include "amberfolio/abi.h"
 #include "amberfolio/abi_bridge.h"
 #include "amberfolio/host/automap_store.h"
+#include "amberfolio/host/code_wheel_store.h"
 #include "amberfolio/host/host_services.h"
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
@@ -116,6 +117,20 @@ struct journal_session {
 
 journal_session& journal() {
   static journal_session one;
+  return one;
+}
+
+/// The copies whose code-wheel challenge has been answered (M6-C1b,
+/// #292).
+///
+/// One, and never freed, for the reason the two above are one. In memory
+/// here; what outlives the tab is the page's copy of it, out through
+/// `af_web_code_wheel_store_write` into the browser's own drawer and back
+/// in through `_read` on the next visit. This module opens nothing — a
+/// store holds digests and serializes them, and where the bytes rest is a
+/// host's decision (`host/code_wheel_store.h`).
+amberfolio::host::code_wheel_store& code_wheel() {
+  static amberfolio::host::code_wheel_store one;
   return one;
 }
 
@@ -245,6 +260,10 @@ uint32_t af_web_attach_host_services(af_machine* box) {
   // move, only its contents change, and a page that ingested a journal
   // after loading the program should not have to attach anything again.
   services().set_journal_store(&journal().store);
+  // And where `code_wheel_answered` writes the copy a person has just
+  // answered for (M6-C1b, #292). Attached here for the same reason: the
+  // object does not move, only what is in it.
+  services().set_code_wheel_store(&code_wheel());
   return AF_OK;
 }
 
@@ -590,6 +609,70 @@ uint32_t af_web_journal_store_changed(void) {
 uint32_t af_web_journal_store_clear_changed(void) {
   journal().store.clear_changed();
   return AF_OK;
+}
+
+/// The code wheel's answer, kept between visits (M6-C1b, #292).
+///
+/// The same four doors the journal's store has next door, for the same
+/// reason and with the same contract: `_write` hands out the store as its
+/// file would be, `_read` takes those bytes back, `_changed` says whether
+/// this tab has anything new to keep, and `_clear_changed` is the page
+/// saying the bytes are somewhere — never before they are.
+///
+/// What raises `_changed` is a person answering the game's own question:
+/// the seam latches it, the host service writes the running program's
+/// fingerprint into this store, and the page sees the flag on its next
+/// frame. Nothing else in a run touches it.
+uint32_t af_web_code_wheel_store_write(char* out, uint32_t cap) {
+  return hand_out(code_wheel().serialize(), out, cap);
+}
+
+uint32_t af_web_code_wheel_store_read(const char* text, uint32_t size) {
+  if (text == nullptr) {
+    return static_cast<uint32_t>(
+        amberfolio::host::code_wheel_trouble::not_a_store);
+  }
+  return static_cast<uint32_t>(
+      code_wheel().parse(std::string_view(text, size)));
+}
+
+uint32_t af_web_code_wheel_store_changed(void) {
+  return code_wheel().changed() ? 1U : 0U;
+}
+
+uint32_t af_web_code_wheel_store_clear_changed(void) {
+  code_wheel().clear_changed();
+  return AF_OK;
+}
+
+/// The page's "forget it": everything in this tab's store gone.
+///
+/// A page can empty its own drawer, but the store it emptied the drawer
+/// *from* is in here, and a machine already told that this copy had
+/// answered would go on skipping the challenge for the rest of the
+/// session — so the object has to be emptied too, and the page reloads or
+/// the next machine asks.
+///
+/// Always `AF_OK`: there is no way for a store to decline to be empty.
+uint32_t af_web_code_wheel_store_clear(void) {
+  static_cast<void>(code_wheel().forget());
+  return AF_OK;
+}
+
+/// Tell `box` what this tab remembers about the program it has loaded,
+/// and answer 1 if it was told anything.
+///
+/// The lookup is in C++ on both hosts (`apply_code_wheel_store`) because
+/// it is the same job in a terminal and in a browser, and a page that did
+/// it in JavaScript would need the program's fingerprint marshalled out
+/// of the module to ask a question the module can answer. A page calls it
+/// once, after the program is loaded and before the first step.
+uint32_t af_web_code_wheel_apply(af_machine* box) {
+  amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
+  if (pc == nullptr) {
+    return 0;
+  }
+  return amberfolio::host::apply_code_wheel_store(*pc, code_wheel()) ? 1U : 0U;
 }
 
 /// The store's read log, back into the machine the reader draws from

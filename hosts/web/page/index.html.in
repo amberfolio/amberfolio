@@ -258,6 +258,32 @@
       </p>
     </fieldset>
 
+    <!-- The code wheel's once (M6-C1, #290). There is nothing to upload
+         here and that is the change: the game asks its own question, in
+         its own screen, and this browser remembers that you answered it.
+         What is kept is the SHA-256 of the copy you answered for and
+         nothing else - not the question, not the answer.
+
+         The bypass is a seam like any other and is off by default; turn
+         it on in the seam list above, answer the challenge once, and the
+         next visit goes straight to the menu. -->
+    <fieldset>
+      <legend>the code wheel</legend>
+      <div class="controls">
+        <span id="code-wheel-status">nothing answered in this browser yet</span>
+        <button id="code-wheel-forget" type="button">Ask me again</button>
+      </div>
+      <p class="note">
+        With the <code>code-wheel</code> seam on, the game asks you for a
+        word off the wheel exactly as it always did - this emulator does
+        not answer it for you, and cannot. Answer it correctly once, off
+        whatever form of the wheel your copy came with, and this browser
+        writes down that <em>this copy</em> has answered; every visit
+        after that goes from the titles to the menu with nothing asked.
+        <em>Ask me again</em> forgets it.
+      </p>
+    </fieldset>
+
     <!-- The M5-E3 (#174) half: the player's own Adventurer's Journal,
          read once so that the in-game reader has something to show. This
          is the minimal onboarding surface that issue asks for - a file

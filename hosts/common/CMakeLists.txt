@@ -16,6 +16,11 @@
 add_library(amberfolio-host-services STATIC
   src/host_services.cpp
   src/automap_store.cpp
+  # What a player answered, so the code wheel asks once and not once a
+  # launch (M6-C1b, #292). Here for the same reason the two above are:
+  # both hosts keep the identical thing, and only where the bytes land
+  # differs.
+  src/code_wheel_store.cpp
   # The journal's ingestion (M5-E3, #174): the edition fact table, the
   # extractor, the text store, and the synthetic document the whole
   # pipeline is checked against. Here rather than in either host because
@@ -53,6 +58,7 @@ if(AMBERFOLIO_BUILD_TESTS)
   add_executable(amberfolio-host-services-tests
     tests/host_services_test.cpp
     tests/automap_store_test.cpp
+    tests/code_wheel_store_test.cpp
     tests/journal_facts_test.cpp
     tests/journal_extract_test.cpp
     tests/journal_store_test.cpp

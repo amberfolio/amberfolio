@@ -91,6 +91,29 @@ const HEALTH_ID = 'health';
 const JOURNAL_INPUT_ID = 'journal';
 const JOURNAL_STATUS_ID = 'journal-status';
 const JOURNAL_FORGET_ID = 'journal-forget';
+const CODE_WHEEL_STATUS_ID = 'code-wheel-status';
+const CODE_WHEEL_FORGET_ID = 'code-wheel-forget';
+
+/// Where this browser remembers the copies whose code-wheel challenge
+/// has been answered (M6-C1b, #292).
+///
+/// Versioned in the key for `JOURNAL_STORE_KEY`'s reason: a future
+/// format this build could not parse is a different drawer rather than a
+/// puzzle. What goes in it is the store's own text — a header line and a
+/// digest per copy, and nothing else about anybody.
+const CODE_WHEEL_STORE_KEY = 'amberfolio.code-wheel.store.v1';
+
+/// The drawer, or null where there is none. Behind a try for the reason
+/// `journal.mjs`'s own accessor is: `localStorage` does not merely go
+/// missing under node, it *throws* in a browser told to block site data.
+function codeWheelStorage() {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 
 /// The rate the speaker is rendered and played at. What a callback pulls
 /// is not a fixed number of samples but however many this rate has in the
@@ -179,6 +202,13 @@ export function runDevPage() {
     // Without it a player's `*` marks came back on the desktop and not
     // here, which was a gap rather than a decision.
     restoreSeen(loaded.module, machine.handle);
+
+    // And what this browser remembers about the code wheel (M6-C1b,
+    // #292): the copies whose challenge has been answered. Here for the
+    // journal's reason — after the module exists and before anything can
+    // look at the store — and the *applying* is later, at the load, when
+    // there is a program with a fingerprint to look up.
+    restoreCodeWheelStore(machine);
     return machine;
   };
 
@@ -416,6 +446,46 @@ export function runDevPage() {
     });
   }
 
+  // "Ask me again" (M6-C1b, #292): the drawer emptied, and the tab's own
+  // copy with it.
+  //
+  // Both halves for the journal button's reason — a page that emptied only
+  // the drawer would go on skipping the challenge for the rest of this
+  // session while saying it had forgotten. The *machine* keeps its latch:
+  // a person who has already answered in this session answered, and
+  // un-asking a question after the fact is not something this can honestly
+  // do. So the sentence says which launch it takes effect on.
+  //
+  // No confirmation prompt, and that is a decision: what is destroyed is
+  // one line saying a copy has answered, and the way to get it back is to
+  // answer the game's own question once.
+  const codeWheelForgetButton = el(CODE_WHEEL_FORGET_ID);
+  if (codeWheelForgetButton) {
+    codeWheelForgetButton.addEventListener('click', () => {
+      const status = el(CODE_WHEEL_STATUS_ID);
+      const storage = codeWheelStorage();
+      let emptied = false;
+      if (storage) {
+        try {
+          storage.removeItem(CODE_WHEEL_STORE_KEY);
+          emptied = true;
+        } catch {
+          emptied = false;
+        }
+      }
+      // The module's own store, when there is a module. Not fetched to do
+      // this, for the journal button's reason: a player pressing this
+      // before anything is loaded wants the drawer emptied and nothing
+      // else downloaded on their behalf.
+      if (loaded) loaded.module._af_web_code_wheel_store_clear();
+      if (status) {
+        status.textContent = emptied
+          ? 'forgotten - the game will ask again on the next launch'
+          : 'this browser would not forget it';
+      }
+    });
+  }
+
   wireDirectoryPicker({
     input: el(DIRECTORY_INPUT_ID),
     dropZone: el(DROP_ZONE_ID),
@@ -553,6 +623,20 @@ export function runDevPage() {
       );
       const editionEl = el(EDITION_ID);
       if (editionEl) editionEl.textContent = `edition: ${edition ?? 'unrecognized'}`;
+      // What this browser remembers about *this copy* (M6-C1b, #292).
+      // After the load, because the answer is keyed by the program's own
+      // fingerprint and there is nothing to look up before one is
+      // loaded; before the run, because a machine told after its first
+      // step would have drawn the challenge already.
+      if (box.codeWheelApply()) {
+        appendConsole(
+          '[host] code wheel answered on this copy already - the challenge ' +
+            'will not be drawn\n',
+        );
+        const status = el(CODE_WHEEL_STATUS_ID);
+        if (status) status.textContent = 'this copy has answered; it will not be asked';
+      }
+
       const refreshSeams = renderSeams(box, el(SEAMS_ID), appendConsole);
 
       const budget = Number.parseInt(el(STEPS_INPUT_ID)?.value ?? '', 10);
@@ -694,6 +778,56 @@ function renderSeams(machine, container, appendConsole) {
       if (trigger) trigger.disabled = seam.state !== AF_SEAM_ON;
     }
   };
+}
+
+/// The code wheel's drawer, into the module's store (M6-C1b, #292).
+///
+/// Every outcome is a sentence on the page, because the failure this
+/// guards against is silent: a player who answered the question last week
+/// and is asked it again deserves to know their browser lost it rather
+/// than to think the emulator did nothing.
+function restoreCodeWheelStore(machine) {
+  const status = el(CODE_WHEEL_STATUS_ID);
+  const say = (text) => {
+    if (status) status.textContent = text;
+  };
+  const storage = codeWheelStorage();
+  if (!storage) {
+    say('this browser keeps nothing, so the game will ask every visit');
+    return;
+  }
+  let text = null;
+  try {
+    text = storage.getItem(CODE_WHEEL_STORE_KEY);
+  } catch {
+    say('this browser would not say what it had kept');
+    return;
+  }
+  if (text === null || text === '') {
+    say('nothing answered in this browser yet');
+    return;
+  }
+  const trouble = machine.codeWheelStoreRead(text);
+  if (trouble !== 0) {
+    // Left in the drawer rather than thrown away: whatever it is, this
+    // build cannot read it, and a store from a later one is somebody's
+    // own answer.
+    say(`what this browser kept could not be read back (${trouble})`);
+    return;
+  }
+  say('this browser remembers a copy that has answered');
+}
+
+/// Put the module's store in the drawer, and say whether it went.
+function keepCodeWheelStore(machine) {
+  const storage = codeWheelStorage();
+  if (!storage) return { kept: false, why: 'this browser keeps nothing' };
+  try {
+    storage.setItem(CODE_WHEEL_STORE_KEY, machine.codeWheelStoreWrite());
+  } catch (problem) {
+    return { kept: false, why: `${problem?.name ?? problem}` };
+  }
+  return { kept: true, why: null };
 }
 
 /// Present, run, and report — everything both entry points share.
@@ -1002,6 +1136,29 @@ async function run(
       appendConsole(decodeConsoleBytes(consoleBytes));
     }
     drainLog();
+
+    // Somebody answered the code-wheel challenge (M6-C1b, #292). At most
+    // once in a session, and the check is a boolean the module already
+    // raised — the same arrangement the journal's store has, and the
+    // reason #229 put a door on that flag rather than making a page hash
+    // a store every frame.
+    if (machine.codeWheelStoreChanged()) {
+      const { kept, why } = keepCodeWheelStore(machine);
+      // Lowered only once the bytes are somewhere, never before: a flag
+      // cleared on a drawer that refused them would lose the answer.
+      if (kept) machine.codeWheelStoreClearChanged();
+      const status = el(CODE_WHEEL_STATUS_ID);
+      if (status) {
+        status.textContent = kept
+          ? 'answered, and remembered for this copy'
+          : `answered, but this browser would not keep it (${why})`;
+      }
+      appendConsole(
+        kept
+          ? '[host] code wheel answered - remembered for this copy\n'
+          : `[host] code wheel answered, but not kept (${why})\n`,
+      );
+    }
 
     // Exactly the audio this callback's slice of virtual time contains —
     // not a fixed frame's worth, which on a 240 Hz display would be four
