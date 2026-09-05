@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# CAMP-1: the Encamp Fix's report leaves with the camp screen (M5-E1e,
+# #298) — camp entry, the Fix, and the menu's own EXIT, with nothing of
+# the seam's left on the adventuring screen afterwards.
+#
+# **Why this leg exists.** The report's title used to be handed to the
+# program's frame, which draws it on the box's own top row, 0x11 — and
+# the camp loop's own way out clears rows 0x12..0x16 of the panel and
+# the message line on 0x18, nothing above them. So `FIX: PARTY HEALED`
+# stayed on the screen under the adventuring bar after camp was gone,
+# seen by a person on a display. The title is a line on 0x12 now, and the
+# `allow` after the exit below is the assertion: from the frame after
+# the mode word leaves camp to the end of the run, the seam-on screen is
+# the seam-off screen everywhere but two named cells.
+#
+# **A pair leg, and it can be one.** Every key here reaches the program
+# in both halves: `E` is ENCAMP on the adventuring bar, `F` on the camp
+# bar is the Fix with the seam on and a letter the camp loop compares
+# against its own commands and ignores with it off, and `E` on the camp
+# bar is EXIT either way. Slot C's party is whole, so the Fix declines and
+# the report is `FIX: PARTY HEALED` over `NO HIT POINTS RESTORED.` — the
+# case the screenshot showed, and one with no cast, no rest and no clock
+# in it to move the two runs apart.
+#
+# **Driven, on the shorter boot.** This script is the boot #291 left —
+# the code-wheel seam on and told the challenge is answered — so there is
+# no wheel letter and no Return in it, and its frames are not the older
+# legs' frames. The runner does not yet carry that flag (#293 owes every
+# leg its re-drive on the new boot), so this leg was driven by hand with
+# the same host, the same disk copy, the same dump cadence and the same
+# check the runner makes: 463 frames compared, 1 of them a dump apart,
+# every difference inside the rects below. Before the change, the same
+# script leaves row 0x11 holding the title's 394 pixels from frame 10,250
+# to the end of the run, and rows 0x12..0x16 holding nothing.
+about the Encamp Fix's report leaves with the camp screen: camp, FIX, EXIT
+kind pair
+program START.EXE
+both code-wheel
+seam encamp-fix
+until 230000000
+every 25
+# A screen may appear in the two runs a dump apart, because a repaint
+# lands where it lands — here the camp teardown itself, 8 frames apart in
+# the two runs. One dump of slack, the same as every other leg.
+slack 1
+
+# Slot C: four strong, whole, and standing where it can camp. ENCAMP once
+# the adventuring screen has settled; the Fix once the camp bar is up
+# (the camp screen's own redraw is slow — it reads the banner off the
+# disk — and a press that lands during it is drained); EXIT once the
+# report has been on the screen a while.
+key L@7550
+key C@7800
+key E@8800
+key F@9600
+key E@10200
+
+# What the seam owns. The bar is the camp screen's own command bar with
+# `FIX` spliced into it and the prompt blanked for the one call. The
+# panel is rows 0x12..0x16 of the message panel — the box's rows since
+# #298, and deliberately not 0x11: the frame is handed no title, so that
+# row is blank in both runs and this rect says so by leaving it out.
+rect bar 0,192,319,199
+rect panel 8,144,311,183
+# Two cells that are not the seam's drawing and are named rather than
+# hidden. The knot is the corner tile of the viewport box at column 0x10
+# of row 0x10, which the report's frame paints over with a plain edge
+# tile — as the program's own cast screen from camp does, and nothing on
+# the EXIT path repaints. The banner is the 3D inset, where the camp
+# picture's fire animates on the program's clock: the seam's batches
+# shift the program by a few frames and the two runs' flames fall out of
+# phase by more than one dump, so it is masked, and this leg says nothing
+# about it.
+rect knot 128,128,135,135
+rect banner 24,24,111,111
+
+# Up to the camp bar: not one pixel. The mode word becomes camp at frame
+# 8,991 and the camp screen's bar is up by 9,450.
+allow 0-9425 none
+# The spliced bar, before the Fix is chosen.
+allow 9450-9625 bar banner
+# The report, on the pass after the command declined, until the exit.
+allow 9650-10225 bar panel knot banner
+# Out of camp. The mode word leaves camp at 10,227 (10,219 with the seam
+# off) and nothing of the box is on the screen after it. The bar is the
+# adventuring bar in both runs, with its highlight on a different
+# command: the highlight is one byte in the data segment every bar reads
+# and clamps to its own group count, and the spliced bar has one group
+# more, so the same EXIT leaves it on a different number.
+allow 10250-end knot bar

@@ -119,6 +119,15 @@ And when the game interrupts a rest — a wandering monster — the fix says
 so, in the game's own words' place: `Fix: Interrupted!`. It does not
 retry, and it does not pretend the rest finished.
 
+**And the report leaves when camp does** (#298). For a milestone its
+title stayed: the game's own frame puts a title on the box's top row,
+and the camp screen's own clean-up blanks every row of that panel but
+that one, so `FIX: PARTY HEALED` was still on the adventuring screen
+after EXIT — a player found it there. The title is one row lower now, on
+the first row the game clears, and the box gave up a row of its
+exception list to make room; the list already said `...and N more.` when
+it ran out, so it says it one member sooner.
+
 **What it is not yet.** Nothing outstanding in the mechanism. Two
 residuals are filed as **#269**: a party hurt by *combat* rather than by
 a debug seam has never camped, so the wound statuses a fight leaves
@@ -126,7 +135,9 @@ behind — the ones resting cannot mend — reach the report's reason column
 only through rosters the unit suite writes; and a rest of a day or more
 cannot print its elapsed time, because the game's clock has no day
 counter and the summary drops the clause rather than print the remainder
-of a wrap as though it were an answer.
+of a wrap as though it were an answer. And the box has not been looked
+at on a display since its title moved: the rows are measured on stills
+(`tests/visual/camp-fix-exit.leg`), and the look is **#274**'s.
 
 ---
 

@@ -1198,6 +1198,15 @@ Every entry names the seam it was learned on.
   where it is drawing — and, because the idle one is reached thousands of
   times a second, a signature of what it last drew from (explored
   overlay, #256).
+- **A seam that draws where the program draws has to draw where the
+  program *cleans*.** The Encamp Fix's report used the program's own
+  frame, and the frame puts its title on the box's top row — one row
+  above anything the program itself writes in that panel, and one row
+  above what the camp's own teardown blanks on the way out. The box left
+  with the screen and the title did not, and a player found it under
+  the adventuring bar. Which rows a screen's own teardown clears is a
+  fact to read off the routine before the first line is drawn, and a
+  leg over entry → command → exit is what holds it (Encamp Fix, #298).
 - **A routine's address is a segment and an offset, not a flat one.** A
   routine of this era reaches its own literals as `CS:<constant>` and its
   own siblings as `push cs` plus a near call, so it only works when CS is
@@ -1425,7 +1434,7 @@ pressed in a browser (#147, #274).
 
 ---
 
-### The Encamp (F)ix (#172, #186, #189, #194)
+### The Encamp (F)ix (#172, #186, #189, #194, #298)
 
 PLAN.md §5 item 4, and the one enhancement the plan grants a deliberate
 exception: it automates play. The exception is narrow and the seam is
@@ -1743,9 +1752,11 @@ would have put visibly foreign text on the game's screen — the failure
 #186 was filed about, one layer down.
 
 ```
-  row 0x11   the title, centred by the frame on the box's own top row
-  row 0x12   the summary: hit points restored, cures spent, and the time
-  0x13..     ONLY the members it could not put right, one line each
+  row 0x11   blank — the box's own top row, which the frame is handed no
+             title for (M5-E1e, #298, below)
+  row 0x12   the title, centred with the frame's own arithmetic
+  row 0x13   the summary: hit points restored, cures spent, and the time
+  0x14..     ONLY the members it could not put right, one line each
   last row   the pending-cures warning, when there is one
 ```
 
@@ -1845,6 +1856,71 @@ which a party that survived its fight is not carrying {D} and it is
 therefore still drawn only over rosters the unit suite writes.
 `docs/playable.md`'s honest gaps carries that, narrower than the clause
 it replaces.
+
+#### The title leaves with the camp screen (M5-E1e, #298)
+
+For a milestone the frame was handed the title, and the frame draws its
+title on the box's own top row — `0x11`, the panel's first. A player who
+ran the Fix and left camp by the menu's own EXIT found `FIX: PARTY
+HEALED` still on the screen under the adventuring bar, with the rest of
+the box gone. Reproduced headlessly on the desktop host, on the shorter
+boot #291 left (`--code-wheel-answered`): slot C, ENCAMP, the Fix —
+which declines, the party being whole — and EXIT. From the frame after
+the mode word leaves camp to the end of the run, row `0x11` holds the
+title's 394 pixels and rows `0x12..0x16` hold nothing.
+
+**What the camp's own way out clears, read off the routine.** The loop's
+teardown makes three calls: the status line, the program's status-region
+clear, and its message-line clear. Outside combat the status-region clear
+blanks rows `0x12..0x16`, columns `1..0x26` (`status_clear_region`,
+image `0x2383`); the message-line clear blanks row `0x18`. Nothing
+touches `0x11`. The camp screen's own text has never needed it to: `The
+party makes camp...` goes on `0x12`, and the program writes the panel's
+top row only inside screens that blank the whole panel themselves on the
+way out — the rest screen's clock header, for one. And EXIT is the one
+way out after which the caller does *not* repaint: it repaints only when
+the loop's out-parameter says something changed, which is the interrupted
+case. So a report the seam drew one row above anything the program
+writes there was one row above anything the program cleans up.
+
+**So the frame is handed nothing, and the title is a line.** The frame
+still clears the panel and draws the box; handed an empty title it draws
+no title, which is exactly what the program's own screen scaffold hands
+it. The title goes through the string drawer on `0x12`, centred with the
+frame's own arithmetic — `(left + right - length) / 2` — so it sits in
+the column it always did and one row lower, and the body follows it
+down. **What that costs is a body row**: three for the exception list
+instead of four, two when the pending-cures warning is up. The list
+truncated to an `...and N more.` line before, so the shape is the same
+and the cut comes one member sooner; the roster behind the box still
+says every member's hit points. Undoing the title on the way out was the
+other answer and the worse one: it needs the seam to remember it drew,
+and a clear on every exit regardless would touch the screen of a run
+where the Fix was never asked for, which the `identical` half of the
+matrix forbids.
+
+**The interrupted report moves with it, and by the facts never had the
+defect.** Same drawer, so the same row. But an interruption is the one
+exit the caller repaints after — the out-parameter is non-zero, and the
+redraw lays the whole scaffold down again, bottom panel included, from
+`0x11`. The unit suite holds the row for both, by name
+(`TitleLandsOnARowTheCampTeardownClears`, and the stand-in string drawer
+now keeps the lowest row it was handed).
+
+**And what the same run found beside it.** The frame's top edge goes on
+the panel's own border row, `0x10`, and at column `0x10` that row carries
+the corner knot of the viewport box, which the frame's plain edge tile
+paints over — 38 pixels — and the EXIT path has no repaint to put back.
+The program's own cast screen from camp draws that same border (it is
+the very border the seam mimics before a cast) and leaves the same mark,
+so this is the program's behaviour for a border drawn there rather than
+the seam's, and this change leaves it. The camp leg carries it as a named
+cell rather than a silence.
+
+**What is measured and what is owed.** The rows are measured on stills
+(`tests/visual/camp-fix-exit.leg`, driven by hand on the shorter boot);
+the box on a display after this change is what #274 owes, and so is
+`Fix: Interrupted!` on one, which no display has ever shown.
 
 #### And when the game does not hand the camp screen back (M5-E1c, #194)
 

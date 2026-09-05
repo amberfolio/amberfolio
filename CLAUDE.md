@@ -108,7 +108,18 @@ What M5 left in place:
   pass, so a fourth point on the camp loop's own exit draws the report
   there instead — `Fix: Interrupted!`, held by the program's own message
   delay — and drops it on any other way out; any key the player types
-  stops it),
+  stops it. M5-E1e #298 is what a player found under that bar: the
+  report's **title outlived the camp screen** onto the adventuring one,
+  because the program's frame puts a title on the box's top row and the
+  camp's own teardown clears the panel from the row below it. The frame
+  is handed no title now and the title is one more line through the
+  string drawer, on the first row the teardown clears, at the cost of a
+  row of the exception list; the interrupted report moves with it and
+  by the facts never had the defect, since an interruption is the one
+  exit the caller repaints after. Reproduced and re-measured headlessly
+  on the shorter boot — `tests/visual/camp-fix-exit.leg`, driven by
+  hand because the runner does not yet carry `--code-wheel-answered` —
+  and not yet looked at on a display since),
   `automap` (M5-E2 #173 — the second M5 enhancement, and the first seam
   that *draws*: a map of the squares the party has walked, over the party
   roster on the game's own screen, shown and taken away on **Tab**. The

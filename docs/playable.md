@@ -933,7 +933,8 @@ half of this seam that was unwritten until now. The pass after the
 command finishes, the seam frames the program's own message panel and
 writes into it — through the program's own frame and string drawers, so
 what is on the screen is the program's box, the program's font, the
-program's colours, and a title the program's own frame routine centred:
+program's colours, and a title centred with the program's own frame
+arithmetic — one row below the border since #298, below:
 
 ```
                  FIX: PARTY HEALED
@@ -947,11 +948,43 @@ report and a live `SAVE VIEW MAGIC REST ALTER FIX EXIT` — any key takes
 them somewhere and takes the box with it. Nothing says "press any key",
 because the thing on the screen that works is the thing on the screen.
 
-That whole picture is three calls into the program and not one glyph
+That whole picture is four calls into the program and not one glyph
 drawn here. This machine has a font and it is deliberately not the game's
 (`docs/seams.md` §3), so a seam that rasterized its own lettering would
 have put visibly foreign text beside the game's own, on the game's own
 screen — which is the failure #186 was filed about, one layer down.
+
+**And the box leaves when camp does** (M5-E1e, #298), which for a
+milestone it did not: a player who pressed EXIT under this very box
+found `FIX: PARTY HEALED` still on the adventuring screen, under the
+game's own bar, with the rest of the box gone. The frame had been handed
+the title and puts it on the box's own top row, `0x11`, and the camp
+loop's teardown clears the panel from `0x12` down — the row its own
+`THE PARTY MAKES CAMP...` sits on — and nothing above. Reproduced
+headlessly on the shorter boot #291 left, which is why the frames below
+are not the ones above:
+
+```
+--seam code-wheel --code-wheel-answered --seam encamp-fix
+--press L@7550 --press C@7800           LOAD SAVED GAME, slot C
+--press E@8800                          ENCAMP
+--press F@9600                          the Fix, which declines
+--press E@10200                         EXIT
+```
+
+Before the change, from frame 10,250 — the first dump after the mode
+word leaves camp at 10,227 — to the end of the run, row `0x11` holds the
+title's 394 pixels and rows `0x12..0x16` hold nothing: the maintainer's
+screenshot, frame for frame. After it, the title is on `0x12` (the frame
+is handed no title and the string drawer is handed one more line) and
+every row of the panel is blank from 10,250 on. The same script with the
+seam off, diffed frame by frame, differs from the seam-on run only on
+the bar, in the panel's rows `0x12..0x16` while the box is up, in the
+camp banner's animated fire, and at one 8-by-8 cell — the knot at the
+panel's top-left junction, which the report's frame paints over with a
+plain edge tile exactly as the program's own cast screen from camp does.
+`tests/visual/camp-fix-exit.leg` is that run as a leg, and its header
+says why the runner has not run it yet.
 
 **The healing is the next leg's evidence and no longer this one's.**
 Slot C's party is whole, so there is no hit point here for the program's
@@ -1143,10 +1176,13 @@ CURES ARE STILL BEING MEMORIZED.
 Read it cell by cell, because that is what this leg is for. The three
 columns line up — a name, a current-over-maximum, a shortfall — in the
 program's own font at the program's own column positions. The list is
-**two rows and a tail**, not six, because the box holds four rows and the
+**two rows and a tail**, not six, because the box held four rows and the
 pending-cures warning owns one of them; the `...and N more.` line is the
 proven design's own answer to a list that does not fit, and it is drawn
-rather than paged. **The summary's `IN 0:05` is five minutes and not
+rather than paged. That is the box as it was read off the screen before
+#298 moved the title down a row (below): the box holds three rows now,
+so this list is **one row and a tail** — `FIGHTER1` and `...AND 5
+MORE.` — and nobody has looked at it since. **The summary's `IN 0:05` is five minutes and not
 thirty days**, which is the distinction to hold on to: the clause says
 how long the rest *took*, and the game's own watch ended this one five
 minutes in. The clause used to be absent here entirely {D} the command had
