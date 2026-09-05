@@ -238,6 +238,21 @@
 // #186's rule one layer on: the prompt on screen is the prompt that
 // works, and this report needs no prompt of its own to say so.
 //
+// **And it takes the whole box** (M5-E1e, #298), which for a milestone it
+// did not: the frame was handed the title and put it on the panel's top
+// row, and the camp's own way out clears the panel from the row *below*
+// that — the row its own text sits on — so `FIX: PARTY HEALED` was still
+// on the screen after camp was gone, under the adventuring bar, with
+// the rest of the box cleared around it. Seen by a person on a display
+// and then reproduced headlessly. So the frame is handed nothing and the
+// title is one more line through the string drawer, on the first row
+// the teardown clears, and the body follows it down: a row of the
+// exception list is the price, and the list already truncated to an
+// "and N more" line before it. The interrupted report goes through the
+// same drawer and moves with it, though by the facts it never had the
+// defect: an interruption is the one way out of camp after which the
+// caller repaints the whole screen.
+//
 //
 // What a later Gold Box title's FIX did that this one does not
 // ------------------------------------------------------------
@@ -571,8 +586,9 @@ constexpr std::uint16_t image_message_delay = 0x7E4E;
 /// routines the report is made of (#188, `docs/seams.md` §3).
 ///
 /// The frame puts its title on the box's **first interior row** rather
-/// than on the border, which is why the title's row and the box's top are
-/// the same number below.
+/// than on the border: handed a title, it draws it on the row it is told
+/// is the top. The report hands it none (below), and draws its own title
+/// through the string drawer one row further down.
 constexpr std::uint16_t image_draw_frame = 0x041F8;
 constexpr std::uint16_t image_draw_string = 0x076B6;
 
@@ -580,12 +596,33 @@ constexpr std::uint16_t image_draw_string = 0x076B6;
 /// cast screen frames — so the constants above are these, and the report
 /// says so by using them rather than repeating them.
 ///
-/// There is no constant for the title row, and its absence is the fact:
-/// the frame puts its title on the box top itself, so the row the title
-/// lands on is `cast_region_top` and naming it twice would invite the two
-/// to drift apart.
-constexpr std::uint16_t report_summary_row = cast_region_top + 1;
-constexpr std::uint16_t report_first_row = cast_region_top + 2;
+/// **The first row the camp screen's own teardown clears** (M5-E1e,
+/// #298). On its way out, the camp loop calls the program's own
+/// status-region clear, which outside combat blanks rows `0x12..0x16` of
+/// the panel and not the row above them — and then the message line on
+/// row `0x18`, and nothing else. The camp screen's own text sits on
+/// `0x12` (`The party makes camp...`), so that is all its clear has ever
+/// needed; the panel's top row is written by the program only inside
+/// screens that blank the whole panel themselves on the way out, the
+/// rest screen among them. Read off the routine (`status_clear_region`,
+/// image `0x2383`) and seen on a run: a title on `0x11` outlived camp onto
+/// the adventuring screen, and nothing on `0x12` ever has.
+constexpr std::uint16_t camp_teardown_top = cast_region_top + 1;
+
+/// So the title goes on the row the teardown clears, and the body follows
+/// it down. The frame used to be handed the title and put it on
+/// `cast_region_top` itself — one row higher than anything the program
+/// writes there, and the one row the program's clean-up does not know
+/// about. The rule, as a check on the constants rather than a comment:
+/// every row of the report is one the camp's own way out blanks.
+constexpr std::uint16_t report_title_row = camp_teardown_top;
+constexpr std::uint16_t report_summary_row = report_title_row + 1;
+constexpr std::uint16_t report_first_row = report_title_row + 2;
+static_assert(report_title_row >= camp_teardown_top,
+              "the report's title must land on a row the camp teardown "
+              "clears (#298)");
+static_assert(report_first_row <= cast_region_bottom,
+              "the report needs a body row inside the panel");
 
 /// Where the three cells of an exception line begin, and how wide the
 /// first two are. The name is the full width a character name can be; the
@@ -1360,6 +1397,9 @@ class report_line {
     return {byte_.data(), static_cast<std::size_t>(length_) + 1U};
   }
 
+  /// How many characters, which is what centring a line needs.
+  [[nodiscard]] unsigned length() const { return length_; }
+
  private:
   std::array<std::uint8_t, 0x2A> byte_{};
   std::uint8_t length_{0};
@@ -1594,8 +1634,10 @@ struct clock_reading {
 /// **It is one batch and not several arrivals**, because a report is one
 /// picture: a handler that drew half of it and was declined the rest
 /// would leave a titled box with nothing in it. Twelve calls is the
-/// engine's bound and the worst case here is ten — the frame, the
-/// summary, and four rows of at most two calls each.
+/// engine's bound and the worst case here is nine — the frame, the
+/// title, the summary, and three rows of at most two calls each — or ten
+/// on the way out of camp, where the message delay rides in the same
+/// batch (M5-E1c).
 ///
 /// **There is no pager.** The list truncates to a line saying how many it
 /// did not name, which is the proven design's own cut (PLAN.md §5) and
@@ -1612,21 +1654,40 @@ struct clock_reading {
   report_line title;
   title.add(title_for(state));
   title.seal();
-  std::uint16_t title_segment = 0;
-  std::uint16_t title_offset = 0;
-  if (title.bytes().size() > report_title_width + 1U ||
-      !ctx.place_bytes(title.bytes(), title_segment, title_offset)) {
+  if (title.length() > report_title_width) {
     return false;
   }
   // The frame clears the panel as it draws it, so whatever the last
-  // driven cast or rest left there goes with it. Its title lands on the
-  // box's first interior row rather than on the border, which is why the
-  // title row and the box's top are the same number.
+  // driven cast or rest left there goes with it. **It is handed no
+  // title** (M5-E1e, #298): a title the frame draws lands on the box's
+  // own top row, which is the one row of the panel the camp's way out
+  // never blanks, and the title outlived camp there — on the adventuring
+  // screen, under the game's own bar, with the rest of the box gone.
+  // Handed an empty one, the frame draws the box and leaves that row
+  // blank, which is what the program's own screen scaffold hands it.
+  report_line untitled;
+  untitled.seal();
+  std::uint16_t empty_segment = 0;
+  std::uint16_t empty_offset = 0;
+  if (!ctx.place_bytes(untitled.bytes(), empty_segment, empty_offset)) {
+    return false;
+  }
   const std::array<std::uint16_t, 8> frame{
       cast_region_left,   cast_region_top,   cast_region_right,
       cast_region_bottom, cast_region_style, report_frame_colour,
-      title_segment,      title_offset};
+      empty_segment,      empty_offset};
   if (!ctx.call_program(image, image_draw_frame, frame)) {
+    return false;
+  }
+
+  // The title, one row down, through the string drawer — centred the way
+  // the frame centres its own, `(left + right - length) / 2`, which is
+  // the program's arithmetic and not a guess at it, so the word sits in
+  // the column it always did and on a row the teardown clears.
+  const auto centred = static_cast<std::uint16_t>(
+      (cast_region_left + cast_region_right - title.length()) / 2U);
+  if (!draw_string(ctx, image, title, report_frame_colour, report_title_row,
+                   centred)) {
     return false;
   }
 

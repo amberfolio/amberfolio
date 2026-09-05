@@ -134,20 +134,40 @@ constexpr std::uint16_t frame_calls = 0x7000;
 constexpr std::uint16_t string_calls = 0x7002;
 constexpr std::uint16_t delay_calls = 0x7004;
 
-/// And where the string stand-in leaves the **first** line it was handed,
-/// which is the summary. Kept the way the title is and for the same
-/// reason: the elapsed clause is a sentence this seam composes, so it is
-/// one of the two things in the box a test may read (#269).
+/// And where the string stand-in leaves the **second** line it was
+/// handed, which is the summary. Kept the way the title is and for the
+/// same reason: the elapsed clause is a sentence this seam composes, so
+/// it is one of the two things in the box a test may read (#269).
 constexpr std::uint16_t summary_offset_seen = 0x700C;
 constexpr std::uint16_t summary_segment_seen = 0x700E;
 
 /// And where the frame stand-in leaves the title it was handed, as the
-/// far pointer it arrived as. The title is the one part of the box a test
-/// can read back — the rest of what the drawing looks like is the
-/// program's, and a stand-in that pretended to check it would be checking
-/// itself.
-constexpr std::uint16_t title_offset_seen = 0x7008;
-constexpr std::uint16_t title_segment_seen = 0x700A;
+/// far pointer it arrived as. Since M5-E1e (#298) that title is **empty**
+/// — a title the frame draws lands on the box's top row, and that row is
+/// the one the camp's own teardown never clears — so what this records
+/// is that the frame was handed nothing, which is now a claim in its own
+/// right.
+constexpr std::uint16_t frame_title_offset_seen = 0x7008;
+constexpr std::uint16_t frame_title_segment_seen = 0x700A;
+
+/// The title itself is the **first** line through the string drawer,
+/// kept as the far pointer it arrived as, with the row it was put on. The
+/// title is the one part of the box a test can read back — the rest of
+/// what the drawing looks like is the program's, and a stand-in that
+/// pretended to check it would be checking itself.
+constexpr std::uint16_t title_offset_seen = 0x7010;
+constexpr std::uint16_t title_segment_seen = 0x7012;
+constexpr std::uint16_t title_row_seen = 0x7014;
+
+/// And the lowest row any line of the box was drawn on, which is the
+/// whole of what #298 is about: the camp loop's own teardown clears rows
+/// `0x12..0x16` of the message panel and the message line on `0x18`, and
+/// nothing above them. A line of the report on any other row outlives
+/// the camp screen. Read off the program's own status-region clear and
+/// seen on a run (`seam_encamp_fix.cpp`, `camp_teardown_top`).
+constexpr std::uint16_t lowest_row_seen = 0x7016;
+constexpr std::uint16_t camp_teardown_top = 0x12;
+constexpr std::uint16_t camp_teardown_bottom = 0x16;
 
 /// And the byte the camp loop's out-parameter points at, somewhere the
 /// seam's facts do not name — what the *program* is holding there is the
@@ -431,20 +451,33 @@ struct rig {
     put_word(data_segment, frame_calls, 0);
     put_word(data_segment, string_calls, 0);
     put_word(data_segment, delay_calls, 0);
+    put_word(data_segment, frame_title_offset_seen, 0);
+    put_word(data_segment, frame_title_segment_seen, 0);
     put_word(data_segment, title_offset_seen, 0);
     put_word(data_segment, title_segment_seen, 0);
+    put_word(data_segment, title_row_seen, 0);
     put_word(data_segment, summary_offset_seen, 0);
     put_word(data_segment, summary_segment_seen, 0);
+    // Above every row there is, so the first line drawn sets it.
+    put_word(data_segment, lowest_row_seen, 0xFFFF);
   }
 
   /// The string drawer's stand-in, which keeps the **first** line of the
-  /// box — the summary, and the one line in the report whose words are
-  /// this seam's own rather than the program's (#269).
+  /// box — the title, since M5-E1e (#298) put it through this drawer —
+  /// with the row it was drawn on, the **second** — the summary, the one
+  /// line in the report whose words are this seam's own rather than the
+  /// program's (#269) — and the lowest row any line was put on.
   ///
   ///     push bp / mov bp, sp
+  ///     mov ax, [bp+0Ch]                        ; the row
+  ///     if ax < [lowest_row_seen]: [lowest_row_seen] = ax
   ///     if [string_calls] == 0:
-  ///        [bp+6] -> summary_offset_seen        ; pushed last, so lowest
-  ///        [bp+8] -> summary_segment_seen
+  ///        [bp+6]   -> title_offset_seen        ; pushed last, so lowest
+  ///        [bp+8]   -> title_segment_seen
+  ///        [bp+0Ch] -> title_row_seen
+  ///     else if [string_calls] == 1:
+  ///        [bp+6]   -> summary_offset_seen
+  ///        [bp+8]   -> summary_segment_seen
   ///     inc word [string_calls]
   ///     pop bp / retf 0Ah
   void string_routine() const {
@@ -459,9 +492,26 @@ struct rig {
             static_cast<std::uint8_t>(value >> 8U)});
     };
     emit({0x55, 0x89, 0xE5});
+    emit({0x8B, 0x46, 0x0C});  // mov ax, [bp+0Ch]
+    emit({0x3B, 0x06});        // cmp ax, [lowest_row_seen]
+    emit_word(lowest_row_seen);
+    emit({0x73, 0x03});  // jae over the store
+    emit({0xA3});        // mov [lowest_row_seen], ax
+    emit_word(lowest_row_seen);
     emit({0x83, 0x3E});  // cmp word [string_calls], 0
     emit_word(string_calls);
     emit({0x00});
+    emit({0x75, 0x14});  // jne over the eighteen bytes and the jmp below
+    emit({0x8B, 0x46, 0x06, 0xA3});
+    emit_word(title_offset_seen);
+    emit({0x8B, 0x46, 0x08, 0xA3});
+    emit_word(title_segment_seen);
+    emit({0x8B, 0x46, 0x0C, 0xA3});
+    emit_word(title_row_seen);
+    emit({0xEB, 0x13});  // jmp over the second case, nineteen bytes
+    emit({0x83, 0x3E});  // cmp word [string_calls], 1
+    emit_word(string_calls);
+    emit({0x01});
     emit({0x75, 0x0C});  // jne over the twelve bytes below
     emit({0x8B, 0x46, 0x06, 0xA3});
     emit_word(summary_offset_seen);
@@ -475,12 +525,14 @@ struct rig {
 
   /// The frame drawer's stand-in, which does one thing the others do not:
   /// it **keeps the title it was handed**, as the far pointer it arrived
-  /// as. That is what makes the six outcomes assertable as the words a
-  /// player would read rather than as a count of calls.
+  /// as. That used to be what made the six outcomes assertable as the
+  /// words a player would read; since M5-E1e (#298) it is what makes
+  /// "the frame was handed no title" assertable, because a title the
+  /// frame draws lands on the one row the camp teardown leaves.
   ///
   ///     push bp / mov bp, sp
-  ///     mov ax, [bp+6]  -> title_offset_seen    ; pushed last, so lowest
-  ///     mov ax, [bp+8]  -> title_segment_seen
+  ///     mov ax, [bp+6]  -> frame_title_offset_seen  ; pushed last, lowest
+  ///     mov ax, [bp+8]  -> frame_title_segment_seen
   ///     inc word [frame_calls]
   ///     pop bp / retf 10h
   void frame_routine() const {
@@ -496,9 +548,9 @@ struct rig {
     };
     emit({0x55, 0x89, 0xE5});
     emit({0x8B, 0x46, 0x06, 0xA3});
-    emit_word(title_offset_seen);
+    emit_word(frame_title_offset_seen);
     emit({0x8B, 0x46, 0x08, 0xA3});
-    emit_word(title_segment_seen);
+    emit_word(frame_title_segment_seen);
     emit({0xFF, 0x06});
     emit_word(frame_calls);
     emit({0x5D, 0xCA});
@@ -564,10 +616,26 @@ struct rig {
     return word_at(data_segment, delay_calls);
   }
 
-  /// The title the box was framed with, read back out of the machine.
+  /// The title the box was drawn with — the first line through the
+  /// string drawer — read back out of the machine, and the row it went
+  /// on.
   [[nodiscard]] std::string title() const {
     return pascal_at(word_at(data_segment, title_segment_seen),
                      word_at(data_segment, title_offset_seen));
+  }
+  [[nodiscard]] unsigned title_row() const {
+    return word_at(data_segment, title_row_seen);
+  }
+
+  /// What the frame was handed as its title, which since #298 is nothing.
+  [[nodiscard]] std::string frame_title() const {
+    return pascal_at(word_at(data_segment, frame_title_segment_seen),
+                     word_at(data_segment, frame_title_offset_seen));
+  }
+
+  /// The lowest row any line of the box was drawn on.
+  [[nodiscard]] unsigned lowest_row() const {
+    return word_at(data_segment, lowest_row_seen);
   }
 
   /// And its summary, the same way.
@@ -1298,8 +1366,8 @@ TEST(SeamEncampFix, ReportsOnTheMenuPassAfterTheRest) {
   EXPECT_EQ(r.frames_drawn(), 1u) << "one box, framed and titled";
   EXPECT_EQ(r.title(), "Fix: Rest Stopped")
       << "the party came out of the rest still short";
-  EXPECT_EQ(r.lines_drawn(), 2u)
-      << "the summary, and the one member still short";
+  EXPECT_EQ(r.lines_drawn(), 3u)
+      << "the title, the summary, and the one member still short";
 }
 
 // **How long it took** (#269). The summary is the one line in the box
@@ -1404,9 +1472,48 @@ TEST(SeamEncampFix, ReportsWhatTheCommandDeclinedToDo) {
 
   EXPECT_EQ(r.frames_drawn(), 1u) << "the box is drawn on the next pass";
   EXPECT_EQ(r.title(), "Fix: Party Healed");
-  EXPECT_EQ(r.lines_drawn(), 2u)
-      << "the summary, and a line saying the party is whole rather than a "
-         "list of nobody";
+  EXPECT_EQ(r.lines_drawn(), 3u)
+      << "the title, the summary, and a line saying the party is whole "
+         "rather than a list of nobody";
+}
+
+// --- The title leaves with the camp screen (M5-E1e, #298) ------------------
+//
+// **The rule: every row of the report is a row the camp's own teardown
+// clears.** On its way out the camp loop calls the program's own
+// status-region clear, which blanks rows 0x12..0x16 of the message panel
+// and no row above them, and then the message line on 0x18; the player's
+// EXIT gives the caller no reason to repaint anything else. The report
+// used to hand the frame its title, and the frame draws a title on the
+// box's own top row, 0x11 — so `FIX: PARTY HEALED` was still on the
+// adventuring screen after camp was gone, with the rest of the box
+// cleared from under it. Seen on a display, then reproduced headlessly.
+//
+// What a test can hold is the rows, and it holds them by name: the frame
+// is handed nothing, the title goes through the string drawer on the
+// teardown's own first row, and nothing in the box is drawn above it.
+TEST(SeamEncampFix, TitleLandsOnARowTheCampTeardownClears) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 8, .most_hit_points = 8}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  ASSERT_EQ(r.frames_drawn(), 1u);
+  EXPECT_EQ(r.frame_title(), "")
+      << "the frame is handed no title: one it draws lands on the box's "
+         "top row, which is the row the camp teardown leaves";
+  EXPECT_EQ(r.title(), "Fix: Party Healed")
+      << "the title is the first line through the string drawer instead";
+  EXPECT_EQ(r.title_row(), camp_teardown_top)
+      << "on the first row the camp's own way out blanks";
+  EXPECT_GE(r.lowest_row(), camp_teardown_top)
+      << "and no line of the box is above it";
+  EXPECT_LE(r.lowest_row(), camp_teardown_bottom);
 }
 
 TEST(SeamEncampFix, DrawsItsReportOnceAndNotAgain) {
@@ -1495,13 +1602,18 @@ TEST(SeamEncampFix, NamesNobodyItCouldNotHaveHelped) {
   r.run_the_calls();
 
   EXPECT_EQ(r.frames_drawn(), 1u);
-  // The summary, three of the four exceptions, and the line saying how
-  // many were not named — the box holds four rows and the list keeps one
-  // of them for that tail. The slain member's line is two calls, because
-  // the program's own word for their condition is drawn from where the
-  // program keeps it rather than copied through this seam.
-  EXPECT_GE(r.lines_drawn(), 4u) << "the summary and a list that filled up";
-  EXPECT_LE(r.lines_drawn(), 6u) << "and no more calls than the box has rows";
+  // The title, the summary, two of the four exceptions, and the line
+  // saying how many were not named — the box holds three body rows since
+  // the title took one (#298) and the list keeps one of them for that
+  // tail. The slain member's line is two calls, because the program's
+  // own word for their condition is drawn from where the program keeps
+  // it rather than copied through this seam.
+  EXPECT_GE(r.lines_drawn(), 5u)
+      << "the title, the summary and a list that filled up";
+  EXPECT_LE(r.lines_drawn(), 7u) << "and no more calls than the box has rows";
+  EXPECT_GE(r.lowest_row(), camp_teardown_top)
+      << "a list that filled the box stayed inside the rows the camp "
+         "teardown clears";
 }
 
 // --- The way out of camp (M5-E1c, #194) ------------------------------------
@@ -1531,8 +1643,11 @@ TEST(SeamEncampFix, SaysSoOnTheWayOutOfACampTheGameInterrupted) {
   EXPECT_EQ(r.title(), "Fix: Interrupted!")
       << "the sixth title, which this shape could not reach until it had a "
          "point on the way out of camp";
-  EXPECT_EQ(r.lines_drawn(), 2u)
-      << "the summary, and the one member still short";
+  EXPECT_EQ(r.lines_drawn(), 3u)
+      << "the title, the summary, and the one member still short";
+  EXPECT_EQ(r.title_row(), camp_teardown_top)
+      << "the same drawer as the report on the next pass, so the same row "
+         "(#298)";
   EXPECT_EQ(r.delays_asked_for(), 1u)
       << "held by the program's own message delay: there is no command bar "
          "under this box to be the way out of it";

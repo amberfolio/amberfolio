@@ -2438,8 +2438,11 @@ constexpr std::uint16_t camp_string_calls = 0x6E02;
 constexpr std::uint16_t camp_delay_calls = 0x6E0A;
 
 /// What the report draws for this program's party: the frame once, and
-/// then the summary and one exception line — the hurt member, who is
-/// still seven short because nothing here heals anybody.
+/// then the title, the summary and one exception line — the hurt
+/// member, who is still seven short because nothing here heals anybody.
+/// The title is a line of its own since M5-E1e (#298): handed to the
+/// frame it landed on the one row of the panel the camp teardown does
+/// not clear, and outlived the camp screen there.
 ///
 /// **The summary carries no elapsed clause** (#269), and that is a fact
 /// about this program rather than about the seam: it lays down no area
@@ -2449,7 +2452,7 @@ constexpr std::uint16_t camp_delay_calls = 0x6E0A;
 /// clock the test writes, and looked at on the program in
 /// `docs/playable.md` leg 7.
 constexpr std::uint16_t camp_wanted_frame_calls = 1;
-constexpr std::uint16_t camp_wanted_string_calls = 2;
+constexpr std::uint16_t camp_wanted_string_calls = 3;
 
 /// Where the two records go in the program's own segment, past everything
 /// else it uses.
@@ -4037,7 +4040,8 @@ constexpr std::array<machine::seam_point, 1> door_points{
          .value = camp_bar_fixed_length},
         {.what = "the report framed its box, once",
          .value = camp_wanted_frame_calls},
-        {.what = "and drew the summary and the one member it left short",
+        {.what = "and drew the title, the summary and the one member it "
+                 "left short",
          .value = camp_wanted_string_calls},
         {.what = "the party never left camp", .value = 0},
         {.what = "so nothing had to be held on the screen", .value = 0}};
@@ -4071,7 +4075,8 @@ constexpr std::array<machine::seam_point, 1> door_points{
          .value = camp_bar_fixed_length},
         {.what = "the report framed its box on the way out of camp",
          .value = camp_wanted_frame_calls},
-        {.what = "and drew the summary and the one member it left short",
+        {.what = "and drew the title, the summary and the one member it "
+                 "left short",
          .value = camp_wanted_string_calls},
         {.what = "the party left camp, once", .value = 1},
         {.what = "and the box was held there by the program's own delay",
