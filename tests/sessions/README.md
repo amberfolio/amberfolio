@@ -77,7 +77,7 @@ skip.
 | `walk.rec` | external, the shipped save slots | leg 8 without the enhancement — slot A loaded and walked forty-eight moves through New Phlan to the armourer at 8,11, with a `Tab` in the key stream that nothing claims. 19,201 frames, 203 checkpoints, 106 key events |
 | `walk-map.rec` | the same | the same script with **`automap` on**: `Tab` is taken out of the keystroke buffer before the program's own key routine looks, and the panel is drawn into the EGA planes over the party roster — brown streets, white building fronts in the colour of the tiles those buildings are drawn with, and yellow door leaves — filling in behind the party as it walks, under the zone's name set in the game's own font (M5-E2 #173, M5-E2a, M5-E2b). The seam is reached 1,283,230 times |
 | `wild.rec` | external, the shipped save slots | **the wilderness travel view**, without the enhancement (M5-E5d #256) — slot J loaded, whose party is already standing on a wilderness area, and eight steps walked north across it. The first committed session that reaches that screen at all: the mode byte becomes 3 at frame 9,552. 140 checkpoints, 24 key events |
-| `wild-trail.rec` | the same | the same script with **`explored` on** (#179, the fog M5-E5f #263): every square of the game's own overworld window the party has not been near is hazed over with a one-pixel dark-grey checker, and the fog lifts behind the party as it goes. `contrast wild` — 107 of 140 identical, diverging at the **arrival** on the wilderness map rather than at the first step, which is the enhancement's change of mind recorded |
+| `wild-trail.rec` | the same | the same script with **`explored` on** (#179, the fog M5-E5f #263, its colour and radius M5-E5g #299): every square of the game's own overworld window the party has not walked is hazed over with a one-pixel black checker, and the fog lifts behind the party as it goes. The recording is still #263's grey at a radius of one, and #293 re-records it. `contrast wild` — 107 of 140 identical, diverging at the **arrival** on the wilderness map rather than at the first step, which is the enhancement's change of mind recorded |
 | `reader.rec` | external, the shipped save slots | **the journal reader** (M5-E4 #175), over `tests/visual/reader-store.txt` — a store of this project's own sentences, named by the descriptor's `journal-store` line. F1 to the prompt, the section cycled through ENTRY, TALE and PROCLAMATION and back, Escape out of it, entry three opened by its number, paged forward with F1 and back with Backspace, and Escape again. 156 checkpoints, 30 key events. The panel's pixels are in every hash from the entry opening onwards |
 | `notes.rec` | the same | **the journal's log** (M5-E4b #222, #230) — `Notes` on the party's own bar opens a log with nothing in it, and then six keys the adventuring screen would answer (`S`, `C`, `L` and three that walk) reach nothing at all while it is up. 146 checkpoints, 24 key events. This is #230's regression net as a hash rather than as a still |
 | `cite.rec` | external, pristine | **a real citation** (#232) — a new party through the city to the hall at 3,4 facing east, whose entrance event names four proclamations in one sentence, and the first of them on the screen with nobody having pressed a key. 291 checkpoints, 158 key events. Its store is **external too**, pinned by digest in the descriptor: it is a real ingestion of a real player's own journal and no byte of it may enter this tree |
@@ -189,7 +189,11 @@ icon, in the wrong colour, on the wrong half of the pixels, or not at all
 moves a checkpoint here — and the last two are why this file was
 re-recorded once more when the fog's covering went from solid black to a
 dark-grey checker. The 107 and the tick did not move with it: the picture
-changed, and where the two halves start disagreeing did not.
+changed, and where the two halves start disagreeing did not. **M5-E5g
+(#299) owes it the same treatment again** — the covering is black now and
+the radius is zero — and it has not had it: the recording here is the
+radius-one grey, as every recording in this library is a boot the code
+wheel no longer asks for, and #293 re-records the lot.
 
 The claim that survives is the weaker one, and it is its own session:
 `quiet-explored.rec`, `identical quiet`, all 126 checkpoints — on, with

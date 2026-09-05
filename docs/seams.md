@@ -1310,7 +1310,7 @@ boundary, and it needs the argument this document would have to carry.
 | `encamp-fix` | puts a `FIX` command on the camp screen's own bar; chosen, it spends the cures the party already holds, rests off what they did not close, and says what it did in a box the game draws — on the camp menu, or on the way out of camp when the game ended the rest | the baseline | the overlaid module the camp screen lives in |
 | `automap` | a map of where the party has been, drawn into the game's own screen on **Tab**, in the colours of the walls themselves | the baseline | the resident image |
 | `journal` | what the game cites, opened on the game's own screen in the game's own glyphs, out of the player's own ingested journal; a **Notes** command on the party's own bar opens a log of everything it has cited, and **F1** the number prompt for anything it has not | the baseline | the resident image, and the adventuring loop's module |
-| `explored` | fog of war on the game's own overworld map: the country the party has been near is the game's own, and every other square of the window is hazed over with a dark-grey checker — a setting, with no key and nothing to press | the baseline | the resident image |
+| `explored` | fog of war on the game's own overworld map: the country the party has walked is the game's own, and every other square of the window is hazed over with a black checker — a setting, with no key and nothing to press | the baseline | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the baseline | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage at once, **when you pull it** (§3a) | the baseline | the overlaid module the end check lives in |
 | `cheat-wound-party` | the whole party drops to one hit point, **when you pull it at camp** (§3a) | the baseline | the resident image |
@@ -2654,23 +2654,23 @@ is what the rest of this entry is mostly about.
 
 **What it is.** On the program's own overworld screen — a five-by-five
 window of a wilderness area's overhead map, scrolling with the party —
-every square the party has not been near is **hazed over with a one-pixel
-checkerboard of dark grey**, palette index 8, on half its pixels; the
-other half stay exactly as the program drew them, so the terrain is
-faintly there under the fog rather than gone. It is a *setting*: no key,
-no pull, no panel. On, it is there whenever that screen is; off, it is
-not.
+every square the party has not walked is **hazed over with a one-pixel
+checkerboard of black**, palette index 0, on half its pixels; the other
+half stay exactly as the program drew them, so the terrain is faintly
+there under the fog rather than gone. It is a *setting*: no key, no pull,
+no panel. On, it is there whenever that screen is; off, it is not.
 
 **How far the party sees.** `explored_reveal_radius` in
-`machine/automap.h`, a Chebyshev distance, **one**. Standing on a square
-shows it and the eight around it, so a walk leaves a corridor three
-squares wide and the row the party is walking towards stays covered.
+`machine/automap.h`, a Chebyshev distance, **zero**. Standing on a square
+shows that square, so a walk leaves a trail one square wide and
+everything the party has not stood on stays covered.
 
 **The record holds only where the party stood**, and the reveal is the
 dilation of that computed when the window is drawn. Turning the radius up
 therefore shows more of a map somebody already walked instead of asking
 them to walk it again, and nothing in the sidecar's layout moved for the
-change from a lift to a fog, or for the change of the fog's own colour.
+change from a lift to a fog, for either change of the fog's own colour,
+or for either change of the radius.
 
 #### The marking was reversed, and by whom
 
@@ -2704,7 +2704,7 @@ never obscures the unknown", and obscuring the unknown is now the whole
 of it. A design change that contradicts the plan of record belongs in the
 plan of record.
 
-#### The fog was looked at too, and its colour changed
+#### The fog was looked at too, and its colour changed twice
 
 The first fog was **solid black** — all four planes cleared over a
 square's 24 by 24 pixels — chosen on four arguments and never seen by
@@ -2715,12 +2715,18 @@ black, a one-pixel checker of dark grey, a one-pixel checker of light
 grey, and a two-by-two checker of dark grey. The **one-pixel dark-grey
 checker** was chosen, at the same reveal radius of one.
 
+**And then it was walked, and both of those were reversed** (M5-E5g,
+#299). The colour is **palette index 0**, black, and the radius is
+**zero**. That is the first look at this enhancement taken in play rather
+than at a still, and what it found is under the composite's own findings
+below.
+
 What the composite said and no argument had:
 
 * a one-pixel checker of *black* **collapses**: the terrain here is
   itself a two-green dither at one-pixel granularity, so black over it
   interferes into a flat dark mesh — a third texture, which reads as one
-  more kind of ground;
+  more kind of ground. **This is the finding #299 reversed**;
 * **light grey reads as paler terrain**, which is the lift's own failure
   reached from the other side: a covering whose value is near the tile's
   is a variation on the tile;
@@ -2731,6 +2737,17 @@ What the composite said and no argument had:
   blocks instead of integrating them, and blocks on a map are a modern UI
   grid.
 
+**What walking it said** (#299), which a composite cannot: the black
+checker does not collapse, because in play the fogged square is never
+seen alone — it is beside the square the party is standing on, and the
+boundary between them is what the eye lands on. And the grey that beat it
+reads *thin*, for the reason the mountain-rock drive had already measured
+(`docs/explored-overlay.md` §8): it is a shade away from the terrain's own
+values, and over rock — whose own art is largely index 8 — a third of the
+covering wrote grey onto grey and did nothing. So the composite was right
+about the checker's geometry, which is kept unchanged, and wrong about
+the colour to lay in it.
+
 **Black's four reasons are kept rather than deleted**, because it is the
 rejected alternative and every one of them is still true: it is the one
 colour that cannot read as terrain at all; it is the game's own
@@ -2738,11 +2755,14 @@ vocabulary for the unknown, since the message rows, the panel beside the
 window and the 3D view's own distance are already black and the window
 sits inside the game's own drawn border; it is the same on every terrain,
 so there is one thing to learn; and it costs no read-back. The third
-survives into the checker unchanged — index 8 on the same half of the
-pixels whatever the tile is. **The reason black lost is the one only a
-display could give:** a solid cover throws away the *shape* of the
+survives into the checker unchanged — one index on the same half of the
+pixels whatever the tile is. **The reason *solid* black lost is the one
+only a display could give:** a solid cover throws away the *shape* of the
 country the party is standing at the edge of, and a player who cannot see
-a coast through the fog cannot see there is a coast to walk to.
+a coast through the fog cannot see there is a coast to walk to. #299 kept
+that finding and took the colour back for the checker, which is the
+distinction the argument had been missing: solidity was the fault, not
+the colour.
 
 **What the checker costs, which is §3's new rule.** A covering that keeps
 the pixels it is not covering is a *masked* write: the bits the graphics
@@ -2767,23 +2787,26 @@ a terrain type.
 the seam on against the same frame with it off: **3,166 pixels differ,
 every one of them palette index 8, every one inside the window, and not
 one pixel of the checker's other half changed anywhere on the frame.**
+That measurement is the grey checker at a radius of one, which is what
+this build drew between #263 and #299, and it is kept as it was taken.
 
-#### The radius is one, and that is a measurement
+#### The radius is zero, and both bounds on it are evidence
 
 The window is five squares across and the party is its middle square in
 open country, so **every square on the screen is already within two of
 the party**. Driven on the same eight-step walk with the constant set to
 2: 523 dumped frames, and **not one of them differs from the same walk
 with the seam off**. At a radius of two this enhancement is invisible
-except where a map's own edge pushes the party off centre. One is the
-largest radius that covers anything, which is why the "two or three"
-that was asked for is answered with one and a number.
+except where a map's own edge pushes the party off centre. So the "two or
+three" that was asked for is answered with a number.
 
-**And the maintainer has confirmed one**, on the same look that chose the
-checker: the composites were all at a radius of one and the answer was to
-keep it. So the half of this that a measurement could not settle — whether
-one square of sight is the right amount of country to hand a player — is
-settled as well.
+**And one was shipped, walked and refused** (#299). At one, standing on a
+square uncovers the three-by-three around it, so a straight walk leaves a
+corridor three squares wide and the map fills in faster than the party
+explores it — two rows of country either side that nobody went near. At
+zero the trail is what was walked, which is the only thing the record
+knows. That is the half a measurement could not settle, settled by
+somebody playing it.
 
 **The three points.**
 

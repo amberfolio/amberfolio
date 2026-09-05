@@ -19,24 +19,36 @@
 # what this leg confines is the fog rather than the trail.
 #
 # **What the fog is, since this leg is what confines it.** A covered
-# square is *half* covered: a one-pixel checkerboard of palette index 8,
-# the game's own dark grey, with the program's own pixel on the other
-# half (M5-E5f, #263, after the maintainer chose it off five coverings
-# composited over a real frame). The rects below did not move for that —
-# confinement is about the window, and a checker reaches exactly the
-# squares a solid fill reached — but the picture inside them did, which
-# is why `wild-trail.rec` was recorded again and this file was not.
+# square is *half* covered: a one-pixel checkerboard of palette index 0,
+# black, with the program's own pixel on the other half (M5-E5f #263 for
+# the checker, after the maintainer chose it off five coverings
+# composited over a real frame; M5-E5g #299 for the colour, after walking
+# it). Neither colour moved a rect — confinement is about the window, and
+# a checker reaches exactly the squares a solid fill reached.
 #
-# **The rects are the fogged squares and not a box round them.** At a
-# reveal radius of one the party sees the three-by-three it is standing
-# in, so on this walk the window's outer ring is covered and its middle
-# three columns are not — and for the frames before the first step the
-# row *behind* the party is covered too, because the reveal has not
-# reached it yet. Naming the window as one rectangle would have passed
-# whatever the seam drew inside it; these four say where the boundary is.
-# Measured on a real run: 523 dumped frames, 112 of them differing from
-# the seam-off run, every difference inside the four rects below and not
-# one pixel outside the window at any frame.
+# **What M5-E5g (#299) did move is the rects**, because it moved the
+# reveal radius from one to **zero**: the party sees the square it is
+# standing on and no other, so the trail is one square wide instead of a
+# three-wide corridor and everything either side of it is fog.
+#
+# **The rects are the fogged squares and not a box round them.** On this
+# walk the clear squares are the middle column's own — the square the
+# party is on and the ones it has stepped off — so the two columns each
+# side of it are fog for their whole height, the middle column is fog
+# ahead of the party, and behind the party it is fog until the party has
+# actually stood there. Naming the window as one rectangle would have
+# passed whatever the seam drew inside it; these five say where the
+# boundary is.
+#
+# **The numbers below this line are the radius-one build's** (#263): 523
+# dumped frames, 112 of them differing from the seam-off run, every
+# difference inside that build's four rects and not one pixel outside the
+# window at any frame. This leg has **not been driven since #299** — no
+# visual leg has, because #291 made every one of them a script that no
+# longer boots the way it was recorded, and #293 is the pass that owes
+# them all a re-drive. The rects and the phase boundaries below are
+# derived from the geometry and the key cadence, and confirming them on a
+# real run is part of that pass.
 about the fog covers the squares the party has not been near, and nothing else
 kind pair
 program START.EXE
@@ -70,20 +82,28 @@ key Up@11500
 key Up@11650
 
 # The window is 120 by 120 at (8, 8) and a square is 24 by 24, so these
-# are whole squares of it: the row the party is walking towards, the two
-# flanking columns beside its corridor, and — until the first step — the
-# row behind it.
-rect ahead 8,8,127,31
-rect west 8,32,31,127
-rect east 104,32,127,127
-rect behind 32,104,103,127
+# are whole squares of it. The party is the window's middle column
+# throughout — it walks due north and the window scrolls with it — so:
+# the two columns west of it and the two east of it are fog for their
+# whole height; `ahead` is its own column above it; `behind` is its own
+# column below it, which is fog until it has stood there; and `tail` is
+# the lower half of `behind`, which stays fog for one step longer.
+rect ahead 56,8,79,55
+rect west 8,8,55,127
+rect east 80,8,127,127
+rect behind 56,80,79,127
+rect tail 56,104,79,127
 
 # The whole run up to the arrival on the wilderness map: not one pixel.
 # The mode byte becomes 3 at frame 9,552 and the screen settles at
 # 10,275, which is where the fog first appears.
 allow 0-10250 none
-# Arrived, with one square stood on: the outer ring and the row behind.
+# Arrived, with one square stood on: everything but that square.
 allow 10275-10650 ahead west east behind
-# And from the first step on, the reveal has caught up with the row
-# behind and the corridor is three wide for the rest of the walk.
-allow 10675-end ahead west east
+# One step north (the key at 10,600, allowed the same 75 frames to land
+# as every other phase boundary here): the square the party came from is
+# window row 3 and is clear, and row 4 is still fog.
+allow 10675-10800 ahead west east tail
+# From the second step on, the two squares below the party are both
+# squares it has stood on, and the trail is one column wide.
+allow 10825-end ahead west east

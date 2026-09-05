@@ -2748,12 +2748,11 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
 // *screen*, so it is made here, where all four targets run it:
 //
 //   * on, the overworld shown, and nothing stood on but the square under
-//     the party — the three-by-three around the party is the screen the
-//     program composed and the other sixteen squares of the window are
-//     covered;
+//     the party — that square is the screen the program composed and the
+//     other twenty-four squares of the window are covered;
 //   * on, and one square walked — the window has scrolled, the reveal is
-//     the union of two three-by-threes, and the row ahead of the party is
-//     still covered.
+//     the two squares the party has stood on, and the row ahead of the
+//     party is still covered.
 //
 // Neither run costs the program a step it would not otherwise have taken,
 // which is the other half of each pair.
@@ -2831,25 +2830,33 @@ constexpr std::size_t explored_cell_area =
 constexpr std::size_t explored_window_area =
     explored_cell_area * explored_window_across * explored_window_across;
 
-/// **The fog's colour and how much of a cell it is on** (M5-E5f, #263).
-/// A covered cell is *half* covered: palette index 8, the program's own
-/// dark grey, wherever `x + y` is even in screen coordinates, and the
-/// pixel the program drew on the other half. So a cell contributes half
-/// its area to index 8 and half of it back to whatever was painted
+/// **The fog's colour and how much of a cell it is on** (M5-E5f, #263;
+/// the colour M5-E5g, #299). A covered cell is *half* covered: palette
+/// index 0, black, wherever `x + y` is even in screen coordinates, and
+/// the pixel the program drew on the other half. So a cell contributes
+/// half its area to index 0 and half of it back to whatever was painted
 /// there — which is what the area counts below are worked out from, by
 /// hand, from the facts and not from the seam.
-constexpr std::uint8_t explored_fog_index = 8;
+///
+/// **The fog's colour is the surround's colour now**, which costs the
+/// area counts one thing they used to say: the stand-in paints the window
+/// white and leaves the rest of the frame black, so black pixels are no
+/// longer all this seam's and a count of them cannot on its own place the
+/// fog inside the window. The pixel probes below still name a pixel
+/// outside it, and the whole-frame confinement claim is made in the unit
+/// suite, where the fill covers all 320 by 200
+/// (`ExploredOverlay.NothingOutsideTheWindowIsTouched`).
+constexpr std::uint8_t explored_fog_index = 0;
 constexpr std::size_t explored_fogged_per_cell = explored_cell_area / 2;
 
 /// **How many of the twenty-five are left uncovered**, worked out from
-/// the facts rather than from the seam. At a reveal radius of one, a
-/// party standing at (3, 32) with a window whose top-left cell is
-/// (0 + 3 - 2, 32 - 2) = (1, 30) sees map columns 2..4 and rows 31..33,
-/// which is a three-by-three of the window; a step north to (3, 31)
-/// scrolls the window to (1, 29) and the union of the two reveals is
-/// three columns by four rows.
-constexpr unsigned explored_clear_on_arrival = 3 * 3;
-constexpr unsigned explored_clear_after_a_step = 3 * 4;
+/// the facts rather than from the seam. At a reveal radius of zero
+/// (M5-E5g, #299) a party standing at (3, 32), with a window whose
+/// top-left cell is (0 + 3 - 2, 32 - 2) = (1, 30), sees the one square it
+/// is standing on; a step north to (3, 31) scrolls the window to (1, 29)
+/// and the two squares it has stood on are one above the other.
+constexpr unsigned explored_clear_on_arrival = 1;
+constexpr unsigned explored_clear_after_a_step = 2;
 
 /// One pixel inside a cell of the window, by the cell's column and row.
 ///
@@ -3686,7 +3693,7 @@ constexpr std::array<machine::seam_point, 1> door_points{
     // both halves of each pair, which is what says a seam that lays fog
     // over a screen costs the program nothing.
     //
-    // **The fog is a one-pixel checker of palette index 8**, so a covered
+    // **The fog is a one-pixel checker of palette index 0**, so a covered
     // cell gives back half of its pixels to the white the program painted
     // and the area counts are halves. The pixel probes name one pixel of
     // each half: `explored_pixel_x/y` is on the covered parity and
@@ -3710,7 +3717,7 @@ constexpr std::array<machine::seam_point, 1> door_points{
   {
     machine_program p;
     p.name = "explored_probe_arrived";
-    p.about = "on, arrived: the three-by-three around the party and fog";
+    p.about = "on, arrived: the square under the party, and fog";
     p.setup.exe = explored_probe_file();
     p.setup.exe_path = "\\EXPLORED.EXE";
     p.setup.seam_definitions = {&explored_probe_definition()};
@@ -3722,12 +3729,19 @@ constexpr std::array<machine::seam_point, 1> door_points{
         ((explored_window_across * explored_window_across) -
          explored_clear_on_arrival);
     p.pixels = {
-        // The party's own cell, and the eight around it.
+        // The party's own cell, which is the whole of the reveal.
         {.x = explored_pixel_x(2), .y = explored_pixel_y(2), .index = 15},
-        {.x = explored_pixel_x(1), .y = explored_pixel_y(1), .index = 15},
-        {.x = explored_pixel_x(3), .y = explored_pixel_y(3), .index = 15},
-        // The window's outer ring, which the party has not been near: the
-        // covered half of the checker.
+        {.x = explored_kept_pixel_x(2), .y = explored_pixel_y(2), .index = 15},
+        // Its immediate neighbours, which a radius of one would have
+        // uncovered and this one does not: the covered half of the
+        // checker.
+        {.x = explored_pixel_x(1),
+         .y = explored_pixel_y(1),
+         .index = explored_fog_index},
+        {.x = explored_pixel_x(3),
+         .y = explored_pixel_y(3),
+         .index = explored_fog_index},
+        // And the window's outer ring, which nothing has been near.
         {.x = explored_pixel_x(0),
          .y = explored_pixel_y(0),
          .index = explored_fog_index},
@@ -3737,16 +3751,20 @@ constexpr std::array<machine::seam_point, 1> door_points{
         {.x = explored_pixel_x(2),
          .y = explored_pixel_y(4),
          .index = explored_fog_index},
-        // And its other half, one pixel to the right of each: still the
-        // white the program painted.
+        // And the checker's other half, one pixel to the right of three
+        // of those: still the white the program painted. This is what a
+        // solid cover fails, and with a black fog it is also what says
+        // the covering is a fog and not an unpainted window.
         {.x = explored_kept_pixel_x(0), .y = explored_pixel_y(0), .index = 15},
+        {.x = explored_kept_pixel_x(1), .y = explored_pixel_y(1), .index = 15},
         {.x = explored_kept_pixel_x(4), .y = explored_pixel_y(2), .index = 15},
         // And the pixel one to the left of the window, which the paint
         // never reached and the fog must not either.
         {.x = explored_window_left - 1, .y = explored_pixel_y(2), .index = 0}};
+    // The fog's index is the surround's, so the two are one count.
     p.areas = {{.index = 15, .count = explored_window_area - fogged},
-               {.index = explored_fog_index, .count = fogged},
-               {.index = 0, .count = pixels_per_frame - explored_window_area}};
+               {.index = explored_fog_index,
+                .count = pixels_per_frame - explored_window_area + fogged}};
     p.least_frames = 1;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
@@ -3772,7 +3790,7 @@ constexpr std::array<machine::seam_point, 1> door_points{
   {
     machine_program p;
     p.name = "explored_probe_drawn";
-    p.about = "on, a square walked: the reveal moves and the fog follows";
+    p.about = "on, a square walked: the trail moves and the fog follows";
     p.setup.exe = explored_probe_file();
     p.setup.exe_path = "\\EXPLORED.EXE";
     p.setup.keys = {
@@ -3782,17 +3800,27 @@ constexpr std::array<machine::seam_point, 1> door_points{
     p.setup.step_cap = 200'000;
     p.steps = explored_walked_steps;
     // The party has stepped north to (3, 31), so the window's top-left is
-    // (1, 29) and the reveal is columns 1..3 of it by rows 1..4. The
-    // corners of that block are checked as pixels, and the row ahead of
-    // the party is checked as fog, because a reveal one cell out would
-    // otherwise keep the same area.
+    // (1, 29) and the reveal is column 2 of it, rows 2 and 3 — the square
+    // it is on and the one it came from. Both are checked as pixels, and
+    // so are the cells beside them, because a reveal one cell out would
+    // otherwise keep the same area only if the window's edges happened to
+    // clip the difference away.
     constexpr std::size_t fogged =
         explored_fogged_per_cell *
         ((explored_window_across * explored_window_across) -
          explored_clear_after_a_step);
     p.pixels = {
-        {.x = explored_pixel_x(1), .y = explored_pixel_y(1), .index = 15},
-        {.x = explored_pixel_x(3), .y = explored_pixel_y(4), .index = 15},
+        // The two squares of the trail.
+        {.x = explored_pixel_x(2), .y = explored_pixel_y(2), .index = 15},
+        {.x = explored_pixel_x(2), .y = explored_pixel_y(3), .index = 15},
+        // The squares to either side of the party, which a radius of one
+        // would have uncovered.
+        {.x = explored_pixel_x(1),
+         .y = explored_pixel_y(2),
+         .index = explored_fog_index},
+        {.x = explored_pixel_x(3),
+         .y = explored_pixel_y(2),
+         .index = explored_fog_index},
         // The row the window scrolled onto, which nothing has been near.
         {.x = explored_pixel_x(2),
          .y = explored_pixel_y(0),
@@ -3804,16 +3832,18 @@ constexpr std::array<machine::seam_point, 1> door_points{
         {.x = explored_pixel_x(4),
          .y = explored_pixel_y(4),
          .index = explored_fog_index},
-        // The checker's other half, beside the first of those.
+        // The checker's other half, beside two of those.
         {.x = explored_kept_pixel_x(2), .y = explored_pixel_y(0), .index = 15},
+        {.x = explored_kept_pixel_x(1), .y = explored_pixel_y(2), .index = 15},
         // A pixel outside the window on each side of it.
         {.x = explored_window_left - 1, .y = explored_pixel_y(2), .index = 0},
         {.x = explored_window_left + 120,
          .y = explored_pixel_y(2),
          .index = 0}};
+    // The fog's index is the surround's, so the two are one count.
     p.areas = {{.index = 15, .count = explored_window_area - fogged},
-               {.index = explored_fog_index, .count = fogged},
-               {.index = 0, .count = pixels_per_frame - explored_window_area}};
+               {.index = explored_fog_index,
+                .count = pixels_per_frame - explored_window_area + fogged}};
     p.least_frames = 1;
     p.exit_code = 0x8A;
     list.push_back(std::move(p));

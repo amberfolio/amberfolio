@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The explored overlay (seam_explored.cpp, M5-E5 #179, the fog M5-E5f
-// #263), exercised through its mechanism and not through any program.
+// #263, its colour and its radius M5-E5g #299), exercised through its
+// mechanism and not through any program.
 //
 // **The screen is filled before anything is asserted**, which is what the
 // fog needs: this seam draws over what the program drew, so a blank
@@ -11,8 +12,8 @@
 // grey.
 //
 // **The fog is a checker and the assertions are pixel-exact about it**
-// (M5-E5f, #263). A covered square is *half* covered: palette index 8 —
-// the program's own dark grey — wherever `x + y` is even in screen
+// (M5-E5f, #263; black since M5-E5g, #299). A covered square is *half*
+// covered: palette index 0 wherever `x + y` is even in screen
 // coordinates, and the fill's own colour 15 on the other half. So a
 // square that came out solid, a square whose checker restarted at its own
 // left edge instead of running on from its neighbour's, and a square
@@ -284,9 +285,9 @@ struct rig {
   std::unique_ptr<ega> video;
 };
 
-/// The fog's colour: palette index 8, the program's own dark grey. Stated
-/// here rather than read out of the seam, which is this file's rule.
-constexpr std::uint8_t fog_index = 8;
+/// The fog's colour: palette index 0, black (M5-E5g, #299). Stated here
+/// rather than read out of the seam, which is this file's rule.
+constexpr std::uint8_t fog_index = 0;
 
 /// The colour `fill()` leaves, which is what an uncovered pixel must
 /// still be.
@@ -297,8 +298,7 @@ constexpr std::size_t fogged_pixels_per_cell =
     std::size_t{cell_pixels} * cell_pixels / 2;
 
 /// Is one cell of the window fogged — every pixel of it either the fog's
-/// dark grey or the colour the fill put there, in the checker's own
-/// pattern?
+/// black or the colour the fill put there, in the checker's own pattern?
 ///
 /// The parity is the **screen's** and not the cell's: a pixel is covered
 /// when `x + y` is even in screen coordinates. The window begins at (8,
@@ -361,9 +361,11 @@ constexpr std::size_t fogged_pixels_per_cell =
 constexpr std::uint32_t every_cell = (1U << (window_cells * window_cells)) - 1U;
 
 /// The rectangle of window cells `[first_column, last_column] x
-/// [first_row, last_row]`, which is the shape a reveal radius makes on
-/// this screen: the party's own three-by-three, grown by a step of the
-/// walk and clipped by the map's own edges.
+/// [first_row, last_row]`, which is the shape a walk makes on this
+/// screen: at the radius this ships with, the party's own square, grown
+/// by every other square it has stood on. It is still written as a
+/// rectangle because a raised radius dilates one into a rectangle, and
+/// this is where such a change would be asserted.
 [[nodiscard]] constexpr std::uint32_t block(unsigned first_column,
                                             unsigned last_column,
                                             unsigned first_row,
@@ -378,7 +380,7 @@ constexpr std::uint32_t every_cell = (1U << (window_cells * window_cells)) - 1U;
 }
 
 /// How many pixels of the whole 320 by 200 screen the fog is on: pixels
-/// of palette index 8, which is a colour `fill()` puts nowhere, so every
+/// of palette index 0, which is a colour `fill()` puts nowhere, so every
 /// one of them is this seam's.
 [[nodiscard]] std::size_t pixels_covered(const rig& r) {
   std::size_t covered = 0;
@@ -428,10 +430,10 @@ TEST(ExploredGeometry, TheWindowFollowsThePartyAndStopsAtTheEdges) {
 // The seam
 // ---------------------------------------------------------------------------
 
-TEST(ExploredOverlay, ArrivingCoversEverythingButTheThreeByThreeAround) {
+TEST(ExploredOverlay, ArrivingCoversEverythingButTheCellUnderTheParty) {
   // The picture a player meets: the party has just arrived, the only
   // cell it has stood on is the one under its feet, and at a reveal
-  // radius of one the three-by-three around that is the country it can
+  // radius of zero (M5-E5g, #299) that cell is the whole of what it can
   // see. Everything else in the window goes under fog.
   const rig r;
   r.enable();
@@ -443,21 +445,22 @@ TEST(ExploredOverlay, ArrivingCoversEverythingButTheThreeByThreeAround) {
   r.present();
 
   // The party is at (3, 32), so the window's top-left cell is (1, 30) and
-  // the party is window column 2, row 2. The reveal is map columns 2..4
-  // and rows 31..33, which is window columns 1..3 and rows 1..3.
-  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 1, 3));
-  // Sixteen cells, half of each of them, and not a pixel of the rest of
-  // the frame.
-  EXPECT_EQ(pixels_covered(r), 16U * fogged_pixels_per_cell);
+  // the party is window column 2, row 2 — which is the one cell the
+  // reveal has in it.
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(2, 2, 2, 2));
+  // Twenty-four cells, half of each of them, and not a pixel of the rest
+  // of the frame.
+  EXPECT_EQ(pixels_covered(r), 24U * fogged_pixels_per_cell);
 }
 
-TEST(ExploredOverlay, TheFogIsADarkGreyCheckerOverThePixelsTheProgramDrew) {
-  // **The marking itself** (M5-E5f, #263), asserted on one square rather
-  // than through the bitmap the other tests use. A covered square keeps
-  // half of its pixels exactly as the program drew them; the other half
-  // are palette index 8 — plane 3 set, planes 0 to 2 clear — which is the
-  // program's own dark grey and is what makes this a haze the terrain
-  // shows through rather than a hole in the screen.
+TEST(ExploredOverlay, TheFogIsABlackCheckerOverThePixelsTheProgramDrew) {
+  // **The marking itself** (M5-E5f, #263; its colour M5-E5g, #299),
+  // asserted on one square rather than through the bitmap the other tests
+  // use. A covered square keeps half of its pixels exactly as the program
+  // drew them; the other half are palette index 0 — every plane clear —
+  // which is what makes this a veil the terrain shows through rather than
+  // a hole in the screen. The colour was the program's own dark grey
+  // until that checker was walked rather than looked at.
   const rig r;
   r.enable();
   r.travelling(3, 32);
@@ -525,16 +528,17 @@ TEST(ExploredOverlay, AStepUncoversTheRowTheWindowScrolledOnto) {
   r.travelling(3, 32);
   r.poll(4);
   // North one square. The window scrolls with the party, and what the
-  // party can now see is the union of the two three-by-threes.
+  // party can now see is the two cells it has stood on.
   r.put_word(record_segment, record_overland_row, 31);
   r.poll(2);
   r.fill();
   r.present();
 
-  // The party is at (3, 31): the window's top-left is (1, 29), the reveal
-  // is map columns 2..4 and rows 30..33, which is window columns 1..3 and
-  // rows 1..4. The row ahead of the party — window row 0 — is still fog.
-  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 1, 4));
+  // The party is at (3, 31): the window's top-left is (1, 29), so the
+  // party is window column 2, row 2 and the square it came from is window
+  // column 2, row 3. Everything else — the row ahead of the party and
+  // both of its flanks — is still fog.
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(2, 2, 2, 3));
 }
 
 TEST(ExploredOverlay, ThePartysOwnCellIsNeverCovered) {
@@ -577,10 +581,16 @@ TEST(ExploredOverlay, NothingOutsideTheWindowIsTouched) {
   }
 }
 
-TEST(ExploredOverlay, TheDilationIsClippedAtTheMapsOwnEdge) {
+TEST(ExploredOverlay, ThePartyAgainstTheMapsOwnEdgeIsStillItsOnlyClearCell) {
   // The party against the bottom of a 36-row map. The window cannot
   // scroll any further, so the party is its *fifth* row rather than its
-  // third, and the reveal has no row below it to include.
+  // third, and the four rows above it are country it has not walked.
+  //
+  // At the radius this ships with there is no dilation here to clip: the
+  // reveal is the cell itself, and `revealed()`'s clip against the map's
+  // own bounds is what would keep a *raised* radius from asking the
+  // record about a row that is not on the map. This is where that would
+  // be asserted, and the geometry is set up for it.
   const rig r;
   r.enable();
   r.travelling(3, 35);
@@ -589,9 +599,8 @@ TEST(ExploredOverlay, TheDilationIsClippedAtTheMapsOwnEdge) {
   r.present();
 
   // The window's top-left is (1, 31), so the party — (3, 35) — is window
-  // column 2, row 4. The reveal is map columns 2..4 and rows 34..35,
-  // which is window columns 1..3 and rows 3..4.
-  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 3, 4));
+  // column 2, row 4.
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(2, 2, 4, 4));
 }
 
 TEST(ExploredOverlay, ACellOfANeighbouringAreaIsCovered) {
@@ -610,18 +619,16 @@ TEST(ExploredOverlay, ACellOfANeighbouringAreaIsCovered) {
 
   // The party is at column 15, so the window's top-left column is 13 and
   // it covers columns 13..17 — 16 and 17 belong to the next area. The
-  // reveal is map columns 14..15 (16 is off this map) and rows 19..21,
-  // which is window columns 1..2 and rows 1..3.
-  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 2, 1, 3));
+  // reveal is the party's own cell, window column 2, row 2.
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(2, 2, 2, 2));
   EXPECT_TRUE(cell_is_fogged(r, 3, 2)) << "the neighbour's column 16";
   EXPECT_TRUE(cell_is_fogged(r, 4, 2)) << "and its column 17";
 }
 
 TEST(ExploredOverlay, AWellWalkedStretchOfCountryIsNotCoveredAtAll) {
   // The other end of the same rule, and the case that keeps the early
-  // return honest: with every cell of the window within a step of
-  // somewhere the party has stood, there is nothing to cover and not a
-  // port is written.
+  // return honest: with every cell of the window somewhere the party has
+  // stood, there is nothing to cover and not a port is written.
   const rig r;
   r.enable();
   r.travelling(3, 32);
@@ -778,18 +785,18 @@ TEST(ExploredOverlay, ATableThatArrivesUnderAStandingPartyIsDrawn) {
   r.poll(4);
   r.fill();
   r.present();
-  ASSERT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 1, 3))
+  ASSERT_EQ(fogged_cells(r), every_cell & ~block(2, 2, 2, 2))
       << "nothing stood on but its own square";
 
   // What a host does when the program loads a save slot: it replaces the
   // table, which moves the store's serial. (3, 33) is one square south,
-  // and at a radius of one it uncovers the window's bottom row of three.
+  // and it uncovers that square and no other.
   automap_record& map =
       r.map_state().record_for_overland(overland_disk, overland_area);
   ASSERT_TRUE(r.map_state().reveal(map, 3, 33));
   r.fill();
   r.poll(1);
-  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 3, 1, 4))
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(2, 2, 2, 3))
       << "and no present was needed to show it";
 }
 
@@ -909,16 +916,19 @@ TEST(ExploredFidelity, WhatItLearnsIsNotMachineState) {
   EXPECT_EQ(hash_state(r.pc()), hash_state(plain.pc()));
 }
 
-TEST(ExploredDefinition, TheRevealRadiusIsOne) {
+TEST(ExploredDefinition, TheRevealRadiusIsZero) {
   // The one number in this enhancement a person is meant to turn, so a
   // change to it fails here, by name, rather than in nine expectations
-  // that each look like a wrong picture (M5-E5f, #263). One is also the
-  // only value that covers anything on a five-by-five window centred on
-  // the party: at two, every cell on the screen is already within the
-  // radius and the fog never appears except at a map's own edge. **The
-  // maintainer has confirmed one** on the same look that chose the
-  // checker, so this is now a settled number and not a placeholder.
-  EXPECT_EQ(explored_reveal_radius, 1);
+  // that each look like a wrong picture (M5-E5f, #263; M5-E5g, #299).
+  //
+  // Both bounds on it are measured. Above: two and three cover nothing at
+  // all on a five-by-five window centred on the party, so the fog would
+  // never appear except at a map's own edge. Below: one was shipped and
+  // **walked**, and it uncovers a corridor three cells wide, which fills
+  // the map faster than the party explores it. **The maintainer set zero
+  // while playing**, which is a stronger look than the still that settled
+  // one.
+  EXPECT_EQ(explored_reveal_radius, 0);
 }
 
 TEST(ExploredDefinition, ItIsASettingAndNotAPullAndItNamesTheBaseline) {

@@ -37,6 +37,16 @@
 # tick did. Where the two halves start disagreeing is the *marking's*
 # reversal; what they disagree about is the covering.
 #
+# **And it is owed a third re-recording, which it has not had** (M5-E5g,
+# #299). The maintainer walked that checker and changed two constants:
+# the covering is black now, and the reveal radius is zero, so more
+# squares are covered and they are covered in a different colour. Every
+# one of the 33 moves again and neither the 107 nor the tick does — the
+# arrival is still where a fog first differs from no fog. This file's
+# `.rec` is still the radius-one grey, along with the whole library's,
+# and #293 is the pass that re-records all of it on the boot the code
+# wheel's own change shortened.
+#
 # The two halves differ by nothing but the flag: the same disk, the same
 # tick budget, the same twenty-four key events. There is no key to press:
 # this seam is a setting, so what the pair compares is a screen and not
