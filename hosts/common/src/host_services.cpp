@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "amberfolio/host/code_wheel_store.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/seam.h"
@@ -32,6 +33,22 @@ void host_services::serve(machine::machine& box,
   // nothing else.
   if (which == machine::seam_host_service::automap_update) {
     automap_.changed();
+    return;
+  }
+
+  // A person answered the code-wheel challenge (M6-C1b, #292). What the
+  // seam latched lives as long as the machine; this is where it starts
+  // outliving it. The *copy* is the key, and the machine is holding it:
+  // the fingerprint of the program that asked the question, which is the
+  // fingerprint the seam is keyed to.
+  //
+  // A store that already knew answers false and nothing is raised, so a
+  // second run that says the same thing does not make a host rewrite a
+  // file.
+  if (which == machine::seam_host_service::code_wheel_answered) {
+    if (code_wheel_ != nullptr && box.seams().have_program()) {
+      static_cast<void>(code_wheel_->remember(box.seams().program()));
+    }
     return;
   }
 

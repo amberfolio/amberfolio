@@ -257,6 +257,13 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
                         run sits at the challenge for ever; with it the
                         challenge is never drawn. Nothing writes it down
                         yet (#292)
+  --code-wheel-store PATH
+                        where the copies that have answered are
+                        remembered (#292), as the desktop host's own
+                        --code-wheel-store writes it. Read before the
+                        first step, and written back the moment somebody
+                        answers. A browser keeps this in its own
+                        localStorage; this is how a script gets one
   --journal-store PATH  the journal text the reader is answered out of
                         (M5-E4, #175), as the desktop host's own
                         --journal-store writes it. A browser gets its
@@ -302,6 +309,7 @@ export function parseArgs(argv) {
     seams: [],
     documents: [],
     codeWheelAnswered: false,
+    codeWheelStore: '',
     journalStore: null,
     replay: null,
     listSeams: false,
@@ -391,6 +399,8 @@ export function parseArgs(argv) {
       opts.documents.push(next());
     } else if (arg === '--code-wheel-answered') {
       opts.codeWheelAnswered = true;
+    } else if (arg === '--code-wheel-store' && i + 1 < argv.length) {
+      opts.codeWheelStore = next();
     } else if (arg === '--journal-store' && i + 1 < argv.length) {
       opts.journalStore = next();
     } else if (arg === '--replay' && i + 1 < argv.length) {
@@ -729,8 +739,25 @@ export async function drive(opts) {
     }
   }
 
-  // And the one thing a person shows this machine that is not a file:
-  // that they have already answered the code-wheel challenge (#291).
+  // And what a previous run remembered about the code wheel (#292), then
+  // the flag that states the condition outright (#291).
+  //
+  // The store first and the flag second, in the desktop host's own order:
+  // a run that says both means both, and one that says only the flag has
+  // told this machine something it will not write down.
+  if (opts.codeWheelStore !== '') {
+    const trouble = machine.codeWheelStoreRead(
+      readFileSync(opts.codeWheelStore, 'utf8'),
+    );
+    if (trouble !== 0) {
+      say(`amberfolio: code wheel store ${opts.codeWheelStore} - trouble ${trouble}`);
+    } else if (machine.codeWheelApply()) {
+      say(
+        'amberfolio: code wheel answered on this copy already - the challenge' +
+          ' will not be drawn',
+      );
+    }
+  }
   if (opts.codeWheelAnswered) {
     machine.setCodeWheelAnswered(true);
     say('amberfolio: code wheel answered - the challenge will not be drawn');
@@ -1012,6 +1039,15 @@ export async function drive(opts) {
   reportSeams(machine);
   reportSeamsFired(machine);
   reportHostServices(machine);
+  // And if somebody answered the code-wheel challenge during the run, the
+  // store goes back where it came from (#292) — the desktop host does
+  // this from its frame loop, and a driven run has no frames to speak of
+  // but the same obligation.
+  if (opts.codeWheelStore !== '' && machine.codeWheelStoreChanged()) {
+    writeFileSync(opts.codeWheelStore, machine.codeWheelStoreWrite());
+    machine.codeWheelStoreClearChanged();
+    say('amberfolio: code wheel answered - remembered for this copy');
+  }
   if (opts.listVfs) reportVfs(machine);
   for (const path of opts.vfsGets) reportVfsGet(machine, path);
 

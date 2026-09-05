@@ -197,10 +197,30 @@
 //     What the `code-wheel` seam waits for (#291). Without it the seam
 //     is on and watching: the game asks the question as it always did,
 //     and answering it correctly is what turns this on for the rest of
-//     the run. With it, the challenge is never drawn. **Nothing writes
-//     it down yet** — #292 is the file beside this host's other per-user
-//     data — so a driven run that wants to get past the challenge on its
-//     own says so here.
+//     the run. With it, the challenge is never drawn.
+//
+//     **It says so for this run and writes nothing.** Answering the
+//     game's own question is what puts a copy in the store below; this
+//     flag is how a driven run states the condition it wants to be in
+//     without a person at the keyboard.
+//
+//   --code-wheel-store PATH
+//                    where the copies that have answered are remembered
+//
+//     M6-C1b (#292). One small text file, one line per copy, keyed by the
+//     program's SHA-256 (`host/code_wheel_store.h`). Read before the
+//     first instruction — a copy in it starts with the challenge already
+//     answered — and written the moment the seam says somebody answered
+//     one. Without this flag it is `code-wheel.txt` in this platform's
+//     per-user data directory, beside the journal's text.
+//
+//   --forget-code-wheel
+//                    empty that store and be asked again
+//
+//     The whole of "forget it": the file is emptied before the run, so
+//     this launch asks the question and every launch after it does too,
+//     until somebody answers. A player can equally delete the file, and
+//     the format is one they can read.
 //
 //   --document PATH  present a document the player holds
 //
@@ -581,6 +601,7 @@
 
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/host/automap_store.h"
+#include "amberfolio/host/code_wheel_store.h"
 #include "amberfolio/host/host_services.h"
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
@@ -1304,11 +1325,15 @@ struct options {
 
   /// The code wheel's challenge, already answered (M6-C1a, #291). The
   /// seam watches for a person answering it and remembers it for the
-  /// rest of the run; this is how a *later* run says it was answered
-  /// before, and until #292 lands it is the only way — nothing on this
-  /// host writes the answer down yet, so a run that wants the challenge
-  /// skipped says so on its own command line.
+  /// rest of the run; this is how a run *states* that condition without
+  /// a person at the keyboard, and it writes nothing down.
   bool code_wheel_answered{false};
+
+  /// Where the copies that have answered are remembered (M6-C1b, #292),
+  /// or empty for this platform's per-user data directory; and the
+  /// player asking to be asked again.
+  std::string code_wheel_store;
+  bool forget_code_wheel{false};
 
   /// The journal's ingestion (M5-E3, #174). `journal` is the document to
   /// read the entries out of; `journal_store` is where the text goes, or
@@ -1632,6 +1657,10 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.documents.emplace_back(argv[++i]);
     } else if (arg == "--code-wheel-answered") {
       opts.code_wheel_answered = true;
+    } else if (arg == "--code-wheel-store" && i + 1 < argc) {
+      opts.code_wheel_store = argv[++i];
+    } else if (arg == "--forget-code-wheel") {
+      opts.forget_code_wheel = true;
     } else if (arg == "--journal" && i + 1 < argc) {
       opts.journal = argv[++i];
     } else if (arg == "--journal-store" && i + 1 < argc) {
@@ -2081,6 +2110,77 @@ void present_document(machine::machine& box, const std::string& path) {
                                     : opts.journal_store;
 }
 
+/// Where the copies that have answered the code-wheel challenge are
+/// remembered, for this run (M6-C1b, #292): `--code-wheel-store` if it
+/// was given, and this platform's per-user data directory otherwise —
+/// the same directory the journal's text lives in, because both are
+/// facts about this player rather than about their game directory.
+[[nodiscard]] std::string code_wheel_store_path(const options& opts) {
+  if (!opts.code_wheel_store.empty()) {
+    return opts.code_wheel_store;
+  }
+  char* where = SDL_GetPrefPath("", "amberfolio");
+  if (where == nullptr) {
+    return {};
+  }
+  std::string path(where);
+  SDL_free(where);
+  path += host::code_wheel_store_filename;
+  return path;
+}
+
+/// Read it, and say what it turned out to be.
+///
+/// Every outcome is a sentence and none of them stops the run: a player
+/// whose store could not be read still asked to play, and what it costs
+/// them is being asked the game's own question again. A file that is not
+/// there at all is the ordinary case for somebody who has never answered
+/// it, and says nothing — there is nothing to report about a question
+/// nobody has been asked yet.
+void load_code_wheel_store(const options& opts, host::code_wheel_store& store) {
+  const std::string path = code_wheel_store_path(opts);
+  if (path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: code wheel this platform does not say where"
+                 " per-user data lives; say --code-wheel-store PATH\n");
+    return;
+  }
+  std::ifstream file(path, std::ios::binary);
+  if (!file) {
+    return;
+  }
+  const std::string text((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+  if (const host::code_wheel_trouble why = store.parse(text);
+      why != host::code_wheel_trouble::none) {
+    // Left alone rather than used, and left on disk rather than
+    // overwritten: whatever that file is, this build cannot read it, and
+    // a store from a later one is somebody's answer.
+    std::fprintf(stderr, "amberfolio: code wheel store %s - %s\n", path.c_str(),
+                 host::code_wheel_trouble_name(why));
+  }
+}
+
+/// Write it back. Called when the store says it moved — which happens at
+/// most once a run, at the instant somebody answers the question.
+void save_code_wheel_store(const options& opts,
+                           const host::code_wheel_store& store) {
+  const std::string path = code_wheel_store_path(opts);
+  if (path.empty()) {
+    return;
+  }
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  const std::string text = store.serialize();
+  file.write(text.data(), static_cast<std::streamsize>(text.size()));
+  file.flush();
+  if (!file) {
+    std::fprintf(stderr,
+                 "amberfolio: code wheel store %s could not be written - the"
+                 " next launch will ask again\n",
+                 path.c_str());
+  }
+}
+
 /// Read a journal store that is already there, for a run that is not
 /// ingesting one (M5-E4, #175).
 ///
@@ -2333,6 +2433,12 @@ int main(int argc, char** argv) try {
   // own, and a run with no `--journal` reads what a previous one wrote.
   host::journal_store journal_text;
   services.set_journal_store(&journal_text);
+  // And the third (M6-C1b, #292): the copies whose code-wheel challenge
+  // has been answered. Read below, once the program is loaded and there
+  // is a fingerprint to look up; written when the seam says somebody has
+  // just answered one.
+  host::code_wheel_store code_wheel;
+  services.set_code_wheel_store(&code_wheel);
   // The machine to be, before anything runs (machine/clock.h). Printed
   // whenever it is not the default, for the reason a seam is: a run at a
   // speed nobody expected is a different run, and a log that did not say
@@ -2445,8 +2551,35 @@ int main(int argc, char** argv) try {
 
   // And the one thing a person shows this machine that is not a file:
   // that they have already answered the code-wheel challenge (#291).
-  // Before the seams, for the reason above — a run that says it, and
+  // Before the seams, for the reason above — a run that knows it, and
   // turns the seam on, never reaches the challenge at all.
+  //
+  // Three things in order, and the order is the whole of what they mean:
+  // a player asking to be asked again empties the store first; then the
+  // store says whether *this copy* has answered, which is a question that
+  // needs the program's fingerprint and so cannot be asked any earlier;
+  // then `--code-wheel-answered` states the condition regardless, for a
+  // driven run with nobody at the keyboard.
+  //
+  // The store is read either way, and **forgetting reads it first**: a
+  // player asking to be asked again is asking about the file, and a run
+  // that emptied an object it had never filled would say "forgotten" and
+  // leave every copy in the file exactly where it was. It did, once, and
+  // the driven check below is what caught it.
+  load_code_wheel_store(opts, code_wheel);
+  if (opts.forget_code_wheel) {
+    if (code_wheel.forget()) {
+      save_code_wheel_store(opts, code_wheel);
+      code_wheel.clear_changed();
+    }
+    std::fprintf(stderr,
+                 "amberfolio: code wheel forgotten - the challenge will be"
+                 " asked again\n");
+  } else if (host::apply_code_wheel_store(box, code_wheel)) {
+    std::fprintf(stderr,
+                 "amberfolio: code wheel answered on this copy already -"
+                 " the challenge will not be drawn\n");
+  }
   if (opts.code_wheel_answered) {
     box.seams().set_code_wheel_answered(true);
     std::fprintf(stderr,
@@ -2906,6 +3039,18 @@ int main(int argc, char** argv) try {
     if (journal_text.changed()) {
       save_journal_store(opts, journal_text);
       journal_text.clear_changed();
+    }
+    // And the code wheel's answer, the same way and for the same reason
+    // (M6-C1b, #292) — except that this one moves at most once in a run,
+    // at the instant a person gets the question right. Written then
+    // rather than at the end, so that a session which crashes an hour
+    // later has still kept it.
+    if (code_wheel.changed()) {
+      save_code_wheel_store(opts, code_wheel);
+      code_wheel.clear_changed();
+      std::fprintf(stderr,
+                   "amberfolio: code wheel answered - remembered for this"
+                   " copy\n");
     }
     if (box.stopped()) {
       ended = machine::run_end::stopped;

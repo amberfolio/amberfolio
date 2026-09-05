@@ -75,6 +75,7 @@
 #include <cstdint>
 
 #include "amberfolio/host/automap_store.h"
+#include "amberfolio/host/code_wheel_store.h"
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/seam.h"
@@ -149,10 +150,29 @@ class host_services final : public machine::seam_host_services {
     return automap_;
   }
 
+  /// Where `code_wheel_answered` writes the copy a person just answered
+  /// for (M6-C1b, #292).
+  ///
+  /// A pointer rather than a member, for the journal store's reason: both
+  /// hosts already hold one by the time this object exists — the desktop
+  /// host reads a file in its per-user data directory, the page reads its
+  /// own drawer — and what they hand over is somewhere to *put* the fact
+  /// that the question has been answered. Null is a host that keeps no
+  /// such thing, and then the answer lasts exactly as long as the machine
+  /// does, which is the honest state and not an error.
+  void set_code_wheel_store(code_wheel_store* store) noexcept {
+    code_wheel_ = store;
+  }
+  [[nodiscard]] const code_wheel_store* code_wheel() const noexcept {
+    return code_wheel_;
+  }
+  [[nodiscard]] code_wheel_store* code_wheel() noexcept { return code_wheel_; }
+
  private:
   std::array<host_service_record, machine::seam_host_service_count> records_{};
   automap_store automap_{};
   journal_store* journal_{nullptr};
+  code_wheel_store* code_wheel_{nullptr};
 };
 
 }  // namespace amberfolio::host

@@ -1224,6 +1224,62 @@ export class Machine {
     );
   }
 
+  // The store behind it (M6-C1b, #292) — the journal store's four doors,
+  // one artifact over, with the same contract and for the same reason: the
+  // module holds the store and opens nothing, the page owns the drawer.
+
+  /// Tell this machine what the tab remembers about the copy it is
+  /// running, and answer whether it was told anything. Call it once the
+  /// program is loaded — there is no fingerprint to look up before that —
+  /// and before the first step.
+  codeWheelApply() {
+    return this.module._af_web_code_wheel_apply(this.handle) !== 0;
+  }
+
+  /// The store as its file would be. An empty store serializes to its
+  /// header alone, which is a page with nothing to keep.
+  codeWheelStoreWrite() {
+    return (
+      this.#text(
+        (out, max) => this.module._af_web_code_wheel_store_write(out, max),
+        4096,
+      ) ?? ''
+    );
+  }
+
+  /// A store's own bytes back in, answering a `code_wheel_trouble` — zero
+  /// for read. Strict: a drawer holding something that is not this format
+  /// is refused whole and left alone, so a page can say so and a player
+  /// can be asked the game's question again rather than silently kept out.
+  ///
+  /// Does **not** raise the changed flag: what came out of the drawer came
+  /// from the page, which therefore already holds it.
+  codeWheelStoreRead(text) {
+    const source = String(text ?? '');
+    return this.#withCString(source, (ptr) =>
+      this.module._af_web_code_wheel_store_read(ptr, source.length),
+    );
+  }
+
+  /// Whether somebody answered the challenge in this session, so the page
+  /// has something new to put in the drawer. Raised by exactly one thing:
+  /// the seam's callout when a person gets the question right.
+  codeWheelStoreChanged() {
+    return this.module._af_web_code_wheel_store_changed() !== 0;
+  }
+
+  /// Say the bytes are somewhere. After the write, never before.
+  codeWheelStoreClearChanged() {
+    return this.module._af_web_code_wheel_store_clear_changed();
+  }
+
+  /// Everything this tab remembers about answered copies, gone. The
+  /// drawer is the page's to empty; this is the module's half, so that
+  /// "ask me again" does not mean "ask me again after a reload".
+  codeWheelStoreClear() {
+    return this.module._af_web_code_wheel_store_clear();
+  }
+
   /// Turn a seam on or off by id. `AF_OK` if it took, `AF_INVALID` if
   /// there is no such seam or it is unavailable — `seamList()` says why.
   seamEnable(id) {

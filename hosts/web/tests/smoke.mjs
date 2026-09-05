@@ -256,6 +256,18 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_seen_restore',
   '_af_web_journal_store_clear',
   '_af_web_journal_store_fingerprint',
+  '_af_web_code_wheel_store_write',
+  '_af_web_code_wheel_store_read',
+  '_af_web_code_wheel_store_changed',
+  '_af_web_code_wheel_store_clear_changed',
+  '_af_web_code_wheel_store_clear',
+  '_af_web_code_wheel_apply',
+  '_af_web_code_wheel_store_write',
+  '_af_web_code_wheel_store_read',
+  '_af_web_code_wheel_store_changed',
+  '_af_web_code_wheel_store_clear_changed',
+  '_af_web_code_wheel_store_clear',
+  '_af_web_code_wheel_apply',
   '_af_web_journal_probe',
   '_af_web_journal_probe_bytes',
   '_af_web_journal_probe_size',
@@ -1824,6 +1836,111 @@ if (missing.length === 0) {
   console.log(
     'smoke: an unrecognized document was reported with its fingerprint and ' +
       'satisfied nothing; every seam says what it needs',
+  );
+}
+
+// --- The code wheel's answer, kept between visits (M6-C1b, #292) -----------
+//
+// The seam itself is exercised natively (`SeamCodeWheel.*`); what has no
+// other home is the *browser's* half — the six doors a page keeps a store
+// through, and the lookup that tells a machine what this tab remembers
+// about the copy it is running. The whole point of them is a second visit,
+// so the check is a store written out, handed back in as a page would on
+// the next load, and applied to a machine whose program is in it.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  check(
+    machine.attachReferenceDevices() === AF_OK,
+    'attaching the reference devices failed',
+  );
+  machine.reset();
+
+  check(
+    machine.codeWheelStoreWrite() === 'amberfolio-code-wheel 1\n',
+    'an empty store did not serialize to its header alone',
+  );
+  check(!machine.codeWheelStoreChanged(), 'a fresh store says it has moved');
+  check(
+    !machine.codeWheelAnswered(),
+    'a machine claimed the challenge was answered before it was told anything',
+  );
+  check(!machine.codeWheelApply(), 'a machine with no program was told something');
+
+  const ptr = module._af_web_probe_program_bytes();
+  const size = module._af_web_probe_program_size();
+  check(
+    machine.vfsPut('PROBE.EXE', module.HEAPU8.slice(ptr, ptr + size)) === AF_OK,
+    'putting PROBE.EXE failed',
+  );
+  check(machine.loadFromVfs('PROBE.EXE', '') === AF_OK, 'loading PROBE.EXE failed');
+  const program = machine.programFingerprint();
+  check(
+    typeof program === 'string' && program.length === 64,
+    `the loaded program has no fingerprint to key a store by: ${program}`,
+  );
+
+  // A copy that is not this one changes nothing, which is what keying the
+  // store by the program is for.
+  const stranger =
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  check(
+    machine.codeWheelStoreRead(`amberfolio-code-wheel 1\nanswered ${stranger}\n`) === 0,
+    'a store naming another copy was refused',
+  );
+  check(!machine.codeWheelApply(), 'another copy\'s answer was applied to this one');
+  check(!machine.codeWheelAnswered(), 'the latch went up for a copy nobody ran');
+
+  // And this one does.
+  check(
+    machine.codeWheelStoreRead(`amberfolio-code-wheel 1\nanswered ${program}\n`) === 0,
+    'a store naming this copy was refused',
+  );
+  check(
+    !machine.codeWheelStoreChanged(),
+    'reading a store raised the changed flag, so every page would write back what it just read',
+  );
+  check(machine.codeWheelApply(), 'this copy\'s own answer was not applied');
+  check(machine.codeWheelAnswered(), 'the machine was not told the challenge had been answered');
+
+  // What a page puts back in its drawer is what it read, plus whatever a
+  // person answered in this session.
+  check(
+    machine.codeWheelStoreWrite() === `amberfolio-code-wheel 1\nanswered ${program}\n`,
+    'the store did not write back what it was handed',
+  );
+
+  // A drawer holding something else is refused whole and the machine is
+  // left alone, which is what lets a page say so and ask the game's own
+  // question again rather than silently keeping somebody out.
+  check(
+    machine.codeWheelStoreRead('amberfolio-journal 3\n') !== 0,
+    'a journal store was accepted as a code-wheel store',
+  );
+  check(
+    machine.codeWheelStoreWrite() === `amberfolio-code-wheel 1\nanswered ${program}\n`,
+    'a refused store was half-read into the object',
+  );
+
+  // Forget it: the module's own half of the page's button.
+  check(machine.codeWheelStoreClear() === AF_OK, 'clearing the store was refused');
+  check(
+    machine.codeWheelStoreWrite() === 'amberfolio-code-wheel 1\n',
+    'the store was not emptied',
+  );
+  check(
+    machine.codeWheelAnswered(),
+    'forgetting the store un-answered a machine that had already been told, which nothing can honestly do',
+  );
+
+  machine.destroy();
+  console.log(
+    'smoke: the code wheel\'s store went out to a browser drawer and back, ' +
+      'and told a machine about the copy it was running',
   );
 }
 
