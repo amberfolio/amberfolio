@@ -211,19 +211,21 @@ a test over file events rather than a run.
 
 **What it does.** On the game's own overworld map — the five-by-five
 window of a wilderness area you travel across — the country your party
-has been near is the game's own map, and **everything else is under
-fog**: a fine dark-grey haze, laid on every other pixel, so you can still
-make out the shape of what is out there without being able to read it.
-The fog lifts as you go, a square at a time, so what is plainly on the
-screen is where you have been.
+has walked is the game's own map, and **everything else is under fog**: a
+fine black haze, laid on every other pixel, so you can still make out the
+shape of what is out there without being able to read it. The fog lifts
+as you go, a square at a time, so what is plainly on the screen is where
+you have been.
 
-**How much you see.** The square you are standing on and the eight around
-it. That is a reveal radius of one, and one is not an arbitrary choice:
-the game shows you five squares across with your party in the middle, so
-at a radius of two every square on the screen would already be uncovered
-and the fog would never appear at all. Measured — 523 frames of a real
-walk at radius 2, and not one of them different from the same walk with
-this off. It is one named constant if a later run says otherwise.
+**How much you see.** The square you are standing on. That is a reveal
+radius of zero, and it is bounded on both sides by something somebody
+did. Above: the game shows you five squares across with your party in the
+middle, so at a radius of two every square on the screen would already be
+uncovered and the fog would never appear at all — measured, 523 frames of
+a real walk at radius 2, and not one of them different from the same walk
+with this off. Below: a radius of one shipped, and walking it uncovers a
+corridor three squares wide, which fills the map in faster than you
+explore it. It is one named constant if a later run says otherwise.
 
 **How you turn it on.** `--seam explored`, and that is the whole of it.
 There is no key: it is a setting, not a command. On, it is there whenever
@@ -244,9 +246,9 @@ real frame rather than derived: the window is 120 by 120 pixels at
 (8, 8), and a square is 24 by 24.
 
 **What makes it native.** The fog's colour is one of the game's own
-sixteen — index 8, the dark grey it draws with elsewhere — and it is laid
-one pixel on, one pixel off, so half of what is under it is the game's
-own picture, untouched. Nothing is added to the screen that the game does
+sixteen — index 0, the black most of that screen already is — and it is
+laid one pixel on, one pixel off, so half of what is under it is the
+game's own picture, untouched. Nothing is added to the screen that the game does
 not already have on it, and no shape is drawn that the game does not
 draw: no grid, no border, no lettering on the map.
 
@@ -259,13 +261,19 @@ black checker, a dark-grey checker, a light-grey checker and a coarser
 dark-grey one — and looked at. The haze won, and the reason is the one an
 argument had missed: a solid cover throws away the *shape* of the country
 you are standing at the edge of, and you cannot see there is a coast to
-walk to if you cannot see the coast. A black checker turned out to
-collapse into a flat dark mesh against the grass's own two-green dither,
-and a light-grey one just read as paler ground.
-`docs/explored-overlay.md` §5 has all of them, black included, with what
-each of them cost.
+walk to if you cannot see the coast. `docs/explored-overlay.md` §5 has
+all of them with what each of them cost.
 
-**This is the second design, and the first one is still written down.**
+**And why the haze is black.** The side-by-side picked a dark-grey
+checker, on the grounds that a black one collapses into a flat dark mesh
+against the grass's own two-green dither. Walking it said otherwise: in
+play a fogged square is never seen on its own — it is next to the square
+you are standing on — and the grey read thin, especially over mountain
+rock, whose own art is largely that very grey. So the colour went black
+and the geometry stayed. It is the third time a look at this one has
+changed it, and every earlier version is still written down.
+
+**This is the second marking, and the first one is still written down.**
 Until #263 the overlay did the opposite: it left the whole map on the
 screen and redrew the squares you had walked one shade brighter. It was
 measured to be visible on 2,800 squares of a real run, and when somebody
@@ -277,18 +285,17 @@ by looking at it is worth more than a design nobody tried.
 **The square you are standing on is never covered**, and that is not a
 detail: your party's icon is drawn there.
 
-**What it is not yet** (**#267**). **Nobody has played with the fog.** Somebody has
-now looked at it — that is how the colour was chosen — but on stills, and
-the question this whole document is organised around, does it read as
-something the game drew, is one only a person with the game running can
-finish answering. That is exactly how the first design was replaced. It
-has been driven on all three wilderness areas, and over mountain rock —
-the terrain whose own art is largely the covering's own grey, which is
-the case the composites never showed. It reads there: the tile's bright
-half goes to a one-pixel mesh and the edge between covered and clear is a
-straight cut on a cell boundary. What it costs is that a third of the
-covering writes grey onto grey and does nothing, so the haze is thinner
-over rock than over grass. Forest and roads are still not under it.
+**What it is not yet** (**#267**, **#299**). Somebody has now **played
+with the fog**, which is what this line used to say nobody had done, and
+what came back was that the grey read thin and the three-square trail
+gave away too much — so the colour is black and the radius is zero. What
+has not happened is the same look at *those* two settings: this build is
+what a walk asked for, and nobody has walked what it asked for. It has
+been driven on all three wilderness areas, and over mountain rock — the
+terrain whose own art was largely the old covering's own grey, which is
+the case the composites never showed and the measurement that sent the
+grey away: a third of the covering wrote grey onto grey and did nothing
+there. Forest and roads are still not under it.
 
 ---
 
