@@ -67,6 +67,7 @@ import {
   keepStore,
   restoreStore,
   restoreSeen,
+  citeAllJournal,
   forgetStore,
   clearStore,
 } from './journal.mjs';
@@ -91,6 +92,7 @@ const HEALTH_ID = 'health';
 const JOURNAL_INPUT_ID = 'journal';
 const JOURNAL_STATUS_ID = 'journal-status';
 const JOURNAL_FORGET_ID = 'journal-forget';
+const JOURNAL_CITE_ALL_ID = 'journal-cite-all';
 const CODE_WHEEL_STATUS_ID = 'code-wheel-status';
 const CODE_WHEEL_FORGET_ID = 'code-wheel-forget';
 
@@ -307,6 +309,7 @@ export function runDevPage() {
   const journalInput = el(JOURNAL_INPUT_ID);
   const journalStatusEl = el(JOURNAL_STATUS_ID);
   const journalForgetButton = el(JOURNAL_FORGET_ID);
+  const journalCiteAllButton = el(JOURNAL_CITE_ALL_ID);
   const setJournalStatus = (text) => {
     if (journalStatusEl) journalStatusEl.textContent = text;
     appendConsole(`[journal] ${text}\n`);
@@ -443,6 +446,48 @@ export function runDevPage() {
             : '') +
           ' - read your journal again to put it back',
       );
+    });
+  }
+
+  // The debug cheat (#301): everything this browser's journal holds onto
+  // the machine's `Notes` log, so a person can open each entry in turn
+  // on the game's own screen and read it against the scan.
+  //
+  // The module *is* loaded to do this, unlike the two forget buttons: the
+  // log lives in the machine, so there has to be one, and `ensureMachine`
+  // is also what restores the store this cites from. What it cites goes
+  // into the store's own log the way a real citation does, and is kept
+  // in the drawer right here — so the log stays filled across reloads,
+  // for good, until *Forget it*. The sentence says so, because a game
+  // that appears to have said everything already is otherwise a mystery.
+  //
+  // A page that has never read a journal cites nothing and says so; the
+  // log is left as it was.
+  if (journalCiteAllButton) {
+    journalCiteAllButton.addEventListener('click', async () => {
+      try {
+        const box = await ensureMachine();
+        const cited = citeAllJournal(loaded.module, box.handle);
+        if (cited === 0) {
+          setJournalStatus(
+            'nothing to cite - no journal has been read in this browser',
+          );
+          return;
+        }
+        const kept = keepStore(loaded.module);
+        if (kept.kept) loaded.module._af_web_journal_store_clear_changed();
+        setJournalStatus(
+          `cited all ${cited} entries onto the Notes log (cheat)` +
+            ' - it stays that way until you press Forget it' +
+            (kept.kept
+              ? ''
+              : kept.why
+                ? ` - NOT kept for next time: ${kept.why}`
+                : ''),
+        );
+      } catch (problem) {
+        setJournalStatus(`citing failed: ${problem.message ?? problem}`);
+      }
     });
   }
 

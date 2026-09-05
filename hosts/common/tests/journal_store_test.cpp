@@ -18,6 +18,10 @@
 
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
+#include "amberfolio/host/journal_ingest.h"
+#include "amberfolio/host/journal_probe.h"
+#include "amberfolio/machine/journal.h"
+#include "amberfolio/machine/platform.h"
 #include "gtest/gtest.h"
 
 namespace amberfolio::host {
@@ -575,6 +579,170 @@ TEST(JournalLogRestore, AnEmptyStoreLeavesAnEmptyLog) {
   restore_journal_log(into, store);
   EXPECT_TRUE(into.seen().empty());
   EXPECT_FALSE(into.seen_changed());
+}
+
+// ---------------------------------------------------------------------------
+// The cheat that cites everything (#301)
+// ---------------------------------------------------------------------------
+
+/// A store the probe edition was ingested into: entries 1, 2 and 3 and
+/// the tale numbered one, in the store's own order.
+[[nodiscard]] journal_store probe_store() {
+  journal_ingester ingester(journal_probe_table());
+  EXPECT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
+  journal_probe_ocr engine;
+  journal_store store;
+  const journal_ingest_report report = ingester.run(&engine, store);
+  EXPECT_EQ(report.recognized, journal_probe_entries);
+  store.clear_changed();
+  return store;
+}
+
+/// One moment for the whole cite: a bulk cite is one evening.
+constexpr machine::wall_time At{
+    .year = 1990, .month = 3, .day = 14, .hour = 21, .minute = 5};
+
+TEST(JournalCiteAll, TheProbeEditionIsCitedEntryOneFirstAndAllUnread) {
+  journal_store store = probe_store();
+  ASSERT_EQ(store.size(), journal_probe_entries);
+  machine::journal_state into;
+
+  EXPECT_EQ(cite_all_journal(into, store, At), journal_probe_entries);
+
+  // The listing reads top down as the book does: the entries in order,
+  // then the tale. `note_seen` puts each row on the front, so this is
+  // the store walked backwards — the same one reversed loop
+  // `restore_journal_log` has, for the same reason.
+  const std::span<const machine::journal_seen_row> got = into.seen();
+  ASSERT_EQ(got.size(), 4u);
+  EXPECT_EQ(got[0].what, Entry(1));
+  EXPECT_EQ(got[1].what, Entry(2));
+  EXPECT_EQ(got[2].what, Entry(3));
+  EXPECT_EQ(got[3].what, Tale(1));
+  for (const machine::journal_seen_row& row : got) {
+    EXPECT_FALSE(row.read) << "a cited row is a to-do, not a done";
+    EXPECT_EQ(row.month, At.month);
+    EXPECT_EQ(row.day, At.day);
+    EXPECT_EQ(row.hour, At.hour);
+    EXPECT_EQ(row.minute, At.minute);
+  }
+}
+
+TEST(JournalCiteAll, TheStoreGetsTheSameLogThroughTheSameWrite) {
+  // What makes it survive a reload: the rows go into the store's own log
+  // through `set_seen`, which is the `journal_seen` service's write, and
+  // that raises the store's flag so a host writes the file — while the
+  // machine's own flag comes down, because the host now has it.
+  journal_store store = probe_store();
+  machine::journal_state into;
+  static_cast<void>(cite_all_journal(into, store, At));
+
+  EXPECT_TRUE(store.changed());
+  EXPECT_FALSE(into.seen_changed());
+  ASSERT_EQ(store.seen().size(), into.seen().size());
+  for (std::size_t i = 0; i < store.seen().size(); ++i) {
+    EXPECT_EQ(store.seen()[i].what, into.seen()[i].what) << "row " << i;
+  }
+  // And it round-trips as `seen` lines, Entry 1 first.
+  journal_store back;
+  ASSERT_EQ(back.parse(store.serialize()), journal_trouble::none);
+  ASSERT_EQ(back.seen().size(), 4u);
+  EXPECT_EQ(back.seen().front().what, Entry(1));
+  EXPECT_EQ(back.seen().back().what, Tale(1));
+}
+
+TEST(JournalCiteAll, ASecondCallNeitherDoublesNorForgetsWhatWasRead) {
+  journal_store store = probe_store();
+  machine::journal_state into;
+  static_cast<void>(cite_all_journal(into, store, At));
+  ASSERT_TRUE(into.mark_seen_read(Entry(2)));
+
+  const machine::wall_time later{
+      .year = 1990, .month = 3, .day = 15, .hour = 9, .minute = 30};
+  EXPECT_EQ(cite_all_journal(into, store, later), journal_probe_entries);
+
+  const std::span<const machine::journal_seen_row> got = into.seen();
+  ASSERT_EQ(got.size(), 4u) << "citing twice doubled the log";
+  EXPECT_EQ(got[0].what, Entry(1));
+  EXPECT_EQ(got[1].what, Entry(2));
+  EXPECT_EQ(got[2].what, Entry(3));
+  EXPECT_EQ(got[3].what, Tale(1));
+  EXPECT_TRUE(got[1].read) << "a second cite unread what a person had read";
+  EXPECT_FALSE(got[0].read);
+  EXPECT_EQ(got[0].day, later.day) << "a re-cite re-dates, as the game's does";
+}
+
+TEST(JournalCiteAll, WhatTheGameCitedStaysUnderneath) {
+  // Clears nothing: a row the game cited that is not in the store — a
+  // number the engine read nothing for, say — is still on the log, below
+  // the cited ones, with its own date and its own read flag.
+  journal_store store = probe_store();
+  machine::journal_state into;
+  into.note_seen(Entry(7), 1, 1, 0, 5);
+  ASSERT_TRUE(into.mark_seen_read(Entry(7)));
+
+  EXPECT_EQ(cite_all_journal(into, store, At), journal_probe_entries);
+
+  const std::span<const machine::journal_seen_row> got = into.seen();
+  ASSERT_EQ(got.size(), 5u);
+  EXPECT_EQ(got[0].what, Entry(1));
+  EXPECT_EQ(got[4].what, Entry(7));
+  EXPECT_TRUE(got[4].read);
+  EXPECT_EQ(got[4].minute, 5);
+}
+
+TEST(JournalCiteAll, AnEmptyStoreCitesNothingAndTouchesNothing) {
+  // The reader's own "you have not ingested a journal" is the answer for
+  // a player with no store, not an empty log and not a file written.
+  journal_store store;
+  machine::journal_state into;
+  into.note_seen(Entry(7), 1, 1, 0, 5);
+  into.set_seen_changed(false);
+
+  EXPECT_EQ(cite_all_journal(into, store, At), 0u);
+  EXPECT_EQ(into.seen().size(), 1u);
+  EXPECT_FALSE(into.seen_changed());
+  EXPECT_FALSE(store.changed());
+  EXPECT_TRUE(store.seen().empty());
+}
+
+TEST(JournalCiteAll, AWholeEditionFitsInTheLog) {
+  // The cap was sixty-four and a real edition is ninety-nine sections
+  // (#232: fifty-eight entries, twenty-three tales, eighteen
+  // proclamations numbered 59-214 with gaps), so citing everything used
+  // to drop the last thirty-five off the end — which defeats the purpose.
+  // The store here has that edition's shape and none of its words.
+  journal_store store;
+  store.set_edition(
+      "2222222222222222222222222222222222222222222222222222222222222222");
+  for (std::uint16_t i = 1; i <= 58; ++i) {
+    ASSERT_TRUE(store.record_scan(Entry(i), "an entry, as scanned"));
+  }
+  for (std::uint16_t i = 1; i <= 23; ++i) {
+    ASSERT_TRUE(store.record_scan(Tale(i), "a tale, as scanned"));
+  }
+  constexpr std::array<std::uint16_t, 18> proclamations{
+      59,  64,  71,  78,  84,  90,  97,  103, 109,
+      116, 122, 128, 135, 141, 147, 154, 160, 214};
+  for (const std::uint16_t number : proclamations) {
+    ASSERT_TRUE(
+        store.record_scan(Proclamation(number), "a proclamation, as scanned"));
+  }
+  ASSERT_EQ(store.size(), 99u);
+  static_assert(machine::journal_log_rows >= 99,
+                "the log has to hold a whole edition for the cheat to mean"
+                " anything");
+
+  machine::journal_state into;
+  EXPECT_EQ(cite_all_journal(into, store, At), 99u);
+  ASSERT_EQ(into.seen().size(), 99u) << "the oldest fell off the end";
+  EXPECT_EQ(into.seen().front().what, Entry(1));
+  EXPECT_EQ(into.seen()[57].what, Entry(58));
+  EXPECT_EQ(into.seen()[58].what, Tale(1));
+  EXPECT_EQ(into.seen()[81].what, Proclamation(59));
+  EXPECT_EQ(into.seen().back().what, Proclamation(214));
+  // And the store kept all of it, since its cap is the machine's.
+  EXPECT_EQ(store.seen().size(), 99u);
 }
 
 }  // namespace

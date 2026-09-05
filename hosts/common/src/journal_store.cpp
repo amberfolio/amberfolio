@@ -16,6 +16,9 @@
 #include <vector>
 
 #include "amberfolio/host/journal_facts.h"
+#include "amberfolio/machine/journal.h"
+#include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/platform.h"
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
@@ -421,6 +424,35 @@ void restore_journal_log(machine::journal_state& into,
     }
   }
   into.set_seen_changed(false);
+}
+
+std::size_t cite_all_journal(machine::journal_state& into, journal_store& store,
+                             const machine::wall_time& when) {
+  const std::vector<journal_text>& all = store.entries();
+  if (all.empty()) {
+    // Nothing to cite, and nothing touched: not the log, not the store's
+    // flag. The reader's own "no journal" is the honest answer here.
+    return 0;
+  }
+  // Backwards through a store sorted by section and then number, so that
+  // the front of the log ends up being the front of the book (header).
+  for (std::size_t i = all.size(); i > 0; --i) {
+    const journal_text& item = all[i - 1];
+    into.note_seen({.kind = item.kind, .number = item.number}, when.month,
+                   when.day, when.hour, when.minute);
+  }
+  // The `journal_seen` service's own two lines (`host_services.cpp`): the
+  // machine's log into the store, and the machine told a host has it.
+  // Here rather than left to the seam, because the seam only copies when
+  // it is on and reaches a point, and a person who asked for this on a
+  // run that never gets there still asked for it to be kept.
+  store.set_seen(into.seen());
+  into.set_seen_changed(false);
+  return all.size();
+}
+
+std::size_t cite_all_journal(machine::machine& box, journal_store& store) {
+  return cite_all_journal(box.journal(), store, box.wall().at(box.time()));
 }
 
 }  // namespace amberfolio::host

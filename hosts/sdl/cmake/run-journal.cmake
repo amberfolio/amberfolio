@@ -147,7 +147,65 @@ if(code EQUAL 0)
 endif()
 expect("need --journal")
 
+# --- 7. The cheat that cites everything (#301) --------------------------
+#
+# Over the store step 2 left: four rows and no `seen` lines. The flag
+# puts all four on the log, Entry 1 first, and the run loop writes the
+# store back on its first frame the way it would after a real citation —
+# so the file carries four `seen` lines afterwards, in that order, every
+# one unread. A second run over the same file is four lines and not
+# eight. With no store at all there is nothing to cite, and the host says
+# so and writes nothing.
+
+run_host(--journal-store "${store}" --cite-all-journal)
+if(NOT code EQUAL 7)
+  message(FATAL_ERROR
+    "citing everything changed the program's exit code to '${code}'.\n"
+    "stdout: ${out}\nstderr: ${err}")
+endif()
+expect("journal cited all 4 - the Notes log holds every entry \\(log=4\\)")
+file(READ "${store}" text)
+string(REGEX MATCHALL "seen [a-z]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [01]\n" seen "${text}")
+list(LENGTH seen seen_count)
+if(NOT seen_count EQUAL 4)
+  message(FATAL_ERROR
+    "the store carries ${seen_count} seen lines after citing four rows:\n${text}")
+endif()
+set(want_order "seen entry 1 " "seen entry 2 " "seen entry 3 " "seen tale 1 ")
+set(index 0)
+foreach(line IN LISTS seen)
+  list(GET want_order ${index} want)
+  string(FIND "${line}" "${want}" at)
+  if(NOT at EQUAL 0)
+    message(FATAL_ERROR
+      "seen line ${index} is '${line}', wanted it to begin '${want}':\n${text}")
+  endif()
+  if(NOT line MATCHES " 0\n$")
+    message(FATAL_ERROR "a cited row arrived already read: '${line}'")
+  endif()
+  math(EXPR index "${index} + 1")
+endforeach()
+
+run_host(--journal-store "${store}" --cite-all-journal)
+expect("journal store .*seen=4")
+expect("journal cited all 4")
+file(READ "${store}" text)
+string(REGEX MATCHALL "\nseen " seen "${text}")
+list(LENGTH seen seen_count)
+if(NOT seen_count EQUAL 4)
+  message(FATAL_ERROR
+    "citing everything twice left ${seen_count} seen lines:\n${text}")
+endif()
+
+run_host(--journal-store "${SCRATCH}/journal-nothing-here.txt" --cite-all-journal)
+expect("journal nothing to cite - no journal has been ingested")
+if(EXISTS "${SCRATCH}/journal-nothing-here.txt")
+  message(FATAL_ERROR
+    "citing with no journal wrote a store, which it must never do")
+endif()
+
 message(STATUS
   "sdl host journal: a synthetic edition ingested end to end, a"
-  " correction kept across a re-ingestion, and two unrecognized"
-  " documents reported with their fingerprints")
+  " correction kept across a re-ingestion, two unrecognized"
+  " documents reported with their fingerprints, and the cheat that"
+  " cites everything kept in the store Entry 1 first")

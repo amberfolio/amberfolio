@@ -388,6 +388,16 @@ than a measured sentence. **Nobody has read an entry off a display**
 it file against file — and the rows the journal's own test plan still
 owes are **#270**.
 
+**A cheat for proof-reading it** (#301). `--cite-all-journal` on the
+desktop, *Cite them all (cheat)* on the page: every entry, tale and
+proclamation your ingested journal holds goes onto the `Notes` log, Entry
+1 first with a `*` on each until you open it, so you can read what the
+engine produced one entry at a time on the game's own screen. It is a
+host action and not a seam, it clears nothing you have read, and it is
+**for good** — the log stays filled across runs until you remove the
+`seen` lines from the store file or press *Forget it*. The log's cap went
+from 64 to 256 rows to hold a whole edition. `docs/journal.md` §10.
+
 ---
 
 ## The debug cheats
@@ -409,6 +419,12 @@ program would accept.
 presented as one. `cheat-wound-party` exists because the Encamp Fix's
 days arithmetic and its report's exception list had no other way to be
 driven.
+
+**A fourth that is not a seam** (#301): the journal's *cite them all*,
+above — `--cite-all-journal`, or the button on the page's journal panel.
+It writes the journal's log, which is observation a host may write, so
+it needed no seam and no ABI change and is not in the seam list; it is
+listed here because "cheat" is the word a person will look for.
 
 **What they are not yet.** Three numbers underneath them are chosen
 rather than measured, and **#271** is the list. One of the three was

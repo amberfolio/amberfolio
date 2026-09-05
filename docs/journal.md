@@ -644,3 +644,79 @@ What has still not been driven is a citation of an *entry* or a *tale*:
 the one the game gave up was four proclamations, and the other two
 sections' shapes are the pattern's word rather than a measured
 sentence.
+
+## 10. The cheat that cites everything (#301)
+
+**What was wrong.** A store is text an OCR engine produced off a scan,
+and the only way to look at what the engine actually read was to wait
+for the game to cite an entry, or to type its number at the F1 prompt —
+ninety-nine times, section by section, for the one edition anybody has
+ingested. The `Notes` listing (M5-E4b, #222) is the cheapest possible
+proof-reading surface, newest first with a `*` on what has not been
+opened, and it lacked only a way to fill it.
+
+**What changed.** A debug cheat fills it: `--cite-all-journal` on the
+desktop host and the *Cite them all (cheat)* button on the dev page's
+journal panel, both `host::cite_all_journal()` beside
+`restore_journal_log` in `hosts/common`. It walks the store **backwards**
+— the store is sorted by section and then number, and `note_seen` puts
+each row on the front — so the listing reads Entry 1 first, then the
+tales and the proclamations in their own order, every row unread and
+every row stamped with the machine's own seeded wall clock at that
+instant, the way the seam stamps a real citation. It **clears nothing**:
+`note_seen`'s move-up rule keeps a read flag on a row already there, so
+a second call neither doubles a row nor unreads one, and anything the
+game cited that is not in the store stays underneath. Then it writes the
+machine's log into the store through `set_seen` — the `journal_seen`
+service's own write — so the rows go to the file, or the drawer, the way
+a real citation's do, and **survive every later run until the `seen`
+lines are removed from the store or the page's *Forget it* empties it**.
+Both hosts say so where they offer it. With no journal ingested it cites
+nothing, touches nothing and says so; the reader's own "you have not
+ingested a journal" is that player's answer.
+
+**Where it lives, and why it is not a seam.** The log is observation
+(`machine/journal.h`'s three terms — dropped by `reset()`, absent from
+the state hash, host-writable), and the store it reads is the host's:
+core never enumerates a store, it asks for one entry at a time. So this
+is a host action like `--forget-code-wheel` and *Ask me again* — nothing
+under `core/` moves, no host service is added, the ABI is at 1.2 where
+`v0.4.0` left it, and `af_web_journal_cite_all` is a page export beside
+`af_web_journal_seen_restore` and not an entry point in `abi.h`. It
+contradicts `journal.h`'s "a log, not an index" on purpose, the way
+`cheat-wound-party` contradicts the game's damage rules on purpose
+(PLAN.md §5 item 6), and it is off unless a person asks; a flag is an act.
+The cost of that shape is that it is not in the seam list, so a person
+looking there for a cheat will not find it — which is why the flag, the
+button and this section all use the word.
+
+**What it cost.** `journal_log_rows` went from 64 to **256**. The cap was
+set for play, where sixty-four is more than a game cites in an evening;
+citing a ninety-nine-section edition into it dropped the last thirty-five
+off the end, which defeats the purpose. The listing is untouched by the
+change — it already scrolls a ten-row window over whatever the log holds
+(`seam_journal.cpp`), so a longer log is more to scroll and not a
+different screen — and what it costs is about two kilobytes of
+observation per machine and the same in a store's `seen` lines, none of
+it in the state hash. `JournalCiteAll.AWholeEditionFitsInTheLog` holds a
+store of that edition's shape, with none of its words, and asserts all
+ninety-nine rows arrive.
+
+**What evidence it rests on.** `JournalCiteAll.*` in
+`hosts/common/tests/journal_store_test.cpp`, over the probe edition
+(`journal_probe.h`: three entries, the third in two pieces, and the tale
+numbered one): four rows, Entry 1 first, all unread, one stamp, the
+store's log equal to the machine's and round-tripping as `seen` lines, a
+second call harmless, an empty store untouched. Step 7 of
+`hosts/sdl/cmake/run-journal.cmake` drives the flag on the desktop host
+against a real store file and reads the four `seen` lines back in order,
+twice; `tests/smoke.mjs` drives the page export the same way on the wasm
+module. Nothing here runs the game, and the fidelity invariant is
+unaffected: a run with the flag and every seam off is the run without it.
+
+**What a person still owes.** The look itself — every entry opened on
+the game's own screen, off `Notes`, and read against the scan — which is
+what this exists for and what no runner can do. It belongs on the list
+§7 keeps: a real engine, a real page, a real display. And on the dev page
+specifically: the button has been driven under node and never pressed in
+a browser, which is #236's standing state for the whole panel.

@@ -254,6 +254,7 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_store_changed',
   '_af_web_journal_store_clear_changed',
   '_af_web_journal_seen_restore',
+  '_af_web_journal_cite_all',
   '_af_web_journal_store_clear',
   '_af_web_journal_store_fingerprint',
   '_af_web_code_wheel_store_write',
@@ -3144,6 +3145,9 @@ if (missing.length === 0 && sessions !== null) {
     forgetStore,
     clearStore,
     restoreSeen,
+    citeAllJournal,
+    storeChanged,
+    clearStoreChanged,
     JOURNAL_STORE_KEY,
   } = await import('./journal.mjs');
 
@@ -3410,6 +3414,65 @@ if (missing.length === 0 && sessions !== null) {
       restoreSeen(module, box.handle) === AF_OK,
       'restoring a read log twice was refused',
     );
+
+    // --- The cheat that cites everything (#301) ------------------------
+    //
+    // The store is empty here (the rubbish drawer above cleared it), and
+    // an empty store cites nothing and touches nothing — the reader's own
+    // "no journal" is the answer for that player. Then the kept store is
+    // brought back — the probe's four rows, entries 1, 2 and 3 and the
+    // tale numbered one, nothing cited — and citing them all puts four
+    // rows on the machine's log and, through the store's own `set_seen`,
+    // four `seen` lines into the store, Entry 1 first. The ordering is
+    // held down in C++ (`JournalCiteAll` in
+    // `hosts/common/tests/journal_store_test.cpp`); what is checked here
+    // is the door and the write: that it raises the store's flag, so a
+    // page that keeps the store keeps this, and that twice is four rows
+    // and not eight. The store is emptied again at the end, because the
+    // checks below expect it empty.
+    check(
+      citeAllJournal(module, 0) === 0,
+      'citing into no machine claimed to have cited something',
+    );
+    clearStoreChanged(module);
+    check(
+      citeAllJournal(module, box.handle) === 0 && !storeChanged(module),
+      'citing an empty store claimed to have cited something, or raised the flag',
+    );
+    check(
+      restoreStore(module, { storage }).restored,
+      'the kept store did not come back for the cite',
+    );
+    clearStoreChanged(module);
+    const cited = citeAllJournal(module, box.handle);
+    check(cited === 4, `citing the probe's store cited ${cited} rows, expected 4`);
+    check(
+      storeChanged(module),
+      'citing everything did not raise the store flag, so a page would not keep it',
+    );
+    const withLog = serializeStore(module);
+    const seenLines = withLog.split('\n').filter((line) => line.startsWith('seen '));
+    check(
+      seenLines.length === 4,
+      `the store carries ${seenLines.length} seen lines after citing four rows`,
+    );
+    check(
+      seenLines[0].startsWith('seen entry 1 ') &&
+        seenLines[1].startsWith('seen entry 2 ') &&
+        seenLines[2].startsWith('seen entry 3 ') &&
+        seenLines[3].startsWith('seen tale 1 '),
+      `the cited log is not Entry 1 first: ${JSON.stringify(seenLines)}`,
+    );
+    check(
+      seenLines.every((line) => line.endsWith(' 0')),
+      'a cited row arrived already read',
+    );
+    check(
+      citeAllJournal(module, box.handle) === 4 &&
+        serializeStore(module).split('\n').filter((line) => line.startsWith('seen ')).length === 4,
+      'citing everything twice doubled the log',
+    );
+    clearStore(module);
     box.destroy();
   }
 

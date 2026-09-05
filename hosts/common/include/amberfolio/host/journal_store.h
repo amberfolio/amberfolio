@@ -113,7 +113,12 @@
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
 #include "amberfolio/machine/journal.h"
+#include "amberfolio/machine/platform.h"
 #include "amberfolio/sha256.h"
+
+namespace amberfolio::machine {
+class machine;
+}  // namespace amberfolio::machine
 
 namespace amberfolio::host {
 
@@ -325,5 +330,57 @@ class journal_store {
 /// would be writing what it had just read.
 void restore_journal_log(machine::journal_state& into,
                          const journal_store& from) noexcept;
+
+/// The debug cheat that puts **everything the store holds** onto the
+/// journal's log, so the `Notes` listing shows every entry, tale and
+/// proclamation a player's ingestion produced and a person can open
+/// each in turn on the game's own screen and read it against the scan
+/// (#301). Answers how many it cited: the store's size, or zero for a
+/// store with nothing in it, in which case nothing at all is touched —
+/// the reader's own "you have not ingested a journal" is the answer a
+/// person then gets, and not an empty log dressed up as one.
+///
+/// **A host action and not a seam**, which is the shape the issue
+/// settled on and the reason this is here beside `restore_journal_log`:
+/// the log is host-writable by design (`machine/journal.h`'s three
+/// terms), the store it reads is the host's, and the core never
+/// enumerates a store — it asks for one entry at a time. So nothing
+/// under `core/` moves, no host service is added and the ABI is where it
+/// was. It contradicts `journal.h`'s "a log, not an index" on purpose,
+/// the way `cheat-wound-party` contradicts the game's own damage rules
+/// on purpose (PLAN.md §5 item 6): off unless a person asks, and asked
+/// for by somebody proof-reading rather than playing.
+///
+/// **Cited in reverse**, last row of the store first, because
+/// `note_seen` puts each new line on the front and the store is sorted
+/// by section and then by number: walking it backwards leaves Entry 1 at
+/// the top of the listing, then Entry 2, and the tales and proclamations
+/// under the entries in their own order — which is the order a person
+/// with the book open wants. Every row arrives unread, so the listing's
+/// `*` is a to-do list that empties as they go.
+///
+/// **Clears nothing.** `note_seen`'s own rule — a row already in the log
+/// moves up, re-dated, and keeps its read flag — is what makes a second
+/// call harmless: no row is doubled, nothing a person has read is unread
+/// again, and a row the game cited that is not in the store stays in the
+/// log under the cited ones. One `when` for every row, because a bulk
+/// cite is one moment and the date column exists to tell one evening
+/// from another.
+///
+/// **And it writes the store's own log**, through `set_seen`, the same
+/// call the `journal_seen` host service makes when the seam says the log
+/// moved — so the cited rows reach the file or the drawer through the
+/// write every host already has, and survive a reload the way a real
+/// citation does. Which means they survive *for good*, until the
+/// store's `seen` lines are removed or the store is forgotten; both
+/// hosts say so where they offer this.
+std::size_t cite_all_journal(machine::journal_state& into, journal_store& store,
+                             const machine::wall_time& when);
+
+/// The same, stamped off `box`'s own seeded wall clock at its current
+/// tick — the instant the seam itself stamps a citation with
+/// (`seam_journal.cpp`), derived from virtual time and never read from
+/// the host. What both hosts call.
+std::size_t cite_all_journal(machine::machine& box, journal_store& store);
 
 }  // namespace amberfolio::host
