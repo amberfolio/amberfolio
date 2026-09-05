@@ -248,8 +248,23 @@ was shown five coverings composited over one real dumped frame and
 picked a **one-pixel checkerboard of dark grey** — the terrain half
 covered rather than gone. §5.2 is written round that choice, with
 black's four reasons kept in full as the rejected alternative's, because
-a rejected candidate with its cost is the thing that has now twice made
-a change of mind an edit instead of a re-investigation.
+a rejected candidate with its cost is the thing that has now three times
+made a change of mind an edit instead of a re-investigation.
+
+**And then it was walked** (#299, M5-E5g), which is the first look at
+this enhancement taken in play rather than at a still, and it moved both
+of the numbers the composite had settled:
+
+> as opposed to having a 3x3 block uncovered every time, let's change
+> that to 1x1 (right under the player). also, the gray pixels should be
+> black in the checkerboard so they are more visible.
+
+So the checker's colour is **palette index 0** and the reveal radius is
+**0**. The geometry the composite chose — a one-pixel checker on half the
+cell, and not a solid cover — is untouched; what changed is the colour
+laid in it and how much country a step uncovers. §5.2 keeps the grey with
+its reasons, exactly as it keeps black's, and §5.3 keeps the radius of
+one with the measurement that had bounded it from above.
 
 The stills that decided both are on the machine that made them and are
 never committed (PLAN.md §6); what follows is the decision in words and
@@ -316,13 +331,18 @@ different patch of the same grass. The measurement was answering
   a cell, through the graphics controller's read-map-select, with the
   adapter's latches loaded on every read.
 
-### 5.2 The design that shipped: fog, and it is a dark-grey checker
+### 5.2 The design that shipped: fog, and it is a black checker
 
 **A cell the party has not been near is hazed over with a one-pixel
-checkerboard of palette index 8** — the program's own dark grey — laid on
-half of its 24 by 24 pixels. The other half are the pixels the program
-drew, untouched, so the terrain is faintly there under the haze instead
-of gone.
+checkerboard of palette index 0** — black — laid on half of its 24 by 24
+pixels. The other half are the pixels the program drew, untouched, so the
+terrain is faintly there under the haze instead of gone.
+
+**The colour was palette index 8, the program's own dark grey, from #263
+until #299**, and everything below about *how* the covering is laid — the
+parity, the half, the masked write and what it costs — was decided then
+and is unchanged. What changed is one constant, on the one kind of
+evidence this enhancement takes: somebody walking it.
 
 The parity is the **screen's**: a pixel is covered when `x + y` is even in
 screen coordinates, not in the cell's own, so the pattern runs unbroken
@@ -340,7 +360,9 @@ coast water and the grey shore between them in it, and put in front of
 the maintainer side by side: solid black, a one-pixel checker of black, a
 one-pixel checker of dark grey, a one-pixel checker of light grey, and a
 two-by-two checker of dark grey. The dark-grey one-pixel checker was
-chosen, at a reveal radius of one.
+chosen, at a reveal radius of one — **and both of those were then
+reversed by walking it** (#299): the four bullets below are what the
+composite said, and the two notes after them are what a walk answered.
 
 **What the composite showed that no argument had:**
 
@@ -348,7 +370,8 @@ chosen, at a reveal radius of one.
   itself a two-green dither at one-pixel granularity, so a black checker
   laid over it interferes with that dither into a flat dark mesh. It
   neither covers nor veils; it makes a third texture, and a third texture
-  reads as one more kind of ground.
+  reads as one more kind of ground. **This is the finding #299 reversed**
+  — see the note under this list.
 * **light grey reads as paler terrain.** Its value is near the grass's
   own, and a covering whose value is near the tile's is a variation on
   the tile — which is the lift's failure in §5.1, arrived at from the
@@ -358,11 +381,31 @@ chosen, at a reveal radius of one.
   through that a coastline is still a coastline under it. That turned out
   to be the thing that was wanted, and no argument on this page had
   identified it: not "this square is gone" but "this square has not been
-  seen".
+  seen". **In play it read as thin** (#299) — see the note below.
 * **two-by-two is a pattern rather than a haze.** At twice the period the
   eye stops integrating it and starts reading the blocks, and blocks on a
   map are a modern UI grid — which is the border candidate's rejection in
   §5.1, smaller.
+
+**What walking it said, and the composite could not** (#299). The black
+checker does not collapse: at a step's cadence, with the party's own
+square clear beside it, the covered half is plainly a covering and the
+boundary between a fogged cell and a walked one is the thing the eye
+lands on. What a static composite showed was a patch of fogged terrain
+with nothing to be *unlike*; what a walk shows is fog next to map, moving.
+And the grey that beat it reads as thin for the reason §8 had already
+measured on rock — it is a shade away from the terrain's own values, and
+over the one terrain drawn largely in index 8 a third of the covering
+writes grey onto grey. Black has neither problem: no tile in this
+program's palette can absorb it, and it is the game's own colour for what
+is not there.
+
+**So the shipped colour is black and the shipped geometry is the
+composite's**, which is the two halves of that side-by-side coming apart:
+the composite was right that a *solid* cover is wrong and right about the
+period of the checker, and wrong about the colour to lay in it. What it
+could not do is show motion, and this enhancement is only ever seen in
+motion.
 
 **What black had going for it**, all four of it still true, because this
 is the rejected alternative and it is kept with its reasons:
@@ -379,7 +422,7 @@ is the rejected alternative and it is kept with its reasons:
    window reads as that border framing a smaller opening. Index 8 is
    still the program's own palette and still no foreign artwork, but it
    is not *that*.
-3. **It is the same on every terrain.** The checker keeps this: index 8
+3. **It is the same on every terrain.** The checker keeps this: one index
    on the same half of the pixels whatever the tile is. There are not
    three fogs to learn, and it is not the failure the lift's *dim*
    direction had on water.
@@ -394,12 +437,15 @@ is the rejected alternative and it is kept with its reasons:
    comes out of the graphics controller's set/reset register so one CPU
    write still paints all four planes.
 
-**And the reason black lost, which only a display could say:** a solid
-cover throws away the *shape* of the country the party is standing at the
-edge of. A player who cannot see a coastline through the fog cannot see
-that there is a coast to walk to, and the argument that black "cannot
-read as terrain" is the same fact stated as a virtue. The maintainer
-looked at both and picked the haze.
+**And the reason *solid* black lost, which only a display could say:** a
+solid cover throws away the *shape* of the country the party is standing
+at the edge of. A player who cannot see a coastline through the fog
+cannot see that there is a coast to walk to, and the argument that black
+"cannot read as terrain" is the same fact stated as a virtue. The
+maintainer looked at both and picked the haze — and #299 then kept the
+haze and took black back for the colour in it, which is the distinction
+that whole argument had been missing: it was about *solidity*, not about
+the colour.
 
 **Measured on the real screen**, the final frame of the §4 walk with the
 seam on against the same frame with it off: **3,166 pixels differ, every
@@ -407,7 +453,12 @@ one of them palette index 8, every one of them inside the window, and not
 one pixel of the checker's other half — the program's own — changed
 anywhere on the frame.** Eleven of the twenty-five cells are covered at
 that point in the walk, at 288 pixels each; the two the arithmetic does
-not account for were index 8 on the screen already.
+not account for were index 8 on the screen already. **That measurement is
+the grey checker at a radius of one**, which is what this build drew
+between #263 and #299; the same walk on this build covers more cells and
+writes index 0, and the arithmetic that reads a count off the geometry is
+unchanged. It is kept as it was taken, because a number re-derived rather
+than re-measured is not a measurement.
 
 **The two that were rejected before the composite**, prototyped over the
 same frame when the fog was still being argued rather than looked at: a
@@ -418,11 +469,11 @@ reason §5.1 measured, flattens the grass's dither into a solid mid-green
 rather than darkening it, and produces something that reads as a
 *terrain type* and not as a covering.
 
-### 5.3 How far the party sees, and why the radius is one
+### 5.3 How far the party sees, and why the radius is zero
 
 `explored_reveal_radius` in `machine/automap.h`, a **Chebyshev distance**,
-default **1**: standing on a cell shows it and the eight around it, so a
-walk leaves a corridor three cells wide.
+default **0** since #299: standing on a cell shows that cell, so a walk
+leaves a trail one cell wide.
 
 **The record still holds only the cells the party stood on.** The reveal
 is the *dilation* of that by the radius, computed when the window is
@@ -438,28 +489,40 @@ cell on the screen is already within two of the party. Measured on the
 §4 walk with the constant set to 2: **523 dumped frames, and not one of
 them differs from the same walk with the seam off.** At a radius of two
 this enhancement is invisible except where a map's own edge pushes the
-party off centre. One is the largest radius that leaves anything to
-cover, and it is why the maintainer's "2 or 3" is answered with 1 and a
-measurement rather than with 2.
+party off centre. So two and three are refused by arithmetic, and the
+maintainer's "2 or 3" was answered with a measurement rather than with a
+number.
 
-At a radius of one, on the §4 walk, the window shows **9 uncovered cells
-on arrival** and **12 from the first step onwards** — the outer ring is
-fog, and so is the row the party is walking towards.
+**And then one was shipped, walked, and refused too** (#299). At a radius
+of one the window shows **9 uncovered cells on arrival** and **12 from
+the first step onwards**, and the trail a walk leaves is a corridor three
+cells wide. What that looks like in play is a map that fills in faster
+than the party explores it: a straight walk hands the player two rows of
+country either side that nobody went near, and the fog retreats from
+places the party has not been. Zero shows what was walked, which is the
+only thing the record actually knows.
 
-**The maintainer has confirmed one** (#263), on the same look that chose
-the checker: the composites were all at a reveal radius of one and the
-answer was to keep it. So the half of this judgement that a measurement
-could not settle — whether one square of sight is the right amount of
-country to hand a player — is now settled too, and what is left open on
-#179 is the verdict on the whole thing in play.
+At a radius of zero, on the §4 walk, the window shows **1 uncovered cell
+on arrival** and **2 from the first step onwards** — the party's own
+square and the one it came from — with everything else fog until it is
+stood on.
+
+**Both bounds are now evidence rather than argument.** Above: the 523
+frames. Below: a maintainer playing it. What is left open on #179 is the
+verdict on the whole thing in play at these settings, which is one
+session away rather than a design question.
 
 ### The two constraints, and what became of them
 
 **The party's own cell is never covered.** The party's icon is drawn
-there, and fog over it would be a haze over the player's own sprite. At any radius of one or more the cell is revealed
-anyway — the party is standing on it — but the rule is written down as
-its own line in `cells_to_fog`, because it is the one mistake here that
-would be a bug and not a preference.
+there, and fog over it would be a haze over the player's own sprite. At
+every radius the cell is revealed anyway — the party is standing on it,
+so the record has it — but the rule is written down as its own line in
+`cells_to_fog`, because it is the one mistake here that would be a bug
+and not a preference. At a radius of zero it is also the *only* cell that
+is certainly clear, so that line now carries a case it never used to: a
+record that came back empty would otherwise fog the party's own square
+along with everything else.
 
 **An unexplored cell used to be untouched, and now it is the only thing
 that is touched.** That reversal costs this enhancement a fidelity claim
@@ -585,19 +648,21 @@ open rather than be refused.
   whether the argument was right (#257). `tests/visual/exp-steady.leg`
   says the screen holds still on a run, which is the file-against-file
   half of it.
-* **Whether the fog reads as the game's own *in play*.** The lift's
+* **Whether the fog reads as the game's own *in play* — asked and
+  answered twice, and the second answer is this build.** The lift's
   version of this line said 2,800 cells made it *visible* and that nobody
   had said it was *right* — and when somebody did, the answer was no
-  (§5). The fog then got a look of its own: five coverings composited
-  over a real frame, and the maintainer picked the dark-grey checker at a
-  radius of one. So this line is narrower than it was, and it is what is
-  left of #179's unticked clause — a composite is still a picture beside
-  another picture, and nobody has walked a wilderness map with the haze
-  moving in front of them.
-* **The reveal radius is settled.** §5.3 measures that one is the only
-  radius that covers anything on this screen, and the maintainer has
-  confirmed one on the composites. It is still one constant if a real
-  session says otherwise.
+  (§5). The fog then got a look of its own: five coverings composited over
+  a real frame, and the maintainer picked the dark-grey checker at a
+  radius of one. **Then somebody walked a wilderness map with the haze
+  moving in front of them** (#299), which is exactly what this line said
+  had not happened, and changed the colour to black and the radius to
+  zero. What is left of #179's unticked clause is narrower again: the
+  black checker at radius zero has been *asked for* from a walk, and the
+  walk that confirms the thing that was asked for has not happened yet.
+* **The reveal radius is settled from both sides.** §5.3 measures that
+  two and three cover nothing, and a maintainer playing it refused one.
+  It is still one constant if a real session says otherwise.
 * **The other two wilderness areas, stood on** (#267). Kinds 3 and 4 are
   the same arithmetic with a different bias, and they have now been
   arrived on and dumped. **The bias needed no correction**: the seam
@@ -686,6 +751,13 @@ open rather than be refused.
   cells read as the same rock seen through a screen door, which is what
   a haze is supposed to be, and not as a different kind of ground, which
   is what killed the black checker over grass (§5.2).
+
+  **This whole item was driven at the grey**, which is what makes the
+  numbers below what they are. #299 changed the colour to black, and the
+  third of the covering that wrote grey onto grey is the part of it that
+  now writes black onto grey and shows — so the answer to this item is
+  the colour change rather than a second look. Nothing here is deleted:
+  it is the measurement that says *why* grey went.
 
   **What it costs, in numbers.** Sixteen cells are covered on each
   arrival, so the checker writes 16 x 24 x 24 / 2 = 4,608 pixels.

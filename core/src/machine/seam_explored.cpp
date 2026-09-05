@@ -103,62 +103,64 @@
 // only if a driven run shows this path flickering (#256).
 //
 //
-// The marking: fog, and why it is a dark-grey checker
-// ---------------------------------------------------
+// The marking: fog, and why it is a black checker
+// -----------------------------------------------
 //
 // A cell the party has not been near is **hazed over with a one-pixel
-// checkerboard of palette index 8** — the program's own dark grey — laid
-// over half of its 24 by 24 pixels. The other half are the pixels the
-// program drew, untouched, so the terrain is still faintly there under
-// the haze rather than gone.
+// checkerboard of palette index 0** — black — laid over half of its 24 by
+// 24 pixels. The other half are the pixels the program drew, untouched,
+// so the terrain is still faintly there under the haze rather than gone.
 //
-// **This is the third design and the second look.** M5-E5c shipped a
-// lift and the maintainer said it did not read; M5-E5f first replaced it
-// with a *solid black* cover, and the maintainer looked at five
-// coverings composited over a real dumped frame — solid black, a
-// one-pixel black checker, a one-pixel dark-grey checker, a one-pixel
-// light-grey checker and a two-by-two dark-grey checker — and chose this
-// one. Fifteen markings have now been prototyped over real frames of
-// this screen: seven for the lift, six for the black fog, and the five
-// of that composite. `docs/explored-overlay.md` §5 has all of them with
-// their reasons, including black's, which are kept in full because black
-// is the rejected alternative and a rejected candidate with its cost is
-// what made each of these changes an edit rather than a
+// **This is the fourth design and the third look**, and the third is the
+// first one taken while walking rather than at a still. M5-E5c shipped a
+// lift and the maintainer said it did not read; M5-E5f replaced it with a
+// *solid black* cover, and then, off five coverings composited over a
+// real dumped frame — solid black, a one-pixel black checker, a one-pixel
+// dark-grey checker, a one-pixel light-grey checker and a two-by-two
+// dark-grey checker — the maintainer picked the **dark-grey checker**.
+// M5-E5g (#299) is that checker walked in the game, and the answer was
+// that grey is not visible enough: the covering keeps the geometry the
+// composite chose it for and takes the colour the composite argued away.
+// Sixteen markings have now been prototyped or shipped over real frames
+// of this screen; `docs/explored-overlay.md` §5 has all of them with
+// their reasons, the grey included, because a rejected candidate with its
+// cost is what makes each of these changes an edit rather than a
 // re-investigation.
 //
-// What the composite showed, and what none of the arithmetic had:
+// What the composite said about black, and what walking it answered:
 //
-//   * **a one-pixel checker of *black* collapses.** The terrain here is
-//     itself a two-green dither at one-pixel granularity, so a black
-//     checker over it interferes with that dither into a flat dark mesh:
-//     it neither covers nor veils, it makes a new texture that reads as
-//     one more kind of ground;
-//   * **light grey reads as paler terrain**, for the same reason a
-//     lift did — a covering whose value is near the tile's own is a
-//     variation on the tile;
-//   * **dark grey reads as haze.** It is far enough from the terrain's
-//     own greens and blues to be plainly a covering, and it lets enough
-//     of the tile through that a coastline is still a coastline under
-//     it. That is what was wanted: not "this square is gone" but "this
-//     square has not been seen". Driven since over **mountain rock**,
-//     which is the one terrain whose own art is largely this very grey,
-//     it still reads — but a third of the covering writes grey onto
-//     grey and does nothing, so the haze is thinner there than anywhere
-//     the composite showed (#267, `docs/explored-overlay.md` §8).
+//   * the composite's finding was that **a one-pixel checker of black
+//     collapses** — the terrain here is itself a two-green dither at
+//     one-pixel granularity, so a black checker over it was judged to
+//     interfere with that dither into a flat dark mesh that reads as one
+//     more kind of ground. Walked, it does not: at a step's cadence the
+//     covered half is plainly a covering, and the difference between a
+//     fogged cell and the cell the party is standing on is the thing the
+//     eye lands on — which is what a still with no motion and no
+//     known-cell beside it could not show;
+//   * **light grey reads as paler terrain**, for the same reason a lift
+//     did — a covering whose value is near the tile's own is a variation
+//     on the tile. That one stands;
+//   * **dark grey read as haze on the still and reads as thin in the
+//     game.** It is the colour of mountain rock, so a third of the
+//     covering wrote grey onto grey and did nothing there (#267 item 2),
+//     and it is near enough the terrain's own values everywhere else to
+//     be a shade rather than a cover — which is the failure the lift had,
+//     one remove away.
 //
-// **What black had going for it, and lost on:** it is the one colour
-// that cannot read as terrain at all, it is the game's own vocabulary
-// for the unknown — the message rows, the panel beside the window and
-// the 3D view's own distance are all black — it is the same on every
-// terrain, and it costs no read-back. Every one of those is still true.
-// The one it could not answer is the one a display settles: a solid
-// cover throws away the *shape* of the country the party is standing at
-// the edge of, and a player who cannot see a coast through the fog
-// cannot see that there is a coast to walk to. The maintainer looked at
-// both and picked the haze.
+// **What black had going for it all along:** it is the one colour that
+// cannot read as terrain at all, it is the game's own vocabulary for the
+// unknown — the message rows, the panel beside the window and the 3D
+// view's own distance are all black — it is the same on every terrain,
+// and as a *checker* it costs the one read a veil costs and no more. What
+// the composite rejected black for was the *solid* cover's fault and not
+// the colour's: a solid cover throws away the shape of the country the
+// party is standing at the edge of, and a player who cannot see a coast
+// through the fog cannot see there is a coast to walk to. A black checker
+// keeps the coast and is still unmistakably a cover.
 //
 // **The third reason survives intact.** The checker does not depend on
-// what is underneath: it is index 8 on the same half of the pixels
+// what is underneath: it is index 0 on the same half of the pixels
 // whatever the tile is, so there is still one fog to learn and it is
 // still not the failure the lift's *dim* direction had on water.
 //
@@ -176,35 +178,45 @@
 // How far the party sees
 // ----------------------
 //
-// `explored_reveal_radius` (`automap.h`) — a Chebyshev distance, and one
-// by default. A cell is shown when the party has stood within that many
-// cells of it, so standing on a cell uncovers the three-by-three around
-// it, and the trail a walk leaves is a three-wide corridor.
+// `explored_reveal_radius` (`automap.h`) — a Chebyshev distance, and
+// **zero** since M5-E5g (#299). A cell is shown when the party has stood
+// within that many cells of it, so at zero a cell is shown when the party
+// has stood *on* it, and the trail a walk leaves is one cell wide.
 //
 // **The record still holds only the cells the party stood on.** The
 // reveal is the *dilation* of that by the radius, worked out here when
 // the window is drawn, so a player who turns the knob up tomorrow sees
 // more of the map they already walked rather than a map that has to be
-// walked again. It is also why nothing in `automap.h`'s stored layout
-// moved for this change and no sidecar anybody has is invalidated.
+// walked again. At zero the dilation is the identity and `revealed()`
+// below is one lookup; the loop is still written for a radius, because
+// the knob is the point and nothing in the stored layout turns on it.
 //
-// **Why one and not the two or three that were asked for.** The window
-// is five cells across and the party is its middle cell in open country,
-// so every cell on the screen is already within two of the party. At a
-// radius of two this seam covers nothing at all except where a map's own
-// edge pushes the party off centre — measured, on the same walk: eight
-// steps, and not one fogged cell until the party reaches the map's edge.
-// One is the largest radius that leaves anything to cover.
+// **Why zero, with two and three refused above it and one tried below
+// it.** The window is five cells across and the party is its middle cell
+// in open country, so every cell on the screen is already within two of
+// the party: at a radius of two this seam covers nothing at all except
+// where a map's own edge pushes the party off centre — measured, 523
+// driven frames, byte for byte the seam-off run. That refused two and
+// three. One was then shipped and walked: it uncovers the three-by-three
+// around every cell stood on, so a straight walk hands the player a
+// corridor three cells wide and two rows of country nobody went near, and
+// the map fills faster than it is explored. Zero reveals what was walked
+// and nothing else, which is what the record holds and what the
+// enhancement is named for (`docs/explored-overlay.md` §5.3).
 //
 //
 // Two things this never covers
 // ----------------------------
 //
 // **The party's own cell**, which is where the program draws the party's
-// icon. At any radius of one or more it is revealed anyway — the party is
-// standing on it — but the check is written down as its own line rather
-// than left to arithmetic, because a fog over the party's own sprite is
-// the one mistake here that would be a bug and not a preference.
+// icon. It is revealed anyway at every radius — the party is standing on
+// it, so the record has it — but the check is written down as its own
+// line rather than left to arithmetic, because a fog over the party's own
+// sprite is the one mistake here that would be a bug and not a
+// preference. At radius zero it is also the *only* cell that is certainly
+// clear, which makes that line load-bearing in a way it was not before: a
+// record that came back empty would otherwise fog the whole window, the
+// party's own square included.
 //
 // **Every pixel outside the five-by-five window.** The window is 120 by
 // 120 at (8, 8) and every cell of it begins on a byte boundary and is
@@ -243,17 +255,17 @@
 //     routine a third string, this seam paints nothing there and a driven
 //     run is what will say so. #256 closed with it unticked and #267 is
 //     the open issue it hangs off now.
-//   * **The radius is one and the maintainer has confirmed it** (#263),
-//     which is the half of that judgement that is now settled. One is
-//     also the only radius that covers anything on this screen: at two,
-//     every cell of a five-wide window centred on the party is already
-//     within the radius.
-//   * The maintainer chose this covering off **composites over a real
-//     dumped frame**, five of them side by side, which is a stronger
-//     look than the lift ever got and is still not somebody playing.
-//     #267 item 1 is that verdict, and it is the last of these left:
-//     kinds 3 and 4 have been stood on and the fog has been driven over
-//     rough ground (#267 items 2 and 3, `docs/explored-overlay.md` §8).
+//   * **The radius is zero and the maintainer set it while playing**
+//     (#299), which is the strongest look any number in this enhancement
+//     has had: one was confirmed off a still in #263 and reversed off a
+//     walk. Two and three remain arithmetically empty on a five-wide
+//     window.
+//   * **The colour is black and was chosen the same way** (#299), against
+//     a composite that had argued it away. What is still owed is the fog
+//     looked at on the two wilderness areas nobody has stood on (#267
+//     item 1); the fog over rough ground was #267 item 2, and the colour
+//     change is its answer rather than a look
+//     (`docs/explored-overlay.md` §8).
 
 #include <array>
 #include <cstddef>
@@ -332,13 +344,16 @@ constexpr int max_column_bias = 0x2B;
 /// recorder and come back in its answer (`automap_overland.h`), so this
 /// file does not name their offsets a second time.
 
-/// **The fog's colour: palette index 8**, the program's own dark grey —
-/// plane 3 set and planes 0, 1 and 2 clear. It is laid as a one-pixel
-/// checkerboard, half of the square's pixels covered and half of them
-/// left exactly as the program drew them, which is the marking the
-/// maintainer chose over a solid fill on a side-by-side of five
-/// (M5-E5f, #263; `docs/explored-overlay.md` §5.2).
-constexpr std::uint8_t fog_colour = 0x08;
+/// **The fog's colour: palette index 0**, black — every plane clear. It
+/// is laid as a one-pixel checkerboard, half of the square's pixels
+/// covered and half of them left exactly as the program drew them, which
+/// is the geometry the maintainer chose over a solid fill on a
+/// side-by-side of five (M5-E5f, #263). The colour was index 8, the
+/// program's own dark grey, until that checker was walked rather than
+/// looked at: grey is a shade away from the terrain's own values and is
+/// the very colour of mountain rock, and black is the game's own word for
+/// the unknown (M5-E5g, #299; `docs/explored-overlay.md` §5.2).
+constexpr std::uint8_t fog_colour = 0x00;
 constexpr std::uint8_t all_planes = 0x0F;
 constexpr std::uint8_t all_bits = 0xFF;
 constexpr std::uint8_t no_planes = 0x00;
@@ -418,8 +433,8 @@ void write_register(machine& box, std::uint16_t index_port,
 ///
 /// **The colour comes from set/reset, not from the byte written.** With
 /// enable-set/reset on all four planes each plane takes its bit from the
-/// set/reset register, so one CPU write paints index 8 across the planes
-/// and the byte handed to it is immaterial. The bit mask is set once per
+/// set/reset register, so one CPU write paints the fog's index across the
+/// planes and the byte handed to it is immaterial. The bit mask is set once per
 /// scanline, because the checker alternates with the scanline's parity.
 ///
 /// The rect's byte alignment is what makes any of this three whole bytes
@@ -497,7 +512,7 @@ constexpr int window_cells = static_cast<int>(explored_window_cells);
 /// Two cells are never fogged, and they are different in kind. The one
 /// the party is **standing on** is where the program draws the party's
 /// icon, and covering it would cover the player's own sprite; it is
-/// revealed by the radius as well, at any radius at all, and is written
+/// revealed by the record as well, at any radius at all, and is written
 /// here anyway because that is a rule and not an accident. A cell off
 /// this area's own sixteen columns belongs to a **neighbouring
 /// wilderness area** — the three of them are bands of one 44-column
@@ -598,16 +613,16 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
   const std::uint32_t fogged = cells_to_fog(*map, bias, look.x, look.y);
   if (fogged == 0) {
     // The party has been near every cell on the screen, so there is
-    // nothing to cover and **not a port is written**. On a five-by-five
-    // window at a radius of one this is the state of a well-walked
-    // stretch of country; at a radius of two it is nearly every frame,
-    // which is the measurement that settled the radius (`automap.h`).
+    // nothing to cover and **not a port is written**. At the radius this
+    // ships with it takes a party that has stood on all twenty-five cells
+    // of the window; at a radius of two it would be nearly every frame,
+    // which is the measurement that refused two (`automap.h`).
     state.set_explored_signature(signature);
     return;
   }
 
-  // Set/reset carries the colour, so one CPU write puts index 8 on every
-  // plane at once; the bit mask is the checker and `fog_cell` sets it per
+  // Set/reset carries the colour, so one CPU write puts the fog's index
+  // on every plane at once; the bit mask is the checker and `fog_cell` sets it per
   // scanline.
   write_register(box, ega::graphics_index_port, ega::graphics_data_port,
                  gc_set_reset_index, fog_colour);

@@ -289,16 +289,25 @@ Design requirements:
    and every other square in the window is covered. **The marking,
    settled at the point of definition** as this item's own rule requires
    (#179, `docs/explored-overlay.md`): the cover is a *one-pixel
-   checkerboard of the game's own dark grey* — palette index 8 on half
-   the square's pixels and the program's own pixel on the other half, so
-   the terrain is faintly there under the fog rather than gone — and how
-   far a party sees is one named constant, a Chebyshev radius of one
-   square (`explored_reveal_radius`). Both were chosen by the maintainer
-   off five coverings composited over a real frame (#263), which is this
-   item's exit rule doing its work a second time: the fog was solid black
-   first, on an argument that was right about everything except that a
-   player needs to see the *shape* of the country they are standing at
-   the edge of.
+   checkerboard of black* — palette index 0 on half the square's pixels
+   and the program's own pixel on the other half, so the terrain is
+   faintly there under the fog rather than gone — and how far a party
+   sees is one named constant, a Chebyshev radius of **zero** squares
+   (`explored_reveal_radius`), so the squares that clear are the squares
+   the party has actually stood on.
+
+   **Both of those numbers have been set by the maintainer twice**, which
+   is this item's exit rule doing its work rather than failing. The
+   checker and the dark grey in it were chosen off five coverings
+   composited over a real frame, at a radius of one (#263) — the fog was
+   solid black before that, on an argument that was right about
+   everything except that a player needs to see the *shape* of the
+   country they are standing at the edge of. Then the maintainer
+   **walked** it (#299), which no still can substitute for, and both
+   changed: the grey read thin, and a radius of one uncovers a corridor
+   three squares wide, which fills the map in faster than the party
+   explores it. The geometry the composite chose survived; the colour in
+   it and the radius did not.
 
    **This item read the other way round until #263**, and the sentence it
    lost was "nothing the game draws is hidden — the overlay marks the
@@ -313,8 +322,10 @@ Design requirements:
    in `docs/explored-overlay.md` §5 with their reasons; the first one is
    kept there rather than deleted, because a design that was rejected by
    looking at it is evidence and not noise. The same is true of the
-   solid-black fog, which is kept in §5.2 as the rejected alternative
-   with all four of its arguments intact.
+   solid-black fog, kept in §5.2 as the rejected alternative with all
+   four of its arguments intact, and of the dark-grey checker at a radius
+   of one, which this build drew between #263 and #299 and which §5.2 and
+   §5.3 keep with the measurements that chose it.
 6. **Debug cheats** — invulnerability and kill-all-enemies, built
    early because they double as test tooling for the playthrough
    sweeps. A third, wound-the-party, was added for that stated reason

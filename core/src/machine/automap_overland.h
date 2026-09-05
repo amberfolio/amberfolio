@@ -67,7 +67,10 @@ struct overland_look {
 /// and nothing derived from it. How far a party is taken to see around a
 /// cell it stood on is the overlay's own knob (`explored_reveal_radius`,
 /// `automap.h`), applied when the window is drawn — so a change to it
-/// costs nobody the map they walked (`docs/explored-overlay.md` §5).
+/// costs nobody the map they walked (`docs/explored-overlay.md` §5). The
+/// knob is zero as this ships, which makes the reveal and the record the
+/// same set of cells; that is a setting and not an invariant, and this
+/// function would record exactly what it records at any other value.
 overland_look observe_overland(machine& box, seam_context& ctx,
                                std::uint16_t ds);
 

@@ -211,23 +211,32 @@ inline constexpr unsigned explored_cell_pixels = 24;
 
 /// **How far a party sees**, in cells, as a Chebyshev distance: standing
 /// on a cell reveals it and everything within this many cells of it, and
-/// the rest of the window is fogged (M5-E5f, #263). It is the one number
-/// in this enhancement a person is meant to turn, so it is named here
-/// rather than buried in the seam, and the record stores only the cells
-/// the party actually *stood* on — the reveal is the dilation of that,
-/// computed when the window is drawn, so turning this knob does not
-/// invalidate anybody's stored map.
+/// the rest of the window is fogged (M5-E5f, #263; **zero** since M5-E5g,
+/// #299). It is the one number in this enhancement a person is meant to
+/// turn, so it is named here rather than buried in the seam, and the
+/// record stores only the cells the party actually *stood* on — the
+/// reveal is the dilation of that, computed when the window is drawn, so
+/// turning this knob does not invalidate anybody's stored map.
 ///
-/// **Why one and not two**, which is the question the number invites.
-/// The program's window is five by five and the party is its middle cell
-/// in open country, so every cell on the screen is already within two of
-/// the party: at a radius of two nothing on that screen is ever fogged
-/// except where a map's own edge pushes the party off centre, and the
-/// enhancement would be invisible for the whole of a walk across the
-/// middle of an area. One is the largest radius that leaves anything to
-/// cover. Two and three were asked for and were measured to fog nothing
-/// (`docs/explored-overlay.md` §5).
-inline constexpr int explored_reveal_radius = 1;
+/// **Why zero**, which is the question the number invites. A radius is
+/// bounded above and below by different things, and both bounds have now
+/// been measured rather than argued.
+///
+/// Above: the program's window is five by five and the party is its
+/// middle cell in open country, so every cell on the screen is already
+/// within two of the party. At a radius of two nothing on that screen is
+/// ever fogged except where a map's own edge pushes the party off centre
+/// — 523 driven frames, byte for byte the seam-off run — so two and
+/// three, which were asked for, cover nothing at all.
+///
+/// Below: **one was shipped and walked, and it fills the map faster than
+/// the party explores it.** A radius of one uncovers the three-by-three
+/// around every cell the party stands on, so a straight walk leaves a
+/// corridor three cells wide and hands the player two rows of country
+/// they never went near. Zero reveals exactly what was walked, which is
+/// what the record holds and what the enhancement is named for.
+/// `docs/explored-overlay.md` §5.3 has both measurements.
+inline constexpr int explored_reveal_radius = 0;
 
 /// The top-left cell of the window, in the program's own terms: a column
 /// of the 44-column overland terrain table and a row of the map.

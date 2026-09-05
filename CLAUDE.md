@@ -192,22 +192,25 @@ What M5 left in place:
   proclamations in one sentence and the reader opened on the first, off a
   player's own ninety-nine ingested entries, with nobody having pressed a
   key),
-  `explored` (M5-E5 #179, the marking reversed by M5-E5f #263 — the
-  fourth M5 enhancement and the third seam that draws, on the game's own
-  **overworld** map: the wilderness travel view, a 5x5 window of a 16x36
-  area that scrolls with the party. It is **fog of war**: the square the
-  party is standing on and the eight around it are the game's own map,
-  untouched, and every other square of the window is **hazed over with a
-  one-pixel checkerboard of palette index 8**, the game's own dark grey,
+  `explored` (M5-E5 #179, the marking reversed by M5-E5f #263 and its
+  colour and radius set by M5-E5g #299 — the fourth M5 enhancement and
+  the third seam that draws, on the game's own **overworld** map: the
+  wilderness travel view, a 5x5 window of a 16x36 area that scrolls with
+  the party. It is **fog of war**: every square the party has stood on is
+  the game's own map, untouched, and every other square of the window is
+  **hazed over with a one-pixel checkerboard of palette index 0**, black,
   on half its pixels — the program's own pixel on the other half, so the
   terrain is faintly there under the fog rather than gone. How far a
   party sees is one named constant, `explored_reveal_radius`, a Chebyshev
-  1; **2 and 3 were asked for and cover nothing**, because the window is
-  five squares across with the party in the middle, and 523 driven frames
-  at radius 2 are byte for byte the seam-off run. It is the one v1
-  enhancement with no proven prior design, so the marking was settled at
-  the point of definition — and then **changed twice by somebody looking
-  at it**, which is that item's own exit rule working. The first marking
+  **0**, and both bounds on it are evidence: **2 and 3 were asked for and
+  cover nothing**, because the window is five squares across with the
+  party in the middle and 523 driven frames at radius 2 are byte for byte
+  the seam-off run; and **1 shipped and was walked**, and it uncovers a
+  corridor three squares wide, which fills the map in faster than the
+  party explores it. It is the one v1 enhancement with no proven prior
+  design, so the marking was settled at the point of definition — and
+  then **changed three times by somebody looking at it**, which is that
+  item's own exit rule working. The first marking
   lifted the walked squares one shade; it was measured visible on 2,800
   window cells and it still did not read, because a shade is a difference
   a player has to be told about before they can see it. The fog that
@@ -215,12 +218,20 @@ What M5 left in place:
   looked at either; five coverings were then composited over one real
   dumped frame — solid black, a black checker, a dark-grey checker, a
   light-grey checker and a two-by-two dark-grey one — and the maintainer
-  picked the dark-grey checker and confirmed the radius. What the
+  picked the dark-grey checker at a radius of one. What the
   composite said and no argument had: a solid cover throws away the
   *shape* of the country the party is standing at the edge of, a black
   checker collapses against the grass's own two-green dither into a flat
-  mesh, and light grey reads as paler ground. The checker is the first
-  drawing here that is a **masked** write, so it reads each byte of the
+  mesh, and light grey reads as paler ground. Then the maintainer
+  **walked that checker** (#299) — the first look at this enhancement
+  taken in play rather than at a still — and the middle finding did not
+  survive it: a black checker beside the square the party is standing on
+  reads as a covering and the grey read thin, being a shade off the
+  terrain's own values and the very colour of mountain rock. So the
+  colour went to black, the radius to zero, and the composite's geometry
+  stayed; every candidate keeps its reasons in
+  `docs/explored-overlay.md` §5, the grey now among them. The checker is
+  the first drawing here that is a **masked** write, so it reads each byte of the
   video window to load the adapter's latches before writing it — a veil
   keeps the pixels it is not covering, and keeping them costs a read
   (`docs/seams.md` §3's third port-surgery rule).
@@ -247,7 +258,9 @@ What M5 left in place:
   party that is standing still, so it paints at the keyboard poll as well
   — `docs/seams.md` §8.4, which also carries #263's lesson that
   "measurably different" is not "legible" and only a person can tell you
-  which one you built),
+  which one you built; #299 is that lesson once more, a level up — a
+  still is not a walk, and the recordings and visual legs that pinned the
+  old marking are re-driven with the rest of the library under #293),
   `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
   #196 — pulled at the camp screen, it leaves every party member on one
   hit point, through the same write the program's own damage routine
