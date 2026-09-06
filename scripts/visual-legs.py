@@ -97,6 +97,10 @@ class Leg:
         #: Whether to hand the host #301's cheat, which puts everything
         #: the store holds onto the journal's own log without a citation.
         self.cite_all = False
+        #: Whether to tell the host the code-wheel challenge has already
+        #: been answered on this copy (#291), which is the **shorter
+        #: boot** every leg written after that issue is driven on.
+        self.answered = False
         #: Digests of documents the seams here are gated on (#115).
         self.documents: list[str] = []
         self.seams: list[str] = []
@@ -168,6 +172,18 @@ class Leg:
             # citation is a place in the story, and a leg that had to
             # walk to one would be testing the walk.
             self.cite_all = True
+        elif head == "code-wheel-answered":
+            # The boot #291 left, as a leg's own line. With the
+            # `code-wheel` seam on and nothing said, that seam only
+            # *watches*: the game asks the challenge exactly as it always
+            # did, and a script written against the boot that skipped it
+            # is a script driving a screen that is no longer there. This
+            # says the condition for the run, writes nothing, and is
+            # opt-in per leg — because every leg written before #291 has
+            # its frames measured on the *longer* boot, and turning this
+            # on for all of them would move every number in this
+            # directory at once. #293 is that re-drive.
+            self.answered = True
         elif head == "document":
             self.documents.append(word[1])
         elif head == "seam":
@@ -264,6 +280,8 @@ def run_side(host: Path, disk: Path, leg: Leg, into: Path,
         # presents the document (#115), and both sides of a pair need it:
         # the seam-off side still drives past the code-wheel challenge.
         command += ["--document", str(one)]
+    if leg.answered:
+        command += ["--code-wheel-answered"]
     if store is not None:
         command += ["--journal-store", str(store)]
         if leg.cite_all:

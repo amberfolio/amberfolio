@@ -889,6 +889,34 @@ last page, so a reader who overshot had to leave the entry and open it
 again. Escape still closes from anywhere, because it costs nothing and
 somebody will press it.
 
+**It is laid out and painted the way the program's own bars are** (#329,
+#330), and neither of those was true when #317 shipped. It read
+` NEXT   PREV   EXIT`, indented one and spaced three, where the program's
+own bars — the party's, and `ITEMS: BUY NEXT PREV EXIT` in a shop — start
+at column zero and put one space between. And it was drawn in one call in
+the bright, so all three words were white end to end, where every bar
+this game draws paints the **initial white and the tail green**: that is
+how a player is told which key picks which command, and it is why the
+program's own bars are stored mixed case, `Look`, `Encamp`, `Search`,
+with its drawer colouring by case. A seam cannot borrow that rule, since
+it lives inside the drawer and one call is one colour, so the bar is four
+calls now — the whole row in the green, which is also the clear the row
+needs, then the three initials over their own cells in the bright.
+
+**And `Notes` hands the highlight back** (#330). The program's menu-bar
+routine keeps the group its cursor is on in one byte the whole game
+shares (M5-E1g, #304) and draws that group white end to end, so choosing
+a spliced command left the cursor parked on a group only this seam had
+put there: `Notes` came back lit while every word beside it wore its
+initial in white and its tail in green. Which of the two candidate causes
+it was is a measurement rather than an argument — `--watch 6B2B` over a
+driven run reads `01` on the adventuring bar after a load, `07` from the
+frame `N` is pressed, and `07` still after the reader gives the screen
+back. What the byte is put back to is what the routine was entered with,
+because on that bar the routine moves it only when it matches a command
+and `N` matches none of the program's: a run with the seam off leaves it
+exactly where it found it, and so does this.
+
 **The panel keeps `F1 MORE`**, and that is a fact about the screen rather
 than an oversight. A panel is drawn beside the program's own *live*
 command bar, so `N`, `P` and `E` there are that bar's letters and taking

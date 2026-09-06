@@ -45,13 +45,22 @@ same 10800-11375
 # exception is a finding rather than a convenience.
 #
 # What comes back on the bar is the right bar, in the right place, with
-# the right words. What does not come back is *which of them the
-# highlight is sitting on*: the give-back injects a space to make the
-# menu-bar routine return and draw itself again, and the routine draws
-# itself with the highlight at its first command. A player who had
-# stepped it along finds it back at the start after using the journal.
+# the right words. What did not come back, when this leg was written, was
+# *which of them the highlight was sitting on*: 951 pixels differed
+# before the log and after it, every one of them on the bar row (#234).
+# NOT-2's leg is what asserts the bar itself.
 #
-# Measured here (#234): before the log and after it, 951 pixels differ
-# and every one of them is on the bar row. NOT-2's leg is what asserts
-# the bar itself.
+# **That is fixed since #330**, and the fix is on the splice rather than
+# on the give-back: the menu-bar routine sets the shared highlight byte
+# to the group of the command it matched, `Notes` is a group only because
+# this seam put one there, and the splice hands the byte back where the
+# routine found it. So the bar row comes back identical too, and the
+# `bar` exception below is no longer needed for it.
+#
+# **The exception stays until this leg is re-driven**, which is #293's
+# work and not this one's: every frame number above was measured on the
+# *longer* boot — the one where the code-wheel challenge is drawn — and
+# this leg does not pass today for reasons that have nothing to do with
+# the bar. `tests/visual/rdr-bar.leg` is the leg that asserts the
+# give-back whole, on the shorter boot, with nothing excepted.
 equal 10600 11800 bar
