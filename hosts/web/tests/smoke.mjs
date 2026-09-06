@@ -3138,6 +3138,8 @@ if (missing.length === 0 && sessions !== null) {
     journalNumber,
     currentScan,
     wordsWithin,
+    readWithin,
+    DOUBTFUL_CONFIDENCE,
     wordCount,
     engineVersion,
     ENGINE_VERSION_FILE,
@@ -3172,6 +3174,19 @@ if (missing.length === 0 && sessions !== null) {
     `${report.recognized} of 4 rows were read; the fixture only answers for` +
       ' a scan that matches what the extraction was supposed to produce',
   );
+  // The fixture reports no confidences, so the ingestion's own quality
+  // list is empty rather than four unknowns (#315): "this engine does not
+  // report confidence" and "the engine was not sure" are different facts,
+  // and a list of zeros would say the second one loudly.
+  check(
+    Array.isArray(report.quality) && report.quality.length === 0,
+    `the fixture engine reported ${report.quality?.length} qualities, not 0`,
+  );
+  check(
+    report.reading && report.reading.known === false,
+    'an engine that says nothing was reported as an engine that was unsure',
+  );
+
   for (const number of [1, 2, 3]) {
     const cite = journalCitation('entry', number);
     check(
@@ -3298,6 +3313,62 @@ if (missing.length === 0 && sessions !== null) {
     `an answer without blocks was not refused by name: ${refusedFor}`,
   );
   check(wordsWithin({ blocks: [] }, region) === '', 'an empty page is not empty');
+
+  // And what the engine thought of the words it kept (#315), which the
+  // filter was parsing past and throwing away. Two claims: the summary is
+  // over the words the *rectangle* kept and never the whole page — on an
+  // encoded scan most of the page is a different entry, and a confidence
+  // averaged over those would be a number about somebody else's page —
+  // and a null rectangle keeps everything, which is the decoded path,
+  // where the image already is the entry.
+  const unsure = {
+    text: 'sure unsure\n',
+    blocks: [
+      {
+        paragraphs: [
+          {
+            lines: [
+              {
+                words: [
+                  word('sure', 10, 10),
+                  { ...word('unsure', 30, 10), confidence: 20 },
+                  { ...word('elsewhere', 200, 200), confidence: 10 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const kept = readWithin(unsure, region);
+  check(kept.text === 'sure unsure', `the reading answered ${JSON.stringify(kept.text)}`);
+  check(kept.quality.known, 'the engine said nothing about words it gave numbers for');
+  check(kept.quality.words === 2, `${kept.quality.words} words counted, not 2`);
+  check(
+    kept.quality.doubtful === 1,
+    `${kept.quality.doubtful} doubtful, not 1 - the threshold is ${DOUBTFUL_CONFIDENCE}`,
+  );
+  check(
+    Math.abs(kept.quality.confidence - 55) < 1e-9,
+    `the mean confidence is ${kept.quality.confidence}, not 55 -` +
+      " the word outside the rectangle was counted, so it is somebody else's",
+  );
+  const everything = readWithin(unsure, null);
+  check(
+    everything.quality.words === 3 && everything.text === 'sure unsure elsewhere',
+    'a null rectangle did not keep the whole page',
+  );
+  // A word the engine gave no number for is text this page has no opinion
+  // about — not a zero, which would say it was sure the word was wrong.
+  const silent = {
+    blocks: [{ paragraphs: [{ lines: [{ words: [{ text: 'x', bbox: { x0: 1, y0: 1, x1: 2, y1: 2 } }] }] }] }],
+  };
+  const quiet = readWithin(silent, region);
+  check(
+    quiet.text === 'x' && !quiet.quality.known && quiet.quality.words === 0,
+    'a word with no confidence became an opinion',
+  );
 
   // The engine's *name*, which was the other half of what the first real
   // sitting found: the UMD bundle exports no version, so the store's

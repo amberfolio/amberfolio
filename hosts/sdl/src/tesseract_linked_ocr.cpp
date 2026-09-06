@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "amberfolio/host/journal_extract.h"
+#include "amberfolio/host/journal_ocr.h"
 
 namespace amberfolio::sdl {
 namespace {
@@ -42,6 +43,36 @@ void trim_trailing(std::string& text) {
     delete[] text;
   }
   trim_trailing(out);
+  return out;
+}
+
+/// What the engine was sure of, off the per-word confidences it has
+/// already computed (#315).
+///
+/// `AllWordConfidences()` answers a `-1`-terminated array the caller owns
+/// — the same ownership `GetUTF8Text()` has, and freed the same way. It
+/// is asked *after* the recognition whose numbers are wanted, because
+/// like every other accessor on this API it reports the last page read.
+[[nodiscard]] host::journal_reading_quality confidences(
+    tesseract::TessBaseAPI& api) {
+  host::journal_reading_quality out;
+  int* every = api.AllWordConfidences();
+  if (every == nullptr) {
+    return out;
+  }
+  double total = 0.0;
+  for (const int* at = every; *at >= 0; ++at) {
+    ++out.words;
+    total += static_cast<double>(*at);
+    if (static_cast<double>(*at) < host::journal_doubtful_confidence) {
+      ++out.doubtful;
+    }
+  }
+  delete[] every;
+  if (out.words != 0) {
+    out.known = true;
+    out.confidence = total / static_cast<double>(out.words);
+  }
   return out;
 }
 
@@ -77,8 +108,10 @@ bool tesseract_linked_ocr::available() {
 }
 
 bool tesseract_linked_ocr::read_part(const host::journal_part& part,
-                                     bool encoded, std::string& out) {
+                                     bool encoded, std::string& out,
+                                     host::journal_reading_quality& how) {
   out.clear();
+  how = {};
   if (encoded) {
     // The stream, decoded by Leptonica and cropped by the engine. This
     // host has not looked inside it and does not need to (#212).
@@ -102,6 +135,9 @@ bool tesseract_linked_ocr::read_part(const host::journal_part& part,
                          static_cast<int>(part.region.height));
       out = taken(api_->GetUTF8Text());
     }
+    // After the recognition whose numbers are wanted, and before the
+    // image goes: the accessor reports the last page read.
+    how = confidences(*api_);
     pixDestroy(&page);
     return !out.empty();
   }
@@ -120,12 +156,14 @@ bool tesseract_linked_ocr::read_part(const host::journal_part& part,
     api_->SetPageSegMode(tesseract::PSM_AUTO);
     out = taken(api_->GetUTF8Text());
   }
+  how = confidences(*api_);
   return !out.empty();
 }
 
 bool tesseract_linked_ocr::recognize(const host::journal_scan& scan,
                                      std::string& out) {
   out.clear();
+  quality_ = {};
   if (api_ == nullptr || scan.empty()) {
     return false;
   }
@@ -134,15 +172,29 @@ bool tesseract_linked_ocr::recognize(const host::journal_scan& scan,
   // the entry rather than leaving a hole in the middle of it.
   const bool encoded = scan.encoding != host::journal_encoding::gray;
   std::string piece;
+  host::journal_reading_quality how;
+  double weighted = 0.0;
   for (const host::journal_part& part : scan.parts) {
-    if (!read_part(part, encoded, piece)) {
+    if (!read_part(part, encoded, piece, how)) {
       out.clear();
+      quality_ = {};
       return false;
     }
     if (!out.empty()) {
       out.push_back('\n');
     }
     out += piece;
+    // Weighted by words, so an entry whose second piece is three words
+    // does not pull the whole entry's confidence around (#315).
+    if (how.known) {
+      quality_.known = true;
+      quality_.words += how.words;
+      quality_.doubtful += how.doubtful;
+      weighted += how.confidence * static_cast<double>(how.words);
+    }
+  }
+  if (quality_.words != 0) {
+    quality_.confidence = weighted / static_cast<double>(quality_.words);
   }
   return !out.empty();
 }

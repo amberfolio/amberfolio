@@ -177,6 +177,7 @@ bool tesseract_ocr::available() {
 bool tesseract_ocr::recognize(const host::journal_scan& scan,
                               std::string& out) {
   out.clear();
+  quality_ = {};
   if (scan.empty()) {
     return false;
   }
@@ -185,26 +186,40 @@ bool tesseract_ocr::recognize(const host::journal_scan& scan,
   // read fails the entry rather than leaving a hole in the middle of it:
   // half an entry that reads as a whole one is what nothing downstream
   // could detect (`host/journal_extract.h`).
-  std::string piece;
+  tsv_reading piece;
+  double weighted = 0.0;
   for (const host::journal_part& part : scan.parts) {
-    piece.clear();
+    piece = {};
     const bool ok = scan.encoding == host::journal_encoding::gray
                         ? recognize_bitmap(part.gray, piece)
                         : recognize_encoded(part, piece);
     if (!ok) {
       out.clear();
+      quality_ = {};
       return false;
     }
     if (!out.empty()) {
       out.push_back('\n');
     }
-    out += piece;
+    out += piece.text;
+    // Weighted by words, so an entry whose second piece is three words
+    // does not pull the whole entry's confidence around (#315).
+    if (piece.quality.known) {
+      quality_.known = true;
+      quality_.words += piece.quality.words;
+      quality_.doubtful += piece.quality.doubtful;
+      weighted +=
+          piece.quality.confidence * static_cast<double>(piece.quality.words);
+    }
+  }
+  if (quality_.words != 0) {
+    quality_.confidence = weighted / static_cast<double>(quality_.words);
   }
   return !out.empty();
 }
 
 bool tesseract_ocr::recognize_bitmap(const host::journal_bitmap& page,
-                                     std::string& out) {
+                                     tsv_reading& out) {
   std::string where;
   if (!scratch(where)) {
     return false;
@@ -213,7 +228,7 @@ bool tesseract_ocr::recognize_bitmap(const host::journal_bitmap& page,
   const std::filesystem::path root(where);
   const std::string image = (root / "entry.pgm").string();
   const std::string stem = (root / "entry").string();
-  const std::string text = stem + ".txt";
+  const std::string tsv = stem + ".tsv";
   const std::string log = (root / "engine.txt").string();
 
   {
@@ -231,27 +246,34 @@ bool tesseract_ocr::recognize_bitmap(const host::journal_bitmap& page,
     }
   }
 
-  // `--psm 6` — one uniform block of text, which is what a journal entry
-  // is. Tesseract writes its answer to <stem>.txt and says nothing on
-  // stdout, so the log above catches only its complaints.
+  // `--psm 6` — one uniform block of text, which is what this image is:
+  // the extractor has already cropped it to the entry, so there is no
+  // page layout to find and telling Tesseract to look for one is asking
+  // it to invent columns in a column (tesseract_ocr.h).
+  //
+  // `tsv` rather than plain text, since #315. Nothing here needs the word
+  // boxes — there is no rectangle to filter by — but plain text carries
+  // no confidences, and the confidence is the only thing a host can say
+  // about an entry nobody has corrected yet.
   const bool ok = run(shell_quoted(program_) + " " + shell_quoted(image) + " " +
-                          shell_quoted(stem) + " --psm 6",
+                          shell_quoted(stem) + " --psm 6 tsv",
                       log);
   std::error_code ignored;
   std::filesystem::remove(image, ignored);
   if (!ok) {
-    std::filesystem::remove(text, ignored);
+    std::filesystem::remove(tsv, ignored);
     return false;
   }
 
-  out = slurp(text);
-  std::filesystem::remove(text, ignored);
-  trim_trailing(out);
-  return !out.empty();
+  const std::string table = slurp(tsv);
+  std::filesystem::remove(tsv, ignored);
+  out = tsv_read(table, nullptr);
+  trim_trailing(out.text);
+  return !out.text.empty();
 }
 
 bool tesseract_ocr::recognize_encoded(const host::journal_part& part,
-                                      std::string& out) {
+                                      tsv_reading& out) {
   std::string where;
   if (!scratch(where)) {
     return false;
@@ -281,10 +303,19 @@ bool tesseract_ocr::recognize_encoded(const host::journal_part& part,
 
   // `tsv` rather than the default text: this reads a whole page and only
   // part of it is the entry, so what is wanted is the words *and where
-  // they were*. `--psm 6` stays what it was — one uniform block of text,
-  // which a journal page is.
+  // they were*.
+  //
+  // `--psm 3` — automatic page segmentation, which is Tesseract's own
+  // default and what this host used to override with `--psm 6` (#315).
+  // What is in this picture is a **two-page spread**, four columns of it,
+  // and telling Tesseract it is one uniform block makes it read straight
+  // across them: the entry's lines come back interleaved with the facing
+  // page's, and the filter below then keeps a plausible-looking wreck.
+  // Measured against a hand-typed truth for two real entries, that one
+  // word was 12.1% and 21.1% character error against 2.9% and 4.0%.
+  // tesseract_ocr.h has the whole table, including what did not help.
   const bool ok = run(shell_quoted(program_) + " " + shell_quoted(image) + " " +
-                          shell_quoted(stem) + " --psm 6 tsv",
+                          shell_quoted(stem) + " --psm 3 tsv",
                       log);
   std::error_code ignored;
   std::filesystem::remove(image, ignored);
@@ -295,9 +326,9 @@ bool tesseract_ocr::recognize_encoded(const host::journal_part& part,
 
   const std::string table = slurp(tsv);
   std::filesystem::remove(tsv, ignored);
-  out = tsv_words_within(table, part.region);
-  trim_trailing(out);
-  return !out.empty();
+  out = tsv_read(table, &part.region);
+  trim_trailing(out.text);
+  return !out.text.empty();
 }
 
 }  // namespace amberfolio::sdl

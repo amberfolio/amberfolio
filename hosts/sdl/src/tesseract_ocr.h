@@ -77,6 +77,52 @@
 // It is also the better arrangement of the two: cropping would have meant
 // decoding and re-encoding a scan, and every re-encode is a chance to
 // hand the engine something slightly worse than what the player has.
+//
+//
+// ...and what reading a whole page costs, now that it is measured (#315)
+// ---------------------------------------------------------------------
+//
+// A lot, and it was almost all one word on the command line.
+//
+// This host asked for `--psm 6` on both paths — "one uniform block of
+// text", which a journal *entry* is. It is emphatically not what a
+// **two-page spread** is, and that is what the encoded path hands over.
+// Told the page is one block, Tesseract does not look for the four
+// columns on it; it reads straight across them, so lines from the
+// facing page interleave with the entry's, and the region filter below
+// then keeps a plausible-looking wreck.
+//
+// Measured against a hand-typed truth for two real entries of the one
+// edition in the table, on the pinned tesseract.js (the desktop's
+// installed engine is still not on any machine this was measured on —
+// `docs/hosts.md` §3), the character error rate was:
+//
+//     whole page, --psm 6      12.1%   21.1%
+//     whole page, --psm 3       2.9%    4.0%
+//
+// So the encoded path asks for `--psm 3` — automatic page segmentation,
+// which is Tesseract's own default and what this host was overriding —
+// and the decoded path keeps `--psm 6`, because there the image really is
+// one block. The rule is not "3 is better": it is that the mode has to
+// match what is in the picture, and only one of these two paths hands
+// over an entry.
+//
+// What did **not** help, measured on the same two entries and therefore
+// not here: `-c user_defined_dpi=300` (not one character changed), `-c
+// preserve_interword_spaces=1` (not one character), and reading the
+// region as grey rather than colour (not one character). A `--user-words`
+// list of the setting's proper nouns was measured too and is not here
+// either — two of the 341 words were proper-noun misreadings, so a list
+// that fixed both would move the rate by six parts in a thousand.
+//
+// **Upscaling is the one lever this engine cannot pull.** Two or three
+// times the pixels is worth another halving of the rate, and reaching it
+// needs the page decoded — which this host does not do and #212 refused
+// on purpose. The decoded path *could* upscale the PGM it writes, and
+// does not, because the only edition in the table is `/DCTDecode`: it
+// would be code no shipped edition executes. `journal.mjs` does it,
+// because a browser has already decoded the page to put it on a canvas
+// and the platform's decoder is not this project's.
 
 #pragma once
 
@@ -85,6 +131,7 @@
 
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_ocr.h"
+#include "tsv_words.h"
 
 namespace amberfolio::sdl {
 
@@ -111,23 +158,35 @@ class tesseract_ocr final : public host::journal_ocr {
 
   [[nodiscard]] std::string_view engine() const override { return engine_; }
 
+  [[nodiscard]] host::journal_reading_quality quality() const override {
+    return quality_;
+  }
+
  private:
   /// A directory of this host's own, made on first use and removed in the
   /// destructor.
   [[nodiscard]] bool scratch(std::string& out);
 
   /// The two shapes of a scan's piece (see above): a decoded bitmap as a
-  /// PGM, read whole; a stream under its own name, read whole and
-  /// filtered to that piece's rectangle afterwards. `recognize()` joins
-  /// what they answer, in order.
+  /// PGM, read whole and as one block; a stream under its own name, read
+  /// as a page and filtered to that piece's rectangle afterwards.
+  /// `recognize()` joins what they answer, in order.
+  ///
+  /// Both answer a `tsv_reading` — the words and what the engine thought
+  /// of them (#315). The decoded path does not need the rectangle and
+  /// asks for `tsv` anyway, because plain text carries no confidences and
+  /// the confidences are the only thing a host can tell a player about an
+  /// entry nobody has corrected yet.
   [[nodiscard]] bool recognize_bitmap(const host::journal_bitmap& page,
-                                      std::string& out);
+                                      tsv_reading& out);
   [[nodiscard]] bool recognize_encoded(const host::journal_part& part,
-                                       std::string& out);
+                                       tsv_reading& out);
 
   std::string program_;
   std::string engine_;
   std::string scratch_;
+  /// What the last `recognize()` was sure of, summed over its pieces.
+  host::journal_reading_quality quality_;
 };
 
 }  // namespace amberfolio::sdl
