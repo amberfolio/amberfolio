@@ -372,6 +372,26 @@ recording:
   `--wall none` is the third answer: the unseeded machine every recording
   before #320 was made on.
 
+**And it is not only the hash: the game reads the date, and its screen
+changes with it.** Measured rather than assumed, on a real copy — 400
+million steps of the boot, dumped, three times. Two runs at
+`--wall 2026-09-06T08:30:00` are the same frame to the byte; the same run
+at `08:31:00` differs in 73 pixels inside a 15x31 box, at the same step,
+the same tick and the same 80,459 frames, with an identical speaker edge
+list. Nothing about this host changed between them but the instant it
+handed the machine, so the program is consuming the DOS clock — seeding
+its own generator from it is the era's usual reason — and a run's
+pictures are a function of the date it was told.
+
+So the rule is wider than the recordings: **any two runs compared with
+each other, by hash or by pixel, have to be told the same date.** That
+includes `scripts/visual-legs.py`, whose whole method is a seam-on run
+against a seam-off run of the same script, dumped and diffed — it passes
+no `--wall` today, so both of its sides now read this host's clock
+seconds apart, and what the diff would be measuring is partly the clock.
+Until it states one, drive its legs by hand with `--wall none` on both
+sides.
+
 ---
 
 ## 7. Versions

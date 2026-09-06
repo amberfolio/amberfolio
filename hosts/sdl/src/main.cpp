@@ -472,12 +472,17 @@
 //     epoch, which is what a PC with no clock card gave you and what
 //     every recording in `tests/sessions/` was made on.
 //
-//     A stated date is for a run that has to be **reproducible**. The
-//     seed is machine state, so seeding from the clock puts the moment
-//     the run started into every checkpoint hash it produces: two runs
-//     meant to be compared hash for hash — a seam on against the same
-//     script with it off — have to be told the same instant, and this is
-//     how they are told. Recorded either way, as a `wall` line at the
+//     A stated date is for a run that has to be **reproducible**, and
+//     that is more than a hash. The seed is machine state, so seeding
+//     from the clock puts the moment the run started into every
+//     checkpoint — and the program *reads* the date: 400 million steps
+//     of a real boot, dumped at two instants a minute apart, differ in
+//     73 pixels at the same step, the same tick and the same frame count
+//     (`docs/replay.md` §6 has the measurement, and the era's usual
+//     reason: a generator seeded off the clock). So **two runs compared
+//     with each other, by hash or by pixel — a seam on against the same
+//     script with it off — have to be told the same instant**, and this
+//     is how they are told. Recorded either way, as a `wall` line at the
 //     tick it was seeded at, so a recording replays as the run it was;
 //     refused alongside `--replay`, which takes its date from the
 //     recording like everything else.
