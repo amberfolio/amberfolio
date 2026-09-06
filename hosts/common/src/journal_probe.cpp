@@ -689,4 +689,34 @@ std::string_view journal_probe_ocr::engine() const {
   return "amberfolio journal probe fixture";
 }
 
+bool journal_probe_noisy_ocr::recognize(const journal_scan& scan,
+                                        std::string& out) {
+  quality_ = {};
+  if (!honest_.recognize(scan, out)) {
+    out.clear();
+    return false;
+  }
+  out.append(journal_probe_noise);
+
+  // What a fixture engine "was sure of". The words are the answer's own,
+  // counted the way `journal_score.h` counts them, so a test can predict
+  // the aggregate; the noise is the one doubtful word, which is true of
+  // it in the only sense a fixture can make it true.
+  quality_.known = true;
+  quality_.words = 1U;
+  for (const char c : out) {
+    if (c == ' ') {
+      ++quality_.words;
+    }
+  }
+  quality_.doubtful = 1U;
+  quality_.confidence = 50.0 + (10.0 * static_cast<double>(readings_));
+  ++readings_;
+  return true;
+}
+
+std::string_view journal_probe_noisy_ocr::engine() const {
+  return "amberfolio journal probe fixture (noisy)";
+}
+
 }  // namespace amberfolio::host

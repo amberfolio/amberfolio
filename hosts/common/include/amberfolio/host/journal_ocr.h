@@ -72,15 +72,88 @@
 // returns the whole page's text where the entry's was asked for. That is
 // the failure mode to expect from a new engine, and it looks like a
 // journal entry with its neighbours attached.
+//
+//
+// What the engine knew about the reading it just did (#315)
+// --------------------------------------------------------
+//
+// Both engines answer a confidence per word and both hosts were throwing
+// it away — the desktop parses Tesseract's `tsv`, whose eleventh column is
+// exactly that, and tesseract.js puts a `confidence` on every word beside
+// the `bbox` the region filter already reads. That is a measurement this
+// pipeline was producing and discarding.
+//
+// It is worth keeping for one reason and not for another, and #315
+// measured which is which. Against a hand-typed truth for two real
+// entries — 341 words, 26 of them wrong — flagging every word under
+// sixty picked out 2.6% of the words and 78% of what it picked was
+// genuinely wrong, but it caught only 27% of the errors. So:
+//
+//   * **Marking doubtful words in the text is not worth it.** Three
+//     quarters of the mistakes are ones the engine is confident about —
+//     an apostrophe read as a double quote, a lower-case `k` read as a
+//     capital — and a mark that finds a quarter of them while putting
+//     noise in front of a reader is a bad trade.
+//   * **A per-entry score is.** Across a whole real edition the mean
+//     confidence separated the readings that were fine from the two that
+//     were not by a wide margin, and it moved with the character error
+//     rate on every setting #315 tried (70.4 at the old setting, 86.1
+//     with page segmentation fixed, 90.9 with the page upscaled). It is
+//     what a host prints so a player knows which of their ninety-nine
+//     entries to look at before they need them in play.
+//
+// So the confidence is carried up here as a summary of the *reading*, and
+// the text is left alone. An engine that does not know is `known: false`
+// rather than zero, because "the engine was not sure" and "this engine
+// does not report confidence" are different facts and a zero would be
+// read as the first.
 
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <string_view>
 
 #include "amberfolio/host/journal_extract.h"
 
 namespace amberfolio::host {
+
+/// Under this, a word is one the engine was not sure of.
+///
+/// Sixty, measured (see above) rather than picked: it is where the
+/// precision of the flag was still around three quarters on the two
+/// entries #315 scored by hand, and where the share of a whole real
+/// edition's words that it flags falls from a quarter to a twentieth once
+/// page segmentation is right. Tesseract's scale is 0 to 100 and both
+/// engines report on it.
+inline constexpr double journal_doubtful_confidence = 60.0;
+
+/// What an engine knew about the reading it just answered.
+///
+/// A summary and not a per-word list, deliberately: the per-word numbers
+/// are what an engine's own filter reads them for, and nothing above this
+/// interface has been shown to have a use for them that is better than
+/// the noise it would cost (see above).
+struct journal_reading_quality {
+  /// False for an engine that does not report confidences at all, in
+  /// which case every other field here is meaningless. Not a zero
+  /// confidence, which is a different statement.
+  bool known{false};
+  /// How many words the engine kept for this entry.
+  std::size_t words{0};
+  /// How many of them were under `journal_doubtful_confidence`.
+  std::size_t doubtful{0};
+  /// The mean confidence over those words, on the engine's own 0-100
+  /// scale.
+  double confidence{0.0};
+
+  /// The share of the entry the engine was unsure of, 0 to 1.
+  [[nodiscard]] double doubtful_share() const noexcept {
+    return words == 0
+               ? 0.0
+               : static_cast<double>(doubtful) / static_cast<double>(words);
+  }
+};
 
 /// An OCR engine.
 ///
@@ -114,6 +187,17 @@ class journal_ocr {
   /// "which engine read this" is the first question anybody asks of a
   /// transcription they think is wrong.
   [[nodiscard]] virtual std::string_view engine() const = 0;
+
+  /// What the engine knew about the reading `recognize()` just did
+  /// (#315), or an unknown quality for an engine that does not say.
+  ///
+  /// Valid only immediately after a `recognize()` that answered true, the
+  /// way `errno` is valid only immediately after the call that set it.
+  /// A virtual with a default rather than a pure one, because it is a
+  /// thing an engine *may* report and every implementation that cannot
+  /// should say so by saying nothing: making it pure would have every
+  /// fixture in the tree grow a line that means "no".
+  [[nodiscard]] virtual journal_reading_quality quality() const { return {}; }
 };
 
 }  // namespace amberfolio::host

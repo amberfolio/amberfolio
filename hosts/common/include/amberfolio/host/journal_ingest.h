@@ -75,6 +75,12 @@
 
 namespace amberfolio::host {
 
+/// One item, and what the engine knew about reading it (#315).
+struct journal_item_quality {
+  machine::journal_citation what{};
+  journal_reading_quality reading{};
+};
+
 /// What one ingestion did — the line a host prints when it is over.
 ///
 /// Four numbers rather than a bool, because "it worked" is not what a
@@ -101,6 +107,29 @@ struct journal_ingest_report {
   /// The first entry that failed, and how — zero and `none` if none did.
   machine::journal_citation first_failure{};
   journal_trouble first_trouble{journal_trouble::none};
+
+  /// What the engine knew about each item it read (#315), in the order it
+  /// read them, and only for engines that report it at all — an engine
+  /// that does not leaves this empty rather than filling it with unknowns.
+  ///
+  /// A list and not a summary, because the question a player has after an
+  /// ingestion is not "how did it go" but "which of my ninety-nine
+  /// entries should I look at", and only the per-item numbers answer that.
+  /// `worst_first()` is what a host prints.
+  std::vector<journal_item_quality> quality;
+
+  /// All of them together: the mean confidence weighted by words, and the
+  /// counts summed.
+  ///
+  /// Weighted, because an unweighted mean over items lets a nine-word
+  /// caption count as much as a nine-hundred-character entry — the same
+  /// reason `journal_score.h`'s aggregate is a ratio of sums.
+  [[nodiscard]] journal_reading_quality reading() const;
+
+  /// `quality`, least confident first. A copy, because the report's own
+  /// order is the order the entries were read in and that is worth
+  /// keeping.
+  [[nodiscard]] std::vector<journal_item_quality> worst_first() const;
 };
 
 /// One ingestion of one document.

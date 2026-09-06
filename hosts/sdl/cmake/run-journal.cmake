@@ -66,6 +66,12 @@ expect("journal Amber Folio journal probe \\(synthetic\\) entries=4")
 expect("journal engine amberfolio journal probe fixture")
 expect("journal entries=4 extracted=4 recognized=4")
 expect("journal store .*entries=4 corrections=0 sha256=[0-9a-f][0-9a-f]+")
+# With nothing corrected there is nothing to score against, and the host
+# says which rather than printing a zero that would read as a perfect
+# transcription (#315). The fixture engine reports no confidences either,
+# so there is no `journal read` line here at all -- an engine that does
+# not say and an engine that was unsure are different things.
+expect("journal score nothing to measure against")
 
 # The store is a file, and it is the file this says it is. Its words are
 # the probe's own, which is what makes them printable here at all.
@@ -97,6 +103,14 @@ file(APPEND "${store}" "corrected entry 1 ${correction_length}\n${correction}\n"
 
 run_host(--journal "${document}" --journal-probe --journal-store "${store}")
 expect("journal store .*entries=4 corrections=1")
+# And now there *is* something to score against, which is the whole
+# design of the measurement (#315): the ground truth is the player's own
+# correction, so an ingestion becomes measurable the moment somebody
+# fixes something. Nineteen characters of correction against the
+# twenty-five the fixture read is not a small rate, and the point here is
+# only that a real number reaches the player -- the arithmetic is checked
+# case by case in `hosts/common/tests/journal_score_test.cpp`.
+expect("journal score corrected=1 characters=[0-9]+\\.[0-9]+% words=[0-9]+\\.[0-9]+%")
 file(READ "${store}" text)
 string(FIND "${text}" "${correction}" at)
 if(at LESS 0)
