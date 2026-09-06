@@ -1922,6 +1922,86 @@ cell rather than a silence.
 the box on a display after this change is what #274 owes, and so is
 `Fix: Interrupted!` on one, which no display has ever shown.
 
+#### The highlight the camp bar hands back (M5-E1g, #304)
+
+The same run found one more thing, and #302 left it as a named cell:
+after EXIT the adventuring bar came back with its highlight on `AREA`
+with the seam on and on `LOOK` with it off — the issue said `ENCAMP`,
+and the byte says the sixth group, which is `LOOK`. **The highlight is
+one byte in the data segment that every bar in the program shares**
+(`0x6B2B` in the resident image). The menu-bar routine reads it on entry
+as a one-based group index and resets it to the first group when it
+names a group the bar it was handed does not have; the two cursor keys
+step it, wrapping at either end; and choosing a command sets it to that
+command's group. The spliced camp bar has one group more than the
+program's own — `Fix` goes in before the last group — so EXIT, the
+program's sixth group and the spliced bar's seventh, left a 7 where the
+seam-off run left a 6, and the adventuring bar, which has six, reset the
+7 to its first. Watched through the byte on the slot C script
+(`--watch 6B2B`, the data segment at `0CDC`): ENCAMP on the adventuring
+bar writes 4 at frame 8,974 in every run, which is the fourth group and
+the proof the index is one-based; with the seam off, EXIT writes 6 at
+10,207 and nothing moves it again; with the seam on, the Fix's letter
+writes 6 at 9,617 — the spliced bar's sixth — and EXIT writes 7 at
+10,213; the build before this one carried the 7 out of camp and the
+adventuring bar reset it to 1 as it drew, at 10,297; this build maps the
+7 to 6 at 10,226, the frame before the mode word leaves camp, and the
+byte is the seam-off run's from there on.
+
+This is the one thing the program observes of the splice after the word
+is gone, and it is a difference in machine state rather than on the
+screen — the splice's own rule, that outside the one call that drew it
+the program's string is the program's string, was being kept for the
+string and not for the number the string set. **So the way out of camp
+maps the byte back** (`restore_the_highlight()`, at the existing exit
+point): a position at or past the Fix's group steps down by one, and a
+position before it is left alone, which is what the same command on the
+program's own bar would have left. A cursor sitting on the Fix itself —
+its letter pressed, then camp left by Escape, which moves nothing — lands
+on the group it was spliced in beside, by the same rule and with no
+special case; no rule can reproduce the seam-off byte there, because in
+that run the letter matched nothing on the bar and the byte kept a value
+this seam never saw. A value past the spliced bar's own count is not this
+bar's and is left alone.
+
+Three things about where it runs. It runs where the splice ran, and knows
+that the way the splice knew it — the mode says camp and the bar is the
+shape `splice_in()` accepts, re-read at the exit rather than remembered
+— so a copy whose bar the splice refused is a copy whose highlight is
+not touched, and `quiet-encamp`, which never opens the camp screen, never
+reaches it. It runs on both ways out, the interrupted one included, and
+there it has to wait: the report's batch ends with the point offered
+again (§3), the engine marks that second arrival in no way, and a mapping
+that ran on both would step the byte down twice — which the unit suite
+refuses, checked by making a build do it:
+`HandsItBackOnTheWayOutOfAnInterruptedCampToo` fails on the position past
+the Fix. And it writes nothing when the number is already the program's,
+which is every interrupted rest — the camp bar is
+`SAVE VIEW MAGIC REST ALTER EXIT` and the Rest key sets the byte to its
+fourth group, two short of the Fix — so `camp-fix.rec` does not move.
+
+What it does not restore is the *history* of a cursor stepped round a bar
+one stop longer: from the step that crosses the Fix, the two runs' cursors
+sit on different commands with the same number, and the mapping cannot
+know which of them the player meant. That is the enhancement being
+visible, and the mapping is the numbering and not the walk. The journal's `Notes`
+give-back has a cousin of the symptom
+(`tests/visual/not-log-giveback.leg`: 951 pixels, all on the bar, the
+highlight back on the first command) — a different mechanism, nothing
+spliced out from under the byte, and not this fix's to answer.
+
+The leg's post-EXIT lines no longer allow the bar, but for one dump: the
+adventuring bar is drawn a piece at a time and 8 frames later in the
+seam-on run, so the dump at 10,300 catches it a different number of
+characters in — the seam-off run has reached the middle of `SEARCH` and
+the seam-on run has `AREA` and no more — and is allowed; from 10,325 to
+the end of the run the bar row is required identical.
+Driven by hand on the shorter boot, with the runner's own check
+re-stated: 463 frames compared, 1 a dump apart, none outside the rects;
+the bar row from 10,325 on is 50 frames and not a pixel apart, where the
+build before this one differed on all 50 — 174 pixels each, `AREA` lit
+against `LOOK`.
+
 #### And when the game does not hand the camp screen back (M5-E1c, #194)
 
 The box above is drawn on the pass of the camp menu after the command

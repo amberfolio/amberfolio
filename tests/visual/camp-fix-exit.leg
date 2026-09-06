@@ -10,9 +10,10 @@
 # the message line on 0x18, nothing above them. So `FIX: PARTY HEALED`
 # stayed on the screen under the adventuring bar after camp was gone,
 # seen by a person on a display. The title is a line on 0x12 now, and the
-# `allow` after the exit below is the assertion: from the frame after
-# the mode word leaves camp to the end of the run, the seam-on screen is
-# the seam-off screen everywhere but two named cells.
+# `allow` lines after the exit below are the assertion: from the frame
+# after the mode word leaves camp to the end of the run, the seam-on
+# screen is the seam-off screen everywhere but one named cell — and, for
+# the one dump that catches the adventuring bar going up, that bar.
 #
 # **A pair leg, and it can be one.** Every key here reaches the program
 # in both halves: `E` is ENCAMP on the adventuring bar, `F` on the camp
@@ -32,7 +33,12 @@
 # check the runner makes: 463 frames compared, 1 of them a dump apart,
 # every difference inside the rects below. Before the change, the same
 # script leaves row 0x11 holding the title's 394 pixels from frame 10,250
-# to the end of the run, and rows 0x12..0x16 holding nothing.
+# to the end of the run, and rows 0x12..0x16 holding nothing. Driven by
+# hand the same way again for M5-E1g (#304), which took the bar out of
+# the post-EXIT lines below: 463 frames compared, 1 a dump apart, every
+# difference inside the rects; the bar row from frame 10,325 to the end
+# is 50 frames and not a pixel apart, where the build before it differed
+# on all 50 (174 pixels each, AREA lit against LOOK).
 about the Encamp Fix's report leaves with the camp screen: camp, FIX, EXIT
 kind pair
 program START.EXE
@@ -83,9 +89,20 @@ allow 9450-9625 bar banner
 # The report, on the pass after the command declined, until the exit.
 allow 9650-10225 bar panel knot banner
 # Out of camp. The mode word leaves camp at 10,227 (10,219 with the seam
-# off) and nothing of the box is on the screen after it. The bar is the
-# adventuring bar in both runs, with its highlight on a different
-# command: the highlight is one byte in the data segment every bar reads
-# and clamps to its own group count, and the spliced bar has one group
-# more, so the same EXIT leaves it on a different number.
-allow 10250-end knot bar
+# off) and nothing of the box is on the screen after it — and the bar is
+# the adventuring bar in both runs **with its highlight on the same
+# command** (M5-E1g, #304). The highlight is one byte in the data segment
+# every bar reads and numbers against its own groups, and the spliced bar
+# has one group more, so the same EXIT used to leave it one past where
+# the seam-off run left it — a 7 the adventuring bar reset to AREA,
+# against the 6 that is LOOK; the seam puts it back into the program's
+# numbering on the way out of camp. The bar is drawn a piece at a time
+# and 8 frames later in the seam-on run, so the one dump that catches it
+# mid-draw, 10,300, catches a different number of characters in each
+# run — the seam-off bar has reached the middle of SEARCH and the
+# seam-on bar has AREA and no more — and the bar is allowed for that
+# dump alone. From the next one to the end it may not differ, and that
+# is the assertion.
+allow 10250-10275 knot
+allow 10300-10300 knot bar
+allow 10325-end knot
