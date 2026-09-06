@@ -85,6 +85,20 @@ if(NOT text MATCHES "\nkey [0-9]+ [0-9a-f][0-9a-f] down\n")
   message(FATAL_ERROR "the keystroke is not in the recording.\n${context}")
 endif()
 
+# The date the host seeded the machine with, at the tick it seeded it
+# (#320). The wall clock is machine state and so is in every checkpoint
+# hash below, which makes this line the difference between a recording of
+# this run and a recording of a run nothing can reproduce: a replay of a
+# recording without it would start from an unseeded machine and diverge
+# at the first checkpoint. The replay below is what proves it round
+# trips; this is what proves the line is there to round trip, because a
+# recorder and a player that both forgot the seed would agree with each
+# other all day and disagree with the run.
+if(NOT text MATCHES "\nwall 0 [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9][.][0-9][0-9]\n")
+  message(FATAL_ERROR
+    "the run seeded the wall clock and did not record it.\n${context}")
+endif()
+
 if(NOT text MATCHES "\ncheckpoint [0-9]+ [0-9]+ [0-9a-f]+ .*ram=")
   message(FATAL_ERROR
     "the recording carries no checkpoint with its sections.\n${context}")

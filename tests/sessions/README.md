@@ -238,6 +238,19 @@ build tree — which makes it **the one thing about a game session that CI
 can verify**, and the only line in this directory's table that is not a
 skip on a machine without the player's copy.
 
+**A pair has to be told the same date** (#320). Both hosts seed the
+machine's wall clock now, and the seed is machine state (`docs/replay.md`
+§6), so a run that reads the host's own clock puts the minute it started
+into every checkpoint hash it takes: two recordings made an hour apart
+would diverge at the *first* checkpoint and say nothing whatever about
+the seam between them. `--wall YYYY-MM-DD[THH:MM[:SS[.CC]]]` states the
+instant, and both halves of a `contrast` or `identical` pair want the
+same one. `--wall none` is the third answer and the machine every
+recording in this directory was made on: all 24 predate the seed and
+carry no `wall` line, which is exactly why they all still verify. #293
+re-records the library, and that is where this first has to be
+remembered.
+
 The failure modes it distinguishes, each with its own case in
 `scripts/test-sweep.sh`: identical throughout (the change made no
 difference), divergent from the first checkpoint (not the same run up to

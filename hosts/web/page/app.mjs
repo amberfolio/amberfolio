@@ -57,6 +57,7 @@ import {
   AF_RUN_END_HOST_QUIT,
   pacedAdvance,
   MAX_CATCH_UP_SECONDS,
+  wallClockFields,
 } from './host.mjs';
 import { wireDirectoryPicker } from './picker.mjs';
 import {
@@ -195,6 +196,51 @@ export function runDevPage() {
     const { major, minor, patch } = loaded.version;
     appendConsole(`[host] amberfolio ${major}.${minor}.${patch}\n`);
     if (speedSelect && speedSelect.value !== 'xt') applySpeed();
+
+    // And what day it is out in the world, said once, before the machine
+    // has taken a step (#320).
+    //
+    // The clock inside is a seed plus virtual time and never a callout
+    // into here (host.mjs's `wallClockFields`, `machine/platform.h`), so
+    // a machine nobody tells is not a machine with an approximate date —
+    // it is one counting from the DOS epoch, and every INT 21h AH=2Ah
+    // answers 1 January 1980 plus its own uptime. The journal's listing
+    // is where that surfaced: every entry stamped `01-01 00:04`, which is
+    // four minutes after Boot was pressed.
+    //
+    // Here rather than at the Boot handler beside `codeWheelApply()`,
+    // even though that is where the same sentence about "before the first
+    // step" is written, because this one needs no program: the code
+    // wheel's answer is looked up by the loaded file's fingerprint and
+    // the date is not. One place, so the demo program and a player's own
+    // copy are told the same thing the same way.
+    const wall = wallClockFields(new Date());
+    if (
+      wall &&
+      machine.setWallClock(
+        wall.year,
+        wall.month,
+        wall.day,
+        wall.hour,
+        wall.minute,
+        wall.second,
+        wall.centisecond,
+      ) === AF_OK
+    ) {
+      const two = (n) => String(n).padStart(2, '0');
+      appendConsole(
+        `[host] wall clock ${wall.year}-${two(wall.month)}-${two(wall.day)} ` +
+          `${two(wall.hour)}:${two(wall.minute)}:${two(wall.second)}\n`,
+      );
+    } else {
+      // Log, don't fake: a browser whose year DOS has no room for gets
+      // the machine this build has always had, and is told so, rather
+      // than a date somebody here invented for it.
+      appendConsole(
+        '[host] wall clock not set - this browser reports a date outside ' +
+          "DOS's own 1980-2099; the machine counts from 1980-01-01\n",
+      );
+    }
 
     // The journal this browser already read, back into the module's store
     // (M5-E3f). Here rather than at an ingestion because the point of it

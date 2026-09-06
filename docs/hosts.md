@@ -101,6 +101,7 @@ amberfolio <dir> <program.exe> [--headless] [--scale N] [--verify]
                                [--dump-every N] [--trace]
                                [--seam ID] [--speed NAME]
                                [--fast N|max] [--volume 0-100] [--mute]
+                               [--wall now|none|YYYY-MM-DD[THH:MM[:SS[.CC]]]]
                                [-- ARGUMENTS...]
 ```
 
@@ -139,6 +140,7 @@ fingerprint up by (PLAN.md §5).
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161, `docs/seams.md` §3a). A trigger-driven seam does nothing until somebody asks; this is the scripted ask, and unlike `--press` it needs no window, so it works under `--headless`. The seam has to be on — `--seam ID` as well — and a refusal is printed rather than swallowed. Repeatable. Refused alongside `--replay`, which decides its own pulls. |
 | `--automap-store` | keep what the automap seam has explored beside the save (M5-E2c, #173): `\SAVE\AFMAP.DAT` and a snapshot per save slot, this project's own files in the directory the program's saves are in and never inside one. Off by default, and asked for rather than assumed — this is a real directory of the player's, and every recorded session pins its disk by name, size and SHA-256, so a sidecar written by a verification run would make the next run's disk a different disk. Prints what it wrote and read at the end of the run, including when that was nothing. |
 | `--volume 0-100`, `--mute` | how loudly to play it, and whether to play it at all (§4). Nothing to do with the machine: a run at 25% is the same run as one at 100%, down to the last edge. **F11** toggles the mute and **F12** steps the volume while the run is going. Refused with `--headless`, which opens no audio device. |
+| `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | what date to tell the machine it is (#320). This host's own clock unless you say otherwise, read once before the first instruction and printed. The machine's date is a *seed* plus virtual time (`machine/platform.h`) and no host ever set one until #320, so the game — and every stamp in the journal's listing — read 1 January 1980 plus the run's uptime. `none` is that machine, kept: unseeded, which is what a PC with no clock card gave you and what every recording in `tests/sessions/` was made on. A **stated** date is for a run that has to be reproducible, because the seed is machine state and so is in every checkpoint hash: two runs meant to be compared hash for hash have to be told the same instant. Recorded either way, as a `wall` line at the tick it was seeded at; refused alongside `--replay`, which takes its date from the recording. |
 
 **The three keys this host takes for itself**, and the one argument all
 three rest on: an 83-key XT board has no scan code for any of them, so
@@ -285,6 +287,18 @@ the flag and the button cite the probe edition's four rows in that order
 and keep them (`run-journal.cmake` step 7, `smoke.mjs`); what only a
 person can check is whether the text on the screen is the text on the
 page, which is `docs/journal.md` §10 and the reason it exists.
+
+**And a fifth, which is one glance (#320): that a journal row is stamped
+with today.** Both hosts seed the machine's wall clock now — this one
+from its own clock before the first instruction, printed as
+`amberfolio: wall clock 2026-09-06 08:07:10 (this host)` — and every test
+that can be written of it stops at the ABI's door: that the fields are
+right, that the machine accepts them, that a recording carries the `wall`
+line and replays through it. What none of them can say is that the two
+digits in the `Notes` listing are a date and not an uptime, because
+nothing in this repository runs the game. `--seam journal` with an
+ingested journal, `Notes` on the party's bar, and the column on the right
+of a cited row is the whole check.
 
 It is worth doing on each desktop target you care about, and it takes two
 commands.
@@ -1064,6 +1078,40 @@ they having covered the same wall time; the clamp, a first callback with
 nothing to measure against, a clock that went backwards, and the callback
 *after* a stall (which must advance its own delta and no more) are
 checked beside it.
+
+### What day the page says it is (#320)
+
+The other clock, and it is not the one above. Pacing is about how fast
+virtual time runs; this is about what date the emulated DOS answers with
+when the program asks for one — INT 21h AH=2Ah and 2Ch, and through them
+the stamp on every row of the journal's own listing.
+
+It is a **seed and never a callout**: a host says "at this tick the wall
+clock read this", and every later read is that instant plus the virtual
+time since (`machine/platform.h`). The ABI has had
+`af_machine_set_wall_clock()` since M2 and **neither host ever called
+it**, so every run of this project until #320 was a machine counting
+hundredths from 1 January 1980 — which is a real answer, and the one a PC
+with no clock card gave you, but not the one anybody wanted. Where it
+showed was the journal: `01-01 00:04` on every entry, four minutes of
+uptime standing in for a date.
+
+`ensureMachine()` seeds it now, once, before the machine has taken a
+step — after `reset()`, which carries a seed across rather than clearing
+it, and beside the journal and code-wheel restores for the same reason
+they are there. The conversion is `wallClockFields()` in `host.mjs`, kept
+as a pure function so `tests/smoke.mjs` can drive it: `Date` counts months
+from zero where DOS counts from one, milliseconds where DOS counts
+hundredths (floored — 999 ms is the 99th hundredth and never a hundredth
+that does not exist), and reaches years DOS's own 1980-2099 does not
+hold, which are refused here rather than at the ABI so the console can
+say so. **Local fields and not UTC**: the date a journal row carries is
+the player's own calendar.
+
+There is no control for it on this page and no reason for one. The
+desktop host has `--wall` because a *recording* is made there and the
+seed is machine state — see `docs/replay.md` §6 — and nothing here
+records.
 
 ### What a browser run says about itself
 

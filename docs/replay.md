@@ -342,8 +342,35 @@ The wall clock a program reads through INT 21h is not an exception to
 this. It is a **seed**, set once by the host and read as
 `wall().at(time())` — a fixed origin plus virtual elapsed time — so it
 advances with the machine and is recordable as a `wall` line at a tick.
-The desktop host does not seed it today, which is why no recording here
-carries one.
+
+**Both hosts seed it now** (#320), and until then neither ever did: the
+line above used to end "the desktop host does not seed it today, which is
+why no recording here carries one", and what that cost was a game told it
+was 1 January 1980 plus its own uptime, with every row of the journal's
+listing stamped `01-01 00:04`. The desktop host reads its own clock
+before the first instruction and writes the `wall 0 …` line that says so;
+the page does the same with `new Date()` and records nothing, having
+nothing to record into.
+
+Three things follow, and they are the whole of what a seed costs a
+recording:
+
+- **A recording made from now on carries a `wall` line**, and replays
+  through it — `--wall` is refused alongside `--replay` for the same
+  reason `--seam` and `--speed` are.
+- **The recordings committed before it carry none**, so a replay of one
+  leaves the machine unseeded and matches exactly as it always did. That
+  is not an accident of the format; it is the format working. All 24
+  sessions in `tests/sessions/` verify unchanged.
+- **The seed is machine state, so it is in every checkpoint hash.** A run
+  seeded from the host's clock therefore hashes differently every time it
+  is run, which is fine for a recording (the line is in it) and fatal for
+  a *pair* of runs meant to be compared hash for hash — the `contrast`
+  and `identical` relations of the session library are exactly that.
+  `--wall YYYY-MM-DD[THH:MM[:SS[.CC]]]` states the instant instead, and
+  two sessions recorded to be compared must be told the same one.
+  `--wall none` is the third answer: the unseeded machine every recording
+  before #320 was made on.
 
 ---
 
