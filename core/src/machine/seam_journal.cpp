@@ -44,27 +44,45 @@
 // (#175).
 //
 //
-// Where it goes, and why there
-// ----------------------------
+// Where a page goes, and what decides it (M5-E4d, #305)
+// -----------------------------------------------------
 //
-// The same rect as the automap's panel, from `automap.h`, which derives
-// it once: the interior of the adventuring screen's right-hand frame less
+// **A page is drawn in two sizes**, and which one it gets is a fact about
+// the machine rather than a memory of which key opened it.
+//
+// The small one is the automap's rect, from `automap.h`, which derives it
+// once: the interior of the adventuring screen's right-hand frame less
 // the program's own status row — 176 by 112 pixels, twenty-two columns of
-// the program's eight-pixel font by fourteen rows.
+// the program's eight-pixel font by fourteen rows. It is the honest size
+// everywhere, because it is **the one region of this program's screen a
+// seam can take and give back unconditionally**. The panel's cells are
+// the party roster's, and the program can be asked to paint the roster
+// again from live state (`give_the_roster_back()`); nothing else on the
+// adventuring screen has that property, and a wider reader that covered
+// something it could not restore is the M5-E2d bug — closing a panel
+// through the program's screen composer painted the 3D view over the
+// vendor the player was talking to.
 //
-// It is there because it is **the one region of this program's screen a
-// seam can take and give back**. The panel's cells are the party roster's,
-// and the program can be asked to paint the roster again from live state
-// (`give_the_roster_back()`); nothing else on the adventuring screen has
-// that property. A wider reader — over the viewport, or the whole screen —
-// would have nothing to restore what it covered, and the M5-E2d bug is
-// exactly what that costs: closing a panel through the program's screen
-// composer painted the 3D view over the vendor the player was talking to.
-// Twelve rows of twenty-two characters is what that constraint pays for,
-// and paging is what makes it enough.
+// The big one is the whole screen, in the box the journal's own listing
+// is drawn in: thirty-eight columns by twenty rows, 760 characters
+// against 264. It needs the screen composer to put back what it covered,
+// and the composer is safe on **one** precondition — that the party's own
+// command-bar routine is the thing running, since that is the one place
+// in the game where a vendor cannot be on the screen. `journal_state`'s
+// `bar_live()` is that precondition, set and cleared at the two points
+// this seam already has at that routine's call sites.
 //
-// **The two panels are the same pixels**, so the reader is modal over the
-// map: while it is open the automap does not draw (one condition in
+// So: a row of the listing, and the F1 prompt while the bar is live, open
+// a full screen. F1 anywhere else with a roster — the camp screen, whose
+// menu is a different call site, or an adventuring screen with a vendor's
+// bar up — opens the panel. **A citation opens the panel, always**: it
+// fires inside a script's own narration, where a vendor or an event's NPC
+// can be in the viewport, and until that give-back has been measured a
+// full screen there is M5-E2d again.
+//
+// **All three sizes of this seam's drawing are the same pixels** — the
+// panel, the listing and a full-screen page — so the reader is modal over
+// the automap: while it is open the map does not draw (one condition in
 // `seam_automap.cpp`), and the map comes back on its own when the entry
 // is put away. Neither seam knows anything else about the other, and
 // either works with the other switched off.
@@ -134,19 +152,26 @@
 // screen**, which is the modal claim the automap's roster-cursor keys
 // already make: Escape closes, Backspace goes back a page or rubs out a
 // digit, and while the prompt is up the digits and Return are its own.
-// Space and Return are deliberately *not* taken while a page is up — a
-// citation opens the reader in the middle of a story event, and the key
-// that turns the game's own page has to stay the game's.
+// Space and Return are deliberately *not* taken while a **panel** page is
+// up — a citation opens the reader in the middle of a story event, and
+// the key that turns the game's own page has to stay the game's.
 //
-// **The list is the exception, and takes every key there is.** It is the
-// one thing this seam draws that covers the program's own screen, and the
-// program's own command bar goes on running underneath it — so a key it
-// left alone chose a command, or walked the party, on a screen nobody
-// could see, and the program then painted its own bar and status line back
-// over the journal to prove it. Nothing reaches the program while the list
-// is up; `E` and Escape are the way out, and `E` because that is the word
-// the screen puts on its bottom row and the letter of a word on a bar is
-// how this game leaves every screen it has.
+// **Anything that covers the whole screen takes every key there is**, and
+// that is the listing and a full-screen page (#305). The program's own
+// command bar goes on running underneath either — for a page that is the
+// very reason it may be full-screen — so a key this seam left alone chose
+// a command, or walked the party, on a screen nobody could see, and the
+// program then painted its own bar and status line back over the journal
+// to prove it. Nothing reaches the program while one is up.
+//
+// Their ways out differ, and each names its own on the screen. The
+// listing has `E` as well as Escape, because `EXIT` is the word on its
+// bottom row and the letter of a word on a bar is how this game leaves
+// every screen it has. A page has F1 — which turns to the next page and
+// closes on the last — and Escape, which its footer names because a full
+// screen covers the command bar a player would otherwise be looking at.
+// A page opened from a row of the listing goes back to the listing rather
+// than out, so a person reading several entries stays in the journal.
 //
 //
 // The fidelity claim, stated for this seam (docs/seams.md §8.5)
@@ -443,7 +468,8 @@ constexpr std::uint16_t frame_out_flag = 0x04;
 // game has a bordered-window drawer that every Gold Box screen is made of,
 // and a string drawer, and calling those two is how this screen gets the
 // game's own border art, the game's own colours and the game's own
-// lettering without this file knowing what any of them look like.
+// lettering without this file knowing what any of them look like. Since
+// #305 a page of an entry is made of the same two, in the same box.
 //
 // **And it is given back by the program too.** The one thing a full-screen
 // panel needs that the roster-sized one does not is a way to restore
@@ -453,9 +479,10 @@ constexpr std::uint16_t frame_out_flag = 0x04;
 //
 // M5-E2d is why that is safe *here* and was not before. Closing a panel
 // through the program's screen composer painted the 3D view over a vendor
-// the player was talking to; this screen is only ever opened from the
-// party's own command bar (#221), which is the one place in the game where
-// a vendor cannot be on the screen.
+// the player was talking to. The listing has one way in — the party's own
+// command bar (#221) — and the general rule that way in is an instance of
+// is `bar_live()`: the composer may be used exactly while the party's own
+// menu-bar routine is the thing running.
 
 /// The program's bordered-window drawer and its string drawer - the two
 /// routines this screen is made of, and the same two the Encamp Fix's

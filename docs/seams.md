@@ -2639,6 +2639,56 @@ the log goes on to it: two questions, two ways in. "What was I told?" is
 the list; "let me look something up" is the prompt, and it is the only way
 to reach the ninety-odd entries nothing has cited.
 
+#### A page of an entry is a full screen too (M5-E4d, #305)
+
+The listing was a full screen and picking a row off it dropped back to a
+page in the roster panel — 264 characters where the screen it had just
+filled holds 760, with the viewport, the position line and the command
+bar still around it. A page from the bar is that screen now: the same
+box, the same frame drawer, the same string drawer, twenty rows of
+thirty-eight characters.
+
+**What made that safe is a fact about the machine, not a memory of which
+key was pressed.** The paragraph above says the listing is safe because
+it has one way in. The general rule that way in is an instance of is
+`journal_state`'s `bar_live()`: the program's screen composer may be
+asked to put a screen back exactly while the *party's own* menu-bar
+routine is sitting in its key loop, because that is the one place in the
+game where a vendor cannot be on the screen. The flag is set and cleared
+at the two points this seam already had at that routine's call sites —
+the ones the `Notes` splice needs — so it costs no address and nothing at
+an untriggered run.
+
+It matters because **F1 is not "on the bar's path"**. F1 is claimed on
+every screen that has a party roster, and two of those are not that
+routine: the camp screen, whose menu is a different call site, and an
+adventuring screen with a vendor's bar up. A full screen on either would
+be M5-E2d again, so both stay in the panel. So does a **citation's** page,
+always: the watch fires inside a script's own narration, where a vendor or
+an event's NPC can be in the viewport, and whether the composer is honest
+after the message box's own keypress has not been measured. Until it is,
+the panel is the only honest size there.
+
+**The way out goes back where the page came from.** A page opened from a
+row of the listing returns to the listing — nothing is given back, since
+the same screen is still taken, and the cursor is where it was, which is
+what a person reading several entries needs. One opened from the prompt
+goes out through the composer. One in the panel gives the roster back, as
+before.
+
+**The interior is cleared and the frame redrawn on every page**, and the
+listing's own first pass clears too. The two are the same box, a page
+paints twenty rows where the listing paints ten, and their titles are
+different lengths — so anything left standing would be read as part of
+whichever came second, which is M5-E1e's residue (#298) refused in
+advance for one call and no state.
+
+And a full-screen page swallows every key it does not want, for the
+listing's reason: the bar routine is live under it — that is *why* it may
+be full-screen. The panel page makes no such claim and must not, because
+a citation opens it in the middle of a story event and the key that turns
+the game's own page has to stay the game's.
+
 #### A command on the party's own bar (M5-E4a, #221)
 
 F1 opened this reader and still does. What F1 is not is **discoverable**:

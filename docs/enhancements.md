@@ -356,6 +356,17 @@ bar opens a log of everything the game has cited, newest first with a `*`
 on what you have not read. **F1** opens a prompt for the ninety-odd
 entries nothing ever cites.
 
+An entry you open from either of those is a **full screen** (#305): the
+same box the log is drawn in, twenty rows of thirty-eight characters, so
+you read it in a couple of pages rather than paging through a window the
+size of the party list. F1 turns the page and closes on the last one,
+Escape leaves, and an entry opened from a row of the log goes back to the
+log rather than out, with the cursor where you left it. An entry the game
+opens *at you* — a citation, in the middle of a story event — still comes
+up in the roster panel beside the viewport, because that is the one thing
+on this screen that can be taken and given back with a vendor or an NPC
+underneath.
+
 **How you turn it on.** `--seam journal`, and `--journal-store` if your
 text is not where the host would look.
 
@@ -382,7 +393,10 @@ prints them. After a plural, a list joined by commas and "and".
 
 **What makes it native.** The panel is drawn into the game's planes in
 the game's own font, in its highlight yellow and its message green, and
-it is given back by asking the program to repaint its own roster. The
+it is given back by asking the program to repaint its own roster. A full
+screen goes further: its frame, its border art and every letter on it are
+drawn by the program's own two routines, so this project never has to
+know what any of them look like. The
 `Notes` command is spliced onto the game's own bar and chosen the way
 every other command on it is. The page turns on the same key that opened
 it.
