@@ -2179,11 +2179,16 @@ void at_key_pending(machine& box, seam_context& ctx) {
   }
 
   // The journal reader is the same cells (M5-E4, #175), and it is modal
-  // over the map: while an entry is up the map does not draw, and it comes
-  // back on its own when the entry is put away — the reader closes by
-  // asking the program to paint the roster again, which is what clears
-  // this seam's own drawn signature. Neither seam knows anything else
-  // about the other and either works with the other switched off.
+  // over the map: while an entry is up the map does not draw, and it
+  // comes back on its own when the entry is put away — the reader's
+  // give-back says the panel was painted over
+  // (`automap_state::note_panel_painted_over()`), and the next arrival
+  // here draws it again. **That call is the one thing the two seams say
+  // to each other, and it had to be said** (#332): the reader puts the
+  // screen back through the program's own routines, and a seam's calls
+  // into the program run with no points offered at all, so this seam's
+  // clear and roster points never saw a pixel of it. Either seam still
+  // works with the other switched off.
   const bool shown = state.panel_open() && !state.panel_covered() &&
                      !box.journal().reader_open();
   const bool want_reveal = where != state.revealed_signature();

@@ -83,9 +83,14 @@
 // **All three sizes of this seam's drawing are the same pixels** — the
 // panel, the listing and a full-screen page — so the reader is modal over
 // the automap: while it is open the map does not draw (one condition in
-// `seam_automap.cpp`), and the map comes back on its own when the entry
-// is put away. Neither seam knows anything else about the other, and
-// either works with the other switched off.
+// `seam_automap.cpp`), and the map is drawn again when the entry is put
+// away. That last part is one call and not a coincidence (M5-E4g, #332):
+// a give-back paints through the program's own routines, and a batch of
+// calls into the program is offered no points at all, so the two points
+// the automap watches its cells with cannot see it happen. Both
+// give-backs below tell it (`automap_state::note_panel_painted_over()`),
+// and that is the whole of what the two seams say to each other; either
+// still works with the other switched off.
 //
 //
 // What the program does, stated as facts
@@ -1473,6 +1478,15 @@ void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
   journal_state& state = box.journal();
   state.set_on_screen(false);
   state.set_drawn_signature(0);
+  // And the map is told, because it cannot see this happen (M5-E4g,
+  // #332). These are the automap's cells too, and everything below is a
+  // call *into* the program, where the engine offers no points at all —
+  // so neither the clear nor the roster's own return reaches the points
+  // that seam watches its cells with.
+  // `automap_state::note_panel_painted_over()` has the whole of that
+  // argument. Free when the automap is off, whose panel has never been
+  // open.
+  box.automap().note_panel_painted_over();
 
   cpu::processor& cpu = box.processor();
   if (!has_roster(cpu, ds)) {
@@ -2080,6 +2094,13 @@ void give_the_screen_back(machine& box, seam_context& ctx) {
   journal_state& state = box.journal();
   state.set_on_screen(false);
   state.set_drawn_signature(0);
+  // The map, again, and this is the give-back that was found on a
+  // display (M5-E4g, #332): the composer repaints the roster, which is
+  // where the panel is drawn, and the automap's own points cannot see a
+  // batch. Its panel stays *open* — the player asked for it and never
+  // un-asked — so what it owes is the pixels, and its next arrival draws
+  // them over the screen the program has just composed.
+  box.automap().note_panel_painted_over();
   const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
   const std::array<std::uint16_t, 0> nothing{};
   static_cast<void>(ctx.call_program(

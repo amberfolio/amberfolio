@@ -3203,6 +3203,106 @@ TEST(JournalScreenPage, TheMapDoesNotDrawOverIt) {
       << "and nothing repainted the page";
 }
 
+/// The map's own bookkeeping, and the panel it is still owed.
+///
+/// #332, found on a display: Tab, `Notes`, `EXIT` — and the map was gone
+/// with the automap still believing it was on the screen, so the next Tab
+/// was spent *closing* a panel nobody could see and the one after it
+/// brought the map back.
+///
+/// The cause is in `seam.h` rather than in either seam: while a batch of
+/// calls into the program is running the engine offers **no points at
+/// all**, so the automap's own clear-region and roster-drawn points
+/// cannot see a single pixel of a give-back made through the program's
+/// own routines. Its `panel_covered()` never moved, its drawn signature
+/// never moved, and the panel's pixels went anyway.
+///
+/// The automap seam is deliberately **off** here: what is under test is
+/// the give-back's end of the bargain, and an automap handler at the
+/// shared key point would be answering a command bar it has not watched
+/// go up. The pair itself is driven (`tests/visual/map-after-page.leg`).
+TEST(JournalScreenPage, TheGiveBackTellsTheMapItsPanelWasPaintedOver) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+
+  // A map on the screen, as the automap seam leaves it: the player asked
+  // for the panel, it has been drawn, and it was drawn from something.
+  automap_state& map = r.pc().automap();
+  map.set_panel_open(true);
+  map.set_panel_on_screen(true);
+  map.set_drawn_signature(0x0BADF00D);
+
+  // The prompt's page rather than the listing's, because that is the one
+  // that leaves through the composer: a page opened from a listing row
+  // goes back to the listing and gives nothing back (#305).
+  r.bar_goes_out(area_before);
+  r.type(key_f1);
+  r.poll();
+  r.type(key_one);
+  r.type(key_two);
+  r.type(key_return);
+  r.poll(3);
+  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  r.run_the_calls();
+
+  r.type(key_escape);
+  r.poll();
+  r.run_the_calls();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  ASSERT_EQ(r.word_of(redraw_calls), 1u) << "the screen was composed back";
+
+  EXPECT_TRUE(map.panel_open())
+      << "the player asked for the panel and never un-asked";
+  EXPECT_FALSE(map.panel_on_screen())
+      << "and the composer painted over every pixel of it";
+  EXPECT_EQ(map.drawn_signature(), 0u)
+      << "so the next arrival draws rather than comparing a signature";
+}
+
+/// The panel-sized give-back owes the same thing, for the same reason.
+///
+/// The panel is the map's own cells exactly, and that give-back is two
+/// calls into the program rather than one — a clear and the roster's own
+/// drawer. A batch is a batch: the automap sees neither of them, so a
+/// citation, or an F1 page on a screen whose bar is not the party's own,
+/// left the same hole behind it (#332).
+TEST(JournalReader, TheRosterGiveBackTellsTheMapToo) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  // Not the party's own bar routine, which is what keeps this page in the
+  // panel rather than taking the screen (M5-E4d).
+  r.one_bar_pass(area_before, area_after, ' ');
+  ASSERT_FALSE(r.reader().bar_live());
+
+  automap_state& map = r.pc().automap();
+  map.set_panel_open(true);
+  map.set_panel_on_screen(true);
+  map.set_drawn_signature(0x0BADF00D);
+
+  r.type(key_f1);
+  r.poll();
+  r.type(key_one);
+  r.type(key_two);
+  r.type(key_return);
+  r.poll(3);
+  ASSERT_EQ(r.reader().page_place(), journal_page_place::panel);
+  r.run_the_calls();
+
+  r.type(key_escape);
+  r.poll();
+  r.run_the_calls();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  ASSERT_EQ(r.word_of(roster_calls), 1u) << "the roster is what came back";
+
+  EXPECT_TRUE(map.panel_open());
+  EXPECT_FALSE(map.panel_on_screen());
+  EXPECT_EQ(map.drawn_signature(), 0u);
+}
+
 // ---------------------------------------------------------------------------
 // What the panel can draw (M5-E4c, #219)
 // ---------------------------------------------------------------------------

@@ -1769,6 +1769,17 @@ command. 951 pixels, all on the bar row
 (`tests/visual/not-log-giveback.leg`). A player who had stepped the
 highlight along finds it back at the start.
 
+**And with `--seam automap` on as well, the map comes back too** (#332).
+The panel is drawn into the roster's cells and the give-back repaints the
+roster, so composing the screen is exactly what erases it; the reader
+tells the map so and the map's next arrival draws itself again. Until it
+did, the panel was gone with the automap still believing it was up, and
+the next Tab was spent closing a map that was not on the screen — the one
+after it brought the map back. Driven by hand on the shorter boot:
+`tests/visual/rdr-map-back.leg`, whose two `equal` lines are the screen
+with the map up before the reader and after it, and again after a Tab
+each way.
+
 `N` is ignored while a page is up, deliberately — the way out of the
 reader is the way out of the reader — so a script that wants the log
 after a citation closes the panel first.

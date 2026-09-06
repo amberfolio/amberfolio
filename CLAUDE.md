@@ -221,8 +221,20 @@ What M5 left in place:
   be asked to put a screen back. So F1 at camp or with a vendor's bar up
   stays in the panel, and a **citation** stays in the panel always,
   because it fires inside a script's narration where an NPC can be in the
-  viewport and that give-back has not been measured. Its text comes
-  from a host through `journal_open`, and that is the first service that
+  viewport and that give-back has not been measured. **Both give-backs
+  tell the automap the panel was painted over** since M5-E4g (#332), and
+  that one call is the only thing the two seams say to each other: the
+  composer repaints the roster, the map's panel is drawn into the
+  roster's cells, and a seam's calls into the program run with no points
+  offered at all — so neither of the two points the automap watches its
+  cells with saw a pixel of it. Its map was gone with its open flag
+  still set, so the next Tab was spent closing a panel that was not on
+  the screen and only the one after it brought the map back. The flag is
+  deliberately left alone and the pixels are redrawn at the map's next
+  arrival, the program painting first and the seam after, which is
+  #303's ordering; `tests/visual/rdr-map-back.leg` is the drive, by hand
+  on the shorter boot. Its text comes from a host through
+  `journal_open`, and that is the first service that
   had to hand something *back*: `machine::journal()` is the buffer it
   comes back in, observation on `automap.h`'s three terms and not machine
   state. **A real journal has now been opened at a real citation** (#232),

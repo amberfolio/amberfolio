@@ -263,6 +263,10 @@ void automap_state::set_panel_covered(bool covered) noexcept {
   // cells: a clear took them, or the roster came back over them. Either
   // way what this seam put there is gone, and the next arrival has to
   // draw again rather than compare a signature and decide it need not.
+  note_panel_painted_over();
+}
+
+void automap_state::note_panel_painted_over() noexcept {
   panel_on_screen_ = false;
   drawn_signature_ = 0;
 }

@@ -1148,6 +1148,16 @@ Every entry names the seam it was learned on.
   follow no pointer until they hold, and refuse any read outside
   conventional memory (Encamp Fix, #172 — seven `unmapped_memory_read`
   notices on a driven run).
+- **A batch is invisible to every other seam's points.** While a batch of
+  calls into the program is running the engine offers no points at all
+  (§3), so anything a seam paints *through the program* — a region
+  cleared, a roster or a whole screen composed back — reaches none of the
+  points another seam watches those same cells with. Two seams that share
+  a rect therefore cannot learn about each other by watching the program;
+  the one that drew has to say so. The journal reader's give-back left
+  the automap's panel erased with its own bookkeeping saying it was still
+  up, and the player's next Tab was spent closing a panel that was not on
+  the screen (journal reader and automap, #332).
 - **A point armed where a module's read landed is armed at the wrong
   place** as soon as the manager moves it. Resolve from the program's own
   word (§4; `cheat-kill-all`, #131).
@@ -2577,9 +2587,23 @@ needs is a way to give the viewport back.
 
 **The two panels are the same pixels**, so the reader is modal over the
 map: one condition in `seam_automap.cpp` stops the map drawing while an
-entry is up, and the map comes back on its own when the entry is put
-away. Neither seam knows anything else about the other and either works
-with the other switched off.
+entry is up, and the map comes back when the entry is put away.
+
+That last clause used to say "on its own", and it was wrong (#332). The
+map came back because the automap watches its own cells at two of the
+program's drawing routines — a region clear and the roster drawer's
+return — and a give-back goes through both. **A batch of calls into the
+program is invisible to every other seam's points**: while one runs the
+engine offers no points at all (§3), so the automap saw neither the
+clear that took its pixels nor the roster that replaced them. Its panel
+was gone with its bookkeeping saying it was up, and the player's next
+Tab was spent closing a panel that was not on the screen. So the reader
+says so, in one call at each of its two give-backs
+(`automap_state::note_panel_painted_over()`), and the map's next arrival
+draws it again over the screen the program has just composed. It is the
+only thing the two seams say to each other; the map's open flag is not
+touched, because the player asked for the panel and never un-asked, and
+either seam still works with the other switched off.
 
 #### The journal's own screen (M5-E4b, #222)
 
