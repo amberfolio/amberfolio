@@ -2180,8 +2180,8 @@ void at_key_pending(machine& box, seam_context& ctx) {
 
   // The journal reader is the same cells (M5-E4, #175), and it is modal
   // over the map: while an entry is up the map does not draw, and it
-  // comes back on its own when the entry is put away — the reader's
-  // give-back says the panel was painted over
+  // comes back when the entry is put away — the reader's give-back says
+  // the panel was painted over
   // (`automap_state::note_panel_painted_over()`), and the next arrival
   // here draws it again. **That call is the one thing the two seams say
   // to each other, and it had to be said** (#332): the reader puts the
