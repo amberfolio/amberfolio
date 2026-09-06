@@ -660,6 +660,46 @@ panel always, because it fires inside a script's own narration where an
 NPC can be in the viewport. The word wrap did not change; it only got
 wider.
 
+**A page is reflowed, and the scan's line breaks are not the page's**
+(#316). An OCR engine emits one newline per *printed* line, and the
+reader used to honour every one of them — so a sixty-odd character
+column out of a player's own journal was drawn into a page twenty-two or
+thirty-eight wide, a third of every row was thrown away, and a word the
+typesetter had hyphenated across two printed lines was re-hyphenated in
+the middle of a row that had room for the whole of it. Three rules
+replace that, and they are the ones an engine's output actually carries:
+
+* a **single newline is a space**;
+* a **blank line** — two or more newlines in a row — is a paragraph
+  break, and gets one blank row however many blank lines there were;
+* a line **ending in a hyphen joins** to the word after it, with the
+  hyphen dropped, when there is a letter on each side of it.
+
+It is done in the wrap rather than at ingestion, and that is the
+decision worth writing down. Both page shapes come through the one
+function, so both get it at once. The store keeps what the engine read,
+so a player proof-reading their own transcription still sees the lines
+the engine saw, and a **correction is written against those lines**. And
+the join is a *guess* — `WITH-` at the end of a printed line is a broken
+word, `WELL-` at the end of one is a compound that happened to break
+there, and nothing short of a dictionary separates them — so it is made
+where it can be reconsidered, not baked into a player's file. What the
+letter-on-each-side test does buy is the cases that are not guesses at
+all: a dash standing alone at the end of a line, and the `-` an engine
+reads off a rule or a fold, are left where they are rather than
+swallowing the word after them.
+
+**What the rule costs, said plainly: a list loses its shape.** The
+journal has entries that are genuinely lists, and an item that is one
+printed line is now run into the item before it — there is nothing in
+the bytes that tells such a list from a paragraph an engine broke into
+lines, which is the whole reason a single newline had to become a space.
+Looked at on the game's own screen, with a list of six items: run
+together it reads as prose, and the same list with a **blank line
+between its items** comes up one item to a row, exactly as it was
+written. So the way back is the correction field (§6), and it is a thing
+a person can type.
+
 **What arrives is what the panel can draw** (M5-E4c, #219). The panel maps
 a *byte* to a glyph, out of the program's table of sixty-four; a store is
 UTF-8 and an OCR engine produces plenty of it. A real ingestion of the one
