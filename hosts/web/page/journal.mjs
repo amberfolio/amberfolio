@@ -545,6 +545,17 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
             keep(got.quality);
             read.push(got.text);
           } else {
+            // Samples the module produced, already cropped to the entry.
+            // Single block is exactly true of that, so it is asked for
+            // rather than left to a default that happens to agree (#315).
+            //
+            // It goes through `readWithin` with **no rectangle** rather
+            // than reading `data.text`, for the confidences: there is
+            // nothing to filter here and the words are joined back into
+            // the engine's own lines. The desktop's decoded path made the
+            // same move to `tsv` in the same change, which is what keeps
+            // the two hosts answering one transcription for one page
+            // (`journal_ocr.h`).
             await worker.setParameters({
               tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
             });
