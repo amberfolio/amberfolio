@@ -170,23 +170,8 @@ export function currentScan(module) {
   return { kind: jpeg ? 'jpeg' : 'gray', parts };
 }
 
-/// The words of `data` that fall inside `region`, as lines.
-///
-/// tesseract.js reports a `bbox` per word for the same reason Tesseract's
-/// `tsv` output does, so this is the browser's half of one rule written
-/// once in `journal_ocr.h`: an encoded scan is a whole page, and the
-/// entry is a rectangle of it. A word counts as inside when its centre
-/// is, which is what gives the same answer a crop would have.
-///
-/// **The shape it reads is the pinned version's, measured.** tesseract.js
-/// 6 answers `data.blocks[].paragraphs[].lines[].words[]`, and only when
-/// the recognition asked for `{ blocks: true }`; the flat `data.words`
-/// this used to read was the previous major's and is not there any more.
-/// That is the difference between "0 of 99 entries read" and a journal —
-/// the first real page anybody put through this page found it (#306) —
-/// so `data` without a `blocks` array is refused with a sentence rather
-/// than read as an empty page, and a line is the engine's own grouping
-/// rather than a guess from word identity.
+/// The words of `data` that fall inside `region`, as lines — `readWithin`
+/// without the numbers, for a caller that wants only the text.
 export function wordsWithin(data, region) {
   return readWithin(data, region).text;
 }
@@ -202,11 +187,30 @@ export function wordsWithin(data, region) {
 /// their ingestions would be comparing different things.
 export const DOUBTFUL_CONFIDENCE = 60;
 
-/// The same, with what the engine thought of the words it kept (#315).
+/// The words of `data` that fall inside `region`, as lines, and what the
+/// engine thought of them.
 ///
-/// `region` may be null, which keeps every word — the decoded path, where
-/// the image already is the entry and there is nothing to filter. The
-/// quality is over the words that were **kept**, never over the whole
+/// tesseract.js reports a `bbox` per word for the same reason Tesseract's
+/// `tsv` output does, so this is the browser's half of one rule written
+/// once in `journal_ocr.h`: an encoded scan is a whole page, and the
+/// entry is a rectangle of it. A word counts as inside when its centre
+/// is, which is what gives the same answer a crop would have.
+///
+/// **`region` may be null**, which keeps every word — the decoded path,
+/// where the image already is the entry and there is nothing to filter
+/// (#315).
+///
+/// **The shape it reads is the pinned version's, measured.** tesseract.js
+/// 6 answers `data.blocks[].paragraphs[].lines[].words[]`, and only when
+/// the recognition asked for `{ blocks: true }`; the flat `data.words`
+/// this used to read was the previous major's and is not there any more.
+/// That is the difference between "0 of 99 entries read" and a journal —
+/// the first real page anybody put through this page found it (#306) —
+/// so `data` without a `blocks` array is refused with a sentence rather
+/// than read as an empty page, and a line is the engine's own grouping
+/// rather than a guess from word identity.
+///
+/// **The quality is over the words that were kept**, never over the whole
 /// page: on an encoded scan most of what the engine read is a different
 /// entry, and a confidence averaged over those would be a number about
 /// somebody else's page.
