@@ -664,8 +664,7 @@ constexpr page_shape screen_page{
 
 static_assert(screen_page.columns == 38,
               "the screen's interior is thirty-eight glyphs wide");
-static_assert(screen_page.rows == 20,
-              "and twenty rows of it are the body");
+static_assert(screen_page.rows == 20, "and twenty rows of it are the body");
 
 /// The most rows either shape asks for, which is what one laid-out page
 /// is sized to.
@@ -1292,7 +1291,8 @@ enum class claimable : std::uint8_t {
 };
 
 [[nodiscard]] claimable claimable_of(std::uint16_t key,
-                                     journal_reader_mode mode) noexcept {
+                                     journal_reader_mode mode,
+                                     journal_page_place place) noexcept {
   if (key == key_f1) {
     return claimable::reader;
   }
@@ -1340,6 +1340,21 @@ enum class claimable : std::uint8_t {
       return claimable::digit;
     }
   }
+  if (mode == journal_reader_mode::showing &&
+      place == journal_page_place::screen) {
+    // **A full-screen page swallows everything else**, for the listing's
+    // own reason and not for a new one: the party's own command-bar
+    // routine is live underneath it — that is *why* it is a full screen
+    // (`journal.h`'s `bar_live()`) — so a key this seam left alone would
+    // pick a command, or walk the party, on a screen nobody can see, and
+    // the loop would paint its bar and its status line back over the page
+    // to prove it. That is #230, exactly.
+    //
+    // The panel page makes no such claim and must not: it is opened by a
+    // citation, in the middle of a story event, and the key that turns
+    // the game's own page has to stay the game's.
+    return claimable::swallow;
+  }
   return claimable::none;
 }
 
@@ -1355,6 +1370,7 @@ enum class claimable : std::uint8_t {
 /// the whole keystroke word rather than the character.
 [[nodiscard]] claimable claim_key(cpu::processor& cpu, std::uint16_t ds,
                                   journal_reader_mode mode,
+                                  journal_page_place place,
                                   std::uint16_t& taken) {
   if (cpu.read_byte(ds, data_key_pushback) != 0) {
     return claimable::none;
@@ -1367,7 +1383,7 @@ enum class claimable : std::uint8_t {
     return claimable::none;
   }
   const std::uint16_t key = cpu.read_word(bda::segment, head);
-  const claimable which = claimable_of(key, mode);
+  const claimable which = claimable_of(key, mode, place);
   if (which == claimable::none) {
     return claimable::none;
   }
@@ -1429,9 +1445,22 @@ enum class claimable : std::uint8_t {
   journal_state& state = box.journal();
   const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
   const std::span<const journal_seen_row> rows = state.seen();
-  std::size_t done = state.list_drawn();
+  std::size_t done = state.screen_drawn();
 
   if (done == 0) {
+    // **The box's whole interior, cleared before the frame goes on it.**
+    // This screen is also what a full-screen page of an entry comes back
+    // to (#305), and a page paints twenty rows where the listing paints
+    // ten and carries a title of its own length - so without this the
+    // bottom half of the entry, and the tail of its title, stay under the
+    // log. Clearing and letting the program's own frame drawer put the
+    // border and the title back leaves nothing of what was there, which
+    // is the shape M5-E1e's residue (#298) taught.
+    const std::array<std::uint16_t, 4> clear{
+        list_frame_left, list_frame_top, list_frame_right, list_frame_bottom};
+    if (!ctx.call_program(image, image_clear_region, clear)) {
+      return false;
+    }
     list_line title;
     title.add("ADVENTURER'S JOURNAL");
     std::uint16_t title_segment = 0;
@@ -1481,13 +1510,178 @@ enum class claimable : std::uint8_t {
       break;  // the batch is full; the next arrival carries on from here
     }
   }
-  state.set_list_drawn(done);
+  state.set_screen_drawn(done);
   if (done < shown) {
     return false;
   }
 
   list_line exit = exit_line();
   return draw_line(ctx, image, exit, list_title_colour, list_exit_row,
+                   list_exit_column);
+}
+
+/// A full-screen page's own numbers, beside the listing's.
+///
+/// The colours are the panel page's rather than the listing's, which is
+/// the issue's own rule: the two sizes of one page should look like one
+/// thing, and what changed here is how much room it has.
+constexpr std::uint16_t page_title_colour = colour_title;
+constexpr std::uint16_t page_body_colour = colour_body;
+constexpr std::uint16_t page_footer_colour = colour_footer;
+
+/// Where the body starts: below the row the frame writes its title on,
+/// which is the row the listing starts its own rows at.
+constexpr std::uint16_t page_first_row = list_first_row;
+
+/// How many of its rows one pass paints.
+///
+/// Four rather than the listing's five, and the difference is the budget
+/// rather than a preference: a page's last pass carries the footer as
+/// well, and a title, four rows of thirty-eight characters and a
+/// forty-cell footer is 216 of a batch's 256 bytes where five rows would
+/// have been 255. A bound that is only just met is a bound the next word
+/// added here would break.
+constexpr std::size_t page_rows_per_pass = 4;
+
+/// The title of a page: the section's own caption and its number, this
+/// file's own characters, as the frame drawer takes them.
+[[nodiscard]] list_line page_title(const journal_state& state) {
+  list_line title;
+  title.add(reader_word(state.entry().kind));
+  title.add(" ");
+  title.add(state.entry().number);
+  return title;
+}
+
+/// Where a short line goes to be centred in the box's interior, on a
+/// **character cell**: the grid the program sets all of its own text on.
+[[nodiscard]] std::uint16_t page_centred_column(std::size_t width) {
+  constexpr auto columns = static_cast<std::size_t>(screen_page.columns);
+  const std::size_t take = width < columns ? width : columns;
+  return static_cast<std::uint16_t>(list_frame_left + ((columns - take) / 2U));
+}
+
+/// The bottom row, which says where in the entry this is and which keys
+/// do the next thing.
+///
+/// The panel's own wording, plus the one thing the panel had no room for
+/// and a full screen has to say: **Escape**. The panel is drawn beside
+/// the program's own command bar, so a player looking at it can always
+/// see a way out of the screen; a full-screen page covers that bar, and
+/// on any page but the last the only key the footer named was one that
+/// went further in.
+[[nodiscard]] list_line page_footer(const journal_state& state, unsigned pages,
+                                    bool more) {
+  list_line line;
+  line.add(" ");
+  if (pages > 1) {
+    line.add(state.page() + 1U);
+    line.add("/");
+    line.add(pages);
+    line.add("  ");
+  }
+  line.add(more ? "F1 MORE" : "F1 CLOSES");
+  if (!more && state.truncated()) {
+    // The entry was longer than the buffer that crossed the host boundary
+    // (journal.h), said rather than silently stopped.
+    line.add(" +");
+  }
+  line.add("  ESC CLOSES");
+  line.pad_to(list_row_cells);
+  return line;
+}
+
+/// One pass of a page of an entry, on the whole screen (M5-E4d, #305).
+///
+/// The listing's shape, for the listing's reasons: a batch queues twelve
+/// calls and places 256 bytes (`seam.h`), a page is a frame and twenty
+/// rows, so it is painted over successive arrivals while the program sits
+/// in its own key loop drawing nothing. True when the page is finished.
+///
+/// **The interior is cleared and the frame redrawn on every page**, not
+/// once per open. A page turn puts fewer lines on the screen than the one
+/// before could have, and the box it is drawn in is the same box the
+/// listing uses with a title of a different length - so anything left
+/// standing would be read as part of the next page. Doing it per page
+/// costs one call and needs no state to say what is already there, and
+/// what it buys is that no arrangement of pages can leave a residue.
+[[nodiscard]] bool draw_the_page(machine& box, seam_context& ctx) {
+  journal_state& state = box.journal();
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() / 16U);
+  std::size_t done = state.screen_drawn();
+
+  // What this page holds, worked out on every pass rather than kept: it
+  // is a walk over at most four kilobytes, and it is also the answer F1
+  // needs when it decides whether there is another page or a way out.
+  const bool ready = state.delivery() == journal_delivery::ready;
+  const std::string_view text = state.text();
+  const page_walk walk =
+      ready ? walk_pages(text, state.page(), screen_page) : page_walk{};
+  const page_layout laid =
+      ready ? lay_out(text, walk.start, screen_page) : page_layout{};
+  state.set_page_count(static_cast<std::uint16_t>(walk.count));
+
+  if (done == 0) {
+    const std::array<std::uint16_t, 4> clear{
+        list_frame_left, list_frame_top, list_frame_right, list_frame_bottom};
+    if (!ctx.call_program(image, image_clear_region, clear)) {
+      return false;
+    }
+    list_line title = page_title(state);
+    std::uint16_t title_segment = 0;
+    std::uint16_t title_offset = 0;
+    if (!ctx.place_bytes(title.bytes(), title_segment, title_offset)) {
+      return false;
+    }
+    const std::array<std::uint16_t, 8> frame{
+        list_frame_left,   list_frame_top,   list_frame_right,
+        list_frame_bottom, list_frame_style, page_title_colour,
+        title_segment,     title_offset};
+    if (!ctx.call_program(image, image_draw_frame, frame)) {
+      return false;
+    }
+    if (!ready) {
+      // The host had nothing, so the page says which nothing it was: two
+      // short lines of this file's own words, centred the way the panel
+      // centres them, and the same footer.
+      const refusal what = refusal_for(state.delivery());
+      unsigned nth = 0;
+      for (const std::string_view line : {what.first, what.second}) {
+        list_line said;
+        said.add(line);
+        static_cast<void>(
+            draw_line(ctx, image, said, page_body_colour,
+                      static_cast<std::uint16_t>(page_first_row + 8U + nth),
+                      page_centred_column(line.size())));
+        ++nth;
+      }
+      list_line footer = page_footer(state, 1, false);
+      return draw_line(ctx, image, footer, page_footer_colour, list_exit_row,
+                       list_exit_column);
+    }
+  }
+
+  for (std::size_t drawn = 0; drawn < page_rows_per_pass && done < laid.lines;
+       ++drawn, ++done) {
+    const std::string_view line = laid.line[done];
+    if (line.empty()) {
+      continue;  // a paragraph break, on a row that was cleared
+    }
+    list_line row;
+    row.add(line);
+    if (!draw_line(ctx, image, row, page_body_colour,
+                   static_cast<std::uint16_t>(page_first_row + done),
+                   list_frame_left)) {
+      break;  // the batch is full; the next arrival carries on from here
+    }
+  }
+  state.set_screen_drawn(done);
+  if (done < laid.lines) {
+    return false;
+  }
+
+  list_line footer = page_footer(state, walk.count, laid.more);
+  return draw_line(ctx, image, footer, page_footer_colour, list_exit_row,
                    list_exit_column);
 }
 
@@ -1553,24 +1747,47 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
   }
 }
 
-void close_reader(machine& box, seam_context& ctx, std::uint16_t ds) {
+/// Put the reader away. True when a give-back is on its way through a
+/// batch, which is the caller's cue that nothing else happens this pass.
+[[nodiscard]] bool close_reader(machine& box, seam_context& ctx,
+                                std::uint16_t ds) {
   journal_state& state = box.journal();
   const bool was_up = state.on_screen();
-  // What has to be given back depends on what was taken: the list took the
-  // whole screen and the panel took the roster's cells, and asking the
-  // program to repaint more than was covered is the M5-E2d bug.
-  const bool took_the_screen = state.reader() == journal_reader_mode::listing;
+  const journal_reader_mode mode = state.reader();
+
+  // **A full-screen page opened from the listing goes back to the
+  // listing** (#305), which is what a person paging through several
+  // entries needs and what the panel page never had to decide, because
+  // the listing was already gone from under it. Nothing is given back:
+  // the same screen is still taken, the cursor is where it was, and the
+  // listing's own first pass clears the box before it draws.
+  if (mode == journal_reader_mode::showing && state.page_from_list()) {
+    state.set_reader(journal_reader_mode::listing);
+    state.clear_digits();
+    return false;
+  }
+
+  // What has to be given back depends on what was taken: the listing and
+  // a full-screen page took the whole screen, the panel took the roster's
+  // cells, and asking the program to repaint more than was covered is the
+  // M5-E2d bug.
+  const bool took_the_screen =
+      mode == journal_reader_mode::listing ||
+      (mode == journal_reader_mode::showing &&
+       state.page_place() == journal_page_place::screen);
   state.set_reader(journal_reader_mode::closed);
+  state.set_page_place(journal_page_place::panel);
+  state.set_page_from_list(false);
   state.clear_digits();
   if (!was_up) {
-    return;
+    return false;
   }
   if (took_the_screen) {
-    state.set_list_drawn(0);
     give_the_screen_back(box, ctx);
   } else {
     give_the_roster_back(box, ctx, ds);
   }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1692,7 +1909,7 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
       // ninety-odd entries nothing has cited yet without leaving the
       // journal to do it.
       give_the_screen_back(box, ctx);
-      state.set_list_drawn(0);
+      state.set_screen_drawn(0);
       state.clear_digits();
       state.set_reader(journal_reader_mode::asking);
       return;
@@ -1712,7 +1929,7 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
     state.set_page(static_cast<std::uint16_t>(state.page() + 1U));
     return;
   }
-  close_reader(box, ctx, ds);
+  static_cast<void>(close_reader(box, ctx, ds));
 }
 
 /// Everything one arrival does with the keyboard. True when the roster is
@@ -1726,17 +1943,20 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
                                std::uint16_t ds, bool& claimed) {
   journal_state& state = box.journal();
   std::uint16_t key = 0;
-  const claimable which = claim_key(box.processor(), ds, state.reader(), key);
+  const claimable which =
+      claim_key(box.processor(), ds, state.reader(), state.page_place(), key);
   claimed = which != claimable::none;
   switch (which) {
     case claimable::none:
       return false;
     case claimable::reader:
       press_reader_key(box, ctx, ds);
+      // Closed means a give-back went out through a batch; a page that
+      // went back to the listing (#305) did not, and its screen is drawn
+      // on this pass.
       return state.reader() == journal_reader_mode::closed;
     case claimable::close:
-      close_reader(box, ctx, ds);
-      return true;
+      return close_reader(box, ctx, ds);
     case claimable::back:
       if (state.reader() == journal_reader_mode::asking) {
         state.pop_digit();
@@ -1765,23 +1985,36 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
           return false;
         }
         const journal_citation wanted = rows[state.list_cursor()].what;
-        give_the_screen_back(box, ctx);
-        state.set_list_drawn(0);
+        // **The screen is not given back** (#305). The page is drawn in
+        // the box the listing is drawn in, out of the same two routines,
+        // so it takes that screen over rather than handing it back and
+        // taking it again — and nothing is batched here, so the page is
+        // painted on this same pass.
+        //
+        // What the old shape did is worth keeping in view, because it is
+        // what this replaces: it composed the adventuring screen back and
+        // then opened the entry in the roster panel, which meant the
+        // page had to wait for the composer's batch to finish or be
+        // painted over by it (#233).
         request(box, ctx, wanted);
+        state.set_page_place(journal_page_place::screen);
+        state.set_page_from_list(true);
         state.set_reader(journal_reader_mode::showing);
         state.set_page(0);
-        // **Batched, so nothing is drawn this pass.** The give-back is a
-        // call into the program, and the program's own screen composer
-        // has not run yet. A panel drawn now is a panel the composer
-        // paints over a moment later, which leaves the reader saying it
-        // is showing an entry while the glass shows the roster — and no
-        // test of this seam's *state* can see the difference. #233's
-        // contact sheet is what saw it: the log's Return called the host
-        // and gave the screen back, and the entry never appeared.
-        return true;
+        return false;
       }
       if (const journal_citation wanted = state.asked(); wanted) {
         request(box, ctx, wanted);
+        // **The prompt is in the panel wherever it is opened, and the
+        // page it opens is a full screen only where one can be put
+        // back** (#305): while the party's own command-bar routine is the
+        // live one. F1 is claimed on every screen that has a roster, and
+        // two of those are not that routine — the camp screen, whose menu
+        // is a different call site, and an adventuring screen with a
+        // vendor's bar up. A full screen on either is M5-E2d again.
+        state.set_page_place(state.bar_live() ? journal_page_place::screen
+                                              : journal_page_place::panel);
+        state.set_page_from_list(false);
         state.set_reader(journal_reader_mode::showing);
         state.set_page(0);
       }
@@ -1812,6 +2045,9 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
     drawn ^= drawn >> 13U;
   };
   mix(static_cast<std::uint32_t>(state.reader()));
+  // And which size a page is being drawn at (#305): the same entry on the
+  // same page is a different screen in the panel and on the whole of it.
+  mix(static_cast<std::uint32_t>(state.page_place()));
   // The list is drawn from the log and the cursor, so both are in the
   // signature: a line arriving at the top while the screen is up is a
   // screen that has to be drawn again.
@@ -1835,14 +2071,22 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
     return;
   }
 
-  // The list is not this seam's pixels at all: the program draws it, out
-  // of the same two routines every Gold Box screen is made of, so there
-  // is no buffer to rasterize and no font to read (#222).
-  if (state.reader() == journal_reader_mode::listing) {
+  // The listing and a full-screen page are not this seam's pixels at
+  // all: the program draws both, out of the same two routines every Gold
+  // Box screen is made of, so there is no buffer to rasterize and no font
+  // to read (#222, #305).
+  const bool by_the_program =
+      state.reader() == journal_reader_mode::listing ||
+      (state.reader() == journal_reader_mode::showing &&
+       state.page_place() == journal_page_place::screen);
+  if (by_the_program) {
     // A pass at a time. Until the last one the signature is left alone, so
     // the next arrival comes back here and carries on rather than deciding
     // the screen is already right.
-    if (draw_the_list(box, ctx)) {
+    const bool finished = state.reader() == journal_reader_mode::listing
+                              ? draw_the_list(box, ctx)
+                              : draw_the_page(box, ctx);
+    if (finished) {
       state.set_on_screen(true);
       state.set_drawn_signature(drawn);
     }
@@ -2016,6 +2260,17 @@ void at_message_box(machine& box, seam_context& ctx) {
     return;
   }
   request(box, ctx, cited);
+  if (state.reader() != journal_reader_mode::showing) {
+    // **A citation's page is in the panel, always** (#305). The watch
+    // fires inside a script's own narration, where a vendor or an event's
+    // NPC can be in the viewport, and the program's screen composer is
+    // not a give-back that may be used there — that is M5-E2d exactly.
+    // A page already up keeps the size it was opened at, because the game
+    // citing something else is not a reason to move the screen under a
+    // player's eyes.
+    state.set_page_place(journal_page_place::panel);
+    state.set_page_from_list(false);
+  }
   if (state.delivery() == journal_delivery::ready || was_open) {
     state.set_reader(journal_reader_mode::showing);
     state.set_page(0);
@@ -2076,6 +2331,13 @@ void at_roster_drawn(machine& box, seam_context& ctx) {
 /// say - and the player sees the game's own bar, which is the failure
 /// this mechanism is supposed to have (`docs/seams.md` §2).
 void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
+  // **The party's own bar routine is live from here**, which is what
+  // says a seam may take the whole screen and give it back (#305,
+  // `journal.h`'s `bar_live()`). Recorded before anything is checked,
+  // because it is a fact about where the machine is rather than about
+  // whether the splice worked - and cleared at the return below, which
+  // the routine always comes back through.
+  box.journal().set_bar_live(true);
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
   if (ds == 0) {
@@ -2098,6 +2360,7 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
 /// back against its own commands, matches none of them, and goes round
 /// the loop again, which is what makes adding a letter safe at all.
 void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
+  box.journal().set_bar_live(false);
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
   if (ds == 0) {
