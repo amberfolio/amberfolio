@@ -119,6 +119,12 @@ constexpr std::uint16_t image_draw_string = 0x76B6;
 constexpr std::uint16_t draw_frame_cleans = 0x10;
 constexpr std::uint16_t draw_string_cleans = 0x0A;
 
+/// And the border drawer, which the report calls once more after the
+/// frame to put the viewport box back over the frame's top edge (M5-E1f,
+/// #303): five words, and it cleans them.
+constexpr std::uint16_t image_frame_border = 0x3F10;
+constexpr std::uint16_t frame_border_cleans = 0x0A;
+
 /// And the message delay, which is how the program holds a line on the
 /// screen long enough to read (M5-E1c, #194). No arguments, and it cleans
 /// none.
@@ -174,6 +180,26 @@ constexpr std::uint16_t title_row_seen = 0x7014;
 constexpr std::uint16_t lowest_row_seen = 0x7016;
 constexpr std::uint16_t camp_teardown_top = 0x12;
 constexpr std::uint16_t camp_teardown_bottom = 0x16;
+
+/// And what the border stand-in keeps (M5-E1f, #303): how many times it
+/// was entered, the box it was handed, and how many frames had been
+/// drawn when it was — which is what makes "after the frame's top edge"
+/// a thing the machine says rather than the handler. The frame's top
+/// edge goes on the panel's own border row, `0x10`, and at column `0x10`
+/// that row carries the corner knot of the viewport box; the program's
+/// own scaffold puts the knot there by bordering the viewport box
+/// *after* the panel, and the report does the same.
+constexpr std::uint16_t border_calls = 0x7018;
+constexpr std::uint16_t border_left_seen = 0x701A;
+constexpr std::uint16_t border_top_seen = 0x701C;
+constexpr std::uint16_t border_right_seen = 0x701E;
+constexpr std::uint16_t border_bottom_seen = 0x7020;
+constexpr std::uint16_t border_style_seen = 0x7022;
+constexpr std::uint16_t frames_before_border_seen = 0x7024;
+/// Where the knot is: the panel frame's top edge row, one above the
+/// panel's first row, and the column the viewport box's right edge is on.
+constexpr std::uint16_t knot_row = 0x10;
+constexpr std::uint16_t knot_column = 0x10;
 
 /// And the byte the camp loop's out-parameter points at, somewhere the
 /// seam's facts do not name — what the *program* is holding there is the
@@ -448,6 +474,7 @@ struct rig {
   void drawing_routines() const {
     frame_routine();
     string_routine();
+    border_routine();
     for (const auto& [at, cleans, counter] :
          {std::tuple{image_message_delay, message_delay_cleans, delay_calls}}) {
       std::uint16_t put = at;
@@ -475,6 +502,55 @@ struct rig {
     put_word(data_segment, summary_segment_seen, 0);
     // Above every row there is, so the first line drawn sets it.
     put_word(data_segment, lowest_row_seen, 0xFFFF);
+    for (const std::uint16_t at :
+         {border_calls, border_left_seen, border_top_seen, border_right_seen,
+          border_bottom_seen, border_style_seen, frames_before_border_seen}) {
+      put_word(data_segment, at, 0);
+    }
+  }
+
+  /// The border drawer's stand-in (M5-E1f, #303): it keeps the box it was
+  /// handed and how many frames had been drawn when it was called, so the
+  /// order of the batch is the machine's to say.
+  ///
+  ///     push bp / mov bp, sp
+  ///     mov ax, [bp+6]   -> border_style_seen    ; the last word queued
+  ///     mov ax, [bp+8]   -> border_bottom_seen   ; is the lowest on the
+  ///     mov ax, [bp+0Ah] -> border_right_seen    ; stack, as the routine's
+  ///     mov ax, [bp+0Ch] -> border_top_seen      ; own callers leave it
+  ///     mov ax, [bp+0Eh] -> border_left_seen
+  ///     mov ax, [frame_calls] -> frames_before_border_seen
+  ///     inc word [border_calls]
+  ///     pop bp / retf 0Ah
+  void border_routine() const {
+    std::uint16_t put = image_frame_border;
+    const auto emit = [&](std::initializer_list<std::uint8_t> bytes) {
+      for (const std::uint8_t byte : bytes) {
+        put_byte(image_load_segment, put++, byte);
+      }
+    };
+    const auto emit_word = [&](std::uint16_t value) {
+      emit({static_cast<std::uint8_t>(value & 0xFFU),
+            static_cast<std::uint8_t>(value >> 8U)});
+    };
+    emit({0x55, 0x89, 0xE5});
+    for (const auto& [from, to] :
+         {std::pair{std::uint8_t{0x06}, border_style_seen},
+          std::pair{std::uint8_t{0x08}, border_bottom_seen},
+          std::pair{std::uint8_t{0x0A}, border_right_seen},
+          std::pair{std::uint8_t{0x0C}, border_top_seen},
+          std::pair{std::uint8_t{0x0E}, border_left_seen}}) {
+      emit({0x8B, 0x46, from, 0xA3});  // mov ax, [bp+from] / mov [to], ax
+      emit_word(to);
+    }
+    emit({0xA1});  // mov ax, [frame_calls]
+    emit_word(frame_calls);
+    emit({0xA3});  // mov [frames_before_border_seen], ax
+    emit_word(frames_before_border_seen);
+    emit({0xFF, 0x06});
+    emit_word(border_calls);
+    emit({0x5D, 0xCA});
+    emit_word(frame_border_cleans);
   }
 
   /// The string drawer's stand-in, which keeps the **first** line of the
@@ -651,6 +727,29 @@ struct rig {
   /// The lowest row any line of the box was drawn on.
   [[nodiscard]] unsigned lowest_row() const {
     return word_at(data_segment, lowest_row_seen);
+  }
+
+  /// The border calls, and what the one that puts the knot back was
+  /// handed (M5-E1f, #303): the box, its style, and how many frames had
+  /// been drawn before it.
+  [[nodiscard]] unsigned borders_drawn() const {
+    return word_at(data_segment, border_calls);
+  }
+  struct border_seen {
+    unsigned left;
+    unsigned top;
+    unsigned right;
+    unsigned bottom;
+    unsigned style;
+    unsigned frames_before;
+  };
+  [[nodiscard]] border_seen border() const {
+    return {.left = word_at(data_segment, border_left_seen),
+            .top = word_at(data_segment, border_top_seen),
+            .right = word_at(data_segment, border_right_seen),
+            .bottom = word_at(data_segment, border_bottom_seen),
+            .style = word_at(data_segment, border_style_seen),
+            .frames_before = word_at(data_segment, frames_before_border_seen)};
   }
 
   /// And its summary, the same way.
@@ -1392,6 +1491,44 @@ TEST(SeamEncampFix, ReportsOnTheMenuPassAfterTheRest) {
       << "the party came out of the rest still short";
   EXPECT_EQ(r.lines_drawn(), 3u)
       << "the title, the summary, and the one member still short";
+  EXPECT_EQ(r.borders_drawn(), 1u)
+      << "and the viewport box's border once more, over the frame (#303)";
+}
+
+// **The knot goes back** (M5-E1f, #303). The frame's top edge goes on the
+// panel's own border row, `0x10`, and at column `0x10` that row carries
+// the corner knot of the viewport box — the tile where the viewport's
+// border meets the panel's — which the frame's plain edge tile paints
+// over, and the camp menu's EXIT path repaints nothing above the panel.
+// The program's own scaffold puts the knot there by bordering the
+// viewport box *after* the panel, so the report borders it again after
+// the frame, with the program's own border routine and the scaffold's
+// own box, in the same batch: nothing is owed at exit.
+
+TEST(SeamEncampFix, PutsTheViewportsCornerKnotBackAfterTheFrame) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  ASSERT_EQ(r.borders_drawn(), 1u) << "the viewport box's border, once";
+  const auto seen = r.border();
+  EXPECT_EQ(seen.frames_before, 1u)
+      << "after the frame, whose top edge is what paints the knot over";
+  EXPECT_EQ(seen.bottom + 1, knot_row)
+      << "a border goes one cell outside its box, so the box's bottom edge "
+         "is the panel frame's top edge row";
+  EXPECT_EQ(seen.right + 1, knot_column)
+      << "and its bottom-right corner tile is the junction's cell";
+  EXPECT_EQ(seen.left, 1u);
+  EXPECT_EQ(seen.top, 1u);
+  EXPECT_EQ(seen.style, 0u) << "the scaffold's own style, which is the frame's";
 }
 
 // **How long it took** (#269). The summary is the one line in the box
@@ -1672,6 +1809,14 @@ TEST(SeamEncampFix, SaysSoOnTheWayOutOfACampTheGameInterrupted) {
   EXPECT_EQ(r.title_row(), camp_teardown_top)
       << "the same drawer as the report on the next pass, so the same row "
          "(#298)";
+  EXPECT_EQ(r.borders_drawn(), 1u)
+      << "and the same knot put back after the frame (#303): the caller "
+         "repaints the whole scaffold after an interruption, so nothing "
+         "here is owed, but it is the same drawer and gets the same "
+         "treatment";
+  EXPECT_EQ(r.border().frames_before, 1u);
+  EXPECT_EQ(r.border().bottom + 1, knot_row);
+  EXPECT_EQ(r.border().right + 1, knot_column);
   EXPECT_EQ(r.delays_asked_for(), 1u)
       << "held by the program's own message delay: there is no command bar "
          "under this box to be the way out of it";
@@ -1695,6 +1840,7 @@ TEST(SeamEncampFix, DropsAReportRatherThanKeepItForALaterCamp) {
   EXPECT_EQ(r.frames_drawn(), 0u)
       << "an exit is not an interruption, and saying `Interrupted!` because "
          "the party happened to be leaving would report the wrong thing";
+  EXPECT_EQ(r.borders_drawn(), 0u);
   EXPECT_EQ(r.delays_asked_for(), 0u);
 
   // And it is *dropped*, not deferred: the next camp is a fresh one.

@@ -126,7 +126,11 @@ that one, so `FIX: PARTY HEALED` was still on the adventuring screen
 after EXIT — a player found it there. The title is one row lower now, on
 the first row the game clears, and the box gave up a row of its
 exception list to make room; the list already said `...and N more.` when
-it ran out, so it says it one member sooner.
+it ran out, so it says it one member sooner. And the box's top edge used
+to paint over the little corner knot where the 3D view's border meets
+the panel's, and leave it painted over after EXIT (#303); the report
+now draws the view's border again over its own frame, the way the game's
+own screen composer does, so nothing of the box is left behind at all.
 
 **And the bar you come back to is the bar you would have come back to**
 (#304). The game keeps one highlight for every command bar and numbers
