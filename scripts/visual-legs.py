@@ -232,8 +232,29 @@ def run_side(host: Path, disk: Path, leg: Leg, into: Path,
     copy = into / "disk"
     shutil.copytree(disk, copy)
     (into / "stills").mkdir(parents=True, exist_ok=True)
+    # `--wall none` on both sides, and it is load-bearing rather than
+    # tidy (#320).  Since that issue the host seeds the machine's wall
+    # clock from its own, and the program *reads* the date: two boots a
+    # minute apart differ in 73 pixels at the same step and the same tick
+    # (`docs/replay.md` §6 has that measurement).  A leg is a pixel
+    # comparison of two runs started seconds apart, so a leg whose sides
+    # each read the clock is diffing the clock as well as the seam.
+    #
+    # Not a prediction — driven, on the real disk, the day the seed
+    # landed.  `not-bars` with this line **passes**: 500 frames, nothing
+    # outside the rects it names.  The same leg with this one line taken
+    # out **fails**, and fails in the shape that costs a day: 178 pixels
+    # "differ outside nothing" in a box the seam does not own, at eight
+    # frames running, which reads exactly like a seam painting where it
+    # must not.
+    #
+    # `none` and not a stated date, because it is the machine every leg
+    # in this directory was written against: unseeded, counting from the
+    # DOS epoch.  A stated date would be a different machine, and a leg
+    # is a claim about *this* one.
     command = [str(host), str(copy), leg.program,
                "--fast", "max", "--until", str(leg.until),
+               "--wall", "none",
                "--dump", str(into / "stills" / "f"),
                "--dump-every", str(leg.every)]
     for seam in seams:

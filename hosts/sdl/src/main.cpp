@@ -482,7 +482,9 @@
 //     reason: a generator seeded off the clock). So **two runs compared
 //     with each other, by hash or by pixel — a seam on against the same
 //     script with it off — have to be told the same instant**, and this
-//     is how they are told. Recorded either way, as a `wall` line at the
+//     is how they are told. `scripts/visual-legs.py` passes `--wall
+//     none` on both of its sides for that reason, and the same leg
+//     without it fails on 178 pixels the seam does not own. Recorded either way, as a `wall` line at the
 //     tick it was seeded at, so a recording replays as the run it was;
 //     refused alongside `--replay`, which takes its date from the
 //     recording like everything else.

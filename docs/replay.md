@@ -384,13 +384,23 @@ its own generator from it is the era's usual reason — and a run's
 pictures are a function of the date it was told.
 
 So the rule is wider than the recordings: **any two runs compared with
-each other, by hash or by pixel, have to be told the same date.** That
-includes `scripts/visual-legs.py`, whose whole method is a seam-on run
-against a seam-off run of the same script, dumped and diffed — it passes
-no `--wall` today, so both of its sides now read this host's clock
-seconds apart, and what the diff would be measuring is partly the clock.
-Until it states one, drive its legs by hand with `--wall none` on both
-sides.
+each other, by hash or by pixel, have to be told the same date.**
+
+`scripts/visual-legs.py` is the tool that does the second of those — a
+seam-on run against a seam-off run of the same script, dumped and
+diffed — and it **states `--wall none` on both sides** as of #320, which
+is the machine every leg in that directory was written against. Driven on
+a real disk the day the seed landed: `not-bars` with that line passes
+over 500 frames with nothing outside the rects it names, and the same leg
+with the line taken out fails — 178 pixels "differ outside nothing", at
+eight frames running, in the shape of a seam painting where it must not.
+That is the whole argument for why a comparison harness states a date
+rather than inheriting one.
+
+Still owed: the session library's own pairs. Every `contrast` and
+`identical` pair must be re-recorded with **one stated `--wall` between
+its two halves** (#293), and until it is re-recorded the library is what
+it always was — unseeded, and verifying.
 
 ---
 
