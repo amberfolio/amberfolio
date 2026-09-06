@@ -329,9 +329,16 @@ static_assert(reader_footer_y + glyph_rows == panel_height,
               "the reader's rows have to fill the panel exactly");
 static_assert(reader_columns == 22, "the panel is twenty-two glyphs wide");
 
-/// How many pages of one entry the reader will count to. Four kilobytes
-/// of text at 264 characters a page is sixteen; this is past any entry and
-/// bounds the walk that counts them.
+/// How many pages of one entry the reader will count to.
+///
+/// **Not derived from a full page**, which is why it did not move when a
+/// page grew from 264 characters to 760 (#305). What it bounds is the
+/// *walk* over a four-kilobyte buffer, and the fewest characters a page
+/// can hold under either shape is one to a line — 12 in the panel and 20
+/// on the screen — so the walk's real worst case is 341 pages and 205,
+/// and neither is a number a reader would ever count to. Sixty-four is
+/// past any entry a printed journal holds, in either size, and stops a
+/// pathological buffer from being walked for ever.
 constexpr unsigned reader_max_pages = 64;
 
 /// The colours, which are the program's own: the title in the yellow it
@@ -630,10 +637,46 @@ using font_table = std::array<std::uint8_t, font_bytes>;
 // Laying a page out
 // ---------------------------------------------------------------------------
 
-/// One page of wrapped text: up to `reader_body_rows` lines, where the
+/// How wide a page is, and how many lines of it there are.
+///
+/// **There are two shapes** (M5-E4d, #305), and everything below takes
+/// one rather than reading a constant: the roster-sized panel the page
+/// has always had, and the full screen the `Notes` listing takes. The
+/// wrap does not change — it only gets wider.
+struct page_shape {
+  int columns;
+  int rows;
+};
+
+/// The panel's, which is the geometry at the top of this file.
+constexpr page_shape panel_page{.columns = reader_columns,
+                                .rows = reader_body_rows};
+
+/// The full screen's, **derived from the listing's frame rather than
+/// restated**: the interior is what the frame drawer leaves, and the body
+/// begins below the row the frame writes its title on. A page and the
+/// listing are the same box with different things in it, so a number that
+/// moved for one and not the other would be a defect nobody would see
+/// until a person looked at the screen.
+constexpr page_shape screen_page{
+    .columns = list_frame_right - list_frame_left + 1,
+    .rows = list_frame_bottom - list_first_row + 1};
+
+static_assert(screen_page.columns == 38,
+              "the screen's interior is thirty-eight glyphs wide");
+static_assert(screen_page.rows == 20,
+              "and twenty rows of it are the body");
+
+/// The most rows either shape asks for, which is what one laid-out page
+/// is sized to.
+constexpr int reader_max_body_rows = screen_page.rows;
+static_assert(reader_max_body_rows >= panel_page.rows,
+              "a laid-out page has to hold the taller of the two shapes");
+
+/// One page of wrapped text: up to the shape's rows of lines, where the
 /// text after them begins, and whether there is any.
 struct page_layout {
-  std::array<std::string_view, reader_body_rows> line{};
+  std::array<std::string_view, reader_max_body_rows> line{};
   unsigned lines{};
   std::size_t next{};
   bool more{false};
@@ -650,10 +693,11 @@ struct page_layout {
 /// somewhere and dropping it would be losing the player's own text. A
 /// newline ends a line, and a second one in a row leaves a blank — which
 /// is what a paragraph break in an OCR engine's output looks like.
-[[nodiscard]] page_layout lay_out(std::string_view text, std::size_t start) {
+[[nodiscard]] page_layout lay_out(std::string_view text, std::size_t start,
+                                  page_shape shape) {
   page_layout page;
   std::size_t p = std::min(start, text.size());
-  while (page.lines < reader_body_rows && p < text.size()) {
+  while (static_cast<int>(page.lines) < shape.rows && p < text.size()) {
     while (p < text.size() && is_space(text[p])) {
       ++p;
     }
@@ -669,7 +713,7 @@ struct page_layout {
     std::size_t q = p;
     std::size_t last_space = text.size();
     int taken = 0;
-    while (q < text.size() && text[q] != '\n' && taken < reader_columns) {
+    while (q < text.size() && text[q] != '\n' && taken < shape.columns) {
       if (is_space(text[q])) {
         last_space = q;
       }
@@ -679,7 +723,7 @@ struct page_layout {
 
     std::size_t end = q;
     std::size_t next = q;
-    if (q < text.size() && text[q] != '\n' && taken == reader_columns &&
+    if (q < text.size() && text[q] != '\n' && taken == shape.columns &&
         !is_space(text[q])) {
       // Mid-word at the right-hand edge: back up to the last space if the
       // line has one, and break the word where it stands if it has not.
@@ -711,7 +755,8 @@ struct page_walk {
   unsigned count{1};
 };
 
-[[nodiscard]] page_walk walk_pages(std::string_view text, unsigned wanted) {
+[[nodiscard]] page_walk walk_pages(std::string_view text, unsigned wanted,
+                                   page_shape shape) {
   page_walk walk;
   std::size_t at_byte = 0;
   std::size_t last_start = 0;
@@ -723,7 +768,7 @@ struct page_walk {
       found = true;
     }
     last_start = at_byte;
-    const page_layout laid = lay_out(text, at_byte);
+    const page_layout laid = lay_out(text, at_byte, shape);
     if (!laid.more || page + 1 >= reader_max_pages) {
       walk.count = page + 1;
       break;
@@ -1027,8 +1072,8 @@ struct refusal {
   }
 
   const std::string_view text = state.text();
-  const page_walk walk = walk_pages(text, state.page());
-  const page_layout laid = lay_out(text, walk.start);
+  const page_walk walk = walk_pages(text, state.page(), panel_page);
+  const page_layout laid = lay_out(text, walk.start, panel_page);
   for (unsigned row = 0; row < laid.lines; ++row) {
     draw_text(panel, 0, reader_body_y + (static_cast<int>(row) * glyph_rows),
               laid.line[row], colour_body, font);
