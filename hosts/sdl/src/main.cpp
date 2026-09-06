@@ -459,6 +459,36 @@
 //     against a recording is answering that question and not the
 //     program's. Reaching the recording's `end` is part of passing.
 //
+//   --wall now|none|YYYY-MM-DD[THH:MM[:SS[.CC]]]
+//                    what date to tell the machine it is
+//
+//     The host's own clock unless you say otherwise, which is what a
+//     player wants and what nothing here did until #320: the machine's
+//     date is a seed plus virtual time (`machine/platform.h`), no host
+//     ever seeded it, and so the game — and every stamp in the journal's
+//     listing — read 1 January 1980 plus the run's own uptime.
+//
+//     `none` is the machine that was: unseeded, counting from the DOS
+//     epoch, which is what a PC with no clock card gave you and what
+//     every recording in `tests/sessions/` was made on.
+//
+//     A stated date is for a run that has to be **reproducible**, and
+//     that is more than a hash. The seed is machine state, so seeding
+//     from the clock puts the moment the run started into every
+//     checkpoint — and the program *reads* the date: 400 million steps
+//     of a real boot, dumped at two instants a minute apart, differ in
+//     73 pixels at the same step, the same tick and the same frame count
+//     (`docs/replay.md` §6 has the measurement, and the era's usual
+//     reason: a generator seeded off the clock). So **two runs compared
+//     with each other, by hash or by pixel — a seam on against the same
+//     script with it off — have to be told the same instant**, and this
+//     is how they are told. `scripts/visual-legs.py` passes `--wall
+//     none` on both of its sides for that reason, and the same leg
+//     without it fails on 178 pixels the seam does not own. Recorded either way, as a `wall` line at the
+//     tick it was seeded at, so a recording replays as the run it was;
+//     refused alongside `--replay`, which takes its date from the
+//     recording like everything else.
+//
 //   -- ARGUMENTS     everything after `--` becomes the command tail
 //
 //     Passed to the loader verbatim, with the single leading space DOS's
@@ -605,6 +635,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -1038,6 +1069,30 @@ struct scripted_pull {
   bool done{false};
 };
 
+/// Where the date this machine believes it is comes from (`--wall`,
+/// #320).
+///
+/// Three answers and not two, because the third is a real one. The clock
+/// inside is a **seed** — "at this tick the wall read this" — plus
+/// virtual time (`machine/platform.h`), so a machine no host ever seeds
+/// is not a machine with a wrong date: it is a PC with no clock card,
+/// counting from 1 January 1980, which is exactly what an XT without one
+/// gave you and exactly what every run of this host gave until #320.
+/// `none` keeps that machine available, because it is the machine every
+/// recording in `tests/sessions/` was made on.
+enum class wall_source : std::uint8_t {
+  /// This host asks the operating system, once, before the first
+  /// instruction. The default, and the only one a player will ever want.
+  host_clock,
+  /// A date somebody stated. What a run that has to be *reproducible*
+  /// wants: seeding from the clock puts the moment the run started into
+  /// every state hash it produces, so two runs meant to be compared hash
+  /// for hash have to be told the same instant.
+  stated,
+  /// Nobody seeds it. The machine this host has always been.
+  unseeded,
+};
+
 /// One `--watch` subject: an offset in the program's data segment, and
 /// how wide the value there is.
 struct watch_point {
@@ -1433,6 +1488,16 @@ struct options {
   /// for rather than assumed.
   bool automap_store{false};
 
+  /// `--wall`: where the date this machine is told it is comes from
+  /// (#320). The host's own clock unless somebody says otherwise, which
+  /// is the answer a player wants and the one nobody was giving.
+  wall_source wall{wall_source::host_clock};
+
+  /// The instant `--wall YYYY-MM-DD[THH:MM[:SS[.CC]]]` named, already
+  /// checked against `wall_clock`'s own rules at parse time. Meaningless
+  /// unless `wall` is `stated`.
+  machine::wall_time wall_stated{};
+
   /// Everything after `--`, joined with single spaces and with the one
   /// leading space DOS leaves in front of a command tail. Empty when
   /// there was no `--`, which is a program invoked with no arguments
@@ -1547,6 +1612,149 @@ struct options {
   out.offset = offset;
   out.width = width;
   return true;
+}
+
+/// `YYYY-MM-DD`, and optionally `THH:MM`, `:SS` and `.CC` after it, into
+/// an instant (`--wall`, #320). False for anything that is not that.
+///
+/// One `T` and no space, because a date and a time with a space between
+/// them is two command-line arguments on most shells and one on a shell
+/// somebody remembered to quote it for. The separator DOS itself never
+/// had is ISO 8601's, which is the one everybody already types.
+///
+/// The last word on whether the date is *real* is `wall_clock::set()`
+/// itself, called here on a throwaway clock: 31 April and 29 February
+/// 2100 are refused by the machine's own rule rather than by a second
+/// copy of it living in this parser, which could only ever come to a
+/// different conclusion than the machine does.
+[[nodiscard]] bool parse_wall(std::string_view spec, machine::wall_time& out) {
+  const auto number = [spec](std::size_t at, std::size_t width,
+                             unsigned& value) -> bool {
+    if (at + width > spec.size()) {
+      return false;
+    }
+    value = 0;
+    for (std::size_t i = at; i < at + width; ++i) {
+      if (spec[i] < '0' || spec[i] > '9') {
+        return false;
+      }
+      value = (value * 10) + static_cast<unsigned>(spec[i] - '0');
+    }
+    return true;
+  };
+
+  unsigned year = 0;
+  unsigned month = 0;
+  unsigned day = 0;
+  unsigned hour = 0;
+  unsigned minute = 0;
+  unsigned second = 0;
+  unsigned centisecond = 0;
+
+  if (spec.size() < 10 || !number(0, 4, year) || spec[4] != '-' ||
+      !number(5, 2, month) || spec[7] != '-' || !number(8, 2, day)) {
+    return false;
+  }
+  std::size_t at = 10;
+  if (at != spec.size()) {
+    // A time, which is `THH:MM` at the least. Midnight is what a bare
+    // date means, and that is a real answer rather than a rounding: a
+    // person naming a day for a reproducible run is naming its start.
+    if (spec[at] != 'T' || !number(at + 1, 2, hour) || at + 3 >= spec.size() ||
+        spec[at + 3] != ':' || !number(at + 4, 2, minute)) {
+      return false;
+    }
+    at += 6;
+    if (at != spec.size() && spec[at] == ':') {
+      if (!number(at + 1, 2, second)) {
+        return false;
+      }
+      at += 3;
+      if (at != spec.size() && spec[at] == '.') {
+        if (!number(at + 1, 2, centisecond)) {
+          return false;
+        }
+        at += 3;
+      }
+    }
+    if (at != spec.size()) {
+      return false;
+    }
+  }
+
+  out = machine::wall_time{
+      .year = static_cast<std::uint16_t>(year),
+      .month = static_cast<std::uint8_t>(month),
+      .day = static_cast<std::uint8_t>(day),
+      .hour = static_cast<std::uint8_t>(hour),
+      .minute = static_cast<std::uint8_t>(minute),
+      .second = static_cast<std::uint8_t>(second),
+      .centisecond = static_cast<std::uint8_t>(centisecond),
+  };
+  machine::wall_clock probe;
+  return probe.set(out, 0);
+}
+
+/// What the operating system says the date and the time are, in the local
+/// calendar the person in front of this host keeps (#320).
+///
+/// This is a host reading the host's clock, which is the one place it is
+/// allowed: `scripts/check-host-time.sh` refuses these calls under
+/// `core/` and leaves the hosts — which are supposed to know what time it
+/// is — alone. What crosses into the machine is one instant at one tick
+/// and never a callout, so nothing downstream of it can observe *when*
+/// this was called (`machine/platform.h`).
+///
+/// Local and not UTC, for the same reason the browser reads local fields:
+/// the date a journal row is stamped with is the player's own, and a
+/// machine that told somebody in Auckland it was yesterday would be
+/// answering a question nobody asked.
+///
+/// False if the clock cannot be broken down at all, or reads a year
+/// outside DOS's own 1980-2099 — the caller says so and leaves the
+/// machine unseeded rather than inventing a date that fits.
+[[nodiscard]] bool host_wall_time(machine::wall_time& out) {
+  // Milliseconds since the Unix epoch, which C++20 pins `system_clock`
+  // to, and then floor division — rather than `to_time_t`, whose
+  // rounding is the implementation's business and can hand back the
+  // second *after* the one the sub-second remainder belongs to.
+  const auto since_epoch =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+  if (since_epoch.count() < 0) {
+    return false;
+  }
+  const auto seconds = static_cast<std::time_t>(since_epoch.count() / 1000);
+  const auto centisecond =
+      static_cast<std::uint8_t>((since_epoch.count() % 1000) / 10);
+
+  std::tm local{};
+#ifdef _WIN32
+  if (localtime_s(&local, &seconds) != 0) {
+    return false;
+  }
+#else
+  if (localtime_r(&seconds, &local) == nullptr) {
+    return false;
+  }
+#endif
+
+  out = machine::wall_time{
+      .year = static_cast<std::uint16_t>(local.tm_year + 1900),
+      .month = static_cast<std::uint8_t>(local.tm_mon + 1),
+      .day = static_cast<std::uint8_t>(local.tm_mday),
+      .hour = static_cast<std::uint8_t>(local.tm_hour),
+      .minute = static_cast<std::uint8_t>(local.tm_min),
+      // A leap second reads 60 here and there is no such second in DOS,
+      // which counts hundredths off a day of exactly 8,640,000 of them.
+      // Clamped rather than refused: one second a decade is not a reason
+      // to hand a player a machine with no date.
+      .second =
+          static_cast<std::uint8_t>(local.tm_sec > 59 ? 59 : local.tm_sec),
+      .centisecond = centisecond,
+  };
+  machine::wall_clock probe;
+  return probe.set(out, 0);
 }
 
 /// Read the watched values out of RAM and print them if they moved.
@@ -1722,6 +1930,21 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       }
     } else if (arg == "--replay" && i + 1 < argc) {
       opts.replay_path = argv[++i];
+    } else if (arg == "--wall" && i + 1 < argc) {
+      const std::string_view spec = argv[++i];
+      if (spec == "now") {
+        opts.wall = wall_source::host_clock;
+      } else if (spec == "none") {
+        opts.wall = wall_source::unseeded;
+      } else if (parse_wall(spec, opts.wall_stated)) {
+        opts.wall = wall_source::stated;
+      } else {
+        std::fprintf(stderr,
+                     "amberfolio: --wall wants now, none, or a real"
+                     " YYYY-MM-DD[THH:MM[:SS[.CC]]] between 1980 and"
+                     " 2099\n");
+        return opts;
+      }
     } else if (arg == "--steps" && i + 1 < argc) {
       if (!parse_count(argv[++i], opts.step_budget) || opts.step_budget == 0) {
         std::fprintf(stderr, "amberfolio: --steps wants a positive count\n");
@@ -1797,6 +2020,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         "                                      [--document PATH]\n"
         "                                      [--record FILE]"
         " [--record-every N] [--replay FILE]\n"
+        "                                      [--wall now|none|"
+        "YYYY-MM-DD[THH:MM[:SS[.CC]]]]\n"
         "                                      [--speed xt|turbo|at|386]\n"
         "                                      [--fast N|max]\n"
         "                                      [--volume 0-100] [--mute]\n"
@@ -1889,6 +2114,13 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
   // disagreeing silently, and the second is a divergence reported as a
   // mismatched initial condition — true, but three steps from the cause.
   // Said here instead.
+  //
+  // `--wall` joins them for the same reason and a sharper one (#320): the
+  // wall clock is machine state, so a replaying host that seeded one the
+  // recording does not carry would diverge at the first checkpoint, on a
+  // hash, having been told to. The recording's own `wall` line is what
+  // seeds a replay, and a recording without one replays the unseeded
+  // machine it was made on.
   if (!opts.replay_path.empty()) {
     const char* also = nullptr;
     if (!opts.seams.empty()) {
@@ -1899,11 +2131,14 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       also = "--press";
     } else if (!opts.pulls.empty()) {
       also = "--pull";
+    } else if (opts.wall != wall_source::host_clock) {
+      also = "--wall";
     }
     if (also != nullptr) {
       std::fprintf(stderr,
-                   "amberfolio: the recording decides the seams, the speed"
-                   " and the keys; %s cannot be given with --replay\n",
+                   "amberfolio: the recording decides the seams, the speed,"
+                   " the keys and the date; %s cannot be given with"
+                   " --replay\n",
                    also);
       return opts;
     }
@@ -2871,6 +3106,67 @@ int main(int argc, char** argv) try {
     const std::size_t n = machine::format_replay_line(event, line);
     recording.write(line.data(), static_cast<std::streamsize>(n));
   };
+
+  // --- The date, said once, before the first instruction (#320) ----------
+  //
+  // The machine's clock is a **seed** plus virtual time and never a
+  // callout into this host (`machine/platform.h`), so a machine nobody
+  // seeds is not one with an approximate date: it is a PC with no clock
+  // card, counting hundredths from 1 January 1980. That is what this host
+  // handed the game for four milestones — nothing ever called
+  // `set_wall_time()` — and where it showed was the journal's own
+  // listing, every entry stamped `01-01 00:04`, which is not a date but
+  // four minutes of uptime.
+  //
+  // **Here, and in the same breath as the line that records it.** The
+  // seed is machine state and so is in every checkpoint hash, which makes
+  // a run that seeds and does not write the `wall` line a run its own
+  // recording cannot reproduce — it would diverge at the first
+  // checkpoint, against a replaying machine still counting from 1980.
+  // One block, so the two cannot drift apart.
+  //
+  // Not while replaying: the recording seeds the machine, at the tick it
+  // was seeded at, through the same `set_wall_time()` (`machine/
+  // replay.h`), and `--wall` is refused alongside `--replay` up in the
+  // option checks. Every recording committed before this change carries
+  // no `wall` line at all, and that is the whole of why they still
+  // verify — an unseeded run replays as the unseeded run it was.
+  if (!replaying && opts.wall != wall_source::unseeded) {
+    machine::wall_time when{};
+    bool known = true;
+    if (opts.wall == wall_source::stated) {
+      when = opts.wall_stated;
+    } else {
+      known = host_wall_time(when);
+    }
+    if (known && box.set_wall_time(when)) {
+      // Read back rather than echoed: `wall_clock::set()` derives the
+      // weekday and this is the machine saying what it now believes,
+      // which is the thing a state hash is a hash of.
+      const machine::wall_time now = box.wall().at(box.time());
+      std::fprintf(
+          stderr,
+          "amberfolio: wall clock %04u-%02u-%02u %02u:%02u:%02u"
+          " (%s)\n",
+          static_cast<unsigned>(now.year), static_cast<unsigned>(now.month),
+          static_cast<unsigned>(now.day), static_cast<unsigned>(now.hour),
+          static_cast<unsigned>(now.minute), static_cast<unsigned>(now.second),
+          opts.wall == wall_source::stated ? "stated" : "this host");
+      machine::replay_event line{};
+      line.kind = machine::replay_line::wall;
+      line.at = box.time();
+      line.when = now;
+      record_line(line);
+    } else {
+      // Log, don't fake. A clock this host cannot break down, or a year
+      // DOS has no room for, leaves the machine the one it has always
+      // been rather than getting a date somebody here made up for it.
+      std::fprintf(stderr,
+                   "amberfolio: wall clock not set - this host's clock is"
+                   " not a date DOS can hold; the machine counts from"
+                   " 1980-01-01\n");
+    }
+  }
 
   // The tick of the last checkpoint written, so that the one taken where
   // the run ends is not a second copy of the one the cadence had just

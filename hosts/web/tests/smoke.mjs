@@ -100,6 +100,7 @@ import {
   formatSeamFired,
   AF_UNRECOGNIZED,
   pacedAdvance,
+  wallClockFields,
   MAX_CATCH_UP_SECONDS,
 } from './host.mjs';
 import {
@@ -3103,6 +3104,90 @@ if (missing.length === 0 && sessions !== null) {
   console.log(
     'smoke: the page paces virtual time against the wall, not against the display',
   );
+}
+
+// --- The date the page tells the machine (#320) --------------------------
+//
+// The machine's clock is a seed plus virtual time and never a callout
+// (`machine/platform.h`), so a page that never seeds it is not a page
+// with an approximate date: its machine counts from 1 January 1980, and
+// the journal's listing stamps every entry with the run's own uptime.
+// That is what both hosts did until #320.
+//
+// The seeding itself is one call in `ensureMachine()` and cannot be
+// driven here — there is no DOM and no `Boot` button. What can be, and is
+// where the mistakes live, is the conversion: `Date` counts months from
+// zero and milliseconds where DOS counts hundredths, and the range DOS
+// holds is narrower than the range a browser's clock can report. So
+// `wallClockFields()` is a pure function in host.mjs and this drives it
+// with dates of its own choosing.
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  // Constructed from local components and read back as local fields, so
+  // the assertion says nothing about the zone this runs in — which is a
+  // property of the CI box and not of the code.
+  const fields = wallClockFields(new Date(1991, 4, 17, 13, 5, 7, 456));
+  check(fields !== null, "a date in the middle of DOS's range was refused");
+  if (fields !== null) {
+    check(
+      fields.year === 1991 && fields.month === 5 && fields.day === 17,
+      `17 May 1991 came out as ${fields.year}-${fields.month}-${fields.day}`,
+    );
+    check(
+      fields.hour === 13 && fields.minute === 5 && fields.second === 7,
+      `13:05:07 came out as ${fields.hour}:${fields.minute}:${fields.second}`,
+    );
+    // 456 ms is 45 hundredths and not 46: DOS's centisecond is the
+    // hundredth that has *started*, the same way a clock reading 13:05
+    // is not 13:06 because the minute is half over.
+    check(
+      fields.centisecond === 45,
+      `456 ms came out as ${fields.centisecond} hundredths`,
+    );
+  }
+
+  // The last millisecond of a second is still that second. A rounding
+  // conversion would answer 100 here, which `wall_clock::set()` refuses —
+  // and the page would leave the machine unseeded roughly once every
+  // hundred visits, which is exactly the kind of defect nobody would
+  // ever reproduce.
+  const last = wallClockFields(new Date(2001, 0, 1, 0, 0, 0, 999));
+  check(
+    last !== null && last.centisecond === 99,
+    `999 ms came out as ${last === null ? 'nothing' : last.centisecond} hundredths`,
+  );
+
+  // And the three a page has to be ready for. DOS's own range is
+  // 1980-2099 (`wall_clock::min_year`/`max_year`), so a clock outside it
+  // is refused here rather than at the ABI, where the answer would be a
+  // status code and a machine still counting from 1980.
+  check(
+    wallClockFields(new Date(1979, 11, 31, 23, 59, 59)) === null,
+    'a date before the DOS epoch was accepted',
+  );
+  check(
+    wallClockFields(new Date(2100, 0, 1)) === null,
+    "a date past DOS's last year was accepted",
+  );
+  check(
+    wallClockFields(new Date(Number.NaN)) === null,
+    'an invalid Date was accepted',
+  );
+
+  // And what the page will actually hand the machine on the day this
+  // runs, which is the one case no fixed date can stand in for: a clock
+  // this build cannot seed from would leave every run of it stamped with
+  // its uptime, and nothing else here would notice.
+  const today = wallClockFields(new Date());
+  check(
+    today !== null,
+    "this machine's own clock is not a date the emulated DOS can hold",
+  );
+
+  console.log('smoke: the page converts a browser Date into a DOS wall clock');
 }
 
 // --- 8. The journal's ingestion, on the module that will do it (#174) ---
