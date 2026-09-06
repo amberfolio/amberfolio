@@ -710,6 +710,32 @@ uint32_t af_web_journal_seen_restore(af_machine* box) {
   return AF_OK;
 }
 
+/// The debug cheat: everything this tab's store holds, onto `box`'s
+/// journal log, so the `Notes` listing shows all of it (#301).
+///
+/// The page's half of `--cite-all-journal`, and the same
+/// `host::cite_all_journal()` underneath — Entry 1 at the top, every row
+/// unread and stamped with the machine's own wall clock, nothing a
+/// person has already read unread again, and the store's own log
+/// written through the same `set_seen` a real citation goes through, so
+/// `_store_changed` is raised and a page that keeps the store keeps
+/// this. **It is a page export and not an ABI entry point**: the machine
+/// gains no service and `abi.h` does not move, for the reason the
+/// desktop's flag is a flag and not a seam.
+///
+/// Answers how many it cited. Zero for a store with nothing in it, in
+/// which case nothing is touched and the reader's own "no journal" is
+/// the answer — and zero for a null handle, which has no log to put
+/// anything on.
+uint32_t af_web_journal_cite_all(af_machine* box) {
+  amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
+  if (pc == nullptr) {
+    return 0;
+  }
+  return static_cast<uint32_t>(
+      amberfolio::host::cite_all_journal(*pc, journal().store));
+}
+
 /// Everything in this tab's store gone, header included.
 ///
 /// The module's half of the page's "forget what you read off my journal".

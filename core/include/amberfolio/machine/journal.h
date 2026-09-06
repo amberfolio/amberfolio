@@ -208,7 +208,21 @@ struct journal_seen_row {
 /// off the end, because a list nobody can page to the bottom of is not a
 /// list, and what a player wants from this is the last few things the game
 /// said rather than a complete history.
-inline constexpr std::size_t journal_log_rows = 64;
+///
+/// **Two hundred and fifty-six, up from sixty-four** (#301). The number
+/// was set for play, where sixty-four is more than a game cites in an
+/// evening. It is set now for the debug cheat that puts *everything* a
+/// player's ingested journal holds onto this log so a person can
+/// proof-read the text off the game's own screen — and the one edition
+/// anybody has ingested is ninety-nine sections (fifty-eight entries,
+/// twenty-three tales, eighteen proclamations), so a cap of sixty-four
+/// dropped the last thirty-five off the end before the listing could
+/// show them. The listing itself is untouched: it scrolls a ten-row
+/// window over whatever the log holds (`seam_journal.cpp`), so a longer
+/// log is more to scroll and not a different screen. What it costs is a
+/// couple of kilobytes of observation per machine, and nothing in the
+/// state hash, because none of this is machine state.
+inline constexpr std::size_t journal_log_rows = 256;
 
 /// What the reader is showing.
 enum class journal_reader_mode : std::uint8_t {

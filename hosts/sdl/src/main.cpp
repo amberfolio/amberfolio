@@ -293,6 +293,26 @@
 //     nothing about either, the same way it knows nothing about the web
 //     host's probe seam.
 //
+//   --cite-all-journal
+//                    a debug cheat: every entry onto the Notes log
+//
+//     Puts every entry, tavern tale and proclamation the journal store
+//     holds onto the journal's own log, so `Notes` (with `--seam
+//     journal`) lists all of them with a `*` on each until it is opened
+//     — a proof-reading surface for the text an OCR engine produced,
+//     ninety-odd entries a person would otherwise reach one number at a
+//     time (#301). Entry 1 is at the top; every row carries this run's
+//     date. It is a *cheat*, a switch that breaks the journal's own
+//     rule that the log fills as the game is played (PLAN.md §5 item
+//     6), and it is off unless asked for.
+//
+//     **The log stays filled until you empty it yourself.** It is
+//     written back into the store above the same way a real citation is,
+//     so it survives every later run: to have the game start citing
+//     afresh, delete the `seen` lines from the store file, or the file.
+//     With no journal ingested there is nothing to cite, and this says
+//     so and leaves the log alone.
+//
 //   The journal reader itself is a seam, not a flag: `--seam journal`
 //   turns it on, and then the entry the game cites opens on the game's
 //   own screen and F1 opens any other (M5-E4, #175, `machine/journal.h`).
@@ -1344,6 +1364,10 @@ struct options {
   std::string journal_store;
   std::string journal_ocr{default_journal_ocr};
   bool journal_probe{false};
+  /// The debug cheat that puts everything the store holds onto the
+  /// journal's log (#301). A flag rather than a seam, on purpose: the
+  /// usage block above says why.
+  bool cite_all_journal{false};
   machine::speed_preset speed{machine::default_speed};
 
   /// Where the speaker's level starts, and whether it starts latched to
@@ -1669,6 +1693,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.journal_ocr = argv[++i];
     } else if (arg == "--journal-probe") {
       opts.journal_probe = true;
+    } else if (arg == "--cite-all-journal") {
+      opts.cite_all_journal = true;
     } else if (arg == "--seams") {
       opts.list_seams = true;
     } else if (arg == "--trace") {
@@ -2592,7 +2618,7 @@ int main(int argc, char** argv) try {
   // the same door, and the same sentence about gates applies to it.
   if (!opts.journal.empty()) {
     ingest_journal(box, opts, journal_text);
-  } else if (!opts.journal_store.empty() ||
+  } else if (!opts.journal_store.empty() || opts.cite_all_journal ||
              std::ranges::find(opts.seams, "journal") != opts.seams.end()) {
     // Only for a run that asked for the reader, or one that said where a
     // store is. A player who did neither is not owed a line about a file
@@ -2617,6 +2643,34 @@ int main(int argc, char** argv) try {
     // `host::restore_journal_log()` now, in `hosts/common`, where both
     // hosts reach them and a test holds the ordering down.
     host::restore_journal_log(box.journal(), journal_text);
+  }
+
+  // The debug cheat (#301): everything the store holds, onto the log, so
+  // `Notes` lists all of it. A host action and not a seam — the log is
+  // host-writable and the store is the host's, so nothing in the machine
+  // has to know (`host/journal_store.h` has the whole argument). It is
+  // also the same write the `journal_seen` service makes, so the loop
+  // below keeps it the way it keeps a real citation — for good.
+  if (opts.cite_all_journal) {
+    if (!opts.journal.empty()) {
+      // An ingestion in the same run read the store's log off the disk
+      // and put none of it in the machine, and citing writes the
+      // machine's log back over the store's: without this the rows the
+      // game had cited before, and which of them had been read, would go.
+      host::restore_journal_log(box.journal(), journal_text);
+    }
+    const std::size_t cited = host::cite_all_journal(box, journal_text);
+    if (cited == 0) {
+      std::fprintf(stderr,
+                   "amberfolio: journal nothing to cite - no journal has"
+                   " been ingested, so the log is as it was\n");
+    } else {
+      std::fprintf(stderr,
+                   "amberfolio: journal cited all %zu - the Notes log holds"
+                   " every entry (log=%zu) until its seen lines are removed"
+                   " from the store\n",
+                   cited, box.journal().seen().size());
+    }
   }
 
   for (const std::string& id : opts.seams) {

@@ -202,7 +202,13 @@ What M5 left in place:
   the section's own word and Roman numerals. The city hall names four
   proclamations in one sentence and the reader opened on the first, off a
   player's own ninety-nine ingested entries, with nobody having pressed a
-  key),
+  key. **A debug cheat fills the log** since #301 — `--cite-all-journal`,
+  and *Cite them all (cheat)* on the dev page — a host action beside
+  `restore_journal_log` and not a seam, that cites everything the store
+  holds Entry 1 first so a person can proof-read the OCR text off the
+  game's screen; it raised `journal_log_rows` from 64 to 256 to hold an
+  edition, and the log it fills stays filled until the store's `seen`
+  lines go. `docs/journal.md` §10),
   `explored` (M5-E5 #179, the marking reversed by M5-E5f #263 and its
   colour and radius set by M5-E5g #299 — the fourth M5 enhancement and
   the third seam that draws, on the game's own **overworld** map: the

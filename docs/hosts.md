@@ -271,6 +271,21 @@ the skip driven on a real copy (#291), and the store out to a drawer and
 back on both hosts. What is missing is a human being getting it right,
 and it stays here until somebody has (#292).
 
+**And a fourth since #301, which is the journal's own: every entry read
+off the game's screen against the scan.** `--cite-all-journal` on this
+host, or *Cite them all (cheat)* on the dev page's journal panel, puts
+everything an ingested journal holds onto the `Notes` log, Entry 1 first
+with a `*` on each until it is opened, so a person with `--seam journal`
+on can proof-read what the OCR engine read one entry at a time without
+typing ninety-nine numbers at the F1 prompt. It is a debug cheat and it
+is **for good**: the rows go into the store the way a real citation's do
+and stay there across runs until the store's `seen` lines are removed —
+the file on this host, *Forget it* on the page. What CI checks is that
+the flag and the button cite the probe edition's four rows in that order
+and keep them (`run-journal.cmake` step 7, `smoke.mjs`); what only a
+person can check is whether the text on the screen is the text on the
+page, which is `docs/journal.md` §10 and the reason it exists.
+
 It is worth doing on each desktop target you care about, and it takes two
 commands.
 

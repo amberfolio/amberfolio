@@ -301,6 +301,7 @@
           <input id="journal" type="file" accept="application/pdf,.pdf" />
         </label>
         <button id="journal-forget" type="button">Forget it</button>
+        <button id="journal-cite-all" type="button">Cite them all (cheat)</button>
       </div>
       <div class="controls">
         <span id="journal-status"></span>
@@ -315,7 +316,12 @@
         tab's alone; keeping those between visits is M6's.) Recognition
         needs an OCR engine beside this page; without one every entry is
         still located and decoded, and this page says so rather than
-        quietly finding nothing.
+        quietly finding nothing. <em>Cite them all</em> is a debug cheat:
+        it puts every entry, tale and proclamation the text holds onto
+        the game's own <code>Notes</code> log (the <code>journal</code>
+        seam), so you can open each in turn and proof-read what the
+        engine read — and the log stays filled that way, across visits,
+        until <em>Forget it</em>.
       </p>
     </fieldset>
 

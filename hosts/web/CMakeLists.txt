@@ -213,6 +213,7 @@ set(_amberfolio_web_export_names
   _af_web_journal_store_changed
   _af_web_journal_store_clear_changed
   _af_web_journal_seen_restore
+  _af_web_journal_cite_all
   _af_web_journal_store_clear
   _af_web_journal_store_fingerprint
   # The code wheel's answer, kept between visits (M6-C1b, #292): the

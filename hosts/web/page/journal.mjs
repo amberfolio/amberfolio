@@ -461,6 +461,20 @@ export function restoreSeen(module, box) {
   return module._af_web_journal_seen_restore(box);
 }
 
+/// The debug cheat: everything the store holds, onto the machine's
+/// journal log, so `Notes` lists all of it with a `*` on each until it
+/// is opened (#301). A proof-reading surface for what the engine read,
+/// and the page's half of the desktop's `--cite-all-journal`.
+///
+/// Answers how many it cited — zero for an empty store, which is left
+/// alone, and zero for no machine. It raises `storeChanged()`, because
+/// the rows go into the store's own log the way a real citation's do;
+/// the caller keeps the store afterwards, and the log then stays filled
+/// until *Forget it*.
+export function citeAllJournal(module, box) {
+  return module._af_web_journal_cite_all(box);
+}
+
 /// A person's correction to one entry.
 export function correctJournalEntry(module, citation, text) {
   return withUtf8(module, text, (ptr) =>
