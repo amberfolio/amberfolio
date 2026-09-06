@@ -30,6 +30,23 @@
 // skips, because a line this does not understand is a line about a word
 // it cannot place, and a word it cannot place is not evidence that the
 // word was inside the rectangle.
+//
+// The eleventh field, `conf`, is the engine's confidence in that word on
+// a 0-100 scale — a decimal, and `-1` on the layout lines this skips
+// anyway. It was being parsed past and thrown away until #315; it is now
+// summarized into a `journal_reading_quality`, which is what lets a host
+// tell a player which of their entries to look at.
+//
+//
+// Two callers, one of which has no rectangle (#315)
+// ------------------------------------------------
+//
+// This started as the filter for a `/DCTDecode` page, which is the only
+// shape that *needs* one. Since #315 the decoded path asks Tesseract for
+// `tsv` as well — not because it needs filtering, it is already cropped,
+// but because plain text carries no confidences and the whole of what
+// this file does beyond the rectangle is worth having on both paths. So
+// `tsv_read` takes a region or a null, and a null keeps every word.
 
 #pragma once
 
@@ -37,8 +54,26 @@
 #include <string_view>
 
 #include "amberfolio/host/journal_extract.h"
+#include "amberfolio/host/journal_ocr.h"
 
 namespace amberfolio::sdl {
+
+/// What one `tsv` table said: the words, and what the engine thought of
+/// them.
+struct tsv_reading {
+  std::string text;
+  host::journal_reading_quality quality;
+};
+
+/// Read `table`, keeping the words whose centre falls inside `region` —
+/// or every word, when `region` is null.
+///
+/// The quality is over the words that were **kept**, never over the whole
+/// page: on an encoded scan most of what the engine read is a different
+/// entry, and a confidence averaged over those would be a number about
+/// somebody else's page.
+[[nodiscard]] tsv_reading tsv_read(std::string_view table,
+                                   const host::journal_region* region);
 
 /// The words of `table` whose **centre** falls inside `region`, joined
 /// into lines by the engine's own line numbering.
@@ -49,6 +84,9 @@ namespace amberfolio::sdl {
 /// not have cut in half. Overlap would pull in a neighbouring column's
 /// words wherever the scan is tight, and containment would drop a word
 /// whose box the engine drew one pixel wide of the rectangle.
+///
+/// `tsv_read`'s text, for a caller that wants only that — which is every
+/// test of the rule above.
 [[nodiscard]] std::string tsv_words_within(std::string_view table,
                                            const host::journal_region& region);
 

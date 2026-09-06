@@ -4,11 +4,13 @@
 
 #include "amberfolio/host/journal_ingest.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
+#include <vector>
 
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
@@ -17,6 +19,37 @@
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
+
+journal_reading_quality journal_ingest_report::reading() const {
+  journal_reading_quality out;
+  double weighted = 0.0;
+  for (const journal_item_quality& item : quality) {
+    if (!item.reading.known) {
+      continue;
+    }
+    out.known = true;
+    out.words += item.reading.words;
+    out.doubtful += item.reading.doubtful;
+    weighted +=
+        item.reading.confidence * static_cast<double>(item.reading.words);
+  }
+  if (out.words != 0) {
+    out.confidence = weighted / static_cast<double>(out.words);
+  }
+  return out;
+}
+
+std::vector<journal_item_quality> journal_ingest_report::worst_first() const {
+  std::vector<journal_item_quality> out = quality;
+  // Stable, so two items the engine was equally sure of stay in the order
+  // they were read -- a report whose tail reshuffled between two runs of
+  // the same ingestion would look like the ingestion had changed.
+  std::ranges::stable_sort(
+      out, [](const journal_item_quality& a, const journal_item_quality& b) {
+        return a.reading.confidence < b.reading.confidence;
+      });
+  return out;
+}
 
 journal_trouble journal_ingester::begin(
     std::span<const std::uint8_t> document) {
@@ -98,6 +131,17 @@ journal_ingest_report journal_ingester::run(journal_ocr* engine,
           why = journal_trouble::too_large;
         } else {
           ++report.recognized;
+          // What the engine knew about that reading, asked for while it
+          // is still the last thing the engine did (`journal_ocr.h`).
+          // Only kept when the engine reports it at all: a list of
+          // unknowns would look like a list of readings nobody was sure
+          // of (#315).
+          if (const journal_reading_quality how = engine->quality();
+              how.known) {
+            report.quality.push_back(
+                {.what = {.kind = fact.kind, .number = fact.number},
+                 .reading = how});
+          }
         }
       }
     }

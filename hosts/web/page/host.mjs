@@ -1443,6 +1443,62 @@ export function pacedAdvance({
   return { tick: tick + advance, advance, clamped: wanted > limit };
 }
 
+// --- What day it is, out in the world (#320) ------------------------------
+//
+// The machine's date is a **seed**, never a callout: a host says "at this
+// tick the wall clock read this", and every later INT 21h AH=2Ah/2Ch
+// answer is that instant plus the virtual time since
+// (`machine/platform.h`). Nothing under `core/` may ask the operating
+// system what time it is, and `scripts/check-host-time.sh` holds it to
+// that — so a host that never says leaves the clock counting from the
+// DOS epoch, and the game is told it is 1 January 1980 plus however long
+// it has been switched on.
+//
+// That is what it was told, on both hosts, until this: the ABI has had
+// `af_machine_set_wall_clock()` since M2 and neither host ever called it,
+// so every row of the journal's own listing read `01-01 00:04` — not a
+// date, but four minutes of uptime (#320).
+//
+// The conversion is the whole of what can be got wrong here, so it is a
+// pure function rather than three lines inside the boot path:
+// `tests/smoke.mjs` drives it with a `Date` of its own choosing, which
+// nothing about a browser is needed for.
+
+/// The seven fields `Machine.setWallClock()` takes, out of a `Date`.
+///
+/// **Local fields and not UTC.** The date this is for is the player's own
+/// calendar — what a journal row is stamped with and what the game would
+/// have read off the PC it is running on — and a page that stamped an
+/// evening's play with tomorrow's date because the player is east of
+/// Greenwich would be answering a different question.
+///
+/// Null for an instant the machine would refuse: an invalid `Date`, or a
+/// year outside DOS's own 1980-2099 (`wall_clock::min_year`/`max_year`).
+/// Refused here rather than at the ABI so that a caller has something to
+/// say about it — `af_machine_set_wall_clock()` answers `AF_INVALID` and
+/// leaves a machine whose clock is silently the uptime again, which is
+/// the exact failure this function exists because of.
+export function wallClockFields(when) {
+  const at = when instanceof Date ? when : new Date(when);
+  const ms = at.getTime();
+  if (!Number.isFinite(ms)) return null;
+  const year = at.getFullYear();
+  if (year < 1980 || year > 2099) return null;
+  return {
+    year,
+    month: at.getMonth() + 1,
+    day: at.getDate(),
+    hour: at.getHours(),
+    minute: at.getMinutes(),
+    second: at.getSeconds(),
+    // DOS 2Ch reports hundredths in DL, and that field is the difference
+    // between a clock that advances and a value pushed once a frame
+    // (`machine/platform.h`). A browser has milliseconds; the machine
+    // takes hundredths, so this is the one place the extra digit goes.
+    centisecond: Math.floor(at.getMilliseconds() / 10),
+  };
+}
+
 // --- The embedded demo program (M2-H2, #55) -------------------------------
 //
 // hosts/web/src/demo_program.h is the source of truth for these four

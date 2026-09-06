@@ -55,6 +55,25 @@
 // and not the default because automatic segmentation on a plain column of
 // prose is slower and no better, and because "it read nothing" is a
 // cheaper test than guessing in advance which entries are pictures.
+//
+//
+// And why #315's page-segmentation finding does not apply here
+// -----------------------------------------------------------
+//
+// #315 measured what `--psm 6` costs the program-driven engine on an
+// encoded scan — 12.1% and 21.1% character error against 2.9% and 4.0%
+// under automatic segmentation — and `tesseract_ocr.h` carries the table.
+// None of it is a finding about this engine, because the cause is not the
+// mode: it is that the other engine hands Tesseract a **two-page spread**
+// and calls it one block. `SetRectangle` above means this one hands it
+// one column of one entry, and single-block is then exactly true of what
+// is in the picture. The measured equivalent of what this engine does —
+// the entry cropped, read as one block — was 2.9% and 2.3%.
+//
+// So this file's page-segmentation choice was already right and stays.
+// What it does gain from #315 is the confidence it was already computing
+// and throwing away, which is what tells a player which of their
+// ninety-nine entries to look at.
 
 #pragma once
 
@@ -88,15 +107,23 @@ class tesseract_linked_ocr final : public host::journal_ocr {
 
   [[nodiscard]] std::string_view engine() const override { return engine_; }
 
+  [[nodiscard]] host::journal_reading_quality quality() const override {
+    return quality_;
+  }
+
  private:
   /// One piece: its bytes into the engine, its rectangle applied, its
   /// text out. Empty and false when the engine read nothing.
   [[nodiscard]] bool read_part(const host::journal_part& part, bool encoded,
-                               std::string& out);
+                               std::string& out,
+                               host::journal_reading_quality& how);
 
   std::string tessdata_;
   std::string engine_;
   tesseract::TessBaseAPI* api_{nullptr};
+  /// What the last `recognize()` was sure of, summed over its pieces
+  /// (#315).
+  host::journal_reading_quality quality_;
 };
 
 }  // namespace amberfolio::sdl

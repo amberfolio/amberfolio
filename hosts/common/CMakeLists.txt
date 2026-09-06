@@ -31,6 +31,11 @@ add_library(amberfolio-host-services STATIC
   src/journal_extract.cpp
   src/journal_store.cpp
   src/journal_ingest.cpp
+  # How well an ingestion went, as a number (#315). In the library and
+  # not in a test, because the thing that has to answer it is a *host*
+  # reporting to a player -- and because the ground truth is the store's
+  # own corrections, which only a running host holds.
+  src/journal_score.cpp
   src/journal_probe.cpp)
 add_library(amberfolio::host_services ALIAS amberfolio-host-services)
 
@@ -62,7 +67,8 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/journal_facts_test.cpp
     tests/journal_extract_test.cpp
     tests/journal_store_test.cpp
-    tests/journal_ingest_test.cpp)
+    tests/journal_ingest_test.cpp
+    tests/journal_score_test.cpp)
   target_link_libraries(amberfolio-host-services-tests PRIVATE
     amberfolio::core
     amberfolio::host_services
