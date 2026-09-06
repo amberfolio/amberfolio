@@ -90,7 +90,8 @@ else: no game artifacts, ever, here or anywhere.
 **And the browser's OCR engine**, under `vendor/tesseract/` (M5-E3e). It
 is fetched into that same build tree by
 `scripts/fetch-ocr-engine.py`, not committed — it is 32 MB of
-third-party binaries, and that script's header has the argument. What
+third-party binaries, and that script's header has the argument — with a
+`version.txt` beside it that the page names the engine by (#306). What
 makes it safe to serve is that the fetch is checked against
 `scripts/ocr-engine.sha256sums`, a record of bytes that were fetched
 twice on different days and hashed the same both times; a mismatch fails

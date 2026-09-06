@@ -61,11 +61,12 @@
 //
 // The second is not a burden invented here: both engines already report
 // where on the page each word was — Tesseract through its `tsv` output,
-// tesseract.js through `data.words[].bbox` — so filtering by rectangle is
-// reading a number they were going to produce anyway. It is written into
-// this interface rather than left to each host because two hosts that
-// filtered differently would give a player two different transcriptions
-// of one page, and neither could be said to be wrong.
+// tesseract.js through a `bbox` on every word of its `blocks` (#306 is
+// what reading the previous major's `data.words` cost) — so filtering by
+// rectangle is reading a number they were going to produce anyway. It is
+// written into this interface rather than left to each host because two
+// hosts that filtered differently would give a player two different
+// transcriptions of one page, and neither could be said to be wrong.
 //
 // An engine that ignores the region is not *broken*, it is imprecise: it
 // returns the whole page's text where the entry's was asked for. That is
