@@ -12,8 +12,10 @@
 # seen by a person on a display. The title is a line on 0x12 now, and the
 # `allow` lines after the exit below are the assertion: from the frame
 # after the mode word leaves camp to the end of the run, the seam-on
-# screen is the seam-off screen everywhere but one named cell — and, for
-# the one dump that catches the adventuring bar going up, that bar.
+# screen is the seam-off screen — but for the one dump that catches the
+# adventuring bar going up, and the two before the adventuring view
+# replaces the camp picture, whose fire the seam's batches leave a few
+# frames behind.
 #
 # **A pair leg, and it can be one.** Every key here reaches the program
 # in both halves: `E` is ENCAMP on the adventuring bar, `F` on the camp
@@ -38,7 +40,12 @@
 # the post-EXIT lines below: 463 frames compared, 1 a dump apart, every
 # difference inside the rects; the bar row from frame 10,325 to the end
 # is 50 frames and not a pixel apart, where the build before it differed
-# on all 50 (174 pixels each, AREA lit against LOOK).
+# on all 50 (174 pixels each, AREA lit against LOOK). And once more for
+# M5-E1f (#303), which took out the last named cell there, the knot: it
+# differed from the seam-off run in all 53 stills from 10,250 to the end
+# of the run and in none after, and 50 of those 53 stills are now the
+# seam-off still pixel for pixel, whole. 463 frames, 1 a dump apart, 0
+# outside.
 about the Encamp Fix's report leaves with the camp screen: camp, FIX, EXIT
 kind pair
 program START.EXE
@@ -87,6 +94,9 @@ allow 0-9425 none
 # The spliced bar, before the Fix is chosen.
 allow 9450-9625 bar banner
 # The report, on the pass after the command declined, until the exit.
+# The knot is allowed here and only here: one still of this run, 9,650,
+# landed between the frame's top edge and the border that puts the knot
+# back, both of them calls in the one batch (#303).
 allow 9650-10225 bar panel knot banner
 # Out of camp. The mode word leaves camp at 10,227 (10,219 with the seam
 # off) and nothing of the box is on the screen after it — and the bar is
@@ -103,6 +113,16 @@ allow 9650-10225 bar panel knot banner
 # seam-on bar has AREA and no more — and the bar is allowed for that
 # dump alone. From the next one to the end it may not differ, and that
 # is the assertion.
-allow 10250-10275 knot
-allow 10300-10300 knot bar
-allow 10325-end knot
+#
+# The knot is no longer allowed anywhere here (M5-E1f, #303): the report
+# borders the viewport box again after its own frame, so the junction
+# tile the frame took is the tile the seam-off run has. What is allowed
+# instead, for the two dumps before the adventuring view is painted over
+# the camp picture, is the inset: the fire animates on the program's
+# clock, one more call in the batch leaves the seam-on run a few frames
+# behind it, and the inset those two stills hold is one the seam-off run
+# holds too, at 10,100 and 10,200. From 10,300 the inset is the
+# adventuring view and identical.
+allow 10250-10275 banner
+allow 10300-10300 bar
+allow 10325-end none

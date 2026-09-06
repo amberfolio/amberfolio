@@ -980,9 +980,16 @@ is handed no title and the string drawer is handed one more line) and
 every row of the panel is blank from 10,250 on. The same script with the
 seam off, diffed frame by frame, differs from the seam-on run only on
 the bar, in the panel's rows `0x12..0x16` while the box is up, in the
-camp banner's animated fire, and at one 8-by-8 cell — the knot at the
-panel's top-left junction, which the report's frame paints over with a
-plain edge tile exactly as the program's own cast screen from camp does.
+camp banner's animated fire. It used to differ at one 8-by-8 cell more
+— the knot at the panel's top-left junction, column `0x10` of row
+`0x10`, which the report's frame painted over with a plain edge tile
+exactly as the program's own cast screen from camp does, and which EXIT
+never repainted (M5-E1f, #303). The report borders the viewport box
+again after its own frame now, the way the junction got there in the
+first place, and re-driven on this script that cell is the seam-off cell
+in every one of the 53 stills from 10,250 to the end of the run, where
+before it was in none of them — and 50 of those 53 stills are the
+seam-off still pixel for pixel, whole.
 `tests/visual/camp-fix-exit.leg` is that run as a leg, and its header
 says why the runner has not run it yet. **And after EXIT the bar is the
 same bar in both runs** (M5-E1g, #304): it used to come back with its

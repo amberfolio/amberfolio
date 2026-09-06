@@ -586,7 +586,10 @@ constexpr std::uint8_t pick_key_ascii = 'S';
 constexpr std::uint16_t image_cast_driver = 0x0999;
 
 /// The border and the clear the program's own cast screen draws before it
-/// casts, so that what the player sees is what that screen shows.
+/// casts, so that what the player sees is what that screen shows. The
+/// border is also the routine every frame on the program's screen is
+/// bordered by, and the report calls it once more to put the viewport
+/// box back over its own frame's top edge (M5-E1f, #303, below).
 constexpr std::uint16_t image_frame_border = 0x3F10;
 constexpr std::uint16_t image_clear_region = 0x4047;
 
@@ -601,6 +604,35 @@ constexpr std::uint16_t cast_region_bottom = 0x16;
 constexpr std::uint16_t cast_region_right = 0x26;
 constexpr std::uint16_t cast_region_top = 0x11;
 constexpr std::uint16_t cast_region_left = 1;
+
+/// The viewport box: the box the program's own screen bordered around
+/// the 3D view, in character cells, **after** it bordered the bottom
+/// panel (M5-E1f, #303). A border goes one cell outside its box, so this
+/// one's bottom edge is row `0x10` — the panel frame's own top edge
+/// row — and its bottom-right corner tile lands at column `0x10` of it,
+/// where the panel's edge tile would otherwise be. That corner is the
+/// knot a player sees where the viewport meets the panel, and it is
+/// there because of the *order* the two boxes are bordered in and
+/// nothing else: the program never draws a knot.
+///
+/// **Measured on the screen, not read out of the program.** On a dumped
+/// still of the adventuring screen the cell at (`0x10`, `0x10`) is the
+/// same 64 pixels as the corners at (0, 0), (`0x10`, 0) and (0, `0x10`),
+/// the cells either side of it on that row are the panel frame's
+/// horizontal edge tile, and the cell above it the vertical one. The
+/// order follows from that still alone: the panel's own frame lays an
+/// edge tile across the whole of row `0x10`, so a corner standing there
+/// is a later box's. And driven, a border over this box repaints nothing
+/// else — with the call in the batch, the seam-on screen after EXIT is
+/// the seam-off screen pixel for pixel (`docs/seams.md` §10).
+constexpr std::uint16_t viewport_box_bottom = 0x0F;
+constexpr std::uint16_t viewport_box_right = 0x0F;
+constexpr std::uint16_t viewport_box_top = 1;
+constexpr std::uint16_t viewport_box_left = 1;
+static_assert(viewport_box_bottom + 1 == cast_region_top - 1,
+              "the viewport box's bottom edge is the panel frame's top edge "
+              "row, which is where the report's frame paints over its "
+              "corner (#303)");
 
 /// The program's own message delay: how it holds a line on the screen
 /// long enough to be read. No arguments, and it cleans none.
@@ -1772,10 +1804,10 @@ struct clock_reading {
 /// **It is one batch and not several arrivals**, because a report is one
 /// picture: a handler that drew half of it and was declined the rest
 /// would leave a titled box with nothing in it. Twelve calls is the
-/// engine's bound and the worst case here is nine — the frame, the
-/// title, the summary, and three rows of at most two calls each — or ten
-/// on the way out of camp, where the message delay rides in the same
-/// batch (M5-E1c).
+/// engine's bound and the worst case here is ten — the frame, the
+/// viewport box's border over it, the title, the summary, and three rows
+/// of at most two calls each — or eleven on the way out of camp, where
+/// the message delay rides in the same batch (M5-E1c).
 ///
 /// **There is no pager.** The list truncates to a line saying how many it
 /// did not name, which is the proven design's own cut (PLAN.md §5) and
@@ -1815,6 +1847,25 @@ struct clock_reading {
       cast_region_bottom, cast_region_style, report_frame_colour,
       empty_segment,      empty_offset};
   if (!ctx.call_program(image, image_draw_frame, frame)) {
+    return false;
+  }
+
+  // The frame's top edge goes on the panel's own border row, `0x10`, and
+  // at column `0x10` that row carries the corner knot of the viewport
+  // box, which the frame's plain edge tile paints over — exactly as the
+  // program's own cast screen from camp does (M5-E1f, #303). The
+  // program's screen scaffold puts the knot there by drawing the
+  // viewport box's border *after* the panel's, so that is what is done
+  // here: the same border routine, the same box, in the same order, in
+  // the same batch. Every other tile the call draws is one the screen
+  // already holds, drawn by the same routine from the same tile; the
+  // one at the junction is the one the frame just took. Nothing is owed
+  // at exit, because the EXIT path repaints nothing above the panel and
+  // this leaves it nothing to repaint.
+  const std::array<std::uint16_t, 5> viewport{
+      viewport_box_left, viewport_box_top, viewport_box_right,
+      viewport_box_bottom, cast_region_style};
+  if (!ctx.call_program(image, image_frame_border, viewport)) {
     return false;
   }
 

@@ -1907,15 +1907,72 @@ redraw lays the whole scaffold down again, bottom panel included, from
 (`TitleLandsOnARowTheCampTeardownClears`, and the stand-in string drawer
 now keeps the lowest row it was handed).
 
-**And what the same run found beside it.** The frame's top edge goes on
-the panel's own border row, `0x10`, and at column `0x10` that row carries
-the corner knot of the viewport box, which the frame's plain edge tile
-paints over — 38 pixels — and the EXIT path has no repaint to put back.
-The program's own cast screen from camp draws that same border (it is
-the very border the seam mimics before a cast) and leaves the same mark,
-so this is the program's behaviour for a border drawn there rather than
-the seam's, and this change leaves it. The camp leg carries it as a named
-cell rather than a silence.
+**And what the same run found beside it, which M5-E1f (#303) put
+back.** The frame's top edge goes on the panel's own border row, `0x10`,
+and at column `0x10` that row carries the corner knot of the viewport
+box, which the frame's plain edge tile paints over, and the EXIT path
+has no repaint to put back. The program's own cast screen from camp
+draws that same border (it is the very border the seam mimics before a
+cast) and leaves the same mark, so #298 left it as a named cell. But the
+program's cast screen is followed by the program's own repaint, and the
+Fix's report is followed by EXIT, which repaints nothing above the
+panel: the seam put a frame on a path that never cleans one up, and the
+residue was the seam's to remove.
+
+**How the program puts the knot there, measured on a still (§8.1).**
+On a dumped still of the adventuring screen the cell at (`0x10`, `0x10`)
+is the same 64 pixels as the cells at (0, 0), (`0x10`, 0) and
+(0, `0x10`); the cells either side of it on row `0x10` are the panel
+frame's horizontal edge tile, and the cell above it the vertical one.
+Those four cells are the corners of a box bordered around the 3D view —
+`1,1` to `0x0F,0x0F`, since a border goes one cell outside its box — and
+the order follows from the still alone: the panel's own frame lays an
+edge tile across the whole of row `0x10`, so a corner standing there is
+a later box's. The knot is that corner tile, and it is there because of
+the *order* the two boxes are bordered in; the program never draws a
+knot. The plain edge tile either side of it is exactly what the junction
+held after the report, before this change — that is the defect, in one
+cell.
+
+**So the report borders the viewport box again, after its frame.** One
+more call in the same batch (§3), to the border routine the seam already
+calls before a cast (`frame_draw_border`, image `0x3F10`), with the
+scaffold's own box and style: the same routine, the same box, in the
+same order the scaffold draws them in. Every other tile it draws is one
+the screen already holds, from the same tile; the one at the junction is
+the one the frame just took. No new point, no state, nothing owed at
+exit — option 1 of the issue, and the shape #298 chose for the title for
+the same reason: a repaint at `camp_menu_exit` would need the seam to
+remember it drew, and an unconditional one would touch the screen of a
+run where the Fix was never asked for, which the `identical` half of the
+matrix forbids. Nor is there a single-tile call to make instead: this
+seam's fact table holds no routine that puts one tile anywhere, and a
+box is what the program itself draws that corner with. The batch is ten
+calls in the worst case now, eleven on the way out of camp, inside the
+engine's twelve. `Fix: Interrupted!` goes through the same
+drawer and gets the same call, though by the facts it never had the
+residue: the caller repaints the whole scaffold after an interruption.
+
+**Measured, on #298's script.** Re-driven on the shorter boot, seam-on
+against seam-off, every 25 frames: the knot cell — pixels `128..135` by
+`128..135`, 64 of them — differed from the seam-off run in all 53 stills
+from frame 10,250 to the end of the run before this change, and in none
+after it. 50 of those 53 stills are now the seam-off still pixel for
+pixel, the whole screen and the bar with it. The three that are not:
+10,300, which catches the adventuring bar mid-draw and is #304's dump,
+and 10,250 and 10,275, which differ only inside the 3D inset — the camp
+picture is still there until the adventuring view is painted, its fire
+animates on the program's clock, and one more call in the batch leaves
+the seam-on run a few frames behind, so the inset those two stills hold
+is one the seam-off run holds too, at 10,100 and 10,200. Over the whole
+run the knot differs in exactly one still, 9,650, which landed between
+the frame's top edge and the border that puts the knot back; the leg
+allows it there and nowhere else. The leg's own check over all 463
+stills: 1 a dump apart, 0 outside its rects
+(`tests/visual/camp-fix-exit.leg`). The unit suite holds the order and
+the cell by name (`PutsTheViewportsCornerKnotBackAfterTheFrame`): the
+border stand-in keeps the box it was handed and how many frames had been
+drawn before it, for both reports.
 
 **What is measured and what is owed.** The rows are measured on stills
 (`tests/visual/camp-fix-exit.leg`, driven by hand on the shorter boot);

@@ -128,7 +128,16 @@ What M5 left in place:
   into the program's numbering now — once per exit, on both exits, and
   only where the bar was spliced — and the leg's post-EXIT lines no
   longer allow the bar, but for the one dump that catches it being
-  drawn),
+  drawn. M5-E1f #303 is the other cell that run named: the report's
+  frame puts its top edge on the panel's border row, and at column
+  `0x10` that row carries the **corner knot of the viewport box**, which
+  the frame's plain edge tile paints over and EXIT never repaints. The
+  knot is there because the program borders the viewport box *after* the
+  panel, so the report borders it again after its own frame — the
+  program's own border routine, the same box, in the same batch: no new
+  point, no state, nothing owed at exit. With both, 50 of the 53 stills
+  after EXIT are the seam-off still pixel for pixel, and the three that
+  are not are the bar mid-draw and two of the camp picture's fire),
   `automap` (M5-E2 #173 — the second M5 enhancement, and the first seam
   that *draws*: a map of the squares the party has walked, over the party
   roster on the game's own screen, shown and taken away on **Tab**. The

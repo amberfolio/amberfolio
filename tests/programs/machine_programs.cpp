@@ -2420,6 +2420,11 @@ constexpr std::uint16_t camp_exit_visits = 0x6E08;
 constexpr std::uint16_t camp_draw_frame = 0x41F8;
 constexpr std::uint16_t camp_draw_string = 0x76B6;
 
+/// And the border drawer the report calls once more after the frame, to
+/// put the viewport box's corner knot back over the frame's top edge
+/// (M5-E1f, #303). Five words, and it cleans them.
+constexpr std::uint16_t camp_frame_border = 0x3F10;
+
 /// And the message delay the interrupted report is held by (M5-E1c,
 /// #194). It takes no arguments and cleans none, so its stand-in is one
 /// instruction and a far return.
@@ -2429,6 +2434,7 @@ constexpr std::uint16_t camp_message_delay = 0x7E4E;
 /// words and the string drawer five.
 constexpr std::uint8_t camp_draw_frame_cleans = 0x10;
 constexpr std::uint8_t camp_draw_string_cleans = 0x0A;
+constexpr std::uint8_t camp_frame_border_cleans = 0x0A;
 
 /// Where each keeps its own count of how many times it was entered, so
 /// the report is a thing this program can say happened rather than a
@@ -2436,6 +2442,7 @@ constexpr std::uint8_t camp_draw_string_cleans = 0x0A;
 constexpr std::uint16_t camp_frame_calls = 0x6E00;
 constexpr std::uint16_t camp_string_calls = 0x6E02;
 constexpr std::uint16_t camp_delay_calls = 0x6E0A;
+constexpr std::uint16_t camp_border_calls = 0x6E0C;
 
 /// What the report draws for this program's party: the frame once, and
 /// then the title, the summary and one exception line — the hurt
@@ -2453,6 +2460,8 @@ constexpr std::uint16_t camp_delay_calls = 0x6E0A;
 /// `docs/playable.md` leg 7.
 constexpr std::uint16_t camp_wanted_frame_calls = 1;
 constexpr std::uint16_t camp_wanted_string_calls = 3;
+/// And the viewport box's border once, after the frame (M5-E1f, #303).
+constexpr std::uint16_t camp_wanted_border_calls = 1;
 
 /// Where the two records go in the program's own segment, past everything
 /// else it uses.
@@ -2478,14 +2487,15 @@ constexpr std::uint16_t camp_wanted_days =
 /// runs are the same run: the command it offered was not chosen, so the
 /// program went exactly where it would have gone.
 ///
-/// **Sixty-six until M5-E1b (#189) and seventy-two until M5-E1c (#194)**,
-/// and every step it has grown by is this program's own and not the
-/// seam's: counters for the stand-in drawing routines, the instructions
-/// that read them back, and now the command tail this program reads its
-/// own way out of camp from, the out-parameter it lays down, and the loop
-/// condition that tests it. The number moving is fine; the two entries
-/// claiming it moving apart would not be.
-constexpr std::uint64_t camp_plain_steps = 86;
+/// **Sixty-six until M5-E1b (#189), seventy-two until M5-E1c (#194) and
+/// eighty-six until M5-E1f (#303)**, and every step it has grown by is
+/// this program's own and not the seam's: counters for the stand-in
+/// drawing routines, the instructions that read them back, and the
+/// command tail this program reads its own way out of camp from, the
+/// out-parameter it lays down, and the loop condition that tests it. The
+/// number moving is fine; the two entries claiming it moving apart would
+/// not be.
+constexpr std::uint64_t camp_plain_steps = 89;
 
 /// What the program's own rest wrapper would have left in the clock: a
 /// memorization time in hours, and no days at all.
@@ -2583,6 +2593,7 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     store_word_at(a, camp_frame_calls, 0);
     store_word_at(a, camp_string_calls, 0);
     store_word_at(a, camp_delay_calls, 0);
+    store_word_at(a, camp_border_calls, 0);
     store_word_at(a, camp_exit_visits, 0);
     store_byte_at(a, camp_changed, 0);
     // The out-parameter, as the far pointer the loop's own condition
@@ -2696,6 +2707,8 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     store(a, 6, reg_ax);
     load_ax_from(a, camp_delay_calls);
     store(a, 7, reg_ax);
+    load_ax_from(a, camp_border_calls);
+    store(a, 8, reg_ax);
     exit_with(a, 0x8A);
 
     // The way out of camp, at the offset the seam's fourth point names.
@@ -2713,6 +2726,12 @@ void camp_record(assembler& a, std::uint16_t at, std::uint8_t status,
     // The two drawing routines, each counting its own entries and popping
     // its own arguments — far, and cleaning up after itself, which is the
     // shape every routine the seam door calls has (`docs/seams.md` §3).
+    a.pad_to(camp_frame_border);  // the lowest of the four, so first
+    a.db({0xFF, 0x06});
+    a.dw(camp_border_calls);  // inc word [border_calls]
+    a.db({0xCA});
+    a.dw(camp_frame_border_cleans);  // retf imm16
+
     a.pad_to(camp_draw_frame);
     a.db({0xFF, 0x06});
     a.dw(camp_frame_calls);  // inc word [frame_calls]
@@ -4074,7 +4093,9 @@ constexpr std::array<machine::seam_point, 1> door_points{
                  "left short",
          .value = camp_wanted_string_calls},
         {.what = "the party never left camp", .value = 0},
-        {.what = "so nothing had to be held on the screen", .value = 0}};
+        {.what = "so nothing had to be held on the screen", .value = 0},
+        {.what = "and the viewport box was bordered again over the frame",
+         .value = camp_wanted_border_calls}};
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
   }
@@ -4110,7 +4131,9 @@ constexpr std::array<machine::seam_point, 1> door_points{
          .value = camp_wanted_string_calls},
         {.what = "the party left camp, once", .value = 1},
         {.what = "and the box was held there by the program's own delay",
-         .value = 1}};
+         .value = 1},
+        {.what = "and the viewport box was bordered again over the frame",
+         .value = camp_wanted_border_calls}};
     p.exit_code = 0x8A;
     list.push_back(std::move(p));
   }
