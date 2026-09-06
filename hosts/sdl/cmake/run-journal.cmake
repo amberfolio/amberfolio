@@ -84,13 +84,26 @@ file(READ "${store}" text)
 # rectangle, so a build that keyed on the number alone would write
 # three records here instead of four and this would say so.
 foreach(want "amberfolio-journal 3" "AMBER FOLIO PROBE ENTRY 1"
-             "AMBER FOLIO PROBE ENTRY 2"
              "scanned entry 1 " "scanned tale 1 ")
   string(FIND "${text}" "${want}" at)
   if(at LESS 0)
     message(FATAL_ERROR "the store does not carry '${want}':\n${text}")
   endif()
 endforeach()
+
+# And entry two, which carries a **paragraph break** (#331). It is in the
+# file the way the engine answered it, blank line and all: the format
+# puts each text's length in front of it precisely so that a body may
+# hold anything, and a store that normalized whitespace on the way to
+# disk would take the shape out of every real entry. The reader draws a
+# blank line as a paragraph and a single newline as a space (#316), so
+# this is the difference between an entry with paragraphs and one solid
+# block of prose.
+string(FIND "${text}" "AMBER FOLIO PROBE\n\nENTRY 2" at)
+if(at LESS 0)
+  message(FATAL_ERROR
+    "the store did not keep entry two's paragraph break:\n${text}")
+endif()
 
 # --- 2. A correction survives a second ingestion -----------------------
 #

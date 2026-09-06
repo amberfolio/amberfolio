@@ -38,6 +38,50 @@
 // tell a player which of their entries to look at.
 //
 //
+// Where the line breaks come from, and where the blank lines do (#331)
+// --------------------------------------------------------------------
+//
+// The reader's reflow honours exactly one break: a **blank line**, which
+// it draws as a paragraph (`core/src/machine/seam_journal.cpp`, #316). A
+// single newline it reads as a space, because an OCR engine emits one per
+// *printed* line and the journal is set in a sixty-character column that
+// has nothing to do with the twenty-two or thirty-eight the reader draws.
+//
+// So the four layout columns of a `tsv` row are not decoration: they are
+// the only place the paragraph structure exists. This file reads them and
+// emits
+//
+//   * a space, between two words of one line;
+//   * one newline, between two lines of one paragraph;
+//   * a blank line, between two paragraphs.
+//
+// Every one of the four counts **restarts inside its parent**, so what
+// identifies a paragraph is `(page_num, block_num, par_num)` and not
+// `par_num` alone. Comparing `line_num` by itself — which is what this
+// did until #331 — also ran two one-line paragraphs together, since both
+// are `line_num` 1.
+//
+// **A new block counts as a new paragraph.** That is broader than "a
+// paragraph break inside a block", and it is deliberate: it is what
+// Tesseract's own plain-text output does, so the host's three engines
+// agree by construction rather than by three separate decisions.
+// `TessBaseAPI::GetUTF8Text` walks `RIL_PARA` across the whole page and
+// `AppendUTF8ParagraphText` ends every paragraph with a line separator
+// and a paragraph separator, both `"\n"` — read off tesseract 5.5.1's
+// own source, which is the version `.tesseract-version` pins, and not
+// run here (see `tesseract_linked_ocr.h`).
+//
+// The break is emitted **between** two words that were kept and never
+// before the first or after the last, which is what keeps two hazards
+// out. A rectangle that clips a paragraph in half gains no break at the
+// crop, because nothing was kept after it to break against; and the join
+// between two *fragments* of one entry stays the single newline its
+// callers write, because it happens outside this function altogether. An
+// entry is a list of rectangles precisely because entries flow out of a
+// column onto the facing page (`host/journal_facts.h`), and a break there
+// would be a paragraph the printed page does not have.
+//
+//
 // Two callers, one of which has no rectangle (#315)
 // ------------------------------------------------
 //
@@ -76,7 +120,8 @@ struct tsv_reading {
                                    const host::journal_region* region);
 
 /// The words of `table` whose **centre** falls inside `region`, joined
-/// into lines by the engine's own line numbering.
+/// into lines and paragraphs by the engine's own layout numbering (see
+/// above for which separator each boundary gets).
 ///
 /// Centre, and not any overlap: a box that straddles the boundary belongs
 /// to whichever side most of it is on, which is the rule that gives the

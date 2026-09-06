@@ -214,6 +214,30 @@ export const DOUBTFUL_CONFIDENCE = 60;
 /// page: on an encoded scan most of what the engine read is a different
 /// entry, and a confidence averaged over those would be a number about
 /// somebody else's page.
+///
+/// **And the paragraphs survive the walk** (#331). The reader's reflow
+/// honours exactly one break — a blank line, which it draws as a
+/// paragraph (#316) — and reads a single newline as a space, because an
+/// engine emits one per *printed* line. This loop was pushing every line
+/// flat and joining with one newline whatever paragraph it came from, so
+/// a real entry arrived as one solid block of prose from the first row to
+/// the last. The structure is right here in the walk: a space between two
+/// words of a line, one newline between two lines of a paragraph, and a
+/// blank line between two paragraphs.
+///
+/// A **new block counts as a new paragraph**, which is what Tesseract's
+/// own plain-text output does — `TessBaseAPI::GetUTF8Text` walks
+/// paragraphs across the whole page and ends each with a line separator
+/// and a paragraph separator, both `"\n"` — so this host, the desktop's
+/// `tsv` filter and the desktop's linked engine all break in the same
+/// places rather than in three sets of places.
+///
+/// The break is only ever put **between** two paragraphs that both kept
+/// something, and that is what keeps the two wrong breaks out: a
+/// rectangle that clips a paragraph in half gains none at the crop, and
+/// the join between two *fragments* of one entry is the caller's single
+/// newline, because entries flow out of a column onto the facing page and
+/// a break there would be a paragraph the printed page does not have.
 export function readWithin(data, region) {
   const blocks = data?.blocks;
   if (!Array.isArray(blocks)) {
@@ -231,6 +255,12 @@ export function readWithin(data, region) {
   let total = 0;
   for (const block of blocks) {
     for (const paragraph of block?.paragraphs ?? []) {
+      // Whether this paragraph has put a line on the page yet, which is
+      // what makes the blank line below fall **between** two paragraphs
+      // and never before the first or after the last (#331). A paragraph
+      // the rectangle kept nothing of is invisible here: it neither
+      // earns a break nor swallows one.
+      let opened = false;
       for (const line of paragraph?.lines ?? []) {
         const kept = [];
         for (const word of line?.words ?? []) {
@@ -255,7 +285,11 @@ export function readWithin(data, region) {
             if (word.confidence < DOUBTFUL_CONFIDENCE) ++doubtful;
           }
         }
-        if (kept.length > 0) lines.push(kept.join(' '));
+        if (kept.length > 0) {
+          if (!opened && lines.length > 0) lines.push('');
+          opened = true;
+          lines.push(kept.join(' '));
+        }
       }
     }
   }
@@ -547,7 +581,7 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
               );
             }
             keep(got.quality);
-            read.push(got.text);
+            if (got.text !== '') read.push(got.text);
           } else {
             // Samples the module produced, already cropped to the entry.
             // Single block is exactly true of that, so it is asked for
@@ -570,7 +604,7 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
             );
             const got = readWithin(data, null);
             keep(got.quality);
-            read.push(got.text);
+            if (got.text !== '') read.push(got.text);
           }
         }
         // A piece that read nothing beside pieces that did is a short
@@ -588,6 +622,14 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
           doubtful,
           confidence: words > 0 ? weighted / words : 0,
         };
+        // **One** newline between the pieces, and that is a decision
+        // rather than a default (#331): an entry is a list of rectangles
+        // because entries *flow* — out of a column, onto the facing page,
+        // eighteen of the first edition's fifty-eight in more than one
+        // piece — so a fragment boundary is a continuation and a blank
+        // line there would be a paragraph the printed page does not have.
+        // A piece that read nothing is left out rather than joined as an
+        // empty string, which would put exactly that break in.
         return read.join('\n').replace(/\s+$/, '');
       },
       /// What the last `recognize()` was sure of. Replaced by every call;

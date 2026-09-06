@@ -54,6 +54,17 @@ TEST(JournalIngest, TheProbeGoesAllTheWayThrough) {
   EXPECT_EQ(store.engine(), engine.engine());
   EXPECT_EQ(store.text(Entry(1)), journal_probe_text(0));
   EXPECT_EQ(store.text(Entry(2)), journal_probe_text(1));
+
+  // Entry two's **paragraph break**, spelled out rather than left to the
+  // comparison above (#331). The reader draws a blank line as a paragraph
+  // and a single newline as a space (#316), so this is the one piece of
+  // shape a reading has - and an ingestion, a store or a serialization
+  // that tidied whitespace anywhere along the way would turn every real
+  // entry into one solid block of prose and look like nothing at all.
+  EXPECT_NE(store.text(Entry(2)).find("\n\n"), std::string_view::npos);
+  journal_store again;
+  ASSERT_EQ(again.parse(store.serialize()), journal_trouble::none);
+  EXPECT_EQ(again.text(Entry(2)), journal_probe_text(1));
 }
 
 TEST(JournalIngest, AnUnrecognizedDocumentIsReportedWithItsFingerprint) {

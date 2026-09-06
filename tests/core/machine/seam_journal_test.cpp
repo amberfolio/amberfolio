@@ -1572,6 +1572,101 @@ TEST(JournalReader, APageNeverOpensOnABlankRow) {
       << "the second page opens on the text, not on the break";
 }
 
+TEST(JournalReader, WhatAParagraphBreakCostsAnEntryInRows) {
+  // The measurement #331 asked for, on text this file wrote: an entry's
+  // rows and pages with the paragraph breaks the ingestion now emits,
+  // against the same entry as it arrived before them - every line pushed
+  // flat and joined with a single newline, which the reflow reads as a
+  // space (#316). It is the *shape* of the difference rather than a
+  // sample of anybody's journal: nothing that needs a document, an engine
+  // or a store, and therefore a thing CI can keep.
+  //
+  // Four paragraphs of three printed lines each, at the column width a
+  // scan of a book column actually has.
+  const std::string flowing =
+      "The quartermaster kept a ledger of every barrel that came\n"
+      "through the gate, and he ruled a line under each day so\n"
+      "that nobody could add to it afterwards.\n";
+  const std::string second =
+      "On the fourth night a barrel arrived with no mark on it\n"
+      "at all, and the ledger says only that it was heavy and\n"
+      "that two men carried it down.\n";
+  const std::string third =
+      "The cellar is under the north wall, and the stair to it\n"
+      "is behind the door the cooper keeps shut with a wedge\n"
+      "rather than a lock.\n";
+  const std::string fourth =
+      "Ask for the quartermaster by name and he will show you\n"
+      "the ledger; ask for the barrel and he will not.\n";
+
+  // How many rows a reading takes, and how many of them are blank: the
+  // pages walked with the key a player turns them with.
+  const auto measure = [](const std::string& text) {
+    rig r;
+    r.attach_video();
+    r.attach_host();
+    r.enable();
+    r.adventuring();
+    r.host.holds.number = 1;
+    r.host.text = text;
+    r.program_draws("entry 1");
+    r.adventuring();
+    r.poll();
+
+    unsigned pages = r.reader().page_count();
+    unsigned rows = 0;
+    unsigned blank = 0;
+    for (unsigned page = 0; page < pages; ++page) {
+      if (page != 0) {
+        r.type(key_f1);
+        r.poll();
+      }
+      unsigned last = 0;
+      unsigned empties = 0;
+      for (unsigned row = 0; row < 12; ++row) {
+        const std::string drawn =
+            r.row_text(reader_body_y + static_cast<int>(row) * glyph_height);
+        if (drawn.empty()) {
+          ++empties;
+          continue;
+        }
+        last = row + 1U;
+        blank += empties;
+        empties = 0;
+      }
+      rows += last;
+    }
+    return std::array<unsigned, 3>{pages, rows, blank};
+  };
+
+  const auto broken =
+      measure(flowing + "\n" + second + "\n" + third + "\n" + fourth);
+  const auto flat = measure(flowing + second + third + fourth);
+
+  // Measured once and then pinned, the way every other number in this
+  // suite is. 526 characters, four paragraphs, in the panel's twelve rows
+  // of twenty-two:
+  //
+  //             pages   body rows   blank rows
+  //   flat        3         26           0
+  //   broken      3         30           2
+  //
+  // Flat is what every reading carried until #331: **no break anywhere**,
+  // one solid block of prose from the first row to the last, however many
+  // paragraphs the printed page had.
+  EXPECT_EQ(flat[0], 3U);
+  EXPECT_EQ(flat[1], 26U);
+  EXPECT_EQ(flat[2], 0U);
+  // Broken has three boundaries and shows **two** of them, because the
+  // third falls at the top of a page and a page never opens on a blank
+  // row - the break between two pages is already a break. It is four rows
+  // longer rather than three for the same reason from the other side: the
+  // rows it gained pushed the wrap around, so the pages fill differently.
+  EXPECT_EQ(broken[0], 3U);
+  EXPECT_EQ(broken[1], 30U);
+  EXPECT_EQ(broken[2], 2U);
+}
+
 TEST(JournalReader, TheKeyTurnsThePagesAndThenPutsItAway) {
   rig r;
   r.attach_video();
