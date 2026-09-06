@@ -359,13 +359,32 @@ entries nothing ever cites.
 An entry you open from either of those is a **full screen** (#305): the
 same box the log is drawn in, twenty rows of thirty-eight characters, so
 you read it in a couple of pages rather than paging through a window the
-size of the party list. F1 turns the page and closes on the last one,
-Escape leaves, and an entry opened from a row of the log goes back to the
-log rather than out, with the cursor where you left it. An entry the game
-opens *at you* — a citation, in the middle of a story event — still comes
-up in the roster panel beside the viewport, because that is the one thing
-on this screen that can be taken and given back with a vendor or an NPC
-underneath.
+size of the party list. An entry opened from a row of the log goes back
+to the log rather than out, on the screenful you left it on. An entry the
+game opens *at you* — a citation, in the middle of a story event — still
+comes up in the roster panel beside the viewport, because that is the one
+thing on this screen that can be taken and given back with a vendor or an
+NPC underneath.
+
+**Both of those full screens have a bar** (#317), and it says `NEXT`,
+`PREV` and `EXIT` — words on the screen's last row, each chosen by its
+first letter, which is how every screen in this game is driven. It used
+to say `1/3  F1 MORE   ESC CLOSES`, which names two keys this program has
+never asked anybody to press; and there was no way *back* at all, because
+F1 walked forward and closed on the last page. Escape still leaves from
+anywhere. The roster panel keeps `F1 MORE`, because a panel sits beside
+the program's own live bar — `N`, `P` and `E` are that bar's letters
+there, and taking them would pick the game's own commands out from under
+you.
+
+**The log is twenty rows now and it pages** (#318, #319). It drew ten
+rows into a twenty-row box and left the bottom half empty, and it
+*scrolled*, which nothing in this game does: every long list the program
+draws itself is replaced. `NEXT` and `PREV` replace the screenful; the
+cursor keys still step a row inside one, and `Return` still opens the row
+you are on. A whole edition on the log — the ninety-nine sections
+`--cite-all-journal` puts there — is thirteen screenfuls where it was
+twenty-six.
 
 **How you turn it on.** `--seam journal`, and `--journal-store` if your
 text is not where the host would look.
@@ -398,8 +417,9 @@ screen goes further: its frame, its border art and every letter on it are
 drawn by the program's own two routines, so this project never has to
 know what any of them look like. The
 `Notes` command is spliced onto the game's own bar and chosen the way
-every other command on it is. The page turns on the same key that opened
-it.
+every other command on it is, and since #317 so is everything on a full
+screen's own bottom row: three words, each taken by its initial, on the
+row this game draws every bar it has on.
 
 **What it is not yet.** With the reader on, the machine is **not** the
 machine it would have been with it off, even before anything is cited —

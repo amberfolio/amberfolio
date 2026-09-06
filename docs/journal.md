@@ -660,6 +660,43 @@ panel always, because it fires inside a script's own narration where an
 NPC can be in the viewport. The word wrap did not change; it only got
 wider.
 
+**A full screen is driven the way this game drives everything: words on
+a bar** (M5-E4f, #317). The listing and a full-screen page both carry
+`NEXT`, `PREV` and `EXIT` on row `0x18` — the screen's own last, where
+the program draws every bar it has — and each is chosen by its first
+letter, the way `EXIT`, `LOOK`, `ENCAMP` and `AREA` are, and the way the
+two commands this enhancement splices onto the program's own bars already
+were. It said `1/3  F1 MORE   ESC CLOSES` before, which names two keys
+this program has never asked anybody to press. `PREV` is not a rename:
+there was no way back at all, because F1 walked forward and closed on the
+last page, so a reader who overshot had to leave the entry and open it
+again. Escape still closes from anywhere, because it costs nothing and
+somebody will press it.
+
+**The panel keeps `F1 MORE`**, and that is a fact about the screen rather
+than an oversight. A panel is drawn beside the program's own *live*
+command bar, so `N`, `P` and `E` there are that bar's letters and taking
+them would pick the program's own commands out from under a player who
+can still see them; twenty-two columns have no room for three words
+beside a `1/3` either. Only a screen that **covers** the bar can spell
+its keys as words. So the two shapes' bottom rows differ on purpose, and
+this paragraph is that said out loud.
+
+**The listing is twenty rows and pages rather than scrolls** (M5-E4e,
+#318 and #319). It drew ten rows into a twenty-row box on a reason that
+had stopped being true — a batch holds twelve calls, so ten rows was what
+one batch had left over, and the listing has been painted over several
+batches since; the budget bounds a *pass* and the box bounds the screen.
+And it slid its window one row at a time, which is the one thing on this
+screen that could not have been in a 1988 program: every long list the
+game draws itself is replaced, never scrolled. So the screenful on the
+screen is the **cursor's own page** — twenty rows, replaced whole by
+`NEXT` and `PREV`, and derived rather than kept, so the highlight can
+never be off the screenful and the page a reader left is the page they
+come back to. The cursor stays, because it is what `Return` opens: it
+moves a row at a time inside a screenful and never slides one. A whole
+edition on the log is thirteen screenfuls where it was twenty-six.
+
 **What arrives is what the panel can draw** (M5-E4c, #219). The panel maps
 a *byte* to a glyph, out of the program's table of sixty-four; a store is
 UTF-8 and an OCR engine produces plenty of it. A real ingestion of the one
@@ -777,9 +814,10 @@ button and this section all use the word.
 set for play, where sixty-four is more than a game cites in an evening;
 citing a ninety-nine-section edition into it dropped the last thirty-five
 off the end, which defeats the purpose. The listing is untouched by the
-change — it already scrolls a ten-row window over whatever the log holds
-(`seam_journal.cpp`), so a longer log is more to scroll and not a
-different screen — and what it costs is about two kilobytes of
+change — it is one screen of the log over whatever the log holds
+(`seam_journal.cpp`), twenty rows of it at a time since #318, so a longer
+log is more screenfuls and not a different screen — and what it costs is
+about two kilobytes of
 observation per machine and the same in a store's `seen` lines, none of
 it in the state hash. `JournalCiteAll.AWholeEditionFitsInTheLog` holds a
 store of that edition's shape, with none of its words, and asserts all

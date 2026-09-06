@@ -54,7 +54,11 @@ key Return@10800
 key F1@11600
 key Backspace@12400
 key F1@13200
-key F1@14000
+# The way out, and it is `E` rather than a fourth F1 since M5-E4f
+# (#317): a full-screen page carries `NEXT`, `PREV` and `EXIT` as words
+# on a bar of its own now, so F1 is the first of those and no longer
+# quietly the third of them on the last page.
+key E@14000
 
 rect bar 0,190,319,199
 

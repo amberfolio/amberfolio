@@ -133,6 +133,14 @@ constexpr std::uint16_t key_one = 0x0231;
 constexpr std::uint16_t key_two = 0x0332;
 constexpr std::uint16_t key_four = 0x0534;
 constexpr std::uint16_t key_step_down = 0x5032;
+/// The three words on the reader's own bar, by their first letters
+/// (#317): scan code in the high byte, character in the low one, the way
+/// the BIOS hands them over.
+constexpr std::uint16_t key_next = 0x314E;
+constexpr std::uint16_t key_next_lower = 0x316E;
+constexpr std::uint16_t key_prev = 0x1950;
+constexpr std::uint16_t key_prev_lower = 0x1970;
+constexpr std::uint16_t key_exit = 0x1245;
 /// What the seam answers the program's blocking read with when it has
 /// taken the key that read was going to be handed: `-`, which is on none
 /// of the program's bars.
@@ -2079,6 +2087,138 @@ TEST(JournalLog, TheLogIsObservationAndNotMachineState) {
 // The journal's own screen (M5-E4b, #222)
 // ---------------------------------------------------------------------------
 
+/// A listing of `rows` lines, open on the adventuring screen. Twenty-five
+/// of them is two screenfuls of twenty and a short second one, which is
+/// the shape #318 and #319 are about.
+void a_listing_of(rig& r, unsigned rows) {
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.drawing_routines();
+  r.put_bar(bar_area, area_words);
+  for (unsigned nth = 1; nth <= rows; ++nth) {
+    r.reader().note_seen(Entry(static_cast<std::uint16_t>(nth)), 8, 29, 20, 15);
+  }
+  r.one_bar_pass(area_before, area_after, 'N');
+}
+
+/// Which screenful of the log is on the screen: the cursor's own page,
+/// which is how the seam derives it (#319).
+[[nodiscard]] std::size_t listing_page(const rig& r) {
+  return r.reader().list_cursor() / 20U;
+}
+
+/// A key, and then the paint it starts, let run to the end of itself.
+///
+/// **The batch is why this is one helper and not two calls.** Anything
+/// that changes what is on this screen queues a batch of calls into the
+/// program (`seam.h`), and no further arrival reaches the seam until that
+/// batch has been driven - so a test that pressed two keys in a row
+/// without running them measured one of them.
+void press(rig& r, std::uint16_t key) {
+  r.type(key);
+  r.poll();
+  r.run_the_calls();
+  for (unsigned pass = 0; pass < 8 && !r.reader().on_screen(); ++pass) {
+    r.poll();
+    r.run_the_calls();
+  }
+}
+
+TEST(JournalList, NextAndPrevReplaceTheScreenfulAndStopAtTheEnds) {
+  // #319: it slid a window one row at a time, which is the one thing on
+  // this screen that could not have been in the program - every long list
+  // the game draws itself is replaced. `NEXT` and `PREV` replace it.
+  rig r;
+  a_listing_of(r, 25);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  ASSERT_EQ(listing_page(r), 0u) << "it opens on the newest";
+
+  press(r, key_next);
+  EXPECT_EQ(listing_page(r), 1u) << "a whole screenful on";
+  EXPECT_EQ(r.reader().list_cursor(), 20u)
+      << "and on the first row of it, not the row it was on";
+
+  press(r, key_next);
+  EXPECT_EQ(listing_page(r), 1u)
+      << "the last screenful stops rather than wrapping";
+
+  press(r, key_prev);
+  EXPECT_EQ(r.reader().list_cursor(), 0u);
+  press(r, key_prev);
+  EXPECT_EQ(r.reader().list_cursor(), 0u) << "and so does the first";
+}
+
+TEST(JournalList, NextOntoAShortLastScreenfulLandsOnIt) {
+  // Twenty-five rows: the second screenful holds five, so the row `NEXT`
+  // asks for is past the end of the log. The move clamps to the log, and
+  // the row it lands on is still on the screenful that was asked for.
+  rig r;
+  a_listing_of(r, 22);
+  press(r, key_next);
+  EXPECT_EQ(listing_page(r), 1u);
+  EXPECT_LT(r.reader().list_cursor(), r.reader().seen().size())
+      << "and never past the end of the log";
+}
+
+TEST(JournalList, TheStepKeysMoveWithinTheScreenfulAndNeverSlideIt) {
+  // The cursor keys still step a row, and stepping one is not scrolling:
+  // the screenful is the cursor's own page, so it is replaced when the
+  // cursor crosses into the next one and never in between.
+  rig r;
+  a_listing_of(r, 25);
+  for (unsigned nth = 0; nth < 19; ++nth) {
+    press(r, key_step_down);
+    ASSERT_EQ(listing_page(r), 0u)
+        << "still the first screenful at row " << r.reader().list_cursor();
+  }
+  press(r, key_step_down);
+  EXPECT_EQ(r.reader().list_cursor(), 20u);
+  EXPECT_EQ(listing_page(r), 1u)
+      << "and the twentieth step replaces it whole";
+}
+
+TEST(JournalList, TheLetterOfEachWordIsTakenInEitherCase) {
+  // A word on a bar is chosen by its letter, and a player's keyboard
+  // sends whichever case they typed (#317).
+  for (const std::uint16_t key :
+       {key_next, key_next_lower, key_prev, key_prev_lower}) {
+    const bool forward = (key & 0xFFU) == 'N' || (key & 0xFFU) == 'n';
+    rig r;
+    a_listing_of(r, 25);
+    ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+    if (!forward) {
+      press(r, key_next);
+      ASSERT_EQ(r.reader().list_cursor(), 20u);
+    }
+    press(r, key);
+    EXPECT_EQ(r.reader().list_cursor(), forward ? 20u : 0u) << "key " << key;
+    EXPECT_EQ(r.keys_waiting(), 0u) << "and none of them reaches the program";
+  }
+}
+
+TEST(JournalList, BackspaceIsAScreenfulBackToo) {
+  // It stepped `page()` on this screen, which is the *entry's* page number
+  // and nothing on the listing reads it, so the key did nothing a player
+  // could see. It is `PREV` now.
+  rig r;
+  a_listing_of(r, 25);
+  press(r, key_next);
+  ASSERT_EQ(r.reader().list_cursor(), 20u);
+  press(r, key_backspace);
+  EXPECT_EQ(r.reader().list_cursor(), 0u);
+}
+
+TEST(JournalList, AWholeEditionIsThirteenScreenfulsAndNotTwentySix) {
+  // #318's arithmetic, which is half of #319's reason for existing: the
+  // log holds 256 rows since #301 raised it to hold a whole edition, so a
+  // twenty-row screenful is thirteen of them where ten rows were
+  // twenty-six.
+  EXPECT_EQ(journal_log_rows, 256u);
+  EXPECT_EQ((journal_log_rows + 19U) / 20U, 13u);
+}
+
 TEST(JournalList, TheCursorStepsAndStopsAtTheEnds) {
   journal_state state;
   state.note_seen(Entry(3), 8, 29, 20, 15);
@@ -2294,7 +2434,7 @@ constexpr int screen_rows = 20;
 /// of one page look like one thing.
 constexpr std::uint16_t page_title_colour = 14;
 constexpr std::uint16_t page_body_colour = 10;
-constexpr std::uint16_t page_footer_colour = 7;
+constexpr std::uint16_t page_footer_colour = 0x0F;
 
 /// A rig standing on the adventuring screen with the party's own bar
 /// live, a log with one line in it, and the program's drawing routines
@@ -2378,8 +2518,9 @@ TEST(JournalScreenPage, ReturnOnAListingRowOpensTheEntryOnTheWholeScreen) {
 }
 
 TEST(JournalScreenPage, ThePageClearsTheBoxBeforeItsFrameGoesOn) {
-  // The listing paints ten rows and a page paints twenty, in the same
-  // box, under titles of different lengths. Anything left standing would
+  // The listing and a page both paint into the same box, as many of its
+  // twenty rows as each of them has, under titles of different lengths.
+  // Anything left standing would
   // be read as part of whichever came second (#298's class of defect), so
   // the interior is cleared first — every page, not once per open.
   rig r;
@@ -2429,13 +2570,164 @@ TEST(JournalScreenPage, TheBodyIsTheProgramsOwnLettering) {
   // clearing the command bar it covers is the footer's second job.
   EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row);
   EXPECT_EQ(r.word_of(last_column_seen), 0u);
-  EXPECT_EQ(r.word_of(last_colour_seen), page_footer_colour);
+  EXPECT_EQ(r.word_of(last_colour_seen), page_footer_colour)
+      << "one bar, in the listing's own bright: it is a bar on the screen's "
+         "last row now and not a footer of small print (#317)";
   const std::string footer = r.pascal_at(
       static_cast<std::uint16_t>(r.word_of(last_string_segment_seen)),
       static_cast<std::uint16_t>(r.word_of(last_string_offset_seen)));
   EXPECT_EQ(footer.size(), 40u) << "padded across the bar it covers";
-  EXPECT_NE(footer.find("ESC CLOSES"), std::string::npos)
-      << "a full screen covers the bar, so it has to name a way out";
+  EXPECT_NE(footer.find("EXIT"), std::string::npos)
+      << "a full screen covers the bar, so it has to name a way out (#317)";
+  EXPECT_NE(footer.find("NEXT"), std::string::npos);
+  EXPECT_NE(footer.find("PREV"), std::string::npos);
+  EXPECT_EQ(footer.find("F1"), std::string::npos)
+      << "and it names words rather than keys, like every bar in this game";
+}
+
+/// Paint a full-screen shape to the end of it, however many passes that
+/// takes: twenty rows is four of them and a batch holds one (#318).
+void until_it_settles(rig& r) {
+  for (unsigned pass = 0; pass < 8 && !r.reader().on_screen(); ++pass) {
+    r.poll();
+    r.run_the_calls();
+  }
+}
+
+TEST(JournalScreenPage, TheListingFillsTheBoxItIsDrawnIn) {
+  // #318: it drew ten rows into a twenty-row box, on a reason that
+  // belonged to the version of it that painted in one batch. The box's
+  // body bounds it now and `list_rows_per_pass` bounds a batch, so twenty
+  // rows is four passes rather than a bigger batch.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  for (unsigned nth = 1; nth <= 25U; ++nth) {
+    r.reader().note_seen(Entry(static_cast<std::uint16_t>(nth)), 8, 29, 20, 15);
+  }
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  r.bar_goes_out(area_before);
+  until_it_settles(r);
+  ASSERT_TRUE(r.reader().on_screen()) << "the listing settles";
+
+  EXPECT_EQ(r.word_of(string_calls), 21u)
+      << "twenty rows of the log and the bar under them";
+  EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row)
+      << "the bar last, on the screen's own last row";
+}
+
+TEST(JournalScreenPage, TheListingCarriesTheSameBar) {
+  // One bar on both full-screen shapes, because on both of them the three
+  // words mean the same three things - the next screenful, the one before
+  // it, and the way out (#317).
+  rig r;
+  a_screen_with_the_bar_live(r);
+  for (unsigned nth = 1; nth <= 25U; ++nth) {
+    r.reader().note_seen(Entry(static_cast<std::uint16_t>(nth)), 8, 29, 20, 15);
+  }
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  until_it_settles(r);
+  ASSERT_TRUE(r.reader().on_screen());
+
+  EXPECT_EQ(r.word_of(last_column_seen), 0u);
+  const std::string bar = r.pascal_at(
+      static_cast<std::uint16_t>(r.word_of(last_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(last_string_offset_seen)));
+  EXPECT_EQ(bar.size(), 40u) << "padded across the bar it covers";
+  EXPECT_NE(bar.find("NEXT"), std::string::npos);
+  EXPECT_NE(bar.find("PREV"), std::string::npos);
+  EXPECT_NE(bar.find("EXIT"), std::string::npos);
+  EXPECT_NE(bar.find("1/2"), std::string::npos)
+      << "and which screenful of the log this is";
+  EXPECT_EQ(bar.find("F1"), std::string::npos)
+      << "and never a key this program has not asked anybody to press";
+}
+
+TEST(JournalScreenPage, NextAndPrevTurnAnEntrysPagesAndStopAtTheEnds) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  std::string text;
+  for (int word = 0; word < 120; ++word) {
+    text += "aaaaaaaaa ";  // four to a screen row: thirty rows, two pages
+  }
+  r.host.text = text;
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+  ASSERT_EQ(r.reader().page_count(), 2u);
+  ASSERT_EQ(r.reader().page(), 0u);
+
+  press(r, key_next);
+  EXPECT_EQ(r.reader().page(), 1u);
+  press(r, key_next);
+  EXPECT_EQ(r.reader().page(), 1u) << "the last page stops rather than wraps";
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing)
+      << "and never quietly becomes the way out";
+
+  press(r, key_prev);
+  EXPECT_EQ(r.reader().page(), 0u) << "PREV is new: there was no way back";
+  press(r, key_prev);
+  EXPECT_EQ(r.reader().page(), 0u);
+}
+
+TEST(JournalScreenPage, F1IsTheBarsNextAndNoLongerTheWayOut) {
+  // It turned the page and closed on the last one, which was the only way
+  // out a page named. The bar names `EXIT` now, and a forward key that
+  // quietly became a way out would contradict the words the player is
+  // reading (#317).
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  ASSERT_EQ(r.reader().page_count(), 1u);
+
+  r.type(key_f1);
+  r.poll();
+  r.run_the_calls();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing)
+      << "one page and F1 on it: nothing to turn to, and no way out";
+  EXPECT_EQ(r.reader().page(), 0u);
+}
+
+TEST(JournalScreenPage, ThePanelKeepsItsOwnFooterAndTheProgramsLetters) {
+  // A panel is drawn beside the program's own live command bar, so `N`,
+  // `P` and `E` there are that bar's letters. Only a screen that *covers*
+  // the bar may spell its keys as words (#317).
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  r.program_draws("entry 12");
+  r.adventuring();
+  r.poll();
+
+  ASSERT_EQ(r.reader().page_place(), journal_page_place::panel);
+  EXPECT_EQ(r.row_text(reader_footer_y), centred("F1 CLOSES"))
+      << "twenty-two columns have no room for three words and an n/m";
+
+  r.type(key_next);
+  r.poll();
+  EXPECT_EQ(r.keys_waiting(), 1u)
+      << "and the letters stay the program's while a panel is up";
 }
 
 TEST(JournalScreenPage, ItIsWrappedThirtyEightWideAndTwentyDeep) {
@@ -2486,7 +2778,7 @@ TEST(JournalScreenPage, LeavingItGoesBackToTheListingRatherThanOut) {
   // What a person paging through several entries needs, and what the
   // panel page never had to decide because the listing was already gone
   // from under it.
-  for (const std::uint16_t key : {key_escape, key_f1}) {
+  for (const std::uint16_t key : {key_escape, key_exit}) {
     rig r;
     a_screen_with_the_bar_live(r);
     r.host.holds = Entry(12);
@@ -2502,7 +2794,7 @@ TEST(JournalScreenPage, LeavingItGoesBackToTheListingRatherThanOut) {
     r.poll();
     r.run_the_calls();
     ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
-    ASSERT_EQ(r.reader().page_count(), 1u) << "one page, so F1 is the way out";
+    ASSERT_EQ(r.reader().page_count(), 1u);
 
     const unsigned framed = r.word_of(frame_calls);
     r.type(key);
