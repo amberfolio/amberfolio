@@ -2175,8 +2175,7 @@ TEST(JournalList, TheStepKeysMoveWithinTheScreenfulAndNeverSlideIt) {
   }
   press(r, key_step_down);
   EXPECT_EQ(r.reader().list_cursor(), 20u);
-  EXPECT_EQ(listing_page(r), 1u)
-      << "and the twentieth step replaces it whole";
+  EXPECT_EQ(listing_page(r), 1u) << "and the twentieth step replaces it whole";
 }
 
 TEST(JournalList, TheLetterOfEachWordIsTakenInEitherCase) {

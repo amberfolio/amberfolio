@@ -1693,9 +1693,9 @@ enum class claimable : std::uint8_t {
     return false;
   }
 
-  list_line bar = screen_bar(static_cast<unsigned>(cursor / list_rows_visible),
-                             static_cast<unsigned>(list_pages(rows.size())),
-                             false);
+  list_line bar =
+      screen_bar(static_cast<unsigned>(cursor / list_rows_visible),
+                 static_cast<unsigned>(list_pages(rows.size())), false);
   return draw_line(ctx, image, bar, list_title_colour, list_exit_row,
                    list_exit_column);
 }
