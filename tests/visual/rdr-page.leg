@@ -30,6 +30,15 @@ seam journal
 until 300000000
 every 25
 
+# **A screen this seam draws is slow to appear, and the ranges below are
+# spaced for it.** It is painted over successive arrivals, a few rows at
+# a time, and the program's own drawing routines are what put each row
+# on the glass. Measured by hand on the shorter boot (#305): a
+# twenty-row page takes about 230 frames to settle after the key that
+# opened it and a ten-row listing about 130. That is the listing's own
+# behaviour since #222 rather than anything the page added; a `same`
+# range that started sooner would be measuring the paint.
+
 key A@7601
 key Return@7651
 key L@8951
@@ -42,22 +51,22 @@ key Return@10800
 # Forward, back, forward, and then out through the far end: the entry is
 # two pages at thirty-eight columns by twenty rows, so the F1 on the
 # second one is the way out rather than a third page.
-key F1@11200
-key Backspace@11600
-key F1@12000
-key F1@12400
+key F1@11600
+key Backspace@12400
+key F1@13200
+key F1@14000
 
 rect bar 0,190,319,199
 
 # Each page, holding still with nothing pressed.
-same 10850-11175
-same 11250-11575
-same 11650-11975
-same 12050-12375
+same 11100-11575
+same 11900-12375
+same 12700-13175
+same 13500-13975
 
 # And the screen before the reader took it, back again after it: every
 # pixel **except the bar row**, which is `not-log-giveback.leg`'s finding
 # rather than a convenience — the give-back injects a space to make the
 # menu-bar routine return and draw itself again, and the routine draws
 # itself with the highlight at its first command.
-equal 10600 12600 bar
+equal 10600 14400 bar

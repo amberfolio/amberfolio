@@ -20,10 +20,8 @@ alpha bravo charlie delta echo foxtrot golf hotel india juliett.
 
 The last line of the last page is here so that a leg can tell the
 end of the note from the end of a page.
-corrected entry 3 0
-
 scanned entry 4 39
 Entry four is short.
 One page, no more.
-corrected entry 4 0
-
+seen entry 3 1 1 0 0 1
+seen entry 4 1 1 0 0 0

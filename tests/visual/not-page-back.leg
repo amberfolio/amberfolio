@@ -28,20 +28,29 @@ seam journal
 until 300000000
 every 25
 
+# **A screen this seam draws is slow to appear, and the ranges below are
+# spaced for it.** It is painted over successive arrivals, a few rows at
+# a time, and the program's own drawing routines are what put each row
+# on the glass. Measured by hand on the shorter boot (#305): a
+# twenty-row page takes about 230 frames to settle after the key that
+# opened it and a ten-row listing about 130. That is the listing's own
+# behaviour since #222 rather than anything the page added; a `same`
+# range that started sooner would be measuring the paint.
+
 key A@7601
 key Return@7651
 key L@8951
 key A@9201
 key N@10600
-key Return@11000
-key Escape@11600
+key Return@11200
 key Escape@12200
+key Escape@13200
 
 rect bar 0,190,319,199
 
 # The listing, the page, and the listing again: each settled.
-same 10800-10975
-same 11200-11575
-same 11800-12175
+same 10800-11175
+same 11500-12175
+same 12400-13175
 
-equal 10600 12400 bar
+equal 10600 13600 bar
