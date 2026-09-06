@@ -523,6 +523,29 @@ class automap_state {
   [[nodiscard]] bool panel_covered() const noexcept { return panel_covered_; }
   void set_panel_covered(bool covered) noexcept;
 
+  /// Somebody painted over the panel's cells where this seam could not
+  /// see it happen, and what it put there is gone.
+  ///
+  /// **The points above cannot see a batch** (#332). A seam's calls into
+  /// the program run with the engine offering no points at all — the
+  /// machine is inside the program's own code at another seam's request,
+  /// which is not a place this seam's facts describe (`seam.h`) — so a
+  /// clear or a roster repaint made *through* `call_program` reaches
+  /// neither `set_panel_covered()`'s point nor the roster's. Every one
+  /// of the program's drawing routines the journal reader calls is such
+  /// a call, and its give-back is the case that cost a day: the reader's
+  /// full screen went up over the map and came down through the
+  /// program's own screen composer, so the panel's pixels were gone and
+  /// this seam's bookkeeping said they were still there. The player's
+  /// next Tab was spent closing a panel that was not on the screen.
+  ///
+  /// So the seam that drew says so. Deliberately **not** `panel_open()`:
+  /// the player asked for the panel and has not un-asked, so what this
+  /// records is that the pixels are owed again, and the next arrival
+  /// draws them — the program paints first and the seam paints after,
+  /// which is the ordering #303 settled for a report over a panel.
+  void note_panel_painted_over() noexcept;
+
   /// Whether the bar the program last put up is the adventuring screen's
   /// own (M5-E2d). **False at power-on**, and false again the moment
   /// anything else asks the player something — a vendor's yes/no, a

@@ -206,6 +206,14 @@ quiet, whenever the bar on the screen is not the adventuring screen's own
 — because a panel that stayed up over a vendor's question would be
 covering the game with something the game did not ask for.
 
+**It also comes back.** The journal below is drawn in the same cells, and
+its full screen is put away by asking the game to compose the adventuring
+screen — which repaints the roster the map is drawn over. So the map is
+redrawn after it, and the panel you had up before you read an entry is
+the panel you have when you close it. It used to be gone, with the
+enhancement still believing it was up, so the next Tab was spent closing
+a map nobody could see (#332).
+
 **What it is not yet.** It marks where you have been on the *city* and
 dungeon screens. The overworld map is the explored overlay below, which
 is a separate seam and shares this one's store.

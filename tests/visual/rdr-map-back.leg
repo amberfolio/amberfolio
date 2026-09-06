@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# RDR-9: the map comes back after the reader's full screen, and the key
+# that opens it was not spent while it was away (#332).
+#
+# **Why this leg exists.** With both seams on: Tab, `Notes`, `EXIT`. The
+# reader's full screen is given back by asking the program to compose the
+# adventuring screen, the composer repaints the party roster, and the
+# automap's panel is drawn *into* the roster's cells — so composing is
+# exactly the thing that erases the map. Nothing told the automap, so its
+# pixels were gone and its bookkeeping said they were there: the player's
+# next Tab was spent *closing* a panel that was not on the screen, and
+# only the one after it brought the map back. Seen on a display, and then
+# driven.
+#
+# The cause is in `seam.h` rather than in either seam. **While a batch of
+# calls into the program is running the engine offers no points at all**,
+# so the automap's own clear-region and roster-drawn points — the two it
+# watches its cells with — cannot see a single pixel of a give-back made
+# through the program's own routines. The give-back says so itself now
+# (`automap_state::note_panel_painted_over()`), and the map's next
+# arrival draws it again over the screen the program has just composed:
+# the program paints first and the seam paints after, which is the
+# ordering #303 settled for the Encamp Fix's report.
+#
+# **A single leg, and it has to be one**, for `not-log-giveback.leg`'s
+# reason and one more of its own. `N` reaches the program in a seam-off
+# run, where the adventuring bar answers an unknown letter by stepping
+# its own highlight, so the two runs differ on the bar row from that
+# moment whatever the give-back does (#234). And Tab is the automap's,
+# so a seam-off run has no map to compare against at all.
+#
+# So the claim is stated directly and more strongly: **the screen with
+# the map up before the reader opened is the screen with the map up
+# after it closed**, every pixel but the bar row — and the screen after
+# the two Tabs that follow is that screen again, which is what says the
+# first of them closed a panel that was really there rather than being
+# swallowed by one that was not.
+#
+# **Driven, on the shorter boot, by hand.** This script is the boot #291
+# left — the code-wheel seam on and told the challenge is answered — and
+# the runner does not yet carry that flag (#293 owes every leg its
+# re-drive on the new boot), so this leg was driven by hand with the same
+# host, the same disk copy, the same dump cadence and the same checks the
+# runner makes — its own `check_single`, over the stills this script
+# dumped: *121 frames held still, 2 given back*, nothing wrong. Both
+# `equal` lines pass at 181 pixels differing, every one of them on the
+# bar row. Before the change, the same script, the same disk and the
+# same frames leave the roster where the map was, and the runner says
+# so: `frame 10600 is not frame 9000 again: 1633 pixels differ, box
+# 136,16,311,62`. Those 1,633 pixels are still there at 11,400, after
+# the first Tab — the whole of the defect, in one number — and only at
+# 12,200, after the second, is the map back.
+about the automap comes back after the journal's full screen, and Tab still works
+kind single
+program START.EXE
+both code-wheel
+seam automap
+seam journal
+until 280000000
+every 25
+
+# Slot C, the city, and the party's own command bar. Then Tab for the
+# map, `Notes` for the log — the empty log, which takes the whole screen
+# just as a full one does (`not-log-giveback.leg`) — and `E` for the way
+# out. Then Tab twice: the first must take the map away and the second
+# must bring it back, which is the half of this a stale open flag gets
+# wrong.
+key L@7550
+key C@7800
+key Tab@8900
+key N@9600
+key E@10400
+key Tab@11000
+key Tab@11600
+
+# The bar row, and it is excepted rather than owned: the give-back injects
+# a space to make the menu-bar routine return and draw itself again, and
+# the routine draws itself with the highlight at its first command
+# (#234). What comes back is the right bar with the right words.
+rect bar 0,190,319,199
+
+# The map, up and holding still with nothing pressed.
+same 9000-9575
+# The log, settled over it. It is slow to appear — painted a few rows an
+# arrival by the program's own drawing routines, about 130 frames for a
+# listing (#305) — so this starts after the paint rather than in it.
+same 9775-10375
+# The map back, and holding still again.
+same 10600-10975
+# And back once more after the two Tabs.
+same 11625-13000
+
+# The whole of #332, as two frames. The map is up in both, the roster is
+# under it in both, the viewport, the status line and the ornaments are
+# the program's own in both.
+equal 9000 10600 bar
+# And the key was not spent: Tab took the map away and Tab brought it
+# back, so the screen after them is the screen before them.
+equal 9000 12200 bar
