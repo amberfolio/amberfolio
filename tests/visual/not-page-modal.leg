@@ -54,7 +54,14 @@ key L@12200
 key Left@12400
 key Right@12600
 key Up@12800
+# And then the way out, which `E` is: the page's own bar says `EXIT` and
+# the letter of a word on a bar is how this game leaves every screen it
+# has (M5-E4f, #317). It was swallowed with the rest of the barrage
+# before that, so the `same` line below used to run past it; it stops
+# short of it now. What the barrage is evidence for has not changed - six
+# keys the adventuring screen would have answered, and a screen that does
+# not move.
 key E@13100
 
 # From the page settling to the last of the barrage, one frame.
-same 11500-13300
+same 11500-13075

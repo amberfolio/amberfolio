@@ -164,14 +164,39 @@
 // program then painted its own bar and status line back over the journal
 // to prove it. Nothing reaches the program while one is up.
 //
-// Their ways out differ, and each names its own on the screen. The
-// listing has `E` as well as Escape, because `EXIT` is the word on its
-// bottom row and the letter of a word on a bar is how this game leaves
-// every screen it has. A page has F1 — which turns to the next page and
-// closes on the last — and Escape, which its footer names because a full
-// screen covers the command bar a player would otherwise be looking at.
-// A page opened from a row of the listing goes back to the listing rather
-// than out, so a person reading several entries stays in the journal.
+// **So a full screen has a bar of its own** (M5-E4f, #317), and it is the
+// same bar on both of them: `NEXT`, `PREV`, `EXIT`, on row `0x18`, which
+// is the screen's last and the row this game draws every bar it has on.
+// Three words and their first letters, because that is the only way this
+// program is driven — `EXIT`, `LOOK`, `ENCAMP`, `AREA` — and because the
+// two commands this enhancement had already added were spliced onto the
+// program's own bars in order to look like the rest of them. It said
+// `F1 MORE` and `ESC CLOSES` before, which names two keys this program
+// has never asked anybody to press. `PREV` is genuinely new: F1 walked
+// forward and closed on the last page, so there was no way back.
+//
+// **The panel keeps `F1 MORE`**, and the difference is not laziness. A
+// panel is drawn beside the program's own live command bar, so `N`, `P`
+// and `E` are that bar's letters and taking them would pick the program's
+// own commands out from under a player who can still see them; and
+// twenty-two columns have no room for three words beside a `1/3` anyway.
+// Only a screen that *covers* that bar can spell its keys as words. F1
+// there still turns the page and closes on the last one, which its
+// footer says.
+//
+// Escape closes from anywhere, whatever the bar says, because it costs
+// nothing and somebody will press it. A page opened from a row of the
+// listing goes back to the listing rather than out, so a person reading
+// several entries stays in the journal.
+//
+// **The listing is twenty rows and pages rather than scrolls** (M5-E4e,
+// #318 and #319). It filled ten rows of a twenty-row box on a reason that
+// belonged to a version of it that painted in one batch; and it slid its
+// window one row at a time, which is the one thing on this screen that
+// could not have been in a 1988 program — every long list this game draws
+// itself is replaced, never scrolled. So the screenful on the screen is
+// the cursor's own page, `NEXT` and `PREV` replace it whole, and nothing
+// slides. The cursor stays, because it is what `Return` opens.
 //
 //
 // The fidelity claim, stated for this seam (docs/seams.md §8.5)
@@ -556,15 +581,37 @@ constexpr std::uint16_t list_row_colour = 0x0A;
 /// Where the rows go. The frame puts its title on the box's first interior
 /// row, so the list starts below it.
 constexpr std::uint16_t list_first_row = 3;
-/// Ten, and the number is the batch's. A batch queues twelve calls
-/// (`seam.h`), the frame takes one and the way out takes one, so ten
-/// rows is exactly what is left - and the cursor scrolls the window
-/// over a log that holds far more.
-constexpr unsigned list_rows_visible = 10;
+/// How many of them there are: the box's whole body, every row of it
+/// (M5-E4e, #318).
+///
+/// It was ten, and the reason given was a batch's - twelve calls
+/// (`seam.h`), one for the frame and one for the way out, so ten is what
+/// is left. That was true of the version that painted this screen in one
+/// go and of no version since: `list_rows_per_pass` below is what one
+/// batch draws, and `screen_drawn()` is how the next one carries on. So
+/// the budget bounds a **pass** and the number of passes is free, which
+/// leaves the *box* as the only thing bounding the screen - and the box's
+/// body is twenty rows, the same twenty a full-screen page lays its text
+/// into (`screen_page.rows`, below, whose expression this is). Ten of
+/// them filled and ten empty was a fossil of the old reason.
+constexpr unsigned list_rows_visible = list_frame_bottom - list_first_row + 1;
+static_assert(list_rows_visible == 20,
+              "the listing fills the box it is drawn in");
 
 /// How many of them one pass paints. Five rows of forty characters is
-/// under both of a batch's budgets with the frame beside them.
+/// under both of a batch's budgets with the frame beside them - four
+/// passes for a full screen of rows where it used to be two, and the
+/// program is sitting in its own key loop drawing nothing for all four.
 constexpr std::size_t list_rows_per_pass = 5;
+
+/// How many screenfuls a log of `rows` lines comes to (M5-E4e, #319).
+///
+/// **At least one**, because an empty log is still a screen: it says so
+/// in a line of its own, and a listing of no pages would have nothing to
+/// draw that line on.
+[[nodiscard]] constexpr std::size_t list_pages(std::size_t rows) noexcept {
+  return rows == 0 ? 1U : ((rows + list_rows_visible - 1U) / list_rows_visible);
+}
 constexpr std::uint16_t list_name_column = 1;
 
 /// The way out, on the screen's own last row - below the frame, where
@@ -1471,16 +1518,35 @@ constexpr std::uint8_t key_step_forward_char = '2';
 constexpr std::uint8_t key_step_back_scan = 0x48;
 constexpr std::uint8_t key_step_forward_scan = 0x50;
 
+/// The letters the two screenful-sized things this seam draws are paged
+/// by (M5-E4e, #319): `N` for the next page and `P` for the one before
+/// it, in both the cases a player's keyboard sends.
+///
+/// **They cost this seam no new claim.** The listing and a full-screen
+/// page already take every keystroke there is while they are up, for the
+/// reason `claimable::swallow` gives, so `N` and `P` were being taken and
+/// dropped before this and are taken and acted on after it. Nothing else
+/// on this machine sees a key it would have seen, which is why paging
+/// needed no argument about which letters were free - the argument the
+/// `Notes` splice had to make (#221) is about a bar the *program* is
+/// reading, and neither of these screens is one.
+constexpr std::uint8_t key_next_upper = 'N';
+constexpr std::uint8_t key_next_lower = 'n';
+constexpr std::uint8_t key_prev_upper = 'P';
+constexpr std::uint8_t key_prev_lower = 'p';
+
 /// What a key claimed at the program's own **blocking read** is answered
 /// with: `key_ignored_scan` and `key_ignored_ascii`, which the automap
 /// claims at the same address and so shares (`seam_key_read.h`, where the
 /// argument is kept).
 
-/// The letter the list's own way out is named after, in both the cases a
-/// player's keyboard sends. The screen says `EXIT`, and the letter of a
-/// word on a bar is how every way out of every screen in this game is
-/// taken - so it has to be one here too, and a player who reads the screen
-/// must not have to guess at Escape.
+/// The letter the way out is named after, in both the cases a player's
+/// keyboard sends. The screen says `EXIT`, and the letter of a word on a
+/// bar is how every way out of every screen in this game is taken - so it
+/// has to be one here too, and a player who reads the screen must not
+/// have to guess at Escape. Since #317 it is the third word on both of
+/// the full-screen shapes' bars rather than the only one on the
+/// listing's.
 constexpr std::uint8_t key_exit_upper = 'E';
 constexpr std::uint8_t key_exit_lower = 'e';
 constexpr std::uint16_t key_escape = 0x011B;
@@ -1506,6 +1572,12 @@ enum class claimable : std::uint8_t {
   /// screen - the same modal claim the reader's other keys make.
   step_back,
   step_forward,
+  /// A screenful forward or back (M5-E4e, #319), on whichever of the two
+  /// paged things is up: the log's own listing, or an entry drawn on the
+  /// whole screen. `NEXT` and `PREV` on the bar both of them carry, and
+  /// they stop at the ends rather than wrapping.
+  page_next,
+  page_prev,
   /// Anything else, while the list has the whole screen: taken and
   /// dropped.
   ///
@@ -1527,6 +1599,27 @@ enum class claimable : std::uint8_t {
   /// The panel modes make no such claim, and the file's header says why.
   swallow,
 };
+
+/// The three words a screenful-sized reader carries on its bar, as
+/// keystrokes (#317, #319). `none` for anything else, so a caller can go
+/// on to whatever it does with a key it did not recognise.
+///
+/// Shared by the listing and a full-screen page because the two bars say
+/// the same three words and mean the same three things by them - the only
+/// difference is what a page *is* on each screen.
+[[nodiscard]] claimable paging_key(std::uint16_t key) noexcept {
+  const auto character = static_cast<std::uint8_t>(key & 0xFFU);
+  if (character == key_next_upper || character == key_next_lower) {
+    return claimable::page_next;
+  }
+  if (character == key_prev_upper || character == key_prev_lower) {
+    return claimable::page_prev;
+  }
+  if (character == key_exit_upper || character == key_exit_lower) {
+    return claimable::close;
+  }
+  return claimable::none;
+}
 
 [[nodiscard]] claimable claimable_of(std::uint16_t key,
                                      journal_reader_mode mode,
@@ -1552,7 +1645,9 @@ enum class claimable : std::uint8_t {
     }
     // The keys the game itself moves the party with, on the numpad and on
     // the cursor pad, taken only while the list is up. A player who is
-    // looking at a list expects up and down to move in it.
+    // looking at a list expects up and down to move in it - and since
+    // #319 they move it a row at a time *within* a screenful, which is
+    // what stops them being a scroll.
     const auto character = static_cast<std::uint8_t>(key & 0xFFU);
     const auto scan = static_cast<std::uint8_t>(key >> 8U);
     if (character == key_step_back_char ||
@@ -1563,8 +1658,10 @@ enum class claimable : std::uint8_t {
         (character == 0 && scan == key_step_forward_scan)) {
       return claimable::step_forward;
     }
-    if (character == key_exit_upper || character == key_exit_lower) {
-      return claimable::close;
+    // The three words on its own bar, by their first letters, which is
+    // how every screen in this game is driven (#317).
+    if (const claimable paged = paging_key(key); paged != claimable::none) {
+      return paged;
     }
     // And nothing else gets past. See `claimable::swallow`.
     return claimable::swallow;
@@ -1590,7 +1687,13 @@ enum class claimable : std::uint8_t {
     //
     // The panel page makes no such claim and must not: it is opened by a
     // citation, in the middle of a story event, and the key that turns
-    // the game's own page has to stay the game's.
+    // the game's own page has to stay the game's. Which is also why the
+    // three letters below are the *screen's* and never the panel's: a
+    // panel is drawn beside a live command bar, and `E` on that bar is a
+    // command of the program's.
+    if (const claimable paged = paging_key(key); paged != claimable::none) {
+      return paged;
+    }
     return claimable::swallow;
   }
   return claimable::none;
@@ -1653,19 +1756,56 @@ enum class claimable : std::uint8_t {
   return ctx.call_program(image, draw_string_entry, where);
 }
 
-/// The way out, and the whole of the row it is on.
+/// The reader's own command bar (M5-E4f, #317).
+///
+/// **Three words and their first letters**, which is the only way this
+/// game is driven: every screen it has puts words on a row and takes the
+/// word's initial - `EXIT`, `LOOK`, `ENCAMP`, `AREA` - and the two
+/// commands this enhancement had already added were spliced onto the
+/// program's own bars precisely so that they would look like the rest
+/// (`Notes`, #221; `FIX`, `seam_encamp_fix.cpp`). The reader was the one
+/// place that did not follow: it said `F1 MORE` and `ESC CLOSES`, which
+/// names two keys this program has never asked anybody to press.
+///
+/// **The same bar on both full-screen shapes**, the log's listing and a
+/// page of an entry, because on both of them the three words mean the
+/// same three things - the next screenful, the one before it, and the way
+/// out. Where they differ is only what a screenful *is*.
+///
+/// The panel keeps `F1 MORE` (`render()`), and that is a fact about the
+/// screen rather than an oversight: a panel is drawn beside the program's
+/// own live command bar, so `E`, `N` and `P` there are the *program's*
+/// letters and taking them would pick commands off a bar the player can
+/// still see. Only a screen that covers that bar may spell its keys as
+/// words.
 ///
 /// **Padded across all forty cells and drawn from column zero**, which is
-/// not decoration. The frame's lower border now stops at row `0x17`
-/// (above), so row `0x18` is no longer painted by the box — and what was
-/// on it is the adventuring screen's own command bar, which this screen
-/// is opened from. Four characters at column one leave the rest of that
-/// bar's words standing beside them. The program's string drawer paints
-/// a cell rather than only its lit pixels, so a line of spaces is the
-/// clear, and it costs no extra call.
-[[nodiscard]] list_line exit_line() {
+/// not decoration. The frame's lower border stops at row `0x17` (above),
+/// so row `0x18` is not painted by the box - and what is on it is the
+/// adventuring screen's own command bar, which this screen is opened
+/// from. The program's string drawer paints a cell rather than only its
+/// lit pixels, so a line of spaces is the clear, and it costs no extra
+/// call.
+///
+/// The `n/m` after the words is a label and not a command, so it goes
+/// after them and only when there is more than one page - the same rule
+/// the panel's footer has always used. `+` after it is the delivery
+/// buffer's own honesty: the entry was longer than the four kilobytes
+/// that crossed the host boundary (journal.h), said rather than silently
+/// stopped.
+[[nodiscard]] list_line screen_bar(unsigned page, unsigned pages,
+                                   bool truncated) {
   list_line line;
-  line.add(" EXIT");
+  line.add(" NEXT   PREV   EXIT");
+  if (pages > 1) {
+    line.add("      ");
+    line.add(page + 1U);
+    line.add("/");
+    line.add(pages);
+  }
+  if (truncated) {
+    line.add(" +");
+  }
   line.pad_to(list_row_cells);
   return line;
 }
@@ -1674,7 +1814,8 @@ enum class claimable : std::uint8_t {
 ///
 /// **Painted over several arrivals**, because one batch cannot hold it: a
 /// batch queues twelve calls and places 256 bytes (`seam.h`), and a frame,
-/// ten rows of forty characters and a way out are more than either. So a
+/// twenty rows of forty characters and a way out are far more than either.
+/// So a
 /// pass draws the frame if it has not been drawn, then as many rows as
 /// fit, and says whether there is more to do. The program is sitting in
 /// its own key loop while this happens and draws nothing itself, so a
@@ -1688,10 +1829,11 @@ enum class claimable : std::uint8_t {
   if (done == 0) {
     // **The box's whole interior, cleared before the frame goes on it.**
     // This screen is also what a full-screen page of an entry comes back
-    // to (#305), and a page paints twenty rows where the listing paints
-    // ten and carries a title of its own length - so without this the
-    // bottom half of the entry, and the tail of its title, stay under the
-    // log. Clearing and letting the program's own frame drawer put the
+    // to (#305), and the two carry titles of their own lengths and fill
+    // as many of the twenty rows as they have - so without this the tail
+    // of a longer title, and every row the shorter screen does not reach,
+    // stay under the one that follows it.
+    // Clearing and letting the program's own frame drawer put the
     // border and the title back leaves nothing of what was there, which
     // is the shape M5-E1e's residue (#298) taught.
     const std::array<std::uint16_t, 4> clear{
@@ -1718,19 +1860,27 @@ enum class claimable : std::uint8_t {
       nothing.add("THE GAME HAS NOT SENT YOU HERE YET.");
       static_cast<void>(draw_line(ctx, image, nothing, list_row_colour,
                                   list_first_row + 1, list_name_column));
-      list_line exit = exit_line();
-      return draw_line(ctx, image, exit, list_title_colour, list_exit_row,
+      list_line bar = screen_bar(0, 1, false);
+      return draw_line(ctx, image, bar, list_title_colour, list_exit_row,
                        list_exit_column);
     }
   }
 
-  // A window over the log, scrolled to keep the cursor in it. The log
-  // holds far more than the screen shows, which is what the cursor is for.
+  // **A page of the log, and the whole of it** (M5-E4e, #319). It was a
+  // window slid one row at a time to keep the cursor inside it, and it is
+  // a screenful now, replaced whole: this program has no scrolling list
+  // anywhere in it, and the entry pages this same reader draws in this
+  // same box already step whole pages.
+  //
+  // **The page is derived and not kept**, which is one fewer thing that
+  // can be wrong. It is the cursor's own page: the row the player is
+  // pointing at decides which screenful is on the screen, so the
+  // highlight can never be off it, and the page a player left is the page
+  // they come back to without a second number that has to be kept
+  // agreeing with the first. `list_cursor()` is clamped to the log
+  // (journal.h), so this is too.
   const std::size_t cursor = state.list_cursor();
-  std::size_t top = 0;
-  if (cursor >= list_rows_visible) {
-    top = cursor - list_rows_visible + 1;
-  }
+  const std::size_t top = (cursor / list_rows_visible) * list_rows_visible;
   const std::size_t shown = rows.size() - top < list_rows_visible
                                 ? rows.size() - top
                                 : list_rows_visible;
@@ -1753,19 +1903,28 @@ enum class claimable : std::uint8_t {
     return false;
   }
 
-  list_line exit = exit_line();
-  return draw_line(ctx, image, exit, list_title_colour, list_exit_row,
+  list_line bar =
+      screen_bar(static_cast<unsigned>(cursor / list_rows_visible),
+                 static_cast<unsigned>(list_pages(rows.size())), false);
+  return draw_line(ctx, image, bar, list_title_colour, list_exit_row,
                    list_exit_column);
 }
 
 /// A full-screen page's own numbers, beside the listing's.
 ///
-/// The colours are the panel page's rather than the listing's, which is
-/// the issue's own rule: the two sizes of one page should look like one
-/// thing, and what changed here is how much room it has.
+/// The title and the body are the panel page's colours rather than the
+/// listing's, which is #305's rule: the two sizes of one page should look
+/// like one thing, and what changed there is how much room it has.
+///
+/// **The bottom row is not**, since #317. It is the listing's own bright,
+/// because it is no longer a footer of grey small print under a page: it
+/// is a bar of three words on the screen's last row, which is where this
+/// game draws every bar it has and how it draws them. The panel's footer
+/// stays grey (`colour_footer`, `render()`), because in the panel it
+/// really is a label under a page.
 constexpr std::uint16_t page_title_colour = colour_title;
 constexpr std::uint16_t page_body_colour = colour_body;
-constexpr std::uint16_t page_footer_colour = colour_footer;
+constexpr std::uint16_t page_footer_colour = list_title_colour;
 
 /// Where the body starts: below the row the frame writes its title on,
 /// which is the row the listing starts its own rows at.
@@ -1799,34 +1958,16 @@ constexpr std::size_t page_rows_per_pass = 4;
   return static_cast<std::uint16_t>(list_frame_left + ((columns - take) / 2U));
 }
 
-/// The bottom row, which says where in the entry this is and which keys
-/// do the next thing.
+/// The bottom row of a page: `screen_bar()`, which is the listing's own
+/// bar and the whole of #317 (M5-E4f).
 ///
-/// The panel's own wording, plus the one thing the panel had no room for
-/// and a full screen has to say: **Escape**. The panel is drawn beside
-/// the program's own command bar, so a player looking at it can always
-/// see a way out of the screen; a full-screen page covers that bar, and
-/// on any page but the last the only key the footer named was one that
-/// went further in.
+/// It said `1/3  F1 MORE   ESC CLOSES` and it says `NEXT PREV EXIT` now,
+/// on the same row, in the same forty cells. What is new to a *reader* is
+/// `PREV`: F1 walked forward and closed on the last page, so a person who
+/// overshot had to leave the entry and open it again.
 [[nodiscard]] list_line page_footer(const journal_state& state, unsigned pages,
                                     bool more) {
-  list_line line;
-  line.add(" ");
-  if (pages > 1) {
-    line.add(state.page() + 1U);
-    line.add("/");
-    line.add(pages);
-    line.add("  ");
-  }
-  line.add(more ? "F1 MORE" : "F1 CLOSES");
-  if (!more && state.truncated()) {
-    // The entry was longer than the buffer that crossed the host boundary
-    // (journal.h), said rather than silently stopped.
-    line.add(" +");
-  }
-  line.add("  ESC CLOSES");
-  line.pad_to(list_row_cells);
-  return line;
+  return screen_bar(state.page(), pages, !more && state.truncated());
 }
 
 /// One pass of a page of an entry, on the whole screen (M5-E4d, #305).
@@ -2006,8 +2147,10 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
   // listing** (#305), which is what a person paging through several
   // entries needs and what the panel page never had to decide, because
   // the listing was already gone from under it. Nothing is given back:
-  // the same screen is still taken, the cursor is where it was, and the
-  // listing's own first pass clears the box before it draws.
+  // the same screen is still taken, the cursor is where it was - and so
+  // therefore is the page of the log, since #319 derives the one from the
+  // other - and the listing's own first pass clears the box before it
+  // draws.
   if (mode == journal_reader_mode::showing && state.page_from_list()) {
     state.set_reader(journal_reader_mode::listing);
     state.clear_digits();
@@ -2124,6 +2267,50 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
   return true;
 }
 
+/// A screenful forward or back, on whichever of the two paged things is
+/// up (M5-E4e, #319).
+///
+/// **They stop at the ends rather than wrapping**, which is the rule the
+/// cursor this replaced followed and for the same reason: a list with a
+/// top and a bottom that jumped from one to the other would lose a player
+/// who was holding a key down.
+///
+/// **The listing's page is a jump of its cursor**, which is why turning
+/// one needs no state of its own: the screenful on the screen is the
+/// cursor's own page (`draw_the_list()`), so putting the cursor on the
+/// first row of the next one *is* replacing the screenful. The move
+/// clamps to the log, so `NEXT` onto a short last page lands on its last
+/// row rather than past it - and that row is still on the page it was
+/// asked for.
+///
+/// The page count is worked out here rather than kept, off the log as it
+/// stands this instant: the log grows underneath a reader that is looking
+/// at it, and a count remembered from the pass that drew the screen would
+/// be a page short of the truth.
+void turn_the_page(journal_state& state, int by) {
+  if (state.reader() == journal_reader_mode::listing) {
+    const std::size_t pages = list_pages(state.seen().size());
+    const std::size_t at = state.list_cursor() / list_rows_visible;
+    if (by > 0 ? at + 1U >= pages : at == 0) {
+      return;  // stops at the ends rather than wrapping
+    }
+    const std::size_t want = by > 0 ? at + 1U : at - 1U;
+    const auto here = static_cast<std::ptrdiff_t>(state.list_cursor());
+    const auto there = static_cast<std::ptrdiff_t>(want * list_rows_visible);
+    state.move_list_cursor(static_cast<int>(there - here));
+    return;
+  }
+  if (by > 0) {
+    if (state.page() + 1U < state.page_count()) {
+      state.set_page(static_cast<std::uint16_t>(state.page() + 1U));
+    }
+    return;
+  }
+  if (state.page() != 0) {
+    state.set_page(static_cast<std::uint16_t>(state.page() - 1U));
+  }
+}
+
 /// F1, wherever the reader happens to be.
 ///
 /// One key that opens the prompt, points it at each section in turn,
@@ -2172,6 +2359,21 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
     // citation opening the reader and the arrival that draws it.
     return;
   }
+  if (state.page_place() == journal_page_place::screen) {
+    // **On a full screen F1 is `NEXT` and nothing else** (M5-E4f, #317).
+    // It used to turn the page and close on the last one, which was the
+    // only way out a page named. A full screen carries `NEXT` and `EXIT`
+    // as words of its own now, and a forward key that quietly became a
+    // way out on the last page would contradict the bar the player is
+    // reading - and would be a second forward key that stops somewhere
+    // else than the first.
+    turn_the_page(state, 1);
+    return;
+  }
+  // In the panel it still does both, because the panel's footer still
+  // says so: there is no room on twenty-two columns for three words, so
+  // `F1 MORE` becomes `F1 CLOSES` on the last page and that is the whole
+  // of what a citation's reader offers.
   if (state.page() + 1U < state.page_count()) {
     state.set_page(static_cast<std::uint16_t>(state.page() + 1U));
     return;
@@ -2205,11 +2407,22 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
     case claimable::close:
       return close_reader(box, ctx, ds);
     case claimable::back:
+      // Backspace: a digit rubbed out at the prompt, and a page back
+      // anywhere else - which is the listing as well as an entry now
+      // (#319). It used to step `page()` on the listing too, where
+      // `page()` is the *entry's* page number and nothing on that screen
+      // reads it: the key did nothing a player could see.
       if (state.reader() == journal_reader_mode::asking) {
         state.pop_digit();
-      } else if (state.page() != 0) {
-        state.set_page(static_cast<std::uint16_t>(state.page() - 1U));
+      } else {
+        turn_the_page(state, -1);
       }
+      return false;
+    case claimable::page_next:
+      turn_the_page(state, 1);
+      return false;
+    case claimable::page_prev:
+      turn_the_page(state, -1);
       return false;
     case claimable::step_back:
       state.move_list_cursor(-1);
@@ -2235,7 +2448,7 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
         // **The screen is not given back** (#305). The page is drawn in
         // the box the listing is drawn in, out of the same two routines,
         // so it takes that screen over rather than handing it back and
-        // taking it again — and nothing is batched here, so the page is
+        // taking it again - and nothing is batched here, so the page is
         // painted on this same pass.
         //
         // What the old shape did is worth keeping in view, because it is
@@ -2297,7 +2510,8 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
   mix(static_cast<std::uint32_t>(state.page_place()));
   // The list is drawn from the log and the cursor, so both are in the
   // signature: a line arriving at the top while the screen is up is a
-  // screen that has to be drawn again.
+  // screen that has to be drawn again, and the cursor is also what says
+  // which page of the log is on it (#319).
   mix(static_cast<std::uint32_t>(state.seen().size()));
   mix(static_cast<std::uint32_t>(state.list_cursor()));
   mix(journal_open_argument(state.entry()));
