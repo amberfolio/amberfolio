@@ -170,13 +170,35 @@ export function currentScan(module) {
   return { kind: jpeg ? 'jpeg' : 'gray', parts };
 }
 
-/// The words of `data` that fall inside `region`, as lines.
+/// The words of `data` that fall inside `region`, as lines — `readWithin`
+/// without the numbers, for a caller that wants only the text.
+export function wordsWithin(data, region) {
+  return readWithin(data, region).text;
+}
+
+/// Under this, a word is one the engine was not sure of.
+///
+/// The same sixty `journal_ocr.h` carries, on the same 0-100 scale, and
+/// the same measurement behind it (#315): it is where the flag's
+/// precision was still about three quarters on the two real entries that
+/// were scored by hand, and where the share of a whole edition's words it
+/// picks out fell from a quarter to a twentieth once page segmentation was
+/// right. Both hosts have to use one number or two players comparing
+/// their ingestions would be comparing different things.
+export const DOUBTFUL_CONFIDENCE = 60;
+
+/// The words of `data` that fall inside `region`, as lines, and what the
+/// engine thought of them.
 ///
 /// tesseract.js reports a `bbox` per word for the same reason Tesseract's
 /// `tsv` output does, so this is the browser's half of one rule written
 /// once in `journal_ocr.h`: an encoded scan is a whole page, and the
 /// entry is a rectangle of it. A word counts as inside when its centre
 /// is, which is what gives the same answer a crop would have.
+///
+/// **`region` may be null**, which keeps every word — the decoded path,
+/// where the image already is the entry and there is nothing to filter
+/// (#315).
 ///
 /// **The shape it reads is the pinned version's, measured.** tesseract.js
 /// 6 answers `data.blocks[].paragraphs[].lines[].words[]`, and only when
@@ -187,7 +209,12 @@ export function currentScan(module) {
 /// so `data` without a `blocks` array is refused with a sentence rather
 /// than read as an empty page, and a line is the engine's own grouping
 /// rather than a guess from word identity.
-export function wordsWithin(data, region) {
+///
+/// **The quality is over the words that were kept**, never over the whole
+/// page: on an encoded scan most of what the engine read is a different
+/// entry, and a confidence averaged over those would be a number about
+/// somebody else's page.
+export function readWithin(data, region) {
   const blocks = data?.blocks;
   if (!Array.isArray(blocks)) {
     throw new Error(
@@ -196,9 +223,12 @@ export function wordsWithin(data, region) {
         ' have parted (journal.mjs, wordsWithin)',
     );
   }
-  const right = region.left + region.width;
-  const bottom = region.top + region.height;
+  const right = region ? region.left + region.width : 0;
+  const bottom = region ? region.top + region.height : 0;
   const lines = [];
+  let words = 0;
+  let doubtful = 0;
+  let total = 0;
   for (const block of blocks) {
     for (const paragraph of block?.paragraphs ?? []) {
       for (const line of paragraph?.lines ?? []) {
@@ -207,18 +237,37 @@ export function wordsWithin(data, region) {
           const box = word?.bbox;
           const text = word?.text ?? '';
           if (!box || text === '') continue;
-          const cx = (box.x0 + box.x1) / 2;
-          const cy = (box.y0 + box.y1) / 2;
-          if (cx < region.left || cx >= right || cy < region.top || cy >= bottom) {
-            continue;
+          if (region) {
+            const cx = (box.x0 + box.x1) / 2;
+            const cy = (box.y0 + box.y1) / 2;
+            if (cx < region.left || cx >= right || cy < region.top || cy >= bottom) {
+              continue;
+            }
           }
           kept.push(text);
+          // A word whose confidence the engine did not give counts
+          // towards nothing: this page has no opinion about it, and
+          // averaging it in as a zero would say the engine was sure it
+          // was wrong.
+          if (typeof word.confidence === 'number') {
+            ++words;
+            total += word.confidence;
+            if (word.confidence < DOUBTFUL_CONFIDENCE) ++doubtful;
+          }
         }
         if (kept.length > 0) lines.push(kept.join(' '));
       }
     }
   }
-  return lines.join('\n');
+  return {
+    text: lines.join('\n'),
+    quality: {
+      known: words > 0,
+      words,
+      doubtful,
+      confidence: words > 0 ? total / words : 0,
+    },
+  };
 }
 
 /// How many words `data` carries at all, so that a rectangle that kept
@@ -278,6 +327,87 @@ function canvasOf(image) {
   return canvas;
 }
 
+/// How much bigger an encoded page is drawn before it is read (#315).
+///
+/// The journal's scans are two printed pages in 1328 by 1003 pixels, so a
+/// column of body text arrives at an x-height of a handful of pixels —
+/// well under what Tesseract's line recognizer wants. Measured against a
+/// hand-typed truth for two real entries, at automatic page segmentation:
+///
+///     x1    2.9%   4.0%   character error
+///     x2    2.1%   1.2%
+///     x3    2.0%   1.4%
+///
+/// Two, then, and not three: the second doubling gives back nothing and
+/// the pixels are four times as many. It costs about 40% more time per
+/// page (2.9s against 4.1s on the machine this was measured on), which
+/// the page cache below more than pays for.
+///
+/// **This is not a decoder** and does not make one of this project. #212
+/// refused to decode a player's scan *here*, and that stands: what
+/// happens below is the browser being asked to draw a JPEG it already
+/// knows how to draw, which is the same thing it does when the plain
+/// Blob path hands tesseract.js the stream. The desktop's program-driven
+/// engine has no such platform decoder within reach, which is why it
+/// cannot pull this lever and says so (`tesseract_ocr.h`).
+export const PAGE_SCALE = 2;
+
+/// `bytes` decoded by the browser and drawn `scale` times bigger, or null
+/// if this browser will not do it.
+///
+/// Null rather than a throw: a browser without `createImageBitmap`, or
+/// one that refuses this particular stream, should still get the reading
+/// — the page segmentation fix above is most of the win and needs none of
+/// this. The caller falls back to handing the engine the stream itself.
+async function upscaledPage(bytes, scale) {
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') {
+    return null;
+  }
+  try {
+    const blob = new Blob([bytes], { type: 'image/jpeg' });
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width * scale;
+    canvas.height = bitmap.height * scale;
+    const context = canvas.getContext('2d');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    if (typeof bitmap.close === 'function') bitmap.close();
+    return canvas;
+  } catch {
+    return null;
+  }
+}
+
+/// `region` in the coordinates of a page drawn `scale` times bigger.
+///
+/// The rectangle is a fact about the image as the document holds it
+/// (`journal_facts.h`), so scaling the page means scaling the rectangle
+/// with it. Doing that here rather than inside the filter keeps
+/// `readWithin` a function of one coordinate system.
+function scaledRegion(region, scale) {
+  if (scale === 1) return region;
+  return {
+    left: region.left * scale,
+    top: region.top * scale,
+    width: region.width * scale,
+    height: region.height * scale,
+  };
+}
+
+/// Whether two byte arrays are the same page.
+///
+/// Used to notice that the entry being read is on the page the last one
+/// was on, which is true of most of them: the fact table's fragments are
+/// in reading order and a two-page scan carries a dozen items.
+function sameBytes(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; ++i) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /// Load the pinned tesseract.js, or answer null with a reason.
 ///
 /// It is loaded by `<script>` rather than `import`: tesseract.js ships a
@@ -325,6 +455,65 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
     corePath: base,
     langPath: base,
   });
+
+  // The two page-segmentation modes, and which picture each is true of
+  // (#315). This is the single biggest thing the OCR pipeline was getting
+  // wrong, and it was a default: tesseract.js reads with `SINGLE_BLOCK`
+  // unless told otherwise, and a `/DCTDecode` scan of this edition is a
+  // **two-page spread** with four columns on it. Told it is one uniform
+  // block, Tesseract does not look for the columns; it reads straight
+  // across them, so the entry's lines come back interleaved with the
+  // facing page's and the region filter keeps a plausible-looking wreck.
+  //
+  // Measured against a hand-typed truth for two real entries of the
+  // shipped edition:
+  //
+  //     single block   12.1%   21.1%   character error
+  //     auto            2.9%    4.0%
+  //
+  // And over the whole edition — ninety-nine items, no truth to score
+  // against but the engine's own confidence — the mean word confidence
+  // went from 70.4 to 86.1, and the share of words the engine was unsure
+  // of from 28% to 6.5%.
+  //
+  // A **decoded** scan is the opposite case: the extractor has already
+  // cropped it to the entry, so there is no layout to find and single
+  // block is exactly true of it. The rule is not that one mode is better
+  // — it is that the mode has to match what is in the picture.
+  const PSM = lib.PSM ?? { AUTO: '3', SINGLE_BLOCK: '6' };
+
+  // One page deep, because the fact table's fragments are in reading
+  // order and a two-page scan carries a dozen items: the shipped edition
+  // is 120 pieces over 11 scans, so without this the page recognizes
+  // every scan about eleven times over and throws ten of them away. It is
+  // also what pays for `PAGE_SCALE` — 11 recognitions at 4.1 seconds
+  // against 120 at 2.9 (#315).
+  let page = null;
+  /// What the last `recognize()` was sure of (#315). A closure variable
+  /// and a method rather than a field, so that it cannot be lost by a
+  /// caller that takes `recognize` off the object and calls it on its
+  /// own — which is the shape `journal_ocr::quality()` has for the same
+  /// reason.
+  let lastQuality = { known: false, words: 0, doubtful: 0, confidence: 0 };
+  async function readPage(bytes) {
+    if (page && sameBytes(page.bytes, bytes)) return page;
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+    const drawn = await upscaledPage(bytes, PAGE_SCALE);
+    // `blocks` has to be asked for: the pinned version answers `text`
+    // alone otherwise, and a rectangle cannot be applied to that (#306).
+    const { data } = await worker.recognize(
+      // The stream, under its own type, exactly as the document holds it,
+      // whenever this browser would not draw it — this page has not
+      // decoded it and has no business claiming to know more about it
+      // than the document did (#212).
+      drawn ?? new Blob([bytes], { type: 'image/jpeg' }),
+      {},
+      { blocks: true },
+    );
+    page = { bytes, data, scale: drawn ? PAGE_SCALE : 1 };
+    return page;
+  }
+
   return {
     engine: {
       name: `tesseract.js ${version}`,
@@ -333,19 +522,22 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
         // way a reader would read them (#214).
         const read = [];
         const empty = [];
+        let words = 0;
+        let doubtful = 0;
+        let weighted = 0;
+        const keep = (quality) => {
+          if (!quality.known) return;
+          words += quality.words;
+          doubtful += quality.doubtful;
+          // Weighted by words, so an entry whose second piece is three
+          // words does not pull the whole entry's confidence around.
+          weighted += quality.confidence * quality.words;
+        };
         for (const part of scan.parts) {
           if (scan.kind === 'jpeg') {
-            // The stream, under its own type, exactly as the document
-            // holds it — this page has not decoded it and has no business
-            // claiming to know more about it than the document did
-            // (#212). The browser decodes it, tesseract.js reads the whole
-            // page, and the region keeps this piece's words. `blocks` has
-            // to be asked for: the pinned version answers `text` alone
-            // otherwise, and a rectangle cannot be applied to that.
-            const blob = new Blob([part.bytes], { type: 'image/jpeg' });
-            const { data } = await worker.recognize(blob, {}, { blocks: true });
-            const words = wordsWithin(data, part.region);
-            if (words === '') {
+            const { data, scale } = await readPage(part.bytes);
+            const got = readWithin(data, scaledRegion(part.region, scale));
+            if (got.text === '') {
               const onPage = wordCount(data);
               empty.push(
                 onPage === 0
@@ -354,10 +546,31 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
                     " none inside the entry's rectangle",
               );
             }
-            read.push(words);
+            keep(got.quality);
+            read.push(got.text);
           } else {
-            const { data } = await worker.recognize(canvasOf(part.image));
-            read.push(data?.text ?? '');
+            // Samples the module produced, already cropped to the entry.
+            // Single block is exactly true of that, so it is asked for
+            // rather than left to a default that happens to agree (#315).
+            //
+            // It goes through `readWithin` with **no rectangle** rather
+            // than reading `data.text`, for the confidences: there is
+            // nothing to filter here and the words are joined back into
+            // the engine's own lines. The desktop's decoded path made the
+            // same move to `tsv` in the same change, which is what keeps
+            // the two hosts answering one transcription for one page
+            // (`journal_ocr.h`).
+            await worker.setParameters({
+              tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+            });
+            const { data } = await worker.recognize(
+              canvasOf(part.image),
+              {},
+              { blocks: true },
+            );
+            const got = readWithin(data, null);
+            keep(got.quality);
+            read.push(got.text);
           }
         }
         // A piece that read nothing beside pieces that did is a short
@@ -366,9 +579,24 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
         if (empty.length === scan.parts.length && empty.length > 0) {
           throw new Error(empty[0]);
         }
+        // What this reading was worth, for the caller to put beside the
+        // entry it belongs to. Read straight after `recognize`, the way
+        // `journal_ocr::quality()` is (#315).
+        lastQuality = {
+          known: words > 0,
+          words,
+          doubtful,
+          confidence: words > 0 ? weighted / words : 0,
+        };
         return read.join('\n').replace(/\s+$/, '');
       },
+      /// What the last `recognize()` was sure of. Replaced by every call;
+      /// meaningless before the first.
+      quality() {
+        return lastQuality;
+      },
       async close() {
+        page = null;
         await worker.terminate();
       },
     },
@@ -477,6 +705,12 @@ export async function ingestJournal(
   let extracted = 0;
   let recognized = 0;
   let firstTrouble = null;
+  // What the engine was sure of, item by item (#315). The desktop host's
+  // `journal_ingest_report` carries exactly this list for exactly this
+  // reason: the question after an ingestion is not "how did it go" but
+  // "which of my ninety-nine entries should I look at", and only the
+  // per-item numbers answer that.
+  const quality = [];
   for (let index = 0; index < count; ++index) {
     const citation = module._af_web_journal_entry_citation(index);
     if (onProgress) onProgress({ index, count, citation });
@@ -524,7 +758,26 @@ export async function ingestJournal(
       module._af_web_journal_set_text(citation, ptr),
     );
     ++recognized;
+    // Asked for while it is still the last thing the engine did, and
+    // kept only when the engine says: "this engine does not report
+    // confidences" and "the engine was not sure" are different facts, and
+    // a list of unknowns would say the second (#315).
+    const how = typeof engine.quality === 'function' ? engine.quality() : null;
+    if (how?.known) quality.push({ citation, ...how });
   }
+
+  // All of them together, weighted by words — an unweighted mean lets a
+  // nine-word caption count as much as a nine-hundred-character entry.
+  const words = quality.reduce((sum, q) => sum + q.words, 0);
+  const reading = {
+    known: words > 0,
+    words,
+    doubtful: quality.reduce((sum, q) => sum + q.doubtful, 0),
+    confidence:
+      words > 0
+        ? quality.reduce((sum, q) => sum + q.confidence * q.words, 0) / words
+        : 0,
+  };
 
   return {
     ok: true,
@@ -537,6 +790,12 @@ export async function ingestJournal(
     recognized,
     engine: engineName,
     store: storeStats(module),
+    /// What the engine was sure of, per item and altogether (#315).
+    /// `worstFirst` is the order somebody proof-reading wants: least
+    /// confident first, because that is where the mistakes are.
+    quality,
+    reading,
+    worstFirst: [...quality].sort((a, b) => a.confidence - b.confidence),
   };
 }
 

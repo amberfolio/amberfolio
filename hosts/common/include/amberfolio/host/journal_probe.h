@@ -149,6 +149,23 @@ inline constexpr std::size_t journal_probe_fragments = 4;
 /// The text `journal_probe_ocr` answers for entry `index`.
 [[nodiscard]] std::string_view journal_probe_text(std::size_t index);
 
+/// What `journal_probe_noisy_ocr` puts on the end of every reading, and
+/// what that costs in edits (#315).
+///
+/// An **append**, and not a substitution or a dropped character, and the
+/// reason is the whole point of the fixture: a string and the same string
+/// with three characters on the end are exactly three character edits and
+/// exactly one word edit apart — no less, because a Levenshtein distance
+/// is at least the difference in length, and no more, because the trivial
+/// alignment achieves it. So the error rate a test expects is arithmetic
+/// off `journal_probe_text()`'s own lengths rather than a number somebody
+/// ran the harness once to find out. A substitution has no such
+/// guarantee: the cheapest alignment of two strings that differ in one
+/// place is usually one edit and is not always.
+inline constexpr std::string_view journal_probe_noise = " zz";
+inline constexpr std::size_t journal_probe_noise_edits = 3;
+inline constexpr std::size_t journal_probe_noise_word_edits = 1;
+
 /// The fixture engine: the probe's words for the probe's pixels, and
 /// nothing for anything else.
 class journal_probe_ocr final : public journal_ocr {
@@ -162,6 +179,47 @@ class journal_probe_ocr final : public journal_ocr {
 
  private:
   std::vector<journal_bitmap> expected_;
+};
+
+/// The same fixture, reading badly on purpose (#315).
+///
+/// `journal_score.h` measures how well an ingestion went, and a harness
+/// that has only ever been shown a perfect reading is a harness nobody
+/// has checked. This is the other half of the `journal_probe.h`
+/// arrangement applied to that: a synthetic document, and an engine that
+/// gets it wrong by an amount this project chose, so the error rate the
+/// harness should report is *arithmetic* — nothing here is a number
+/// somebody observed and then asserted.
+///
+/// It is still not a stub. Everything `journal_probe_ocr` refuses, this
+/// refuses, because it delegates: the right offset, the right filter, the
+/// right predictor and the right crop all still have to be right before
+/// there is anything to spoil.
+///
+/// It also reports a **confidence**, which nothing else in this tree can
+/// do without an engine installed. The numbers rise with each reading of
+/// a run — 50, 60, 70, ... — which is a fixture's arbitrary choice made
+/// for one reason: an aggregate that averaged them unweighted and one
+/// that weighted them by words give different answers, and a fixture that
+/// answered the same number every time could not tell the two apart.
+class journal_probe_noisy_ocr final : public journal_ocr {
+ public:
+  [[nodiscard]] bool recognize(const journal_scan& scan,
+                               std::string& out) override;
+
+  [[nodiscard]] std::string_view engine() const override;
+
+  [[nodiscard]] journal_reading_quality quality() const override {
+    return quality_;
+  }
+
+ private:
+  journal_probe_ocr honest_;
+  journal_reading_quality quality_;
+  /// How many readings this engine has answered, which is what makes the
+  /// confidences differ. Reset by nothing: one of these drives one
+  /// ingestion, the way one `journal_probe_ocr` does.
+  std::size_t readings_{0};
 };
 
 }  // namespace amberfolio::host

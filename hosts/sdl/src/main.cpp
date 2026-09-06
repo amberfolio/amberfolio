@@ -659,6 +659,7 @@
 #include "amberfolio/host/journal_ingest.h"
 #include "amberfolio/host/journal_ocr.h"
 #include "amberfolio/host/journal_probe.h"
+#include "amberfolio/host/journal_score.h"
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/clock.h"
@@ -2627,6 +2628,48 @@ void ingest_journal(machine::machine& box, const options& opts,
                  machine::journal_kind_name(report.first_failure.kind),
                  static_cast<unsigned>(report.first_failure.number),
                  host::journal_trouble_name(report.first_trouble));
+  }
+
+  // How well it went, in the two ways there are to know (#315). Both are
+  // printed because they answer different questions and neither is
+  // available on its own: the engine's own confidence needs nobody to
+  // have corrected anything and is only a proxy, and the error rate is
+  // the real thing but exists only where a person has already been in.
+  if (const host::journal_reading_quality how = report.reading(); how.known) {
+    std::fprintf(stderr,
+                 "amberfolio: journal read confidence=%.1f doubtful=%zu/%zu"
+                 " (%.1f%%)\n",
+                 how.confidence, how.doubtful, how.words,
+                 how.doubtful_share() * 100.0);
+    // The three the engine liked least, because "which of my ninety-nine
+    // entries should I look at" is the question after an ingestion and a
+    // single average cannot answer it.
+    const std::vector<host::journal_item_quality> worst = report.worst_first();
+    for (std::size_t i = 0; i < worst.size() && i < 3U; ++i) {
+      std::fprintf(stderr,
+                   "amberfolio: journal least sure of %s %u:"
+                   " confidence=%.1f words=%zu\n",
+                   machine::journal_kind_name(worst[i].what.kind),
+                   static_cast<unsigned>(worst[i].what.number),
+                   worst[i].reading.confidence, worst[i].reading.words);
+    }
+  }
+  if (const host::journal_store_report scored =
+          host::score_journal_store(store);
+      scored.characters.taken) {
+    // Against the player's own corrections, which is the only ground
+    // truth this project may ever have (`host/journal_score.h`). The
+    // rates and the counts; not a word of what was compared.
+    std::fprintf(stderr,
+                 "amberfolio: journal score corrected=%zu characters=%.2f%%"
+                 " words=%.2f%%\n",
+                 scored.items.size(), scored.characters.rate() * 100.0,
+                 scored.words.rate() * 100.0);
+  } else {
+    std::fprintf(stderr,
+                 "amberfolio: journal score nothing to measure against -"
+                 " correct an entry in the store and re-ingest, and this"
+                 " says whether it read better\n");
   }
 
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
