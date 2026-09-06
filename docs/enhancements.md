@@ -128,6 +128,14 @@ the first row the game clears, and the box gave up a row of its
 exception list to make room; the list already said `...and N more.` when
 it ran out, so it says it one member sooner.
 
+**And the bar you come back to is the bar you would have come back to**
+(#304). The game keeps one highlight for every command bar and numbers
+it against the bar that last set it, and the camp bar with `FIX` on it
+has one command more — so after EXIT the adventuring bar's highlight was
+landing one command off from where it lands without the Fix. The Fix
+puts the number back into the game's own numbering on its way out of
+camp.
+
 **What it is not yet.** Nothing outstanding in the mechanism. Two
 residuals are filed as **#269**: a party hurt by *combat* rather than by
 a debug seam has never camped, so the wound statuses a fight leaves

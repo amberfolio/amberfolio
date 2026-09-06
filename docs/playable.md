@@ -984,7 +984,18 @@ camp banner's animated fire, and at one 8-by-8 cell — the knot at the
 panel's top-left junction, which the report's frame paints over with a
 plain edge tile exactly as the program's own cast screen from camp does.
 `tests/visual/camp-fix-exit.leg` is that run as a leg, and its header
-says why the runner has not run it yet.
+says why the runner has not run it yet. **And after EXIT the bar is the
+same bar in both runs** (M5-E1g, #304): it used to come back with its
+highlight on `AREA` with the seam on and `LOOK` with it off, because
+the highlight is one data-segment byte every bar reads and numbers
+against its own groups and the spliced camp bar has one group more; the
+seam maps it back into the program's numbering on the way out of camp.
+Watched (`--watch 6B2B`): EXIT leaves 6 with the seam off and 7 with it
+on, the seam maps the 7 to 6 at frame 10,226, and from frame 10,325 —
+the bar is drawn a piece at a time and the one dump that catches it
+mid-draw is 10,300 — to the end of the run the bar row is identical in
+the two runs, 50 frames and not a pixel, where the old build differed on
+every one of them (174 pixels, `AREA` lit against `LOOK`).
 
 **The healing is the next leg's evidence and no longer this one's.**
 Slot C's party is whole, so there is no hit point here for the program's

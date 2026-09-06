@@ -253,6 +253,25 @@
 // defect: an interruption is the one way out of camp after which the
 // caller repaints the whole screen.
 //
+// **And it hands the next bar the highlight the program would have**
+// (M5-E1g, #304), which is the one thing the program observes of the
+// splice after the word is gone. The menu bar's highlight is a single
+// byte in the data segment that every bar in the program shares: the
+// menu-bar routine reads it as a one-based group index, resets it to the
+// first group when it names a group the bar it was handed does not have,
+// steps it on the two cursor keys, and sets it to the chosen letter's
+// group when a command is selected. The spliced bar has one group more
+// than the program's own, so a command chosen at or past the Fix leaves
+// the byte one higher than the same command on the program's bar would
+// have — and the adventuring bar the player comes back to reads that
+// number against its own groups. Driven, EXIT with the seam on came back
+// to `AREA` — a 7 the adventuring bar's six groups could not place, so
+// reset to its first — where the seam-off run came back to `LOOK`, its
+// sixth, the very number EXIT had left. So on the way out of camp the
+// byte is mapped back into the program's own numbering, the splice
+// undone in the one place the string itself could not carry it
+// (`restore_the_highlight()`).
+//
 //
 // What a later Gold Box title's FIX did that this one does not
 // ------------------------------------------------------------
@@ -485,6 +504,18 @@ constexpr std::uint16_t data_camp_bar = 0x508;
 /// and the Fix costs four; the check below is against the slot and not
 /// against what happens to be in it, because the slot is the fact.
 constexpr std::uint8_t camp_bar_capacity = 40;
+
+/// The menu bar's highlight: **one byte in the data segment that every
+/// bar in the program shares** (M5-E1g, #304). The menu-bar routine reads
+/// it on entry as a one-based group index and resets it to the first
+/// group when it names a group the bar it was handed does not have; the
+/// two cursor keys step it, with a wrap at either end; and choosing a
+/// command sets it to that command's group. A group is one command letter
+/// — the routine's class is `0-9A-Z`, upper case only (#221) — and the
+/// characters after it up to the next, which is why one capital per word
+/// makes one group per word. Read off the routine, and checked by
+/// watching the byte through a driven camp.
+constexpr std::uint16_t data_bar_highlight = 0x6B2B;
 
 /// The days field of the rest clock — the one word this seam writes.
 constexpr std::uint16_t data_rest_days = 0x6DC2 + 8;
@@ -1052,6 +1083,113 @@ constexpr std::uint8_t bar_separator = ' ';
   }
   return write_byte(cpu, ds, data_camp_bar,
                     static_cast<std::uint8_t>(length - fix_item_length));
+}
+
+/// Whether the menu-bar routine treats `byte` as a command letter, and so
+/// as the start of a highlightable group: its class is the digits and the
+/// capitals, and nothing else (#221).
+[[nodiscard]] constexpr bool is_command_letter(std::uint8_t byte) noexcept {
+  return (byte >= '0' && byte <= '9') || (byte >= 'A' && byte <= 'Z');
+}
+
+/// The shape of the program's own bar, as the splice sees it: how many
+/// groups it has, and which group the Fix takes when it is spliced in
+/// before the last one. `spliceable` false is a bar `splice_in()` would
+/// have refused — too long, no separator, or not a bar — or one still
+/// carrying the Fix, and then the highlight is not this seam's to touch.
+struct bar_shape {
+  bool spliceable{false};
+  unsigned groups{};
+  unsigned fix_group{};
+};
+
+[[nodiscard]] bar_shape read_bar_shape(cpu::processor& cpu, std::uint16_t ds) {
+  bar_shape out;
+  std::uint8_t length = 0;
+  if (!read_byte(cpu, ds, data_camp_bar, length) || length == 0 ||
+      length > camp_bar_capacity ||
+      length + fix_item_length > camp_bar_capacity ||
+      find_fix(cpu, ds, length) != 0) {
+    return out;
+  }
+  unsigned groups = 0;
+  unsigned last = 0;
+  unsigned before_last = 0;
+  for (unsigned at = 1; at <= length; ++at) {
+    std::uint8_t byte = 0;
+    if (!read_byte(cpu, ds,
+                   word_after(data_camp_bar, static_cast<std::uint16_t>(at)),
+                   byte)) {
+      return out;
+    }
+    if (byte == bar_separator) {
+      last = at;
+      before_last = groups;
+    } else if (is_command_letter(byte)) {
+      ++groups;
+    }
+  }
+  if (last == 0 || groups == 0) {
+    return out;
+  }
+  out.spliceable = true;
+  out.groups = groups;
+  // The Fix goes in at the last separator, so its letter is the next
+  // command letter after every one before that separator.
+  out.fix_group = before_last + 1;
+  return out;
+}
+
+/// Put the highlight back into the program's own numbering on the way out
+/// of camp (M5-E1g, #304): a position at or past the Fix's group steps
+/// down by one, and a position before it is the same number on both bars
+/// and is left alone. The result is what the same command on the
+/// program's own bar would have left, which is what the seam-off run
+/// measures — EXIT, on the program's last group, comes out as that group
+/// rather than one past it.
+///
+/// **A cursor sitting on the Fix itself** — the player pressed its letter
+/// and then left camp by a key that does not move the highlight, the
+/// Escape the loop takes as exit — lands on the group before it, the one
+/// the Fix was spliced in beside. That is the same rule and not a special
+/// case, and it is the neighbour the program's own step-left key would
+/// have given. No rule can reproduce the seam-off byte here: in that run
+/// the letter that put the cursor on the Fix matched nothing and moved
+/// nothing, so the byte kept a value this seam never saw and has no word
+/// to keep it in. A value past the spliced bar's own count is not this
+/// bar's and is left alone too: the routine would have reset it before
+/// it drew.
+///
+/// **It runs only where the splice ran.** The bar has been spliced out by
+/// the time the loop leaves, so what says the highlight is in the spliced
+/// numbering is the same test the splice made on the way in, re-read here
+/// rather than remembered: the seam is on, the mode says camp, and the
+/// bar is the shape `splice_in()` accepts. A camp this seam was on for is
+/// a camp whose every bar was drawn one group longer. Nothing is written
+/// when the number is already the program's, so a rest the game
+/// interrupted — which leaves the byte on Rest, before the Fix — is byte
+/// for byte the run without this mapping. **It is not idempotent**, and
+/// `leave_the_camp()` is arranged so that it runs once per way out.
+///
+/// The journal's `Notes` give-back has a cousin of this symptom
+/// (`tests/visual/not-log-giveback.leg`): giving the screen back leaves
+/// the adventuring bar's highlight on its first command. That is a
+/// different mechanism — nothing there is spliced out from under the
+/// byte; the key the give-back posts to make the bar redraw is what
+/// moves it — and this mapping is not its answer, so the two should not
+/// be fixed alike.
+void restore_the_highlight(cpu::processor& cpu, std::uint16_t ds) {
+  const bar_shape bar = read_bar_shape(cpu, ds);
+  if (!bar.spliceable) {
+    return;
+  }
+  std::uint8_t highlight = 0;
+  if (!read_byte(cpu, ds, data_bar_highlight, highlight) ||
+      highlight < bar.fix_group || highlight > bar.groups + 1) {
+    return;
+  }
+  static_cast<void>(write_byte(cpu, ds, data_bar_highlight,
+                               static_cast<std::uint8_t>(highlight - 1)));
 }
 
 // --- Reading the party -----------------------------------------------------
@@ -2243,24 +2381,39 @@ void start_the_rest(machine& box, seam_context& ctx) {
 /// left owed here is the thing this point exists to prevent: it would be
 /// drawn on some later camp, an hour of the player's game away, as a
 /// difference against a party that has been in a fight since.
+///
+/// **And every way out puts the highlight back** (M5-E1g, #304), report
+/// or no report: the bar the loop drew was one group longer than the
+/// program's on every pass this seam was on for, whether or not the Fix
+/// was ever chosen, and the byte the next bar reads was numbered against
+/// it.
 void leave_the_camp(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   auto& regs = cpu.regs();
   const std::uint16_t ds = regs[cpu::sreg::ds];
 
-  if (ctx.scratch(scratch_state) == as_word(run_state::idle)) {
-    // Every way out of camp arrives here, and almost all of them have
-    // nothing owing. Not a refusal: this point is doing its job by
-    // finding nothing to do.
-    return;
-  }
-
   std::uint8_t mode = 0;
   if (!read_byte(cpu, ds, data_game_mode, mode) || mode != mode_camp) {
     // The teardown has not restored the mode byte yet, so it still reads
     // camp here. If it does not, this is not the instruction the facts
-    // describe and nothing is drawn.
+    // describe and nothing is drawn — or mapped.
     ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  // **The highlight is put back exactly once, and where depends on
+  // whether a batch is coming.** A batch of calls ends with this point
+  // offered again at the same instruction (seam.h, #189), and the engine
+  // gives that second arrival no mark of its own; a mapping that ran on
+  // both would step the byte down twice. So every path below that queues
+  // nothing maps before it returns, and the one path that queues the
+  // interrupted report leaves the mapping to the re-offer — which arrives
+  // with the state idle, and is the first branch here.
+  if (ctx.scratch(scratch_state) == as_word(run_state::idle)) {
+    // Every way out of camp arrives here, and almost all of them have
+    // nothing owing but the highlight. Not a refusal: this point is doing
+    // its job by finding nothing else to do.
+    restore_the_highlight(cpu, ds);
     return;
   }
 
@@ -2276,7 +2429,10 @@ void leave_the_camp(machine& box, seam_context& ctx) {
     // The argument is not the far pointer the facts say it is. Fail
     // closed the way every other point here does — and drop the report,
     // because the reason it is being dropped is that the party is on its
-    // way out of camp whatever this word says.
+    // way out of camp whatever this word says. The highlight is left as
+    // it is for the same reason nothing is drawn: this is not the
+    // instruction the facts describe, and a write on a guess is worse
+    // than a bar one command off.
     ctx.set_scratch(scratch_state, as_word(run_state::idle));
     ctx.set_scratch(scratch_casts, 0);
     ctx.decline(seam_reason::point_not_recognized);
@@ -2286,14 +2442,18 @@ void leave_the_camp(machine& box, seam_context& ctx) {
   if (changed == 0) {
     ctx.set_scratch(scratch_state, as_word(run_state::idle));
     ctx.set_scratch(scratch_casts, 0);
+    restore_the_highlight(cpu, ds);
     return;
   }
 
   if (!draw_a_report_if_one_is_owed(box, ctx, ds, run_state::interrupted)) {
+    // Nothing queued, so no second arrival is coming to do this.
+    restore_the_highlight(cpu, ds);
     return;
   }
   // And the program's own way of holding a line long enough to read it,
-  // queued behind the box in the same batch.
+  // queued behind the box in the same batch. The highlight waits for the
+  // re-offer that batch ends with (above).
   const std::array<std::uint16_t, 0> nothing{};
   static_cast<void>(
       ctx.call_program(static_cast<std::uint16_t>(ctx.image_base() / 16U),

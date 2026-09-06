@@ -16,6 +16,7 @@
 // so that the splice can be watched without any of the program's text
 // being anywhere near this tree.
 
+#include <array>
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
@@ -48,6 +49,11 @@ constexpr std::uint16_t data_roster_head = 0x5D96;
 constexpr std::uint16_t data_rest_minute_units = 0x6DC4;
 constexpr std::uint16_t data_rest_hours = 0x6DC8;
 constexpr std::uint16_t data_rest_days = 0x6DCA;
+
+/// The menu bar's highlight: one byte every bar in the program shares, a
+/// one-based group index numbered against whichever bar last set it
+/// (M5-E1g, #304).
+constexpr std::uint16_t data_bar_highlight = 0x6B2B;
 
 /// The camp loop's own frame, as offsets from BP.
 constexpr std::uint16_t frame_prompt = 0x0B;
@@ -189,6 +195,15 @@ constexpr std::uint16_t record_stride = 0x0200;
 /// the test says so.
 constexpr std::string_view plain_bar = "Alpha Beta Gamma";
 constexpr std::string_view fixed_bar = "Alpha Beta Fix Gamma";
+
+/// Its groups, as the menu-bar routine numbers them — one per capital,
+/// from one — on the program's own bar and on the spliced one. The Fix
+/// takes the third group and pushes Gamma to the fourth.
+constexpr std::uint8_t alpha_group = 1;
+constexpr std::uint8_t beta_group = 2;
+constexpr std::uint8_t gamma_group = 3;
+constexpr std::uint8_t fix_group = 3;
+constexpr std::uint8_t gamma_group_spliced = 4;
 
 /// And the prompt the loop builds before it, of no interest except that
 /// the seam blanks it.
@@ -660,6 +675,15 @@ struct rig {
 
   [[nodiscard]] std::string bar() const {
     return pascal_at(data_segment, data_camp_bar);
+  }
+
+  /// The highlight, as the menu-bar routine left it — which is to say as
+  /// the test writes it, since nothing here runs that routine.
+  void highlight_on(std::uint8_t group) const {
+    put_byte(data_segment, data_bar_highlight, group);
+  }
+  [[nodiscard]] std::uint8_t highlight() const {
+    return byte_at(data_segment, data_bar_highlight);
   }
   [[nodiscard]] std::string prompt() const {
     return pascal_at(stack_segment,
@@ -1772,6 +1796,138 @@ TEST(SeamEncampFix, DrawsNothingWhereTheModeSaysThisIsNotTheWayOutOfCamp) {
   EXPECT_NE(r.status().declined, 0u)
       << "the teardown has not restored the mode byte at this instruction, "
          "so anything else is a fact that has gone wrong";
+}
+
+// --- The highlight the next bar reads (M5-E1g, #304) -----------------------
+//
+// The menu bar's highlight is one byte every bar in the program shares,
+// numbered against whichever bar last set it. The spliced bar has one
+// group more than the program's own, so a command chosen at or past the
+// Fix leaves the byte one higher than the same command on the program's
+// bar would have, and the bar the player comes back to reads that number
+// against its own groups. The way out of camp is where the seam puts it
+// back — on both exits, and only where the bar was spliced.
+
+/// Every position on the spliced bar, and the number the program's own
+/// bar would have left for it.
+struct highlight_case {
+  std::uint8_t spliced;
+  std::uint8_t program;
+  const char* why;
+};
+
+constexpr std::array<highlight_case, 4> highlight_cases{{
+    {.spliced = alpha_group,
+     .program = alpha_group,
+     .why = "before the Fix: the same number on both bars"},
+    {.spliced = beta_group,
+     .program = beta_group,
+     .why = "the group the Fix was spliced in beside"},
+    {.spliced = fix_group,
+     .program = beta_group,
+     .why = "on the Fix itself: the group before it, which is the same rule "
+            "and the neighbour the program's own step-left would give"},
+    {.spliced = gamma_group_spliced,
+     .program = gamma_group,
+     .why = "past the Fix: one down, which is the program's own last group "
+            "— EXIT, on the real bar"},
+}};
+
+TEST(SeamEncampFix, HandsTheNextBarTheHighlightTheProgramWouldHave) {
+  for (const highlight_case& which : highlight_cases) {
+    const rig r;
+    r.arm();
+    r.camp();
+    r.party({{.hit_points = 12, .most_hit_points = 12}});
+
+    // The loop's last pass: the program's own last command, chosen off
+    // the spliced bar, and the bar spliced out again on the way back.
+    r.one_menu_pass('G');
+    r.highlight_on(which.spliced);
+    r.leaving_camp(false);
+    r.step_at(point_camp_exit);
+
+    EXPECT_EQ(r.highlight(), which.program) << which.why;
+    EXPECT_EQ(r.bar(), plain_bar);
+  }
+}
+
+TEST(SeamEncampFix, HandsItBackOnTheWayOutOfAnInterruptedCampToo) {
+  for (const highlight_case& which : highlight_cases) {
+    const rig r;
+    r.arm();
+    r.camp();
+    r.drawing_routines();
+    r.party({{.hit_points = 5, .most_hit_points = 12}});
+
+    r.one_menu_pass(fix_letter);
+    r.step_at(point_rest_entry);  // the rest starts, and the game ends it
+    r.highlight_on(which.spliced);
+    r.leaving_camp(true);
+    r.step_at(point_camp_exit);
+    r.run_the_calls();
+
+    EXPECT_EQ(r.highlight(), which.program) << which.why;
+    EXPECT_EQ(r.frames_drawn(), 1u)
+        << "and the interrupted report is still drawn beside it";
+  }
+}
+
+TEST(SeamEncampFix, LeavesTheHighlightAloneWhereNothingWasSpliced) {
+  {
+    // Off: no handler runs at all.
+    const rig r;
+    r.camp();
+    r.highlight_on(gamma_group_spliced);
+    r.leaving_camp(false);
+    r.step_at(point_camp_exit);
+    EXPECT_EQ(r.highlight(), gamma_group_spliced);
+  }
+  {
+    // On, but a bar the splice refuses: one command and no separator, so
+    // the pass before drew the program's own bar and the byte is already
+    // in its numbering.
+    const rig r;
+    r.arm();
+    r.camp();
+    r.put_pascal(data_segment, data_camp_bar, "Alpha");
+    r.step_at(point_before_input);
+    EXPECT_EQ(r.bar(), "Alpha") << "the splice refused it";
+    r.highlight_on(alpha_group);
+    r.leaving_camp(false);
+    r.step_at(point_camp_exit);
+    EXPECT_EQ(r.highlight(), alpha_group);
+  }
+  {
+    // On, and the Fix still in the bar: not the way out the facts
+    // describe, because the loop cannot leave without the pass that
+    // takes it out. Nothing is guessed.
+    const rig r;
+    r.arm();
+    r.camp();
+    r.put_pascal(data_segment, data_camp_bar, fixed_bar);
+    r.highlight_on(gamma_group_spliced);
+    r.leaving_camp(false);
+    r.step_at(point_camp_exit);
+    EXPECT_EQ(r.highlight(), gamma_group_spliced);
+  }
+}
+
+TEST(SeamEncampFix, LeavesAHighlightThatIsNotThisBarsAlone) {
+  for (const std::uint8_t stray : {std::uint8_t{0}, std::uint8_t{9}}) {
+    // Zero names no group, and nine is past even the spliced bar: the
+    // routine would have reset either before it drew, so neither came
+    // off the bar this seam lengthened.
+    const rig r;
+    r.arm();
+    r.camp();
+    r.party({{.hit_points = 12, .most_hit_points = 12}});
+    r.one_menu_pass('G');
+    r.highlight_on(stray);
+    r.leaving_camp(false);
+    r.step_at(point_camp_exit);
+    EXPECT_EQ(r.highlight(), stray);
+  }
 }
 
 TEST(SeamEncampFix, CannotBePulled) {

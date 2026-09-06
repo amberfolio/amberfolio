@@ -119,7 +119,16 @@ What M5 left in place:
   exit the caller repaints after. Reproduced and re-measured headlessly
   on the shorter boot — `tests/visual/camp-fix-exit.leg`, driven by
   hand because the runner does not yet carry `--code-wheel-answered` —
-  and not yet looked at on a display since),
+  and not yet looked at on a display since. M5-E1g #304 is the cell that
+  run left named: the bar's **highlight** is one data-segment byte every
+  bar shares and numbers against its own groups, the spliced bar has one
+  group more, so EXIT came back to `AREA` where the seam-off run came
+  back to `LOOK` (the issue said `ENCAMP`; the byte, watched, says the
+  sixth group, which is `LOOK`). The way out of camp maps the byte back
+  into the program's numbering now — once per exit, on both exits, and
+  only where the bar was spliced — and the leg's post-EXIT lines no
+  longer allow the bar, but for the one dump that catches it being
+  drawn),
   `automap` (M5-E2 #173 — the second M5 enhancement, and the first seam
   that *draws*: a map of the squares the party has walked, over the party
   roster on the game's own screen, shown and taken away on **Tab**. The
