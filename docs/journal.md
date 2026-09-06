@@ -424,6 +424,165 @@ is not a thing to do with somebody else's JavaScript on a page other
 people load. A mismatch fails the build; when `.tesseract-js-version`
 moves, the record is stale by design and `--force` writes the new one.
 
+## 5a. How well it reads, and how anybody knows (#315)
+
+Everything in §5 was decided without a number. #315 was filed off a real
+entry on the game's own screen that was readable and wrong in four
+different ways, and its first instruction was the right one: **make it
+measurable before touching a single engine setting.**
+
+### The ground truth is the player's own corrections
+
+A comparison needs something to compare against, and the obvious source —
+two hand-typed entries in the test tree — is exactly what this repository
+may never hold (§6, CONTRIBUTING.md). What goes in the repository is the
+harness; both halves of the comparison stay on the player's machine.
+
+And the store already holds both halves. Each item carries what the
+engine read and, wherever a person has been in there, what they wrote —
+and **a player who corrected an entry has produced ground truth for it.**
+So a score is free for exactly the entries somebody cared enough to fix,
+needs no new file and no new format, and gets better the more of their
+journal a player has been through. `hosts/common/.../journal_score.h` is
+the whole argument, including the one way this could have been made
+misleading (scoring uncorrected entries against themselves, which would
+make the number *improve* every time a player found a mistake).
+
+The number is the standard character error rate — Levenshtein distance
+over the length of the truth — with a word rate beside it, because the
+two answer different questions. Whitespace is normalized away and case
+and punctuation are not; all three of those were measured before they
+were decided.
+
+The desktop host prints it at the end of an ingestion, and says so when
+there is nothing to measure against.
+
+### What CI can prove about it, and what it cannot
+
+The `journal_probe.h` arrangement exactly: `journal_probe_noisy_ocr`
+reads the synthetic document correctly and then puts three known
+characters on the end of every answer, so the rate the harness must
+report is *arithmetic* off the probe's own string lengths rather than a
+number somebody ran it once to find. The noise is an **append** for that
+reason — a string and the same string with three characters on the end
+are exactly three edits apart, no more and no less — where a substitution
+has no such guarantee.
+
+That proves the harness counts. It proves nothing about Tesseract, and
+does not pretend to.
+
+### The measurement, and what it found
+
+Taken on **the pinned tesseract.js under node**, over the one edition in
+the table, against two entries transcribed by hand from the scans. The
+desktop's installed engine has still never read a real page (§7), so none
+of these numbers are its.
+
+| setting | entry A | entry B |
+| --- | --- | --- |
+| whole page, single block (what both hosts did) | 12.1% | 21.1% |
+| whole page, automatic page segmentation | 2.9% | 4.0% |
+| whole page, automatic, drawn 2x | **2.1%** | **1.2%** |
+| entry cropped, single block | 2.9% | 2.3% |
+| entry cropped 3x, single block | 1.8% | 1.8% |
+
+And over all ninety-nine items, where there is no truth but the engine's
+own confidence is a proxy that moved with the rate on every setting
+tried:
+
+| setting | characters read | mean word confidence | words under 60 |
+| --- | --- | --- | --- |
+| single block | 40,040 | 70.4 | 2,190 of 7,696 |
+| automatic | 45,197 | 86.1 | 532 of 8,175 |
+| automatic, 2x | 45,327 | **90.9** | 254 of 8,174 |
+
+**The whole of it was one page-segmentation mode.** `--psm 6` — one
+uniform block of text — is true of a journal *entry* and emphatically not
+of the **two-page spread** the `/DCTDecode` path hands over. Told the
+page is one block, Tesseract does not look for the four columns on it: it
+reads straight across them, so the entry's lines come back interleaved
+with the facing page's and the region filter keeps a plausible-looking
+wreck. Both whole-page engines now ask for automatic segmentation, and
+the decoded path keeps single block because there the image really is one
+block. The rule is not that one mode is better; it is that the mode has
+to match what is in the picture.
+
+The linked desktop engine (§5) was already right by accident of a
+different decision: `SetRectangle` means it hands Tesseract one column of
+one entry, so single block is true of what it sees. Its measured
+equivalent is the cropped row above.
+
+### What did not help, measured and therefore not shipped
+
+- `user_defined_dpi=300` — **not one character**, on either entry, on
+  either path. The engine's own resolution estimate was already fine and
+  declaring one changed nothing.
+- `preserve_interword_spaces=1` — not one character.
+- Reading the region as grey rather than colour — not one character.
+- A `--user-words` list of the setting's proper nouns — measured and left
+  out. Of 341 words in the two scored entries, exactly two were
+  proper-noun misreadings, so a list that fixed both would move the rate
+  by six parts in a thousand. It is a fact table this project would then
+  own and keep in step with an edition, for that.
+- **Marking doubtful words in the text.** Flagging every word under
+  sixty picks out 2.6% of the words and 78% of what it picks is genuinely
+  wrong — but it catches only 27% of the errors, because three quarters
+  of what is left is something the engine is confident about (an
+  apostrophe read as a double quote, a lower-case `k` read as a capital).
+  A mark that finds a quarter of the mistakes while putting noise in
+  front of a reader is a bad trade. The confidence is kept as a
+  **per-entry score** instead, which is what tells a player which of their
+  ninety-nine entries to look at.
+
+### The one asymmetry, stated rather than hidden
+
+Drawing the page bigger is worth another halving of the rate, and it
+needs the page **decoded**. That is not the same lever on the two hosts:
+
+- **The browser can pull it and does.** `createImageBitmap` and a canvas
+  are the browser drawing a JPEG it already knows how to draw — the same
+  thing it does when the plain Blob path hands tesseract.js the stream.
+  #212 refused to put a decoder in *this project*, and that stands.
+- **The desktop's program-driven engine cannot.** It has no decoder
+  within reach at all: Tesseract's CLI has no crop or scale flag and this
+  host is not growing an image library. Its decoded path *could* upscale
+  the PGM it writes and does not, because the only edition in the table is
+  `/DCTDecode` — it would be code no shipped edition executes.
+
+So a browser ingestion of this edition now reads measurably better than a
+desktop one, and the honest way to close that is #216's linked engine
+rather than a decoder here.
+
+While it was in there: the browser was recognizing **every scan once per
+entry on it** — 120 recognitions of 11 pages. It keeps one page now, which
+is what pays for the upscale (11 readings at 4.1 seconds against 120 at
+2.9).
+
+### What is still owed
+
+- **Nobody has run this against the desktop's installed Tesseract**, and
+  its error profile will not be tesseract.js's. §7's standing gap.
+- The commonest surviving error is not a misreading of a word at all.
+  At the best measured setting the two scored entries have twenty-seven
+  word errors left between them, and **nine of them are the opening
+  single quote** that starts each of the book's paragraphs, read as a
+  curly double quote or a `*` — characters the in-game reader's font
+  cannot draw anyway. Worth a look, and not looked at here: it is a
+  transcription decision about a player's document rather than an engine
+  setting, and it should be measured like everything else in this section
+  before it is made.
+- **Eight more of those twenty-seven** are the scan's own hyphenated line
+  breaks, which is #316 and is filed separately. De-hyphenating at
+  ingestion would fix all eight and would also give the engine's
+  dictionary a whole word to work with on the next line.
+- #315's own diagnosis had one thing wrong, and it is worth recording
+  because it is what measuring bought: the garbage line at the top of the
+  entry it quotes is not "an illuminated heading no engine will ever
+  read". It is the entry's own opening line, in the same script as the
+  rest, read badly because the whole page was being read badly. Dropping
+  it by position, as the issue proposed, would have deleted real text
+  from every entry in the book.
+
 ## 6. The store
 
 One file of UTF-8 lines, each text length-prefixed:
@@ -604,6 +763,15 @@ whether the inverted loop a browser needs actually works.
   against word boxes the tests write — in the pinned engine's own shape on
   the page, since #306, because a shape the test invents is a test of the
   test.
+- **How *well* it reads is measured now, and CI still cannot measure it**
+  (§5a, #315). What runs everywhere is the harness — over a synthetic
+  document, with a fixture engine that misreads it by an amount this
+  project chose, so the rate the harness must report is arithmetic. What
+  a real engine does to a real page was measured by hand, once, on
+  tesseract.js under node, against two entries transcribed off the scans
+  by a person; the numbers are in §5a and the transcriptions are not here
+  and never will be. Nobody has taken the same measurement against the
+  desktop's installed engine.
 
 ## 8. Reporting an ingestion
 
@@ -613,7 +781,15 @@ many were extracted, how many were recognized, the engine's version
 string, and `journal_store::fingerprint()`. The desktop host prints every
 one of those on its own lines.
 
+Since #315, also: the **numbers** — the mean word confidence, how many
+words were under the threshold, and the character and word error rates
+against your own corrections. Those are measurements of an artifact and
+not the artifact, in exactly the sense a fingerprint is, and they are the
+only way a change to the engine can be argued about at all.
+
 Not: any text, any excerpt, any screenshot of an entry, any file. Ever.
+An error rate is a number; the two strings it was taken over are your
+document and stay on your machine.
 
 ## 9. The reader, and the one door between the two halves
 
