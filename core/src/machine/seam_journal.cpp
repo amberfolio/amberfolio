@@ -1779,7 +1779,16 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
 [[nodiscard]] bool close_reader(machine& box, seam_context& ctx,
                                 std::uint16_t ds) {
   journal_state& state = box.journal();
-  const bool was_up = state.on_screen();
+  // **Anything of this seam's on the glass has to be given back, whether
+  // or not the paint finished.** `on_screen()` says the *last* pass of a
+  // screen ran; `screen_drawn()` says the first one did. A full screen is
+  // painted over successive arrivals and a driven run measured a
+  // twenty-row page taking about 230 frames to settle (#305), so a player
+  // pressing Escape while it goes up is not an edge case — and until this
+  // read both, that Escape closed the reader and left a half-drawn page
+  // standing with nothing coming to repaint it. The listing has had the
+  // same hole since #222, over a shorter window, and this closes it too.
+  const bool was_up = state.on_screen() || state.screen_drawn() != 0;
   const journal_reader_mode mode = state.reader();
 
   // **A full-screen page opened from the listing goes back to the

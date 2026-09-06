@@ -2552,6 +2552,41 @@ TEST(JournalScreenPage, APageFromThePromptGoesOutThroughTheComposer) {
       << "there is no listing under this one, so the screen is composed back";
 }
 
+TEST(JournalScreenPage, LeavingItHalfPaintedStillGivesTheScreenBack) {
+  // A full screen is painted over successive arrivals, and a driven run
+  // measured a twenty-row page taking about 230 frames to settle (#305),
+  // so a player pressing Escape while it goes up is not an edge case.
+  // Until `close_reader()` read the paint's progress as well as its
+  // completion, that Escape closed the reader and left a half-drawn page
+  // standing with nothing coming to repaint it - seen on the glass, not
+  // reasoned about.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  // Long enough to need more than one pass, which is what makes there be
+  // a moment to press a key in.
+  for (int line = 0; line < 12; ++line) {
+    r.host.text += "aaaaaaaaa bbbbbbbbb ccccccccc ddddddddd\n";
+  }
+
+  r.bar_goes_out(area_before);
+  r.type(key_f1);
+  r.poll();
+  r.type(key_one);
+  r.type(key_two);
+  r.type(key_return);
+  r.poll(3);
+  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  ASSERT_FALSE(r.reader().on_screen()) << "the paint has not finished";
+  ASSERT_NE(r.reader().screen_drawn(), 0u) << "and it has started";
+
+  r.type(key_escape);
+  r.run_the_calls();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.word_of(redraw_calls), 1u)
+      << "what is on the glass is given back, finished or not";
+}
+
 TEST(JournalScreenPage, WithoutTheBarLiveThePromptsPageStaysInThePanel) {
   // F1 is claimed on every screen that has a roster, and two of those are
   // not the party's own bar routine — the camp screen, whose menu is a
