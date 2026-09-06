@@ -208,7 +208,20 @@ What M5 left in place:
   that section is numbered in, over a rolling window the program's own
   message boundary empties — and never a word of the program's prose. It
   draws in the automap's own rect, in the program's own glyphs, and is
-  modal over the map because they are the same pixels. Its text comes
+  modal over the map because they are the same pixels. **A page opened
+  from the bar is a full screen** since M5-E4d (#305) — the box the
+  listing is drawn in, twenty rows of thirty-eight characters against the
+  panel's twelve of twenty-two, made of the same two of the program's own
+  routines, and going back to the listing rather than out when it is one
+  of its rows that opened it. Which size a page gets is a fact about the
+  machine and not a memory of which key: `journal_state::bar_live()`, set
+  and cleared at the two points the `Notes` splice already had, says
+  whether the party's *own* menu-bar routine is the thing running, which
+  is the one precondition under which the program's screen composer may
+  be asked to put a screen back. So F1 at camp or with a vendor's bar up
+  stays in the panel, and a **citation** stays in the panel always,
+  because it fires inside a script's narration where an NPC can be in the
+  viewport and that give-back has not been measured. Its text comes
   from a host through `journal_open`, and that is the first service that
   had to hand something *back*: `machine::journal()` is the buffer it
   comes back in, observation on `automap.h`'s three terms and not machine

@@ -1649,20 +1649,27 @@ with none cannot be a command on any of them. F11 and F12 never reach the
 machine at all; they are the SDL host's own (`docs/hosts.md` §3).
 
 **Then the entry is on the game's screen**, in the game's own lettering,
-wrapped to twenty-two columns inside the frame the game drew, with
-`ENTRY 3` in the yellow the program highlights with and the body in the
-green it writes messages in. The callout says it was served:
+with `ENTRY 3` in the yellow the program highlights with and the body in
+the green it writes messages in. The callout says it was served:
 
 ```
 amberfolio: seam journal armed fired=602659
 amberfolio: host-service journal-open calls=1 last=3 at=214790400
 ```
 
-**F1 again puts the party list back**, and it is the program that draws
-it — the panel's rect through the program's own region clear, then its
-own roster drawer, from live state. The 3D view is untouched, which is
-the M5-E2d property this seam inherited by asking for the roster drawer
-rather than the screen composer.
+**Two sizes, and this run was driven at the smaller one.** The lines
+above were recorded before M5-E4d (#305), when every page was the
+roster-sized panel — twenty-two columns beside the viewport — and F1
+again put the party list back through the program's own region clear and
+its own roster drawer. A page opened from the prompt on the adventuring
+screen is a **full screen** now, in the box the `Notes` log is drawn in,
+and the way out of it composes that screen back. What did not change is
+where a *citation's* page goes: it is still the panel, still given back
+by the roster drawer, and still the M5-E2d property this seam has by
+asking for the roster drawer rather than the composer. The legs are
+re-derived for the new size and the whole library is owed a drive on the
+shorter boot (#293), so what is printed here is the run that happened
+rather than the run this build would produce.
 
 **Run it with `--seam automap` as well** and the modal rule is a picture
 rather than a paragraph: Tab's map, the entry drawn over it, and — one F1
@@ -1765,6 +1772,16 @@ highlight along finds it back at the start.
 `N` is ignored while a page is up, deliberately — the way out of the
 reader is the way out of the reader — so a script that wants the log
 after a citation closes the panel first.
+
+**Return on a row opens that entry on this same screen** (M5-E4d, #305).
+It used to compose the adventuring screen back and open the entry in the
+roster panel; it takes the screen over instead, in the same box, and
+Escape or the last F1 brings the log back with the cursor where it was
+and the `*` gone from the row you read. The Escape after *that* is what
+gives the whole screen back, and it is the one measured above.
+`tests/visual/not-page-back.leg` and `not-page-modal.leg` are those two
+claims as legs; neither has been driven yet, and #293 is where the
+library is owed its re-drive.
 
 ---
 

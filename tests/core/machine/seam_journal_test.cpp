@@ -68,6 +68,56 @@ constexpr std::uint16_t box_frame_string_offset = 4;
 constexpr std::uint16_t box_frame_string_segment = 6;
 constexpr std::uint16_t box_frame_clear = 8;
 
+/// The program's own routines this seam **calls** — the two every Gold
+/// Box screen is made of, the box-region clear, and the two give-backs —
+/// as flat offsets in the image, and how many bytes of arguments each
+/// cleans off its own stack.
+///
+/// The last two are reached as paragraph plus offset rather than flat,
+/// because they read their own literals as `CS:<constant>`; what is
+/// written here is where that lands, which is what a stand-in has to be
+/// put at.
+constexpr std::uint16_t image_draw_frame = 0x41F8;
+constexpr std::uint16_t image_draw_string = 0x76B6;
+constexpr std::uint16_t image_clear_region = 0x4047;
+constexpr std::uint16_t image_screen_redraw = 0x3379;  // 0xBA0 + 0x27D9
+constexpr std::uint16_t image_roster_draw = 0x1307;    // 0xBA0 + 0x767
+constexpr std::uint16_t draw_frame_cleans = 0x10;
+constexpr std::uint16_t draw_string_cleans = 0x0A;
+constexpr std::uint16_t clear_region_cleans = 0x08;
+constexpr std::uint16_t screen_redraw_cleans = 0;
+constexpr std::uint16_t roster_draw_cleans = 0x04;
+
+/// Where the stand-ins keep what they were handed: words in the data
+/// segment, above everything the fact table names.
+constexpr std::uint16_t frame_calls = 0x7000;
+constexpr std::uint16_t string_calls = 0x7002;
+constexpr std::uint16_t clear_calls = 0x7004;
+constexpr std::uint16_t redraw_calls = 0x7006;
+constexpr std::uint16_t roster_calls = 0x7008;
+constexpr std::uint16_t frame_title_offset_seen = 0x700A;
+constexpr std::uint16_t frame_title_segment_seen = 0x700C;
+constexpr std::uint16_t frame_colour_seen = 0x700E;
+constexpr std::uint16_t frame_bottom_seen = 0x7010;
+constexpr std::uint16_t frame_right_seen = 0x7012;
+constexpr std::uint16_t frame_top_seen = 0x7014;
+constexpr std::uint16_t frame_left_seen = 0x7016;
+constexpr std::uint16_t clears_before_frame_seen = 0x7018;
+constexpr std::uint16_t clear_bottom_seen = 0x701A;
+constexpr std::uint16_t clear_right_seen = 0x701C;
+constexpr std::uint16_t clear_top_seen = 0x701E;
+constexpr std::uint16_t clear_left_seen = 0x7020;
+constexpr std::uint16_t first_row_seen = 0x7022;
+constexpr std::uint16_t first_column_seen = 0x7024;
+constexpr std::uint16_t first_colour_seen = 0x7026;
+constexpr std::uint16_t first_string_offset_seen = 0x7028;
+constexpr std::uint16_t first_string_segment_seen = 0x702A;
+constexpr std::uint16_t last_row_seen = 0x702C;
+constexpr std::uint16_t last_column_seen = 0x702E;
+constexpr std::uint16_t last_colour_seen = 0x7030;
+constexpr std::uint16_t last_string_offset_seen = 0x7032;
+constexpr std::uint16_t last_string_segment_seen = 0x7034;
+
 /// Where the test puts the things the data segment points at.
 constexpr std::uint16_t font_segment = 0x8000;
 constexpr std::uint16_t member_segment = 0x9000;
@@ -261,6 +311,20 @@ struct rig {
 
   /// One whole pass of the adventuring menu loop: the bar goes out, the
   /// routine answers with `letter`, and the bar comes back.
+  /// The bar going out and **staying** out: the loop has called the
+  /// menu-bar routine and the routine is now sitting in its key loop,
+  /// which is where every key the player types at the adventuring screen
+  /// is typed.
+  ///
+  /// `one_bar_pass()` steps `before` and then `after`, so a poll after
+  /// one of those happens at the single instant that routine is *not*
+  /// live — which is the one instant a real player never gets. A test
+  /// about a full screen has to model the loop re-entering it (#305).
+  void bar_goes_out(std::uint16_t before) const {
+    stand_in_adventure(before);
+    box->step();
+  }
+
   void one_bar_pass(std::uint16_t before, std::uint16_t after,
                     std::uint8_t letter, std::uint8_t out_flag = 0) const {
     stand_in_adventure(before);
@@ -437,6 +501,186 @@ struct rig {
       out.pop_back();
     }
     return out;
+  }
+
+  /// The program's drawing routines, as the least a routine can be and
+  /// still be one: each counts that it was entered, keeps the words it
+  /// was handed where this test can read them, and cleans its own
+  /// arguments off the stack.
+  ///
+  /// **What is being checked is the batch and not the drawing**, which is
+  /// `seam_encamp_test.cpp`'s rule and the reason for it: what the screen
+  /// looks like is not a thing a test can check, and one that pretended
+  /// to would be checking itself. What a test can check is that the calls
+  /// were queued, in what order, with what arguments.
+  void drawing_routines() const {
+    frame_routine();
+    string_routine();
+    clear_routine();
+    counting_routine(image_screen_redraw, redraw_calls, screen_redraw_cleans);
+    counting_routine(image_roster_draw, roster_calls, roster_draw_cleans);
+    for (const std::uint16_t at : {frame_calls,
+                                   string_calls,
+                                   clear_calls,
+                                   redraw_calls,
+                                   roster_calls,
+                                   frame_title_offset_seen,
+                                   frame_title_segment_seen,
+                                   frame_colour_seen,
+                                   frame_bottom_seen,
+                                   frame_right_seen,
+                                   frame_top_seen,
+                                   frame_left_seen,
+                                   clears_before_frame_seen,
+                                   clear_bottom_seen,
+                                   clear_right_seen,
+                                   clear_top_seen,
+                                   clear_left_seen,
+                                   first_row_seen,
+                                   first_column_seen,
+                                   first_colour_seen,
+                                   first_string_offset_seen,
+                                   first_string_segment_seen,
+                                   last_row_seen,
+                                   last_column_seen,
+                                   last_colour_seen,
+                                   last_string_offset_seen,
+                                   last_string_segment_seen}) {
+      put_word(dgroup(), at, 0);
+    }
+  }
+
+  /// Emit `bytes` at `put`, in the image, and move `put` past them.
+  void emit_at(std::uint16_t& put,
+               std::initializer_list<std::uint8_t> bytes) const {
+    for (const std::uint8_t byte : bytes) {
+      put_byte(image_load_segment, put++, byte);
+    }
+  }
+  void emit_word_at(std::uint16_t& put, std::uint16_t value) const {
+    emit_at(put, {static_cast<std::uint8_t>(value & 0xFFU),
+                  static_cast<std::uint8_t>(value >> 8U)});
+  }
+  /// `mov ax, [bp+from]` then `mov [to], ax` — six bytes, and the unit
+  /// every stand-in below is built out of.
+  void emit_keep(std::uint16_t& put, std::uint8_t from,
+                 std::uint16_t to) const {
+    emit_at(put, {0x8B, 0x46, from, 0xA3});
+    emit_word_at(put, to);
+  }
+
+  /// A routine that does nothing but count that it was entered:
+  ///
+  ///     inc word [counter] / retf cleans
+  void counting_routine(std::uint16_t at, std::uint16_t counter,
+                        std::uint16_t cleans) const {
+    std::uint16_t put = at;
+    emit_at(put, {0xFF, 0x06});
+    emit_word_at(put, counter);
+    if (cleans == 0) {
+      emit_at(put, {0xCB});
+      return;
+    }
+    emit_at(put, {0xCA});
+    emit_word_at(put, cleans);
+  }
+
+  /// The frame drawer's stand-in. Its arguments, from the last pushed
+  /// upwards: the title's offset and segment, the colour, the style, and
+  /// the box — bottom, right, top, left. It also keeps **how many clears
+  /// had happened when it was entered**, so the order of the batch is the
+  /// machine's to say rather than this test's to assume.
+  void frame_routine() const {
+    std::uint16_t put = image_draw_frame;
+    emit_at(put, {0x55, 0x89, 0xE5});
+    emit_keep(put, 0x06, frame_title_offset_seen);
+    emit_keep(put, 0x08, frame_title_segment_seen);
+    emit_keep(put, 0x0A, frame_colour_seen);
+    emit_keep(put, 0x0E, frame_bottom_seen);
+    emit_keep(put, 0x10, frame_right_seen);
+    emit_keep(put, 0x12, frame_top_seen);
+    emit_keep(put, 0x14, frame_left_seen);
+    emit_at(put, {0xA1});  // mov ax, [clear_calls]
+    emit_word_at(put, clear_calls);
+    emit_at(put, {0xA3});  // mov [clears_before_frame_seen], ax
+    emit_word_at(put, clears_before_frame_seen);
+    emit_at(put, {0xFF, 0x06});
+    emit_word_at(put, frame_calls);
+    emit_at(put, {0x5D, 0xCA});
+    emit_word_at(put, draw_frame_cleans);
+  }
+
+  /// The box-region clear's stand-in: the four cells it was handed.
+  void clear_routine() const {
+    std::uint16_t put = image_clear_region;
+    emit_at(put, {0x55, 0x89, 0xE5});
+    emit_keep(put, 0x06, clear_bottom_seen);
+    emit_keep(put, 0x08, clear_right_seen);
+    emit_keep(put, 0x0A, clear_top_seen);
+    emit_keep(put, 0x0C, clear_left_seen);
+    emit_at(put, {0xFF, 0x06});
+    emit_word_at(put, clear_calls);
+    emit_at(put, {0x5D, 0xCA});
+    emit_word_at(put, clear_region_cleans);
+  }
+
+  /// The string drawer's stand-in, which keeps the **first** line of a
+  /// screen and the **last** — where each went, in what colour, and the
+  /// far pointer it arrived as, so a test can read the words back out of
+  /// the machine.
+  void string_routine() const {
+    std::uint16_t put = image_draw_string;
+    emit_at(put, {0x55, 0x89, 0xE5});
+    emit_keep(put, 0x0C, last_row_seen);
+    emit_keep(put, 0x0E, last_column_seen);
+    emit_keep(put, 0x0A, last_colour_seen);
+    emit_keep(put, 0x06, last_string_offset_seen);
+    emit_keep(put, 0x08, last_string_segment_seen);
+    emit_at(put, {0x83, 0x3E});  // cmp word [string_calls], 0
+    emit_word_at(put, string_calls);
+    emit_at(put, {0x00});
+    emit_at(put, {0x75, 30});  // jne over the five pairs below
+    emit_keep(put, 0x0C, first_row_seen);
+    emit_keep(put, 0x0E, first_column_seen);
+    emit_keep(put, 0x0A, first_colour_seen);
+    emit_keep(put, 0x06, first_string_offset_seen);
+    emit_keep(put, 0x08, first_string_segment_seen);
+    emit_at(put, {0xFF, 0x06});
+    emit_word_at(put, string_calls);
+    emit_at(put, {0x5D, 0xCA});
+    emit_word_at(put, draw_string_cleans);
+  }
+
+  /// Steps until the batch the last arrival queued has run itself out.
+  ///
+  /// **It stops at the HLT**, which is the point the arrival was made at
+  /// and the instruction the machine is put back on when a batch ends —
+  /// and which the engine offers the point at again, so a screen painted
+  /// over several arrivals is painted out by this one call.
+  void run_the_calls(unsigned most = 4096) const {
+    for (unsigned nth = 0; nth < most; ++nth) {
+      box->step();
+      if (box->processor().halted()) {
+        return;
+      }
+    }
+    FAIL() << "the batch never came back";
+  }
+
+  /// A Pascal string in the machine, as the characters it holds.
+  [[nodiscard]] std::string pascal_at(std::uint16_t segment,
+                                      std::uint16_t offset) const {
+    const std::uint8_t length = byte_at(segment, offset);
+    std::string out;
+    for (unsigned i = 1; i <= length; ++i) {
+      out.push_back(static_cast<char>(
+          byte_at(segment, static_cast<std::uint16_t>(offset + i))));
+    }
+    return out;
+  }
+
+  [[nodiscard]] unsigned word_of(std::uint16_t offset) const {
+    return word_at(dgroup(), offset);
   }
 
   /// The EGA, attached so there is something for a plane write to reach.
@@ -2016,9 +2260,445 @@ TEST(JournalList, ThePaintIsStartedAgainWheneverWhatItShowsChanges) {
   journal_state state;
   state.note_seen(Entry(3), 8, 29, 20, 15);
   state.note_seen(Tale(12), 8, 29, 21, 44);
-  state.set_list_drawn(5);
+  state.set_screen_drawn(5);
   state.move_list_cursor(1);
-  EXPECT_EQ(state.list_drawn(), 0u);
+  EXPECT_EQ(state.screen_drawn(), 0u);
+}
+
+// ---------------------------------------------------------------------------
+// The full-screen page (M5-E4d, #305)
+// ---------------------------------------------------------------------------
+//
+// A page of an entry is drawn in two sizes. Which one it gets is a fact
+// about the machine — is the party's own command-bar routine the thing
+// running? — and not a memory of which key opened it, because F1 is
+// claimed on every screen that has a roster and two of those are not that
+// routine.
+//
+// The geometry restated rather than read from the seam: the listing's
+// frame is columns 1 to 0x26 and rows 1 to 0x16, its title goes on the
+// box's first interior row, the body starts on row 3, and the way out
+// goes on row 0x18 — the screen's own last, which is where every bar in
+// this game is drawn.
+
+constexpr std::uint16_t screen_left = 1;
+constexpr std::uint16_t screen_top = 1;
+constexpr std::uint16_t screen_right = 0x26;
+constexpr std::uint16_t screen_bottom = 0x16;
+constexpr std::uint16_t screen_first_row = 3;
+constexpr std::uint16_t screen_footer_row = 0x18;
+constexpr int screen_columns = 38;
+constexpr int screen_rows = 20;
+
+/// The colours a page draws in: the panel's own three, so the two sizes
+/// of one page look like one thing.
+constexpr std::uint16_t page_title_colour = 14;
+constexpr std::uint16_t page_body_colour = 10;
+constexpr std::uint16_t page_footer_colour = 7;
+
+/// A rig standing on the adventuring screen with the party's own bar
+/// live, a log with one line in it, and the program's drawing routines
+/// answering.
+void a_screen_with_the_bar_live(rig& r) {
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.drawing_routines();
+  r.put_bar(bar_area, area_words);
+}
+
+TEST(JournalScreenPage, TheBarRoutineBeingLiveIsWhatSaysAScreenMayBeTaken) {
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  EXPECT_FALSE(r.reader().bar_live()) << "a fresh machine is in no loop";
+
+  for (const auto& [before, after] : {std::pair{area_before, area_after},
+                                      std::pair{view_before, view_after}}) {
+    r.bar_goes_out(before);
+    EXPECT_TRUE(r.reader().bar_live()) << "the bar is out at " << before;
+    r.stand_in_adventure(after, ' ');
+    r.put_byte(rig::dgroup(), static_cast<std::uint16_t>(0x0600 - 0x04), 0);
+    r.box->step();
+    EXPECT_FALSE(r.reader().bar_live()) << "and back at " << after;
+  }
+}
+
+TEST(JournalScreenPage, AResetMachineIsInNobodysLoop) {
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  r.bar_goes_out(area_before);
+  ASSERT_TRUE(r.reader().bar_live());
+  r.reader().clear();
+  EXPECT_FALSE(r.reader().bar_live())
+      << "bar_live is observation and goes with the rest of it";
+}
+
+TEST(JournalScreenPage, ReturnOnAListingRowOpensTheEntryOnTheWholeScreen) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  r.bar_goes_out(area_before);
+  r.poll();
+  r.run_the_calls();
+  ASSERT_TRUE(r.reader().on_screen()) << "the listing is up";
+  const unsigned listing_frames = r.word_of(frame_calls);
+
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.reader().page_place(), journal_page_place::screen);
+  EXPECT_TRUE(r.reader().page_from_list());
+  EXPECT_EQ(r.word_of(redraw_calls), 0u)
+      << "the page takes the screen the listing was holding; nothing is "
+         "composed back on the way in";
+  EXPECT_GT(r.word_of(frame_calls), listing_frames)
+      << "and the program's own frame drawer is what draws it";
+  EXPECT_EQ(r.word_of(frame_left_seen), screen_left);
+  EXPECT_EQ(r.word_of(frame_top_seen), screen_top);
+  EXPECT_EQ(r.word_of(frame_right_seen), screen_right);
+  EXPECT_EQ(r.word_of(frame_bottom_seen), screen_bottom);
+  EXPECT_EQ(r.word_of(frame_colour_seen), page_title_colour);
+  EXPECT_EQ(r.pascal_at(
+                static_cast<std::uint16_t>(r.word_of(frame_title_segment_seen)),
+                static_cast<std::uint16_t>(r.word_of(frame_title_offset_seen))),
+            "ENTRY 12")
+      << "titled with the section and its number, in this file's own words";
+}
+
+TEST(JournalScreenPage, ThePageClearsTheBoxBeforeItsFrameGoesOn) {
+  // The listing paints ten rows and a page paints twenty, in the same
+  // box, under titles of different lengths. Anything left standing would
+  // be read as part of whichever came second (#298's class of defect), so
+  // the interior is cleared first — every page, not once per open.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+
+  EXPECT_EQ(r.word_of(clear_left_seen), screen_left);
+  EXPECT_EQ(r.word_of(clear_top_seen), screen_top);
+  EXPECT_EQ(r.word_of(clear_right_seen), screen_right);
+  EXPECT_EQ(r.word_of(clear_bottom_seen), screen_bottom);
+  EXPECT_EQ(r.word_of(clears_before_frame_seen), r.word_of(clear_calls))
+      << "the clear is queued before the frame that goes over it";
+}
+
+TEST(JournalScreenPage, TheBodyIsTheProgramsOwnLettering) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+
+  EXPECT_EQ(r.word_of(first_row_seen), screen_first_row);
+  EXPECT_EQ(r.word_of(first_column_seen), screen_left);
+  EXPECT_EQ(r.word_of(first_colour_seen), page_body_colour);
+  EXPECT_EQ(
+      r.pascal_at(
+          static_cast<std::uint16_t>(r.word_of(first_string_segment_seen)),
+          static_cast<std::uint16_t>(r.word_of(first_string_offset_seen))),
+      "One short line.")
+      << "the entry's own text, wrapped and handed to the program";
+
+  // And the way out, on the screen's own last row, spanning it — because
+  // clearing the command bar it covers is the footer's second job.
+  EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row);
+  EXPECT_EQ(r.word_of(last_column_seen), 0u);
+  EXPECT_EQ(r.word_of(last_colour_seen), page_footer_colour);
+  const std::string footer = r.pascal_at(
+      static_cast<std::uint16_t>(r.word_of(last_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(last_string_offset_seen)));
+  EXPECT_EQ(footer.size(), 40u) << "padded across the bar it covers";
+  EXPECT_NE(footer.find("ESC CLOSES"), std::string::npos)
+      << "a full screen covers the bar, so it has to name a way out";
+}
+
+TEST(JournalScreenPage, ItIsWrappedThirtyEightWideAndTwentyDeep) {
+  // The same wrap, wider: a text of a known length pages differently at
+  // 38x20 than it does in the panel's 22x12, and the page count is what
+  // says which shape drew it.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  std::string text;
+  for (int word = 0; word < 120; ++word) {
+    text += "aaaaaaaaa ";  // nine letters and a space: four to a screen row
+  }
+  r.host.text = text;
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+
+  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  // 120 words, four to a row at thirty-eight columns, twenty rows to a
+  // page: thirty rows, so two pages.
+  EXPECT_EQ(r.reader().page_count(), 2u);
+  EXPECT_EQ(screen_columns, 38);
+  EXPECT_EQ(screen_rows, 20);
+
+  // The same text in the panel is two to a row and twelve rows to a page,
+  // which is five. Driven through a citation, because that is the one way
+  // in that is always the panel.
+  rig panel;
+  panel.attach_video();
+  panel.attach_host();
+  panel.enable();
+  panel.adventuring();
+  panel.host.holds = Entry(12);
+  panel.host.text = text;
+  panel.program_draws("entry 12");
+  panel.adventuring();
+  panel.poll();
+  ASSERT_EQ(panel.reader().page_place(), journal_page_place::panel);
+  EXPECT_EQ(panel.reader().page_count(), 5u);
+}
+
+TEST(JournalScreenPage, LeavingItGoesBackToTheListingRatherThanOut) {
+  // What a person paging through several entries needs, and what the
+  // panel page never had to decide because the listing was already gone
+  // from under it.
+  for (const std::uint16_t key : {key_escape, key_f1}) {
+    rig r;
+    a_screen_with_the_bar_live(r);
+    r.host.holds = Entry(12);
+    r.host.text = "One short line.";
+    r.reader().note_seen(Entry(3), 8, 29, 20, 15);
+    r.reader().note_seen(Entry(12), 8, 29, 21, 44);
+    r.reader().move_list_cursor(1);
+
+    r.one_bar_pass(area_before, area_after, 'N');
+    r.bar_goes_out(area_before);
+    ASSERT_EQ(r.reader().list_cursor(), 1u);
+    r.type(key_return);
+    r.poll();
+    r.run_the_calls();
+    ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+    ASSERT_EQ(r.reader().page_count(), 1u) << "one page, so F1 is the way out";
+
+    const unsigned framed = r.word_of(frame_calls);
+    r.type(key);
+    r.poll();
+    r.run_the_calls();
+    EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing)
+        << "key " << key;
+    EXPECT_EQ(r.reader().list_cursor(), 1u) << "and the cursor is where it was";
+    EXPECT_EQ(r.word_of(redraw_calls), 0u)
+        << "nothing is composed back: the same screen is still taken";
+    EXPECT_GT(r.word_of(frame_calls), framed)
+        << "the listing is drawn again, from the top";
+    EXPECT_EQ(
+        r.pascal_at(
+            static_cast<std::uint16_t>(r.word_of(frame_title_segment_seen)),
+            static_cast<std::uint16_t>(r.word_of(frame_title_offset_seen))),
+        "ADVENTURER'S JOURNAL");
+  }
+}
+
+TEST(JournalScreenPage, APageFromThePromptGoesOutThroughTheComposer) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+
+  r.bar_goes_out(area_before);
+  r.type(key_f1);
+  r.poll();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
+  EXPECT_EQ(r.reader().page_place(), journal_page_place::panel)
+      << "the prompt is four digits and a caption, and stays in the panel";
+  r.type(key_one);
+  r.type(key_two);
+  r.type(key_return);
+  r.poll(3);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.reader().page_place(), journal_page_place::screen);
+  EXPECT_FALSE(r.reader().page_from_list());
+  r.run_the_calls();
+
+  r.type(key_escape);
+  r.poll();
+  r.run_the_calls();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.word_of(redraw_calls), 1u)
+      << "there is no listing under this one, so the screen is composed back";
+}
+
+TEST(JournalScreenPage, LeavingItHalfPaintedStillGivesTheScreenBack) {
+  // A full screen is painted over successive arrivals, and a driven run
+  // measured a twenty-row page taking about 230 frames to settle (#305),
+  // so a player pressing Escape while it goes up is not an edge case.
+  // Until `close_reader()` read the paint's progress as well as its
+  // completion, that Escape closed the reader and left a half-drawn page
+  // standing with nothing coming to repaint it - seen on the glass, not
+  // reasoned about.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  // Long enough to need more than one pass, which is what makes there be
+  // a moment to press a key in.
+  for (int line = 0; line < 12; ++line) {
+    r.host.text += "aaaaaaaaa bbbbbbbbb ccccccccc ddddddddd\n";
+  }
+
+  r.bar_goes_out(area_before);
+  r.type(key_f1);
+  r.poll();
+  r.type(key_one);
+  r.type(key_two);
+  r.type(key_return);
+  r.poll(3);
+  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  ASSERT_FALSE(r.reader().on_screen()) << "the paint has not finished";
+  ASSERT_NE(r.reader().screen_drawn(), 0u) << "and it has started";
+
+  r.type(key_escape);
+  r.run_the_calls();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.word_of(redraw_calls), 1u)
+      << "what is on the glass is given back, finished or not";
+}
+
+TEST(JournalScreenPage, WithoutTheBarLiveThePromptsPageStaysInThePanel) {
+  // F1 is claimed on every screen that has a roster, and two of those are
+  // not the party's own bar routine — the camp screen, whose menu is a
+  // different call site, and an adventuring screen with a vendor's bar
+  // up. A full screen on either has nothing that may put it back, which
+  // is M5-E2d.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  // The bar came back: the loop is between passes, and whatever is asking
+  // for a key now is not that routine.
+  r.one_bar_pass(area_before, area_after, ' ');
+  ASSERT_FALSE(r.reader().bar_live());
+
+  r.type(key_f1);
+  r.poll();
+  r.type(key_one);
+  r.type(key_two);
+  r.type(key_return);
+  r.poll(3);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.reader().page_place(), journal_page_place::panel);
+  r.run_the_calls();
+  EXPECT_EQ(r.word_of(frame_calls), 0u)
+      << "nothing full-screen was drawn at all";
+  EXPECT_NE(r.row_text(reader_title_y), "") << "and the panel has the page";
+
+  r.type(key_escape);
+  r.poll();
+  r.run_the_calls();
+  EXPECT_EQ(r.word_of(redraw_calls), 0u) << "the composer is not used here";
+  EXPECT_EQ(r.word_of(roster_calls), 1u) << "the roster is what comes back";
+}
+
+TEST(JournalScreenPage, ACitationsPageIsInThePanelEvenWithTheBarLive) {
+  // It fires inside a script's own narration, where a vendor or an
+  // event's NPC can be in the viewport. Until that give-back is measured
+  // the panel is the only honest size for it.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  r.bar_goes_out(area_before);
+  ASSERT_TRUE(r.reader().bar_live());
+
+  r.program_draws("entry 12");
+  r.adventuring();
+  r.poll();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.reader().page_place(), journal_page_place::panel);
+  r.run_the_calls();
+  EXPECT_EQ(r.word_of(frame_calls), 0u);
+}
+
+TEST(JournalScreenPage, NoKeyAtAllReachesTheProgramWhileOneIsUp) {
+  // The listing's rule, for the listing's reason: the party's own bar
+  // routine is live under a full-screen page — that is *why* it is one —
+  // so a key this seam left alone would pick a command on a screen nobody
+  // can see, and the loop would paint its bar back over the page (#230).
+  for (const std::uint16_t key :
+       {std::uint16_t{0x1F73}, std::uint16_t{0x2E43}, std::uint16_t{0x2F56},
+        std::uint16_t{0x4B00}, std::uint16_t{0x3920}, key_return}) {
+    rig r;
+    a_screen_with_the_bar_live(r);
+    r.host.holds = Entry(12);
+    r.host.text = "One short line.";
+    r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+    r.one_bar_pass(area_before, area_after, 'N');
+    r.bar_goes_out(area_before);
+    r.type(key_return);
+    r.poll();
+    r.run_the_calls();
+    ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+
+    r.type(key);
+    r.poll();
+    EXPECT_EQ(r.keys_waiting(), 0u) << "key " << key;
+    EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing)
+        << "and none of them is a way out either: key " << key;
+  }
+}
+
+TEST(JournalScreenPage, TheMapDoesNotDrawOverIt) {
+  // `seam_table.cpp` runs the automap before the journal, so at the two
+  // shared key points the map's handler sees Tab first and takes it. It
+  // toggles its own panel and draws nothing while the reader is open —
+  // which is the listing's behaviour and now the page's, because the page
+  // covers the map's pixels too.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  ASSERT_EQ(r.box->seams().enable("automap"), seam_reason::none);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  const std::uint32_t signature = r.reader().drawn_signature();
+
+  r.type(key_tab);
+  r.poll();
+  r.run_the_calls();
+  EXPECT_EQ(r.keys_waiting(), 0u) << "the map takes its own key";
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.reader().drawn_signature(), signature)
+      << "and nothing repainted the page";
 }
 
 // ---------------------------------------------------------------------------

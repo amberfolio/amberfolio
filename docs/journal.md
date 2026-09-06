@@ -644,6 +644,22 @@ for the same reason.
 store keeps two texts per entry (§6). Nothing about the reader knows that
 a text was corrected, and nothing should.
 
+**A page is drawn in two sizes, and where it was opened decides which**
+(M5-E4d, #305). The `Notes` listing is a full screen, and picking a row
+off it used to drop back to a page in the roster-sized panel — 264
+characters where the screen it had just filled holds 760. It is the same
+screen now: the same box, drawn by the same two of the program's own
+routines. The rule is not "which key opened it" but a fact about the
+machine — is the party's own command-bar routine the thing running? —
+because that is the precondition under which the program's screen
+composer may be asked to put the screen back (`docs/seams.md` §10, and
+M5-E2d for what asking it elsewhere cost). So a row of the listing and
+the F1 prompt on the adventuring screen open a full screen; F1 at camp
+or with a vendor's bar up opens the panel; and a **citation** opens the
+panel always, because it fires inside a script's own narration where an
+NPC can be in the viewport. The word wrap did not change; it only got
+wider.
+
 **What arrives is what the panel can draw** (M5-E4c, #219). The panel maps
 a *byte* to a glyph, out of the program's table of sixty-four; a store is
 UTF-8 and an OCR engine produces plenty of it. A real ingestion of the one
@@ -668,7 +684,8 @@ answers `void`, so what a host found goes into `machine::journal()` —
 core's own observation buffer, not machine state, dropped by `reset()`
 and absent from the state hash (`machine/journal.h`, `docs/seams.md` §3).
 What crosses is capped at four kilobytes, which is about sixteen screens
-of the panel the reader draws in; a longer entry is delivered truncated
+of the roster panel and five of the full screen; a longer entry is
+delivered truncated
 and the reader says so, because a transcription with a silent hole in it
 is the failure a player finds out about last.
 

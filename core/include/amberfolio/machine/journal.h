@@ -239,6 +239,23 @@ enum class journal_reader_mode : std::uint8_t {
   showing,
 };
 
+/// Where a page of an entry is drawn (M5-E4d, #305).
+///
+/// **Two sizes, and which one a page gets is a fact about the machine
+/// rather than a memory of which key opened it.** The panel is the one
+/// region of the adventuring screen a seam can take and give back, so it
+/// is the honest size everywhere; the full screen the `Notes` listing
+/// takes is bigger and needs the program's own screen composer to put
+/// back what it covered, which is only safe while the party's own
+/// command-bar routine is the thing running (`bar_live()` below, and
+/// M5-E2d for what the unsafe case cost).
+enum class journal_page_place : std::uint8_t {
+  /// The roster-sized panel, twenty-two columns by twelve rows.
+  panel,
+  /// The whole screen, in the frame the listing is drawn in.
+  screen,
+};
+
 /// How many digits the prompt takes. Entry numbers in a printed journal
 /// of this kind run to three; four is one more than anybody needs and
 /// still cannot overflow the number it is parsed into.
@@ -420,15 +437,54 @@ class journal_state {
   }
   void move_list_cursor(int by) noexcept;
 
-  /// How many rows of the list are on the screen so far.
+  /// How many rows of whatever the program is drawing full-screen are on
+  /// it so far — the log's listing, or a page of an entry (#305). Never
+  /// both: the two are the same screen and one is always the way out of
+  /// the other.
   ///
   /// A batch may queue twelve calls and place 256 bytes (`seam.h`), and a
-  /// screen of ten rows is more than that — so it is painted over
-  /// successive arrivals, a few rows at a time, and this is how far it has
-  /// got. Zero means "start again", which is what a moved cursor or a new
-  /// line in the log means.
-  [[nodiscard]] std::size_t list_drawn() const noexcept { return list_drawn_; }
-  void set_list_drawn(std::size_t rows) noexcept { list_drawn_ = rows; }
+  /// screen of ten rows is more than that — twenty is further past it —
+  /// so it is painted over successive arrivals, a few rows at a time, and
+  /// this is how far it has got. Zero means "start again", which is what
+  /// a moved cursor, a new line in the log, a turned page and a changed
+  /// mode all mean.
+  [[nodiscard]] std::size_t screen_drawn() const noexcept {
+    return screen_drawn_;
+  }
+  void set_screen_drawn(std::size_t rows) noexcept { screen_drawn_ = rows; }
+
+  /// Which size the page that is up was opened at, and whether the
+  /// listing is underneath it (#305).
+  ///
+  /// The second is the way out rather than the way it is drawn: a page
+  /// opened from a row of the listing goes **back to the listing**, on
+  /// the screen it is already holding, and one opened from the prompt
+  /// goes out through the program's own composer. Both are observation
+  /// and neither is machine state.
+  [[nodiscard]] journal_page_place page_place() const noexcept {
+    return place_;
+  }
+  void set_page_place(journal_page_place place) noexcept;
+  [[nodiscard]] bool page_from_list() const noexcept { return from_list_; }
+  void set_page_from_list(bool from_list) noexcept { from_list_ = from_list; }
+
+  /// Whether the party's own command-bar routine is sitting in its key
+  /// loop right now (#305).
+  ///
+  /// **The precondition for taking the whole screen**, and the reason it
+  /// is a flag rather than a memory of which key was pressed. The
+  /// program's screen composer is a safe give-back exactly when there
+  /// cannot be a vendor's screen under it, and that is exactly while the
+  /// *party's* bar is the live one — which is a place in the program and
+  /// not a key: F1 is claimed on every screen that has a roster,
+  /// including the camp screen and an adventuring screen with a shop's
+  /// bar up, and a full screen on either of those is M5-E2d again.
+  ///
+  /// Set where the adventuring loop calls that routine and cleared where
+  /// it returns, both of which are points this seam already has for the
+  /// `Notes` splice.
+  [[nodiscard]] bool bar_live() const noexcept { return bar_live_; }
+  void set_bar_live(bool live) noexcept { bar_live_ = live; }
 
   /// The prompt as a citation: the kind it is pointed at, and the number
   /// typed into it.
@@ -491,9 +547,13 @@ class journal_state {
   std::array<char, journal_prompt_digits> digits_{};
   journal_kind asked_kind_{journal_kind::entry};
 
+  journal_page_place place_{journal_page_place::panel};
+  bool from_list_{false};
+  bool bar_live_{false};
+
   std::size_t seen_count_{};
   std::size_t list_cursor_{};
-  std::size_t list_drawn_{};
+  std::size_t screen_drawn_{};
   bool seen_changed_{false};
   std::array<journal_seen_row, journal_log_rows> seen_{};
 

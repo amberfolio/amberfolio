@@ -526,10 +526,13 @@ void journal_state::clear() noexcept {
   page_count_ = 0;
   digit_count_ = 0;
   asked_kind_ = journal_kind::entry;
+  place_ = journal_page_place::panel;
+  from_list_ = false;
+  bar_live_ = false;
   seen_count_ = 0;
   seen_changed_ = false;
   list_cursor_ = 0;
-  list_drawn_ = 0;
+  screen_drawn_ = 0;
   on_screen_ = false;
   covered_ = false;
   drawn_signature_ = 0;
@@ -640,9 +643,24 @@ void journal_state::set_reader(journal_reader_mode mode) noexcept {
     return;
   }
   mode_ = mode;
-  // Whatever is on the planes is not what this mode wants there.
+  // Whatever is on the planes is not what this mode wants there, and
+  // whatever a full-screen paint had got through is not this mode's
+  // either (#305): the listing and a page are drawn into the same box.
   on_screen_ = false;
   drawn_signature_ = 0;
+  screen_drawn_ = 0;
+}
+
+void journal_state::set_page_place(journal_page_place place) noexcept {
+  if (place_ == place) {
+    return;
+  }
+  place_ = place;
+  // The two sizes are not the same pixels, so nothing that was drawn for
+  // one counts as drawn for the other.
+  on_screen_ = false;
+  drawn_signature_ = 0;
+  screen_drawn_ = 0;
 }
 
 void journal_state::set_page(std::uint16_t page) noexcept {
@@ -651,6 +669,9 @@ void journal_state::set_page(std::uint16_t page) noexcept {
   }
   page_ = page;
   drawn_signature_ = 0;
+  // A turned page is a screen drawn again from the top, the same way a
+  // moved cursor is (#305).
+  screen_drawn_ = 0;
 }
 
 bool journal_state::push_digit(char digit) noexcept {
@@ -736,7 +757,7 @@ void journal_state::clear_seen() noexcept {
   seen_count_ = 0;
   seen_changed_ = false;
   list_cursor_ = 0;
-  list_drawn_ = 0;
+  screen_drawn_ = 0;
 }
 
 void journal_state::move_list_cursor(int by) noexcept {
@@ -761,7 +782,7 @@ void journal_state::move_list_cursor(int by) noexcept {
   }
   if (where != list_cursor_) {
     list_cursor_ = where;
-    list_drawn_ = 0;
+    screen_drawn_ = 0;
     drawn_signature_ = 0;
   }
 }

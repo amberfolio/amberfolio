@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# NOT-12: while a **full-screen page** is up, nothing reaches the
+# program. `not-log-modal.leg`'s claim, for the screen M5-E4d (#305)
+# added — and it is the same claim because it is the same situation: the
+# party's own command-bar routine is live underneath, which is *why* the
+# page may take the whole screen, so a key this seam left alone would
+# pick a command, or walk the party, where nobody could see it, and the
+# loop would paint its bar and its status line back over the page to
+# prove it (#230).
+#
+# A **single** leg and not a pair, for `not-log-modal.leg`'s reason: the
+# seam-off run has no page to swallow those keys, so every one of them
+# reaches the program and the two runs end in different game states.
+about nothing reaches the program while a full-screen page is up
+kind single
+program START.EXE
+store tests/visual/reader-store.txt
+# The listing has to have a row to open, and a citation is a place in the
+# story: #301's cheat puts everything the store holds onto the log, which
+# is what a leg needs and what a walk to the city hall would only test
+# the walk of.
+cite-all
+both code-wheel
+# The code-wheel bypass is gated on the wheel itself (#115), and this run
+# drives past the challenge, so it needs it. Pinned by digest because a
+# document never enters this tree.
+document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+seam journal
+until 300000000
+every 25
+
+# **A screen this seam draws is slow to appear, and the ranges below are
+# spaced for it.** It is painted over successive arrivals, a few rows at
+# a time, and the program's own drawing routines are what put each row
+# on the glass. Measured by hand on the shorter boot (#305): a
+# twenty-row page takes about 230 frames to settle after the key that
+# opened it and a ten-row listing about 130. That is the listing's own
+# behaviour since #222 rather than anything the page added; a `same`
+# range that started sooner would be measuring the paint.
+
+key A@7601
+key Return@7651
+key L@8951
+key A@9201
+# The listing, then the row the cursor is already on, then the barrage:
+# search, cast, look, three the party walks by, and the letter the
+# listing's own bottom row names — which is not a way out of a page.
+key N@10600
+key Return@11200
+key S@11800
+key C@12000
+key L@12200
+key Left@12400
+key Right@12600
+key Up@12800
+key E@13100
+
+# From the page settling to the last of the barrage, one frame.
+same 11500-13300
