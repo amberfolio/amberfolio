@@ -3220,7 +3220,8 @@ TEST(JournalScreenPage, TheMapDoesNotDrawOverIt) {
 /// The automap seam is deliberately **off** here: what is under test is
 /// the give-back's end of the bargain, and an automap handler at the
 /// shared key point would be answering a command bar it has not watched
-/// go up. The pair itself is driven (`tests/visual/map-after-page.leg`).
+/// go up. The two seams together are driven in
+/// `tests/visual/rdr-map-back.leg`.
 TEST(JournalScreenPage, TheGiveBackTellsTheMapItsPanelWasPaintedOver) {
   rig r;
   a_screen_with_the_bar_live(r);
