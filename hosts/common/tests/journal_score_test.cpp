@@ -210,7 +210,11 @@ TEST(JournalScoreOverTheProbe, TheHarnessReportsTheErrorTheFixtureMade) {
                                          .number = fact->number};
     ASSERT_EQ(store.text(what), noisy(index));
     ASSERT_TRUE(store.correct(what, journal_probe_text(index)));
-    characters += journal_probe_text(index).size();
+    // The **normalized** length, because that is what a score's reference
+    // is: one of the probe's entries carries a paragraph break (#331) and
+    // its two newlines collapse to the one space every other run of
+    // whitespace does.
+    characters += journal_normalize(journal_probe_text(index)).size();
   }
 
   const journal_store_report scored = score_journal_store(store);

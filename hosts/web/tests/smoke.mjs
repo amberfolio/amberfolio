@@ -3274,9 +3274,19 @@ if (missing.length === 0 && sessions !== null) {
 
   for (const number of [1, 2, 3]) {
     const cite = journalCitation('entry', number);
+    // Entry two carries a **paragraph break** (#331), and this is that
+    // blank line crossing the ABI: the reader draws one as a paragraph
+    // and a single newline as a space (#316), so a store, a
+    // serialization or a string hand-off that normalized whitespace
+    // anywhere would take the shape of every real entry away and look
+    // like nothing at all.
+    const want =
+      number === 2
+        ? 'AMBER FOLIO PROBE\n\nENTRY 2'
+        : `AMBER FOLIO PROBE ENTRY ${number}`;
     check(
-      journalText(module, cite) === `AMBER FOLIO PROBE ENTRY ${number}`,
-      `entry ${number} reads '${journalText(module, cite)}'`,
+      journalText(module, cite) === want,
+      `entry ${number} reads ${JSON.stringify(journalText(module, cite))}`,
     );
   }
 
@@ -3398,6 +3408,59 @@ if (missing.length === 0 && sessions !== null) {
     `an answer without blocks was not refused by name: ${refusedFor}`,
   );
   check(wordsWithin({ blocks: [] }, region) === '', 'an empty page is not empty');
+
+  // The paragraphs the walk used to throw away (#331). The reader honours
+  // a blank line and nothing else (#316), and every line was being pushed
+  // flat and joined with one newline whatever paragraph it came from - so
+  // a real entry read as one solid block of prose. A space between two
+  // words of a line, one newline between two lines of a paragraph, a
+  // blank line between two paragraphs.
+  const para = (...lines) => ({ lines });
+  const broken = {
+    blocks: [
+      {
+        paragraphs: [
+          para(
+            { words: [word('one', 10, 2), word('two', 30, 2)] },
+            { words: [word('three', 10, 8)] },
+          ),
+          para({ words: [word('four', 10, 14)] }),
+        ],
+      },
+      // A new block is a new paragraph too, which is what Tesseract's own
+      // text output does - so this host and the desktop's two engines
+      // break in the same places rather than in three sets of places.
+      { paragraphs: [para({ words: [word('five', 10, 20)] })] },
+    ],
+  };
+  check(
+    wordsWithin(broken, region) === 'one two\nthree\n\nfour\n\nfive',
+    `the paragraphs came out as ${JSON.stringify(wordsWithin(broken, region))}`,
+  );
+
+  // And the two ways to get it wrong, both of which produce a *wrong*
+  // break rather than a missing one. A break falls only between two
+  // paragraphs that both kept something: a rectangle that clips a
+  // paragraph gains none at the crop, so the fragment joins to the next
+  // one with the single newline `recognize` writes, and a page whose
+  // first paragraphs fell outside does not open on a blank line either.
+  const clipped = {
+    blocks: [
+      {
+        paragraphs: [
+          para({ words: [word('outside', 200, 200)] }),
+          para({ words: [word('kept', 10, 2)] }),
+          // Clipped: nothing of this paragraph is inside the rectangle,
+          // so it neither earns a break nor swallows one.
+          para({ words: [word('past', 200, 210)] }),
+        ],
+      },
+    ],
+  };
+  check(
+    wordsWithin(clipped, region) === 'kept',
+    `a clipped page answered ${JSON.stringify(wordsWithin(clipped, region))}`,
+  );
 
   // And what the engine thought of the words it kept (#315), which the
   // filter was parsing past and throwing away. Two claims: the summary is
