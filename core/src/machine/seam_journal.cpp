@@ -722,8 +722,9 @@ struct page_layout {
 [[nodiscard]] page_layout lay_out(std::string_view text, std::size_t start,
                                   page_shape shape) {
   page_layout page;
+  const auto rows = static_cast<unsigned>(shape.rows);
   std::size_t p = std::min(start, text.size());
-  while (static_cast<int>(page.lines) < shape.rows && p < text.size()) {
+  while (page.lines < rows && p < text.size()) {
     while (p < text.size() && is_space(text[p])) {
       ++p;
     }
