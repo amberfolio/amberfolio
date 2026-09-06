@@ -13,9 +13,17 @@
 #     python3 scripts/fetch-ocr-engine.py --print-plan
 #
 # What it puts there is `vendor/tesseract/` beside the module: the
-# library, its worker, its wasm core, and one language's data.
+# library, its worker, its wasm core, one language's data, and a
+# `version.txt` saying which tesseract.js all of that is.
 # `hosts/web/page/journal.mjs` looks in exactly that place and nowhere
 # else.
+#
+# The version file is there because the bundle does not carry one: its
+# exports are `createWorker`, `recognize` and the enums, and its version
+# string sits inside a webpack module nothing reaches. The page named the
+# engine `tesseract.js (unversioned)` in a real store until somebody read
+# it (#306). This script is the one writer of that directory and holds
+# the pin, so it says so beside the bytes the pin describes.
 #
 #                          WHY NOT A CDN
 #
@@ -97,6 +105,10 @@ TESSDATA_URL = (
 
 DIGESTS = "sha256sums.txt"
 
+# What the page reads the engine's version from (`journal.mjs`'s
+# `ENGINE_VERSION_FILE`), written beside the engine by every fetch.
+VERSION_FILE = "version.txt"
+
 # The committed record, checked when a run is not pointed at another one.
 # A CI runner has no previous fetch to compare against, so without this
 # every deploy would be trust on first use.
@@ -148,8 +160,8 @@ def collect(version: str, language: str) -> tuple[dict[str, bytes], dict[str, by
     the digest record is computed over: the bytes as they arrived, before
     anything here touched them.
 
-    Fourteen of the fifteen files are identical in both - they are copied
-    verbatim out of the tarballs. The language data is not: the page wants
+    Fourteen of the fifteen fetched files are identical in both - they are
+    copied verbatim out of the tarballs. The language data is not: the page wants
     it gzipped, so this script gzips it, and **a gzip stream is not
     reproducible across machines**. Two correct zlibs compress the same
     bytes differently; a Python built against zlib-ng and one built
@@ -196,6 +208,11 @@ def collect(version: str, language: str) -> tuple[dict[str, bytes], dict[str, by
 
     # Everything above is verbatim, so it is its own record.
     served = dict(files)
+
+    # Not fetched, so not in the record: the pin this run was made from,
+    # for the page to name the engine by. One line, the way the pin file
+    # itself is written.
+    files[VERSION_FILE] = f"{version}\n".encode("utf-8")
 
     data = fetch(TESSDATA_URL.format(tag=TESSDATA_TAG, lang=language))
     # tesseract.js asks for `<lang>.traineddata.gz` unless it is told

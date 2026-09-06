@@ -125,11 +125,20 @@ function codeWheelStorage() {
 /// chunk would be four times too much audio on a 240 Hz display.
 const AUDIO_SAMPLE_RATE = 44100;
 
+/// One element of the page, by id. At module scope because the functions
+/// below `runDevPage()` use it too — `restoreCodeWheelStore()` and the
+/// frame loop's code-wheel line, both added with the code wheel's drawer
+/// (M6-C1b, #292) — and a `const` inside `runDevPage()` is not in their
+/// scope. So the first `ensureMachine()` threw `el is not defined`, which
+/// is what the deployed page answered a player who picked their own
+/// journal: *the ingestion failed: el is not defined*, before an engine
+/// was so much as looked for (#306). The second pick worked, because the
+/// machine had been made before the throw.
+const el = (id) => document.getElementById(id);
+
 /// Wires the page up. Called once, from index.html's own inline module
 /// script.
 export function runDevPage() {
-  const el = (id) => document.getElementById(id);
-
   const canvas = el(CANVAS_ID);
   const startButton = el(START_BUTTON_ID);
   const bootButton = el(BOOT_BUTTON_ID);

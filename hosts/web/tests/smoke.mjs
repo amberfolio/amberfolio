@@ -3138,6 +3138,9 @@ if (missing.length === 0 && sessions !== null) {
     journalNumber,
     currentScan,
     wordsWithin,
+    wordCount,
+    engineVersion,
+    ENGINE_VERSION_FILE,
     JOURNAL_JPEG,
     keepStore,
     restoreStore,
@@ -3241,19 +3244,126 @@ if (missing.length === 0 && sessions !== null) {
 
   // And the region really does filter: words outside it are not the
   // entry's, which is `journal_ocr.h`'s contract on the page's side.
-  const inside = { x0: 10, y0: 10, x1: 20, y1: 20 };
-  const outside = { x0: 200, y0: 200, x1: 210, y1: 210 };
-  const line = {};
-  const filtered = wordsWithin(
-    {
-      words: [
-        { text: 'kept', bbox: inside, line },
-        { text: 'dropped', bbox: outside, line },
-      ],
-    },
-    { left: 0, top: 0, width: 64, height: 32 },
+  //
+  // **In the pinned version's own shape**, and that is the point of it.
+  // This check used to hand the filter a flat `words` array the test
+  // wrote — tesseract.js 4's shape — and passed for a milestone while the
+  // pinned tesseract.js 6 answered `blocks[].paragraphs[].lines[].words[]`
+  // and the filter read `undefined` on every real page (#306). So the
+  // shape below is the one measured off the pinned engine in a browser
+  // — a word's `bbox` is `{ x0, y0, x1, y1 }`, a line is the engine's
+  // own grouping — and the old shape is asserted **refused**, not empty:
+  // a filter that answers '' for an answer it does not understand is the
+  // bug this is here to keep out.
+  const word = (text, x0, y0) => ({
+    text,
+    bbox: { x0, y0, x1: x0 + 10, y1: y0 + 10 },
+    confidence: 90,
+  });
+  const region = { left: 0, top: 0, width: 64, height: 32 };
+  const answer = {
+    text: 'kept also\nsecond dropped\n',
+    blocks: [
+      {
+        bbox: { x0: 0, y0: 0, x1: 300, y1: 300 },
+        paragraphs: [
+          {
+            lines: [
+              { words: [word('kept', 10, 10), word('also', 30, 10)] },
+              { words: [word('second', 10, 20), word('dropped', 200, 200)] },
+              { words: [word('gone', 200, 210)] },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const filtered = wordsWithin(answer, region);
+  check(
+    filtered === 'kept also\nsecond',
+    `the region filter answered ${JSON.stringify(filtered)}`,
   );
-  check(filtered === 'kept', `the region filter answered '${filtered}'`);
+  check(wordCount(answer) === 5, `the page holds ${wordCount(answer)} words, not 5`);
+  let refusedFor = null;
+  try {
+    wordsWithin(
+      { words: [word('kept', 10, 10)], text: 'kept\n' },
+      region,
+    );
+  } catch (problem) {
+    refusedFor = String(problem?.message ?? problem);
+  }
+  check(
+    refusedFor !== null && refusedFor.includes('no blocks'),
+    `an answer without blocks was not refused by name: ${refusedFor}`,
+  );
+  check(wordsWithin({ blocks: [] }, region) === '', 'an empty page is not empty');
+
+  // The engine's *name*, which was the other half of what the first real
+  // sitting found: the UMD bundle exports no version, so the store's
+  // engine line read `tesseract.js (unversioned)` (#306). It reads the
+  // `version.txt` that `scripts/fetch-ocr-engine.py` leaves beside the
+  // engine instead, and the fetch is injectable so that this needs
+  // neither a browser nor the 32 MB the engine weighs.
+  const served = (body, ok = true) => async () => ({
+    ok,
+    status: ok ? 200 : 404,
+    text: async () => body,
+  });
+  const unrecorded = `(version unrecorded - no ${ENGINE_VERSION_FILE} beside it)`;
+  check(
+    (await engineVersion('v', served('6.0.1\n'))) === '6.0.1',
+    'the pinned version beside the engine did not become its name',
+  );
+  check(
+    (await engineVersion('v', served('', false))) === unrecorded,
+    'a missing version.txt did not say so',
+  );
+  check(
+    (await engineVersion('v', served('<!doctype html><title>dev server</title>'))) ===
+      unrecorded,
+    'a server that answers every path with its index page named the engine after it',
+  );
+  check(
+    (await engineVersion('v', () => {
+      throw new Error('offline');
+    })) === unrecorded,
+    'a fetch that threw did not fall back to the unrecorded name',
+  );
+
+  // An engine that throws puts its own sentence in the report, on the
+  // entry it happened on, and the ingestion carries on — the desktop's
+  // loop does the same past `engine_failed`. Before #306 the throw took
+  // the whole ingestion down and an empty answer said only "did not read
+  // it", which is what a real journal came back with.
+  const said = 'the worker could not fetch its core (a made-up reason)';
+  let calls = 0;
+  const thrown = await ingestJournal(module, document, {
+    engine: {
+      name: 'a fixture that throws',
+      recognize() {
+        ++calls;
+        throw new Error(said);
+      },
+    },
+  });
+  check(thrown.ok, 'an engine that throws took the ingestion down');
+  check(calls === 4, `the loop stopped after ${calls} of 4 rows`);
+  check(thrown.recognized === 0, 'a throw was counted as a recognition');
+  check(
+    thrown.firstTrouble?.what === said,
+    `the report says ${JSON.stringify(thrown.firstTrouble?.what)}, not the engine's own words`,
+  );
+  check(
+    journalKind(thrown.firstTrouble?.citation) === 'entry' &&
+      journalNumber(thrown.firstTrouble?.citation) === 1,
+    'the trouble is not on the first row',
+  );
+  // Back to a store the checks below expect.
+  const restoredReport = await ingestJournal(module, document, {
+    engine: probeEngine(module),
+  });
+  check(restoredReport.recognized === 4, 'the probe engine did not read all four rows again');
   check(report.store.fingerprint.length === 64, 'the store has no fingerprint');
 
   // A correction is what a reader shows, and it survives the next

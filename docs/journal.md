@@ -255,10 +255,64 @@ So `extract_scan()` answers one of two things and says which
 it decoded and cannot crop what it did not, so an encoded scan reaches
 the engine as a whole page plus a rectangle, and what gets filtered is
 the engine's *output*. Both engines already report where each word was —
-Tesseract through its `tsv` output, tesseract.js through
-`data.words[].bbox` — so the filter reads a number they were producing
-anyway. A word counts as inside when its centre is, which gives the same
-answer a crop would for every word a crop would not have cut in half.
+Tesseract through its `tsv` output, tesseract.js through the `bbox` on
+every word of `data.blocks[].paragraphs[].lines[].words[]` — so the
+filter reads a number they were producing anyway. A word counts as inside
+when its centre is, which gives the same answer a crop would for every
+word a crop would not have cut in half.
+
+**What the first real browser sitting found** (#306). The page read
+`data.words[].bbox`. That is the shape of tesseract.js 4; the pinned
+tesseract.js 6 has no flat `words` list at all, and answers a `blocks`
+tree only when the call asks for `{ blocks: true }` — its worker's own
+default output is `{ text: true, blocks: false, ... }`. So the archive
+release went through the page as
+
+    Pool of Radiance Adventurer's Journal, archive release: 0 of 99
+    entries read by tesseract.js (unversioned) (entry 1: the OCR engine
+    did not read it)
+
+with the engine having read every page: the filter walked an `undefined`
+and answered nothing, and an empty answer is what `ingestJournal()`
+reports as "did not read it". The smoke check that covered the filter had
+handed it a `words` array the test itself wrote, in the old shape — a
+test of the test.
+
+Now the shape it reads is the one measured off the pinned engine in a
+browser: `data.blocks[] → paragraphs[] → lines[] → words[]`, each word
+`{ text, bbox: { x0, y0, x1, y1 }, confidence, ... }`, and a line is the
+engine's own grouping rather than a guess from word identity. An answer
+with no `blocks` array is **refused with a sentence** rather than read as
+a blank page, an engine's throw reaches the report on the entry it
+happened on instead of taking the ingestion down, and when the rectangle
+keeps nothing the report says whether the page had words on it.
+
+The same sitting found two more things. The gray path handed the engine
+an `ImageBitmap`, which the pinned version does not read — nor an
+`ImageData`; both come back as `Error attempting to read image`, because
+its `loadImage` takes a URL, a data URL, an `IMG`/`VIDEO`/`CANVAS`
+element, an `OffscreenCanvas`, a `File` or a `Blob`, and hands anything
+else to `new Uint8Array(...)`, which for those two is empty. So the gray
+path hands it a canvas. And the UMD bundle exports no version at all
+(`languages, OEM, PSM, createScheduler, createWorker, setLogging,
+recognize, detect`), which is where `(unversioned)` came from — so
+`scripts/fetch-ocr-engine.py` writes a `version.txt` beside the engine
+and the name is read off that.
+
+Driven again after the fix, in headless Edge over the same document,
+served from a local build with the engine staged by that script:
+
+    Pool of Radiance Adventurer's Journal, archive release: 99 of 99
+    entries read by tesseract.js 6.0.1 - kept in this browser for next
+    time
+
+in 321 seconds, with nothing in the browser's console. Entry 1's
+rectangle — `left 702, top 270, 290x413` of a 1328x1003 two-page scan —
+comes back beginning `Journal Entry 1:`, which is the whole of what the
+region filter is for. **What that is, is a count.** Whether ninety-nine
+transcriptions are ninety-nine *good* transcriptions is a person reading
+them, and #236 still owns that, along with the desktop's installed engine
+having never read a page at all.
 
 It is written into `journal_ocr.h` rather than left to each host on
 purpose: two hosts that filtered differently would give a player two
@@ -331,7 +385,10 @@ path tesseract.js might reach for — worker, core, language data — and
 they are all under the directory the library itself came from. When the
 engine is not there, the page says exactly that and names the script that
 fetches it, and the ingestion still runs: every entry is located and
-decoded, nothing is recognized, and both numbers are reported.
+decoded, nothing is recognized, and both numbers are reported. The
+script also leaves a `version.txt` there, because the bundle does not
+export its own version and the store's engine line should say what read
+it (#306).
 
 **The deployed page ships with the engine** (M5-E3e). It did not until
 now: nothing in CI ran the fetch, so https://amberfolio.vercel.app
@@ -525,19 +582,28 @@ whether the inverted loop a browser needs actually works.
   has: the one driven is the city hall's four proclamations, and the
   entry and tale forms are the pattern's word rather than a measured
   sentence.
-- **Nobody has opened a browser on the journal panel of the dev page.**
-  It is the same open state #147 records for the rest of the page.
+- **Somebody has now opened a browser on the journal panel of the dev
+  page**, with a real journal, and it read nothing (#306): the page read
+  the engine's answer in the shape of a tesseract.js two majors older
+  than the one pinned, and the smoke test had checked the filter against
+  that same invented shape. §4a carries what was found and what the
+  fixed page reads. What is still only a person's to do is #236's rest —
+  the desktop's installed engine on a real document, and looking at what
+  the browser read rather than counting it.
 - **Huffman-coded streams are not exercised by our own fixtures.** The
   probe's Flate streams are stored deflate blocks, because nothing in this
   tree compresses anything. That is libdeflate's business and it is tested
   against the world's compressors, which is why it is used
   (`cmake/AmberfolioLibdeflate.cmake`).
-- **No engine has read a real JPEG page** (§4a). What CI proves about the
-  passthrough is that the right stream reaches the engine unaltered with
-  the right rectangle; what only a person with a document and an installed
-  engine can prove is that Tesseract reads words off it and that the
-  rectangle picks out the entry. The region filter itself is checked on
-  both hosts against word boxes the tests write.
+- **The browser's engine has read real JPEG pages** (§4a, #306) and the
+  desktop's installed one has not. What CI proves about the passthrough is
+  that the right stream reaches the engine unaltered with the right
+  rectangle; what only a person with a document and an installed engine
+  can prove is that Tesseract reads words off it and that the rectangle
+  picks out the entry. The region filter itself is checked on both hosts
+  against word boxes the tests write — in the pinned engine's own shape on
+  the page, since #306, because a shape the test invents is a test of the
+  test.
 
 ## 8. Reporting an ingestion
 

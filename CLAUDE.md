@@ -325,8 +325,11 @@ What M5 left in place:
   onto the facing page — and eighteen of the fifty-eight are in more than
   one piece; a row of one rectangle could describe none of those.
   `docs/journal.md` §3 is the method, so the next edition is a procedure
-  rather than an archaeology. What has still never happened is a real
-  engine reading a real page: the pipeline is proven in CI on all four
+  rather than an archaeology. A real engine has read real pages in a
+  browser now — #306, where the first sitting found the page reading
+  tesseract.js 6's answer in tesseract.js 4's shape, so *0 of 99* until
+  it did not — and the desktop's installed engine still has not; the
+  pipeline is proven in CI on all four
   targets against a synthetic PDF this project generates
   (`journal_probe.h`) — three entries, the third a real baseline JPEG this
   project encodes and the only one in two pieces — with a fixture engine

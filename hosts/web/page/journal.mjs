@@ -11,10 +11,10 @@
 //
 // DOM-free, like host.mjs and for the same reason: `ctest --preset wasm`
 // imports it under node, where there is no `document`. What it does touch
-// is `fetch`, `createImageBitmap` and `localStorage`, and all three are
-// behind a guard — the engine is optional, and so is a browser that will
-// keep anything. The storage functions take the drawer as an argument for
-// the same reason, so that the smoke check can hand them one.
+// is `fetch`, a canvas of `document`'s and `localStorage`, and all three
+// are behind a guard — the engine is optional, and so is a browser that
+// will keep anything. The storage functions take the drawer as an
+// argument for the same reason, so that the smoke check can hand them one.
 //
 //
 // The engine: pinned, served from here, never a CDN
@@ -118,8 +118,8 @@ export function troubleName(module, code) {
 /// A real `ImageData` where there is one, and the same three fields
 /// otherwise: node has no such constructor and the smoke check runs
 /// there. Nothing downstream needs more than `{ width, height, data }`,
-/// and `createImageBitmap` — which does need the real thing — is only
-/// reached from the browser engine.
+/// and the canvas the engine is handed — which does need the real thing —
+/// is only made by the browser engine.
 /// Which shape the last extraction produced (#212).
 export const JOURNAL_GRAY = 0;
 export const JOURNAL_JPEG = 1;
@@ -177,32 +177,64 @@ export function currentScan(module) {
 /// once in `journal_ocr.h`: an encoded scan is a whole page, and the
 /// entry is a rectangle of it. A word counts as inside when its centre
 /// is, which is what gives the same answer a crop would have.
+///
+/// **The shape it reads is the pinned version's, measured.** tesseract.js
+/// 6 answers `data.blocks[].paragraphs[].lines[].words[]`, and only when
+/// the recognition asked for `{ blocks: true }`; the flat `data.words`
+/// this used to read was the previous major's and is not there any more.
+/// That is the difference between "0 of 99 entries read" and a journal —
+/// the first real page anybody put through this page found it (#306) —
+/// so `data` without a `blocks` array is refused with a sentence rather
+/// than read as an empty page, and a line is the engine's own grouping
+/// rather than a guess from word identity.
 export function wordsWithin(data, region) {
-  const words = data?.words ?? [];
+  const blocks = data?.blocks;
+  if (!Array.isArray(blocks)) {
+    throw new Error(
+      'tesseract.js answered no blocks, so there is nothing to keep by' +
+        ' rectangle - the pinned version and the shape this page reads' +
+        ' have parted (journal.mjs, wordsWithin)',
+    );
+  }
   const right = region.left + region.width;
   const bottom = region.top + region.height;
   const lines = [];
-  let current = null;
-  let previous = null;
-  for (const word of words) {
-    const box = word?.bbox;
-    const text = word?.text ?? '';
-    if (!box || text === '') continue;
-    const cx = (box.x0 + box.x1) / 2;
-    const cy = (box.y0 + box.y1) / 2;
-    if (cx < region.left || cx >= right || cy < region.top || cy >= bottom) {
-      continue;
+  for (const block of blocks) {
+    for (const paragraph of block?.paragraphs ?? []) {
+      for (const line of paragraph?.lines ?? []) {
+        const kept = [];
+        for (const word of line?.words ?? []) {
+          const box = word?.bbox;
+          const text = word?.text ?? '';
+          if (!box || text === '') continue;
+          const cx = (box.x0 + box.x1) / 2;
+          const cy = (box.y0 + box.y1) / 2;
+          if (cx < region.left || cx >= right || cy < region.top || cy >= bottom) {
+            continue;
+          }
+          kept.push(text);
+        }
+        if (kept.length > 0) lines.push(kept.join(' '));
+      }
     }
-    // `word.line` is the object tesseract.js groups words by; identity is
-    // what says two words share one, and there is nothing else to compare.
-    if (current === null || word.line !== previous) {
-      current = [];
-      lines.push(current);
-      previous = word.line;
-    }
-    current.push(text);
   }
-  return lines.map((line) => line.join(' ')).join('\n');
+  return lines.join('\n');
+}
+
+/// How many words `data` carries at all, so that a rectangle that kept
+/// none of them can say whether the page was blank or the rectangle was.
+export function wordCount(data) {
+  let count = 0;
+  for (const block of data?.blocks ?? []) {
+    for (const paragraph of block?.paragraphs ?? []) {
+      for (const line of paragraph?.lines ?? []) {
+        for (const word of line?.words ?? []) {
+          if ((word?.text ?? '') !== '') ++count;
+        }
+      }
+    }
+  }
+  return count;
 }
 
 export function currentImage(module, which = 0) {
@@ -225,11 +257,39 @@ export function currentImage(module, which = 0) {
   return { width, height, data: rgba };
 }
 
+/// Where `scripts/fetch-ocr-engine.py` writes the version it fetched,
+/// beside the engine. The UMD bundle does not carry its own — its
+/// exports are `createWorker`, `recognize` and the enums — and a name
+/// that read `(unversioned)` was the second thing the first real sitting
+/// found (#306). The pin is a fact about the bytes beside it, checked
+/// against `scripts/ocr-engine.sha256sums` when they were fetched.
+export const ENGINE_VERSION_FILE = 'version.txt';
+
+/// A canvas holding `image` — an `ImageData` — because that is what the
+/// pinned tesseract.js will read. Measured in a browser, on the pinned
+/// version: a Blob, a data URL and a canvas element are read; an
+/// `ImageData` and an `ImageBitmap` both throw `Error attempting to read
+/// image` (#306). The gray path used to hand it an `ImageBitmap`.
+function canvasOf(image) {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  canvas.getContext('2d').putImageData(image, 0, 0);
+  return canvas;
+}
+
 /// Load the pinned tesseract.js, or answer null with a reason.
 ///
 /// It is loaded by `<script>` rather than `import`: tesseract.js ships a
 /// UMD bundle that defines a global, and asking a browser to treat it as
 /// an ES module would be asking it to be something it is not.
+///
+/// What comes back has a `name`, a `recognize(scan)` that answers the
+/// entry's text and **throws** with the engine's own words when it
+/// cannot — a rejected worker call, an answer in a shape this page does
+/// not read, a page with words on it and none inside the rectangle — so
+/// that `ingestJournal()` can put that sentence in the report instead of
+/// "did not read it".
 export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
   if (typeof document === 'undefined') {
     return { engine: null, why: 'there is no browser here to load one into' };
@@ -259,6 +319,7 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
   // from a CDN at the moment of the first recognition — which is exactly
   // the thing this page does not do (see the top of this file).
   const base = url.slice(0, url.lastIndexOf('/') + 1);
+  const version = await engineVersion(`${base}${ENGINE_VERSION_FILE}`);
   const worker = await lib.createWorker(language, undefined, {
     workerPath: `${base}worker.min.js`,
     corePath: base,
@@ -266,27 +327,44 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
   });
   return {
     engine: {
-      name: `tesseract.js ${lib.version ?? '(unversioned)'}`,
+      name: `tesseract.js ${version}`,
       async recognize(scan) {
         // Every piece, in the order the fact table put them in, joined the
         // way a reader would read them (#214).
         const read = [];
+        const empty = [];
         for (const part of scan.parts) {
           if (scan.kind === 'jpeg') {
             // The stream, under its own type, exactly as the document
             // holds it — this page has not decoded it and has no business
             // claiming to know more about it than the document did
             // (#212). The browser decodes it, tesseract.js reads the whole
-            // page, and the region keeps this piece's words.
+            // page, and the region keeps this piece's words. `blocks` has
+            // to be asked for: the pinned version answers `text` alone
+            // otherwise, and a rectangle cannot be applied to that.
             const blob = new Blob([part.bytes], { type: 'image/jpeg' });
-            const { data } = await worker.recognize(blob);
-            read.push(wordsWithin(data, part.region));
+            const { data } = await worker.recognize(blob, {}, { blocks: true });
+            const words = wordsWithin(data, part.region);
+            if (words === '') {
+              const onPage = wordCount(data);
+              empty.push(
+                onPage === 0
+                  ? 'the OCR engine read no words on the page'
+                  : `the OCR engine read ${onPage} words on the page and` +
+                    " none inside the entry's rectangle",
+              );
+            }
+            read.push(words);
           } else {
-            const bitmap = await createImageBitmap(part.image);
-            const { data } = await worker.recognize(bitmap);
-            bitmap.close();
+            const { data } = await worker.recognize(canvasOf(part.image));
             read.push(data?.text ?? '');
           }
+        }
+        // A piece that read nothing beside pieces that did is a short
+        // entry; every piece reading nothing is a reason, and the first
+        // is the one the report carries.
+        if (empty.length === scan.parts.length && empty.length > 0) {
+          throw new Error(empty[0]);
         }
         return read.join('\n').replace(/\s+$/, '');
       },
@@ -296,6 +374,30 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
     },
     why: null,
   };
+}
+
+/// What a version may look like, so that a `version.txt` that is not one
+/// cannot become the engine's name. A dev server that answers every
+/// unknown path with its index page is the case worth refusing: a name
+/// of `tesseract.js <!doctype html>` would be a fact about nothing.
+const VERSION_SHAPE = /^[0-9][0-9A-Za-z.+-]{0,31}$/;
+
+/// The pinned version, off the file the fetch script leaves beside the
+/// engine — or a name that says the file is not there, which is a build
+/// tree staged by an older fetch and not an error.
+///
+/// `get` is the fetch to use, so that the smoke check can hand it one:
+/// this is the half of #306 no browser is needed to test.
+export async function engineVersion(url, get = globalThis.fetch) {
+  try {
+    const answer = await get(url);
+    if (!answer.ok) throw new Error(`${answer.status}`);
+    const text = (await answer.text()).trim();
+    if (VERSION_SHAPE.test(text)) return text;
+  } catch {
+    // Fall through: the name below says what is missing.
+  }
+  return `(version unrecorded - no ${ENGINE_VERSION_FILE} beside it)`;
 }
 
 /// The journal's numbered sections, in the order the module's own
@@ -396,11 +498,26 @@ export async function ingestJournal(
     // One entry at a time, deliberately: the whole reason the module
     // extracts on demand is that only one page's scan is in memory at
     // once (hosts/common/.../journal_ingest.h).
-    const text = scan === null
-      ? ''
-      : await engine.recognize(scan, { index, citation });
+    // An engine that throws names its own reason, and the reason goes in
+    // the report beside the entry it happened on rather than taking the
+    // whole ingestion down: the desktop's loop carries on past an
+    // `engine_failed` the same way (`journal_ingest.cpp`), and the
+    // sentence a player gets should say what happened — a worker that
+    // could not fetch its core, an answer in a shape this page does not
+    // read, a page with words on it and none inside the rectangle — and
+    // not only that it did.
+    let text = '';
+    let failed = null;
+    try {
+      text = scan === null ? '' : await engine.recognize(scan, { index, citation });
+    } catch (problem) {
+      failed = String(problem?.message ?? problem);
+    }
     if (!text) {
-      firstTrouble ??= { citation, what: 'the OCR engine did not read it' };
+      firstTrouble ??= {
+        citation,
+        what: failed ?? 'the OCR engine did not read it',
+      };
       continue;
     }
     withUtf8(module, text, (ptr) =>
