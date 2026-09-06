@@ -775,9 +775,8 @@ enum class token_kind : std::uint8_t {
 
 struct token {
   token_kind kind{token_kind::end};
-  std::size_t begin{};  ///< where this token's first character is
-  std::size_t next{};   ///< where the scan for the token after it begins
-  unsigned length{};    ///< how much of `into` a word filled
+  std::size_t next{};  ///< where the scan for the token after it begins
+  unsigned length{};   ///< how much of `into` a word filled
 };
 
 /// Whether a character is one a typesetter's break hyphen may sit between.
@@ -799,7 +798,6 @@ struct token {
 [[nodiscard]] token next_token(std::string_view text, std::size_t from,
                                std::span<char> into) noexcept {
   token out;
-  out.begin = from;
 
   // The whitespace first, counting the line breaks in it: **one** is the
   // end of a printed line and reads as a space, **two or more** is a
@@ -811,7 +809,6 @@ struct token {
     ++p;
   }
   if (p >= text.size()) {
-    out.begin = text.size();
     out.next = text.size();
     return out;
   }
@@ -822,7 +819,6 @@ struct token {
   }
 
   out.kind = token_kind::word;
-  out.begin = p;
   std::size_t len = 0;
   for (;;) {
     while (p < text.size() && !is_space(text[p]) && text[p] != '\n' &&
