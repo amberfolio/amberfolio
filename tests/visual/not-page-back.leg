@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# NOT-13: a full-screen page opened from a row of the listing goes back
+# to the **listing**, not out to the adventuring screen (M5-E4d, #305) —
+# and the second Escape is what gives the screen back.
+#
+# Two claims, and the leg is shaped around the difference between them.
+# The first is that the frame after the page closes is the listing again:
+# it cannot be `equal` to the listing *before* the page, because opening
+# a row takes the `*` off it, so the row the cursor is on changes. So the
+# listing after is held still instead, which says it is a settled screen
+# and not a page with a listing painted through it.
+#
+# The second is `not-log-giveback.leg`'s, restated one level in: the
+# adventuring screen before `Notes` is the adventuring screen after the
+# listing closes, every pixel but the bar row.
+about a page from the listing goes back to the listing, and then out
+kind single
+program START.EXE
+store tests/visual/reader-store.txt
+cite-all
+both code-wheel
+# The code-wheel bypass is gated on the wheel itself (#115), and this run
+# drives past the challenge, so it needs it. Pinned by digest because a
+# document never enters this tree.
+document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+seam journal
+until 300000000
+every 25
+
+key A@7601
+key Return@7651
+key L@8951
+key A@9201
+key N@10600
+key Return@11000
+key Escape@11600
+key Escape@12200
+
+rect bar 0,190,319,199
+
+# The listing, the page, and the listing again: each settled.
+same 10800-10975
+same 11200-11575
+same 11800-12175
+
+equal 10600 12400 bar

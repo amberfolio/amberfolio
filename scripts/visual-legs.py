@@ -94,6 +94,9 @@ class Leg:
         self.kind = ""
         self.program = ""
         self.store: str | None = None
+        #: Whether to hand the host #301's cheat, which puts everything
+        #: the store holds onto the journal's own log without a citation.
+        self.cite_all = False
         #: Digests of documents the seams here are gated on (#115).
         self.documents: list[str] = []
         self.seams: list[str] = []
@@ -158,6 +161,13 @@ class Leg:
             self.program = word[1]
         elif head == "store":
             self.store = None if word[1] == "none" else word[1]
+        elif head == "cite-all":
+            # #301's debug cheat, as a leg's own line: the journal's log
+            # is filled from the store, so a leg can open the listing and
+            # pick a row off it without a citation to produce one. A
+            # citation is a place in the story, and a leg that had to
+            # walk to one would be testing the walk.
+            self.cite_all = True
         elif head == "document":
             self.documents.append(word[1])
         elif head == "seam":
@@ -235,6 +245,8 @@ def run_side(host: Path, disk: Path, leg: Leg, into: Path,
         command += ["--document", str(one)]
     if store is not None:
         command += ["--journal-store", str(store)]
+        if leg.cite_all:
+            command += ["--cite-all-journal"]
     for key in leg.keys:
         command += ["--press", key]
     done = subprocess.run(command, capture_output=True, text=True,

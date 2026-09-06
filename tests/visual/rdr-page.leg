@@ -1,44 +1,63 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # RDR-5, RDR-6 and RDR-8: page a long entry with F1, step back with
-# Backspace, and leave. The give-back is the point — after the last page
-# the panel is gone and the only difference left from the seam-off run is
-# the six cells of `Notes` on the bar.
-about paging a long entry, and giving the screen back exactly
-kind pair
+# Backspace, and leave by the far end. Since M5-E4d (#305) the page a
+# player opens from the bar is a **full screen** — the same box the
+# `Notes` listing is drawn in — so the give-back is the whole screen and
+# not the roster's cells.
+#
+# **A single leg, and it has to be one.** It was a pair, and a pair
+# cannot say anything about this any more, for `not-log-giveback.leg`'s
+# own reason: the page covers the screen, so a rect that allowed it would
+# allow everything and check nothing, and the composer that puts the
+# screen back resets the command bar's highlight, so the frames after
+# Escape differ from the seam-off run on the bar row however exact the
+# give-back is (#234).
+#
+# So it says the two things a single leg can say, and they are stronger:
+# each page holds still while it is up, and the screen before the reader
+# opened is the screen after it closed.
+about paging a long entry full-screen, and giving the screen back exactly
+kind single
 program START.EXE
 store tests/visual/reader-store.txt
 both code-wheel
-# The code-wheel bypass is gated on the wheel itself (#115), and both
-# sides of this pair drive past the challenge, so both need it. Pinned
-# by digest because a document never enters this tree.
+# The code-wheel bypass is gated on the wheel itself (#115), and this run
+# drives past the challenge, so it needs it. Pinned by digest because a
+# document never enters this tree.
 document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
 seam journal
 until 300000000
 every 25
-# A screen may appear in the two runs a dump apart, because claiming a
-# keystroke changes when the program does its own next repaint by less
-# than the gap between two stills. One dump of slack, measured (#234).
-slack 1
 
 key A@7601
 key Return@7651
 key L@8951
 key A@9201
+# F1 opens the prompt — which stays in the panel, four digits and a
+# caption — and Return opens the entry on the whole screen.
 key F1@10600
 key 3@10700
 key Return@10800
-# Forward, forward, back a page, then out through the far end.
+# Forward, back, forward, and then out through the far end: the entry is
+# two pages at thirty-eight columns by twenty rows, so the F1 on the
+# second one is the way out rather than a third page.
 key F1@11200
-key F1@11600
-key Backspace@12000
-key Escape@12400
+key Backspace@11600
+key F1@12000
+key F1@12400
 
-rect panel 136,8,311,119
-rect notes 273,192,311,199
+rect bar 0,190,319,199
 
-allow 0-9000 none
-allow 9025-10599 notes
-allow 10600-12400 panel notes
-# After Escape the panel is gone and the bar is all that is left.
-allow 12600-end notes
+# Each page, holding still with nothing pressed.
+same 10850-11175
+same 11250-11575
+same 11650-11975
+same 12050-12375
+
+# And the screen before the reader took it, back again after it: every
+# pixel **except the bar row**, which is `not-log-giveback.leg`'s finding
+# rather than a convenience — the give-back injects a space to make the
+# menu-bar routine return and draw itself again, and the routine draws
+# itself with the highlight at its first command.
+equal 10600 12600 bar
