@@ -57,6 +57,41 @@
 // cheaper test than guessing in advance which entries are pictures.
 //
 //
+// Why #331 cost this engine nothing
+// ---------------------------------
+//
+// The reader honours a blank line as a paragraph break and reads a single
+// newline as a space (`host/journal_ocr.h`), and neither of the other two
+// engines was emitting a blank line: both are built out of a per-word
+// layout table, and both were joining every line flat. This one is not
+// built out of anything — it returns `TessBaseAPI::GetUTF8Text()`, which
+// is Tesseract's own text renderer, and that already ends each line with
+// a separator and each paragraph with one more. Both separators default
+// to `"\n"` (`LTRResultIterator`'s constructor), so a paragraph boundary
+// is already a blank line and a line boundary already is not.
+//
+// **That is read off tesseract 5.5.1's source and not run.** What is
+// claimed here is what the pinned version's code does — `GetUTF8Text`
+// walking `RIL_PARA`, `AppendUTF8ParagraphText` appending
+// `line_separator_` per line and `paragraph_separator_` at each paragraph
+// end — and not what a page came out looking like. The other two engines'
+// rules are the ones with tests, because they are the ones that can be
+// checked with no engine installed.
+//
+// And what this engine shares with them is the part that is not about
+// separators at all: **Tesseract has to find the paragraphs**. All three
+// carry the engine's own paragraph decision and none of them invents
+// one, so an edition whose paragraphs the detector runs together comes
+// out as one block from every one of them. `docs/journal.md` §5 has the
+// one reason to think this edition might be such a case, and it is
+// unmeasured.
+//
+// The trailing blank line the renderer leaves is the page's and not the
+// entry's, and `trim_trailing` above takes it off — which is also what
+// keeps a piece from arriving at the fragment join with a break already
+// on the end of it.
+//
+//
 // And why #315's page-segmentation finding does not apply here
 // -----------------------------------------------------------
 //

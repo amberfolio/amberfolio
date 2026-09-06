@@ -206,6 +206,14 @@ quiet, whenever the bar on the screen is not the adventuring screen's own
 — because a panel that stayed up over a vendor's question would be
 covering the game with something the game did not ask for.
 
+**It also comes back.** The journal below is drawn in the same cells, and
+its full screen is put away by asking the game to compose the adventuring
+screen — which repaints the roster the map is drawn over. So the map is
+redrawn after it, and the panel you had up before you read an entry is
+the panel you have when you close it. It used to be gone, with the
+enhancement still believing it was up, so the next Tab was spent closing
+a map nobody could see (#332).
+
 **What it is not yet.** It marks where you have been on the *city* and
 dungeon screens. The overworld map is the explored overlay below, which
 is a separate seam and shares this one's store.
@@ -394,6 +402,13 @@ the program's own live bar — `N`, `P` and `E` are that bar's letters
 there, and taking them would pick the game's own commands out from under
 you.
 
+**And it looks like a bar this game drew** (#329, #330). It reads
+`NEXT PREV EXIT`, flush from the left edge with one space between, where
+it used to be indented by one and spaced by three and so lined up with
+nothing; and each word is painted the way the game paints every command
+it has, the **initial in white and the rest in green**, where it used to
+be white end to end. Both were found by looking at it on a display.
+
 **The log is twenty rows now and it pages** (#318, #319). It drew ten
 rows into a twenty-row box and left the bottom half empty, and it
 *scrolled*, which nothing in this game does: every long list the program
@@ -434,9 +449,13 @@ screen goes further: its frame, its border art and every letter on it are
 drawn by the program's own two routines, so this project never has to
 know what any of them look like. The
 `Notes` command is spliced onto the game's own bar and chosen the way
-every other command on it is, and since #317 so is everything on a full
-screen's own bottom row: three words, each taken by its initial, on the
-row this game draws every bar it has on.
+every other command on it is — and since #330 it is left the way every
+other command on it is left, too: pick it, use the journal, come back,
+and the game's own cursor is where you left it rather than parked on a
+command the game does not have. Since #317 the same goes for everything
+on a full screen's own bottom row: three words, each taken by its
+initial, flush left and one space apart, on the row this game draws every
+bar it has on, in the two colours it draws them in.
 
 **What it is not yet.** With the reader on, the machine is **not** the
 machine it would have been with it off, even before anything is cited —

@@ -221,8 +221,20 @@ What M5 left in place:
   be asked to put a screen back. So F1 at camp or with a vendor's bar up
   stays in the panel, and a **citation** stays in the panel always,
   because it fires inside a script's narration where an NPC can be in the
-  viewport and that give-back has not been measured. Its text comes
-  from a host through `journal_open`, and that is the first service that
+  viewport and that give-back has not been measured. **Both give-backs
+  tell the automap the panel was painted over** since M5-E4g (#332), and
+  that one call is the only thing the two seams say to each other: the
+  composer repaints the roster, the map's panel is drawn into the
+  roster's cells, and a seam's calls into the program run with no points
+  offered at all — so neither of the two points the automap watches its
+  cells with saw a pixel of it. Its map was gone with its open flag
+  still set, so the next Tab was spent closing a panel that was not on
+  the screen and only the one after it brought the map back. The flag is
+  deliberately left alone and the pixels are redrawn at the map's next
+  arrival, the program painting first and the seam after, which is
+  #303's ordering; `tests/visual/rdr-map-back.leg` is the drive, by hand
+  on the shorter boot. Its text comes from a host through
+  `journal_open`, and that is the first service that
   had to hand something *back*: `machine::journal()` is the buffer it
   comes back in, observation on `automap.h`'s three terms and not machine
   state. **A real journal has now been opened at a real citation** (#232),
@@ -239,7 +251,24 @@ What M5 left in place:
   holds Entry 1 first so a person can proof-read the OCR text off the
   game's screen; it raised `journal_log_rows` from 64 to 256 to hold an
   edition, and the log it fills stays filled until the store's `seen`
-  lines go. `docs/journal.md` §10),
+  lines go. **Its bar looks like a bar this game drew** since #329 and
+  #330, both found by the maintainer on a display: it read
+  ` NEXT   PREV   EXIT` where every bar the program draws is flush left
+  and spaced one, and it was drawn in one call in the bright where every
+  bar the program draws paints the **initial white and the tail green** —
+  so it is four calls now, the row in the green and the three initials
+  over it. #330's other half was `Notes` on the party's own bar, drawn
+  white end to end, and the two candidate causes wanted opposite fixes;
+  `--watch 6B2B` decided it in one run — `01` after a load, `07` from the
+  frame `N` is pressed, `07` still after the give-back — so the drawer
+  was right and the **highlight** was parked on a group only this seam had
+  put on the bar. It is handed back where the routine found it now, which
+  is exact rather than #304's step-down because `Notes` is appended and
+  `N` matches none of the program's own commands. `tests/visual/rdr-bar.leg`
+  is the leg, and it is the first to ask the runner for the shorter boot
+  (`code-wheel-answered`, the flag #293 needs): with the give-back taken
+  out, the frame after the journal closes differs from the frame before it
+  opened in 190 pixels, all on the bar row. `docs/journal.md` §10),
   `explored` (M5-E5 #179, the marking reversed by M5-E5f #263 and its
   colour and radius set by M5-E5g #299 — the fourth M5 enhancement and
   the third seam that draws, on the game's own **overworld** map: the

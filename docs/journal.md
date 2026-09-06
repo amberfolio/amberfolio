@@ -427,6 +427,77 @@ is not a thing to do with somebody else's JavaScript on a page other
 people load. A mismatch fails the build; when `.tesseract-js-version`
 moves, the record is stale by design and `--force` writes the new one.
 
+### The whitespace a reading answers is an interface (#331)
+
+The text an engine hands back is read by one thing, and that thing
+honours exactly one break. The reader reflows an entry into a page
+twenty-two or thirty-eight characters wide, and since #316 it reads a
+**single newline as a space** — an engine emits one per *printed* line,
+and the journal is set in a column that has nothing to do with the
+reader's — and a **blank line as a paragraph break**, which gets one
+blank row however many blank lines there were.
+
+So the whitespace is not a detail of an engine's output. It is the whole
+of the shape a reading carries, and the contract is written down once, in
+`hosts/common/include/amberfolio/host/journal_ocr.h`:
+
+| between | what an engine answers |
+| --- | --- |
+| two words of a printed line | a space |
+| two lines of a paragraph | one newline |
+| two paragraphs | a blank line |
+| two fragments of one entry | one newline — the hosts' own join |
+
+The last row is the one that is easy to get wrong in the other
+direction. An entry is a list of rectangles because entries *flow*, out
+of a column and onto the facing page — eighteen of this edition's
+fifty-eight are in more than one piece (§3) — so a fragment boundary is a
+continuation. A blank line there would be a paragraph the printed page
+does not have.
+
+**#331 was the third row missing everywhere.** #316 taught the reflow to
+honour a blank line and nothing upstream emitted one, so for the length
+of a release every real entry read as one solid block of prose from the
+first row to the last. Two of the three engines are built out of a
+per-word layout table and were throwing the layout away:
+
+- the desktop's program-driven engine reads Tesseract's `tsv`, whose
+  `block_num`, `par_num` and `line_num` columns say exactly where a
+  paragraph ended, and joined on `line_num` alone. That also ran two
+  *one-line* paragraphs together, because every one of those counts
+  restarts inside its parent and both lines are `line_num` 1;
+- the browser's walks `blocks[].paragraphs[].lines[].words[]` and pushed
+  every line flat.
+
+The linked engine needed no change: `TessBaseAPI::GetUTF8Text` is
+Tesseract's own text renderer and already ends each line with a separator
+and each paragraph with one more, both `"\n"`. **That is read off
+tesseract 5.5.1's source and not run here.** It is also why the other two
+break where Tesseract does rather than where each of them might have
+chosen to: a **new block counts as a new paragraph**, which is what
+`GetUTF8Text` does, walking paragraphs across the whole page.
+
+A break is only ever emitted **between** two things that were both kept,
+which is what keeps the two wrong breaks out. A rectangle that clips a
+paragraph in half gains none at the crop, because nothing was kept after
+it to break against; and the fragment join happens outside the filter
+altogether.
+
+**What all three still depend on, said out loud: Tesseract deciding
+where the paragraphs are.** None of this invents a break — every one of
+them is the engine's own `par_num`, `paragraphs[]` or paragraph
+separator, and Tesseract finds paragraphs by indentation and
+justification. Whether it finds *this* edition's is a question about a
+real document and a real engine, and it has not been measured. There is
+one reason to think it might not: §5a's error census found that the
+commonest surviving word error is the **opening single quote that starts
+each of the book's paragraphs**, so the paragraphs here are marked by a
+quotation mark, and a detector that also wanted an indent could read a
+column of them as one paragraph. If that turns out to be what happens,
+the fix is a further one — a rule about how this edition marks a
+paragraph — and it belongs beside the rest of §5a's measurements rather
+than in front of them.
+
 ## 5a. How well it reads, and how anybody knows (#315)
 
 Everything in §5 was decided without a number. #315 was filed off a real
@@ -738,6 +809,15 @@ whether the inverted loop a browser needs actually works.
   default, no runner has the document, and neither will change. This is a
   thing a maintainer does on their own machine and reports, the way
   §8 says.
+- **Nobody has looked at a paragraph break in a real entry** (#331).
+  Both hosts emit one now and the rule is checked on both — hand-written
+  `tsv` tables in `hosts/sdl/tests/tsv_words_test.cpp`, hand-written
+  `blocks` in the page's smoke check, and the probe carrying one through
+  the store and the ABI on all four targets. What none of that can say is
+  whether Tesseract finds *this* edition's paragraphs at all (§5). The
+  evidence that would settle it is an entry's row count with and without
+  the change, off a real ingested store, and it needs a machine with both
+  a document and an engine on it.
 - **No real OCR engine has been run by CI.** Neither host's engine is
   exercised by any test: the desktop's needs Tesseract installed, the
   browser's needs 32 MiB of fetched wasm and a browser to run it in.
@@ -868,6 +948,14 @@ replace that, and they are the ones an engine's output actually carries:
 * a line **ending in a hyphen joins** to the word after it, with the
   hyphen dropped, when there is a letter on each side of it.
 
+**The second of those was a rule with nothing to honour** until #331.
+The reflow was right and the ingestion never emitted a blank line, so
+for the length of a release an entry read as one solid block of prose
+from the first row to the last — the wrap fixed, and the paragraphs
+gone. Nothing here changed to fix it: what changed is that both hosts'
+OCR paths now emit the break the engines were already reporting, and §5
+is where that contract is written down.
+
 It is done in the wrap rather than at ingestion, and that is the
 decision worth writing down. Both page shapes come through the one
 function, so both get it at once. The store keeps what the engine read,
@@ -905,6 +993,34 @@ there was no way back at all, because F1 walked forward and closed on the
 last page, so a reader who overshot had to leave the entry and open it
 again. Escape still closes from anywhere, because it costs nothing and
 somebody will press it.
+
+**It is laid out and painted the way the program's own bars are** (#329,
+#330), and neither of those was true when #317 shipped. It read
+` NEXT   PREV   EXIT`, indented one and spaced three, where the program's
+own bars — the party's, and `ITEMS: BUY NEXT PREV EXIT` in a shop — start
+at column zero and put one space between. And it was drawn in one call in
+the bright, so all three words were white end to end, where every bar
+this game draws paints the **initial white and the tail green**: that is
+how a player is told which key picks which command, and it is why the
+program's own bars are stored mixed case, `Look`, `Encamp`, `Search`,
+with its drawer colouring by case. A seam cannot borrow that rule, since
+it lives inside the drawer and one call is one colour, so the bar is four
+calls now — the whole row in the green, which is also the clear the row
+needs, then the three initials over their own cells in the bright.
+
+**And `Notes` hands the highlight back** (#330). The program's menu-bar
+routine keeps the group its cursor is on in one byte the whole game
+shares (M5-E1g, #304) and draws that group white end to end, so choosing
+a spliced command left the cursor parked on a group only this seam had
+put there: `Notes` came back lit while every word beside it wore its
+initial in white and its tail in green. Which of the two candidate causes
+it was is a measurement rather than an argument — `--watch 6B2B` over a
+driven run reads `01` on the adventuring bar after a load, `07` from the
+frame `N` is pressed, and `07` still after the reader gives the screen
+back. What the byte is put back to is what the routine was entered with,
+because on that bar the routine moves it only when it matches a command
+and `N` matches none of the program's: a run with the seam off leaves it
+exactly where it found it, and so does this.
 
 **The panel keeps `F1 MORE`**, and that is a fact about the screen rather
 than an oversight. A panel is drawn beside the program's own *live*

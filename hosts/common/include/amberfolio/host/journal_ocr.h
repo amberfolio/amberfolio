@@ -74,6 +74,48 @@
 // journal entry with its neighbours attached.
 //
 //
+// What a reading's line breaks mean (#331)
+// ----------------------------------------
+//
+// The text an engine answers is read by one thing, and that thing honours
+// exactly one break. `core/src/machine/seam_journal.cpp` reflows an entry
+// into a page twenty-two or thirty-eight characters wide, and since #316
+// it reads a **single newline as a space** — an engine emits one per
+// *printed* line, and the journal is set in a column that has nothing to
+// do with the reader's — and a **blank line as a paragraph break**, which
+// gets one blank row however many blank lines there were.
+//
+// So the whitespace an engine answers is an interface and not a detail:
+//
+//   * a **space** between two words of one printed line;
+//   * **one newline** between two lines of one paragraph;
+//   * a **blank line** between two paragraphs;
+//   * **one newline** between two fragments of one entry, which is a
+//     continuation and not a break — an entry is a list of rectangles
+//     because entries flow out of a column onto the facing page
+//     (`journal_facts.h`), and eighteen of the first edition's fifty-eight
+//     do. Both hosts join their pieces here, not in the engine.
+//
+// It is written down here for the reason the region rule above is: an
+// engine that got this wrong would not look broken. Every paragraph break
+// missing reads as one long block of prose — which is what #331 was, for
+// the length of a release — and a break in the wrong place reads as a
+// journal whose paragraphs are somewhere else.
+//
+// The three engines this project has all agree, and one of them for free:
+// Tesseract's own plain text ends every line with `"\n"` and every
+// paragraph with one more, so `tesseract_linked_ocr` needed no change.
+// The other two are built out of the layout numbering both report per
+// word — Tesseract's `tsv` columns (`sdl/src/tsv_words.h`) and
+// tesseract.js's `blocks[].paragraphs[].lines[]` (`web/page/journal.mjs`).
+//
+// None of the three **invents** a break: each carries the engine's own
+// paragraph decision, so an edition whose paragraphs Tesseract's detector
+// runs together still comes out as one block. That is a question about a
+// real document and a real engine and it is unmeasured;
+// `docs/journal.md` §5 says why this edition is worth checking.
+//
+//
 // What the engine knew about the reading it just did (#315)
 // --------------------------------------------------------
 //

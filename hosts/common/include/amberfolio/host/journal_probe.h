@@ -28,7 +28,13 @@
 //
 //   * entry 1 — eight bits of gray, no predictor. The plain path;
 //   * entry 2 — one bit a pixel, inverted, PNG predictor, and a
-//     different row filter on every row, so all five of them run;
+//     different row filter on every row, so all five of them run. It is
+//     also the one whose text carries a **paragraph break** (#331), which
+//     is the one piece of shape a reading has: what it proves is that a
+//     blank line survives the ingester, the store, the ABI and the
+//     reader on all four targets, not that an engine found one — the
+//     fixture below is not an engine, and finding one is checked where
+//     the layout walks are (`sdl/src/tsv_words.h`, `web/page/journal.mjs`);
 //   * entry 3 — `/DCTDecode`, which this build does **not** decode: its
 //     stream goes to the engine as its own bytes with the entry's
 //     rectangle beside it (M5-E3a, #212).

@@ -77,6 +77,33 @@ namespace {
   return value;
 }
 
+/// Where in the engine's own layout tree one word sat.
+///
+/// All four counts **restart inside their parent** — `par_num` is 1 again
+/// in the next block, `line_num` 1 again in the next paragraph — so what
+/// identifies a line is the whole tuple and never its last number. Two
+/// one-line paragraphs are `line_num` 1 twice, and the code that compared
+/// only that ran them together into one line (#331).
+struct place {
+  long page{-1};
+  long block{-1};
+  long paragraph{-1};
+  long line{-1};
+
+  /// Same printed line: everything equal.
+  [[nodiscard]] bool same_line(const place& other) const noexcept {
+    return page == other.page && block == other.block &&
+           paragraph == other.paragraph && line == other.line;
+  }
+
+  /// Same paragraph: a new block is a new paragraph too, which is what
+  /// Tesseract's own text output says (tsv_words.h).
+  [[nodiscard]] bool same_paragraph(const place& other) const noexcept {
+    return page == other.page && block == other.block &&
+           paragraph == other.paragraph;
+  }
+};
+
 }  // namespace
 
 tsv_reading tsv_read(std::string_view table,
@@ -93,7 +120,7 @@ tsv_reading tsv_read(std::string_view table,
   tsv_reading reading;
   std::string& out = reading.text;
   double total = 0.0;
-  long current_line = -1;
+  place current;
   bool any = false;
   std::size_t at = 0;
   while (at <= table.size()) {
@@ -122,13 +149,26 @@ tsv_reading tsv_read(std::string_view table,
       continue;
     }
 
-    const long which = number(field(line, 4), -1);
-    if (any && which != current_line) {
-      out.push_back('\n');
-    } else if (any) {
-      out.push_back(' ');
+    // What separates this word from the one before it, in the engine's
+    // own terms (#331): a **blank line** where the paragraph changed, one
+    // newline where only the printed line did, and a space otherwise. The
+    // break is only ever emitted *between* two words that were kept, so a
+    // rectangle that clips a paragraph gains no break at the crop and a
+    // reading never opens or ends on one.
+    const place here{.page = number(field(line, 1), -1),
+                     .block = number(field(line, 2), -1),
+                     .paragraph = number(field(line, 3), -1),
+                     .line = number(field(line, 4), -1)};
+    if (any) {
+      if (!here.same_paragraph(current)) {
+        out.append("\n\n");
+      } else if (!here.same_line(current)) {
+        out.push_back('\n');
+      } else {
+        out.push_back(' ');
+      }
     }
-    current_line = which;
+    current = here;
     any = true;
     out.append(text);
 

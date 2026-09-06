@@ -563,6 +563,43 @@ class journal_state {
   [[nodiscard]] bool bar_live() const noexcept { return bar_live_; }
   void set_bar_live(bool live) noexcept { bar_live_ = live; }
 
+  /// Which command the program's own bar highlight was sitting on when
+  /// the bar routine was entered (#330), and whether anything recorded
+  /// it.
+  ///
+  /// **The one thing the `Notes` splice has to give back besides the
+  /// string.** The highlight is a single byte in the data segment that
+  /// every bar in the program shares and numbers against its own groups
+  /// (M5-E1g, #304), the routine sets it to the group of whatever command
+  /// it matched, and `Notes` is a group only because this seam put one
+  /// there — so a player who opened the journal came back to a bar with
+  /// `Notes` drawn in the highlight's white end to end while every word
+  /// beside it was the initial-white-and-green tail every bar in this game
+  /// wears.
+  ///
+  /// What the program would have left is **measurable and is this**: on
+  /// the party's own bar the highlight moves only when the routine matches
+  /// a command, and `N` matches none of the program's, so a run with the
+  /// seam off leaves the byte exactly as the routine found it. Recorded at
+  /// the point the splice goes in and put back at the point it comes out,
+  /// so it is never carried past one call of the program's own routine.
+  ///
+  /// Observation and not machine state, on `automap.h`'s three terms: it
+  /// is read out of the machine, it is written back only where this seam
+  /// had already written, and a run that never opens the journal never
+  /// touches it.
+  [[nodiscard]] bool bar_highlight_known() const noexcept {
+    return bar_highlight_known_;
+  }
+  [[nodiscard]] std::uint8_t bar_highlight() const noexcept {
+    return bar_highlight_;
+  }
+  void note_bar_highlight(std::uint8_t which) noexcept {
+    bar_highlight_ = which;
+    bar_highlight_known_ = true;
+  }
+  void forget_bar_highlight() noexcept { bar_highlight_known_ = false; }
+
   /// The prompt as a citation: the kind it is pointed at, and the number
   /// typed into it.
   [[nodiscard]] journal_citation asked() const noexcept {
@@ -627,6 +664,8 @@ class journal_state {
   journal_page_place place_{journal_page_place::panel};
   bool from_list_{false};
   bool bar_live_{false};
+  std::uint8_t bar_highlight_{};
+  bool bar_highlight_known_{false};
 
   std::size_t seen_count_{};
   std::size_t list_cursor_{};

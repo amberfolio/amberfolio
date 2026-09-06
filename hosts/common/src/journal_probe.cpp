@@ -586,7 +586,20 @@ const std::array<journal_edition, 1>& probe_editions() {
 
 constexpr std::array<std::string_view, journal_probe_entries> probe_words{
     "AMBER FOLIO PROBE ENTRY 1",
-    "AMBER FOLIO PROBE ENTRY 2",
+    // Entry two carries a **paragraph break** (#331), which is the one
+    // piece of shape a reading has: the reader draws a blank line as a
+    // paragraph and a single newline as a space (#316). Nothing in this
+    // fixture is an OCR engine, so what it can prove is not that a break
+    // is *found* — that is `tsv_words_test.cpp` and the page's own smoke
+    // check, on both hosts' layout walks — but that one survives the
+    // ingester, the store's serialization, the ABI and the reader,
+    // unaltered, on all four targets.
+    //
+    // It replaces a space rather than adding words, so every number
+    // anything derives from this table is unchanged: `journal_score.h`
+    // collapses each run of whitespace to one space before it measures
+    // anything, so the normalized text is the same as the other three.
+    "AMBER FOLIO PROBE\n\nENTRY 2",
     "AMBER FOLIO PROBE ENTRY 3",
     // Tale one reads entry one's rectangle, so it reads entry one's
     // words. Saying so here rather than leaving it empty keeps
@@ -780,11 +793,20 @@ bool journal_probe_noisy_ocr::recognize(const journal_scan& scan,
   // the aggregate; the noise is the one doubtful word, which is true of
   // it in the only sense a fixture can make it true.
   quality_.known = true;
-  quality_.words = 1U;
+  quality_.words = 0U;
+  bool in_word = false;
   for (const char c : out) {
-    if (c == ' ') {
+    // A *run* of whitespace and not a space, which is how
+    // `journal_score.h` counts and what this comment always claimed: one
+    // of the probe's readings carries a paragraph break (#331), and a
+    // fixture that counted its two newlines as no separator at all would
+    // report a different number of words for that entry than the harness
+    // it exists to be predictable for.
+    const bool space = c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    if (!space && !in_word) {
       ++quality_.words;
     }
+    in_word = !space;
   }
   quality_.doubtful = 1U;
   quality_.confidence = 50.0 + (10.0 * static_cast<double>(readings_));
