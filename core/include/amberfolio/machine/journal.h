@@ -70,6 +70,83 @@ namespace amberfolio::machine {
 /// The most text one entry may cross the host boundary as.
 inline constexpr std::size_t journal_page_bytes = 4096;
 
+// ---------------------------------------------------------------------------
+// The entries that are pictures (#328)
+// ---------------------------------------------------------------------------
+//
+// Several of a journal's entries are drawings — maps, mazes, a diagram,
+// a row of scratched runes — and an OCR engine reads every word that is
+// on such a page, which is the entry's heading and its one-line
+// caption. What the reader used to show for one was those two lines and
+// nineteen blank rows.
+//
+// A picture is reduced to the numbers below **at ingestion**, on the
+// player's own machine, out of the player's own document
+// (`hosts/common/.../journal_picture.h`), and what crosses into the
+// machine is levels rather than colours. The box, the level count and
+// the pixel aspect are here rather than beside the reducer because they
+// are facts about *this screen*: `seam_journal.cpp` holds each of them
+// against the frame the program actually draws, in a `static_assert`, so
+// a host cannot reduce to a shape the reader has no room for.
+//
+// **Levels, not indices.** A journal's drawings are one hue of ink on
+// paper, so tone is the whole of what a reduction has to keep; which
+// palette index each tone becomes is the reader's business, and the
+// reader is the only thing that knows what palette the program has
+// installed. Keeping the two apart is also what lets the ramp be
+// re-chosen without re-ingesting anybody's document — the same
+// arrangement `explored_reveal_radius` has with the automap's sidecar.
+
+/// The reader's full-screen page, in pixels: the interior of the box the
+/// program's own frame drawer leaves, which is thirty-eight character
+/// cells across and twenty rows deep on the 320x200 screen.
+inline constexpr unsigned journal_art_width = 304;
+inline constexpr unsigned journal_art_height = 160;
+
+/// How many tones a stored picture has. Four, measured: a plain
+/// threshold and a four-level quantization both read as a map at this
+/// size and every dithered candidate speckled the paper, so the choice
+/// was between two levels and four, and four costs one more bit
+/// (`docs/journal.md` §11).
+inline constexpr unsigned journal_art_levels = 4;
+
+/// Level 0 is ink and the last is paper, which is the way round a
+/// greymap runs and the *opposite* of what reaches the screen: the
+/// reader draws on a black ground, so the most ink becomes the brightest
+/// index.
+inline constexpr std::uint8_t journal_art_ink = 0;
+inline constexpr std::uint8_t journal_art_paper = journal_art_levels - 1;
+
+/// Two bits a pixel, four pixels a byte, each row padded to a whole
+/// byte. A row's stride and the whole picture's size follow.
+inline constexpr unsigned journal_art_pixels_per_byte = 4;
+
+[[nodiscard]] constexpr std::size_t journal_art_stride(
+    unsigned width) noexcept {
+  return (static_cast<std::size_t>(width) + journal_art_pixels_per_byte - 1U) /
+         journal_art_pixels_per_byte;
+}
+
+/// The most bytes one picture can be: the whole box, packed.
+inline constexpr std::size_t journal_art_bytes =
+    journal_art_stride(journal_art_width) * journal_art_height;
+
+/// The display shape of one screen pixel, as height over width. The
+/// 320x200 mode fills a 4:3 display, so a pixel is a fifth taller than
+/// it is wide and a picture reduced without allowing for it comes out
+/// stretched by that much. The reducer fits a picture so that it looks
+/// like the printed one *on the glass* rather than in the framebuffer.
+inline constexpr unsigned journal_art_aspect_tall = 6;
+inline constexpr unsigned journal_art_aspect_wide = 5;
+
+/// The most pictures one entry may have.
+///
+/// A sanity limit on a fact table somebody edits by hand rather than a
+/// belief about journals, and well above what any of them wants: the
+/// most in the one edition anybody has tabled is **three**, an atlas
+/// printed as three maps across a two-page spread.
+inline constexpr std::size_t journal_art_per_entry = 8;
+
 /// How the last `journal_open` went. Every value but `ready` is a reason
 /// the reader has something short to say instead of a page.
 enum class journal_delivery : std::uint8_t {

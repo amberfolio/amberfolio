@@ -16,12 +16,15 @@
 
 #include "amberfolio/host/journal_facts.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <set>
+#include <span>
 #include <string_view>
 #include <utility>
 
+#include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/edition.h"
@@ -197,8 +200,91 @@ void CheckRows(std::span<const journal_edition> table) {
                   journal_filter_decoded(fact.fragments.front().image.filter))
             << "entry " << fact.number << " mixes decoded and carried pieces";
       }
+      // The pictures (#328). Every rule a text fragment has, and one
+      // more: an entry may not have more of them than the reader can
+      // page through.
+      EXPECT_LE(fact.art.size(), machine::journal_art_per_entry)
+          << "entry " << fact.number << " has more pictures than one entry"
+          << " may have";
+      for (const journal_fragment& picture : fact.art) {
+        EXPECT_NE(picture.length, 0U)
+            << "entry " << fact.number << " has a picture of no bytes";
+        EXPECT_NE(picture.region.width, 0U);
+        EXPECT_NE(picture.region.height, 0U);
+        EXPECT_LE(picture.region.left + picture.region.width,
+                  picture.image.width)
+            << "entry " << fact.number << " has a picture off the right";
+        EXPECT_LE(picture.region.top + picture.region.height,
+                  picture.image.height)
+            << "entry " << fact.number << " has a picture off the bottom";
+        EXPECT_TRUE(journal_filter_supported(picture.image.filter))
+            << "entry " << fact.number << " has a picture under a filter"
+            << " this build cannot carry";
+        // And it has to reduce to something the reader has room for,
+        // which is the one rule that is about the *screen* rather than
+        // about the document. A rectangle a thousand samples tall is
+        // still a rectangle; a picture that fitted nowhere would be a
+        // row nobody could draw.
+        const journal_picture_shape shape =
+            fit_picture(picture.region.width, picture.region.height);
+        EXPECT_GT(shape.width, 0U);
+        EXPECT_GT(shape.height, 0U);
+        EXPECT_LE(shape.width, machine::journal_art_width);
+        EXPECT_LE(shape.height, machine::journal_art_height);
+      }
     }
   }
+}
+
+TEST(JournalTable, TheArchiveEditionsPicturesAreOnItsOwnScans) {
+  // Twelve entries carry fourteen pictures, and the two numbers differ
+  // because one entry is an atlas printed as three maps (#328). A table
+  // that lost the difference would be a table where an entry may have
+  // one picture, which is the shape this deliberately does not have.
+  std::size_t entries_with_art = 0;
+  std::size_t pictures = 0;
+  std::size_t most = 0;
+  for (const journal_entry_fact& fact : known_journals().front().entries) {
+    if (fact.art.empty()) {
+      continue;
+    }
+    ++entries_with_art;
+    pictures += fact.art.size();
+    most = std::max(most, fact.art.size());
+  }
+  EXPECT_EQ(entries_with_art, 12U);
+  EXPECT_EQ(pictures, 14U);
+  EXPECT_EQ(most, 3U);
+}
+
+TEST(JournalTable, APictureIsMeasuredToItsInkAndNotToTheEntrysColumn) {
+  // The finding that made art a field of its own rather than a flag on a
+  // fragment: a picture's rectangle is not the entry's, and four of the
+  // fourteen are not inside any one of them. Three are the atlas's maps,
+  // each of which crosses the printed columns its own caption is set in;
+  // the fourth is a drawing that runs the width of a page under a
+  // caption set in one column.
+  std::size_t outside = 0;
+  for (const journal_entry_fact& fact : known_journals().front().entries) {
+    for (const journal_fragment& picture : fact.art) {
+      const bool within = std::ranges::any_of(
+          fact.fragments, [&](const journal_fragment& piece) {
+            return piece.offset == picture.offset &&
+                   picture.region.left >= piece.region.left &&
+                   picture.region.top >= piece.region.top &&
+                   picture.region.left + picture.region.width <=
+                       piece.region.left + piece.region.width &&
+                   picture.region.top + picture.region.height <=
+                       piece.region.top + piece.region.height;
+          });
+      if (!within) {
+        ++outside;
+      }
+    }
+  }
+  EXPECT_EQ(outside, 4U) << "if every picture is inside its entry's own"
+                            " text rectangle, a flag on a fragment would"
+                            " have done";
 }
 
 TEST(JournalTable, EveryShippedRowIsAWellFormedFact) {

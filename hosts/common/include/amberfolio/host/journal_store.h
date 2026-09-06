@@ -62,12 +62,14 @@
 // cannot be mistaken for a header. Strict on the way in: a file that is
 // not exactly this is `not_a_store`, never a file half-read.
 //
-//   amberfolio-journal 3
+//   amberfolio-journal 4
 //   edition <64 hex>
 //   engine <one line>
 //   scanned <kind> <number> <bytes>
 //   <bytes bytes><newline>
 //   corrected <kind> <number> <bytes>
+//   <bytes bytes><newline>
+//   picture <kind> <number> <nth> <width> <height> <bytes>
 //   <bytes bytes><newline>
 //   seen <kind> <number> <month> <day> <hour> <minute> <read>
 //
@@ -75,6 +77,42 @@
 // game has told this player to read, newest first, with the moment it
 // said so and whether they have opened it since. They carry no text, so
 // they have no length and no body.
+//
+//
+// The pictures, and why they are here rather than in a sidecar (#328)
+// -------------------------------------------------------------------
+//
+// Several of a journal's entries are drawings, and what an OCR engine
+// reads off one is its caption. So a picture is reduced once, at
+// ingestion, to four tones in the reader's own box
+// (`journal_picture.h`), and kept — because re-deriving it would be a
+// decode and a resample per page turn, and because the answer is a fact
+// about the player's own document and belongs beside their
+// transcription of it.
+//
+// #328 proposed a sidecar, on the shape the automap's own store has,
+// and this is the one place its instructions were not followed. A
+// picture record rides **every path a store already has**: both hosts,
+// the five `Machine` methods the ABI grew for it (#229), the
+// changed-flag rule, `drive.mjs --journal-store`, the
+// clear-on-a-different-edition rule, and `fingerprint()`. A second file
+// would need every one of those again, on two hosts, to hold something
+// that is keyed by the same *(section, number)* and thrown away by the
+// same events. What it costs is size, and the arithmetic is small: the
+// one tabled edition's fourteen pictures are about a hundred and
+// seventy kilobytes packed, and about two hundred and thirty as text,
+// beside a browser drawer that holds five megabytes.
+//
+// A picture's `<bytes>` are the **base64** of the packed levels, and the
+// count is of that text rather than of the bytes it stands for, so the
+// same length-prefixed reader handles it. Base64 and not raw, because
+// this is a file a person opens: a run of arbitrary bytes in it would
+// make it a binary file that happens to begin with words.
+//
+// **A store from before this is read and loses nothing.** A version 3
+// store has no pictures, which is a player who ingested with a build
+// that could not make one — and re-ingesting is what fixes that, which
+// is exactly what re-ingesting is for.
 //
 // **It is in this file rather than beside a save**, which is a decision
 // and not an oversight. The automap keeps a snapshot per save slot because
@@ -88,7 +126,8 @@
 //
 // **Every version this project has written is still read.** A version 2
 // store has no `seen` lines, which is a player who has been cited nothing
-// yet — a true statement about an old store, not an error.
+// yet — a true statement about an old store, not an error; a version 3
+// store has no `picture` records, on the same reading.
 //
 // **Version 1 is still read** (M5-E3d, #218). It had no `<kind>` because
 // there was one section, so every record in one is a journal entry and
@@ -112,6 +151,7 @@
 
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
+#include "amberfolio/host/journal_picture.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/sha256.h"
@@ -123,7 +163,7 @@ class machine;
 namespace amberfolio::host {
 
 /// The format version this build writes.
-inline constexpr std::uint32_t journal_store_version = 3;
+inline constexpr std::uint32_t journal_store_version = 4;
 
 /// The oldest it reads. See the format above: a version 1 store is a
 /// store of journal entries and nothing is lost by saying so.
@@ -203,6 +243,33 @@ class journal_store {
   /// `journal_max_entry_bytes`.
   [[nodiscard]] bool record_scan(machine::journal_citation what,
                                  std::string_view text);
+
+  /// Every picture of `what`, in printed order (#328). Empty for an
+  /// entry that is prose, which is most of them.
+  [[nodiscard]] std::span<const journal_picture> pictures(
+      machine::journal_citation what) const noexcept;
+
+  /// One of them, or null.
+  [[nodiscard]] const journal_picture* picture(machine::journal_citation what,
+                                               std::uint8_t nth) const noexcept;
+
+  /// How many this store holds in all — the number a host reports after
+  /// an ingestion, beside how many entries it recognized.
+  [[nodiscard]] std::size_t picture_count() const noexcept {
+    return pictures_.size();
+  }
+
+  /// Ingestion's other write.
+  ///
+  /// **It replaces rather than merges**, one picture at a time, and
+  /// there is no `corrected` beside it: the two-texts rule
+  /// (`journal_text`) exists because a person edits a transcription, and
+  /// nobody is going to hand-edit a base64 bitmap. A better reduction is
+  /// a re-ingestion, which is what a version field is for.
+  ///
+  /// False for a picture bigger than the reader's own box, for one whose
+  /// bytes are not the size its shape says, or for a store that is full.
+  [[nodiscard]] bool record_picture(journal_picture what);
 
   /// A person's write.
   [[nodiscard]] bool correct(machine::journal_citation what,
@@ -299,6 +366,9 @@ class journal_store {
   /// function of the content and not of the order things were written in
   /// — which is what makes `fingerprint()` worth reporting.
   std::vector<journal_text> entries_;
+  /// Kept sorted by kind, then number, then `nth`, for `entries_`'s own
+  /// reason: a serialization has to be a function of the content.
+  std::vector<journal_picture> pictures_;
   /// **Not sorted**, unlike the entries: this is a log and its order is
   /// its content. `fingerprint()` is still a function of the content,
   /// because the order is part of what was stored rather than an artefact

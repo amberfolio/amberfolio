@@ -14,11 +14,13 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
 #include "amberfolio/host/journal_ingest.h"
+#include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/platform.h"
@@ -219,7 +221,7 @@ TEST(JournalStore, AVersionTwoStoreIsAPlayerNothingHasCitedYet) {
             journal_trouble::none);
   EXPECT_EQ(store.size(), 1u);
   EXPECT_TRUE(store.seen().empty()) << "no log is not a broken store";
-  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 3\n"));
+  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 4\n"));
 }
 
 TEST(JournalStore, ALogLineThatIsNotOneIsRefusedWhole) {
@@ -309,7 +311,7 @@ TEST(JournalStore, AStoreAnEditorSavedWithCrlfStillReads) {
 
 TEST(JournalStore, AStoreFromALaterFormatIsRefusedRatherThanMisread) {
   journal_store store;
-  EXPECT_EQ(store.parse("amberfolio-journal 4\nedition a\nengine b\n"),
+  EXPECT_EQ(store.parse("amberfolio-journal 5\nedition a\nengine b\n"),
             journal_trouble::not_a_store);
 }
 
@@ -327,9 +329,10 @@ TEST(JournalStore, AStoreFromVersionOneIsReadRatherThanThrownAway) {
   EXPECT_EQ(store.text(Entry(4)), "fixed");
   EXPECT_TRUE(store.text(Tale(4)).empty());
 
-  // And it is written back as version 2, so a store is upgraded by
-  // being opened rather than by anybody being told to do anything.
-  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 3\n"));
+  // And it is written back as the current version, so a store is
+  // upgraded by being opened rather than by anybody being told to do
+  // anything.
+  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 4\n"));
   EXPECT_NE(store.serialize().find("scanned entry 4 6\n"), std::string::npos);
 }
 
@@ -743,6 +746,133 @@ TEST(JournalCiteAll, AWholeEditionFitsInTheLog) {
   EXPECT_EQ(into.seen().back().what, Proclamation(214));
   // And the store kept all of it, since its cap is the machine's.
   EXPECT_EQ(store.seen().size(), 99u);
+}
+
+// --- the pictures (#328) ---------------------------------------------------
+
+/// A picture whose bytes are the shape it claims, built here rather than
+/// reduced, so these tests are about the *store* and not about the
+/// reducer.
+journal_picture Drawing(machine::journal_citation what, std::uint8_t nth,
+                        std::uint16_t width, std::uint16_t height,
+                        std::uint8_t fill = 0x1B) {
+  journal_picture one;
+  one.what = what;
+  one.nth = nth;
+  one.width = width;
+  one.height = height;
+  one.levels.assign(machine::journal_art_stride(width) * height, fill);
+  return one;
+}
+
+TEST(JournalStorePictures, ARoundTripKeepsEveryPixel) {
+  journal_store store = Filled();
+  ASSERT_TRUE(store.record_picture(Drawing(Entry(1), 0, 40, 12)));
+  ASSERT_TRUE(store.record_picture(Drawing(Entry(1), 1, 7, 3, 0x2D)));
+  ASSERT_TRUE(store.record_picture(Drawing(
+      Tale(2), 0, machine::journal_art_width, machine::journal_art_height)));
+  EXPECT_EQ(store.picture_count(), 3U);
+
+  journal_store read;
+  ASSERT_EQ(read.parse(store.serialize()), journal_trouble::none);
+  EXPECT_EQ(read.picture_count(), 3U);
+  EXPECT_EQ(read.serialize(), store.serialize());
+  EXPECT_EQ(read.fingerprint(), store.fingerprint());
+
+  ASSERT_EQ(read.pictures(Entry(1)).size(), 2U);
+  EXPECT_EQ(read.pictures(Entry(1))[1].width, 7);
+  EXPECT_EQ(read.pictures(Entry(1))[1].levels,
+            store.pictures(Entry(1))[1].levels);
+  EXPECT_TRUE(read.pictures(Entry(2)).empty());
+  ASSERT_NE(read.picture(Tale(2), 0), nullptr);
+  EXPECT_EQ(read.picture(Tale(2), 0)->height, machine::journal_art_height);
+  EXPECT_EQ(read.picture(Tale(2), 1), nullptr);
+}
+
+TEST(JournalStorePictures, TheRecordSaysWhatItIs) {
+  // A person opens this file, so the record has to be legible even
+  // though its body is not: the section, the number, which picture and
+  // its shape are all words and decimals.
+  journal_store store = Filled();
+  ASSERT_TRUE(store.record_picture(Drawing(Tale(3), 2, 8, 4)));
+  EXPECT_NE(store.serialize().find("picture tale 3 2 8 4 "), std::string::npos);
+}
+
+TEST(JournalStorePictures, ASecondWriteReplacesRatherThanDoubles) {
+  journal_store store = Filled();
+  ASSERT_TRUE(store.record_picture(Drawing(Entry(1), 0, 40, 12, 0x00)));
+  ASSERT_TRUE(store.record_picture(Drawing(Entry(1), 0, 20, 6, 0xFF)));
+  ASSERT_EQ(store.picture_count(), 1U);
+  EXPECT_EQ(store.picture(Entry(1), 0)->width, 20);
+}
+
+TEST(JournalStorePictures, APictureThatDoesNotAddUpIsRefused) {
+  journal_store store;
+  // A shape the reader has no room for.
+  EXPECT_FALSE(store.record_picture(
+      Drawing(Entry(1), 0, machine::journal_art_width + 1, 4)));
+  EXPECT_FALSE(store.record_picture(
+      Drawing(Entry(1), 0, 4, machine::journal_art_height + 1)));
+  // Nothing at all.
+  EXPECT_FALSE(store.record_picture(Drawing(Entry(1), 0, 0, 4)));
+  // A citation that names nothing.
+  EXPECT_FALSE(store.record_picture(Drawing(Entry(0), 0, 4, 4)));
+  // More pictures than one entry may have.
+  EXPECT_FALSE(store.record_picture(
+      Drawing(Entry(1), machine::journal_art_per_entry, 4, 4)));
+  // Bytes that are not the count the shape implies.
+  journal_picture lying = Drawing(Entry(1), 0, 40, 12);
+  lying.levels.pop_back();
+  EXPECT_FALSE(store.record_picture(std::move(lying)));
+  EXPECT_EQ(store.picture_count(), 0U);
+}
+
+TEST(JournalStorePictures, ARecordThatIsNotOneRefusesTheWholeStore) {
+  journal_store store = Filled();
+  ASSERT_TRUE(store.record_picture(Drawing(Entry(1), 0, 8, 4)));
+  const std::string before = store.serialize();
+  for (const std::string& bad :
+       {// a body that is not base64 at all
+        std::string("amberfolio-journal 4\nedition a\nengine b\n"
+                    "picture entry 1 0 8 4 4\n????\n"),
+        // base64 that decodes to the wrong number of bytes for the shape
+        std::string("amberfolio-journal 4\nedition a\nengine b\n"
+                    "picture entry 1 0 8 4 4\nAAAA\n"),
+        // a field short
+        std::string("amberfolio-journal 4\nedition a\nengine b\n"
+                    "picture entry 1 0 8 4\nAAAA\n"),
+        // a section no build has ever written
+        std::string("amberfolio-journal 4\nedition a\nengine b\n"
+                    "picture rumour 1 0 8 4 4\nAAAA\n")}) {
+    journal_store read = store;
+    EXPECT_EQ(read.parse(bad), journal_trouble::not_a_store) << bad;
+    EXPECT_EQ(read.serialize(), before) << "left as it was";
+  }
+}
+
+TEST(JournalStorePictures, AVersionThreeStoreIsAPlayerWithNoDrawingsYet) {
+  // Not an error: a store written before this build could make one. The
+  // fix is a re-ingestion, which is what re-ingesting is for.
+  journal_store store;
+  ASSERT_EQ(store.parse("amberfolio-journal 3\nedition a\nengine b\n"
+                        "scanned entry 4 6\nfourth\n"),
+            journal_trouble::none);
+  EXPECT_EQ(store.picture_count(), 0U);
+  // And a `picture` record in a store that claims to be version 3 is a
+  // file somebody edited into something this cannot read.
+  EXPECT_EQ(store.parse("amberfolio-journal 3\nedition a\nengine b\n"
+                        "picture entry 1 0 8 4 4\nAAAA\n"),
+            journal_trouble::not_a_store);
+}
+
+TEST(JournalStorePictures, ClearingAndAChangedEditionTakeThemToo) {
+  journal_store store = Filled();
+  ASSERT_TRUE(store.record_picture(Drawing(Entry(1), 0, 8, 4)));
+  store.clear_changed();
+  ASSERT_TRUE(store.record_picture(Drawing(Entry(1), 1, 8, 4)));
+  EXPECT_TRUE(store.changed()) << "a picture is a write like any other";
+  store.clear();
+  EXPECT_EQ(store.picture_count(), 0U);
 }
 
 }  // namespace

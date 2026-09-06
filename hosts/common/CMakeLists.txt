@@ -31,6 +31,12 @@ add_library(amberfolio-host-services STATIC
   src/journal_extract.cpp
   src/journal_store.cpp
   src/journal_ingest.cpp
+  # The entries that are pictures (#328): a printed drawing reduced, once,
+  # to the four tones and the box the in-game reader draws in. Beside the
+  # extractor because it is the same half of the pipeline -- something a
+  # host does to a player's own document, on the player's own machine, and
+  # writes into the same store.
+  src/journal_picture.cpp
   # How well an ingestion went, as a number (#315). In the library and
   # not in a test, because the thing that has to answer it is a *host*
   # reporting to a player -- and because the ground truth is the store's
@@ -66,6 +72,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/code_wheel_store_test.cpp
     tests/journal_facts_test.cpp
     tests/journal_extract_test.cpp
+    tests/journal_picture_test.cpp
     tests/journal_store_test.cpp
     tests/journal_ingest_test.cpp
     tests/journal_score_test.cpp)

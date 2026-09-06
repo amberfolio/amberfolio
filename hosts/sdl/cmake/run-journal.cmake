@@ -65,7 +65,16 @@ endif()
 expect("journal Amber Folio journal probe \\(synthetic\\) entries=4")
 expect("journal engine amberfolio journal probe fixture")
 expect("journal entries=4 extracted=4 recognized=4")
-expect("journal store .*entries=4 corrections=0 sha256=[0-9a-f][0-9a-f]+")
+# The entries that are pictures (#328). The probe has two, on the two
+# pages that reach the extractor by different routes: the one this build
+# decodes itself is reduced here with nothing installed, and the
+# `/DCTDecode` one is refused **by name**, because a picture has no OCR
+# engine to hand the decoding to and a default desktop build links no
+# image library. Both numbers, so "this build cannot decode the pages"
+# cannot read as "this journal has no drawings".
+expect("journal pictures=1/2")
+expect("journal picture of entry 3: the stream's filter")
+expect("journal store .*entries=4 corrections=0 pictures=1 sha256=[0-9a-f][0-9a-f]+")
 # With nothing corrected there is nothing to score against, and the host
 # says which rather than printing a zero that would read as a perfect
 # transcription (#315). The fixture engine reports no confidences either,
@@ -83,8 +92,11 @@ file(READ "${store}" text)
 # (#218): the probe carries a tale numbered one over entry one's own
 # rectangle, so a build that keyed on the number alone would write
 # three records here instead of four and this would say so.
-foreach(want "amberfolio-journal 3" "AMBER FOLIO PROBE ENTRY 1"
-             "scanned entry 1 " "scanned tale 1 ")
+# Entry two is not in this list on purpose: it carries a paragraph break
+# (#331) and so is checked in its own shape below, not as a run of words.
+foreach(want "amberfolio-journal 4" "AMBER FOLIO PROBE ENTRY 1"
+             "scanned entry 1 " "scanned tale 1 "
+             "picture entry 1 0 ")
   string(FIND "${text}" "${want}" at)
   if(at LESS 0)
     message(FATAL_ERROR "the store does not carry '${want}':\n${text}")

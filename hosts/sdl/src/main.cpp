@@ -690,6 +690,7 @@
 #include "keymap.h"
 #include "tesseract_ocr.h"
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
+#include "leptonica_decoder.h"
 #include "tesseract_linked_ocr.h"
 #endif
 
@@ -2484,9 +2485,9 @@ void load_journal_store(const options& opts, host::journal_store& store) {
   }
   std::fprintf(stderr,
                "amberfolio: journal store %s entries=%zu corrections=%zu"
-               " seen=%zu\n",
+               " pictures=%zu seen=%zu\n",
                path.c_str(), store.size(), store.corrections(),
-               store.seen().size());
+               store.picture_count(), store.seen().size());
 }
 
 /// Write the store back, for the log's sake (M5-E4b, #222).
@@ -2592,6 +2593,21 @@ void ingest_journal(machine::machine& box, const options& opts,
                  engine->engine().data());
   }
 
+  // And who turns a page this build does not decode into samples, for
+  // the entries that are pictures (#328). Only a build that already
+  // links an image library has one — `leptonica_decoder.h` is why that
+  // is the rule and not an omission — and a build without one says so,
+  // because "this journal has no drawings" and "this build cannot read
+  // the ones it has" are different sentences.
+#if AMBERFOLIO_HAVE_LINKED_TESSERACT
+  sdl::leptonica_page_decoder pages;
+  ingester.set_page_decoder(&pages);
+#endif
+  if (ingester.page_decoder() != nullptr) {
+    std::fprintf(stderr, "amberfolio: journal pages decoded by %s\n",
+                 ingester.page_decoder()->name());
+  }
+
   // Where the text goes, and what is already there. Read first, so a
   // correction a player made survives this ingestion — which is the
   // whole reason the store is read at all rather than written fresh.
@@ -2621,6 +2637,18 @@ void ingest_journal(machine::machine& box, const options& opts,
   std::fprintf(stderr,
                "amberfolio: journal entries=%u extracted=%u recognized=%u\n",
                report.entries, report.extracted, report.recognized);
+  // Both numbers, always, and even when the edition has no pictures at
+  // all: `pictures=0/0` is a journal of prose and `pictures=0/14` is a
+  // build with nothing to decode its pages with, and a single count
+  // could not tell a player which they had (#328).
+  std::fprintf(stderr, "amberfolio: journal pictures=%u/%u\n", report.pictures,
+               report.art);
+  if (report.first_art_trouble != host::journal_trouble::none) {
+    std::fprintf(stderr, "amberfolio: journal picture of %s %u: %s\n",
+                 machine::journal_kind_name(report.first_art_failure.kind),
+                 static_cast<unsigned>(report.first_art_failure.number),
+                 host::journal_trouble_name(report.first_art_trouble));
+  }
   if (report.first_trouble != host::journal_trouble::none) {
     // The section as well as the number, because three of them number
     // from their own bases and "entry 4" would name three things (#218).
@@ -2694,8 +2722,9 @@ void ingest_journal(machine::machine& box, const options& opts,
   // it without carrying any of it (`host/journal_store.h`).
   std::fprintf(stderr,
                "amberfolio: journal store %s entries=%zu corrections=%zu"
-               " sha256=%s\n",
-               path.c_str(), store.size(), store.corrections(), hex.data());
+               " pictures=%zu sha256=%s\n",
+               path.c_str(), store.size(), store.corrections(),
+               store.picture_count(), hex.data());
 }
 
 }  // namespace

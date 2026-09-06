@@ -245,6 +245,31 @@ struct journal_entry_fact {
   /// is joined in this order, so a table whose fragments are out of order
   /// is an entry whose sentences are.
   std::span<const journal_fragment> fragments;
+  /// The rectangles of this entry that are **pictures** rather than words
+  /// (#328), in the order they are printed. Usually none.
+  ///
+  /// **A second field rather than a flag on a fragment**, and the reason
+  /// is measurement rather than tidiness. A picture's rectangle is not
+  /// the entry's: of the fourteen in the one tabled edition, four are
+  /// inside no text rectangle of their own entry at all — an atlas's
+  /// three maps, each crossing the printed columns its caption is set
+  /// in, and one drawing that runs the whole width of a page under a
+  /// caption set in one column. A fragment list that had to be
+  /// partitioned into words and art could describe none of them, and
+  /// neither could a single rectangle per entry, which is the same
+  /// argument `fragments` itself won.
+  ///
+  /// It is also a different *kind* of rectangle. A text fragment is
+  /// measured to the column, because everything outside it is prose the
+  /// reader would have to throw away; a picture is measured to its ink,
+  /// because everything outside it is paper the reader would have to
+  /// draw. `docs/journal.md` §11 is the method.
+  ///
+  /// The pieces of one entry's art are separate pictures and not one
+  /// picture in pieces — an atlas is three maps and the reader turns a
+  /// page between them — which is the other way this differs from
+  /// `fragments`, whose pieces are joined.
+  std::span<const journal_fragment> art{};
 };
 
 /// One journal edition this build knows the insides of.

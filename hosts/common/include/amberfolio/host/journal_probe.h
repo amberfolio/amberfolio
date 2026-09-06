@@ -95,6 +95,7 @@
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
 #include "amberfolio/host/journal_ocr.h"
+#include "amberfolio/host/journal_picture.h"
 
 namespace amberfolio::host {
 
@@ -121,6 +122,25 @@ inline constexpr std::size_t journal_probe_encoded_entry = 2;
 
 /// How many pieces the three entries have between them: one, one, two.
 inline constexpr std::size_t journal_probe_fragments = 4;
+
+/// How many **pictures** the probe has, and which entries they are on
+/// (#328).
+///
+/// Two, and they are on the two entries that reach the extractor by
+/// different routes on purpose: entry one's page this build decodes
+/// itself, so its picture is made in CI on every target with nothing
+/// installed; entry three's is `/DCTDecode`, so its picture is what
+/// proves the other half — refused with a sentence when there is no
+/// decoder, and produced when a host supplies one.
+///
+/// Their rectangles are **not** the entries' text rectangles, which is
+/// the shape a real edition turned out to have: a picture is measured to
+/// its ink and a text fragment to its column, and an extraction that
+/// confused the two would produce a visibly different bitmap.
+inline constexpr std::size_t journal_probe_art = 2;
+inline constexpr std::size_t journal_probe_art_decoded_entry = 0;
+inline constexpr std::size_t journal_probe_art_encoded_entry =
+    journal_probe_encoded_entry;
 
 /// The probe document's bytes — the same bytes on every target, every
 /// time. Built once and cached.
@@ -151,6 +171,16 @@ inline constexpr std::size_t journal_probe_fragments = 4;
 /// decode (#212). Empty for every other entry.
 [[nodiscard]] std::span<const std::uint8_t> journal_probe_encoded(
     std::size_t index);
+
+/// The samples picture `index` of the probe is supposed to be reduced
+/// from — the cropped gray, before `reduce_picture()` touches it.
+///
+/// Generated from the same description the document was generated from,
+/// on `journal_probe_expected()`'s own argument: a test that compares
+/// the ingestion's picture with `reduce_picture()` of this is comparing
+/// two derivations of one intention, and one that compared it against a
+/// stored bitmap would be comparing a result with a copy of itself.
+[[nodiscard]] journal_bitmap journal_probe_art_expected(std::size_t index);
 
 /// The text `journal_probe_ocr` answers for entry `index`.
 [[nodiscard]] std::string_view journal_probe_text(std::size_t index);
@@ -185,6 +215,36 @@ class journal_probe_ocr final : public journal_ocr {
 
  private:
   std::vector<journal_bitmap> expected_;
+};
+
+/// The fixture decoder: the probe's own samples for the probe's own
+/// encoded page, and nothing for anything else (#328).
+///
+/// A picture, unlike a page of text, has no OCR engine to hand a
+/// `/DCTDecode` stream to, so a host that wants pictures out of such an
+/// edition has to supply something that decodes one
+/// (`journal_picture.h`). Nothing in this tree does — #212's refusal
+/// stands — so what CI can prove about that path is the plumbing around
+/// it, and this is what proves it.
+///
+/// It is not a stub that answers anything: it compares the bytes it is
+/// handed against the exact stream the probe's own encoder produced, so
+/// a wrong offset, a wrong length or a stream reached by the text route
+/// gets nothing.
+class journal_probe_decoder final : public journal_page_decoder {
+ public:
+  [[nodiscard]] bool decode(std::span<const std::uint8_t> stream,
+                            journal_bitmap& out) override;
+
+  [[nodiscard]] const char* name() const noexcept override;
+
+  /// How many times it has been asked, so a test can tell "no picture
+  /// because nothing asked" from "no picture because the answer was
+  /// refused".
+  [[nodiscard]] std::size_t calls() const noexcept { return calls_; }
+
+ private:
+  std::size_t calls_{0};
 };
 
 /// The same fixture, reading badly on purpose (#315).

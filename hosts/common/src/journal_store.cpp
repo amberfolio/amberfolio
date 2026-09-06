@@ -12,10 +12,12 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "amberfolio/host/journal_facts.h"
+#include "amberfolio/host/journal_picture.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/platform.h"
@@ -132,6 +134,19 @@ namespace {
   return std::pair{static_cast<std::uint8_t>(entry.kind), entry.number};
 }
 
+/// A picture's key is the citation's and then which picture of it — an
+/// entry may have several and their printed order is part of what was
+/// stored, not an artefact of what was written first.
+[[nodiscard]] constexpr auto key_of(const journal_picture& what) noexcept {
+  return std::tuple{static_cast<std::uint8_t>(what.what.kind), what.what.number,
+                    what.nth};
+}
+
+[[nodiscard]] constexpr auto key_of(machine::journal_citation what,
+                                    std::uint8_t nth) noexcept {
+  return std::tuple{static_cast<std::uint8_t>(what.kind), what.number, nth};
+}
+
 }  // namespace
 
 const journal_text* journal_store::find(
@@ -181,6 +196,59 @@ bool journal_store::record_scan(machine::journal_citation what,
   return true;
 }
 
+std::span<const journal_picture> journal_store::pictures(
+    machine::journal_citation what) const noexcept {
+  const auto first = std::ranges::lower_bound(
+      pictures_, key_of(what, 0), {},
+      [](const journal_picture& one) { return key_of(one); });
+  auto last = first;
+  while (last != pictures_.end() && last->what == what) {
+    ++last;
+  }
+  return {pictures_.data() + (first - pictures_.begin()),
+          static_cast<std::size_t>(last - first)};
+}
+
+const journal_picture* journal_store::picture(machine::journal_citation what,
+                                              std::uint8_t nth) const noexcept {
+  const auto found = std::ranges::lower_bound(
+      pictures_, key_of(what, nth), {},
+      [](const journal_picture& one) { return key_of(one); });
+  if (found == pictures_.end() || key_of(*found) != key_of(what, nth)) {
+    return nullptr;
+  }
+  return &*found;
+}
+
+bool journal_store::record_picture(journal_picture what) {
+  // Everything a picture claims about itself is checked, because the
+  // reader draws it from these numbers and a store outlives the build
+  // that wrote it. A shape the screen has no room for, a byte count that
+  // is not the one its shape implies, a citation that names nothing:
+  // each of those is a store that would draw as noise.
+  if (!what.what || what.nth >= machine::journal_art_per_entry ||
+      what.width == 0 || what.height == 0 ||
+      what.width > machine::journal_art_width ||
+      what.height > machine::journal_art_height ||
+      what.levels.size() !=
+          machine::journal_art_stride(what.width) * what.height) {
+    return false;
+  }
+  const auto at = std::ranges::lower_bound(
+      pictures_, key_of(what.what, what.nth), {},
+      [](const journal_picture& one) { return key_of(one); });
+  if (at != pictures_.end() && key_of(*at) == key_of(what.what, what.nth)) {
+    *at = std::move(what);
+  } else {
+    if (pictures_.size() >= journal_max_pictures) {
+      return false;
+    }
+    pictures_.insert(at, std::move(what));
+  }
+  changed_ = true;
+  return true;
+}
+
 bool journal_store::correct(machine::journal_citation what,
                             std::string_view text) {
   if (text.size() > journal_max_entry_bytes) {
@@ -216,6 +284,7 @@ void journal_store::clear() {
   edition_.clear();
   engine_.clear();
   entries_.clear();
+  pictures_.clear();
   seen_.clear();
   changed_ = true;
 }
@@ -238,6 +307,29 @@ std::string journal_store::serialize() const {
     append_record(out, "scanned", what, entry.scanned);
     append_record(out, "corrected", what, entry.corrected);
   }
+  // Then the pictures (#328), between the texts and the log: a picture
+  // is one of the entry's two contents and the log is about all of them.
+  // The length counts the base64 text rather than the bytes it stands
+  // for, so the same length-prefixed reader takes it.
+  for (const journal_picture& one : pictures_) {
+    const std::string body = encode_base64(one.levels);
+    out.append("picture ");
+    out.append(journal_kind_name(one.what.kind));
+    out.push_back(' ');
+    append_number(out, one.what.number);
+    out.push_back(' ');
+    append_number(out, one.nth);
+    out.push_back(' ');
+    append_number(out, one.width);
+    out.push_back(' ');
+    append_number(out, one.height);
+    out.push_back(' ');
+    append_number(out, body.size());
+    out.push_back('\n');
+    out.append(body);
+    out.push_back('\n');
+  }
+
   // The log last, so a store reads as its texts and then what the game has
   // said about them. No length and no body: a `seen` line carries facts
   // about an entry and not a word of one.
@@ -304,6 +396,8 @@ journal_trouble journal_store::parse(std::string_view whole) {
   }
   // Version 1 predates the sections and so has no kind on its records.
   const bool kinded = version >= 2U;
+  // Version 3 and earlier predate the pictures (#328).
+  const bool pictured = version >= 4U;
 
   std::string_view edition;
   std::string_view engine;
@@ -322,8 +416,56 @@ journal_trouble journal_store::parse(std::string_view whole) {
     const bool scanned = text.compare(at, 8, "scanned ") == 0;
     const bool corrected = text.compare(at, 10, "corrected ") == 0;
     const bool seen = kinded && text.compare(at, 5, "seen ") == 0;
-    if (!scanned && !corrected && !seen) {
+    const bool picture = pictured && text.compare(at, 8, "picture ") == 0;
+    if (!scanned && !corrected && !seen && !picture) {
       return journal_trouble::not_a_store;
+    }
+    if (picture) {
+      at += 8U;
+      journal_picture one;
+      std::string_view word;
+      std::array<std::uint64_t, 4> fields{};
+      std::uint64_t number = 0;
+      std::uint64_t length = 0;
+      if (!take_word(text, at, word) ||
+          !journal_kind_from_name(word, one.what.kind) ||
+          !take_literal(text, at, " ") ||
+          !take_number(text, at, 0xFFFFU, number)) {
+        return journal_trouble::not_a_store;
+      }
+      one.what.number = static_cast<std::uint16_t>(number);
+      const std::array<std::uint64_t, 4> limits{
+          machine::journal_art_per_entry, machine::journal_art_width,
+          machine::journal_art_height, journal_max_picture_text};
+      for (std::size_t i = 0; i < fields.size(); ++i) {
+        if (!take_literal(text, at, " ") ||
+            !take_number(text, at, limits[i], fields[i])) {
+          return journal_trouble::not_a_store;
+        }
+      }
+      if (!take_literal(text, at, "\n")) {
+        return journal_trouble::not_a_store;
+      }
+      one.nth = static_cast<std::uint8_t>(fields[0]);
+      one.width = static_cast<std::uint16_t>(fields[1]);
+      one.height = static_cast<std::uint16_t>(fields[2]);
+      length = fields[3];
+      if (text.size() - at < length + 1U ||
+          text[at + static_cast<std::size_t>(length)] != '\n') {
+        return journal_trouble::not_a_store;
+      }
+      const std::string_view body =
+          text.substr(at, static_cast<std::size_t>(length));
+      at += static_cast<std::size_t>(length) + 1U;
+      // A picture that does not decode, or that decodes to a size its
+      // own shape does not imply, refuses the whole store. The same
+      // strictness the texts get and for the same reason: half a store
+      // read is the one outcome nothing downstream could detect.
+      if (!decode_base64(body, one.levels) ||
+          !read.record_picture(std::move(one))) {
+        return journal_trouble::not_a_store;
+      }
+      continue;
     }
     if (seen) {
       at += 5U;

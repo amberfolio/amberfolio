@@ -793,6 +793,30 @@ static_assert(screen_page.columns == 38,
               "the screen's interior is thirty-eight glyphs wide");
 static_assert(screen_page.rows == 20, "and twenty rows of it are the body");
 
+/// **And the same box in pixels, which is what a picture is reduced to**
+/// (#328). `journal_art_width`/`_height` are declared in `journal.h`
+/// because a host reduces to them at ingestion, long before there is a
+/// machine; they are held against the frame *here*, because this file is
+/// the only thing that knows what the frame does. A host that reduced to
+/// a shape this screen had no room for would produce a store nobody
+/// could draw, and the store outlives the build that wrote it.
+static_assert(journal_art_width ==
+                  static_cast<unsigned>(screen_page.columns * glyph_columns),
+              "a picture is as wide as the page's interior");
+static_assert(journal_art_height ==
+                  static_cast<unsigned>(screen_page.rows * glyph_rows),
+              "and as deep");
+
+/// The panel is **exactly half the page**, which is what lets one stored
+/// picture serve both shapes: half of the widest page is 152x80 and the
+/// panel's body is 176x96, so a picture reduced for the page always fits
+/// the panel when it is halved, whatever its own proportions are.
+static_assert(journal_art_width / 2U <= automap_panel_width,
+              "half a page's picture fits the panel across");
+static_assert(journal_art_height / 2U <=
+                  static_cast<unsigned>(reader_body_rows * glyph_rows),
+              "and down");
+
 /// The most rows either shape asks for, which is what one laid-out page
 /// is sized to.
 constexpr int reader_max_body_rows = screen_page.rows;
