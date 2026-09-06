@@ -175,6 +175,18 @@
 // has never asked anybody to press. `PREV` is genuinely new: F1 walked
 // forward and closed on the last page, so there was no way back.
 //
+// **And it is laid out and painted the way the program's own bars are**
+// (#329, #330), which took two goes and a person looking at it. It was
+// indented by one and spaced by three, where every bar this game draws
+// starts at column zero and puts one space between its commands; and it
+// was drawn in one call in the bright, where every bar this game draws
+// paints the **initial white and the tail green** - which is how a player
+// is told which key picks which command, and why the program's own bars
+// are stored mixed case, `Look`, `Encamp`, `Search`. A seam cannot borrow
+// that rule, because it lives in the program's drawer and one call is one
+// colour, so the bar is four calls now: the whole row in the green, then
+// the three initials over it in the bright (`draw_the_bar()`).
+//
 // **The panel keeps `F1 MORE`**, and the difference is not laziness. A
 // panel is drawn beside the program's own live command bar, so `N`, `P`
 // and `E` are that bar's letters and taking them would pick the program's
@@ -467,6 +479,15 @@ constexpr std::uint16_t data_menu_view_bar = 0x04DF;
 /// screen in characters.
 constexpr std::uint8_t menu_bar_capacity = 40;
 
+/// The menu bar's highlight: **one byte in the data segment that every
+/// bar in the program shares**, a one-based index of the group it is
+/// sitting on (M5-E1g, #304, whose own copy of this fact is in
+/// `seam_encamp_fix.cpp`; each seam carries its own fact table). The
+/// routine sets it to the group of the command it matched, and the
+/// current group is the one drawn white end to end - which is what
+/// `Notes` was doing on the maintainer's frame (#330).
+constexpr std::uint16_t data_bar_highlight = 0x6B2B;
+
 /// In the adventuring input loop, the instruction that calls the menu-bar
 /// routine, and the instruction it returns to - one pair per view mode.
 /// Offsets from the start of the module above, which is to say from the
@@ -602,6 +623,15 @@ static_assert(list_rows_visible == 20,
 /// under both of a batch's budgets with the frame beside them - four
 /// passes for a full screen of rows where it used to be two, and the
 /// program is sitting in its own key loop drawing nothing for all four.
+///
+/// The tightest pass this leaves is a log of five rows or fewer, where
+/// the clear, the frame, five rows and the bar's four calls (#330) are
+/// all one arrival: 11 of a batch's 12 calls and 253 of its 256 bytes.
+/// **Going over is not a defect**, and that is why the number was left at
+/// five: `draw_the_bar()` returns false, the pass returns false with
+/// `screen_drawn()` already at the last row, and the next arrival draws
+/// the bar and nothing else. A pass that does not fit costs one more
+/// arrival of a program that is drawing nothing.
 constexpr std::size_t list_rows_per_pass = 5;
 
 /// How many screenfuls a log of `rows` lines comes to (M5-E4e, #319).
@@ -620,6 +650,24 @@ constexpr std::uint16_t list_name_column = 1;
 constexpr std::uint16_t list_exit_row = 0x18;
 constexpr std::uint16_t list_exit_column = 0;
 constexpr std::size_t list_row_cells = 40;
+
+/// The three words on it, in order, and the whole of its geometry
+/// (M5-E4f, #317; #329).
+///
+/// The bar is built from this table rather than from a literal, so the
+/// column each initial is drawn at is derived from the words in front of
+/// it instead of counted by hand - `NEXT PREV EXIT`, flush from column
+/// zero with **one** space between, which is what every bar this program
+/// draws does.
+constexpr std::array<std::string_view, 3> bar_words{"NEXT", "PREV", "EXIT"};
+
+/// Its two colours (#330): the game's own green for the words and its own
+/// bright for the letter each one is picked by. The pair every command bar
+/// in this game is painted in, and the reason its own bars are stored
+/// mixed case - the program's drawer colours by case, and a seam handing
+/// that drawer a string of its own gets one colour a call.
+constexpr std::uint16_t bar_word_colour = list_row_colour;
+constexpr std::uint16_t bar_key_colour = list_title_colour;
 
 /// Where the right-hand column starts: far enough over that the
 /// longest caption and number cannot reach it.
@@ -1787,16 +1835,29 @@ enum class claimable : std::uint8_t {
 /// lit pixels, so a line of spaces is the clear, and it costs no extra
 /// call.
 ///
+/// **Flush left and spaced one** (#329), which is what the program's own
+/// bars are and what this one was not: it was indented by one and spaced
+/// by three, so it did not line up with the bar it covers and did not
+/// read as a bar this game drew. `ITEMS: BUY NEXT PREV EXIT` is the
+/// program's own shop bar (`docs/playable.md`), and single spaces are its
+/// rule as much as they are the party bar's.
+///
 /// The `n/m` after the words is a label and not a command, so it goes
 /// after them and only when there is more than one page - the same rule
-/// the panel's footer has always used. `+` after it is the delivery
+/// the panel's footer has always used, six spaces clear of the last word
+/// so that nobody reads it as a fourth one. `+` after it is the delivery
 /// buffer's own honesty: the entry was longer than the four kilobytes
 /// that crossed the host boundary (journal.h), said rather than silently
 /// stopped.
 [[nodiscard]] list_line screen_bar(unsigned page, unsigned pages,
                                    bool truncated) {
   list_line line;
-  line.add(" NEXT   PREV   EXIT");
+  for (std::size_t nth = 0; nth < bar_words.size(); ++nth) {
+    if (nth != 0) {
+      line.add(" ");
+    }
+    line.add(bar_words[nth]);
+  }
   if (pages > 1) {
     line.add("      ");
     line.add(page + 1U);
@@ -1808,6 +1869,51 @@ enum class claimable : std::uint8_t {
   }
   line.pad_to(list_row_cells);
   return line;
+}
+
+/// The reader's own bar, onto the screen: **four calls and two colours**
+/// (#330).
+///
+/// Every command bar this game draws paints the **initial white and the
+/// tail green**, which is how a player is told which key picks the
+/// command - and it is why the program's own bars are stored mixed case,
+/// `Look`, `Encamp`, `Search`, with its drawer colouring by case. This
+/// one was drawn in one call in the bright, so all three words were white
+/// end to end and it was the one bar on the screen that did not follow.
+///
+/// **A seam cannot borrow that rule**, because the rule lives in the
+/// program's drawer and this bar goes through the same drawer with a
+/// colour argument: one call is one colour. So the line is drawn whole in
+/// the green first - which is also the forty-cell clear the row needs -
+/// and then the three initials are drawn over their own cells in the
+/// bright. Four calls where there was one.
+///
+/// **The green line goes first and covers the whole row**, so a batch
+/// that fills up half way through is not a half-white bar left standing:
+/// the caller returns false, the next arrival starts this again from the
+/// green, and every call here is an overdraw of the same cells. Nothing
+/// here is idempotent by luck.
+///
+/// A batch queues twelve calls and places 256 bytes (`seam.h`), so the
+/// three extra calls are three extra bytes of string each and are budgeted
+/// where the rows are: `list_rows_per_pass` and `page_rows_per_pass`.
+[[nodiscard]] bool draw_the_bar(seam_context& ctx, std::uint16_t image,
+                                list_line& line) {
+  if (!draw_line(ctx, image, line, bar_word_colour, list_exit_row,
+                 list_exit_column)) {
+    return false;
+  }
+  std::size_t column = list_exit_column;
+  for (const std::string_view word : bar_words) {
+    list_line initial;
+    initial.add(word.substr(0, 1));
+    if (!draw_line(ctx, image, initial, bar_key_colour, list_exit_row,
+                   static_cast<std::uint16_t>(column))) {
+      return false;
+    }
+    column += word.size() + 1U;  // the word, and the space after it
+  }
+  return true;
 }
 
 /// One pass of the journal's own screen. True when the screen is finished.
@@ -1861,8 +1967,7 @@ enum class claimable : std::uint8_t {
       static_cast<void>(draw_line(ctx, image, nothing, list_row_colour,
                                   list_first_row + 1, list_name_column));
       list_line bar = screen_bar(0, 1, false);
-      return draw_line(ctx, image, bar, list_title_colour, list_exit_row,
-                       list_exit_column);
+      return draw_the_bar(ctx, image, bar);
     }
   }
 
@@ -1906,8 +2011,7 @@ enum class claimable : std::uint8_t {
   list_line bar =
       screen_bar(static_cast<unsigned>(cursor / list_rows_visible),
                  static_cast<unsigned>(list_pages(rows.size())), false);
-  return draw_line(ctx, image, bar, list_title_colour, list_exit_row,
-                   list_exit_column);
+  return draw_the_bar(ctx, image, bar);
 }
 
 /// A full-screen page's own numbers, beside the listing's.
@@ -1916,15 +2020,15 @@ enum class claimable : std::uint8_t {
 /// listing's, which is #305's rule: the two sizes of one page should look
 /// like one thing, and what changed there is how much room it has.
 ///
-/// **The bottom row is not**, since #317. It is the listing's own bright,
-/// because it is no longer a footer of grey small print under a page: it
-/// is a bar of three words on the screen's last row, which is where this
-/// game draws every bar it has and how it draws them. The panel's footer
-/// stays grey (`colour_footer`, `render()`), because in the panel it
-/// really is a label under a page.
+/// **The bottom row is not**, since #317. It is no longer a footer of grey
+/// small print under a page: it is a bar of three words on the screen's
+/// last row, which is where this game draws every bar it has - so it is
+/// the listing's own bar, in the listing's own two colours, through
+/// `draw_the_bar()`, and it has no colour of its own to name here any
+/// more (#330). The panel's footer stays grey (`colour_footer`,
+/// `render()`), because in the panel it really is a label under a page.
 constexpr std::uint16_t page_title_colour = colour_title;
 constexpr std::uint16_t page_body_colour = colour_body;
-constexpr std::uint16_t page_footer_colour = list_title_colour;
 
 /// Where the body starts: below the row the frame writes its title on,
 /// which is the row the listing starts its own rows at.
@@ -1933,11 +2037,12 @@ constexpr std::uint16_t page_first_row = list_first_row;
 /// How many of its rows one pass paints.
 ///
 /// Four rather than the listing's five, and the difference is the budget
-/// rather than a preference: a page's last pass carries the footer as
-/// well, and a title, four rows of thirty-eight characters and a
-/// forty-cell footer is 216 of a batch's 256 bytes where five rows would
-/// have been 255. A bound that is only just met is a bound the next word
-/// added here would break.
+/// rather than a preference: a page's last pass carries the bar as well,
+/// and a title, four rows of thirty-eight characters and a forty-cell bar
+/// is 222 of a batch's 256 bytes where five rows would have been 261. It
+/// was 216 and 255 before the bar became four calls and two colours
+/// (#330), which cost it the three initials' three strings of one
+/// character: six bytes, and the second of those numbers went over.
 constexpr std::size_t page_rows_per_pass = 4;
 
 /// The title of a page: the section's own caption and its number, this
@@ -2035,8 +2140,7 @@ constexpr std::size_t page_rows_per_pass = 4;
         ++nth;
       }
       list_line footer = page_footer(state, 1, false);
-      return draw_line(ctx, image, footer, page_footer_colour, list_exit_row,
-                       list_exit_column);
+      return draw_the_bar(ctx, image, footer);
     }
   }
 
@@ -2060,8 +2164,7 @@ constexpr std::size_t page_rows_per_pass = 4;
   }
 
   list_line footer = page_footer(state, walk.count, laid.more);
-  return draw_line(ctx, image, footer, page_footer_colour, list_exit_row,
-                   list_exit_column);
+  return draw_the_bar(ctx, image, footer);
 }
 
 /// Put the whole screen back, through the routine the program itself
@@ -2799,11 +2902,19 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
   // whether the splice worked - and cleared at the return below, which
   // the routine always comes back through.
   box.journal().set_bar_live(true);
+  box.journal().forget_bar_highlight();
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
   if (ds == 0) {
     return;
   }
+  // **Where the highlight was before this call** (#330). The routine is
+  // about to be handed a bar with one group more than the program's own,
+  // and the only way it can move this byte is by matching a command - so
+  // the value here is the value the seam-off run leaves when the command
+  // matched is this seam's. Read before the splice, because after it the
+  // bar is not the program's.
+  box.journal().note_bar_highlight(cpu.read_byte(ds, data_bar_highlight));
   static_cast<void>(splice_in(cpu, ds, bar));
 }
 
@@ -2820,6 +2931,34 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
 /// program is *never* stopped from seeing the `N`: it compares what came
 /// back against its own commands, matches none of them, and goes round
 /// the loop again, which is what makes adding a letter safe at all.
+///
+/// **And the highlight comes off this seam's own command** (#330), which
+/// is the second thing a spliced bar owes back. The routine sets the
+/// shared highlight byte to the group of whatever command it matched, and
+/// the group it is sitting on is the one drawn white end to end - so
+/// choosing `Notes` left the byte on a group only this seam had put
+/// there, and the bar came back with `Notes` in the highlight's white
+/// while every word beside it wore the initial-white-and-green tail.
+/// Measured with `--watch 6B2B` on a real run: `01` on the adventuring
+/// bar after a load, `07` from the frame `N` was pressed, and `07` still
+/// after the give-back, which is the maintainer's frame exactly.
+///
+/// **What it is put back to is what the routine was entered with**, and
+/// that is #304's rule reduced to the case this bar has rather than a
+/// different rule. The Fix is *inserted*, so every group after it is
+/// renumbered and the way back is to step down by one; `Notes` is
+/// *appended*, so groups one to six mean the same thing on both bars and
+/// the only value that is not the program's is the last. What the program
+/// would have left there is measurable: the byte moves only when the
+/// routine matches a command, `N` matches none of the program's, and a
+/// run with the seam off leaves it exactly as the routine found it. So
+/// this reproduces the seam-off byte rather than approximating it.
+///
+/// **Only where the bar was spliced, and only for this seam's letter.**
+/// `splice_out()` says whether the string that came back was the one this
+/// seam wrote, `bar_highlight_known()` says whether the pass in was this
+/// seam's, and nothing is written unless both hold and the command chosen
+/// was `Notes` - so a run that never opens the journal never writes here.
 void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
   box.journal().set_bar_live(false);
   cpu::processor& cpu = box.processor();
@@ -2827,7 +2966,7 @@ void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
   if (ds == 0) {
     return;
   }
-  static_cast<void>(splice_out(cpu, ds, bar));
+  const bool was_spliced = splice_out(cpu, ds, bar);
 
   const cpu::registers& regs = cpu.regs();
   const std::uint8_t out_flag = cpu.read_byte(
@@ -2837,6 +2976,9 @@ void bar_after(machine& box, seam_context& ctx, std::uint16_t bar) {
     return;
   }
   journal_state& state = box.journal();
+  if (was_spliced && state.bar_highlight_known()) {
+    cpu.write_byte(ds, data_bar_highlight, state.bar_highlight());
+  }
   if (state.reader() != journal_reader_mode::closed) {
     return;
   }

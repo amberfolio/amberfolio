@@ -2041,11 +2041,24 @@ What it does not restore is the *history* of a cursor stepped round a bar
 one stop longer: from the step that crosses the Fix, the two runs' cursors
 sit on different commands with the same number, and the mapping cannot
 know which of them the player meant. That is the enhancement being
-visible, and the mapping is the numbering and not the walk. The journal's `Notes`
-give-back has a cousin of the symptom
-(`tests/visual/not-log-giveback.leg`: 951 pixels, all on the bar, the
-highlight back on the first command) — a different mechanism, nothing
-spliced out from under the byte, and not this fix's to answer.
+visible, and the mapping is the numbering and not the walk.
+
+The journal's `Notes` splice had the same symptom and now has its own
+answer (#330): choosing it left the byte on a group only that seam had
+put on the bar, so `Notes` came back drawn white end to end while every
+word beside it wore the initial-white-and-green tail. It is the same rule
+reduced to the case that bar has. `Notes` is *appended* rather than
+inserted, so nothing before it is renumbered and the only value that is
+not the program's is the last one; and what it is put back to is what the
+routine was entered with, which is exact rather than approximate, because
+on the party's bar the routine moves the byte only when it matches a
+command and `N` matches none of the program's. The camp bar has no such
+luxury: the letter that reaches its point is one of the program's own
+commands, so there is nothing to restore and stepping down by one is all
+a rule can do. `tests/visual/rdr-bar.leg` is the journal's measurement —
+with the give-back taken out, 190 pixels differ between the frame before
+the journal opened and the frame after it closed, and every one of them
+is on the bar row.
 
 The leg's post-EXIT lines no longer allow the bar, but for one dump: the
 adventuring bar is drawn a piece at a time and 8 frames later in the

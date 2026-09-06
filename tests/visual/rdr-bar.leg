@@ -1,0 +1,120 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# RDR-BAR: the reader's own command bar, and the highlight it hands back
+# (#329, #330) — open the log, open a page of an entry, come back to the
+# log, and leave, with the screen the journal was opened over coming back
+# whole.
+#
+# **What this leg is for.** Two things a person found on a real display
+# and neither of which any test in this tree could have found. The bar
+# read ` NEXT   PREV   EXIT` — indented one, spaced three — where every
+# bar this game draws starts at column zero and puts one space between
+# its commands (#329). And it was drawn in one call in the bright, so all
+# three words were white end to end, where every bar this game draws
+# paints the **initial white and the tail green** (#330). The second of
+# those had a twin on the screen underneath: `Notes` on the party's own
+# bar came back white end to end too.
+#
+# **A single leg, and it has to be one**, for `not-log-giveback.leg`'s
+# reason: `N` reaches the program in a seam-off run, so a pair would be
+# diffing the program's own answer to an unknown letter as well as the
+# journal.
+#
+# **What it says instead is stronger than a pair could.** Since #330 the
+# `Notes` splice hands the program's own bar highlight back on the way
+# out — the routine sets the shared byte (`0x6B2B`, M5-E1g #304) to the
+# group of the command it matched, and `Notes` is a group only because
+# this seam put one there — so the frame after the journal closes is the
+# frame before it opened, **on every pixel including the bar row**. The
+# two legs that came before this one had to allow that row.
+#
+# **Driven, on the shorter boot** (`--code-wheel-answered`, #291), by
+# hand, because the runner does not yet carry that flag — #293 owes every
+# leg in this directory its re-drive. Same host, same disk copy, same
+# `--wall none`, same dump cadence, same checks the runner makes.
+# Measured off those stills:
+#
+#   * The reader's bar row, by character cell, on the listing and on a
+#     full-screen page: `N` white at column 0 and `EXT` green at 1..3, a
+#     space, `P` white at 5 and `REV` green at 6..8, a space, `E` white at
+#     10 and `XIT` green at 11..13 — and on the page, the `1/2` label in
+#     the same green at 20..22, six cells clear of the last word. Which is
+#     the party's own bar's rule, measured on the same run at the same
+#     cells: `A` white and `rea` green, `C`/`ast`, `V`/`iew`, `E`/`ncamp`,
+#     `S`/`earch`, `L`/`ook`.
+#   * `Notes`, on the party's own bar, after the journal has been used:
+#     `N` white and `otes` green, the same as every word beside it. Before
+#     #330 it was five white cells, because `--watch 6B2B` says the byte
+#     was `01` on that bar after a load, `07` from the frame `N` was
+#     pressed, and `07` still after the give-back. It is `01` again
+#     thirteen frames after the press now, which is where the splice comes
+#     out.
+#   * One still, 9,625, catches `Notes` lit: the program's own routine
+#     highlights the command it matched *before* it returns, and this
+#     seam's point is the return. It is one dump of a screen the player is
+#     leaving, and it is the same feedback the program gives for its own
+#     commands.
+#
+about the reader's own bar, and the highlight the Notes splice hands back
+kind single
+program START.EXE
+store tests/visual/reader-store.txt
+cite-all
+both code-wheel
+# The boot #291 left: the seam on and the challenge already answered, so
+# there is no wheel screen in this script and its frames are not the
+# older legs' frames. The runner carries the flag as of this change, and
+# this is the first leg to ask for it; #293 owes every leg before it the
+# same re-drive.
+code-wheel-answered
+# No `document` line, and that is #290 rather than an omission: the
+# code-wheel bypass was gated on a PDF of the wheel (#115) and no seam in
+# this build is gated now. `camp-fix-exit.leg` is the same shape.
+seam journal
+until 300000000
+every 25
+
+# Slot A, the log, a page of the entry the log's cursor is on, back to
+# the log by the bar's own `EXIT`, and out by it again. A screen this
+# seam draws is painted over successive arrivals and is slow to appear —
+# about 230 frames for a twenty-row page (#305) — so every range below
+# starts well clear of the key that opened it.
+key L@7550
+key A@7800
+key N@9600
+key Return@10800
+key E@12000
+key E@13200
+
+# Each screen, holding still with nothing pressed. Measured: the listing
+# is one hash from 9,725 to 10,800, the page one from 11,050 to 12,000,
+# and the listing again one from 12,100 to 13,200.
+same 9800-10775
+same 11100-11975
+same 12200-13175
+
+# The listing a page was opened from is the listing it comes back to,
+# whole: the two ranges above are the **same** hash, not merely each
+# steady.
+equal 9800 12200
+
+# And the screen the journal was opened over, back again after it —
+# every pixel, with nothing excepted. It is byte for byte the pre-`N`
+# frame from 13,425 to the end of the run (15,086 frames), which is what
+# #330's give-back of the highlight bought: `not-log-giveback.leg` and
+# `rdr-page.leg` both had to allow the bar row here.
+#
+# **And it is the line that catches the defect.** Driven once more with
+# the give-back taken out and nothing else changed, this leg reports
+# `frame 13500 is not frame 9575 again: 190 pixels differ, box
+# 9,192,311,198` — the bar row and nothing but it. The three `same`
+# ranges and the listing's own `equal` hold either way, because a
+# highlight that never moves is a screen that holds perfectly still.
+#
+# **Five legs in this directory fail today and none of them is this
+# one's doing**: `not-log-giveback`, `not-log-modal`, `not-page-back`,
+# `not-page-modal` and `rdr-page` are the longer boot's, and they fail
+# identically on the commit before this one — same frames, same pixel
+# counts, same boxes. #293 is their re-drive, and the
+# `code-wheel-answered` line above is the flag it needs.
+equal 9575 13500

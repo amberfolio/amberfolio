@@ -69,8 +69,12 @@ same 12700-13175
 same 13500-13975
 
 # And the screen before the reader took it, back again after it: every
-# pixel **except the bar row**, which is `not-log-giveback.leg`'s finding
-# rather than a convenience — the give-back injects a space to make the
-# menu-bar routine return and draw itself again, and the routine draws
-# itself with the highlight at its first command.
+# pixel **except the bar row**, which was `not-log-giveback.leg`'s finding
+# rather than a convenience — the give-back left the program's own bar
+# highlight parked on the `Notes` group this seam had spliced on.
+#
+# **That is fixed since #330** and the exception is no longer needed for
+# it; it stays until this leg is re-driven on the shorter boot, which is
+# #293's work. `tests/visual/rdr-bar.leg` asserts the same give-back with
+# nothing excepted.
 equal 10600 14400 bar

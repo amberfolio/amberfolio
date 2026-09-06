@@ -1203,13 +1203,17 @@ struct bar_shape {
 /// for byte the run without this mapping. **It is not idempotent**, and
 /// `leave_the_camp()` is arranged so that it runs once per way out.
 ///
-/// The journal's `Notes` give-back has a cousin of this symptom
-/// (`tests/visual/not-log-giveback.leg`): giving the screen back leaves
-/// the adventuring bar's highlight on its first command. That is a
-/// different mechanism — nothing there is spliced out from under the
-/// byte; the key the give-back posts to make the bar redraw is what
-/// moves it — and this mapping is not its answer, so the two should not
-/// be fixed alike.
+/// The journal's `Notes` splice has a cousin of this symptom and its own
+/// answer (#330, `seam_journal.cpp`): choosing a spliced command left the
+/// byte on a group only that seam had put on the bar, so `Notes` came
+/// back drawn white end to end. Same rule, reduced to the case that bar
+/// has — `Notes` is *appended* rather than inserted, so nothing before it
+/// is renumbered and the only value that is not the program's is the last
+/// one. What it puts back is what the routine was entered with, because
+/// on that bar the routine moves the byte only when it matches a command
+/// and `N` matches none of the program's; the camp bar cannot do that,
+/// because the letter that reaches this point *is* one of the program's
+/// commands.
 void restore_the_highlight(cpu::processor& cpu, std::uint16_t ds) {
   const bar_shape bar = read_bar_shape(cpu, ds);
   if (!bar.spliceable) {

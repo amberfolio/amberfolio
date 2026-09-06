@@ -88,6 +88,14 @@ constexpr std::uint16_t clear_region_cleans = 0x08;
 constexpr std::uint16_t screen_redraw_cleans = 0;
 constexpr std::uint16_t roster_draw_cleans = 0x04;
 
+/// The two colours the reader's own bar is painted in (#330): the game's
+/// own green for the words and its own bright for the letter each is
+/// picked by, which is what every command bar in this game wears. The
+/// string stand-in below tells the bar's line from a row of the log by
+/// the first of them.
+constexpr std::uint8_t bar_word_colour = 0x0A;
+constexpr std::uint8_t bar_key_colour = 0x0F;
+
 /// Where the stand-ins keep what they were handed: words in the data
 /// segment, above everything the fact table names.
 constexpr std::uint16_t frame_calls = 0x7000;
@@ -117,6 +125,18 @@ constexpr std::uint16_t last_column_seen = 0x702E;
 constexpr std::uint16_t last_colour_seen = 0x7030;
 constexpr std::uint16_t last_string_offset_seen = 0x7032;
 constexpr std::uint16_t last_string_segment_seen = 0x7034;
+/// And the reader's own bar, which is no longer the last string of a
+/// screen: since #330 it is four calls, the whole row in the green and
+/// then the three initials over it in the bright, so `last_*` is the `E`
+/// of `EXIT` and the line itself is the call before them. The stand-in
+/// picks it out by the one pair no other call on these screens has -
+/// column zero **and** the bar's green - because the rows are drawn at
+/// column one and the three initials in the bright.
+constexpr std::uint16_t bar_row_seen = 0x7036;
+constexpr std::uint16_t bar_column_seen = 0x7038;
+constexpr std::uint16_t bar_colour_seen = 0x703A;
+constexpr std::uint16_t bar_string_offset_seen = 0x703C;
+constexpr std::uint16_t bar_string_segment_seen = 0x703E;
 
 /// Where the test puts the things the data segment points at.
 constexpr std::uint16_t font_segment = 0x8000;
@@ -553,7 +573,12 @@ struct rig {
                                    last_column_seen,
                                    last_colour_seen,
                                    last_string_offset_seen,
-                                   last_string_segment_seen}) {
+                                   last_string_segment_seen,
+                                   bar_row_seen,
+                                   bar_column_seen,
+                                   bar_colour_seen,
+                                   bar_string_offset_seen,
+                                   bar_string_segment_seen}) {
       put_word(dgroup(), at, 0);
     }
   }
@@ -644,6 +669,17 @@ struct rig {
     emit_keep(put, 0x0A, last_colour_seen);
     emit_keep(put, 0x06, last_string_offset_seen);
     emit_keep(put, 0x08, last_string_segment_seen);
+    // The reader's own bar line: column zero and the bar's green, which
+    // no other string these screens draw is (#330).
+    emit_at(put, {0x83, 0x7E, 0x0E, 0x00});  // cmp word [bp+0x0E], 0
+    emit_at(put, {0x75, 0x24});              // jne over both tests
+    emit_at(put, {0x83, 0x7E, 0x0A, bar_word_colour});
+    emit_at(put, {0x75, 0x1E});  // jne over the five pairs below
+    emit_keep(put, 0x0C, bar_row_seen);
+    emit_keep(put, 0x0E, bar_column_seen);
+    emit_keep(put, 0x0A, bar_colour_seen);
+    emit_keep(put, 0x06, bar_string_offset_seen);
+    emit_keep(put, 0x08, bar_string_segment_seen);
     emit_at(put, {0x83, 0x3E});  // cmp word [string_calls], 0
     emit_word_at(put, string_calls);
     emit_at(put, {0x00});
@@ -2068,6 +2104,86 @@ TEST(JournalNotes, TheCommandGoesOnTheBarAndComesOffAgain) {
          " program's string";
 }
 
+/// The byte every bar in the program numbers its highlight against
+/// (M5-E1g, #304), restated here rather than shared for the same reason
+/// the two bar offsets above are.
+constexpr std::uint16_t bar_highlight = 0x6B2B;
+
+/// The group `Notes` takes on the stand-in bar: six words, and the
+/// command is appended, so it is the seventh.
+constexpr std::uint8_t notes_group = 7;
+
+TEST(JournalNotes, TheHighlightComesBackOffThisSeamsOwnCommand) {
+  // #330: the routine sets the shared highlight byte to the group of the
+  // command it matched, and the group it is sitting on is drawn white end
+  // to end — so choosing `Notes` left the byte on a group only this seam
+  // had put there, and the bar came back with `Notes` in the highlight's
+  // white while every word beside it wore its initial in white and its
+  // tail in green.
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  r.put_byte(r.dgroup(), bar_highlight, 3);
+
+  r.stand_in_adventure(area_before);
+  r.box->step();
+  // The program's own routine, matching the spliced command.
+  r.put_byte(r.dgroup(), bar_highlight, notes_group);
+  r.stand_in_adventure(area_after, 'N');
+  r.put_byte(r.dgroup(), 0x0600 - 0x04, 0);
+  r.box->step();
+
+  EXPECT_EQ(r.byte_at(r.dgroup(), bar_highlight), 3)
+      << "back where the routine was entered, which is what a run with the "
+         "seam off leaves: `N` matches none of the program's own commands, "
+         "so nothing moves the byte";
+}
+
+TEST(JournalNotes, AnotherCommandsHighlightIsLeftAlone) {
+  // The program's own letters are the program's own business: the byte is
+  // written only where this seam's command was the one chosen.
+  rig r;
+  r.attach_host();
+  r.enable();
+  r.put_bar(bar_area, area_words);
+  r.put_byte(r.dgroup(), bar_highlight, 1);
+
+  r.stand_in_adventure(area_before);
+  r.box->step();
+  r.put_byte(r.dgroup(), bar_highlight, 4);
+  r.stand_in_adventure(area_after, 'D');
+  r.put_byte(r.dgroup(), 0x0600 - 0x04, 0);
+  r.box->step();
+
+  EXPECT_EQ(r.byte_at(r.dgroup(), bar_highlight), 4)
+      << "the program chose one of its own, and where it left the cursor is "
+         "where the cursor belongs";
+}
+
+TEST(JournalNotes, ABarTheSpliceRefusedKeepsItsHighlight) {
+  // Only where the bar was spliced (#304's rule, and this one's): a bar
+  // with no room for the command never carried it, so its highlight is
+  // never this seam's to move — whatever letter came back.
+  rig r;
+  r.attach_host();
+  r.enable();
+  const std::string full(36, 'A');
+  r.put_bar(bar_area, full);
+  r.put_byte(r.dgroup(), bar_highlight, 2);
+
+  r.stand_in_adventure(area_before);
+  r.box->step();
+  ASSERT_EQ(r.bar_at(bar_area), full) << "36 + 6 is over the forty it has";
+  r.put_byte(r.dgroup(), bar_highlight, notes_group);
+  r.stand_in_adventure(area_after, 'N');
+  r.put_byte(r.dgroup(), 0x0600 - 0x04, 0);
+  r.box->step();
+
+  EXPECT_EQ(r.byte_at(r.dgroup(), bar_highlight), notes_group)
+      << "nothing was spliced, so nothing is put back";
+}
+
 TEST(JournalNotes, BothViewModesHaveIt) {
   rig r;
   r.attach_host();
@@ -2735,11 +2851,11 @@ constexpr std::uint16_t screen_footer_row = 0x18;
 constexpr int screen_columns = 38;
 constexpr int screen_rows = 20;
 
-/// The colours a page draws in: the panel's own three, so the two sizes
-/// of one page look like one thing.
+/// The colours a page draws in: the panel's own two, so the two sizes of
+/// one page look like one thing. The bottom row has none of its own — it
+/// is the listing's bar, in `bar_word_colour` and `bar_key_colour` (#330).
 constexpr std::uint16_t page_title_colour = 14;
 constexpr std::uint16_t page_body_colour = 10;
-constexpr std::uint16_t page_footer_colour = 0x0F;
 
 /// A rig standing on the adventuring screen with the party's own bar
 /// live, a log with one line in it, and the program's drawing routines
@@ -2873,14 +2989,14 @@ TEST(JournalScreenPage, TheBodyIsTheProgramsOwnLettering) {
 
   // And the way out, on the screen's own last row, spanning it — because
   // clearing the command bar it covers is the footer's second job.
-  EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row);
-  EXPECT_EQ(r.word_of(last_column_seen), 0u);
-  EXPECT_EQ(r.word_of(last_colour_seen), page_footer_colour)
-      << "one bar, in the listing's own bright: it is a bar on the screen's "
-         "last row now and not a footer of small print (#317)";
+  EXPECT_EQ(r.word_of(bar_row_seen), screen_footer_row);
+  EXPECT_EQ(r.word_of(bar_column_seen), 0u);
+  EXPECT_EQ(r.word_of(bar_colour_seen), bar_word_colour)
+      << "the words in the game's own green, with the initials over them in "
+         "the bright: the pair every bar in this game wears (#330)";
   const std::string footer = r.pascal_at(
-      static_cast<std::uint16_t>(r.word_of(last_string_segment_seen)),
-      static_cast<std::uint16_t>(r.word_of(last_string_offset_seen)));
+      static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
   EXPECT_EQ(footer.size(), 40u) << "padded across the bar it covers";
   EXPECT_NE(footer.find("EXIT"), std::string::npos)
       << "a full screen covers the bar, so it has to name a way out (#317)";
@@ -2888,6 +3004,67 @@ TEST(JournalScreenPage, TheBodyIsTheProgramsOwnLettering) {
   EXPECT_NE(footer.find("PREV"), std::string::npos);
   EXPECT_EQ(footer.find("F1"), std::string::npos)
       << "and it names words rather than keys, like every bar in this game";
+
+  // The last string of the screen is the last of the three initials, on
+  // the bar's own row, in the bright, over the `E` of `EXIT`.
+  EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row);
+  EXPECT_EQ(r.word_of(last_column_seen), 10u);
+  EXPECT_EQ(r.word_of(last_colour_seen), bar_key_colour);
+  EXPECT_EQ(r.pascal_at(
+                static_cast<std::uint16_t>(r.word_of(last_string_segment_seen)),
+                static_cast<std::uint16_t>(r.word_of(last_string_offset_seen))),
+            "E");
+}
+
+TEST(JournalScreenPage, TheBarIsFlushLeftAndSpacedOne) {
+  // #329: it read ` NEXT   PREV   EXIT`, indented one and spaced three,
+  // where every bar this program draws starts at column zero and puts one
+  // space between its commands — so it did not line up with the bar it
+  // covers and did not read as a bar this game drew.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+
+  const std::string bar = r.pascal_at(
+      static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
+  EXPECT_EQ(bar.substr(0, 14), "NEXT PREV EXIT")
+      << "flush from column zero, one space between (#329)";
+  EXPECT_EQ(bar.size(), 40u)
+      << "and still the whole row, because the padding is the clear of the "
+         "adventuring bar underneath";
+}
+
+TEST(JournalScreenPage, TheBarIsFourCallsAndTwoColours) {
+  // #330: one call is one colour, so the line goes down in the green and
+  // the three initials go over it in the bright — at the columns the
+  // words themselves put them at.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  r.host.text = "One short line.";
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  const unsigned before = r.word_of(string_calls);
+  r.poll();
+  r.run_the_calls();
+
+  EXPECT_EQ(r.word_of(string_calls) - before, 5u)
+      << "one line of the entry, then the bar's four calls";
+  EXPECT_EQ(r.word_of(bar_colour_seen), bar_word_colour) << "the green line";
+  EXPECT_EQ(r.word_of(last_colour_seen), bar_key_colour)
+      << "and the initials over it";
 }
 
 /// Paint a full-screen shape to the end of it, however many passes that
@@ -2916,8 +3093,8 @@ TEST(JournalScreenPage, TheListingFillsTheBoxItIsDrawnIn) {
   until_it_settles(r);
   ASSERT_TRUE(r.reader().on_screen()) << "the listing settles";
 
-  EXPECT_EQ(r.word_of(string_calls), 21u)
-      << "twenty rows of the log and the bar under them";
+  EXPECT_EQ(r.word_of(string_calls), 24u)
+      << "twenty rows of the log and the bar's four calls under them (#330)";
   EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row)
       << "the bar last, on the screen's own last row";
 }
@@ -2937,14 +3114,13 @@ TEST(JournalScreenPage, TheListingCarriesTheSameBar) {
   until_it_settles(r);
   ASSERT_TRUE(r.reader().on_screen());
 
-  EXPECT_EQ(r.word_of(last_column_seen), 0u);
+  EXPECT_EQ(r.word_of(bar_column_seen), 0u);
   const std::string bar = r.pascal_at(
-      static_cast<std::uint16_t>(r.word_of(last_string_segment_seen)),
-      static_cast<std::uint16_t>(r.word_of(last_string_offset_seen)));
+      static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
   EXPECT_EQ(bar.size(), 40u) << "padded across the bar it covers";
-  EXPECT_NE(bar.find("NEXT"), std::string::npos);
-  EXPECT_NE(bar.find("PREV"), std::string::npos);
-  EXPECT_NE(bar.find("EXIT"), std::string::npos);
+  EXPECT_EQ(bar.substr(0, 14), "NEXT PREV EXIT")
+      << "flush left and spaced one, like the program's own bars (#329)";
   EXPECT_NE(bar.find("1/2"), std::string::npos)
       << "and which screenful of the log this is";
   EXPECT_EQ(bar.find("F1"), std::string::npos)
