@@ -1353,6 +1353,217 @@ TEST(JournalReader, AWordLongerThanThePanelIsBrokenRatherThanDropped) {
             as_glyphs(std::string(8, 'q')));
 }
 
+TEST(JournalReader, TheScansOwnLineBreaksAreNotThePages) {
+  // #316. An OCR engine emits one newline per *printed* line, and a
+  // printed column is wider than this panel, so honouring a single
+  // newline drew a third of a row and started again. Every line below is
+  // short enough that the old rule would have given it a row of its own;
+  // what the panel shows is two full rows.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds.number = 1;
+  r.host.text =
+      "aaaa bbbb cccc dddd\n"
+      "ee ff gggg hhhh\n"
+      "iiii\n";
+
+  r.program_draws("entry 1");
+  r.adventuring();
+  r.poll();
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAA BBBB CCCC DDDD EE"));
+  EXPECT_EQ(r.row_text(reader_body_y + glyph_height),
+            as_glyphs("FF GGGG HHHH IIII"));
+  EXPECT_EQ(r.row_text(reader_body_y + (2 * glyph_height)), "")
+      << "three of the scan's lines, and two of the panel's";
+  EXPECT_EQ(r.reader().page_count(), 1u);
+}
+
+TEST(JournalReader, AScanThatEndsItsLinesWithCarriageReturnsToo) {
+  // A store may be a file somebody edited on a machine whose lines end
+  // \r\n, and the carriage return is already a space by the time the
+  // reader sees it (journal_drawable). The rule has to survive the space
+  // that leaves in front of the newline.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds.number = 1;
+  r.host.text = "aaaa bbbb\r\ncccc dddd";
+
+  r.program_draws("entry 1");
+  r.adventuring();
+  r.poll();
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAA BBBB CCCC DDDD"));
+}
+
+TEST(JournalReader, AnEntryThatIsOneLineIsStillOneLine) {
+  // The other end of the same rule: no newline anywhere, and nothing to
+  // rejoin. It is the shape a corrected entry is most likely to be in.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds.number = 1;
+  r.host.text = "aaaa bbbb cccc";
+
+  r.program_draws("entry 1");
+  r.adventuring();
+  r.poll();
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAA BBBB CCCC"));
+  EXPECT_EQ(r.row_text(reader_body_y + glyph_height), "");
+  EXPECT_EQ(r.reader().page_count(), 1u);
+}
+
+TEST(JournalReader, AWordHyphenatedAcrossTheScansLinesIsOneWord) {
+  // The half of #316 a reflow alone does not fix: a word the typesetter
+  // broke across two printed lines was re-hyphenated in the middle of a
+  // panel row that had room for the whole of it.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds.number = 1;
+  r.host.text =
+      "the story went with-\n"
+      "in bow range of us";
+
+  r.program_draws("entry 1");
+  r.adventuring();
+  r.poll();
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("THE STORY WENT WITHIN"));
+  EXPECT_EQ(r.row_text(reader_body_y + glyph_height),
+            as_glyphs("BOW RANGE OF US"));
+}
+
+TEST(JournalReader, AHyphenThatDidNotEndAScansLineIsLeftWhereItIs) {
+  // The join is a guess, so it is made only where a typesetter's break
+  // hyphen can be: at the end of a printed line, with a letter on each
+  // side of it. A hyphen inside a line is part of its word, and a dash
+  // standing alone at the end of one is a dash - joining that would eat
+  // the word after it.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds.number = 1;
+  r.host.text =
+      "a well-armed man -\n"
+      "and a dash";
+
+  r.program_draws("entry 1");
+  r.adventuring();
+  r.poll();
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("A WELL-ARMED MAN - AND"));
+  EXPECT_EQ(r.row_text(reader_body_y + glyph_height), as_glyphs("A DASH"));
+}
+
+TEST(JournalReader, ABlankLineIsTheOneBreakThePageKeeps) {
+  // Two or more newlines in a row is a paragraph, which is the shape an
+  // engine's output really does carry - and however many blank lines the
+  // scan left, the page spends one row on it.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds.number = 1;
+  r.host.text =
+      "one two\n"
+      "\n"
+      "three four\n"
+      "\n"
+      "\n"
+      "\n"
+      "five";
+
+  r.program_draws("entry 1");
+  r.adventuring();
+  r.poll();
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("ONE TWO"));
+  EXPECT_EQ(r.row_text(reader_body_y + glyph_height), "");
+  EXPECT_EQ(r.row_text(reader_body_y + (2 * glyph_height)),
+            as_glyphs("THREE FOUR"));
+  EXPECT_EQ(r.row_text(reader_body_y + (3 * glyph_height)), "")
+      << "three blank lines are one break, not three";
+  EXPECT_EQ(r.row_text(reader_body_y + (4 * glyph_height)), as_glyphs("FIVE"));
+  EXPECT_EQ(r.row_text(reader_body_y + (5 * glyph_height)), "");
+}
+
+TEST(JournalReader, AListKeepsItsShapeWhenItsItemsAreParagraphs) {
+  // What the rule costs, said out loud. The journal has entries that are
+  // genuinely lists, and a list whose items are one printed line each now
+  // runs together into prose - there is nothing in the bytes that tells
+  // that list from a paragraph an engine broke into lines, which is the
+  // whole reason a single newline had to become a space.
+  //
+  // The way back is the correction field (docs/journal.md §6): a blank
+  // line between the items is a break this reader keeps, and it is a
+  // thing a person can type. So the shape is recoverable rather than
+  // gone, and this pins the half that works.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds.number = 1;
+  r.host.text =
+      "first a gate\n"
+      "\n"
+      "second a tower\n"
+      "\n"
+      "third a well";
+
+  r.program_draws("entry 1");
+  r.adventuring();
+  r.poll();
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("FIRST A GATE"));
+  EXPECT_EQ(r.row_text(reader_body_y + glyph_height), "");
+  EXPECT_EQ(r.row_text(reader_body_y + (2 * glyph_height)),
+            as_glyphs("SECOND A TOWER"));
+  EXPECT_EQ(r.row_text(reader_body_y + (3 * glyph_height)), "");
+  EXPECT_EQ(r.row_text(reader_body_y + (4 * glyph_height)),
+            as_glyphs("THIRD A WELL"));
+}
+
+TEST(JournalReader, APageNeverOpensOnABlankRow) {
+  // The break between two pages is already a break, so a paragraph that
+  // falls on one is spent rather than drawn: a row of the player's own
+  // text is worth more than a row saying a page turned.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds.number = 1;
+  // Twelve rows of two words - exactly a page - and then a paragraph
+  // break with more after it.
+  std::string text;
+  for (int row = 0; row < 12; ++row) {
+    text += "aaaaaaaaa bbbbbbbbb\n";
+  }
+  text += "\ncccccccc\n";
+  r.host.text = text;
+
+  r.program_draws("entry 1");
+  r.adventuring();
+  r.poll();
+  ASSERT_EQ(r.reader().page_count(), 2u);
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAAAAAAA BBBBBBBBB"));
+
+  r.type(key_f1);
+  r.poll();
+  ASSERT_EQ(r.reader().page(), 1u);
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("CCCCCCCC"))
+      << "the second page opens on the text, not on the break";
+}
+
 TEST(JournalReader, TheKeyTurnsThePagesAndThenPutsItAway) {
   rig r;
   r.attach_video();

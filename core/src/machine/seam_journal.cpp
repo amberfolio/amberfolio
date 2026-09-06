@@ -699,10 +699,48 @@ constexpr int reader_max_body_rows = screen_page.rows;
 static_assert(reader_max_body_rows >= panel_page.rows,
               "a laid-out page has to hold the taller of the two shapes");
 
+/// The widest a laid-out row can be, which is the wider of the two shapes.
+constexpr std::size_t page_line_max =
+    static_cast<std::size_t>(screen_page.columns);
+
+/// One laid-out row.
+///
+/// **Owned, rather than a view into the entry's own text** — which is
+/// what it was until the reflow below (#316). A row is now assembled out
+/// of pieces that are not side by side in the store: two of the scan's
+/// own lines joined by a space, and the two halves of a word the
+/// typesetter hyphenated across a line break joined by nothing at all.
+/// Neither of those is a substring of anything, so neither can be a view
+/// of one.
+///
+/// It converts to a `std::string_view` implicitly because every consumer
+/// of a row wants one and not one of them cares where the bytes live.
+struct page_line {
+  std::array<char, page_line_max> ch{};
+  unsigned length{};
+
+  [[nodiscard]] std::size_t size() const noexcept { return length; }
+  [[nodiscard]] bool empty() const noexcept { return length == 0; }
+  void clear() noexcept { length = 0; }
+  void add(char one) noexcept {
+    if (length < ch.size()) {
+      ch[length++] = one;
+    }
+  }
+  void add(std::string_view more) noexcept {
+    for (const char one : more) {
+      add(one);
+    }
+  }
+  [[nodiscard]] operator std::string_view() const noexcept {
+    return {ch.data(), length};
+  }
+};
+
 /// One page of wrapped text: up to the shape's rows of lines, where the
 /// text after them begins, and whether there is any.
 struct page_layout {
-  std::array<std::string_view, reader_max_body_rows> line{};
+  std::array<page_line, reader_max_body_rows> line{};
   unsigned lines{};
   std::size_t next{};
   bool more{false};
@@ -712,62 +750,238 @@ struct page_layout {
   return ch == ' ' || ch == '\t' || ch == '\r';
 }
 
+/// The most characters one word of the reflowed text runs to.
+///
+/// Twice the widest row, and both bounds on it are real. It has to be at
+/// least a row wide or a word could never fill one; and it has to be
+/// small enough that a word always fits on a page that *starts* empty,
+/// because a word that can never be placed is a walk that stands still.
+/// Twice thirty-eight is four rows of the panel's twenty-two and two of
+/// the screen's thirty-eight, against pages twelve and twenty rows deep.
+/// A run longer than this is cut here and what is left of it is the next
+/// word — which is what the wrap already did at the right-hand edge.
+constexpr std::size_t page_word_max = 2 * page_line_max;
+static_assert(page_word_max <= static_cast<std::size_t>(panel_page.columns) *
+                                   static_cast<std::size_t>(panel_page.rows),
+              "a word has to fit on an empty page of the smaller shape");
+
+/// What the stored text reads as once its line breaks are read the way an
+/// OCR engine meant them (#316).
+enum class token_kind : std::uint8_t {
+  end,        ///< nothing but whitespace between here and the end
+  paragraph,  ///< a blank line, which is the one break the wrap honours
+  word,       ///< a run of characters, perhaps rejoined across a hyphen
+};
+
+struct token {
+  token_kind kind{token_kind::end};
+  std::size_t begin{};  ///< where this token's first character is
+  std::size_t next{};   ///< where the scan for the token after it begins
+  unsigned length{};    ///< how much of `into` a word filled
+};
+
+/// Whether a character is one a typesetter's break hyphen may sit between.
+///
+/// Checked on **both** sides before two fragments are joined, because the
+/// join is a guess and this is the cheap half of narrowing it. What it
+/// cannot tell apart is `WITH-` (a word broken across a column) from
+/// `WELL-` (a compound that happened to break there); nothing short of a
+/// dictionary can. What it does rule out is the dash on a line of its
+/// own, and the `-` an engine reads off a rule or a fold — either of
+/// which would otherwise swallow the word after it.
+[[nodiscard]] constexpr bool hyphen_may_join(char ch) noexcept {
+  return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+         (ch >= '0' && ch <= '9');
+}
+
+/// The next token at or after `from`, with a word's characters written
+/// into `into`.
+[[nodiscard]] token next_token(std::string_view text, std::size_t from,
+                               std::span<char> into) noexcept {
+  token out;
+  out.begin = from;
+
+  // The whitespace first, counting the line breaks in it: **one** is the
+  // end of a printed line and reads as a space, **two or more** is a
+  // blank line and reads as a paragraph break.
+  std::size_t p = from;
+  unsigned breaks = 0;
+  while (p < text.size() && (is_space(text[p]) || text[p] == '\n')) {
+    breaks += static_cast<unsigned>(text[p] == '\n');
+    ++p;
+  }
+  if (p >= text.size()) {
+    out.begin = text.size();
+    out.next = text.size();
+    return out;
+  }
+  if (breaks >= 2) {
+    out.kind = token_kind::paragraph;
+    out.next = p;
+    return out;
+  }
+
+  out.kind = token_kind::word;
+  out.begin = p;
+  std::size_t len = 0;
+  for (;;) {
+    while (p < text.size() && !is_space(text[p]) && text[p] != '\n' &&
+           len < into.size()) {
+      into[len++] = text[p++];
+    }
+    out.next = p;
+    if (len >= into.size()) {
+      break;  // cut at the buffer; the rest of the run is the next word
+    }
+
+    // Hyphenated across the scan's own line break? Only when the run ends
+    // on a hyphen with a letter before it, exactly one newline follows,
+    // and a letter follows that.
+    if (len < 2 || into[len - 1] != '-' || !hyphen_may_join(into[len - 2])) {
+      break;
+    }
+    std::size_t look = p;
+    unsigned over = 0;
+    while (look < text.size() && (is_space(text[look]) || text[look] == '\n')) {
+      over += static_cast<unsigned>(text[look] == '\n');
+      ++look;
+    }
+    if (over != 1 || look >= text.size() || !hyphen_may_join(text[look])) {
+      break;
+    }
+    --len;  // the hyphen belonged to the printed column, not to the word
+    p = look;
+  }
+  out.length = static_cast<unsigned>(len);
+  return out;
+}
+
 /// Greedy word wrap from `start`, at most one page of it.
 ///
-/// Breaks at spaces; a word longer than the panel is wide is broken where
-/// it runs out of columns, because a word that cannot fit has to go
-/// somewhere and dropping it would be losing the player's own text. A
-/// newline ends a line, and a second one in a row leaves a blank — which
-/// is what a paragraph break in an OCR engine's output looks like.
+/// **The scan's line breaks are not the page's** (#316), and the comment
+/// that used to stand here said the opposite: it read a single newline as
+/// the end of a line. An OCR engine emits one newline per *printed* line,
+/// so honouring one drew the sixty-odd character column of a player's own
+/// journal into a page twenty-two or thirty-eight wide and threw a third
+/// of every row away — and re-hyphenated `WITH-` / `IN` in the middle of
+/// a row that had room for the whole word.
+///
+/// So the rule is the one an engine's output actually carries: a single
+/// newline is a **space**; a blank line — two or more newlines in a row —
+/// is a **paragraph break** and gets one blank row, however many blank
+/// lines there were; and a line ending in a hyphen **joins** to the word
+/// after it with the hyphen dropped.
+///
+/// The de-hyphenation is a guess, and it is made *here* rather than at
+/// ingestion for that reason: the store keeps what the engine read, so a
+/// player proof-reading their own transcription still sees the lines the
+/// engine saw, a correction is written against those lines, and a better
+/// rule later needs no re-ingestion. Both shapes get it at once, too,
+/// because both come through this function. `next_token()` holds the
+/// guess and `hyphen_may_join()` is what narrows it.
+///
+/// What has not changed: it breaks at spaces, and a word longer than the
+/// shape is wide is broken where it runs out of columns, because a word
+/// that cannot fit has to go somewhere and dropping it would be losing
+/// the player's own text.
 [[nodiscard]] page_layout lay_out(std::string_view text, std::size_t start,
                                   page_shape shape) {
   page_layout page;
   const auto rows = static_cast<unsigned>(shape.rows);
-  std::size_t p = std::min(start, text.size());
-  while (page.lines < rows && p < text.size()) {
-    while (p < text.size() && is_space(text[p])) {
-      ++p;
-    }
-    if (p >= text.size()) {
+  const auto columns = static_cast<std::size_t>(shape.columns);
+  std::array<char, page_word_max> word{};
+
+  // Three positions, and the distance between them is what keeps a page
+  // resumable now that a row is assembled rather than pointed at: `scan`
+  // is where the reading is, `current` is a row being filled that no page
+  // holds yet, and `committed` is the end of the last word that reached a
+  // row — the only offset the *next* page may be started from.
+  std::size_t scan = std::min(start, text.size());
+  std::size_t committed = scan;
+  std::size_t current_end = scan;
+  page_line current;
+
+  const auto flush = [&]() {
+    page.line[page.lines++] = current;
+    committed = current_end;
+    current.clear();
+  };
+
+  while (page.lines < rows) {
+    const token piece = next_token(text, scan, word);
+    if (piece.kind == token_kind::end) {
       break;
     }
-    if (text[p] == '\n') {
-      ++p;
-      page.line[page.lines++] = std::string_view{};
+
+    if (piece.kind == token_kind::paragraph) {
+      if (current.empty() && page.lines == 0) {
+        // A page never opens on a blank row: the break between two pages
+        // is already a break, and a row spent saying so is a row of the
+        // player's own text not shown.
+        scan = piece.next;
+        committed = piece.next;
+        current_end = piece.next;
+        continue;
+      }
+      if (!current.empty()) {
+        flush();
+      }
+      if (page.lines >= rows) {
+        break;
+      }
+      page.line[page.lines++] = page_line{};
+      committed = piece.next;
+      current_end = piece.next;
+      scan = piece.next;
       continue;
     }
 
-    std::size_t q = p;
-    std::size_t last_space = text.size();
-    int taken = 0;
-    while (q < text.size() && text[q] != '\n' && taken < shape.columns) {
-      if (is_space(text[q])) {
-        last_space = q;
+    const std::string_view one{word.data(), piece.length};
+    if (one.size() > columns) {
+      // Longer than a row. It takes rows of its own, and it takes all of
+      // them on one page: the offset a page resumes from can name the
+      // start of a word but never the middle of one this file assembled
+      // rather than found.
+      if (!current.empty()) {
+        flush();
       }
-      ++q;
-      ++taken;
+      const auto needs =
+          static_cast<unsigned>((one.size() + columns - 1) / columns);
+      if (page.lines + needs > rows) {
+        break;  // it goes on the next page, which starts empty and holds it
+      }
+      for (std::size_t at = 0; at < one.size(); at += columns) {
+        page_line row;
+        row.add(one.substr(at, columns));
+        page.line[page.lines++] = row;
+      }
+      committed = piece.next;
+      current_end = piece.next;
+      scan = piece.next;
+      continue;
     }
 
-    std::size_t end = q;
-    std::size_t next = q;
-    if (q < text.size() && text[q] != '\n' && taken == shape.columns &&
-        !is_space(text[q])) {
-      // Mid-word at the right-hand edge: back up to the last space if the
-      // line has one, and break the word where it stands if it has not.
-      if (last_space != text.size() && last_space > p) {
-        end = last_space;
-        next = last_space + 1;
+    if (current.empty()) {
+      current.add(one);
+    } else if (current.size() + 1 + one.size() <= columns) {
+      current.add(' ');
+      current.add(one);
+    } else {
+      flush();
+      if (page.lines >= rows) {
+        break;  // the word is unplaced, and `committed` is behind it
       }
-    } else if (q < text.size() && text[q] == '\n') {
-      next = q + 1;
+      current.add(one);
     }
-    while (end > p && is_space(text[end - 1])) {
-      --end;
-    }
-    page.line[page.lines++] = text.substr(p, end - p);
-    p = next;
+    current_end = piece.next;
+    scan = piece.next;
   }
 
+  if (!current.empty() && page.lines < rows) {
+    flush();
+  }
+
+  std::size_t p = committed;
   while (p < text.size() && (is_space(text[p]) || text[p] == '\n')) {
     ++p;
   }
