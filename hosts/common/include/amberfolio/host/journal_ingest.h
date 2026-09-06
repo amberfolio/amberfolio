@@ -70,6 +70,7 @@
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
 #include "amberfolio/host/journal_ocr.h"
+#include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/sha256.h"
 
@@ -104,6 +105,20 @@ struct journal_ingest_report {
   std::uint32_t extracted{0};
   /// How many of those the engine read text out of.
   std::uint32_t recognized{0};
+  /// How many pictures the fact table says this edition has, and how
+  /// many were reduced (#328).
+  ///
+  /// **Two numbers and not one**, because the gap between them is the
+  /// whole of what a player needs told: a build with no decoder for this
+  /// edition's pages produces `0 of 14`, which is a true sentence about
+  /// this build, where a single count of zero reads as a journal with no
+  /// drawings in it.
+  std::uint32_t art{0};
+  std::uint32_t pictures{0};
+  /// The first picture that could not be made, and why — `none` when
+  /// every one asked for was.
+  machine::journal_citation first_art_failure{};
+  journal_trouble first_art_trouble{journal_trouble::none};
   /// The first entry that failed, and how — zero and `none` if none did.
   machine::journal_citation first_failure{};
   journal_trouble first_trouble{journal_trouble::none};
@@ -194,6 +209,30 @@ class journal_ingester {
   [[nodiscard]] journal_ingest_report run(journal_ocr* engine,
                                           journal_store& into);
 
+  /// Who turns this edition's pages into samples, for an edition this
+  /// build does not decode itself (`journal_picture.h`).
+  ///
+  /// Null by default and null in most builds, which is the honest state
+  /// rather than a gap: #212 refused to put a JPEG decoder in this
+  /// project, and a picture — unlike a page of text — has no OCR engine
+  /// to hand the decoding to. A host that already links one for another
+  /// reason passes it here and gets pictures; one that does not gets a
+  /// count of zero and a sentence.
+  ///
+  /// Borrowed, and must outlive this object.
+  void set_page_decoder(journal_page_decoder* decoder) noexcept {
+    decoder_ = decoder;
+  }
+  [[nodiscard]] journal_page_decoder* page_decoder() const noexcept {
+    return decoder_;
+  }
+
+  /// Every picture of entry `index`, reduced (#328). What `run()` calls,
+  /// exposed because a host driving the loop by hand — the browser's,
+  /// which recognizes in JavaScript — needs the same step.
+  [[nodiscard]] journal_trouble reduce_art(std::size_t index,
+                                           std::vector<journal_picture>& out);
+
   /// Point `into` at this document's edition, clearing it if it was a
   /// store of a different one. `run()` does this itself; a host driving
   /// the loop by hand calls it before its first `extract()`.
@@ -203,6 +242,7 @@ class journal_ingester {
   std::span<const journal_edition> table_;
   std::span<const std::uint8_t> document_;
   const journal_edition* edition_{nullptr};
+  journal_page_decoder* decoder_{nullptr};
   sha256_digest fingerprint_{};
   journal_scan scan_;
 };

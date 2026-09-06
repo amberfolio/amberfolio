@@ -340,12 +340,29 @@ and **linked on neither**: the desktop runs your own installed one as a
 program, the page loads a pinned `tesseract.js` from its own origin and
 never from a CDN.
 
+**And the entries that are drawings** (**#328**). Several of them are
+maps, mazes and diagrams rather than prose, and an OCR engine reads what
+words are on such a page, which is the heading and a one-line caption —
+so the reader showed two lines and nineteen empty rows. Those fourteen pictures are
+measured now, and reduced at ingestion to four tones in the box the
+reader draws in, and kept beside the text in the same file.
+
 **What it is not yet.** The edition table has one row. And no test has
 ever run a real engine over a real page — CI proves the pipeline on all
 four targets against a synthetic PDF this project generates, with a
 fixture engine. Both live on **#236**, with the browser half of it: the
 page's own ingestion has never been driven by a person in a browser, only
 by a node harness.
+
+The pictures are further behind than the text, and **#328** is open for
+the rest of it. **Nothing draws one yet**, so a picture entry is still a
+caption and a blank page. A picture also needs somebody to decode the
+page it is printed on, which this project deliberately cannot do
+(`docs/journal.md` §4a) — so a desktop build with the engine linked in
+makes them out of Leptonica, a default desktop build makes none and says
+`pictures=0/14`, and the browser makes none yet. And nobody has looked
+at one of them on a display, which is the finding this will live or die
+by: `docs/journal.md` §11.6.
 
 ### The reader: the entry, on the game's own screen
 

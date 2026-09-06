@@ -6,7 +6,8 @@ item 2.*
 
 This document is the half underneath the reader: locating each entry's
 scan inside the player's own PDF, decoding it, reading it once with an OCR
-engine, and keeping the result on the player's machine. **The reader
+engine, reducing the entries that are **drawings** rather than prose
+(§11), and keeping both on the player's machine. **The reader
 itself is M5-E4 (#175)** — a seam, `docs/seams.md` §10 — and §9 below is
 where the two meet.
 
@@ -25,6 +26,7 @@ own machine, and stays there.
 | The document gate | `core/.../machine/document.h` | Fingerprints a document the player holds, and gates a seam on it (#171). A gate is over bytes; it never looks inside. |
 | The fact table | `hosts/common/.../journal_facts.h` | Per edition, per entry, **per piece of it**: the page, the stream's offset and length, the image's shape, the rectangle that is that piece (§3). |
 | The extractor | `hosts/common/.../journal_extract.h` | Follows an offset, inflates the stream, undoes the predictor, expands samples to gray, crops the region. |
+| The reducer | `hosts/common/.../journal_picture.h` | The entries that are **pictures**: a printed drawing reduced, once, to the four tones and the box the reader draws in (§11). |
 | The engine | `hosts/common/.../journal_ocr.h` | One virtual call. The desktop runs the player's own Tesseract; the browser drives tesseract.js. |
 | The store | `hosts/common/.../journal_store.h` | Section and number to text, with what the engine read and what a person corrected kept apart. |
 | The reader | `core/.../machine/seam_journal.cpp` | The seam that shows an entry in the game (§9). The only thing any of the above is *for*. |
@@ -75,7 +77,8 @@ fact in this tree was gathered against. Its fingerprint is
 `67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c`, which
 is a fact about a file and is all that may be written down about it. Its
 pages are `/DCTDecode` (§4a) and it has **fifty-eight entries in
-seventy-eight pieces**.
+seventy-eight pieces** — and **fourteen pictures on twelve of those
+entries** (§11), which are a second kind of rectangle on the same scans.
 
 An edition is data in two places:
 
@@ -588,20 +591,30 @@ is what pays for the upscale (11 readings at 4.1 seconds against 120 at
 One file of UTF-8 lines, each text length-prefixed:
 
 ```
-amberfolio-journal 2
+amberfolio-journal 4
 edition <64 hex>
 engine tesseract 5.5.1
 scanned entry 12 431
 <431 bytes><newline>
 corrected entry 12 438
 <438 bytes><newline>
+picture entry 4 0 193 160 10404
+<10404 bytes of base64><newline>
+seen entry 12 8 29 22 19 0
 ```
 
 The word after the keyword is the section (§3): a number alone names
 three different texts, and `scanned tale 4` says what `scanned 1 4` does
 not — which matters here, because this file is meant to be opened and
 edited by a person. A **version 1** store had no such word, and is read
-as a store of journal entries and written back as version 2.
+as a store of journal entries and written back as the current version.
+
+The `picture` records are §11 and are the one part of this file nobody
+is expected to read: a picture's own numbers — which of the entry's
+pictures it is, and its width and height in screen pixels — are decimal
+beside the section and the number, and its levels are base64, because
+this is a text file and a run of arbitrary bytes in one would make it a
+binary file that happens to begin with words.
 
 Two texts per item, and only one of them is ever overwritten. Ingestion
 replaces `scanned` and never touches `corrected`; a reader shows the
@@ -763,6 +776,10 @@ whether the inverted loop a browser needs actually works.
   against word boxes the tests write — in the pinned engine's own shape on
   the page, since #306, because a shape the test invents is a test of the
   test.
+- **The entries that are pictures are reduced and not yet drawn** (§11,
+  #328). What CI proves is the arithmetic, over the probe; what nobody
+  has done is look at one of them on a display, and what no build does
+  yet is put one on the game's screen. §11.6 is the list.
 - **How *well* it reads is measured now, and CI still cannot measure it**
   (§5a, #315). What runs everywhere is the harness — over a synthetic
   document, with a fixture engine that misreads it by an amount this
@@ -1057,3 +1074,383 @@ what this exists for and what no runner can do. It belongs on the list
 §7 keeps: a real engine, a real page, a real display. And on the dev page
 specifically: the button has been driven under node and never pressed in
 a browser, which is #236's standing state for the whole panel.
+
+## 11. The entries that are pictures (#328)
+
+**What was wrong.** Several of a journal's entries are drawings rather
+than prose, and an OCR engine reads what words are on such a page —
+which is the entry's heading and its one-line caption. So the reader
+showed two lines and then nineteen empty rows, which is worse than the
+panel it replaced (M5-E4d, #305), because the blankness now fills the
+display. That is not an engine failing: it read every word that was
+there, and the rest of the page is not words. (What those two lines say
+is the player's document and is not written down here, on this file's
+own rule; #328 quotes them.)
+
+Nothing in this pipeline carried a pixel before this, on purpose, so
+four things had to be decided before a line was written. Each is below
+with what it was measured against, because a decision nobody can check
+is a decision that gets made again next year.
+
+### 11.1 Where the picture is
+
+**Its own rectangle, on its own field.** `journal_entry_fact::art` is a
+span of `journal_fragment` beside `fragments`, and a picture is located
+exactly the way a piece of text is: a page, a stream offset, a length,
+the image's shape, and a rectangle of it.
+
+A flag on a text fragment would have been smaller and would have been
+wrong, and the measurement says so plainly. **Four of the fourteen
+pictures in the one tabled edition are inside no text rectangle of their
+own entry at all**: three are an atlas's maps, each crossing the printed
+columns its caption is set in, and the fourth is a drawing that runs the
+whole width of a printed page under a caption set in one column. A
+single rectangle per entry could describe none of them, which is the
+same argument the fragment *list* itself won in #214.
+
+They are also a different **kind** of rectangle, and this is the rule
+for the next edition:
+
+* a text fragment is measured **to the column**, because everything
+  outside it is prose the reader would have to throw away;
+* a picture is measured **to its ink**, because everything outside it is
+  paper the reader would have to draw. Where the drawing sits inside a
+  printed rule the rule is inside the rectangle, since it is part of what
+  was printed.
+
+**How they were found**, which is §3's method for a new kind of thing,
+in two steps: find the band, then measure the ink in it.
+
+**The sieve.** Type on these pages has a pitch: an inked band about
+fourteen rows deep and then a blank one. A picture has no blank rows for
+as long as it lasts, so a **run of consecutive inked rows much longer
+than a line of type** is a candidate, taken per column band over each of
+the eleven spreads.
+
+**And it is a sieve and not an answer, which is the part worth writing
+down.** Descenders bridge lines often enough that pages of pure prose
+produce runs of a hundred and forty rows, and three of the fourteen
+pictures are between a hundred and thirty and a hundred and forty-five,
+so no threshold separates the two. What the sieve does is turn eleven
+spreads into about twenty candidates, and every one of those was looked
+at. Nine of the fourteen stand well clear of the noise at a hundred and
+seventy rows and up; three are inside it; and the fourteenth is three
+runes scratched at the top of a column, forty-one rows deep, which the
+sieve cannot distinguish from a line of type at all and which was found
+by eye. An edition's pictures still end with somebody reading eleven
+spreads.
+
+**The rectangle.** Once a candidate has a band, the rectangle is the
+**bounding box of its ink** inside a band whose top is below the entry's
+caption line — uniformly, whether or not the drawing has a printed rule
+around it, because a rule is part of what was printed and belongs in the
+picture. Where there is one it is used to *find* the band rather than to
+be the rectangle: a printed rule is a row or a column of the search area
+that is more than half ink, and the outermost pair of each says where
+the drawing is. The caption is the thing that creeps into an ink box, so
+each of the fourteen was cropped and looked at afterwards to check that
+it had not — which caught two, and caught a maze whose band had started
+on the caption above it.
+
+The result is in `hosts/common/src/journal_facts.cpp`, and it is
+fourteen pictures on twelve entries — the two numbers differ because one
+entry is an atlas printed as three maps. **The pieces of one entry's art
+are separate pictures and not one picture in pieces**, which is the
+other way this differs from `fragments`: an atlas is three maps and the
+reader turns a page between them, where an entry's text fragments are
+joined into one string.
+
+What is *not* in the table, and is a real omission: the edition prints
+a **legend for the symbols its maps use**, at the foot of one page,
+under a heading of its own and belonging to no numbered item — so the
+key every row of this table has, a section and a number, has nowhere to
+put it. A reader looking at a map with those symbols on it has no way to
+reach it.
+
+### 11.2 What it becomes
+
+**The box.** A full-screen page's interior is the frame drawer's, which
+is thirty-eight character cells by twenty rows: **304 x 160 pixels**, at
+(8, 24) on the 320x200 screen. The panel is **exactly half** of that —
+152 x 80 fits inside the panel's 176 x 96 body whatever the picture's
+proportions — which is what lets one stored picture serve both shapes
+with a 2:1 average at draw time rather than two bitmaps in a player's
+file. `machine::journal_art_width`/`_height` are the numbers, declared in
+core and `static_assert`ed against the frame in `seam_journal.cpp`,
+because a host reduces to them long before there is a machine and a
+store outlives the build that wrote it.
+
+**The fit allows for the display, not the framebuffer.** A pixel of the
+320x200 mode is a fifth taller than it is wide on a 4:3 screen, so a
+square map drawn 160 x 160 comes out a fifth too tall. Correcting it
+makes a picture *wider* in pixels rather than shorter, which also uses
+more of a box that is landscape while most of the pictures are portrait:
+Entry 4's 270 x 269 becomes **193 x 160** rather than 160 x 160.
+
+The fourteen, measured:
+
+| picture | printed | drawn | scale |
+| --- | --- | --- | --- |
+| Entry 4 | 270x269 | 193x160 | 0.71 |
+| Entry 10 | 255x208 | 235x160 | 0.92 |
+| Entry 15 | 251x255 | 189x160 | 0.75 |
+| Entry 22 | 272x172 | 304x160 | 1.12 |
+| Entry 26 | 256x220 | 223x160 | 0.87 |
+| Entry 28 | 268x137 | 304x130 | 1.13 |
+| Entry 29 | 247x255 | 186x160 | 0.75 |
+| Entry 35 | 210x41 | 304x49 | 1.45 |
+| Entry 37, first map | 577x331 | 304x145 | 0.53 |
+| Entry 37, second map | 579x401 | 277x160 | 0.48 |
+| Entry 37, third map | 584x803 | **140x160** | **0.24** |
+| Entry 41 | 254x253 | 193x160 | 0.76 |
+| Entry 42 | 503x195 | 304x98 | 0.60 |
+| Entry 58 | 269x268 | 193x160 | 0.72 |
+
+Three of them are drawn *larger* than they were scanned, which is a
+consequence rather than a choice: the box is fixed, and a small drawing
+centred in a large black field reads worse than the same drawing filling
+the box. And **one of them does not survive** — the atlas's third map is
+a city plan of named buildings at a quarter scale, and at 140 x 160 it is
+a texture. It is in the table anyway, because a picture a player can see
+is a shape is better than nineteen blank rows, and because leaving it
+out would be this document deciding what somebody else can read.
+
+**Four tones, quantized nearest, no dither.** Five reductions were
+composited over a real page — a plain threshold, an ordered dither and
+error diffusion at two levels, and nearest and error diffusion at four —
+and looked at at 1:1 and at 2x. What that said, and no argument had:
+
+* **every dithered candidate speckles the paper**, which is most of the
+  picture. The scan's paper is not a flat tone, so a dither spreads its
+  own texture over the whole page and the drawing has to be picked out
+  of a mesh. This is #263's finding one level down: the thing that
+  measures better is not always the thing that reads better.
+* **a plain threshold reads.** Two levels is legible on all fourteen, and
+  is the fallback if the store's size ever matters.
+* **four levels reads better**, because the box filter has already turned
+  a one-pixel pen line reduced by a third into a grey one, and four
+  levels keep it where two throw it away or thicken it.
+
+So a picture is two bits a pixel, four pixels a byte, rows padded to a
+byte — `journal_art_stride` — and the whole box is 12,160 bytes.
+
+**Levels rather than colours, which is the decision worth arguing.** The
+obvious reduction is to the sixteen colours the screen has, and it is
+wrong twice over. These are one hue of ink on paper, so there is no
+colour in them to keep; and the palette the program has installed is a
+fact about a *running machine*, which an ingestion is not — quantizing to
+sixteen nominal EGA colours at ingestion would be quantizing to a palette
+this program may never have set. So the store holds tone and **the reader
+chooses the ramp**, where the palette registers are readable and the rest
+of the page's colours are already chosen. Which also means the ramp can
+be re-chosen after somebody looks at one on a display, without
+invalidating a single player's ingestion — the same arrangement
+`explored_reveal_radius` has with the automap's sidecar
+(`docs/explored-overlay.md` §5).
+
+The three steps of the reduction, each measured rather than assumed:
+
+1. **A box filter** to the fitted shape, every source sample counted
+   once. A nearest reduction loses a hairline that falls between two
+   sample points, and these drawings are nothing but hairlines.
+2. **A normalization onto the page's own extremes.** The scan's paper is
+   a cream and its ink never reaches black, so a fixed threshold either
+   loses the lightest lines or fills the page. Both ends are
+   *percentiles* — the darkest half-percent and the lightest tenth —
+   rather than the extremes, so one speck of scanner dirt cannot set the
+   black point. The white point was the **paper's mode** first, which is
+   right for every real page this will ever see and is wrong for a page
+   that is half ink and worse for a smooth gradient: in both of those the
+   mode is an arbitrary member of a flat histogram and the page comes
+   back with no range at all, drawn as blank. The percentile cannot do
+   that, and on the real pages the two agree.
+3. **A nearest quantization**, for the reason above.
+
+**Run over the real fourteen by the shipped reducer, the two ends it
+finds are** an ink point between 59 and 151 and a paper point between
+252 and 255 — which is the scan's own answer to step 2. The paper of a
+printed page is within three counts of white in every one of them, and
+the ink is nowhere near black by an amount that differs by a factor of
+two and a half between the lightest drawing and the heaviest: a fixed
+black point would have lost one end or the other. The atlas's city plan
+is the outlier at 151, and it is the one that does not read.
+
+All of it is integer arithmetic, and that is a decision rather than an
+aesthetic: a store's `fingerprint()` is a thing a maintainer reports
+(§8), and a reduction that drifted between two builds of one host would
+make that number mean nothing.
+
+**What it does not buy, measured:** a fingerprint that is the same on
+two *different* hosts. The reduction is deterministic and the **decode
+in front of it is not** — one JPEG turned into grey by two image
+libraries is not the same samples, because the luma weights and the
+rounding are each library's own. Over the real fourteen, reduced once
+from Leptonica's grey and once from another library's, **0.37% of the
+pixels differ and every one of them by exactly one level** — nowhere
+by more, on any of the fourteen. So the pictures a player has are
+their decoder's, a store's fingerprint names *their* store, and two
+ingestions of one document on two hosts are not expected to report the
+same hash. Which is worth saying because §8 asks for that number and
+nothing else in this pipeline behaves that way.
+
+**What is still owed on this section is the only thing that matters
+about it.** Every candidate above was judged off a composite, and a
+composite is not a screen. Nobody has seen one of these on a display, in
+the game, at the size the game draws it, and #263 and #299 are two
+recorded instances of exactly that gap producing the wrong answer twice.
+The knobs are `journal_art_levels`, the ramp, and the fit; all three
+change without a player re-ingesting anything.
+
+### 11.3 Where it lives
+
+**In the store, as one more kind of record.** #328 proposed a sidecar on
+the shape the automap's own store has, and this is the one place its
+instructions were not followed; the reasons are in `journal_store.h` and
+the short version is that a picture record rides **every path a store
+already has** — both hosts, the five `Machine` methods the ABI grew for
+it (#229), the changed-flag rule, `drive.mjs --journal-store`, the
+clear-on-a-different-edition rule, and `fingerprint()`. A second file
+would need every one of those again, on two hosts, to hold something
+keyed by the same *(section, number)* and thrown away by the same events.
+
+What it costs is size, and the arithmetic is small: the fourteen
+pictures of the one tabled edition are about a hundred and seventy
+kilobytes packed and about two hundred and thirty as base64, beside a
+browser drawer that holds five megabytes and a text store of about
+thirty-seven kilobytes.
+
+The format went to **version 4**. A version 3 store has no pictures,
+which is a player who ingested with a build that could not make one — a
+true statement about an old store, not an error — and re-ingesting is
+what fixes it, which is what re-ingesting is for.
+
+There is no `corrected` beside a picture, and that is deliberate: the
+two-texts rule exists because a person edits a transcription, and nobody
+is going to hand-edit a base64 bitmap. A better reduction is a
+re-ingestion.
+
+### 11.4 Who decodes the page, which is the part nothing else needed
+
+**This is the one thing a picture needs that a page of text does not.** A
+`/DCTDecode` edition reaches an OCR engine as its own bytes and the
+engine does the decoding (§4a), which is what let #212 refuse to put a
+JPEG decoder in this project. That refusal stands. But a picture has no
+engine to hand the work to: somebody has to produce samples.
+
+So `journal_page_decoder` is a **door** and this tree contains no
+decoder behind it. Who fills it is a host, out of something it already
+links for another reason:
+
+* **the desktop's linked build** (`AMBERFOLIO_LINK_TESSERACT`, §5) has
+  Leptonica and libjpeg-turbo in it already, because Tesseract needs
+  them. `hosts/sdl/src/leptonica_decoder.cpp` is a short file over
+  `pixReadMem` and `pixConvertTo8`, the first of which
+  `tesseract_linked_ocr.cpp` already calls on the same bytes;
+* **a default desktop build** has no decoder within reach at all, and
+  therefore no pictures out of this edition. It says so:
+  `pictures=0/14`, and the filter by name. That is §4's "log, don't
+  fake", and it is the same asymmetry §5a already records for the
+  *quality* of a reading — it closes by linking the engine, not by
+  growing a decoder;
+* **the browser** has had a JPEG decoder since before this program was
+  written, and #306 already drives it through `createImageBitmap` and a
+  canvas for the OCR upscale. It does not make pictures yet; that is the
+  work left below.
+
+An edition whose pages this build **decodes itself** needs none of this,
+and that is what CI runs: `journal_probe.h` has two pictures, on the two
+pages that reach the extractor by different routes on purpose. The
+Flate one is reduced on every target with nothing installed; the
+`/DCTDecode` one is refused by name with no decoder and reduced with a
+fixture one, which is what proves the plumbing around a door no runner
+will ever have a key to.
+
+### 11.5 How it is drawn — the design, and not yet the code
+
+The page is drawn by *the program's* two routines — the bordered-window
+drawer and `draw_string_entry` — precisely so that this seam does not
+know what the game's lettering looks like (§9). A picture has no such
+routine, so it is **plane surgery**, `docs/seams.md` §3's eighth
+primitive, and it is the automap's own path rather than a new one: the
+reader already renders into a byte-per-pixel panel and blits it into the
+EGA planes a plane at a time (`seam_journal.cpp`'s `blit`). What a
+picture adds to that is a rect and a level-to-index ramp; the packed
+levels are walked in place, so nothing the size of the box is
+materialized in core.
+
+The shape the reader takes:
+
+* **a picture is a page of the entry**, after its text pages, in printed
+  order. The caption is the text and the drawing follows it on the
+  printed page, so `NEXT` walks from the caption into the picture and
+  `PREV` walks back — no new key, no new mode, and the paging that #319
+  built already says which page a reader is on.
+* **the full screen draws it whole and the panel draws it halved**, which
+  is the invariant 11.2 bought.
+* **the ramp is the reader's**, chosen where the program's palette is a
+  fact the machine has, and the reader's own colours are the obvious
+  candidates.
+* **it crosses on a host service of its own**, beside `journal_open`,
+  into a buffer in `journal_state` on `automap.h`'s three terms — twelve
+  kilobytes of observation, which is what a picture packed to the whole
+  box costs and is the same order as the automap's own panel. The
+  argument packs the citation and which picture of it, the way
+  `journal_open_argument` already packs a section and a number. **No ABI
+  entry point**, because a host's `serve()` is C++ inside the module on
+  both targets and the store it reads is already there.
+
+None of that is built. It is the second half of #328 and it is what a
+person will finally be able to look at.
+
+### 11.6 What is proven, and what is not
+
+**In CI, on every target**, over the probe: the fit against numbers
+worked by hand, the reduction's three steps against pages the test
+writes, the packing and its base64, the two routes a page reaches the
+reducer by, a decoder that answers the wrong page being caught, the
+store's round trip and its refusals, and an ingestion producing pictures
+with no OCR engine present at all — because a drawing has no words in it.
+`hosts/common/tests/journal_picture_test.cpp` and the
+`JournalStorePictures` cases; the desktop host end to end in
+`hosts/sdl/cmake/run-journal.cmake`.
+
+**Off a real document, by hand, and reported the way §8 asks.** The
+desktop host with `AMBERFOLIO_LINK_TESSERACT=ON`, `--journal` over the
+archive release's own journal:
+
+```
+journal Pool of Radiance Adventurer's Journal, archive release entries=99
+journal pages decoded by leptonica (linked)
+journal entries=99 extracted=99 recognized=0
+journal pictures=14/14
+journal store <path> entries=0 corrections=0 pictures=14
+  sha256=a0b81e0d8950beb4017f226f3f9af222218f4f80ade89c6e4ec743bfc226f4c4
+```
+
+— fourteen of fourteen, through the real decoder, into a real store's
+`picture` records, with the OCR engine switched off because a drawing
+has no words in it. That is the whole of §11.4's desktop path run once.
+
+Twice more, to check the arithmetic rather than the plumbing:
+`reduce_entry_pictures` was run over the same fourteen rectangles on a
+scratch harness whose one fixture is the JPEG decode (a greymap of each
+scan, standing in for the decoder), and every picture it made is
+**byte-identical** to the prototype the candidates in 11.2 were chosen
+on — which is what says the integer rewrite is the same arithmetic. And
+the store's own fourteen were unpacked and compared against those, which
+is where the decoder difference above was measured. Neither the harness
+nor the greymaps nor the store are in this repository and none of them
+should be: they read a document this project must never carry.
+
+**Not proven, and named rather than implied:**
+
+* **Nobody has looked at one on a display.** See the end of 11.2. This is
+  the finding this enhancement will live or die by and no runner can
+  reach it.
+* **The reader does not draw them** (11.5), so what a player gets from
+  this half is a store with pictures in it and the same blank page.
+* **The browser makes none**, so a browser ingestion and a linked
+  desktop ingestion of one document produce two different stores. #236
+  already owns the browser's half of this pipeline.
+* **The legend block belongs to nothing** (11.1), so the symbols on the
+  maps are not reachable from inside the game.

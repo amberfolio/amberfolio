@@ -915,49 +915,210 @@ constexpr std::array<journal_fragment, 1> procl214{{
      .region = {.left = 352, .top = 309, .width = 287, .height = 210}},
 }};
 
+// The pictures. Twelve of the fifty-eight entries are drawings rather
+// than prose -- maps, mazes, a diagram, marks scratched in dirt -- and
+// one of them, the atlas, is three maps across a whole spread; fourteen
+// rectangles in all (#328). An OCR engine reads what words are on such a
+// page, which is the caption, so before this the reader showed the
+// caption and nineteen empty rows.
+//
+// **Measured to the ink, not to the column**, which is the one way these
+// rectangles differ in kind from the text ones above. A text fragment is
+// the column, because everything outside it is prose to throw away; a
+// picture is its own bounding box, because everything outside it is
+// paper to draw. Where the drawing sits inside a printed rule the rule
+// is inside the rectangle, since it is part of what was printed.
+//
+// How they were found, so the next edition is a procedure rather than an
+// archaeology (`docs/journal.md` section 11): type on these pages is an
+// inked band about fourteen rows deep and then a blank one, so a run of
+// consecutive inked rows much longer than that is a candidate -- a sieve
+// and not an answer, because prose descenders bridge lines into runs of
+// a hundred and forty rows and three of these are inside that. What it
+// buys is about twenty candidates over eleven spreads, each of which was
+// then looked at; the fourteenth is three runes at the top of a column
+// and the sieve cannot see it at all. Each rectangle is then the
+// bounding box of the candidate's ink, in a band whose top is below the
+// entry's caption. Four of the fourteen fall outside every one of their
+// own entry's text rectangles -- the atlas's three maps, each of which
+// crosses the columns its caption is set in, and one drawing that runs
+// the width of a printed page -- which is why art is a field of its own.
+constexpr std::array<journal_fragment, 1> art04{{
+    {.page = 9,
+     .offset = scan09_at,
+     .length = scan09_bytes,
+     .image = spread,
+     .region = {.left = 53, .top = 78, .width = 270, .height = 269}},
+}};
+constexpr std::array<journal_fragment, 1> art10{{
+    {.page = 9,
+     .offset = scan09_at,
+     .length = scan09_bytes,
+     .image = spread,
+     .region = {.left = 1013, .top = 302, .width = 255, .height = 208}},
+}};
+constexpr std::array<journal_fragment, 1> art15{{
+    {.page = 10,
+     .offset = scan10_at,
+     .length = scan10_bytes,
+     .image = spread,
+     .region = {.left = 355, .top = 540, .width = 251, .height = 255}},
+}};
+constexpr std::array<journal_fragment, 1> art22{{
+    {.page = 11,
+     .offset = scan11_at,
+     .length = scan11_bytes,
+     .image = spread,
+     .region = {.left = 52, .top = 594, .width = 272, .height = 172}},
+}};
+constexpr std::array<journal_fragment, 1> art26{{
+    {.page = 11,
+     .offset = scan11_at,
+     .length = scan11_bytes,
+     .image = spread,
+     .region = {.left = 713, .top = 635, .width = 256, .height = 220}},
+}};
+constexpr std::array<journal_fragment, 1> art28{{
+    {.page = 11,
+     .offset = scan11_at,
+     .length = scan11_bytes,
+     .image = spread,
+     .region = {.left = 1015, .top = 774, .width = 268, .height = 137}},
+}};
+constexpr std::array<journal_fragment, 1> art29{{
+    {.page = 12,
+     .offset = scan12_at,
+     .length = scan12_bytes,
+     .image = spread,
+     .region = {.left = 50, .top = 96, .width = 247, .height = 255}},
+}};
+constexpr std::array<journal_fragment, 1> art35{{
+    {.page = 12,
+     .offset = scan12_at,
+     .length = scan12_bytes,
+     .image = spread,
+     .region = {.left = 1034, .top = 76, .width = 210, .height = 41}},
+}};
+// Three, and the only entry with more than one: an atlas printed as
+// three maps across a two-page spread. They are three *pictures* and not
+// one in pieces -- the reader turns a page between them -- which is the
+// other way art differs from the fragments above, whose pieces are
+// joined into one text.
+constexpr std::array<journal_fragment, 3> art37{{
+    {.page = 13,
+     .offset = scan13_at,
+     .length = scan13_bytes,
+     .image = spread,
+     .region = {.left = 55, .top = 120, .width = 577, .height = 331}},
+    {.page = 13,
+     .offset = scan13_at,
+     .length = scan13_bytes,
+     .image = spread,
+     .region = {.left = 55, .top = 520, .width = 579, .height = 401}},
+    {.page = 13,
+     .offset = scan13_at,
+     .length = scan13_bytes,
+     .image = spread,
+     .region = {.left = 708, .top = 114, .width = 584, .height = 803}},
+}};
+constexpr std::array<journal_fragment, 1> art41{{
+    {.page = 14,
+     .offset = scan14_at,
+     .length = scan14_bytes,
+     .image = spread,
+     .region = {.left = 366, .top = 418, .width = 254, .height = 253}},
+}};
+constexpr std::array<journal_fragment, 1> art42{{
+    {.page = 14,
+     .offset = scan14_at,
+     .length = scan14_bytes,
+     .image = spread,
+     .region = {.left = 95, .top = 752, .width = 503, .height = 195}},
+}};
+constexpr std::array<journal_fragment, 1> art58{{
+    {.page = 16,
+     .offset = scan16_at,
+     .length = scan16_bytes,
+     .image = spread,
+     .region = {.left = 1011, .top = 249, .width = 269, .height = 268}},
+}};
+
 constexpr std::array<journal_entry_fact, 99> archive_entries{{
     {.kind = journal_kind::entry, .number = 1, .fragments = entry01},
     {.kind = journal_kind::entry, .number = 2, .fragments = entry02},
     {.kind = journal_kind::entry, .number = 3, .fragments = entry03},
-    {.kind = journal_kind::entry, .number = 4, .fragments = entry04},
+    {.kind = journal_kind::entry,
+     .number = 4,
+     .fragments = entry04,
+     .art = art04},
     {.kind = journal_kind::entry, .number = 5, .fragments = entry05},
     {.kind = journal_kind::entry, .number = 6, .fragments = entry06},
     {.kind = journal_kind::entry, .number = 7, .fragments = entry07},
     {.kind = journal_kind::entry, .number = 8, .fragments = entry08},
     {.kind = journal_kind::entry, .number = 9, .fragments = entry09},
-    {.kind = journal_kind::entry, .number = 10, .fragments = entry10},
+    {.kind = journal_kind::entry,
+     .number = 10,
+     .fragments = entry10,
+     .art = art10},
     {.kind = journal_kind::entry, .number = 11, .fragments = entry11},
     {.kind = journal_kind::entry, .number = 12, .fragments = entry12},
     {.kind = journal_kind::entry, .number = 13, .fragments = entry13},
     {.kind = journal_kind::entry, .number = 14, .fragments = entry14},
-    {.kind = journal_kind::entry, .number = 15, .fragments = entry15},
+    {.kind = journal_kind::entry,
+     .number = 15,
+     .fragments = entry15,
+     .art = art15},
     {.kind = journal_kind::entry, .number = 16, .fragments = entry16},
     {.kind = journal_kind::entry, .number = 17, .fragments = entry17},
     {.kind = journal_kind::entry, .number = 18, .fragments = entry18},
     {.kind = journal_kind::entry, .number = 19, .fragments = entry19},
     {.kind = journal_kind::entry, .number = 20, .fragments = entry20},
     {.kind = journal_kind::entry, .number = 21, .fragments = entry21},
-    {.kind = journal_kind::entry, .number = 22, .fragments = entry22},
+    {.kind = journal_kind::entry,
+     .number = 22,
+     .fragments = entry22,
+     .art = art22},
     {.kind = journal_kind::entry, .number = 23, .fragments = entry23},
     {.kind = journal_kind::entry, .number = 24, .fragments = entry24},
     {.kind = journal_kind::entry, .number = 25, .fragments = entry25},
-    {.kind = journal_kind::entry, .number = 26, .fragments = entry26},
+    {.kind = journal_kind::entry,
+     .number = 26,
+     .fragments = entry26,
+     .art = art26},
     {.kind = journal_kind::entry, .number = 27, .fragments = entry27},
-    {.kind = journal_kind::entry, .number = 28, .fragments = entry28},
-    {.kind = journal_kind::entry, .number = 29, .fragments = entry29},
+    {.kind = journal_kind::entry,
+     .number = 28,
+     .fragments = entry28,
+     .art = art28},
+    {.kind = journal_kind::entry,
+     .number = 29,
+     .fragments = entry29,
+     .art = art29},
     {.kind = journal_kind::entry, .number = 30, .fragments = entry30},
     {.kind = journal_kind::entry, .number = 31, .fragments = entry31},
     {.kind = journal_kind::entry, .number = 32, .fragments = entry32},
     {.kind = journal_kind::entry, .number = 33, .fragments = entry33},
     {.kind = journal_kind::entry, .number = 34, .fragments = entry34},
-    {.kind = journal_kind::entry, .number = 35, .fragments = entry35},
+    {.kind = journal_kind::entry,
+     .number = 35,
+     .fragments = entry35,
+     .art = art35},
     {.kind = journal_kind::entry, .number = 36, .fragments = entry36},
-    {.kind = journal_kind::entry, .number = 37, .fragments = entry37},
+    {.kind = journal_kind::entry,
+     .number = 37,
+     .fragments = entry37,
+     .art = art37},
     {.kind = journal_kind::entry, .number = 38, .fragments = entry38},
     {.kind = journal_kind::entry, .number = 39, .fragments = entry39},
     {.kind = journal_kind::entry, .number = 40, .fragments = entry40},
-    {.kind = journal_kind::entry, .number = 41, .fragments = entry41},
-    {.kind = journal_kind::entry, .number = 42, .fragments = entry42},
+    {.kind = journal_kind::entry,
+     .number = 41,
+     .fragments = entry41,
+     .art = art41},
+    {.kind = journal_kind::entry,
+     .number = 42,
+     .fragments = entry42,
+     .art = art42},
     {.kind = journal_kind::entry, .number = 43, .fragments = entry43},
     {.kind = journal_kind::entry, .number = 44, .fragments = entry44},
     {.kind = journal_kind::entry, .number = 45, .fragments = entry45},
@@ -973,7 +1134,10 @@ constexpr std::array<journal_entry_fact, 99> archive_entries{{
     {.kind = journal_kind::entry, .number = 55, .fragments = entry55},
     {.kind = journal_kind::entry, .number = 56, .fragments = entry56},
     {.kind = journal_kind::entry, .number = 57, .fragments = entry57},
-    {.kind = journal_kind::entry, .number = 58, .fragments = entry58},
+    {.kind = journal_kind::entry,
+     .number = 58,
+     .fragments = entry58,
+     .art = art58},
     {.kind = journal_kind::tale, .number = 1, .fragments = tale01},
     {.kind = journal_kind::tale, .number = 2, .fragments = tale02},
     {.kind = journal_kind::tale, .number = 3, .fragments = tale03},

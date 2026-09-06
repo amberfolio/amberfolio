@@ -15,6 +15,7 @@
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
 #include "amberfolio/host/journal_ocr.h"
+#include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/sha256.h"
 
@@ -90,6 +91,17 @@ journal_trouble journal_ingester::extract(std::size_t index) {
   return extract_scan(document_, *fact, scan_);
 }
 
+journal_trouble journal_ingester::reduce_art(
+    std::size_t index, std::vector<journal_picture>& out) {
+  const journal_entry_fact* fact = entry_at(index);
+  if (fact == nullptr) {
+    out.clear();
+    return edition_ == nullptr ? journal_trouble::unrecognized_edition
+                               : journal_trouble::no_such_entry;
+  }
+  return reduce_entry_pictures(document_, *fact, decoder_, out);
+}
+
 void journal_ingester::adopt(journal_store& into) const {
   const std::string hex = fingerprint_hex();
   // A store of another edition is cleared rather than merged: entry 12 of
@@ -115,8 +127,28 @@ journal_ingest_report journal_ingester::run(journal_ocr* engine,
   report.entries = static_cast<std::uint32_t>(entries());
 
   std::string text;
+  std::vector<journal_picture> art;
   for (std::size_t index = 0; index < entries(); ++index) {
     const journal_entry_fact& fact = *entry_at(index);
+    // The pictures first and *independently of the engine* (#328): a
+    // drawing has no words in it, so an ingestion with no OCR engine at
+    // all still produces every picture this build can decode. It is also
+    // why a failure here does not fail the entry's text, and has its own
+    // pair of fields in the report.
+    report.art += static_cast<std::uint32_t>(fact.art.size());
+    if (!fact.art.empty()) {
+      const journal_trouble bad = reduce_art(index, art);
+      for (journal_picture& one : art) {
+        if (into.record_picture(std::move(one))) {
+          ++report.pictures;
+        }
+      }
+      if (bad != journal_trouble::none &&
+          report.first_art_trouble == journal_trouble::none) {
+        report.first_art_trouble = bad;
+        report.first_art_failure = {.kind = fact.kind, .number = fact.number};
+      }
+    }
     journal_trouble why = extract(index);
     if (why == journal_trouble::none) {
       ++report.extracted;

@@ -72,6 +72,13 @@ constexpr journal_region probe_region_three{
 constexpr journal_region probe_region_three_second{
     .left = 8, .top = 20, .width = 48, .height = 8};
 
+/// The two pictures (#328), each on a page that reaches the extractor by
+/// a different route, and neither over its entry's own text rectangle.
+constexpr journal_region probe_art_region_one{
+    .left = 4, .top = 2, .width = 56, .height = 28};
+constexpr journal_region probe_art_region_three{
+    .left = 8, .top = 8, .width = 48, .height = 16};
+
 /// The gray of a pixel of entry one's page, and whether a pixel of entry
 /// two's is ink. Two functions, and the document *and* the expectation
 /// are both generated from them — which is why an extraction that is
@@ -403,6 +410,9 @@ struct probe_document {
   /// the spans in `facts` name storage with the document's own life.
   std::array<journal_fragment, journal_probe_fragments> fragments{};
   std::array<journal_entry_fact, journal_probe_entries> facts{};
+  /// The picture rectangles (#328), held here for `fragments`' reason:
+  /// the spans in `facts` name storage with the document's own life.
+  std::array<journal_fragment, journal_probe_art> art{};
   /// Entry three's stream, kept so the fixture can compare what reached
   /// an engine against what was written (#212).
   std::vector<std::uint8_t> encoded;
@@ -511,12 +521,28 @@ struct probe_document {
                        .length = static_cast<std::uint32_t>(doc.encoded.size()),
                        .image = probe_image_three,
                        .region = probe_region_three_second};
-  doc.facts[0] = journal_entry_fact{
-      .number = 1, .fragments = std::span(doc.fragments).subspan(0, 1)};
+  doc.art[0] =
+      journal_fragment{.page = 1,
+                       .offset = offset_one,
+                       .length = static_cast<std::uint32_t>(stream_one.size()),
+                       .image = probe_image_one,
+                       .region = probe_art_region_one};
+  doc.art[1] =
+      journal_fragment{.page = 1,
+                       .offset = offset_three,
+                       .length = static_cast<std::uint32_t>(doc.encoded.size()),
+                       .image = probe_image_three,
+                       .region = probe_art_region_three};
+  doc.facts[0] =
+      journal_entry_fact{.number = 1,
+                         .fragments = std::span(doc.fragments).subspan(0, 1),
+                         .art = std::span(doc.art).subspan(0, 1)};
   doc.facts[1] = journal_entry_fact{
       .number = 2, .fragments = std::span(doc.fragments).subspan(1, 1)};
-  doc.facts[2] = journal_entry_fact{
-      .number = 3, .fragments = std::span(doc.fragments).subspan(2, 2)};
+  doc.facts[2] =
+      journal_entry_fact{.number = 3,
+                         .fragments = std::span(doc.fragments).subspan(2, 2),
+                         .art = std::span(doc.art).subspan(1, 1)};
   // Tale one (M5-E3d, #218), and deliberately **the same rectangle as
   // entry one**. Two rows sharing a number is the thing the kind was
   // added to make possible, and sharing the picture as well is what makes
@@ -609,6 +635,57 @@ journal_bitmap journal_probe_expected(std::size_t index) {
     }
   }
   return out;
+}
+
+journal_bitmap journal_probe_art_expected(std::size_t index) {
+  journal_bitmap out;
+  if (index >= journal_probe_art) {
+    return out;
+  }
+  // Both pictures are over a page whose samples are `probe_gray` — the
+  // one this build decodes and the one it does not, whose fixture
+  // decoder answers the same field. So the expectation is one loop and
+  // the two routes have one answer to agree on.
+  const journal_region& region = probe().art[index].region;
+  out.width = region.width;
+  out.height = region.height;
+  out.pixels.reserve(static_cast<std::size_t>(region.width) * region.height);
+  for (std::uint32_t y = 0; y < region.height; ++y) {
+    for (std::uint32_t x = 0; x < region.width; ++x) {
+      out.pixels.push_back(probe_gray(region.left + x, region.top + y));
+    }
+  }
+  return out;
+}
+
+bool journal_probe_decoder::decode(std::span<const std::uint8_t> stream,
+                                   journal_bitmap& out) {
+  ++calls_;
+  out = journal_bitmap{};
+  // The exact stream the probe's own encoder wrote, or nothing. A
+  // decoder fixture that answered whatever it was handed would let a
+  // wrong offset through, which is the one thing this path has that the
+  // decoded one does not check for free.
+  const std::span<const std::uint8_t> want =
+      journal_probe_encoded(journal_probe_encoded_entry);
+  if (stream.size() != want.size() ||
+      !std::equal(stream.begin(), stream.end(), want.begin())) {
+    return false;
+  }
+  const journal_image& shape = probe_image_three;
+  out.width = shape.width;
+  out.height = shape.height;
+  out.pixels.reserve(static_cast<std::size_t>(shape.width) * shape.height);
+  for (std::uint32_t y = 0; y < shape.height; ++y) {
+    for (std::uint32_t x = 0; x < shape.width; ++x) {
+      out.pixels.push_back(probe_gray(x, y));
+    }
+  }
+  return true;
+}
+
+const char* journal_probe_decoder::name() const noexcept {
+  return "amberfolio journal probe decoder fixture";
 }
 
 std::span<const std::uint8_t> journal_probe_encoded(std::size_t index) {
