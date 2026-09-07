@@ -167,6 +167,8 @@ constexpr std::uint16_t key_exit = 0x1245;
 /// taken the key that read was going to be handed: `-`, which is on none
 /// of the program's bars.
 constexpr std::uint16_t key_ignored = 0x0C2D;
+/// The keystroke a give-back posts so the menu-bar routine returns.
+constexpr std::uint16_t key_space = 0x3920;
 
 /// The panel's layout, restated: a title row, twelve rows of body, and a
 /// footer, eight pixels each, twenty-two glyphs across.
@@ -3176,6 +3178,38 @@ TEST(JournalScreenPage, TheListingFillsTheBoxItIsDrawnIn) {
       << "twenty rows of the log and the bar's four calls under them (#330)";
   EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row)
       << "the bar last, on the screen's own last row";
+}
+
+TEST(JournalScreenPage, AGiveBackAtTheBlockingReadIsAnsweredByItsOwnKeystroke) {
+  // The way out of the log lands at the poll on some frames and at the
+  // read on others, and the read's answer (`key_ignored`) was posted *in
+  // addition* to whatever the claim itself had posted. A give-back posts
+  // the space that makes the menu-bar routine return; the ignorable key
+  // behind it was one keystroke too many, because the program's read
+  // routine drains its buffer after the key it takes and acts on the last
+  // one - so the space was thrown away, the screen came back and the bar
+  // did not (#325). Exactly one keystroke answers the read, and it is the
+  // give-back's own.
+  for (const std::uint16_t key : {key_exit, key_escape}) {
+    rig r;
+    a_screen_with_the_bar_live(r);
+    r.one_bar_pass(area_before, area_after, 'N');
+    r.bar_goes_out(area_before);
+    until_it_settles(r);
+    ASSERT_TRUE(r.reader().on_screen()) << "key " << key;
+
+    r.type(key);
+    r.stand_on(r.point(1));
+    r.pc().step();
+    ASSERT_EQ(r.reader().reader(), journal_reader_mode::closed)
+        << "key " << key;
+    ASSERT_EQ(r.keys_waiting(), 1u)
+        << "one keystroke answers the read, not two: key " << key;
+    const std::uint16_t head =
+        r.word_at(bda::segment, bda::keyboard_buffer_head);
+    EXPECT_EQ(r.word_at(bda::segment, head), key_space)
+        << "and it is the space the bar routine returns on: key " << key;
+  }
 }
 
 TEST(JournalScreenPage, TheListingCarriesTheSameBar) {

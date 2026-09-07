@@ -2110,6 +2110,12 @@ enum class claimable : std::uint8_t {
   return which;
 }
 
+/// Is the BIOS keystroke buffer empty right now?
+[[nodiscard]] bool no_key_waiting(cpu::processor& cpu) {
+  return cpu.read_word(bda::segment, bda::keyboard_buffer_head) ==
+         cpu.read_word(bda::segment, bda::keyboard_buffer_tail);
+}
+
 // ---------------------------------------------------------------------------
 // Opening, paging and closing
 // ---------------------------------------------------------------------------
@@ -3171,6 +3177,14 @@ void at_key_pending(machine& box, seam_context& ctx) {
 /// committed to being handed one. `key_ignored_ascii` is the whole of
 /// that argument; without it this point takes one key and the program
 /// sleeps through the next.
+///
+/// **Answered only if nothing else already has** (#325). A give-back
+/// posts the space that makes the menu-bar routine return, and that
+/// space is an answer to this read. Put the ignorable key behind it and
+/// the program's read routine, which drains its buffer after the key it
+/// takes and acts on the last one, threw the space away: the screen came
+/// back and the bar never did, on exactly the presses that landed here
+/// rather than at the poll. One keystroke answers a read, whichever it is.
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   const std::uint16_t ds = data_segment(cpu, ctx);
@@ -3183,7 +3197,7 @@ void at_key_read(machine& box, seam_context& ctx) {
   }
   bool claimed = false;
   const bool batched = handle_keys(box, ctx, ds, claimed);
-  if (claimed) {
+  if (claimed && no_key_waiting(cpu)) {
     static_cast<void>(
         ctx.inject_keystroke(key_ignored_scan, key_ignored_ascii));
   }
