@@ -39,24 +39,28 @@ seam journal
 until 300000000
 every 25
 
-# The prompt rather than the log, because a picture is a fact about an entry
-# and not about what the game has cited: F1, the number, Return, `NEXT`
-# onto the drawing, and `EXIT` out through the program's own composer.
+# `Notes`, the row the cursor is on, `NEXT` onto the drawing, and `EXIT`
+# twice - off the page back to the listing, and off the listing out
+# through the program's own composer. It was F1 and a typed number before
+# #346, which is the one way in there was left when that went.
+#
+# **The frame ranges below were measured against the F1 script** and have
+# not been measured against this one; the leg is owed its re-drive with
+# the rest (#293), and the keys are corrected here so that what it asks
+# for is the reader that exists.
 key L@7550
 key A@7800
-key F1@9600
-key 4@10000
+key N@9600
 key Return@10400
 key N@11600
 key E@13000
+key E@13800
 
-# Each screen, holding still with nothing pressed. Measured off the stills
-# at 25 frames: the prompt at 9,625, the digit at 10,025, the entry's text
-# page - full screen, because it was opened from the party's own bar - from
-# 10,575, the picture from 11,675, and the adventuring screen again from
-# 13,200. A picture page settles in about 75 frames where a twenty-row text
-# page takes about 230 (#305): one batch for the clear, the frame and the
-# bar, and then one arrival more, which for a picture is a single blit.
+# Each screen, holding still with nothing pressed. A picture page settles
+# in about 75 frames where a twenty-row text page takes about 230 (#305):
+# one batch for the clear, the frame and the bar, and then one arrival
+# more, which for a picture is a single blit. The numbers themselves are
+# owed a re-measurement with the keys above (#293).
 same 9700-9975
 same 10100-10375
 same 10600-11575

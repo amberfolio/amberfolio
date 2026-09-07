@@ -113,7 +113,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 An 83-key XT board has no scan code for any of the three, so
 `sdl::xt_scancode()` answers 0; `keymap_test.cpp` pins that. Rejected: the
 keypad's `/` and Enter, which sit inside the game's movement cluster.
-**Tab** (automap) and **F1** (journal reader) are claimed by seams inside
+**Tab** (automap) is claimed by a seam inside
 the machine, only while the seam is on (`docs/seams.md` §10). F11 and F12
 work during a `--replay`; Pause does not, a pull being an input the
 recording never had.

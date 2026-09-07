@@ -772,7 +772,7 @@ to carry.
 | `code-wheel` | asks the copy-protection challenge once (#291): unanswered it watches; answered by a person, it steps over the boot's call and the challenge is never drawn again | the resident image |
 | `encamp-fix` | a `FIX` command on the camp bar: spends the cures the party holds, rests off the deficit, reports in a box the game draws | the camp screen's overlay |
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
-| `journal` | what the game cites opens on the game's screen out of the player's ingested journal; **Notes** on the party's bar opens the log, **F1** the number prompt | the resident image, and the adventuring loop's module |
+| `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
@@ -1032,7 +1032,7 @@ PLAN.md §5 item 2's in-game half; ingestion is #174 and
 
 | point | module | what the handler does |
 | --- | --- | --- |
-| the automap's five: both key routines, both clears, the roster drawer's `retf` | resident image | as the automap's, for the reader's panel; F1 and the modal keys claimed here |
+| the automap's five: both key routines, both clears, the roster drawer's `retf` | resident image | as the automap's: the screen is drawn and repainted here, and the reader's modal keys are claimed here |
 | the program's word-wrapping **message box**, where a script's every PRINT ends | resident image | the citation watch: reads the Pascal string (offset at SP+4, segment at SP+6) into a rolling window; the box's home-and-clear flag is the message boundary |
 | the adventuring loop's call into the menu-bar routine, one pair per view mode (M5-E4a, #221) | the adventuring loop's module | before: splices `Notes` onto the party's bar, sets `bar_live()`; at the return: splices it out, clears `bar_live()`, reads the letter from `AL` and the routine's out-parameter, puts the highlight byte back where the routine found it (#330) |
 
@@ -1055,11 +1055,6 @@ shape.
 
 **Where it draws**:
 
-- **The panel**: the automap's rect, twenty-two columns by fourteen rows
-  of the program's font, plane surgery in glyphs read from the font
-  pointer. It is the one region a seam can take and give back, and since
-  #346 the **prompt** is all that is drawn in it — a whole screen for
-  four digits and a caption would be a whole screen for nothing.
 - **The full screen** (M5-E4b #222, M5-E4d #305, #346): the log and every
   page of an entry, drawn by the program's frame and string drawers as a
   box of twenty rows of thirty-eight characters, painted over several
@@ -1067,15 +1062,12 @@ shape.
   redrawn on every page. There is no second size: the panel page a
   citation used to open went with the citation's page. Allowed exactly
   while `journal_state::bar_live()` holds, the one state in which the
-  composer may be asked to put a screen back — so **the reader opens
-  nowhere else**, and F1 at camp, under a vendor's bar or inside a
-  script's narration is left in the buffer for the program rather than
-  claimed. `Return` at the prompt checks it again, because a key this
-  seam does not claim still reaches the program while a prompt is up.
-  The reader is modal over the map, which is the same pixels either way.
-- **Give-back**: the prompt asks for the roster drawer; the full screen
-  calls the routine the program uses on the way out of every full-screen
-  view (the scaffold, view, roster and status line) plus one injected
+  composer may be asked to put a screen back — and **that needs no rule
+  of its own**, because `Notes` is a command on the party's own bar and
+  is the only way in there is. The reader is modal over the map, which is
+  the same pixels either way.
+- **Give-back**: one, since #346 — the routine the program uses on the
+  way out of every full-screen view (the scaffold, view, roster and status line) plus one injected
   space so the menu-bar routine returns and redraws the bar. **At the
   blocking read that space is the read's answer and nothing is posted
   behind it** (#325): the program's read routine drains its buffer after
@@ -1086,7 +1078,7 @@ shape.
   poll and recovered it. Rejected:
   the routine that *enters* the adventuring screen, because it sets the
   mode byte and draws the bottom panel alone. A page from a listing row
-  returns to the listing. Both give-backs call
+  returns to the listing and gives nothing back. The give-back calls
   `automap_state::note_panel_painted_over()` (#332).
 - **The bar** (#329, #330, #341, #342): flush left, spaced one, drawn in
   a call for the row (green) and one more for each word's initial
@@ -1120,16 +1112,17 @@ configuration, restored by `host::restore_journal_log()`. Both hosts
 print the callout at the end of a run
 (`host-service journal-open calls=1 last=4`).
 
-**Keys**: F1 opens the reader on the party's own bar and nowhere else
-(#346), cycles the section at the prompt (#218), and is `NEXT` on a page.
-While the reader is up: Escape closes, Backspace pages back or rubs out a
-digit, digits and Return are the prompt's. The prompt takes those and
-nothing else, because it is drawn beside the program's live bar and the
-rest of that bar's letters are the program's. The log and a page take
-**every** key (the bar is live underneath, and a key let through walked
-the party unseen, #230); `E` leaves either. Reads are answered with `-`.
-Function keys have no character (`keyboard.h`); F11 and F12 never reach
-the machine (`docs/hosts.md` §3).
+**Keys**: **none at all while the reader is down** (#346). There was one,
+F1, claimed on every screen with a party roster and defended on the
+grounds that a function key has no character (`keyboard.h`) and so cannot
+be a command on any of this program's bars; the argument held and the key
+went anyway, because `Notes` is the way in and a second one is a second
+thing to learn. The number prompt it opened (#218) went with it. While
+the reader *is* up: Escape closes, Backspace goes a screenful back,
+Return opens the row the cursor is on, and `N`/`P`/`E` are the bar's own
+three. The log and a page take **every** key (the bar is live underneath,
+and a key let through walked the party unseen, #230). Reads are answered
+with `-`.
 
 **State**: `journal_state` (`bar_live()`, the window, the page);
 `machine::journal()` for the text. **Gate**: deliberately unset, though

@@ -422,18 +422,16 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   puts the entry on the `Notes` log with the moment it was named, still
   carrying its `*`, and stops. No host is asked for the text or the
   pictures until somebody opens the entry.
-- **One page size** (M5-E4d #305, #346): the frame drawer's full screen,
-  twenty rows of thirty-eight characters. `journal_state::bar_live()`,
-  set and cleared at the `Notes` splice's own points, says whether the
-  party's own command-bar routine is running, the one precondition under
-  which the program's screen composer may be asked to put the screen
-  back — so the reader opens only there. `Notes` satisfies that by
-  construction and F1 is answered against it, which is why F1 at camp,
-  under a vendor's bar, or while a script is narrating opens nothing and
-  is left in the buffer for the program. The roster panel is still where
-  the **prompt** is drawn: four digits and a caption on a whole screen is
-  a whole screen for nothing, and the roster drawer is a give-back that
-  needs no precondition.
+- **One page size and one way in** (M5-E4d #305, #346): the frame
+  drawer's full screen, twenty rows of thirty-eight characters, opened
+  off the `Notes` command and off nothing else.
+  `journal_state::bar_live()`, set and cleared at the `Notes` splice's
+  own points, says whether the party's own command-bar routine is
+  running, which is the one precondition under which the program's screen
+  composer may be asked to put the screen back — and `Notes` satisfies it
+  by construction, being a word on that bar. The roster panel and the F1
+  number prompt that was drawn in it are both gone: this seam rasterizes
+  nothing and reads no font, and the program draws every word it shows.
 - **Reflow** (#316), in the wrap and not at ingestion, so the store keeps
   the engine's lines for a correction to be written against: a single
   newline is a space; a blank line is a paragraph break and gets one
@@ -441,11 +439,11 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   dropped, when there is a letter on each side (a guess: `WITH-` against
   `WELL-`). Cost: a list of one-line items runs together; the fix is a
   blank line between items in the correction field.
-- **Transliteration** (M5-E4c, #219): a page is drawn one of the
-  program's sixty-four glyphs per byte, so on the way into the delivery
-  buffer curly quotes and dashes become their plain forms, an ellipsis
-  three stops, any other code point or invalid byte one visible
-  substitute. The store is not touched.
+- **Transliteration** (M5-E4c, #219): the program draws one of its own
+  sixty-four glyphs per byte, so on the way into the delivery buffer
+  curly quotes and dashes become their plain forms, an ellipsis three
+  stops, any other code point or invalid byte one visible substitute. The
+  store is not touched.
 - **The bar** (#317, #329, #330, #341, #342). The listing and a
   full-screen page carry `NEXT`, `PREV` and `EXIT` on row `0x18`, flush
   left, one space apart, each chosen by its first letter; Escape closes
@@ -455,10 +453,8 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   same way the program's own bars do. Drawn as the program draws bars,
   in one call for the row in the message green and one more for each
   word's initial over its own cell in the bright - up to four, fewer on
-  any bar that has dropped a word. The prompt's panel spells no keys at
-  all, because it sits beside the program's *live* bar, whose letters
-  `N`, `P` and `E` already are; it says `RETURN OPENS IT` and names no
-  others.
+  any bar that has dropped a word. There is no other key: since #346 this
+  seam claims nothing at all while the reader is down.
 - **`Notes` hands the highlight back** (#330): the bar routine's cursor
   group lives in the shared byte of M5-E1g (#304). `--watch 6B2B` reads
   `01` after a load, `07` from the frame `N` is pressed, `07` after the

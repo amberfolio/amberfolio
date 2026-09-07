@@ -21,7 +21,7 @@ detail:
   program and the two runs end in different game states.
 
     python3 scripts/visual-legs.py --game-disk /path/to/a/copy
-    python3 scripts/visual-legs.py --leg rdr-prompt --keep
+    python3 scripts/visual-legs.py --leg rdr-page --keep
     AMBERFOLIO_GAME_DISK=/path/to/a/copy python3 scripts/visual-legs.py
 
 Exit status is zero when every leg that could run, ran and passed.

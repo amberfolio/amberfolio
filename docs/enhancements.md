@@ -122,12 +122,12 @@ with the engine linked in has; a default build reports `pictures=0/14`.
 goes on your list — the game's own narration is what tells you, and the
 entry is there to read when you want it. A **`Notes`** command on the
 party's own bar opens that log, newest first with a `*` on the unread,
-as a full screen; **F1** opens a number prompt for the entries nothing
-cites. Either opens the entry on the game's screen in the game's font, a
-full screen with `NEXT`, `PREV` and `EXIT`; a picture is the page after
-its caption. Closing gives the screen back through the program's own
-composer. Both ways in are on the party's own command bar, which is the
-one place a whole screen can be handed back.
+as a full screen. Picking a row opens the entry on the game's screen in
+the game's font, a full screen with `NEXT`, `PREV` and `EXIT`; a picture
+is the page after its caption. Closing gives the screen back through the
+program's own composer. **`Notes` is the only way in**, and that is why:
+it is a command on the party's own bar, which is the one place a whole
+screen can be handed back.
 
 **How you turn it on.** `--seam journal`, and `--journal-store` if the
 text is not where the host would look.

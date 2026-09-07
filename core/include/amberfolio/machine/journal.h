@@ -63,8 +63,6 @@
 #include <span>
 #include <string_view>
 
-#include "amberfolio/machine/automap.h"
-
 namespace amberfolio::machine {
 
 /// The most text one entry may cross the host boundary as.
@@ -335,19 +333,11 @@ enum class journal_reader_mode : std::uint8_t {
   /// fidelity claim.
   closed,
   /// The journal's own screen: what the game has cited, newest first
-  /// (M5-E4b, #222). What `Notes` opens.
+  /// (M5-E4b, #222). What `Notes` opens, and the only way in there is.
   listing,
-  /// The entry-number prompt, for a player who wants an entry the game
-  /// has not cited.
-  asking,
-  /// A page of an entry.
+  /// A page of an entry, opened from a row of the listing.
   showing,
 };
-
-/// How many digits the prompt takes. Entry numbers in a printed journal
-/// of this kind run to three; four is one more than anybody needs and
-/// still cannot overflow the number it is parsed into.
-inline constexpr std::size_t journal_prompt_digits = 4;
 
 /// The most citations one drawing can name. Four is what the city hall
 /// names in one sentence (#232); eight is room for a longer list without
@@ -539,9 +529,9 @@ class journal_state {
   [[nodiscard]] journal_reader_mode reader() const noexcept { return mode_; }
   void set_reader(journal_reader_mode mode) noexcept;
 
-  /// Whether the reader owns the panel's cells at all — the one question
-  /// the automap seam asks of this object, because the two panels are the
-  /// same pixels and the reader is modal over the map.
+  /// Whether the reader is on the screen at all — the one question the
+  /// automap seam asks of this object, because what the reader draws
+  /// covers the map's own cells and the reader is modal over it.
   [[nodiscard]] bool reader_open() const noexcept {
     return mode_ != journal_reader_mode::closed;
   }
@@ -555,28 +545,6 @@ class journal_state {
     return page_count_;
   }
   void set_page_count(std::uint16_t count) noexcept { page_count_ = count; }
-
-  /// The digits typed at the prompt.
-  [[nodiscard]] std::string_view digits() const noexcept {
-    return std::string_view{digits_.data(), digit_count_};
-  }
-  /// True if there was room for it.
-  bool push_digit(char digit) noexcept;
-  void pop_digit() noexcept;
-  void clear_digits() noexcept;
-  /// What the digits say, or zero for none of them.
-  [[nodiscard]] std::uint16_t asked_entry() const noexcept;
-
-  /// Which section the prompt is pointed at, and the key that moves it.
-  ///
-  /// The prompt has to have one: a player typing `4` at it has not said
-  /// whether they mean the fourth entry or the fourth tale, and a reader
-  /// that picked for them would be picking wrong two times in three.
-  /// Cycling rather than three keys, because the panel has one line to
-  /// say it in and the seam has few keys it may take.
-  [[nodiscard]] journal_kind asked_kind() const noexcept { return asked_kind_; }
-  void set_asked_kind(journal_kind kind) noexcept { asked_kind_ = kind; }
-  void cycle_asked_kind() noexcept;
 
   /// Which line of the log the list is pointed at, and the key that moves
   /// it. Clamped to what the log holds, so a list that shrank under a
@@ -669,12 +637,6 @@ class journal_state {
   }
   void forget_bar_highlight() noexcept { bar_highlight_known_ = false; }
 
-  /// The prompt as a citation: the kind it is pointed at, and the number
-  /// typed into it.
-  [[nodiscard]] journal_citation asked() const noexcept {
-    return {.kind = asked_kind_, .number = asked_entry()};
-  }
-
   /// Whether the reader's pixels are on the planes because this seam put
   /// them there and nothing has painted over them since, and whether
   /// something other than the party roster owns those cells. The same
@@ -692,22 +654,6 @@ class journal_state {
   }
   void set_drawn_signature(std::uint32_t signature) noexcept {
     drawn_signature_ = signature;
-  }
-
-  /// The panel the reader is rendered into before it goes on the planes,
-  /// one byte per pixel. The same rect as the automap's, because it is
-  /// the same fact about the program's screen and `automap.h` derives it
-  /// once: the interior of the adventuring screen's right-hand frame,
-  /// less the program's own status row — the one region a seam can take
-  /// and give back, since the program can be asked to redraw the party
-  /// roster over it from live state.
-  [[nodiscard]] std::array<std::uint8_t, automap_panel_pixels>&
-  pixels() noexcept {
-    return pixels_;
-  }
-  [[nodiscard]] const std::array<std::uint8_t, automap_panel_pixels>& pixels()
-      const noexcept {
-    return pixels_;
   }
 
  private:
@@ -735,10 +681,6 @@ class journal_state {
   journal_reader_mode mode_{journal_reader_mode::closed};
   std::uint16_t page_{};
   std::uint16_t page_count_{};
-  std::size_t digit_count_{};
-  std::array<char, journal_prompt_digits> digits_{};
-  journal_kind asked_kind_{journal_kind::entry};
-
   bool from_list_{false};
   bool bar_live_{false};
   std::uint8_t bar_highlight_{};
@@ -753,7 +695,6 @@ class journal_state {
   bool on_screen_{false};
   bool covered_{false};
   std::uint32_t drawn_signature_{};
-  std::array<std::uint8_t, automap_panel_pixels> pixels_{};
 };
 
 /// What a page came to after being made drawable, and whether all of it
