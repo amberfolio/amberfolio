@@ -85,6 +85,7 @@ import {
   loadDemoProgram,
   decodeConsoleBytes,
   scancodeFor,
+  HeldKeys,
   AF_OK,
   AF_INVALID,
   AF_NO_MACHINE,
@@ -1994,6 +1995,63 @@ if (missing.length === 0) {
     );
   }
   console.log(`smoke: ${Object.keys(expected).length} keyboard rows check out`);
+}
+
+// The keys a page still holds a make for (#313): what a focus loss lets
+// go of, and in which order. The same claims hosts/common's
+// held_keys_test.cpp makes of the desktop host's twin — a key is held from
+// its make to its break, a release lets go of every held key once and in
+// ascending scancode order, and afterwards nothing is held.
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+  const ctrl = 0x1d;
+  const leftShift = 0x2a;
+  const alt = 0x38;
+  const keyA = 0x1e;
+
+  const held = new HeldKeys();
+  check(held.size === 0, 'a fresh HeldKeys holds something');
+  check(held.releaseAll().length === 0, 'a fresh HeldKeys released something');
+
+  held.note(alt, true);
+  check(held.has(alt), 'Alt was not held after its make');
+  held.note(alt, false);
+  check(!held.has(alt), 'Alt was still held after its break');
+  check(held.size === 0, 'a made-and-broken key was still counted');
+
+  // A repeated make is still one key.
+  held.note(keyA, true);
+  held.note(keyA, true);
+  check(held.size === 1, 'a repeated make was counted twice');
+  held.note(keyA, false);
+
+  // AltGr on a Hungarian layout plus a letter still down, made in the
+  // order a person made them, released in scancode order.
+  held.note(alt, true);
+  held.note(ctrl, true);
+  held.note(leftShift, true);
+  held.note(keyA, true);
+  held.note(leftShift, false);
+  const released = held.releaseAll();
+  check(
+    released.length === 3 &&
+      released[0] === ctrl &&
+      released[1] === keyA &&
+      released[2] === alt,
+    `focus loss released [${released.map((c) => c.toString(16)).join(', ')}],` +
+      ' expected [1d, 1e, 38]',
+  );
+  check(held.size === 0, 'keys were still held after a release');
+  check(!held.has(alt) && !held.has(ctrl), 'a released modifier was still held');
+  check(held.releaseAll().length === 0, 'a second release let go of something');
+
+  // A break for a key never made is nothing.
+  held.note(ctrl, false);
+  check(held.size === 0, 'a break for an unmade key was held');
+
+  console.log('smoke: a focus loss lets go of every held key, in scancode order');
 }
 
 

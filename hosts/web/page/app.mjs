@@ -43,6 +43,7 @@ import {
   Machine,
   loadDemoProgram,
   scancodeFor,
+  HeldKeys,
   decodeConsoleBytes,
   SPEED_PRESETS,
   AF_OK,
@@ -978,16 +979,36 @@ async function run(
   // effect — Space scrolling the page, Backspace navigating back, Tab
   // moving focus, and since #84 the arrows and Page keys scrolling —
   // because the dev page's whole surface is the machine while it runs.
+  //
+  // Every key the page posts is noted in `held` (HeldKeys, host.mjs,
+  // #313), and when the page loses the keyboard — the window blurs, or
+  // the tab is hidden — a break is posted for each key still held,
+  // through the same call a `keyup` takes. The `keyup` for those keys
+  // is going to another window; this is the release the machine would
+  // otherwise never see, and it is input, not a write to the BDA.
+  const held = new HeldKeys();
+  const postKey = (scancode, down) => {
+    machine.postKey(scancode, down);
+    held.note(scancode, down);
+  };
   const onKey = (down) => (event) => {
     const scancode = scancodeFor(event.code);
     if (scancode === undefined) return;
     event.preventDefault();
-    machine.postKey(scancode, down);
+    postKey(scancode, down);
   };
   const onKeyDown = onKey(true);
   const onKeyUp = onKey(false);
+  const releaseHeld = () => {
+    for (const scancode of held.releaseAll()) postKey(scancode, false);
+  };
+  const onVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') releaseHeld();
+  };
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', releaseHeld);
+  document.addEventListener('visibilitychange', onVisibilityChange);
 
   // --- Audio: an AudioWorklet fed from the main thread --------------------
   //
@@ -1130,6 +1151,8 @@ async function run(
     }
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', releaseHeld);
+    document.removeEventListener('visibilitychange', onVisibilityChange);
   };
 
   // The diagnostics stream, as the lines core renders from it

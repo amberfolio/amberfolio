@@ -81,7 +81,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--headless` | no window, no audio device; `--verify`, `--fast`, `--volume` and `--mute` are refused with it. |
 | `--scale N` | integer scale of the window. |
 | `--verify` | §1. |
-| `--press KEY@FRAME` | post a real SDL key event at frame `FRAME`. `KEY` is any `SDL_GetScancodeFromName` name: `A`, `Escape`, `Left`, `Keypad 5`. Repeatable. |
+| `--press KEY@FRAME[:down\|:up]` | post a real SDL key event at frame `FRAME`. `KEY` is any `SDL_GetScancodeFromName` name: `A`, `Escape`, `Left`, `Keypad 5`. Bare, the make and the break; `:down` the make only, so the key stays held (`Left Alt@7580:down`); `:up` the break only. `hosts/sdl/src/press_spec.h`. Repeatable. |
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161, `docs/seams.md` §3a). Needs `--seam ID`, works headless, refused with `--replay`. Repeatable. |
 | `--steps N`, `--until TICKS` | bound the run, the only way to catch a hang. `--steps N` ends on step N exactly. |
 | `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.wav` (speaker rendered) and `PREFIX.edges` (§4). |
@@ -117,6 +117,14 @@ keypad's `/` and Enter, which sit inside the game's movement cluster.
 the machine, only while the seam is on (`docs/seams.md` §10). F11 and F12
 work during a `--replay`; Pause does not, a pull being an input the
 recording never had.
+
+**Losing the window releases the keys.** On `SDL_EVENT_WINDOW_FOCUS_LOST`
+the host posts a break code for every key it still holds a make for, in
+ascending scan-code order, through the same path a key-up from the window
+takes — counted and recorded like any other key, so a replay releases them
+at the same tick — and never by writing the BDA shift flags (#313,
+`hosts/common/include/amberfolio/host/held_keys.h`). The page does the
+same on `blur` and on the tab going hidden.
 
 ### Traps
 
@@ -494,6 +502,10 @@ and IndexedDB are M6's (#265).
 - Cursor keys: on an 83-key board the arrows, Home/End, Page and
   Insert/Delete are the keypad and map to its scancodes
   (`hosts/web/tests/smoke.mjs`).
+- Losing the keyboard releases the keys (#313): on the window's `blur` and
+  on the tab going hidden the page posts a break for every key it still
+  holds a make for, in ascending scancode order, through `postKey()` like
+  any `keyup` (`HeldKeys` in `host.mjs`, checked by `smoke.mjs`).
 - The speed preset is a control, not a build option (#107, #108), with the
   same four names as `--speed`; the volume slider and mute box are the
   page's (#148), applied inside the worklet (§4).

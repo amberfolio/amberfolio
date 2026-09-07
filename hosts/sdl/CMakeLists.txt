@@ -18,6 +18,9 @@ add_executable(amberfolio-sdl
   src/dump.cpp
   src/keymap.cpp
   src/main.cpp
+  # `--press`'s grammar (#313) -- its own unit so tests/press_spec_test.cpp
+  # can read it, on keymap.cpp's argument.
+  src/press_spec.cpp
   # The desktop's OCR engine (M5-E3, #174) -- the player's own Tesseract,
   # run as a program rather than linked; src/tesseract_ocr.h says why.
   # `tsv_words` is the one part of it that can be checked without an
@@ -408,9 +411,11 @@ if(AMBERFOLIO_BUILD_TESTS)
   add_executable(amberfolio-sdl-tests
     src/audio_gain.cpp
     src/keymap.cpp
+    src/press_spec.cpp
     src/tsv_words.cpp
     tests/audio_gain_test.cpp
     tests/keymap_test.cpp
+    tests/press_spec_test.cpp
     tests/tsv_words_test.cpp)
   target_include_directories(amberfolio-sdl-tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src")
