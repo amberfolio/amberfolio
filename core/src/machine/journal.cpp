@@ -522,6 +522,7 @@ void journal_state::clear() noexcept {
   art_nth_ = 0;
   art_count_ = 0;
   art_ready_ = false;
+  art_answered_ = false;
   art_width_ = 0;
   art_height_ = 0;
   cited_ = {};
@@ -556,6 +557,7 @@ void journal_state::ask(journal_citation what) noexcept {
   art_nth_ = 0;
   art_count_ = 0;
   art_ready_ = false;
+  art_answered_ = false;
   art_width_ = 0;
   art_height_ = 0;
 }
@@ -582,6 +584,7 @@ void journal_state::ask_art(journal_citation what, std::uint8_t nth) noexcept {
   art_of_ = what;
   art_nth_ = nth;
   art_ready_ = false;
+  art_answered_ = false;
   art_width_ = 0;
   art_height_ = 0;
   art_count_ = 0;
@@ -591,6 +594,7 @@ void journal_state::deliver_art(std::uint16_t width, std::uint16_t height,
                                 std::span<const std::uint8_t> levels,
                                 std::uint8_t of) noexcept {
   art_count_ = of;
+  art_answered_ = true;
   art_ready_ = false;
   art_width_ = 0;
   art_height_ = 0;
@@ -616,6 +620,7 @@ void journal_state::deliver_art(std::uint16_t width, std::uint16_t height,
 
 void journal_state::refuse_art(std::uint8_t of) noexcept {
   art_count_ = of;
+  art_answered_ = true;
   art_ready_ = false;
   art_width_ = 0;
   art_height_ = 0;

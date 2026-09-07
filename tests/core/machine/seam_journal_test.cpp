@@ -4082,6 +4082,14 @@ TEST(JournalArt, APictureTheHostWillNotHandOverSaysSo) {
   r.poll();
   EXPECT_EQ(r.row_text(reader_body_y + (4 * 8)), centred("THE PICTURE"));
   EXPECT_EQ(r.row_text(reader_body_y + (5 * 8)), centred("IS NOT HERE"));
+
+  // **And it is asked for once.** The fetch asks whether a callout for
+  // this picture has come back, not whether one is held - which is the
+  // difference between one callout and one per arrival at the program's
+  // own polling rate, for as long as the page is up.
+  const unsigned asked = r.host.art_calls;
+  r.poll(20);
+  EXPECT_EQ(r.host.art_calls, asked);
 }
 
 TEST(JournalArt, APageNumberThatOutlivedItsEntryLandsOnTheLastPage) {
@@ -4106,7 +4114,12 @@ TEST(JournalArt, APageNumberThatOutlivedItsEntryLandsOnTheLastPage) {
 
   r.host.art.clear();
   r.reader().refuse_art(0);
-  r.poll();
+  // Two arrivals: the first draws what there is now and works the page
+  // count out, the second puts the page number inside it. The clamp is
+  // against what a render measured rather than against a fresh count,
+  // because counting means walking the whole entry and this point fires
+  // tens of times a frame.
+  r.poll(2);
   EXPECT_EQ(r.reader().page(), 0u) << "the last page there is";
   EXPECT_EQ(r.reader().page_count(), 1u);
 }

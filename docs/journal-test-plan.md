@@ -324,7 +324,14 @@ mechanism to the seam or the core.
    whose one entry has a picture (#328), separate because the legs that
    fill the log with `--cite-all-journal` open whatever row the cursor
    lands on and a second page under one of them would move frames they
-   have pinned. It has the sweep's three outcomes and the sweep's
+   have pinned.
+
+   **A leg run rewrites the store it was pointed at**, because the host
+   writes its journal store back when a run ends — so after running one
+   of these `git status` may show the fixture modified, with its header
+   bumped to whatever the current format version is. It is not a change
+   anybody made and it should be checked out again rather than
+   committed. It has the sweep's three outcomes and the sweep's
    rule about the third, and `scripts/test-visual-legs.sh` asserts that
    rule in CI — which is a machine with no disk, so every leg skips there
    and the point is that skipping is loud.

@@ -448,6 +448,17 @@ class journal_state {
 
   /// Whether the buffer holds a picture, and which of the entry's it is.
   [[nodiscard]] bool art_ready() const noexcept { return art_ready_; }
+
+  /// Whether a callout for the picture named by `art_of()` and
+  /// `art_nth()` has come back at all — with the picture or without it.
+  ///
+  /// **This is what stops a refused picture being asked for for ever.**
+  /// The reader fetches when what is held is not what the page wants,
+  /// and a host that answers "I have the count and not the record"
+  /// leaves nothing held; without this the next arrival would ask again,
+  /// at the program's own polling rate, for as long as the page was up.
+  /// False after `ask_art()` and true after either answer.
+  [[nodiscard]] bool art_answered() const noexcept { return art_answered_; }
   [[nodiscard]] std::uint8_t art_nth() const noexcept { return art_nth_; }
   /// Which entry the buffer's picture belongs to — the pair, because
   /// tale 4 and entry 4 are different documents and both may have art.
@@ -733,6 +744,7 @@ class journal_state {
   std::uint8_t art_nth_{};
   std::uint8_t art_count_{};
   bool art_ready_{false};
+  bool art_answered_{false};
   journal_citation art_of_{};
   std::array<std::uint8_t, journal_art_bytes> art_{};
 

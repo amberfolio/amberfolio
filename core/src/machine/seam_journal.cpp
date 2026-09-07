@@ -1469,16 +1469,31 @@ struct refusal {
   return {.first = {}, .second = {}};
 }
 
-/// Whether the buffer is holding the picture a page wants (#328).
+/// Which picture a callout is about, as the two questions the reader
+/// asks of the buffer (#328).
 ///
 /// The pair as well as the number, because tale 4 and entry 4 are two
 /// documents and both may have art: a reader that checked only which
 /// picture would draw the tale's map on the entry's page for as long as
 /// it took the callout to come back.
+[[nodiscard]] bool art_names(const journal_state& state,
+                             unsigned nth) noexcept {
+  return state.art_of() == state.entry() && state.art_nth() == nth;
+}
+
+/// Whether the buffer is holding that picture — what the drawing asks.
 [[nodiscard]] bool art_is_here(const journal_state& state,
                                unsigned nth) noexcept {
-  return state.art_ready() && state.art_of() == state.entry() &&
-         state.art_nth() == nth;
+  return state.art_ready() && art_names(state, nth);
+}
+
+/// Whether a callout for it has already come back, with or without a
+/// picture — what the *fetch* asks, and the difference matters: a host
+/// that has the count and not the record would otherwise be asked again
+/// on every arrival, for as long as the page was up.
+[[nodiscard]] bool art_was_asked(const journal_state& state,
+                                 unsigned nth) noexcept {
+  return state.art_answered() && art_names(state, nth);
 }
 
 /// What the panel says instead of a picture when the host had the count
@@ -2975,26 +2990,40 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
 /// answered a count and then stopped answering — no store, a store
 /// swapped under a running game — would leave the reader on a page
 /// number nothing can draw. The last page is the honest answer, and it is
-/// the same one `walk_pages()` gives for a text page past the end.
+/// the same one `walk_pages()` gives for a text page past the end. It is
+/// clamped against what the last render worked out rather than against a
+/// fresh count, so the clamp costs nothing and lands one arrival later.
+///
+/// **The two early outs are the cost of this**, and they are why it may
+/// run on every arrival at all: this point fires tens of times a frame,
+/// and counting the pages means walking the whole delivered text. An
+/// entry with no pictures — which is most of a journal — never gets that
+/// far.
 void fetch_art_if_wanted(machine& box, seam_context& ctx) {
   journal_state& state = box.journal();
   if (state.reader() != journal_reader_mode::showing) {
     return;
   }
+  if (state.page_count() != 0 && state.page() >= state.page_count()) {
+    state.set_page(static_cast<std::uint16_t>(state.page_count() - 1U));
+    return;
+  }
+  if (state.art_count() == 0) {
+    return;  // an entry that is prose: nothing to fetch and nothing to page to
+  }
   const page_shape shape = state.page_place() == journal_page_place::screen
                                ? screen_page
                                : panel_page;
   const reader_pages pages = count_pages(state, shape);
-  if (state.page() >= pages.total()) {
-    state.set_page(static_cast<std::uint16_t>(pages.total() - 1U));
-    return;
-  }
   if (state.page() < pages.text) {
     return;  // a page of the entry's own text: no picture is wanted
   }
+  if (state.page() >= pages.total()) {
+    return;  // past the end; the clamp above catches it once a render says so
+  }
   const unsigned nth = state.page() - pages.text;
-  if (art_is_here(state, nth)) {
-    return;
+  if (art_was_asked(state, nth)) {
+    return;  // held, or asked for and not given: either way, asked
   }
   state.ask_art(state.entry(), static_cast<std::uint8_t>(nth));
   (void)ctx.call_host(
