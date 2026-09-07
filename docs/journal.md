@@ -61,7 +61,7 @@ amberfolio <dir> <program.exe> --seam journal
 One edition is in the table (#214): the Adventurer's Journal as the
 currently sold archive release ships it, fingerprint
 `67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c`. Its
-pages are `/DCTDecode` (§4a). It has 58 entries in 78 pieces, and 14
+pages are `/DCTDecode` (§4a). It has 58 entries in 77 pieces, and 14
 pictures on 12 of those entries (§11).
 
 An edition is data in two places:
@@ -98,7 +98,7 @@ read as journal entries and written back as the current version.
 
 **An entry is a list of pieces.** Entries are set two columns to a page
 and two pages to a scan, and they flow out of a column and, for four of
-the 58, onto the facing page. Eighteen are in more than one piece.
+the 58, onto the facing page. Seventeen are in more than one piece.
 `journal_entry_fact` carries a span of `journal_fragment` in reading
 order, and what an engine reads is joined in that order.
 
@@ -116,7 +116,12 @@ repository: it reads a document this project may never carry. The method:
    again on its own with a whitelist of the letters it can contain;
    without that `LXXVIII` comes back `LXXVIIT`.
 3. **An entry runs from its heading to the next one**, across columns
-   and scans.
+   and scans — but not across the matter a section opens with. On the one
+   page where a section begins, a display heading and a paragraph are set
+   the width of the page above the column grid, with a printed rule under
+   them, and a walk down the columns steps straight over them: the first
+   item of the section stops at the foot of its own column and the next
+   column begins below the rule, not at the head of the scan (#344).
 4. **Check the numbering.** Entries are a counted chain: check it against
    the printed number on every scan; the last must land on 58. Tales and
    proclamations are read: they must ascend in reading order, and every
