@@ -1,18 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The plain half of the automap's pair (M5-E2, #173): a saved party walked
-# through the city with **Tab pressed and nothing listening for it**. This
-# is the run `walk-map` has to be identical to until the seam draws its
-# first pixel.
-#
-# Tab is in this half deliberately, and at the same tick. A pair must put
-# its inputs at the same ticks in both halves (`README.md`), and the whole
-# claim being pinned is what the *program* does with the run: here the key
-# reaches it and it goes round its command loop again, because Tab is not
-# in its alphabet.
-#
-# The file and dir lines are names, sizes and SHA-256s of a snapshot of
-# the disk. No byte of the player's installation is here.
+# The plain half of the automap's pair (M5-E2 #173): a saved party walked
+# through the city with Tab pressed and nothing listening for it.
+# `walk-map` has to be identical to this until the seam draws its first
+# pixel.
+# Tab is in this half deliberately and at the same tick: a pair must put
+# its inputs at the same ticks in both halves (README.md), and what is
+# pinned here is the program going round its command loop again, Tab not
+# being in its alphabet.
 
 about slot A loaded and walked forty-eight moves through New Phlan's
 about streets to the armourer at 8,11, with a Tab in the key stream that

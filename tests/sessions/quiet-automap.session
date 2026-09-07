@@ -1,13 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# One of M5-V1's fidelity pairs (#177): `quiet.rec`'s script with
-# automap on as well, and nothing done to trigger it.
-#
-# The `identical` line is the whole session. It says every checkpoint
-# equals the baseline's — that a seam which is on, armed and idle leaves
-# a machine indistinguishable from one where it was off. That is PLAN.md
-# §5's invariant on the real program rather than on a synthetic one, and
-# it is checked with no disk, so CI checks it on every push.
+# One of M5-V1's fidelity pairs (#177): `quiet`'s script with `automap`
+# on as well and Tab never pressed. Its hotkey is the one place a seam
+# can change what the program observes.
+# The `identical` line is the whole session: a seam that is on, armed and
+# idle leaves a machine indistinguishable from one where it was off
+# (PLAN.md §5), checked with no disk, so CI checks it on every push.
 
 about the automap on and **Tab never pressed**. Its hotkey is the one place a seam can change what the program observes, and this is the run that says it does not when nobody presses it
 disk external

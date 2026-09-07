@@ -1,48 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The same script, the same disk and the same tick budget as `camp.rec`,
-# with `encamp-fix` on and nothing else changed (M5-E1 #172, M5-E1a #186).
-# The `contrast` line below is the assertion that this made a difference:
-# the two recordings must agree checkpoint for checkpoint until the seam
-# acts, and disagree from there to the end.
-#
-# **The two runs differ by one keystroke and nothing else.** Where `camp`
-# presses the camp menu's own Rest, this one presses the letter the seam
-# put on that menu — at the same tick, so the checkpoint a key event
-# forces (`docs/replay.md` §3) falls in the same place in both and the
-# pair is comparable. Since #186 there is no pull in this recording at
-# all: what a person does to ask for the Fix is press a key in the game.
-#
-# **Re-recorded for #192**, which is a legitimate re-record and the kind
-# the README's list did not have: a *seam this session enables* changed
-# what it does. The Fix used to dial a day for a party that was already
-# whole; it now declines, so slot C's run was a different run and this
-# recording had to say so.
-#
-# **And re-recorded again for M5-E1d (#196)**, which is what put back
-# what that cost. The pair had stopped pinning the command *working*:
-# slot C's party is whole, so its two halves diverged on the keystroke
-# rather than on the healing, which a seam that had stopped working
-# altogether would also have produced. It runs on slot B now, over a
-# party the debug `cheat-wound-party` seam has left on one hit point
-# each — **both halves enable that seam and pull it at the same tick**,
-# so the wounding is part of the run they have in common and the only
-# difference between them is still one keystroke. What the wounding buys
-# is a Fix with real work to do: five cures spent through the program's
-# own cast driver, thirty days dialled on the program's own rest clock,
-# and a report with an exception list in it.
-#
-# **And re-recorded again for #269**, which is the same entry in the
-# README's list once more: the Fix's report can say how long a rest of a
-# day or more took, and this run's rest is thirty days. The recording is
-# the same run to the tick — the same keys, the same 266,477,308 ticks and
-# the same 66,619,327 steps — and **six of its 112 checkpoints moved**,
-# the last six, from tick 254,586,288, which is the box being drawn with
-# one clause more in it. A re-record that had moved anything earlier
-# would have been a finding rather than a re-record.
-#
-# The file and dir lines are names, sizes and SHA-256s of a snapshot of
-# the disk. No byte of the player's installation is here.
+# `camp`'s script, disk and tick budget with `encamp-fix` on and nothing
+# else changed (M5-E1 #172, M5-E1a #186). `contrast camp`: the two must
+# agree checkpoint for checkpoint until the seam acts and disagree from
+# there to the end.
+# The two runs differ by one keystroke and nothing else. Where `camp`
+# presses the camp menu's own Rest, this presses the letter the seam put
+# on that menu, at the same tick, so the checkpoint a key event forces
+# (docs/replay.md §3) falls in the same place in both. Both halves enable
+# `cheat-wound-party` and pull it at the same tick (#192, #196, #269).
 
 about the same script with the Encamp Fix on, pressing the letter the
 about seam puts on the camp menu instead of the menu's own Rest. The

@@ -1,281 +1,135 @@
 # Extending the machine
 
-This is the sibling of [`cpu-implementation.md`](cpu-implementation.md).
-That one is for touching the interpreter; this one is for everything
-around it — adding a device, adding a BIOS or DOS service, or working out
-where a new piece of hardware belongs.
-
-It was written at M2's closeout, for M3. When the game first boots it
-will stop, loudly, on some service this machine does not have; the log
-line will say which, and this document is how you go from that line to a
-handler.
-
-Read it once. It assumes you know what a PC is and nothing about this
-repository.
-
-The short version:
+The sibling of [`cpu-implementation.md`](cpu-implementation.md): adding
+a device, adding a BIOS or DOS service, or working out where a new piece
+of hardware belongs.
 
 > A **device** answers bus cycles inside the ports and memory it claimed.
 > A **service** is a native function behind an interrupt vector. Neither
 > knows about the other, and neither invents an answer it does not have.
 
-- [1. The layer in ten minutes](#1-the-layer-in-ten-minutes)
-- [2. Adding a device](#2-adding-a-device)
-- [3. Adding a service](#3-adding-a-service)
-- [4. Virtual time](#4-virtual-time)
-- [5. Log, don't fake — what it means here](#5-log-dont-fake--what-it-means-here)
-- [6. Talking to a host](#6-talking-to-a-host)
-- [7. Testing](#7-testing)
-
----
-
 ## 1. The layer in ten minutes
 
-Twenty headers under `core/include/amberfolio/machine/`. Most work needs
-five of them. All are commented at length — this section is the map, not
-a substitute for reading the one you are about to call into.
+Headers under `core/include/amberfolio/machine/`; each is commented at
+length.
 
-### The machine — `machine.h`
-
-`machine` owns the RAM, the maps, the devices, the scheduler, the service
-floor and the processor, and **it is the `cpu::bus`**. A memory cycle
-arrives at `machine::read_memory`, the memory map classifies the address,
-and it goes to RAM, to a device, or nowhere. The CPU never learns which.
-
-`step()` is one scheduling step. `run(until)` steps until virtual time
-reaches a tick you name. Both are described in §4.
-
-### The maps — `memory_map.h`, `port_map.h`
-
-An address gets one of four answers: `ram`, `rom`, `device`, or
-`open_bus`. A port gets a device or nothing. Unclaimed space is not an
-error — it reads `0xFF` and swallows writes, because that is what an
-unterminated bus does — but the first touch of each 4 KiB page and each
-port is reported, once, per reset.
-
-`memory().ram()` is the documented back door: the machine's own writers —
-the loader, the BIOS setup, a test — write memory *as the machine*, not
-as the program, so they bypass device routing and the ROM refusal.
-
-### The device contract — `device.h`
-
-Four things: what you claim (`claims()`), how you answer inside it
-(`read_port`/`write_port`/`read_memory`/`write_memory`), how you come
-back to power-on (`reset()`), and how you refuse something
-(`report_fault()`).
-
-There is deliberately **no time on this interface**. See §4.
-
-### The service floor — `service_floor.h`
-
-The IVT and the BDA are real memory. Every provided vector points at a
-one-byte `IRET` stub in segment F000; the machine compares CS at each
-step boundary and, when execution reaches a stub, runs the native handler
-and then lets the CPU execute the `IRET` itself.
-
-This is why a program that hooks a vector works **by construction**: it
-overwrites the IVT entry, the entry stops pointing at our stub, and the
-handler simply becomes unreachable. Nothing detects hooking, because
-detecting hooking is guessing.
-
-`service_floor::reset()` is also this machine's **power-on self test**,
-and every part of it matters. It lays the vector table, the stubs and the
-BDA down in memory; then it programs the hardware a PC's ROM programs
-before the first program runs — PIT channel 0 at 18.2 Hz and the 8259's
-ICW sequence, as real bus cycles, to whichever of the two are attached;
-and then it clears the display buffer through the video card's own write
-pipeline, putting the two sequencer registers it had to touch back
-afterwards.
-
-M2 had only the memory half, and the shape of that gap is worth
-remembering: nothing refused anything, no line was logged, and M3's first
-boot simply sat in a two-instruction loop watching `40:6C` for a change
-that had no way to arrive. Log-don't-fake cannot catch a program that
-never asked.
-
-The display half arrived the same way and from a player rather than a
-boot log: reset the machine, start again, and the previous run's picture
-was still there under the new one. Every piece of that was behaving
-correctly on its own. `machine::reset()` blanks the frame it publishes;
-the card keeps its planes, because RESET does not wipe VRAM on real
-hardware either (`ega.h`'s "Reset"); the renderer composes the next frame
-from those planes. What was missing was the ROM writing over the buffer
-afterwards, which is where a real machine clears it — inside the mode set
-its POST performs — and which nothing else in this machine was going to
-do. A host cannot fix it from its side: by the time those pixels are in
-the published frame they are indistinguishable from pixels the new run
-drew.
-
-### The platform interface — `platform.h`
-
-The seam to the hosts, and the one file to read before writing host code.
-One rule shapes all of it:
-
-> **Core → host is pulled. Host → core is pushed. Nothing in core ever
-> calls out.**
-
-Frames, audio and console bytes are buffered and taken. Keys, the wall
-clock and the program are pushed in. The VFS is the one deliberate
-exception, and the file says why.
-
----
+- **`machine.h`**: `machine` owns the RAM, the maps, the devices, the
+  scheduler, the service floor and the processor, and **is the
+  `cpu::bus`**. A memory cycle arrives at `machine::read_memory`, the
+  memory map classifies the address, and it goes to RAM, a device, or
+  nowhere. `step()` is one scheduling step; `run(until)` steps until
+  virtual time reaches a tick.
+- **`memory_map.h`, `port_map.h`**: an address is `ram`, `rom`,
+  `device` or `open_bus`; a port is a device or nothing. Unclaimed space
+  reads `0xFF` and swallows writes, and the first touch of each 4 KiB
+  page and each port is reported once per reset. `memory().ram()` is the
+  back door for the machine's own writers (loader, BIOS setup, tests),
+  bypassing device routing and the ROM refusal.
+- **`device.h`**: `claims()`, `read_port`/`write_port`/`read_memory`/
+  `write_memory`, `reset()`, `report_fault()`. No time on this interface
+  (§4).
+- **`service_floor.h`**: the IVT and BDA are real memory. Every provided
+  vector points at a one-byte `IRET` stub in segment F000; the machine
+  compares CS at each step boundary, runs the native handler when
+  execution reaches a stub, and lets the CPU execute the `IRET`. A
+  program that hooks a vector works by construction.
+  `service_floor::reset()` is the power-on self test: it lays down the vector table, stubs and BDA, then
+  programs PIT channel 0 at 18.2 Hz and the 8259's ICW sequence through
+  real bus cycles, then clears the display buffer through the video
+  card's own write pipeline. A missing half of that shows as a boot that
+  stops making progress with nothing logged, since log-don't-fake cannot
+  catch a program that never asked.
+- **`platform.h`**: the seam to the hosts. **Core to host is pulled;
+  host to core is pushed; nothing in core ever calls out.** The VFS is
+  the one deliberate exception, and the file says why.
 
 ## 2. Adding a device
 
-1. **New header and source** under `core/include/amberfolio/machine/` and
-   `core/src/machine/`, one sorted line each into `core/CMakeLists.txt`.
-2. **Derive from `device`.** Return your ports and memory windows from
-   `claims()`; the spans must be valid while `machine::attach()` runs.
-3. **If you need a moment in time, derive from `scheduled` as well** and
-   register with `machine::schedule()` — a *separate* call from
-   `attach()`, because a type deriving from both converts to each base
-   equally well and one overload would be ambiguous. The PIT is the
-   worked example: it is attached once and scheduled twice, one
-   participant per channel.
-4. **Refuse what you do not implement** with `report_fault(at, detail)`.
-   §5 is about what that means.
-5. **Tests** under `tests/core/machine/`, driving the device through real
-   ports and real addresses rather than private state.
+1. New header and source under `core/include/amberfolio/machine/` and
+   `core/src/machine/`, one sorted line each in `core/CMakeLists.txt`.
+2. Derive from `device`; return ports and memory windows from `claims()`
+   (spans valid while `machine::attach()` runs).
+3. For a moment in time, also derive from `scheduled` and register with
+   `machine::schedule()`, a separate call from `attach()` (the two bases
+   make one overload ambiguous). The PIT is attached once and scheduled
+   twice, one participant per channel.
+4. Refuse what you do not implement with `report_fault(at, detail)` (§5).
+5. Tests under `tests/core/machine/`, through real ports and addresses.
 
-The house pattern for anything bounded is a fixed-capacity `std::array`
-with a documented capacity constant and a loud failure when it is
-exhausted — `memory_map::max_windows`, `port_map::max_ranges`,
-`machine::max_devices`, `scheduler::max_participants`. **`core/` has no
-allocator**: no `std::vector`, no `std::map`, no `<memory>`, no
-exceptions. The standard headers in use are `<cstdint>`, `<cstddef>`,
-`<array>`, `<span>`, `<bit>`, `<compare>`, `<atomic>` and `<new>`.
-
----
+Anything bounded is a fixed-capacity `std::array` with a documented
+capacity constant and a loud failure when exhausted
+(`memory_map::max_windows`, `port_map::max_ranges`,
+`machine::max_devices`, `scheduler::max_participants`). **`core/` has no
+allocator**: no `std::vector`, `std::map`, `<memory>` or exceptions. The
+standard headers in use are `<cstdint>`, `<cstddef>`, `<array>`,
+`<span>`, `<bit>`, `<compare>`, `<atomic>` and `<new>`.
 
 ## 3. Adding a service
 
-This is what M3 will spend most of its time doing.
+1. Write the handler as a `service_handler`, a plain function pointer.
+   State lives on `machine` (`dos()`, `input()`, `wall()`, `console()`).
+2. Install it into the floor: `install_int10()`, `install_dos_services()`
+   and `keyboard_service::install()` are the worked examples.
+3. Report flags through the stack image: CF set on failure with the code
+   in AX; `service::frame` names the offsets of the pushed IP, CS and
+   FLAGS.
+4. Refuse the rest: a vector serving many functions by AH refuses an
+   unknown AH as loudly as an unbacked vector.
+5. A service that closes a boot-log line adds its call to
+   `synthetic_boot` in `tests/programs` in the same change; a handler
+   that names files adds its `floor.report_file()` call and its line in
+   `machine_program::file_trace`.
 
-1. **Write the handler** as a `service_handler` — a plain function
-   pointer, so it has nowhere to keep state. State that a handler needs
-   lives on `machine` and is reached through it, exactly as `dos()`,
-   `input()`, `wall()` and `console()` already are.
-2. **Install it** into the floor. `install_int10()`, `install_dos_services()`
-   and `keyboard_service::install()` are the three worked examples.
-3. **Report flags through the stack image.** DOS's convention is CF set
-   on failure with the code in AX; `service::frame` names the offsets of
-   the pushed IP, CS and FLAGS so no call site spells `SP+4`. This is
-   what a handler written in 8086 would do, and it is why the return goes
-   through a real `IRET`.
-4. **Refuse the rest.** A vector serving many functions by AH must refuse
-   an AH it does not know as loudly as an unbacked vector — the floor's
-   own null-handler check cannot see inside one.
-
-If a handler must let the machine run and then carry on — the timer
-handler chains INT 1Ch and still owes an EOI — claim a **continuation
-stub**, set IP to it, and deliver the interrupt. The pushed return
-address is then the second half of your handler. This is the same thing a
-BIOS written in 8086 gets free from the instruction after its `INT`.
+A handler that must let the machine run and then continue (the timer
+handler chains INT 1Ch and still owes an EOI) claims a **continuation
+stub**, sets IP to it, and delivers the interrupt.
 
 **A native handler and its stub's `IRET` must not be split by an
-interrupt.** If one is delivered between them, the `IRET` that eventually
-returns to the stub arrives at the boundary test again and runs the
-handler a second time. `machine::step()` therefore dispatches deadlines
+interrupt**, or the `IRET` returns to the stub, hits the boundary test
+again and runs the handler twice. `machine::step()` dispatches deadlines
 *before* the CS compare, and the compare defers to
-`cpu::processor::interrupt_due()`. Do not reorder those two without
-reading why they are in that order.
-
----
+`cpu::processor::interrupt_due()`. Do not reorder those.
 
 ## 4. Virtual time
 
 **Everything machine-visible is counted in ticks of the PIT input clock,
-1,193,182 Hz** (`clock.h`). Not microseconds and not CPU clocks: the PIT
-counts in exactly this unit and the speaker's square wave is integrated
-from it, so anything else would round at the one place the arithmetic has
-to be exact.
-
-**Nothing under `core/` may read host time.** No `<chrono>`, no
-`std::time`. That rule is what makes a run recordable and replayable
-(PLAN.md §4), and since M4 it is enforced mechanically:
-`scripts/check-host-time.sh` runs in CI's guards job and fails on any
-clock read under `core/` (#78; `docs/replay.md` is what the rule buys).
+1,193,182 Hz** (`clock.h`); the PIT counts in that unit and the speaker's
+square wave is integrated from it. **Nothing under `core/` may read host
+time** (`scripts/check-host-time.sh`, in CI); that is what makes a run
+replayable (`docs/replay.md`).
 
 A step costs a fixed number of ticks under the speed governor; per-opcode
-cycle counting is an explicit non-goal. Devices do not tick. **They
-compute.** The PIT turns a channel's count into a formula evaluated on
-demand and posts its next output edge as a deadline; the renderer arms a
-60 Hz frame boundary. Nothing walks forward one tick at a time.
+cycle counting is a non-goal. Devices do not tick, they compute: the PIT
+turns a count into a formula evaluated on demand and posts its next edge
+as a deadline; the renderer arms a 60 Hz frame boundary. Two properties
+of `scheduled`: a handler is called with the tick it armed, not the tick
+the machine reached, so re-arming from `due` cannot drift; and ties break
+by registration order, fixed by wiring.
 
-Two properties of `scheduled` that matter and are easy to miss:
-
-- **A handler is called with the tick it armed, not the tick the machine
-  reached.** A device that re-arms from `due` therefore cannot drift,
-  however coarse the step cost is.
-- **Ties break by registration order**, which is fixed by how the machine
-  is wired rather than by anything the program does — a determinism
-  requirement, not a convenience.
-
----
-
-## 5. Log, don't fake — what it means here
-
-CLAUDE.md states the rule without qualification: an unimplemented
-service, register or port is **a loud log line and a clean stop**, never
-a silently guessed answer.
-
-Concretely, at this layer:
+## 5. Log, don't fake: what it means here
 
 | you are | you refuse with | the machine does |
 |---|---|---|
-| a device | `report_fault(at, detail)` | stops with `unimplemented_device`, reports it |
-| a service handler | `stop_unimplemented_function(at)` | stops with `unimplemented_service` |
-| a handler declining one request | `stop_unsupported_request(at)` | stops with `unsupported_request` |
+| a device | `report_fault(at, detail)` | stops with `unimplemented_device` |
+| a service handler | `stop_unimplemented_function(at)` | stops with `unimplemented_service` (nothing installed behind that vector) |
+| a handler declining one request | `stop_unsupported_request(at)` | stops with `unsupported_request` (a handler ran and said no) |
 
-The distinction in the last two rows is real: `unimplemented_service`
-means nothing was installed behind that vector, `unsupported_request`
-means a handler ran and said no to this particular call.
+**Open bus is not faking**: `0xFF` and dropped writes is the true
+hardware answer, reported once per page and port. If you find yourself
+inventing a private way to say no, fix the shared channel instead.
 
-**Open bus is not faking.** An address or port nothing claims reads
-`0xFF` and drops writes because that is the true hardware answer; it is
-reported once per page and per port, and the machine keeps running. The
-difference from a refusal is that nobody is inventing anything.
+**A notice, when the honest answer is neither a stop nor a fake.** A
+request the machine can honestly *record* but not honestly *perform*:
+`INT 10h AH=00h AL=03h` asks for 80x25 text, which this machine has no
+path for and whose output nothing will look at. The mode number goes
+into the BDA, `AH=0Fh` reports it back, nothing reaches the adapter, and
+the machine says so once through `notice_kind::undisplayable_video_mode`.
+The test: **can you state, in the log line, precisely what did not
+happen?** If yes, a notice; if the line would say "handled it somehow",
+a stop.
 
-A cautionary note from M2's own history: the EGA originally refused
-registers with a device-local halt, because `device` had no channel back
-to the machine. It was inert rather than wrong — but nothing stopped and
-nothing was logged, which is not the rule. That gap was filed (#65),
-closed by the fault channel in #46, and the EGA joined it at closeout. If
-you find yourself inventing a private way to say no, that is the signal
-to fix the shared one instead.
-
-### When the honest answer is a notice and not a stop
-
-There is a third row that does not fit the table, and it is worth
-knowing before you reach for a stop: a request the machine can honestly
-*record* but not honestly *perform*.
-
-The worked example is `INT 10h AH=00h AL=03h`. M3's first boot asks for
-80x25 text on its way to graphics, the way most programs of the era do.
-This machine has no text path at all — no CRTC, no character generator,
-nothing claiming B8000 — so there is nothing to program. But refusing
-ends the run of every program that merely passes through text, over a
-mode whose output nothing was ever going to look at.
-
-So the mode number goes into the BDA, `AH=0Fh` reports it back, nothing
-reaches the adapter, and the machine says so once through
-`notice_kind::undisplayable_video_mode`. The notice is what keeps this
-from being an accommodation: it is a worklist line, in the same channel
-as an open-bus touch, and a reader of the boot log sees exactly what the
-machine agreed to do and did not do.
-
-The test for whether you are in this row rather than inventing something:
-**can you state, in the log line, precisely what did not happen?** If you
-can, the notice is the honest answer. If the line would have to say
-"handled it somehow", it is a stop.
-
-### The refusal a reader actually sees
-
-A stop is only half of "log, don't fake"; the other half is that the line
-it produces has to be worth reading. `machine/report.h` is that line, and
-it is formatted **in core** rather than in each host, because M3's exit
-criterion is desktop *and* web and the two have to print the same
-sentence at the same step for the comparison to mean anything (#84).
+**The refusal a reader sees** is formatted in core (`machine/report.h`)
+so both hosts print the same sentence at the same step:
 
 ```
 amberfolio: stop reason=unimplemented_service steps=99172 ticks=396688 frames=20 cs=F000 ip=0121 at=0B5D2
@@ -283,183 +137,83 @@ amberfolio: stop call=INT21 ah=35 al=00 ax=3500 from=0B58:0052 outcome=handled
 amberfolio: stop next=INT 21h AH=35h AL=00h
 ```
 
-Three things follow from that shape, and they are the whole reason the
-machine keeps anything beyond `stop_record`:
+`machine::steps()` is what "at the same step" means across two runs;
+`last_service_call()` and `last_device_stop()` are kept unconditionally
+(`outcome=unimplemented` is an unbacked vector, `handled` a handler that
+said no); `machine::trace()` keeps the last 256 instructions, 64 service
+calls and 32 naming file calls, off unless asked (`machine/trace.h`).
+`next=` names the one thing to widen.
 
-- **`machine::steps()`.** Ticks and steps are the same fact twice only
-  while the speed governor is left alone; the step count is what stays
-  comparable between two runs, and it is what "at the same step" means.
-- **`machine::last_service_call()` and `last_device_stop()`.** Kept
-  unconditionally, because they are what turn `reason=... at=0B5D2` into
-  a worklist entry. `outcome=` is the field that tells the two refusals
-  above apart: `unimplemented` is a vector nothing backs,
-  `handled` with a service-shaped stop is a handler that ran and said no
-  to this AH.
-- **`machine::trace()`.** The last 256 instructions, 64 service calls and
-  32 naming file calls, in fixed rings, **off unless a caller asks** — one
-  branch per step when it is off (`machine/trace.h`). It answers the two
-  questions a bare address cannot: how the program got there, and which
-  files it was asking for on the way.
-
-The `next=` line is the M3 method in one sentence: it names the one
-service, register or opcode to widen, so the worklist is written by the
-machine rather than inferred by whoever is reading the log.
-
-### The other line: which file (M4-G3 #104, M4-G4 #105)
-
-A service call says `INT21 ax=3D02` and where it came from. It cannot say
-*which file*, because the record is built as the stub is reached and the
-path does not exist as an answer until the handler has resolved it — and
-"which file" is what a shop's item data and a save game's write path are
-both made of.
-
-So the DOS layer reports a second, much quieter record of its own:
+**The file line.** The DOS layer reports the naming calls (`AH=39h/3Ch/
+3Dh/41h`, and `3Eh` because a save has to close) after the outcome, with
+the canonical path:
 
 ```
 amberfolio: file mkdir \SAVE handle=0000 access_denied from=0B58:1823
 amberfolio: file create \SAVE\SAVGAMA.DAT handle=0006 none from=0B58:1458
 amberfolio: file close \SAVE\SAVGAMA.DAT handle=0006 none from=0B58:14A8
-amberfolio: file open \SAVE\BOB.CHA handle=0006 none from=0B58:1458
-amberfolio: file unlink \SAVE\BOB.CHA handle=0000 none from=0B58:162D
 ```
 
-That is a Gold Box save game in five lines: make the save directory and
-ignore the refusal, write the slot, move the party's character files into
-it. The rules the channel keeps:
-
-- **The naming calls only** — `AH=39h/3Ch/3Dh/41h`, plus `AH=3Eh` because
-  a save is a file that has to *close* before a player can be told it was
-  written. Reads and writes name a handle, and a line per 512-byte chunk
-  would bury what the channel is for under what the service trace already
-  shows.
-- **After the outcome, not before.** The point of the record is the path
-  and the answer, and neither exists until the handler has both.
-- **A close says whether anything moved through the handle.** Two flags,
-  `read_through` and `written_through`, not in the printed line and there
-  for a consumer of the record: they are what tells a program *using* a
-  file from one merely asking whether it exists. The load menu opens
-  every save slot in the directory in turn to list them, and only one of
-  those opens is a load (M5-E2c, #173). `dos.h`'s `read_through` is the
-  bookkeeping under it, and it is **not machine state** on `overlay.h`'s
-  own terms: no DOS call reports it, `reset()` drops it, the
-  serialization never sees it, and a replay reconstructs it.
-- **Refusals are reported, not swallowed.** "Is there a save in slot A"
-  is a question a program asks by opening a file, and `file_not_found` is
-  the answer — the same rule §5 states for the machine as a whole, one
-  layer up. *Every* refusal, including the one that happens before the
-  filesystem is consulted at all: a name `canonicalize()` will not resolve
-  — a drive letter that is not C, a component no legal DOS short name can
-  equal — has no path to report, so the event carries the root and the
-  error is what says why (#121). That was the last naming failure this
-  machine reported nowhere, and it is exactly the shape of "the program
-  asked for the floppy it was installed from".
-- **The path is the canonical one**, not the bytes at `DS:DX`, so a log
-  line and the filesystem agree about what was touched.
-- **The trace ring keeps the last thirty-two of them** (`trace.h`), and
-  `format_trace_report` renders them above the service calls. The live
-  lines are what a host prints as a run happens; the ring is what a reader
-  reads afterwards, and a boot buries the live ones under tens of
-  thousands of `INT 16h` polls. A `dos_path` is fixed-size by
-  construction, so nothing about the ring's no-allocator contract has to
-  bend to hold one.
-
-A handler that starts naming files adds its `floor.report_file()` call in
-the same change, the way §3 says a service closing a boot-log line adds
-its call to the synthetic boot. `machine_program::file_trace` in
-`tests/programs` is where that gets asserted, in order and including the
-refusals.
-
----
+Refusals are reported, including a name `canonicalize()` will not
+resolve (the event carries the root and the error says why, #121). A
+close carries two flags, `read_through` and `written_through`, for a
+consumer of the record (the load menu opens every slot to list them and
+only one open is a load); they are bookkeeping and not machine state.
+The trace ring keeps the last thirty-two file events, and
+`format_trace_report` renders them above the service calls.
 
 ## 6. Talking to a host
 
-Read `platform.h`'s design essay first; it was written so the host issues
-needed no further design conversation, and it is still the answer.
+Read `platform.h`'s design essay first.
 
-The parts that catch people:
+- **Frames are pulled**, with a monotonic generation counter; a slow host
+  drops frames and never slows the machine.
+- **`audio_timeline::render()` is the only core function callable off
+  the machine thread**, by exactly one thread. The edge list is canonical
+  machine state; the float samples are not. The edge list can also be
+  read as an opt-in log the host drains between slices (`docs/hosts.md`
+  §4).
+- **Input is stamped with the machine's own clock**; a host posts only
+  between `run()` calls.
+- **The wall clock is a seed plus virtual time.**
 
-- **Frames are pulled**, with a monotonic generation counter. A slow host
-  drops frames; it never slows the machine.
-- **`audio_timeline::render()` is the only core function callable off the
-  machine thread**, and by exactly one thread — not one at a time. The
-  edge list is canonical machine state; the float samples are not, which
-  is what keeps audio out of replay hashes. Since M4-A1 (#106) the edge
-  list can also be *read* — an opt-in log the producer fills and the host
-  drains between slices, invisible to `render()` and absent from the state
-  serialization, so that "did the machine make the right edges" and "is
-  the render of them right" can be asked separately. `docs/hosts.md` §4
-  has the measurements that came out of asking.
-- **Input is stamped with the machine's own clock**, and a host may only
-  post between `run()` calls, so the stamp is a settled step-boundary
-  value.
-- **The wall clock is a seed plus virtual time**, so date/time reads are
-  deterministic and a replay injects a recorded value.
-
-The C ABI (`abi.h`) mirrors all of this for the wasm host: an opaque
-handle, no structs by value, nothing returned that the other side must
-free. **A symbol missing from `-sEXPORTED_FUNCTIONS` in
-`hosts/web/CMakeLists.txt` silently does not exist** — the smoke test
-checks the export list for exactly that reason.
-
----
+The C ABI (`abi.h`) mirrors this for the wasm host: an opaque handle, no
+structs by value, nothing the other side must free. **A symbol missing
+from `-sEXPORTED_FUNCTIONS` in `hosts/web/CMakeLists.txt` silently does
+not exist**; the smoke test checks the export list.
 
 ## 7. Testing
 
-Three tiers, and they answer different questions.
+- **Unit tests** (`tests/core/machine/`) drive one device or service
+  through real ports and addresses; the EGA write pipeline is the model
+  for table-driven coverage.
+- **Machine programs** (`tests/programs/machine_*.cpp`) are self-written
+  8086 programs run through the whole machine to exit. **This apparatus
+  stays free of GoogleTest** so it builds under Emscripten and
+  `ctest --preset wasm` runs the interpreter. `synthetic_boot` is shaped
+  like a real boot (self-unpacking, a module loaded off the filesystem
+  and far-called through a relocated pointer, every service the real
+  boot needed) and is extended in the same change as any new service.
+- **Host smoke tests** run a program through a host headlessly.
 
-**Unit tests** (`tests/core/machine/`) drive one device or one service
-through its real ports and addresses. This is where exhaustive
-table-driven coverage belongs — the EGA's write pipeline is the model.
-
-**Machine programs** (`tests/programs/machine_*.cpp`) are self-written
-8086 programs run through the whole machine to program exit. They are
-M2's exit criterion and the thing that proves the pieces compose. Note
-two constraints: the M1 flat-bus programs must keep passing unchanged,
-and **this apparatus must stay free of GoogleTest**, because it is the
-only test code that builds under Emscripten — which is what makes
-`ctest --preset wasm` run the interpreter rather than merely compile it.
-
-`synthetic_boot` is the M3 member of that list and the one to extend
-when you add a service. It is shaped like the thing CI can never run: a
-stub that unpacks the rest of itself and jumps into it, a module loaded
-off the filesystem and entered with a far call through a relocated
-pointer, and a call to every service the real boot turned out to need.
-**A service that closes a boot-log line adds its call here in the same
-change that implements it** — that program's coverage is the record of
-what M3 added.
-
-**Host smoke tests** run a program through a host headlessly and assert
-what came out.
-
-### A warning about goldens
-
-Two separate M2 bugs were found by refusing to trust a hash:
-
-- a framebuffer golden that faithfully recorded a band drawn 648 pixels
-  wide instead of 2568, because programming an indexed EGA register
-  leaves the value in `AL` and clobbered the mask;
-- a framebuffer hash pinned over an all-black frame that had never been
-  composed, because `scheduler::arm()` silently no-ops on a participant
-  that was never registered.
-
-In both cases every other assertion passed. **A hash tells you something
-changed; it never tells you the thing was ever right.** Assert at least
-one expectation you derived by hand — a named pixel, a run length, a
-generation counter greater than zero — alongside every hash you pin.
-
-### The commands
+**A hash tells you something changed; it never tells you the thing was
+ever right.** Assert at least one hand-derived expectation (a named
+pixel, a run length, a generation counter above zero) beside every hash
+you pin. Two M2 bugs hid behind green hashes: a band 648 pixels wide
+instead of 2568 (an indexed EGA register write left its value in `AL`),
+and an all-black frame never composed (`scheduler::arm()` no-ops on an
+unregistered participant).
 
 ```sh
 cmake --preset windows-msvc          # or linux-gcc, linux-clang, macos, wasm
 cmake --build --preset windows-msvc
-ctest --preset windows-msvc -L unit  # the unit suite
-ctest --preset windows-msvc -L smoke # the hosts
-ctest --preset wasm                  # the machine programs under node
+ctest --preset windows-msvc -L unit
+ctest --preset windows-msvc -L smoke
+ctest --preset wasm
 
 bash scripts/check-format.sh
 bash scripts/check-tidy.sh build/windows-msvc
 ```
 
-Always rebuild before `ctest`. A stale binary reports "100% tests passed"
-from a build that failed, and the tell is a test total that is not the
-baseline plus your additions — which cost real time in M2 more than once.
+Always rebuild before `ctest`: a stale binary reports "100% tests passed"
+from a build that failed.

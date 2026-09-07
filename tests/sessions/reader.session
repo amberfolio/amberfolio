@@ -3,19 +3,13 @@
 # FID-2 (#235): the journal reader as a session, so that what the panel
 # draws is a checkpoint hash on every target rather than a picture
 # somebody looked at once.
-#
-# **The store is why this descriptor grew a line.** A recording is keys,
-# ticks and hashes (`docs/replay.md`), and the reader's other input is a
-# file. What it draws out of that file is in the framebuffer and the
-# framebuffer is in every checkpoint, so a replay handed a different
-# store diverges. Measured while making this: replayed against another
-# store, or against none, it parts company at the first checkpoint after
-# the entry opens, in `devices` — the EGA planes, which is the panel.
-# That was #175's one loose end and this is the whole of the fix.
-#
-# The store is committed because it is this project's own sentences, not
-# anybody's booklet. `cite.session` is the other half: a real journal,
-# pinned by digest and never carried here.
+# The `journal-store` line is required. A recording is keys, ticks and
+# hashes (docs/replay.md) and the reader's other input is a file; what it
+# draws is in the framebuffer and so in every checkpoint. Replayed
+# against another store, or against none, it parts company at the first
+# checkpoint after the entry opens, in `devices`.
+# The store is committed because it is this project's own sentences.
+# `cite` is the other half: a real journal, pinned by digest.
 
 about the reader over a store of this project's own words: F1 to the
 about prompt, the section cycled through all three and back, Escape out

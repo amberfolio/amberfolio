@@ -1,18 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# M5-V1's deliberately awkward pairing (#177): the **automap panel up
-# while the journal reader opens**, which is the one subset where two
-# seams want the same pixels.
-#
-# They share a rect by design — the reader draws in the automap's own
-# panel, because that rect is the only region the program can be asked to
-# repaint (M5-E4, #175) — so the reader is modal over the map and one
-# condition in `seam_automap.cpp` is what makes it so. This session is
-# that arrangement as hashes: Tab for the map, F1 and a number for an
-# entry over it, F1 again to give the map back, Tab to put it away.
-#
-# 146 checkpoints, and the framebuffer is in every one, so "the third
-# still equals the first" is a hash rather than a look.
+# M5-V1's deliberately awkward pairing (#177): the automap panel up while
+# the journal reader opens, the one subset where two seams want the same
+# pixels.
+# They share a rect by design. The reader draws in the automap's own
+# panel, that rect being the only region the program can be asked to
+# repaint (M5-E4 #175), so the reader is modal over the map and one
+# condition in `seam_automap.cpp` is what makes it so.
+# 146 checkpoints, the framebuffer in every one, so "the third still
+# equals the first" is a hash rather than a look.
 
 about the automap panel up, an entry opened over it, and the map back
 about again: two seams sharing one rect, pinned at every checkpoint

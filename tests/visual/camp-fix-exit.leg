@@ -1,51 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# CAMP-1: the Encamp Fix's report leaves with the camp screen (M5-E1e,
-# #298) — camp entry, the Fix, and the menu's own EXIT, with nothing of
-# the seam's left on the adventuring screen afterwards.
-#
-# **Why this leg exists.** The report's title used to be handed to the
-# program's frame, which draws it on the box's own top row, 0x11 — and
-# the camp loop's own way out clears rows 0x12..0x16 of the panel and
-# the message line on 0x18, nothing above them. So `FIX: PARTY HEALED`
-# stayed on the screen under the adventuring bar after camp was gone,
-# seen by a person on a display. The title is a line on 0x12 now, and the
-# `allow` lines after the exit below are the assertion: from the frame
-# after the mode word leaves camp to the end of the run, the seam-on
-# screen is the seam-off screen — but for the one dump that catches the
-# adventuring bar going up, and the two before the adventuring view
-# replaces the camp picture, whose fire the seam's batches leave a few
-# frames behind.
-#
-# **A pair leg, and it can be one.** Every key here reaches the program
-# in both halves: `E` is ENCAMP on the adventuring bar, `F` on the camp
-# bar is the Fix with the seam on and a letter the camp loop compares
-# against its own commands and ignores with it off, and `E` on the camp
-# bar is EXIT either way. Slot C's party is whole, so the Fix declines and
-# the report is `FIX: PARTY HEALED` over `NO HIT POINTS RESTORED.` — the
-# case the screenshot showed, and one with no cast, no rest and no clock
-# in it to move the two runs apart.
-#
-# **Driven, on the shorter boot.** This script is the boot #291 left —
-# the code-wheel seam on and told the challenge is answered — so there is
-# no wheel letter and no Return in it, and its frames are not the older
-# legs' frames. The runner does not yet carry that flag (#293 owes every
-# leg its re-drive on the new boot), so this leg was driven by hand with
-# the same host, the same disk copy, the same dump cadence and the same
-# check the runner makes: 463 frames compared, 1 of them a dump apart,
-# every difference inside the rects below. Before the change, the same
-# script leaves row 0x11 holding the title's 394 pixels from frame 10,250
-# to the end of the run, and rows 0x12..0x16 holding nothing. Driven by
-# hand the same way again for M5-E1g (#304), which took the bar out of
-# the post-EXIT lines below: 463 frames compared, 1 a dump apart, every
-# difference inside the rects; the bar row from frame 10,325 to the end
-# is 50 frames and not a pixel apart, where the build before it differed
-# on all 50 (174 pixels each, AREA lit against LOOK). And once more for
-# M5-E1f (#303), which took out the last named cell there, the knot: it
-# differed from the seam-off run in all 53 stills from 10,250 to the end
-# of the run and in none after, and 50 of those 53 stills are now the
-# seam-off still pixel for pixel, whole. 463 frames, 1 a dump apart, 0
-# outside.
+# CAMP-1: the Encamp Fix's report leaves with the camp screen (M5-E1e
+# #298, M5-E1f #303, M5-E1g #304) - camp entry, the Fix, the menu's own
+# EXIT, and nothing of the seam's left on the adventuring screen after.
+# A pair leg, and it can be one: every key reaches the program in both
+# halves (`F` on the camp bar is the Fix with the seam on and a letter
+# the camp loop ignores with it off). Slot C's party is whole, so the Fix
+# declines and the report is `FIX: PARTY HEALED` over `NO HIT POINTS
+# RESTORED.`, with no cast, rest or clock in it to move the runs apart.
+# Driven by hand on the shorter boot (#291), which the runner cannot yet
+# drive: 463 frames compared, 1 of them a dump apart, 0 outside the
+# rects. #293 owes every leg here its re-drive.
+
 about the Encamp Fix's report leaves with the camp screen: camp, FIX, EXIT
 kind pair
 program START.EXE
@@ -53,76 +19,62 @@ both code-wheel
 seam encamp-fix
 until 230000000
 every 25
-# A screen may appear in the two runs a dump apart, because a repaint
-# lands where it lands — here the camp teardown itself, 8 frames apart in
-# the two runs. One dump of slack, the same as every other leg.
+
+# A repaint lands where it lands: the camp teardown itself is 8 frames
+# apart in the two runs. One dump of slack, as every other leg.
 slack 1
 
 # Slot C: four strong, whole, and standing where it can camp. ENCAMP once
-# the adventuring screen has settled; the Fix once the camp bar is up
-# (the camp screen's own redraw is slow — it reads the banner off the
-# disk — and a press that lands during it is drained); EXIT once the
-# report has been on the screen a while.
+# the adventuring screen has settled; the Fix once the camp bar is up (the
+# camp screen reads its banner off the disk and drains a press that lands
+# during the redraw); EXIT once the report has been up a while.
 key L@7550
 key C@7800
 key E@8800
 key F@9600
 key E@10200
 
-# What the seam owns. The bar is the camp screen's own command bar with
-# `FIX` spliced into it and the prompt blanked for the one call. The
-# panel is rows 0x12..0x16 of the message panel — the box's rows since
-# #298, and deliberately not 0x11: the frame is handed no title, so that
-# row is blank in both runs and this rect says so by leaving it out.
+# What the seam owns: the camp screen's own command bar with `FIX` spliced
+# in, and rows 0x12..0x16 of the message panel. Row 0x11 is deliberately
+# outside `panel` - the frame is handed no title since #298, so that row
+# is blank in both runs and this rect says so by leaving it out.
 rect bar 0,192,319,199
 rect panel 8,144,311,183
-# Two cells that are not the seam's drawing and are named rather than
-# hidden. The knot is the corner tile of the viewport box at column 0x10
-# of row 0x10, which the report's frame paints over with a plain edge
-# tile — as the program's own cast screen from camp does, and nothing on
-# the EXIT path repaints. The banner is the 3D inset, where the camp
-# picture's fire animates on the program's clock: the seam's batches
-# shift the program by a few frames and the two runs' flames fall out of
-# phase by more than one dump, so it is masked, and this leg says nothing
-# about it.
+
+# Not the seam's drawing, named rather than hidden. `knot` is the corner
+# tile of the viewport box at column 0x10 of row 0x10, which the report's
+# frame paints over with a plain edge tile. `banner` is the 3D inset,
+# where the camp picture's fire animates on the program's clock: the
+# seam's batches shift the program by a few frames, so the two runs' flames
+# fall out of phase by more than one dump and it is masked.
 rect knot 128,128,135,135
 rect banner 24,24,111,111
 
-# Up to the camp bar: not one pixel. The mode word becomes camp at frame
+# Up to the camp bar, not one pixel. The mode word becomes camp at frame
 # 8,991 and the camp screen's bar is up by 9,450.
 allow 0-9425 none
+
 # The spliced bar, before the Fix is chosen.
 allow 9450-9625 bar banner
-# The report, on the pass after the command declined, until the exit.
-# The knot is allowed here and only here: one still of this run, 9,650,
-# landed between the frame's top edge and the border that puts the knot
-# back, both of them calls in the one batch (#303).
+
+# The report, on the pass after the command declined, until the exit. The
+# knot is allowed here and only here: one still, 9,650, lands between the
+# frame's top edge and the border that puts the knot back, both of them
+# calls in the one batch (#303).
 allow 9650-10225 bar panel knot banner
+
 # Out of camp. The mode word leaves camp at 10,227 (10,219 with the seam
-# off) and nothing of the box is on the screen after it — and the bar is
-# the adventuring bar in both runs **with its highlight on the same
-# command** (M5-E1g, #304). The highlight is one byte in the data segment
-# every bar reads and numbers against its own groups, and the spliced bar
-# has one group more, so the same EXIT used to leave it one past where
-# the seam-off run left it — a 7 the adventuring bar reset to AREA,
-# against the 6 that is LOOK; the seam puts it back into the program's
-# numbering on the way out of camp. The bar is drawn a piece at a time
-# and 8 frames later in the seam-on run, so the one dump that catches it
-# mid-draw, 10,300, catches a different number of characters in each
-# run — the seam-off bar has reached the middle of SEARCH and the
-# seam-on bar has AREA and no more — and the bar is allowed for that
-# dump alone. From the next one to the end it may not differ, and that
-# is the assertion.
-#
-# The knot is no longer allowed anywhere here (M5-E1f, #303): the report
-# borders the viewport box again after its own frame, so the junction
-# tile the frame took is the tile the seam-off run has. What is allowed
-# instead, for the two dumps before the adventuring view is painted over
-# the camp picture, is the inset: the fire animates on the program's
-# clock, one more call in the batch leaves the seam-on run a few frames
-# behind it, and the inset those two stills hold is one the seam-off run
-# holds too, at 10,100 and 10,200. From 10,300 the inset is the
-# adventuring view and identical.
+# off) and nothing of the box is on the screen after it. These two dumps
+# are before the adventuring view replaces the camp picture, and the inset
+# they hold is one the seam-off run holds too, at 10,100 and 10,200.
 allow 10250-10275 banner
+
+# The bar is drawn a piece at a time and 8 frames later in the seam-on run,
+# so this one dump catches a different number of characters in each.
 allow 10300-10300 bar
+
+# From here to the end, not a pixel - the highlight included. It is one
+# data-segment byte every bar numbers against its own groups and the
+# spliced bar has one group more, so the seam puts it back into the
+# program's numbering on the way out of camp (M5-E1g #304).
 allow 10325-end none

@@ -1,6 +1,6 @@
 # Amber Folio — Project Plan
 
-*v1 target: Pool of Radiance. Last revised 2026-08-16.*
+*v1 target: Pool of Radiance. Last revised 2026-09-06.*
 
 This is the engineering plan for the first release. Governance (license,
 contributions, clean-content rule, trademarks) is settled in the repository
@@ -47,16 +47,12 @@ did on the real machine. Fingerprints identify known editions (e.g. the
 officially sold archive releases); they are facts about the player's
 files, and the only thing the project ever stores about the originals.
 
-**The code wheel is the one artifact that is not a file** (#290, decided
-2026-09-04). It was: a PDF of the wheel, fingerprinted like the journal,
-and the bypass was gated on it. But the releases sold today do not ship
-that PDF — they ship a **code generator application** instead — so the
-file names an artifact a player who buys the game has no way to hold.
-The proof therefore moved from the artifact to the **act**: the player
-answers the program's own challenge once, off whatever form of the wheel
-they own, and the enhancement remembers it (§5 item 1). It is the same
-possession claim by a different route, and it is the only one of the
-three artifacts this project never sees.
+**The code wheel is the one artifact that is not a file** (#290). The
+releases sold today ship a code generator application rather than a PDF
+of the wheel, so the possession proof is the *act*: the player answers
+the program's own challenge once and the enhancement remembers it (§5
+item 1). It is the only one of the three artifacts this project never
+sees.
 
 ## 3. The machine (v1 scope)
 
@@ -243,19 +239,12 @@ Design requirements:
 
 1. **Code-wheel bypass** — **it asks once** (#290, #291). With the seam
    on, the first launch is the machine's own: the challenge appears and
-   the seam does nothing but watch. When the player answers it
-   correctly — off the cardboard wheel, off the manual, off the code
-   generator application the current releases ship — the seam sees the
-   program's own comparison come out equal, and a host writes that down.
-   Every launch after that skips the challenge outright, at the program's
-   own call site, which is the built-in skip this item always preferred
-   over patching a check: the unmodified program simply does not ask.
-   The possession claim is unchanged and so is its limit — it
-   demonstrates the player holds the wheel, no more — but it is
-   demonstrated by answering rather than by presenting a file, because
-   the file is no longer something a copy comes with (§2). **The seam
-   never answers the challenge for anybody**, and no OCR is involved in
-   any of it.
+   the seam only watches. When the player answers it correctly, off
+   whatever form of the wheel they own, the seam sees the program's own
+   comparison come out equal and a host records that. Every later launch
+   steps over the program's own call into the protection routine, so the
+   challenge is never drawn. **The seam never answers the challenge for
+   anybody**, and no OCR is involved.
 2. **Adventurer's Journal** — gated on a fingerprint-verified journal
    PDF. At onboarding, a fact-table (page regions and stream offsets
    keyed by the known PDF editions' fingerprints) locates each journal
@@ -278,54 +267,18 @@ Design requirements:
    Box titles had: drives the game's *own* memorize → rest → heal loop
    through orchestrated input, so game time passes and random
    encounters still roll — automation, not cheating.
-5. **Explored overlay** — on the game's own overworld map, a marking
-   of the areas the party has already explored, so a player can tell
-   at a glance where they have and have not been. Drawn by the seam
-   into the emulated EGA planes over the game's own overworld screen,
-   in the game's palette and at the game's resolution, only while the
-   game itself is showing that screen; from the same exploration state
-   the automap keeps, persisted alongside the save. **It is fog of war**:
-   a square the party has been near is the game's own square, untouched,
-   and every other square in the window is covered. **The marking,
-   settled at the point of definition** as this item's own rule requires
-   (#179, `docs/explored-overlay.md`): the cover is a *one-pixel
-   checkerboard of black* — palette index 0 on half the square's pixels
-   and the program's own pixel on the other half, so the terrain is
-   faintly there under the fog rather than gone — and how far a party
-   sees is one named constant, a Chebyshev radius of **zero** squares
-   (`explored_reveal_radius`), so the squares that clear are the squares
-   the party has actually stood on.
-
-   **Both of those numbers have been set by the maintainer twice**, which
-   is this item's exit rule doing its work rather than failing. The
-   checker and the dark grey in it were chosen off five coverings
-   composited over a real frame, at a radius of one (#263) — the fog was
-   solid black before that, on an argument that was right about
-   everything except that a player needs to see the *shape* of the
-   country they are standing at the edge of. Then the maintainer
-   **walked** it (#299), which no still can substitute for, and both
-   changed: the grey read thin, and a radius of one uncovers a corridor
-   three squares wide, which fills the map in faster than the party
-   explores it. The geometry the composite chose survived; the colour in
-   it and the radius did not.
-
-   **This item read the other way round until #263**, and the sentence it
-   lost was "nothing the game draws is hidden — the overlay marks the
-   known, it never obscures the unknown". The first build obeyed it: an
-   explored square was redrawn one shade brighter and nothing was ever
-   covered. The maintainer looked at that on a real run — which is this
-   item's own exit rule, since it is the one enhancement with no proven
-   prior design — and a shade turned out to be a difference a player has
-   to be told about before they can see it. Fog is what was asked for
-   instead, and it obscures the unknown by definition. Both markings,
-   and the ten candidates prototyped over real frames between them, are
-   in `docs/explored-overlay.md` §5 with their reasons; the first one is
-   kept there rather than deleted, because a design that was rejected by
-   looking at it is evidence and not noise. The same is true of the
-   solid-black fog, kept in §5.2 as the rejected alternative with all
-   four of its arguments intact, and of the dark-grey checker at a radius
-   of one, which this build drew between #263 and #299 and which §5.2 and
-   §5.3 keep with the measurements that chose it.
+5. **Explored overlay** — fog of war on the game's own overworld map,
+   drawn by the seam into the emulated EGA planes over the game's own
+   screen, in the game's palette, only while the game is showing that
+   screen, from the same exploration state the automap keeps. A square
+   the party has stood on is the game's own square, untouched; every
+   other square in the window is covered by a one-pixel checkerboard of
+   palette index 0 over the program's own pixels. The reveal radius is
+   one named constant, `explored_reveal_radius`, a Chebyshev **0**. This
+   is the one v1 enhancement with no proven prior design, so its marking
+   was settled by the maintainer looking at it in play; the candidates
+   tried and rejected are in `docs/explored-overlay.md` §5 (#179, #263,
+   #299).
 6. **Debug cheats** — invulnerability and kill-all-enemies, built
    early because they double as test tooling for the playthrough
    sweeps. A third, wound-the-party, was added for that stated reason
@@ -334,6 +287,10 @@ Design requirements:
    something a driven leg can arrange and a save file this project wrote
    would be a save file nobody else has. Each is its own switch and each
    is off by default, like every other seam.
+
+Save and roster management was withdrawn from v1 by decision (#176); a
+machine-state export/import (#209) and a host-supplied VFS adapter (#206)
+were declined.
 
 Known engine bug-fix seams (roster and money-handling bugs, a map-edge
 transition trap) are a documented fast-follow after v1, on the same
@@ -451,13 +408,8 @@ converges on **1.0** — the release the gate in §1 defines.
   during the 0.x run, or ship 1.0 unsigned with instructions too?
 - Which game-binary editions to fingerprint at launch (the currently
   sold archive release is the baseline — which others?).
-- Which **document** editions to fingerprint (§2's optional two, of
-  which one is now a single artifact — the journal — since the code
-  wheel stopped being a file, #290). M5-D3 (#171) built the table and
-  started it with the code wheel of the archive release, which is the
-  copy every other fact in the tree was gathered against; that row stays
-  a fact and gates nothing. The Adventurer's Journal has one too now
-  (M5-E3b, #214), measured off the same release. Every other journal is an
-  unrecognized edition and is refused, which is the fail-closed direction
-  and not a bug. Which re-scanned or reissued editions to add beyond
-  those is the open half.
+- Which **document** editions to fingerprint. The table
+  (`machine/document.cpp`) has one row each for the archive release's
+  code wheel (a fact; it gates nothing since #290) and its Adventurer's
+  Journal (#214). Every other journal is refused as unrecognized, which
+  is the fail-closed direction. Which re-scans or reissues to add is open.

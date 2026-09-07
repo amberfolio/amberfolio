@@ -1,20 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The same script, the same disk and the same tick budget as `fight.rec`,
-# with `cheat-invulnerable` on and nothing else changed. The `contrast`
-# line below is the assertion that this made a difference: the two
-# recordings must agree checkpoint for checkpoint until the seam first
-# matters, and disagree from there to the end.
-#
-# That check is why this pair exists. A seam can be on, armed, and report
-# itself while doing nothing at all — which is what happened twice to the
-# cheats (#129, #130), with a green test suite throughout. Comparing a run
-# against the same run without the seam is the check `docs/seams.md` asks
-# for, and comparing two committed recordings is that check with nobody
-# having to remember to do it.
-#
-# The file and dir lines are names, sizes and SHA-256s of a snapshot of
-# the disk. No byte of the player's installation is here.
+# `fight`'s script, disk and tick budget with `cheat-invulnerable` on and
+# nothing else changed. `contrast fight`: the two recordings must agree
+# checkpoint for checkpoint until the seam first matters and disagree
+# from there to the end.
+# A seam can be on, armed, and report itself while doing nothing at all,
+# which happened twice to the cheats with a green suite throughout (#129,
+# #130). This pair is the check docs/seams.md asks for.
 
 about the same orcs, the same twelve steps, and cheat-invulnerable on:
 about the fighter comes out of it standing on his full eight hit points

@@ -1,18 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The baseline of the fidelity pairs (M5-V1, #177). Slot A loaded and
-# four steps walked, with **only the code-wheel bypass on** — the one
-# seam every one of these runs needs, because it is what gets past the
-# challenge at all.
-#
-# Its siblings are the same script with one more seam on and nothing
-# done to trigger it, and each says in one line what it must be:
+# The baseline of the fidelity pairs (M5-V1 #177): slot A loaded and four
+# steps walked with only the code-wheel bypass on, the one seam every one
+# of these runs needs to get past the challenge at all.
+# Its siblings are the same script with one more seam on and nothing done
+# to trigger it, and each says in one line what it must be:
 #
 #     identical quiet     the machine did not move
 #     contrast  quiet     it did, and here is from where
 #
-# The script deliberately opens no camp, presses no Tab and cites
-# nothing, so every seam below it is armed and idle.
+# The script opens no camp, presses no Tab and cites nothing.
 
 about slot A loaded and four steps walked with only the code-wheel
 about bypass on: the baseline every fidelity pair is measured against
