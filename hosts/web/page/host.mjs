@@ -1682,6 +1682,57 @@ export function scancodeFor(code) {
   return XT_SCANCODES[code];
 }
 
+// --- Keyboard: the keys held, for a focus loss to let go of ---------------
+//
+// hosts/common's `held_keys` (held_keys.h, #313), in JS because a page's
+// keys never pass through C++ on the way to the ABI. The page loses the
+// keyboard without warning — a tab switch, a click on another window, a
+// screenshot hotkey — and the `keyup` for whatever was held then goes to
+// whoever has the keyboard next. The machine's BIOS keeps a modifier's
+// state in the BDA shift-flag byte and has no other way of learning that
+// a finger came off a key, so the bit stays set and every later letter is
+// a control code (Ctrl) or is refused by the program (Alt) until the same
+// key is tapped again.
+//
+// The fix is what the hardware would do had the person released the
+// keys: post a break code for each, through `machine.postKey()` like any
+// other, never the BDA written behind the machine's back. The release
+// order is ascending scancode on both hosts — a rule, not a history, so
+// two runs that held the same keys let go of them identically.
+
+/// The set of scancodes with a make posted and no break yet.
+export class HeldKeys {
+  #held = new Set();
+
+  /// Note a key event the page is posting: a `down` marks the scancode
+  /// held, an `up` clears it.
+  note(scancode, down) {
+    if (down) {
+      this.#held.add(scancode);
+    } else {
+      this.#held.delete(scancode);
+    }
+  }
+
+  /// True while `scancode` has a make posted and no break.
+  has(scancode) {
+    return this.#held.has(scancode);
+  }
+
+  /// How many are held.
+  get size() {
+    return this.#held.size;
+  }
+
+  /// Every held scancode in ascending order, and forget them all: the
+  /// page posts a break for each, in this order.
+  releaseAll() {
+    const codes = [...this.#held].sort((a, b) => a - b);
+    this.#held.clear();
+    return codes;
+  }
+}
+
 // --- Console bytes -> text -------------------------------------------------
 
 /// DOS console output is code page 437 bytes, not text (platform.h);

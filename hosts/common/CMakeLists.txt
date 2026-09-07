@@ -42,7 +42,11 @@ add_library(amberfolio-host-services STATIC
   # reporting to a player -- and because the ground truth is the store's
   # own corrections, which only a running host holds.
   src/journal_score.cpp
-  src/journal_probe.cpp)
+  src/journal_probe.cpp
+  # The keys a host still holds a make for (#313), so a window that loses
+  # the keyboard can let go of them through the machine's own key path.
+  # Both hosts keep this bookkeeping; the page keeps its twin in JS.
+  src/held_keys.cpp)
 add_library(amberfolio::host_services ALIAS amberfolio-host-services)
 
 target_include_directories(amberfolio-host-services PUBLIC include)
@@ -75,7 +79,8 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/journal_picture_test.cpp
     tests/journal_store_test.cpp
     tests/journal_ingest_test.cpp
-    tests/journal_score_test.cpp)
+    tests/journal_score_test.cpp
+    tests/held_keys_test.cpp)
   target_link_libraries(amberfolio-host-services-tests PRIVATE
     amberfolio::core
     amberfolio::host_services

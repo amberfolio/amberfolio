@@ -595,7 +595,10 @@
 //                      out of SDL_PollEvent and travels the same path a
 //                      typed key does, mapping table included. KEY is
 //                      whatever SDL_GetScancodeFromName accepts: `A`,
-//                      `Escape`, `Left`, `Keypad 5`.
+//                      `Escape`, `Left`, `Keypad 5`. `KEY@FRAME:down`
+//                      pushes only the make and `KEY@FRAME:up` only the
+//                      break, for holding a modifier across other keys
+//                      (press_spec.h, #313).
 //
 // Together they let one CTest case run the M2-T1 composite program in a
 // real window, with a real audio device, on every desktop target — under
@@ -653,6 +656,7 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/host/automap_store.h"
 #include "amberfolio/host/code_wheel_store.h"
+#include "amberfolio/host/held_keys.h"
 #include "amberfolio/host/host_services.h"
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
@@ -688,6 +692,7 @@
 #include "directory_vfs.h"
 #include "dump.h"
 #include "keymap.h"
+#include "press_spec.h"
 #include "tesseract_ocr.h"
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
 #include "leptonica_decoder.h"
@@ -703,6 +708,8 @@
 namespace {
 
 using namespace amberfolio;
+using sdl::parse_press;
+using sdl::scripted_press;
 
 constexpr unsigned default_scale = 3;
 constexpr unsigned audio_sample_rate = 48000;
@@ -1045,26 +1052,11 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
   return "unknown";
 }
 
-/// A keystroke the host gives itself: which key, and which frame of the
-/// loop to push it on.
-///
-/// The key is kept as SDL's own name until SDL is up, because
-/// `SDL_GetScancodeFromName` is a question about SDL's tables and asking
-/// it before SDL_Init is asking it early. Frame numbers count iterations
-/// of the loop below, which are virtual frame periods — the same unit
-/// machine_harness.h's `scripted_key` counts in, one layer further out.
-struct scripted_press {
-  std::string key;
-  std::uint64_t frame{};
-  SDL_Scancode code{SDL_SCANCODE_UNKNOWN};
-  bool done{false};
-};
-
 /// A seam trigger the host pulls for itself, at a frame of the loop
-/// (#161) — `scripted_press`'s sibling, and the reason it is a separate
-/// type rather than a key: a pull does not go through SDL at all, so it
-/// needs no window and works under `--headless`, which is where the
-/// scripted runs that would want one live.
+/// (#161) — `scripted_press`'s (press_spec.h) sibling, and the reason it
+/// is a separate type rather than a key: a pull does not go through SDL
+/// at all, so it needs no window and works under `--headless`, which is
+/// where the scripted runs that would want one live.
 struct scripted_pull {
   std::string id;
   std::uint64_t frame{};
@@ -1526,39 +1518,11 @@ struct options {
   return true;
 }
 
-/// `KEY@FRAME`, into a press. False on anything that is not that.
-///
-/// Split on the *last* `@`, because SDL names a key by the legend printed
-/// on it and some legends are punctuation. There is no `@` key on a US
-/// board, but splitting on the last one costs nothing and stops that from
-/// being a fact this parser quietly depends on.
-[[nodiscard]] bool parse_press(std::string_view spec, scripted_press& out) {
-  const std::size_t at = spec.rfind('@');
-  if (at == std::string_view::npos || at == 0 || at + 1 == spec.size()) {
-    return false;
-  }
-  const std::string_view digits = spec.substr(at + 1);
-  std::uint64_t frame = 0;
-  // Both ends named before the call. `from_chars` is given the length —
-  // that is what the second pointer is — but clang-tidy reads a bare
-  // `.data()` in an argument list as a string handed over without one,
-  // and it is right to, often enough that hoisting is cheaper than an
-  // exemption.
-  const char* const first = digits.data();
-  const char* const last = first + digits.size();
-  const std::from_chars_result parsed = std::from_chars(first, last, frame);
-  if (parsed.ec != std::errc{} || parsed.ptr != last) {
-    return false;
-  }
-  out.key = std::string(spec.substr(0, at));
-  out.frame = frame;
-  return true;
-}
-
 /// `ID@FRAME`, into a scripted pull (#161). The same shape as
-/// `parse_press`, and split on the last `@` for the same reason — a seam
-/// id is kebab-case and cannot contain one, but making that a fact this
-/// parser depends on would be free only until it was not.
+/// `parse_press` (press_spec.h), and split on the last `@` for the same
+/// reason — a seam id is kebab-case and cannot contain one, but making
+/// that a fact this parser depends on would be free only until it was
+/// not.
 [[nodiscard]] bool parse_pull(std::string_view spec, scripted_pull& out) {
   const std::size_t at = spec.rfind('@');
   if (at == std::string_view::npos || at == 0 || at + 1 == spec.size()) {
@@ -1840,7 +1804,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       scripted_press press;
       if (!parse_press(argv[++i], press)) {
         std::fprintf(stderr,
-                     "amberfolio: --press wants KEY@FRAME, as in A@60\n");
+                     "amberfolio: --press wants KEY@FRAME[:down|:up],"
+                     " as in A@60\n");
         return opts;
       }
       opts.presses.push_back(std::move(press));
@@ -3430,6 +3395,28 @@ int main(int argc, char** argv) try {
   std::vector<std::uint32_t> argb(machine::frame_pixels);
   bool quit = false;
 
+  // The keys the window has posted a make for and no break yet (#313),
+  // so a loss of focus can let go of them. Empty during a replay, which
+  // posts nothing from the window.
+  host::held_keys held;
+
+  // Post one key event to the machine, from the window or from the
+  // host's own hand at focus loss. Recorded where it is posted and at
+  // the tick it is posted at: the machine's clock is the only stamp a
+  // key has, and the post is the only moment the machine can see one.
+  const auto post_key = [&](std::uint8_t code, machine::key_action action) {
+    box.post_key(code, action);
+    held.note(code, action);
+    ++report.keys;
+    machine::replay_event line{};
+    line.kind = machine::replay_line::key;
+    line.at = box.time();
+    line.scancode = code;
+    line.action = action;
+    record_line(line);
+    input_this_frame = true;
+  };
+
   // How much of the speaker's timeline one frame of virtual time is
   // worth, in samples. Only pulled when there is no audio device doing
   // the pulling — see the call site.
@@ -3532,8 +3519,12 @@ int main(int argc, char** argv) try {
       // two.
       for (scripted_press& press : presses) {
         if (!press.done && press.frame == frame_index) {
-          push_key_event(window, press.code, true);
-          push_key_event(window, press.code, false);
+          if (press.edges != sdl::press_edges::up) {
+            push_key_event(window, press.code, true);
+          }
+          if (press.edges != sdl::press_edges::down) {
+            push_key_event(window, press.code, false);
+          }
           press.done = true;
         }
       }
@@ -3600,6 +3591,18 @@ int main(int argc, char** argv) try {
           } else {
             pull_every_trigger();
           }
+        } else if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+          // The keyboard has gone to another window, and so will the
+          // break code of anything held at this moment (#313). Let go of
+          // all of it here, through the same path a key-up from the
+          // window takes — posted, counted, recorded — so the BDA shift
+          // flags come down the way they would had the person released
+          // the keys, and a replay of this run releases them at the same
+          // tick. held_keys.h says why this is a host's job and why the
+          // BDA is never written directly.
+          for (const std::uint8_t code : held.release_all()) {
+            post_key(code, machine::key_action::up);
+          }
         } else if (event.type == SDL_EVENT_KEY_DOWN ||
                    event.type == SDL_EVENT_KEY_UP) {
           const std::uint8_t code = sdl::xt_scancode(event.key.scancode);
@@ -3608,21 +3611,9 @@ int main(int argc, char** argv) try {
           // would be an input the recorded run never had, so the window
           // still closes and nothing else gets through.
           if (code != 0 && !event.key.repeat && !replaying) {
-            const machine::key_action action = event.type == SDL_EVENT_KEY_DOWN
-                                                   ? machine::key_action::down
-                                                   : machine::key_action::up;
-            box.post_key(code, action);
-            ++report.keys;
-            // Recorded where it is posted and at the tick it is posted
-            // at: the machine's clock is the only stamp a key has, and
-            // the post is the only moment the machine can see one.
-            machine::replay_event line{};
-            line.kind = machine::replay_line::key;
-            line.at = box.time();
-            line.scancode = code;
-            line.action = action;
-            record_line(line);
-            input_this_frame = true;
+            post_key(code, event.type == SDL_EVENT_KEY_DOWN
+                               ? machine::key_action::down
+                               : machine::key_action::up);
           }
         }
       }
