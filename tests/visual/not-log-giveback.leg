@@ -9,6 +9,7 @@
 # pair would measure is the highlight (#234).
 # So the give-back is stated directly and more strongly: the frame after
 # the log closes is the same screen as the frame before it opened.
+# Driven on the shorter boot (`--code-wheel-answered`, #291).
 
 about the log takes the whole screen and gives every pixel of it back
 kind single
@@ -16,28 +17,32 @@ program START.EXE
 store tests/visual/reader-store.txt
 both code-wheel
 
-# The code-wheel bypass is gated on the wheel itself (#115), pinned by
-# digest because a document never enters this tree.
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+# No `document` line, and that is #290 rather than an omission: no seam in
+# this build is gated now. rdr-bar.leg is the same shape.
+code-wheel-answered
 seam journal
-until 260000000
+until 220000000
 every 25
 
-key A@7601
-key Return@7651
-key L@8951
-key A@9201
-key N@10600
-key Escape@11400
+# Slot A, the log, and out by Escape. **The frame the way out lands on is
+# chosen, not arbitrary** (#325): a keystroke reaches the program at one
+# of two points, its poll or its blocking read, and which one is a matter
+# of where its key loop stood when the frame began. On this boot Escape at
+# 10,400 to 10,410 lands at the poll and 10,411 at the read - measured
+# with the read point logging its arrivals - and the read is where the
+# give-back's keystroke was once lost behind the read's own answer. Driven
+# with that answer posted behind the space again, the `equal` below
+# reports `910 pixels differ, box 1,192,311,198`: the bar row, and nothing
+# but it, from the give-back to the end of the run.
+key L@7550
+key A@7800
+key N@9600
+key Escape@10411
 
-rect bar 0,190,319,199
+# The log up, holding still, with nothing pressed. Measured: one hash from
+# 9,725 to 10,411.
+same 9800-10375
 
-# The log up, holding still, with nothing pressed.
-same 10800-11375
-
-# The screen before the log, back again after it: every pixel except the
-# bar row. That exception was a finding - 951 pixels differed, all on that
-# row, because the give-back left the highlight on the `Notes` group (#234)
-# - and #330 fixed it at the splice. It stays until this leg is re-driven
-# on the shorter boot (#293); rdr-bar.leg asserts the give-back whole.
-equal 10600 11800 bar
+# The screen before the log, back again after it: every pixel, the bar row
+# included, from 10,650 to the end of the run.
+equal 9600 10800

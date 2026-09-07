@@ -160,4 +160,4 @@ not measured.
 
 A toggle panel and guided onboarding are M6 (#265). Save and roster
 management was withdrawn from v1 (#176). Open gaps in the enhancements
-above: #270, #312, #325.
+above: #270, #312.

@@ -678,7 +678,9 @@ than it looks (#165). The order to reach for the primitives:
   reached, and the next key the player types is delivered unseen. It is
   timing-dependent, so no session catches it. Answer with one keystroke
   the program throws away (`seam_key_read.h`; journal reader #175,
-  automap #266).
+  automap #266) — and with **one**: a handler that has already posted a
+  key has already answered, and a second one behind it is the one the
+  program acts on (§10, the journal's give-back, #325).
 - **A seam that paints where the program paints cannot show what
   arrived without a repaint.** A party that loads a save and stands
   still gives the program nothing to redraw. A drawing seam needs a
@@ -1068,7 +1070,14 @@ and the first opens. The word "journal" is not part of the shape.
 - **Give-back**: the panel asks for the roster drawer; the full screen
   calls the routine the program uses on the way out of every full-screen
   view (the scaffold, view, roster and status line) plus one injected
-  space so the menu-bar routine returns and redraws the bar. Rejected:
+  space so the menu-bar routine returns and redraws the bar. **At the
+  blocking read that space is the read's answer and nothing is posted
+  behind it** (#325): the program's read routine drains its buffer after
+  the key it takes and acts on the last one, so the ignorable key behind
+  the space threw the space away, and the bar stayed the journal's on
+  exactly the presses that landed at the read rather than the poll —
+  `E`@9900 on the shorter boot at slot C, where `E`@9600 landed at the
+  poll and recovered it. Rejected:
   the routine that *enters* the adventuring screen, because it sets the
   mode byte and draws the bottom panel alone. A page from a listing row
   returns to the listing. Both give-backs call
@@ -1130,7 +1139,7 @@ the store is a host file and not in the stream. Legs:
 **Traps specific to it**: the watch address and the shape (#232); the
 blocking read (#266); the batch ordering for pictures (#328); the
 give-back inside a batch (#332); the composer under a vendor's bar
-(M5-E2d). Open: #312, #325.
+(M5-E2d); the one keystroke a read is answered with (#325). Open: #312.
 
 ### The explored overlay (#179, M5-E5a to M5-E5g)
 

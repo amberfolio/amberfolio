@@ -191,7 +191,7 @@ from about frame 10,000. Leave 100 frames between presses.
 | NOT-6 | Cursor at the ends; a log longer than a screenful pages | B | new |
 | NOT-7 | Return opens the line on the whole screen (#305); the star comes off | B | seen; #233's defect removed by #305 |
 | NOT-8 | Nothing reaches the program under the log (#230): `tests/visual/not-log-modal.leg`, one digest across 1,475 frames | B | a leg (#234) |
-| NOT-9 | Give-back in every mode: `not-log-giveback.leg`, bar row included since #330 (`tests/visual/rdr-bar.leg`); area mode and the alternate screen uncovered | B | 3D mode only (#234, #330) |
+| NOT-9 | Give-back in every mode: `not-log-giveback.leg` and `tests/visual/rdr-bar.leg`, bar row included, whichever key point the way out lands on (#325); area mode and the alternate screen uncovered | B | 3D mode only (#234, #330, #325) |
 | NOT-10 | F1 from the log goes to the prompt | B | new |
 | NOT-11 | The log on the wasm module, `cmp` equal | B | done for `notes.rec` (#177) |
 | NOT-12 | Nothing reaches the program under a full-screen page: `tests/visual/not-page-modal.leg` | B | derived (#305); owed a drive (#293) |

@@ -823,7 +823,8 @@ While it is up:
   are the claims, not yet driven (#293).
 
 Give-back: the frame after the log closes equals the frame before it
-opened except on the bar row (`tests/visual/not-log-giveback.leg`), and
+opened, bar row included (`tests/visual/not-log-giveback.leg`, driven on
+the shorter boot), and
 the highlight is handed back where the routine found it (#330,
 `tests/visual/rdr-bar.leg`, which asks the runner for
 `code-wheel-answered`). With `--seam automap` on, the map is redrawn at
