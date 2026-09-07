@@ -178,10 +178,11 @@
 // Three words and their first letters, because that is the only way this
 // program is driven — `EXIT`, `LOOK`, `ENCAMP`, `AREA` — and because the
 // two commands this enhancement had already added were spliced onto the
-// program's own bars in order to look like the rest of them. It said
-// `F1 MORE` and `ESC CLOSES` before, which names two keys this program
-// has never asked anybody to press. `PREV` is genuinely new: F1 walked
-// forward and closed on the last page, so there was no way back.
+// program's own bars in order to look like the rest of them. The reader
+// named the keys it wanted pressed before that, which is not something
+// this program has ever asked anybody to read. `PREV` is genuinely new:
+// F1 walked forward and closed on the last page, so there was no way
+// back.
 //
 // **And it is laid out and painted the way the program's own bars are**
 // (#329, #330), which took two goes and a person looking at it. It was
