@@ -2917,34 +2917,6 @@ int main(int argc, char** argv) try {
     host::restore_journal_log(box.journal(), journal_text);
   }
 
-  // The debug cheat (#301): everything the store holds, onto the log, so
-  // `Notes` lists all of it. A host action and not a seam — the log is
-  // host-writable and the store is the host's, so nothing in the machine
-  // has to know (`host/journal_store.h` has the whole argument). It is
-  // also the same write the `journal_seen` service makes, so the loop
-  // below keeps it the way it keeps a real citation — for good.
-  if (opts.cite_all_journal) {
-    if (!opts.journal.empty()) {
-      // An ingestion in the same run read the store's log off the disk
-      // and put none of it in the machine, and citing writes the
-      // machine's log back over the store's: without this the rows the
-      // game had cited before, and which of them had been read, would go.
-      host::restore_journal_log(box.journal(), journal_text);
-    }
-    const std::size_t cited = host::cite_all_journal(box, journal_text);
-    if (cited == 0) {
-      std::fprintf(stderr,
-                   "amberfolio: journal nothing to cite - no journal has"
-                   " been ingested, so the log is as it was\n");
-    } else {
-      std::fprintf(stderr,
-                   "amberfolio: journal cited all %zu - the Notes log holds"
-                   " every entry (log=%zu) until its seen lines are removed"
-                   " from the store\n",
-                   cited, box.journal().seen().size());
-    }
-  }
-
   for (const std::string& id : opts.seams) {
     const machine::seam_error why = box.seams().enable(id);
     if (why == machine::seam_error::none) {
@@ -3205,6 +3177,44 @@ int main(int argc, char** argv) try {
     }
   }
 
+  // The debug cheat (#301): everything the store holds, onto the log, so
+  // `Notes` lists all of it. A host action and not a seam — the log is
+  // host-writable and the store is the host's, so nothing in the machine
+  // has to know (`host/journal_store.h` has the whole argument). It is
+  // also the same write the `journal_seen` service makes, so the loop
+  // below keeps it the way it keeps a real citation — for good.
+  //
+  // **After the seeding above, not before it (#343).** `cite_all_journal`
+  // stamps every row with `box.wall().at(box.time())`, read at the
+  // instant the cheat fires — and before this moved, that instant was
+  // whatever the machine's clock was before a single tick had been asked
+  // of it and before `set_wall_time()` had said anything to it at all:
+  // the unseeded 1980-01-01 default, never "this host" and never the
+  // moment the cheat actually ran. The cheat's own design — one `when`
+  // for every row — was never the bug; running it before the clock had
+  // an answer was.
+  if (opts.cite_all_journal) {
+    if (!opts.journal.empty()) {
+      // An ingestion in the same run read the store's log off the disk
+      // and put none of it in the machine, and citing writes the
+      // machine's log back over the store's: without this the rows the
+      // game had cited before, and which of them had been read, would go.
+      host::restore_journal_log(box.journal(), journal_text);
+    }
+    const std::size_t cited = host::cite_all_journal(box, journal_text);
+    if (cited == 0) {
+      std::fprintf(stderr,
+                   "amberfolio: journal nothing to cite - no journal has"
+                   " been ingested, so the log is as it was\n");
+    } else {
+      std::fprintf(stderr,
+                   "amberfolio: journal cited all %zu - the Notes log holds"
+                   " every entry (log=%zu) until its seen lines are removed"
+                   " from the store\n",
+                   cited, box.journal().seen().size());
+    }
+  }
+
   // The tick of the last checkpoint written, so that the one taken where
   // the run ends is not a second copy of the one the cadence had just
   // taken. Two checkpoints at one tick would verify, and would say the
@@ -3437,6 +3447,32 @@ int main(int argc, char** argv) try {
     static_cast<void>(player.apply(box));
   }
 
+  // The schedule this run paces against: one fixed instant, taken once,
+  // rather than a fresh "now" every time round the loop (#343). A frame
+  // asks for `frame_ticks / pit_input_hz` of wall time and gets it from
+  // `sleep_for` — but `sleep_for` is a *minimum*, never an exact amount,
+  // and every extra fraction of a millisecond the OS scheduler hands
+  // back late was, before this, gone for good: the next frame measured
+  // its own budget from its own fresh start and so never knew the last
+  // one had overrun. Over a boot that is a rounding error; over a
+  // session played for an hour it is minutes, and it is one-directional
+  // — virtual time can only fall behind this way, never catch up on its
+  // own, which is exactly backwards from what "paces against the wall"
+  // (docs/first-light.md) is supposed to mean.
+  //
+  // Comparing every frame's deadline against one fixed origin fixes
+  // that without touching what this file's top comment forbids: the
+  // machine still runs forward by exactly `frame_ticks` a call, once a
+  // loop, whatever this measured. Only the *sleep* target changes, from
+  // "however long is left of the frame that just ran" to "however long
+  // until the schedule says this frame should end" — so a frame that
+  // slept a hair too long borrows nothing back by running faster; it
+  // simply sleeps a hair less next time, the same way a real clock
+  // recovers from a delayed tick without its second hand ever moving
+  // ahead of a second a tick early.
+  const std::chrono::steady_clock::time_point pace_origin =
+      std::chrono::steady_clock::now();
+
   for (;;) {
     // The store, if it has said it moved (M5-E4b, #222). In a run that
     // is what the journal's log does — a citation, or the player opening
@@ -3491,8 +3527,6 @@ int main(int argc, char** argv) try {
       ended = machine::run_end::tick_budget;
       break;
     }
-
-    const auto frame_started = std::chrono::steady_clock::now();
 
     // Before the frame is run rather than after: `frame_index` is the
     // number `--press KEY@FRAME` matches on, and a still named for a
@@ -3689,21 +3723,26 @@ int main(int argc, char** argv) try {
     }
 
     if (!opts.headless && opts.fast != 0.0) {
-      // Whatever wall time is left of this frame, and never a negative
-      // one: a host that fell behind simply does not sleep. It does not
-      // then run the machine faster to compensate — see this file's top
-      // comment.
+      // Whatever wall time is left before *this run's schedule* says
+      // frame `frame_index` should end, and never a negative one: a host
+      // that fell behind simply does not sleep. It does not then run the
+      // machine faster to compensate — see this file's top comment and
+      // `pace_origin`'s, above, for why the schedule is one fixed origin
+      // and not "whatever this frame took."
       //
       // `--fast N` divides the budget and nothing else. The machine has
       // already been run to the same tick it would have been run to
       // anyway; all that changes is how long this thread waits before
       // going round again, which is the one place wall time is allowed
       // to appear at all.
-      const auto spent = std::chrono::steady_clock::now() - frame_started;
-      const auto budget = std::chrono::duration<double>(
+      const auto frame_budget = std::chrono::duration<double>(
           static_cast<double>(frame_ticks) / machine::pit_input_hz / opts.fast);
-      const auto left =
-          std::chrono::duration_cast<std::chrono::milliseconds>(budget - spent);
+      const auto deadline =
+          pace_origin +
+          std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+              frame_budget * static_cast<double>(frame_index + 1));
+      const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+          deadline - std::chrono::steady_clock::now());
       if (left.count() > 0) {
         std::this_thread::sleep_for(left);
       }
