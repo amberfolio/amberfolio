@@ -3081,15 +3081,19 @@ TEST(JournalScreenPage, TheBodyIsTheProgramsOwnLettering) {
   EXPECT_EQ(footer.size(), 40u) << "padded across the bar it covers";
   EXPECT_NE(footer.find("EXIT"), std::string::npos)
       << "a full screen covers the bar, so it has to name a way out (#317)";
-  EXPECT_NE(footer.find("NEXT"), std::string::npos);
-  EXPECT_NE(footer.find("PREV"), std::string::npos);
+  EXPECT_EQ(footer.find("NEXT"), std::string::npos)
+      << "one page has no screenful after it (#342)";
+  EXPECT_EQ(footer.find("PREV"), std::string::npos)
+      << "and none before it either";
   EXPECT_EQ(footer.find("F1"), std::string::npos)
       << "and it names words rather than keys, like every bar in this game";
 
   // The last string of the screen is the last of the three initials, on
-  // the bar's own row, in the bright, over the `E` of `EXIT`.
+  // the bar's own row, in the bright - over the `E` of `EXIT`, which is
+  // also the *first* of them here: a one-page entry has no `NEXT` or
+  // `PREV` in front of it to close up over (#342).
   EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row);
-  EXPECT_EQ(r.word_of(last_column_seen), 10u);
+  EXPECT_EQ(r.word_of(last_column_seen), 0u);
   EXPECT_EQ(r.word_of(last_colour_seen), bar_key_colour);
   EXPECT_EQ(r.pascal_at(
                 static_cast<std::uint16_t>(r.word_of(last_string_segment_seen)),
@@ -3101,11 +3105,17 @@ TEST(JournalScreenPage, TheBarIsFlushLeftAndSpacedOne) {
   // #329: it read ` NEXT   PREV   EXIT`, indented one and spaced three,
   // where every bar this program draws starts at column zero and puts one
   // space between its commands — so it did not line up with the bar it
-  // covers and did not read as a bar this game drew.
+  // covers and did not read as a bar this game drew. A first page of two
+  // still has two words to space (`PREV` is the one #342 drops here), so
+  // it is what exercises the spacing rule now.
   rig r;
   a_screen_with_the_bar_live(r);
   r.host.holds = Entry(12);
-  r.host.text = "One short line.";
+  std::string text;
+  for (int word = 0; word < 120; ++word) {
+    text += "aaaaaaaaa ";  // four to a screen row: thirty rows, two pages
+  }
+  r.host.text = text;
   r.reader().note_seen(Entry(12), 8, 29, 20, 15);
 
   r.one_bar_pass(area_before, area_after, 'N');
@@ -3113,12 +3123,15 @@ TEST(JournalScreenPage, TheBarIsFlushLeftAndSpacedOne) {
   r.type(key_return);
   r.poll();
   r.run_the_calls();
+  ASSERT_EQ(r.reader().page_count(), 2u);
+  ASSERT_EQ(r.reader().page(), 0u);
 
   const std::string bar = r.pascal_at(
       static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
       static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
-  EXPECT_EQ(bar.substr(0, 14), "NEXT PREV EXIT")
-      << "flush from column zero, one space between (#329)";
+  EXPECT_EQ(bar.substr(0, 9), "NEXT EXIT")
+      << "flush from column zero, one space between, closed up over the "
+         "`PREV` a first page has no use for (#329, #342)";
   EXPECT_EQ(bar.size(), 40u)
       << "and still the whole row, because the padding is the clear of the "
          "adventuring bar underneath";
@@ -3126,8 +3139,9 @@ TEST(JournalScreenPage, TheBarIsFlushLeftAndSpacedOne) {
 
 TEST(JournalScreenPage, TheBarIsFourCallsAndTwoColours) {
   // #330: one call is one colour, so the line goes down in the green and
-  // the three initials go over it in the bright — at the columns the
-  // words themselves put them at.
+  // an initial goes over it in the bright for every word the bar carries
+  // — at the columns the words themselves put them at. A one-page entry's
+  // bar carries one word (#342), so this is two calls, not four.
   rig r;
   a_screen_with_the_bar_live(r);
   r.host.holds = Entry(12);
@@ -3141,11 +3155,45 @@ TEST(JournalScreenPage, TheBarIsFourCallsAndTwoColours) {
   r.poll();
   r.run_the_calls();
 
-  EXPECT_EQ(r.word_of(string_calls) - before, 5u)
-      << "one line of the entry, then the bar's four calls";
+  EXPECT_EQ(r.word_of(string_calls) - before, 3u)
+      << "one line of the entry, then the bar's line and its one initial";
   EXPECT_EQ(r.word_of(bar_colour_seen), bar_word_colour) << "the green line";
   EXPECT_EQ(r.word_of(last_colour_seen), bar_key_colour)
-      << "and the initials over it";
+      << "and the initial over it";
+}
+
+TEST(JournalScreenPage, AMiddlePageKeepsAllThreeWords) {
+  // The same rule, read the other way round: a middle page of three has a
+  // screenful on both sides of it, so `NEXT`, `PREV` and `EXIT` are all
+  // live and the bar looks exactly as it always did (#341, #342).
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(12);
+  std::string text;
+  for (int word = 0; word < 180; ++word) {
+    text += "aaaaaaaaa ";  // four to a screen row: forty-five rows, three
+                           // pages
+  }
+  r.host.text = text;
+  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+  ASSERT_EQ(r.reader().page_count(), 3u);
+  ASSERT_EQ(r.reader().page(), 0u);
+
+  press(r, key_next);
+  ASSERT_EQ(r.reader().page(), 1u) << "the middle page";
+
+  const std::string bar = r.pascal_at(
+      static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
+  EXPECT_EQ(bar.substr(0, 14), "NEXT PREV EXIT")
+      << "a screenful on both sides of this one keeps every word";
+  EXPECT_NE(bar.find("2/3"), std::string::npos);
 }
 
 /// Paint a full-screen shape to the end of it, however many passes that
@@ -3174,8 +3222,10 @@ TEST(JournalScreenPage, TheListingFillsTheBoxItIsDrawnIn) {
   until_it_settles(r);
   ASSERT_TRUE(r.reader().on_screen()) << "the listing settles";
 
-  EXPECT_EQ(r.word_of(string_calls), 24u)
-      << "twenty rows of the log and the bar's four calls under them (#330)";
+  EXPECT_EQ(r.word_of(string_calls), 23u)
+      << "twenty rows of the log, then the bar's line and the two initials "
+         "of `NEXT EXIT` - the first of a log's two pages has no `PREV` "
+         "(#330, #341, #342)";
   EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row)
       << "the bar last, on the screen's own last row";
 }
@@ -3232,12 +3282,58 @@ TEST(JournalScreenPage, TheListingCarriesTheSameBar) {
       static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
       static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
   EXPECT_EQ(bar.size(), 40u) << "padded across the bar it covers";
-  EXPECT_EQ(bar.substr(0, 14), "NEXT PREV EXIT")
-      << "flush left and spaced one, like the program's own bars (#329)";
+  EXPECT_EQ(bar.substr(0, 9), "NEXT EXIT")
+      << "flush left and spaced one, like the program's own bars (#329) - "
+         "and closed up over `PREV`, which the first of two pages has no "
+         "use for (#341, #342)";
   EXPECT_NE(bar.find("1/2"), std::string::npos)
       << "and which screenful of the log this is";
   EXPECT_EQ(bar.find("F1"), std::string::npos)
       << "and never a key this program has not asked anybody to press";
+}
+
+TEST(JournalScreenPage, AnEmptyLogsBarIsExitAlone) {
+  // #341: a run that has cited nothing draws one page of one, and one
+  // page of one has nowhere either side of it to go to - so the bar this
+  // screen carries has already dropped `NEXT` and `PREV` by the rule
+  // #342 states for a page of many, rather than needing a rule of its
+  // own for a page of one.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  ASSERT_EQ(r.reader().seen().size(), 0u) << "a fresh rig has cited nothing";
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  r.bar_goes_out(area_before);
+  r.poll();
+  r.run_the_calls();
+  ASSERT_TRUE(r.reader().on_screen()) << "one page of nothing is one pass";
+
+  EXPECT_EQ(
+      r.pascal_at(
+          static_cast<std::uint16_t>(r.word_of(first_string_segment_seen)),
+          static_cast<std::uint16_t>(r.word_of(first_string_offset_seen))),
+      "THE GAME HAS NOT SENT YOU HERE YET.");
+
+  EXPECT_EQ(r.word_of(bar_row_seen), screen_footer_row);
+  EXPECT_EQ(r.word_of(bar_column_seen), 0u);
+  const std::string bar = r.pascal_at(
+      static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
+  EXPECT_EQ(bar.substr(0, 4), "EXIT") << "the one command left";
+  EXPECT_EQ(bar.find("NEXT"), std::string::npos)
+      << "there is nowhere to go forward to";
+  EXPECT_EQ(bar.find("PREV"), std::string::npos) << "nor back";
+  EXPECT_EQ(bar.find('/'), std::string::npos)
+      << "and one page of one carries no n/m either";
+
+  EXPECT_EQ(r.word_of(last_row_seen), screen_footer_row);
+  EXPECT_EQ(r.word_of(last_column_seen), 0u)
+      << "the one initial, over the `E` that now sits at column zero";
+  EXPECT_EQ(r.pascal_at(
+                static_cast<std::uint16_t>(r.word_of(last_string_segment_seen)),
+                static_cast<std::uint16_t>(r.word_of(last_string_offset_seen))),
+            "E");
 }
 
 TEST(JournalScreenPage, NextAndPrevTurnAnEntrysPagesAndStopAtTheEnds) {
@@ -4229,7 +4325,9 @@ TEST(JournalArtScreen, ThePicturesPageCarriesTheSameBar) {
   const std::string bar = r.pascal_at(
       static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
       static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
-  EXPECT_EQ(bar.substr(0, 14), "NEXT PREV EXIT");
+  EXPECT_EQ(bar.substr(0, 9), "PREV EXIT")
+      << "the last of two pages has no `NEXT`, and `EXIT` closes up over "
+         "it (#342)";
   EXPECT_NE(bar.find("2/2"), std::string::npos)
       << "the page counter counts the pictures too";
 }

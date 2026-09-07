@@ -438,13 +438,18 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   buffer curly quotes and dashes become their plain forms, an ellipsis
   three stops, any other code point or invalid byte one visible
   substitute. The store is not touched.
-- **The bar** (#317, #329, #330). The listing and a full-screen page carry
-  `NEXT`, `PREV` and `EXIT` on row `0x18`, flush left, one space apart,
-  each chosen by its first letter; Escape closes too. Drawn as the
-  program draws bars, in four calls: the row in the message green, then
-  the three initials over their own cells in the bright. The panel keeps
-  `F1 MORE`, because it sits beside the program's *live* bar, whose
-  letters `N`, `P` and `E` already are.
+- **The bar** (#317, #329, #330, #341, #342). The listing and a
+  full-screen page carry `NEXT`, `PREV` and `EXIT` on row `0x18`, flush
+  left, one space apart, each chosen by its first letter; Escape closes
+  too. `NEXT` and `PREV` are only on the bar when there is a screenful to
+  turn to in that direction - an empty log or a one-page entry carries
+  `EXIT` alone - and a dropped word is not a gap: the rest close up, the
+  same way the program's own bars do. Drawn as the program draws bars,
+  in one call for the row in the message green and one more for each
+  word's initial over its own cell in the bright - up to four, fewer on
+  any bar that has dropped a word. The panel keeps `F1 MORE`, because it
+  sits beside the program's *live* bar, whose letters `N`, `P` and `E`
+  already are.
 - **`Notes` hands the highlight back** (#330): the bar routine's cursor
   group lives in the shared byte of M5-E1g (#304). `--watch 6B2B` reads
   `01` after a load, `07` from the frame `N` is pressed, `07` after the
