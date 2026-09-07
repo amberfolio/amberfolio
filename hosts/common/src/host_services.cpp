@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The two services, served. host_services.h has the reasoning; this is
-// the whole of what M5-D1 (#169) asked for above it.
+// The services, served. host_services.h has the reasoning; this is the
+// whole of what M5-D1 (#169) asked for above it, plus the consumers each
+// enhancement since has added to it.
 
 #include "amberfolio/host/host_services.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 #include "amberfolio/host/code_wheel_store.h"
 #include "amberfolio/machine/journal.h"
@@ -97,6 +99,38 @@ void host_services::serve(machine::machine& box,
     // `deliver()` answers `no_text` for an entry with nothing in it, so
     // the empty case needs no branch of its own here.
     page.deliver(found->text());
+    return;
+  }
+
+  // The entries that are pictures (#328). The same shape one line up and
+  // one difference: **every answer carries the count**, refusals
+  // included, because the count is what the reader pages by. An entry
+  // with no pictures is answered `refuse_art(0)`, which is not a failure
+  // — it is most of the journal.
+  if (which == machine::seam_host_service::journal_art) {
+    machine::journal_state& page = box.journal();
+    if (journal_ == nullptr) {
+      page.refuse_art(0);
+      return;
+    }
+    const machine::journal_citation what =
+        machine::journal_art_citation(argument);
+    if (!what) {
+      page.refuse_art(0);
+      return;
+    }
+    const std::span<const journal_picture> all = journal_->pictures(what);
+    const auto of =
+        static_cast<std::uint8_t>(all.size() > machine::journal_art_per_entry
+                                      ? machine::journal_art_per_entry
+                                      : all.size());
+    const std::uint8_t nth = machine::journal_art_which(argument);
+    if (nth >= of) {
+      page.refuse_art(of);
+      return;
+    }
+    const journal_picture& one = all[nth];
+    page.deliver_art(one.width, one.height, one.levels, of);
   }
 }
 

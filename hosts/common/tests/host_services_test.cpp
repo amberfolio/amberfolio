@@ -24,6 +24,7 @@
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/host/code_wheel_store.h"
+#include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/edition.h"
@@ -344,6 +345,154 @@ TEST(HostServicesJournal, AnsweringIsNotWritingMachineState) {
 
   const machine::state_hashes before = machine::hash_state(r.pc());
   ASSERT_EQ(ask(services, r.pc(), Entry(12)), machine::journal_delivery::ready);
+  EXPECT_EQ(before, machine::hash_state(r.pc()));
+}
+
+// ---------------------------------------------------------------------------
+// The entries that are pictures (#328)
+// ---------------------------------------------------------------------------
+//
+// The other service that has to hand something back, and one difference
+// from the one above: **every answer carries the count**, refusals
+// included, because how many pictures an entry has is half of how many
+// pages the reader draws for it.
+//
+// No pixel here is a picture of anything: the rectangles below are one
+// level throughout, which is all a plumbing test needs.
+
+/// One picture, every pixel the same level, packed the way a store keeps
+/// one: two bits a pixel, four pixels a byte, rows padded to a byte.
+[[nodiscard]] journal_picture a_picture(machine::journal_citation what,
+                                        std::uint8_t nth, std::uint16_t width,
+                                        std::uint16_t height,
+                                        std::uint8_t level) {
+  journal_picture one;
+  one.what = what;
+  one.nth = nth;
+  one.width = width;
+  one.height = height;
+  const auto byte = static_cast<std::uint8_t>((level << 6U) | (level << 4U) |
+                                              (level << 2U) | level);
+  one.levels.assign(machine::journal_art_stride(width) * height, byte);
+  return one;
+}
+
+/// What the reader's callout carries: the citation, and which picture.
+[[nodiscard]] std::uint32_t ArtOfEntry(std::uint16_t number, std::uint8_t nth) {
+  return machine::journal_art_argument(
+      {.kind = machine::journal_kind::entry, .number = number}, nth);
+}
+
+TEST(HostServicesArt, WithNoStoreAtAllTheEntryHasNoPictures) {
+  const rig r;
+  host_services services;
+  services.serve(r.pc(), seam_host_service::journal_art, ArtOfEntry(4, 0));
+  EXPECT_FALSE(r.pc().journal().art_ready());
+  EXPECT_EQ(r.pc().journal().art_count(), 0u);
+}
+
+TEST(HostServicesArt, AnEntryThatIsProseHasNonePictures) {
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_scan({.number = 4}, "prose"));
+  services.set_journal_store(&store);
+
+  services.serve(r.pc(), seam_host_service::journal_art, ArtOfEntry(4, 0));
+  EXPECT_FALSE(r.pc().journal().art_ready());
+  EXPECT_EQ(r.pc().journal().art_count(), 0u)
+      << "which is not a failure: it is most of the journal";
+}
+
+TEST(HostServicesArt, APictureTheStoreHasComesBackWithItsCount) {
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_scan({.number = 4}, "a caption"));
+  ASSERT_TRUE(store.record_picture(a_picture({.number = 4}, 0, 8, 4, 1)));
+  services.set_journal_store(&store);
+
+  services.serve(r.pc(), seam_host_service::journal_art, ArtOfEntry(4, 0));
+  ASSERT_TRUE(r.pc().journal().art_ready());
+  EXPECT_EQ(r.pc().journal().art_count(), 1u);
+  EXPECT_EQ(r.pc().journal().art_width(), 8u);
+  EXPECT_EQ(r.pc().journal().art_height(), 4u);
+  EXPECT_EQ(r.pc().journal().art_level_at(0, 0), 1u);
+  EXPECT_EQ(r.pc().journal().art_level_at(7, 3), 1u);
+}
+
+TEST(HostServicesArt, AnAtlasIsThreePicturesAndEachIsItsOwnAnswer) {
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_scan({.number = 37}, "three maps"));
+  for (std::uint8_t nth = 0; nth < 3; ++nth) {
+    ASSERT_TRUE(store.record_picture(
+        a_picture({.number = 37}, nth, 8, 4, static_cast<std::uint8_t>(nth))));
+  }
+  services.set_journal_store(&store);
+
+  for (std::uint8_t nth = 0; nth < 3; ++nth) {
+    services.serve(r.pc(), seam_host_service::journal_art, ArtOfEntry(37, nth));
+    ASSERT_TRUE(r.pc().journal().art_ready()) << "picture " << unsigned{nth};
+    EXPECT_EQ(r.pc().journal().art_count(), 3u);
+    EXPECT_EQ(r.pc().journal().art_level_at(0, 0), nth);
+  }
+}
+
+TEST(HostServicesArt, APictureThePagesDoNotReachIsRefusedWithTheCount) {
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_picture(a_picture({.number = 4}, 0, 8, 4, 1)));
+  services.set_journal_store(&store);
+
+  services.serve(r.pc(), seam_host_service::journal_art, ArtOfEntry(4, 1));
+  EXPECT_FALSE(r.pc().journal().art_ready());
+  EXPECT_EQ(r.pc().journal().art_count(), 1u)
+      << "the count is what the reader pages by, so a refusal carries it";
+}
+
+TEST(HostServicesArt, ASectionThisBuildHasNoNameForHasNoPictures) {
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_picture(a_picture({.number = 4}, 0, 8, 4, 1)));
+  services.set_journal_store(&store);
+
+  // Picture 3 of section 9, which is a section this build has no name
+  // for: the byte above the pair is the picture, and the pair under it
+  // has to decode or there is nothing to look up.
+  services.serve(r.pc(), seam_host_service::journal_art, 0x0309'000CU);
+  EXPECT_FALSE(r.pc().journal().art_ready());
+  EXPECT_EQ(r.pc().journal().art_count(), 0u);
+}
+
+TEST(HostServicesArt, ThePicturesOfATaleAreNotTheEntrysWithTheSameNumber) {
+  // #218's reason, one field along: a picture is keyed by the pair.
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_picture(a_picture({.number = 4}, 0, 8, 4, 1)));
+  services.set_journal_store(&store);
+
+  services.serve(r.pc(), seam_host_service::journal_art,
+                 machine::journal_art_argument(
+                     {.kind = machine::journal_kind::tale, .number = 4}, 0));
+  EXPECT_FALSE(r.pc().journal().art_ready());
+  EXPECT_EQ(r.pc().journal().art_count(), 0u);
+}
+
+TEST(HostServicesArt, HandingAPictureOverIsNotWritingMachineState) {
+  const rig r;
+  host_services services;
+  journal_store store;
+  ASSERT_TRUE(store.record_picture(a_picture({.number = 4}, 0, 64, 32, 2)));
+  services.set_journal_store(&store);
+
+  const machine::state_hashes before = machine::hash_state(r.pc());
+  services.serve(r.pc(), seam_host_service::journal_art, ArtOfEntry(4, 0));
+  ASSERT_TRUE(r.pc().journal().art_ready());
   EXPECT_EQ(before, machine::hash_state(r.pc()));
 }
 

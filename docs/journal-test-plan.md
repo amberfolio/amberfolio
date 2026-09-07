@@ -255,6 +255,8 @@ presses.
 | RDR-11 | Transliteration on the glass | Two hand-written stores: one with curly quotes, an em dash, an ellipsis and a CJK character, one with their plain forms and `?`. Open each | The two panel rects are byte-identical | B | new |
 | RDR-12 | Every reader script on the wasm module | `drive.mjs` with `--journal-store`, same script | `cmp` of final frames per script | B | new |
 | RDR-13 | A real entry, read by a person | ING-2's store, entry 1, windowed | The text is legible in the game's font; wrapping breaks at words; the quote marks are plain. Never screenshot it into the tree | C | new |
+| RDR-14 | **An entry that is a picture** (#328) | `tests/visual/rdr-art.leg`, a **single** leg (§3): the prompt, the entry's caption, `NEXT` onto the drawing, `EXIT` out. Its store's picture is this repository's own — four tone bars, a one-pixel comb, a block and a border, and not a drawing of anything | The picture page settles and holds still (about 75 frames after the key, against a text page's 230), and the screen the journal was opened over comes back with nothing excepted | B | **held by a leg** (#328), driven by hand on the shorter boot and owed a runner drive with the rest (#293) |
+| RDR-15 | **A real picture, seen** | ING-2's store on a build with the engine linked; entry 4's map and entry 37's atlas, on the whole screen from the prompt and halved in the roster panel from the camp screen. Never screenshot one into the tree | The drawings read as drawings at that size and the ramp's four tones are four tones | C | **looked at once** (#328), in both sizes — but **off dumped stills at 2x and not on a display**, which is the distinction #263 and #299 were each decided by. `docs/journal.md` §11.6 keeps it open |
 
 ### Notes and the log
 
@@ -318,7 +320,11 @@ mechanism to the seam or the core.
    asserts that at every frame the leg names, nothing differs outside the
    rects it allows there. `tests/visual/*.leg` are the legs and
    `tests/visual/reader-store.txt` is a store in this project's own words
-   for them to open. It has the sweep's three outcomes and the sweep's
+   for them to open — and `reader-art-store.txt` beside it is a second,
+   whose one entry has a picture (#328), separate because the legs that
+   fill the log with `--cite-all-journal` open whatever row the cursor
+   lands on and a second page under one of them would move frames they
+   have pinned. It has the sweep's three outcomes and the sweep's
    rule about the third, and `scripts/test-visual-legs.sh` asserts that
    rule in CI — which is a machine with no disk, so every leg skips there
    and the point is that skipping is loud.

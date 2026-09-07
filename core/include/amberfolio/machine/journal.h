@@ -257,6 +257,34 @@ struct journal_citation {
           .number = static_cast<std::uint16_t>(argument & 0xFFFFU)};
 }
 
+/// A picture as the callout that fetches one names it: the citation, and
+/// which of the entry's pictures (#328).
+///
+/// The same one word `journal_open` gets, with the number of the picture
+/// in the byte above the pair — which is free, because a kind is three
+/// values and a section number is sixteen bits. An entry has at most
+/// `journal_art_per_entry` pictures, so a byte is more room than the
+/// table can use, and the callout's width stays the ABI's own
+/// (`journal_open_argument`, above, is why that matters).
+[[nodiscard]] constexpr std::uint32_t journal_art_argument(
+    journal_citation what, std::uint8_t nth) noexcept {
+  return journal_open_argument(what) | (static_cast<std::uint32_t>(nth) << 24U);
+}
+
+/// The citation out of one. The picture's number is masked off first, so
+/// this is `journal_open_citation` on the pair underneath and gives the
+/// same zero citation for a kind this build does not know.
+[[nodiscard]] constexpr journal_citation journal_art_citation(
+    std::uint32_t argument) noexcept {
+  return journal_open_citation(argument & 0x00FFFFFFU);
+}
+
+/// And which picture of it.
+[[nodiscard]] constexpr std::uint8_t journal_art_which(
+    std::uint32_t argument) noexcept {
+  return static_cast<std::uint8_t>(argument >> 24U);
+}
+
 /// One line of the journal's own log: something the game told the player to
 /// read, and when (M5-E4b, #222).
 ///
@@ -382,6 +410,58 @@ class journal_state {
 
   /// A host's other answer.
   void refuse(journal_delivery why) noexcept;
+
+  // --- and the same for a picture (#328) --------------------------------
+  //
+  // A picture crosses the same way the text does and for the same
+  // reasons: `serve()` answers `void`, so what it found goes into a
+  // buffer here and the seam reads it back the instant the callout
+  // returns. One at a time, because the buffer is the whole of the
+  // reader's box packed — twelve kilobytes — and a page shows one.
+
+  /// About to ask a host for picture `nth` of `what`. Anything held is
+  /// dropped, so a callout nothing serves leaves the buffer empty rather
+  /// than the last picture's pixels.
+  void ask_art(journal_citation what, std::uint8_t nth) noexcept;
+
+  /// A host's answer: the picture's own shape, its packed levels, and
+  /// **how many pictures the entry has in all** — which is the number the
+  /// reader pages by and is why a refusal carries it too.
+  ///
+  /// Ignored, leaving the buffer empty, for a shape bigger than the
+  /// reader's box or a run of levels that is not the size that shape
+  /// says: a host may hold a store written by another build, and a
+  /// picture that does not describe itself is not one this can draw.
+  void deliver_art(std::uint16_t width, std::uint16_t height,
+                   std::span<const std::uint8_t> levels,
+                   std::uint8_t of) noexcept;
+
+  /// A host's other answer: the entry has `of` pictures and this is not
+  /// one it could hand over. `of` may still be more than zero — a store
+  /// that knows the count and lost the record.
+  void refuse_art(std::uint8_t of) noexcept;
+
+  /// How many pictures the entry the reader is showing has, as the last
+  /// callout said. Zero until one has been made, which is every entry
+  /// that is prose.
+  [[nodiscard]] std::uint8_t art_count() const noexcept { return art_count_; }
+
+  /// Whether the buffer holds a picture, and which of the entry's it is.
+  [[nodiscard]] bool art_ready() const noexcept { return art_ready_; }
+  [[nodiscard]] std::uint8_t art_nth() const noexcept { return art_nth_; }
+  /// Which entry the buffer's picture belongs to — the pair, because
+  /// tale 4 and entry 4 are different documents and both may have art.
+  [[nodiscard]] journal_citation art_of() const noexcept { return art_of_; }
+  [[nodiscard]] std::uint16_t art_width() const noexcept { return art_width_; }
+  [[nodiscard]] std::uint16_t art_height() const noexcept {
+    return art_height_;
+  }
+
+  /// The level at `(x, y)`, and `journal_art_paper` outside the picture —
+  /// which is what a reader wants for the margin around one anyway, since
+  /// paper is the level it draws nothing for.
+  [[nodiscard]] std::uint8_t art_level_at(unsigned x,
+                                          unsigned y) const noexcept;
 
   /// What was asked for. Its number is zero when nothing has been.
   [[nodiscard]] journal_citation entry() const noexcept { return entry_; }
@@ -647,6 +727,14 @@ class journal_state {
   bool truncated_{false};
   std::size_t text_length_{};
   std::array<char, journal_page_bytes> text_{};
+
+  std::uint16_t art_width_{};
+  std::uint16_t art_height_{};
+  std::uint8_t art_nth_{};
+  std::uint8_t art_count_{};
+  bool art_ready_{false};
+  journal_citation art_of_{};
+  std::array<std::uint8_t, journal_art_bytes> art_{};
 
   journal_citation cited_{};
   std::size_t cited_count_{};

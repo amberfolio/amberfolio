@@ -819,15 +819,27 @@ enum class seam_host_service : std::uint8_t {
   /// Called **once**, on the transition, so a host writes its file once
   /// and not once per attempt.
   code_wheel_answered,
+  /// The journal reader: hand over one of the pictures of the entry the
+  /// argument names (#328). The argument is `journal_open`'s pair with
+  /// the picture's own number in the byte above it
+  /// (`journal_art_argument`), and the answer goes into
+  /// `machine::journal()`'s own buffer the way an entry's text does —
+  /// `serve()` returns `void`, so there is nowhere else for it to go.
+  ///
+  /// **Appended rather than filed beside `journal_open`**, because the
+  /// index of a service is the ABI's (`af_machine_seam_host_calls`) and
+  /// putting a name in the middle would renumber every one after it.
+  journal_art,
 };
 
 /// How many there are, for an array indexed by one. Not an enumerator:
 /// a `count` in the enumeration would be a value `serve()` could be
 /// handed, and it is not a service.
-inline constexpr std::size_t seam_host_service_count = 4;
+inline constexpr std::size_t seam_host_service_count = 5;
 
 /// The printable name of a `seam_host_service` — `journal-open`,
-/// `automap-update`, `journal-seen`, `code-wheel-answered`. Never null.
+/// `automap-update`, `journal-seen`, `code-wheel-answered`,
+/// `journal-art`. Never null.
 ///
 /// Kebab-case, and here rather than in a host, for the reason
 /// `seam_event_kind_name` next door gives: both hosts print this in

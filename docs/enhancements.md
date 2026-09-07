@@ -362,15 +362,13 @@ fixture engine. Both live on **#236**, with the browser half of it: the
 page's own ingestion has never been driven by a person in a browser, only
 by a node harness.
 
-The pictures are further behind than the text, and **#328** is open for
-the rest of it. **Nothing draws one yet**, so a picture entry is still a
-caption and a blank page. A picture also needs somebody to decode the
-page it is printed on, which this project deliberately cannot do
-(`docs/journal.md` §4a) — so a desktop build with the engine linked in
-makes them out of Leptonica, a default desktop build makes none and says
-`pictures=0/14`, and the browser makes none yet. And nobody has looked
-at one of them on a display, which is the finding this will live or die
-by: `docs/journal.md` §11.6.
+A picture also needs somebody to decode the page it is printed on, which
+this project deliberately cannot do (`docs/journal.md` §4a) — so a
+desktop build with the engine linked in makes them out of Leptonica, a
+default desktop build makes none and says `pictures=0/14`, and the
+browser makes none yet. And nobody has looked at one of them on a
+display, which is the finding this will live or die by:
+`docs/journal.md` §11.6.
 
 ### The reader: the entry, on the game's own screen
 
@@ -408,6 +406,19 @@ it used to be indented by one and spaced by three and so lined up with
 nothing; and each word is painted the way the game paints every command
 it has, the **initial in white and the rest in green**, where it used to
 be white end to end. Both were found by looking at it on a display.
+
+**And an entry that is a drawing shows the drawing** (#328). Several of
+the journal's entries are maps, mazes and diagrams, and what the reader
+used to show for one was its one-line caption and nineteen empty rows.
+The picture is now the **page after the caption**: `NEXT` walks onto it
+and `PREV` walks back, so it needs no key of its own. On a full screen it
+is drawn whole, 304 by 160, in the box the program's own frame drawer has
+just put up; in the roster panel it is the same picture at half scale.
+It is four tones of grey on the panel's black, chosen where the rest of
+the reader's colours are chosen — so the day somebody looks at one and
+says it reads wrong, the answer is a line of the reader and not a
+re-ingestion of anybody's document. An entry the engine read *nothing*
+off still shows its drawing, because a drawing has no words in it.
 
 **The log is twenty rows now and it pages** (#318, #319). It drew ten
 rows into a twenty-row box and left the bottom half empty, and it
@@ -468,7 +479,9 @@ proclamations. The entry and tale forms are the pattern's word rather
 than a measured sentence. **Nobody has read an entry off a display**
 (#236) — the reader has been driven, dumped and confined by rect, all of
 it file against file — and the rows the journal's own test plan still
-owes are **#270**.
+owes are **#270**. **Nobody has looked at one of the drawings either**,
+in either of the two sizes it is drawn at, and that is the one thing
+#328 has left.
 
 **A cheat for proof-reading it** (#301). `--cite-all-journal` on the
 desktop, *Cite them all (cheat)* on the page: every entry, tale and

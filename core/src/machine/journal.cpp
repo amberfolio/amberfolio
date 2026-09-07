@@ -518,6 +518,12 @@ void journal_state::clear() noexcept {
   delivery_ = journal_delivery::none;
   truncated_ = false;
   text_length_ = 0;
+  art_of_ = {};
+  art_nth_ = 0;
+  art_count_ = 0;
+  art_ready_ = false;
+  art_width_ = 0;
+  art_height_ = 0;
   cited_ = {};
   cited_count_ = 0;
   window_length_ = 0;
@@ -543,6 +549,15 @@ void journal_state::ask(journal_citation what) noexcept {
   delivery_ = journal_delivery::no_host;
   truncated_ = false;
   text_length_ = 0;
+  // And whatever picture was held, which belonged to the entry before
+  // this one: a page of the new entry must never draw the old one's art
+  // while a callout for its own is on the way.
+  art_of_ = {};
+  art_nth_ = 0;
+  art_count_ = 0;
+  art_ready_ = false;
+  art_width_ = 0;
+  art_height_ = 0;
 }
 
 void journal_state::deliver(std::string_view what) noexcept {
@@ -561,6 +576,66 @@ void journal_state::refuse(journal_delivery why) noexcept {
   text_length_ = 0;
   truncated_ = false;
   delivery_ = why;
+}
+
+void journal_state::ask_art(journal_citation what, std::uint8_t nth) noexcept {
+  art_of_ = what;
+  art_nth_ = nth;
+  art_ready_ = false;
+  art_width_ = 0;
+  art_height_ = 0;
+  art_count_ = 0;
+}
+
+void journal_state::deliver_art(std::uint16_t width, std::uint16_t height,
+                                std::span<const std::uint8_t> levels,
+                                std::uint8_t of) noexcept {
+  art_count_ = of;
+  art_ready_ = false;
+  art_width_ = 0;
+  art_height_ = 0;
+  if (width == 0 || height == 0 || width > journal_art_width ||
+      height > journal_art_height) {
+    return;
+  }
+  const std::size_t stride = journal_art_stride(width);
+  if (levels.size() != stride * static_cast<std::size_t>(height)) {
+    // A picture that does not describe itself. A store is a text file a
+    // person may edit and a build may be older than the one that wrote
+    // it, so the shape and the bytes are checked against each other here
+    // rather than trusted — the same rule the store's own reader follows.
+    return;
+  }
+  for (std::size_t i = 0; i < levels.size(); ++i) {
+    art_[i] = levels[i];
+  }
+  art_width_ = width;
+  art_height_ = height;
+  art_ready_ = true;
+}
+
+void journal_state::refuse_art(std::uint8_t of) noexcept {
+  art_count_ = of;
+  art_ready_ = false;
+  art_width_ = 0;
+  art_height_ = 0;
+}
+
+std::uint8_t journal_state::art_level_at(unsigned x,
+                                         unsigned y) const noexcept {
+  if (!art_ready_ || x >= art_width_ || y >= art_height_) {
+    return journal_art_paper;
+  }
+  const std::size_t stride = journal_art_stride(art_width_);
+  const std::size_t byte = (static_cast<std::size_t>(y) * stride) +
+                           (x / journal_art_pixels_per_byte);
+  // Four pixels a byte, the leftmost in the most significant pair — the
+  // packing `host::journal_picture` writes and this is the only reader
+  // of.
+  const unsigned shift =
+      (journal_art_pixels_per_byte - 1U - (x % journal_art_pixels_per_byte)) *
+      2U;
+  return static_cast<std::uint8_t>((art_[byte] >> shift) & 0x03U);
 }
 
 journal_citation journal_state::note_drawn_text(
