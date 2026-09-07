@@ -140,6 +140,24 @@ constexpr std::uint16_t bar_colour_seen = 0x703A;
 constexpr std::uint16_t bar_string_offset_seen = 0x703C;
 constexpr std::uint16_t bar_string_segment_seen = 0x703E;
 
+/// **Every line of a screen, by the row it was put on** (#346). A page is
+/// twenty rows the program draws, painted over several arrivals, and
+/// `first_*`/`last_*` can only ever be two of them - which was enough
+/// while the wrap was checked in the seam's own panel and is not now that
+/// there is only the screen. Sixty-four bytes a row, indexed by the row
+/// the drawer was handed, so a test asks "what is on row six" rather than
+/// counting calls.
+///
+/// **The bytes and not the pointer.** A seam places the string it is
+/// about to draw in scratch memory the engine hands out per batch
+/// (`seam.h`), and a page is painted over several batches - so the far
+/// pointer row three was drawn from is row seven's string by the time a
+/// test reads it. Copied here, by the stand-in, at the one moment the
+/// bytes are certainly the row's own.
+constexpr std::uint16_t screen_row_count = 25;
+constexpr std::uint16_t row_text_stride = 64;
+constexpr std::uint16_t row_text_seen = 0x7100;
+
 /// Where the test puts the things the data segment points at.
 constexpr std::uint16_t font_segment = 0x8000;
 constexpr std::uint16_t member_segment = 0x9000;
@@ -662,6 +680,24 @@ struct rig {
                                    bar_string_segment_seen}) {
       put_word(dgroup(), at, 0);
     }
+    forget_the_rows();
+  }
+
+  /// Empty the by-row table, so the next screen is read on its own.
+  void forget_the_rows() const {
+    for (std::uint16_t row = 0; row < screen_row_count; ++row) {
+      put_byte(dgroup(), row_text_at(row), 0);
+    }
+  }
+
+  /// What the program was handed for row `row`, as the characters of it.
+  /// Empty when nothing was drawn there since the last `forget_the_rows()`.
+  [[nodiscard]] std::string row_drawn(unsigned row) const {
+    return pascal_at(dgroup(), row_text_at(static_cast<std::uint16_t>(row)));
+  }
+
+  [[nodiscard]] static std::uint16_t row_text_at(std::uint16_t row) {
+    return static_cast<std::uint16_t>(row_text_seen + (row * row_text_stride));
   }
 
   /// Emit `bytes` at `put`, in the image, and move `put` past them.
@@ -738,6 +774,46 @@ struct rig {
     emit_word_at(put, clear_region_cleans);
   }
 
+  /// The Pascal string the drawer was handed, copied into the by-row
+  /// table (`row_text_seen`).
+  ///
+  /// Hand-assembled like the rest of these stand-ins, and a copy rather
+  /// than a pointer for the reason the table's own comment gives: the
+  /// scratch a seam places bytes in is handed out per batch, and a page
+  /// is several batches. Everything it touches is pushed, including `ES`
+  /// and `DS` - the code after it writes through `DS`, and this borrows
+  /// it to read the string's own segment.
+  void keep_the_line_by_its_row(std::uint16_t& put) const {
+    emit_at(put, {0x1E, 0x56, 0x51, 0x50, 0x06});  // push ds, si, cx, ax, es
+    emit_at(put, {0x8B, 0x5E, 0x0C});              // mov bx, [bp+0x0C] (row)
+    emit_at(put, {0x83, 0xFB, static_cast<std::uint8_t>(screen_row_count)});
+    emit_at(put, {0x73, 0x33});  // jae done: fifty-one bytes of copy
+    emit_at(put, {0xB8});        // mov ax, dgroup
+    emit_word_at(put, dgroup());
+    emit_at(put, {0x8E, 0xC0});  // mov es, ax
+    for (int by = 0; by < 6; ++by) {
+      emit_at(put, {0xD1, 0xE3});  // shl bx, 1 - six of them is the stride
+    }
+    emit_at(put, {0x81, 0xC3});  // add bx, row_text_seen
+    emit_word_at(put, row_text_seen);
+    emit_at(put, {0x8B, 0x76, 0x06});  // mov si, [bp+0x06] (string offset)
+    emit_at(put, {0x8B, 0x46, 0x08});  // mov ax, [bp+0x08] (string segment)
+    emit_at(put, {0x8E, 0xD8});        // mov ds, ax
+    emit_at(put, {0x31, 0xC9});        // xor cx, cx
+    emit_at(put, {0x8A, 0x0C});        // mov cl, [si] - the length byte
+    emit_at(put, {0x41});              // inc cx - and the byte itself
+    emit_at(put, {0x83, 0xF9, static_cast<std::uint8_t>(row_text_stride)});
+    emit_at(put, {0x76, 0x03});  // jbe copy
+    emit_at(put, {0xB9, static_cast<std::uint8_t>(row_text_stride), 0x00});
+    // copy:
+    emit_at(put, {0x8A, 0x04});        // mov al, [si]
+    emit_at(put, {0x26, 0x88, 0x07});  // mov es:[bx], al
+    emit_at(put, {0x46, 0x43});        // inc si, inc bx
+    emit_at(put, {0xE2, 0xF7});        // loop copy
+    // done:
+    emit_at(put, {0x07, 0x58, 0x59, 0x5E, 0x1F});  // pop es, ax, cx, si, ds
+  }
+
   /// The string drawer's stand-in, which keeps the **first** line of a
   /// screen and the **last** — where each went, in what colour, and the
   /// far pointer it arrived as, so a test can read the words back out of
@@ -745,6 +821,7 @@ struct rig {
   void string_routine() const {
     std::uint16_t put = image_draw_string;
     emit_at(put, {0x55, 0x89, 0xE5});
+    keep_the_line_by_its_row(put);
     emit_keep(put, 0x0C, last_row_seen);
     emit_keep(put, 0x0E, last_column_seen);
     emit_keep(put, 0x0A, last_colour_seen);
@@ -782,7 +859,11 @@ struct rig {
   /// and the instruction the machine is put back on when a batch ends —
   /// and which the engine offers the point at again, so a screen painted
   /// over several arrivals is painted out by this one call.
-  void run_the_calls(unsigned most = 4096) const {
+  ///
+  /// The budget is generous because the string stand-in copies every line
+  /// it is handed (#346), which is up to sixty-four iterations of a loop
+  /// per call where it used to be a handful of instructions.
+  void run_the_calls(unsigned most = 262144) const {
     for (unsigned nth = 0; nth < most; ++nth) {
       box->step();
       if (box->processor().halted()) {
@@ -885,6 +966,101 @@ constexpr journal_citation Proclamation(std::uint16_t number) {
 /// No citation at all.
 constexpr journal_citation Nothing() { return {}; }
 
+// ---------------------------------------------------------------------------
+// The party's own two command bars (M5-E4a, #221)
+// ---------------------------------------------------------------------------
+
+/// The two bars and their points, as the seam's facts have them. Restated
+/// here rather than shared, so a change to either has to be made twice on
+/// purpose (`docs/seams.md` §8.1).
+constexpr std::uint16_t bar_area = 0x04B6;
+constexpr std::uint16_t bar_view = 0x04DF;
+constexpr std::uint16_t area_before = 0x09D0;
+constexpr std::uint16_t area_after = 0x09D5;
+constexpr std::uint16_t view_before = 0x0C40;
+constexpr std::uint16_t view_after = 0x0C45;
+
+/// Stand-ins for the program's own two bars: the same shape and the same
+/// lengths, in this file's own words. Nothing of the program's text is
+/// here, which is the whole reason the splice appends rather than
+/// composes — it does not care what the bar says.
+constexpr std::string_view area_words = "Aaaa Bbbb Cccc Dddddd Eeeeee Ffff";
+constexpr std::string_view view_words = "Bbbb Cccc Dddddd Eeeeee Ffff";
+
+// ---------------------------------------------------------------------------
+// The page, which is a whole screen and nothing else (M5-E4d #305, #346)
+// ---------------------------------------------------------------------------
+//
+// A page of an entry is drawn in one size, and it is opened in one place:
+// while the party's own command-bar routine is the thing running, which
+// is the one state in which the program's screen composer may be asked to
+// put the screen back. There used to be a second size, the roster-sized
+// panel a citation opened in; a citation opens nothing now (#346).
+//
+// The geometry restated rather than read from the seam: the listing's
+// frame is columns 1 to 0x26 and rows 1 to 0x16, its title goes on the
+// box's first interior row, the body starts on row 3, and the way out
+// goes on row 0x18 — the screen's own last, which is where every bar in
+// this game is drawn.
+
+constexpr std::uint16_t screen_left = 1;
+constexpr std::uint16_t screen_top = 1;
+constexpr std::uint16_t screen_right = 0x26;
+constexpr std::uint16_t screen_bottom = 0x16;
+constexpr std::uint16_t screen_first_row = 3;
+constexpr std::uint16_t screen_footer_row = 0x18;
+constexpr int screen_columns = 38;
+constexpr int screen_rows = 20;
+
+/// The colours a page draws in: the reader's own two, so everything this
+/// enhancement draws looks like one thing. The bottom row has none of its
+/// own — it is the listing's bar, in `bar_word_colour` and
+/// `bar_key_colour` (#330).
+constexpr std::uint16_t page_title_colour = 14;
+constexpr std::uint16_t page_body_colour = 10;
+
+/// A rig standing on the adventuring screen with the party's own bar
+/// live, and the program's drawing routines answering.
+void a_screen_with_the_bar_live(rig& r) {
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.drawing_routines();
+  r.put_bar(bar_area, area_words);
+}
+
+/// A page of `what` on the screen, opened the way a player opens one:
+/// `Notes` off the party's own bar, the row the cursor is on, `Return`.
+///
+/// The whole of the reader's way in since #346, and the reason so many
+/// tests below say it: a citation puts a line on the log and nothing on
+/// the screen, so the only thing that opens a page is somebody asking.
+void an_open_page(rig& r, journal_citation what) {
+  r.reader().note_seen(what, 8, 29, 20, 15);
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.forget_the_rows();
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+}
+
+/// The same through the prompt, for the entries a player looks up: F1,
+/// the digits, `Return`.
+void an_open_page_by_number(rig& r, std::string_view digits) {
+  r.bar_goes_out(area_before);
+  r.type(key_f1);
+  r.poll();
+  for (const char digit : digits) {
+    r.type(static_cast<std::uint16_t>(((digit - '0' + 1) << 9) | digit));
+  }
+  r.poll(static_cast<unsigned>(digits.size()));
+  r.forget_the_rows();
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+}
 TEST(JournalCitation, TheShapeIsTheSectionsWordAndANumberAfterIt) {
   EXPECT_EQ(journal_citation_in("READ JOURNAL ENTRY 12"), Entry(12));
   EXPECT_EQ(journal_citation_in("YOU RECORD IT AS ENTRY 43."), Entry(43));
@@ -1188,7 +1364,12 @@ TEST(JournalReader, ClosedItDrawsNothingAtAll) {
   }
 }
 
-TEST(JournalReader, ACitationOpensTheEntryOnTheGamesOwnScreen) {
+TEST(JournalReader, ACitationLogsTheEntryAndOpensNothing) {
+  // **The whole of #346.** The entry used to open on the spot, in the
+  // roster-sized panel, with nobody having pressed anything. What a
+  // citation does now is put a line on the player's own list; the game's
+  // own narration is the signal that it happened, and `Notes` is where
+  // they read it.
   rig r;
   r.attach_video();
   r.attach_host();
@@ -1198,67 +1379,83 @@ TEST(JournalReader, ACitationOpensTheEntryOnTheGamesOwnScreen) {
   r.host.text = "A short line.";
 
   r.program_draws("Read journal entry 12.");
-  EXPECT_EQ(r.host.calls, 1u);
-  EXPECT_EQ(r.host.asked, journal_open_argument(Entry(12)));
-  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
-
-  r.adventuring();
-  r.poll();
-  EXPECT_TRUE(r.reader().on_screen());
-  EXPECT_EQ(r.row_text(reader_title_y), centred("ENTRY 12"));
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("A SHORT LINE."));
-  EXPECT_EQ(r.row_text(reader_footer_y), centred("F1 CLOSES"))
-      << "the footer names the key that does the next thing";
-
-  // And it is on the planes, not only in the seam's own buffer.
-  bool any = false;
-  for (unsigned x = 0; x < automap_panel_width && !any; ++x) {
-    for (unsigned y = 0; y < automap_panel_height && !any; ++y) {
-      any = r.screen_pixel(automap_panel_x + x, automap_panel_y + y) != 0;
-    }
-  }
-  EXPECT_TRUE(any) << "the page has to reach the EGA planes";
-}
-
-TEST(JournalReader, WithNoJournalACitationOpensNothing) {
-  // #175: "reports that no journal is ingested, and the seam shows
-  // nothing rather than a blank page".
-  rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
-  r.host.empty = true;
-
-  r.program_draws("Read journal entry 12.");
-  EXPECT_EQ(r.host.calls, 1u) << "the host was asked; it had nothing";
-  EXPECT_EQ(r.reader().delivery(), journal_delivery::no_journal);
-  EXPECT_FALSE(r.reader().reader_open());
+  EXPECT_EQ(r.host.calls, 0u)
+      << "and no host is asked for an entry nobody has opened";
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  EXPECT_EQ(r.reader().seen().front().what, Entry(12));
+  EXPECT_FALSE(r.reader().seen().front().read)
+      << "unread, because nothing has read it";
 
   r.adventuring();
   r.poll();
   EXPECT_FALSE(r.reader().on_screen());
+  for (unsigned x = 0; x < automap_panel_width; ++x) {
+    for (unsigned y = 0; y < automap_panel_height; ++y) {
+      ASSERT_EQ(r.screen_pixel(automap_panel_x + x, automap_panel_y + y), 0)
+          << "not a pixel of it reaches the planes";
+    }
+  }
 }
 
-TEST(JournalReader, WithNoHostAttachedItStillOpensNothing) {
+TEST(JournalReader, TheEntryOpensFromTheListingOnTheGamesOwnScreen) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds.number = 12;
+  r.host.text = "A short line.";
+
+  r.program_draws("Read journal entry 12.");
+  an_open_page(r, Entry(12));
+
+  EXPECT_EQ(r.host.calls, 1u);
+  EXPECT_EQ(r.host.asked, journal_open_argument(Entry(12)));
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_TRUE(r.reader().on_screen());
+  EXPECT_EQ(r.pascal_at(
+                static_cast<std::uint16_t>(r.word_of(frame_title_segment_seen)),
+                static_cast<std::uint16_t>(r.word_of(frame_title_offset_seen))),
+            "ENTRY 12");
+  EXPECT_EQ(r.row_drawn(screen_first_row), "A short line.");
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  EXPECT_TRUE(r.reader().seen().front().read)
+      << "opening it is what takes the star off its line";
+}
+
+TEST(JournalReader, WithNoJournalOpeningAnEntryShowsNothingRatherThanABlank) {
+  // #175: "reports that no journal is ingested, and the seam shows
+  // nothing rather than a blank page".
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.empty = true;
+
+  r.program_draws("Read journal entry 12.");
+  EXPECT_EQ(r.host.calls, 0u) << "a citation asks a host for nothing (#346)";
+  an_open_page(r, Entry(12));
+  EXPECT_EQ(r.host.calls, 1u) << "the host was asked; it had nothing";
+  EXPECT_EQ(r.reader().delivery(), journal_delivery::no_journal);
+  EXPECT_EQ(r.row_drawn(screen_first_row + 8), "NO JOURNAL");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 9), "HAS BEEN READ");
+}
+
+TEST(JournalReader, WithNoHostAttachedItSaysTheSame) {
   rig r;
   r.attach_video();
   r.enable();
   r.adventuring();
-  r.program_draws("Read journal entry 12.");
+  r.drawing_routines();
+  r.put_bar(bar_area, area_words);
+  an_open_page(r, Entry(12));
   EXPECT_EQ(r.reader().delivery(), journal_delivery::no_host);
-  EXPECT_FALSE(r.reader().reader_open());
+  EXPECT_EQ(r.row_drawn(screen_first_row + 8), "NO JOURNAL");
 }
 
 TEST(JournalReader, TheKeyAsksForAnEntryAndReturnOpensIt) {
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 12;
   r.host.text = "Here is the entry.";
 
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
@@ -1272,11 +1469,13 @@ TEST(JournalReader, TheKeyAsksForAnEntryAndReturnOpensIt) {
   EXPECT_EQ(r.row_text(reader_body_y + (4 * glyph_height)),
             prompt_row("ENTRY 12"));
 
+  r.forget_the_rows();
   r.type(key_return);
   r.poll();
+  r.run_the_calls();
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
   EXPECT_EQ(r.host.asked, journal_open_argument(Entry(12)));
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("HERE IS THE ENTRY."));
+  EXPECT_EQ(r.row_drawn(screen_first_row), "Here is the entry.");
 }
 
 TEST(JournalReader, TheKeyPicksTheSectionAndTheAnswerIsThePair) {
@@ -1284,13 +1483,11 @@ TEST(JournalReader, TheKeyPicksTheSectionAndTheAnswerIsThePair) {
   // has not yet said what they want. F1 is what says it — the key this
   // seam already owns, rather than one the automap might want.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds = Tale(4);
   r.host.text = "A tale.";
 
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
@@ -1310,13 +1507,18 @@ TEST(JournalReader, TheKeyPicksTheSectionAndTheAnswerIsThePair) {
             prompt_row("TALE 4"))
       << "the digits are kept: picking a section is not retyping a number";
 
+  r.forget_the_rows();
   r.type(key_return);
   r.poll();
+  r.run_the_calls();
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
   EXPECT_EQ(r.host.asked, journal_open_argument(Tale(4)))
       << "the host is asked for a tale, not for entry four";
-  EXPECT_EQ(r.row_text(reader_title_y), centred("TALE 4"));
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("A TALE."));
+  EXPECT_EQ(r.pascal_at(
+                static_cast<std::uint16_t>(r.word_of(frame_title_segment_seen)),
+                static_cast<std::uint16_t>(r.word_of(frame_title_offset_seen))),
+            "TALE 4");
+  EXPECT_EQ(r.row_drawn(screen_first_row), "A tale.");
 }
 
 TEST(JournalReader, TheSectionGoesRoundAndComesBack) {
@@ -1326,6 +1528,7 @@ TEST(JournalReader, TheSectionGoesRoundAndComesBack) {
   r.enable();
   r.adventuring();
 
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
   for (const journal_kind want :
@@ -1345,6 +1548,7 @@ TEST(JournalReader, EscapeIsStillTheWayOutOfThePrompt) {
   r.enable();
   r.adventuring();
 
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
@@ -1366,15 +1570,16 @@ TEST(JournalReader, ACitedTaleIsNotTheEntryWithTheSameNumber) {
   r.host.text = "The twelfth entry.";
 
   r.program_draws("read tale 12");
-  r.poll();
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+  ASSERT_EQ(r.reader().seen().front().what, Tale(12));
+  an_open_page(r, Tale(12));
   EXPECT_EQ(r.host.asked, journal_open_argument(Tale(12)));
   EXPECT_EQ(r.reader().delivery(), journal_delivery::no_entry);
 }
 
-TEST(JournalReader, TheSameNumberInAnotherSectionIsAFreshCitation) {
-  // The reader leaves an entry alone when the game cites the one already
-  // on the screen. That comparison is of the *pair*: entry twelve is up,
-  // and tale twelve is a different text and has to be asked for.
+TEST(JournalReader, TheSameNumberInAnotherSectionIsAnotherLine) {
+  // A citation is a *pair*: entry twelve and tale twelve are two texts,
+  // so they are two lines on the log and not one moved up it.
   rig r;
   r.attach_video();
   r.attach_host();
@@ -1384,22 +1589,19 @@ TEST(JournalReader, TheSameNumberInAnotherSectionIsAFreshCitation) {
   r.host.text = "The twelfth entry.";
 
   r.program_draws("journal entry 12");
-  r.poll();
-  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
-  const unsigned after_first = r.host.calls;
+  ASSERT_EQ(r.reader().seen().size(), 1u);
 
   r.reader().forget_citation();
   r.program_draws("journal entry 12");
-  r.poll();
-  EXPECT_EQ(r.host.calls, after_first)
-      << "the entry already on the screen is not asked for again";
+  EXPECT_EQ(r.reader().seen().size(), 1u)
+      << "the same pair moves up the log rather than repeating on it";
 
   r.reader().forget_citation();
   r.program_draws("tale 12");
-  r.poll();
-  EXPECT_EQ(r.host.calls, after_first + 1U)
+  ASSERT_EQ(r.reader().seen().size(), 2u)
       << "the same number in another section is another text";
-  EXPECT_EQ(r.host.asked, journal_open_argument(Tale(12)));
+  EXPECT_EQ(r.reader().seen().front().what, Tale(12));
+  EXPECT_EQ(r.host.calls, 0u) << "and none of it asked a host anything";
 }
 
 TEST(JournalReader, BackspaceRubsOutADigit) {
@@ -1409,6 +1611,7 @@ TEST(JournalReader, BackspaceRubsOutADigit) {
   r.enable();
   r.adventuring();
 
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
   r.type(key_one);
@@ -1422,87 +1625,62 @@ TEST(JournalReader, BackspaceRubsOutADigit) {
 
 TEST(JournalReader, AnEntryTheJournalHasNotSaysWhichKindOfNothingItIs) {
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 12;
   r.host.text = "Something.";
 
-  r.type(key_f1);
-  r.poll();
-  r.type(key_two);
-  r.poll();
-  r.type(key_return);
-  r.poll();
+  an_open_page_by_number(r, "2");
   EXPECT_EQ(r.reader().delivery(), journal_delivery::no_entry);
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing)
       << "the player asked, so the answer is shown rather than swallowed";
-  EXPECT_EQ(r.row_text(reader_body_y + (4 * glyph_height)),
-            centred("NO SUCH ENTRY"));
+  EXPECT_EQ(r.row_drawn(screen_first_row + 8), "NO SUCH ENTRY");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 9), "IN THIS JOURNAL");
 }
 
 TEST(JournalReader, ALongEntryIsWrappedAtTheWordAndPaged) {
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
-  // Two lines' worth, with a word that must not be split across them.
-  r.host.text = "aaaa bbbb cccc dddd ee ffffffff gggg";
+  // Two rows' worth at thirty-eight columns, with a word that must not be
+  // split across them.
+  r.host.text = "aaaaa bbbbb ccccc ddddd eeeee fffff ggggg hhhhh";
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAA BBBB CCCC DDDD EE"));
-  EXPECT_EQ(r.row_text(reader_body_y + glyph_height),
-            as_glyphs("FFFFFFFF GGGG"));
+  an_open_page(r, Entry(1));
+  EXPECT_EQ(r.row_drawn(screen_first_row), "aaaaa bbbbb ccccc ddddd eeeee fffff");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 1), "ggggg hhhhh");
   EXPECT_EQ(r.reader().page_count(), 1u);
 }
 
-TEST(JournalReader, AWordLongerThanThePanelIsBrokenRatherThanDropped) {
+TEST(JournalReader, AWordLongerThanARowIsBrokenRatherThanDropped) {
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
-  r.host.text = std::string(30, 'q');
+  r.host.text = std::string(50, 'q');
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs(std::string(22, 'q')));
-  EXPECT_EQ(r.row_text(reader_body_y + glyph_height),
-            as_glyphs(std::string(8, 'q')));
+  an_open_page(r, Entry(1));
+  EXPECT_EQ(r.row_drawn(screen_first_row), std::string(38, 'q'));
+  EXPECT_EQ(r.row_drawn(screen_first_row + 1), std::string(12, 'q'));
 }
 
 TEST(JournalReader, TheScansOwnLineBreaksAreNotThePages) {
   // #316. An OCR engine emits one newline per *printed* line, and a
-  // printed column is wider than this panel, so honouring a single
-  // newline drew a third of a row and started again. Every line below is
-  // short enough that the old rule would have given it a row of its own;
-  // what the panel shows is two full rows.
+  // printed column is wider than a page, so honouring a single newline
+  // drew a third of a row and started again. Every line below is short
+  // enough that the old rule would have given it a row of its own; what
+  // the page shows is two full rows.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
   r.host.text =
       "aaaa bbbb cccc dddd\n"
       "ee ff gggg hhhh\n"
       "iiii\n";
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAA BBBB CCCC DDDD EE"));
-  EXPECT_EQ(r.row_text(reader_body_y + glyph_height),
-            as_glyphs("FF GGGG HHHH IIII"));
-  EXPECT_EQ(r.row_text(reader_body_y + (2 * glyph_height)), "")
-      << "three of the scan's lines, and two of the panel's";
+  an_open_page(r, Entry(1));
+  EXPECT_EQ(r.row_drawn(screen_first_row), "aaaa bbbb cccc dddd ee ff gggg hhhh");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 1), "iiii");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 2), "")
+      << "three of the scan's lines, and two of the page's";
   EXPECT_EQ(r.reader().page_count(), 1u);
 }
 
@@ -1512,58 +1690,42 @@ TEST(JournalReader, AScanThatEndsItsLinesWithCarriageReturnsToo) {
   // reader sees it (journal_drawable). The rule has to survive the space
   // that leaves in front of the newline.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
   r.host.text = "aaaa bbbb\r\ncccc dddd";
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAA BBBB CCCC DDDD"));
+  an_open_page(r, Entry(1));
+  EXPECT_EQ(r.row_drawn(screen_first_row), "aaaa bbbb cccc dddd");
 }
 
 TEST(JournalReader, AnEntryThatIsOneLineIsStillOneLine) {
   // The other end of the same rule: no newline anywhere, and nothing to
   // rejoin. It is the shape a corrected entry is most likely to be in.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
   r.host.text = "aaaa bbbb cccc";
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAA BBBB CCCC"));
-  EXPECT_EQ(r.row_text(reader_body_y + glyph_height), "");
+  an_open_page(r, Entry(1));
+  EXPECT_EQ(r.row_drawn(screen_first_row), "aaaa bbbb cccc");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 1), "");
   EXPECT_EQ(r.reader().page_count(), 1u);
 }
 
 TEST(JournalReader, AWordHyphenatedAcrossTheScansLinesIsOneWord) {
   // The half of #316 a reflow alone does not fix: a word the typesetter
   // broke across two printed lines was re-hyphenated in the middle of a
-  // panel row that had room for the whole of it.
+  // row that had room for the whole of it.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
   r.host.text =
       "the story went with-\n"
       "in bow range of us";
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("THE STORY WENT WITHIN"));
-  EXPECT_EQ(r.row_text(reader_body_y + glyph_height),
-            as_glyphs("BOW RANGE OF US"));
+  an_open_page(r, Entry(1));
+  EXPECT_EQ(r.row_drawn(screen_first_row), "the story went within bow range of us");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 1), "");
 }
 
 TEST(JournalReader, AHyphenThatDidNotEndAScansLineIsLeftWhereItIs) {
@@ -1573,20 +1735,14 @@ TEST(JournalReader, AHyphenThatDidNotEndAScansLineIsLeftWhereItIs) {
   // standing alone at the end of one is a dash - joining that would eat
   // the word after it.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
   r.host.text =
       "a well-armed man -\n"
       "and a dash";
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("A WELL-ARMED MAN - AND"));
-  EXPECT_EQ(r.row_text(reader_body_y + glyph_height), as_glyphs("A DASH"));
+  an_open_page(r, Entry(1));
+  EXPECT_EQ(r.row_drawn(screen_first_row), "a well-armed man - and a dash");
 }
 
 TEST(JournalReader, ABlankLineIsTheOneBreakThePageKeeps) {
@@ -1594,10 +1750,7 @@ TEST(JournalReader, ABlankLineIsTheOneBreakThePageKeeps) {
   // engine's output really does carry - and however many blank lines the
   // scan left, the page spends one row on it.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
   r.host.text =
       "one two\n"
@@ -1608,17 +1761,14 @@ TEST(JournalReader, ABlankLineIsTheOneBreakThePageKeeps) {
       "\n"
       "five";
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("ONE TWO"));
-  EXPECT_EQ(r.row_text(reader_body_y + glyph_height), "");
-  EXPECT_EQ(r.row_text(reader_body_y + (2 * glyph_height)),
-            as_glyphs("THREE FOUR"));
-  EXPECT_EQ(r.row_text(reader_body_y + (3 * glyph_height)), "")
+  an_open_page(r, Entry(1));
+  EXPECT_EQ(r.row_drawn(screen_first_row), "one two");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 1), "");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 2), "three four");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 3), "")
       << "three blank lines are one break, not three";
-  EXPECT_EQ(r.row_text(reader_body_y + (4 * glyph_height)), as_glyphs("FIVE"));
-  EXPECT_EQ(r.row_text(reader_body_y + (5 * glyph_height)), "");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 4), "five");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 5), "");
 }
 
 TEST(JournalReader, AListKeepsItsShapeWhenItsItemsAreParagraphs) {
@@ -1633,10 +1783,7 @@ TEST(JournalReader, AListKeepsItsShapeWhenItsItemsAreParagraphs) {
   // thing a person can type. So the shape is recoverable rather than
   // gone, and this pins the half that works.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
   r.host.text =
       "first a gate\n"
@@ -1645,16 +1792,12 @@ TEST(JournalReader, AListKeepsItsShapeWhenItsItemsAreParagraphs) {
       "\n"
       "third a well";
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("FIRST A GATE"));
-  EXPECT_EQ(r.row_text(reader_body_y + glyph_height), "");
-  EXPECT_EQ(r.row_text(reader_body_y + (2 * glyph_height)),
-            as_glyphs("SECOND A TOWER"));
-  EXPECT_EQ(r.row_text(reader_body_y + (3 * glyph_height)), "");
-  EXPECT_EQ(r.row_text(reader_body_y + (4 * glyph_height)),
-            as_glyphs("THIRD A WELL"));
+  an_open_page(r, Entry(1));
+  EXPECT_EQ(r.row_drawn(screen_first_row), "first a gate");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 1), "");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 2), "second a tower");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 3), "");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 4), "third a well");
 }
 
 TEST(JournalReader, APageNeverOpensOnABlankRow) {
@@ -1662,30 +1805,29 @@ TEST(JournalReader, APageNeverOpensOnABlankRow) {
   // falls on one is spent rather than drawn: a row of the player's own
   // text is worth more than a row saying a page turned.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
-  // Twelve rows of two words - exactly a page - and then a paragraph
-  // break with more after it.
+  // Twenty rows of two words, each pair exactly the thirty-eight columns
+  // a row has - so a printed line is a page row and the page is full -
+  // and then a paragraph break with more after it.
+  const std::string pair = "aaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbb";
   std::string text;
-  for (int row = 0; row < 12; ++row) {
-    text += "aaaaaaaaa bbbbbbbbb\n";
+  for (int row = 0; row < screen_rows; ++row) {
+    text += pair + "\n";
   }
   text += "\ncccccccc\n";
   r.host.text = text;
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
+  an_open_page(r, Entry(1));
   ASSERT_EQ(r.reader().page_count(), 2u);
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("AAAAAAAAA BBBBBBBBB"));
+  EXPECT_EQ(r.row_drawn(screen_first_row), pair);
 
-  r.type(key_f1);
+  r.forget_the_rows();
+  r.type(key_next);
   r.poll();
+  r.run_the_calls();
   ASSERT_EQ(r.reader().page(), 1u);
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("CCCCCCCC"))
+  EXPECT_EQ(r.row_drawn(screen_first_row), "cccccccc")
       << "the second page opens on the text, not on the break";
 }
 
@@ -1720,30 +1862,25 @@ TEST(JournalReader, WhatAParagraphBreakCostsAnEntryInRows) {
   // pages walked with the key a player turns them with.
   const auto measure = [](const std::string& text) {
     rig r;
-    r.attach_video();
-    r.attach_host();
-    r.enable();
-    r.adventuring();
+    a_screen_with_the_bar_live(r);
     r.host.holds.number = 1;
     r.host.text = text;
-    r.program_draws("entry 1");
-    r.adventuring();
-    r.poll();
+    an_open_page(r, Entry(1));
 
     unsigned pages = r.reader().page_count();
     unsigned rows = 0;
     unsigned blank = 0;
     for (unsigned page = 0; page < pages; ++page) {
       if (page != 0) {
-        r.type(key_f1);
+        r.forget_the_rows();
+        r.type(key_next);
         r.poll();
+        r.run_the_calls();
       }
       unsigned last = 0;
       unsigned empties = 0;
-      for (unsigned row = 0; row < 12; ++row) {
-        const std::string drawn =
-            r.row_text(reader_body_y + static_cast<int>(row) * glyph_height);
-        if (drawn.empty()) {
+      for (unsigned row = 0; row < static_cast<unsigned>(screen_rows); ++row) {
+        if (r.row_drawn(screen_first_row + row).empty()) {
           ++empties;
           continue;
         }
@@ -1761,46 +1898,39 @@ TEST(JournalReader, WhatAParagraphBreakCostsAnEntryInRows) {
   const auto flat = measure(flowing + second + third + fourth);
 
   // Measured once and then pinned, the way every other number in this
-  // suite is. 526 characters, four paragraphs, in the panel's twelve rows
-  // of twenty-two:
+  // suite is. 526 characters, four paragraphs, in a page's twenty rows of
+  // thirty-eight:
   //
   //             pages   body rows   blank rows
-  //   flat        3         26           0
-  //   broken      3         30           2
+  //   flat        1         15           0
+  //   broken      1         19           3
   //
   // Flat is what every reading carried until #331: **no break anywhere**,
   // one solid block of prose from the first row to the last, however many
   // paragraphs the printed page had.
-  EXPECT_EQ(flat[0], 3U);
-  EXPECT_EQ(flat[1], 26U);
+  EXPECT_EQ(flat[0], 1U);
+  EXPECT_EQ(flat[1], 15U);
   EXPECT_EQ(flat[2], 0U);
-  // Broken has three boundaries and shows **two** of them, because the
-  // third falls at the top of a page and a page never opens on a blank
-  // row - the break between two pages is already a break. It is four rows
-  // longer rather than three for the same reason from the other side: the
-  // rows it gained pushed the wrap around, so the pages fill differently.
-  EXPECT_EQ(broken[0], 3U);
-  EXPECT_EQ(broken[1], 30U);
-  EXPECT_EQ(broken[2], 2U);
+  // Broken shows all three boundaries and spends a row on each, which is
+  // four rows and still one page - where the panel this used to be
+  // measured in had to spill the third onto a page top and swallow it.
+  EXPECT_EQ(broken[0], 1U);
+  EXPECT_EQ(broken[1], 19U);
+  EXPECT_EQ(broken[2], 3U);
 }
 
-TEST(JournalReader, TheKeyTurnsThePagesAndThenPutsItAway) {
+TEST(JournalReader, TheKeyTurnsThePagesAndTheBarIsTheWayOut) {
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds.number = 1;
   // Thirteen lines of one word each: one more than a page holds.
   std::string text;
-  for (int line = 0; line < 13; ++line) {
-    text += "wordwordwordwordwordwordword ";
+  for (int line = 0; line < 30; ++line) {
+    text += "wordwordwordwordwordwordwordwordword ";
   }
   r.host.text = text;
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
+  an_open_page(r, Entry(1));
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
   ASSERT_GT(r.reader().page_count(), 1u);
   EXPECT_EQ(r.reader().page(), 0u);
@@ -1811,10 +1941,12 @@ TEST(JournalReader, TheKeyTurnsThePagesAndThenPutsItAway) {
     r.poll();
     EXPECT_EQ(r.reader().page(), page);
   }
-  // And on the last page it closes.
+  // And on the last page it stops, because a page names its own way out
+  // and F1 is `NEXT` (#317).
   r.type(key_f1);
   r.poll();
-  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.reader().page(), pages - 1U);
 }
 
 TEST(JournalReader, EscapeClosesItFromWhereverItIs) {
@@ -1823,6 +1955,7 @@ TEST(JournalReader, EscapeClosesItFromWhereverItIs) {
   r.attach_host();
   r.enable();
   r.adventuring();
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
   ASSERT_TRUE(r.reader().reader_open());
@@ -1832,22 +1965,20 @@ TEST(JournalReader, EscapeClosesItFromWhereverItIs) {
   EXPECT_EQ(r.keys_waiting(), 0u);
 }
 
-TEST(JournalReader, WithNoFontInstalledNothingIsDrawn) {
+TEST(JournalReader, WithNoFontInstalledThePromptIsNotDrawn) {
   rig r;
   r.attach_video();
   r.attach_host();
   r.enable();
   r.adventuring();
   r.no_font();
-  r.host.holds.number = 1;
-  r.host.text = "text";
 
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.no_font();
+  r.bar_goes_out(area_before);
+  r.type(key_f1);
   r.poll();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
   EXPECT_FALSE(r.reader().on_screen())
-      << "a page rasterized out of an empty buffer is a black rectangle";
+      << "a prompt rasterized out of an empty buffer is a black rectangle";
 }
 
 TEST(JournalReader, OffAScreenWithARosterItDrawsNothing) {
@@ -1856,27 +1987,21 @@ TEST(JournalReader, OffAScreenWithARosterItDrawsNothing) {
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.holds.number = 1;
-  r.host.text = "text";
-  r.program_draws("entry 1");
-  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
-
-  r.adventuring();
   r.put_byte(rig::dgroup(), data_game_mode, mode_title);
+  r.reader().set_reader(journal_reader_mode::asking);
+
   r.poll();
   EXPECT_FALSE(r.reader().on_screen());
 }
 
-TEST(JournalReader, SomethingClearingTheseCellsTakesThePageWithIt) {
+TEST(JournalReader, SomethingClearingTheseCellsTakesThePromptWithIt) {
   rig r;
   r.attach_video();
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.holds.number = 1;
-  r.host.text = "text";
-  r.program_draws("entry 1");
-  r.adventuring();
+  r.bar_goes_out(area_before);
+  r.type(key_f1);
   r.poll();
   ASSERT_TRUE(r.reader().on_screen());
 
@@ -1890,7 +2015,7 @@ TEST(JournalReader, SomethingClearingTheseCellsTakesThePageWithIt) {
   r.poll();
   EXPECT_FALSE(r.reader().on_screen()) << "covered, so nothing is drawn";
 
-  // And when the roster comes back the page does too.
+  // And when the roster comes back the prompt does too.
   r.stand_on(r.point(5));
   r.pc().step();
   EXPECT_FALSE(r.reader().covered());
@@ -1912,27 +2037,48 @@ TEST(JournalKeys, OffAScreenWithARosterEvenTheKeyIsNobodys) {
   r.enable();
   r.adventuring();
   r.put_byte(rig::dgroup(), data_game_mode, mode_title);
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
   EXPECT_EQ(r.keys_waiting(), 1u);
   EXPECT_FALSE(r.reader().reader_open());
 }
 
-TEST(JournalReader, AnEntryOpenedOffARosterScreenComesUpWhenOneReturns) {
-  // A citation is watched wherever the program draws it; only the
-  // presentation waits for a screen this panel can be on.
+TEST(JournalKeys, OffThePartysOwnBarTheKeyIsNobodysEither) {
+  // **#346.** A page is a full screen, and a full screen may only be
+  // taken where the program's composer can put it back — while the
+  // party's own command-bar routine is the live one. So F1 anywhere else
+  // is left in the buffer, rather than claimed to open a prompt whose
+  // `Return` would have nothing safe to do.
   rig r;
   r.attach_video();
   r.attach_host();
   r.enable();
   r.adventuring();
-  r.host.holds.number = 1;
-  r.host.text = "text";
+  ASSERT_FALSE(r.reader().bar_live());
 
+  r.type(key_f1);
+  r.poll();
+  EXPECT_EQ(r.keys_waiting(), 1u) << "the program observes what it would have";
+  EXPECT_FALSE(r.reader().reader_open());
+
+  r.bar_goes_out(area_before);
+  r.type(key_f1);
+  r.poll();
+  EXPECT_EQ(r.keys_waiting(), 1u) << "the one behind it is still the program's";
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking);
+}
+
+TEST(JournalReader, APromptOpenedOffARosterScreenComesUpWhenOneReturns) {
+  // Only the presentation waits for a screen this panel can be on.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
   r.adventuring();
   r.put_byte(rig::dgroup(), data_game_mode, mode_title);
-  r.program_draws("entry 1");
-  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  r.reader().set_reader(journal_reader_mode::asking);
+
   r.poll();
   EXPECT_FALSE(r.reader().on_screen());
 
@@ -1956,24 +2102,27 @@ TEST(JournalKeys, WithTheReaderDownEverythingButTheKeyIsTheProgramsOwn) {
       << "not one of these is this seam's while the reader is closed";
 }
 
-TEST(JournalKeys, WhileAPageIsUpReturnStaysTheProgramsOwn) {
-  // A citation opens the reader in the middle of a story event, and the
-  // key that turns the game's own page has to stay the game's.
-  rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
-  r.host.holds.number = 1;
-  r.host.text = "text";
-  r.program_draws("entry 1");
-  r.adventuring();
-  r.poll();
-  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+TEST(JournalKeys, WhileThePromptIsUpTheProgramsOwnLettersAreItsOwn) {
+  // The prompt is a panel drawn beside the program's *live* command bar,
+  // so its letters are the program's and this seam takes none of them.
+  // Only a screen that *covers* that bar may spell its keys as words.
+  for (const std::uint16_t key : {key_next, key_prev, key_exit}) {
+    rig r;
+    r.attach_video();
+    r.attach_host();
+    r.enable();
+    r.adventuring();
+    r.bar_goes_out(area_before);
+    r.type(key_f1);
+    r.poll();
+    ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
 
-  r.type(key_return);
-  r.poll();
-  EXPECT_EQ(r.keys_waiting(), 1u);
+    r.type(key);
+    r.poll();
+    EXPECT_EQ(r.keys_waiting(), 1u) << "key " << key;
+    EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking)
+        << "and none of them is a way out of it either: key " << key;
+  }
 }
 
 TEST(JournalKeys, AKeyBehindAnotherIsClaimedOnThePassItWouldHaveBeenRead) {
@@ -1982,6 +2131,7 @@ TEST(JournalKeys, AKeyBehindAnotherIsClaimedOnThePassItWouldHaveBeenRead) {
   r.attach_host();
   r.enable();
   r.adventuring();
+  r.bar_goes_out(area_before);
   r.type(key_two);
   r.type(key_f1);
   r.poll();
@@ -1995,6 +2145,7 @@ TEST(JournalKeys, NothingIsTakenWhileTheProgramsPushbackSlotIsArmed) {
   r.attach_host();
   r.enable();
   r.adventuring();
+  r.bar_goes_out(area_before);
   r.put_byte(rig::dgroup(), data_key_pushback, 0x50);
   r.type(key_f1);
   r.poll();
@@ -2010,6 +2161,7 @@ TEST(JournalKeys, TheBlockingReadClaimsToo) {
   r.attach_host();
   r.enable();
   r.adventuring();
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.stand_on(r.point(1));
   r.pc().step();
@@ -2028,6 +2180,7 @@ TEST(JournalKeys, TheBlockingReadIsAnsweredWithSomethingIgnorable) {
   r.attach_host();
   r.enable();
   r.adventuring();
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.stand_on(r.point(1));
   r.pc().step();
@@ -2047,6 +2200,7 @@ TEST(JournalKeys, ThePollLeavesNothingBehind) {
   r.attach_host();
   r.enable();
   r.adventuring();
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
   EXPECT_EQ(r.keys_waiting(), 0u);
@@ -2057,7 +2211,7 @@ TEST(JournalKeys, ThePollLeavesNothingBehind) {
 // Fidelity
 // ---------------------------------------------------------------------------
 
-TEST(JournalFidelity, OnAndNothingCitedLeavesTheRunIdentical) {
+TEST(JournalFidelity, OnAndTheReaderNeverOpenedLeavesTheRunIdentical) {
   const auto run = [](bool on) {
     rig r;
     if (on) {
@@ -2097,17 +2251,23 @@ TEST(JournalFidelity, WatchingTheProgramsTextIsNotMachineState) {
 
 TEST(JournalFidelity, AResetMachineHasReadNothing) {
   rig r;
+  r.attach_video();
   r.attach_host();
   r.enable();
   r.adventuring();
   r.host.holds.number = 1;
   r.host.text = "text";
   r.program_draws("entry 1");
+  r.bar_goes_out(area_before);
+  r.type(key_f1);
+  r.poll();
   ASSERT_TRUE(r.reader().reader_open());
+  ASSERT_EQ(r.reader().seen().size(), 1u);
   r.pc().reset();
   EXPECT_FALSE(r.reader().reader_open());
   EXPECT_EQ(r.reader().cited(), Nothing());
   EXPECT_EQ(r.reader().delivery(), journal_delivery::none);
+  EXPECT_TRUE(r.reader().seen().empty());
 }
 
 TEST(JournalDefinition, ItIsACommandAndNotAPullAndItNamesTheBaseline) {
@@ -2147,23 +2307,6 @@ TEST(JournalDefinition, ItIsACommandAndNotAPullAndItNamesTheBaseline) {
 // ---------------------------------------------------------------------------
 // The command on the party's own bar (M5-E4a, #221)
 // ---------------------------------------------------------------------------
-
-/// The two bars and their points, as the seam's facts have them. Restated
-/// here rather than shared, so a change to either has to be made twice on
-/// purpose (`docs/seams.md` §8.1).
-constexpr std::uint16_t bar_area = 0x04B6;
-constexpr std::uint16_t bar_view = 0x04DF;
-constexpr std::uint16_t area_before = 0x09D0;
-constexpr std::uint16_t area_after = 0x09D5;
-constexpr std::uint16_t view_before = 0x0C40;
-constexpr std::uint16_t view_after = 0x0C45;
-
-/// Stand-ins for the program's own two bars: the same shape and the same
-/// lengths, in this file's own words. Nothing of the program's text is
-/// here, which is the whole reason the splice appends rather than
-/// composes — it does not care what the bar says.
-constexpr std::string_view area_words = "Aaaa Bbbb Cccc Dddddd Eeeeee Ffff";
-constexpr std::string_view view_words = "Bbbb Cccc Dddddd Eeeeee Ffff";
 
 TEST(JournalNotes, TheCommandGoesOnTheBarAndComesOffAgain) {
   rig r;
@@ -2500,15 +2643,16 @@ TEST(JournalLog, ACitationGoesIntoItWithTheMachinesOwnClock) {
   EXPECT_EQ(row.day, 30);
   EXPECT_EQ(row.hour, 22);
   EXPECT_EQ(row.minute, 19);
-  EXPECT_TRUE(row.read) << "the citation opened it, so it has been read";
+  EXPECT_FALSE(row.read)
+      << "a citation logs it and opens nothing, so nothing has read it (#346)";
 }
 
-TEST(JournalLog, EverythingOneMessageNamesGoesInAndTheFirstOpens) {
+TEST(JournalLog, EverythingOneMessageNamesGoesOnTheList) {
   // The city hall, as the real program prints it (#232): a sentence, and
   // then the proclamations it cites appended to it as a second message
-  // box call with the flag clear. The first opens; all four are on the
-  // list, in the order the game said them, with the `*` on the three the
-  // player has not read.
+  // box call with the flag clear. All four go on the list, in the order
+  // the game said them, and every one of them carries its `*` because a
+  // citation opens nothing (#346).
   rig r;
   r.attach_video();
   r.attach_host();
@@ -2529,15 +2673,14 @@ TEST(JournalLog, EverythingOneMessageNamesGoesInAndTheFirstOpens) {
   ASSERT_EQ(r.reader().seen().size(), 4u);
   const std::span<const journal_seen_row> seen = r.reader().seen();
   EXPECT_EQ(seen[0].what, Proclamation(64));
-  EXPECT_TRUE(seen[0].read) << "the citation opened it";
   EXPECT_EQ(seen[1].what, Proclamation(78));
-  EXPECT_FALSE(seen[1].read);
   EXPECT_EQ(seen[2].what, Proclamation(109));
-  EXPECT_FALSE(seen[2].read);
   EXPECT_EQ(seen[3].what, Proclamation(59));
-  EXPECT_FALSE(seen[3].read);
-  EXPECT_EQ(r.reader().entry(), Proclamation(64));
-  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  for (const journal_seen_row& row : seen) {
+    EXPECT_FALSE(row.read) << "nothing has been read; the player has been told";
+  }
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+  EXPECT_EQ(r.host.calls, 0u);
 }
 
 TEST(JournalLog, ANewMessageIsNotReadAgainstTheOneBeforeIt) {
@@ -2571,11 +2714,7 @@ TEST(JournalLog, ANewMessageIsNotReadAgainstTheOneBeforeIt) {
 }
 
 TEST(JournalLog, TheLogIsObservationAndNotMachineState) {
-  // The same three terms the automap's exploration is held to. Told
-  // directly rather than through a citation, because a citation also
-  // *opens* the reader and what that draws is a real difference on a real
-  // screen — the enhancement, not a leak. What is claimed here is
-  // narrower and is the thing that matters: the log itself is not state.
+  // The same three terms the automap's exploration is held to.
   rig r;
   const state_hashes before = hash_state(r.pc());
 
@@ -2584,6 +2723,28 @@ TEST(JournalLog, TheLogIsObservationAndNotMachineState) {
   ASSERT_EQ(r.reader().seen().size(), 2u);
 
   EXPECT_EQ(before, hash_state(r.pc()));
+}
+
+TEST(JournalLog, AWholeCitationLeavesTheMachineWhereItFoundIt) {
+  // **What #346 bought.** A citation used to open the entry, which put a
+  // panel on the screen with nobody having asked - the enhancement, and
+  // a real difference in a real run. It writes a line and draws nothing
+  // now, so the run a citation happened in is the run with the seam off.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(12);
+  r.host.text = "The twelfth entry.";
+  r.program_draws("in your journal you note entry 12");
+  ASSERT_EQ(r.reader().seen().size(), 1u);
+
+  rig plain;
+  plain.attach_video();
+  plain.adventuring();
+  plain.program_draws("in your journal you note entry 12");
+  EXPECT_EQ(hash_state(r.pc()), hash_state(plain.pc()));
 }
 
 // ---------------------------------------------------------------------------
@@ -2907,49 +3068,6 @@ TEST(JournalList, ThePaintIsStartedAgainWheneverWhatItShowsChanges) {
   EXPECT_EQ(state.screen_drawn(), 0u);
 }
 
-// ---------------------------------------------------------------------------
-// The full-screen page (M5-E4d, #305)
-// ---------------------------------------------------------------------------
-//
-// A page of an entry is drawn in two sizes. Which one it gets is a fact
-// about the machine — is the party's own command-bar routine the thing
-// running? — and not a memory of which key opened it, because F1 is
-// claimed on every screen that has a roster and two of those are not that
-// routine.
-//
-// The geometry restated rather than read from the seam: the listing's
-// frame is columns 1 to 0x26 and rows 1 to 0x16, its title goes on the
-// box's first interior row, the body starts on row 3, and the way out
-// goes on row 0x18 — the screen's own last, which is where every bar in
-// this game is drawn.
-
-constexpr std::uint16_t screen_left = 1;
-constexpr std::uint16_t screen_top = 1;
-constexpr std::uint16_t screen_right = 0x26;
-constexpr std::uint16_t screen_bottom = 0x16;
-constexpr std::uint16_t screen_first_row = 3;
-constexpr std::uint16_t screen_footer_row = 0x18;
-constexpr int screen_columns = 38;
-constexpr int screen_rows = 20;
-
-/// The colours a page draws in: the panel's own two, so the two sizes of
-/// one page look like one thing. The bottom row has none of its own — it
-/// is the listing's bar, in `bar_word_colour` and `bar_key_colour` (#330).
-constexpr std::uint16_t page_title_colour = 14;
-constexpr std::uint16_t page_body_colour = 10;
-
-/// A rig standing on the adventuring screen with the party's own bar
-/// live, a log with one line in it, and the program's drawing routines
-/// answering.
-void a_screen_with_the_bar_live(rig& r) {
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
-  r.drawing_routines();
-  r.put_bar(bar_area, area_words);
-}
-
 TEST(JournalScreenPage, TheBarRoutineBeingLiveIsWhatSaysAScreenMayBeTaken) {
   rig r;
   r.attach_host();
@@ -3000,7 +3118,6 @@ TEST(JournalScreenPage, ReturnOnAListingRowOpensTheEntryOnTheWholeScreen) {
   r.run_the_calls();
 
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
-  EXPECT_EQ(r.reader().page_place(), journal_page_place::screen);
   EXPECT_TRUE(r.reader().page_from_list());
   EXPECT_EQ(r.word_of(redraw_calls), 0u)
       << "the page takes the screen the listing was holding; nothing is "
@@ -3395,79 +3512,29 @@ TEST(JournalScreenPage, F1IsTheBarsNextAndNoLongerTheWayOut) {
   EXPECT_EQ(r.reader().page(), 0u);
 }
 
-TEST(JournalScreenPage, ThePanelKeepsItsOwnFooterAndTheProgramsLetters) {
-  // A panel is drawn beside the program's own live command bar, so `N`,
-  // `P` and `E` there are that bar's letters. Only a screen that *covers*
-  // the bar may spell its keys as words (#317).
-  rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
-  r.host.holds = Entry(12);
-  r.host.text = "One short line.";
-  r.program_draws("entry 12");
-  r.adventuring();
-  r.poll();
-
-  ASSERT_EQ(r.reader().page_place(), journal_page_place::panel);
-  EXPECT_EQ(r.row_text(reader_footer_y), centred("F1 CLOSES"))
-      << "twenty-two columns have no room for three words and an n/m";
-
-  r.type(key_next);
-  r.poll();
-  EXPECT_EQ(r.keys_waiting(), 1u)
-      << "and the letters stay the program's while a panel is up";
-}
-
 TEST(JournalScreenPage, ItIsWrappedThirtyEightWideAndTwentyDeep) {
-  // The same wrap, wider: a text of a known length pages differently at
-  // 38x20 than it does in the panel's 22x12, and the page count is what
-  // says which shape drew it.
+  // One shape, and these are its two numbers (#346).
   rig r;
   a_screen_with_the_bar_live(r);
   r.host.holds = Entry(12);
   std::string text;
   for (int word = 0; word < 120; ++word) {
-    text += "aaaaaaaaa ";  // nine letters and a space: four to a screen row
+    text += "aaaaaaaaa ";  // nine letters and a space: three to a screen row
   }
   r.host.text = text;
-  r.reader().note_seen(Entry(12), 8, 29, 20, 15);
 
-  r.one_bar_pass(area_before, area_after, 'N');
-  r.bar_goes_out(area_before);
-  r.type(key_return);
-  r.poll();
-  r.run_the_calls();
+  an_open_page(r, Entry(12));
 
-  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
-  // 120 words, four to a row at thirty-eight columns, twenty rows to a
-  // page: thirty rows, so two pages.
+  // 120 words, three to a row at thirty-eight columns (a fourth would
+  // want thirty-nine), twenty rows to a page: forty rows, so two pages.
   EXPECT_EQ(r.reader().page_count(), 2u);
   EXPECT_EQ(screen_columns, 38);
   EXPECT_EQ(screen_rows, 20);
-
-  // The same text in the panel is two to a row and twelve rows to a page,
-  // which is five. Driven through a citation, because that is the one way
-  // in that is always the panel.
-  rig panel;
-  panel.attach_video();
-  panel.attach_host();
-  panel.enable();
-  panel.adventuring();
-  panel.host.holds = Entry(12);
-  panel.host.text = text;
-  panel.program_draws("entry 12");
-  panel.adventuring();
-  panel.poll();
-  ASSERT_EQ(panel.reader().page_place(), journal_page_place::panel);
-  EXPECT_EQ(panel.reader().page_count(), 5u);
+  EXPECT_EQ(r.row_drawn(screen_first_row), "aaaaaaaaa aaaaaaaaa aaaaaaaaa");
 }
 
 TEST(JournalScreenPage, LeavingItGoesBackToTheListingRatherThanOut) {
-  // What a person paging through several entries needs, and what the
-  // panel page never had to decide because the listing was already gone
-  // from under it.
+  // What a person paging through several entries needs.
   for (const std::uint16_t key : {key_escape, key_exit}) {
     rig r;
     a_screen_with_the_bar_live(r);
@@ -3515,14 +3582,13 @@ TEST(JournalScreenPage, APageFromThePromptGoesOutThroughTheComposer) {
   r.type(key_f1);
   r.poll();
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
-  EXPECT_EQ(r.reader().page_place(), journal_page_place::panel)
+  EXPECT_NE(r.row_text(reader_title_y), "")
       << "the prompt is four digits and a caption, and stays in the panel";
   r.type(key_one);
   r.type(key_two);
   r.type(key_return);
   r.poll(3);
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
-  EXPECT_EQ(r.reader().page_place(), journal_page_place::screen);
   EXPECT_FALSE(r.reader().page_from_list());
   r.run_the_calls();
 
@@ -3558,7 +3624,7 @@ TEST(JournalScreenPage, LeavingItHalfPaintedStillGivesTheScreenBack) {
   r.type(key_two);
   r.type(key_return);
   r.poll(3);
-  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
   ASSERT_FALSE(r.reader().on_screen()) << "the paint has not finished";
   ASSERT_NE(r.reader().screen_drawn(), 0u) << "and it has started";
 
@@ -3569,45 +3635,49 @@ TEST(JournalScreenPage, LeavingItHalfPaintedStillGivesTheScreenBack) {
       << "what is on the glass is given back, finished or not";
 }
 
-TEST(JournalScreenPage, WithoutTheBarLiveThePromptsPageStaysInThePanel) {
-  // F1 is claimed on every screen that has a roster, and two of those are
-  // not the party's own bar routine — the camp screen, whose menu is a
-  // different call site, and an adventuring screen with a vendor's bar
-  // up. A full screen on either has nothing that may put it back, which
-  // is M5-E2d.
+TEST(JournalScreenPage, TheBarGoingAwayUnderThePromptStopsItOpeningAPage) {
+  // A key this seam does not claim still reaches the program while the
+  // prompt is up, so the party's own bar routine can have returned in
+  // between - and a full screen opened then is M5-E2d. The prompt stays
+  // where it is; the next `Return` with the bar live opens what it asks
+  // for.
   rig r;
   a_screen_with_the_bar_live(r);
   r.host.holds = Entry(12);
   r.host.text = "One short line.";
-  // The bar came back: the loop is between passes, and whatever is asking
-  // for a key now is not that routine.
-  r.one_bar_pass(area_before, area_after, ' ');
-  ASSERT_FALSE(r.reader().bar_live());
 
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
   r.type(key_one);
   r.type(key_two);
-  r.type(key_return);
-  r.poll(3);
-  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
-  EXPECT_EQ(r.reader().page_place(), journal_page_place::panel);
-  r.run_the_calls();
-  EXPECT_EQ(r.word_of(frame_calls), 0u)
-      << "nothing full-screen was drawn at all";
-  EXPECT_NE(r.row_text(reader_title_y), "") << "and the panel has the page";
+  r.poll(2);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
 
-  r.type(key_escape);
+  // The bar came back: the loop is between passes, and whatever is asking
+  // for a key now is not that routine.
+  r.one_bar_pass(area_before, area_after, ' ');
+  ASSERT_FALSE(r.reader().bar_live());
+  r.type(key_return);
   r.poll();
   r.run_the_calls();
-  EXPECT_EQ(r.word_of(redraw_calls), 0u) << "the composer is not used here";
-  EXPECT_EQ(r.word_of(roster_calls), 1u) << "the roster is what comes back";
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::asking)
+      << "nothing opened, and the digits are still there to open with";
+  EXPECT_EQ(r.reader().digits(), "12");
+  EXPECT_EQ(r.word_of(frame_calls), 0u) << "and nothing was drawn full-screen";
+
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_GT(r.word_of(frame_calls), 0u);
 }
 
-TEST(JournalScreenPage, ACitationsPageIsInThePanelEvenWithTheBarLive) {
-  // It fires inside a script's own narration, where a vendor or an
-  // event's NPC can be in the viewport. Until that give-back is measured
-  // the panel is the only honest size for it.
+TEST(JournalScreenPage, ACitationOpensNoPageAtAllWithTheBarLive) {
+  // The panel a citation used to open is gone with the citation's page
+  // (#346), and nothing takes its place: the log is where a cited entry
+  // is found.
   rig r;
   a_screen_with_the_bar_live(r);
   r.host.holds = Entry(12);
@@ -3618,10 +3688,10 @@ TEST(JournalScreenPage, ACitationsPageIsInThePanelEvenWithTheBarLive) {
   r.program_draws("entry 12");
   r.adventuring();
   r.poll();
-  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
-  EXPECT_EQ(r.reader().page_place(), journal_page_place::panel);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
   r.run_the_calls();
   EXPECT_EQ(r.word_of(frame_calls), 0u);
+  EXPECT_EQ(r.row_text(reader_title_y), "");
 }
 
 TEST(JournalScreenPage, NoKeyAtAllReachesTheProgramWhileOneIsUp) {
@@ -3643,7 +3713,7 @@ TEST(JournalScreenPage, NoKeyAtAllReachesTheProgramWhileOneIsUp) {
     r.type(key_return);
     r.poll();
     r.run_the_calls();
-    ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+    ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
 
     r.type(key);
     r.poll();
@@ -3671,7 +3741,7 @@ TEST(JournalScreenPage, TheMapDoesNotDrawOverIt) {
   r.type(key_return);
   r.poll();
   r.run_the_calls();
-  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
   const std::uint32_t signature = r.reader().drawn_signature();
 
   r.type(key_tab);
@@ -3725,7 +3795,7 @@ TEST(JournalScreenPage, TheGiveBackTellsTheMapItsPanelWasPaintedOver) {
   r.type(key_two);
   r.type(key_return);
   r.poll(3);
-  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
   r.run_the_calls();
 
   r.type(key_escape);
@@ -3744,40 +3814,31 @@ TEST(JournalScreenPage, TheGiveBackTellsTheMapItsPanelWasPaintedOver) {
 
 /// The panel-sized give-back owes the same thing, for the same reason.
 ///
-/// The panel is the map's own cells exactly, and that give-back is two
-/// calls into the program rather than one — a clear and the roster's own
-/// drawer. A batch is a batch: the automap sees neither of them, so a
-/// citation, or an F1 page on a screen whose bar is not the party's own,
-/// left the same hole behind it (#332).
+/// The prompt's panel is the map's own cells exactly, and that give-back
+/// is two calls into the program rather than one — a clear and the
+/// roster's own drawer. A batch is a batch: the automap sees neither of
+/// them, so leaving the prompt left the same hole behind it (#332).
 TEST(JournalReader, TheRosterGiveBackTellsTheMapToo) {
   rig r;
   a_screen_with_the_bar_live(r);
-  r.host.holds = Entry(12);
-  r.host.text = "One short line.";
-  // Not the party's own bar routine, which is what keeps this page in the
-  // panel rather than taking the screen (M5-E4d).
-  r.one_bar_pass(area_before, area_after, ' ');
-  ASSERT_FALSE(r.reader().bar_live());
 
   automap_state& map = r.pc().automap();
   map.set_panel_open(true);
   map.set_panel_on_screen(true);
   map.set_drawn_signature(0x0BADF00D);
 
+  r.bar_goes_out(area_before);
   r.type(key_f1);
   r.poll();
-  r.type(key_one);
-  r.type(key_two);
-  r.type(key_return);
-  r.poll(3);
-  ASSERT_EQ(r.reader().page_place(), journal_page_place::panel);
-  r.run_the_calls();
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::asking);
+  ASSERT_TRUE(r.reader().on_screen()) << "the prompt is on the panel's cells";
 
   r.type(key_escape);
   r.poll();
   r.run_the_calls();
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::closed);
   ASSERT_EQ(r.word_of(roster_calls), 1u) << "the roster is what came back";
+  ASSERT_EQ(r.word_of(redraw_calls), 0u) << "and the composer is not used";
 
   EXPECT_TRUE(map.panel_open());
   EXPECT_FALSE(map.panel_on_screen());
@@ -3785,7 +3846,7 @@ TEST(JournalReader, TheRosterGiveBackTellsTheMapToo) {
 }
 
 // ---------------------------------------------------------------------------
-// What the panel can draw (M5-E4c, #219)
+// What the reader can draw (M5-E4c, #219)
 // ---------------------------------------------------------------------------
 //
 // Every non-ASCII character below is written as its own bytes rather than
@@ -3988,129 +4049,90 @@ TEST(JournalArt, AskingForAnEntryDropsThePictureBeforeIt) {
   EXPECT_EQ(state.art_level_at(0, 0), journal_art_paper);
 }
 
+/// Where a picture of `width` by `height` lands on the screen: centred in
+/// the box's interior, which is 304x160 at (8, 24).
+[[nodiscard]] std::pair<unsigned, unsigned> picture_at(unsigned width,
+                                                       unsigned height) {
+  return {8U + ((304U - width) / 2U), 24U + ((160U - height) / 2U)};
+}
+
 TEST(JournalArt, TheCountIsAskedForWhenAnEntryIsOpened) {
-  // The count is half of how many pages the entry has, and the footer of
-  // the page a citation opens says `1/2` - so it is asked for beside the
-  // text rather than at the first page turn.
+  // The count is half of how many pages the entry has, and the bar of the
+  // first page says `1/2` - so it is asked for beside the text rather
+  // than at the first page turn.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds = Entry(12);
   r.host.text = "A caption.";
   r.host.art.push_back(flat_picture(16, 16, journal_art_ink));
 
-  r.program_draws("Read journal entry 12.");
+  an_open_page(r, Entry(12));
   EXPECT_EQ(r.host.art_calls, 1u);
   EXPECT_EQ(r.host.art_asked, journal_art_argument(Entry(12), 0));
   EXPECT_EQ(r.reader().art_count(), 1u);
-
-  r.adventuring();
-  r.poll();
   EXPECT_EQ(r.reader().page_count(), 2u)
       << "one page of caption and one of drawing";
-  EXPECT_EQ(r.row_text(reader_footer_y), centred("1/2  F1 MORE"));
+  const std::string bar = r.pascal_at(
+      static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
+  EXPECT_NE(bar.find("1/2"), std::string::npos);
 }
 
 TEST(JournalArt, AnEntryThatIsProseCostsOneCalloutAndHoldsNothing) {
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds = Entry(12);
   r.host.text = "A short line.";
 
-  r.program_draws("Read journal entry 12.");
-  r.adventuring();
-  r.poll();
+  an_open_page(r, Entry(12));
   EXPECT_EQ(r.host.art_calls, 1u);
   EXPECT_EQ(r.reader().art_count(), 0u);
   EXPECT_FALSE(r.reader().art_ready());
   EXPECT_EQ(r.reader().page_count(), 1u);
-  EXPECT_EQ(r.row_text(reader_footer_y), centred("F1 CLOSES"))
+  const std::string bar = r.pascal_at(
+      static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
+  EXPECT_EQ(bar.find("/"), std::string::npos)
       << "no page counter, because there is one page";
 }
 
 TEST(JournalArt, ThePictureIsThePageAfterTheText) {
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds = Entry(4);
   r.host.text = "A roughly drawn cloth map.";
-  // Eight by eight of solid ink: at half scale it is four by four of the
-  // brightest index the ramp has, centred in the panel's body.
+  // Eight by eight of solid ink, whole, in the brightest index the ramp
+  // has, centred in the box's interior.
   r.host.art.push_back(flat_picture(8, 8, journal_art_ink));
 
-  r.program_draws("Read journal entry 4.");
-  r.adventuring();
-  r.poll();
+  an_open_page(r, Entry(4));
   ASSERT_EQ(r.reader().page_count(), 2u);
-  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("A ROUGHLY DRAWN CLOTH"))
+  EXPECT_EQ(r.row_drawn(screen_first_row), "A roughly drawn cloth map.")
       << "page one is still the caption";
 
-  r.type(key_f1);
+  r.type(key_next);
   r.poll();
+  r.run_the_calls();
   EXPECT_EQ(r.reader().page(), 1u);
-  EXPECT_EQ(r.row_text(reader_title_y), centred("ENTRY 4"))
+  EXPECT_EQ(r.pascal_at(
+                static_cast<std::uint16_t>(r.word_of(frame_title_segment_seen)),
+                static_cast<std::uint16_t>(r.word_of(frame_title_offset_seen))),
+            "ENTRY 4")
       << "a picture page is still a page of the entry";
-  EXPECT_EQ(r.row_text(reader_footer_y), centred("2/2  F1 CLOSES"));
 
-  // Four by four of the ramp's brightest, centred, and black around it.
-  const unsigned left = (automap_panel_width - 4U) / 2U;
-  const unsigned top =
-      static_cast<unsigned>(reader_body_y) + (((12 * 8) - 4) / 2);
-  for (unsigned y = 0; y < 4; ++y) {
-    for (unsigned x = 0; x < 4; ++x) {
-      EXPECT_EQ(r.panel_pixel(left + x, top + y), 15u) << x << "," << y;
+  const auto [left, top] = picture_at(8, 8);
+  for (unsigned y = 0; y < 8; ++y) {
+    for (unsigned x = 0; x < 8; ++x) {
+      EXPECT_EQ(r.screen_pixel(left + x, top + y), 15u) << x << "," << y;
     }
   }
-  EXPECT_EQ(r.panel_pixel(left - 1U, top), 0u) << "and paper is the ground";
-  EXPECT_EQ(r.panel_pixel(left, top - 1U), 0u);
+  EXPECT_EQ(r.screen_pixel(left - 1U, top), 0u) << "and paper is the ground";
 
-  // And it reached the planes, which is the half a buffer cannot show.
-  EXPECT_EQ(r.screen_pixel(automap_panel_x + left, automap_panel_y + top), 15u);
-
-  // On the last page F1 is still the way out of the panel.
-  r.type(key_f1);
+  // On the last page `NEXT` stops rather than closing (#317).
+  r.type(key_next);
   r.poll();
-  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
-}
-
-TEST(JournalArt, ThePanelAveragesRatherThanSamples) {
-  // These drawings are nothing but hairlines, and a nearest reduction
-  // that landed between two of them would drop the line. So a panel pixel
-  // is the average of the four it stands for, rounded toward ink on a
-  // tie.
-  rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
-  r.host.holds = Entry(4);
-  r.host.text = "A caption.";
-  // Two by two: one ink pixel and three of paper. The average is 9/4,
-  // which is level two - a tone the panel can draw and a sampler would
-  // have thrown away.
-  const std::array<std::uint8_t, 4> levels{
-      journal_art_ink, journal_art_paper, journal_art_paper, journal_art_paper};
-  r.host.art.push_back(
-      {.width = 2, .height = 2, .levels = pack_picture(2, 2, levels)});
-
-  r.program_draws("Read journal entry 4.");
-  r.adventuring();
-  r.poll();
-  r.type(key_f1);
-  r.poll();
-  ASSERT_EQ(r.reader().page(), 1u);
-  const unsigned left = (automap_panel_width - 1U) / 2U;
-  const unsigned top =
-      static_cast<unsigned>(reader_body_y) + (((12 * 8) - 1) / 2);
-  EXPECT_EQ(r.panel_pixel(left, top), 8u)
-      << "one pixel, and it is the ramp's third tone rather than black";
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.reader().page(), 1u);
 }
 
 TEST(JournalArt, AnEntryWithNoTextAtAllStillShowsItsPicture) {
@@ -4119,27 +4141,21 @@ TEST(JournalArt, AnEntryWithNoTextAtAllStillShowsItsPicture) {
   // made the refusal the whole entry would show `NOTHING WAS READ` over a
   // picture it was holding.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds = Entry(4);
   r.host.text = "";
   r.host.art.push_back(flat_picture(8, 8, journal_art_ink));
 
-  r.program_draws("Read journal entry 4.");
-  r.adventuring();
-  r.poll();
+  an_open_page(r, Entry(4));
   ASSERT_EQ(r.reader().delivery(), journal_delivery::no_text);
   ASSERT_EQ(r.reader().page_count(), 2u);
-  EXPECT_EQ(r.row_text(reader_body_y + (4 * 8)), centred("NOTHING WAS READ"));
+  EXPECT_EQ(r.row_drawn(screen_first_row + 8), "NOTHING WAS READ");
 
-  r.type(key_f1);
+  r.type(key_next);
   r.poll();
-  const unsigned left = (automap_panel_width - 4U) / 2U;
-  const unsigned top =
-      static_cast<unsigned>(reader_body_y) + (((12 * 8) - 4) / 2);
-  EXPECT_EQ(r.panel_pixel(left, top), 15u);
+  r.run_the_calls();
+  const auto [left, top] = picture_at(8, 8);
+  EXPECT_EQ(r.screen_pixel(left, top), 15u);
 }
 
 TEST(JournalArt, AnAtlasIsThreePagesAndEachIsFetchedAsItIsReached) {
@@ -4147,34 +4163,28 @@ TEST(JournalArt, AnAtlasIsThreePagesAndEachIsFetchedAsItIsReached) {
   // picture in pieces, so the reader turns a page between them - and one
   // crosses at a time, because the buffer is the whole box packed.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds = Entry(37);
   r.host.text = "Three maps.";
   r.host.art.push_back(flat_picture(8, 8, 0));
   r.host.art.push_back(flat_picture(8, 8, 1));
   r.host.art.push_back(flat_picture(8, 8, 2));
 
-  r.program_draws("Read journal entry 37.");
-  r.adventuring();
-  r.poll();
+  an_open_page(r, Entry(37));
   ASSERT_EQ(r.reader().page_count(), 4u);
   EXPECT_EQ(r.host.art_calls, 1u) << "the open asked for the first";
 
-  const unsigned left = (automap_panel_width - 4U) / 2U;
-  const unsigned top =
-      static_cast<unsigned>(reader_body_y) + (((12 * 8) - 4) / 2);
+  const auto [left, top] = picture_at(8, 8);
   const std::array<std::uint8_t, 3> expected{15, 7, 8};
   for (unsigned nth = 0; nth < 3; ++nth) {
-    r.type(key_f1);
+    r.type(key_next);
     r.poll();
+    r.run_the_calls();
     ASSERT_EQ(r.reader().page(), nth + 1U);
     EXPECT_EQ(r.reader().art_nth(), nth);
     EXPECT_EQ(r.host.art_asked,
               journal_art_argument(Entry(37), static_cast<std::uint8_t>(nth)));
-    EXPECT_EQ(r.panel_pixel(left, top), expected[nth]) << "picture " << nth;
+    EXPECT_EQ(r.screen_pixel(left, top), expected[nth]) << "picture " << nth;
   }
   EXPECT_EQ(r.host.art_calls, 3u)
       << "the first came with the entry; the two after it were fetched as "
@@ -4194,24 +4204,21 @@ TEST(JournalArt, AnAtlasIsThreePagesAndEachIsFetchedAsItIsReached) {
 
 TEST(JournalArt, APictureTheHostWillNotHandOverSaysSo) {
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds = Entry(4);
   r.host.text = "A caption.";
   r.host.art.push_back(flat_picture(8, 8, journal_art_ink));
   r.host.withholds = true;
 
-  r.program_draws("Read journal entry 4.");
-  r.adventuring();
-  r.poll();
+  an_open_page(r, Entry(4));
   ASSERT_EQ(r.reader().art_count(), 1u);
   ASSERT_FALSE(r.reader().art_ready());
-  r.type(key_f1);
+  r.forget_the_rows();
+  r.type(key_next);
   r.poll();
-  EXPECT_EQ(r.row_text(reader_body_y + (4 * 8)), centred("THE PICTURE"));
-  EXPECT_EQ(r.row_text(reader_body_y + (5 * 8)), centred("IS NOT HERE"));
+  r.run_the_calls();
+  EXPECT_EQ(r.row_drawn(screen_first_row + 8), "THE PICTURE");
+  EXPECT_EQ(r.row_drawn(screen_first_row + 9), "IS NOT HERE");
 
   // **And it is asked for once.** The fetch asks whether a callout for
   // this picture has come back, not whether one is held - which is the
@@ -4227,19 +4234,15 @@ TEST(JournalArt, APageNumberThatOutlivedItsEntryLandsOnTheLastPage) {
   // then stopped answering would leave the reader on a page nothing can
   // draw.
   rig r;
-  r.attach_video();
-  r.attach_host();
-  r.enable();
-  r.adventuring();
+  a_screen_with_the_bar_live(r);
   r.host.holds = Entry(4);
   r.host.text = "A caption.";
   r.host.art.push_back(flat_picture(8, 8, journal_art_ink));
 
-  r.program_draws("Read journal entry 4.");
-  r.adventuring();
+  an_open_page(r, Entry(4));
+  r.type(key_next);
   r.poll();
-  r.type(key_f1);
-  r.poll();
+  r.run_the_calls();
   ASSERT_EQ(r.reader().page(), 1u);
 
   r.host.art.clear();
@@ -4249,7 +4252,10 @@ TEST(JournalArt, APageNumberThatOutlivedItsEntryLandsOnTheLastPage) {
   // against what a render measured rather than against a fresh count,
   // because counting means walking the whole entry and this point fires
   // tens of times a frame.
-  r.poll(2);
+  r.poll();
+  r.run_the_calls();
+  r.poll();
+  r.run_the_calls();
   EXPECT_EQ(r.reader().page(), 0u) << "the last page there is";
   EXPECT_EQ(r.reader().page_count(), 1u);
 }
@@ -4274,7 +4280,7 @@ TEST(JournalArtScreen, AFullScreenPictureGoesOnAfterTheProgramsOwnFrame) {
   r.type(key_return);
   r.poll();
   r.run_the_calls();
-  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
   ASSERT_EQ(r.reader().page_count(), 2u);
 
   // Centred in the box's interior, which is 304x160 at (8, 24).

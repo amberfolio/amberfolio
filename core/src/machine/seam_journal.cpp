@@ -3,8 +3,8 @@
 // The journal reader: PLAN.md §5 item 2's in-game half, M5-E4 (#175).
 //
 // A page of the player's own Adventurer's Journal, on the game's own
-// screen, in the game's own glyphs — opened by the game when it cites an
-// entry, and by the player when they want one it has not.
+// screen, in the game's own glyphs — logged by the game when it cites an
+// entry, and opened by the player when they want to read one.
 //
 // #174 built everything under this: a player's document located entry by
 // entry, inflated, read once by an OCR engine and kept as text on their
@@ -17,14 +17,17 @@
 // --------------------------------------
 //
 // **Its surface is a command**, and half of it is not a key at all. When
-// the game says to read an entry, the entry opens: that is the whole
-// enhancement, and it is why the citation watch is a point rather than a
-// convenience. The other half is a key, for an entry the game has not
-// cited — and a key rather than a spliced menu command because the
-// adventuring screen's bar has neither the room for another word nor a
-// point in this tree at the routine that hands its answer back
-// (`seam_encamp_fix.cpp` has both for the camp bar; neither is a fact
-// about this one).
+// the game says to read an entry, the entry goes on the player's list
+// with the moment it was named: that is the half of the enhancement
+// nobody has to ask for, and it is why the citation watch is a point
+// rather than a convenience. **What it does not do is open the entry**
+// (M5-E4h, #346): the game's own narration is the signal that a note
+// arrived, and the player reads it afterwards off `Notes` like any other
+// entry. The other half is a key, for an entry the game has not cited —
+// and a key rather than a spliced menu command because the adventuring
+// screen's bar has neither the room for another word nor a point in this
+// tree at the routine that hands its answer back (`seam_encamp_fix.cpp`
+// has both for the camp bar; neither is a fact about this one).
 //
 // **Its points are addresses** — six, all in the resident image, and
 // **not one of them is new to this tree**. Five are the automap's, for
@@ -36,53 +39,53 @@
 // **What it refuses**: it declines when the data segment is not where the
 // fact table says, when the string a draw point was handed is not a
 // Pascal string in memory it may read, and when the program has not
-// installed its font — a reader with no glyphs is a black rectangle, and
-// black already means something on this panel. It draws nothing at all
+// installed its font — a prompt with no glyphs is a black rectangle, and
+// black already means something on that panel. It draws nothing at all
 // unless the program is on a screen that has a party roster, and it opens
-// nothing on a citation when the host has no text for it: **"nothing" is
-// the answer to "you have not ingested a journal", not a blank page**
-// (#175).
+// nothing anywhere but on the party's own command bar: **"nothing" is the
+// answer to "you have not ingested a journal", not a blank page** (#175).
 //
 //
-// Where a page goes, and what decides it (M5-E4d, #305)
-// -----------------------------------------------------
+// Where a page goes, and where the reader may open (M5-E4d #305, #346)
+// ---------------------------------------------------------------------
 //
-// **A page is drawn in two sizes**, and which one it gets is a fact about
-// the machine rather than a memory of which key opened it.
+// **A page has one size: the whole screen**, in the box the journal's own
+// listing is drawn in — thirty-eight columns by twenty rows. There used
+// to be a second, the roster-sized panel, because a citation opened an
+// entry inside a script's own narration where a vendor or an event's NPC
+// can be in the viewport and the program's screen composer is not a
+// give-back that may be used. A citation no longer opens anything (#346),
+// so the panel has no page to hold, and the reasoning that kept a poorer
+// reader beside a better one has gone with it.
 //
-// The small one is the automap's rect, from `automap.h`, which derives it
-// once: the interior of the adventuring screen's right-hand frame less
-// the program's own status row — 176 by 112 pixels, twenty-two columns of
-// the program's eight-pixel font by fourteen rows. It is the honest size
-// everywhere, because it is **the one region of this program's screen a
-// seam can take and give back unconditionally**. The panel's cells are
-// the party roster's, and the program can be asked to paint the roster
-// again from live state (`give_the_roster_back()`); nothing else on the
-// adventuring screen has that property, and a wider reader that covered
-// something it could not restore is the M5-E2d bug — closing a panel
-// through the program's screen composer painted the 3D view over the
-// vendor the player was talking to.
-//
-// The big one is the whole screen, in the box the journal's own listing
-// is drawn in: thirty-eight columns by twenty rows, 760 characters
-// against 264. It needs the screen composer to put back what it covered,
+// A full screen needs the screen composer to put back what it covered,
 // and the composer is safe on **one** precondition — that the party's own
 // command-bar routine is the thing running, since that is the one place
 // in the game where a vendor cannot be on the screen. `journal_state`'s
 // `bar_live()` is that precondition, set and cleared at the two points
 // this seam already has at that routine's call sites.
 //
-// So: a row of the listing, and the F1 prompt while the bar is live, open
-// a full screen. F1 anywhere else with a roster — the camp screen, whose
-// menu is a different call site, or an adventuring screen with a vendor's
-// bar up — opens the panel. **A citation opens the panel, always**: it
-// fires inside a script's own narration, where a vendor or an event's NPC
-// can be in the viewport, and until that give-back has been measured a
-// full screen there is M5-E2d again.
+// So **the reader opens only where its screen can be given back**, and
+// that is one rule rather than a rule per way in. `Notes` satisfies it by
+// construction — it is a command on the party's own bar — and F1 is
+// answered against it, so F1 at camp, whose menu is a different call
+// site, or under a vendor's bar, or while a script is narrating, opens
+// nothing at all. That is a smaller claim than this seam used to make:
+// the key is left in the buffer for the program, which has no use for it
+// either (the header's F1 argument), rather than taken to draw a page
+// that could not be put away.
 //
-// **All three sizes of this seam's drawing are the same pixels** — the
-// panel, the listing and a full-screen page — so the reader is modal over
-// the automap: while it is open the map does not draw (one condition in
+// **The panel is still where the prompt is drawn.** Four digits and a
+// caption on the whole screen is a whole screen for nothing (#305), and
+// the panel is **the one region of this program's screen a seam can take
+// and give back unconditionally**: its cells are the party roster's and
+// the program can be asked to paint the roster again from live state
+// (`give_the_roster_back()`). That is the give-back the prompt uses and
+// the only thing left that does.
+//
+// **Both of the things this seam draws are the same pixels** — the
+// prompt's panel and the full screen — so the reader is modal over the
+// automap: while it is open the map does not draw (one condition in
 // `seam_automap.cpp`), and the map is drawn again when the entry is put
 // away. That last part is one call and not a coincidence (M5-E4g, #332):
 // a give-back paints through the program's own routines, and a batch of
@@ -140,11 +143,11 @@
 // The keys, and the one that is nobody else's
 // -------------------------------------------
 //
-// **F1 opens the reader, turns its pages, and closes it on the last one.**
-// It is claimed the way the automap claims Tab — taken out of the BIOS
-// buffer at 40:1Eh before the program's own key routine looks, so the
-// program observes exactly what it would have observed had the key never
-// been typed — and it is safe on a stronger argument than Tab's. A
+// **F1 opens the reader and turns its pages.** It is claimed the way the
+// automap claims Tab — taken out of the BIOS buffer at 40:1Eh before the
+// program's own key routine looks, so the program observes exactly what
+// it would have observed had the key never been typed — and it is safe on
+// a stronger argument than Tab's. A
 // function key has **no character at all**: `keyboard.h`'s table answers
 // AL=0 for the whole F1-F10 row. This program selects commands off its
 // bars by character, so a key with none cannot be a command on any of
@@ -157,17 +160,17 @@
 // screen**, which is the modal claim the automap's roster-cursor keys
 // already make: Escape closes, Backspace goes back a page or rubs out a
 // digit, and while the prompt is up the digits and Return are its own.
-// Space and Return are deliberately *not* taken while a **panel** page is
-// up — a citation opens the reader in the middle of a story event, and
-// the key that turns the game's own page has to stay the game's.
+// The prompt takes those and nothing else, because it is a panel drawn
+// beside the program's own live command bar and the rest of that bar's
+// letters are the program's.
 //
 // **Anything that covers the whole screen takes every key there is**, and
-// that is the listing and a full-screen page (#305). The program's own
-// command bar goes on running underneath either — for a page that is the
-// very reason it may be full-screen — so a key this seam left alone chose
-// a command, or walked the party, on a screen nobody could see, and the
-// program then painted its own bar and status line back over the journal
-// to prove it. Nothing reaches the program while one is up.
+// that is the listing and a page (#305). The program's own command bar
+// goes on running underneath either — that is the very reason either may
+// be full-screen — so a key this seam left alone chose a command, or
+// walked the party, on a screen nobody could see, and the program then
+// painted its own bar and status line back over the journal to prove it.
+// Nothing reaches the program while one is up.
 //
 // **So a full screen has a bar of its own** (M5-E4f, #317), and it is the
 // same bar on both of them: `NEXT`, `PREV`, `EXIT`, on row `0x18`, which
@@ -192,14 +195,13 @@
 // colour, so the bar is four calls now: the whole row in the green, then
 // the three initials over it in the bright (`draw_the_bar()`).
 //
-// **The panel keeps `F1 MORE`**, and the difference is not laziness. A
-// panel is drawn beside the program's own live command bar, so `N`, `P`
-// and `E` are that bar's letters and taking them would pick the program's
-// own commands out from under a player who can still see them; and
-// twenty-two columns have no room for three words beside a `1/3` anyway.
-// Only a screen that *covers* that bar can spell its keys as words. F1
-// there still turns the page and closes on the last one, which its
-// footer says.
+// **The prompt spells no keys as words**, and that is not laziness. It is
+// drawn beside the program's own live command bar, so `N`, `P` and `E`
+// are that bar's letters and taking them would pick the program's own
+// commands out from under a player who can still see them; and
+// twenty-two columns have no room for three words anyway. Only a screen
+// that *covers* that bar can spell its keys as words, which is why the
+// prompt says `RETURN OPENS IT` and names no others.
 //
 // Escape closes from anywhere, whatever the bar says, because it costs
 // nothing and somebody will press it. A page opened from a row of the
@@ -239,31 +241,34 @@
 // back. No new key, no new mode, and the paging #319 built already says
 // which page a reader is on.
 //
-// It is drawn twice over, because a page is drawn in two sizes. The
-// panel's copy is rasterized into this seam's own buffer at half scale
-// and goes on the planes through the blit every other panel uses. The
-// full screen has no such buffer — the program draws that box — so a
-// picture there is plane surgery straight into the box's interior, in
+// It is drawn once, whole, because a page has one size (#346). The screen
+// is the program's own box and there is no buffer of this seam's behind
+// it, so a picture is plane surgery straight into the box's interior, in
 // the arrival *after* the one that had the program draw the frame,
-// because a handler's own writes land before a batch does.
+// because a handler's own writes land before a batch does. It used to be
+// drawn twice over, halved into the panel as well, and one stored picture
+// served both shapes; there is one shape now and the reduction has gone.
 //
 //
 // The fidelity claim, stated for this seam (docs/seams.md §8.5)
 // -------------------------------------------------------------
 //
-//   **On, with no citation drawn and F1 never pressed, a run is byte for
-//   byte the run with the seam off.** Every point reads and none of them
-//   writes: no keystroke is claimed because none is there to claim, no
-//   port is written, no pixel is drawn, and everything the seam learns
-//   goes into `machine::journal()`, which is not machine state
-//   (`journal.h`).
+//   **On, with the reader never opened, a run is byte for byte the run
+//   with the seam off, up to the party's own bar being drawn.** Every
+//   point reads and none of them writes: no keystroke is claimed because
+//   none is there to claim, no port is written, no pixel is drawn, and
+//   everything the seam learns — a citation included — goes into
+//   `machine::journal()`, which is not machine state (`journal.h`).
 //
-// The second sentence is narrower than the automap's and says so. A
-// citation opens the reader with nobody having asked, which is the
-// enhancement: from the moment one is drawn the run is a run with a panel
-// on its screen. What still holds is that the *program's* input is
-// untouched until the player presses a key at it — the reader draws, and
-// takes nothing, until F1.
+// The second sentence used to be narrower than the automap's, because a
+// citation opened the reader with nobody having asked and from that
+// moment the run was a run with a panel on its screen. It is not narrower
+// any more (#346): a citation writes a line into `machine::journal()`,
+// which is not machine state, and draws nothing. **Nothing this seam does
+// reaches the machine until the player picks `Notes` off the bar or
+// presses F1 at it.** The bar splice is what keeps this seam a `contrast`
+// rather than an `identical` (`docs/seams.md` §7), and it is the whole of
+// what is left.
 //
 // Both are tests (`tests/core/machine/seam_journal_test.cpp`).
 //
@@ -283,10 +288,9 @@
 //   * **The rows the test plan's phases 1, 3 and 4 left owed** are #270
 //     as well, each named there by its matrix ID: NOT-9, because the
 //     give-back is checked in one of the three screen modes; RDR-11's
-//     two-store comparison; RDR-12 and NOT-11's cross-host `cmp`; CIT-5,
-//     which wants a citation that is not on an event's last page so that
-//     there is a page left to turn; and CIT-6, where it is the plan that
-//     wants correcting rather than a run.
+//     two-store comparison; RDR-12 and NOT-11's cross-host `cmp`; and
+//     CIT-6, where it is the plan that wants correcting rather than a
+//     run.
 //   * **The half of this on the other side of `docs/journal.md` §9's
 //     door has never been run by a person** (#236, on the list #274 keeps). The text this
 //     reader draws is handed to it by a host, and the two paths that
@@ -407,13 +411,18 @@ constexpr std::uint16_t font_glyph_bytes = 8;
 constexpr std::uint16_t font_bytes = font_glyphs * font_glyph_bytes;
 
 // ---------------------------------------------------------------------------
-// The page, in the panel
+// The prompt's panel
 // ---------------------------------------------------------------------------
 
 /// The panel's geometry in the units this file draws in. The rect is
-/// `automap.h`'s; what is here is how a page of text is laid out inside
-/// it: a title row, twelve rows of body, and a row that names the key
-/// that does the next thing.
+/// `automap.h`'s; what is here is how the prompt is laid out inside it: a
+/// title row, the body, and a row that names the key that opens what was
+/// asked for.
+///
+/// **The only thing this seam rasterizes any more** (#346). A page of an
+/// entry is the whole screen and the program draws it; the panel is four
+/// digits and a caption, for which a whole screen would be a whole screen
+/// for nothing (#305).
 constexpr int panel_width = static_cast<int>(automap_panel_width);
 constexpr int panel_height = static_cast<int>(automap_panel_height);
 constexpr int glyph_rows = static_cast<int>(font_glyph_bytes);
@@ -421,23 +430,22 @@ constexpr int glyph_columns = 8;
 constexpr int reader_columns = panel_width / glyph_columns;
 constexpr int reader_title_y = 0;
 constexpr int reader_body_y = reader_title_y + glyph_rows;
-constexpr int reader_body_rows = 12;
-constexpr int reader_footer_y = reader_body_y + (reader_body_rows * glyph_rows);
+constexpr int reader_footer_y = panel_height - glyph_rows;
 
-static_assert(reader_footer_y + glyph_rows == panel_height,
-              "the reader's rows have to fill the panel exactly");
 static_assert(reader_columns == 22, "the panel is twenty-two glyphs wide");
+static_assert(reader_footer_y > reader_body_y,
+              "and deep enough for a title, a body and a footer");
 
 /// How many pages of one entry the reader will count to.
 ///
 /// **Not derived from a full page**, which is why it did not move when a
-/// page grew from 264 characters to 760 (#305). What it bounds is the
-/// *walk* over a four-kilobyte buffer, and the fewest characters a page
-/// can hold under either shape is one to a line — 12 in the panel and 20
-/// on the screen — so the walk's real worst case is 341 pages and 205,
-/// and neither is a number a reader would ever count to. Sixty-four is
-/// past any entry a printed journal holds, in either size, and stops a
-/// pathological buffer from being walked for ever.
+/// page grew from 264 characters to 760 (#305) or when the smaller shape
+/// went (#346). What it bounds is the *walk* over a four-kilobyte buffer,
+/// and the fewest characters a page can hold is one to a line — twenty of
+/// them — so the walk's real worst case is 205 pages, which is not a
+/// number a reader would ever count to. Sixty-four is past any entry a
+/// printed journal holds and stops a pathological buffer from being
+/// walked for ever.
 constexpr unsigned reader_max_pages = 64;
 
 /// The colours, which are the program's own: the title in the yellow it
@@ -455,13 +463,13 @@ constexpr std::uint8_t colour_title = 14;
 /// `machine/journal.h` gives at length: the drawings are one hue of ink
 /// on paper, and the palette the program has installed is a fact about a
 /// running machine that an ingestion cannot know. So the choice of index
-/// is made here, where the rest of this panel's colours are chosen, and
+/// is made here, where the rest of this reader's colours are chosen, and
 /// **it is a knob**: changing it re-draws every player's pictures and
 /// invalidates nobody's ingestion, which is the same arrangement
 /// `explored_reveal_radius` has with the automap's sidecar.
 ///
-/// Ink first, because level zero is the darkest sample and this panel
-/// draws on a *black* ground — so the most ink becomes the brightest
+/// Ink first, because level zero is the darkest sample and a page is
+/// drawn on a *black* ground — so the most ink becomes the brightest
 /// index and the paper becomes the ground itself. Four greys of the
 /// sixteen: the program's own bright, its grey, its dark grey, and
 /// black.
@@ -473,7 +481,7 @@ constexpr std::uint8_t colour_title = 14;
 constexpr std::array<std::uint8_t, journal_art_levels> art_ramp{15, 7, 8,
                                                                 colour_black};
 static_assert(art_ramp[journal_art_paper] == colour_black,
-              "paper is the panel's own ground and is drawn as nothing");
+              "paper is the page's own ground and is drawn as nothing");
 
 // ---------------------------------------------------------------------------
 // The command on the adventuring bar (M5-E4a, #221)
@@ -861,25 +869,21 @@ using font_table = std::array<std::uint8_t, font_bytes>;
 
 /// How wide a page is, and how many lines of it there are.
 ///
-/// **There are two shapes** (M5-E4d, #305), and everything below takes
-/// one rather than reading a constant: the roster-sized panel the page
-/// has always had, and the full screen the `Notes` listing takes. The
-/// wrap does not change — it only gets wider.
+/// **One shape** (#346). There were two — the roster-sized panel a
+/// citation opened in and the full screen the `Notes` listing takes —
+/// and a citation opens nothing now, so the wrap has one width and one
+/// depth to work to and nothing below has a shape handed to it.
 struct page_shape {
   int columns;
   int rows;
 };
 
-/// The panel's, which is the geometry at the top of this file.
-constexpr page_shape panel_page{.columns = reader_columns,
-                                .rows = reader_body_rows};
-
-/// The full screen's, **derived from the listing's frame rather than
-/// restated**: the interior is what the frame drawer leaves, and the body
-/// begins below the row the frame writes its title on. A page and the
-/// listing are the same box with different things in it, so a number that
-/// moved for one and not the other would be a defect nobody would see
-/// until a person looked at the screen.
+/// **Derived from the listing's frame rather than restated**: the
+/// interior is what the frame drawer leaves, and the body begins below
+/// the row the frame writes its title on. A page and the listing are the
+/// same box with different things in it, so a number that moved for one
+/// and not the other would be a defect nobody would see until a person
+/// looked at the screen.
 constexpr page_shape screen_page{
     .columns = list_frame_right - list_frame_left + 1,
     .rows = list_frame_bottom - list_first_row + 1};
@@ -902,16 +906,6 @@ static_assert(journal_art_height ==
                   static_cast<unsigned>(screen_page.rows * glyph_rows),
               "and as deep");
 
-/// The panel is **exactly half the page**, which is what lets one stored
-/// picture serve both shapes: half of the widest page is 152x80 and the
-/// panel's body is 176x96, so a picture reduced for the page always fits
-/// the panel when it is halved, whatever its own proportions are.
-static_assert(journal_art_width / 2U <= automap_panel_width,
-              "half a page's picture fits the panel across");
-static_assert(journal_art_height / 2U <=
-                  static_cast<unsigned>(reader_body_rows * glyph_rows),
-              "and down");
-
 /// Where that box begins on the 320x200 screen, in pixels: the interior
 /// of the frame, which starts one cell in and below the row the frame
 /// writes its title on. The same two numbers the rows are drawn at, in
@@ -922,13 +916,10 @@ constexpr int art_screen_y = list_first_row * glyph_rows;
 static_assert(art_screen_x == 8 && art_screen_y == 24,
               "the page's interior begins at (8, 24)");
 
-/// The most rows either shape asks for, which is what one laid-out page
-/// is sized to.
+/// How many rows one laid-out page is sized to hold.
 constexpr int reader_max_body_rows = screen_page.rows;
-static_assert(reader_max_body_rows >= panel_page.rows,
-              "a laid-out page has to hold the taller of the two shapes");
 
-/// The widest a laid-out row can be, which is the wider of the two shapes.
+/// The widest a laid-out row can be.
 constexpr std::size_t page_line_max =
     static_cast<std::size_t>(screen_page.columns);
 
@@ -985,14 +976,13 @@ struct page_layout {
 /// least a row wide or a word could never fill one; and it has to be
 /// small enough that a word always fits on a page that *starts* empty,
 /// because a word that can never be placed is a walk that stands still.
-/// Twice thirty-eight is four rows of the panel's twenty-two and two of
-/// the screen's thirty-eight, against pages twelve and twenty rows deep.
-/// A run longer than this is cut here and what is left of it is the next
-/// word — which is what the wrap already did at the right-hand edge.
+/// Twice thirty-eight is two rows of a page twenty rows deep. A run
+/// longer than this is cut here and what is left of it is the next word —
+/// which is what the wrap already did at the right-hand edge.
 constexpr std::size_t page_word_max = 2 * page_line_max;
-static_assert(page_word_max <= static_cast<std::size_t>(panel_page.columns) *
-                                   static_cast<std::size_t>(panel_page.rows),
-              "a word has to fit on an empty page of the smaller shape");
+static_assert(page_word_max <= static_cast<std::size_t>(screen_page.columns) *
+                                   static_cast<std::size_t>(screen_page.rows),
+              "a word has to fit on an empty page");
 
 /// What the stored text reads as once its line breaks are read the way an
 /// OCR engine meant them (#316).
@@ -1101,19 +1091,17 @@ struct token {
 /// ingestion for that reason: the store keeps what the engine read, so a
 /// player proof-reading their own transcription still sees the lines the
 /// engine saw, a correction is written against those lines, and a better
-/// rule later needs no re-ingestion. Both shapes get it at once, too,
-/// because both come through this function. `next_token()` holds the
-/// guess and `hyphen_may_join()` is what narrows it.
+/// rule later needs no re-ingestion. `next_token()` holds the guess and
+/// `hyphen_may_join()` is what narrows it.
 ///
 /// What has not changed: it breaks at spaces, and a word longer than the
 /// shape is wide is broken where it runs out of columns, because a word
 /// that cannot fit has to go somewhere and dropping it would be losing
 /// the player's own text.
-[[nodiscard]] page_layout lay_out(std::string_view text, std::size_t start,
-                                  page_shape shape) {
+[[nodiscard]] page_layout lay_out(std::string_view text, std::size_t start) {
   page_layout page;
-  const auto rows = static_cast<unsigned>(shape.rows);
-  const auto columns = static_cast<std::size_t>(shape.columns);
+  constexpr auto rows = static_cast<unsigned>(screen_page.rows);
+  constexpr auto columns = static_cast<std::size_t>(screen_page.columns);
   std::array<char, page_word_max> word{};
 
   // Three positions, and the distance between them is what keeps a page
@@ -1221,8 +1209,7 @@ struct page_walk {
   unsigned count{1};
 };
 
-[[nodiscard]] page_walk walk_pages(std::string_view text, unsigned wanted,
-                                   page_shape shape) {
+[[nodiscard]] page_walk walk_pages(std::string_view text, unsigned wanted) {
   page_walk walk;
   std::size_t at_byte = 0;
   std::size_t last_start = 0;
@@ -1234,7 +1221,7 @@ struct page_walk {
       found = true;
     }
     last_start = at_byte;
-    const page_layout laid = lay_out(text, at_byte, shape);
+    const page_layout laid = lay_out(text, at_byte);
     if (!laid.more || page + 1 >= reader_max_pages) {
       walk.count = page + 1;
       break;
@@ -1274,11 +1261,10 @@ struct reader_pages {
   [[nodiscard]] unsigned total() const noexcept { return text + art; }
 };
 
-[[nodiscard]] reader_pages count_pages(const journal_state& state,
-                                       page_shape shape) {
+[[nodiscard]] reader_pages count_pages(const journal_state& state) {
   reader_pages pages;
   pages.text = state.delivery() == journal_delivery::ready
-                   ? walk_pages(state.text(), 0, shape).count
+                   ? walk_pages(state.text(), 0).count
                    : 1;
   pages.art = state.art_count();
   return pages;
@@ -1304,10 +1290,10 @@ void put(panel_pixels& panel, int x, int y, std::uint8_t colour) noexcept {
 /// calling the program's text primitive: the screen is planar and the
 /// program's, the panel is linear and this seam's, and the panel goes onto
 /// the planes in one piece. The glyphs are the same bytes the program
-/// draws its own menus with, so a page of a journal is pixel-identical to
-/// the text around it — which is what "in the game's own font" has to mean
-/// to be worth claiming. It is `seam_automap.cpp`'s label writer, and the
-/// two are the same three lines for the same reason.
+/// draws its own menus with, so the prompt is pixel-identical to the text
+/// around it — which is what "in the game's own font" has to mean to be
+/// worth claiming. It is `seam_automap.cpp`'s label writer, and the two
+/// are the same three lines for the same reason.
 void draw_text(panel_pixels& panel, int x, int y, std::string_view text,
                std::uint8_t colour, const font_table& font) noexcept {
   for (const char ch : text) {
@@ -1341,12 +1327,12 @@ void draw_centred(panel_pixels& panel, int y, std::string_view text,
             text.substr(0, static_cast<std::size_t>(columns)), colour, font);
 }
 
-/// What the panel calls each of the journal's sections.
+/// What the reader calls each of the journal's sections.
 ///
 /// Separate from `machine::journal_kind_name()`, which is the lower-case
 /// token a store file and a log line use. This is a *caption*: upper case
 /// because that is the case the program's font is legible in, and short
-/// enough that it and a four-digit number fit the panel's twenty-two
+/// enough that it and a four-digit number fit the prompt's twenty-two
 /// columns — which `PROCLAMATION 214` does, with five to spare.
 [[nodiscard]] constexpr std::string_view reader_word(
     journal_kind which) noexcept {
@@ -1401,9 +1387,9 @@ class label {
 
 /// A line for the journal's own screen, as a Pascal string.
 ///
-/// Wider than `label` because a full screen is wider than the panel, and
-/// length-prefixed because that is what the program's own string drawer
-/// takes. Every character in it is this file's own: the section's caption,
+/// Wider than `label` because a full screen is wider than the prompt's
+/// panel, and length-prefixed because that is what the program's own
+/// string drawer takes. Every character in it is this file's own: the section's caption,
 /// a number, and a date this project computed. Never a word of the
 /// program's.
 class list_line {
@@ -1532,177 +1518,60 @@ struct refusal {
   return state.art_answered() && art_names(state, nth);
 }
 
-/// What the panel says instead of a picture when the host had the count
-/// and not the picture — a store with a record missing, or one written by
-/// a build that could not make one.
+/// What a page says instead of a picture when the host had the count and
+/// not the picture — a store with a record missing, or one written by a
+/// build that could not make one.
 constexpr refusal art_refusal{.first = "THE PICTURE", .second = "IS NOT HERE"};
 
-/// One of the entry's pictures into the panel, **halved**.
+/// The prompt into the panel's own buffer, in the program's own glyphs.
 ///
-/// The stored picture is the full-screen page's box and the panel is
-/// exactly half of it, which is what lets one stored picture serve both
-/// shapes (`machine/journal.h`, `docs/journal.md` §11.2). So the panel's
-/// copy is a 2x1 average of the levels rather than a second bitmap in a
-/// player's store.
-///
-/// **Averaged and not sampled**, and rounded toward ink on a tie: these
-/// drawings are hairlines, and a nearest reduction that landed between
-/// two of them would drop the line entirely — which is the same reason
-/// the reducer at ingestion is a box filter (`journal_picture.h`). A tie
-/// goes to the darker level because losing a line is the failure that
-/// cannot be seen and darkening one is the failure that can.
-///
-/// Paper is drawn, not skipped: `art_ramp` maps it to the panel's own
-/// black, so the margin around a portrait picture is the ground the rest
-/// of the panel is on.
-void draw_art(panel_pixels& panel, const journal_state& state) noexcept {
-  const unsigned width = (state.art_width() + 1U) / 2U;
-  const unsigned height = (state.art_height() + 1U) / 2U;
-  const int left = (panel_width - static_cast<int>(width)) / 2;
-  const int top =
-      reader_body_y +
-      (((reader_body_rows * glyph_rows) - static_cast<int>(height)) / 2);
-  for (unsigned y = 0; y < height; ++y) {
-    for (unsigned x = 0; x < width; ++x) {
-      const unsigned sum = state.art_level_at(2U * x, 2U * y) +
-                           state.art_level_at((2U * x) + 1U, 2U * y) +
-                           state.art_level_at(2U * x, (2U * y) + 1U) +
-                           state.art_level_at((2U * x) + 1U, (2U * y) + 1U);
-      const auto level = static_cast<std::uint8_t>((sum + 1U) / 4U);
-      put(panel, left + static_cast<int>(x), top + static_cast<int>(y),
-          art_ramp[level]);
-    }
-  }
-}
-
-/// The whole panel into its own buffer, and how many pages the entry
-/// turned out to have.
-[[nodiscard]] unsigned render(journal_state& state, const font_table& font) {
+/// **The only thing this seam rasterizes** (#346). A page of an entry is
+/// the whole screen and the program draws it out of its own two routines;
+/// what is left here is four digits, the section they name, and the two
+/// lines that say how to point the one and open the other.
+void render_prompt(journal_state& state, const font_table& font) {
   panel_pixels& panel = state.pixels();
   panel.fill(colour_black);
 
-  if (state.reader() == journal_reader_mode::asking) {
-    label title;
-    title.add("JOURNAL");
-    draw_centred(panel, reader_title_y, title.view(), colour_title, font);
-
-    label prompt;
-    prompt.add(reader_word(state.asked_kind()));
-    prompt.add(" ");
-    prompt.add(state.digits());
-    // The cursor is **drawn**, not lettered, and that is a fact about the
-    // program's font rather than a preference. Its table is sixty-four
-    // glyphs indexed by the character modulo sixty-four, and driven
-    // against the program an underscore came out as a stray mark: the
-    // index it lands on is not one the program has ever needed. A rule
-    // under the next cell is this seam's own pixels and cannot be
-    // surprised by a glyph nobody drew. One cell is left for it in the
-    // centring, so the prompt does not shuffle as digits are typed.
-    const auto columns = static_cast<int>(prompt.view().size());
-    const int prompt_x = ((reader_columns - (columns + 1)) / 2) * glyph_columns;
-    const int prompt_y = reader_body_y + (4 * glyph_rows);
-    draw_text(panel, prompt_x, prompt_y, prompt.view(), colour_body, font);
-    for (int x = 1; x < glyph_columns - 1; ++x) {
-      put(panel, prompt_x + (columns * glyph_columns) + x,
-          prompt_y + glyph_rows - 2, colour_body);
-    }
-
-    // The prompt has to say which of the three sections it is pointed at
-    // and how to point it elsewhere, because a number alone names three
-    // different texts (`machine/journal.h`'s `journal_kind`). The word
-    // above *is* the answer to the first, so this line is only the second.
-    label hint;
-    hint.add("F1 PICKS SECTION");
-    draw_centred(panel, reader_body_y + (6 * glyph_rows), hint.view(),
-                 colour_footer, font);
-
-    label footer;
-    footer.add("RETURN OPENS IT");
-    draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
-    return 1;
-  }
-
   label title;
-  title.add(reader_word(state.entry().kind));
-  title.add(" ");
-  title.add(state.entry().number);
+  title.add("JOURNAL");
   draw_centred(panel, reader_title_y, title.view(), colour_title, font);
 
-  // How many pages there are, text and pictures together (#328), and
-  // which of them this is. The page is clamped rather than trusted: an
-  // entry can lose pages under a page number that was right for the one
-  // before it — a shorter text, or a host that answered the count and
-  // then answered nothing.
-  const reader_pages pages = count_pages(state, panel_page);
-  const unsigned total = pages.total();
-  const unsigned page = state.page() < total ? state.page() : total - 1U;
-  const bool more = page + 1U < total;
-
-  // The footer is the same three things on every page of an entry, so it
-  // is built once here and drawn at the end of each of the three arms
-  // below.
-  const auto footer_line = [&](bool ends_short) {
-    label footer;
-    if (total > 1) {
-      footer.add(page + 1U);
-      footer.add("/");
-      footer.add(total);
-      footer.add("  ");
-    }
-    footer.add(more ? "F1 MORE" : "F1 CLOSES");
-    if (ends_short) {
-      // The entry was longer than the buffer that crossed the host
-      // boundary (journal.h). Said rather than silently stopped: a
-      // transcription with a hole in it that nothing mentions is the
-      // failure a player finds out about last.
-      footer.add(" +");
-    }
-    draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
-  };
-
-  if (page >= pages.text) {
-    // **A picture of the entry**, halved into the panel (#328).
-    const unsigned nth = page - pages.text;
-    if (art_is_here(state, nth)) {
-      draw_art(panel, state);
-    } else {
-      draw_centred(panel, reader_body_y + (4 * glyph_rows), art_refusal.first,
-                   colour_body, font);
-      draw_centred(panel, reader_body_y + (5 * glyph_rows), art_refusal.second,
-                   colour_body, font);
-    }
-    footer_line(false);
-    return total;
+  label prompt;
+  prompt.add(reader_word(state.asked_kind()));
+  prompt.add(" ");
+  prompt.add(state.digits());
+  // The cursor is **drawn**, not lettered, and that is a fact about the
+  // program's font rather than a preference. Its table is sixty-four
+  // glyphs indexed by the character modulo sixty-four, and driven against
+  // the program an underscore came out as a stray mark: the index it
+  // lands on is not one the program has ever needed. A rule under the
+  // next cell is this seam's own pixels and cannot be surprised by a
+  // glyph nobody drew. One cell is left for it in the centring, so the
+  // prompt does not shuffle as digits are typed.
+  const auto columns = static_cast<int>(prompt.view().size());
+  const int prompt_x = ((reader_columns - (columns + 1)) / 2) * glyph_columns;
+  const int prompt_y = reader_body_y + (4 * glyph_rows);
+  draw_text(panel, prompt_x, prompt_y, prompt.view(), colour_body, font);
+  for (int x = 1; x < glyph_columns - 1; ++x) {
+    put(panel, prompt_x + (columns * glyph_columns) + x,
+        prompt_y + glyph_rows - 2, colour_body);
   }
 
-  if (state.delivery() != journal_delivery::ready) {
-    const refusal what = refusal_for(state.delivery());
-    draw_centred(panel, reader_body_y + (4 * glyph_rows), what.first,
-                 colour_body, font);
-    draw_centred(panel, reader_body_y + (5 * glyph_rows), what.second,
-                 colour_body, font);
-    if (total == 1) {
-      // Nothing to page to, so the panel says the one thing there is to
-      // do rather than a page counter and a key that turns nothing.
-      label footer;
-      footer.add("ESC CLOSES");
-      draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
-      return 1;
-    }
-    footer_line(false);
-    return total;
-  }
+  // The prompt has to say which of the three sections it is pointed at
+  // and how to point it elsewhere, because a number alone names three
+  // different texts (`machine/journal.h`'s `journal_kind`). The word
+  // above *is* the answer to the first, so this line is only the second.
+  label hint;
+  hint.add("F1 PICKS SECTION");
+  draw_centred(panel, reader_body_y + (6 * glyph_rows), hint.view(),
+               colour_footer, font);
 
-  const std::string_view text = state.text();
-  const page_walk walk = walk_pages(text, page, panel_page);
-  const page_layout laid = lay_out(text, walk.start, panel_page);
-  for (unsigned row = 0; row < laid.lines; ++row) {
-    draw_text(panel, 0, reader_body_y + (static_cast<int>(row) * glyph_rows),
-              laid.line[row], colour_body, font);
-  }
-  footer_line(!more && state.truncated());
-  return total;
+  label footer;
+  footer.add("RETURN OPENS IT");
+  draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
 }
+
 
 // ---------------------------------------------------------------------------
 // Putting it on the planes
@@ -1783,15 +1652,12 @@ void blit(machine& box, const journal_state& state) {
 /// A picture onto the planes, whole, in the box the program has just
 /// drawn (#328).
 ///
-/// The panel's own picture goes through `render()` and the blit above,
-/// because the panel is this seam's linear buffer and always was. A
-/// full-screen page has no such buffer — the program draws that screen,
-/// out of its own frame drawer and its own string drawer, and a
-/// byte-per-pixel copy of its interior would be forty-eight kilobytes of
-/// core for something that is on the glass for one page. So the packed
-/// levels are walked **in place**: a byte of a plane is eight pixels
-/// looked up through the ramp, and nothing the size of the box is
-/// materialized.
+/// A page has no buffer behind it — the program draws that screen, out of
+/// its own frame drawer and its own string drawer, and a byte-per-pixel
+/// copy of its interior would be forty-eight kilobytes of core for
+/// something that is on the glass for one page. So the packed levels are
+/// walked **in place**: a byte of a plane is eight pixels looked up
+/// through the ramp, and nothing the size of the box is materialized.
 ///
 /// **Only the picture's own byte columns are written**, and the rows
 /// outside it are left alone: the caller has just had the program clear
@@ -1857,7 +1723,7 @@ void blit_art(machine& box, const journal_state& state) {
                  sequencer_map_mask_index, all_planes);
 }
 
-/// Put the party roster back, because the reader wrote over it and only
+/// Put the party roster back, because the prompt wrote over it and only
 /// the program can redraw it from live state.
 ///
 /// Two calls in one batch, exactly as the automap closes: the panel's rect
@@ -2001,10 +1867,10 @@ enum class claimable : std::uint8_t {
   /// corrupted game rather than a journal.
   ///
   /// So while the list is up, no keystroke reaches the program at all.
-  /// That is a wider claim than any other this seam makes, and it is the
-  /// one screen that has earned it: it is opened deliberately from the
-  /// party's own bar, it covers everything, and it has its own way out.
-  /// The panel modes make no such claim, and the file's header says why.
+  /// That is a wider claim than any other this seam makes, and it is
+  /// earned by every screen that covers the bar: opened deliberately from
+  /// the party's own bar, covering everything, with its own way out. The
+  /// prompt's panel makes no such claim, and the file's header says why.
   swallow,
 };
 
@@ -2031,9 +1897,18 @@ enum class claimable : std::uint8_t {
 
 [[nodiscard]] claimable claimable_of(std::uint16_t key,
                                      journal_reader_mode mode,
-                                     journal_page_place place) noexcept {
+                                     bool bar_live) noexcept {
   if (key == key_f1) {
-    return claimable::reader;
+    // **F1 is this seam's only where the reader may open** (#346). With
+    // the reader down that is the party's own command bar and nowhere
+    // else, because a page is a full screen and the composer is the only
+    // thing that puts one back. A key claimed where nothing can be opened
+    // is a key the player pressed and saw no answer to, so it is left in
+    // the buffer for the program — which has no use for it either.
+    if (mode != journal_reader_mode::closed || bar_live) {
+      return claimable::reader;
+    }
+    return claimable::none;
   }
   if (mode == journal_reader_mode::closed) {
     // With the reader down, F1 is the only key in the world that is this
@@ -2083,22 +1958,18 @@ enum class claimable : std::uint8_t {
       return claimable::digit;
     }
   }
-  if (mode == journal_reader_mode::showing &&
-      place == journal_page_place::screen) {
-    // **A full-screen page swallows everything else**, for the listing's
-    // own reason and not for a new one: the party's own command-bar
-    // routine is live underneath it — that is *why* it is a full screen
-    // (`journal.h`'s `bar_live()`) — so a key this seam left alone would
-    // pick a command, or walk the party, on a screen nobody can see, and
-    // the loop would paint its bar and its status line back over the page
-    // to prove it. That is #230, exactly.
+  if (mode == journal_reader_mode::showing) {
+    // **A page swallows everything else**, for the listing's own reason
+    // and not for a new one: the party's own command-bar routine is live
+    // underneath it — that is *why* it may be a full screen (`journal.h`'s
+    // `bar_live()`) — so a key this seam left alone would pick a command,
+    // or walk the party, on a screen nobody can see, and the loop would
+    // paint its bar and its status line back over the page to prove it.
+    // That is #230, exactly.
     //
-    // The panel page makes no such claim and must not: it is opened by a
-    // citation, in the middle of a story event, and the key that turns
-    // the game's own page has to stay the game's. Which is also why the
-    // three letters below are the *screen's* and never the panel's: a
-    // panel is drawn beside a live command bar, and `E` on that bar is a
-    // command of the program's.
+    // Which is also why the three letters below belong to a page and
+    // never to the prompt: the prompt is a panel drawn beside a live
+    // command bar, and `E` on that bar is a command of the program's.
     if (const claimable paged = paging_key(key); paged != claimable::none) {
       return paged;
     }
@@ -2118,8 +1989,7 @@ enum class claimable : std::uint8_t {
 /// because the two halves of an extended key have to stay adjacent, and
 /// the whole keystroke word rather than the character.
 [[nodiscard]] claimable claim_key(cpu::processor& cpu, std::uint16_t ds,
-                                  journal_reader_mode mode,
-                                  journal_page_place place,
+                                  journal_reader_mode mode, bool bar_live,
                                   std::uint16_t& taken) {
   if (cpu.read_byte(ds, data_key_pushback) != 0) {
     return claimable::none;
@@ -2132,7 +2002,7 @@ enum class claimable : std::uint8_t {
     return claimable::none;
   }
   const std::uint16_t key = cpu.read_word(bda::segment, head);
-  const claimable which = claimable_of(key, mode, place);
+  const claimable which = claimable_of(key, mode, bar_live);
   if (which == claimable::none) {
     return claimable::none;
   }
@@ -2178,20 +2048,20 @@ enum class claimable : std::uint8_t {
 /// commands this enhancement had already added were spliced onto the
 /// program's own bars precisely so that they would look like the rest
 /// (`Notes`, #221; `FIX`, `seam_encamp_fix.cpp`). The reader was the one
-/// place that did not follow: it said `F1 MORE` and `ESC CLOSES`, which
-/// names two keys this program has never asked anybody to press.
+/// place that did not follow: it named the keys it wanted pressed, which
+/// is not something this program has ever asked anybody to read.
 ///
-/// **The same bar on both full-screen shapes**, the log's listing and a
-/// page of an entry, because on both of them the three words mean the
-/// same three things - the next screenful, the one before it, and the way
-/// out. Where they differ is only what a screenful *is*.
+/// **The same bar on both screens**, the log's listing and a page of an
+/// entry, because on both of them the three words mean the same three
+/// things - the next screenful, the one before it, and the way out. Where
+/// they differ is only what a screenful *is*.
 ///
-/// The panel keeps `F1 MORE` (`render()`), and that is a fact about the
-/// screen rather than an oversight: a panel is drawn beside the program's
-/// own live command bar, so `E`, `N` and `P` there are the *program's*
-/// letters and taking them would pick commands off a bar the player can
-/// still see. Only a screen that covers that bar may spell its keys as
-/// words.
+/// The prompt's panel spells no keys at all (`render_prompt()`), and that
+/// is a fact about the screen rather than an oversight: a panel is drawn
+/// beside the program's own live command bar, so `E`, `N` and `P` there
+/// are the *program's* letters and taking them would pick commands off a
+/// bar the player can still see. Only a screen that covers that bar may
+/// spell its keys as words.
 ///
 /// **Padded across all forty cells and drawn from column zero**, which is
 /// not decoration. The frame's lower border stops at row `0x17` (above),
@@ -2222,12 +2092,11 @@ enum class claimable : std::uint8_t {
 /// would be the one bar in the game that did not look like the rest.
 ///
 /// The `n/m` after the words is a label and not a command, so it goes
-/// after them and only when there is more than one page - the same rule
-/// the panel's footer has always used, six spaces clear of whichever word
-/// this screenful drew last so that nobody reads it as a fourth one. `+`
-/// after it is the delivery buffer's own honesty: the entry was longer
-/// than the four kilobytes that crossed the host boundary (journal.h),
-/// said rather than silently stopped.
+/// after them and only when there is more than one page - six spaces
+/// clear of whichever word this screenful drew last, so that nobody reads
+/// it as a fourth one. `+` after it is the delivery buffer's own honesty:
+/// the entry was longer than the four kilobytes that crossed the host
+/// boundary (journal.h), said rather than silently stopped.
 [[nodiscard]] list_line screen_bar(const bar_word_set& words, unsigned page,
                                    unsigned pages, bool truncated) {
   list_line line;
@@ -2407,19 +2276,20 @@ enum class claimable : std::uint8_t {
   return draw_the_bar(ctx, image, bar, words);
 }
 
-/// A full-screen page's own numbers, beside the listing's.
+/// A page's own numbers, beside the listing's.
 ///
-/// The title and the body are the panel page's colours rather than the
-/// listing's, which is #305's rule: the two sizes of one page should look
-/// like one thing, and what changed there is how much room it has.
+/// The title and the body are the reader's own colours rather than the
+/// listing's, which is #305's rule: everything this enhancement draws
+/// should look like one thing.
 ///
 /// **The bottom row is not**, since #317. It is no longer a footer of grey
 /// small print under a page: it is a bar of three words on the screen's
 /// last row, which is where this game draws every bar it has - so it is
 /// the listing's own bar, in the listing's own two colours, through
 /// `draw_the_bar()`, and it has no colour of its own to name here any
-/// more (#330). The panel's footer stays grey (`colour_footer`,
-/// `render()`), because in the panel it really is a label under a page.
+/// more (#330). The prompt's own footer stays grey (`colour_footer`,
+/// `render_prompt()`), because there it really is a label under a
+/// caption.
 constexpr std::uint16_t page_title_colour = colour_title;
 constexpr std::uint16_t page_body_colour = colour_body;
 
@@ -2468,11 +2338,11 @@ struct page_footer_bar {
 /// The bottom row of a page: `screen_bar()`, which is the listing's own
 /// bar and the whole of #317 (M5-E4f).
 ///
-/// It said `1/3  F1 MORE   ESC CLOSES` and it says `NEXT PREV EXIT` now -
-/// or as many of those three as this page has a use for (#342): `PREV` is
-/// new to a *reader* as well as conditional, where F1 used to only walk
-/// forward and close on the last page, so a person who overshot had to
-/// leave the entry and open it again.
+/// `NEXT PREV EXIT` on the screen's own last row - or as many of those
+/// three as this page has a use for (#342). `PREV` is new to a *reader*
+/// as well as conditional, where F1 used to only walk forward and close
+/// on the last page, so a person who overshot had to leave the entry and
+/// open it again.
 [[nodiscard]] page_footer_bar page_footer(unsigned page, unsigned pages,
                                           bool more, bool truncated) {
   const bar_word_set words = active_bar_words(page, pages);
@@ -2505,17 +2375,18 @@ struct page_footer_bar {
   const bool ready = state.delivery() == journal_delivery::ready;
   const std::string_view text = state.text();
   // Text pages and pictures together (#328), and the page clamped to
-  // them, for `render()`'s reason: a page number can outlive the entry it
-  // was right for.
-  const reader_pages pages = count_pages(state, screen_page);
+  // them: a page number can outlive the entry it was right for — a
+  // shorter text, or a host that answered a count and then answered
+  // nothing.
+  const reader_pages pages = count_pages(state);
   const unsigned total = pages.total();
   const unsigned page = state.page() < total ? state.page() : total - 1U;
   const bool picture = page >= pages.text;
   const bool more = page + 1U < total;
   const page_walk walk =
-      ready && !picture ? walk_pages(text, page, screen_page) : page_walk{};
+      ready && !picture ? walk_pages(text, page) : page_walk{};
   const page_layout laid = ready && !picture
-                               ? lay_out(text, walk.start, screen_page)
+                               ? lay_out(text, walk.start)
                                : page_layout{};
   state.set_page_count(static_cast<std::uint16_t>(total));
 
@@ -2555,8 +2426,8 @@ struct page_footer_bar {
     }
     if (!ready) {
       // The host had nothing, so the page says which nothing it was: two
-      // short lines of this file's own words, centred the way the panel
-      // centres them, and the same footer.
+      // short lines of this file's own words, centred on the character
+      // grid, and the same footer.
       const refusal what = refusal_for(state.delivery());
       unsigned nth = 0;
       for (const std::string_view line : {what.first, what.second}) {
@@ -2576,7 +2447,7 @@ struct page_footer_bar {
   if (picture) {
     // The second pass: the box is on the screen and this is what goes in
     // it. A picture the host had the count of and not the record is two
-    // lines instead, the way the panel says the same thing.
+    // lines instead, the way a refusal is.
     const unsigned nth = page - pages.text;
     if (art_is_here(state, nth)) {
       blit_art(box, state);
@@ -2622,10 +2493,10 @@ struct page_footer_bar {
 /// Put the whole screen back, through the routine the program itself
 /// leaves a full-screen view by.
 ///
-/// The counterpart of `give_the_roster_back()` for a panel that took more
-/// than the roster. Safe here for the reason the file's own header gives:
-/// this screen is only opened from the party's own command bar, so there
-/// is no vendor under it to paint over.
+/// The counterpart of `give_the_roster_back()` for a screen that took
+/// more than the roster. Safe here for the reason the file's own header
+/// gives: this seam opens nothing except from the party's own command
+/// bar, so there is no vendor under it to paint over.
 ///
 /// It repaints for whatever mode the program is in rather than putting it
 /// on one, and it starts from the scaffold - so every cell this screen
@@ -2715,10 +2586,9 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
   const bool was_up = state.on_screen() || state.screen_drawn() != 0;
   const journal_reader_mode mode = state.reader();
 
-  // **A full-screen page opened from the listing goes back to the
-  // listing** (#305), which is what a person paging through several
-  // entries needs and what the panel page never had to decide, because
-  // the listing was already gone from under it. Nothing is given back:
+  // **A page opened from the listing goes back to the listing** (#305),
+  // which is what a person paging through several entries needs. Nothing
+  // is given back:
   // the same screen is still taken, the cursor is where it was - and so
   // therefore is the page of the log, since #319 derives the one from the
   // other - and the listing's own first pass clears the box before it
@@ -2730,15 +2600,12 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
   }
 
   // What has to be given back depends on what was taken: the listing and
-  // a full-screen page took the whole screen, the panel took the roster's
-  // cells, and asking the program to repaint more than was covered is the
-  // M5-E2d bug.
-  const bool took_the_screen =
-      mode == journal_reader_mode::listing ||
-      (mode == journal_reader_mode::showing &&
-       state.page_place() == journal_page_place::screen);
+  // a page took the whole screen, the prompt took the roster's cells, and
+  // asking the program to repaint more than was covered is the M5-E2d
+  // bug. Two modes against three, since a page has one size (#346).
+  const bool took_the_screen = mode == journal_reader_mode::listing ||
+                               mode == journal_reader_mode::showing;
   state.set_reader(journal_reader_mode::closed);
-  state.set_page_place(journal_page_place::panel);
   state.set_page_from_list(false);
   state.clear_digits();
   if (!was_up) {
@@ -2885,10 +2752,9 @@ void turn_the_page(journal_state& state, int by) {
 
 /// F1, wherever the reader happens to be.
 ///
-/// One key that opens the prompt, points it at each section in turn,
-/// turns the pages and puts the entry away on the last of them. It is the
-/// whole surface a player has to learn, and the panel says what it will do
-/// next every time it is on the screen.
+/// One key that opens the prompt, points it at each section in turn, and
+/// turns a page. It is the whole surface a player has to learn, and
+/// whatever is on the screen says what it will do next.
 ///
 /// **The section chooser is this key and not another one** (#218). The
 /// prompt needs one — a player typing `4` has not said which section they
@@ -2896,7 +2762,7 @@ void turn_the_page(journal_state& state, int by) {
 /// other seam may want: the automap's is Tab, and two enhancements a
 /// player has both switched on must not fight over a keystroke. Escape is
 /// what leaves the prompt, and always was.
-void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
+void press_reader_key(machine& box, seam_context& ctx) {
   journal_state& state = box.journal();
   switch (state.reader()) {
     case journal_reader_mode::closed:
@@ -2908,6 +2774,10 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
       // told?" is the list, "let me look something up" is this. A key that
       // changed what it did would have been a key a player had to relearn
       // for no reason.
+      //
+      // Reached only where the reader may open, because `claimable_of()`
+      // does not claim F1 anywhere else (#346): a page is a full screen,
+      // and a full screen needs the party's own bar to be the live one.
       state.set_reader(journal_reader_mode::asking);
       return;
     case journal_reader_mode::listing:
@@ -2926,31 +2796,18 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
       break;
   }
   if (state.page_count() == 0) {
-    // Nothing has been drawn yet, so there is no page to turn and no
-    // picture to put away. Reachable only in the one step between a
-    // citation opening the reader and the arrival that draws it.
+    // Nothing has been drawn yet, so there is no page to turn. Reachable
+    // only in the one step between a page being asked for and the arrival
+    // that draws it.
     return;
   }
-  if (state.page_place() == journal_page_place::screen) {
-    // **On a full screen F1 is `NEXT` and nothing else** (M5-E4f, #317).
-    // It used to turn the page and close on the last one, which was the
-    // only way out a page named. A full screen carries `NEXT` and `EXIT`
-    // as words of its own now, and a forward key that quietly became a
-    // way out on the last page would contradict the bar the player is
-    // reading - and would be a second forward key that stops somewhere
-    // else than the first.
-    turn_the_page(state, 1);
-    return;
-  }
-  // In the panel it still does both, because the panel's footer still
-  // says so: there is no room on twenty-two columns for three words, so
-  // `F1 MORE` becomes `F1 CLOSES` on the last page and that is the whole
-  // of what a citation's reader offers.
-  if (state.page() + 1U < state.page_count()) {
-    state.set_page(static_cast<std::uint16_t>(state.page() + 1U));
-    return;
-  }
-  static_cast<void>(close_reader(box, ctx, ds));
+  // **On a page F1 is `NEXT` and nothing else** (M5-E4f, #317). It used
+  // to turn the page and close on the last one, which was the only way
+  // out a page named. A page carries `NEXT` and `EXIT` as words of its
+  // own now, and a forward key that quietly became a way out on the last
+  // page would contradict the bar the player is reading - and would be a
+  // second forward key that stops somewhere else than the first.
+  turn_the_page(state, 1);
 }
 
 /// Everything one arrival does with the keyboard. True when the roster is
@@ -2965,13 +2822,13 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
   journal_state& state = box.journal();
   std::uint16_t key = 0;
   const claimable which =
-      claim_key(box.processor(), ds, state.reader(), state.page_place(), key);
+      claim_key(box.processor(), ds, state.reader(), state.bar_live(), key);
   claimed = which != claimable::none;
   switch (which) {
     case claimable::none:
       return false;
     case claimable::reader:
-      press_reader_key(box, ctx, ds);
+      press_reader_key(box, ctx);
       // Closed means a give-back went out through a batch; a page that
       // went back to the listing (#305) did not, and its screen is drawn
       // on this pass.
@@ -3008,9 +2865,7 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
       // the one already on the glass.
       return false;
     case claimable::accept:
-      // Return on the list opens the line it is pointing at. The screen
-      // goes back first, because what comes up is the reader's panel and
-      // the panel lives on the adventuring screen.
+      // Return on the list opens the line it is pointing at.
       if (state.reader() == journal_reader_mode::listing) {
         const std::span<const journal_seen_row> rows = state.seen();
         if (rows.empty()) {
@@ -3029,23 +2884,25 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
         // page had to wait for the composer's batch to finish or be
         // painted over by it (#233).
         request(box, ctx, wanted);
-        state.set_page_place(journal_page_place::screen);
         state.set_page_from_list(true);
         state.set_reader(journal_reader_mode::showing);
         state.set_page(0);
         return false;
       }
+      // **The prompt is a panel and the page it opens is the whole
+      // screen** (#305, #346), so the page carries the composer's
+      // precondition and the prompt does not. F1 could only have opened
+      // the prompt while the party's own bar was live, but a key this
+      // seam does not claim still reaches the program while the prompt is
+      // up, so that bar can have been left in between — and a full screen
+      // opened then is M5-E2d again. Checked here rather than assumed:
+      // the prompt stays where it is, and the next Return with the bar
+      // live opens what it asks for.
+      if (!state.bar_live()) {
+        return false;
+      }
       if (const journal_citation wanted = state.asked(); wanted) {
         request(box, ctx, wanted);
-        // **The prompt is in the panel wherever it is opened, and the
-        // page it opens is a full screen only where one can be put
-        // back** (#305): while the party's own command-bar routine is the
-        // live one. F1 is claimed on every screen that has a roster, and
-        // two of those are not that routine — the camp screen, whose menu
-        // is a different call site, and an adventuring screen with a
-        // vendor's bar up. A full screen on either is M5-E2d again.
-        state.set_page_place(state.bar_live() ? journal_page_place::screen
-                                              : journal_page_place::panel);
         state.set_page_from_list(false);
         state.set_reader(journal_reader_mode::showing);
         state.set_page(0);
@@ -3061,7 +2918,7 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
 /// Make sure the buffer holds the picture the page that is up wants
 /// (#328).
 ///
-/// One picture at a time, because the buffer is the reader's whole box
+/// One picture at a time, because the buffer is the page's whole box
 /// packed and a page shows one; and a callout only when what is held is
 /// not what is wanted, because a callout on every arrival would copy
 /// twelve kilobytes at the program's own polling rate.
@@ -3092,10 +2949,7 @@ void fetch_art_if_wanted(machine& box, seam_context& ctx) {
   if (state.art_count() == 0) {
     return;  // an entry that is prose: nothing to fetch and nothing to page to
   }
-  const page_shape shape = state.page_place() == journal_page_place::screen
-                               ? screen_page
-                               : panel_page;
-  const reader_pages pages = count_pages(state, shape);
+  const reader_pages pages = count_pages(state);
   if (state.page() < pages.text) {
     return;  // a page of the entry's own text: no picture is wanted
   }
@@ -3126,18 +2980,15 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
   // change what would be drawn (#328).
   fetch_art_if_wanted(box, ctx);
 
-  // Everything the panel is drawn from, as one number. The font pointer is
-  // in it so a reader first drawn before the program installed its glyphs
-  // gets them the moment it does.
+  // Everything the screen is drawn from, as one number. The font pointer
+  // is in it so a prompt first drawn before the program installed its
+  // glyphs gets them the moment it does.
   std::uint32_t drawn = 2166136261U;
   const auto mix = [&drawn](std::uint32_t value) noexcept {
     drawn = (drawn ^ value) * 16777619U;
     drawn ^= drawn >> 13U;
   };
   mix(static_cast<std::uint32_t>(state.reader()));
-  // And which size a page is being drawn at (#305): the same entry on the
-  // same page is a different screen in the panel and on the whole of it.
-  mix(static_cast<std::uint32_t>(state.page_place()));
   // The list is drawn from the log and the cursor, so both are in the
   // signature: a line arriving at the top while the screen is up is a
   // screen that has to be drawn again, and the cursor is also what says
@@ -3169,14 +3020,14 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
     return;
   }
 
-  // The listing and a full-screen page are not this seam's pixels at
-  // all: the program draws both, out of the same two routines every Gold
-  // Box screen is made of, so there is no buffer to rasterize and no font
-  // to read (#222, #305).
+  // The listing and a page are not this seam's pixels at all: the program
+  // draws both, out of the same two routines every Gold Box screen is
+  // made of, so there is no buffer to rasterize and no font to read
+  // (#222, #305). Which leaves the prompt as the one thing below that is
+  // rasterized here (#346).
   const bool by_the_program =
       state.reader() == journal_reader_mode::listing ||
-      (state.reader() == journal_reader_mode::showing &&
-       state.page_place() == journal_page_place::screen);
+      state.reader() == journal_reader_mode::showing;
   if (by_the_program) {
     // A pass at a time. Until the last one the signature is left alone, so
     // the next arrival comes back here and carries on rather than deciding
@@ -3193,14 +3044,14 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
 
   font_table font{};
   if (!read_font(cpu, ds, font)) {
-    // The program has not installed its glyphs. A page rasterized out of
-    // an empty buffer is a black rectangle, and black is what this panel
-    // draws nothing in — so nothing is drawn, and the next arrival that
-    // finds a font draws then.
+    // The program has not installed its glyphs. A prompt rasterized out
+    // of an empty buffer is a black rectangle, and black is what this
+    // panel draws nothing in — so nothing is drawn, and the next arrival
+    // that finds a font draws then.
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  state.set_page_count(static_cast<std::uint16_t>(render(state, font)));
+  render_prompt(state, font);
   blit(box, state);
   state.set_on_screen(true);
   state.set_drawn_signature(drawn);
@@ -3355,41 +3206,26 @@ void at_message_box(machine& box, seam_context& ctx) {
   }
   tell_the_host_the_log_moved(box, ctx);
 
-  // A citation, and the whole enhancement: the entry opens. The reader is
-  // not moved onto an entry the host has nothing for — "the seam shows
-  // nothing rather than a blank page" (#175) — unless it is already open,
-  // in which case the game has just cited something else and saying so
-  // beats leaving the previous entry up as though it were the answer.
-  const bool was_open = state.reader() != journal_reader_mode::closed;
-  if (was_open && state.reader() == journal_reader_mode::showing &&
-      state.entry() == cited && state.delivery() == journal_delivery::ready) {
-    return;
-  }
-  request(box, ctx, cited);
-  if (state.reader() != journal_reader_mode::showing) {
-    // **A citation's page is in the panel, always** (#305). The watch
-    // fires inside a script's own narration, where a vendor or an event's
-    // NPC can be in the viewport, and the program's screen composer is
-    // not a give-back that may be used there — that is M5-E2d exactly.
-    // A page already up keeps the size it was opened at, because the game
-    // citing something else is not a reason to move the screen under a
-    // player's eyes.
-    state.set_page_place(journal_page_place::panel);
-    state.set_page_from_list(false);
-  }
-  // **Or the entry is a drawing** (#328). "Nothing rather than a blank
-  // page" was the rule when text was the only thing an entry could be,
-  // and an entry whose page is a map has pictures whether or not an OCR
-  // engine was ever installed - a drawing has no words in it. So what
-  // opens the reader is the host having *something*, and a page whose
-  // text is a refusal and whose second page is the drawing is exactly
-  // what such an entry is.
-  const bool anything =
-      state.delivery() == journal_delivery::ready || state.art_count() != 0;
-  if (anything || was_open) {
-    state.set_reader(journal_reader_mode::showing);
-    state.set_page(0);
-  }
+  // **And that is the whole of it** (M5-E4h, #346). A citation used to
+  // open the entry as well: it asked the host for the text and the first
+  // picture and put a page on the screen with nobody having pressed
+  // anything. It does not any more.
+  //
+  // The reason is the player's rather than the machine's. Beside the full
+  // screen the `Notes` listing opens, the roster-sized panel a citation
+  // had to use read as a second, poorer reader — and a citation fires
+  // inside a script's own narration, where an NPC can be in the viewport
+  // and the program's screen composer is not a give-back that may be used
+  // (M5-E2d), so it could never have had the better one. The game's own
+  // narration is what tells a player a note arrived; the line above is
+  // what lets them find it afterwards, with its `*` still on it because
+  // nothing has been read.
+  //
+  // So this seam draws nothing a player did not ask for, which is why the
+  // fidelity claim at the top of this file is no longer narrower than the
+  // automap's. Nothing is asked of a host either: the text and the
+  // pictures are fetched when an entry is opened, and a citation of an
+  // entry nobody opens costs one `journal_seen` callout and no more.
 }
 
 /// A box region is about to be cleared. If it meets the panel's cells,
