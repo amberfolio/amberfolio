@@ -429,9 +429,12 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   own points, says whether the party's own command-bar routine is
   running, which is the one precondition under which the program's screen
   composer may be asked to put the screen back — and `Notes` satisfies it
-  by construction, being a word on that bar. The roster panel and the F1
-  number prompt that was drawn in it are both gone: this seam rasterizes
-  nothing and reads no font, and the program draws every word it shows.
+  by construction, being a word on that bar. **So the reader reaches what
+  the log holds and nothing else**: there is no way to name an entry the
+  game has not cited, and `journal_open` is called for a row of the log
+  or not at all. `host::cite_all_journal()` (§10) is how a whole store is
+  read. This seam rasterizes nothing and reads no font; the program draws
+  every word it shows.
 - **Reflow** (#316), in the wrap and not at ingestion, so the store keeps
   the engine's lines for a correction to be written against: a single
   newline is a space; a blank line is a paragraph break and gets one

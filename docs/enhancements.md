@@ -142,6 +142,10 @@ all (cheat)* on the page, puts every entry on the log so the OCR text can
 be read off the game's screen. It is a host action, not a seam, and the
 log stays filled until the store's `seen` lines are removed.
 
+**What it will not do.** Open an entry the game has not sent you to. The
+log is what the story has told you to read, and the reader shows the log;
+to read the rest of a journal, `--cite-all-journal`.
+
 ## The debug cheats
 
 **What they do.** `cheat-invulnerable` (the party takes no damage),

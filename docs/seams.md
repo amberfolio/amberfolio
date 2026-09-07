@@ -1064,8 +1064,10 @@ shape.
   while `journal_state::bar_live()` holds, the one state in which the
   composer may be asked to put a screen back — and **that needs no rule
   of its own**, because `Notes` is a command on the party's own bar and
-  is the only way in there is. The reader is modal over the map, which is
-  the same pixels either way.
+  is the only way in there is. What follows is that the reader's whole
+  reach is the log: a citation puts a row there, `Return` opens a row,
+  and there is no path to an entry the game has not named. The reader is
+  modal over the map, which is the same pixels either way.
 - **Give-back**: one, since #346 — the routine the program uses on the
   way out of every full-screen view (the scaffold, view, roster and status line) plus one injected
   space so the menu-bar routine returns and redraws the bar. **At the
@@ -1117,8 +1119,9 @@ F1, claimed on every screen with a party roster and defended on the
 grounds that a function key has no character (`keyboard.h`) and so cannot
 be a command on any of this program's bars; the argument held and the key
 went anyway, because `Notes` is the way in and a second one is a second
-thing to learn. The number prompt it opened (#218) went with it. While
-the reader *is* up: Escape closes, Backspace goes a screenful back,
+thing to learn. The number prompt it opened (#218) went with it, and
+with the prompt went naming an entry: what the reader can open is what
+the log holds. While the reader *is* up: Escape closes, Backspace goes a screenful back,
 Return opens the row the cursor is on, and `N`/`P`/`E` are the bar's own
 three. The log and a page take **every** key (the bar is live underneath,
 and a key let through walked the party unseen, #230). Reads are answered
