@@ -1,27 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The fidelity pair that is a **contrast** and not an `identical`, and
-# the reason is the interesting result of M5-V1 (#177).
-#
-# The journal reader on, nothing cited, no journal key pressed — and the
-# machine is *not* the baseline's. It agrees for the first 111 of 126
-# checkpoints and differs from there to the end, in `cpu`, `ram`,
-# `devices`, `display` and `audio`, and in none of `clock`,
-# `console`, `dos`, `input`, `keyboard`, `scheduler`, `stop` or
-# `wall`.
-#
-# **That is the enhancement, not a leak.** M5-E4a splices `Notes` onto
-# the party's own command bar, and the tick it first differs at is the
-# tick that bar is first drawn. A seam that puts a word on a menu the
-# game keeps redrawing changes the machine on any run that reaches the
-# menu, cited or not — so it cannot carry an `identical` line, and
-# saying so here is the honest answer rather than loosening what
-# `identical` means.
-#
-# The invariant that does hold for this seam is the one with it **off**,
-# which is `docs/seams.md` §7's and is tested there; and what it draws
-# while on is confined to the rects it owns, which is
-# `tests/visual/*.leg`.
+# The fidelity pair that is a `contrast` and not an `identical` (M5-V1
+# #177): the journal reader on, nothing cited, no journal key pressed,
+# and the machine is not the baseline's. It agrees for the first 111 of
+# 126 checkpoints and differs from there to the end in `cpu`, `ram`,
+# `devices`, `display` and `audio`, and in none of `clock`, `console`,
+# `dos`, `input`, `keyboard`, `scheduler`, `stop` or `wall`.
+# That is the enhancement: M5-E4a splices `Notes` onto the party's own
+# command bar, and the tick it first differs at is the tick that bar is
+# first drawn, so it cannot carry an `identical` line. The invariant that
+# does hold for this seam is the one with it off (docs/seams.md §7).
 
 about the journal reader on with nothing cited: not identical to the
 about baseline, because Notes is on the bar from the moment it is drawn

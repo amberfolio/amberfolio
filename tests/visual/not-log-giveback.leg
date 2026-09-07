@@ -2,27 +2,22 @@
 #
 # NOT-4 and NOT-9: the empty log takes the whole screen, and gives every
 # pixel of it back.
-#
-# **A single leg, and it has to be one.** The obvious form is a pair —
-# run it with the seam off and diff — and it cannot work here, for a
-# reason worth writing down rather than discovering twice. The key that
-# opens the log reaches the program in the seam-off run, where the
-# adventuring bar answers an unknown letter by stepping its own
-# highlight. From that moment the two runs differ on the bar row
-# whatever the give-back does, and the difference measured is the
-# highlight rather than the journal (#234).
-#
-# So the give-back is stated directly instead, and more strongly: the
-# frame after the log closes is the same screen as the frame before it
-# opened.
+# A single leg, and it has to be one. The key that opens the log reaches
+# the program in a seam-off run, where the adventuring bar answers an
+# unknown letter by stepping its own highlight, so from that moment the
+# two runs differ on the bar row whatever the give-back does, and what a
+# pair would measure is the highlight (#234).
+# So the give-back is stated directly and more strongly: the frame after
+# the log closes is the same screen as the frame before it opened.
+
 about the log takes the whole screen and gives every pixel of it back
 kind single
 program START.EXE
 store tests/visual/reader-store.txt
 both code-wheel
-# The code-wheel bypass is gated on the wheel itself (#115), and both
-# sides of this pair drive past the challenge, so both need it. Pinned
-# by digest because a document never enters this tree.
+
+# The code-wheel bypass is gated on the wheel itself (#115), pinned by
+# digest because a document never enters this tree.
 document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
 seam journal
 until 260000000
@@ -40,27 +35,9 @@ rect bar 0,190,319,199
 # The log up, holding still, with nothing pressed.
 same 10800-11375
 
-# And the screen before it, back again after it: viewport, roster,
-# status line, ornaments, every pixel — **except the bar row**, and that
-# exception is a finding rather than a convenience.
-#
-# What comes back on the bar is the right bar, in the right place, with
-# the right words. What did not come back, when this leg was written, was
-# *which of them the highlight was sitting on*: 951 pixels differed
-# before the log and after it, every one of them on the bar row (#234).
-# NOT-2's leg is what asserts the bar itself.
-#
-# **That is fixed since #330**, and the fix is on the splice rather than
-# on the give-back: the menu-bar routine sets the shared highlight byte
-# to the group of the command it matched, `Notes` is a group only because
-# this seam put one there, and the splice hands the byte back where the
-# routine found it. So the bar row comes back identical too, and the
-# `bar` exception below is no longer needed for it.
-#
-# **The exception stays until this leg is re-driven**, which is #293's
-# work and not this one's: every frame number above was measured on the
-# *longer* boot — the one where the code-wheel challenge is drawn — and
-# this leg does not pass today for reasons that have nothing to do with
-# the bar. `tests/visual/rdr-bar.leg` is the leg that asserts the
-# give-back whole, on the shorter boot, with nothing excepted.
+# The screen before the log, back again after it: every pixel except the
+# bar row. That exception was a finding - 951 pixels differed, all on that
+# row, because the give-back left the highlight on the `Notes` group (#234)
+# - and #330 fixed it at the splice. It stays until this leg is re-driven
+# on the shorter boot (#293); rdr-bar.leg asserts the give-back whole.
 equal 10600 11800 bar

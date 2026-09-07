@@ -1,12 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The second half of `save.rec`'s round trip, and the reason a session
-# library needs more than one starting disk: this one begins from the
-# directory that session ended with — a slot A holding a saved party.
-#
-# The file and dir lines are a snapshot of that directory: names, sizes
-# and SHA-256s, written by `scripts/sweep.py --pin`. No byte of the
-# player's installation is here (CONTRIBUTING.md).
+# The second half of `save`'s round trip, and why a library needs more
+# than one starting disk: it begins from the directory that session
+# ended with, a slot A holding a saved party.
 
 about boot through the code-wheel challenge to LOAD SAVED GAME, slot A,
 about and the party back where it was saved — 0,4 W, the same character,

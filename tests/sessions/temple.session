@@ -3,12 +3,8 @@
 # A city service transacting: the healing temple at 3,1 in the civilised
 # district, a cure bought and paid for, and the payer's sheet read
 # afterwards (#104, docs/playable.md leg 5).
-#
-# The disk is the maintainer's own copy with the editions's shipped save
-# slots in place — the party this session loads is slot A. The file and
-# dir lines are names, sizes and SHA-256s of a snapshot of it, written by
-# `scripts/sweep.py --pin`. No byte of the player's installation is here
-# (CONTRIBUTING.md).
+# The disk is a copy with the edition's shipped save slots in place; the
+# party this session loads is slot A.
 
 about slot A loaded, routed to the temple at 3,1, HEAL, CURE BLINDNESS on
 about FIGHTER1 cast anyway and paid for -- a thousand gold, which is two

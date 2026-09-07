@@ -1,13 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The no-seam half of a pair. `fight-cheat.rec` is the same script over
-# the same disk with `cheat-invulnerable` on, and its descriptor names
-# this one as its contrast — see tests/sessions/README.md.
-#
-# The disk is the one `save.rec` wrote: a slot A holding a saved party.
-# The file and dir lines are names, sizes and SHA-256s of a snapshot of
-# it, written by `scripts/sweep.py --pin`. No byte of the player's
-# installation is here (CONTRIBUTING.md).
+# The no-seam half of a pair: `fight-cheat` is the same script over the
+# same disk with `cheat-invulnerable` on, and names this one as its
+# contrast. The disk is the one `save` wrote, a slot A holding a party.
 
 about the saved party loaded, walked twelve steps north into the slums
 about into a group of orcs, and the fight handed to the computer with

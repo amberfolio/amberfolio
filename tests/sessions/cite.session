@@ -1,23 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# FID-4 (#235): the citation of #232, as a session.
-#
-# A new party through the city to the hall at 3,4 facing east, where the
-# game's own entrance event names four proclamations in one sentence. The
-# reader opens on the first of them with nobody having pressed a key, and
-# from that checkpoint on the panel's pixels are in every hash.
-#
-# **The store is external and pinned by digest**, because it is a real
-# ingestion of a real player's own Adventurer's Journal — ninety-nine
-# entries — and no byte of it may enter this tree (PLAN.md §6). The
-# digest is the only thing about it that may be written down, and it is
-# what says the store on this machine is the store the recording was made
-# over. Without one the session is skipped and said so, exactly as a
-# session whose disk is absent is.
-#
-# Point `--journal-store` at it, or set $AMBERFOLIO_JOURNAL_STORE. The
-# sweep copies it before running, because a run writes its own log back
-# into a store when it ends.
+# FID-4 (#235): #232's citation as a session. A new party through the
+# city to the hall at 3,4 facing east, where the game's own entrance
+# event names four proclamations in one sentence; the reader opens on the
+# first with nobody having pressed a key, and from that checkpoint on the
+# panel's pixels are in every hash.
+# The store is external and pinned by digest: it is a real ingestion of a
+# real player's own journal, ninety-nine entries, and no byte of it may
+# enter this tree (PLAN.md §6). Without the digest the session is skipped
+# and said so, exactly as one whose disk is absent is.
 
 about a real citation opening a real journal: the city tour east to the
 about city hall, whose event names proclamations LXIV, LXXVIII, CIX and

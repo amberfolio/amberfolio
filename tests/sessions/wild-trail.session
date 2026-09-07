@@ -1,61 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The same script, the same disk and the same tick budget as `wild.rec`,
-# with `explored` on and nothing else changed (M5-E5, #179; the marking
-# reversed to fog of war by M5-E5f, #263). The `contrast` line below is
-# the assertion that this made a difference, and it says two things at
-# once.
-#
-# **The 107 identical checkpoints run to the arrival, and no further.**
-# They are the power-on, the title, the code wheel and the load, and they
-# end at tick 204,866,288 — the frame the wilderness screen settles at,
-# which is where the fog first appears. Everything after it differs,
-# because a fog covers what the party has *not* been near and a map
-# nobody has walked is nearly all of that.
-#
-# **This used to be 111, and the difference is the whole change of
-# mind.** Under the lift the two halves agreed through the arrival and
-# the fifteen hundred frames of standing on it, and this file said so as
-# the stronger of the seam's two fidelity claims. A fog cannot make that
-# claim, so it is gone rather than loosened — `tests/sessions/README.md`
-# has the paragraph, `docs/seams.md` §10 has the reason, and the unit
-# suite asserts the arrival is *not* the seam-off screen so that nothing
-# re-acquires it by accident. The claim that survives is
-# `quiet-explored.rec`: on, the overworld never shown, all 126
-# checkpoints of the baseline.
-#
-# **The 33 that differ are the picture.** A checkpoint hashes the
-# framebuffer, so a fog drawn in the wrong place, one square out, over the
-# party's own icon, in the wrong colour, on the wrong half of the pixels
-# or not at all moves one — the geometry and the mechanism have unit
-# tests, and only this says the picture is still the picture.
-#
-# **Re-recorded a second time for M5-E5f's own second look.** The fog was
-# solid black when this pair was first recorded as a fog; the maintainer
-# chose a one-pixel dark-grey checker off five coverings composited over
-# a real frame, so every one of the 33 moved and neither the 107 nor the
-# tick did. Where the two halves start disagreeing is the *marking's*
-# reversal; what they disagree about is the covering.
-#
-# **And it is owed a third re-recording, which it has not had** (M5-E5g,
-# #299). The maintainer walked that checker and changed two constants:
-# the covering is black now, and the reveal radius is zero, so more
-# squares are covered and they are covered in a different colour. Every
-# one of the 33 moves again and neither the 107 nor the tick does — the
-# arrival is still where a fog first differs from no fog. This file's
-# `.rec` is still the radius-one grey, along with the whole library's,
-# and #293 is the pass that re-records all of it on the boot the code
-# wheel's own change shortened.
-#
-# The two halves differ by nothing but the flag: the same disk, the same
-# tick budget, the same twenty-four key events. There is no key to press:
-# this seam is a setting, so what the pair compares is a screen and not
-# an input.
-#
-# Recorded by the desktop host and reproduced by the wasm module through
-# `hosts/web/tools/drive.mjs --replay`: all 140 checkpoints, which is
-# every byte of RAM, every device's registers and the framebuffer at each
-# of them, out of a second compilation of the core.
+# `wild`'s script, disk and tick budget with `explored` on and nothing
+# else changed (M5-E5 #179; the marking reversed to fog by M5-E5f #263).
+# `contrast wild` says two things.
+# The 107 identical checkpoints run to the arrival and no further: they
+# end at tick 204,866,288, the frame the wilderness screen settles at,
+# which is where the fog first appears.
+# The 33 that differ are the picture. A fog drawn one square out, over
+# the party's own icon, in the wrong colour, on the wrong half of the
+# pixels or not at all moves one of them.
+# The .rec is still the radius-one grey covering; M5-E5g (#299) made it
+# black at radius zero, and #293 is the pass that re-records it.
 
 about the same eight steps with the explored overlay on: every square of
 about the game's own overworld window the party has not been near is

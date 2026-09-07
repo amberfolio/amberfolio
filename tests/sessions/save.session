@@ -1,14 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# `docs/playable.md` legs 0, 1 and 3, recorded as one run. The other half
-# of the round trip is `load.rec`, which starts from the directory this
-# one wrote — see tests/sessions/README.md on why a library needs more
-# than one starting disk, and why a session over a disk this machine does
-# not have is skipped rather than failed.
-#
-# The file and dir lines are a pristine snapshot of a player-supplied
-# installation: names, sizes and SHA-256s, written by
-# `scripts/sweep.py --pin`. No byte of it is here (CONTRIBUTING.md).
+# docs/playable.md legs 0, 1 and 3 as one run, pinning the save write
+# path. `load` is the other half of the round trip and starts from the
+# directory this one wrote. Pins a pristine player-supplied installation.
 
 about a party made, the guide's tour of the city taken to 0,4 W, and the
 about game saved into slot A from the camp screen — 23,032 frames, 74

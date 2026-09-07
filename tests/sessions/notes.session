@@ -1,19 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# FID-3 (#235): the journal's log as a session — NOT-4's empty log,
+# FID-3 (#235): the journal's log as a session, being NOT-4's empty log,
 # NOT-8's key barrage, and the give-back.
-#
-# The barrage is the point and it is #230's regression net: with the log
-# up, `S`, `C`, `L` and three movement keys reach the program in a build
-# where the log is not modal, and every one of them does something the
-# next checkpoint would show. Here they reach nothing, and the hashes say
-# so at 146 checkpoints on every target rather than at one still a person
-# looked at.
-#
-# It leaves by Escape rather than by `E`, which is the word on the log's
-# own bottom row, for the same reason `tests/visual/not-log-giveback.leg`
-# does: `E` on the party's own bar is ENCAMP, and a session that wanted
-# to be compared with a seam-off twin could not press it.
+# The barrage is #230's regression net: with the log up, `S`, `C`, `L`
+# and three movement keys must reach nothing, and the hashes say so at
+# 146 checkpoints on every target.
+# It leaves by Escape rather than by `E`, for
+# tests/visual/not-log-giveback.leg's reason: `E` on the party's own bar
+# is ENCAMP, and a session compared with a seam-off twin could not press
+# it.
 
 about the log with nothing in it, six keys that must reach nothing while
 about it is up, and Escape to give the screen back

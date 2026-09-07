@@ -1,16 +1,11 @@
 # The journal, tested
 
-*A plan for testing the journal end to end — from a player's PDF to the
-entry on the game's own screen — so that every claim about it is a check
-somebody can run and every picture it draws is a picture somebody has
-asserted. M5-E3 (#174) and M5-E4 (#175) and their sections; PLAN.md §5
-item 2. Written 2026-09-01 against `9975f30`.*
+*How the journal is tested, from a player's PDF to the entry on the
+game's screen. M5-E3 (#174) and M5-E4 (#175); PLAN.md §5 item 2. Tracked
+on #239; what the matrix still owes is #270.*
 
-`docs/journal.md` is what the journal is. `docs/seams.md` §10 is what
-the reader is. `docs/playable.md` Leg 9 is the one driven leg. This
-document is the gap between those three and a feature somebody can call
-tested, and the work it lists is tracked on #239 and the seven issues
-named in §6.
+`docs/journal.md` is what the journal is, `docs/seams.md` §10 what the
+reader is, `docs/playable.md` Legs 9 and 10 the driven legs.
 
 1. [What is under test](#1-what-is-under-test)
 2. [Where coverage stands today](#2-where-coverage-stands-today)
@@ -25,467 +20,279 @@ named in §6.
 
 ## 1. What is under test
 
-The journal is two halves and five surfaces. The host half ingests a
-player's own Adventurer's Journal PDF into a text store. The seam half
-reads that store back onto the game's screen. Every test below belongs
-to one of these surfaces.
+Two halves, five surfaces: the host half ingests a player's PDF into a
+text store, the seam half reads it back onto the game's screen.
 
-| Surface | What it is | Where it lives |
-| --- | --- | --- |
-| **Ingestion** | Locate each entry inside the PDF off the fact table, inflate or carry the page, crop, hand it to an OCR engine, keep the text. | `hosts/common/src/journal_*.cpp`; `--journal` on the desktop; the page's file input on the web |
-| **Store** | One text file per player: scanned text, a correction per entry, and since #222 the read log. Version 3. Desktop: a file beside the config. Web: `localStorage`, with a Forget button. | `journal_store.cpp`, `page/journal.mjs` |
-| **Citation watch** | A point at the program's string drawer that matches the shape "section word plus a number" over a rolling window and opens the entry with nobody pressing anything. | `seam_journal.cpp`, `journal_citation_in()` |
-| **Reader panel** | F1 opens a number prompt, cycles the section, turns pages and closes. Draws in the automap's rect in the program's own glyphs. Modal over the map. | `seam_journal.cpp`, `machine/journal.h` |
-| **Notes and the log** | `Notes` spliced onto the party's command bar; `N` opens a full-screen log of what the game has cited, drawn by the game's own frame and string routines and given back by its screen composer. | `seam_journal.cpp`, the overlay 14 points |
+| Surface | Where it lives |
+| --- | --- |
+| **Ingestion**: locate, inflate or carry, crop, OCR, keep | `hosts/common/src/journal_*.cpp`; `--journal`; the page's file input |
+| **Store**: scanned text, corrections, read log, pictures | `journal_store.cpp`, `page/journal.mjs` |
+| **Citation watch**: "section word plus a number" at the message box | `seam_journal.cpp`, `journal_citation_in()` |
+| **Reader panel**: F1's prompt, section cycling, paging, close | `seam_journal.cpp`, `machine/journal.h` |
+| **Notes and the log**: `Notes` on the party's bar, `N` opens the log | `seam_journal.cpp`, the overlay 14 points |
 
-Three properties cut across all five and get their own rows: the
-**fidelity invariant** (seam on and nothing cited equals seam off, byte
-for byte), **cross-host equality** (the desktop and the wasm module draw
-the same frame from the same script and store), and **persistence**
-(what a run learned is there on the next run).
-
-Out of scope: Tesseract's own accuracy, the fact table's measurements for
-editions nobody holds, and anything about the automap beyond the pixels
-it shares with the reader.
+Three properties cut across all five: the **fidelity invariant**,
+**cross-host equality** and **persistence**. Out of scope: Tesseract's
+accuracy, fact tables for editions nobody holds, and the automap beyond
+the pixels it shares with the reader.
 
 ## 2. Where coverage stands today
 
-Read from the tree at `9975f30`. *In CI* means on every push; *by hand*
-means once, on the maintainer's machine; *never* means never.
+§4 carries the status per row. Everything either side of a real engine
+runs in CI on all four targets; what draws is held by the confinement
+legs in `tests/visual/`; a real engine, document and display are a
+person's, reported per `docs/journal.md` §8. What CI runs, by surface:
 
-| Surface | Check | Status | Where |
-| --- | --- | --- | --- |
-| Ingestion | Synthetic probe PDF through extract, OCR fixture and store, desktop and wasm | in CI | `journal_*_test.cpp`, `run-journal.cmake`, `smoke.mjs` |
-| | The archive edition through a linked Tesseract: 99 of 99 recognized | by hand | `build/ocr-linked`, `docs/journal.md` §7 |
-| | The archive edition through an *installed* Tesseract run as a program, which is the shipping path | **never** | `tesseract_ocr.cpp`; no Tesseract on this machine |
-| | The archive edition through tesseract.js in a browser | **never** | #147's open state |
-| Store | Round trips, versions 1 to 3, CRLF, limits, the log's order and cap | in CI | `journal_store_test.cpp` |
-| | `localStorage` keep, restore and forget, over a fake drawer under node | in CI | `smoke.mjs` (#231) |
-| | The same in a real browser, across a reload, with the drawer full or blocked | **never** | |
-| Citation watch | The recognizer over strings a test writes; the window; the two-draw split | in CI | `JournalCitation.*`, `JournalWindow.*` |
-| | The frame read at the real point, by rebuilding with the word set to `S` | by hand | `docs/seams.md` §10 |
-| | **A real citation, in the program's own words, opening a real entry** | **never** | the one thing #175 left open |
-| Reader panel | Prompt, section cycle, paging, refusals, keys, transliteration, fidelity, on a font a test hands it | in CI | `seam_journal_test.cpp`, 96 cases |
-| | Leg 9 on both hosts off a hand-written store; final frames `cmp` equal | by hand | `docs/playable.md` Leg 9 |
-| | Any committed assertion about what it draws | **never** | no session can pin a store |
-| Notes and log | Splice on and off, both bars, cursor, Return, Escape, `E`, nothing reaches the program | in CI | `JournalNotes.*`, `JournalList.*` |
-| | Driven at slot A; the #230 regressions found by a player and fixed | by hand | `docs/seams.md` §10; not yet a leg in `playable.md` |
-| Fidelity | Seam on, nothing cited, no key: identical run. Unit, and 40M steps of the real program | unit in CI, the run by hand | |
-| Persistence | The read log survives a reload on the web | **never** | known not to; `docs/journal.md` §6 says so |
-
-Two things stand out. The reader has never been shown a citation the
-game actually wrote, which is the whole enhancement. And nothing that
-draws has a committed check on what it drew: the pictures have been
-looked at, on the day, by the person who built them, and then nothing
-pins them.
+| Surface | In CI |
+| --- | --- |
+| Ingestion | `journal_*_test.cpp`, `run-journal.cmake`, `smoke.mjs` |
+| Store | `journal_store_test.cpp` |
+| Citation watch | `JournalCitation.*`, `JournalWindow.*` |
+| Reader panel | `seam_journal_test.cpp`, 96 cases |
+| Notes and log | `JournalNotes.*`, `JournalList.*` |
+| Sessions | the recordings, and the `contrast` sweep |
 
 ## 3. The visual method
 
-A test of what the journal draws has to work under three constraints
-this project already carries. No screenshot of the game may be
-committed, because the frame is the game's own art. No test in the
-repository runs the game, so anything that needs the disk runs in the
-sweep on a machine that has one. And the game draws exactly the same
-pixels for the same keys at the same ticks, so a hash is as good as a
-picture once a person has looked at the picture once.
+Three constraints: no screenshot of the game may be committed; no test in
+the repository runs the game, so anything needing the disk runs on a
+machine that has one; the game draws the same pixels for the same keys at
+the same ticks, so a hash is as good as a picture once a person has
+looked once.
 
-**The content rule, applied to pictures.** A PPM or PNG of any frame of
-the game goes in the scratchpad and nowhere else. What gets committed is
-a SHA-256 of a frame or of a rect, a pixel count, or a recording whose
-checkpoints already hash the framebuffer. A store holding real journal
-text is external and pinned by digest, exactly like the game disk.
+**The content rule.** A PPM or PNG of any frame goes in the scratchpad
+and nowhere else. Committable: a SHA-256 of a frame or a rect, a pixel
+count, or a recording whose checkpoints hash the framebuffer. A store
+holding real journal text is external and pinned by digest, like the
+game disk.
 
-### Three assertion forms, none of which needs a golden image
+**Three assertion forms, none needing a golden image:**
 
-1. **On/off confinement.** Run the same key script twice, once with the
-   seam off and once on, dump a still at the same frames, and diff. The
-   diff must be empty everywhere except the rect the seam owns at that
-   moment: the panel while a page is up, the six bar cells while `Notes`
-   is spliced, the whole screen while the log is up. After the seam
-   gives the screen back the diff must be empty everywhere. This is
-   M5-E2d's property as a number, and it catches the exact class of bug
-   #230 fixed: the program painting its bar over the journal.
+1. **On/off confinement.** One key script run with the seam off and on,
+   stills dumped at the same frames, diffed: empty outside the rect the
+   seam owns at that moment, and empty after the give-back.
+2. **Cross-host equality.** `drive.mjs` over the same script and store
+   writes a final frame that must `cmp` equal to the desktop's.
+3. **Checkpoint hashes.** A session's state hash covers the framebuffer,
+   so a recording over a named store (§5) is a pixel-exact regression
+   test on all four targets.
 
-   Measured on 2026-09-01 (§9): over Leg 9's script the on-run differs
-   from the off-run in exactly two rects at every frame after the entry
-   opens — the panel, and `NOTES` on the bar — and in none before F1.
+A picture that has to be judged is judged once by a person, at recording
+time, off a contact sheet (`frames.py sheet`).
 
-   **Confinement is a masking question, not a bounding-box one** (#233).
-   Those two rects are far apart — the panel high on the screen, `NOTES`
-   on the bottom bar — so the difference's bounding box spans almost the
-   whole frame and lies inside neither. A check that asked whether the
-   box fitted one allowed rect would call the correct behaviour a
-   failure, and nothing would ever pass. `scripts/frames.py diff --allow`
-   therefore blanks every allowed rect in the difference and asserts what
-   survives is empty.
+**Rules a leg has to obey** (#233, #234):
 
-   **A screen can appear in the two runs a dump apart** (#234). Claiming
-   a keystroke changes *when* the program does its own next repaint, by
-   less than the gap between two dumped stills, so an on still can be
-   settled while the off still of the same number is caught mid-repaint.
-   Over a reader leg exactly one still in hundreds had that shape, and
-   the status line's digest was equal 25 frames before it and 25 frames
-   after. So a leg may declare `slack 1`, and a frame passes when it is
-   confined against the off run at its own number *or* one dump either
-   side. That says what is true — the same screen, a moment apart —
-   rather than standing back from a range and checking nothing in it.
+- Confinement is masking, not a bounding box: the panel and the `Notes`
+  cells are far apart, so the difference's bounding box fits neither.
+  `scripts/frames.py diff --allow` blanks every allowed rect and asserts
+  what survives is empty.
+- A screen can appear in the two runs a dump apart, because a claimed key
+  shifts the program's next repaint by less than the dump interval.
+  `slack 1` passes a frame confined at its own number or one dump either
+  side.
+- A leg cannot both swallow keys and diff against an off run: the off run
+  has no journal, so every swallowed key reaches the program and the
+  states diverge. A `kind pair` may press only keys the seam lets
+  through; a `kind single` asserts its own frames against each other.
+  The log's give-back is a single run too, because the key that opens the
+  log steps the off run's bar highlight; it is stated as `equal`.
+- Text pages take about 230 frames to paint after the key; a picture page
+  about 75 (#305, #328).
 
-   **A leg cannot both swallow keys and diff against an off run** (#233).
-   The seam-off run has no journal to take a keystroke, so every key the
-   seam would have swallowed reaches the program instead and the two runs
-   end in different game states — a `SEARCH` on the status line of one
-   and not the other, and a whole-frame diff that means nothing. So there
-   are two kinds of leg: an **on/off pair**, whose script may press only
-   keys the seam lets through, and a **single run**, which asserts its
-   own frames against each other. NOT-8 is the second kind and always
-   was: "nothing reaches the program" is one digest holding still, not a
-   difference from anything.
-
-   **And the log's give-back is the second kind too** (#234), which was
-   not obvious: the key that *opens* the log reaches the program in the
-   seam-off run, where the adventuring bar answers an unknown letter by
-   stepping its own highlight. From that moment the two runs differ on
-   the bar row whatever the give-back does. So it is stated directly and
-   more strongly instead — the frame after the log closes is the same
-   screen as the frame before it opened — which is what `equal` in a leg
-   file says.
-
-2. **Cross-host equality.** The wasm module driven by `drive.mjs` over
-   the same script and store writes a final frame that must `cmp` equal
-   to the desktop's. Leg 9 already does this by hand; the plan makes it
-   a line in a script.
-
-3. **Checkpoint hashes.** A session's state hash covers the framebuffer
-   at every checkpoint. Once a session can name its store (§5), a
-   recording of the reader is a pixel-exact regression test on all four
-   targets, for free.
-
-Where a real picture has to be judged, a person does it once, at
-recording time, off a contact sheet of the changed frames. The tool for
-that is §5's first item.
-
-### The rects a diff is allowed to touch
+**The rects a diff is allowed to touch:**
 
 | Rect | Pixels | Cells | Note |
 | --- | --- | --- | --- |
-| Reader panel | x 136..311, y 8..119 (176 × 112) | cols 0x11..0x26, rows 1..14 | `automap_panel_*` in `automap.h`; the party roster's own cells |
-| `Notes` splice, 3D bar | x 273..311, y 192..199 | six cells at the bar's end | measured by diff, §9; the area-mode bar's word sits further right and needs its own measurement |
-| Log screen | whole frame | | mask the timestamp column when the wall seed differs between runs |
-| Give-back | ∅ | | after F1 on the last page, Escape, or `E`, the diff is empty |
+| Reader panel | x 136..311, y 8..119 (176 × 112) | cols 0x11..0x26, rows 1..14 | `automap_panel_*` in `automap.h`; the party roster's cells |
+| `Notes` splice, 3D bar | x 273..311, y 192..199 | six cells at the bar's end | measured by diff, §9; the area-mode bar's word sits further right and is unmeasured |
+| Log screen | whole frame | | |
+| Give-back | ∅ | | after the way out the diff is empty; since #330 the bar row included |
 
-Colours to expect: the caption row is EGA index 14 (the program's
-highlight yellow) and the body rows index 2 (its message green).
+Colours: the caption row is EGA index 14 (highlight yellow), the body
+rows index 2 (message green). Structural checks a rect can carry without
+a golden: caption-row non-black pixels all 14 and body-row all 2; the
+panel non-blank when a page should be up; two stores differing only in
+curly versus straight quotes give byte-identical panels (RDR-11).
 
-### Structural checks a rect can carry
-
-Beyond "the diff is confined", a rect's pixels answer questions without
-a golden: the caption row's non-black pixels are all index 14 and the
-body rows' all index 2; the panel is non-blank when a page should be up;
-two stores that differ only in curly versus straight quotes produce
-byte-identical panels (RDR-11). These are cheap, committable and
-independent of the font.
-
-### What a test-only readback would add
-
-Optional. The seam knows which byte it placed at which cell, so a
-test-apparatus export of the panel's cell contents as text — on the SDL
-host under a flag and in the module as an `af_web_` call — would let a
-script assert *words* without an image. The precedent is
-`--journal-probe`. Worth building only if the hash-based checks turn out
-too blunt to say what broke.
+**A test-only readback** of the panel's cells as text (an SDL flag and an
+`af_web_` call, on `--journal-probe`'s precedent) is unbuilt; worth it
+only if the hash checks are too blunt.
 
 ## 4. The test matrix
 
-Tiers: **A** runs in CI with no game. **B** runs in the sweep on a
-machine with the disk, scripted and repeatable. **C** is a person with a
-display. Status is *exists* or *new*.
+Tiers: **A** runs in CI with no game. **B** runs on a machine with the
+disk, scripted. **C** is a person with a display.
 
 ### Ingestion
 
-| ID | Case | How | Visual check | Tier | Status |
-| --- | --- | --- | --- | --- | --- |
-| ING-1 | Probe PDF end to end, both hosts | As today | None; the store's words are the check | A | exists |
-| ING-2 | The archive edition through the linked engine | `build/ocr-linked` host with `--journal <pdf> --journal-store SCR/real.txt`; assert `entries=99 extracted=99 recognized=99` and record the fingerprint | Open the store in an editor and confirm 94 or more entries begin with their own printed heading. Never commit it | C | exists |
-| ING-3 | The same through an installed Tesseract as a program | Install Tesseract, run the plain host with `--journal`; compare counts and the store's fingerprint against ING-2 | The two stores should agree entry for entry apart from engine version drift; diff them | C | new |
-| ING-4 | `--journal-ocr none` and a missing engine | Assert the host says so in words and the store has 99 entries with empty scans | None | B | new |
-| ING-5 | A correction survives re-ingesting the real edition | Edit one entry's correction in ING-2's store, re-run, assert `corrections=1` and the text | None | C | new |
-| ING-6 | Default store path | Run with no `--journal-store`; assert the printed path is under the per-user data directory | None | B | new |
-| ING-7 | The archive edition through tesseract.js in a browser | See §7. Time it; assert the same counts as ING-2 | The progress line advances per entry; the finished drawer shows the counts | C | new |
+| ID | Case | Tier | Status |
+| --- | --- | --- | --- |
+| ING-1 | Probe PDF end to end, both hosts | A | exists |
+| ING-2 | Archive edition through the linked engine, `build/ocr-linked` with `--journal <pdf> --journal-store SCR/real.txt`: `entries=99 extracted=99 recognized=99`, fingerprint recorded, 94+ entries beginning with their printed heading | C | exists |
+| ING-3 | The same through an installed Tesseract; diff against ING-2 | C | new |
+| ING-4 | `--journal-ocr none`, and a missing engine: said in words, 99 empty scans | B | new |
+| ING-5 | A correction survives re-ingestion: `corrections=1` and the text | C | new |
+| ING-6 | Default store path is the per-user data directory | B | new |
+| ING-7 | Archive edition through tesseract.js in a browser (§7) | C | done once (#306) |
 
 ### Store and persistence
 
-| ID | Case | How | Visual check | Tier | Status |
-| --- | --- | --- | --- | --- | --- |
-| STO-1 | Round trips, versions, limits, the log | As today | None | A | exists |
-| STO-2 | A desktop store read by the web host | `drive.mjs --journal-store` over ING-2's store; Leg 9 script; assert `journal-open calls=1` | Final frame `cmp` equal to the desktop's | B | exists |
-| STO-3 | The read log is written by the desktop and shown next run | Run 1: cite or open entry 4. Run 2: `N` at once. Assert the log has the row and the star is off | Log screen still, second run, hash it | B | new |
-| STO-4 | The read log on the web does not survive a reload | Decide: pin the current behaviour in `smoke.mjs` with a comment naming it, or file the fix. Either way a test says which | None | A | new |
-| STO-5 | Drawer full, drawer blocked, drawer holds a later format | Extend `smoke.mjs`'s fake drawer to throw on `setItem` and on access; assert the three sentences | None | A | new |
+| ID | Case | Tier | Status |
+| --- | --- | --- | --- |
+| STO-1 | Round trips, versions, limits, the log | A | exists |
+| STO-2 | Desktop store read by the web host: `drive.mjs --journal-store`, Leg 9's script, `journal-open calls=1`, final frame `cmp` equal | B | exists |
+| STO-3 | Read log written by the desktop, shown next run: row there, star off | B | new |
+| STO-4 | Read log on the web across a reload | A | `restore_journal_log()` (#237) in `smoke.mjs` |
+| STO-5 | Drawer full, blocked, or a later format: the fake drawer throws on `setItem` and on access | A | new |
 
 ### Citation watch
 
-| ID | Case | How | Visual check | Tier | Status |
-| --- | --- | --- | --- | --- | --- |
-| CIT-1 | Recognizer and window over test strings | As today | None | A | exists |
-| CIT-2 | **A real citation opens a real entry** | Done (#232, PR #241). The square is `3,4` facing east outside the city hall, reached by Leg 1's tour and then east; one press of Up and a Return runs the entrance event, whose last page cites four proclamations. Drive with `--seam journal`, ING-2's store and `--dump-every 25`; assert `journal-open calls=1 last=131136` — proclamation 64, the first of the four | Contact sheet around the callout: the message panel with the citation, then the entry over the roster with nobody having pressed anything. Hash the panel rect | B | **driven** |
-| CIT-3 | A citation in more than one piece | Done (#232). It arrives as **two message-box calls** — a sentence, then the numerals appended with the box's clear flag down — and not as a line wrap: the box word-wraps a whole operand itself, so what splits a citation is the script printing its number as the next operand. A leg asserts the pair, and that the first alone opens nothing | Same as CIT-2 | B | **driven** |
-| CIT-4 | No false positives across the library | **Not runnable as written**: the host refuses `--seam` beside `--replay`, because a recording owns its seams (#232). It needs #235 first — a `journal-store` line in the descriptor and sessions recorded with the seam on — and then the assertion is `calls=0` on the ten that do not cite. What stands in the meantime is #232's own drive: one open across boot, party creation, credits, menus and twelve story messages | None | B | blocked on #235 |
-| CIT-5 | A citation while a story page is up keeps Space and Return the program's | **Not drivable at CIT-2's square** (#232): the citation is on the event's *last* page, so there is no story page left to turn. What that square can assert is the weaker half — Space reaches the program and the panel stays up. The stronger claim wants a square where the game cites mid-event, and none has been found yet | Two stills: the page turned, the entry still over the roster | B | needs a square |
-| CIT-6 | A citation with an empty store | Done (#232), and the expectation here was wrong: the service is still called once and the seam draws **nothing at all**, because #175's rule is that a citation never takes the screen for a refusal. The refusal panel is the F1 path only. The leg asserts `calls=1` and a roster the seam did not touch | Panel rect: unchanged — the roster, with nothing drawn over it | B | **driven** |
+| ID | Case | Tier | Status |
+| --- | --- | --- | --- |
+| CIT-1 | Recognizer and window over test strings | A | exists |
+| CIT-2 | A real citation opens a real entry: square `3,4` facing east at the city hall, Up and Return; `--seam journal`, ING-2's store, `--dump-every 25`, `journal-open calls=1 last=131136` (proclamation 64) | B | driven (#232, PR #241) |
+| CIT-3 | A citation split over two message-box calls; the first opens nothing | B | driven (#232) |
+| CIT-4 | No false positives: `calls=0` on sessions that do not cite | B | blocked: the host refuses `--seam` beside `--replay` (#235) |
+| CIT-5 | A citation under a story page keeps Space and Return the program's | B | needs a square; CIT-2 cites on the last page |
+| CIT-6 | A citation with an empty store: `calls=1`, nothing drawn; refusals are the F1 path only (#175) | B | driven (#232) |
 
 ### Reader panel
 
-All scripts start from the Leg 9 prefix: code wheel `A@7601`
-`Return@7651`, load `L@8951` `A@9201`, party on the street from about
-frame 10,000. Frames are 60 per virtual second; leave 100 frames between
-presses.
+All scripts start from the Leg 9 prefix (§10): the party is on the street
+from about frame 10,000. Leave 100 frames between presses.
 
-| ID | Case | How | Visual check | Tier | Status |
-| --- | --- | --- | --- | --- | --- |
-| RDR-1 | Unit suite | As today | Pixel buffer against a test font | A | exists |
-| RDR-2 | F1 opens the prompt | `tests/visual/rdr-prompt.leg` | On/off diff confined to the panel; `JOURNAL` caption row is index 14; footer row present; the cursor rule drawn in the seam's own pixels, no stray glyph | B | **held by a leg** (#234) |
-| RDR-3 | Digits, Backspace, Return open an entry | `tests/visual/rdr-prompt.leg` | Panel: `ENTRY 4` in 14, body in 2, no row wider than 22 cells, no half glyph at the right edge | B | **held by a leg** (#234) |
-| RDR-4 | F1 cycles the section at the prompt | F1 four times; stills after each | Caption reads ENTRY, TALE, PROCLAMATION, ENTRY; the fourth still equals the first | B | **held by a leg** (#234) |
-| RDR-5 | Paging a long entry | `tests/visual/rdr-page.leg`, a **single** leg since M5-E4d (#305) | Each page holds still while it is up; the last F1 gives the whole screen back | B | **held by a leg** (#234); re-derived for the full-screen page (#305) and owed a drive with the rest (#293) |
-| RDR-6 | Escape from the prompt and from a page; Backspace back a page | `tests/visual/rdr-prompt.leg` for the prompt, `tests/visual/rdr-page.leg` for the page | The Backspace still equals the earlier page's; the screen after the way out equals the screen before F1, bar row excepted | B | **held by a leg** (#234); re-derived (#305) |
-| RDR-7 | The four refusals | No store; entry 999; a store with an entry whose scan is empty; an entry over 4 KiB | Each refusal's two lines in the panel; the truncated entry's last page says so | B | new |
-| RDR-8 | Give-back is exact | `tests/visual/rdr-page.leg` | The frame after the page closes is the frame before F1 opened the prompt — every pixel but the bar row, which the composer's injected space resets (NOT-9) | B | **held by a leg** (#234); restated as an `equal` rather than a pair when the page went full-screen (#305), for `not-log-giveback.leg`'s reason |
-| RDR-9 | Modal over the automap, and **the map back afterwards** | `tests/visual/rdr-map-back.leg`: `--seam automap` too, Tab, `Notes`, `E`, then Tab twice | The screen with the map up before the reader is that screen after it, bar row excepted; and it is that screen again after the two Tabs, which is what says the first of them closed a panel that was really there | B | **held by a leg** (#332), driven by hand on the shorter boot and owed a runner drive with the rest (#293) |
-| RDR-10 | Off a roster screen the key is nobody's | Walk into a shop (Leg 4's route), press F1, assert `calls=0`; leave the shop with an entry cited on the way and assert it comes up when the roster returns | Shop still unchanged by F1; the entry over the roster on the street | B | new |
-| RDR-11 | Transliteration on the glass | Two hand-written stores: one with curly quotes, an em dash, an ellipsis and a CJK character, one with their plain forms and `?`. Open each | The two panel rects are byte-identical | B | new |
-| RDR-12 | Every reader script on the wasm module | `drive.mjs` with `--journal-store`, same script | `cmp` of final frames per script | B | new |
-| RDR-13 | A real entry, read by a person | ING-2's store, entry 1, windowed | The text is legible in the game's font; wrapping breaks at words; the quote marks are plain. Never screenshot it into the tree | C | new |
-| RDR-14 | **An entry that is a picture** (#328) | `tests/visual/rdr-art.leg`, a **single** leg (§3): the prompt, the entry's caption, `NEXT` onto the drawing, `EXIT` out. Its store's picture is this repository's own — four tone bars, a one-pixel comb, a block and a border, and not a drawing of anything | The picture page settles and holds still (about 75 frames after the key, against a text page's 230), and the screen the journal was opened over comes back with nothing excepted | B | **held by a leg** (#328), driven by hand on the shorter boot and owed a runner drive with the rest (#293) |
-| RDR-15 | **A real picture, seen** | ING-2's store on a build with the engine linked; entry 4's map and entry 37's atlas, on the whole screen from the prompt and halved in the roster panel from the camp screen. Never screenshot one into the tree | The drawings read as drawings at that size and the ramp's four tones are four tones | C | **looked at once** (#328), in both sizes — but **off dumped stills at 2x and not on a display**, which is the distinction #263 and #299 were each decided by. `docs/journal.md` §11.6 keeps it open |
+| ID | Case | Tier | Status |
+| --- | --- | --- | --- |
+| RDR-1 | Unit suite, pixel buffer against a test font | A | exists |
+| RDR-2 | F1 opens the prompt; `JOURNAL` caption in 14, footer, cursor rule | B | `tests/visual/rdr-prompt.leg` (#234) |
+| RDR-3 | Digits, Backspace, Return open an entry; `ENTRY 4` in 14, body in 2, no row over 22 cells | B | `rdr-prompt.leg` (#234) |
+| RDR-4 | F1 cycles ENTRY, TALE, PROCLAMATION, ENTRY | B | a leg (#234) |
+| RDR-5 | Paging a long entry; the last key gives the screen back | B | `tests/visual/rdr-page.leg`, single since #305; owed a drive (#293) |
+| RDR-6 | Escape from prompt and page; Backspace back a page | B | `rdr-prompt.leg`, `rdr-page.leg` (#234, #305) |
+| RDR-7 | The four refusals: no store, entry 999, empty scan, over 4 KiB | B | new |
+| RDR-8 | Give-back exact: the frame after the page closes equals the frame before F1 | B | `rdr-page.leg` as an `equal` (#234, #305) |
+| RDR-9 | Modal over the automap, map back after: `tests/visual/rdr-map-back.leg`; `--seam automap`, Tab, `Notes`, `E`, Tab twice | B | a leg (#332); owed a drive (#293) |
+| RDR-10 | Off a roster screen the key is nobody's: F1 in a shop gives `calls=0` | B | new |
+| RDR-11 | Transliteration: curly and plain stores, identical panels | B | new |
+| RDR-12 | Every reader script on the wasm module, `cmp` of final frames | B | done for three sessions (#177) |
+| RDR-13 | A real entry read by a person, windowed; never screenshot it | C | new |
+| RDR-14 | An entry that is a picture: `tests/visual/rdr-art.leg`; prompt, caption, `NEXT`, `EXIT`, over `reader-art-store.txt` | B | a leg (#328); owed a drive (#293) |
+| RDR-15 | A real picture on a display, whole and halved | C | dumped stills at 2x only (#328; `docs/journal.md` §11.6) |
 
 ### Notes and the log
 
-| ID | Case | How | Visual check | Tier | Status |
-| --- | --- | --- | --- | --- | --- |
-| NOT-1 | Unit suite | As today | None | A | exists |
-| NOT-2 | `Notes` on both bars | `tests/visual/not-bars.leg` | On/off diff confined to six cells on the bar row in both modes; the word is the program's lettering, big initial and small tail | B | new |
-| NOT-3 | Not on a vendor's bar | In a shop, still of the bar | Diff ∅ against the off run | B | new |
-| NOT-4 | The empty log | `tests/visual/not-log-giveback.leg` | Frame, title, the one sentence, `EXIT`; arrives as one frame (`--dump-every 1` around the press shows no partial screen) | B | **held by a leg** (#234) |
-| NOT-5 | A filled log | After CIT-2: `N`. **Not** after opening entries by F1 — an entry the player asked for was never cited, so nothing goes on the log (#233) | The four proclamations in the order the game said them, `*` on the three unread, the cursor row in 14 and the rest in 2, timestamps from the seeded clock | B | **held by a leg** (#234) |
-| NOT-6 | Cursor and scrolling | Down past the end, Up past the start, a log longer than the window | Stills: cursor stops at the ends; the window scrolls to keep it | B | new |
-| NOT-7 | Return opens the line; the star comes off | `N`, Return, then back to the log | The entry **on the whole screen** since M5-E4d (#305), in the box the log was in; the log's row without its `*` when it comes back | B | **seen, and it was broken** (#233): the entry never appeared, because the give-back's batch had not run and the panel was painted over. #305 removed the give-back from this path entirely — the page takes the screen the log was holding |
-| NOT-8 | **Nothing reaches the program while the log is up** (#230) | `tests/visual/not-log-modal.leg`, a single-run leg (§3) | Every still after `N` and before `E` is identical. Measured (#233): one digest across 1,475 frames | B | **held by a leg** (#234) |
-| NOT-9 | Give-back in every mode | `tests/visual/not-log-giveback.leg` for the 3D mode, as a **single** leg (§3). Area mode and the alternate screen are still owed | The frame after the log closes is the frame before it opened — viewport, roster, status line and ornaments, **and since #330 the bar row too**: the `Notes` splice hands the program's own highlight back where the routine found it, so nothing is excepted any more. `tests/visual/rdr-bar.leg` asserts it whole on the shorter boot | B | **held for 3D mode** (#234, #330) |
-| NOT-10 | F1 from the log goes to the prompt | `N`, F1 | The log gone, the prompt in the panel | B | new |
-| NOT-11 | The log on the wasm module | NOT-4, NOT-5 and NOT-9 via `drive.mjs` | `cmp` equal, timestamp column included when the wall seed is shared | B | new |
-| NOT-12 | **Nothing reaches the program while a full-screen page is up** | `tests/visual/not-page-modal.leg`, a single-run leg (§3) | Every still from the page settling to the last of the barrage is identical | B | new (#305), derived and owed a drive (#293) |
-| NOT-13 | A page from the log goes back to the log | `tests/visual/not-page-back.leg` | The log, the page and the log again each settled; the adventuring screen before `Notes` equal to the one after the second Escape, bar row excepted | B | new (#305), derived and owed a drive (#293) |
+| ID | Case | Tier | Status |
+| --- | --- | --- | --- |
+| NOT-1 | Unit suite | A | exists |
+| NOT-2 | `Notes` on both bars: six cells on the bar row | B | `tests/visual/not-bars.leg` |
+| NOT-3 | Not on a vendor's bar: diff ∅ in a shop | B | new |
+| NOT-4 | The empty log: frame, title, one sentence, `EXIT`, in one frame (`--dump-every 1` around the press shows no partial screen) | B | `tests/visual/not-log-giveback.leg` (#234) |
+| NOT-5 | A filled log after CIT-2: four in order, `*` on the unread, cursor row in 14; an F1-opened entry is never logged (#233) | B | a leg (#234) |
+| NOT-6 | Cursor at the ends; a log longer than a screenful pages | B | new |
+| NOT-7 | Return opens the line on the whole screen (#305); the star comes off | B | seen; #233's defect removed by #305 |
+| NOT-8 | Nothing reaches the program under the log (#230): `tests/visual/not-log-modal.leg`, one digest across 1,475 frames | B | a leg (#234) |
+| NOT-9 | Give-back in every mode: `not-log-giveback.leg`, bar row included since #330 (`tests/visual/rdr-bar.leg`); area mode and the alternate screen uncovered | B | 3D mode only (#234, #330) |
+| NOT-10 | F1 from the log goes to the prompt | B | new |
+| NOT-11 | The log on the wasm module, `cmp` equal | B | done for `notes.rec` (#177) |
+| NOT-12 | Nothing reaches the program under a full-screen page: `tests/visual/not-page-modal.leg` | B | derived (#305); owed a drive (#293) |
+| NOT-13 | A page from the log goes back to the log: `tests/visual/not-page-back.leg` | B | derived (#305); owed a drive (#293) |
 
 ### Fidelity and sessions
 
-| ID | Case | How | Visual check | Tier | Status |
-| --- | --- | --- | --- | --- | --- |
-| FID-1 | On, nothing cited, no key: identical | **Not reachable, and not a bug** (#235). Driven: `walk.rec`'s own key stream re-pressed with `--seam journal` differs from it at 51 of 59 shared checkpoints, in `cpu` and `ram` as well as `display`. It has to — `Notes` is spliced into the string the program draws its bar from and the reader calls the program's own routines, so the seam changes the machine the moment the party's bar is drawn, cited or not. The invariant that does hold is the seam-**off** one, which is `docs/seams.md` §7's and already tested. The confinement legs (§3) are what states the on-run's version of it | The framebuffer is inside the hash | B | **answered, negatively** |
-| FID-2 | The reader as a session | `reader.rec` over `tests/visual/reader-store.txt`: the prompt, RDR-4's cycle, entry three, paging and Backspace | 156 checkpoints; the panel's pixels are in every one from the entry opening onwards | B | **recorded** (#235) |
-| FID-3 | The log as a session | `notes.rec`: NOT-4's empty log, NOT-8's key barrage, and Escape | 146 checkpoints. #230's regression net as a hash rather than as a still | B | **recorded** (#235) |
-| FID-4 | The citation as a session | `cite.rec` over an external store pinned by digest | 291 checkpoints, the citation of #232 among them; skips loudly without the store | B | **recorded** (#235) |
+| ID | Case | Tier | Status |
+| --- | --- | --- | --- |
+| FID-1 | Seam on, nothing cited, no key: identical run | B | not reachable, not a bug (#235): `Notes` is spliced as the party's bar is drawn, so `cpu` and `ram` differ too. `docs/seams.md` §7's seam-off invariant holds instead; `quiet-journal` is a `contrast`, not an `identical` |
+| FID-2 | `reader.rec` over `tests/visual/reader-store.txt`, 156 checkpoints | B | recorded (#235); owed a re-recording for the full screen (#293) |
+| FID-3 | `notes.rec`, 146 checkpoints | B | recorded (#235) |
+| FID-4 | `cite.rec` over an external store pinned by digest, 291 checkpoints; skips loudly without it | B | recorded (#235) |
 
 ## 5. Harness work the matrix needs
 
-Four pieces, in the order they unblock the most rows. None adds
-mechanism to the seam or the core.
+All four items are settled; none added mechanism to the seam or the core.
 
-1. **`scripts/frames.py`** — **done** (#233). Six subcommands: `png`,
-   `crop`, `hash`, `diff` (with `--allow`, the confinement check),
-   `changed`, and `sheet`. `scripts/test-frames.sh` is its self-test over
-   stills it draws itself, and runs in CI's guards job beside the other
-   three. Rects are inclusive on both sides, which is how §3's table
-   writes them and is *not* PIL's convention; the tool's own docstring
-   says so and the self-test pins it.
-2. **A store line in a session descriptor** — **done** (#235).
-   `journal-store tests/visual/reader-store.txt`, or `journal-store
-   external <sha256>`, mirroring how `disk external` pins a disk.
-   `sweep.py` passes it to the host, **copies** it first (a run writes
-   its own log back into a store when it ends), and skips loudly when an
-   external one is absent.
-
-   `--replay` did **not** honour `--journal-store`, and the reason was
-   worth finding: the host loaded a store only when the journal seam was
-   named on the command line, and a replay takes its seams from the
-   recording. So the flag was accepted, the store was never read, and the
-   reader would have replayed with no text. It loads whenever a store is
-   named now.
-
-   That the pin is necessary rather than decorative is measured:
-   `reader.rec` replayed against a different store, or against none,
-   parts company at the first checkpoint after the entry opens, in the
-   `devices` section — the EGA planes, which is the panel.
-3. **`scripts/visual-legs.py`** — **done** (#234). Takes a leg's key
-   script, runs it with the seam off and on under the dummy drivers, and
-   asserts that at every frame the leg names, nothing differs outside the
-   rects it allows there. `tests/visual/*.leg` are the legs and
-   `tests/visual/reader-store.txt` is a store in this project's own words
-   for them to open — and `reader-art-store.txt` beside it is a second,
-   whose one entry has a picture (#328), separate because the legs that
-   fill the log with `--cite-all-journal` open whatever row the cursor
-   lands on and a second page under one of them would move frames they
-   have pinned.
-
-   **A leg run rewrites the store it was pointed at**, because the host
-   writes its journal store back when a run ends — so after running one
-   of these `git status` may show the fixture modified, with its header
-   bumped to whatever the current format version is. It is not a change
-   anybody made and it should be checked out again rather than
-   committed. It has the sweep's three outcomes and the sweep's
-   rule about the third, and `scripts/test-visual-legs.sh` asserts that
-   rule in CI — which is a machine with no disk, so every leg skips there
-   and the point is that skipping is loud.
-
-   A leg says `kind pair` or `kind single`, and the difference is §3's:
-   `allow <range> <rects>` for a pair, `same <range>` and
-   `equal <before> <after> [rects to leave out]` for a single.
-4. **A shared wall seed for on/off pairs** — **not needed, measured**
-   (#234). The premise was that the log's timestamp column comes from the
-   seeded wall clock and so two runs disagree. Neither host seeds that
-   clock at all: nothing in the SDL host calls it, nothing on the page
-   calls `setWallClock`, and both therefore count from `wall_clock`'s own
-   1980-01-01 default. Two runs of a leg minutes apart produce byte-equal
-   log screens, which is what the measurement showed.
-
-   So there is nothing to build, and the runner does not mask a column it
-   has no reason to. If a host ever seeds from the real calendar, this is
-   the item to reopen, and masking is the cheaper of the two answers —
-   a test-only way to fix the seed would be a new host surface for one
-   column of one screen.
+1. **`scripts/frames.py`** (#233): `png`, `crop`, `hash`, `diff` (with
+   `--allow`, the confinement check), `changed`, `sheet`.
+   `scripts/test-frames.sh` is its self-test, in CI's guards job. Rects
+   are inclusive on both sides, which is how §3's table writes them and
+   is not PIL's convention.
+2. **A store line in a session descriptor** (#235): `journal-store
+   tests/visual/reader-store.txt` or `journal-store external <sha256>`,
+   mirroring `disk external`. `sweep.py` copies the store before passing
+   it to the host, because a run writes its log back into it, and skips
+   loudly when an external one is absent. Trap: `--replay` used to accept
+   `--journal-store` and never read it, because a store was loaded only
+   when the seam was named on the command line and a replay takes its
+   seams from the recording; it loads whenever a store is named now. The
+   pin is necessary: `reader.rec` against another store, or none,
+   diverges at the first checkpoint after the entry opens, in `devices`.
+3. **`scripts/visual-legs.py`** (#234): runs a leg's key script with the
+   seam off and on under the dummy drivers and asserts nothing differs
+   outside the allowed rects. `tests/visual/*.leg` are the legs;
+   `tests/visual/reader-store.txt` is their store, and
+   `reader-art-store.txt` a second whose one entry has a picture (#328),
+   kept separate because the legs that fill the log with
+   `--cite-all-journal` open whatever row the cursor lands on. A leg says
+   `kind pair` or `kind single`; a pair uses `allow <range> <rects>`, a
+   single uses `same <range>` and `equal <before> <after> [rects to leave
+   out]`. It has the sweep's three outcomes, and
+   `scripts/test-visual-legs.sh` asserts in CI that a skip is loud. Trap:
+   **a leg run rewrites the store it was pointed at**; check the fixture
+   out again rather than committing it.
+4. **A shared wall seed for on/off pairs**: not needed. Neither host
+   seeds the wall clock (nothing calls `setWallClock`), so both count
+   from `wall_clock`'s 1980-01-01 default and two runs' log screens are
+   byte-equal. If a host ever seeds from the calendar, mask the timestamp
+   column rather than add a test-only seed surface.
 
 ## 6. Order of work, and the issues
 
-Each phase is an issue, and #239 tracks them in this order: #232,
-#233, #234, #235, #236, #237 and #238.
-
-1. **Find the citation** (#232) — **done**, and it earned its place at the
-   front twice over. The count stayed zero on a square where the game
-   visibly cited four proclamations, and the recognizer's shape was only
-   the *second* thing wrong with it. The first was the address: the watch
-   was on the per-cell string drawer, which on this program draws the
-   credits, the menus and the position line and no narration whatever.
-   The narration goes to the word-wrapping message box, where the
-   script's every PRINT ends. PR #241 moved the watch there and rewrote
-   the shape — the section's own word rather than the book's, and the
-   notation the booklet numbers that section in. Had any of the sessions
-   in step 4 been recorded first they would have pinned a watch that
-   could never fire.
-2. **The frames tool and the first contact sheets** (#233) — **done**.
-   §5 item 1: sheets for RDR-2 to RDR-8 and NOT-2 to NOT-10, each looked
-   at once. This is the visual pass a person does; everything after it is
-   a hash.
-3. **Confinement legs** (#234) — **done**. §5 item 3 and the `.leg` files
-   for the reader and log rows; NOT-8 and NOT-9 are the regression net for
-   #230 and were the first legs written.
-4. **Sessions** (#235) — **done for three of the four**. §5 item 2, then
-   `reader`, `notes` and `cite`, with their rows in
-   `tests/sessions/README.md`. `walk-journal` is not among them: FID-1's
-   claim is not reachable and the row says why.
-
-   Verifying the three on the **wasm module** is done too, at the M5
-   closeout audit (#177): `reader`, `notes` and `cite` were replayed
-   through `drive.mjs` on the Release module and their seam and
-   host-service lines diffed against the desktop host's, down to
-   `journal-open calls=1 last=131136 at=424917732`. RDR-12 and NOT-11
-   were the same piece of work and both are answered.
-   `tests/sessions/README.md` carries the counts.
-5. **The browser** (#236) — §7 in full, once, written up in `docs/hosts.md` §3
-   the way the rest of that section is. Install Tesseract for ING-3 in
-   the same sitting.
-6. **Unit-level gaps and documents** (#237, #238) — **done**. STO-4,
-   STO-5, then §8, and `docs/playable.md`'s Leg 10 for Notes and the log
-   with the confinement numbers rather than adjectives.
-
-**What the phases left owed is #270**, filed at the M5 closeout: the rows
-of §4's matrix that phases 1, 3 and 4 did not reach. Phase 5 (#236) is
-the only one of the seven still open, and it is the one that needs a
-person and a browser rather than a runner.
+The seven phases of #239 — #232, #233, #234, #235 (verified on the wasm
+module at #177), #236, #237 and #238 — are all closed. What they left of
+the matrix is #270.
 
 ## 7. The browser, by hand
 
-Nobody has opened the dev page on the journal drawer. One sitting, one
-browser first, then a second. Serve with `scripts/serve-web.py` after
-`fetch-ocr-engine.py` has put the engine beside the page. Record what
-was seen in the same words as `docs/hosts.md` §3. This is the one part
-of the plan a Claude Code session cannot run: it has no display.
+One sitting per browser, two browsers. Serve with `scripts/serve-web.py`
+after `fetch-ocr-engine.py` has put the engine beside the page. Record
+what was seen in `docs/hosts.md` §3's words. A Claude Code session has no
+display and cannot run it.
 
-- [ ] The page loads with no console error and no request leaves the
-      origin: the network panel shows tesseract.js, its worker and its
-      language data from this host, and nothing from a CDN.
-- [ ] Drop the archive edition's PDF on the input. The status line names
-      the edition, then counts entries as they are read. Note the wall
-      time.
-- [ ] At the end the counts match ING-2. Reload the page: the status
-      says the store was restored from this browser and the counts are
-      the same, without a second ingestion.
-- [ ] Press *Forget it*. The status says so; reload; the store is gone.
-- [ ] Open DevTools, fill `localStorage` near its quota, ingest again:
-      the page says the browser would not keep it, and the run still
-      works for this tab.
-- [ ] A private window, and a browser set to block site data: the page
-      loads, ingests, and says it kept nothing.
+- [ ] No console error and no request leaving the origin: tesseract.js,
+      its worker and its language data from this host, never a CDN.
+- [ ] Drop the archive edition's PDF on the input; the status line names
+      the edition and counts entries. Note the wall time.
+- [ ] The counts match ING-2. Reload: the store is restored, same counts,
+      no second ingestion.
+- [ ] Press *Forget it*; reload; the store is gone.
+- [ ] Fill `localStorage` near its quota in DevTools and ingest again:
+      the page says the browser would not keep it and still works.
+- [ ] A private window, and a browser blocking site data: the page loads,
+      ingests, and says it kept nothing.
 - [ ] Drop a game directory, tick the `journal` seam, load slot A. F1
-      opens the prompt in the canvas and does not open the browser's
-      help; Tab with the automap on does not move focus; Backspace at
-      the prompt does not navigate back; Escape does not leave full
-      screen if the canvas is in it.
-- [ ] Open entry 1. Compare by eye with the desktop windowed at the
+      opens the prompt and not the browser's help; Tab with the automap
+      on does not move focus; Backspace at the prompt does not navigate
+      back; Escape does not leave full screen.
+- [ ] Open entry 1 and compare by eye with the desktop windowed at the
       same point: same wrapping, same colours.
 - [ ] `N` opens the log; `E` gives the screen back with nothing left
       behind.
-- [ ] Everything above again in the second browser. Note which two were
-      used and their versions.
+- [ ] Everything above in the second browser; note both and their
+      versions.
 
 ## 8. Documents to correct
 
-Read on 2026-09-01, these sentences contradict what the tree does. They
-matter for a test plan because a reader who trusts them will not run
-ING-2 or CIT-2.
-
-- `docs/journal.md` §9, twice: "the table is empty (§3)". §7 of the same
-  file says the archive edition was ingested at 99 of 99.
-- `docs/seams.md` §10, the reader's "What it has not done": "the edition
-  table is empty". Its own "Ungated" paragraph three sections up says
-  there is a row now.
-- `docs/playable.md` Leg 9: "Nobody has an ingested edition". The Notes
-  paragraph in `seams.md` describes entry four opening "out of a real
-  ingested journal".
-- `hosts/sdl/src/main.cpp`'s comment on `--journal`: "`known_journals()`
-  is empty today".
-- `journal_ingest_test.cpp`: the case named
-  `TheShippedTableRecognizesNothingYet`. Check the body; rename if it
-  now asserts the opposite.
-- `docs/playable.md` has no leg for `Notes` and the log, though #221,
-  #222 and #230 were all driven. Leg 10 in phase 6.
-
-**All of these are corrected now** — three by #232's own PR (#241) and
-the rest by #238, which also added `docs/playable.md`'s Leg 10 for the
-log. Nothing in the list above is outstanding, and this section is kept
-only as the record of what was wrong and why, because the failure mode is
-worth remembering: every one of these sentences was true when it was
-written, and each became false through somebody else's change rather than
-through anybody editing it.
-
-**Three of these were corrected by #232's own PR (#241)**, because that
-change made them wrong in a second way and leaving them would have been
-worse than the first: `docs/journal.md` §7 and §9, `docs/seams.md` §10's
-"What it has not done", and `docs/playable.md` Leg 9 — which had claimed
-the citation path was proven by building the pattern wrong on purpose so
-that the position line would match it. Phase 6 took the rest, and the
-reason that leg was wrong is the one to carry forward: a probe that
-reaches a routine says nothing about whether that routine sees the thing
-you are watching for.
+The "table is empty" claims this plan found contradicting the tree were
+corrected by #241 and #238, which also added `docs/playable.md`'s Leg 10.
+Trap: a probe that reaches a routine says nothing about whether that
+routine sees what you are watching for.
 
 ## 9. Running it from a session on this machine
 
-Everything in tier B was checked to run from a Claude Code session on
-the maintainer's Windows machine on 2026-09-01, with no display. The
-traps are the ones `docs/playable.md` and the session notes already
-name; this is the shortest path through them.
+Tier B runs from a Claude Code session on the maintainer's Windows
+machine with no display.
 
-**The disk.** `games/por` carries two things the session manifests do
-not (`SAVE_old`, a PDF), so copy it and drop them; never touch the
-original.
+**The disk.** `games/por` carries two things the session manifests do not
+(`SAVE_old`, a PDF): copy it and drop them, never touching the original.
 
 ```sh
 SCR=<the scratchpad directory>
@@ -493,8 +300,9 @@ cp -r games/por "$SCR/por"
 rm -rf "$SCR/por/SAVE_old" "$SCR/por/__ CODE WHEEL __.PDF"
 ```
 
-**A store to drive with.** Version 3, one entry, this project's own
-words; the lengths are byte counts of UTF-8.
+**A store to drive with.** One entry, this project's own words; lengths
+are UTF-8 byte counts. The host rewrites the header to the current format
+version on exit.
 
 ```
 amberfolio-journal 3
@@ -522,8 +330,7 @@ $HOST "$SCR/por" START.EXE --seam code-wheel \
   --fast max --until 240000000 $KEYS --dump "$SCR/off" --dump-every 100
 ```
 
-About twenty seconds of wall time each, 121 stills each, and the on-run
-reports:
+About twenty seconds each, 121 stills each; the on-run reports:
 
 ```
 amberfolio: journal store .../store.txt entries=2 corrections=0 seen=0
@@ -532,11 +339,12 @@ amberfolio: host-service journal-open calls=1 last=3 at=214790468
 amberfolio: stop reason=tick_budget steps=60000000 ticks=240000000 frames=12069
 ```
 
-The exit code is 1, which is the tick budget and not a failure; a
-`stop` line with any other reason is.
+Exit code 1 is the tick budget, not a failure; a `stop` line with any
+other reason is. Since #291 the seam does not answer the code wheel; legs
+wanting the shorter boot ask the runner for `code-wheel-answered` (#293).
 
-**The diff.** `scripts/frames.py` is the tool now (#233); Pillow is its
-one dependency and `.pillow-version` pins it.
+**The diff.** `scripts/frames.py`; Pillow is its one dependency, pinned
+by `.pillow-version`.
 
 ```sh
 python3 scripts/frames.py diff "$SCR/off/f-011000.ppm" "$SCR/on/f-011000.ppm" \
@@ -545,24 +353,17 @@ python3 scripts/frames.py sheet "$SCR/on" --against "$SCR/off" --out "$SCR/s.png
 python3 scripts/frames.py changed "$SCR/on"        # the stills that differ
 ```
 
-`diff` prints the pixel count and the bounding box, and with `--allow`
-answers the confinement question by masking: exit 0 when nothing differs
-outside the allowed rects, 2 when something does. `sheet` collapses the
-consecutive stills that show the same thing into one tile, so a run of a
-thousand becomes a dozen pictures a person can actually read.
-
-What that measured on 2026-09-01, for every still from 10,700 to 12,000:
-a bounding box of `136,8,311,198` — the panel's x range exactly, and a y
-range that reaches the bar because the bar row carries `NOTES`. Split by
-rect, the difference outside the panel is x 273..311 by y 192..199 and
-nothing else; before F1 there is no difference at all. (That box is
-written half-open — `(136, 8, 312, 199)` — by PIL and by the twenty-line
-seed this section used to carry; `frames.py` prints it inclusive, which
-is the form §3's table of rects uses.)
+`diff` prints the pixel count and the inclusive bounding box; with
+`--allow` it exits 0 when nothing differs outside the allowed rects and 2
+when something does. `sheet` collapses consecutive identical stills into
+one tile. Over Leg 9's script the on-run differs from the off-run in the
+panel and the `Notes` cells at every still after the entry opens
+(bounding box `136,8,311,198`; PIL prints it half-open as
+`(136, 8, 312, 199)`), and nowhere before F1.
 
 **The wasm side.** `build/wasm/hosts/web/Debug/drive.mjs` takes the same
-flags; note the wasm preset builds Debug only unless told otherwise, and
-the import needs a `file:///C:/...` URL.
+flags; the wasm preset builds Debug only unless told otherwise, and the
+import needs a `file:///C:/...` URL.
 
 ## 10. Facts the scripts rely on
 
@@ -576,7 +377,7 @@ the import needs a `file:///C:/...` URL.
 | The document | the archive edition's PDF, in `games/por-journal`, never committed | this machine |
 | Panel rect | x 136..311, y 8..119; cells 0x11..0x26 by rows 1..14; 22 columns by 14 rows, 12 of body | `automap.h` |
 | `Notes` rect, 3D bar | x 273..311, y 192..199 | §9, measured |
-| Strings the seam draws | `ENTRY`, `TALE`, `PROCLAMATION`, `JOURNAL`, `RETURN OPENS IT`, `ESC CLOSES`, `F1 CLOSES`, `NO JOURNAL / HAS BEEN READ`, `NO SUCH ENTRY / IN THIS JOURNAL`, `NOTHING WAS READ / FROM THAT ENTRY`, `ADVENTURER'S JOURNAL`, `THE GAME HAS NOT SENT YOU HERE YET.`, `EXIT` | `seam_journal.cpp` |
+| Strings the seam draws | `ENTRY`, `TALE`, `PROCLAMATION`, `JOURNAL`, `RETURN OPENS IT`, `ESC CLOSES`, `F1 CLOSES`, `NO JOURNAL / HAS BEEN READ`, `NO SUCH ENTRY / IN THIS JOURNAL`, `NOTHING WAS READ / FROM THAT ENTRY`, `ADVENTURER'S JOURNAL`, `THE GAME HAS NOT SENT YOU HERE YET.`, `EXIT`, `NEXT`, `PREV` | `seam_journal.cpp` |
 | Delivery cap | 4 KiB per entry; longer is truncated and the reader says so | `docs/journal.md` §9 |
 | Web key handling | Recognised keys are `preventDefault`ed, F1 included; unrecognised ones are left to the browser | `app.mjs` |
 | Session hashes | A checkpoint's state hash includes the framebuffer | `tests/sessions/README.md` |

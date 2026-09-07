@@ -1,19 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# Leg 7 (`docs/playable.md`) without the enhancement: a saved party
-# encamped and asked to rest, and the rest screen left waiting for a key
-# that never comes. This is the plain half of the Encamp Fix's pair — the
-# run `camp-fix` has to be identical to until the seam acts.
-#
-# **Re-recorded for M5-E1d (#196)**, on slot B and over a party the debug
-# `cheat-wound-party` seam has left on one hit point each. Both halves of
-# the pair enable that seam and pull it at the same tick, so it is part of
-# the run they have in common rather than part of the difference; what the
-# wounding buys is a Fix with something to do, which is what the pair had
-# stopped pinning (#192). `tests/sessions/README.md` has the reasoning.
-#
-# The file and dir lines are names, sizes and SHA-256s of a snapshot of
-# the disk. No byte of the player's installation is here.
+# docs/playable.md leg 7 without the enhancement, and the plain half of
+# the Encamp Fix's pair: the run `camp-fix` has to be identical to until
+# the seam acts.
+# Both halves enable `cheat-wound-party` and pull it at the same tick, so
+# the wounding is part of the run they have in common rather than part of
+# the difference; what it buys is a Fix with something to do, which is
+# what the pair had stopped pinning (#192, #196).
 
 about slot B loaded, ENCAMP, the party wounded to one hit point each by
 about a pulled debug cheat, and REST pressed at the camp menu. The rest

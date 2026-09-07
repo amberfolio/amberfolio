@@ -1,695 +1,157 @@
 # Sessions
 
 Committed recordings, and the cross-target proof they exist to be.
+[`docs/replay.md`](../../docs/replay.md) is what a recording is; this
+directory is the goldens every target must reproduce. A recording is
+keys, ticks and hashes, so a target that reproduces one has reproduced
+every byte of RAM, every device's registers, the scheduler's deadlines,
+the DOS handle table and the framebuffer at every checkpoint. Nothing in
+one is content (PLAN.md §6).
 
-[`docs/replay.md`](../../docs/replay.md) is what a recording is and how
-one is made. This directory is the part that gets committed: a small
-number of goldens that every target must reproduce exactly.
-
-The claim is PLAN.md §4's, and it is not a claim about a run — it is a
-claim about the emulator. A recording is *keys, ticks and hashes*, so a
-target that reproduces one has reproduced every byte of RAM, every
-device's registers, the scheduler's deadlines, the DOS handle table and
-the framebuffer, at every checkpoint, from the same starting conditions.
-Two builds that agreed about the answer and disagreed about the machine
-would fail here and nowhere else.
-
-Nothing in a recording is content. A checkpoint is a SHA-256 and a tick;
-the manifest is names, sizes and digests. That is what makes these
-committable at all (PLAN.md §6: "hashes are committable; screen content
-never is"), and it is why the programs recorded here are the
-repository's own.
-
-> **Every game session here is stale, and #293 is where they come
-> back.** All 23 of them boot past the code-wheel challenge with
-> `seam code-wheel` on and the wheel presented by digest, and they get
-> past it because the seam *answered* the challenge for them. Since #291
-> it watches for a person answering it instead, and steps over the call
-> that draws it once somebody has — so the recorded keys arrive at a
-> screen that is still waiting, or at a menu that came up sooner. What CI
-> checks is unaffected, because `--targets contrast` reads the recordings
-> and never runs the machine; a replay **with a disk** is affected, and
-> that is the whole of the damage. #293 re-records them on the shorter
-> boot, and replaces the `document` line below with one that says the
-> challenge had already been answered.
+**Every game session here is stale pending #293.** All 23 were recorded
+with the code-wheel seam answering the challenge; since #291 it only
+watches, so a replay with a disk arrives at a screen still waiting. The
+`contrast`/`identical` checks CI makes read the recordings and are
+unaffected.
 
 ## What a session is
 
-Three things, named alike:
-
     tests/sessions/spin.rec       the recording
-    tests/sessions/spin.session   what it is, and which disk it wants
-    tests/sessions/spin/          the disk it was recorded against
+    tests/sessions/spin.session   the descriptor: what it is, which disk
+    tests/sessions/spin/          the disk, when it can be committed
 
-The recording's manifest names the disk's files and pins them by SHA-256,
-so the pair is self-checking: a disk that drifted from its recording is
-refused before a step is taken. How far the manifest reaches is the
-recording's own to say — these seven are format 1 and name the root;
-anything recorded from now on names the whole tree (`docs/replay.md` §1).
-Keeping the disk beside the recording is what lets the desktop host and
-`scripts/sweep.py` verify any session with no special case for which one
-it is.
+A `.rec` with no descriptor is a failure, not a skip.
 
-The **descriptor** is the third, and it is the runner's rather than the
-machine's. One line of it decides everything else:
+**The descriptor grammar** (parsed by `scripts/sweep.py`; `#` lines are
+comments):
 
-    disk spin         the disk is that directory, here in the tree
-    disk external     the disk is the player's own, and is not
-
-A `.rec` with no descriptor beside it is a failure and not a skip. The
-runner cannot tell "the maintainer's own copy" from "a directory somebody
-forgot to commit" by looking, and guessing from whether a directory
-happens to exist is exactly how a missing commit would become a quiet
-skip.
-
-| Session | Disk | What it pins |
-| --- | --- | --- |
-| `spin.rec` | `spin/SPIN.EXE` — 34 bytes, ten of them `JMP $` behind an MZ header | four frames of a machine doing nothing but keeping time: the PIT, the 8259, the scheduler, the renderer's frame deadline and the clock |
-| `party.rec` | external, pristine | `docs/playable.md` leg 0 — the code-wheel challenge answered by its seam, a character generated, named and put in the party, and `BEGIN ADVENTURING` into the opening story event at 15,1 W. 15,655 frames, 144 checkpoints, 40 key events |
-| `save.rec` | external, pristine | legs 0, 1 and 3 as one run — the same party, the guide's tour taken to 0,4 W, and the game saved into slot A from the camp screen. 23,032 frames, 254 checkpoints, 148 key events. The write path is in it: the slot file created, the party's character files moved in and unlinked |
-| `load.rec` | external, **the disk `save.rec` wrote** | the other half of the round trip — `LOAD SAVED GAME`, slot A, and the party back at 0,4 W with the same character, the same AC and the same hit points. 12,069 frames, 100 checkpoints |
-| `fight.rec` | external, the disk `save.rec` wrote | leg 2 — the saved party loaded, walked twelve steps north into the slums and into a group of orcs, the fight handed to the computer with `QUICK`. A lone first-level fighter does not survive it: `THE END`, the party destroyed. 20,115 frames, 177 checkpoints |
-| `fight-cheat.rec` | the same | the same script, the same disk and the same tick budget with **`cheat-invulnerable` on and nothing else changed**: the fighter comes out standing on his full eight hit points at `CONTINUE BATTLE`. The seam fires nine times |
-| `temple.rec` | external, **the shipped save slots** | leg 5 — slot A loaded, routed to the healing temple at 3,1, and a cure bought: `CURE BLINDNESS` cast on a fighter who is not blind and paid for at a thousand gold, which is two hundred platinum off his sheet. The sheet is read at the end, so the session pins the money as well as the machine. 18,801 frames, 181 checkpoints, 68 key events |
-| `camp.rec` | external, the shipped save slots | leg 7 without the enhancement — slot B loaded, `ENCAMP`, the party wounded to one hit point each by a pulled `cheat-wound-party`, and `REST` chosen at the camp menu. The rest screen comes up with the duration the program's own wrapper dialled and waits for a key that never comes. 13,401 frames, 112 checkpoints |
-| `camp-fix.rec` | the same | the same script with **`encamp-fix` on** as well, pressing the letter the seam puts on the camp menu instead of the menu's own Rest (M5-E1 #172, M5-E1a #186, M5-E1d #196): the bar is spliced, the letter comes back off the program's own menu-bar routine, the five cures the party holds are spent through the program's own cast driver, thirty days are dialled on the program's own rest clock, and the report is drawn when the game's own wandering-monster check ends the rest, with the elapsed clause days can now be said in (#269). `fired=11` |
-
-| `walk.rec` | external, the shipped save slots | leg 8 without the enhancement — slot A loaded and walked forty-eight moves through New Phlan to the armourer at 8,11, with a `Tab` in the key stream that nothing claims. 19,201 frames, 203 checkpoints, 106 key events |
-| `walk-map.rec` | the same | the same script with **`automap` on**: `Tab` is taken out of the keystroke buffer before the program's own key routine looks, and the panel is drawn into the EGA planes over the party roster — brown streets, white building fronts in the colour of the tiles those buildings are drawn with, and yellow door leaves — filling in behind the party as it walks, under the zone's name set in the game's own font (M5-E2 #173, M5-E2a, M5-E2b). The seam is reached 1,283,230 times |
-| `wild.rec` | external, the shipped save slots | **the wilderness travel view**, without the enhancement (M5-E5d #256) — slot J loaded, whose party is already standing on a wilderness area, and eight steps walked north across it. The first committed session that reaches that screen at all: the mode byte becomes 3 at frame 9,552. 140 checkpoints, 24 key events |
-| `wild-trail.rec` | the same | the same script with **`explored` on** (#179, the fog M5-E5f #263, its colour and radius M5-E5g #299): every square of the game's own overworld window the party has not walked is hazed over with a one-pixel black checker, and the fog lifts behind the party as it goes. The recording is still #263's grey at a radius of one, and #293 re-records it. `contrast wild` — 107 of 140 identical, diverging at the **arrival** on the wilderness map rather than at the first step, which is the enhancement's change of mind recorded |
-| `reader.rec` | external, the shipped save slots | **the journal reader** (M5-E4 #175), over `tests/visual/reader-store.txt` — a store of this project's own sentences, named by the descriptor's `journal-store` line. F1 to the prompt, the section cycled through ENTRY, TALE and PROCLAMATION and back, Escape out of it, entry three opened by its number, paged forward with F1 and back with Backspace, and Escape again. 156 checkpoints, 30 key events. The panel's pixels are in every hash from the entry opening onwards. **A recording of a page that is drawn differently now**: since M5-E4d (#305) a page opened from the prompt on the adventuring screen is a full screen, so this one and `subset-map-reader` are owed a re-recording with the rest of the library (#293). The `contrast` relations CI checks are over the recordings and are unaffected until then |
-| `notes.rec` | the same | **the journal's log** (M5-E4b #222, #230) — `Notes` on the party's own bar opens a log with nothing in it, and then six keys the adventuring screen would answer (`S`, `C`, `L` and three that walk) reach nothing at all while it is up. 146 checkpoints, 24 key events. This is #230's regression net as a hash rather than as a still |
-| `cite.rec` | external, pristine | **a real citation** (#232) — a new party through the city to the hall at 3,4 facing east, whose entrance event names four proclamations in one sentence, and the first of them on the screen with nobody having pressed a key. 291 checkpoints, 158 key events. Its store is **external too**, pinned by digest in the descriptor: it is a real ingestion of a real player's own journal and no byte of it may enter this tree |
-
-`save.rec` and `load.rec` are #105's round trip, recorded. They are two
-sessions and not one because they have to be: a load is a fresh run over
-the directory the save left behind, and a recording carries its starting
-conditions rather than assuming them.
-
-## A pair, and the one check CI can make about a game session
-
-`temple.rec` is #104's first recorded transaction. Its disk is a third
-snapshot — the installation's own save slots, untouched — because the
-party a city service wants is one with money in it, and neither the
-pristine disk nor the one `save.rec` wrote has one.
-
-`fight.rec` and `fight-cheat.rec` are the same run one flag apart, and
-the second's descriptor says so:
-
-    contrast fight
-
-which is an assertion, not a note. The two must agree checkpoint for
-checkpoint until the seam first matters and disagree from there to the
-end, and `scripts/sweep.py` fails the pair if they do not:
-
-```
-  fight-cheat  contrast ok  126 of 177 checkpoints identical, then
-                            divergent from tick 274951600 to the end
-```
-
-`camp.rec` and `camp-fix.rec` are the second such pair, for the Encamp
-Fix (#172, #186, #196):
-
-```
-  camp-fix     contrast ok  91 of 112 checkpoints identical, then
-                            divergent from tick 216799088 to the end
-```
-
-The two halves differ by **one keystroke and nothing else**: where the
-plain one presses the camp menu's own Rest, the other presses the letter
-the seam puts beside it, at the same tick. That matters for more than
-tidiness — a frame that carries an input is checkpointed whatever the
-cadence says (`docs/replay.md` §3), and `contrast_of` refuses a pair that
-checkpoints at different ticks, rightly, because they are not the same
-run to compare. **A pair must therefore put its inputs at the same ticks
-in both halves**, which is easy when the difference is which key, and
-needs arranging when it is an extra input: this pair carried a `--pull`
-at frame 10368 before M5-E1a (#186) took the pull away, and 10368 was a
-multiple of the 128-frame cadence for exactly this reason.
-
-**What this pair pins, and how it got it back** (M5-E1d, #196). Between
-#192 and #196 it pinned less than it used to: slot C's party is whole and
-the Fix declines a party with nothing to rest for, so the two halves
-diverged because one pressed `R` and rested and the other pressed `F` and
-did not — which a seam that had stopped working altogether would also
-produce. The splice was still caught, because the bar reads `FIX` in one
-run and not the other and the framebuffer is in every checkpoint. The
-healing was not.
-
-What was missing was a **wounded** party, and no shipped save slot holds
-one. It is the third debug cheat that supplies it: both halves enable
-`cheat-wound-party` and pull it at the same tick, and the party is on one
-hit point each by the time either of them presses anything. The wounding
-is therefore part of the run the two have *in common* — the difference
-between them is still exactly one keystroke — and what it buys is a Fix
-with real work to do. Five cures spent, thirty days dialled, a rest the
-game interrupts and a report with an exception list in it are all inside
-the divergent half now, so a seam that quietly stopped doing any of them
-would move a checkpoint.
-
-**A cheat in a golden is not free**, and the two things it costs are
-worth naming. The pair no longer pins what an *unaided* slot B does at
-the camp screen, because neither half is unaided any more; and it pins
-`cheat-wound-party` as well as `encamp-fix`, so a change to the wounding
-breaks a golden that is not about wounding. Both were judged cheaper than
-a pair that could not tell a working Fix from a broken one.
-
-`wild.rec` and `wild-trail.rec` are the fourth pair, for the explored
-overlay (#179), and the second whose difference is a **picture**:
-
-```
-  wild-trail   contrast ok  107 of 140 checkpoints identical, then
-                            divergent from tick 204866288 to the end
-```
-
-The halves differ by **nothing but the flag** — there is no key to press,
-because this seam is a setting rather than a command, so what the pair
-compares is a screen and not an input.
-
-**This pair pins a design decision, and the decision changed** (M5-E5f,
-#263). Until then the overlay lifted the walked squares a shade and left
-the rest of the map alone, so the two halves agreed for 111 checkpoints —
-right through the arrival on the wilderness map at frame 9,552 and the
-fifteen hundred frames of standing on it — and the line above said so as
-the *stronger* of two fidelity claims: on, the overworld shown, nothing
-walked, and the machine is the machine it would have been. It held only
-because the square under the party was never marked.
-
-The enhancement is fog of war now: what the party has **not** been near is
-covered, and a map nobody has walked is nearly all of that. So the two
-halves diverge at tick 204,866,288, which is the frame the arrival
-settles at, and the 107 identical checkpoints run from the power-on to
-there. **That claim is gone rather than weakened**, and it is asserted in
-the direction it now holds — `ExploredFidelity.TheArrivalIsNoLongerThe
-ScreenItWouldHaveBeen` in the unit suite — so that nothing can quietly
-re-acquire it. What the pair still catches is everything a picture can:
-the fog drawn in the wrong place, one square out, over the party's own
-icon, in the wrong colour, on the wrong half of the pixels, or not at all
-moves a checkpoint here — and the last two are why this file was
-re-recorded once more when the fog's covering went from solid black to a
-dark-grey checker. The 107 and the tick did not move with it: the picture
-changed, and where the two halves start disagreeing did not. **M5-E5g
-(#299) owes it the same treatment again** — the covering is black now and
-the radius is zero — and it has not had it: the recording here is the
-radius-one grey, as every recording in this library is a boot the code
-wheel no longer asks for, and #293 re-records the lot.
-
-The claim that survives is the weaker one, and it is its own session:
-`quiet-explored.rec`, `identical quiet`, all 126 checkpoints — on, with
-the overworld never shown.
-
-`walk.rec` and `walk-map.rec` are the third pair, for the automap
-(#173), and the only one so far whose difference is a **picture**:
-
-```
-  walk-map     contrast ok  90 of 203 checkpoints identical, then
-                            divergent from tick 218787888 to the end
-```
-
-The halves differ by **nothing but the flag** — the same disk, the same
-tick budget, the same hundred and six key events including the `Tab`. So
-the ninety identical checkpoints are the fidelity claim made on a real
-game run rather than on a synthetic one: the seam is on, armed at five
-addresses and reached over a million times, and until somebody presses
-`Tab` the machine is the machine it would have been. Tick 218,787,888 is
-three frames after the `Tab`, which is how long the program takes to
-poll.
-
-What only this pair can catch is the panel *itself*. A checkpoint hashes
-the framebuffer, so a map drawn in the wrong place, in the wrong colour,
-one cell out, or not at all moves a checkpoint here and nowhere else —
-the addresses and the mechanism have unit tests, and only this says the
-picture is still the picture.
-
-**This exists because a seam has twice been on, armed, reporting itself,
-and doing nothing at all** — `cheat-invulnerable` pointed at a routine
-that was not the damage routine (#129), and `cheat-kill-all` arming at an
-address its module had since been moved away from (#131). The suite was
-green throughout both, because a seam's unit tests check the handler
-against the fact table and never the fact table against the program.
-`docs/seams.md` therefore asks for the only check that catches it: run
-the same script *without* the seam and compare. Identical step count and
-framebuffer means it did nothing.
-
-Two committed recordings are that check with nobody having to remember
-to make it. And because it compares *files*, it needs no disk and no
-build tree — which makes it **the one thing about a game session that CI
-can verify**, and the only line in this directory's table that is not a
-skip on a machine without the player's copy.
-
-**A pair has to be told the same date** (#320). Both hosts seed the
-machine's wall clock now, and the seed is machine state (`docs/replay.md`
-§6), so a run that reads the host's own clock puts the minute it started
-into every checkpoint hash it takes: two recordings made an hour apart
-would diverge at the *first* checkpoint and say nothing whatever about
-the seam between them. `--wall YYYY-MM-DD[THH:MM[:SS[.CC]]]` states the
-instant, and both halves of a `contrast` or `identical` pair want the
-same one. `--wall none` is the third answer and the machine every
-recording in this directory was made on: all 24 predate the seed and
-carry no `wall` line, which is exactly why they all still verify. #293
-re-records the library, and that is where this first has to be
-remembered.
-
-The failure modes it distinguishes, each with its own case in
-`scripts/test-sweep.sh`: identical throughout (the change made no
-difference), divergent from the first checkpoint (not the same run up to
-the change), divergent and then rejoined (the difference did not last),
-and checkpoints at different ticks (not the same script, or not the same
-cadence — a comparison that would otherwise pass for the wrong reason).
-
-## A session whose disk cannot be committed
-
-A recording made of a *game* is committable — it is keys, ticks and
-hashes, and reproduces nothing — but the disk it was made over is the
-player's own copy, and no byte of that may enter this tree (PLAN.md §6).
-The decision on #101 is to commit the recording anyway and have the
-runner say, plainly, when it cannot check it:
-
-```sh
-python3 scripts/sweep.py --game-disk /path/to/a/pristine/copy
-AMBERFOLIO_GAME_DISK=/path/to/a/copy python3 scripts/sweep.py
-```
-
-`--game-disk` is repeatable, and a library of any size needs it to be. A
-session begins wherever the last one left off, so `load.rec` starts from
-the directory `save.rec` wrote and wants a different snapshot from the
-one `party.rec` wants. Which candidate belongs to which session is never
-a guess: a descriptor pins its disk exactly, so at most one of them can
-match, and a session whose disk is among them runs while the rest are
-skipped by name.
-
-so there are three outcomes rather than two, and the third is the one
-that has to be impossible to misread:
-
-| | |
+| Line | Meaning |
 | --- | --- |
-| `ok` | the target reproduced the recording |
-| `FAIL` | it did not, and that is a finding about the machine |
-| `SKIP` | nothing was checked, and here is what was missing |
+| `about TEXT` | free text, repeatable |
+| `disk NAME` | the disk is `tests/sessions/NAME/`, in the tree |
+| `disk external` | the disk is the player's own; matched from `--game-disk` candidates by the `file`/`dir` lines |
+| `file PATH SIZE SHA256` / `dir PATH` | every entry of the disk, pinned exactly in both directions |
+| `document SHA256` | a document the run presented (a code-wheel PDF); replaced under #293 by a line saying the challenge was already answered |
+| `journal-store PATH` / `journal-store external SHA256` | the reader's store the run was made over; the runner copies it before running, since a run writes its log back |
+| `contrast BASELINE` | assertion: agrees with BASELINE checkpoint for checkpoint until the seam first matters, then differs to the end |
+| `identical BASELINE` | assertion: every checkpoint equal to BASELINE |
 
-A sweep that verified nothing must never read as a sweep that passed. So
-the skip is spelled in capitals beside `ok`, the summary names every
-session it applied to, and a run in which nothing verified at all says so
-and exits non-zero. `scripts/test-sweep.sh` asserts each of those on a
-throwaway library, because "it did not read as a pass" is a property of
-an output and an output nobody asserts is an output that drifts.
+Both relations are checked on the files, with no disk, and fail on a
+pair that checkpoints at different ticks (a comparison that would
+otherwise pass by comparing nothing). `scripts/test-sweep.sh` asserts
+each failure mode: identical throughout, divergent from the first
+checkpoint, divergent then rejoined, different ticks.
 
-**The descriptor pins the whole disk, and these seven recordings do
-not.** They are format 1 (`docs/replay.md` §7), whose preamble walks the
-*root* and lists a subdirectory by name and size alone. The game keeps
-its saves in `\SAVE\`, so a disk whose save directory is one run further
-along than it was passes such a preamble's check and then diverges
-halfway through, and a divergence is supposed to mean the machine
-changed. The descriptor's `file` and `dir` lines close that: every path
-under the disk, its size and its SHA-256, compared before a step is
-taken.
+**A pair puts its inputs at the same ticks in both halves**, because a
+frame that carries an input is checkpointed whatever the cadence says.
+**A pair is told the same date**: `--wall` on both halves, or
+`--wall none` (what every recording here was made on).
 
-Format 2 closes it inside the recording too (#155): its manifest names
-every directory and every file at every depth, in the same `\`-joined
-spelling the descriptor uses, so a `.rec` used **without** its descriptor
-— which is every use of `af_machine_verify_recording`, and the browser's
-only one — refuses the wrong disk by name. That does not retire the
-descriptor. It pins what is on the maintainer's shelf, which is how a
-candidate directory is *matched to a session* in the first place
-(`--game-disk` is repeatable, and `Session.disk()` picks by comparing);
-a recording can only say whether the disk it was handed is the right one.
-Nothing here changes for these seven, and re-recording them to gain the
-recursing manifest is not on the list below.
+## The sessions
 
-    python3 scripts/sweep.py --pin NAME --game-disk /path/to/copy
+| Session | Disk | Seams | Relation | What it pins |
+| --- | --- | --- | --- | --- |
+| `spin` | `spin/SPIN.EXE`, 34 bytes, `JMP $` behind an MZ header | none | | four frames of a machine keeping time: PIT, 8259, scheduler, renderer deadline, clock. The only committed binary; the content guard names its path |
+| `party` | external, pristine | code-wheel | | `docs/playable.md` leg 0: a character generated and added, `BEGIN ADVENTURING` into the opening event at 15,1 W. 144 checkpoints |
+| `save` | external, pristine | code-wheel | | legs 0, 1, 3: the tour to 0,4 W, the game saved to slot A from camp. 254 checkpoints |
+| `load` | external, **the disk `save` wrote** | code-wheel | | slot A loaded, the party back at 0,4 W. 100 checkpoints |
+| `fight` | the disk `save` wrote | code-wheel | | leg 2: twelve steps north into orcs, `QUICK`, `THE END`. 177 checkpoints |
+| `fight-cheat` | same | + cheat-invulnerable | `contrast fight` | 126 of 177 identical, divergent from tick 274,951,600; the seam fires nine times |
+| `temple` | external, **the shipped save slots** | code-wheel | | leg 5: slot A, the temple at 3,1, `CURE BLINDNESS` bought for a thousand gold. 181 checkpoints |
+| `camp` | shipped slots | code-wheel, cheat-wound-party (pulled) | | leg 7 without the Fix: slot B, `ENCAMP`, the party wounded to one hit point each, `REST`. 112 checkpoints |
+| `camp-fix` | same | + encamp-fix | `contrast camp` | the same run pressing `FIX` instead of Rest at the same tick: 91 of 112 identical, divergent from tick 216,799,088; `fired=11`. Both halves pull the wound cheat at the same tick, so the only difference is one keystroke |
+| `walk` | shipped slots | code-wheel | | leg 8 without the map: slot A, forty-eight moves to the armourer at 8,11, a `Tab` nothing claims. 203 checkpoints |
+| `walk-map` | same | + automap | `contrast walk` | 90 of 203 identical, divergent from tick 218,787,888 (three frames after the `Tab`); the panel is in every hash after it |
+| `wild` | shipped slots | code-wheel | | slot J, already on a wilderness area, eight steps north; the mode byte becomes 3 at frame 9,552. 140 checkpoints |
+| `wild-trail` | same | + explored | `contrast wild` | 107 of 140 identical, divergent at the **arrival** (tick 204,866,288), because fog marks the unknown. Recorded at the grey checker, radius one; #293 re-records it |
+| `reader` | shipped slots, `journal-store tests/visual/reader-store.txt` | code-wheel, journal | | F1, the section cycled, entry three opened by number, paged, closed. 156 checkpoints. Draws a page #305 now draws full-screen; re-recorded under #293 |
+| `notes` | same | code-wheel, journal | | `Notes` opens an empty log; six adventuring keys reach nothing while it is up. 146 checkpoints |
+| `cite` | external, pristine; `journal-store external SHA256` | code-wheel, journal | | a real citation (#232): a new party to the city hall at 3,4 E, whose event names four proclamations, the first opened with no key pressed. 291 checkpoints |
+| `subset-map-reader` | shipped slots | code-wheel, automap, journal | | the panel up, an entry opened over it, the map given back and put away. 146 checkpoints. Re-recorded under #293 |
+| `quiet` | shipped slots | code-wheel | | the baseline: slot A, four steps walked. 126 checkpoints |
+| `quiet-automap` | same | + automap | `identical quiet` | Tab never pressed |
+| `quiet-encamp` | same | + encamp-fix | `identical quiet` | the camp screen never opened |
+| `quiet-cheats` | same | + all three cheats | `identical quiet` | none pulled |
+| `quiet-explored` | same | + explored | `identical quiet` | the overworld never shown; the points are reached half a million times |
+| `quiet-journal` | same | + journal | **`contrast quiet`** | 111 of 126 identical: `Notes` goes on the party's bar the moment the bar is drawn, in `cpu`, `ram`, `devices`, `display`, `audio`. The enhancement, not a leak; `identical` is not loosened to fit |
+| `quiet-all` | same | every seam | `identical quiet-journal` | eight seams armed, none triggered, no more machine than the journal alone |
 
-writes them. Run it once, over the same directory the recording was made
-against — which is a **pristine snapshot** and not a directory being
-played in, since the comparison is exact in both directions and a file
-the pin does not name is as much "not that disk" as one it cannot find.
-`docs/playable.md` already asks for that snapshot; the sweep copies it
-before every run, which is the part a person driving by hand has to
-remember and this does not.
+## The matrix, by seam
 
-Comparing rather than running is also what keeps the answer honest. A
-disk that is not the recorded one says nothing whatever about the
-emulator, and reporting it as a divergence would be a finding about the
-machine that was really a finding about a directory.
+| Seam | On and exercised | On and never triggered |
+| --- | --- | --- |
+| `code-wheel` | every game session, at the challenge | none yet; #293 adds `identical quiet` with the challenge unanswered |
+| `encamp-fix` | `camp-fix` | `quiet-encamp` |
+| `automap` | `walk-map` | `quiet-automap` |
+| `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
+| `explored` | `wild-trail` | `quiet-explored` |
+| the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
 
-The suites do not see these at all: the native `SessionLibrary` case and
-the wasm smoke test read the session directory as source, so a session
-whose disk is not in it cannot be handed to either. The table says so per
-session rather than leaving the rows out — a table that omitted them
-would read as a table of everything. **So a game session is checked by
-the desktop host only**, and the cross-target claim below rests on the
-sessions whose disks are here.
+Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the
+same pixels), `camp-fix` (the Fix with a cheat), `wild-trail` (explored
+without automap; they share a store).
 
-## And 23 of the 23 on the wasm module (#177, #273)
-
-`docs/replay.md`'s claim is that a recording is keys, ticks and hashes,
-so a *different build of the machine* either reproduces it or does not.
-`hosts/web/tools/drive.mjs --replay` is the door to saying that about a
-game session, and at the M5 closeout audit (#177) **21 of the 23 game
-sessions went through it** — every one of them replayed on both hosts and
-their seam `fired=` and host-service lines diffed line for line, the
-desktop host's `--headless --replay` against `drive.mjs --replay` on the
-Release wasm module. The 21 agree exactly, seam for seam and call for
-call, down to `automap-update calls=2 last=3 at=220978596` and
-`journal-open calls=1 last=131136 at=424917732`. Each of the six
-enhancements has both an exercised session and an idle one inside them.
-
-**The other two go through since #273**, and what was in the way was a
-host's door rather than a machine. Until it, they were refused by name
-before a step was taken — which is the good kind of answer, and is the
-only reason this paragraph is a history rather than a bug report:
-
-    party  replay refused line=126 why=the filesystem holds a different number of files value=120
-    save   replay refused line=126 why=the filesystem holds a different number of files value=120
-
-Both are recorded over the **pristine** disk, whose `\SAVE\` is an
-*empty* directory. `drive.mjs` puts a directory into the module one file
-at a time, because that is what a browser has to do, and an empty
-directory has no file to carry. So the root held 120 entries where the
-recording named 121, the preamble caught it, and the replay stopped
-rather than diverging.
-
-The fix is in the driver and not in core, and the shape of it is worth
-keeping. The ABI has no `mkdir` and is not getting one: nothing in
-PLAN.md §3's INT 21h subset removes a directory either, and
-`af_machine_vfs_remove` says at length why neither belongs above the
-interface that owns path semantics. What it does have is both halves of
-one — a put makes the directories on the way to a file, and a remove
-takes the file and leaves the directory ("an empty directory left behind
-is a name with nothing in it", abi.h). So `drive.mjs` makes an empty
-directory by putting a zero-byte placeholder in it and taking it away
-again; the placeholder's name is the driver's own and never survives the
-call, and the disk line reports how many with `dirs=`. The other
-candidate — a placeholder left in the player's own `\SAVE\` — is worse
-for a reason this library cares about above all others: it would change
-the player's installation, and every session here pins its disk by name,
-size and SHA-256.
-
-    save    replay verified checkpoints=254 keys=148 pulls=0
-    party   replay verified checkpoints=144 keys=40  pulls=0
-
-So the shape of session the wasm module could not be handed — the one a
-browser meets the first time somebody drops a freshly installed copy — is
-gone, and 23 of the 23 go through.
-
-Each was recorded by the desktop host — MSVC over SDL — and reproduced by
-Emscripten's toolchain, a second compilation of the core and a second
-build of SHA-256. Every byte of RAM, every device's registers, the
-scheduler's deadlines and the framebuffer, at every checkpoint.
-
-It is not a CI check and cannot be: it needs the player's disk, their
-code wheel and, for `cite`, their own ingested journal. It is the sweep's
-job on a machine that has them:
+## Running them
 
 ```sh
-node build/wasm/hosts/web/<config>/drive.mjs <disk> START.EXE   --replay tests/sessions/reader.rec   --document "<the code wheel>"   --journal-store tests/visual/reader-store.txt --quiet
+python3 scripts/sweep.py                         # every session, every built target
+python3 scripts/sweep.py --targets contrast      # the relations only; no disk, runs in CI
+python3 scripts/sweep.py --game-disk DIR ...     # repeatable; each session picks the disk its pins match
+python3 scripts/sweep.py --document FILE_OR_DIR  # or $AMBERFOLIO_DOCUMENT
+python3 scripts/sweep.py --journal-store FILE_OR_DIR  # or $AMBERFOLIO_JOURNAL_STORE
+python3 scripts/sweep.py --pin NAME --game-disk DIR   # write a descriptor's file/dir lines from a pristine snapshot
 ```
 
-**A document has to be presented before the recording's seams go on.**
-`verify_recording` applies the preamble's seams itself, so a seam gated
-on a document that has not been presented refuses the whole replay by
-name (#115) — which is why `--document` is this side's to hand over
-while the seams are the recording's.
+Outcomes are `ok`, `FAIL`, and `SKIP` with what was missing. A sweep
+that verified nothing exits non-zero; `scripts/test-sweep.sh` asserts
+that. The disk handed to a game session must be a **pristine snapshot**
+(the sweep copies it before each run); a file the pin does not name is
+"not that disk" as much as a missing one.
 
-## The matrix, by seam (M5-V1, #177)
+On the wasm module:
 
-Everything below this line, gathered into the shape #177 asks for. Each
-of the six v1 enhancements has two sessions — one where the seam is **on
-and exercised**, one where it is **on and never triggered** — and the two
-halves are asserted in different places, the first as a `contrast`
-against the same script without the seam and the second as an `identical`
-against `quiet`. A reader who wants a *seam* rather than a mechanism
-should not have to assemble that from three sections, so here it is
-assembled. Every number in it is a line `scripts/sweep.py` prints.
+```sh
+node build/wasm/hosts/web/<config>/drive.mjs <disk> START.EXE --replay tests/sessions/reader.rec \
+  --journal-store tests/visual/reader-store.txt --quiet
+```
 
-| Seam | On and exercised | On and never triggered | What the pair is worth |
-| --- | --- | --- | --- |
-| `code-wheel` | `party`, `save`, `load` — and, at the challenge itself, every other game session here | *there is none, and there cannot be* | the challenge is the first thing the program asks, so a run that reaches anything at all has already answered it. Its idle half is the **gate** instead (#115): with no document presented the seam is on, inert, and its point is never put in the armed table — which is §7's second invariant exactly, asserted in `SeamGate.ThePointsOfAGatedSeamAreNeverArmedWhileItIsShut`. And a replay whose recording names it without a document presented is refused by name before a step is taken, rather than left to diverge |
-| `encamp-fix` | `camp-fix` — `contrast camp`, 91 of 112 identical, divergent from tick 216,799,088; `fired=11` | `quiet-encamp` — `identical quiet`, all 126 | the splice, the cures, the days and the report are all inside the divergent half; the camp screen never opened is the whole of the other |
-| `automap` | `walk-map` — `contrast walk`, 90 of 203, divergent from tick 218,787,888, three frames after the `Tab` | `quiet-automap` — `identical quiet`, all 126 | the one place a seam can change what the *program* observes is this seam's hotkey claim, and the idle half is the run that says it does not when nobody presses it |
-| `journal` | `reader` (156 checkpoints, the panel in every hash from the entry opening on), `notes` (146), `cite` (291 — a real citation, no key pressed) | `quiet-journal` — **`contrast quiet`**, 111 of 126 | the only one of the six that cannot claim `identical`, and that is the enhancement rather than a leak: `Notes` goes on the party's bar the moment that bar is drawn. Its own descriptor says so at length |
-| `explored` | `wild-trail` — `contrast wild`, 107 of 140, divergent from tick 204,866,288, which is the **arrival** on the wilderness map | `quiet-explored` — `identical quiet`, all 126 | fog marks the unknown, so the divergence moved to the arrival when the marking was reversed (M5-E5f, #263). The claim that survives untouched is the idle one: the seam's points are reached about half a million times over that run and the machine is the machine it would have been |
-| the cheats | `fight-cheat` — `contrast fight`, 126 of 177, divergent from tick 274,951,600, `cheat-invulnerable` firing nine times; and `camp-fix`, which pulls `cheat-wound-party` | `quiet-cheats` — `identical quiet`, all 126, all three on and none pulled | a pull is a host-side trigger, so an unpulled cheat is a seam whose handler never runs — and #161's rule that an outstanding pull is configuration rather than machine state is the same claim one layer down |
+`drive.mjs` puts an empty directory into the module by putting and
+removing a placeholder, since the ABI has no `mkdir` (#273). All 23 game
+sessions have replayed on both hosts with identical seam and
+host-service lines.
 
-### The three pairings the issue names, and the all-on run
+## Checkpoint cadence
 
-"Individually toggleable" has to mean more than "each seam is harmless
-alone". The three pairings the issue names are each a session:
-
-| Subset | Session | What it says |
-| --- | --- | --- |
-| every seam at once | `quiet-all` — `identical quiet-journal`, all 126 | eight seams armed, none triggered, and no more machine than the one seam that does move an idle run. Since M5-V1 that list includes `explored`, and adding it changed the recording by exactly its own `seam` line — see `quiet-all.session` |
-| the automap panel up while the journal reader opens | `subset-map-reader` — 146 checkpoints, the framebuffer in every one | the one subset where two seams want the same pixels: the panel up, an entry opened over it, the map given back, the map put away |
-| the Encamp Fix with a cheat | `camp-fix` — both halves enable `cheat-wound-party` and pull it at the same tick | the Fix with real work to do. What it costs is named where it is paid: the pair now pins a cheat as well as the Fix (see above) |
-| the explored overlay with the automap off | `wild-trail` — `explored` on, `automap` not in the preamble at all | they share a store (#254), and this is the half that says a player with only one of them still keeps the trail. The mirror — the automap alone writing the same nine cells — was driven on a scratch copy and is not committed, because its disk cannot be |
-
-## The fidelity pairs, one per seam (#177)
-
-PLAN.md §5's invariant is that a seam which is **on and never triggered**
-leaves a machine indistinguishable from one where it was off. Five
-sessions state it on the real program: `quiet.rec` is the baseline —
-slot A loaded, four steps walked, only the code-wheel bypass on — and
-each sibling is that same script with one more seam armed and nothing
-done to trigger it.
-
-| Session | Relation | What it says |
-| --- | --- | --- |
-| `quiet.rec` | — | the baseline |
-| `quiet-automap.rec` | `identical quiet` | the automap on, Tab never pressed: **all 126 checkpoints equal**. Its hotkey is the one place a seam can change what the program observes, and this is the run that says it does not when nobody presses it |
-| `quiet-encamp.rec` | `identical quiet` | the Encamp Fix on, the camp screen never opened: all 126 equal. It splices a command onto that screen's own bar, and a run that never goes there never splices |
-| `quiet-cheats.rec` | `identical quiet` | all three cheats on, none pulled: all 126 equal |
-| `quiet-explored.rec` | `identical quiet` | the explored overlay on and the overworld never shown: all 126 equal. Its points are reached half a million times over the run and the first thing every one of them does is read the game-mode byte and return |
-| `quiet-journal.rec` | **`contrast quiet`** | the journal reader on, nothing cited, no key — and **not** equal. See below |
-
-`identical` is `contrast`'s opposite number and is checked the same way:
-on the files, with no disk, so CI checks both on every push. It fails on
-either of the two things that could make it meaningless — a pair that
-differs, and a pair that checkpoints at different ticks and would
-otherwise "pass" by comparing nothing.
-
-### And the subsets
-
-| Session | Relation | What it says |
-| --- | --- | --- |
-| `quiet-all.rec` | `identical quiet-journal` | **every seam on at once, none triggered**, is the same machine as the journal alone — all 126 checkpoints. Adding the automap, the Encamp Fix, the explored overlay and all three cheats on top of the one seam that does move an idle machine changes nothing |
-| `subset-map-reader.rec` | — | the automap panel up, an entry opened over it, the map given back, the map put away: the one subset where two seams want the same pixels. 146 checkpoints, the framebuffer in every one. Like `reader.rec`, a recording of a page M5-E4d (#305) now draws full-screen, owed a re-recording under #293 |
-
-`quiet-all`'s line is the point of the whole set. "Individually
-toggleable" has to mean more than "each seam is harmless alone": it has
-to mean a subset is no more than the sum of what each one does, and that
-is a hash rather than an argument.
-
-### The one that is a contrast, and why that is the honest answer
-
-`quiet-journal.rec` agrees with the baseline for its first **111 of 126**
-checkpoints and differs from there to the end, in `cpu`, `ram`,
-`devices`, `display` and `audio` — and in none of `clock`, `console`,
-`dos`, `input`, `keyboard`, `scheduler`, `stop` or `wall`.
-
-That is the enhancement and not a leak. M5-E4a splices `Notes` onto the
-party's own command bar, and the tick it first differs at is the tick
-that bar is first drawn. A seam that puts a word on a menu the game keeps
-redrawing changes the machine on **any** run that reaches the menu,
-triggered or not.
-
-So it carries a `contrast` line instead, which asserts the true thing
-positively: it agrees until the bar appears and differs after. Loosening
-what `identical` means, so that this one could claim it, would have cost
-the other three their meaning.
-
-The invariant that does hold for this seam is the one with it *off*,
-which is `docs/seams.md` §7's; and what it draws while on is confined to
-the rects it owns, which is `tests/visual/*.leg`.
-
-## A document a session cannot carry at all (#115)
-
-Every session above that drives the real program past its copy-protection
-challenge does so with `--seam code-wheel` on, and since #115 that seam
-has a **possession gate**: it does nothing until the player presents the
-code wheel the enhancement is *for* (PLAN.md §5 item 1). So those
-descriptors name it:
-
-    document 0db301ae...6586fd
-
-By digest and by nothing else, because a document is somebody's own PDF
-and no byte of it enters this tree. `scripts/sweep.py` takes `--document`
-(a file or a directory of them, repeatable) or `$AMBERFOLIO_DOCUMENT`,
-and when it finds none with that digest the session is skipped and said
-so.
-
-The machine's own answer is worth knowing, because it is the good kind: a
-replay whose recording names a gated seam and whose player has not
-presented the document is **refused before a step is taken**, naming the
-condition — `a recorded seam is gated on a document that has not been
-presented`. Not a divergence halfway through, which is what a gate
-applied silently would have produced.
-
-## A store a session cannot carry either (#235)
-
-A recording is keys, ticks and hashes, and for three of the sessions
-above there is a second input: the journal reader's **store**. What the
-reader draws out of it is in the framebuffer, the framebuffer is in every
-checkpoint hash, and so a replay handed a different store than the
-recording was made over diverges. Measured while `reader.rec` was made:
-replayed against another store, or against none, it parts company at the
-first checkpoint after the entry opens, in the `devices` section — the
-EGA planes, which is the panel.
-
-That was #175's one loose end, and the fix is one line in a descriptor,
-shaped exactly like the `disk` line above it:
-
-    journal-store tests/visual/reader-store.txt
-    journal-store external <sha256>
-
-The first is a store this repository carries, because it is this
-project's own sentences. The second is a player's own ingestion, which
-never enters this tree: the digest is the only thing about it that may be
-written down, and it is what says the store on this machine is the store
-the recording was made over. `scripts/sweep.py` takes `--journal-store`
-(a file or a directory of them, repeatable) or `$AMBERFOLIO_JOURNAL_STORE`,
-**copies** the one it finds before running — a run writes its own log back
-into a store when it ends — and when it finds none, the session is
-skipped and said so.
-
-## How often a session checkpoints
-
-Not every frame, and this is #101's decision.
-
-A checkpoint hashes every byte of RAM. At one a frame that is about a
-megabyte of SHA-256 sixty times a virtual second, which makes a debug
-build roughly thirty times slower than the same run without it, and each
-line with its section hashes is about four hundred bytes. Both ends of
-that are fine for a run somebody is pointing at a problem and neither is
-fine for a committed session: a leg of the game is fifteen to twenty
-thousand frames, so one a frame is a recording of six or seven megabytes
-that took half an hour to make, against a content guard that refuses a
-file over 256 KiB.
-
-So the recorder spaces them — `--record-every N` on the desktop host —
-and a game session uses **128**, a little over two virtual seconds. A
-twenty-thousand-frame leg is then about 160 checkpoints and some tens of
-kilobytes, and the run records at very nearly the speed it runs at.
-
-What a sparse cadence costs is *where* a divergence is localized, never
-whether one is found: every key still has to land on the tick it was
-recorded at, and the run still has to reach `end`. What it must not cost
-is the moments worth pinning, so two frames are checkpointed whatever the
-cadence says —
-
-- **a frame that posted a key**, because what a game session is evidence
-  for is that the machine answered *that* keystroke the way it did;
-- **the frame the run ends on**, which for a program that exits carries
-  the `stopped` marker a replaying host needs before it can reach the
-  tick at all (`docs/replay.md` §4), and for a run a budget ended is the
-  only record of where it got to.
-
-`sdl-host-records-and-replays` records the same run twice, at one
-checkpoint a frame and at one every eight, and asserts that the cadence
-changed what was written down and not what happened: the two recordings
-end on the same tick and the same step count.
-
-`spin/SPIN.EXE` is also the only file in this repository that is not
-text, and the content guard
-([`scripts/check-clean.sh`](../../scripts/check-clean.sh)) names its path
-outright: everything else that is not text is refused, wherever it turns
-up. A session that needs a second such program needs a line there too.
-
-`spin.rec` is deliberately the least interesting run that could fail. The
-program executes one instruction forever, so anything that differs
-between two targets differs because the *machine* does — a device's
-arithmetic, the scheduler's tie-break, the order a state section is
-written in — and not because a program went two ways. It caught two such
-things while it was being written: an attach order that differed between
-the ABI and the hosts, and a machine that had never had its RESET line
-pulled.
-
-It is also the cheapest thing here to outgrow. `spin.rec` is four frames
-and carries no section hashes, which is why it is 566 bytes; a session
-over `synthetic_boot` (`tests/programs`) would pin considerably more
-machine at the same cost, and is the obvious next one to add — it
-unpacks itself, loads a module off the filesystem, far-calls into it
-through a relocated pointer, and calls every service M3 added. What
-stands in the way is only that nothing in `tests/programs` records yet;
-the desktop host is the only recorder there is.
+Game sessions use `--record-every 128`. A frame that posted a key and
+the frame the run ends on are always checkpointed. `docs/replay.md` §3.
 
 ## Who checks them
 
-Three, on every push, from the same file:
+On every push, from the same files: **native** (`SessionLibrary.*` in
+`tests/core/machine/session_test.cpp`, through
+`af_machine_verify_recording`), **wasm** (`hosts/web/tests/smoke.mjs`,
+same ABI call, different compiler and SHA-256), **desktop**
+(`sdl-host-verifies-a-session`, through `--replay`, with its own device
+wiring). The first two also tamper with a hash and require the refusal.
+Only sessions whose disk is in the tree run in CI; the rest are `SKIP`
+there and are checked on the maintainer's machine.
 
-- **native** — `SessionLibrary.*` in `tests/core/machine/session_test.cpp`,
-  through `af_machine_verify_recording`.
-- **wasm** — `hosts/web/tests/smoke.mjs`, through the same ABI call, in a
-  build that shares no compiler, no standard library and no SHA-256
-  implementation with the native one.
-- **desktop** — `sdl-host-verifies-a-session`, through the host's own
-  `--replay`. Worth being a third and not a repetition: that host builds
-  its device set with its own code rather than through
-  `af_machine_attach_reference_devices()`, so a wiring that drifted from
-  the ABI's would pass the other two and fail here.
+## When one of these may be re-recorded
 
-The first two also tamper with a checkpoint hash and require the refusal.
-A golden that cannot fail is not one.
+Only when the machine it describes legitimately changes:
 
-    python3 scripts/sweep.py
+- `state_format_version` is bumped;
+- `recording_format_oldest_read` is bumped (a format retired; bumping
+  `recording_format_version` alone does not, see `docs/replay.md` §7);
+- the reference device set's **attach order** changes
+  (`hosts/sdl/src/main.cpp`, `core/src/abi.cpp`'s `reference_devices`,
+  `tests/programs/machine_harness.cpp` move together);
+- what `machine::reset()` leaves behind changes;
+- a seam is added after the session was made and the session claims to
+  carry them all (`quiet-all`);
+- a seam the session turns on legitimately changes what it does. The
+  test: the change was chosen, argued on an issue, and visible in the
+  seam's source, never that a red line went green.
 
-runs all three over every session and prints one table. A target that is
-not built is skipped and said so, never counted as a pass.
-
-A session whose disk is not in the tree gets the third of those and only
-the third — see above.
-
-## When one of these has to change
-
-A session is re-recorded when — and only when — the machine it describes
-legitimately changes:
-
-- `state_format_version` is bumped (a device grows a register, a section
-  is added or reordered);
-- `recording_format_oldest_read` is bumped — a recording *format* is
-  retired. Bumping `recording_format_version` alone is not on this list:
-  a player reads every version it has ever written, the way that version
-  wrote it, so a grammar that grew leaves these seven verifying
-  untouched (`docs/replay.md` §7). That is deliberate, and #155 is why:
-  six of these cannot be re-recorded from this tree at all. #161 grew the
-  grammar a second time — a `pull` line, for a seam trigger somebody
-  pulled — and these seven were untouched again: none of them carries
-  one, and none enables a seam that takes a trigger;
-- the reference device set's **attach order** changes. The canonical
-  state hashes devices in attach order, so this is machine state.
-  `hosts/sdl/src/main.cpp`, `core/src/abi.cpp`'s `reference_devices` and
-  `tests/programs/machine_harness.cpp` all wire the same list in the same
-  order, and all three have to move together;
-- what `machine::reset()` leaves behind changes — the self test programs
-  the PIT and the 8259 through real bus cycles, and that is where a
-  session's device state starts;
-- **a seam this build carries is added after the session was made, and
-  the session claims to carry them all.** M5-V1 (#177) is where this one
-  came from: `quiet-all` is the all-on run, `explored` (#179) landed five
-  sessions later, and until the audit its preamble named seven seams
-  against a build with eight — so the sentence its descriptor made was
-  true of the library and not of the file. Narrow by construction: it
-  applies to that one session and to nothing else here, and what the
-  re-record produced was the same recording with one more `seam` line in
-  it. If it ever produces more than that, the finding is real and the
-  seam is not as idle as its own pair says;
-- **a seam the session turns on legitimately changes what it does.** This
-  entry was missing until #192, and its absence is why `camp-fix.rec` sat
-  stale across two commits: the Fix stopped dialling a day for a party
-  that was already whole, which is a fix and not a regression, and its
-  recording was of a run that no longer happens. A session that names a
-  seam is only ever as current as that seam. It is also the entry most
-  easily abused, so the test is the same one as above — the change was
-  *chosen*, argued on an issue and visible in the seam's own source — and
-  never that a red line went green. `notes.rec` moved for the same reason
-  a milestone later: the log's own frame was asked for the whole screen,
-  and the box drawer's border falls *outside* the rectangle it is given
-  — so the two vertical runs wrapped around the video window's own rows
-  and the lower one landed on the row `EXIT` is drawn on. The rectangle
-  is one in and one up now, and the way out clears the bar it uncovers
-  (`docs/seams.md` §3). The divergence tick did not move with it: what
-  the log draws changed, and when it starts drawing did not.
-
-Re-recording is not a way to make a red test green. If a session stops
-verifying and none of the above changed, the machine changed and the
-finding is real — `docs/replay.md` §5 is how to read the report, which
-names the first section that disagreed.
+If a session stops verifying and none of the above changed, the machine
+changed and the finding is real.

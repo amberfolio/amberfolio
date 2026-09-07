@@ -1,13 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# One of M5-V1's fidelity pairs (#177): `quiet.rec`'s script with
-# encamp-fix on as well, and nothing done to trigger it.
-#
-# The `identical` line is the whole session. It says every checkpoint
-# equals the baseline's — that a seam which is on, armed and idle leaves
-# a machine indistinguishable from one where it was off. That is PLAN.md
-# §5's invariant on the real program rather than on a synthetic one, and
-# it is checked with no disk, so CI checks it on every push.
+# One of M5-V1's fidelity pairs (#177): `quiet`'s script with
+# `encamp-fix` on as well and the camp screen never opened, so the splice
+# onto that screen's own bar never happens.
+# The `identical` line is the whole session: a seam that is on, armed and
+# idle leaves a machine indistinguishable from one where it was off
+# (PLAN.md §5), checked with no disk, so CI checks it on every push.
 
 about the Encamp Fix on and **the camp screen never opened**. It splices a command onto that screen's own bar, so a run that never goes there is a run where the splice never happens
 disk external

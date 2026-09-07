@@ -2,62 +2,53 @@
 #
 # RDR-5, RDR-6 and RDR-8: page a long entry with F1, step back with
 # Backspace, and leave by the far end. Since M5-E4d (#305) the page a
-# player opens from the bar is a **full screen** — the same box the
-# `Notes` listing is drawn in — so the give-back is the whole screen and
-# not the roster's cells.
-#
-# **A single leg, and it has to be one.** It was a pair, and a pair
-# cannot say anything about this any more, for `not-log-giveback.leg`'s
-# own reason: the page covers the screen, so a rect that allowed it would
-# allow everything and check nothing, and the composer that puts the
-# screen back resets the command bar's highlight, so the frames after
-# Escape differ from the seam-off run on the bar row however exact the
+# player opens from the bar is a full screen, the same box the `Notes`
+# listing is drawn in, so the give-back is the whole screen and not the
+# roster's cells.
+# A single leg, and it has to be one: the page covers the screen, so a
+# rect that allowed it would check nothing, and the composer that puts
+# the screen back resets the command bar's highlight, so the frames after
+# Escape differ from a seam-off run on the bar row however exact the
 # give-back is (#234).
-#
-# So it says the two things a single leg can say, and they are stronger:
-# each page holds still while it is up, and the screen before the reader
-# opened is the screen after it closed.
+
 about paging a long entry full-screen, and giving the screen back exactly
 kind single
 program START.EXE
 store tests/visual/reader-store.txt
 both code-wheel
-# The code-wheel bypass is gated on the wheel itself (#115), and this run
-# drives past the challenge, so it needs it. Pinned by digest because a
-# document never enters this tree.
+
+# The code-wheel bypass is gated on the wheel itself (#115), pinned by
+# digest because a document never enters this tree.
 document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
 seam journal
 until 300000000
 every 25
 
-# **A screen this seam draws is slow to appear, and the ranges below are
-# spaced for it.** It is painted over successive arrivals, a few rows at
-# a time, and the program's own drawing routines are what put each row
-# on the glass. Measured by hand on the shorter boot (#305): a
-# twenty-row page takes about 230 frames to settle after the key that
-# opened it and a ten-row listing about 130. That is the listing's own
-# behaviour since #222 rather than anything the page added; a `same`
-# range that started sooner would be measuring the paint.
-
+# A screen this seam draws is painted over successive arrivals, a few
+# rows at a time, by the program's own drawing routines: about 230
+# frames for a twenty-row page and about 130 for a ten-row listing,
+# measured by hand (#305). A range starting sooner would measure the
+# paint.
 key A@7601
 key Return@7651
 key L@8951
 key A@9201
-# F1 opens the prompt — which stays in the panel, four digits and a
-# caption — and Return opens the entry on the whole screen.
+
+# F1 opens the prompt, which stays in the panel, and Return opens the entry
+# on the whole screen.
 key F1@10600
 key 3@10700
 key Return@10800
-# Forward, back, forward, and then out through the far end: the entry is
-# two pages at thirty-eight columns by twenty rows, so the F1 on the
-# second one is the way out rather than a third page.
+
+# Forward, back, forward, and then out through the far end: the entry is two
+# pages at thirty-eight columns by twenty rows.
 key F1@11600
 key Backspace@12400
 key F1@13200
-# The way out, and it is `E` rather than a fourth F1 since M5-E4f
-# (#317): a full-screen page carries `NEXT`, `PREV` and `EXIT` as words
-# on a bar of its own now, so F1 is the first of those and no longer
-# quietly the third of them on the last page.
+
+# The way out, and it is `E` rather than a fourth F1 since M5-E4f (#317): a
+# full-screen page carries `NEXT`, `PREV` and `EXIT` as words on a bar of
+# its own, so F1 is the first of those.
 key E@14000
 
 rect bar 0,190,319,199
@@ -68,13 +59,10 @@ same 11900-12375
 same 12700-13175
 same 13500-13975
 
-# And the screen before the reader took it, back again after it: every
-# pixel **except the bar row**, which was `not-log-giveback.leg`'s finding
-# rather than a convenience — the give-back left the program's own bar
-# highlight parked on the `Notes` group this seam had spliced on.
-#
-# **That is fixed since #330** and the exception is no longer needed for
-# it; it stays until this leg is re-driven on the shorter boot, which is
-# #293's work. `tests/visual/rdr-bar.leg` asserts the same give-back with
-# nothing excepted.
+# And the screen before the reader took it, back again after it: every pixel
+# except the bar row, which was not-log-giveback.leg's finding - the
+# give-back left the program's own bar highlight parked on the `Notes`
+# group this seam had spliced on. Fixed since #330; the exception stays
+# until this leg is re-driven on the shorter boot (#293), and rdr-bar.leg
+# asserts the same give-back with nothing excepted.
 equal 10600 14400 bar

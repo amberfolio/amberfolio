@@ -1,37 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The same script, the same disk and the same tick budget as `walk.rec`,
-# with `automap` on and nothing else changed (M5-E2, #173). The `contrast`
-# line below is the assertion that this made a difference: the two
-# recordings must agree checkpoint for checkpoint until the seam first
-# matters, and disagree from there to the end.
-#
-# What the pair pins that no test can. The seam claims Tab out of the BIOS
-# keystroke buffer before the program's own key routine looks, draws a
-# panel into the EGA planes a plane at a time, and follows the party for
-# forty-eight moves — and every one of those is in the checkpoints,
-# because a checkpoint hashes the framebuffer and the machine together.
-# The two halves are identical up to the Tab, which is the fidelity claim
-# on a real run rather than on a synthetic one: with the panel unasked
-# for, the seam is on, armed, reached over a million times, and the
-# machine is the machine it would have been.
-#
-# It is also the check `docs/seams.md` §9 wants for a *drawing* seam. A
-# panel that stopped being drawn, or that drew in the wrong place or the
-# wrong colour, moves a checkpoint here and nowhere else — the addresses
-# and the mechanism have unit tests, and only this says the picture is
-# still the picture.
-#
-# Re-recorded for M5-E2d. The forty-eight moves end on the armourer's
-# square, and the last quarter of this run is his question: the panel
-# takes itself off the roster while the player answers, and gives the
-# roster back without touching the viewport his portrait is drawn in.
-# Nothing before the shop moved — the first 138 of these 203 checkpoints
-# are the ones the M5-E2 recording had, which is the walk itself saying
-# the yield costs it nothing.
-#
-# The file and dir lines are names, sizes and SHA-256s of a snapshot of
-# the disk. No byte of the player's installation is here.
+# `walk`'s script, disk and tick budget with `automap` on and nothing
+# else changed (M5-E2 #173). `contrast walk`: identical up to the Tab,
+# and different from there to the end.
+# A checkpoint hashes the framebuffer and the machine together, so a
+# panel that stopped being drawn, or drew in the wrong place or the wrong
+# colour, moves a checkpoint here and nowhere else (docs/seams.md §9).
+# The last quarter of the run is the armourer's question: the panel takes
+# itself off the roster while the player answers and gives the roster
+# back without touching the viewport his portrait is in (M5-E2d).
 
 about the same forty-eight moves with the automap on: Tab is taken out of
 about the keystroke buffer before the program asks for it, and the panel

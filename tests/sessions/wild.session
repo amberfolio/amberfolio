@@ -1,18 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The overworld, without the enhancement (M5-E5d, #256). Slot J loaded —
-# the one shipped save whose party is already standing on a wilderness
-# area — and eight steps walked north across it, with only the code-wheel
-# bypass on.
-#
-# It is here to be the other half of `wild-trail.rec`, and on its own it
-# is the first committed session that reaches the game's wilderness
-# travel view at all: the mode byte becomes 3 at frame 9,552 and the 5x5
-# window of overhead tiles is in every checkpoint from there on.
-#
-# `docs/explored-overlay.md` §4 is the recipe, keystroke by keystroke.
-# The file and dir lines are names, sizes and SHA-256s of a snapshot of
-# the disk. No byte of the player's installation is here.
+# The overworld without the enhancement (M5-E5d #256), and the other half
+# of `wild-trail`: slot J loaded, the one shipped save whose party is
+# already standing on a wilderness area, and eight steps north, with only
+# the code-wheel bypass on.
+# The mode byte becomes 3 at frame 9,552 and the 5x5 window of overhead
+# tiles is in every checkpoint from there on.
+# docs/explored-overlay.md §4 is the recipe, keystroke by keystroke.
 
 about slot J loaded and eight steps walked across the wilderness travel
 about view, with only the code-wheel bypass on: the baseline the explored

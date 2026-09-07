@@ -1,24 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# One of M5-V1's fidelity pairs (#177), the sixth: `quiet.rec`'s script
-# with the explored overlay on as well, and the overworld never shown.
-#
-# The `identical` line is the whole session. It says every checkpoint
-# equals the baseline's — that a seam which is on, armed and looking at
-# a screen that is not its own leaves a machine indistinguishable from
-# one where it was off. This one's points are reached half a million
-# times over the run, and the first thing every one of them does is read
-# the game-mode byte and return.
-#
-# It used to be the *weaker* of this seam's two fidelity claims and it is
-# now the only one. The stronger one — the overworld shown, nothing
-# walked, and the screen still the screen it would have been — belonged
-# to a marking that lifted the *known*, and M5-E5f (#263) reversed the
-# enhancement to a fog that covers the unknown: a map nobody has walked
-# is nearly all fog the moment it appears. `wild-trail.session` beside it
-# has the paragraph. This one is untouched by that, because the run it
-# describes never shows the overworld at all — which is exactly why it is
-# the claim the whole matrix is made of.
+# One of M5-V1's fidelity pairs (#177), the sixth: `quiet`'s script with
+# the explored overlay on and the overworld never shown. Its points are
+# reached half a million times over the run and the first thing every one
+# of them does is read the game-mode byte and return.
+# The `identical` line is the whole session, and it is this seam's only
+# fidelity claim: since M5-E5f (#263) reversed the marking to a fog, a
+# map nobody has walked is nearly all fog the moment it appears
+# (wild-trail.session). This run never shows the overworld at all.
 
 about the explored overlay on and the overworld never shown: the seam is
 about reached half a million times and the machine is the machine it

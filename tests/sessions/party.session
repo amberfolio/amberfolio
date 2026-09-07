@@ -1,14 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# `docs/playable.md` leg 0, recorded. The disk is a player-supplied
-# installation and cannot be committed; tests/sessions/README.md says how
-# a session like this is verified and why it is skipped rather than
-# failed when this machine's disk is not that disk.
-#
-# The file and dir lines below are a pristine snapshot of that
-# installation: names, sizes and SHA-256s, written by
-# `scripts/sweep.py --pin`. They are facts about a disk and nothing else
-# — no byte of it is here (CONTRIBUTING.md).
+# docs/playable.md leg 0, recorded: boot, a character generated and
+# added, and BEGIN ADVENTURING into the opening story event.
+# Pins a pristine player-supplied installation, so the sweep skips this
+# loudly when this machine's disk is not that disk.
 
 about boot through the code-wheel challenge, a character generated, named
 about and added to the party, and BEGIN ADVENTURING into the opening story

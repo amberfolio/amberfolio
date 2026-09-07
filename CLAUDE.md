@@ -1,624 +1,70 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
 ## What this is
 
-Amber Folio: a purpose-built low-level emulator for the machine the SSI
-Gold Box CRPGs ran on (real-mode 8086, EGA, PC speaker), targeting
+Amber Folio is a purpose-built low-level emulator for the machine the SSI
+Gold Box CRPGs ran on (real-mode 8086, EGA, PC speaker), for
 Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
-Radiance. **PLAN.md is the plan of record** — scope, architecture,
-milestones, and settled decisions live there; don't re-litigate them
-here or in PRs.
+Radiance. **PLAN.md is the plan of record**: scope, architecture,
+milestones and settled decisions live there. Don't re-litigate them.
 
-**Status: M5 complete; `v0.4.0` is the current tag. M6 — onboarding,
-shells and gamepad — is the current milestone, and #265 is the worklist
-it starts from. In flight beside it: #290, the code wheel's *once* — the
-one v1 enhancement whose design changed after M5, because the releases
-sold today ship a code generator application where the gate expected a
-PDF. #291 is its mechanism and has landed; #292 remembers it between
-runs and #293 re-records the session library on the boot it shortens.
-`v0.4.0` is an **interim** tag and not a milestone's: PLAN.md §7 gives
-each milestone a 0.x pre-release, and this one exists because a shipped
-enhancement changed under a consumer rather than because M6 ended.**
-The game plays, and it plays *enhanced*. All six of PLAN.md §5's v1
-enhancements work and toggle independently on both hosts — the code-wheel
-bypass, the Encamp Fix, the automap, the journal, the explored overlay's
-fog of war and the debug cheats — which is §7's M5 exit criterion, met.
-Under that, M4's still holds: a player-supplied copy runs its own
-unpacker and overlay manager, renders its title sequence, answers its
-menus, makes a party, walks the city, plays its opening story event,
-fights an encounter to a finish with and without the debug cheats seam,
-saves, loads, buys, heals, sells, and walks off the edge of a map — on
-the desktop host and in a browser, from the same core.
-`docs/playable.md` is the procedure, leg by leg, with the keystrokes that
-drive it and what each leg is evidence for; its last section is what it
-has *not* covered, and the gaps there that are decisions rather than
-debts say so. `docs/enhancements.md` is the enhancements as a player
-meets them, each with its own honest "not yet". `docs/first-light.md` is
-the M3 sibling, the boot alone.
-**No test in this repository runs the game, and none ever will.**
+**Status.** M0–M5 are done and `v0.4.0` is the current tag. The game
+boots, plays end to end, and all six v1 enhancements work and toggle
+independently on both hosts. The current milestone is **M6** (onboarding,
+shells, gamepad); its worklist is #265. Open issues are the complete list
+of known gaps; docs describe what *is*, not what is owed.
 
-The 8086 interpreter underneath is still exact — all 323 vector files of
-the pinned SingleStepTests/8088 v2 set pass in CI on every push,
-undefined flag behaviour included — and stayed exact through every
-device, service and seam that grew around it.
+**No test in this repository runs the game, and none ever will.** The
+maintainer's own copy drives the game locally; CI runs everything that
+needs no disk.
 
-What M5 left in place:
+## Non-negotiable rules
 
-- **The seam engine** (`machine/seam.h`, `docs/seams.md`), which is
-  PLAN.md §5's mechanism and the only way anything but the program may
-  touch this machine. Fingerprint-keyed, overlay-qualified, four action
-  primitives plus a host-service slot, a **call into the program** (M5-D4,
-  #188 — so text a seam puts on the game's screen is drawn by the game, in
-  the game's font), a host→seam trigger a person pulls, and a toggle
-  surface on both hosts. **Every seam is off by
-  default**, and the fidelity invariant is a test: with all of them off a
-  run's state hash equals the same run's on a build with no engine at
-  all, a disabled seam's breakpoint is never consulted, and seam state —
-  an outstanding pull included — is configuration and not machine state.
-  It landed in M4 as a mechanism and M5 added no more of one: **all five
-  of M5's enhancements are handlers over primitives that already
-  existed**, which is the claim #165 audited before the first of them was
-  written and the claim the finished five keep. What M5 did add to the
-  engine is the door #165 said it owed — a host that implements
-  `seam_host_services::serve`, on both hosts and across the ABI — plus
-  the two things a person needs on the far side of one: a document gate
-  (M5-D3, #171) and the call into the program above.
-- **Eight seams this build carries**: `code-wheel` (**it asks once**,
-  since M6-C1a #291, and it was gated on a PDF of the wheel from #115
-  until then. The releases sold today ship a **code generator
-  application** rather than that PDF, so the file named an artifact the
-  player who most needed it could not hold, and the proof moved from the
-  artifact to the act (#290). On and unanswered the seam only *watches*:
-  the game asks the challenge exactly as it always did, and such a run
-  is byte for byte the run with the seam off, which is the fidelity
-  invariant holding for an *enabled* seam. When a person answers it
-  correctly — off the wheel, the manual, or that application — the seam
-  sees the program's own comparison come out equal, latches it and calls
-  the new `code_wheel_answered` host service; from then on it steps over
-  the boot's own five-byte call into the protection overlay, checking the
-  call's own target words first, so the challenge is never drawn. The
-  routine behind that call sets nothing and returns on success, which is
-  what makes stepping over it equivalent to passing it. **It never
-  answers the challenge for anybody.** No seam in this build is gated
-  now; the gate mechanism, the wheel's row in `known_documents()` and
-  the `document` line in a session descriptor all stay, the first two as
-  a door and a fact and the third as something #293 replaces. Where the
-  answer is **remembered** by a host since M6-C1b (#292):
-  `hosts/common/.../code_wheel_store.h`, one digest per copy and nothing
-  else — not the question, not the answer, not a time — in
-  `code-wheel.txt` beside the desktop host's other per-user data
-  (`--code-wheel-store`, `--forget-code-wheel`) and in this browser's own
-  storage on the web, where the page carries an *Ask me again* button.
-  `apply_code_wheel_store()` is the one function both hosts call to tell
-  the next machine, before its first instruction. What no test can do is
-  the moment it is all for: **nobody has typed a correct answer into the
-  real program yet**, which is `docs/hosts.md` §3's third by-hand check),
-  `encamp-fix` (M5-E1 #172, M5-E1a #186,
-  M5-E1b #189 and M5-E1c #194 — the first M5 enhancement; it puts a `FIX`
-  command on the camp screen's own bar by splicing four characters into
-  the string the program draws that bar from, and when the player presses
-  its letter it spends the cures the party already holds through the
-  game's own cast driver — queueing one back for every one spent — then
-  dials the game's own rest to the days that did not close and presses
-  Rest, and on the next pass of the menu says what it did in a framed
-  report the *game* draws, in the game's font, over a live bar that is
-  the way out of it; a rest the game **interrupts** never gives it that
-  pass, so a fourth point on the camp loop's own exit draws the report
-  there instead — `Fix: Interrupted!`, held by the program's own message
-  delay — and drops it on any other way out; any key the player types
-  stops it. M5-E1e #298 is what a player found under that bar: the
-  report's **title outlived the camp screen** onto the adventuring one,
-  because the program's frame puts a title on the box's top row and the
-  camp's own teardown clears the panel from the row below it. The frame
-  is handed no title now and the title is one more line through the
-  string drawer, on the first row the teardown clears, at the cost of a
-  row of the exception list; the interrupted report moves with it and
-  by the facts never had the defect, since an interruption is the one
-  exit the caller repaints after. Reproduced and re-measured headlessly
-  on the shorter boot — `tests/visual/camp-fix-exit.leg`, driven by
-  hand because the runner does not yet carry `--code-wheel-answered` —
-  and not yet looked at on a display since. M5-E1g #304 is the cell that
-  run left named: the bar's **highlight** is one data-segment byte every
-  bar shares and numbers against its own groups, the spliced bar has one
-  group more, so EXIT came back to `AREA` where the seam-off run came
-  back to `LOOK` (the issue said `ENCAMP`; the byte, watched, says the
-  sixth group, which is `LOOK`). The way out of camp maps the byte back
-  into the program's numbering now — once per exit, on both exits, and
-  only where the bar was spliced — and the leg's post-EXIT lines no
-  longer allow the bar, but for the one dump that catches it being
-  drawn. M5-E1f #303 is the other cell that run named: the report's
-  frame puts its top edge on the panel's border row, and at column
-  `0x10` that row carries the **corner knot of the viewport box**, which
-  the frame's plain edge tile paints over and EXIT never repaints. The
-  knot is there because the program borders the viewport box *after* the
-  panel, so the report borders it again after its own frame — the
-  program's own border routine, the same box, in the same batch: no new
-  point, no state, nothing owed at exit. With both, 50 of the 53 stills
-  after EXIT are the seam-off still pixel for pixel, and the three that
-  are not are the bar mid-draw and two of the camp picture's fire),
-  `automap` (M5-E2 #173 — the second M5 enhancement, and the first seam
-  that *draws*: a map of the squares the party has walked, over the party
-  roster on the game's own screen, shown and taken away on **Tab**. The
-  key is claimed by removing it from the BIOS keystroke buffer before the
-  program's own key routine looks, so the program observes exactly what it
-  would have observed had it never been typed; the panel is rendered into
-  the EGA planes a plane at a time, which is what added **port surgery**
-  as `docs/seams.md` §3's eighth primitive; what has been explored lives
-  in `machine::automap()` beside the overlay tracker, as observation and
-  not machine state; and closing it clears the panel's own rect and calls
-  the program's roster drawer to put the party list back. M5-E2a adds the
-  colours: a wall is the modal non-black pixel of the very tiles the 3D
-  view blits for it, so
-  the buildings are the colour of the buildings, and a door leaf is drawn
-  where a wall face's *kind* has been seen shut — on this map or in the
-  table of every shut face in the shipped data. M5-E2b puts the zone's
-  name in the band the panel's geometry leaves for it, in the program's
-  own glyphs read out of its own font, off a table of (disk, area) to a
-  short label — because the program holds no such string to read. M5-E2c
-  makes what it has walked outlive the machine: the seam calls
-  `automap_update` when a reveal changes something, and a host writes the
-  table into `\SAVE\AFMAP.DAT` beside the program's saves and never
-  inside one, with a snapshot per save slot so two playthroughs do not
-  share a map. It is off unless a host is asked (`--automap-store`,
-  `af_web_automap_store`), because a file appearing in a player's game
-  directory changes it and every recorded session pins its disk. Telling
-  a slot the program *loaded* from one the load menu merely looked at is
-  what added the two traffic flags to a DOS file-close event. M5-E2d is
-  what a player's first hours found: the panel gives back the roster and
-  no more of the screen than that, because the composer it used to call
-  repainted the viewport too and wiped a vendor's NPC out from under a
-  live question; it comes down on its own, and its key goes quiet,
-  whenever the bar on the screen is not the adventuring screen's own —
-  a sixth point, at the thunk every menu bar in the game goes up
-  through, because the party's bar is a string in the data segment and
-  every vendor's is a copy on the stack, and neither the mode byte nor
-  the three drawing points can tell them apart; and while it is up it
-  takes the two keys that step the roster cursor, whose whole visible
-  effect is a repaint of the cells it is sitting on. The obvious cheaper
-  gate — the program's own "a script has the message area" byte — was
-  measured with `--watch` and thrown away: it oscillates on every step.
-  M5-E2e (#266) is the defect the closeout audit found and the last thing
-  in it: the panel's key was claimed at the program's blocking *read* as
-  well as at its poll, and a read handed nothing puts the program to
-  sleep inside the BIOS where no point of this engine is reached — so the
-  next key the player typed was delivered unseen. The answer is one
-  keystroke back, chosen for being one the program throws away
-  (`seam_key_read.h`), and `docs/seams.md` §8.4 carries the trap because
-  the journal reader had already met it and the automap had claimed at
-  the same address since the day it was built. #173 is closed),
-  `journal` (M5-E4 #175 — the third M5 enhancement and the reader half of
-  the journal: when the game cites an entry, the entry opens on the
-  game's own screen. A **`Notes`** command on the party's own command bar
-  (M5-E4a, #221 — spliced onto the game's own bar the way the Encamp Fix
-  splices `FIX`, in the one case where `N` is unreachable because the bars
-  are mixed case and the routine's command letters are upper case only)
-  opens a **log of everything the game has cited** — the journal's own
-  full-screen menu, newest first with a `*` on what has not been read,
-  drawn by the game's own frame and string routines and given back by the
-  routine the program composes the adventuring screen with (M5-E4b, #222).
-  **F1** opens the number prompt, for the ninety-odd entries nothing has
-  cited. Five of its six points are the automap's and the sixth is the
-  program's word-wrapping **message box**, where the script's every PRINT
-  ends, so the citation watch is a point on the program's own narration
-  and not a reader of a host's console ring (#165). What it matches is
-  the citation's *shape* — the word a numbered section of the document is
-  called by, each with its plural, and a number after it in the notation
-  that section is numbered in, over a rolling window the program's own
-  message boundary empties — and never a word of the program's prose. It
-  draws in the automap's own rect, in the program's own glyphs, and is
-  modal over the map because they are the same pixels. **A page opened
-  from the bar is a full screen** since M5-E4d (#305) — the box the
-  listing is drawn in, twenty rows of thirty-eight characters against the
-  panel's twelve of twenty-two, made of the same two of the program's own
-  routines, and going back to the listing rather than out when it is one
-  of its rows that opened it. Which size a page gets is a fact about the
-  machine and not a memory of which key: `journal_state::bar_live()`, set
-  and cleared at the two points the `Notes` splice already had, says
-  whether the party's *own* menu-bar routine is the thing running, which
-  is the one precondition under which the program's screen composer may
-  be asked to put a screen back. So F1 at camp or with a vendor's bar up
-  stays in the panel, and a **citation** stays in the panel always,
-  because it fires inside a script's narration where an NPC can be in the
-  viewport and that give-back has not been measured. **Both give-backs
-  tell the automap the panel was painted over** since M5-E4g (#332), and
-  that one call is the only thing the two seams say to each other: the
-  composer repaints the roster, the map's panel is drawn into the
-  roster's cells, and a seam's calls into the program run with no points
-  offered at all — so neither of the two points the automap watches its
-  cells with saw a pixel of it. Its map was gone with its open flag
-  still set, so the next Tab was spent closing a panel that was not on
-  the screen and only the one after it brought the map back. The flag is
-  deliberately left alone and the pixels are redrawn at the map's next
-  arrival, the program painting first and the seam after, which is
-  #303's ordering; `tests/visual/rdr-map-back.leg` is the drive, by hand
-  on the shorter boot. Its text comes from a host through
-  `journal_open`, and that is the first service that
-  had to hand something *back*: `machine::journal()` is the buffer it
-  comes back in, observation on `automap.h`'s three terms and not machine
-  state. **A real journal has now been opened at a real citation** (#232),
-  and both of those facts are what that run bought: the watch had been on
-  the string drawer, which draws the credits, the menus and the position
-  line and no narration at all, and the shape had wanted the word this
-  enhancement is named after and a decimal number where the game writes
-  the section's own word and Roman numerals. The city hall names four
-  proclamations in one sentence and the reader opened on the first, off a
-  player's own ninety-nine ingested entries, with nobody having pressed a
-  key. **A debug cheat fills the log** since #301 — `--cite-all-journal`,
-  and *Cite them all (cheat)* on the dev page — a host action beside
-  `restore_journal_log` and not a seam, that cites everything the store
-  holds Entry 1 first so a person can proof-read the OCR text off the
-  game's screen; it raised `journal_log_rows` from 64 to 256 to hold an
-  edition, and the log it fills stays filled until the store's `seen`
-  lines go. **Its bar looks like a bar this game drew** since #329 and
-  #330, both found by the maintainer on a display: it read
-  ` NEXT   PREV   EXIT` where every bar the program draws is flush left
-  and spaced one, and it was drawn in one call in the bright where every
-  bar the program draws paints the **initial white and the tail green** —
-  so it is four calls now, the row in the green and the three initials
-  over it. #330's other half was `Notes` on the party's own bar, drawn
-  white end to end, and the two candidate causes wanted opposite fixes;
-  `--watch 6B2B` decided it in one run — `01` after a load, `07` from the
-  frame `N` is pressed, `07` still after the give-back — so the drawer
-  was right and the **highlight** was parked on a group only this seam had
-  put on the bar. It is handed back where the routine found it now, which
-  is exact rather than #304's step-down because `Notes` is appended and
-  `N` matches none of the program's own commands. `tests/visual/rdr-bar.leg`
-  is the leg, and it is the first to ask the runner for the shorter boot
-  (`code-wheel-answered`, the flag #293 needs): with the give-back taken
-  out, the frame after the journal closes differs from the frame before it
-  opened in 190 pixels, all on the bar row. **An entry that is a drawing
-  shows the drawing** since #328's second half: several of the journal's
-  entries are maps, mazes and diagrams, an OCR engine reads the words on
-  such a page and the words are a heading and a caption, so what the
-  reader used to show for one was that caption and nineteen empty rows.
-  A picture is reduced once at ingestion into the reader's own box, four
-  tones and no colour, and kept in the player's store (#336, the first
-  half); the reader draws it as **the page after the caption**, so `NEXT`
-  reaches it with no new key and no new mode. On a full screen it is
-  drawn whole, 304x160, by plane surgery into the box the program's own
-  frame drawer has just put up — in the arrival *after* the one that
-  queued that frame, because a handler's own pixels land before a batch
-  does and one drawn beside the frame goes under it (`docs/seams.md`
-  §8.4's newest trap); in the roster panel it is the same picture at half
-  scale, averaged rather than sampled. Which palette index each tone
-  becomes is `art_ramp`, a knob in the reader, so the day somebody looks
-  at one and says it reads wrong the answer is a line of core and not a
-  re-ingestion of anybody's document — the arrangement
-  `explored_reveal_radius` has with the automap's sidecar. It crosses on
-  a host service of its own, `journal_art`, the fifth and the second that
-  hands something back, whose every answer carries how many pictures the
-  entry has because that count is half of how many pages the reader
-  draws. **Nobody has looked at one on a display**, in either size, and
-  that is now the whole of what #328 has left. `docs/journal.md` §10 and
-  §11),
-  `explored` (M5-E5 #179, the marking reversed by M5-E5f #263 and its
-  colour and radius set by M5-E5g #299 — the fourth M5 enhancement and
-  the third seam that draws, on the game's own **overworld** map: the
-  wilderness travel view, a 5x5 window of a 16x36 area that scrolls with
-  the party. It is **fog of war**: every square the party has stood on is
-  the game's own map, untouched, and every other square of the window is
-  **hazed over with a one-pixel checkerboard of palette index 0**, black,
-  on half its pixels — the program's own pixel on the other half, so the
-  terrain is faintly there under the fog rather than gone. How far a
-  party sees is one named constant, `explored_reveal_radius`, a Chebyshev
-  **0**, and both bounds on it are evidence: **2 and 3 were asked for and
-  cover nothing**, because the window is five squares across with the
-  party in the middle and 523 driven frames at radius 2 are byte for byte
-  the seam-off run; and **1 shipped and was walked**, and it uncovers a
-  corridor three squares wide, which fills the map in faster than the
-  party explores it. It is the one v1 enhancement with no proven prior
-  design, so the marking was settled at the point of definition — and
-  then **changed three times by somebody looking at it**, which is that
-  item's own exit rule working. The first marking
-  lifted the walked squares one shade; it was measured visible on 2,800
-  window cells and it still did not read, because a shade is a difference
-  a player has to be told about before they can see it. The fog that
-  replaced it was **solid black**, argued for on four grounds and never
-  looked at either; five coverings were then composited over one real
-  dumped frame — solid black, a black checker, a dark-grey checker, a
-  light-grey checker and a two-by-two dark-grey one — and the maintainer
-  picked the dark-grey checker at a radius of one. What the
-  composite said and no argument had: a solid cover throws away the
-  *shape* of the country the party is standing at the edge of, a black
-  checker collapses against the grass's own two-green dither into a flat
-  mesh, and light grey reads as paler ground. Then the maintainer
-  **walked that checker** (#299) — the first look at this enhancement
-  taken in play rather than at a still — and the middle finding did not
-  survive it: a black checker beside the square the party is standing on
-  reads as a covering and the grey read thin, being a shade off the
-  terrain's own values and the very colour of mountain rock. So the
-  colour went to black, the radius to zero, and the composite's geometry
-  stayed; every candidate keeps its reasons in
-  `docs/explored-overlay.md` §5, the grey now among them. The checker is
-  the first drawing here that is a **masked** write, so it reads each byte of the
-  video window to load the adapter's latches before writing it — a veil
-  keeps the pixels it is not covering, and keeping them costs a read
-  (`docs/seams.md` §3's third port-surgery rule).
-  `docs/explored-overlay.md` §5 keeps every design and every candidate
-  prototyped over real frames, black's four reasons included, and
-  PLAN.md §5 item 5 carries the reversal, since the sentence it used to
-  end with was "it never obscures the unknown". The facts were
-  checked twice before a line of it was written: the position is two
-  words in the *area record* and not the bytes every other screen uses,
-  and the pixel geometry — 120x120 at (8, 8), 24-pixel cells, every cell
-  three whole bytes wide — was measured off a real dumped frame rather
-  than derived. There is no key: it is a setting. It records **where the
-  party stood** and derives the reveal at draw time, so the radius can be
-  turned without invalidating a sidecar, and it records through the
-  automap's own store, so a player with only the automap on keeps the
-  trail too (M5-E5b). The reversal **cost it a fidelity claim**, which is
-  said out loud rather than quietly dropped: "arrived on a fresh map, and
-  pixel-identical to off" belonged to a marking of the *known* and a fog
-  marks the unknown, so the unit suite now asserts the arrival is *not*
-  the seam-off screen and the `wild`/`wild-trail` pair diverges at the
-  arrival — 107 of 140 checkpoints — instead of at the first step.
-  Driven, it found what no test had: a seam that paints only where the
-  program paints cannot show a trail a host read in beside a save under a
-  party that is standing still, so it paints at the keyboard poll as well
-  — `docs/seams.md` §8.4, which also carries #263's lesson that
-  "measurably different" is not "legible" and only a person can tell you
-  which one you built; #299 is that lesson once more, a level up — a
-  still is not a walk, and the recordings and visual legs that pinned the
-  old marking are re-driven with the rest of the library under #293),
-  `cheat-invulnerable`, `cheat-kill-all`, and `cheat-wound-party` (M5-E1d
-  #196 — pulled at the camp screen, it leaves every party member on one
-  hit point, through the same write the program's own damage routine
-  makes for that damage on a record it would accept; PLAN.md §5 item 6's
-  third switch, built for that item's own stated reason, because the
-  Encamp Fix's days arithmetic and its report's exception list had no
-  other way to be driven). `docs/seams.md` §8 is the house style for the
-  next one and §10 is the worked example.
-- **The journal's ingestion** (`hosts/common/.../journal_*.h`,
-  `docs/journal.md`) — M5-E3 (#174), and host work rather than seam work.
-  A player's own Adventurer's Journal, located entry by entry inside
-  their own PDF off a fact table of offsets, inflated, cropped, read once
-  by an OCR engine, and kept as text on their own machine: a file beside
-  the config on the desktop, this browser's own `localStorage` on the web
-  (M5-E3f — read once means once, not once per visit; the page carries a
-  *Forget it* button that empties both the drawer and the tab, and the
-  read log survives a reload there too since #237 — it is
-  `host::restore_journal_log()`, called by both hosts, because the text
-  travels to the reader through the host-service pointer and the log has
-  to be *put* into the machine). Corrections are a second field per entry
-  and survive re-ingestion. The OCR engine is Tesseract on both hosts and
-  is linked on neither — the desktop runs the player's own installed one
-  as a program, the page loads the pinned tesseract.js
-  (`.tesseract-version`, `.tesseract-js-version`) from its own origin and
-  **never a CDN**. A page this build cannot decode is **carried rather
-  than decoded** (M5-E3a #212): the first real journal anybody produced is
-  `/DCTDecode` on every page, so its stream goes to the engine as its own
-  bytes and the entry's rectangle filters the engine's *output* — which
-  both engines can do, because both say where each word was. Nothing here
-  learns what a JPEG is. **The edition table has one row**
-  (M5-E3b #214), which is the first document anybody sat down with: the
-  archive release's own journal, fifty-eight entries in seventy-eight
-  pieces across nine two-page scans, every rectangle measured off the
-  scans and every number checked against the printed headings. An entry is
-  a *list* of fragments because the entries **flow** — out of a column,
-  onto the facing page — and eighteen of the fifty-eight are in more than
-  one piece; a row of one rectangle could describe none of those.
-  `docs/journal.md` §3 is the method, so the next edition is a procedure
-  rather than an archaeology. A real engine has read real pages in a
-  browser now — #306, where the first sitting found the page reading
-  tesseract.js 6's answer in tesseract.js 4's shape, so *0 of 99* until
-  it did not — and the desktop's installed engine still has not; the
-  pipeline is proven in CI on all four
-  targets against a synthetic PDF this project generates
-  (`journal_probe.h`) — three entries, the third a real baseline JPEG this
-  project encodes and the only one in two pieces — with a fixture engine
-  that answers only for the scan the extraction was supposed to produce. The in-game reader that
-  consumes it is M5-E4 (#175), above, and is a seam rather than host
-  work; `docs/journal.md` §9 is the door between the two halves.
-- **The doors the site asked for, and one ABI bump for both** (#228,
-  #229). `af_machine_vfs_generation()` is a monotonic counter a page can
-  ask once a frame instead of walking `\SAVE\` on a timer;
-  `af_web_journal_store_changed()` / `_clear_changed()` plus five
-  `Machine` methods put the journal store on the façade it was the only
-  exception to. Adding entry points and changing nothing that was there
-  is `AF_ABI_VERSION_MINOR` by #211's own rule, so the ABI was **1.1** at
-  `v0.3.0` and its manifest says so. It is **1.2** as of `v0.4.0`:
-  `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
-  joined it with the code wheel's once (#291), two added entry points
-  and nothing changed. What was asked for and stays declined is
-  in PLAN.md §5 with its reasoning: a machine-state export/import (#209)
-  and a host-supplied VFS adapter (#206). The release bundle is **seven
-  files, not six** — `journal.mjs` joined it in the same change, and was
-  owed from #174, because `app.mjs` had imported it by name for a
-  milestone and the bundler never staged it.
-- **The matrix, and CI running the half of it that needs no disk.** Each
-  of the six enhancements has a session where its seam is **on and
-  exercised** and one where it is **on and never triggered**; the first
-  is a `contrast` against the same script without the seam and the second
-  an `identical` against `quiet`. Both relations are checked on the
-  *recordings*, so `scripts/sweep.py --targets contrast` runs in the
-  `guards` job on every push (#277) — 24 sessions, 10 checks, 0 failures,
-  no disk anywhere. `tests/sessions/README.md`'s "The matrix, by seam" is
-  the whole of it in one table. **All 23** game sessions have been
-  replayed on the wasm module and diffed against the desktop host's seam
-  and host-service lines, call for call and tick for tick; the last two
-  went through in #273, which taught `drive.mjs` to carry the empty
-  `\SAVE\` a fresh installation has — a put and the remove that leaves
-  the name, since the ABI has no `mkdir` and is not getting one.
-  **Every one of those 23 is a recording of a run that no longer
-  happens**, as of #291: they all booted past the code-wheel challenge by
-  the seam answering it, and the seam watches now. The relations CI
-  checks are over the recordings and are unaffected; a replay *with a
-  disk* is not, and re-recording the library on the shorter boot is #293.
-  Nothing else in this list moved.
-- **The replay harness** (`machine/replay.h`, `docs/replay.md`): a
-  canonical machine-state serialization, a recording that is keys, ticks
-  and hashes and no content at all, and verification on all four targets
-  from one recording. A desktop recording of a **real game run** verifies
-  on the wasm module — 101 checkpoints of a 139-million-step run, every
-  hash equal. Before it the cross-target claim rested on four frames of
-  `JMP $` (#142).
-- **The session library** (`tests/sessions/`, `scripts/sweep.py`), seven
-  sessions at M4's close and twenty-four now. One has its disk committed
-  and the rest pin a disk that cannot be
-  (PLAN.md §6), so the runner is told where a copy is and **skips loudly**
-  when it is not. A sweep that verified nothing must never read as a
-  sweep that passed.
-- **The instruments phase 3 needed.** `--watch OFF[:N]` on the SDL host
-  prints a data-segment word every time it changes, which is how a run
-  becomes a trail of where the party went; `--dump-every` says what the
-  screen did and `--trace` what the program asked DOS for, and neither
-  said where anything was. `hosts/web/tools/drive.mjs` is the SDL host's
-  driving surface for the wasm module — a directory, a program,
-  `--press KEY@FRAME`, `--pull`, `--seam`, `--dump`, a throughput line.
-- **The speaker is measured** rather than described. `--dump` writes the
-  edge list the machine published beside the PPM and the WAV; so does
-  `drive.mjs`, and so does the host-free `amberfolio-dump`, in one
-  format, so two hosts' runs are diffed rather than described. The
-  underrun and resync counters reach every run's report, and the box
-  filter's DC offset and its agreement across the two hosts' sample rates
-  are numbers in the unit suite (`docs/hosts.md` §4).
+- **Clean content.** Nothing from the original games, ever: no code
+  (original, disassembled or translated), no data, no assets, no byte
+  sequences, no page or text of the player's documents, no journal store
+  or excerpt of one. *Facts* are fine: addresses, offsets, formats,
+  SHA-256s. Full rule in CONTRIBUTING.md. Run `bash scripts/check-clean.sh`
+  before every commit. **Never `git add -A`**: a stray dump beside the
+  tree once reached public history (#134), and history is never rewritten.
+- **Fidelity invariant.** Every seam is off by default. Nothing outside
+  the seam engine mutates machine state. With all seams off the machine
+  is a plain machine, and that is a test, not a sentence. Seam state is
+  configuration, not machine state.
+- **Log, don't fake.** An unimplemented service, register or port is a
+  loud log line and a clean stop, never a guessed answer. `docs/machine.md`
+  §5 has the third option, a notice, and when it applies.
+- **Virtual time is the only clock.** Nothing under `core/` reads host
+  time (`scripts/check-host-time.sh`).
+- **Every non-merge commit is DCO-signed** (`git commit -s`). New source
+  files start with `// SPDX-License-Identifier: AGPL-3.0-only`.
+- **Licences.** Outbound AGPL-3.0-only, inbound Apache-2.0. Dependencies
+  must be AGPL-compatible (zlib/MIT/BSD/Apache-2.0 yes, GPL-2.0-only no).
+  Nothing third-party is committed; it is fetched at build time.
+- **Naming.** Game and franchise titles appear only nominatively
+  (TRADEMARK.md).
+- **A seam PR brings its pair** into `tests/sessions/`: one recording with
+  the seam on and never triggered (`identical`), one on and exercised
+  (`contrast`). CONTRIBUTING.md explains; `tests/sessions/README.md` has
+  the grammar.
 
-The last four bullets are **M4's** rather than M5's — the replay harness,
-the session library, the instruments and the speaker are what `v0.2.0`
-left in place, along with the seam engine at the top of the list, and M5
-grew each of them rather than replacing any.
+## Architecture in brief
 
-What M5 did **not** settle, and is honest about. Every line has an issue,
-because a milestone closed on a list nobody wrote down is a milestone
-whose gaps get rediscovered. **#274** is the person's list — an entry
-read on a display, the fog walked rather than looked at in a still, a
-rest heard, and any of it in a browser — and it is the successor to #147
-and #148, which had nothing else left in them. **#267** is the fog over
-ground that is already grey and the two wilderness areas nobody has stood
-on; **#268** the automap's door rule, driven only through its fallback;
-**#269** a party hurt by combat rather than by a debug seam; **#236** the
-journal's browser sitting and its installed engine; **#270** to **#273**
-the narrower ones. **#275** is the standing inventory of what this
-machine deliberately refuses, successor to #166 — and its finding is that
-the DOS/BIOS surface is byte-identical to `v0.2.0` but for the two
-file-close traffic flags M5-E2c needed. **#134** waits on GitHub Support
-and nothing in this tree moves it. `docs/playable.md`'s last section,
-`docs/enhancements.md` and `docs/hosts.md` §3 and §4 carry those lists,
-above a sentence saying whether anyone is coming.
-
-What M4 did **not** settle stays where it was: the dungeon and two city
-services were closed as decisions rather than debts (#144, #145), and
-nobody is coming for either.
-
-What M3 left in place:
-
-- **A machine that powers on like a PC.** `service_floor::reset()` is
-  the self test, and it has two halves now: the vector table, the stubs
-  and the BDA in memory, and then the PIT and the 8259 programmed
-  through real bus cycles, to whichever of them is attached. M2 had only
-  the first half, and the shape of that gap is the one to remember —
-  nothing refused anything, nothing was logged, and the boot simply
-  stopped making progress. Log-don't-fake cannot catch a program that
-  never asked.
-- **The surface a real boot asks for**, each item driven by a stop line
-  and recorded on its issue: INT 21h `AH=25h/35h/44h`; INT 10h
-  `AH=00h/05h/08h/0Fh/11h`; the BDA's video block; interrupts enabled at
-  DOS entry. What the boot never asked for is written down too — the DOS
-  memory functions, the keyboard hardware path, EXEC — and none of it
-  was built on spec.
-- **A raster at 3DAh.** The status register's timing bits are a formula
-  against `machine::time()` rather than a constant, so a program that
-  polls for vertical retrace terminates. Nothing in the boot polls it;
-  this closed a hang before anything hit it.
-- **A third answer beside "stop" and "fake":** a request the machine can
-  honestly record but not honestly perform, reported as a notice.
-  `docs/machine.md` §5 has the rule and the test for when it applies.
-- **`synthetic_boot`** in `tests/programs` — the CI-runnable shape of a
-  boot: it unpacks itself, loads a module off the filesystem, far-calls
-  into it through a relocated pointer, and calls every service M3 added.
-  **A service that closes a boot-log line adds its call there in the
-  same change.**
-- **The first seam** (`machine/seam.h`), which is deliberately the
-  smallest slice of PLAN.md §5's engine and not the engine: off by
-  default, keyed by binary fingerprint, one `bool` per step when
-  nothing is on. Its own header lists what M4 owes on top of it.
-
-What M2 left in place:
-
-- The machine layer — `core/include/amberfolio/machine/` and
-  `core/src/machine/`. The memory map (RAM, ROM, device windows, open
-  bus that reports a first touch rather than inventing an answer), the
-  port map, the device contract, the virtual clock and its deadline
-  scheduler, the BIOS/DOS callout, and the platform interface the hosts
-  consume. `docs/machine.md` is the tour and the house style for adding
-  a device or a service — read it before extending the service surface.
-- The devices: 8253 PIT and a minimal 8259, EGA (planes, latches, the
-  full write pipeline, palette, renderer, INT 10h), PC speaker, and the
-  BIOS keyboard services over the real BDA buffer.
-- The DOS floor: a virtual filesystem with DOS name semantics settled in
-  core, an MZ loader with relocations and a PSP, and PLAN.md §3's INT 21h
-  subset — file I/O, date/time, console output, exit.
-- **Virtual time is the only clock.** Counted in PIT input ticks
-  (1,193,182 Hz); nothing under `core/` reads host time. Devices do not
-  tick, they compute: a channel's count is a formula, its next edge is a
-  deadline.
-- Both hosts run the machine. The SDL3 host takes a directory and a
-  program and returns the exit code the program chose; `--headless`
-  makes that checkable in CI. The wasm dev page puts it in a browser —
-  canvas, AudioWorklet, keyboard — with a headless smoke test asserting
-  the same run. Since #80 the *windowed* path is checked too, on all
-  three desktop targets: `--verify` reads each presented frame back off
-  the render target and compares it pixel for pixel with what was
-  uploaded, `--press KEY@FRAME` puts a real SDL key event through the
-  real mapping, and both run under SDL's `dummy` video and audio
-  drivers. `docs/hosts.md` says what that settles and what is left for
-  a person with a display and a speaker.
-- The exit-criterion suite — seven self-written programs under
-  `tests/programs`, driven through the whole machine, answers asserted
-  case by case. The M1 flat-bus programs still run beside them
-  unchanged, and the whole apparatus stays free of GoogleTest so it
-  builds under Emscripten.
-
-What M1 left in place:
-
-- The CPU core — `core/include/amberfolio/cpu/` and `core/src/cpu/`.
-  A register file with normalized flags, one ALU kernel that owns flag
-  semantics, a decoder (prefixes, ModRM, effective addresses), the
-  dispatch tables (236 primary handlers — 256 less the prefixes and the
-  group opcodes — and 90 group entries, one sorted line each), sixteen
-  instruction files under `instructions/`, and interrupt delivery: one
-  sequence for all four sources, plus the three timing windows a vector
-  suite cannot catch (TF fires one instruction late, STI takes effect
-  one instruction late, a segment-register load holds recognition off).
-  `step()` runs one instruction or one REP iteration; there is no
-  prefetch queue and no cycle counting, by decision (PLAN.md §3).
-- The conformance suite, under the `conformance` label — one CTest case
-  per vector file, fetched and condensed into a cache outside the tree.
-  It is exhaustive: every stem the pin has runs and is expected to pass,
-  the manifest's length is checked against the pin at configure time,
-  and the only skip left is "the vectors are not on this machine",
-  which CI turns into a failure. Adding an instruction now means
-  keeping 323 green files green.
-- `tests/programs` — self-written 8086 programs (a counted loop, a sieve
-  of Eratosthenes to 100,000, and the string instructions over two
-  32 KiB buffers) run to HLT against a flat megabyte of RAM. Their
-  answers and their exact step counts are asserted case by case in the
-  unit suite; `amberfolio-bench` runs the same list and times it, under
-  the `bench` label. It is the one piece of test apparatus that builds
-  under Emscripten, so `ctest --preset wasm` runs the interpreter rather
-  than only building it.
-- `docs/cpu-implementation.md` — the architecture tour and the
-  house style for an instruction handler, written for M1's wide phase
-  and still the guide for touching CPU code. `docs/machine.md` is its
-  sibling for everything around the CPU: adding a device, adding a BIOS
-  or DOS service, and what "log, don't fake" means at that layer.
-
-What M0 left in place, all of it running in CI on every push:
-
-- The unit-test rig — GoogleTest (fetched, never vendored) under CTest,
-  tests in `tests/`, one CTest case per test, on the native targets.
-- The format and lint gates — clang-format, clang-tidy and shellcheck,
-  with the clang tools pinned in `.llvm-version`.
-- An ASan+UBSan job on the `linux-asan-ubsan` preset.
-- The content guard and the DCO check, over every commit in history.
-- The skeleton on all four targets: the core library, a stub SDL3
-  desktop host, and a wasm module that reports its version.
-- Deployment of the wasm host to https://amberfolio.vercel.app on every
-  push to `main` (and to a preview URL for every same-repo PR) by the
-  `deploy` job — built in Actions with the pinned emsdk, shipped
-  prebuilt; see `deploy/vercel/README.md`.
+- **Targeted LLE.** Hardware the game touches is emulated at register
+  level; a thin DOS/BIOS service layer sits under it over a virtual
+  filesystem. The original program runs unmodified.
+- **Core/host split.** Freestanding C++23 core (`core/`), a narrow
+  platform interface, two hosts: SDL3 (`hosts/sdl/`) and a hand-written
+  JS page (`hosts/web/`). Shared host code in `hosts/common/`.
+- **Seams** (`core/include/amberfolio/machine/seam.h`) are the only
+  enhancement mechanism: fingerprint-keyed, overlay-qualified CS:IP
+  points with native C++ handlers. Never injected code.
+- **Enhancement designs are settled.** Implement the mechanism, don't
+  redesign the feature (PLAN.md §5).
+- **Everything is deterministic and replayable.** A recording is keys,
+  ticks and hashes (`docs/replay.md`).
 
 ## Commands
 
@@ -626,109 +72,57 @@ What M0 left in place, all of it running in CI on every push:
 cmake --preset linux-gcc      # or windows-msvc, macos, linux-clang, wasm
 cmake --build --preset linux-gcc
 ctest --preset linux-gcc      # unit + programs + host smoke checks
-ctest --preset linux-gcc -L bench   # just the 8086 programs, timed
-ctest --preset linux-gcc -L smoke   # the hosts, headless
-ctest --preset wasm                 # the machine programs under node
+ctest --preset linux-gcc -L conformance   # the 8088 vectors (fetch first)
+python3 scripts/fetch-conformance-vectors.py
+ctest --preset wasm           # the machine programs under node
 
-cmake --preset linux-asan-ubsan   # the tests under ASan + UBSan, no host
+bash scripts/check-clean.sh   # content guard, before every commit
+bash scripts/check-dco.sh
+bash scripts/check-host-time.sh
+bash scripts/check-format.sh  # clang-format, pinned in .llvm-version
+bash scripts/check-tidy.sh    # needs a configured build tree
+bash scripts/check-shell.sh
+bash scripts/test-guards.sh   # after editing a guard
+bash scripts/test-sweep.sh    # after editing sweep.py
+bash scripts/test-frames.sh   # after editing frames.py
+bash scripts/test-visual-legs.sh
+bash scripts/test-release-bundle.sh
 
-python3 scripts/fetch-conformance-vectors.py   # the CPU oracle, ~726 MB once
-ctest --preset linux-gcc -L conformance        # the 8088 vector suite
-
-bash scripts/check-clean.sh   # content guard — run before every commit
-bash scripts/check-dco.sh     # DCO check — non-merge commits signed off
-bash scripts/check-host-time.sh  # nothing under core/ reads the host's clock
-bash scripts/check-format.sh  # clang-format over tracked C++
-bash scripts/check-tidy.sh    # clang-tidy; needs a configured build tree
-bash scripts/check-shell.sh   # shellcheck over scripts/
-bash scripts/test-guards.sh   # guard self-test — run after editing a guard
-bash scripts/test-sweep.sh    # session-runner self-test — after editing sweep.py
-bash scripts/test-frames.sh   # stills-tool self-test — after editing frames.py
-bash scripts/test-visual-legs.sh  # visual-runner self-test — after editing it
-bash scripts/test-release-bundle.sh  # release-bundler self-test — after editing it
-python3 scripts/sweep.py      # every committed session, on every target
-
-python3 scripts/frames.py diff off/f-11000.ppm on/f-11000.ppm --allow 136,8,311,119
-                              # the stills a --dump run left: look at them,
-                              # crop, hash, diff, contact-sheet. Rects are
-                              # inclusive. Nothing it writes is committable
-
-python3 scripts/visual-legs.py --game-disk <a copy of the disk>
-                              # the on/off confinement legs (tests/visual/*.leg):
-                              # what a seam draws, and everything it must not.
-                              # Skips loudly with no disk
-
-python3 scripts/fetch-ocr-engine.py --into <the served web directory>
-                              # the browser's OCR engine (#174), pinned by
-                              # .tesseract-js-version, never committed
+python3 scripts/sweep.py --targets contrast   # the session relations, no disk
+python3 scripts/sweep.py                      # every session; skips loudly without a disk
+python3 scripts/visual-legs.py --game-disk DIR  # on/off confinement legs
+python3 scripts/frames.py ...                 # look at, crop, diff --dump stills
 ```
 
-The clang tools are pinned in `.llvm-version` and installed from PyPI
-(`pip install "clang-format==$(cat .llvm-version)"`); CONTRIBUTING.md has
-the details. Style is decided by `.clang-format` and `.clang-tidy`, not
-in review — don't argue formatting in prose, change the config.
+Style is decided by `.clang-format` and `.clang-tidy`, not in review.
+Windows: build from a VS developer shell on a short path. README.md has
+per-platform prerequisites; the wasm preset needs the emsdk pinned in
+`.emscripten-version`.
 
-The wasm preset needs an activated emsdk of the version pinned in
-`.emscripten-version`; README.md has the setup and the build layout.
+## Where to look
 
-Windows: build from a VS developer shell, and keep the checkout on a short
-path — the fetched dependencies nest deeply enough that a long one trips
-the 260-character limit while configuring. README.md has the per-platform
-prerequisites.
+| Doing | Read |
+|---|---|
+| Anything CPU | `docs/cpu-implementation.md` |
+| Adding a device or a DOS/BIOS service | `docs/machine.md` |
+| Writing or changing a seam | `docs/seams.md` (§8 house style, §8.4 traps, §10 per-seam facts) |
+| Recording or verifying a run | `docs/replay.md`, `tests/sessions/README.md` |
+| Driving the game headlessly | `docs/playable.md` (legs and keystrokes), `docs/first-light.md` (the boot) |
+| Hosts, flags, the wasm ABI, the speaker | `docs/hosts.md` |
+| The journal (ingestion, store, reader) | `docs/journal.md`, `docs/journal-test-plan.md` |
+| The explored overlay's facts and decisions | `docs/explored-overlay.md` |
+| What each enhancement does for a player | `docs/enhancements.md` |
+| Releases, tags, the bundle | CONTRIBUTING.md "Releases and tags" |
 
-The two guards run in CI on every push, and nothing deploys unless they
-pass. The content guard scans every commit in history, the staged index
-and the working tree for denylisted game-artifact filenames, files over
-256 KiB, and — since #134 — anything that is not text whose path is not
-on its allowlist of committed binaries, which has one entry. It refuses
-an untracked binary lying beside the tree too: a stray dump was exactly
-what a `git add -A` swept into a commit in #134, and a denylist can only
-refuse names somebody thought of in advance. All of it is an auditable
-tripwire against obvious artifacts, not proof by itself; the deeper
-clean-content claim rests on the full public history being open to
-inspection. Public history must never be rewritten (branch protection
-blocks force pushes to main), so both guards must stay green on every
-commit, not just at the tip.
+Facts about the original program (addresses, offsets, screen geometry)
+belong in the doc for the thing that uses them, stated once. Don't
+duplicate them here.
 
-## Non-negotiable rules
+## Working here
 
-- **Clean content.** No material from the original games, ever: no game
-  code (original, disassembled, or translated), no game data or assets,
-  no original byte sequences. *Facts* are fine — addresses, offsets,
-  format descriptions, SHA fingerprints. Full rule: CONTRIBUTING.md.
-- **Every non-merge commit is DCO-signed**: `git commit -s`. (Merge
-  commits are exempt; PRs merge through GitHub.)
-- **New source files start with** `// SPDX-License-Identifier: AGPL-3.0-only`.
-- **License compatibility.** Outbound is AGPL-3.0-only; inbound is
-  Apache-2.0. Dependencies must be AGPL-3.0-compatible — zlib/MIT/BSD/
-  Apache-2.0 are fine; GPL-2.0-only is not.
-- **Naming.** Game and franchise titles appear only nominatively (to
-  describe compatibility), per TRADEMARK.md.
-
-## Architecture (see PLAN.md for the full picture)
-
-- **Targeted LLE.** Hardware the game touches is emulated at register
-  level (8086 interpreter, EGA planar subset, 8253 PIT, speaker); the
-  thin DOS/BIOS service layer beneath it (small INT 21h/16h/10h
-  subsets) is provided over a virtual filesystem. The original program
-  runs unmodified — its own unpacker and overlay manager execute on the
-  emulated CPU.
-- **Core/host split.** A freestanding C++23 core exposes a narrow
-  platform interface (frame out, audio pull, input in, VFS, clock).
-  Two hosts: one SDL3 host for all desktop targets, and a hand-written
-  JS host (canvas/WebAudio/IndexedDB) for wasm — deliberately not
-  SDL-through-Emscripten.
-- **Seams** are the only enhancement mechanism: opt-in runtime patches
-  (CS:IP breakpoints + memory/register surgery + host services) keyed
-  by binary SHA-256 fingerprint. Seam handlers are native C++ compiled
-  into the emulator — never code injected into the emulated machine.
-  Every seam is individually toggleable and **off by default**; with
-  all seams off, the core is a plain machine running an unmodified
-  program, and nothing else may mutate machine state.
-- **Log, don't fake.** An unimplemented service, register, or port is
-  a loud log line and a clean stop — never a silently guessed answer.
-- **Enhancement designs are settled.** The v1 enhancements (automap
-  panel drawn into the emulated EGA planes, journal with OCR at
-  ingestion + in-game reader, Encamp Fix, code-wheel bypass, save
-  management, debug cheats) re-express proven designs as-is; implement
-  the mechanism, don't redesign the feature.
+- Branch per issue, PR to `main`, merge through GitHub. The PR template's
+  two checkboxes are required by a CI job; `gh pr create --body` must
+  include them ticked.
+- A doc says what is true now. History lives in git and closed issues;
+  don't write changelogs into docs or CLAUDE.md.
+- Prefer a small, well-named test over a paragraph explaining a rule.
