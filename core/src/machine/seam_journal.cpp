@@ -1572,7 +1572,6 @@ void render_prompt(journal_state& state, const font_table& font) {
   draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
 }
 
-
 // ---------------------------------------------------------------------------
 // Putting it on the planes
 // ---------------------------------------------------------------------------
@@ -2385,9 +2384,8 @@ struct page_footer_bar {
   const bool more = page + 1U < total;
   const page_walk walk =
       ready && !picture ? walk_pages(text, page) : page_walk{};
-  const page_layout laid = ready && !picture
-                               ? lay_out(text, walk.start)
-                               : page_layout{};
+  const page_layout laid =
+      ready && !picture ? lay_out(text, walk.start) : page_layout{};
   state.set_page_count(static_cast<std::uint16_t>(total));
 
   if (done == 0) {
@@ -3025,9 +3023,8 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
   // made of, so there is no buffer to rasterize and no font to read
   // (#222, #305). Which leaves the prompt as the one thing below that is
   // rasterized here (#346).
-  const bool by_the_program =
-      state.reader() == journal_reader_mode::listing ||
-      state.reader() == journal_reader_mode::showing;
+  const bool by_the_program = state.reader() == journal_reader_mode::listing ||
+                              state.reader() == journal_reader_mode::showing;
   if (by_the_program) {
     // A pass at a time. Until the last one the signature is left alone, so
     // the next arrival comes back here and carries on rather than deciding

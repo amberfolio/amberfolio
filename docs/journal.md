@@ -417,15 +417,23 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   (`machine/journal.h`, `docs/seams.md` §3). The cap is four kilobytes;
   a longer entry is delivered truncated and the reader says so.
 - **A correction is what the reader gets**; the reader cannot tell.
-- **Two page sizes** (M5-E4d, #305): the frame drawer's full screen, or
-  the roster panel. `journal_state::bar_live()`, set and cleared at the
-  `Notes` splice's own points, says whether the party's own command-bar
-  routine is running, the one precondition under which the program's
-  screen composer may be asked to put the screen back. So a `Notes` row
-  and F1 on the adventuring screen open a full screen; F1 at camp or with
-  a vendor's bar up opens the panel; a citation opens the panel always,
-  because it fires inside a script's narration with an NPC possibly in
-  the viewport.
+- **A citation records and opens nothing** (#346). The game's own
+  narration is what tells a player a note arrived; the citation watch
+  puts the entry on the `Notes` log with the moment it was named, still
+  carrying its `*`, and stops. No host is asked for the text or the
+  pictures until somebody opens the entry.
+- **One page size** (M5-E4d #305, #346): the frame drawer's full screen,
+  twenty rows of thirty-eight characters. `journal_state::bar_live()`,
+  set and cleared at the `Notes` splice's own points, says whether the
+  party's own command-bar routine is running, the one precondition under
+  which the program's screen composer may be asked to put the screen
+  back — so the reader opens only there. `Notes` satisfies that by
+  construction and F1 is answered against it, which is why F1 at camp,
+  under a vendor's bar, or while a script is narrating opens nothing and
+  is left in the buffer for the program. The roster panel is still where
+  the **prompt** is drawn: four digits and a caption on a whole screen is
+  a whole screen for nothing, and the roster drawer is a give-back that
+  needs no precondition.
 - **Reflow** (#316), in the wrap and not at ingestion, so the store keeps
   the engine's lines for a correction to be written against: a single
   newline is a space; a blank line is a paragraph break and gets one
@@ -433,7 +441,7 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   dropped, when there is a letter on each side (a guess: `WITH-` against
   `WELL-`). Cost: a list of one-line items runs together; the fix is a
   blank line between items in the correction field.
-- **Transliteration** (M5-E4c, #219): the panel draws one of the
+- **Transliteration** (M5-E4c, #219): a page is drawn one of the
   program's sixty-four glyphs per byte, so on the way into the delivery
   buffer curly quotes and dashes become their plain forms, an ellipsis
   three stops, any other code point or invalid byte one visible
@@ -447,9 +455,10 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   same way the program's own bars do. Drawn as the program draws bars,
   in one call for the row in the message green and one more for each
   word's initial over its own cell in the bright - up to four, fewer on
-  any bar that has dropped a word. The panel keeps `F1 MORE`, because it
-  sits beside the program's *live* bar, whose letters `N`, `P` and `E`
-  already are.
+  any bar that has dropped a word. The prompt's panel spells no keys at
+  all, because it sits beside the program's *live* bar, whose letters
+  `N`, `P` and `E` already are; it says `RETURN OPENS IT` and names no
+  others.
 - **`Notes` hands the highlight back** (#330): the bar routine's cursor
   group lives in the shared byte of M5-E1g (#304). `--watch 6B2B` reads
   `01` after a load, `07` from the frame `N` is pressed, `07` after the
@@ -545,10 +554,9 @@ from the game.
 
 ### 11.2 What it becomes
 
-**The box.** A full-screen page's interior is 38 cells by 20 rows:
-**304 x 160 pixels** at (8, 24) on the 320x200 screen. The panel's copy
-is exactly half, 152 x 80, inside the panel's 176 x 96 body, so one stored
-picture serves both shapes with a 2:1 average at draw time.
+**The box.** A page's interior is 38 cells by 20 rows: **304 x 160
+pixels** at (8, 24) on the 320x200 screen. A picture is reduced to that
+box once, at ingestion, and drawn whole.
 `machine::journal_art_width`/`_height` are declared in core and
 `static_assert`ed against the frame in `seam_journal.cpp`.
 
@@ -656,10 +664,8 @@ level-to-index ramp; the packed levels are walked in place.
   from the caption into the drawing and `PREV` back. `reader_pages` in
   `seam_journal.cpp` is how many pages of text and how many pictures.
 - **A refusal is a page too.** An entry can have pictures and no text, so
-  `NOTHING WAS READ` is page one of two, and a citation opens the reader
-  when the entry has a picture.
-- **The full screen draws it whole and the panel halved**, a 2x1 average
-  rounded toward ink on a tie, so a hairline is not lost.
+  `NOTHING WAS READ` is page one of two rather than the whole entry.
+- **It is drawn whole**, in the box it was reduced to.
 - **`art_ramp`** in `seam_journal.cpp`, ink first: the program's bright,
   its grey, its dark grey, and black, because the reader draws on a black
   ground and paper is the ground.
@@ -688,7 +694,7 @@ the wrong page being caught, the store's round trip and refusals, and an
 ingestion producing pictures with no OCR engine present
 (`hosts/common/tests/journal_picture_test.cpp`, the `JournalStorePictures`
 cases, `hosts/sdl/cmake/run-journal.cmake`). The reader's half, including
-the panel's average, an entry with a drawing and no text, an atlas fetched
+an entry with a drawing and no text, an atlas fetched
 a page at a time, a page number outliving its entry, and the two-arrival
 ordering: `tests/core/machine/seam_journal_test.cpp`'s `JournalArt` and
 `JournalArtScreen`, and `hosts/common/tests/host_services_test.cpp`'s

@@ -25,11 +25,10 @@ program START.EXE
 # shows, and the four things a reader of one can get wrong side by side -
 # rows 0..39, four bars of thirty-eight pixels, one per stored tone,
 # darkest first; rows 40..79, a one-pixel comb of ink and paper in
-# alternate columns, which is what the panel's 2x1 average exists for,
-# since a sampler would throw every other line away; rows 80..119, a solid
-# block of ink at x 56..95; and a one-pixel ink border round the whole of
-# it. `art_ramp` in `seam_journal.cpp` is which palette index each tone
-# becomes.
+# alternate columns, which is what the reducer at ingestion has to keep
+# rather than sample away; rows 80..119, a solid block of ink at x 56..95;
+# and a one-pixel ink border round the whole of it. `art_ramp` in
+# `seam_journal.cpp` is which palette index each tone becomes.
 store tests/visual/reader-art-store.txt
 both code-wheel
 

@@ -1468,6 +1468,9 @@ TEST(JournalReader, TheKeyAsksForAnEntryAndReturnOpensIt) {
   EXPECT_EQ(r.reader().digits(), "12");
   EXPECT_EQ(r.row_text(reader_body_y + (4 * glyph_height)),
             prompt_row("ENTRY 12"));
+  EXPECT_EQ(r.row_text(reader_footer_y), centred("RETURN OPENS IT"))
+      << "the prompt names the key that opens what it is pointed at, and "
+         "no others: the rest of that row is the program's live bar";
 
   r.forget_the_rows();
   r.type(key_return);
@@ -1646,7 +1649,8 @@ TEST(JournalReader, ALongEntryIsWrappedAtTheWordAndPaged) {
   r.host.text = "aaaaa bbbbb ccccc ddddd eeeee fffff ggggg hhhhh";
 
   an_open_page(r, Entry(1));
-  EXPECT_EQ(r.row_drawn(screen_first_row), "aaaaa bbbbb ccccc ddddd eeeee fffff");
+  EXPECT_EQ(r.row_drawn(screen_first_row),
+            "aaaaa bbbbb ccccc ddddd eeeee fffff");
   EXPECT_EQ(r.row_drawn(screen_first_row + 1), "ggggg hhhhh");
   EXPECT_EQ(r.reader().page_count(), 1u);
 }
@@ -1677,7 +1681,8 @@ TEST(JournalReader, TheScansOwnLineBreaksAreNotThePages) {
       "iiii\n";
 
   an_open_page(r, Entry(1));
-  EXPECT_EQ(r.row_drawn(screen_first_row), "aaaa bbbb cccc dddd ee ff gggg hhhh");
+  EXPECT_EQ(r.row_drawn(screen_first_row),
+            "aaaa bbbb cccc dddd ee ff gggg hhhh");
   EXPECT_EQ(r.row_drawn(screen_first_row + 1), "iiii");
   EXPECT_EQ(r.row_drawn(screen_first_row + 2), "")
       << "three of the scan's lines, and two of the page's";
@@ -1724,7 +1729,8 @@ TEST(JournalReader, AWordHyphenatedAcrossTheScansLinesIsOneWord) {
       "in bow range of us";
 
   an_open_page(r, Entry(1));
-  EXPECT_EQ(r.row_drawn(screen_first_row), "the story went within bow range of us");
+  EXPECT_EQ(r.row_drawn(screen_first_row),
+            "the story went within bow range of us");
   EXPECT_EQ(r.row_drawn(screen_first_row + 1), "");
 }
 
@@ -4092,7 +4098,7 @@ TEST(JournalArt, AnEntryThatIsProseCostsOneCalloutAndHoldsNothing) {
   const std::string bar = r.pascal_at(
       static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
       static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
-  EXPECT_EQ(bar.find("/"), std::string::npos)
+  EXPECT_EQ(bar.find('/'), std::string::npos)
       << "no page counter, because there is one page";
 }
 

@@ -1025,7 +1025,7 @@ reader's give-back paints over it inside a batch, so the reader calls
 `automap_state::note_panel_painted_over()` and the map redraws at its
 next arrival with its open flag untouched (#332).
 
-### The journal reader (#175, #221, #222, #232, #305, #328)
+### The journal reader (#175, #221, #222, #232, #305, #328, #346)
 
 PLAN.md §5 item 2's in-game half; ingestion is #174 and
 `docs/journal.md`, and §9 there is the door between the halves.
@@ -1046,8 +1046,10 @@ section's notation (decimal; Roman for proclamations), a plural
 followed by a list joined by commas and "and". The window is normalized
 to upper case and single spaces with commas kept, emptied at the message
 boundary and on a match; a list that runs off the end of what has been
-printed waits for the rest. Every entry named goes on the log in order
-and the first opens. The word "journal" is not part of the shape.
+printed waits for the rest. Every entry named goes on the log in order,
+unread, and **none of them opens** (#346): the program's own narration is
+what tells a player a note arrived. The word "journal" is not part of the
+shape.
 `journal_citations_in()` is the pattern as a free function;
 `JournalCitation.*` tests it.
 
@@ -1055,19 +1057,23 @@ and the first opens. The word "journal" is not part of the shape.
 
 - **The panel**: the automap's rect, twenty-two columns by fourteen rows
   of the program's font, plane surgery in glyphs read from the font
-  pointer. It is the one region a seam can take and give back, and the
-  reader is modal over the map (the same pixels). A citation's page is
-  always the panel, because it fires inside narration where an NPC can
-  be in the viewport.
-- **The full screen** (M5-E4b #222, M5-E4d #305): the log, and a page
-  opened from the bar, drawn by the program's frame and string drawers
-  as a box of twenty rows of thirty-eight characters (the log ten rows
-  of forty), painted over several arrivals inside the batch limits. The
-  interior is cleared and the frame redrawn on every page. Allowed
-  exactly while `journal_state::bar_live()` holds, the one state in
-  which the composer may be asked to put a screen back; so F1 at camp or
-  under a vendor's bar stays in the panel.
-- **Give-back**: the panel asks for the roster drawer; the full screen
+  pointer. It is the one region a seam can take and give back, and since
+  #346 the **prompt** is all that is drawn in it — a whole screen for
+  four digits and a caption would be a whole screen for nothing.
+- **The full screen** (M5-E4b #222, M5-E4d #305, #346): the log and every
+  page of an entry, drawn by the program's frame and string drawers as a
+  box of twenty rows of thirty-eight characters, painted over several
+  arrivals inside the batch limits. The interior is cleared and the frame
+  redrawn on every page. There is no second size: the panel page a
+  citation used to open went with the citation's page. Allowed exactly
+  while `journal_state::bar_live()` holds, the one state in which the
+  composer may be asked to put a screen back — so **the reader opens
+  nowhere else**, and F1 at camp, under a vendor's bar or inside a
+  script's narration is left in the buffer for the program rather than
+  claimed. `Return` at the prompt checks it again, because a key this
+  seam does not claim still reaches the program while a prompt is up.
+  The reader is modal over the map, which is the same pixels either way.
+- **Give-back**: the prompt asks for the roster drawer; the full screen
   calls the routine the program uses on the way out of every full-screen
   view (the scaffold, view, roster and status line) plus one injected
   space so the menu-bar routine returns and redraws the bar. **At the
@@ -1100,10 +1106,9 @@ and the first opens. The word "journal" is not part of the shape.
   program's commands. `tests/visual/rdr-bar.leg` is the measurement:
   without the give-back, 190 pixels differ between the frame before the
   journal opened and the frame after it closed, all on the bar row.
-- **Art** (#328): an entry's picture is the page after the caption;
-  full-screen it is painted by plane surgery in the arrival *after* the
-  frame's batch (§8.4), in the panel at half scale. `docs/journal.md`
-  §11.
+- **Art** (#328): an entry's picture is the page after the caption,
+  painted whole by plane surgery in the arrival *after* the frame's batch
+  (§8.4). `docs/journal.md` §11.
 - The prompt's cursor is a rule in the seam's own pixels, because an
   underscore hits a font index nothing else uses. The log's timestamp is
   the machine's seeded wall clock.
@@ -1115,16 +1120,16 @@ configuration, restored by `host::restore_journal_log()`. Both hosts
 print the callout at the end of a run
 (`host-service journal-open calls=1 last=4`).
 
-**Keys**: F1 opens the reader, cycles the section at the prompt (#218),
-turns pages, closes on the last. While the reader is up: Escape closes,
-Backspace pages back or rubs out a digit, digits and Return are the
-prompt's. Space and Return are **not** taken on a panel page, because a
-citation opens in a story event and the key that turns the game's page
-stays the game's. The log and a full-screen page take **every** key
-(the bar is live underneath, and a key let through walked the party
-unseen, #230); `E` leaves the log. Reads are answered with `-`. Function
-keys have no character (`keyboard.h`); F11 and F12 never reach the
-machine (`docs/hosts.md` §3).
+**Keys**: F1 opens the reader on the party's own bar and nowhere else
+(#346), cycles the section at the prompt (#218), and is `NEXT` on a page.
+While the reader is up: Escape closes, Backspace pages back or rubs out a
+digit, digits and Return are the prompt's. The prompt takes those and
+nothing else, because it is drawn beside the program's live bar and the
+rest of that bar's letters are the program's. The log and a page take
+**every** key (the bar is live underneath, and a key let through walked
+the party unseen, #230); `E` leaves either. Reads are answered with `-`.
+Function keys have no character (`keyboard.h`); F11 and F12 never reach
+the machine (`docs/hosts.md` §3).
 
 **State**: `journal_state` (`bar_live()`, the window, the page);
 `machine::journal()` for the text. **Gate**: deliberately unset, though
@@ -1132,12 +1137,14 @@ machine (`docs/hosts.md` §3).
 refuse a player whose store was copied from another machine, and the
 reader already says when the host has no text.
 
-**Fidelity**: on, nothing cited and F1 never pressed, the run is
-identical until the party's bar is first drawn; `quiet-journal` is
-therefore contrast `quiet`, the one seam that cannot claim `identical`
-(§7). Exercised sessions: `reader`, `notes`, `cite` (a real citation, no
-key pressed), `subset-map-reader`. There is no contrast pair, because
-the store is a host file and not in the stream. Legs:
+**Fidelity**: on and the reader never opened, the run is identical until
+the party's bar is first drawn — a citation included, since #346 leaves
+it writing a log line and drawing nothing. `quiet-journal` is therefore
+contrast `quiet`, the one seam that cannot claim `identical` (§7), and
+the splice is the whole of what it is contrasting on. Exercised sessions:
+`reader`, `notes`, `cite` (a real citation, no key pressed),
+`subset-map-reader`. There is no contrast pair, because the store is a
+host file and not in the stream. Legs:
 `tests/visual/not-bars.leg`, `not-log-giveback.leg`, `not-log-modal.leg`,
 `not-page-back.leg`, `not-page-modal.leg`, `rdr-prompt.leg`,
 `rdr-page.leg`, `rdr-bar.leg`, `rdr-art.leg`, `rdr-map-back.leg`.
@@ -1145,7 +1152,7 @@ the store is a host file and not in the stream. Legs:
 **Traps specific to it**: the watch address and the shape (#232); the
 blocking read (#266); the batch ordering for pictures (#328); the
 give-back inside a batch (#332); the composer under a vendor's bar
-(M5-E2d); the one keystroke a read is answered with (#325). Open: #312.
+(M5-E2d); the one keystroke a read is answered with (#325).
 
 ### The explored overlay (#179, M5-E5a to M5-E5g)
 
