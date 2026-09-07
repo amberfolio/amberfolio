@@ -268,7 +268,31 @@ What M5 left in place:
   is the leg, and it is the first to ask the runner for the shorter boot
   (`code-wheel-answered`, the flag #293 needs): with the give-back taken
   out, the frame after the journal closes differs from the frame before it
-  opened in 190 pixels, all on the bar row. `docs/journal.md` §10),
+  opened in 190 pixels, all on the bar row. **An entry that is a drawing
+  shows the drawing** since #328's second half: several of the journal's
+  entries are maps, mazes and diagrams, an OCR engine reads the words on
+  such a page and the words are a heading and a caption, so what the
+  reader used to show for one was that caption and nineteen empty rows.
+  A picture is reduced once at ingestion into the reader's own box, four
+  tones and no colour, and kept in the player's store (#336, the first
+  half); the reader draws it as **the page after the caption**, so `NEXT`
+  reaches it with no new key and no new mode. On a full screen it is
+  drawn whole, 304x160, by plane surgery into the box the program's own
+  frame drawer has just put up — in the arrival *after* the one that
+  queued that frame, because a handler's own pixels land before a batch
+  does and one drawn beside the frame goes under it (`docs/seams.md`
+  §8.4's newest trap); in the roster panel it is the same picture at half
+  scale, averaged rather than sampled. Which palette index each tone
+  becomes is `art_ramp`, a knob in the reader, so the day somebody looks
+  at one and says it reads wrong the answer is a line of core and not a
+  re-ingestion of anybody's document — the arrangement
+  `explored_reveal_radius` has with the automap's sidecar. It crosses on
+  a host service of its own, `journal_art`, the fifth and the second that
+  hands something back, whose every answer carries how many pictures the
+  entry has because that count is half of how many pages the reader
+  draws. **Nobody has looked at one on a display**, in either size, and
+  that is now the whole of what #328 has left. `docs/journal.md` §10 and
+  §11),
   `explored` (M5-E5 #179, the marking reversed by M5-E5f #263 and its
   colour and radius set by M5-E5g #299 — the fourth M5 enhancement and
   the third seam that draws, on the game's own **overworld** map: the

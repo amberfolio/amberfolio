@@ -168,7 +168,10 @@ rm -f "$repo/tests/visual/empty-pair.leg" "$repo/tests/visual/empty-single.leg" 
       "$repo/tests/visual/unknown-rect.leg" "$repo/tests/visual/no-store.leg" \
       "$repo/tests/visual/good.leg"
 mkdir -p "$repo/tests/visual"
-cp "$here"/../tests/visual/reader-store.txt "$repo/tests/visual/"
+# Both of them: `rdr-art.leg` has a store of its own, because the
+# picture in it would move frames the cite-all legs have pinned
+# (#328).
+cp "$here"/../tests/visual/reader-store.txt "$here"/../tests/visual/reader-art-store.txt "$repo/tests/visual/"
 legs "$repo"
 expect_code "the committed legs are all skipped without a disk" 1
 if printf '%s' "$out" | grep -qE '^(SKIP|ok|FAIL)' &&

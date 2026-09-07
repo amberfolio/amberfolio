@@ -353,8 +353,9 @@ address and the frame, all three, in one picture.
 
 **A host service** — `seam_context::call_host(which, argument)`,
 answered by the `seam_host_services` a host attached with
-`seam_engine::set_host()`. Two services: `journal_open` and
-`automap_update`. Since M5-D1 (#169) both hosts attach the same
+`seam_engine::set_host()`. **Five** services now: `journal_open` and
+`automap_update` (M5-D1, #169), `journal_seen` (#222),
+`code_wheel_answered` (#291) and `journal_art` (#328). Since M5-D1 both hosts attach the same
 implementation — `hosts/common/include/amberfolio/host/host_services.h`,
 one object, linked into the SDL host and into the wasm module — so a
 callout means the same thing on a desktop and in a browser.
@@ -375,6 +376,16 @@ three terms, and the same category as the exploration state a host reads
 on the other service. A host writing there is not a host writing machine
 state, and the test that says so is that a machine holding a page of
 somebody's journal hashes as the machine that is not.
+
+The journal's pictures ride the same arrangement (#328) and add the one
+thing a second buffered service teaches: **an answer that a caller pages
+by has to be carried by the refusals too.** `journal_art` hands over one
+of an entry's drawings, and every answer it gives — the picture, the
+picture it has not got, the entry that has none — carries how many the
+entry has, because that count is half of how many pages the reader
+draws. A service that answered the count only when it succeeded would
+have a reader whose page count changed depending on whether the page it
+was standing on could be drawn.
 
 That record is **polled**, which is #153's lesson one layer up: a stream
 cannot express "it never asked". `seam_engine::host_calls(which)` counts
@@ -1158,6 +1169,15 @@ Every entry names the seam it was learned on.
   the automap's panel erased with its own bookkeeping saying it was still
   up, and the player's next Tab was spent closing a panel that was not on
   the screen (journal reader and automap, #332).
+- **A handler's own pixels land before the batch it queued.** Writes a
+  handler makes itself — port surgery, a byte into the video window —
+  happen the instant it runs; a call into the program happens when the
+  batch runs, which is after the handler returns. So a seam that draws
+  into a box it asked the program to draw has to do it in **two
+  arrivals**: queue the frame, come back, paint. In one it paints under
+  the frame it painted beside. The journal's picture pages are the worked
+  example, and it is #303's ordering — the program first and the seam
+  after — one screen up (journal pictures, #328).
 - **A point armed where a module's read landed is armed at the wrong
   place** as soon as the manager moves it. Resolve from the program's own
   word (§4; `cheat-kill-all`, #131).

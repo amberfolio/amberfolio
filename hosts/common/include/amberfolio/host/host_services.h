@@ -45,7 +45,10 @@
 // and it is off unless a host has been asked for it.
 //
 // `journal_open` is the other (M5-E4, #175), and it is the one that has to
-// hand something *back*. `serve()` answers `void` and `call_host()`
+// hand something *back* — as does `journal_art` beside it (#328), which
+// is the same arrangement for one of an entry's pictures and carries the
+// count of them on every answer, refusals included, because the count is
+// what the reader pages by. `serve()` answers `void` and `call_host()`
 // answers a `bool`: between them they can say a call was served and not
 // what it found. So what it found goes into `machine::journal()`, which is
 // core's own observation buffer for exactly this — not machine state, on

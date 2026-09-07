@@ -1157,10 +1157,16 @@ uint32_t af_machine_seam_pull(af_machine* box, const char* id);
 //
 // `which` is a `machine::seam_host_service`: 0 for the journal reader's
 // `journal_open`, 1 for `automap_update`, 2 for `journal_seen`, 3 for
-// `code_wheel_answered` (#291). There were three until #169;
-// `save_state_changed` went with the enhancement that would have called
-// it (#176, withdrawn), because a service with no consumer is a surface
-// built on spec.
+// `code_wheel_answered` (#291) and 4 for `journal_art` (#328). There
+// were three until #169; `save_state_changed` went with the enhancement
+// that would have called it (#176, withdrawn), because a service with no
+// consumer is a surface built on spec.
+//
+// **A service added here is not an ABI bump**, and the rule above is why:
+// minor moves when entry *points* are added. Nothing was added or
+// changed — the same two calls answer, over one more value of an
+// argument they already documented as answering zero for anything that
+// is not a service.
 
 /// How many calls of `which` a host has **served** on this machine since
 /// the last reset. Zero for a `which` that is not a service.

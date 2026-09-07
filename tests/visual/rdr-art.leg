@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# RDR-ART: an entry that has a picture — the caption, the drawing after
+# it, and the screen underneath given back whole (#328).
+#
+# **What this leg is for.** Several of a journal's entries are drawings,
+# and until this the reader showed their one-line caption and nineteen
+# empty rows. A picture is now the page *after* the caption, so `NEXT`
+# walks onto it; it is drawn by plane surgery into the box the program's
+# own frame drawer has just put up, and — this is the part that can only
+# be wrong on a screen — **in the arrival after the one that queued that
+# frame**. A handler's own pixels land the instant it runs and a call
+# into the program lands when the batch does, so a picture drawn beside
+# the frame goes *under* it. What a leg can hold is the consequence: the
+# picture page settles and holds still, and the screen the journal was
+# opened over comes back byte for byte.
+#
+# **A single leg, and it has to be one**, for `rdr-bar.leg`'s reason:
+# `N` and `E` reach the program in a seam-off run, so a pair would be
+# diffing the program's own answer to two letters as well as the reader.
+#
+# **A store of its own, and not a picture added to `reader-store.txt`.**
+# Four legs in this directory fill the log with `--cite-all-journal` and
+# open whatever row the cursor lands on, so giving an existing entry a
+# second page would move frames they have pinned - and three of those
+# four cannot be run without the code-wheel document, which is exactly
+# the kind of change nobody would find out about here.
+#
+# **The picture is this repository's own and is not a drawing of
+# anything** (`reader-art-store.txt`, PLAN.md §6). It is 152x120 — half the
+# box, so the centring shows — and it is the four things a reader of one
+# can get wrong, side by side:
+#
+#   * rows 0..39, four bars of thirty-eight pixels, one per stored tone,
+#     darkest first. On the screen they are the ramp: white, light grey,
+#     dark grey, and the ground itself (`art_ramp` in
+#     `seam_journal.cpp`);
+#   * rows 40..79, a **one-pixel comb** of ink and paper in alternate
+#     columns — which is what the panel's 2x1 average exists for, since a
+#     sampler halving it would throw every other line away and leave
+#     either a white field or a black one;
+#   * rows 80..119, a solid block of ink on paper, x 56..95;
+#   * a one-pixel ink border round the whole of it, so the picture's own
+#     extent is on the screen rather than inferred from where the ink
+#     stops.
+#
+# **Driven, on the shorter boot** (`--code-wheel-answered`, #291), by
+# hand, because the runner does not yet carry that flag for a re-record —
+# #293 owes every leg in this directory its re-drive. Same host, same
+# disk copy, same `--wall none`, same dump cadence. Measured off those
+# stills, at 25 frames:
+#
+#   * the prompt at 9,625, the digit at 10,025, the entry's text page —
+#     full screen, because it was opened from the party's own bar — from
+#     10,575, the **picture** from 11,675, and the adventuring screen
+#     again from 13,200;
+#   * a picture page settles in about 75 frames where a twenty-row text
+#     page takes about 230 (#305), and it is the same mechanism in both:
+#     one batch for the clear, the frame and the bar, and then one
+#     arrival more. For a page of text that second part is five passes of
+#     four rows; for a picture it is a single blit.
+#   * the four tone bars, looked at once at 2x on the still at 12,400:
+#     white, light grey, dark grey, black, left to right, with the comb
+#     under them reading as a grey field of vertical lines and the block
+#     under that solid. Which is the ramp doing what it says, and the
+#     only part of this a person had to judge.
+#
+# **And the picture that matters was looked at too**, off the
+# maintainer's own ingested edition rather than off this store, because
+# no committed file may carry a page of anybody's book: Entry 4's cloth
+# map and the atlas's three maps, on the whole screen and halved in the
+# roster panel. `docs/journal.md` §11.6 has what that run said and what
+# it did not settle.
+about a picture of an entry: the caption, the drawing after it, and the screen given back
+kind single
+program START.EXE
+store tests/visual/reader-art-store.txt
+both code-wheel
+# The boot #291 left, as `rdr-bar.leg` takes it: the seam on and the
+# challenge already answered, so there is no wheel screen in this script.
+code-wheel-answered
+seam journal
+until 300000000
+every 25
+
+# The prompt rather than the log, because a picture is a fact about an
+# entry and not about what the game has cited: F1, the number, Return,
+# `NEXT` onto the drawing, and `EXIT` out through the program's own
+# composer.
+key L@7550
+key A@7800
+key F1@9600
+key 4@10000
+key Return@10400
+key N@11600
+key E@13000
+
+# Each screen, holding still with nothing pressed.
+same 9700-9975
+same 10100-10375
+same 10600-11575
+same 11700-12975
+
+# And the screen the journal was opened over, back again after it, with
+# nothing excepted — the same `equal` `rdr-bar.leg` earned when the
+# `Notes` splice began handing the bar highlight back (#330). Nothing
+# here touches that bar, which is why this leg may borrow the claim: a
+# page opened from the prompt goes out through the program's own screen
+# composer, and 13,200 onwards is the 9,000-9,600 still exactly.
+same 13250-15075
+equal 9575 13500

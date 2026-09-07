@@ -89,11 +89,22 @@ export const AF_SEAM_NONE = 3;
 /// prints (`seam_host_service_name`), so a browser run and a desktop run
 /// spell them the same.
 ///
-/// Two, since M5-D1 (#169). There were three names in the header before
-/// it: `save_state_changed` went with the enhancement that would have
-/// called it, because a service with no consumer is a surface built on
-/// spec.
-export const HOST_SERVICES = ['journal-open', 'automap-update', 'journal-seen'];
+/// **Five**, and this list had gone stale at three: `journal-seen`
+/// (#222) reached it, `code-wheel-answered` (#291) did not, and
+/// `journal-art` (#328) is the fifth. An index that is short is not a
+/// wrong name, it is a missing row — the dev page simply stopped
+/// reporting the services past the end of it.
+///
+/// There was a name here that went the other way: `save_state_changed`
+/// left with the enhancement that would have called it (M5-D1, #169),
+/// because a service with no consumer is a surface built on spec.
+export const HOST_SERVICES = [
+  'journal-open',
+  'automap-update',
+  'journal-seen',
+  'code-wheel-answered',
+  'journal-art',
+];
 
 /// What one enabled seam did, as the desktop host says it at the end of a
 /// run (hosts/sdl/src/main.cpp): `armed fired=N`, or `inert fired=N`, and

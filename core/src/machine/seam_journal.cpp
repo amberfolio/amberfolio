@@ -216,6 +216,38 @@
 // slides. The cursor stays, because it is what `Return` opens.
 //
 //
+// The entries that are pictures (#328)
+// ------------------------------------
+//
+// Several of a journal's entries are drawings, and an OCR engine reads
+// every word on such a page — which is the heading and a one-line
+// caption. So the reader showed two lines and nineteen blank rows.
+//
+// A picture is reduced once, at ingestion, on the player's own machine
+// (`hosts/common/.../journal_picture.h`), and kept in their own store; it
+// crosses into this seam through a host service of its own,
+// `journal_art`, into a buffer in `journal.h` on the same terms the
+// entry's text crosses on. What arrives is **levels and not colours** —
+// four tones — because tone is the whole of what one hue of ink on paper
+// carries, and because the palette this program has installed is a fact
+// about a running machine that an ingestion cannot know. `art_ramp`
+// below is where a level becomes an index, and it is the knob.
+//
+// **A picture is a page of the entry**, after its text pages, in printed
+// order: the caption is the text and the drawing follows it on the
+// printed page, so `NEXT` walks from one into the other and `PREV` walks
+// back. No new key, no new mode, and the paging #319 built already says
+// which page a reader is on.
+//
+// It is drawn twice over, because a page is drawn in two sizes. The
+// panel's copy is rasterized into this seam's own buffer at half scale
+// and goes on the planes through the blit every other panel uses. The
+// full screen has no such buffer — the program draws that box — so a
+// picture there is plane surgery straight into the box's interior, in
+// the arrival *after* the one that had the program draw the frame,
+// because a handler's own writes land before a batch does.
+//
+//
 // The fidelity claim, stated for this seam (docs/seams.md §8.5)
 // -------------------------------------------------------------
 //
@@ -415,6 +447,33 @@ constexpr std::uint8_t colour_black = 0;
 constexpr std::uint8_t colour_footer = 7;
 constexpr std::uint8_t colour_body = 10;
 constexpr std::uint8_t colour_title = 14;
+
+/// **The ramp**: which palette index each of a stored picture's four
+/// levels is drawn in (#328).
+///
+/// A picture crosses as *tone* and never as colour, for the reason
+/// `machine/journal.h` gives at length: the drawings are one hue of ink
+/// on paper, and the palette the program has installed is a fact about a
+/// running machine that an ingestion cannot know. So the choice of index
+/// is made here, where the rest of this panel's colours are chosen, and
+/// **it is a knob**: changing it re-draws every player's pictures and
+/// invalidates nobody's ingestion, which is the same arrangement
+/// `explored_reveal_radius` has with the automap's sidecar.
+///
+/// Ink first, because level zero is the darkest sample and this panel
+/// draws on a *black* ground — so the most ink becomes the brightest
+/// index and the paper becomes the ground itself. Four greys of the
+/// sixteen: the program's own bright, its grey, its dark grey, and
+/// black.
+///
+/// **Nobody has looked at one of these on a display** (`docs/journal.md`
+/// §11.2), and #263 and #299 are two recorded instances of exactly that
+/// gap producing the wrong answer twice. This is the first thing to
+/// change when somebody does.
+constexpr std::array<std::uint8_t, journal_art_levels> art_ramp{15, 7, 8,
+                                                                colour_black};
+static_assert(art_ramp[journal_art_paper] == colour_black,
+              "paper is the panel's own ground and is drawn as nothing");
 
 // ---------------------------------------------------------------------------
 // The command on the adventuring bar (M5-E4a, #221)
@@ -817,6 +876,16 @@ static_assert(journal_art_height / 2U <=
                   static_cast<unsigned>(reader_body_rows * glyph_rows),
               "and down");
 
+/// Where that box begins on the 320x200 screen, in pixels: the interior
+/// of the frame, which starts one cell in and below the row the frame
+/// writes its title on. The same two numbers the rows are drawn at, in
+/// pixels rather than character cells, because a picture is not on the
+/// character grid and everything else here is.
+constexpr int art_screen_x = list_frame_left * glyph_columns;
+constexpr int art_screen_y = list_first_row * glyph_rows;
+static_assert(art_screen_x == 8 && art_screen_y == 24,
+              "the page's interior begins at (8, 24)");
+
 /// The most rows either shape asks for, which is what one laid-out page
 /// is sized to.
 constexpr int reader_max_body_rows = screen_page.rows;
@@ -1146,6 +1215,39 @@ struct page_walk {
   return walk;
 }
 
+/// How many pages an entry has, and where its pictures start (#328).
+///
+/// **A picture is a page of the entry, after its text pages, in printed
+/// order.** The caption is the text and the drawing follows it on the
+/// printed page, so `NEXT` walks from the caption into the picture and
+/// `PREV` walks back — no new key, no new mode, and the paging #319 built
+/// already says which page a reader is on.
+///
+/// A refusal is one page too. It has to be, because an entry can be a
+/// drawing with pictures and *no* text — a picture is reduced whether or
+/// not an OCR engine was installed, since a drawing has no words in it
+/// (`docs/journal.md` §11.4) — and a reader that made the refusal the
+/// whole entry would show `NOTHING WAS READ` over a picture it was
+/// holding.
+struct reader_pages {
+  /// Pages of the entry's own text, or the one page a refusal is.
+  unsigned text{1};
+  /// Pictures after them, as the last callout said the entry has.
+  unsigned art{0};
+
+  [[nodiscard]] unsigned total() const noexcept { return text + art; }
+};
+
+[[nodiscard]] reader_pages count_pages(const journal_state& state,
+                                       page_shape shape) {
+  reader_pages pages;
+  pages.text = state.delivery() == journal_delivery::ready
+                   ? walk_pages(state.text(), 0, shape).count
+                   : 1;
+  pages.art = state.art_count();
+  return pages;
+}
+
 // ---------------------------------------------------------------------------
 // Drawing it, into the seam's own buffer
 // ---------------------------------------------------------------------------
@@ -1367,6 +1469,76 @@ struct refusal {
   return {.first = {}, .second = {}};
 }
 
+/// Which picture a callout is about, as the two questions the reader
+/// asks of the buffer (#328).
+///
+/// The pair as well as the number, because tale 4 and entry 4 are two
+/// documents and both may have art: a reader that checked only which
+/// picture would draw the tale's map on the entry's page for as long as
+/// it took the callout to come back.
+[[nodiscard]] bool art_names(const journal_state& state,
+                             unsigned nth) noexcept {
+  return state.art_of() == state.entry() && state.art_nth() == nth;
+}
+
+/// Whether the buffer is holding that picture — what the drawing asks.
+[[nodiscard]] bool art_is_here(const journal_state& state,
+                               unsigned nth) noexcept {
+  return state.art_ready() && art_names(state, nth);
+}
+
+/// Whether a callout for it has already come back, with or without a
+/// picture — what the *fetch* asks, and the difference matters: a host
+/// that has the count and not the record would otherwise be asked again
+/// on every arrival, for as long as the page was up.
+[[nodiscard]] bool art_was_asked(const journal_state& state,
+                                 unsigned nth) noexcept {
+  return state.art_answered() && art_names(state, nth);
+}
+
+/// What the panel says instead of a picture when the host had the count
+/// and not the picture — a store with a record missing, or one written by
+/// a build that could not make one.
+constexpr refusal art_refusal{.first = "THE PICTURE", .second = "IS NOT HERE"};
+
+/// One of the entry's pictures into the panel, **halved**.
+///
+/// The stored picture is the full-screen page's box and the panel is
+/// exactly half of it, which is what lets one stored picture serve both
+/// shapes (`machine/journal.h`, `docs/journal.md` §11.2). So the panel's
+/// copy is a 2x1 average of the levels rather than a second bitmap in a
+/// player's store.
+///
+/// **Averaged and not sampled**, and rounded toward ink on a tie: these
+/// drawings are hairlines, and a nearest reduction that landed between
+/// two of them would drop the line entirely — which is the same reason
+/// the reducer at ingestion is a box filter (`journal_picture.h`). A tie
+/// goes to the darker level because losing a line is the failure that
+/// cannot be seen and darkening one is the failure that can.
+///
+/// Paper is drawn, not skipped: `art_ramp` maps it to the panel's own
+/// black, so the margin around a portrait picture is the ground the rest
+/// of the panel is on.
+void draw_art(panel_pixels& panel, const journal_state& state) noexcept {
+  const unsigned width = (state.art_width() + 1U) / 2U;
+  const unsigned height = (state.art_height() + 1U) / 2U;
+  const int left = (panel_width - static_cast<int>(width)) / 2;
+  const int top =
+      reader_body_y +
+      (((reader_body_rows * glyph_rows) - static_cast<int>(height)) / 2);
+  for (unsigned y = 0; y < height; ++y) {
+    for (unsigned x = 0; x < width; ++x) {
+      const unsigned sum = state.art_level_at(2U * x, 2U * y) +
+                           state.art_level_at((2U * x) + 1U, 2U * y) +
+                           state.art_level_at(2U * x, (2U * y) + 1U) +
+                           state.art_level_at((2U * x) + 1U, (2U * y) + 1U);
+      const auto level = static_cast<std::uint8_t>((sum + 1U) / 4U);
+      put(panel, left + static_cast<int>(x), top + static_cast<int>(y),
+          art_ramp[level]);
+    }
+  }
+}
+
 /// The whole panel into its own buffer, and how many pages the entry
 /// turned out to have.
 [[nodiscard]] unsigned render(journal_state& state, const font_table& font) {
@@ -1420,43 +1592,80 @@ struct refusal {
   title.add(state.entry().number);
   draw_centred(panel, reader_title_y, title.view(), colour_title, font);
 
+  // How many pages there are, text and pictures together (#328), and
+  // which of them this is. The page is clamped rather than trusted: an
+  // entry can lose pages under a page number that was right for the one
+  // before it — a shorter text, or a host that answered the count and
+  // then answered nothing.
+  const reader_pages pages = count_pages(state, panel_page);
+  const unsigned total = pages.total();
+  const unsigned page = state.page() < total ? state.page() : total - 1U;
+  const bool more = page + 1U < total;
+
+  // The footer is the same three things on every page of an entry, so it
+  // is built once here and drawn at the end of each of the three arms
+  // below.
+  const auto footer_line = [&](bool ends_short) {
+    label footer;
+    if (total > 1) {
+      footer.add(page + 1U);
+      footer.add("/");
+      footer.add(total);
+      footer.add("  ");
+    }
+    footer.add(more ? "F1 MORE" : "F1 CLOSES");
+    if (ends_short) {
+      // The entry was longer than the buffer that crossed the host
+      // boundary (journal.h). Said rather than silently stopped: a
+      // transcription with a hole in it that nothing mentions is the
+      // failure a player finds out about last.
+      footer.add(" +");
+    }
+    draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
+  };
+
+  if (page >= pages.text) {
+    // **A picture of the entry**, halved into the panel (#328).
+    const unsigned nth = page - pages.text;
+    if (art_is_here(state, nth)) {
+      draw_art(panel, state);
+    } else {
+      draw_centred(panel, reader_body_y + (4 * glyph_rows), art_refusal.first,
+                   colour_body, font);
+      draw_centred(panel, reader_body_y + (5 * glyph_rows), art_refusal.second,
+                   colour_body, font);
+    }
+    footer_line(false);
+    return total;
+  }
+
   if (state.delivery() != journal_delivery::ready) {
     const refusal what = refusal_for(state.delivery());
     draw_centred(panel, reader_body_y + (4 * glyph_rows), what.first,
                  colour_body, font);
     draw_centred(panel, reader_body_y + (5 * glyph_rows), what.second,
                  colour_body, font);
-    label footer;
-    footer.add("ESC CLOSES");
-    draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
-    return 1;
+    if (total == 1) {
+      // Nothing to page to, so the panel says the one thing there is to
+      // do rather than a page counter and a key that turns nothing.
+      label footer;
+      footer.add("ESC CLOSES");
+      draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
+      return 1;
+    }
+    footer_line(false);
+    return total;
   }
 
   const std::string_view text = state.text();
-  const page_walk walk = walk_pages(text, state.page(), panel_page);
+  const page_walk walk = walk_pages(text, page, panel_page);
   const page_layout laid = lay_out(text, walk.start, panel_page);
   for (unsigned row = 0; row < laid.lines; ++row) {
     draw_text(panel, 0, reader_body_y + (static_cast<int>(row) * glyph_rows),
               laid.line[row], colour_body, font);
   }
-
-  label footer;
-  if (walk.count > 1) {
-    footer.add(state.page() + 1U);
-    footer.add("/");
-    footer.add(walk.count);
-    footer.add("  ");
-  }
-  footer.add(laid.more ? "F1 MORE" : "F1 CLOSES");
-  if (!laid.more && state.truncated()) {
-    // The entry was longer than the buffer that crossed the host boundary
-    // (journal.h). Said rather than silently stopped: a transcription with
-    // a hole in it that nothing mentions is the failure a player finds out
-    // about last.
-    footer.add(" +");
-  }
-  draw_centred(panel, reader_footer_y, footer.view(), colour_footer, font);
-  return walk.count;
+  footer_line(!more && state.truncated());
+  return total;
 }
 
 // ---------------------------------------------------------------------------
@@ -1527,6 +1736,83 @@ void blit(machine& box, const journal_state& state) {
           }
         }
         cpu.write_byte(video_window_segment, at(line, column), bits);
+      }
+    }
+  }
+
+  write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
+                 sequencer_map_mask_index, all_planes);
+}
+
+/// A picture onto the planes, whole, in the box the program has just
+/// drawn (#328).
+///
+/// The panel's own picture goes through `render()` and the blit above,
+/// because the panel is this seam's linear buffer and always was. A
+/// full-screen page has no such buffer — the program draws that screen,
+/// out of its own frame drawer and its own string drawer, and a
+/// byte-per-pixel copy of its interior would be forty-eight kilobytes of
+/// core for something that is on the glass for one page. So the packed
+/// levels are walked **in place**: a byte of a plane is eight pixels
+/// looked up through the ramp, and nothing the size of the box is
+/// materialized.
+///
+/// **Only the picture's own byte columns are written**, and the rows
+/// outside it are left alone: the caller has just had the program clear
+/// this box, so the margin is already the ground. Pixels that fall
+/// inside a byte the picture only partly covers are written as that same
+/// ground, which is what makes a picture whose width is not a multiple of
+/// eight land without a fringe.
+///
+/// It is called **after** the batch that drew the frame, and that
+/// ordering is the whole of why it is a second pass: a handler's own
+/// writes land the instant it runs and a call into the program lands
+/// when the batch does, so a picture drawn beside the frame in one pass
+/// would be painted over by the frame it was drawn beside. It is #303's
+/// ordering, one screen up.
+void blit_art(machine& box, const journal_state& state) {
+  cpu::processor& cpu = box.processor();
+
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_enable_set_reset_index, 0);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_data_rotate_index, 0);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_write_mode_index, 0);
+  write_register(box, ega::graphics_index_port, ega::graphics_data_port,
+                 gc_bit_mask_index, all_bits);
+
+  const auto width = static_cast<int>(state.art_width());
+  const auto height = static_cast<int>(state.art_height());
+  const int left =
+      art_screen_x + ((static_cast<int>(journal_art_width) - width) / 2);
+  const int top =
+      art_screen_y + ((static_cast<int>(journal_art_height) - height) / 2);
+  const int first_byte = left / 8;
+  const int last_byte = (left + width - 1) / 8;
+
+  for (std::uint8_t plane = 0; plane < ega::plane_count; ++plane) {
+    write_register(box, ega::sequencer_index_port, ega::sequencer_data_port,
+                   sequencer_map_mask_index,
+                   static_cast<std::uint8_t>(1U << plane));
+    for (int row = 0; row < height; ++row) {
+      const auto line =
+          static_cast<std::uint16_t>((top + row) * plane_bytes_per_row);
+      for (int column = first_byte; column <= last_byte; ++column) {
+        std::uint8_t bits = 0;
+        for (int bit = 0; bit < 8; ++bit) {
+          const int x = ((column * 8) + bit) - left;
+          const std::uint8_t colour =
+              x >= 0 && x < width
+                  ? art_ramp[state.art_level_at(static_cast<unsigned>(x),
+                                                static_cast<unsigned>(row))]
+                  : colour_black;
+          if (((colour >> plane) & 1U) != 0) {
+            bits = static_cast<std::uint8_t>(bits | (0x80U >> bit));
+          }
+        }
+        cpu.write_byte(video_window_segment,
+                       at(line, static_cast<std::uint16_t>(column)), bits);
       }
     }
   }
@@ -2108,9 +2394,9 @@ constexpr std::size_t page_rows_per_pass = 4;
 /// on the same row, in the same forty cells. What is new to a *reader* is
 /// `PREV`: F1 walked forward and closed on the last page, so a person who
 /// overshot had to leave the entry and open it again.
-[[nodiscard]] list_line page_footer(const journal_state& state, unsigned pages,
-                                    bool more) {
-  return screen_bar(state.page(), pages, !more && state.truncated());
+[[nodiscard]] list_line page_footer(unsigned page, unsigned pages, bool more,
+                                    bool truncated) {
+  return screen_bar(page, pages, !more && truncated);
 }
 
 /// One pass of a page of an entry, on the whole screen (M5-E4d, #305).
@@ -2137,11 +2423,20 @@ constexpr std::size_t page_rows_per_pass = 4;
   // needs when it decides whether there is another page or a way out.
   const bool ready = state.delivery() == journal_delivery::ready;
   const std::string_view text = state.text();
+  // Text pages and pictures together (#328), and the page clamped to
+  // them, for `render()`'s reason: a page number can outlive the entry it
+  // was right for.
+  const reader_pages pages = count_pages(state, screen_page);
+  const unsigned total = pages.total();
+  const unsigned page = state.page() < total ? state.page() : total - 1U;
+  const bool picture = page >= pages.text;
+  const bool more = page + 1U < total;
   const page_walk walk =
-      ready ? walk_pages(text, state.page(), screen_page) : page_walk{};
-  const page_layout laid =
-      ready ? lay_out(text, walk.start, screen_page) : page_layout{};
-  state.set_page_count(static_cast<std::uint16_t>(walk.count));
+      ready && !picture ? walk_pages(text, page, screen_page) : page_walk{};
+  const page_layout laid = ready && !picture
+                               ? lay_out(text, walk.start, screen_page)
+                               : page_layout{};
+  state.set_page_count(static_cast<std::uint16_t>(total));
 
   if (done == 0) {
     const std::array<std::uint16_t, 4> clear{
@@ -2162,6 +2457,21 @@ constexpr std::size_t page_rows_per_pass = 4;
     if (!ctx.call_program(image, image_draw_frame, frame)) {
       return false;
     }
+    if (picture) {
+      // **The picture goes on the next arrival, not this one** (#328).
+      // Everything above is a call *into* the program and lands when the
+      // batch does; a picture is this handler's own writes and lands the
+      // instant it runs. Drawn here it would go under the frame it was
+      // drawn beside. So the bar goes on now, the box is left cleared,
+      // and the arrival after this one paints into it — which is #303's
+      // ordering with the program first and the seam after.
+      list_line bar = page_footer(page, total, more, false);
+      if (!draw_the_bar(ctx, image, bar)) {
+        return false;
+      }
+      state.set_screen_drawn(1);
+      return false;
+    }
     if (!ready) {
       // The host had nothing, so the page says which nothing it was: two
       // short lines of this file's own words, centred the way the panel
@@ -2177,9 +2487,32 @@ constexpr std::size_t page_rows_per_pass = 4;
                       page_centred_column(line.size())));
         ++nth;
       }
-      list_line footer = page_footer(state, 1, false);
+      list_line footer = page_footer(page, total, more, false);
       return draw_the_bar(ctx, image, footer);
     }
+  }
+
+  if (picture) {
+    // The second pass: the box is on the screen and this is what goes in
+    // it. A picture the host had the count of and not the record is two
+    // lines instead, the way the panel says the same thing.
+    const unsigned nth = page - pages.text;
+    if (art_is_here(state, nth)) {
+      blit_art(box, state);
+      return true;
+    }
+    unsigned line_nth = 0;
+    for (const std::string_view line :
+         {art_refusal.first, art_refusal.second}) {
+      list_line said;
+      said.add(line);
+      static_cast<void>(
+          draw_line(ctx, image, said, page_body_colour,
+                    static_cast<std::uint16_t>(page_first_row + 8U + line_nth),
+                    page_centred_column(line.size())));
+      ++line_nth;
+    }
+    return true;
   }
 
   for (std::size_t drawn = 0; drawn < page_rows_per_pass && done < laid.lines;
@@ -2201,7 +2534,7 @@ constexpr std::size_t page_rows_per_pass = 4;
     return false;
   }
 
-  list_line footer = page_footer(state, walk.count, laid.more);
+  list_line footer = page_footer(page, total, more, state.truncated());
   return draw_the_bar(ctx, image, footer);
 }
 
@@ -2266,6 +2599,16 @@ void request(machine& box, seam_context& ctx, journal_citation what) {
   box.journal().ask(what);
   (void)ctx.call_host(seam_host_service::journal_open,
                       journal_open_argument(what));
+  // And the entry's first picture, which is also how many it has (#328).
+  //
+  // **Asked here rather than at the first draw**, because the count is
+  // half of how many pages the entry has and the reader needs that
+  // before it draws anything — the footer says `1/3` on the page a
+  // citation opens. Every answer carries the count, so an entry that is
+  // prose costs one callout that answers zero and holds nothing.
+  box.journal().ask_art(what, 0);
+  (void)ctx.call_host(seam_host_service::journal_art,
+                      journal_art_argument(what, 0));
   // Opening it is what takes the `*` off its line (#222). Only a line the
   // log already has: an entry the player asked for at the prompt was
   // never cited, so there is nothing to mark and nothing to write down.
@@ -2634,6 +2977,60 @@ void press_reader_key(machine& box, seam_context& ctx, std::uint16_t ds) {
   return false;
 }
 
+/// Make sure the buffer holds the picture the page that is up wants
+/// (#328).
+///
+/// One picture at a time, because the buffer is the reader's whole box
+/// packed and a page shows one; and a callout only when what is held is
+/// not what is wanted, because a callout on every arrival would copy
+/// twelve kilobytes at the program's own polling rate.
+///
+/// It also **clamps a page that has run past the end**, which is the one
+/// place that can happen: the count comes from a host, and a host that
+/// answered a count and then stopped answering — no store, a store
+/// swapped under a running game — would leave the reader on a page
+/// number nothing can draw. The last page is the honest answer, and it is
+/// the same one `walk_pages()` gives for a text page past the end. It is
+/// clamped against what the last render worked out rather than against a
+/// fresh count, so the clamp costs nothing and lands one arrival later.
+///
+/// **The two early outs are the cost of this**, and they are why it may
+/// run on every arrival at all: this point fires tens of times a frame,
+/// and counting the pages means walking the whole delivered text. An
+/// entry with no pictures — which is most of a journal — never gets that
+/// far.
+void fetch_art_if_wanted(machine& box, seam_context& ctx) {
+  journal_state& state = box.journal();
+  if (state.reader() != journal_reader_mode::showing) {
+    return;
+  }
+  if (state.page_count() != 0 && state.page() >= state.page_count()) {
+    state.set_page(static_cast<std::uint16_t>(state.page_count() - 1U));
+    return;
+  }
+  if (state.art_count() == 0) {
+    return;  // an entry that is prose: nothing to fetch and nothing to page to
+  }
+  const page_shape shape = state.page_place() == journal_page_place::screen
+                               ? screen_page
+                               : panel_page;
+  const reader_pages pages = count_pages(state, shape);
+  if (state.page() < pages.text) {
+    return;  // a page of the entry's own text: no picture is wanted
+  }
+  if (state.page() >= pages.total()) {
+    return;  // past the end; the clamp above catches it once a render says so
+  }
+  const unsigned nth = state.page() - pages.text;
+  if (art_was_asked(state, nth)) {
+    return;  // held, or asked for and not given: either way, asked
+  }
+  state.ask_art(state.entry(), static_cast<std::uint8_t>(nth));
+  (void)ctx.call_host(
+      seam_host_service::journal_art,
+      journal_art_argument(state.entry(), static_cast<std::uint8_t>(nth)));
+}
+
 /// Draw the reader if it is up, is not covered, and what would be drawn is
 /// not already there.
 void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
@@ -2643,6 +3040,10 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
       !has_roster(cpu, ds)) {
     return;
   }
+
+  // Before anything is measured against the last frame, because it can
+  // change what would be drawn (#328).
+  fetch_art_if_wanted(box, ctx);
 
   // Everything the panel is drawn from, as one number. The font pointer is
   // in it so a reader first drawn before the program installed its glyphs
@@ -2665,6 +3066,13 @@ void draw_if_wanted(machine& box, seam_context& ctx, std::uint16_t ds) {
   mix(journal_open_argument(state.entry()));
   mix(state.page());
   mix(static_cast<std::uint32_t>(state.delivery()));
+  // And the picture the buffer is holding (#328): a page that is a
+  // picture is drawn from these three and from nothing else the mix
+  // above already carries, so a picture arriving after the page it
+  // belongs to went up is a screen that has to be drawn again.
+  mix(static_cast<std::uint32_t>(state.art_count()));
+  mix(static_cast<std::uint32_t>(state.art_nth()));
+  mix(static_cast<std::uint32_t>(state.art_ready() ? 1U : 0U));
   mix(static_cast<std::uint32_t>(state.digits().size()));
   // The prompt's *pair*: pointing it at another section changes what is
   // drawn without changing a digit, and a signature that mixed only the
@@ -2880,7 +3288,16 @@ void at_message_box(machine& box, seam_context& ctx) {
     state.set_page_place(journal_page_place::panel);
     state.set_page_from_list(false);
   }
-  if (state.delivery() == journal_delivery::ready || was_open) {
+  // **Or the entry is a drawing** (#328). "Nothing rather than a blank
+  // page" was the rule when text was the only thing an entry could be,
+  // and an entry whose page is a map has pictures whether or not an OCR
+  // engine was ever installed - a drawing has no words in it. So what
+  // opens the reader is the host having *something*, and a page whose
+  // text is a refusal and whose second page is the drawing is exactly
+  // what such an entry is.
+  const bool anything =
+      state.delivery() == journal_delivery::ready || state.art_count() != 0;
+  if (anything || was_open) {
     state.set_reader(journal_reader_mode::showing);
     state.set_page(0);
   }

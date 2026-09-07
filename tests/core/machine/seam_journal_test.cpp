@@ -27,8 +27,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
@@ -189,8 +191,20 @@ constexpr std::array<std::uint8_t, 5> idle_program{0xB8, 0x11, 0x11, 0x90,
 /// where it lives (`hosts/common/tests/host_services_test.cpp`).
 class one_entry_host final : public seam_host_services {
  public:
+  /// One of the entry's pictures, as a host holds it: the shape it was
+  /// reduced to and its packed levels (#328).
+  struct held_picture {
+    std::uint16_t width{};
+    std::uint16_t height{};
+    std::vector<std::uint8_t> levels;
+  };
+
   void serve(machine& box, seam_host_service which,
              std::uint32_t argument) override {
+    if (which == seam_host_service::journal_art) {
+      serve_art(box, argument);
+      return;
+    }
     if (which != seam_host_service::journal_open) {
       return;
     }
@@ -207,6 +221,27 @@ class one_entry_host final : public seam_host_services {
     box.journal().deliver(text);
   }
 
+  /// The pictures half, in the shape `host::host_services` answers it:
+  /// **every answer carries the count**, refusals included, because the
+  /// count is what the reader pages by.
+  void serve_art(machine& box, std::uint32_t argument) {
+    ++art_calls;
+    art_asked = argument;
+    const journal_citation what = journal_art_citation(argument);
+    if (empty || !what || what != holds) {
+      box.journal().refuse_art(0);
+      return;
+    }
+    const auto of = static_cast<std::uint8_t>(art.size());
+    const std::uint8_t nth = journal_art_which(argument);
+    if (nth >= of || withholds) {
+      box.journal().refuse_art(of);
+      return;
+    }
+    box.journal().deliver_art(art[nth].width, art[nth].height, art[nth].levels,
+                              of);
+  }
+
   /// What this host holds: one item, or nothing at all.
   ///
   /// A *citation* since #218 and not a number, because the argument that
@@ -217,9 +252,53 @@ class one_entry_host final : public seam_host_services {
   journal_citation holds{.kind = journal_kind::entry, .number = 12};
   std::string text;
 
+  /// And the entry's pictures, in printed order. Empty for an entry that
+  /// is prose, which is most of them.
+  std::vector<held_picture> art;
+  /// A host that knows how many pictures the entry has and cannot hand
+  /// one over — a store with a record missing.
+  bool withholds{false};
+
   unsigned calls{0};
   std::uint32_t asked{0};
+  unsigned art_calls{0};
+  std::uint32_t art_asked{0};
 };
+
+/// A picture packed the way a store keeps one: two bits a pixel, four
+/// pixels a byte, the leftmost in the most significant pair, each row
+/// padded to a whole byte.
+///
+/// Written out here rather than taken from the code under test, which is
+/// this file's rule: a test that read its packing out of the reader would
+/// be agreeing with itself about the one thing a store and a reader have
+/// to agree on independently.
+[[nodiscard]] std::vector<std::uint8_t> pack_picture(
+    unsigned width, unsigned height, std::span<const std::uint8_t> levels) {
+  const std::size_t stride = (width + 3U) / 4U;
+  std::vector<std::uint8_t> out(stride * height, 0);
+  for (unsigned y = 0; y < height; ++y) {
+    for (unsigned x = 0; x < width; ++x) {
+      const auto level =
+          static_cast<std::uint8_t>(levels[(y * width) + x] & 0x03U);
+      const unsigned shift = (3U - (x % 4U)) * 2U;
+      out[(y * stride) + (x / 4U)] = static_cast<std::uint8_t>(
+          out[(y * stride) + (x / 4U)] | (level << shift));
+    }
+  }
+  return out;
+}
+
+/// One picture, every pixel the same level.
+[[nodiscard]] one_entry_host::held_picture flat_picture(unsigned width,
+                                                        unsigned height,
+                                                        std::uint8_t level) {
+  const std::vector<std::uint8_t> levels(
+      static_cast<std::size_t>(width) * height, level);
+  return {.width = static_cast<std::uint16_t>(width),
+          .height = static_cast<std::uint16_t>(height),
+          .levels = pack_picture(width, height, levels)};
+}
 
 struct rig {
   rig() : box(std::make_unique<machine>(memory_layout::pc, &log)) {
@@ -3693,6 +3772,432 @@ TEST(JournalDelivery, ALongPageIsNoLongerCutThroughACharacter) {
   for (const char ch : state.text()) {
     ASSERT_EQ(ch, 'x');
   }
+}
+
+// ---------------------------------------------------------------------------
+// The entries that are pictures (#328)
+// ---------------------------------------------------------------------------
+//
+// Nothing here is a picture of anything: the "drawings" below are
+// rectangles of one level, or a couple of pixels this file writes, chosen
+// so that what reaches the panel says which level it came from. What is
+// checked is the packing, the paging and the two places a picture lands -
+// never what a map looks like, which is a thing only a person on a
+// display can say (`docs/journal.md` 11.2).
+
+TEST(JournalArt, TheArgumentCarriesTheCitationAndWhichPicture) {
+  // The pair `journal_open` already carries, with the picture's own
+  // number in the byte above it - which is free, because a kind is three
+  // values and a number is sixteen bits.
+  const std::uint32_t packed = journal_art_argument(Tale(4), 2);
+  EXPECT_EQ(journal_art_citation(packed), Tale(4));
+  EXPECT_EQ(journal_art_which(packed), 2u);
+  EXPECT_EQ(journal_art_argument(Entry(12), 0),
+            journal_open_argument(Entry(12)))
+      << "picture zero of an entry is the entry's own argument";
+  EXPECT_EQ(journal_art_citation(journal_art_argument(Proclamation(214), 7)),
+            Proclamation(214));
+}
+
+TEST(JournalArt, APictureIsUnpackedFourToAByteLeftmostFirst) {
+  journal_state state;
+  // Five wide, so a row is two bytes and the second carries one pixel and
+  // three of padding: the tail is the case a reader walking bytes gets
+  // wrong, and ink is level *zero*, so padding that stayed zero would be
+  // a bright edge down the right of every picture.
+  const std::array<std::uint8_t, 10> levels{0, 1, 2, 3, 0,  //
+                                            3, 2, 1, 0, 3};
+  const std::vector<std::uint8_t> packed = pack_picture(5, 2, levels);
+  ASSERT_EQ(packed.size(), 4u);
+  state.ask(Entry(4));
+  state.deliver_art(5, 2, packed, 1);
+  ASSERT_TRUE(state.art_ready());
+  EXPECT_EQ(state.art_width(), 5u);
+  EXPECT_EQ(state.art_height(), 2u);
+  EXPECT_EQ(state.art_count(), 1u);
+  for (unsigned y = 0; y < 2; ++y) {
+    for (unsigned x = 0; x < 5; ++x) {
+      EXPECT_EQ(state.art_level_at(x, y), levels[(y * 5U) + x])
+          << "at " << x << "," << y;
+    }
+  }
+  EXPECT_EQ(state.art_level_at(5, 0), journal_art_paper)
+      << "outside the picture is paper, which is what a margin wants";
+  EXPECT_EQ(state.art_level_at(0, 2), journal_art_paper);
+}
+
+TEST(JournalArt, APictureThatDoesNotDescribeItselfIsNotTaken) {
+  // A store is a text file a person may edit and a build may be older
+  // than the one that wrote it, so the shape and the bytes are held
+  // against each other rather than trusted.
+  journal_state state;
+  state.ask(Entry(4));
+  const std::vector<std::uint8_t> short_of_it(3, 0);
+  state.deliver_art(5, 2, short_of_it, 1);
+  EXPECT_FALSE(state.art_ready());
+  EXPECT_EQ(state.art_count(), 1u) << "the count is still the host's answer";
+
+  state.deliver_art(journal_art_width + 1U, 2,
+                    std::vector<std::uint8_t>(std::size_t{2} * 77, 0), 1);
+  EXPECT_FALSE(state.art_ready()) << "wider than the reader's own box";
+  state.deliver_art(0, 0, {}, 1);
+  EXPECT_FALSE(state.art_ready());
+}
+
+TEST(JournalArt, AskingForAnEntryDropsThePictureBeforeIt) {
+  // A page of the new entry must never draw the old one's art while a
+  // callout for its own is on the way.
+  journal_state state;
+  const std::array<std::uint8_t, 4> ink{0, 0, 0, 0};
+  state.ask(Entry(4));
+  state.deliver_art(4, 1, pack_picture(4, 1, ink), 1);
+  ASSERT_TRUE(state.art_ready());
+  state.ask(Entry(5));
+  EXPECT_FALSE(state.art_ready());
+  EXPECT_EQ(state.art_count(), 0u);
+  EXPECT_EQ(state.art_level_at(0, 0), journal_art_paper);
+}
+
+TEST(JournalArt, TheCountIsAskedForWhenAnEntryIsOpened) {
+  // The count is half of how many pages the entry has, and the footer of
+  // the page a citation opens says `1/2` - so it is asked for beside the
+  // text rather than at the first page turn.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(12);
+  r.host.text = "A caption.";
+  r.host.art.push_back(flat_picture(16, 16, journal_art_ink));
+
+  r.program_draws("Read journal entry 12.");
+  EXPECT_EQ(r.host.art_calls, 1u);
+  EXPECT_EQ(r.host.art_asked, journal_art_argument(Entry(12), 0));
+  EXPECT_EQ(r.reader().art_count(), 1u);
+
+  r.adventuring();
+  r.poll();
+  EXPECT_EQ(r.reader().page_count(), 2u)
+      << "one page of caption and one of drawing";
+  EXPECT_EQ(r.row_text(reader_footer_y), centred("1/2  F1 MORE"));
+}
+
+TEST(JournalArt, AnEntryThatIsProseCostsOneCalloutAndHoldsNothing) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(12);
+  r.host.text = "A short line.";
+
+  r.program_draws("Read journal entry 12.");
+  r.adventuring();
+  r.poll();
+  EXPECT_EQ(r.host.art_calls, 1u);
+  EXPECT_EQ(r.reader().art_count(), 0u);
+  EXPECT_FALSE(r.reader().art_ready());
+  EXPECT_EQ(r.reader().page_count(), 1u);
+  EXPECT_EQ(r.row_text(reader_footer_y), centred("F1 CLOSES"))
+      << "no page counter, because there is one page";
+}
+
+TEST(JournalArt, ThePictureIsThePageAfterTheText) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(4);
+  r.host.text = "A roughly drawn cloth map.";
+  // Eight by eight of solid ink: at half scale it is four by four of the
+  // brightest index the ramp has, centred in the panel's body.
+  r.host.art.push_back(flat_picture(8, 8, journal_art_ink));
+
+  r.program_draws("Read journal entry 4.");
+  r.adventuring();
+  r.poll();
+  ASSERT_EQ(r.reader().page_count(), 2u);
+  EXPECT_EQ(r.row_text(reader_body_y), as_glyphs("A ROUGHLY DRAWN CLOTH"))
+      << "page one is still the caption";
+
+  r.type(key_f1);
+  r.poll();
+  EXPECT_EQ(r.reader().page(), 1u);
+  EXPECT_EQ(r.row_text(reader_title_y), centred("ENTRY 4"))
+      << "a picture page is still a page of the entry";
+  EXPECT_EQ(r.row_text(reader_footer_y), centred("2/2  F1 CLOSES"));
+
+  // Four by four of the ramp's brightest, centred, and black around it.
+  const unsigned left = (automap_panel_width - 4U) / 2U;
+  const unsigned top =
+      static_cast<unsigned>(reader_body_y) + (((12 * 8) - 4) / 2);
+  for (unsigned y = 0; y < 4; ++y) {
+    for (unsigned x = 0; x < 4; ++x) {
+      EXPECT_EQ(r.panel_pixel(left + x, top + y), 15u) << x << "," << y;
+    }
+  }
+  EXPECT_EQ(r.panel_pixel(left - 1U, top), 0u) << "and paper is the ground";
+  EXPECT_EQ(r.panel_pixel(left, top - 1U), 0u);
+
+  // And it reached the planes, which is the half a buffer cannot show.
+  EXPECT_EQ(r.screen_pixel(automap_panel_x + left, automap_panel_y + top), 15u);
+
+  // On the last page F1 is still the way out of the panel.
+  r.type(key_f1);
+  r.poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalArt, ThePanelAveragesRatherThanSamples) {
+  // These drawings are nothing but hairlines, and a nearest reduction
+  // that landed between two of them would drop the line. So a panel pixel
+  // is the average of the four it stands for, rounded toward ink on a
+  // tie.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(4);
+  r.host.text = "A caption.";
+  // Two by two: one ink pixel and three of paper. The average is 9/4,
+  // which is level two - a tone the panel can draw and a sampler would
+  // have thrown away.
+  const std::array<std::uint8_t, 4> levels{
+      journal_art_ink, journal_art_paper, journal_art_paper, journal_art_paper};
+  r.host.art.push_back(
+      {.width = 2, .height = 2, .levels = pack_picture(2, 2, levels)});
+
+  r.program_draws("Read journal entry 4.");
+  r.adventuring();
+  r.poll();
+  r.type(key_f1);
+  r.poll();
+  ASSERT_EQ(r.reader().page(), 1u);
+  const unsigned left = (automap_panel_width - 1U) / 2U;
+  const unsigned top =
+      static_cast<unsigned>(reader_body_y) + (((12 * 8) - 1) / 2);
+  EXPECT_EQ(r.panel_pixel(left, top), 8u)
+      << "one pixel, and it is the ramp's third tone rather than black";
+}
+
+TEST(JournalArt, AnEntryWithNoTextAtAllStillShowsItsPicture) {
+  // A drawing has no words in it, so a picture is reduced whether or not
+  // an OCR engine was installed (`docs/journal.md` 11.4). A reader that
+  // made the refusal the whole entry would show `NOTHING WAS READ` over a
+  // picture it was holding.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(4);
+  r.host.text = "";
+  r.host.art.push_back(flat_picture(8, 8, journal_art_ink));
+
+  r.program_draws("Read journal entry 4.");
+  r.adventuring();
+  r.poll();
+  ASSERT_EQ(r.reader().delivery(), journal_delivery::no_text);
+  ASSERT_EQ(r.reader().page_count(), 2u);
+  EXPECT_EQ(r.row_text(reader_body_y + (4 * 8)), centred("NOTHING WAS READ"));
+
+  r.type(key_f1);
+  r.poll();
+  const unsigned left = (automap_panel_width - 4U) / 2U;
+  const unsigned top =
+      static_cast<unsigned>(reader_body_y) + (((12 * 8) - 4) / 2);
+  EXPECT_EQ(r.panel_pixel(left, top), 15u);
+}
+
+TEST(JournalArt, AnAtlasIsThreePagesAndEachIsFetchedAsItIsReached) {
+  // The pieces of one entry's art are separate pictures and not one
+  // picture in pieces, so the reader turns a page between them - and one
+  // crosses at a time, because the buffer is the whole box packed.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(37);
+  r.host.text = "Three maps.";
+  r.host.art.push_back(flat_picture(8, 8, 0));
+  r.host.art.push_back(flat_picture(8, 8, 1));
+  r.host.art.push_back(flat_picture(8, 8, 2));
+
+  r.program_draws("Read journal entry 37.");
+  r.adventuring();
+  r.poll();
+  ASSERT_EQ(r.reader().page_count(), 4u);
+  EXPECT_EQ(r.host.art_calls, 1u) << "the open asked for the first";
+
+  const unsigned left = (automap_panel_width - 4U) / 2U;
+  const unsigned top =
+      static_cast<unsigned>(reader_body_y) + (((12 * 8) - 4) / 2);
+  const std::array<std::uint8_t, 3> expected{15, 7, 8};
+  for (unsigned nth = 0; nth < 3; ++nth) {
+    r.type(key_f1);
+    r.poll();
+    ASSERT_EQ(r.reader().page(), nth + 1U);
+    EXPECT_EQ(r.reader().art_nth(), nth);
+    EXPECT_EQ(r.host.art_asked,
+              journal_art_argument(Entry(37), static_cast<std::uint8_t>(nth)));
+    EXPECT_EQ(r.panel_pixel(left, top), expected[nth]) << "picture " << nth;
+  }
+  EXPECT_EQ(r.host.art_calls, 3u)
+      << "the first came with the entry; the two after it were fetched as "
+         "they were reached";
+
+  // And walking back does not fetch again what is already held.
+  const unsigned fetched = r.host.art_calls;
+  r.type(key_backspace);
+  r.poll();
+  EXPECT_EQ(r.reader().page(), 2u);
+  EXPECT_EQ(r.host.art_calls, fetched + 1u)
+      << "one back is a picture this buffer is not holding";
+  r.poll();
+  EXPECT_EQ(r.host.art_calls, fetched + 1u)
+      << "and standing on it costs nothing more";
+}
+
+TEST(JournalArt, APictureTheHostWillNotHandOverSaysSo) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(4);
+  r.host.text = "A caption.";
+  r.host.art.push_back(flat_picture(8, 8, journal_art_ink));
+  r.host.withholds = true;
+
+  r.program_draws("Read journal entry 4.");
+  r.adventuring();
+  r.poll();
+  ASSERT_EQ(r.reader().art_count(), 1u);
+  ASSERT_FALSE(r.reader().art_ready());
+  r.type(key_f1);
+  r.poll();
+  EXPECT_EQ(r.row_text(reader_body_y + (4 * 8)), centred("THE PICTURE"));
+  EXPECT_EQ(r.row_text(reader_body_y + (5 * 8)), centred("IS NOT HERE"));
+
+  // **And it is asked for once.** The fetch asks whether a callout for
+  // this picture has come back, not whether one is held - which is the
+  // difference between one callout and one per arrival at the program's
+  // own polling rate, for as long as the page is up.
+  const unsigned asked = r.host.art_calls;
+  r.poll(20);
+  EXPECT_EQ(r.host.art_calls, asked);
+}
+
+TEST(JournalArt, APageNumberThatOutlivedItsEntryLandsOnTheLastPage) {
+  // The count comes from a host, and a host that answered a count and
+  // then stopped answering would leave the reader on a page nothing can
+  // draw.
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.host.holds = Entry(4);
+  r.host.text = "A caption.";
+  r.host.art.push_back(flat_picture(8, 8, journal_art_ink));
+
+  r.program_draws("Read journal entry 4.");
+  r.adventuring();
+  r.poll();
+  r.type(key_f1);
+  r.poll();
+  ASSERT_EQ(r.reader().page(), 1u);
+
+  r.host.art.clear();
+  r.reader().refuse_art(0);
+  // Two arrivals: the first draws what there is now and works the page
+  // count out, the second puts the page number inside it. The clamp is
+  // against what a render measured rather than against a fresh count,
+  // because counting means walking the whole entry and this point fires
+  // tens of times a frame.
+  r.poll(2);
+  EXPECT_EQ(r.reader().page(), 0u) << "the last page there is";
+  EXPECT_EQ(r.reader().page_count(), 1u);
+}
+
+TEST(JournalArtScreen, AFullScreenPictureGoesOnAfterTheProgramsOwnFrame) {
+  // A handler's own writes land the instant it runs and a call into the
+  // program lands when the batch does, so a picture drawn beside the
+  // frame would go under the frame it was drawn beside. It is drawn on
+  // the arrival after - the program painting first and the seam after,
+  // which is #303's ordering one screen up.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(4);
+  r.host.text = "A roughly drawn cloth map.";
+  // Sixteen wide and eight deep of solid ink, which is two whole bytes of
+  // a plane and no partial one.
+  r.host.art.push_back(flat_picture(16, 8, journal_art_ink));
+  r.reader().note_seen(Entry(4), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+  ASSERT_EQ(r.reader().page_place(), journal_page_place::screen);
+  ASSERT_EQ(r.reader().page_count(), 2u);
+
+  // Centred in the box's interior, which is 304x160 at (8, 24).
+  const unsigned left = 8U + ((304U - 16U) / 2U);
+  const unsigned top = 24U + ((160U - 8U) / 2U);
+
+  r.type(key_next);
+  r.poll();
+  ASSERT_EQ(r.reader().page(), 1u);
+  EXPECT_EQ(r.screen_pixel(left, top), 0u)
+      << "nothing of the picture is written in the arrival that queued the "
+         "frame: it would go under it";
+
+  r.run_the_calls();
+  EXPECT_TRUE(r.reader().on_screen());
+  const unsigned framed = r.word_of(frame_calls);
+  r.poll();
+  EXPECT_EQ(r.word_of(frame_calls), framed)
+      << "and the picture, once on, is not asked for again";
+
+  for (unsigned y = 0; y < 8; ++y) {
+    for (unsigned x = 0; x < 16; ++x) {
+      EXPECT_EQ(r.screen_pixel(left + x, top + y), 15u) << x << "," << y;
+    }
+  }
+  EXPECT_EQ(r.screen_pixel(left - 1U, top), 0u)
+      << "and nothing outside it was written";
+}
+
+TEST(JournalArtScreen, ThePicturesPageCarriesTheSameBar) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  r.host.holds = Entry(4);
+  r.host.text = "A roughly drawn cloth map.";
+  r.host.art.push_back(flat_picture(16, 8, journal_art_ink));
+  r.reader().note_seen(Entry(4), 8, 29, 20, 15);
+
+  r.one_bar_pass(area_before, area_after, 'N');
+  r.bar_goes_out(area_before);
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+  r.type(key_next);
+  r.poll();
+  r.run_the_calls();
+
+  EXPECT_EQ(r.word_of(bar_row_seen), screen_footer_row);
+  const std::string bar = r.pascal_at(
+      static_cast<std::uint16_t>(r.word_of(bar_string_segment_seen)),
+      static_cast<std::uint16_t>(r.word_of(bar_string_offset_seen)));
+  EXPECT_EQ(bar.substr(0, 14), "NEXT PREV EXIT");
+  EXPECT_NE(bar.find("2/2"), std::string::npos)
+      << "the page counter counts the pictures too";
 }
 
 }  // namespace

@@ -856,10 +856,12 @@ whether the inverted loop a browser needs actually works.
   against word boxes the tests write — in the pinned engine's own shape on
   the page, since #306, because a shape the test invents is a test of the
   test.
-- **The entries that are pictures are reduced and not yet drawn** (§11,
-  #328). What CI proves is the arithmetic, over the probe; what nobody
-  has done is look at one of them on a display, and what no build does
-  yet is put one on the game's screen. §11.6 is the list.
+- **The entries that are pictures are drawn, and nobody has looked at
+  one** (§11, #328). What CI proves is the arithmetic over the probe and
+  the reader's own paging and packing over pictures the tests write; what
+  nobody has done is see one on a display, at the size the game draws it,
+  in either of the two sizes it draws it at. §11.6 is the list, and the
+  three knobs all move without a player re-ingesting anything.
 - **How *well* it reads is measured now, and CI still cannot measure it**
   (§5a, #315). What runs everywhere is the harness — over a synthetic
   document, with a fixture engine that misreads it by an amount this
@@ -1203,6 +1205,12 @@ there, and the rest of the page is not words. (What those two lines say
 is the player's document and is not written down here, on this file's
 own rule; #328 quotes them.)
 
+**What it does now.** The drawing is on the page, on the game's own
+screen, after the caption: `NEXT` walks from the one to the other. It
+landed in two halves — everything under the reader first (§11.1 to
+§11.4), then the reader itself (§11.5) — and the one thing neither half
+bought is at the end of §11.6: nobody has seen one on a display.
+
 Nothing in this pipeline carried a pixel before this, on purpose, so
 four things had to be decided before a line was written. Each is below
 with what it was measured against, because a decision nobody can check
@@ -1470,8 +1478,12 @@ links for another reason:
   growing a decoder;
 * **the browser** has had a JPEG decoder since before this program was
   written, and #306 already drives it through `createImageBitmap` and a
-  canvas for the OCR upscale. It does not make pictures yet; that is the
-  work left below.
+  canvas for the OCR upscale. It does not make pictures yet, so a
+  browser ingestion and a linked desktop ingestion of one document still
+  produce two different stores — #236 owns that half of the pipeline.
+  What the browser *does* now is draw them: the reader is core's and one
+  store is one store, so a page store carried over from a desktop
+  ingestion shows its pictures in a browser.
 
 An edition whose pages this build **decodes itself** needs none of this,
 and that is what CI runs: `journal_probe.h` has two pictures, on the two
@@ -1481,42 +1493,77 @@ Flate one is reduced on every target with nothing installed; the
 fixture one, which is what proves the plumbing around a door no runner
 will ever have a key to.
 
-### 11.5 How it is drawn — the design, and not yet the code
+### 11.5 How it is drawn
 
 The page is drawn by *the program's* two routines — the bordered-window
 drawer and `draw_string_entry` — precisely so that this seam does not
 know what the game's lettering looks like (§9). A picture has no such
 routine, so it is **plane surgery**, `docs/seams.md` §3's eighth
-primitive, and it is the automap's own path rather than a new one: the
-reader already renders into a byte-per-pixel panel and blits it into the
-EGA planes a plane at a time (`seam_journal.cpp`'s `blit`). What a
-picture adds to that is a rect and a level-to-index ramp; the packed
+primitive, and it is the automap's own path rather than a new one. What
+a picture adds to that is a rect and a level-to-index ramp; the packed
 levels are walked in place, so nothing the size of the box is
 materialized in core.
 
-The shape the reader takes:
+The design below is what was built (#328's second half), and where the
+building changed it the change is marked.
 
-* **a picture is a page of the entry**, after its text pages, in printed
+* **A picture is a page of the entry**, after its text pages, in printed
   order. The caption is the text and the drawing follows it on the
   printed page, so `NEXT` walks from the caption into the picture and
   `PREV` walks back — no new key, no new mode, and the paging that #319
-  built already says which page a reader is on.
-* **the full screen draws it whole and the panel draws it halved**, which
-  is the invariant 11.2 bought.
-* **the ramp is the reader's**, chosen where the program's palette is a
-  fact the machine has, and the reader's own colours are the obvious
-  candidates.
-* **it crosses on a host service of its own**, beside `journal_open`,
-  into a buffer in `journal_state` on `automap.h`'s three terms — twelve
-  kilobytes of observation, which is what a picture packed to the whole
-  box costs and is the same order as the automap's own panel. The
-  argument packs the citation and which picture of it, the way
-  `journal_open_argument` already packs a section and a number. **No ABI
+  built already says which page a reader is on. `reader_pages` in
+  `seam_journal.cpp` is the whole of it: how many pages of text, and how
+  many pictures after them.
+* **A refusal is a page too**, which the design did not say and the code
+  had to. An entry can be a drawing with pictures and *no* text — a
+  picture is reduced whether or not an OCR engine was ever installed,
+  because a drawing has no words in it (§11.4) — so `NOTHING WAS READ` is
+  page one of two rather than the whole entry, and the drawing is page
+  two. For the same reason a **citation opens the reader when the entry
+  has a picture**, where before it opened only when there was text:
+  "nothing rather than a blank page" (#175) was a rule about text being
+  the only thing an entry could be.
+* **The full screen draws it whole and the panel draws it halved**, which
+  is the invariant 11.2 bought. The panel's copy is a 2x1 **average**
+  rather than a sample, rounded toward ink on a tie, for the same reason
+  the reducer at ingestion is a box filter: these drawings are hairlines,
+  and losing one is the failure nobody can see.
+* **The ramp is the reader's** — `art_ramp` in `seam_journal.cpp`, ink
+  first: the program's own bright, its grey, its dark grey, and black,
+  because the reader draws on a black ground and paper is therefore the
+  ground itself. It is a knob, and changing it invalidates nobody's
+  ingestion.
+* **It crosses on a host service of its own**, `journal_art`, beside
+  `journal_open`, into a buffer in `journal_state` on `automap.h`'s three
+  terms — twelve kilobytes of observation, which is what a picture packed
+  to the whole box costs and is the same order as the automap's own
+  panel. The argument packs the citation and which picture of it, in the
+  byte above the pair `journal_open_argument` already packs. **No ABI
   entry point**, because a host's `serve()` is C++ inside the module on
   both targets and the store it reads is already there.
+* **Every answer carries the count**, refusals included, and that is the
+  one thing this service does that `journal_open` does not need to. How
+  many pictures an entry has is half of how many pages the reader draws
+  for it, so a service that answered the count only when it could hand a
+  picture over would have a reader whose page count moved depending on
+  which page it was standing on. `docs/seams.md` §3 carries the same
+  sentence, because it is a fact about the primitive rather than about
+  this enhancement.
+* **One picture crosses at a time**, and only when the page that is up
+  wants one the buffer is not already holding. The entry's first is
+  fetched with its text, because the footer of the page a citation opens
+  says `1/2` and cannot know that without the count.
 
-None of that is built. It is the second half of #328 and it is what a
-person will finally be able to look at.
+**The full screen is painted in two arrivals, and that is the ordering
+trap this cost.** A handler's own writes — port surgery, a byte into the
+video window — land the instant the handler runs; a call into the program
+lands when the batch does, which is after the handler has returned. So
+the arrival that turns onto a picture page asks the program to clear the
+box, draw the frame and draw the bar, and paints nothing; the arrival
+after it paints into the box the program has by then drawn. Drawn in one
+pass the picture goes *under* the frame it was drawn beside. It is
+#303's ordering — the program first and the seam after — one screen up,
+and `docs/seams.md` §8.4 carries it as a trap of the mechanism.
 
 ### 11.6 What is proven, and what is not
 
@@ -1529,6 +1576,20 @@ with no OCR engine present at all — because a drawing has no words in it.
 `hosts/common/tests/journal_picture_test.cpp` and the
 `JournalStorePictures` cases; the desktop host end to end in
 `hosts/sdl/cmake/run-journal.cmake`.
+
+**And the reader's half, since #328's second half**: the argument's
+packing, the unpacking of a row whose last byte is three quarters
+padding, a picture whose bytes and shape disagree being refused, a
+picture dropped when another entry is asked for, the count arriving with
+the entry, a picture being the page after the text under both shapes, the
+panel's average, an entry with a drawing and no text at all opening at
+all, an atlas being three pages fetched one at a time, a page number that
+outlived its entry landing on the last page there is, and — the ordering —
+a full-screen picture writing no pixel in the arrival that queued its
+frame and every pixel in the one after.
+`tests/core/machine/seam_journal_test.cpp`'s `JournalArt` and
+`JournalArtScreen` cases; the service's own answers, count and refusals
+alike, in `hosts/common/tests/host_services_test.cpp`'s `HostServicesArt`.
 
 **Off a real document, by hand, and reported the way §8 asks.** The
 desktop host with `AMBERFOLIO_LINK_TESSERACT=ON`, `--journal` over the
@@ -1560,11 +1621,27 @@ should be: they read a document this project must never carry.
 
 **Not proven, and named rather than implied:**
 
-* **Nobody has looked at one on a display.** See the end of 11.2. This is
-  the finding this enhancement will live or die by and no runner can
-  reach it.
-* **The reader does not draw them** (11.5), so what a player gets from
-  this half is a store with pictures in it and the same blank page.
+* **Nobody has looked at one on a display.** They have been *seen*, which
+  is the half of this that #328's second half bought and is not the same
+  thing: driven off the ingestion above, on a real run of the real
+  program, and looked at as dumped stills at 2x. Entry 4's cloth map
+  fills the full-screen box and reads as a map with its one printed label
+  legible; the atlas's Moonsea map reads with a dozen place names legible;
+  and the atlas's third map — the city plan §11.2 says does not survive —
+  reads as a city plan whose blocks, wall and harbour are plain and whose
+  labels are gone, which is better than that paragraph predicted and not
+  good enough to change it. The panel's half scale was driven the same
+  way, from the camp screen, where the same map keeps its coastline and
+  loses its lettering. **What none of that is, is a display**, and #263
+  and #299 are two recorded instances of a covering that measured well,
+  composited well, and did not read when somebody finally looked. The
+  three knobs move without anybody re-ingesting: the ramp (`art_ramp`),
+  the level count, and the fit.
+* **The ramp has been seen doing what it says and not judged.** The
+  synthetic picture in `tests/visual/reader-art-store.txt` puts the four
+  tones side by side, and on the screen they are white, light grey, dark
+  grey and the ground. Whether those four are the right four for ink on
+  paper at this size is the question a display answers.
 * **The browser makes none**, so a browser ingestion and a linked
   desktop ingestion of one document produce two different stores. #236
   already owns the browser's half of this pipeline.

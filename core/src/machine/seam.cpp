@@ -147,6 +147,8 @@ const char* seam_host_service_name(seam_host_service which) noexcept {
       return "journal-seen";
     case seam_host_service::code_wheel_answered:
       return "code-wheel-answered";
+    case seam_host_service::journal_art:
+      return "journal-art";
   }
   return "unknown";
 }
