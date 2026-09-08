@@ -725,6 +725,42 @@ constexpr std::size_t list_row_cells = 40;
 /// draws does.
 constexpr std::array<std::string_view, 3> bar_words{"NEXT", "PREV", "EXIT"};
 
+/// Which of `bar_words` are on the bar for a given screenful, in the
+/// order the table lists them - a fixed capacity of three because that
+/// is the most a bar here has ever carried, and this program is
+/// freestanding: nothing under `core/` reaches for a heap.
+struct bar_word_set {
+  std::array<std::string_view, bar_words.size()> word{};
+  std::size_t count = 0;
+};
+
+/// The rule #341 and #342 asked for, read off the same two numbers the
+/// `n/m` label already reads: `NEXT` when there is a screenful after this
+/// one, `PREV` when there is one before it, and `EXIT` always, because
+/// there is always a way out. Dropping a word here is not dropping a
+/// slice of `bar_words` - a first page of several has `NEXT` and `EXIT`
+/// but not `PREV`, which sits between them in the table - so this builds
+/// its own short list rather than slicing the long one.
+///
+/// **Called once a screenful, and the result handed to both
+/// `screen_bar()` and `draw_the_bar()`.** They used to walk `bar_words`
+/// each on its own account; two tellings of the same rule is exactly how
+/// the words on the row and the white initials painted over it could end
+/// up disagreeing about what the row holds. One telling, read twice,
+/// cannot drift from itself.
+[[nodiscard]] constexpr bar_word_set active_bar_words(unsigned page,
+                                                      unsigned pages) noexcept {
+  bar_word_set words;
+  if (page + 1U < pages) {
+    words.word[words.count++] = bar_words[0];  // NEXT
+  }
+  if (page > 0) {
+    words.word[words.count++] = bar_words[1];  // PREV
+  }
+  words.word[words.count++] = bar_words[2];  // EXIT: always a way out
+  return words;
+}
+
 /// Its two colours (#330): the game's own green for the words and its own
 /// bright for the letter each one is picked by. The pair every command bar
 /// in this game is painted in, and the reason its own bars are stored
@@ -2172,21 +2208,34 @@ enum class claimable : std::uint8_t {
 /// program's own shop bar (`docs/playable.md`), and single spaces are its
 /// rule as much as they are the party bar's.
 ///
+/// **A dead command is not on the bar at all** (#341, #342): `NEXT` on
+/// the last screenful and `PREV` on the first are keys that do nothing,
+/// and a bar that named them anyway would be lying about what a player
+/// can do next. `active_bar_words()` decides which of `bar_words` this
+/// screenful gets; this only ever draws what it is handed.
+///
+/// **The words close up rather than holding their columns.** A `PREV`
+/// dropped from the front leaves `EXIT` sitting where `PREV` was, not
+/// where `EXIT` always sits - which is what the program's own bars do
+/// (the shop bar above loses `BUY` once the pack is empty, and `ITEMS:`
+/// closes up to meet `NEXT`), and a bar with a gap in the middle of it
+/// would be the one bar in the game that did not look like the rest.
+///
 /// The `n/m` after the words is a label and not a command, so it goes
 /// after them and only when there is more than one page - the same rule
-/// the panel's footer has always used, six spaces clear of the last word
-/// so that nobody reads it as a fourth one. `+` after it is the delivery
-/// buffer's own honesty: the entry was longer than the four kilobytes
-/// that crossed the host boundary (journal.h), said rather than silently
-/// stopped.
-[[nodiscard]] list_line screen_bar(unsigned page, unsigned pages,
-                                   bool truncated) {
+/// the panel's footer has always used, six spaces clear of whichever word
+/// this screenful drew last so that nobody reads it as a fourth one. `+`
+/// after it is the delivery buffer's own honesty: the entry was longer
+/// than the four kilobytes that crossed the host boundary (journal.h),
+/// said rather than silently stopped.
+[[nodiscard]] list_line screen_bar(const bar_word_set& words, unsigned page,
+                                   unsigned pages, bool truncated) {
   list_line line;
-  for (std::size_t nth = 0; nth < bar_words.size(); ++nth) {
+  for (std::size_t nth = 0; nth < words.count; ++nth) {
     if (nth != 0) {
       line.add(" ");
     }
-    line.add(bar_words[nth]);
+    line.add(words.word[nth]);
   }
   if (pages > 1) {
     line.add("      ");
@@ -2201,8 +2250,8 @@ enum class claimable : std::uint8_t {
   return line;
 }
 
-/// The reader's own bar, onto the screen: **four calls and two colours**
-/// (#330).
+/// The reader's own bar, onto the screen: **up to four calls and two
+/// colours** (#330; #341, #342).
 ///
 /// Every command bar this game draws paints the **initial white and the
 /// tail green**, which is how a player is told which key picks the
@@ -2215,8 +2264,16 @@ enum class claimable : std::uint8_t {
 /// program's drawer and this bar goes through the same drawer with a
 /// colour argument: one call is one colour. So the line is drawn whole in
 /// the green first - which is also the forty-cell clear the row needs -
-/// and then the three initials are drawn over their own cells in the
-/// bright. Four calls where there was one.
+/// and then each word this screenful carries has its own initial drawn
+/// over its own cell in the bright. One call for the line and one more
+/// for every word `words` holds - four calls where there was one, on a
+/// bar with all three of them, and fewer on any bar that has dropped one.
+///
+/// **The same `words` `screen_bar()` was handed**, not a second look at
+/// `bar_words` on this call's own account (#341, #342). The line already
+/// has exactly these words on it in exactly this order; walking anything
+/// else here is how the white initials would end up over the wrong
+/// cells.
 ///
 /// **The green line goes first and covers the whole row**, so a batch
 /// that fills up half way through is not a half-white bar left standing:
@@ -2225,16 +2282,17 @@ enum class claimable : std::uint8_t {
 /// here is idempotent by luck.
 ///
 /// A batch queues twelve calls and places 256 bytes (`seam.h`), so the
-/// three extra calls are three extra bytes of string each and are budgeted
-/// where the rows are: `list_rows_per_pass` and `page_rows_per_pass`.
+/// extra calls are extra bytes of string each and are budgeted where the
+/// rows are: `list_rows_per_pass` and `page_rows_per_pass`.
 [[nodiscard]] bool draw_the_bar(seam_context& ctx, std::uint16_t image,
-                                list_line& line) {
+                                list_line& line, const bar_word_set& words) {
   if (!draw_line(ctx, image, line, bar_word_colour, list_exit_row,
                  list_exit_column)) {
     return false;
   }
   std::size_t column = list_exit_column;
-  for (const std::string_view word : bar_words) {
+  for (std::size_t nth = 0; nth < words.count; ++nth) {
+    const std::string_view word = words.word[nth];
     list_line initial;
     initial.add(word.substr(0, 1));
     if (!draw_line(ctx, image, initial, bar_key_colour, list_exit_row,
@@ -2292,12 +2350,16 @@ enum class claimable : std::uint8_t {
       return false;
     }
     if (rows.empty()) {
+      // A log of nothing is one page of nothing (`list_pages()`), so the
+      // rule below already gives it `EXIT` alone: there is no screenful
+      // either side of the one that says so (#341).
       list_line nothing;
       nothing.add("THE GAME HAS NOT SENT YOU HERE YET.");
       static_cast<void>(draw_line(ctx, image, nothing, list_row_colour,
                                   list_first_row + 1, list_name_column));
-      list_line bar = screen_bar(0, 1, false);
-      return draw_the_bar(ctx, image, bar);
+      const bar_word_set words = active_bar_words(0, 1);
+      list_line bar = screen_bar(words, 0, 1, false);
+      return draw_the_bar(ctx, image, bar, words);
     }
   }
 
@@ -2338,10 +2400,11 @@ enum class claimable : std::uint8_t {
     return false;
   }
 
-  list_line bar =
-      screen_bar(static_cast<unsigned>(cursor / list_rows_visible),
-                 static_cast<unsigned>(list_pages(rows.size())), false);
-  return draw_the_bar(ctx, image, bar);
+  const auto list_page = static_cast<unsigned>(cursor / list_rows_visible);
+  const auto list_page_count = static_cast<unsigned>(list_pages(rows.size()));
+  const bar_word_set words = active_bar_words(list_page, list_page_count);
+  list_line bar = screen_bar(words, list_page, list_page_count, false);
+  return draw_the_bar(ctx, image, bar, words);
 }
 
 /// A full-screen page's own numbers, beside the listing's.
@@ -2393,16 +2456,28 @@ constexpr std::size_t page_rows_per_pass = 4;
   return static_cast<std::uint16_t>(list_frame_left + ((columns - take) / 2U));
 }
 
+/// A page's footer as `screen_bar()` drew it, and the words it drew it
+/// with - the pair `draw_the_bar()` needs so that it paints the initials
+/// over the same words the line carries rather than asking `bar_words`
+/// the question a second time (#341, #342).
+struct page_footer_bar {
+  bar_word_set words;
+  list_line line;
+};
+
 /// The bottom row of a page: `screen_bar()`, which is the listing's own
 /// bar and the whole of #317 (M5-E4f).
 ///
-/// It said `1/3  F1 MORE   ESC CLOSES` and it says `NEXT PREV EXIT` now,
-/// on the same row, in the same forty cells. What is new to a *reader* is
-/// `PREV`: F1 walked forward and closed on the last page, so a person who
-/// overshot had to leave the entry and open it again.
-[[nodiscard]] list_line page_footer(unsigned page, unsigned pages, bool more,
-                                    bool truncated) {
-  return screen_bar(page, pages, !more && truncated);
+/// It said `1/3  F1 MORE   ESC CLOSES` and it says `NEXT PREV EXIT` now -
+/// or as many of those three as this page has a use for (#342): `PREV` is
+/// new to a *reader* as well as conditional, where F1 used to only walk
+/// forward and close on the last page, so a person who overshot had to
+/// leave the entry and open it again.
+[[nodiscard]] page_footer_bar page_footer(unsigned page, unsigned pages,
+                                          bool more, bool truncated) {
+  const bar_word_set words = active_bar_words(page, pages);
+  return {.words = words,
+          .line = screen_bar(words, page, pages, !more && truncated)};
 }
 
 /// One pass of a page of an entry, on the whole screen (M5-E4d, #305).
@@ -2471,8 +2546,8 @@ constexpr std::size_t page_rows_per_pass = 4;
       // drawn beside. So the bar goes on now, the box is left cleared,
       // and the arrival after this one paints into it — which is #303's
       // ordering with the program first and the seam after.
-      list_line bar = page_footer(page, total, more, false);
-      if (!draw_the_bar(ctx, image, bar)) {
+      page_footer_bar bar = page_footer(page, total, more, false);
+      if (!draw_the_bar(ctx, image, bar.line, bar.words)) {
         return false;
       }
       state.set_screen_drawn(1);
@@ -2493,8 +2568,8 @@ constexpr std::size_t page_rows_per_pass = 4;
                       page_centred_column(line.size())));
         ++nth;
       }
-      list_line footer = page_footer(page, total, more, false);
-      return draw_the_bar(ctx, image, footer);
+      page_footer_bar footer = page_footer(page, total, more, false);
+      return draw_the_bar(ctx, image, footer.line, footer.words);
     }
   }
 
@@ -2540,8 +2615,8 @@ constexpr std::size_t page_rows_per_pass = 4;
     return false;
   }
 
-  list_line footer = page_footer(page, total, more, state.truncated());
-  return draw_the_bar(ctx, image, footer);
+  page_footer_bar footer = page_footer(page, total, more, state.truncated());
+  return draw_the_bar(ctx, image, footer.line, footer.words);
 }
 
 /// Put the whole screen back, through the routine the program itself

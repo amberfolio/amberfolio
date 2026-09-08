@@ -1082,8 +1082,14 @@ and the first opens. The word "journal" is not part of the shape.
   mode byte and draws the bottom panel alone. A page from a listing row
   returns to the listing. Both give-backs call
   `automap_state::note_panel_painted_over()` (#332).
-- **The bar** (#329, #330): flush left, spaced one, drawn in four calls,
-  the row green and the three initials white.
+- **The bar** (#329, #330, #341, #342): flush left, spaced one, drawn in
+  a call for the row (green) and one more for each word's initial
+  (white). `NEXT` and `PREV` are only on it when there is a screenful in
+  that direction; a dropped word closes up rather than leaving a gap, so
+  an empty log or a one-page entry draws `EXIT` alone. One helper decides
+  the set for a screenful and both drawing passes read it, so the words
+  on the row and the initials over them cannot disagree about what is on
+  it.
 - **Notes** (#221): the two bars are thirty-three and twenty-seven
   characters in `string[40]` slots at the two data-segment offsets the
   automap tests; the menu-bar routine's command class is upper case only
