@@ -267,7 +267,17 @@ void journal_store::set_seen(std::span<const machine::journal_seen_row> rows) {
   seen_.assign(rows.begin(), rows.size() > machine::journal_log_rows
                                  ? rows.begin() + machine::journal_log_rows
                                  : rows.end());
-  changed_ = true;
+  // The log's flag and not the text's (#351): what moved is not in the
+  // store's own file any more.
+  log_changed_ = true;
+}
+
+void journal_store::forget_seen() {
+  if (seen_.empty()) {
+    return;
+  }
+  seen_.clear();
+  log_changed_ = true;
 }
 
 std::size_t journal_store::recognized() const noexcept {
@@ -287,6 +297,7 @@ void journal_store::clear() {
   pictures_.clear();
   seen_.clear();
   changed_ = true;
+  log_changed_ = true;
 }
 
 std::string journal_store::serialize() const {
@@ -307,10 +318,9 @@ std::string journal_store::serialize() const {
     append_record(out, "scanned", what, entry.scanned);
     append_record(out, "corrected", what, entry.corrected);
   }
-  // Then the pictures (#328), between the texts and the log: a picture
-  // is one of the entry's two contents and the log is about all of them.
-  // The length counts the base64 text rather than the bytes it stands
-  // for, so the same length-prefixed reader takes it.
+  // Then the pictures (#328), after the texts: a picture is one of the
+  // entry's two contents. The length counts the base64 text rather than
+  // the bytes it stands for, so the same length-prefixed reader takes it.
   for (const journal_picture& one : pictures_) {
     const std::string body = encode_base64(one.levels);
     out.append("picture ");
@@ -330,23 +340,11 @@ std::string journal_store::serialize() const {
     out.push_back('\n');
   }
 
-  // The log last, so a store reads as its texts and then what the game has
-  // said about them. No length and no body: a `seen` line carries facts
-  // about an entry and not a word of one.
-  for (const machine::journal_seen_row& row : seen_) {
-    out.append("seen ");
-    out.append(journal_kind_name(row.what.kind));
-    out.push_back(' ');
-    append_number(out, row.what.number);
-    for (const std::uint8_t field :
-         {row.month, row.day, row.hour, row.minute}) {
-      out.push_back(' ');
-      append_number(out, field);
-    }
-    out.push_back(' ');
-    append_number(out, row.read ? 1U : 0U);
-    out.push_back('\n');
-  }
+  // And no log. It was written here until #351 moved it beside the
+  // save it belongs to (`slot_store.h`), which is why the version
+  // above is 5: a build that still expected `seen` lines would read
+  // this file and conclude the player had been cited nothing, and a
+  // version field exists so that it does not have to guess.
   return out;
 }
 
@@ -396,6 +394,10 @@ journal_trouble journal_store::parse(std::string_view whole) {
   }
   // Version 1 predates the sections and so has no kind on its records.
   const bool kinded = version >= 2U;
+  // The versions that kept the log in this file (#351). Version 5 does
+  // not, so a `seen` line in one is a file that is not this format —
+  // refused whole, which is what every other unrecognized line gets.
+  const bool logged = version >= 2U && version <= 4U;
   // Version 3 and earlier predate the pictures (#328).
   const bool pictured = version >= 4U;
 
@@ -415,7 +417,7 @@ journal_trouble journal_store::parse(std::string_view whole) {
   while (at < text.size()) {
     const bool scanned = text.compare(at, 8, "scanned ") == 0;
     const bool corrected = text.compare(at, 10, "corrected ") == 0;
-    const bool seen = kinded && text.compare(at, 5, "seen ") == 0;
+    const bool seen = logged && text.compare(at, 5, "seen ") == 0;
     const bool picture = pictured && text.compare(at, 8, "picture ") == 0;
     if (!scanned && !corrected && !seen && !picture) {
       return journal_trouble::not_a_store;
@@ -546,7 +548,159 @@ journal_trouble journal_store::parse(std::string_view whole) {
   // raise the flag). Without this line every host would save, on
   // startup, the file it had just read.
   changed_ = false;
+  // And the log's, for the same reason, however it got here: rows out of
+  // a version 4 store are this run's working log (journal_store.h), and
+  // the first thing that happens to them is being written to a sidecar
+  // by whoever asked for one — not by this.
+  log_changed_ = false;
   return journal_trouble::none;
+}
+
+// ---------------------------------------------------------------------------
+// The read log's sidecar (#351)
+// ---------------------------------------------------------------------------
+//
+// The layout is `journal_store.h`'s. These three are `automap_state`'s
+// three, on the same header and with the same refusals, because
+// `slot_store` writes both files through one pair of calls.
+
+namespace {
+
+/// Two bytes little-endian, in and out. The exploration sidecar's own
+/// pair (`core/src/machine/automap.cpp`), spelled again rather than
+/// shared: they are three lines, and a header in `hosts/common` that
+/// existed to hold them would be a dependency for nothing.
+void put_word(std::span<std::uint8_t> out, std::size_t at,
+              std::uint16_t value) noexcept {
+  out[at] = static_cast<std::uint8_t>(value & 0xFFU);
+  out[at + 1] = static_cast<std::uint8_t>((value >> 8) & 0xFFU);
+}
+
+[[nodiscard]] std::uint16_t word_at(std::span<const std::uint8_t> in,
+                                    std::size_t at) noexcept {
+  return static_cast<std::uint16_t>(
+      in[at] | (static_cast<std::uint16_t>(in[at + 1]) << 8));
+}
+
+/// The row's fields, by offset.
+constexpr std::size_t log_field_kind = 0;
+constexpr std::size_t log_field_number = 1;
+constexpr std::size_t log_field_month = 3;
+constexpr std::size_t log_field_day = 4;
+constexpr std::size_t log_field_hour = 5;
+constexpr std::size_t log_field_minute = 6;
+constexpr std::size_t log_field_read = 7;
+
+}  // namespace
+
+std::size_t journal_store::log_sidecar_bytes() const noexcept {
+  return journal_log_sidecar_header_bytes +
+         (seen_.size() * journal_log_sidecar_record_bytes);
+}
+
+std::size_t journal_store::write_log_sidecar(
+    std::span<std::uint8_t> out) const noexcept {
+  const std::size_t wanted = log_sidecar_bytes();
+  if (out.size() < wanted) {
+    return 0;
+  }
+
+  for (std::size_t i = 0; i < journal_log_sidecar_magic.size(); ++i) {
+    out[i] = static_cast<std::uint8_t>(journal_log_sidecar_magic[i]);
+  }
+  out[journal_log_sidecar_magic.size()] = journal_log_sidecar_version;
+  put_word(out, 4, static_cast<std::uint16_t>(seen_.size()));
+  put_word(out, 6,
+           static_cast<std::uint16_t>(journal_log_sidecar_record_bytes));
+
+  std::size_t at = journal_log_sidecar_header_bytes;
+  for (const machine::journal_seen_row& row : seen_) {
+    const std::span<std::uint8_t> one =
+        out.subspan(at, journal_log_sidecar_record_bytes);
+    one[log_field_kind] = static_cast<std::uint8_t>(row.what.kind);
+    put_word(one, log_field_number, row.what.number);
+    one[log_field_month] = row.month;
+    one[log_field_day] = row.day;
+    one[log_field_hour] = row.hour;
+    one[log_field_minute] = row.minute;
+    one[log_field_read] = row.read ? 1U : 0U;
+    at += journal_log_sidecar_record_bytes;
+  }
+  return wanted;
+}
+
+bool journal_store::read_log_sidecar(std::span<const std::uint8_t> in) {
+  if (in.size() < journal_log_sidecar_header_bytes) {
+    return false;
+  }
+  for (std::size_t i = 0; i < journal_log_sidecar_magic.size(); ++i) {
+    if (in[i] != static_cast<std::uint8_t>(journal_log_sidecar_magic[i])) {
+      return false;
+    }
+  }
+  if (in[journal_log_sidecar_magic.size()] != journal_log_sidecar_version) {
+    return false;
+  }
+  const std::size_t count = word_at(in, 4);
+  if (word_at(in, 6) != journal_log_sidecar_record_bytes) {
+    return false;
+  }
+  if (count > machine::journal_log_rows) {
+    return false;
+  }
+  if (in.size() < journal_log_sidecar_header_bytes +
+                      (count * journal_log_sidecar_record_bytes)) {
+    return false;
+  }
+
+  // Built beside and swapped in at the end, the way `parse()` is: a file
+  // that turns out to be malformed at its last row leaves the log
+  // exactly as it was.
+  std::vector<machine::journal_seen_row> rows;
+  rows.reserve(count);
+  std::size_t at = journal_log_sidecar_header_bytes;
+  for (std::size_t i = 0; i < count; ++i) {
+    const std::span<const std::uint8_t> one =
+        in.subspan(at, journal_log_sidecar_record_bytes);
+    const std::uint8_t kind = one[log_field_kind];
+    if (kind >= machine::journal_kinds) {
+      // A section this build has no name for. Refused rather than
+      // clamped: a row filed under the wrong section is a citation that
+      // opens the wrong text, which is worse than a file this build says
+      // it cannot read.
+      return false;
+    }
+    machine::journal_seen_row row;
+    row.what.kind = static_cast<machine::journal_kind>(kind);
+    row.what.number = word_at(one, log_field_number);
+    row.month = one[log_field_month];
+    row.day = one[log_field_day];
+    row.hour = one[log_field_hour];
+    row.minute = one[log_field_minute];
+    row.read = one[log_field_read] != 0U;
+    rows.push_back(row);
+    at += journal_log_sidecar_record_bytes;
+  }
+
+  seen_ = std::move(rows);
+  log_changed_ = true;
+  return true;
+}
+
+std::string journal_store::serialize_log() const {
+  std::vector<std::uint8_t> bytes(log_sidecar_bytes());
+  if (write_log_sidecar(bytes) != bytes.size()) {
+    return {};
+  }
+  return encode_base64(bytes);
+}
+
+bool journal_store::parse_log(std::string_view text) {
+  std::vector<std::uint8_t> bytes;
+  if (!decode_base64(text, bytes)) {
+    return false;
+  }
+  return read_log_sidecar(bytes);
 }
 
 sha256_digest journal_store::fingerprint() const {

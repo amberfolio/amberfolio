@@ -169,7 +169,7 @@ set(_amberfolio_web_export_names
   # argument are core's, above.
   _af_web_attach_host_services
   _af_web_host_service_at
-  _af_web_automap_store
+  _af_web_save_sidecars
   # The M5-E3 (#174) journal ingestion. The loop is inverted here --
   # tesseract.js is on the far side of this boundary and is
   # asynchronous, so the page asks for one entry's pixels, recognizes
@@ -213,6 +213,8 @@ set(_amberfolio_web_export_names
   _af_web_journal_store_changed
   _af_web_journal_store_clear_changed
   _af_web_journal_seen_restore
+  _af_web_journal_log_write
+  _af_web_journal_log_read
   _af_web_journal_cite_all
   _af_web_journal_store_clear
   _af_web_journal_store_fingerprint

@@ -175,6 +175,10 @@ TEST(JournalStore, TheThreeSectionsAreKeptApartAndComeOutInBlocks) {
 TEST(JournalStore, TheLogSurvivesTheRoundTripInItsOwnOrder) {
   // The log is a log: its order is its content, not an artefact of what
   // was written first, so it comes back exactly as it went in.
+  //
+  // Through its own sidecar since #351, not through the store's file:
+  // the rows left `journal.txt` and went beside the save they belong to,
+  // which is what makes two parties two lists.
   journal_store store;
   store.set_edition("e");
   store.set_engine("g");
@@ -200,8 +204,11 @@ TEST(JournalStore, TheLogSurvivesTheRoundTripInItsOwnOrder) {
   store.set_seen(rows);
   ASSERT_EQ(store.seen().size(), 3u);
 
+  std::vector<std::uint8_t> bytes(store.log_sidecar_bytes());
+  ASSERT_EQ(store.write_log_sidecar(bytes), bytes.size());
+
   journal_store read;
-  ASSERT_EQ(read.parse(store.serialize()), journal_trouble::none);
+  ASSERT_TRUE(read.read_log_sidecar(bytes));
   ASSERT_EQ(read.seen().size(), 3u);
   for (std::size_t i = 0; i < rows.size(); ++i) {
     EXPECT_EQ(read.seen()[i].what, rows[i].what) << i;
@@ -211,7 +218,126 @@ TEST(JournalStore, TheLogSurvivesTheRoundTripInItsOwnOrder) {
     EXPECT_EQ(read.seen()[i].minute, rows[i].minute) << i;
     EXPECT_EQ(read.seen()[i].read, rows[i].read) << i;
   }
-  EXPECT_EQ(read.fingerprint(), store.fingerprint());
+}
+
+TEST(JournalStore, TheLogIsNoLongerInTheStoresOwnFile) {
+  // #351: the store's file is about the player's *document*, and what
+  // the game has cited is about their *party*. A serialization that still
+  // carried the rows would be one file two playthroughs shared.
+  journal_store store;
+  store.set_edition("e");
+  store.set_engine("g");
+  ASSERT_TRUE(store.record_scan(Entry(4), "fourth"));
+  const std::array<machine::journal_seen_row, 1> rows{
+      {{.what = Entry(4), .month = 8, .day = 29, .hour = 22, .minute = 19}}};
+  store.set_seen(rows);
+
+  const std::string text = store.serialize();
+  EXPECT_TRUE(text.starts_with("amberfolio-journal 5\n"));
+  EXPECT_EQ(text.find("seen "), std::string::npos);
+
+  journal_store read;
+  ASSERT_EQ(read.parse(text), journal_trouble::none);
+  EXPECT_EQ(read.size(), 1u) << "the text is still all there";
+  EXPECT_TRUE(read.seen().empty());
+}
+
+TEST(JournalStore, AVersionFourStoresLogIsReadAndThenLeftBehind) {
+  // The one migration there will ever be. An old store's rows are this
+  // player's list from before slots existed, so they are read — and the
+  // store written back is version 5 without them, because by then they
+  // are in the sidecar of whoever asked for one.
+  journal_store store;
+  ASSERT_EQ(store.parse("amberfolio-journal 4\nedition a\nengine b\n"
+                        "scanned entry 4 6\nfourth\n"
+                        "seen entry 4 8 29 22 19 1\n"),
+            journal_trouble::none);
+  ASSERT_EQ(store.seen().size(), 1u);
+  EXPECT_EQ(store.seen()[0].what, Entry(4));
+  EXPECT_TRUE(store.seen()[0].read);
+  EXPECT_FALSE(store.log_changed())
+      << "rows that came from a host are not rows that moved";
+
+  const std::string back = store.serialize();
+  EXPECT_TRUE(back.starts_with("amberfolio-journal 5\n"));
+  EXPECT_EQ(back.find("seen "), std::string::npos);
+}
+
+TEST(JournalStore, AVersionFiveStoreWithALogLineIsNotOne) {
+  // Strict, the way every other malformed line here is: version 5 has no
+  // `seen` lines, so a file claiming to be one and carrying them is not
+  // this format and is refused whole rather than half-read.
+  journal_store store;
+  EXPECT_EQ(store.parse("amberfolio-journal 5\nedition a\nengine b\n"
+                        "seen entry 4 8 29 22 19 0\n"),
+            journal_trouble::not_a_store);
+}
+
+TEST(JournalStore, ALogSidecarSaysWhatItIsAndRefusesWhatItIsNot) {
+  journal_store store;
+  const std::array<machine::journal_seen_row, 1> rows{
+      {{.what = Tale(9), .month = 3, .day = 4, .hour = 5, .minute = 6}}};
+  store.set_seen(rows);
+  std::vector<std::uint8_t> bytes(store.log_sidecar_bytes());
+  ASSERT_EQ(store.write_log_sidecar(bytes), bytes.size());
+  EXPECT_EQ(bytes.size(), 8u + 8u) << "a header and one row";
+  EXPECT_EQ(bytes[0], 'A');
+  EXPECT_EQ(bytes[1], 'F');
+  EXPECT_EQ(bytes[2], 'S');
+  EXPECT_EQ(bytes[3], 1u) << "the layout version";
+  EXPECT_EQ(bytes[4], 1u) << "one row, little-endian";
+  EXPECT_EQ(bytes[5], 0u);
+  EXPECT_EQ(bytes[6], 8u) << "and the stride it was written at";
+
+  journal_store other;
+  const std::array<machine::journal_seen_row, 1> keep{
+      {{.what = Entry(1), .month = 1, .day = 1, .hour = 1, .minute = 1}}};
+  other.set_seen(keep);
+  for (const std::size_t at :
+       {std::size_t{0}, std::size_t{3}, std::size_t{6}}) {
+    std::vector<std::uint8_t> wrong = bytes;
+    wrong[at] = 0xEE;
+    EXPECT_FALSE(other.read_log_sidecar(wrong)) << "byte " << at;
+    ASSERT_EQ(other.seen().size(), 1u)
+        << "and what a player was told is left alone";
+    EXPECT_EQ(other.seen()[0].what, Entry(1));
+  }
+
+  // A row filed under a section this build has no name for. Refused
+  // rather than clamped: a citation that opened the wrong text would be
+  // worse than a file this build says it cannot read.
+  std::vector<std::uint8_t> alien = bytes;
+  alien[8] = 9;
+  EXPECT_FALSE(other.read_log_sidecar(alien));
+
+  // And one truncated, which is what an empty file is.
+  EXPECT_FALSE(other.read_log_sidecar(std::span<const std::uint8_t>{}));
+}
+
+TEST(JournalStore, AnEmptyLogIsASidecarAndNotNothing) {
+  // A slot saved by a party that has been cited nothing has to write a
+  // file all the same: loading it must replace whatever was there, not
+  // leave the last party's list standing.
+  journal_store store;
+  std::vector<std::uint8_t> bytes(store.log_sidecar_bytes());
+  ASSERT_EQ(bytes.size(), 8u);
+  ASSERT_EQ(store.write_log_sidecar(bytes), 8u);
+
+  journal_store other;
+  const std::array<machine::journal_seen_row, 1> rows{
+      {{.what = Entry(1), .month = 1, .day = 1, .hour = 1, .minute = 1}}};
+  other.set_seen(rows);
+  ASSERT_TRUE(other.read_log_sidecar(bytes));
+  EXPECT_TRUE(other.seen().empty());
+}
+
+TEST(JournalStore, ALogSidecarBufferTooSmallIsRefusedRatherThanTruncated) {
+  journal_store store;
+  const std::array<machine::journal_seen_row, 1> rows{
+      {{.what = Entry(1), .month = 1, .day = 1, .hour = 1, .minute = 1}}};
+  store.set_seen(rows);
+  std::array<std::uint8_t, 8> too_small{};
+  EXPECT_EQ(store.write_log_sidecar(too_small), 0u);
 }
 
 TEST(JournalStore, AVersionTwoStoreIsAPlayerNothingHasCitedYet) {
@@ -221,7 +347,7 @@ TEST(JournalStore, AVersionTwoStoreIsAPlayerNothingHasCitedYet) {
             journal_trouble::none);
   EXPECT_EQ(store.size(), 1u);
   EXPECT_TRUE(store.seen().empty()) << "no log is not a broken store";
-  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 4\n"));
+  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 5\n"));
 }
 
 TEST(JournalStore, ALogLineThatIsNotOneIsRefusedWhole) {
@@ -311,7 +437,7 @@ TEST(JournalStore, AStoreAnEditorSavedWithCrlfStillReads) {
 
 TEST(JournalStore, AStoreFromALaterFormatIsRefusedRatherThanMisread) {
   journal_store store;
-  EXPECT_EQ(store.parse("amberfolio-journal 5\nedition a\nengine b\n"),
+  EXPECT_EQ(store.parse("amberfolio-journal 6\nedition a\nengine b\n"),
             journal_trouble::not_a_store);
 }
 
@@ -332,7 +458,7 @@ TEST(JournalStore, AStoreFromVersionOneIsReadRatherThanThrownAway) {
   // And it is written back as the current version, so a store is
   // upgraded by being opened rather than by anybody being told to do
   // anything.
-  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 4\n"));
+  EXPECT_TRUE(store.serialize().starts_with("amberfolio-journal 5\n"));
   EXPECT_NE(store.serialize().find("scanned entry 4 6\n"), std::string::npos);
 }
 
@@ -452,12 +578,26 @@ TEST(JournalStoreChanged, EveryOtherWriteRaisesItToo) {
        .minute = 5,
        .read = false},
   }};
+  // The log has its own flag since #351, because it has its own file:
+  // a citation that raised the store's would have a host rewrite a
+  // player's whole transcription to record something not in it.
   store.set_seen(rows);
-  EXPECT_TRUE(store.changed());
-  store.clear_changed();
+  EXPECT_FALSE(store.changed());
+  EXPECT_TRUE(store.log_changed());
+  store.clear_log_changed();
+
+  store.forget_seen();
+  EXPECT_FALSE(store.changed());
+  EXPECT_TRUE(store.log_changed());
+  store.clear_log_changed();
+
+  EXPECT_FALSE(store.log_changed()) << "and forgetting nothing is not a move";
+  store.forget_seen();
+  EXPECT_FALSE(store.log_changed());
 
   store.clear();
   EXPECT_TRUE(store.changed());
+  EXPECT_TRUE(store.log_changed());
 }
 
 TEST(JournalStoreChanged, AWriteThatWasRefusedRaisesNothing) {
@@ -632,23 +772,28 @@ TEST(JournalCiteAll, TheProbeEditionIsCitedEntryOneFirstAndAllUnread) {
 }
 
 TEST(JournalCiteAll, TheStoreGetsTheSameLogThroughTheSameWrite) {
-  // What makes it survive a reload: the rows go into the store's own log
-  // through `set_seen`, which is the `journal_seen` service's write, and
-  // that raises the store's flag so a host writes the file — while the
-  // machine's own flag comes down, because the host now has it.
+  // What makes it outlive the machine: the rows go into the store's own
+  // log through `set_seen`, which is the `journal_seen` service's write,
+  // and that raises the *log's* flag (#351) so a host writes the sidecar
+  // beside the save — while the machine's own flag comes down, because
+  // the host now has it.
   journal_store store = probe_store();
   machine::journal_state into;
   static_cast<void>(cite_all_journal(into, store, At));
 
-  EXPECT_TRUE(store.changed());
+  EXPECT_TRUE(store.log_changed());
+  EXPECT_FALSE(store.changed())
+      << "a cheat that cites is not an edit to a player's transcription";
   EXPECT_FALSE(into.seen_changed());
   ASSERT_EQ(store.seen().size(), into.seen().size());
   for (std::size_t i = 0; i < store.seen().size(); ++i) {
     EXPECT_EQ(store.seen()[i].what, into.seen()[i].what) << "row " << i;
   }
-  // And it round-trips as `seen` lines, Entry 1 first.
+  // And it round-trips through the log's own sidecar, Entry 1 first.
+  std::vector<std::uint8_t> bytes(store.log_sidecar_bytes());
+  ASSERT_EQ(store.write_log_sidecar(bytes), bytes.size());
   journal_store back;
-  ASSERT_EQ(back.parse(store.serialize()), journal_trouble::none);
+  ASSERT_TRUE(back.read_log_sidecar(bytes));
   ASSERT_EQ(back.seen().size(), 4u);
   EXPECT_EQ(back.seen().front().what, Entry(1));
   EXPECT_EQ(back.seen().back().what, Tale(1));

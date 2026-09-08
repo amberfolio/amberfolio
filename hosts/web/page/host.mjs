@@ -1042,17 +1042,20 @@ export class Machine {
     return this.#withCString(id, (ptr) => this.module._af_machine_seam_pull(this.handle, ptr));
   }
 
-  /// Keep the automap's exploration beside the save, in this module's own
-  /// filesystem (M5-E2c, #173) — the same object and the same file the
-  /// desktop host's `--automap-store` writes.
+  /// Keep this playthrough's progress beside its saves, in this module's
+  /// own filesystem (M5-E2c #173, #351) — the same object and the same
+  /// two files the desktop host's `--save-sidecars` writes: what the
+  /// automap has explored, and which journal entries the game has cited.
   ///
   /// **Call it once the files are in and before the program is loaded**:
-  /// turning it on reads the working table off the filesystem, and an
-  /// empty filesystem has nothing to give it. Off unless a caller asks,
-  /// because writing into a filesystem somebody dropped a game into is
-  /// not something to do unasked.
-  automapStore(on) {
-    return this.module._af_web_automap_store(this.handle, on ? 1 : 0);
+  /// turning it on reads the working exploration table off the
+  /// filesystem, and an empty filesystem has nothing to give it. The read
+  /// log comes back through `journalSeenRestore()`, which is called later
+  /// because the store it goes into is the page's. Off unless a caller
+  /// asks, because writing into a filesystem somebody dropped a game into
+  /// is not something to do unasked.
+  saveSidecars(on) {
+    return this.module._af_web_save_sidecars(this.handle, on ? 1 : 0);
   }
 
   // --- The journal store (M5-C1, #229) ----------------------------------

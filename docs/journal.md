@@ -307,7 +307,7 @@ breaks, which §9's reflow joins.
 One file of UTF-8 lines, each text length-prefixed:
 
 ```
-amberfolio-journal 4
+amberfolio-journal 5
 edition <64 hex>
 engine tesseract 5.5.1
 scanned entry 12 431
@@ -316,7 +316,6 @@ corrected entry 12 438
 <438 bytes><newline>
 picture entry 4 0 193 160 10404
 <10404 bytes of base64><newline>
-seen entry 12 8 29 22 19 0
 ```
 
 - `scanned <kind> <number> <bytes>` and `corrected <kind> <number>
@@ -327,8 +326,6 @@ seen entry 12 8 29 22 19 0
 - `picture <kind> <number> <nth> <width> <height> <bytes>`, the body
   base64 (§11): which of the entry's pictures, and its size in screen
   pixels.
-- `seen <kind> <number> <month> <day> <hour> <minute> <read>`: the read
-  log (#222), newest first, no body.
 - Two texts per item and only one is ever overwritten: ingestion replaces
   `scanned` and never touches `corrected`; the reader shows the
   correction where there is one.
@@ -336,6 +333,10 @@ seen entry 12 8 29 22 19 0
   cannot be read as a header. A file that is not exactly this is refused
   whole, never half-read; CRLF is normalized first.
 - A store of a different edition is cleared, not merged.
+- **No read log.** A version 4 store had `seen` lines here; version 5 has
+  none, and they went beside the save (§6a). A version 4 store's lines
+  are still read and are then that run's working log, and it is written
+  back as version 5 without them.
 - Only a store's counts and `journal_store::fingerprint()` may be written
   down anywhere (§8).
 
@@ -347,12 +348,53 @@ comes up. A full or blocked drawer and a store this build cannot read are
 each a sentence on the page; an unreadable store is left where it is. The
 page's *Forget it* button empties the drawer and the tab's copy.
 
+## 6a. The read log, which is not in the store (#351)
+
+The store above is about the player's **document**: what an engine read
+off their copy, what they corrected, what its drawings look like reduced.
+Those are true however many parties they run, which is why one file in
+the per-user data directory is right for them.
+
+Which entries the game has *cited*, when it said so, and whether they
+have been opened since is about a **playthrough**. One list between two
+parties tells each that it has already been sent somewhere it has never
+been — the same complaint the automap's exploration answered correctly
+and this answered wrongly. So the log lives where the exploration does:
+a sidecar beside the saves, per slot, off unless the player asked
+(`hosts/common/.../slot_store.h`).
+
+| where | what |
+| --- | --- |
+| `\SAVE\AFSEEN.DAT` | the working log, written whenever it moves |
+| `\SAVE\AFSEEN<L>.DAT` | slot `L`'s snapshot, written at that slot's save and read **over** the working log at its load, even when it is not there |
+| the browser's `amberfolio.journal.log.v1` drawer | the page's working log, base64 of exactly those bytes (`af_web_journal_log_write`/`_read`), because a browser has no directory to put a sidecar in until M6 gives it a disk |
+
+Binary and fixed-stride where the store's own file is text: `AFS`,
+version 1, a count and a stride, then eight bytes a row — section,
+number, month, day, hour, minute, and whether it has been opened. Text
+was right for a transcription a player edits; nobody hand-edits a list of
+what the game said and when, and a fixed stride is what lets a host write
+one from a seam's callout without allocating.
+
+`--save-sidecars` is the flag on the desktop, `saveSidecars(true)` on the
+page, and it is the same flag the automap's sidecar rides: the permission
+being asked for is "may this build write its own files beside your
+saves", and that sentence is the same one for each.
+
+The store's own **changed flag** is the text's; `log_changed()` is the
+log's. Without the split a citation would have a host rewrite a player's
+whole transcription to record something that is no longer in it.
+
+**The rows still live in `journal_store`** and reach the reader exactly
+as they did: `set_seen` puts them in, `restore_journal_log()` hands them
+to the machine. Nothing above the store moved.
+
 **The read log is restored by `host::restore_journal_log()`** in
 `hosts/common`, called by both hosts (the web export is
-`af_web_journal_seen_restore`, #237). Trap: the store and
-`machine::journal_state` both hold the log newest first and `note_seen`
-puts each row on the *front*, so rows fed in stored order come out upside
-down; `JournalLogRestore` pins the order.
+`af_web_journal_seen_restore`, #237, which reads the sidecar first). Trap:
+the store and `machine::journal_state` both hold the log newest first and
+`note_seen` puts each row on the *front*, so rows fed in stored order come
+out upside down; `JournalLogRestore` pins the order.
 
 ## 7. What is checked, and what is not
 
@@ -498,9 +540,9 @@ a person can proof-read a whole store off the game's screen.
 - It clears nothing: `note_seen`'s move-up rule keeps an existing read
   flag, so a second call neither doubles nor unreads a row.
 - It writes the log into the store through `set_seen`, the `journal_seen`
-  service's own write, so the rows survive until the `seen` lines are
-  removed or *Forget it* empties the store. With no journal ingested it
-  does nothing and says so.
+  service's own write, so the rows reach the sidecar beside the save
+  (§6a) and survive until something replaces them or *Forget it* empties
+  the drawer. With no journal ingested it does nothing and says so.
 - It is a host action, not a seam, like `--forget-code-wheel`: nothing
   under `core/` moves, no host service is added, and
   `af_web_journal_cite_all` is a page export beside

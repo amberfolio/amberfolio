@@ -67,10 +67,13 @@ import {
   journalNumber,
   loadEngine,
   keepStore,
+  keepLog,
   restoreStore,
+  restoreLog,
   restoreSeen,
   citeAllJournal,
   forgetStore,
+  forgetLog,
   clearStore,
 } from './journal.mjs';
 
@@ -255,10 +258,14 @@ export function runDevPage() {
     // something — and a module that comes up twice is not a thing this
     // page does.
     reportRestoredJournal(restoreStore(loaded.module));
-    // And its *read log* into the machine, which is a second call because
-    // the store is the module's and the log is the machine's (#237).
-    // Without it a player's `*` marks came back on the desktop and not
-    // here, which was a gap rather than a decision.
+    // And the *read log*, out of its own drawer (#351) and then into the
+    // machine, which is a second call because the store is the module's
+    // and the log is the machine's (#237). Without the second a player's
+    // `*` marks came back on the desktop and not here, which was a gap
+    // rather than a decision; without the first there would be nothing
+    // for it to put there, because the log left the store's own file
+    // when it went beside the save it belongs to.
+    restoreLog(loaded.module);
     restoreSeen(loaded.module, machine.handle);
 
     // And what this browser remembers about the code wheel (M6-C1b,
@@ -442,6 +449,7 @@ export function runDevPage() {
         // this once and doing it every visit, so it is said out loud
         // rather than left for a player to discover next week.
         const kept = keepStore(loaded.module);
+        keepLog(loaded.module);
         setJournalStatus(
           `${report.edition}: ${report.recognized} of ${report.entries} entries` +
             ` read by ${report.engine}` +
@@ -486,6 +494,7 @@ export function runDevPage() {
         ? loaded.module._af_web_journal_store_corrections()
         : 0;
       const { forgotten, why } = forgetStore();
+      forgetLog();
       if (loaded) clearStore(loaded.module);
       if (why) {
         setJournalStatus(why);
@@ -532,6 +541,10 @@ export function runDevPage() {
         }
         const kept = keepStore(loaded.module);
         if (kept.kept) loaded.module._af_web_journal_store_clear_changed();
+        // And the log, which is where the citing actually landed (#351):
+        // the store's text did not move, so without this the cheat would
+        // be forgotten on the next reload.
+        keepLog(loaded.module);
         setJournalStatus(
           `cited all ${cited} entries onto the Notes log (cheat)` +
             ' - it stays that way until you press Forget it' +

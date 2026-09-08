@@ -96,7 +96,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step, `xt` by default. Not a fast-forward. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. Only the loop's sleep changes (`platform.h`); the run is byte-identical. |
-| `--automap-store` | keep the automap's exploration beside the save (M5-E2c, #173): `\SAVE\AFMAP.DAT` plus a snapshot per slot, never inside a save. Off by default. |
+| `--save-sidecars` | keep what this playthrough has accumulated beside its saves (M5-E2c #173, #351): the automap's exploration in `\SAVE\AFMAP.DAT` and the journal's read log in `\SAVE\AFSEEN.DAT`, each with a snapshot per slot, never inside a save. Off by default. |
 | `--code-wheel-answered`, `--code-wheel-store PATH`, `--forget-code-wheel` | say the code-wheel challenge has been answered on this copy; where answered copies are remembered; forget this one (#290). |
 | `--journal PATH`, `--journal-store PATH`, `--journal-ocr PATH\|none`, `--journal-probe`, `--cite-all-journal` | ingest a journal; where its text lives; which OCR engine; add the synthetic probe edition; cite every entry onto the `Notes` log (`docs/journal.md`). |
 | `--volume 0-100`, `--mute` | how loudly to play it (§4); a run at 25% is the same run as one at 100%, to the last edge. |
@@ -137,7 +137,7 @@ same on `blur` and on the tab going hidden.
   seed is machine state and the program reads it (`docs/replay.md` §6).
   `scripts/visual-legs.py` states `--wall none` on both sides of every leg;
   the session library's `contrast` and `identical` pairs owe theirs (#293).
-- **`--automap-store` changes the player's disk**, and every recorded
+- **`--save-sidecars` changes the player's disk**, and every recorded
   session pins its disk by name, size and SHA-256.
 - **A hard-disk install's config names absolute paths.** This host mounts
   its directory as the DOS root, so every path built from that config
@@ -578,7 +578,7 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161). Repeatable. |
 | `--seam ID` | turn one seam on after the load, before the first step. Repeatable; a refusal **ends the run**, so a script never silently gets a plain machine. |
 | `--seams` | list every seam this build carries, and exit. |
-| `--automap-store` | the exploration sidecar, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on after the files are in and before the program is loaded: it reads the working table back. |
+| `--save-sidecars` | the playthrough's sidecars, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on after the files are in and before the program is loaded: it reads the working exploration table back. The read log comes back with the journal store, which is this side's. |
 | `--document PATH` | present a document the player holds; hashed and dropped. Repeatable. |
 | `--code-wheel-answered` | say the challenge has been answered on this copy (#291). Without it the seam only watches, and a driven run sits at the challenge for ever. |
 | `--code-wheel-store PATH` | where answered copies are remembered, in the desktop host's format. Read before the first step, written when somebody answers. |

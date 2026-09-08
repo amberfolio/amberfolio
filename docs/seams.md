@@ -997,14 +997,14 @@ rule, settling quarantine and ownership signals are derived in
 dropped by `reset()`, absent from the serialization, rebuilt by a replay.
 The colour cache and the door tally live there too. **Host services**:
 `automap_update`, called with the store's serial when a reveal changes
-something. The store is the host's (`hosts/common/.../automap_store.h`,
+something. The store is the host's (`hosts/common/.../slot_store.h`,
 shape decided in `machine/automap.h` because the explored overlay reads
-the same records): off unless asked (`--automap-store`,
-`af_web_automap_store`) because a sidecar changes the disk every session
-pins; a working table follows the party and a snapshot per save slot
-replaces it on load, even when empty; a slot the load menu only opened
-is told from one loaded by whether bytes moved through the handle
-(`file_event`'s traffic flags).
+the same records, so the wilderness is in the same file): off unless
+asked (`--save-sidecars`, `af_web_save_sidecars`) because a sidecar
+changes the disk every session pins; a working table follows the party
+and a snapshot per save slot replaces it on load, even when empty; a slot
+the load menu only opened is told from one loaded by whether bytes moved
+through the handle (`file_event`'s traffic flags).
 
 **Keys**: Tab; up and down (the roster cursor) while the panel is up.
 

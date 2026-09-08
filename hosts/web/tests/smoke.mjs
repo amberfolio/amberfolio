@@ -223,7 +223,7 @@ const EXPECTED_EXPORTS = [
   // at. The count and the argument are core's, above.
   '_af_web_attach_host_services',
   '_af_web_host_service_at',
-  '_af_web_automap_store',
+  '_af_web_save_sidecars',
   // The M5-E3 (#174) journal ingestion, and the synthetic document the
   // check below drives it with.
   '_af_web_journal_ingest',
@@ -256,6 +256,8 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_store_changed',
   '_af_web_journal_store_clear_changed',
   '_af_web_journal_seen_restore',
+  '_af_web_journal_log_write',
+  '_af_web_journal_log_read',
   '_af_web_journal_cite_all',
   '_af_web_journal_store_clear',
   '_af_web_journal_store_fingerprint',
@@ -3293,6 +3295,8 @@ if (missing.length === 0 && sessions !== null) {
     forgetStore,
     clearStore,
     restoreSeen,
+    serializeLog,
+    readLog,
     citeAllJournal,
     storeChanged,
     clearStoreChanged,
@@ -3673,7 +3677,7 @@ if (missing.length === 0 && sessions !== null) {
 
   const text = serializeStore(module);
   check(
-    text.startsWith('amberfolio-journal 4\n'),
+    text.startsWith('amberfolio-journal 5\n'),
     'the serialized store does not start with its own header',
   );
   check(
@@ -3834,31 +3838,38 @@ if (missing.length === 0 && sessions !== null) {
     const cited = citeAllJournal(module, box.handle);
     check(cited === 4, `citing the probe's store cited ${cited} rows, expected 4`);
     check(
-      storeChanged(module),
-      'citing everything did not raise the store flag, so a page would not keep it',
+      !storeChanged(module),
+      'citing raised the *text* flag, so a page would rewrite a transcription',
     );
-    const withLog = serializeStore(module);
-    const seenLines = withLog.split('\n').filter((line) => line.startsWith('seen '));
+
+    // Where the rows actually landed since #351: the read log, which has
+    // its own drawer because it is a fact about a playthrough and the
+    // text beside it is a fact about the player's document. The store's
+    // own serialization no longer carries a word of it.
     check(
-      seenLines.length === 4,
-      `the store carries ${seenLines.length} seen lines after citing four rows`,
+      !serializeStore(module).includes('\nseen '),
+      'the store still carries the read log in its own file',
     );
+    const log = serializeLog(module);
+    check(log.length > 0, 'the read log serialized to nothing after four citations');
     check(
-      seenLines[0].startsWith('seen entry 1 ') &&
-        seenLines[1].startsWith('seen entry 2 ') &&
-        seenLines[2].startsWith('seen entry 3 ') &&
-        seenLines[3].startsWith('seen tale 1 '),
-      `the cited log is not Entry 1 first: ${JSON.stringify(seenLines)}`,
+      citeAllJournal(module, box.handle) === 4 && serializeLog(module) === log,
+      'citing everything twice changed the log',
     );
+
+    // And it round-trips: base64 in, base64 out, and rubbish refused with
+    // what a player was told left alone. The row order and the fields are
+    // held down in C++ (`JournalCiteAll`, `JournalStore` in
+    // `hosts/common/tests/journal_store_test.cpp`), because the log is
+    // not readable across this ABI.
+    check(readLog(module, log) === 1, 'a read log this module wrote was refused');
+    check(serializeLog(module) === log, 'a read log did not survive its own round trip');
+    check(readLog(module, 'not a log at all') === 0, 'rubbish was taken as a read log');
     check(
-      seenLines.every((line) => line.endsWith(' 0')),
-      'a cited row arrived already read',
+      serializeLog(module) === log,
+      'a refused read log did not leave the log alone',
     );
-    check(
-      citeAllJournal(module, box.handle) === 4 &&
-        serializeStore(module).split('\n').filter((line) => line.startsWith('seen ')).length === 4,
-      'citing everything twice doubled the log',
-    );
+
     clearStore(module);
     box.destroy();
   }

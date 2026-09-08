@@ -160,14 +160,18 @@
 //     yellow, so without this a leaf on a screenshot cannot be told from
 //     a leaf the table guessed — which is exactly what #268 was about.
 //
-//   --automap-store  keep the automap's exploration beside the save
+//   --save-sidecars  keep this playthrough's progress beside its saves
 //
-//     M5-E2c (#173). What the automap seam has explored is observation
-//     and not machine state, so it is gone when the machine stops. This
-//     writes it into `\SAVE\AFMAP.DAT` — a file of this project's own,
-//     beside the program's saves and never inside one — and reads it
-//     back at startup, with a snapshot per save slot so two playthroughs
-//     do not share one map.
+//     M5-E2c (#173) and #351. Two enhancements learn something as a
+//     party plays — what the automap has explored, and which journal
+//     entries the game has cited — and both are observation rather than
+//     machine state, so both are gone when the machine stops. This
+//     writes them into `\SAVE\AFMAP.DAT` and `\SAVE\AFSEEN.DAT` —
+//     files of this project's own, beside the program's saves and never
+//     inside one — and reads them back at startup, with a snapshot per
+//     save slot so two playthroughs do not share one map or one list.
+//     The wilderness the explored overlay draws is in the first of them
+//     already: it keeps no records of its own and reads the automap's.
 //
 //     Off by default, and deliberately: this is a real directory of the
 //     player's, and a file appearing in it changes it. Every recorded
@@ -654,7 +658,6 @@
 #include <vector>
 
 #include "amberfolio/cpu/registers.h"
-#include "amberfolio/host/automap_store.h"
 #include "amberfolio/host/code_wheel_store.h"
 #include "amberfolio/host/held_keys.h"
 #include "amberfolio/host/host_services.h"
@@ -665,6 +668,7 @@
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/host/journal_score.h"
 #include "amberfolio/host/journal_store.h"
+#include "amberfolio/host/slot_store.h"
 #include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/document.h"
@@ -778,16 +782,15 @@ struct wired_machine {
 /// quietly differ. This host's job is to put the characters on stderr.
 class stderr_diagnostics final : public machine::diagnostics {
  public:
-  /// The exploration sidecar, if this run has one (M5-E2c, #173).
+  /// The playthrough's sidecars, if this run has them (M5-E2c #173,
+  /// #351).
   ///
   /// It is fed from here because this is where the DOS layer's file
   /// events arrive, and the store learns which save slot the program
   /// touched from nothing else — the program keeps no slot letter in
-  /// memory to read (`hosts/common/.../automap_store.h`). Null on every
+  /// memory to read (`hosts/common/.../slot_store.h`). Null on every
   /// run that did not ask for it, which is every run in `tests/sessions`.
-  void set_automap_store(host::automap_store* store) noexcept {
-    automap_ = store;
-  }
+  void set_slot_store(host::slot_store* store) noexcept { slots_ = store; }
 
   /// Whether to print every service call and file event as it happens.
   /// Off by default, for the reason diagnostics.h gives: a call is
@@ -812,8 +815,8 @@ class stderr_diagnostics final : public machine::diagnostics {
   void report(const machine::seam_event& event) override { write(event); }
 
   void report(const machine::file_event& event) override {
-    if (automap_ != nullptr) {
-      automap_->saw(event);
+    if (slots_ != nullptr) {
+      slots_->saw(event);
     }
     if (!tracing_) {
       return;
@@ -840,7 +843,7 @@ class stderr_diagnostics final : public machine::diagnostics {
     std::fputs(line.data(), stderr);
   }
 
-  host::automap_store* automap_{nullptr};
+  host::slot_store* slots_{nullptr};
 
   bool tracing_{false};
 };
@@ -1476,11 +1479,11 @@ struct options {
 
   bool trace{false};
 
-  /// `--automap-store`: keep the automap's exploration beside the save
-  /// (M5-E2c, #173). Off by default — see the usage block at the top of
-  /// this file for why writing into a player's game directory is asked
-  /// for rather than assumed.
-  bool automap_store{false};
+  /// `--save-sidecars`: keep what this playthrough has accumulated
+  /// beside its saves (M5-E2c #173, #351). Off by default — see the usage
+  /// block at the top of this file for why writing into a player's game
+  /// directory is asked for rather than assumed.
+  bool save_sidecars{false};
 
   /// `--wall`: where the date this machine is told it is comes from
   /// (#320). The host's own clock unless somebody says otherwise, which
@@ -1874,8 +1877,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.list_seams = true;
     } else if (arg == "--trace") {
       opts.trace = true;
-    } else if (arg == "--automap-store") {
-      opts.automap_store = true;
+    } else if (arg == "--save-sidecars") {
+      opts.save_sidecars = true;
     } else if (arg == "--dump" && i + 1 < argc) {
       opts.dump_prefix = argv[++i];
     } else if (arg == "--dump-every" && i + 1 < argc) {
@@ -2448,11 +2451,14 @@ void load_journal_store(const options& opts, host::journal_store& store) {
                  host::journal_trouble_name(why));
     return;
   }
+  // What the *file* held. The read log is not in it since #351 and is
+  // reported on its own line below, after the sidecar beside the save has
+  // been read over whatever a version 4 store carried.
   std::fprintf(stderr,
                "amberfolio: journal store %s entries=%zu corrections=%zu"
-               " pictures=%zu seen=%zu\n",
+               " pictures=%zu\n",
                path.c_str(), store.size(), store.corrections(),
-               store.picture_count(), store.seen().size());
+               store.picture_count());
 }
 
 /// Write the store back, for the log's sake (M5-E4b, #222).
@@ -2718,12 +2724,12 @@ int main(int argc, char** argv) try {
   // same thing on both.
   host::host_services services;
   box.seams().set_host(&services);
-  // And the one thing that door drives (M5-E2c, #173). Enabled before
-  // the filesystem is attached would be too early — `attach()` reads the
-  // working table — so the wiring is here and the attach is after the
-  // disk is mounted, below.
-  services.automap().enable(opts.automap_store);
-  log.set_automap_store(&services.automap());
+  // And the sidecars that door drives (M5-E2c #173, #351). Enabled
+  // before the filesystem is attached would be too early — `attach()`
+  // reads the working table — so the wiring is here and the attach is
+  // after the disk is mounted, below.
+  services.slots().enable(opts.save_sidecars);
+  log.set_slot_store(&services.slots());
   // And the other thing that door drives (M5-E4, #175): the text the
   // journal reader is answered out of. It lives here, for the whole run,
   // because an ingestion is one moment and the reading is every moment
@@ -2759,8 +2765,10 @@ int main(int argc, char** argv) try {
   // And now there is a disk to read the exploration sidecar off (M5-E2c,
   // #173). Before the program is loaded, so a panel opened in the first
   // seconds of a run already has last night's map in it. A no-op unless
-  // `--automap-store` asked for it.
-  services.automap().attach(box);
+  // `--save-sidecars` asked for it. The read log is the other half and
+  // waits for the journal store below, which is parsed wholesale and
+  // would throw away anything put there first (`slot_store.h`).
+  services.slots().attach(box);
 
   const machine::vfs_result<machine::dos_path> where = machine::canonicalize(
       machine::dos_path{},
@@ -2888,10 +2896,13 @@ int main(int argc, char** argv) try {
   // And the journal, which is a document that is also read inside
   // (#174). Here rather than earlier because it presents itself through
   // the same door, and the same sentence about gates applies to it.
+  const bool wants_journal =
+      !opts.journal.empty() || !opts.journal_store.empty() ||
+      opts.cite_all_journal ||
+      std::ranges::find(opts.seams, "journal") != opts.seams.end();
   if (!opts.journal.empty()) {
     ingest_journal(box, opts, journal_text);
-  } else if (!opts.journal_store.empty() || opts.cite_all_journal ||
-             std::ranges::find(opts.seams, "journal") != opts.seams.end()) {
+  } else if (wants_journal) {
     // Only for a run that asked for the reader, or one that said where a
     // store is. A player who did neither is not owed a line about a file
     // they have no use for, and the seam being named is the one signal
@@ -2905,16 +2916,36 @@ int main(int argc, char** argv) try {
     // with no text and hash differently than it recorded. Somebody who
     // named a store meant it.
     load_journal_store(opts, journal_text);
-    // What the store remembers about what the game has said, back into
-    // the machine the reader draws from. It is observation there and
-    // configuration here, which is why it travels this way round rather
-    // than living in either place alone (`machine/journal.h`).
-    //
-    // These eight lines were here and nowhere else, so the browser did
-    // not have them and forgot every `*` on reload (#237). They are
-    // `host::restore_journal_log()` now, in `hosts/common`, where both
-    // hosts reach them and a test holds the ordering down.
-    host::restore_journal_log(box.journal(), journal_text);
+  }
+
+  // The read log, and then the machine the reader draws it from.
+  //
+  // The working sidecar first (#351): the log left the per-user store
+  // file, so what a version 5 store holds is nothing and what a version 4
+  // one holds is this player's list from before slots — either way the
+  // slot's own file is the truer answer and goes over the top. A no-op
+  // unless `--save-sidecars` asked for one.
+  //
+  // Then into `machine::journal_state`, which is observation there and
+  // configuration here, which is why it travels this way round rather
+  // than living in either place alone (`machine/journal.h`). Those eight
+  // lines were in this file and nowhere else, so the browser did not have
+  // them and forgot every `*` on reload (#237); they are
+  // `host::restore_journal_log()` now, in `hosts/common`, where both
+  // hosts reach them and a test holds the ordering down.
+  //
+  // **Outside the branch above**, unlike before: a run that ingested a
+  // journal goes on to play, and one that restored no log would have the
+  // first citation overwrite the list with a list of one.
+  services.slots().read_journal_log();
+  host::restore_journal_log(box.journal(), journal_text);
+  if (wants_journal) {
+    // Said out loud for the reason the store's own line is: a reader that
+    // comes up with an empty `Notes` list is either a party nothing has
+    // cited or a sidecar that is not being read, and those are not the
+    // same thing.
+    std::fprintf(stderr, "amberfolio: journal log seen=%zu\n",
+                 journal_text.seen().size());
   }
 
   for (const std::string& id : opts.seams) {
@@ -3194,13 +3225,6 @@ int main(int argc, char** argv) try {
   // for every row — was never the bug; running it before the clock had
   // an answer was.
   if (opts.cite_all_journal) {
-    if (!opts.journal.empty()) {
-      // An ingestion in the same run read the store's log off the disk
-      // and put none of it in the machine, and citing writes the
-      // machine's log back over the store's: without this the rows the
-      // game had cited before, and which of them had been read, would go.
-      host::restore_journal_log(box.journal(), journal_text);
-    }
     const std::size_t cited = host::cite_all_journal(box, journal_text);
     if (cited == 0) {
       std::fprintf(stderr,
@@ -3209,8 +3233,7 @@ int main(int argc, char** argv) try {
     } else {
       std::fprintf(stderr,
                    "amberfolio: journal cited all %zu - the Notes log holds"
-                   " every entry (log=%zu) until its seen lines are removed"
-                   " from the store\n",
+                   " every entry (log=%zu) until something replaces it\n",
                    cited, box.journal().seen().size());
     }
   }
@@ -3474,17 +3497,27 @@ int main(int argc, char** argv) try {
       std::chrono::steady_clock::now();
 
   for (;;) {
-    // The store, if it has said it moved (M5-E4b, #222). In a run that
-    // is what the journal's log does — a citation, or the player opening
-    // one — and since M5-C1 (#229) the flag is the store's rather than
-    // the log's, so a correction made any other way would be written too.
-    // Once a frame rather than once a citation, because a citation is one
-    // instruction and a file write is not; and a flag rather than a timer,
-    // because most frames have nothing to say.
+    // The store, if it has said it moved (M5-E4b, #222). Since M5-C1
+    // (#229) the flag is the store's rather than the log's, so a
+    // correction made any way at all is written. Once a frame rather than
+    // once a write, because a write is one instruction and a file is not;
+    // and a flag rather than a timer, because most frames have nothing to
+    // say.
+    //
+    // **The log is no longer one of the things that raises it** (#351).
+    // It is not in this file any more, so a citation writes the sidecar
+    // beside the save and leaves a player's transcription alone.
     if (journal_text.changed()) {
       save_journal_store(opts, journal_text);
       journal_text.clear_changed();
     }
+    // And the read log's sidecar, on its own flag and beside the save it
+    // belongs to (#351). The `journal_seen` service writes it the instant
+    // a citation lands, so on an ordinary run this finds nothing to do;
+    // it is here for the paths that move the log without going through
+    // that service, of which `--cite-all-journal` is one and is the
+    // reason it was noticed. A no-op unless `--save-sidecars` asked.
+    services.slots().journal_changed();
     // And the code wheel's answer, the same way and for the same reason
     // (M6-C1b, #292) — except that this one moves at most once in a run,
     // at the instant a person gets the question right. Written then
@@ -3878,20 +3911,21 @@ int main(int argc, char** argv) try {
                  static_cast<unsigned long long>(services.record(which).at));
   }
 
-  // And what the sidecar did with them (M5-E2c, #173). Printed only when
-  // it was asked for, and printed even when it did nothing: a store that
-  // wrote no file is either a run that explored nothing or a run whose
-  // writes were failing, and those are not the same thing.
-  if (services.automap().enabled()) {
-    const host::automap_store& store = services.automap();
+  // And what the sidecars did with them (M5-E2c #173, #351). Printed
+  // only when they were asked for, and printed even when they did
+  // nothing: a store that wrote no file is either a run that explored
+  // nothing and was cited nothing or a run whose writes were failing, and
+  // those are not the same thing.
+  if (services.slots().enabled()) {
+    const host::slot_store& store = services.slots();
     const char slot = store.slot();
     std::fprintf(stderr,
-                 "amberfolio: automap-store writes=%lu reads=%lu slot=%c"
+                 "amberfolio: save-sidecars writes=%lu reads=%lu slot=%c"
                  " trouble=%s\n",
                  static_cast<unsigned long>(store.writes()),
                  static_cast<unsigned long>(store.reads()),
                  slot != 0 ? slot : '-',
-                 host::automap_trouble_name(store.trouble()));
+                 host::slot_trouble_name(store.trouble()));
   }
 
   // The VFS door (M5-D2, #170), over the directory this host was pointed

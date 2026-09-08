@@ -246,7 +246,7 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
   --pull ID@FRAME       pull a seam's trigger at the top of frame FRAME
                         (repeatable; the seam has to be on and to be one
                         that takes a trigger)
-  --automap-store       keep the automap's exploration beside the save
+  --save-sidecars       keep this playthrough's progress beside its saves
   --seam ID             turn one seam on before the first step (repeatable)
   --document PATH       present a document the player holds, by path on
                         this machine (repeatable) — a possession gate,
@@ -317,7 +317,7 @@ export function parseArgs(argv) {
     vfsGets: [],
     speed: null,
     trace: false,
-    automapStore: false,
+    saveSidecars: false,
     dumpPrefix: null,
     dumpEvery: 0,
     quiet: false,
@@ -387,8 +387,8 @@ export function parseArgs(argv) {
         return { error: `--pull wants ID@FRAME with a frame number; got ${text}` };
       }
       opts.pulls.push({ id, frame });
-    } else if (arg === '--automap-store') {
-      opts.automapStore = true;
+    } else if (arg === '--save-sidecars') {
+      opts.saveSidecars = true;
     } else if (arg === '--seam' && i + 1 < argv.length) {
       opts.seams.push(next());
     } else if (arg === '--vfs-list') {
@@ -679,13 +679,13 @@ export async function drive(opts) {
   // than starting a few instructions into it (trace.h).
   machine.setTrace(opts.trace);
 
-  // And the exploration sidecar (M5-E2c, #173), after the files are in —
-  // turning it on reads the working table off them — and before the
-  // program runs, so a panel opened in the first seconds of a run already
-  // has the last one's map in it.
-  if (opts.automapStore) {
-    machine.automapStore(true);
-    say('amberfolio: automap-store on');
+  // And the sidecars beside the save (M5-E2c #173, #351), after the files
+  // are in — turning it on reads the working exploration table off them —
+  // and before the program runs, so a panel opened in the first seconds of
+  // a run already has the last one's map in it.
+  if (opts.saveSidecars) {
+    machine.saveSidecars(true);
+    say('amberfolio: save-sidecars on');
   }
 
   const loadStatus = machine.loadFromVfs(opts.program, opts.tail);

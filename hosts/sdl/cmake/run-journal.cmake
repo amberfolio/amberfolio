@@ -94,7 +94,7 @@ file(READ "${store}" text)
 # three records here instead of four and this would say so.
 # Entry two is not in this list on purpose: it carries a paragraph break
 # (#331) and so is checked in its own shape below, not as a run of words.
-foreach(want "amberfolio-journal 4" "AMBER FOLIO PROBE ENTRY 1"
+foreach(want "amberfolio-journal 5" "AMBER FOLIO PROBE ENTRY 1"
              "scanned entry 1 " "scanned tale 1 "
              "picture entry 1 0 ")
   string(FIND "${text}" "${want}" at)
@@ -186,55 +186,84 @@ if(code EQUAL 0)
 endif()
 expect("need --journal")
 
-# --- 7. The cheat that cites everything (#301) --------------------------
+# --- 7. The cheat that cites everything (#301), and where it lands ------
 #
-# Over the store step 2 left: four rows and no `seen` lines. The flag
-# puts all four on the log, Entry 1 first, and the run loop writes the
-# store back on its first frame the way it would after a real citation —
-# so the file carries four `seen` lines afterwards, in that order, every
-# one unread. A second run over the same file is four lines and not
-# eight. With no store at all there is nothing to cite, and the host says
-# so and writes nothing.
+# Over the store step 2 left: four rows, and — since #351 — a store file
+# that carries no log at all. The flag puts all four on the machine's log,
+# Entry 1 first, and the host writes them into `\SAVE\AFSEEN.DAT` beside
+# the saves, which is a file it only writes when it was asked to:
+# `--save-sidecars`. So this runs over a *copy* of the smoke disk, because
+# the point of the flag is that a run does not change a directory nobody
+# offered it.
+#
+# What is checked here is that the file arrives, that it is the sidecar it
+# says it is, and that a second run reads it back — four rows and not
+# eight. The row order and the fields are held down in C++
+# (`JournalCiteAll` in `hosts/common/tests/journal_store_test.cpp`); a
+# sidecar is bytes, and this is the place to check that the bytes are
+# where a player's next launch will look for them.
 
-run_host(--journal-store "${store}" --cite-all-journal)
+set(cite_disk "${SCRATCH}/cite-disk")
+file(REMOVE_RECURSE "${cite_disk}")
+file(COPY "${DISK}/" DESTINATION "${cite_disk}")
+set(sidecar "${cite_disk}/SAVE/AFSEEN.DAT")
+
+function(run_cite_host)
+  execute_process(
+    COMMAND "${HOST}" "${cite_disk}" HELLO.EXE --headless ${ARGN}
+    RESULT_VARIABLE code
+    OUTPUT_VARIABLE out
+    ERROR_VARIABLE err)
+  set(code "${code}" PARENT_SCOPE)
+  set(out "${out}" PARENT_SCOPE)
+  set(err "${err}" PARENT_SCOPE)
+endfunction()
+
+# Without the flag, nothing is written anywhere: the cheat still cites,
+# and a directory nobody asked this build to write into is left alone.
+run_cite_host(--journal-store "${store}" --cite-all-journal)
 if(NOT code EQUAL 7)
   message(FATAL_ERROR
     "citing everything changed the program's exit code to '${code}'.\n"
     "stdout: ${out}\nstderr: ${err}")
 endif()
 expect("journal cited all 4 - the Notes log holds every entry \\(log=4\\)")
-file(READ "${store}" text)
-string(REGEX MATCHALL "seen [a-z]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [0-9]+ [01]\n" seen "${text}")
-list(LENGTH seen seen_count)
-if(NOT seen_count EQUAL 4)
+if(EXISTS "${sidecar}")
   message(FATAL_ERROR
-    "the store carries ${seen_count} seen lines after citing four rows:\n${text}")
+    "a run without --save-sidecars wrote ${sidecar}, which it must never do")
 endif()
-set(want_order "seen entry 1 " "seen entry 2 " "seen entry 3 " "seen tale 1 ")
-set(index 0)
-foreach(line IN LISTS seen)
-  list(GET want_order ${index} want)
-  string(FIND "${line}" "${want}" at)
-  if(NOT at EQUAL 0)
-    message(FATAL_ERROR
-      "seen line ${index} is '${line}', wanted it to begin '${want}':\n${text}")
-  endif()
-  if(NOT line MATCHES " 0\n$")
-    message(FATAL_ERROR "a cited row arrived already read: '${line}'")
-  endif()
-  math(EXPR index "${index} + 1")
-endforeach()
 
-run_host(--journal-store "${store}" --cite-all-journal)
-expect("journal store .*seen=4")
-expect("journal cited all 4")
+# And the store's own file never carries the log again.
 file(READ "${store}" text)
-string(REGEX MATCHALL "\nseen " seen "${text}")
-list(LENGTH seen seen_count)
-if(NOT seen_count EQUAL 4)
+if(text MATCHES "\nseen ")
   message(FATAL_ERROR
-    "citing everything twice left ${seen_count} seen lines:\n${text}")
+    "the store file still carries the read log:\n${text}")
 endif()
+
+# With the flag, the sidecar is there and is one: `AFS`, version 1, four
+# rows of eight bytes each behind an eight-byte header.
+run_cite_host(--journal-store "${store}" --cite-all-journal --save-sidecars)
+expect("journal cited all 4")
+expect("save-sidecars writes=[1-9]")
+if(NOT EXISTS "${sidecar}")
+  message(FATAL_ERROR
+    "citing everything with --save-sidecars wrote no ${sidecar}")
+endif()
+file(SIZE "${sidecar}" sidecar_bytes)
+if(NOT sidecar_bytes EQUAL 40)
+  message(FATAL_ERROR
+    "the read log's sidecar is ${sidecar_bytes} bytes, wanted 8 + 4 * 8")
+endif()
+file(READ "${sidecar}" head LIMIT 4 HEX)
+if(NOT head STREQUAL "41465301")
+  message(FATAL_ERROR
+    "the read log's sidecar begins '${head}', wanted 'AFS' and version 1")
+endif()
+
+# And a launch after it reads the four rows back, before anything has
+# cited anything: which is the whole point of a sidecar.
+run_cite_host(--journal-store "${store}" --save-sidecars)
+expect("journal log seen=4")
 
 run_host(--journal-store "${SCRATCH}/journal-nothing-here.txt" --cite-all-journal)
 expect("journal nothing to cite - no journal has been ingested")
@@ -247,4 +276,5 @@ message(STATUS
   "sdl host journal: a synthetic edition ingested end to end, a"
   " correction kept across a re-ingestion, two unrecognized"
   " documents reported with their fingerprints, and the cheat that"
-  " cites everything kept in the store Entry 1 first")
+  " cites everything kept in the sidecar beside the save, which the"
+  " next launch read back")
