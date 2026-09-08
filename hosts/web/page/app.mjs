@@ -70,7 +70,6 @@ import {
   keepLog,
   restoreStore,
   restoreLog,
-  restoreSeen,
   citeAllJournal,
   forgetStore,
   forgetLog,
@@ -266,7 +265,7 @@ export function runDevPage() {
     // for it to put there, because the log left the store's own file
     // when it went beside the save it belongs to.
     restoreLog(loaded.module);
-    restoreSeen(loaded.module, machine.handle);
+    machine.journalSeenRestore();
 
     // And what this browser remembers about the code wheel (M6-C1b,
     // #292): the copies whose challenge has been answered. Here for the

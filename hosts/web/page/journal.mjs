@@ -45,6 +45,42 @@
 // C++ side instead — extract entry *i*, recognize its pixels, hand the
 // text back, next — which is the shape `journal_ingest.h` was written for
 // and says so.
+//
+//
+// Which of these exports are a page's (#288)
+// ------------------------------------------
+//
+// A consumer of the release bundle transcribes this module's surface and
+// asserts the names on the pinned copy, so it needs to know which of them
+// it is meant to be holding. Three groups:
+//
+// - **A page's.** The ingestion and what a reader asks of it, and the one
+//   surface a host that is not this repository's dev page is expected to
+//   call: `loadEngine`, `ENGINE_URL`, `ENGINE_HINT`, `ENGINE_VERSION_FILE`
+//   and `engineVersion`; `ingestJournal`; `JOURNAL_KINDS`, `journalKind`,
+//   `journalNumber` and `journalCitation`; `journalText`,
+//   `correctJournalEntry`, `clearStore`; `troubleName` and `JOURNAL_OK`.
+// - **The dev page's drawer and panel.** How *this* repository's page
+//   happens to persist a store in a browser and what its journal panel
+//   offers, none of which another host has to copy: `JOURNAL_STORE_KEY`,
+//   `JOURNAL_LOG_KEY`, `browserStorage`, `keepStore`, `storedStore`,
+//   `restoreStore`, `forgetStore`, `keepLog`, `restoreLog`, `forgetLog`,
+//   `serializeLog`, `readLog`, and `citeAllJournal` (the #301 cheat).
+// - **Apparatus.** What `tests/smoke.mjs` and the tooling look inside
+//   with, and what the ingestion itself is built out of; nothing here is
+//   a promise: `probeDocument`, `probeEngine`, `hashBytes`, `hashPixels`,
+//   `currentScan`, `currentImage`, `wordsWithin`, `readWithin`,
+//   `wordCount`, `DOUBTFUL_CONFIDENCE`, `PAGE_SCALE`, `JOURNAL_GRAY`,
+//   `JOURNAL_JPEG`.
+//
+// The store's own six are in none of them, because a page should not be
+// calling them here at all: `serializeStore`, `readStore`, `storeStats`,
+// `storeChanged`, `clearStoreChanged` and `restoreSeen` are on `Machine`
+// as `journalStoreWrite`, `journalStoreRead`, `journalStoreStats`,
+// `journalStoreChanged`, `journalStoreClearChanged` and
+// `journalSeenRestore` (#229, #288). They stay exported because host.mjs
+// delegates to them and because a caller driving the module by hand may
+// want them; a save layer built on the facade wants the facade.
 
 /// Where the engine is looked for. One place, beside the page's own
 /// files, and no fallback: see this file's top comment.

@@ -32,6 +32,7 @@ import createModule from './amberfolio.mjs';
 import {
   clearStoreChanged,
   readStore,
+  restoreSeen,
   serializeStore,
   storeChanged,
   storeStats,
@@ -1066,9 +1067,10 @@ export class Machine {
   // public — but it makes a save layer import a second file and reach
   // through the façade for the thing the façade exists to be.
   //
-  // These five delegate. They are the *store*, not the ingestion: what
-  // comes out, what goes back in, what is in there, and whether it has
-  // moved since it was last kept.
+  // These delegate. They are the *store*, not the ingestion: what comes
+  // out, what goes back in, what is in there, whether it has moved since
+  // it was last kept — and, since #288, the read log that travels with
+  // it.
 
   /// The store as its file would be, ready to go in a drawer or a file.
   /// An empty store serializes to its header, so a caller with nowhere to
@@ -1114,6 +1116,30 @@ export class Machine {
   /// between the read and the write.
   journalStoreClearChanged() {
     return clearStoreChanged(this.module);
+  }
+
+  /// The store's **read log**, into the machine the reader draws from
+  /// (#237, #288).
+  ///
+  /// A store holds two things and `journalStoreRead()` puts back only
+  /// one of them. The text reaches the reader through the host-service
+  /// pointer, which is the module's; the log — what the game has cited
+  /// and which of it this player has opened — lives in the machine, and
+  /// this is what puts it there. Without it a browser forgets every `*`
+  /// on reload while a terminal does not.
+  ///
+  /// **Call it after `journalStoreRead()`**, on the machine the reader
+  /// will run in: the rows come out of the store, so a store that has
+  /// not been read back yet has none to give. Twice is harmless — a log
+  /// that already holds a row does not gain a second copy of it.
+  ///
+  /// It also picks up the log's sidecar beside the save, when
+  /// `saveSidecars()` asked for one; that is why it is called after the
+  /// files are in.
+  ///
+  /// `AF_OK`, or `AF_NO_MACHINE` for a machine that has been destroyed.
+  journalSeenRestore() {
+    return restoreSeen(this.module, this.handle);
   }
 
   /// What this machine's seams have asked of the host, per service

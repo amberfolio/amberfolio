@@ -421,6 +421,17 @@ python3 scripts/serve-web.py
 Not `index.html`: the release is the emulator, not the page. The OCR engine
 `journal.mjs` looks for is not in the bundle (#287).
 
+**Which `journal.mjs` exports are a page's** (#288). A consumer that pins a
+tag transcribes the module's surface, so the file's own top comment splits
+it into three: *a page's* — the ingestion and the reader's questions
+(`loadEngine`, `ingestJournal`, the citation helpers, `journalText`,
+`correctJournalEntry`, `clearStore`, `troubleName`, `JOURNAL_OK`); *the dev
+page's drawer and panel* — how this repository's page happens to keep a
+store in `localStorage`, plus the #301 cheat, which another host need not
+copy; and *apparatus* — what `tests/smoke.mjs` and the tooling look inside
+with, which is no promise. The store's own six are in none of them: they
+are `Machine` methods (below).
+
 ### What a serving page has to know (#211)
 
 - **Single-threaded, through 1.0.** No `-pthread`, no shared memory, no
@@ -482,7 +493,13 @@ journal wants saving. Every write to `host::journal_store` raises the flag,
 corrections included; reading a store in does not. **The lowering is the
 caller's**, a store not knowing whether `localStorage` took the bytes.
 Both, plus `journalStoreWrite`, `journalStoreRead` and `journalStoreStats`,
-are `Machine` methods over `page/journal.mjs`.
+are `Machine` methods over `page/journal.mjs` — and so, since #288, is
+`journalSeenRestore()`, the store's *read log* into the machine the reader
+draws from. `journalStoreRead()` puts back only the text; before #288 the
+log went back through `journal.mjs`'s module-level `restoreSeen(module,
+handle)`, so a page built on the facade alone lost every `*` on reload.
+Call it after `journalStoreRead()`; twice is harmless. Neither adds an
+entry point, so the ABI version does not move.
 
 ### Running your own copy in a browser
 
