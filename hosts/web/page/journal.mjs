@@ -84,6 +84,15 @@
 
 /// Where the engine is looked for. One place, beside the page's own
 /// files, and no fallback: see this file's top comment.
+///
+/// **It resolves against the page, not against this module**, so a host
+/// that is not the dev page — one serving the bundle under a versioned
+/// prefix, say — says where its own copy is with
+/// `loadEngine({ url })`, which is what that argument is for (#287). The
+/// engine rides on a Release as `vendor-tesseract.tar.gz` and unpacks to
+/// `vendor/tesseract/`, described under `engine` in `manifest.json`; a
+/// site that puts it under `<origin>/emulator/<tag>/vendor/tesseract/`
+/// passes that path here and nothing leaves the origin.
 export const ENGINE_URL = './vendor/tesseract/tesseract.min.js';
 
 /// What `scripts/fetch-ocr-engine.py` puts there, so the message a player

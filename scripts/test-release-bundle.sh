@@ -121,6 +121,19 @@ mkbuild() { # mkbuild <name> -> prints directory path
   echo "$d"
 }
 
+# What `scripts/fetch-ocr-engine.py --into` leaves beside the module: the
+# library the page asks for by name, one more file, and the version file
+# the manifest states. Not the real 32 MB — what is being tested is that
+# a directory becomes one asset with one hash and a description a
+# consumer can act on, and that is the same for two files as for fifteen.
+mkengine() { # mkengine <build-dir> [<version>]
+  local d="$1/vendor/tesseract" version="${2-6.0.1}"
+  mkdir -p "$d"
+  echo "the library the page loads by <script>" >"$d/tesseract.min.js"
+  echo "the wasm core it fetches next" >"$d/tesseract-core-simd.wasm"
+  echo "$version" >"$d/version.txt"
+}
+
 repo=$(mkrepo green 0.2.0)
 build=$(mkbuild green-build)
 out=$tmp/green-out
@@ -179,6 +192,115 @@ for entry in manifest["files"]:
     assert entry["sha256"] == hashlib.sha256(blob).hexdigest(), entry
     assert entry["size"] == len(blob), entry
 PY
+
+# --- the OCR engine, as one asset with one hash (#287) ----------------
+#
+# A site pinning a tag has to be able to *get* the engine journal.mjs is
+# written against, or it can decode every entry of a recognised journal
+# and recognise none. The green path above staged a tree with no engine
+# in it, so that is already the "absent is not an error" case; here is
+# the other one.
+check "a build with no engine gets no engine asset" test \
+  ! -e "$out/vendor-tesseract.tar.gz"
+check "and its manifest carries no engine key" python3 -c \
+  'import json,sys; m=json.load(open(sys.argv[1])); assert "engine" not in m, m' \
+  "$out/manifest.json"
+
+withengine=$(mkbuild engine-build)
+mkengine "$withengine" 6.0.1
+engine_out=$tmp/engine-out
+expect "a build tree with an engine stages" 0 \
+  bash "$repo/scripts/release-bundle.sh" "$withengine" "$engine_out" v0.2.0
+check "the engine is attached as one tarball" test \
+  -f "$engine_out/vendor-tesseract.tar.gz"
+check "and it is in SHA256SUMS with everything else" \
+  grep -q ' vendor-tesseract.tar.gz$' "$engine_out/SHA256SUMS"
+if command -v sha256sum >/dev/null 2>&1; then
+  check "SHA256SUMS still verifies with the engine in it" \
+    bash -c "cd '$engine_out' && sha256sum --quiet -c SHA256SUMS"
+else
+  check "SHA256SUMS still verifies with the engine in it" \
+    bash -c "cd '$engine_out' && shasum -a 256 -c SHA256SUMS >/dev/null"
+fi
+
+# What a consumer does with it: check the digest, unpack, serve. The
+# entries have to land at `vendor/tesseract/` on their own, because that
+# is where `ENGINE_URL` looks and a consumer that had to move them would
+# be guessing at a layout.
+unpacked=$tmp/engine-unpacked
+mkdir -p "$unpacked"
+check "the tarball unpacks to vendor/tesseract/ on its own" bash -c \
+  "tar -xzf '$engine_out/vendor-tesseract.tar.gz' -C '$unpacked' &&
+   test -f '$unpacked/vendor/tesseract/tesseract.min.js'"
+
+check "manifest.json describes the engine a consumer has to fetch" \
+  python3 - "$engine_out" <<'PY'
+import hashlib, json, os, sys
+
+out = sys.argv[1]
+with open(os.path.join(out, "manifest.json"), "rb") as f:
+    manifest = json.load(f)
+
+engine = manifest["engine"]
+assert engine["name"] == "vendor-tesseract.tar.gz", engine
+assert engine["library"] == "tesseract.js", engine
+assert engine["version"] == "6.0.1", engine
+assert engine["unpacksTo"] == "vendor/tesseract/", engine
+blob = open(os.path.join(out, engine["name"]), "rb").read()
+assert engine["sha256"] == hashlib.sha256(blob).hexdigest(), engine
+assert engine["size"] == len(blob), engine
+names = [f["name"] for f in engine["files"]]
+assert names == [
+    "vendor/tesseract/tesseract-core-simd.wasm",
+    "vendor/tesseract/tesseract.min.js",
+    "vendor/tesseract/version.txt",
+], names
+# The bundle's own list is untouched by any of this: the engine is beside
+# it, not in it, so a consumer that pins the seven goes on pinning seven.
+assert [f["name"] for f in manifest["files"]] == [
+    "amberfolio.wasm", "amberfolio.mjs", "host.mjs",
+    "app.mjs", "audio-worklet.mjs", "picker.mjs", "journal.mjs",
+], manifest["files"]
+PY
+
+# And the per-file digests are of the bytes inside the tarball, which is
+# the check a consumer makes on what it is about to *serve* rather than on
+# what it downloaded.
+check "the engine's per-file digests match what unpacked" python3 - \
+  "$engine_out" "$unpacked" <<'PY'
+import hashlib, json, os, sys
+
+out, unpacked = sys.argv[1], sys.argv[2]
+with open(os.path.join(out, "manifest.json"), "rb") as f:
+    engine = json.load(f)["engine"]
+for entry in engine["files"]:
+    blob = open(os.path.join(unpacked, entry["name"]), "rb").read()
+    assert entry["sha256"] == hashlib.sha256(blob).hexdigest(), entry
+    assert entry["size"] == len(blob), entry
+PY
+
+# A directory that is there and is not an engine. Both of these would
+# otherwise ship an asset a consumer cannot use and cannot name.
+noversion=$(mkbuild engine-noversion)
+mkengine "$noversion"
+rm "$noversion/vendor/tesseract/version.txt"
+expect "an engine directory with no version.txt is refused" 1 \
+  bash "$repo/scripts/release-bundle.sh" "$noversion" "$tmp/nover-out" v0.2.0
+
+noentry=$(mkbuild engine-noentry)
+mkengine "$noentry"
+rm "$noentry/vendor/tesseract/tesseract.min.js"
+expect "an engine directory with no tesseract.min.js is refused" 1 \
+  bash "$repo/scripts/release-bundle.sh" "$noentry" "$tmp/noentry-out" v0.2.0
+
+# And a version file holding something that is not a version. It goes into
+# manifest.json unescaped, so a quote in it would produce a manifest that
+# parses as nothing — a failure a consumer meets with nothing pointing back
+# at here.
+badversion=$(mkbuild engine-badversion)
+mkengine "$badversion" 'not "a" version'
+expect "an engine whose version.txt is not a version is refused" 1 \
+  bash "$repo/scripts/release-bundle.sh" "$badversion" "$tmp/badver-out" v0.2.0
 
 # --- and now the refusals. -------------------------------------------
 
