@@ -123,7 +123,12 @@ TEST(JournalTable, TheArchiveEditionsPiecesAreInReadingOrder) {
       const bool later_scan = after.page > before.page;
       const bool later_column =
           after.page == before.page && after.region.left > before.region.left;
-      EXPECT_TRUE(later_scan || later_column)
+      // Two pieces of one entry can share a column, since a drawing set
+      // in it is cut out and the prose resumes underneath (#357).
+      const bool further_down = after.page == before.page &&
+                                after.region.left == before.region.left &&
+                                after.region.top > before.region.top;
+      EXPECT_TRUE(later_scan || later_column || further_down)
           << "entry " << fact.number << " has a piece that does not follow"
           << " the one before it";
     }
@@ -324,34 +329,42 @@ TEST(JournalTable, TheArchiveEditionsPicturesAreOnItsOwnScans) {
   EXPECT_EQ(most, 3U);
 }
 
-TEST(JournalTable, APictureIsMeasuredToItsInkAndNotToTheEntrysColumn) {
-  // The finding that made art a field of its own rather than a flag on a
-  // fragment: a picture's rectangle is not the entry's, and four of the
-  // fourteen are not inside any one of them. Three are the atlas's maps,
-  // each of which crosses the printed columns its own caption is set in;
-  // the fourth is a drawing that runs the width of a page under a
-  // caption set in one column.
-  std::size_t outside = 0;
-  for (const journal_entry_fact& fact : known_journals().front().entries) {
-    for (const journal_fragment& picture : fact.art) {
-      const bool within = std::ranges::any_of(
-          fact.fragments, [&](const journal_fragment& piece) {
-            return piece.offset == picture.offset &&
-                   picture.region.left >= piece.region.left &&
-                   picture.region.top >= piece.region.top &&
-                   picture.region.left + picture.region.width <=
-                       piece.region.left + piece.region.width &&
-                   picture.region.top + picture.region.height <=
-                       piece.region.top + piece.region.height;
-          });
-      if (!within) {
-        ++outside;
+TEST(JournalTable, NoPieceOfTextIsMeasuredOverAPicture) {
+  // The rule that keeps a drawing's own lettering out of an entry's
+  // prose (#357), and the one that made art a field of its own rather
+  // than a flag on a fragment (#328). A text piece is measured to the
+  // column; a picture is measured to its ink; and where a drawing is set
+  // in the column its caption is in, the column is cut around it. So no
+  // text rectangle of this table overlaps any picture of it -- not
+  // another entry's, and not the entry's own, which is the case a flag
+  // could never have described.
+  //
+  // Without it the engine reads the drawing too, and everything it makes
+  // of hand lettering arrives as the entry's words: the label beside a
+  // maze's door, its two guesses at two runes, the place names of an
+  // atlas, and half of one page-wide sketch's labels ahead of the heading
+  // of the entry that owns it.
+  const auto& edition = known_journals().front();
+  for (const journal_entry_fact& fact : edition.entries) {
+    for (const journal_fragment& piece : fact.fragments) {
+      for (const journal_entry_fact& other : edition.entries) {
+        for (const journal_fragment& picture : other.art) {
+          if (picture.offset != piece.offset) {
+            continue;  // a different scan
+          }
+          const bool apart =
+              piece.region.left + piece.region.width <= picture.region.left ||
+              picture.region.left + picture.region.width <= piece.region.left ||
+              piece.region.top + piece.region.height <= picture.region.top ||
+              picture.region.top + picture.region.height <= piece.region.top;
+          EXPECT_TRUE(apart)
+              << "the text of entry " << fact.number << " is measured over the"
+              << " picture of entry " << other.number << " on scan "
+              << piece.page << ", so an engine reads that drawing as prose";
+        }
       }
     }
   }
-  EXPECT_EQ(outside, 4U) << "if every picture is inside its entry's own"
-                            " text rectangle, a flag on a fragment would"
-                            " have done";
 }
 
 TEST(JournalTable, EveryShippedRowIsAWellFormedFact) {

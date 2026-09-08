@@ -61,7 +61,7 @@ amberfolio <dir> <program.exe> --seam journal
 One edition is in the table (#214): the Adventurer's Journal as the
 currently sold archive release ships it, fingerprint
 `67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c`. Its
-pages are `/DCTDecode` (§4a). It has 58 entries in 77 pieces, and 14
+pages are `/DCTDecode` (§4a). It has 58 entries in 76 pieces, and 14
 pictures on 12 of those entries (§11).
 
 An edition is data in two places:
@@ -116,12 +116,22 @@ repository: it reads a document this project may never carry. The method:
    again on its own with a whitelist of the letters it can contain;
    without that `LXXVIII` comes back `LXXVIIT`.
 3. **An entry runs from its heading to the next one**, across columns
-   and scans — but not across the matter a section opens with. On the one
-   page where a section begins, a display heading and a paragraph are set
-   the width of the page above the column grid, with a printed rule under
-   them, and a walk down the columns steps straight over them: the first
-   item of the section stops at the foot of its own column and the next
-   column begins below the rule, not at the head of the scan (#344).
+   and scans — **but never across matter set outside the column grid**,
+   and three pages of this edition carry some. A walk down the columns
+   steps straight over it and hands it to whichever item ends beside it,
+   which a reader then shows as that item's own words.
+   - *Above the grid*, on the one page where a section begins: a display
+     heading and a paragraph the width of the page, with a printed rule
+     under them. The first item of the section stops at the foot of its
+     own column and the next column begins below the rule, not at the
+     head of the scan (#344).
+   - *Below the grid*, on two pages: a legend belonging to no numbered
+     item, and a drawing the width of a printed page, each under a rule
+     of its own. Both columns end above that rule rather than at the foot
+     of the scan (#357). This is the harder of the two to see, because
+     the columns still end level with each other; find it by looking for
+     a rule or a page-wide block low on a page and reading what the
+     entries above it come back with.
 4. **Check the numbering.** Entries are a counted chain: check it against
    the printed number on every scan; the last must land on 58. Tales and
    proclamations are read: they must ascend in reading order, and every
@@ -594,9 +604,17 @@ caption's columns, one drawing the width of a page).
 
 The rule for the next edition:
 
-- a text fragment is measured **to the column**;
+- a text fragment is measured **to the column**, and **cut around the
+  art**: above the drawing, and again below it where prose continues,
+  with a piece that has no ink left in it dropped (#357). An engine reads
+  a drawing too, and everything it makes of hand lettering arrives as the
+  entry's own words — the label beside a maze's door, an engine's two
+  guesses at two runes, the place names of an atlas — while the reader
+  draws the picture anyway;
 - a picture is measured **to its ink**, and a printed rule around the
-  drawing is inside the rectangle;
+  drawing, the drawing's title, and any label printed outside its frame
+  are inside the rectangle: they are the drawing's words, not the
+  entry's;
 - the pieces of one entry's art are **separate pictures**, not one
   picture in pieces: an atlas of three maps is three pages.
 
@@ -612,7 +630,11 @@ Finding them, in two steps:
 2. **The rectangle** is the bounding box of the ink inside a band whose
    top is below the entry's caption line. A printed rule, a row or column
    of the search area more than half ink, locates the band. Crop each
-   result and look at it: the caption creeps into an ink box.
+   result and look at it: the caption creeps into an ink box, and a
+   drawing's own words creep out of one. A map's title and the labels
+   printed outside its frame are the drawing's and belong inside the
+   rectangle; a line of the drawing that falls outside it is the mistake
+   to look for, and one map lost its bottom border that way (#357).
 
 The result is in `hosts/common/src/journal_facts.cpp`. Not in the table:
 the edition's legend for its map symbols, printed under its own heading
@@ -634,18 +656,18 @@ wider in pixels. The fourteen:
 | picture | printed | drawn | scale |
 | --- | --- | --- | --- |
 | Entry 4 | 270x269 | 193x160 | 0.71 |
-| Entry 10 | 255x208 | 235x160 | 0.92 |
+| Entry 10 | 254x214 | 228x160 | 0.90 |
 | Entry 15 | 251x255 | 189x160 | 0.75 |
 | Entry 22 | 272x172 | 304x160 | 1.12 |
 | Entry 26 | 256x220 | 223x160 | 0.87 |
 | Entry 28 | 268x137 | 304x130 | 1.13 |
 | Entry 29 | 247x255 | 186x160 | 0.75 |
 | Entry 35 | 210x41 | 304x49 | 1.45 |
-| Entry 37, first map | 577x331 | 304x145 | 0.53 |
-| Entry 37, second map | 579x401 | 277x160 | 0.48 |
-| Entry 37, third map | 584x803 | 140x160 | 0.24 |
+| Entry 37, first map | 577x359 | 304x158 | 0.53 |
+| Entry 37, second map | 579x421 | 264x160 | 0.46 |
+| Entry 37, third map | 584x814 | 138x160 | 0.24 |
 | Entry 41 | 254x253 | 193x160 | 0.76 |
-| Entry 42 | 503x195 | 304x98 | 0.60 |
+| Entry 42 | 502x176 | 304x89 | 0.61 |
 | Entry 58 | 269x268 | 193x160 | 0.72 |
 
 Three are drawn larger than scanned: a small drawing in a black field
