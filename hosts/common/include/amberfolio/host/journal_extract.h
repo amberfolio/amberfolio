@@ -168,6 +168,15 @@ struct journal_part {
   /// Meaningless for `gray`, where the crop has already happened and
   /// `gray.width`/`gray.height` say everything.
   journal_region region{};
+
+  /// The fragment's own `begins_paragraph` (#361), carried across for
+  /// the engine that joins the pieces: a blank line here rather than the
+  /// single newline a continuation gets (`journal_ocr.h`).
+  ///
+  /// Both shapes, unlike the region: it is a fact about the *document*
+  /// and not about how this build got the picture, so an edition this
+  /// build decodes and one it carries through answer the same way.
+  bool begins_paragraph{false};
 };
 
 /// One entry's scan: its pieces, in reading order.

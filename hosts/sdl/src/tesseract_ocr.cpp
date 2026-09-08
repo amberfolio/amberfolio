@@ -15,6 +15,7 @@
 #include <system_error>
 
 #include "amberfolio/host/journal_extract.h"
+#include "amberfolio/host/journal_ocr.h"
 #include "tsv_words.h"
 
 namespace amberfolio::sdl {
@@ -198,10 +199,12 @@ bool tesseract_ocr::recognize(const host::journal_scan& scan,
       quality_ = {};
       return false;
     }
-    if (!out.empty()) {
-      out.push_back('\n');
-    }
-    out += piece.text;
+    // One newline, and two where the table says this piece opens a
+    // paragraph rather than carrying the last one on (#361). The rule is
+    // `journal_join_piece`'s rather than this file's, because the other
+    // desktop engine joins the same pieces and a player should not get a
+    // different transcription for a build option.
+    host::journal_join_piece(out, piece.text, part.begins_paragraph);
     // Weighted by words, so an entry whose second piece is three words
     // does not pull the whole entry's confidence around (#315).
     if (piece.quality.known) {

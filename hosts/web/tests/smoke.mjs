@@ -254,6 +254,7 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_region_top',
   '_af_web_journal_region_width',
   '_af_web_journal_region_height',
+  '_af_web_journal_part_begins_paragraph',
   '_af_web_journal_set_text',
   '_af_web_journal_correct',
   '_af_web_journal_text',
@@ -3373,6 +3374,7 @@ if (missing.length === 0 && sessions !== null) {
     currentScan,
     wordsWithin,
     readWithin,
+    joinPieces,
     DOUBTFUL_CONFIDENCE,
     wordCount,
     engineVersion,
@@ -3501,6 +3503,21 @@ if (missing.length === 0 && sessions !== null) {
   check(
     encoded.parts[0].region.top !== encoded.parts[1].region.top,
     'the two pieces are the same rectangle, so nothing was joined',
+  );
+  // And the one fact about a piece that is neither pixels nor a
+  // rectangle (#361): whether it opens a paragraph. The probe's second
+  // piece does, so a build that dropped the flag between the fact table
+  // and this page would answer false twice.
+  check(
+    encoded.parts[0].beginsParagraph === false &&
+      encoded.parts[1].beginsParagraph === true,
+    'the paragraph flag did not cross the ABI with the pieces',
+  );
+  check(
+    module._af_web_journal_part_begins_paragraph(1) === 1 &&
+      module._af_web_journal_part_begins_paragraph(0) === 0 &&
+      module._af_web_journal_part_begins_paragraph(9) === 0,
+    'the paragraph entry point does not agree with the scan it describes',
   );
 
   // And the region really does filter: words outside it are not the
@@ -3683,6 +3700,29 @@ if (missing.length === 0 && sessions !== null) {
   check(
     quiet.text === 'x' && !quiet.quality.known && quiet.quality.words === 0,
     'a word with no confidence became an opinion',
+  );
+
+  // How the pieces of one entry are joined (#331, #361), which is the
+  // half of a reading that is not the engine's: the desktop's
+  // `journal_join_piece` and this have to answer the same page the
+  // same way, and neither host has an engine in CI to ask.
+  check(
+    joinPieces([
+      { text: 'the sentence runs', opens: false },
+      { text: 'on to here', opens: false },
+    ]) === 'the sentence runs\non to here',
+    'a fragment boundary stopped being a continuation',
+  );
+  check(
+    joinPieces([
+      { text: 'one thought ends.', opens: false },
+      { text: 'Another begins.', opens: true },
+    ]) === 'one thought ends.\n\nAnother begins.',
+    'a boundary the fact table called a paragraph break came out as one line',
+  );
+  check(
+    joinPieces([{ text: 'alone', opens: true }]) === 'alone',
+    'a reading opened on a blank line, with nothing before it to break from',
   );
 
   // The engine's *name*, which was the other half of what the first real

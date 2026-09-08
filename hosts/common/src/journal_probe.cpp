@@ -515,12 +515,25 @@ struct probe_document {
                        .length = static_cast<std::uint32_t>(doc.encoded.size()),
                        .image = probe_image_three,
                        .region = probe_region_three};
+  // And its second piece **opens a paragraph** (#361), which is the one
+  // fragment of this document that says so. A boundary is a continuation
+  // by default and a real edition's six are not, so a probe where every
+  // fragment took the default could not tell a build that carries the
+  // fact from one that drops it on the floor.
+  //
+  // What it proves is the carrying — through the extractor, the ABI and
+  // the page — and not the *joining*: the fixture engine below answers
+  // one string for a whole entry, the way it answers one rectangle's
+  // words for two rectangles, so there is no join here to put a blank
+  // line in. The join is checked on its own, in `journal_ocr_test.cpp`
+  // and the page's smoke check, because no real engine runs in CI.
   doc.fragments[3] =
       journal_fragment{.page = 1,
                        .offset = offset_three,
                        .length = static_cast<std::uint32_t>(doc.encoded.size()),
                        .image = probe_image_three,
-                       .region = probe_region_three_second};
+                       .region = probe_region_three_second,
+                       .begins_paragraph = true};
   doc.art[0] =
       journal_fragment{.page = 1,
                        .offset = offset_one,
@@ -749,7 +762,9 @@ bool journal_probe_ocr::recognize(const journal_scan& scan, std::string& out) {
   // regions are checked here because they are the one thing an engine is
   // now responsible for applying, so a probe that ignored them would be a
   // probe that could not tell a passthrough which forgot to carry them —
-  // or one that dropped a fragment (#214).
+  // or one that dropped a fragment (#214). Since #361 the paragraph flag
+  // is checked beside them, and for the same reason: it is the other
+  // fact about a piece that only the engine can act on.
   const std::span<const std::uint8_t> want =
       journal_probe_encoded(journal_probe_encoded_entry);
   const std::span<const journal_fragment> fragments =
@@ -764,7 +779,8 @@ bool journal_probe_ocr::recognize(const journal_scan& scan, std::string& out) {
         !std::equal(part.encoded.begin(), part.encoded.end(), want.begin()) ||
         part.region.left != where.left || part.region.top != where.top ||
         part.region.width != where.width ||
-        part.region.height != where.height) {
+        part.region.height != where.height ||
+        part.begins_paragraph != fragments[i].begins_paragraph) {
       // Not a stub that says yes to anything: a scan that is not the one
       // this fixture knows is a scan the pipeline got wrong somewhere, and
       // the honest answer is that nothing was read (journal_probe.h).

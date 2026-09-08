@@ -230,6 +230,35 @@ TEST(JournalExtract, ADecodedEntryComesOutOfExtractScanAsSamples) {
   EXPECT_EQ(got.parts.front().gray.pixels, journal_probe_expected(0).pixels);
 }
 
+TEST(JournalExtract, APiecesParagraphFlagReachesWhoeverJoinsThePieces) {
+  // The one fact about a piece that is neither pixels nor a rectangle
+  // (#361): whether the prose in it opens a paragraph rather than
+  // carrying on the one the piece before it ended. It is a fact about
+  // the document, so it crosses on both routes -- an edition this build
+  // decodes and one it carries through answer alike.
+  journal_scan carried;
+  ASSERT_EQ(extract_scan(journal_probe_pdf(),
+                         ProbeFact(journal_probe_encoded_entry), carried),
+            journal_trouble::none);
+  ASSERT_EQ(carried.parts.size(), 2U);
+  EXPECT_FALSE(carried.parts.front().begins_paragraph)
+      << "the first piece of an entry has nothing before it to break from";
+  EXPECT_TRUE(carried.parts.back().begins_paragraph)
+      << "the probe's carried entry is the one that flows into a paragraph";
+
+  // And the decoded route, over a row this test builds: every decoded
+  // entry of the probe is one piece, so a build that carried the flag
+  // nowhere would pass the half above by defaulting to false.
+  OneFragment row(ProbePiece(0));
+  row.piece().begins_paragraph = true;
+  journal_scan decoded;
+  ASSERT_EQ(extract_scan(journal_probe_pdf(), row.fact(), decoded),
+            journal_trouble::none);
+  ASSERT_EQ(decoded.parts.size(), 1U);
+  EXPECT_EQ(decoded.encoding, journal_encoding::gray);
+  EXPECT_TRUE(decoded.parts.front().begins_paragraph);
+}
+
 TEST(JournalExtract, AnEncodedEntryIsBoundsCheckedWithoutBeingDecoded) {
   // What this build can still check about a stream it will not look
   // inside: that the bytes are this document's, and that the rectangle is

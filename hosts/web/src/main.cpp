@@ -547,6 +547,25 @@ uint32_t af_web_journal_region_height(uint32_t which) {
   return part == nullptr ? 0U : part->region.height;
 }
 
+/// Whether piece `which` **opens a paragraph** rather than carrying on
+/// the one the piece before it ended (#361).
+///
+/// The fact table's, not the engine's: a paragraph break that falls on a
+/// fragment boundary is a measurement off a printed page, and an engine
+/// handed one rectangle at a time cannot see it (`host/journal_ocr.h`).
+/// So it crosses here for the page to join on, the way the region
+/// crosses for the page to filter on.
+///
+/// Unlike the region it means something for **both** shapes of scan: it
+/// is a fact about the document rather than about how this module got
+/// the picture. Zero for a piece that is not there, which is the same
+/// answer as "it continues" and is the right one — there is nothing to
+/// open a paragraph.
+uint32_t af_web_journal_part_begins_paragraph(uint32_t which) {
+  const amberfolio::host::journal_part* part = journal_part_at(which);
+  return part != nullptr && part->begins_paragraph ? 1U : 0U;
+}
+
 /// What the page's engine read for the item `citation` names. Replaces
 /// the scan and leaves any correction alone, which is what makes a
 /// correction survive a re-ingestion (`host/journal_store.h`).

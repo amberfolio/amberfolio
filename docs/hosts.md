@@ -495,10 +495,12 @@ are `Machine` methods (below).
 **The bump rule:** `major` moves when an entry point is removed, renamed or
 changes meaning; `minor` when entry points are added and nothing that was
 there changed. A loader compares `major` against what it was written for
-and refuses before fetching the module. The ABI is 1.2 as of `v0.4.0`: 1.1
-added the two doors below (#228, #229), 1.2 added
-`af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
-(#291).
+and refuses before fetching the module. The ABI is 1.3: 1.1 added the two
+doors below (#228, #229), 1.2 added `af_machine_code_wheel_answered` and
+`af_machine_set_code_wheel_answered` (#291), and 1.3 added
+`af_web_journal_part_begins_paragraph` (#361), which is how a fragment
+boundary that is a paragraph break reaches the page that joins the pieces
+(`docs/journal.md` §5). `v0.4.0` shipped 1.2.
 
 `scripts/test-release-bundle.sh` refuses a release whose header talks about
 the version without defining one, whose export block has moved out from

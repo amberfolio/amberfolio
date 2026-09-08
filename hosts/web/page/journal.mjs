@@ -70,8 +70,8 @@
 //   with, and what the ingestion itself is built out of; nothing here is
 //   a promise: `probeDocument`, `probeEngine`, `hashBytes`, `hashPixels`,
 //   `currentScan`, `currentImage`, `wordsWithin`, `readWithin`,
-//   `wordCount`, `DOUBTFUL_CONFIDENCE`, `PAGE_SCALE`, `JOURNAL_GRAY`,
-//   `JOURNAL_JPEG`.
+//   `joinPieces`, `wordCount`, `DOUBTFUL_CONFIDENCE`, `PAGE_SCALE`,
+//   `JOURNAL_GRAY`, `JOURNAL_JPEG`.
 //
 // The store's own six are in none of them, because a page should not be
 // calling them here at all: `serializeStore`, `readStore`, `storeStats`,
@@ -182,6 +182,13 @@ export const JOURNAL_JPEG = 1;
 /// more (#214), and what an engine reads out of them is joined in this
 /// order.
 ///
+/// Every piece also carries `beginsParagraph` (#361): whether the prose
+/// in it opens a paragraph rather than carrying on the one the piece
+/// before it ended. A boundary is a continuation by default and six of
+/// the one measured edition's eighteen are not, and no engine reading
+/// one rectangle at a time could tell — so the fact comes out of the
+/// fact table, and this is where it crosses.
+///
 /// The bytes are **copied** out of the module's heap. A typed array over
 /// wasm memory is detached the moment that memory grows, and the next
 /// thing this page does with a scan is hand it to an asynchronous engine
@@ -205,11 +212,15 @@ export function currentScan(module) {
           width: module._af_web_journal_region_width(i),
           height: module._af_web_journal_region_height(i),
         },
+        beginsParagraph: module._af_web_journal_part_begins_paragraph(i) !== 0,
       });
     } else {
       const image = currentImage(module, i);
       if (image === null) return null;
-      parts.push({ image });
+      parts.push({
+        image,
+        beginsParagraph: module._af_web_journal_part_begins_paragraph(i) !== 0,
+      });
     }
   }
   return { kind: jpeg ? 'jpeg' : 'gray', parts };
@@ -407,6 +418,41 @@ export function readWithin(data, region) {
       confidence: words > 0 ? total / words : 0,
     },
   };
+}
+
+/// Join the pieces of one entry into the reading the store keeps.
+///
+/// `read` is `{ text, opens }` per piece that read something, in
+/// reading order. **One** newline between two of them, and that is a
+/// decision rather than a default (#331): an entry is a list of
+/// rectangles because entries *flow* — out of a column, onto the
+/// facing page, sixteen of the first edition's fifty-eight in more
+/// than one piece — so a fragment boundary is a continuation, and the
+/// reader reads one newline as a space.
+///
+/// **Unless the fact table says otherwise** (#361), which six of that
+/// edition's eighteen boundaries do: a paragraph that ended exactly
+/// where its column did, or a piece that resumes under its entry's
+/// own drawing (#357). There the join is a blank line, which the
+/// reader draws as a paragraph; without it the sentence before the
+/// break and the sentence after it come out on one line.
+///
+/// Out here rather than inside the engine that calls it because no
+/// real engine runs in CI, and this is the half of a reading that is
+/// not the engine's: `hosts/common/.../journal_ocr.h`'s
+/// `journal_join_piece` is the rule the desktop's two engines share,
+/// and `tests/smoke.mjs` runs this one. It differs there in one way
+/// only, said out loud in that header: a desktop engine fails an entry
+/// whose piece read nothing, where this one drops the piece and carries
+/// its break onto the next.
+export function joinPieces(read) {
+  let text = '';
+  for (const piece of read) {
+    if (piece.text === '') continue;
+    if (text !== '') text += piece.opens ? '\n\n' : '\n';
+    text += piece.text;
+  }
+  return text.replace(/\s+$/, '');
 }
 
 /// How many words `data` carries at all, so that a rectangle that kept
@@ -672,7 +718,13 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
           // words does not pull the whole entry's confidence around.
           weighted += quality.confidence * quality.words;
         };
+        // Whether the *next* piece to be kept opens a paragraph. It is
+        // a running flag rather than the piece's own field because a
+        // piece that read nothing is dropped below, and a break it was
+        // carrying belongs to whatever comes after it.
+        let opens = false;
         for (const part of scan.parts) {
+          opens = opens || part.beginsParagraph === true;
           if (scan.kind === 'jpeg') {
             const { data, scale } = await readPage(part.bytes);
             const got = readWithin(data, scaledRegion(part.region, scale));
@@ -686,7 +738,10 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
               );
             }
             keep(got.quality);
-            if (got.text !== '') read.push(got.text);
+            if (got.text !== '') {
+              read.push({ text: got.text, opens });
+              opens = false;
+            }
           } else {
             // Samples the module produced, already cropped to the entry.
             // Single block is exactly true of that, so it is asked for
@@ -709,7 +764,10 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
             );
             const got = readWithin(data, null);
             keep(got.quality);
-            if (got.text !== '') read.push(got.text);
+            if (got.text !== '') {
+              read.push({ text: got.text, opens });
+              opens = false;
+            }
           }
         }
         // A piece that read nothing beside pieces that did is a short
@@ -727,15 +785,7 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
           doubtful,
           confidence: words > 0 ? weighted / words : 0,
         };
-        // **One** newline between the pieces, and that is a decision
-        // rather than a default (#331): an entry is a list of rectangles
-        // because entries *flow* — out of a column, onto the facing page,
-        // seventeen of the first edition's fifty-eight in more than one
-        // piece — so a fragment boundary is a continuation and a blank
-        // line there would be a paragraph the printed page does not have.
-        // A piece that read nothing is left out rather than joined as an
-        // empty string, which would put exactly that break in.
-        return read.join('\n').replace(/\s+$/, '');
+        return joinPieces(read);
       },
       /// What the last `recognize()` was sure of. Replaced by every call;
       /// meaningless before the first.

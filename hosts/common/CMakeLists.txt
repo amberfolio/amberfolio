@@ -94,6 +94,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/code_wheel_store_test.cpp
     tests/journal_facts_test.cpp
     tests/journal_extract_test.cpp
+    tests/journal_ocr_test.cpp
     tests/journal_picture_test.cpp
     tests/journal_jpeg_test.cpp
     tests/journal_store_test.cpp

@@ -19,7 +19,7 @@ namespace {
 /// The Adventurer's Journal as the currently sold archive release ships
 /// it: **all three of its numbered sections** — fifty-eight journal
 /// entries, twenty-three tavern tales and eighteen proclamations, in
-/// ninety-nine rows and a hundred and eighteen pieces, across eleven
+/// ninety-nine rows and a hundred and seventeen pieces, across eleven
 /// two-page scans (M5-E3b #214, M5-E3d #218).
 ///
 /// **Measured, never transcribed.** Every number below is a fact about
@@ -32,13 +32,25 @@ namespace {
 /// two columns to a printed page and two printed pages to a scan, and
 /// an entry runs out of its column and resumes at the top of the next;
 /// four of them resume on the facing page, which is a different stream
-/// altogether. Seventeen of the fifty-eight are in more than one
+/// altogether. Sixteen of the fifty-eight are in more than one
 /// piece. `journal_fragment` is what that costs and what it buys.
 ///
 /// A piece with no ink in it is not here: an entry that happened to end
 /// exactly at the foot of its column would otherwise carry an empty
 /// rectangle, and asking an engine to read a blank is asking it for an
 /// answer nobody wants.
+///
+/// **And a boundary is usually a continuation, six times out of
+/// eighteen it is not** (#361). A paragraph can end exactly where its
+/// column does, and since #357 a piece can resume under its entry's own
+/// drawing; either way the hosts' single newline runs the sentence
+/// before the break into the sentence after it, on one line. Which
+/// boundary is which is ink: a paragraph of this edition opens with an
+/// indent, and the first line of a resuming piece is either within two
+/// samples of that piece's own left margin — twelve of them, and the
+/// widest is two — or 18 to 22 right of it, which is the six below.
+/// Nothing lands between. `journal_fragment::begins_paragraph` carries
+/// the answer to whoever joins the pieces.
 ///
 /// **How the rectangles were found**, because the next person needs to
 /// know whether to trust them. The column geometry was measured off the
@@ -225,7 +237,8 @@ constexpr std::array<journal_fragment, 2> entry09{{
      .offset = scan09_at,
      .length = scan09_bytes,
      .image = spread,
-     .region = {.left = 992, .top = 8, .width = 297, .height = 206}},
+     .region = {.left = 992, .top = 8, .width = 297, .height = 206},
+     .begins_paragraph = true},
 }};
 constexpr std::array<journal_fragment, 1> entry10{{
     {.page = 9,
@@ -343,7 +356,8 @@ constexpr std::array<journal_fragment, 2> entry23{{
      .offset = scan11_at,
      .length = scan11_bytes,
      .image = spread,
-     .region = {.left = 340, .top = 8, .width = 289, .height = 252}},
+     .region = {.left = 340, .top = 8, .width = 289, .height = 252},
+     .begins_paragraph = true},
 }};
 constexpr std::array<journal_fragment, 1> entry24{{
     {.page = 11,
@@ -366,7 +380,10 @@ constexpr std::array<journal_fragment, 2> entry25{{
 }};
 // The one entry of the edition whose prose resumes *under* its drawing
 // rather than ending at it, which is why the cut above is two pieces and
-// not a shorter one.
+// not a shorter one. What resumes there opens a paragraph rather than
+// carrying one on (#361), which is the reading the cut itself made
+// possible to get wrong: the sentence over the maze ends, and the one
+// under it starts a new indented quotation.
 constexpr std::array<journal_fragment, 3> entry26{{
     {.page = 11,
      .offset = scan11_at,
@@ -377,7 +394,8 @@ constexpr std::array<journal_fragment, 3> entry26{{
      .offset = scan11_at,
      .length = scan11_bytes,
      .image = spread,
-     .region = {.left = 702, .top = 855, .width = 290, .height = 103}},
+     .region = {.left = 702, .top = 855, .width = 290, .height = 103},
+     .begins_paragraph = true},
     {.page = 11,
      .offset = scan11_at,
      .length = scan11_bytes,
@@ -455,7 +473,8 @@ constexpr std::array<journal_fragment, 2> entry35{{
      .offset = scan12_at,
      .length = scan12_bytes,
      .image = spread,
-     .region = {.left = 992, .top = 8, .width = 297, .height = 68}},
+     .region = {.left = 992, .top = 8, .width = 297, .height = 68},
+     .begins_paragraph = true},
 }};
 constexpr std::array<journal_fragment, 1> entry36{{
     {.page = 12,
@@ -533,7 +552,8 @@ constexpr std::array<journal_fragment, 2> entry43{{
      .offset = scan14_at,
      .length = scan14_bytes,
      .image = spread,
-     .region = {.left = 992, .top = 8, .width = 297, .height = 190}},
+     .region = {.left = 992, .top = 8, .width = 297, .height = 190},
+     .begins_paragraph = true},
 }};
 constexpr std::array<journal_fragment, 1> entry44{{
     {.page = 14,
@@ -566,7 +586,8 @@ constexpr std::array<journal_fragment, 2> entry47{{
      .offset = scan15_at,
      .length = scan15_bytes,
      .image = spread,
-     .region = {.left = 702, .top = 8, .width = 290, .height = 256}},
+     .region = {.left = 702, .top = 8, .width = 290, .height = 256},
+     .begins_paragraph = true},
 }};
 constexpr std::array<journal_fragment, 1> entry48{{
     {.page = 15,
