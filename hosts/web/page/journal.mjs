@@ -879,6 +879,28 @@ export function restoreSeen(module, box) {
   return module._af_web_journal_seen_restore(box);
 }
 
+/// The read log out of the module as one line of text, and back in
+/// (#351).
+///
+/// The log left the store's own file and went beside the save it belongs
+/// to. A browser has no directory to put a sidecar in until M6 gives it a
+/// disk, so this is the page's working copy of one — the same bytes,
+/// base64 — and it goes in a drawer of its own beside the store's.
+///
+/// `readLog` answers 1 for a log it took and 0 for text that is not one,
+/// leaving whatever the module holds alone.
+export function serializeLog(module) {
+  return readText(module, (out, cap) =>
+    module._af_web_journal_log_write(out, cap),
+  );
+}
+
+export function readLog(module, text) {
+  return withUtf8(module, text, (ptr, size) =>
+    module._af_web_journal_log_read(ptr, size),
+  );
+}
+
 /// The debug cheat: everything the store holds, onto the machine's
 /// journal log, so `Notes` lists all of it with a `*` on each until it
 /// is opened (#301). A proof-reading surface for what the engine read,
@@ -1102,6 +1124,84 @@ export function restoreStore(
     ),
     why: null,
   };
+}
+
+/// Where the read log goes (#351). Its own drawer and not a field of the
+/// store's, because they are two different facts kept for two different
+/// lengths of time: the store is about the player's *document* and the
+/// log is about a *playthrough*, and a build that ever learns to keep the
+/// disk will want the second beside the saves and the first exactly where
+/// it is.
+export const JOURNAL_LOG_KEY = 'amberfolio.journal.log.v1';
+
+/// The module's read log into its drawer. Answers the same shape
+/// `keepStore` does. An empty log is written rather than skipped: a
+/// player who has pressed *Forget it* has an empty log, and a drawer
+/// still holding yesterday's would hand it back on the next visit.
+export function keepLog(
+  module,
+  { storage = browserStorage(), key = JOURNAL_LOG_KEY } = {},
+) {
+  if (!storage) {
+    return { kept: false, characters: 0, why: 'this browser keeps nothing' };
+  }
+  const text = serializeLog(module);
+  try {
+    storage.setItem(key, text);
+  } catch (problem) {
+    return {
+      kept: false,
+      characters: text.length,
+      why: `this browser would not keep the read log:` +
+        ` ${problem?.name ?? problem}`,
+    };
+  }
+  return { kept: true, characters: text.length, why: null };
+}
+
+/// The drawer's read log back into the module.
+///
+/// Answers `{ restored, rows, why }`. Nothing in the drawer is the
+/// ordinary case and carries no `why`; text this build cannot read is a
+/// sentence, and the bytes are left where they are.
+///
+/// **Before `restoreSeen`**, which is what puts the rows in the machine
+/// the reader draws them from.
+export function restoreLog(
+  module,
+  { storage = browserStorage(), key = JOURNAL_LOG_KEY } = {},
+) {
+  if (!storage) return { restored: false, why: null };
+  let text = null;
+  try {
+    text = storage.getItem(key);
+  } catch {
+    return { restored: false, why: null };
+  }
+  if (text === null || text === '') return { restored: false, why: null };
+  if (readLog(module, text) !== 1) {
+    return {
+      restored: false,
+      why: 'the read log kept in this browser could not be read back',
+    };
+  }
+  return { restored: true, why: null };
+}
+
+/// The log's drawer emptied, for `forgetStore`'s reason and at the same
+/// moment.
+export function forgetLog({
+  storage = browserStorage(),
+  key = JOURNAL_LOG_KEY,
+} = {}) {
+  if (!storage) return { forgotten: false, why: null };
+  try {
+    const had = storage.getItem(key) !== null;
+    storage.removeItem(key);
+    return { forgotten: had, why: null };
+  } catch {
+    return { forgotten: false, why: null };
+  }
 }
 
 /// The drawer emptied. The module's own copy is `clearStore`'s to empty;

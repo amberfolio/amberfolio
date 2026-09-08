@@ -39,10 +39,11 @@
 // that a host can say afterwards that the callout arrived and when.
 //
 // **And since M5-E2c it has consumers.** `automap_update` drives the
-// exploration sidecar (`automap_store.h`), which reads what the panel has
+// exploration sidecar (`slot_store.h`), which reads what the panel has
 // explored out of the machine and writes it into a file beside the save.
-// That is a host doing host work — files are a host's, by PLAN.md §4 —
-// and it is off unless a host has been asked for it.
+// `journal_seen` drives the other one there (#351), the same way. That is
+// a host doing host work — files are a host's, by PLAN.md §4 — and both
+// are off unless a host has been asked for them.
 //
 // `journal_open` is the other (M5-E4, #175), and it is the one that has to
 // hand something *back* — as does `journal_art` beside it (#328), which
@@ -77,9 +78,9 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "amberfolio/host/automap_store.h"
 #include "amberfolio/host/code_wheel_store.h"
 #include "amberfolio/host/journal_store.h"
+#include "amberfolio/host/slot_store.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/seam.h"
 
@@ -135,23 +136,29 @@ class host_services final : public machine::seam_host_services {
   /// `journal_seen` writes the log back into the store, which is where it
   /// outlives the machine. A host that hands over a store is handing over
   /// somewhere to put what the game says.
-  void set_journal_store(journal_store* store) noexcept { journal_ = store; }
+  ///
+  /// The sidecars get the same pointer, because the log is what one of
+  /// them holds (#351) — a host sets this once and both consumers of a
+  /// store have it.
+  void set_journal_store(journal_store* store) noexcept {
+    journal_ = store;
+    slots_.set_journal_store(store);
+  }
   [[nodiscard]] const journal_store* journal() const noexcept {
     return journal_;
   }
   [[nodiscard]] journal_store* journal() noexcept { return journal_; }
 
-  /// The exploration sidecar `automap_update` drives (M5-E2c, #173).
+  /// The playthrough's sidecars, which `automap_update` and
+  /// `journal_seen` drive (M5-E2c #173, #351).
   ///
-  /// It lives here because this is the object both hosts already attach,
+  /// They live here because this is the object both hosts already attach,
   /// so a browser gets the persistence with no wiring of its own beyond
   /// the flag that turns it on and the file events that tell it which
   /// save slot the program touched. It is off until a host enables it,
   /// and while it is off `serve()` below still does everything it did.
-  [[nodiscard]] automap_store& automap() noexcept { return automap_; }
-  [[nodiscard]] const automap_store& automap() const noexcept {
-    return automap_;
-  }
+  [[nodiscard]] slot_store& slots() noexcept { return slots_; }
+  [[nodiscard]] const slot_store& slots() const noexcept { return slots_; }
 
   /// Where `code_wheel_answered` writes the copy a person just answered
   /// for (M6-C1b, #292).
@@ -173,7 +180,7 @@ class host_services final : public machine::seam_host_services {
 
  private:
   std::array<host_service_record, machine::seam_host_service_count> records_{};
-  automap_store automap_{};
+  slot_store slots_{};
   journal_store* journal_{nullptr};
   code_wheel_store* code_wheel_{nullptr};
 };

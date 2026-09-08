@@ -62,7 +62,7 @@
 // cannot be mistaken for a header. Strict on the way in: a file that is
 // not exactly this is `not_a_store`, never a file half-read.
 //
-//   amberfolio-journal 4
+//   amberfolio-journal 5
 //   edition <64 hex>
 //   engine <one line>
 //   scanned <kind> <number> <bytes>
@@ -71,12 +71,10 @@
 //   <bytes bytes><newline>
 //   picture <kind> <number> <nth> <width> <height> <bytes>
 //   <bytes bytes><newline>
-//   seen <kind> <number> <month> <day> <hour> <minute> <read>
 //
-// The `seen` lines are the journal's own log (M5-E4b, #222) — what the
-// game has told this player to read, newest first, with the moment it
-// said so and whether they have opened it since. They carry no text, so
-// they have no length and no body.
+// A version 4 store had `seen` lines here too — the journal's own log
+// (M5-E4b, #222) — and version 5 does not. Where they went, and why, is
+// the section below.
 //
 //
 // The pictures, and why they are here rather than in a sidecar (#328)
@@ -115,19 +113,53 @@
 // is exactly what re-ingesting is for.
 //
 // **It is in this file rather than beside a save**, which is a decision
-// and not an oversight. The automap keeps a snapshot per save slot because
-// a map of explored squares genuinely differs between two parties and
-// showing the wrong one misleads. A journal log does not: the journal is
-// the *player's* book, and what they have read, they have read.
+// and not an oversight. It is a picture of the player's own document,
+// like the text beside it, and re-deriving it is a re-ingestion.
+//
+//
+// The read log left this file, and the text did not (#351)
+// --------------------------------------------------------
+//
+// A store holds facts about a **document**: what an engine read off the
+// player's copy, what they corrected, and what its drawings look like
+// reduced. Those are true of the copy however many parties the player
+// runs, so the file lives in the per-user data directory and is shared by
+// all of them, which is right.
+//
+// The read log is not one of those. Which entries the game has sent this
+// player to, when it said so, and whether they have opened them since is
+// a fact about a **playthrough** — and a player running two parties had
+// one list between them, so each was told it had already been sent
+// somewhere it had never been. It is the same argument the automap's
+// exploration answered correctly and this answered wrongly, so it now
+// gets the same answer: a sidecar beside the save, per slot, off unless
+// the player asked (`slot_store.h`, `\SAVE\AFSEEN<L>.DAT`).
+//
+// **The rows still live here**, in this object, and travel to the reader
+// exactly as they did: `set_seen` puts them in, `restore_journal_log`
+// hands them to the machine, `seen()` reads them back. What changed is
+// where a host *keeps* them between runs, which is why `serialize()` no
+// longer writes them and `changed()` no longer rises for them
+// (`log_changed()` does instead). Nothing above the store moved.
+//
+// **A version 4 store's `seen` lines are still read**, into exactly the
+// same rows, and are then this run's working log: it is the one list the
+// player accumulated before slots existed, and the first save writes it
+// to a slot while the first load replaces it. That is the working
+// table's own semantics next door, applied to the one migration there
+// will ever be. Written back, the file is version 5 and the lines are
+// gone — which is the point, and is not a loss, because by then they are
+// in `\SAVE\AFSEEN.DAT` for anyone who asked for one.
 //
 // The version is the first token of the first line so that a store from a
 // later format is refused by a build that would misread it, which is the
-// same courtesy `automap_store`'s header pays.
+// same courtesy `slot_store`'s exploration header pays.
 //
 // **Every version this project has written is still read.** A version 2
 // store has no `seen` lines, which is a player who has been cited nothing
 // yet — a true statement about an old store, not an error; a version 3
-// store has no `picture` records, on the same reading.
+// store has no `picture` records, on the same reading. A version 4 store
+// has `seen` lines and they are read, above.
 //
 // **Version 1 is still read** (M5-E3d, #218). It had no `<kind>` because
 // there was one section, so every record in one is a journal entry and
@@ -142,6 +174,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -163,7 +196,7 @@ class machine;
 namespace amberfolio::host {
 
 /// The format version this build writes.
-inline constexpr std::uint32_t journal_store_version = 4;
+inline constexpr std::uint32_t journal_store_version = 5;
 
 /// The oldest it reads. See the format above: a version 1 store is a
 /// store of journal entries and nothing is lost by saying so.
@@ -177,6 +210,52 @@ inline constexpr std::string_view journal_store_magic = "amberfolio-journal";
 /// the per-user data directory M6's configuration will share
 /// (`journal_store_default_path()` in the SDL host).
 inline constexpr std::string_view journal_store_filename = "journal.txt";
+
+// --- The read log's sidecar (#351) ------------------------------------
+//
+// The rows that left this file go beside the save, one file per slot,
+// written and read by `slot_store.h`. The *format* is here, beside the
+// rows it is a picture of, for the reason the exploration sidecar's is in
+// `machine/automap.h` beside its records: a store owns what its own bytes
+// mean, and a host is not the place to settle a layout question.
+//
+// Binary, and fixed-stride, where the store's own file is text on
+// purpose. The store is text because a player opens it to correct a
+// transcription; nobody hand-edits a list of what the game said and
+// when. What a fixed stride buys is a fixed buffer: this is written from
+// a seam's host callout, and a host has no business heap-allocating
+// there.
+//
+//     off len  what
+//     0   3    'A' 'F' 'S'
+//     3   1    the layout version
+//     4   2    how many rows follow, little-endian
+//     6   2    the bytes in one row, little-endian
+//
+// and then that many rows of, newest first, which is the order the log
+// is in everywhere else:
+//
+//     0   1    the section (`machine::journal_kind`)
+//     1   2    the number in it, little-endian
+//     3   1    month
+//     4   1    day
+//     5   1    hour
+//     6   1    minute
+//     7   1    non-zero if the player has opened it since
+//
+// The stride is in the header so that a later version can grow a row and
+// a build that met one would refuse it whole rather than read every row
+// at the wrong offset — the same courtesy, and the same header, the
+// exploration sidecar pays.
+inline constexpr std::array<char, 3> journal_log_sidecar_magic{'A', 'F', 'S'};
+inline constexpr std::uint8_t journal_log_sidecar_version = 1;
+inline constexpr std::size_t journal_log_sidecar_header_bytes = 8;
+inline constexpr std::size_t journal_log_sidecar_record_bytes = 8;
+
+/// The largest one can be: every row the machine's log will hand back.
+inline constexpr std::size_t journal_log_sidecar_capacity =
+    journal_log_sidecar_header_bytes +
+    (machine::journal_log_rows * journal_log_sidecar_record_bytes);
 
 /// One item's text.
 struct journal_text {
@@ -321,21 +400,81 @@ class journal_store {
   /// no reader could ever show.
   void set_seen(std::span<const machine::journal_seen_row> rows);
 
+  /// The log gone, and nothing else (#351).
+  ///
+  /// What a slot's snapshot is read **over**: the party now in the
+  /// machine is that slot's party, and what the last one was told has
+  /// nothing to do with it. A slot with no sidecar beside it clears the
+  /// log and reads nothing, for the same reason `automap_state::
+  /// forget_records()` exists — an empty log is the truth about a
+  /// playthrough nobody recorded one for.
+  ///
+  /// Raises `log_changed()` only if there was something to forget.
+  void forget_seen();
+
+  // --- the log's sidecar (#351) ----------------------------------------
+  //
+  // Its layout is above. These three mirror `automap_state`'s own three,
+  // deliberately: `slot_store` writes both files through one pair of
+  // calls, and two stores that answered a different shape would put the
+  // difference in the host.
+
+  /// How many bytes `write_log_sidecar` would fill for the rows in hand.
+  [[nodiscard]] std::size_t log_sidecar_bytes() const noexcept;
+
+  /// The log into `out`. Answers how many bytes were written, and zero
+  /// for a span too small — which a caller avoids by asking
+  /// `log_sidecar_bytes()` first.
+  [[nodiscard]] std::size_t write_log_sidecar(
+      std::span<std::uint8_t> out) const noexcept;
+
+  /// A sidecar back, **replacing** the whole log. False when the bytes
+  /// are not one this build knows how to read, and then the log is left
+  /// exactly as it was — a file that is not ours is a reason to say so,
+  /// not a reason to forget what a player was told.
+  ///
+  /// Raises `log_changed()` on success, because the rows in hand are now
+  /// a different list from the one a host last wrote out. That is one
+  /// redundant write of a file whose bytes were just read, and it is
+  /// worth it: the alternative is a load whose log is only on disk under
+  /// the slot it came from, and a working table that still holds the
+  /// previous party's.
+  [[nodiscard]] bool read_log_sidecar(std::span<const std::uint8_t> in);
+
+  /// The same bytes as one line of text, and back.
+  ///
+  /// For a browser, which has no directory to put a sidecar in and keeps
+  /// what it keeps in a key-value drawer of strings (M5-E3f). Base64 of
+  /// exactly `write_log_sidecar`'s bytes, so the two hosts keep one
+  /// format and a log written by either is a log the other would read —
+  /// the same arrangement a picture record already has (§11).
+  ///
+  /// `parse_log` answers false on anything `read_log_sidecar` would
+  /// refuse and on text that is not base64, and leaves the log alone.
+  [[nodiscard]] std::string serialize_log() const;
+  [[nodiscard]] bool parse_log(std::string_view text);
+
   /// Whether this store has moved since a host last wrote it out.
   ///
   /// The same shape the automap's sidecar has, and for the same reason: a
   /// host that wrote the file on every citation would write it far more
   /// often than anything changed.
   ///
-  /// **Every write raises it**, which is more than it used to be: it was
-  /// `set_seen()` alone (M5-E4b, #222), because the log was the only
-  /// thing that moved while a machine was running. #229 made it the
-  /// store's flag rather than the log's, because the caller it exists for
-  /// now is a host deciding whether to *persist the store* — and a
-  /// player's correction that did not raise it is a correction that
-  /// quietly does not get saved. So `record_scan`, `correct`,
-  /// `set_edition`, `set_engine`, `clear` and `set_seen` all raise it,
-  /// and a write that was refused (too long, no room) raises nothing.
+  /// **Every write to the text raises it.** It was `set_seen()` alone
+  /// (M5-E4b, #222), because the log was the only thing that moved while
+  /// a machine was running. #229 made it the store's flag rather than the
+  /// log's, because the caller it exists for now is a host deciding
+  /// whether to *persist the store* — and a player's correction that did
+  /// not raise it is a correction that quietly does not get saved. So
+  /// `record_scan`, `record_picture`, `correct`, `set_edition`,
+  /// `set_engine` and `clear` all raise it, and a write that was refused
+  /// (too long, no room) raises nothing.
+  ///
+  /// **`set_seen()` no longer does** (#351). The log is not in this
+  /// file any more, so a citation that raised this flag would have a host
+  /// rewrite a player's whole transcription to record something that is
+  /// not in it. `log_changed()` below is the log's own flag, and the two
+  /// hosts write two different files off the two of them.
   ///
   /// **`parse()` is the exception**, and deliberately: a store read in
   /// from a file or a browser's drawer came *from* a host, which
@@ -347,6 +486,15 @@ class journal_store {
   /// lose a correction made between the read and the write.
   [[nodiscard]] bool changed() const noexcept { return changed_; }
   void clear_changed() noexcept { changed_ = false; }
+
+  /// Whether the read log has moved since a host last wrote it out
+  /// (#351), on `changed()`'s own three terms: raised by `set_seen`,
+  /// `forget_seen`, `read_log_sidecar` and `clear`; not raised by
+  /// `parse()`, whose rows came from a host in the first place; lowered
+  /// only by the caller, which alone knows whether the bytes reached a
+  /// disk.
+  [[nodiscard]] bool log_changed() const noexcept { return log_changed_; }
+  void clear_log_changed() noexcept { log_changed_ = false; }
 
   /// The SHA-256 of `serialize()`.
   ///
@@ -375,6 +523,7 @@ class journal_store {
   /// of what was written first.
   std::vector<machine::journal_seen_row> seen_;
   bool changed_{false};
+  bool log_changed_{false};
 };
 
 /// A store's read log, into the machine the reader draws it from.

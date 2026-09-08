@@ -693,7 +693,7 @@ so every leaf here is the fallback rule, a passable face is a door; leg
 The store (M5-E2c), as a second run:
 
 ```
---seam code-wheel --seam automap --automap-store
+--seam code-wheel --seam automap --save-sidecars
 --press A@7600 --press Return@7650      the code wheel
 --press L@8950 --press A@9200           LOAD SAVED GAME, slot A
 --press Tab@11000                       the panel
@@ -702,15 +702,20 @@ The store (M5-E2c), as a second run:
 ```
 
 ```
-amberfolio: automap-store writes=4 reads=0 slot=A trouble=none
+amberfolio: save-sidecars writes=4 reads=0 slot=A trouble=none
 ```
 
 leaves `\SAVE\AFMAP.DAT`, the working table, and `\SAVE\AFMAPA.DAT`,
 slot A's snapshot. Remove the working table and load slot A again:
-`amberfolio: automap-store reads=1 slot=A`, and the panel comes up with
+`amberfolio: save-sidecars reads=1 slot=A`, and the panel comes up with
 the streets on it; the module's final frame is byte for byte the
-desktop's. The store is off unless asked for: a sidecar would change the
+desktop's. The sidecars are off unless asked for: one would change the
 disk every session pins by name, size and SHA-256.
+
+The same flag keeps the journal's read log, in `\SAVE\AFSEEN.DAT` and
+`\SAVE\AFSEEN<L>.DAT` beside those two. Drive it the same way: cite
+something on slot A, save, load slot B, and `amberfolio: journal log
+seen=` at the next launch is B's count and not A's.
 
 Traps:
 
@@ -763,7 +768,8 @@ over a real store pinned by digest (#232).
 ```
 
 ```
-amberfolio: journal store ./journal.txt entries=2 corrections=0 seen=2
+amberfolio: journal store ./journal.txt entries=2 corrections=0 pictures=0
+amberfolio: journal log seen=2
 amberfolio: host-service journal-open calls=1 last=3
 ```
 
@@ -868,10 +874,11 @@ arrival; on with the overworld never shown, `quiet-explored.rec` is all
 126 checkpoints of the baseline. These were measured at the radius-one
 grey and are re-driven under #293.
 
-Store: `--automap-store` writes the trail into `\SAVE\AFMAP.DAT` with a
+Store: `--save-sidecars` writes the trail into `\SAVE\AFMAP.DAT` with a
 snapshot per slot, and the automap alone records the wilderness too
-(#254). A slot with no snapshot loads an empty table, so the arrival is
-the party's square and fog everywhere else.
+(#254) — so the overlay is per-slot without a file of its own (#351). A
+slot with no snapshot loads an empty table, so the arrival is the party's
+square and fog everywhere else.
 
 The other two wilderness areas are reached by editing a save on a
 scratch copy by `docs/explored-overlay.md` §8's offset table. The

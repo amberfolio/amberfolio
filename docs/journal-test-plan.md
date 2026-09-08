@@ -331,7 +331,8 @@ $HOST "$SCR/por" START.EXE --seam code-wheel \
 About twenty seconds each, 121 stills each; the on-run reports:
 
 ```
-amberfolio: journal store .../store.txt entries=2 corrections=0 seen=0
+amberfolio: journal store .../store.txt entries=2 corrections=0 pictures=0
+amberfolio: journal log seen=0
 amberfolio: seam journal armed fired=602575
 amberfolio: host-service journal-open calls=1 last=3 at=214790468
 amberfolio: stop reason=tick_budget steps=60000000 ticks=240000000 frames=12069

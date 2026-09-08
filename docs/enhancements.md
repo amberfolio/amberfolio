@@ -62,11 +62,12 @@ bar on the screen is not the adventuring screen's own, and comes back
 after the journal has used the same cells.
 
 **How you turn it on.** `--seam automap`. To keep the map between runs,
-`--automap-store` on the desktop or `automapStore(true)` on the page
-(`af_web_automap_store`; `hosts/web/tools/drive.mjs` is the reference
-caller), which writes `\SAVE\AFMAP.DAT` beside the game's saves, with a snapshot
-per save slot. The store is off unless asked, because a file appearing in
-your game directory changes it.
+`--save-sidecars` on the desktop or `saveSidecars(true)` on the page
+(`af_web_save_sidecars`; `hosts/web/tools/drive.mjs` is the reference
+caller), which writes `\SAVE\AFMAP.DAT` beside the game's saves, with a
+snapshot per save slot — and the journal's read log beside it, on the one
+flag. The sidecars are off unless asked, because a file appearing in your
+game directory changes it.
 
 **If you are writing a host**: turn the store on **once, at install,
 after the files are in and before the program is loaded**, whatever the

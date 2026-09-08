@@ -47,7 +47,6 @@
 
 #include "amberfolio/abi.h"
 #include "amberfolio/abi_bridge.h"
-#include "amberfolio/host/automap_store.h"
 #include "amberfolio/host/code_wheel_store.h"
 #include "amberfolio/host/host_services.h"
 #include "amberfolio/host/journal_extract.h"
@@ -55,6 +54,7 @@
 #include "amberfolio/host/journal_ingest.h"
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/host/journal_store.h"
+#include "amberfolio/host/slot_store.h"
 #include "amberfolio/machine/log.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/seam.h"
@@ -267,19 +267,22 @@ uint32_t af_web_attach_host_services(af_machine* box) {
   return AF_OK;
 }
 
-/// Keep the automap's exploration beside the save, in this module's own
-/// filesystem (M5-E2c, #173).
+/// Keep this playthrough's progress beside its saves, in this module's
+/// own filesystem (M5-E2c #173, #351).
 ///
-/// The same object the desktop host's `--automap-store` turns on
-/// (`hosts/common`), so a browser and a terminal write the same file with
-/// the same bytes. Off unless a page asks, for the reasons
-/// `automap_store.h` gives — and for one more that is the page's alone: a
+/// The same object the desktop host's `--save-sidecars` turns on
+/// (`hosts/common`), so a browser and a terminal write the same two files
+/// with the same bytes: what the automap has explored, and which journal
+/// entries the game has cited. Off unless a page asks, for the reasons
+/// `slot_store.h` gives — and for one more that is the page's alone: a
 /// browser's filesystem is whatever was dropped into it, and writing into
-/// it is what makes an exploration outlive the tab.
+/// it is what makes progress outlive the machine.
 ///
 /// **Call it after the files are in and before the program is loaded.**
-/// Turning it on reads the working table off the filesystem, so a
-/// filesystem that is still empty has nothing to give it.
+/// Turning it on reads the working exploration table off the filesystem,
+/// so a filesystem that is still empty has nothing to give it. The read
+/// log is the other half and is read by `af_web_journal_seen_restore`,
+/// after the page has handed back the store it kept.
 ///
 /// The file events it needs — which save slot the program touched — reach
 /// it through the diagnostic log's relay (`machine/log.h`), because in
@@ -287,20 +290,19 @@ uint32_t af_web_attach_host_services(af_machine* box) {
 /// for a second C++ consumer to stand.
 ///
 /// `AF_NO_MACHINE` for a null handle, `AF_OK` otherwise.
-uint32_t af_web_automap_store(af_machine* box, int32_t on) {
+uint32_t af_web_save_sidecars(af_machine* box, int32_t on) {
   amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box);
   if (pc == nullptr) {
     return AF_NO_MACHINE;
   }
-  static amberfolio::host::automap_store::observer watcher{
-      services().automap()};
+  static amberfolio::host::slot_store::observer watcher{services().slots()};
   if (amberfolio::machine::diagnostic_log* log =
           amberfolio::af_machine_log_unwrap(box);
       log != nullptr) {
     log->set_relay(on != 0 ? &watcher : nullptr);
   }
-  services().automap().enable(on != 0);
-  services().automap().attach(*pc);
+  services().slots().enable(on != 0);
+  services().slots().attach(*pc);
   return AF_OK;
 }
 
@@ -582,6 +584,31 @@ uint32_t af_web_journal_store_read(const char* text, uint32_t size) {
       journal().store.parse(std::string_view(text, size)));
 }
 
+/// This tab's **read log**, out into the page's drawer and back (#351).
+///
+/// The log left the store's own file and went beside the save it belongs
+/// to, which on the desktop is `\SAVE\AFSEEN<L>.DAT`. A browser has no
+/// directory to put one in until it is given a disk, so this is the
+/// page's own working copy: the same bytes the sidecar holds, base64 so
+/// they fit in a key-value drawer of strings. A slot's snapshot still
+/// wins over it when a page has asked for sidecars, exactly as the
+/// desktop's working file loses to one.
+///
+/// `_write` hands out the text; `_read` answers 1 for a log it took and
+/// 0 for text that is not one, in which case the log is left alone —
+/// what a player was told is not something to forget over a file this
+/// build cannot read.
+uint32_t af_web_journal_log_write(char* out, uint32_t cap) {
+  return hand_out(journal().store.serialize_log(), out, cap);
+}
+
+uint32_t af_web_journal_log_read(const char* text, uint32_t size) {
+  if (text == nullptr) {
+    return 0U;
+  }
+  return journal().store.parse_log(std::string_view(text, size)) ? 1U : 0U;
+}
+
 /// Whether this tab's store has moved since the page last kept it, and
 /// the page saying it has now (M5-C1, #229).
 ///
@@ -591,10 +618,12 @@ uint32_t af_web_journal_store_read(const char* text, uint32_t size) {
 /// frame, to answer a boolean the store had already raised
 /// (`host/journal_store.h`). These two are that door.
 ///
-/// `_changed` answers 1 or 0. Every write to the store raises it — a
-/// scan recorded, a correction, the edition or engine set, a clear, a
-/// citation logged — and `_read` alone does not, because a store read in
-/// from the drawer came from the page and the page already holds it.
+/// `_changed` answers 1 or 0. Every write to the store's *text* raises
+/// it — a scan recorded, a correction, the edition or engine set, a clear
+/// — and `_read` alone does not, because a store read in from the drawer
+/// came from the page and the page already holds it. A citation does not
+/// either, since #351: it moves the read log, which is a different file
+/// and a different drawer.
 ///
 /// **The lowering is the caller's, and that is the design.** A store has
 /// no idea whether `localStorage` accepted the bytes, so it cannot clear
@@ -696,6 +725,14 @@ uint32_t af_web_code_wheel_apply(af_machine* box) {
 /// is harmless, because a log that already holds a row does not gain a
 /// second copy of it.
 ///
+/// **And it reads the log's sidecar first** (#351). The log left the
+/// store's own file and went beside the save it belongs to, so this is
+/// the moment it comes back: after the page has handed over whatever it
+/// kept, and before any of it reaches the machine. A no-op unless
+/// `af_web_save_sidecars` asked for one, in which case what a page kept
+/// from an older build — a version 4 store's `seen` lines — is what gets
+/// restored, which is the migration and is the whole of it.
+///
 /// The ordering that makes it right — oldest first, backwards through the
 /// store — is `host::restore_journal_log()`'s, in `hosts/common`, so that
 /// both hosts get it from one place and a test can hold it down.
@@ -706,6 +743,7 @@ uint32_t af_web_journal_seen_restore(af_machine* box) {
   if (pc == nullptr) {
     return AF_NO_MACHINE;
   }
+  services().slots().read_journal_log();
   amberfolio::host::restore_journal_log(pc->journal(), journal().store);
   return AF_OK;
 }

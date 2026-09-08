@@ -30,11 +30,11 @@ void host_services::serve(machine::machine& box,
   seen.argument = argument;
   seen.at = box.time();
 
-  // And the consumers. The exploration store (M5-E2c, #173) is off unless
-  // a host asked for it, so on every run that has not this is a branch and
-  // nothing else.
+  // And the consumers. The sidecars beside the save (M5-E2c #173, #351)
+  // are off unless a host asked for them, so on every run that has not
+  // this is a branch and nothing else.
   if (which == machine::seam_host_service::automap_update) {
-    automap_.changed();
+    slots_.changed();
     return;
   }
 
@@ -61,6 +61,10 @@ void host_services::serve(machine::machine& box,
   if (which == machine::seam_host_service::journal_seen) {
     if (journal_ != nullptr) {
       journal_->set_seen(box.journal().seen());
+      // And on to the sidecar beside the save this playthrough belongs
+      // to (#351), which is where a log outlives a *run* rather than a
+      // machine. A no-op unless a host asked for sidecars.
+      slots_.journal_changed();
     }
     box.journal().set_seen_changed(false);
     return;
