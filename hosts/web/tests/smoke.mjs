@@ -4031,6 +4031,124 @@ if (missing.length === 0 && sessions !== null) {
     box.destroy();
   }
 
+  // --- The read log on the facade too (#288) ---------------------------
+  //
+  // `journalStoreRead()` puts a kept store's *text* back through
+  // `Machine`; the log used to go back through this file's module-level
+  // `restoreSeen(module, handle)`, which wanted `machine.handle` -- a
+  // field documented nowhere. A consumer that used only the facade lost
+  // every `*` in the reader's log on reload. `journalSeenRestore()` is
+  // that second half, delegating to the same export.
+  //
+  // The machine's own log is not readable across this ABI, so the way to
+  // see that a row landed *in the machine* is to put it back out again:
+  // `cite_all_journal()` ends with `store.set_seen(into.seen())`, so the
+  // store's log after a cite is the machine's log, and `note_seen`'s
+  // move-up rule keeps a row's read flag. A row restored as read is
+  // therefore still read after a cite, and one that never reached the
+  // machine is not -- which is the whole difference between the two
+  // machines below.
+  {
+    // A version 4 store: the format that still carried its log, which is
+    // exactly what a page kept from an older build hands back. Two
+    // entries so the ordering shows, and the log holds the first of
+    // them, read.
+    const kept =
+      'amberfolio-journal 4\n' +
+      'edition a journal this project made up\n' +
+      'engine none\n' +
+      'scanned entry 1 5\nfirst\n' +
+      'scanned entry 2 6\nsecond\n' +
+      'seen entry 1 9 6 21 53 1\n';
+
+    // The log as `journal_store::write_log_sidecar` writes it
+    // (`hosts/common/src/journal_store.cpp`): `AFS`, a version, a row
+    // count and a record size, then eight bytes a row with the read flag
+    // last.
+    const rowsOf = (base64) => {
+      const bytes = Buffer.from(base64, 'base64');
+      check(
+        bytes.length >= 8 &&
+          String.fromCharCode(bytes[0], bytes[1], bytes[2]) === 'AFS',
+        'the read log did not serialize to a sidecar',
+      );
+      const count = bytes[4] | (bytes[5] << 8);
+      const stride = bytes[6] | (bytes[7] << 8);
+      const rows = [];
+      for (let i = 0; i < count; ++i) {
+        const at = 8 + i * stride;
+        rows.push({
+          number: bytes[at + 1] | (bytes[at + 2] << 8),
+          read: bytes[at + 7] !== 0,
+        });
+      }
+      return rows;
+    };
+
+    // Without the restore: the machine's log starts empty, so citing
+    // everything files both entries unread.
+    const cold = new Machine(module);
+    check(
+      cold.attachReferenceDevices() === AF_OK,
+      'attaching for the read log facade failed',
+    );
+    clearStore(module);
+    check(cold.journalStoreRead(kept) === 0, 'a version 4 store was refused');
+    check(
+      citeAllJournal(module, cold.handle) === 2,
+      'citing the kept store cited the wrong number of rows',
+    );
+    const without = rowsOf(serializeLog(module));
+    check(
+      without.length === 2 && !without[0].read && !without[1].read,
+      'a machine nobody restored a log into came up with a row already read',
+    );
+    cold.destroy();
+
+    // With it, through the facade and nothing else: the `seen` line's row
+    // is in the reader's log before the cite, so the cite re-dates it and
+    // leaves it read.
+    const warm = new Machine(module);
+    check(
+      warm.attachReferenceDevices() === AF_OK,
+      'attaching for the read log facade failed',
+    );
+    clearStore(module);
+    check(
+      warm.journalStoreRead(kept) === 0,
+      'a version 4 store was refused by the facade',
+    );
+    check(
+      warm.journalSeenRestore() === AF_OK,
+      'the facade would not restore a read log',
+    );
+    // Twice is harmless, which is what lets a page call it after every
+    // restore without counting.
+    check(
+      warm.journalSeenRestore() === AF_OK,
+      'restoring a read log twice through the facade was refused',
+    );
+    check(
+      citeAllJournal(module, warm.handle) === 2,
+      'citing after a restore cited the wrong number of rows',
+    );
+    const restored = rowsOf(serializeLog(module));
+    check(
+      restored.length === 2,
+      `restoring through the facade left ${restored.length} rows, wanted 2`,
+    );
+    check(
+      restored[0].number === 1 && restored[0].read,
+      "the `seen` line restored through the facade is not in the reader's log",
+    );
+    check(
+      restored[1].number === 2 && !restored[1].read,
+      'a row nobody had read came back read',
+    );
+    warm.destroy();
+    clearStore(module);
+  }
+
   // And the shipped table knows nothing about a document this project
   // made up, which is the state every *real* journal is in too until
   // somebody fingerprints one.

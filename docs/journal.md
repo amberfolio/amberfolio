@@ -417,6 +417,19 @@ the store and `machine::journal_state` both hold the log newest first and
 `note_seen` puts each row on the *front*, so rows fed in stored order come
 out upside down; `JournalLogRestore` pins the order.
 
+**On the page it is `Machine.journalSeenRestore()`** (#288), beside the
+five store methods of #229 and delegating to that same export. Call it
+after `journalStoreRead()` and on the machine the reader will run in:
+`journalStoreRead()` puts back a store's *text*, and this puts back the
+half of it that lives in the machine. Twice is harmless. Before #288 the
+only spelling was `journal.mjs`'s module-level `restoreSeen(module,
+handle)`, so a consumer built on the facade alone lost every `*` on
+reload. `tests/smoke.mjs` reads a version 4 store with a `seen` line
+through the facade and then cites everything, because
+`cite_all_journal()` copies the machine's log back into the store and
+`note_seen` keeps a row's read flag: the restored row comes back read and
+a row nobody restored does not.
+
 ## 7. What is checked, and what is not
 
 **In CI, on every target**, over `journal_probe.h`: a small
