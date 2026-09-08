@@ -1,28 +1,37 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# FID-4 (#235): #232's citation as a session. A new party through the
-# city to the hall at 3,4 facing east, where the game's own entrance
-# event names four proclamations in one sentence.
+# FID-4 (#235): a citation of the program's own, and the reader opening
+# what it names. A new party through the city to the hall at 3,4 facing
+# east, whose entrance event names four proclamations in one sentence;
+# `Notes`, and the first of them opened off the log.
 #
-# **Recorded before #346**, when a citation opened the first of them in
-# the roster panel with nobody having pressed a key, so from that
-# checkpoint on the panel's pixels are in every hash. A citation writes a
-# log line and draws nothing now, and the log is not machine state, so
-# the run this describes no longer exists. It is re-recorded with the
-# rest of the library under #293; the store it needs is a real ingestion
-# of a real player's journal and is not on any machine but the
-# maintainer's.
-# The store is external and pinned by digest: it is a real ingestion of a
-# real player's own journal, ninety-nine entries, and no byte of it may
-# enter this tree (PLAN.md §6). Without the digest the session is skipped
-# and said so, exactly as one whose disk is absent is.
+# **Re-recorded for #346 and #293.** It was recorded when a citation
+# opened an entry in the roster panel with nobody having pressed a key,
+# so every hash after that checkpoint carried a panel this seam no
+# longer paints; and it was on the boot that asked for the code wheel.
+# Both are gone: a citation writes a log line and draws nothing, so the
+# reader is reached the way a player reaches it, and the run says the
+# challenge was already answered.
+#
+# **The store is this repository's own, and committed** (#290). It was
+# an external digest of a real ingestion of somebody's own journal,
+# which meant the session could be verified on exactly one machine and
+# skipped everywhere else. What the citation proves is the program's --
+# that its event names LXIV, LXXVIII, CIX and LIX, and that the log and
+# the reader carry them through -- and none of that needs anybody's
+# transcription. `tests/visual/cite-store.txt` holds four proclamations
+# written here, the way `reader-store.txt` holds an entry written here.
+#
+# The disk is a **pristine** install: this party is created by the run,
+# so there is no save state to pin and anybody who owns the game has the
+# disk this names.
 
-about a real citation opening a real journal: the city tour east to the
-about city hall, whose event names proclamations LXIV, LXXVIII, CIX and
-about LIX, and the first of them on the screen with no key pressed
+about a citation of the program's own: a new party east to the city hall
+about at 3,4, whose event names proclamations LXIV, LXXVIII, CIX and LIX,
+about and the first of them opened off the log by Notes
 disk external
 code-wheel-answered
-journal-store external afec092128e43632afa5de8747f2aafa48b1615f5a012f1d2cad33d304645c84
+journal-store tests/visual/cite-store.txt
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021
@@ -125,78 +134,6 @@ file PIC8.DAX 67227 760cf9042110bbf41e60bb4b0cf76635398751ceaf1ce693dc5e39ef92d8
 file POOL.BAT 186 64cbb144146f773dd4e1b2f6a76e95c5a8b94f08c9c630572bb060461fc5d200
 file POOL.CFG 24 a1d1206cdb795d273a728baa482e47c1df7546c805de5b79359765273021efda
 file RANDCOM.DAX 755 9e176f9521f0157c86a2f5891766ae19f0b9c29165138d7588f465d75ff48da2
-file SAVE\CHARLIST.TXT 8 306f1424166cf1f3d4cf768640dfc20187d00b3dc5f2acb1c45f033301b4c9f9
-file SAVE\CHRDATA1.ITM 504 36980b72ceed0f8594af6c0973ded2126bd6280a209b02280d4b6f4707e768f9
-file SAVE\CHRDATA1.SAV 285 1d89c52bd160bc28aceb4d5e4d489ca5fe93ec863b32eb4c1742d1bcefc5485e
-file SAVE\CHRDATA2.ITM 378 c8fc70f515079c09acf9401827830e717e9b83550bcb4bda9e011335f89374f8
-file SAVE\CHRDATA2.SAV 285 09a51da60a5620c4005cb36989d53566ec56d1267e37f0ab1fcf3baf84d62a4d
-file SAVE\CHRDATA3.ITM 441 109a8e4910cf341c5d10bdbbdcfd1da28c3330b71eed6c59bf6e6c5077b6dea3
-file SAVE\CHRDATA3.SAV 285 2a441025a1f4107826f03c38543ff8a7ce558d483110f8fce6d48352a94eb8b5
-file SAVE\CHRDATA4.ITM 252 c3825afd7d1ceb0809b2784cacdb21e41387ed6e9dc6ff61140935b4f71b0826
-file SAVE\CHRDATA4.SAV 285 62f552ba19d27fa9eee993296789846006020e724bc1391e3c1442b8e62e1ead
-file SAVE\CHRDATA5.ITM 630 957cbf1d79831090468928b979da5489313da7fcd831ac3f4360af771caa85ef
-file SAVE\CHRDATA5.SAV 285 d73091dc6f793572240e03870bcbe42d7dd9ac0e58a9f8f88014e5c40765ba7d
-file SAVE\CHRDATA6.ITM 252 4d7521ba9ac3e586d2a35b62aee73592ac35975906b375e948d8bd46d22ae9ae
-file SAVE\CHRDATA6.SAV 285 5af2f84bb3e5115cb92d1d2627ddc495b03227f17b659550a1b2a584bf6faa36
-file SAVE\CHRDATB1.ITM 1008 44bef275fba117cacf061fc68474663e1956c87455c68021bdafae330d660087
-file SAVE\CHRDATB1.SAV 285 db0c784f155136dcef797b2973a938c42b450a828d26dcc17de46b7729688479
-file SAVE\CHRDATB2.ITM 378 950f311f9964036e94e97160e74553c9175c1d7cb33dbc85d20ddd67614756c7
-file SAVE\CHRDATB2.SAV 285 20b07d50e3ddba9527c82afc8ffacf335a574add7b6ec2d31b25c5356a66d69b
-file SAVE\CHRDATB3.ITM 378 b35a76a87bbf76fa876bd00d939bcdfc6c3a186f5cff2631ab8884b160307254
-file SAVE\CHRDATB3.SAV 285 9da5abff1138ed82a63d7e7ee275cb43b000d08b7870d19c9ce344968e709d6e
-file SAVE\CHRDATB4.ITM 189 684227e2d5974e815438f6a8c29ab680c6442bcbc524647efac7f04857f210a6
-file SAVE\CHRDATB4.SAV 285 b17d189e41daaf46c617d0ac8b0b9aac3c974ba469eb7ddcb244f13152e81c01
-file SAVE\CHRDATB5.ITM 504 75420f64243de267acc007981bdfce4fa0ff32d0ee4e1466027795aef42ad5ef
-file SAVE\CHRDATB5.SAV 285 0a1af926e183cf66a37bf782d10d6bab185b8d1cd9dfc7c25a4334154e2c6f59
-file SAVE\CHRDATB6.ITM 189 d06417586fa41cf15a6d19161d19a546639d139c3219366e896c9688f91831d7
-file SAVE\CHRDATB6.SAV 285 f9a376f94847dd5d38f29dbbb2aa5a3dca28d3b2f4f425ce41c52d6a1571cf5b
-file SAVE\CHRDATC1.ITM 126 0b90c93984d963de100dbc5a2208ae64a31db776790892f8f263afed7fd75dc7
-file SAVE\CHRDATC1.SAV 285 ce19b8eac68c6e21fa34831bd22383dd4aee86d6a258ed40ef17e2ec36ffab5d
-file SAVE\CHRDATC1.SPC 54 e1fa7a8a88caa25022b1990a4205476a55ff48a4a484ad44299f9daa9031ebc4
-file SAVE\CHRDATC2.SAV 285 e13c36e3096df578f071e9b69b3ae6f2cab5cf99232c5af79a1a0b87a4f6c4d7
-file SAVE\CHRDATC2.SPC 9 2a81b7f014797e46b3c0922340dcc8dc0291ae203a41ba023103e0acc07506f2
-file SAVE\CHRDATC3.SAV 285 cbc75c1248e6ff108c0a1168852a461fdaad648825781eb648b1cb6cbfd05e39
-file SAVE\CHRDATC3.SPC 18 0830326a6197e12f704b6f92779b50a32c7572de021865680c3b00c1ef020074
-file SAVE\CHRDATC4.ITM 189 dbe38748a6ff42fc44870fe21a6db0642851c3e24c916a6c05af227858df93f6
-file SAVE\CHRDATC4.SAV 285 bca115c7015fdb2f88941137c4136573effd1a141a3f92d55ab1e9ce0cce4901
-file SAVE\CHRDATE1.ITM 441 c325a79e3dbc2092734ddf14481ff59585f3ea9bb6a69952bff6f4c1e3ac1ac9
-file SAVE\CHRDATE1.SAV 285 474ee3fbb83cf12c854a86b5fdcef06dcb1507c1e65204ceb9b57d0c49953c71
-file SAVE\CHRDATE2.ITM 315 de640f1fa8ca42a2badc649bfdb771829a369924af2440bb3b9bebf69a3b0f32
-file SAVE\CHRDATE2.SAV 285 f62746828fef67e58034519f1966b377b978096eec0a8eee1344e7d448c98be1
-file SAVE\CHRDATE3.ITM 252 59aa114f80295fdb9c16cf9e0382e30bc080e516390db5b67a84f7ad5119520f
-file SAVE\CHRDATE3.SAV 285 4f800c5643aef715d01358720ce5bf4db8ad4e97590ae14cc87998792410b863
-file SAVE\CHRDATE4.ITM 126 186f8308a975b9c5ad1be45509c620b4f7cdbd7856e38adfb5cb3f09feae6aa9
-file SAVE\CHRDATE4.SAV 285 eb3f818bfc7bd65fb6395c576c7cd6ab064a955afaff00e3afadaec1745a9895
-file SAVE\CHRDATE5.ITM 189 2f8a2eb87adba677070f72a49394316a13ca3711e22c96335f4d690e9a7e86be
-file SAVE\CHRDATE5.SAV 285 cb309275127560485046272344206457e21ef9b9b9356d60d4679fc638d9281e
-file SAVE\CHRDATE6.ITM 189 26814fdba85ad88b72248cebba1aec6e8898efc8bdebf5a7a15737e56ea75ebc
-file SAVE\CHRDATE6.SAV 285 91797c319a35380180a8d543f678a1cd9b14d93af5bdbb340d781eaf06df2513
-file SAVE\CHRDATE7.ITM 315 4a251d1b58b2afb081244660f2a565666e20dce0225b43d2860472c6f93cbe6c
-file SAVE\CHRDATE7.SAV 285 664e200825c5ecaabe26c68d9737dad637fccd4f14420f2ede43b00d3b64f820
-file SAVE\CHRDATE8.ITM 315 1f1736cde3faeb411693c3f14a10f29912d2384807c7f93c5be3834601c7ee69
-file SAVE\CHRDATE8.SAV 285 e09ff865826bcdf3205db1d16e163738db4b9bc8cb8f51bd2e2cd2e970a6f46e
-file SAVE\CHRDATE9.ITM 315 1f1736cde3faeb411693c3f14a10f29912d2384807c7f93c5be3834601c7ee69
-file SAVE\CHRDATE9.SAV 285 b8bf8170fbf3319195bfa70d8703bf446f3dae10d152a6f6e1989aa894d7d81b
-file SAVE\CHRDATJ1.ITM 126 0b90c93984d963de100dbc5a2208ae64a31db776790892f8f263afed7fd75dc7
-file SAVE\CHRDATJ1.SAV 285 8f5fa3ae0696c7fa09378ab1843cf94298a351462f772f6d05d2c7a5cf34a69d
-file SAVE\CHRDATJ1.SPC 54 e1fa7a8a88caa25022b1990a4205476a55ff48a4a484ad44299f9daa9031ebc4
-file SAVE\CHRDATJ2.SAV 285 1b547404a31d1253b0f08e08031440047f8e8728afa1fbece2e40445ad41465e
-file SAVE\CHRDATJ2.SPC 9 2a81b7f014797e46b3c0922340dcc8dc0291ae203a41ba023103e0acc07506f2
-file SAVE\CHRDATJ3.SAV 285 521751afde4a42d9f48187cedbc391ea1f061bf5ef2845823ebe01a0aace5136
-file SAVE\CHRDATJ3.SPC 18 0830326a6197e12f704b6f92779b50a32c7572de021865680c3b00c1ef020074
-file SAVE\EVOKER.CHA 285 fc5f9ab5432b7d082016daf7c13869d3209386d1bb1b28ce6ac606485daebb70
-file SAVE\EVOKER.ITM 126 359a47840fec0e58820a8c99263b8c7cc53b90c57cf5480ef3f0b75f45ffa9a2
-file SAVE\MINIMAP.DAT 535 19cbb04b20212ea2b5641fef1eb6c35e93e2e02173c8cfef5d4dacd79e5c4292
-file SAVE\MINIMAPA.DAT 535 19cbb04b20212ea2b5641fef1eb6c35e93e2e02173c8cfef5d4dacd79e5c4292
-file SAVE\MINIMAPB.DAT 532 ad5a4a1bc5aa8816fc356231a3731642dd7580c0688084b34c31002523c04317
-file SAVE\MINIMAPC.DAT 1015 a9245719561c5d716d174bfdd00ef306483e11b1d7c2aee61303342110df640f
-file SAVE\MINIMAPE.DAT 325 0c7717c32eadf6f830949369b75c697eddadb1b872089f725242bcca1f24724a
-file SAVE\MINIMAPJ.DAT 1099 1713dbe481d688169768c85f63f496a5b8633c30c58e5e77437e12e8a5ae2b9b
-file SAVE\SAVGAMA.DAT 13137 31e9641343f3c89e702ad704fbb129c98900b020ae14c5daefeaec260ac4495d
-file SAVE\SAVGAMB.DAT 13137 e8554e0fe50d46c17608f1fc4f86e0e0f6a56e1ee3016941971c8b5749dfe315
-file SAVE\SAVGAMC.DAT 13137 f7164fd041e2a5d4856c8dd184df57db6dab4c3ca932e89ad81d4021b3ce527b
-file SAVE\SAVGAME.DAT 13137 c84904e6b7e08fb137b942be20bd02e85dcd1fad81605267dc7a0d68a21bcbac
-file SAVE\SAVGAMJ.DAT 13137 e44e22a864eb9d517439f4980eea6892f82753be4abf98d16649ae2161255b47
 file SPRIT1.DAX 5613 a7a822a1fb883aa619881e0cfca0b8534b29ee07786b5eab722c3e7163bde3a7
 file SPRIT2.DAX 16768 413c1dd3a1a787122396aab3b9451b4c4058ad1a0612309945cd6064fce8585e
 file SPRIT3.DAX 6124 890f70ff6fb131f03abca845f5468b601fda3c1b5daf9dc163b72dad6bf1f9d0

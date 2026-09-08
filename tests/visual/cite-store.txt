@@ -1,0 +1,25 @@
+amberfolio-journal 3
+edition 0000000000000000000000000000000000000000000000000000000000000000
+engine hand
+scanned proclamation 59 491
+Proclamation the fifty-ninth, and every word of it belongs to this
+repository. It is here so that a citation has something to open,
+and so that no character of anybody's own booklet is committed to
+this tree in order to prove that opening one works.
+
+The council of this invented city declares that its walls shall be
+walked at dusk, that its gates shall be shut at dark, and that a
+party returning after either shall wait until morning like anybody
+else. Signed, a clerk who does not exist.
+scanned proclamation 64 169
+Proclamation the sixty-fourth, also this repository's own. The
+council notes that the previous notice was ignored, and repeats it
+at greater length and in a larger hand.
+scanned proclamation 78 158
+Proclamation the seventy-eighth. The council, having repeated
+itself twice, resolves to say nothing further on the subject of
+gates, and to post this instead.
+scanned proclamation 109 154
+Proclamation the hundred and ninth. Every word here is this
+repository's; the numbering is a fact about a printed booklet,
+which is a fact and not a text.
