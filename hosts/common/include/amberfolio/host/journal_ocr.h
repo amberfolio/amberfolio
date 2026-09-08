@@ -93,7 +93,7 @@
 //   * **one newline** between two fragments of one entry, which is a
 //     continuation and not a break — an entry is a list of rectangles
 //     because entries flow out of a column onto the facing page
-//     (`journal_facts.h`), and eighteen of the first edition's fifty-eight
+//     (`journal_facts.h`), and seventeen of the first edition's fifty-eight
 //     do. Both hosts join their pieces here, not in the engine.
 //
 // It is written down here for the reason the region rule above is: an

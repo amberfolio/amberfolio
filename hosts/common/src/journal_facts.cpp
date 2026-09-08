@@ -19,7 +19,7 @@ namespace {
 /// The Adventurer's Journal as the currently sold archive release ships
 /// it: **all three of its numbered sections** — fifty-eight journal
 /// entries, twenty-three tavern tales and eighteen proclamations, in
-/// ninety-nine rows and a hundred and twenty pieces, across eleven
+/// ninety-nine rows and a hundred and nineteen pieces, across eleven
 /// two-page scans (M5-E3b #214, M5-E3d #218).
 ///
 /// **Measured, never transcribed.** Every number below is a fact about
@@ -32,7 +32,7 @@ namespace {
 /// two columns to a printed page and two printed pages to a scan, and
 /// an entry runs out of its column and resumes at the top of the next;
 /// four of them resume on the facing page, which is a different stream
-/// altogether. Eighteen of the fifty-eight are in more than one
+/// altogether. Seventeen of the fifty-eight are in more than one
 /// piece. `journal_fragment` is what that costs and what it buys.
 ///
 /// A piece with no ink in it is not here: an entry that happened to end
@@ -123,17 +123,23 @@ constexpr std::array<journal_fragment, 1> entry01{{
      .image = spread,
      .region = {.left = 702, .top = 270, .width = 290, .height = 413}},
 }};
-constexpr std::array<journal_fragment, 2> entry02{{
+// One piece, and it used to be two (#344). The second claimed rows 8 to
+// 262 of the next column, which is where the entries' own section opens:
+// this scan's right-hand page carries a display heading across rows 25 to
+// 64 and a paragraph across rows 89 to 232, both the width of the page
+// and above the two columns, with a printed rule at rows 244 and 245
+// under them. Nothing there is a numbered item, and the reader showed all
+// of it as the tail of this entry. The chain that measured the table runs
+// an item from its heading to the next one down the columns, and on the
+// one page where a section begins that walk steps over matter printed
+// above the column grid; this entry ends at the foot of its own column,
+// where its last inked row is 959.
+constexpr std::array<journal_fragment, 1> entry02{{
     {.page = 8,
      .offset = scan08_at,
      .length = scan08_bytes,
      .image = spread,
      .region = {.left = 702, .top = 687, .width = 290, .height = 271}},
-    {.page = 8,
-     .offset = scan08_at,
-     .length = scan08_bytes,
-     .image = spread,
-     .region = {.left = 992, .top = 8, .width = 297, .height = 255}},
 }};
 constexpr std::array<journal_fragment, 1> entry03{{
     {.page = 8,

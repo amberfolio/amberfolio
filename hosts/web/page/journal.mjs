@@ -518,10 +518,10 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
 
   // One page deep, because the fact table's fragments are in reading
   // order and a two-page scan carries a dozen items: the shipped edition
-  // is 120 pieces over 11 scans, so without this the page recognizes
+  // is 119 pieces over 11 scans, so without this the page recognizes
   // every scan about eleven times over and throws ten of them away. It is
   // also what pays for `PAGE_SCALE` — 11 recognitions at 4.1 seconds
-  // against 120 at 2.9 (#315).
+  // against 119 at 2.9 (#315).
   let page = null;
   /// What the last `recognize()` was sure of (#315). A closure variable
   /// and a method rather than a field, so that it cannot be lost by a
@@ -625,7 +625,7 @@ export async function loadEngine({ url = ENGINE_URL, language = 'eng' } = {}) {
         // **One** newline between the pieces, and that is a decision
         // rather than a default (#331): an entry is a list of rectangles
         // because entries *flow* — out of a column, onto the facing page,
-        // eighteen of the first edition's fifty-eight in more than one
+        // seventeen of the first edition's fifty-eight in more than one
         // piece — so a fragment boundary is a continuation and a blank
         // line there would be a paragraph the printed page does not have.
         // A piece that read nothing is left out rather than joined as an

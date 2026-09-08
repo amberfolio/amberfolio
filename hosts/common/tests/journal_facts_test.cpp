@@ -130,6 +130,73 @@ TEST(JournalTable, TheArchiveEditionsPiecesAreInReadingOrder) {
   }
 }
 
+/// Which of a two-page scan's four column bands a rectangle begins in,
+/// off the column geometry this edition is set on. Two bands to a
+/// printed page, so `band ^ 1` is the other column of the same page.
+[[nodiscard]] std::size_t column_band(std::uint32_t left) {
+  if (left < 170U) {
+    return 0U;
+  }
+  if (left < 500U) {
+    return 1U;
+  }
+  if (left < 830U) {
+    return 2U;
+  }
+  return 3U;
+}
+
+TEST(JournalTable, NoPieceIsMeasuredLevelWithWhatASectionOpensWith) {
+  // The one rectangle in this table that was wrong (#344). A section
+  // opens with a display heading and a paragraph set the width of the
+  // printed page, above its two columns and over a printed rule, and none
+  // of that is a numbered item. The walk that measured the table runs an
+  // item from its heading to the next one down the columns, which on that
+  // one page steps straight over the matter above the grid and hands it
+  // to the item before it -- and a reader shows it as that item's tail.
+  //
+  // The shape it can be caught in without the document: a printed page
+  // whose two columns do not begin together. Either the page carries
+  // matter above the grid, and then *neither* column begins at the head
+  // of the scan, or it carries none, and then both do -- within a
+  // heading's own leading of each other, which is twenty rows here.
+  constexpr std::uint32_t at_the_head = 40;
+  constexpr std::uint32_t together = 40;
+
+  std::map<std::pair<std::uint16_t, std::size_t>, std::uint32_t> begins;
+  for (const journal_entry_fact& fact : known_journals().front().entries) {
+    // The text pieces only: a picture is measured to its ink and sits
+    // wherever the drawing does, so it says nothing about where a column
+    // starts.
+    for (const journal_fragment& piece : fact.fragments) {
+      const std::pair key{piece.page, column_band(piece.region.left)};
+      const auto at = begins.find(key);
+      if (at == begins.end()) {
+        begins.emplace(key, piece.region.top);
+      } else {
+        at->second = std::min(at->second, piece.region.top);
+      }
+    }
+  }
+
+  for (const auto& [where, top] : begins) {
+    const auto& [page, band] = where;
+    const auto beside = begins.find({page, band ^ 1U});
+    if (beside == begins.end()) {
+      continue;  // a printed page only one of whose columns is in the table
+    }
+    const std::uint32_t head = std::min(top, beside->second);
+    if (head > at_the_head) {
+      continue;  // matter above the grid, and both columns begin under it
+    }
+    EXPECT_LE(top - head, together)
+        << "scan " << page << " column band " << band << " begins at row "
+        << top << " while the column beside it begins at row " << head
+        << ", so one of them is measured level with what is printed above"
+           " the columns";
+  }
+}
+
 TEST(JournalTable, TheArchiveEditionIsMostlyButNotAlwaysOnePiece) {
   // The finding that shaped the schema, as a number: an entry is usually
   // one rectangle and often is not, so a table of one region per entry
