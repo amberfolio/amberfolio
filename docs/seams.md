@@ -443,8 +443,10 @@ function `status()` and `arm_all()` share, beside `modules_resident`.
   is refused before a step, naming the condition
   (`a recorded seam is gated on a document that has not been presented`).
   That is why a session descriptor has a
-  `document` line, by digest ([`tests/sessions/README.md`](../tests/sessions/README.md));
-  since #290 no committed session needs one, and #293 replaces them.
+  `document` line, by digest ([`tests/sessions/README.md`](../tests/sessions/README.md)).
+  Since #290 no committed session needs one: what a game session states
+  instead is `code-wheel-answered`, a condition rather than a file
+  (#293).
 - **No seam in this build is gated.** `code-wheel` was
   (`.gate = document_kind::code_wheel`) until #290: the releases sold
   today ship a code generator application, not a PDF of the wheel. The
@@ -802,14 +804,16 @@ PLAN.md §5 item 1. It never answers the challenge for anybody.
   before its first instruction, on both hosts.
 - **Keys**: none.
 - **Fidelity**: on and unanswered it cannot move the machine
-  (`SeamCodeWheel.WatchingCannotMoveTheMachine`). No idle session and
-  there cannot be one (every game session answers the challenge first);
-  its former idle half was the gate (§5).
+  (`SeamCodeWheel.WatchingCannotMoveTheMachine`), and
+  `tests/sessions/boot-wheel.rec` is that claim as a recording: the seam
+  on, the challenge unanswered, 144 firings over the boot, and every one
+  of the 72 checkpoints equal to `boot.rec`'s, which has no engine at
+  all (#293).
 - **Rejected**: a document gate on the wheel PDF (#115, #171), because
   the releases sold today ship a code generator application (#290).
-- **Open**: #293 (the sessions still boot past a challenge this seam no
-  longer answers); nobody has typed a correct answer into the real
-  program (`docs/hosts.md` §3).
+- **Open**: `cite.rec` is the one session still on the boot that asked
+  (#293); nobody has typed a correct answer into the real program
+  (`docs/hosts.md` §3).
 
 ### The Encamp (F)ix (#172, #186, #189, #194, #298, #303, #304)
 

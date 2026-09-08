@@ -792,6 +792,30 @@ export async function drive(opts) {
     }
   }
 
+  // And the *read log* into the machine, which the dev page does at the
+  // same point (app.mjs) and the desktop host does in the same place
+  // (hosts/sdl/src/main.cpp): after the store and the files are in, and
+  // before a seam can be enabled.
+  //
+  // Outside the branch above and unconditional, in the desktop host's
+  // own shape: a run that ingested a journal goes on to play, and one
+  // that restored no log would have the first citation overwrite the
+  // list with a list of one.
+  //
+  // It was missing here, and #293 is what found it: every session that
+  // *opens* the `Notes` listing diverged on this target at the frame the
+  // listing is drawn, because the rows this host drew had no `*` on them
+  // and the rows the desktop host recorded had. A session that only
+  // splices `Notes` onto the bar (`quiet-journal`) verified throughout,
+  // which is why nothing had said so before.
+  //
+  // No count printed beside it, unlike the desktop host's
+  // `journal log seen=N`: this target has no door onto the machine's own
+  // log length, and cutting one so that a report line could match would
+  // be a surface built on spec. What says the log arrived is the
+  // listing, and the sessions that draw one now verify here.
+  machine.journalSeenRestore();
+
   for (const id of opts.seams) {
     if (machine.seamEnable(id) !== AF_OK) {
       const row = machine.seamList().find((seam) => seam.id === id);

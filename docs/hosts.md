@@ -135,8 +135,8 @@ same on `blur` and on the tab going hidden.
   do the same (§4, #273).
 - **Two runs compared by hash or by pixel must be told the same date**; the
   seed is machine state and the program reads it (`docs/replay.md` §6).
-  `scripts/visual-legs.py` states `--wall none` on both sides of every leg;
-  the session library's `contrast` and `identical` pairs owe theirs (#293).
+  `scripts/visual-legs.py` states `--wall none` on both sides of every leg,
+  and so does every recording in the session library (#293).
 - **`--save-sidecars` changes the player's disk**, and every recorded
   session pins its disk by name, size and SHA-256.
 - **A hard-disk install's config names absolute paths.** This host mounts

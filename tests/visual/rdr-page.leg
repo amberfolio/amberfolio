@@ -23,11 +23,12 @@ program START.EXE
 store tests/visual/reader-store.txt
 both code-wheel
 
-# The code-wheel bypass is gated on the wheel itself (#115), pinned by
-# digest because a document never enters this tree.
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+# No document, and no gate: since #290 the possession proof is the act,
+# so what a leg says is a condition rather than a digest, and the run is
+# made on the boot the challenge never stops (#291, #293).
+code-wheel-answered
 seam journal
-until 300000000
+until 272156800
 every 25
 
 # A screen this seam draws is painted over successive arrivals, a few
@@ -35,35 +36,33 @@ every 25
 # frames for a twenty-row page and about 130 for a ten-row listing,
 # measured by hand (#305). A range starting sooner would measure the
 # paint.
-key A@7601
-key Return@7651
-key L@8951
-key A@9201
+key L@7551
+key A@7801
 
 # `Notes` opens the log, and Return opens the row the cursor is on, which
 # is the long entry the store puts first.
-key N@10600
-key Return@10800
+key N@9200
+key Return@9400
 
 # Forward, back, forward, and then out through the far end: the entry is two
 # pages at thirty-eight columns by twenty rows.
-key N@11600
-key Backspace@12400
-key N@13200
+key N@10200
+key Backspace@11000
+key N@11800
 
 # The way out, twice: `EXIT` off the page's own bar returns to the listing
 # it was opened from (#305), and `EXIT` off the listing's composes the
 # screen back.
-key E@14000
-key E@14800
+key E@12600
+key E@13400
 
 rect bar 0,190,319,199
 
 # Each page, holding still with nothing pressed.
-same 11100-11575
-same 11900-12375
-same 12700-13175
-same 13500-13975
+same 9700-10175
+same 10500-10975
+same 11300-11775
+same 12100-12575
 
 # And the screen before the reader took it, back again after it: every pixel
 # except the bar row, which was not-log-giveback.leg's finding - the
@@ -71,4 +70,4 @@ same 13500-13975
 # group this seam had spliced on. Fixed since #330; the exception stays
 # until this leg is re-driven on the shorter boot (#293), and rdr-bar.leg
 # asserts the same give-back with nothing excepted.
-equal 10600 15200 bar
+equal 9200 13650 bar

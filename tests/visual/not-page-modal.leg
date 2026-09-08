@@ -20,11 +20,12 @@ store tests/visual/reader-store.txt
 cite-all
 both code-wheel
 
-# The code-wheel bypass is gated on the wheel itself (#115), pinned by
-# digest because a document never enters this tree.
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+# No document, and no gate: since #290 the possession proof is the act,
+# so what a leg says is a condition rather than a digest, and the run is
+# made on the boot the challenge never stops (#291, #293).
+code-wheel-answered
 seam journal
-until 300000000
+until 272156800
 every 25
 
 # A screen this seam draws is painted over successive arrivals, a few
@@ -32,27 +33,25 @@ every 25
 # frames for a twenty-row page and about 130 for a ten-row listing,
 # measured by hand (#305). A range starting sooner would measure the
 # paint.
-key A@7601
-key Return@7651
-key L@8951
-key A@9201
+key L@7551
+key A@7801
 
 # The listing, then the row the cursor is already on, then the barrage:
 # search, cast, look, three the party walks by, and the letter the
 # listing's own bottom row names, which is not a way out of a page.
-key N@10600
-key Return@11200
-key S@11800
-key C@12000
-key L@12200
-key Left@12400
-key Right@12600
-key Up@12800
+key N@9200
+key Return@9800
+key S@10400
+key C@10600
+key L@10800
+key Left@11000
+key Right@11200
+key Up@11400
 
 # And then the way out, which `E` is: the page's own bar says `EXIT` and
 # the letter of a word on a bar is how this game leaves every screen it has
 # (M5-E4f #317). The `same` line below stops short of it.
-key E@13100
+key E@11700
 
 # From the page settling to the last of the barrage, one frame.
-same 11500-13075
+same 10100-11675

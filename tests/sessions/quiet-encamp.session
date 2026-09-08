@@ -9,7 +9,7 @@
 
 about the Encamp Fix on and **the camp screen never opened**. It splices a command onto that screen's own bar, so a run that never goes there is a run where the splice never happens
 disk external
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+code-wheel-answered
 identical quiet
 
 dir SAVE

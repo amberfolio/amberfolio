@@ -147,45 +147,100 @@ TEST(SessionLibrary, ASessionWithAWrongCheckpointIsRefused) {
               ::testing::HasSubstr("amberfolio: replay diverged"));
 }
 
-// Every committed recording is format 1, and stays readable (#155).
+// The one format 1 recording left, and it stays readable (#155).
 //
-// The manifest recurses from format 2 on, so a recorder writes 2 now —
-// but these seven were written at 1, and six of them are of a game whose
-// disk is nobody's in this tree to re-record. `docs/replay.md` §7's rule
-// is that a version is read for as long as a recording of it may exist,
-// and this is the assertion that keeps it: a change that stranded them
-// fails here, on the files, rather than being noticed by whoever next
-// tried to verify one.
+// The manifest recurses from format 2 on, so a recorder writes 3 now.
+// Six game sessions were written at 1 and were pinned here as
+// un-re-recordable, on the reasoning that their disk is nobody's in this
+// tree; #293 re-recorded them, because the boot they were made on is a
+// boot the code-wheel seam no longer produces, and a golden of a machine
+// that cannot exist is not a golden. `spin.rec` is what carries format 1
+// now — the only session whose disk *is* committed, so the format the
+// oldest reader has to keep reading is pinned by the one recording
+// nobody needs a game to remake.
 //
-// Named one by one rather than globbed, exactly as tests/sessions/
-// README.md's table names them: a session that stopped being read would
-// otherwise stop being checked at the same moment.
+// `docs/replay.md` §7's rule is that a version is read for as long as a
+// recording of it may exist, and this is the assertion that keeps it: a
+// change that stranded it fails here, on the file, rather than being
+// noticed by whoever next tried to verify one.
 TEST(SessionLibrary, EveryCommittedRecordingIsAFormatThisBuildStillReads) {
-  for (const std::string_view name :
-       {"spin.rec", "party.rec", "save.rec", "load.rec", "fight.rec",
-        "fight-cheat.rec", "temple.rec"}) {
-    const std::string text = read_session_file(name);
-    ASSERT_FALSE(text.empty()) << name;
-    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 1 state=1\n"))
-        << name
-        << ": re-recording one of these is a decision (tests/sessions/"
-           "README.md), and for the six recorded from a game it is not one"
-           " this repository can make.";
-  }
+  const std::string text = read_session_file("spin.rec");
+  ASSERT_FALSE(text.empty());
+  EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 1 state=1\n"))
+      << "spin.rec is the tree's only format 1 recording and the whole of"
+         " what keeps that reader honest; re-recording it is a decision"
+         " (tests/sessions/README.md).";
 }
 
-// And the ones recorded since the format moved on, named the same way and
-// for the same reason. They are format 3 because that is what the host
-// writes now; what matters is that a build still reads every recording
-// this tree carries, whichever format it was written in.
+// And every game session, which is format 3 because that is what the host
+// writes now. Named one by one rather than globbed, exactly as
+// tests/sessions/README.md's table names them: a session that stopped
+// being read would otherwise stop being checked at the same moment.
 TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
-  for (const std::string_view name :
-       {"reader.rec", "notes.rec", "cite.rec", "quiet.rec", "quiet-automap.rec",
-        "quiet-encamp.rec", "quiet-cheats.rec", "quiet-journal.rec",
-        "quiet-all.rec", "subset-map-reader.rec"}) {
+  for (const std::string_view name : {"boot.rec",
+                                      "boot-wheel.rec",
+                                      "party.rec",
+                                      "save.rec",
+                                      "load.rec",
+                                      "fight.rec",
+                                      "fight-cheat.rec",
+                                      "temple.rec",
+                                      "camp.rec",
+                                      "camp-fix.rec",
+                                      "walk.rec",
+                                      "walk-map.rec",
+                                      "wild.rec",
+                                      "wild-trail.rec",
+                                      "reader.rec",
+                                      "notes.rec",
+                                      "cite.rec",
+                                      "quiet.rec",
+                                      "quiet-automap.rec",
+                                      "quiet-encamp.rec",
+                                      "quiet-cheats.rec",
+                                      "quiet-explored.rec",
+                                      "quiet-journal.rec",
+                                      "quiet-all.rec",
+                                      "subset-map-reader.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
     EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 3 state=1\n"))
+        << name;
+  }
+}
+
+// The boot pair is the code-wheel seam's `identical` half (#293), and the
+// thing that makes it one is what its descriptors do *not* say: neither
+// states `code-wheel-answered`, so a replay of either reaches the
+// challenge and stops there, and the difference between them is only
+// whether an engine was watching.
+//
+// Asserted on the descriptors rather than on a run, because a run of
+// these needs the player's disk. What a machine does with the line is
+// `scripts/sweep.py`'s.
+TEST(SessionLibrary, TheBootPairLeavesTheChallengeUnanswered) {
+  for (const std::string_view name : {"boot.session", "boot-wheel.session"}) {
+    const std::string text = read_session_file(name);
+    ASSERT_FALSE(text.empty()) << name;
+    EXPECT_THAT(text,
+                ::testing::Not(::testing::HasSubstr("\ncode-wheel-answered")))
+        << name << ": the pair exists to record the challenge unanswered";
+  }
+  EXPECT_THAT(read_session_file("boot-wheel.session"),
+              ::testing::HasSubstr("identical boot"));
+  EXPECT_THAT(read_session_file("boot-wheel.rec"),
+              ::testing::HasSubstr("\nseam code-wheel\n"));
+  EXPECT_THAT(read_session_file("boot.rec"),
+              ::testing::Not(::testing::HasSubstr("\nseam ")))
+      << "the baseline has no engine at all";
+
+  // And every other game session says the condition, because the boot it
+  // was recorded on is the boot the challenge never stops.
+  for (const std::string_view name :
+       {"quiet.session", "walk.session", "camp.session", "reader.session",
+        "party.session", "wild.session"}) {
+    EXPECT_THAT(read_session_file(name),
+                ::testing::HasSubstr("\ncode-wheel-answered\n"))
         << name;
   }
 }

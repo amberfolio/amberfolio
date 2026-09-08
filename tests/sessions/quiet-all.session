@@ -7,14 +7,14 @@
 # the claim: the reader alone moves an idle machine, because it splices
 # `Notes` onto a bar the game keeps redrawing (quiet-journal.session),
 # and adding the automap, the Encamp Fix, the explored overlay and all
-# three cheats on top of it changes nothing across all 126 checkpoints.
+# three cheats on top of it changes nothing across all 90 checkpoints.
 # That is what "individually toggleable" has to mean: a subset of seams
 # is no more than the sum of what each one does.
 
 about every seam on at once with none of them triggered: the same
 about machine as the journal alone, checkpoint for checkpoint
 disk external
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+code-wheel-answered
 journal-store tests/visual/reader-store.txt
 identical quiet-journal
 

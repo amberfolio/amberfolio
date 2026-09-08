@@ -2,14 +2,17 @@
 #
 # docs/playable.md leg 0, recorded: boot, a character generated and
 # added, and BEGIN ADVENTURING into the opening story event.
+# No challenge in the key stream since #293: the run is told the wheel
+# was answered, so the seam steps over the boot's call to the check and
+# the first keystroke is the one that makes a character.
 # Pins a pristine player-supplied installation, so the sweep skips this
 # loudly when this machine's disk is not that disk.
 
-about boot through the code-wheel challenge, a character generated, named
-about and added to the party, and BEGIN ADVENTURING into the opening story
-about event at 15,1 W — 15,655 frames, 21 keystrokes, the code-wheel seam on
+about a character generated, named and added to the party, and BEGIN
+about ADVENTURING into the opening story event at 15,1 W — 14,252 frames,
+about 18 keystrokes, 131 checkpoints, the code-wheel seam on
 disk external
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+code-wheel-answered
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

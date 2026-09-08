@@ -165,17 +165,17 @@ from about frame 10,000. Leave 100 frames between presses.
 | ID | Case | Tier | Status |
 | --- | --- | --- | --- |
 | RDR-1 | Unit suite, pixel buffer against a test font | A | exists |
-| RDR-2 | Return on a listing row opens it; `ENTRY 3` in 14, body in 2, no row over 38 cells | B | `tests/visual/rdr-page.leg`; owed a drive (#293) |
-| RDR-5 | Paging a long entry; the last key gives the screen back | B | `tests/visual/rdr-page.leg`, single since #305; owed a drive (#293) |
+| RDR-2 | Return on a listing row opens it; `ENTRY 3` in 14, body in 2, no row over 38 cells | B | `tests/visual/rdr-page.leg`, driven (#293) |
+| RDR-5 | Paging a long entry; the last key gives the screen back | B | `tests/visual/rdr-page.leg`, single since #305, driven (#293) |
 | RDR-6 | Escape from a page and from the listing; Backspace back a page | B | `rdr-page.leg` (#234, #305) |
 | RDR-7 | The four refusals: no store, entry 999, empty scan, over 4 KiB | B | new |
 | RDR-8 | Give-back exact: the frame after the listing closes equals the frame before `Notes` | B | `rdr-page.leg` as an `equal` (#234, #305) |
-| RDR-9 | Modal over the automap, map back after: `tests/visual/rdr-map-back.leg`; `--seam automap`, Tab, `Notes`, `E`, Tab twice | B | a leg (#332); owed a drive (#293) |
+| RDR-9 | Modal over the automap, map back after: `tests/visual/rdr-map-back.leg`; `--seam automap`, Tab, `Notes`, `E`, Tab twice | B | a leg (#332), driven |
 | RDR-10 | With the reader down no key is this seam's at all (#346): every keystroke reaches the program, on every screen | A | `JournalKeys.WithTheReaderDownEveryKeyIsTheProgramsOwn` |
 | RDR-11 | Transliteration: curly and plain stores, identical screens | B | new |
 | RDR-12 | Every reader script on the wasm module, `cmp` of final frames | B | done for three sessions (#177) |
 | RDR-13 | A real entry read by a person, windowed; never screenshot it | C | new |
-| RDR-14 | An entry that is a picture: `tests/visual/rdr-art.leg`; prompt, caption, `NEXT`, `EXIT`, over `reader-art-store.txt` | B | a leg (#328); owed a drive (#293) |
+| RDR-14 | An entry that is a picture: `tests/visual/rdr-art.leg`; prompt, caption, `NEXT`, `EXIT`, over `reader-art-store.txt` | B | a leg (#328), driven and its frame ranges measured (#293) |
 | RDR-15 | A real picture on a display, whole | C | dumped stills at 2x only (#328; `docs/journal.md` §11.6) |
 
 ### Notes and the log
@@ -192,17 +192,17 @@ from about frame 10,000. Leave 100 frames between presses.
 | NOT-8 | Nothing reaches the program under the log (#230): `tests/visual/not-log-modal.leg`, one digest across 1,475 frames | B | a leg (#234) |
 | NOT-9 | Give-back in every mode: `not-log-giveback.leg` and `tests/visual/rdr-bar.leg`, bar row included, whichever key point the way out lands on (#325); area mode and the alternate screen uncovered | B | 3D mode only (#234, #330, #325) |
 | NOT-11 | The log on the wasm module, `cmp` equal | B | done for `notes.rec` (#177) |
-| NOT-12 | Nothing reaches the program under a full-screen page: `tests/visual/not-page-modal.leg` | B | derived (#305); owed a drive (#293) |
-| NOT-13 | A page from the log goes back to the log: `tests/visual/not-page-back.leg` | B | derived (#305); owed a drive (#293) |
+| NOT-12 | Nothing reaches the program under a full-screen page: `tests/visual/not-page-modal.leg` | B | driven (#305, #293) |
+| NOT-13 | A page from the log goes back to the log: `tests/visual/not-page-back.leg` | B | driven (#305, #293) |
 
 ### Fidelity and sessions
 
 | ID | Case | Tier | Status |
 | --- | --- | --- | --- |
 | FID-1 | Seam on, nothing cited, no key: identical run | B | not reachable, not a bug (#235): `Notes` is spliced as the party's bar is drawn, so `cpu` and `ram` differ too. `docs/seams.md` §7's seam-off invariant holds instead; `quiet-journal` is a `contrast`, not an `identical` |
-| FID-2 | `reader.rec` over `tests/visual/reader-store.txt`, 156 checkpoints | B | recorded (#235); owed a re-recording for the full screen (#293) |
-| FID-3 | `notes.rec`, 146 checkpoints | B | recorded (#235) |
-| FID-4 | `cite.rec` over an external store pinned by digest; skips loudly without it. A citation draws nothing since #346, so the run diverges from the seam-off run only where the `Notes` splice does | B | recorded (#235); stale, and re-recorded with the rest of the library under #293 |
+| FID-2 | `reader.rec` over `tests/visual/reader-store.txt`, 115 checkpoints | B | re-recorded through `Notes` and the full screen (#235, #293) |
+| FID-3 | `notes.rec`, 111 checkpoints | B | recorded (#235), re-recorded (#293) |
+| FID-4 | `cite.rec` over an external store pinned by digest; skips loudly without it. A citation draws nothing since #346, so the run diverges from the seam-off run only where the `Notes` splice does | B | recorded (#235); **still stale** — the one session #293 left, because its store is a real ingestion of somebody's own journal and its leg wants rewriting for #346 |
 
 ## 5. Harness work the matrix needs
 
@@ -339,8 +339,8 @@ amberfolio: stop reason=tick_budget steps=60000000 ticks=240000000 frames=12069
 ```
 
 Exit code 1 is the tick budget, not a failure; a `stop` line with any
-other reason is. Since #291 the seam does not answer the code wheel; legs
-wanting the shorter boot ask the runner for `code-wheel-answered` (#293).
+other reason is. Since #291 the seam does not answer the code wheel, so
+every leg here asks the runner for `code-wheel-answered` (#293).
 
 **The diff.** `scripts/frames.py`; Pillow is its one dependency, pinned
 by `.pillow-version`.

@@ -8,15 +8,14 @@ every byte of RAM, every device's registers, the scheduler's deadlines,
 the DOS handle table and the framebuffer at every checkpoint. Nothing in
 one is content (PLAN.md §6).
 
-**Every game session here is stale pending #293.** All 23 were recorded
-with the code-wheel seam answering the challenge; since #291 it only
-watches, so a replay with a disk arrives at a screen still waiting. The
-`contrast`/`identical` checks CI makes read the recordings and are
-unaffected.
-
-`cite` is stale twice over: since #346 a citation writes a line on the
-`Notes` log and draws nothing, so the panel that is in every hash after
-its checkpoint is a panel the seam no longer paints.
+**`cite` is the one session still owed a re-record (#293).** Every other
+game session here was made on the boot the challenge never stops, and
+each says so in one line. `cite` needs a store that is a real ingestion
+of a real journal, pinned by digest, and it needs a new script as well:
+since #346 a citation writes a line on the `Notes` log and draws
+nothing, so the panel that is in every hash after its checkpoint is a
+panel the seam no longer paints. Reaching the log with `Notes` and
+opening the first proclamation from it is what it should do instead.
 
 ## What a session is
 
@@ -35,7 +34,8 @@ comments):
 | `disk NAME` | the disk is `tests/sessions/NAME/`, in the tree |
 | `disk external` | the disk is the player's own; matched from `--game-disk` candidates by the `file`/`dir` lines |
 | `file PATH SIZE SHA256` / `dir PATH` | every entry of the disk, pinned exactly in both directions |
-| `document SHA256` | a document the run presented (a code-wheel PDF); replaced under #293 by a line saying the challenge was already answered |
+| `document SHA256` | a document the run presented, by digest, for a seam with a possession gate. No seam in this build has one (`docs/seams.md` §5), so nothing here says it |
+| `code-wheel-answered` | the code-wheel challenge had already been answered when this run was made (#291). Not a file and not a digest: since #290 the possession proof is the act, so what a replay is told is a condition. Every game session but `boot` and `boot-wheel` says it |
 | `journal-store PATH` / `journal-store external SHA256` | the reader's store the run was made over; the runner copies it before running, since a run writes its log back |
 | `contrast BASELINE` | assertion: agrees with BASELINE checkpoint for checkpoint until the seam first matters, then differs to the end |
 | `identical BASELINE` | assertion: every checkpoint equal to BASELINE |
@@ -56,35 +56,37 @@ frame that carries an input is checkpointed whatever the cadence says.
 | Session | Disk | Seams | Relation | What it pins |
 | --- | --- | --- | --- | --- |
 | `spin` | `spin/SPIN.EXE`, 34 bytes, `JMP $` behind an MZ header | none | | four frames of a machine keeping time: PIT, 8259, scheduler, renderer deadline, clock. The only committed binary; the content guard names its path |
-| `party` | external, pristine | code-wheel | | `docs/playable.md` leg 0: a character generated and added, `BEGIN ADVENTURING` into the opening event at 15,1 W. 144 checkpoints |
-| `save` | external, pristine | code-wheel | | legs 0, 1, 3: the tour to 0,4 W, the game saved to slot A from camp. 254 checkpoints |
-| `load` | external, **the disk `save` wrote** | code-wheel | | slot A loaded, the party back at 0,4 W. 100 checkpoints |
-| `fight` | the disk `save` wrote | code-wheel | | leg 2: twelve steps north into orcs, `QUICK`, `THE END`. 177 checkpoints |
-| `fight-cheat` | same | + cheat-invulnerable | `contrast fight` | 126 of 177 identical, divergent from tick 274,951,600; the seam fires nine times |
-| `temple` | external, **the shipped save slots** | code-wheel | | leg 5: slot A, the temple at 3,1, `CURE BLINDNESS` bought for a thousand gold. 181 checkpoints |
-| `camp` | shipped slots | code-wheel, cheat-wound-party (pulled) | | leg 7 without the Fix: slot B, `ENCAMP`, the party wounded to one hit point each, `REST`. 112 checkpoints |
-| `camp-fix` | same | + encamp-fix | `contrast camp` | the same run pressing `FIX` instead of Rest at the same tick: 91 of 112 identical, divergent from tick 216,799,088; `fired=11`. Both halves pull the wound cheat at the same tick, so the only difference is one keystroke |
-| `walk` | shipped slots | code-wheel | | leg 8 without the map: slot A, forty-eight moves to the armourer at 8,11, a `Tab` nothing claims. 203 checkpoints |
-| `walk-map` | same | + automap | `contrast walk` | 90 of 203 identical, divergent from tick 218,787,888 (three frames after the `Tab`); the panel is in every hash after it |
-| `wild` | shipped slots | code-wheel | | slot J, already on a wilderness area, eight steps north; the mode byte becomes 3 at frame 9,552. 140 checkpoints |
-| `wild-trail` | same | + explored | `contrast wild` | 107 of 140 identical, divergent at the **arrival** (tick 204,866,288), because fog marks the unknown. Recorded at the grey checker, radius one; #293 re-records it |
-| `reader` | shipped slots, `journal-store tests/visual/reader-store.txt` | code-wheel, journal | | F1, the section cycled, entry three opened by number, paged, closed. 156 checkpoints. Draws a page #305 now draws full-screen; re-recorded under #293 |
-| `notes` | same | code-wheel, journal | | `Notes` opens an empty log; six adventuring keys reach nothing while it is up. 146 checkpoints |
-| `cite` | external, pristine; `journal-store external SHA256` | code-wheel, journal | | a real citation (#232): a new party to the city hall at 3,4 E, whose event names four proclamations. 291 checkpoints. Recorded when a citation *opened* the first of them; since #346 it opens nothing and only the log moves, which is not machine state — re-recorded under #293 |
-| `subset-map-reader` | shipped slots | code-wheel, automap, journal | | the panel up, an entry opened over it, the map given back and put away. 146 checkpoints. Re-recorded under #293 |
-| `quiet` | shipped slots | code-wheel | | the baseline: slot A, four steps walked. 126 checkpoints |
+| `boot` | shipped slots | none | | the boot itself, nothing pressed, ending on the screen that asks for the code word. 72 checkpoints. With `boot-wheel`, the only pair here whose challenge is **not** answered |
+| `boot-wheel` | same | code-wheel, unanswered | `identical boot` | the seam watching: `fired=144`, once per call of the program's string compare that lands in the word table, and not one of them moves the machine |
+| `party` | external, pristine | code-wheel | | `docs/playable.md` leg 0: a character generated and added, `BEGIN ADVENTURING` into the opening event at 15,1 W. 131 checkpoints |
+| `save` | external, pristine | code-wheel | | legs 0, 1, 3: the tour to 0,4 W, the game saved to slot A from camp. 241 checkpoints |
+| `load` | external, **the disk `save` wrote** | code-wheel | | slot A loaded, the party back at 0,4 W. 87 checkpoints |
+| `fight` | the disk `save` wrote | code-wheel | | leg 2: twelve steps north into orcs, `QUICK`, `THE END`. 164 checkpoints |
+| `fight-cheat` | same | + cheat-invulnerable | `contrast fight` | 113 of 164 identical, divergent from tick 246,949,296; the seam fires nine times and the character is still standing at the end |
+| `temple` | external, **the shipped save slots** | code-wheel | | leg 5: slot A, the temple at 3,1, `CURE BLINDNESS` bought for a thousand gold — `PLATINUM 1386` on the sheet at the end. 167 checkpoints |
+| `camp` | shipped slots | code-wheel, cheat-wound-party (pulled) | | leg 7 without the Fix: slot B, `ENCAMP`, the party wounded to one hit point each, `REST`. 100 checkpoints |
+| `camp-fix` | same | + encamp-fix | `contrast camp` | the same run pressing `FIX` instead of Rest at the same tick: 79 of 100 identical, divergent from tick 188,955,888; `fired=11`. Both halves pull the wound cheat at the same tick, so the only difference is one keystroke |
+| `walk` | shipped slots | code-wheel | | leg 8 without the map: slot A, forty-eight moves to the armourer at 8,11, a `Tab` nothing claims. 190 checkpoints |
+| `walk-map` | same | + automap | `contrast walk` | 77 of 190 identical, divergent from tick 190,944,688 (three frames after the `Tab`); the panel is in every hash after it |
+| `wild` | shipped slots | code-wheel | | slot J, already on a wilderness area, eight steps north to 3,24 N. 103 checkpoints |
+| `wild-trail` | same | + explored | `contrast wild` | 72 of 103 identical, divergent at the **arrival** (tick 178,216,368), because fog marks the unknown |
+| `reader` | shipped slots, `journal-store tests/visual/reader-store.txt` | code-wheel, journal | | `Notes`, the row the cursor is on opened full-screen, `NEXT` to page 2/2, and out. 115 checkpoints. It was F1 and a typed number until #346 |
+| `notes` | same | code-wheel, journal | | `Notes` opens the log the store carries — two rows, `*` on the unread — and six adventuring keys reach nothing while it is up. 111 checkpoints |
+| `cite` | external, pristine; `journal-store external SHA256` | code-wheel, journal | | a real citation (#232): a new party to the city hall at 3,4 E, whose event names four proclamations. **Still on the old boot** — the one session #293 leaves owed, because its store is somebody's own journal and its leg wants rewriting for #346 as well |
+| `subset-map-reader` | shipped slots | code-wheel, automap, journal | | the panel up, an entry opened over it, the map given back and put away. 108 checkpoints |
+| `quiet` | shipped slots | code-wheel | | the baseline: slot A, four movement keys — one step, a wall, a turn, a wall. 90 checkpoints |
 | `quiet-automap` | same | + automap | `identical quiet` | Tab never pressed |
 | `quiet-encamp` | same | + encamp-fix | `identical quiet` | the camp screen never opened |
 | `quiet-cheats` | same | + all three cheats | `identical quiet` | none pulled |
 | `quiet-explored` | same | + explored | `identical quiet` | the overworld never shown; the points are reached half a million times |
-| `quiet-journal` | same | + journal | **`contrast quiet`** | 111 of 126 identical: `Notes` goes on the party's bar the moment the bar is drawn, in `cpu`, `ram`, `devices`, `display`, `audio`. The enhancement, not a leak; `identical` is not loosened to fit |
+| `quiet-journal` | same | + journal | **`contrast quiet`** | 76 of 90 identical: `Notes` goes on the party's bar the moment the bar is drawn, in `cpu`, `ram`, `devices`, `display`, `audio`. The enhancement, not a leak; `identical` is not loosened to fit |
 | `quiet-all` | same | every seam | `identical quiet-journal` | eight seams armed, none triggered, no more machine than the journal alone |
 
 ## The matrix, by seam
 
 | Seam | On and exercised | On and never triggered |
 | --- | --- | --- |
-| `code-wheel` | every game session, at the challenge | none yet; #293 adds `identical quiet` with the challenge unanswered |
+| `code-wheel` | every game session but the boot pair: the challenge is answered before the run and the seam steps over the boot's call to the check | `boot-wheel`, on and unanswered: it watches 144 times and triggers nothing |
 | `encamp-fix` | `camp-fix` | `quiet-encamp` |
 | `automap` | `walk-map` | `quiet-automap` |
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
@@ -101,7 +103,7 @@ without automap; they share a store).
 python3 scripts/sweep.py                         # every session, every built target
 python3 scripts/sweep.py --targets contrast      # the relations only; no disk, runs in CI
 python3 scripts/sweep.py --game-disk DIR ...     # repeatable; each session picks the disk its pins match
-python3 scripts/sweep.py --document FILE_OR_DIR  # or $AMBERFOLIO_DOCUMENT
+python3 scripts/sweep.py --document FILE_OR_DIR  # a gated seam's document; none today
 python3 scripts/sweep.py --journal-store FILE_OR_DIR  # or $AMBERFOLIO_JOURNAL_STORE
 python3 scripts/sweep.py --pin NAME --game-disk DIR   # write a descriptor's file/dir lines from a pristine snapshot
 ```
@@ -116,18 +118,31 @@ On the wasm module:
 
 ```sh
 node build/wasm/hosts/web/<config>/drive.mjs <disk> START.EXE --replay tests/sessions/reader.rec \
-  --journal-store tests/visual/reader-store.txt --quiet
+  --code-wheel-answered --journal-store tests/visual/reader-store.txt --quiet
 ```
 
 `drive.mjs` puts an empty directory into the module by putting and
-removing a placeholder, since the ABI has no `mkdir` (#273). All 23 game
-sessions have replayed on both hosts with identical seam and
-host-service lines.
+removing a placeholder, since the ABI has no `mkdir` (#273). It takes
+`--code-wheel-answered` in the same spelling the desktop host does, and
+every game session but the boot pair needs it: pass it to `boot-wheel`
+and the replay diverges in the boot's tail, which is the descriptor's
+line saying something.
+
+Every re-recorded session but `cite` was replayed on the module this
+way as well as on the desktop host. Doing it found one thing: this
+driver never restored the store's read log into the machine, which the
+dev page and the desktop host both do, so every session that *opens*
+the `Notes` listing diverged here at the frame the listing is drawn.
+`quiet-journal`, which only splices `Notes` onto the bar, verified
+throughout, which is why nothing had said so before.
 
 ## Checkpoint cadence
 
-Game sessions use `--record-every 128`. A frame that posted a key and
-the frame the run ends on are always checkpointed. `docs/replay.md` §3.
+Game sessions use `--record-every 128`, all of them since #293 — half of
+them were on 100 before, which is why the counts in the table above are
+smaller than the ones that used to be there. A frame that posted a key
+and the frame the run ends on are always checkpointed.
+`docs/replay.md` §3.
 
 ## Who checks them
 

@@ -193,8 +193,8 @@ desktop from its own clock before the first instruction, the page from
 - `--wall none` is the unseeded machine every recording before #320 was
   made on; all committed recordings carry no `wall` line and verify
   unchanged. `scripts/visual-legs.py` states `--wall none` on both sides.
-- The library's pairs are re-recorded with one stated `--wall` between
-  their halves under #293.
+- The library's pairs were re-recorded on `--wall none` under #293, both
+  halves of each with the same script and the same tick budget.
 
 ## 7. Versions
 

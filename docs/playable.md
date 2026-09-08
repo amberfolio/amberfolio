@@ -37,12 +37,16 @@ Finding the stills that changed:
 sha256sum run-*.ppm | sort -k2 | uniq -f0 -w12 --group
 ```
 
-**Every script below is one boot out of date (#293).** They press two
-keys at the challenge (`A@7600`, `Return@7650`) from when the code-wheel
-seam answered it; since #291 it only watches and `--code-wheel-answered`
-skips the challenge, so those presses come out and every later frame
-number moves earlier. Leg 7's EXIT script is re-derived: with the flag,
-`L@7550 C@7800` stands where `A@7600 Return@7650 L@8950 C@9200` did.
+**Every script below is on the boot the challenge never stops** (#293).
+`--code-wheel-answered` states the condition for the run, the seam steps
+over the boot's call to the check, and the two keys that used to answer
+it (`A@7600`, `Return@7650`) are gone: `L@7550 C@7800` stands where
+`A@7600 Return@7650 L@8950 C@9200` did, which is 1,400 frames earlier.
+
+The **observation blocks** in legs 2, 6, 7 and 12 were read on the boot that
+asked and their frame numbers are 1,400 higher than a run of the script
+beside them; the sessions' own numbers, leg 8's tick and leg 11's frames
+were re-measured with the library.
 
 Rules:
 
@@ -67,26 +71,24 @@ Rules:
 
 ## Leg 0 — a party
 
-Code-wheel challenge to a character in the roster. Recorded as
+The main menu to a character in the roster. Recorded as
 `tests/sessions/party.rec`.
 
 ```
---press A@7600 --press Return@7650                      the code wheel
---press C@8950                                          create a character
---press Return@9100 --press Return@9250 --press Return@9400
---press Return@9550 --press Return@9700                 race, gender, class,
+--press C@7550                                          create a character
+--press Return@7700 --press Return@7850 --press Return@8000
+--press Return@8150 --press Return@8300                 race, gender, class,
                                                         alignment, the roll
---press Y@9900                                          keep it
---press B@10100 --press O@10130 --press B@10160
---press Return@10250                                    name it
---press K@11500                                         keep the portrait
---press E@12200 --press Y@12950                         leave the icon editor
---press A@13300 --press A@13550 --press E@13800         add it to the party
---press B@14050                                         begin adventuring
+--press Y@8500                                          keep it
+--press B@8700 --press O@8730 --press B@8760
+--press Return@8850                                      name it
+--press K@10100                                         keep the portrait
+--press E@10800 --press Y@11550                         leave the icon editor
+--press A@11900 --press A@12150 --press E@12400         add it to the party
+--press B@12650                                         begin adventuring
 ```
 
-Both the letter and the Return are required at the wheel: the seam fires
-inside the program's own string compare. End state: `\SAVE\BOB.CHA`,
+End state: `\SAVE\BOB.CHA`,
 `\SAVE\BOB.SPC` and the roster list are in the directory. `--trace`:
 
 ```
@@ -107,7 +109,7 @@ to the four-item menu.
 Return advances each screen.
 
 ```
---press Return@15500 --press Return@15590 ... --press Return@20000
+--press Return@14100 --press Return@14190 ... --press Return@18600
 ```
 
 Ninety frames apart is faster than the text. The tour ends at `0,4 W`
@@ -129,9 +131,9 @@ couple of dozen steps. `tests/sessions/fight.rec` and `fight-cheat.rec`
 are the pair.
 
 ```
---press Up@20250 --press Up@20340 ... --press Up@22050    walk north
---press C@23000                                           COMBAT
---press Q@23800                                           QUICK, one round
+--press Up@18850 --press Up@18940 ... --press Up@20650    walk north
+--press C@21600                                           COMBAT
+--press Q@22400                                           QUICK, one round
 ```
 
 `C` at `COMBAT WAIT FLEE PARLAY` opens the tactical map. The speaker's
@@ -171,11 +173,11 @@ Measuring the damage and the side (#271), from slot J (`HULK`, `MULE`,
 `THIEF`, on the wilderness):
 
 ```
---press L@8950 --press J@9200            LOAD SAVED GAME, slot J
---press Up@10650 ... every 150 frames    walk north across the wilderness,
+--press L@7550 --press J@7800            LOAD SAVED GAME, slot J
+--press Up@9250 ... every 150 frames    walk north across the wilderness,
 --press Return@+50 --press N@+100          answering anything that asks
---press C@17500                          COMBAT, at the encounter prompt
---pull cheat-kill-all@18400              with the tactical map up
+--press C@16100                          COMBAT, at the encounter prompt
+--pull cheat-kill-all@17000              with the tactical map up
 --watch 49F3 --watch 6814:2              the mode byte, and both body counts
 ```
 
@@ -191,17 +193,16 @@ twenty-seven moves; `fight.rec`'s slums give a single orc.
 without walking:
 
 ```
---press E@20400        ENCAMP
---press S@21100        SAVE
---press A@22100        slot A
+--press E@19000        ENCAMP
+--press S@19700        SAVE
+--press A@20700        slot A
 ```
 
 then a fresh run over the directory that left:
 
 ```
---press A@7600 --press Return@7650    the code wheel
---press L@8950                        LOAD SAVED GAME
---press A@9200                        slot A
+--press L@7550                        LOAD SAVED GAME
+--press A@7800                        slot A
 ```
 
 `--trace` for the save:
@@ -227,24 +228,23 @@ Starts from slot A, a whole party with money, standing at `4,12 S`; the
 armourer is at `8,11`.
 
 ```
---press A@7600 --press Return@7650      the code wheel
---press L@8950 --press A@9200           LOAD SAVED GAME, slot A
---press Up@11000  --press Up@11150 --press Up@11300 --press Up@11450
---press Right@11600
---press Up@11750  --press Up@11900 --press Up@12050 --press Up@12200
---press Right@12350
---press Up@12500  --press Up@12650 --press Up@12800 --press Up@12950
---press Right@13100
---press Up@13250  --press Up@13400 --press Up@13550 --press Up@13700
---press Right@13850
---press Up@14000
---press Y@14400        yes: into the shop (BUY VIEW POOL APPRAISE EXIT)
---press B@15000        BUY: the stock list
---press B@15600        BUY again: the highlighted item, a HAND AXE
---press E@16600        EXIT the stock list
---press E@17000        EXIT the shop
---press V@17600        VIEW the first character
---press I@18200        ITEMS: what they are carrying
+--press L@7550 --press A@7800           LOAD SAVED GAME, slot A
+--press Up@9600  --press Up@9750 --press Up@9900 --press Up@10050
+--press Right@10200
+--press Up@10350  --press Up@10500 --press Up@10650 --press Up@10800
+--press Right@10950
+--press Up@11100  --press Up@11250 --press Up@11400 --press Up@11550
+--press Right@11700
+--press Up@11850  --press Up@12000 --press Up@12150 --press Up@12300
+--press Right@12450
+--press Up@12600
+--press Y@13000        yes: into the shop (BUY VIEW POOL APPRAISE EXIT)
+--press B@13600        BUY: the stock list
+--press B@14200        BUY again: the highlighted item, a HAND AXE
+--press E@15200        EXIT the stock list
+--press E@15600        EXIT the shop
+--press V@16200        VIEW the first character
+--press I@16800        ITEMS: what they are carrying
 ```
 
 The square fires
@@ -252,7 +252,7 @@ The square fires
 with a portrait; the stock list (`HAND AXE 1`, `BARDICHE 7`, ...
 `GLAIVE-GUISARME 10`) sits over an `ITEMS: BUY NEXT PREV EXIT` bar.
 
-Check: run with and without `--press B@15600` and read the sheet.
+Check: run with and without `--press B@14200` and read the sheet.
 
 | | without the buy press | with it |
 | --- | --- | --- |
@@ -365,13 +365,14 @@ up on the other side.
 
 ```sh
 node build/wasm/hosts/web/Release/drive.mjs <your-directory> START.EXE \
-  --seam code-wheel --press A@7600 --press Return@7650 ... --frames 28000 \
+  --seam code-wheel --code-wheel-answered ... --frames 26600 \
   --quiet --dump run
 ```
 
 Its report is the SDL host's (`docs/hosts.md`). Legs 0 to 2 as one
-script reach `CONTINUE BATTLE:` with the fighter on one hit point:
-28,001 frames, 139,204,567 steps, `factor=94.77x` on Release.
+script reach `CONTINUE BATTLE:` with the fighter on one hit point; the
+28,001 frames and 139,204,567 steps quoted here were the longer boot's,
+and the run is 1,400 frames shorter now.
 
 - **Cheats.** The same script with `--seam cheat-invulnerable` added ends
   at `HITPOINTS 8` instead of `HITPOINTS 1`; the seam reports `on armed`.
@@ -384,7 +385,7 @@ script reach `CONTINUE BATTLE:` with the fighter on one hit point:
   path, `/` and `\` alike, and makes directories on the way; `drive.mjs`
   walks its directory and the dev page's picker keeps
   `webkitRelativePath`, so `\SAVE\` arrives and leg 3's load script runs
-  with `--frames 12000 --quiet --dump load`. An empty `\SAVE\` is carried
+  with `--frames 10600 --quiet --dump load`. An empty `\SAVE\` is carried
   as a put plus the remove that leaves the name, the ABI having no
   `mkdir` (#273).
 - **Leaving with one** (M5-D2, #170). `af_machine_vfs_get`, `_remove`
@@ -409,12 +410,12 @@ leg 3's load over that run's directory, and, over the shipped save slots,
 leg 4 (`FIGHTER1'S ITEMS` ending `HAND AXE`), leg 5's cure
 (`PLATINUM 1386`) and leg 5's sale (`GEMS 3`, `PLATINUM 1606`). The
 `.wav` files differ (48 kHz against 44.1 kHz), which is what the `.edges`
-list is for; the `.edges` files differ only in line endings. `save` (254
-checkpoints), `party` (144), `load` (100) and `temple` (181) verify on
+list is for; the `.edges` files differ only in line endings. `save` (241
+checkpoints), `party` (131), `load` (87) and `temple` (167) verify on
 the module through `--replay`.
 
 Trap (#273): the two hosts' frame *N* was not the same tick, so
-`--press E@20400` reached the program at different moments and the save
+`--press E@19000` reached the program at different moments and the save
 wrote a different slot file on each; the recording verified anyway, a
 recording naming ticks. `docs/hosts.md` §4 has what differed.
 
@@ -429,12 +430,11 @@ The Fix is a command on the camp bar, not a pulled seam.
 Slot C, whose party is whole, so the Fix declines (#192):
 
 ```
---seam code-wheel --seam encamp-fix
+--seam code-wheel --code-wheel-answered --seam encamp-fix
 --watch 49F3 --watch 6DDA --watch 6DCA
---press A@7600 --press Return@7650      the code wheel
---press L@8950 --press C@9200           LOAD SAVED GAME, slot C
---press E@10200                         ENCAMP
---press F@10400                         the Fix, on the camp menu
+--press L@7550 --press C@7800           LOAD SAVED GAME, slot C
+--press E@8800                         ENCAMP
+--press F@9000                         the Fix, on the camp menu
 ```
 
 ```
@@ -463,8 +463,8 @@ THE PARTY IS AT FULL HIT POINTS.
 ```
 
 EXIT under the box, on the shorter boot
-(`tests/visual/camp-fix-exit.leg`, driven by hand because the runner does
-not yet carry `--code-wheel-answered`):
+(`tests/visual/camp-fix-exit.leg`, which asks the runner for
+`code-wheel-answered` in its own line):
 
 ```
 --seam code-wheel --code-wheel-answered --seam encamp-fix
@@ -487,7 +487,7 @@ The mode word leaves camp at 10,227 and the first dump after it is
 - 50 of the 53 stills equal the seam-off run's; the other three are the
   bar mid-draw and the camp fire.
 
-The same script through `drive.mjs` with `--frames 13176 --quiet` prints
+The same script through `drive.mjs` with `--frames 11776 --quiet` prints
 the same lines plus `inert module_not_resident`, this host reaching the
 overlay by a different route through the loading. So do the two scripts
 below, at `fired=9` and at `encamp-fix fired=11` with
@@ -499,11 +499,10 @@ Slot B holds two wounded fighters, 15 of 17 and 14 of 18, and a cleric
 with five ready Cure Light Wounds.
 
 ```
---seam code-wheel --seam encamp-fix
---press A@7600 --press Return@7650      the code wheel
---press L@8950 --press B@9200           LOAD SAVED GAME, slot B
---press E@10600                         ENCAMP
---press F@10900                         the Fix
+--seam code-wheel --code-wheel-answered --seam encamp-fix
+--press L@7550 --press B@7800           LOAD SAVED GAME, slot B
+--press E@9200                         ENCAMP
+--press F@9500                         the Fix
 ```
 
 Six characters load slower than four, so ENCAMP goes at 10600.
@@ -543,12 +542,11 @@ one hit point (`docs/seams.md` §10); it drives the days arithmetic and
 the report's exception list.
 
 ```
---seam code-wheel --seam encamp-fix --seam cheat-wound-party
---press A@7600 --press Return@7650      the code wheel
---press L@8950 --press B@9200           LOAD SAVED GAME, slot B
---press E@10600                         ENCAMP
---pull cheat-wound-party@10624          everybody down to one hit point
---press F@10900                         the Fix
+--seam code-wheel --code-wheel-answered --seam encamp-fix --seam cheat-wound-party
+--press L@7550 --press B@7800           LOAD SAVED GAME, slot B
+--press E@9200                         ENCAMP
+--pull cheat-wound-party@9224          everybody down to one hit point
+--press F@9500                         the Fix
 ```
 
 ```
@@ -651,18 +649,17 @@ Slot B walked south from `4,3` to `4,6` is met by the council guard over
 a `YES NO` bar; `N` is a battle against twenty-odd guards.
 
 ```
---seam code-wheel --seam encamp-fix --seam cheat-kill-all
---press A@7600 --press Return@7650        the code wheel
---press L@8950 --press B@9200             LOAD SAVED GAME, slot B
---press Right@10600 --press Right@10850   turn south
---press Up@11100 --press Up@11850 --press Up@12100      4,3 -> 4,6
---press N@12600                           refuse the guard
---press Q@13500 ... 910 of them, 150 apart      QUICK, round after round
---pull cheat-kill-all@150000              survive it
---press Q/N/Return@150200 ... 400 apart   the end of the battle
---press E@181500 --press N@182500         EXIT the loot, leave the rest
---press E@184000                          ENCAMP
---press F@186000                          the Fix
+--seam code-wheel --code-wheel-answered --seam encamp-fix --seam cheat-kill-all
+--press L@7550 --press B@7800             LOAD SAVED GAME, slot B
+--press Right@9200 --press Right@9450   turn south
+--press Up@9700 --press Up@10450 --press Up@10700      4,3 -> 4,6
+--press N@11200                           refuse the guard
+--press Q@12100 ... 910 of them, 150 apart      QUICK, round after round
+--pull cheat-kill-all@148600              survive it
+--press Q/N/Return@148800 ... 400 apart   the end of the battle
+--press E@180100 --press N@181100         EXIT the loot, leave the rest
+--press E@182600                          ENCAMP
+--press F@184600                          the Fix
 ```
 
 - `QUICK` is one round, not the battle; pressed once, the same prompt
@@ -709,12 +706,11 @@ named. The reason column needs dead, stoned or gone; two deeper runs
 `walk-map.rec` are the pair, with Tab in both halves at the same tick.
 
 ```
---seam code-wheel --seam automap
---press A@7600 --press Return@7650      the code wheel
---press L@8950 --press A@9200           LOAD SAVED GAME, slot A
---press Tab@11000                       the panel
---press Up@11200 ... Right@11350 ...    forty-eight moves, 150 frames apart
---press Tab@19200                       and the party list back
+--seam code-wheel --code-wheel-answered --seam automap
+--press L@7550 --press A@7800           LOAD SAVED GAME, slot A
+--press Tab@9600                       the panel
+--press Up@9800 ... Right@9950 ...    forty-eight moves, 150 frames apart
+--press Tab@17800                       and the party list back
 ```
 
 Tab is not a key this game has; with the seam off it reaches the program
@@ -731,14 +727,15 @@ the shopkeeper's portrait, his question, and a roster with no map on it.
 Sweep:
 
 ```
-  walk-map  contrast ok  90 of 203 checkpoints identical, then
-                         divergent from tick 218787888 to the end
+  walk-map  contrast ok  77 of 190 checkpoints identical, then
+                         divergent from tick 190944688 to the end
 ```
 
-Tick 218,787,888 is frame 11,003: the Tab plus the program's poll.
+Tick 190,944,688 is frame 9,601, the frame the Tab was posted on: the
+key event forces a checkpoint there whatever the cadence says.
 
 The same script through `drive.mjs` with
-`--until 381818240 --quiet --dump wasmmap` reports
+`--until 353975040 --quiet --dump wasmmap` reports
 `seam automap armed fired=1283132`, runs the same 95,454,560 steps, and
 `cmp` on the two `.ppm` files says nothing.
 
@@ -749,12 +746,11 @@ so every leaf here is the fallback rule, a passable face is a door; leg
 The store (M5-E2c), as a second run:
 
 ```
---seam code-wheel --seam automap --save-sidecars
---press A@7600 --press Return@7650      the code wheel
---press L@8950 --press A@9200           LOAD SAVED GAME, slot A
---press Tab@11000                       the panel
---press Up@11200 ... Right@11350 ...    twelve moves
---press E@13500 --press S@14500 --press A@15500    ENCAMP, SAVE, slot A
+--seam code-wheel --code-wheel-answered --seam automap --save-sidecars
+--press L@7550 --press A@7800           LOAD SAVED GAME, slot A
+--press Tab@9600                       the panel
+--press Up@9800 ... Right@9950 ...    twelve moves
+--press E@12100 --press S@13100 --press A@14100    ENCAMP, SAVE, slot A
 ```
 
 ```
@@ -814,13 +810,14 @@ or a hand-written file in `docs/journal.md` §6's format.
 over a real store pinned by digest (#232).
 
 ```
---seam code-wheel --seam journal --journal-store ./journal.txt
---press A@7601 --press Return@7651      the code wheel
---press L@8951 --press A@9201           LOAD SAVED GAME, slot A
---press N@10600                         Notes, the log
---press Return@10800                    the row the cursor is on
---press N@11600                         NEXT, the entry's second page
---press E@13000 --press E@13800         out of the page, out of the log
+--seam code-wheel --code-wheel-answered --seam journal
+--journal-store ./journal.txt
+--press L@7551 --press A@7801           LOAD SAVED GAME, slot A
+--press N@9200                          Notes, the log
+--press Return@9500                     the row the cursor is on
+--press N@10000                         NEXT, the entry's second page
+--press Escape@10500                    off the page, back to the log
+--press Escape@11000                    off the log
 ```
 
 ```
@@ -834,16 +831,17 @@ then; the key is claimed by nothing now, and a script that presses it
 gets the program's own answer to a key it has no use for.
 
 The screen: `ENTRY 3` in the program's highlight yellow, the body in its
-message green, `NEXT PREV EXIT` on the bottom row. With `--seam automap`
-on too, the entry draws over the map and leaving gives the map back
-(`tests/sessions/subset-map-reader.rec`). The frames are owed a re-drive
-(#293).
+message green, `NEXT PREV EXIT` on the bottom row and `1/2` beside them.
+With `--seam automap` on too, the entry draws over the map and leaving
+gives the map back (`tests/sessions/subset-map-reader.rec`).
 
 The same script through `drive.mjs`, same flag spellings, with
-`--until 240000000 --quiet --dump wasmj` reports `fired=602779` and
-`journal-open calls=1 last=3 at=214772808`;
-`cmp` on the two `.ppm` files says nothing. The callout's tick differs
-by 17,592, which is leg 6's trap.
+`--until 272156800 --quiet --dump wasmj` reports a `journal-open` call
+and `cmp` on the two `.ppm` files says nothing. The counts that were
+quoted here - `fired=602779`, `calls=1 last=3 at=214772808` - were the
+F1 script's on the longer boot; what stands is that `reader.rec`
+verifies on the module (`tests/sessions/README.md`) and that the
+callout's tick differs between the hosts, which is leg 6's trap.
 
 Trap: this leg does not drive the citation watch. The position line does
 not go through the narration routine, so a probe that reaches a routine
@@ -855,13 +853,13 @@ says nothing about whether that routine sees the text (#232).
 
 `Notes` on the party's own bar opens a full-screen log of everything the
 game has cited, newest first, `*` on the unread
-(`tests/sessions/notes.rec`). Leg 9's prefix, then the empty log:
+(`tests/sessions/notes.rec`). Leg 9's prefix, then the log:
 
 ```
---seam code-wheel --seam journal --journal-store ./journal.txt
---document "<the code wheel>"
---press A@7601 --press Return@7651 --press L@8951 --press A@9201
---press N@10600 --press Escape@11400
+--seam code-wheel --code-wheel-answered --seam journal
+--journal-store ./journal.txt
+--press L@7551 --press A@7801
+--press N@9200 --press Escape@10800
 ```
 
 The screen is the game's own frame with `ADVENTURER'S JOURNAL` at the
@@ -881,7 +879,7 @@ While it is up:
 - Return on a row opens that entry full-screen in the same box (#305);
   Escape or `E` brings the log back with the cursor where it was and the
   `*` gone. `tests/visual/not-page-back.leg` and `not-page-modal.leg`
-  are the claims, not yet driven (#293).
+  are the claims, driven on the shorter boot.
 
 Give-back: the frame after the log closes equals the frame before it
 opened, bar row included (`tests/visual/not-log-giveback.leg`, driven on
@@ -901,15 +899,14 @@ its next arrival (#332, `tests/visual/rdr-map-back.leg`).
 the wilderness travel view, a 5x5 window of the overhead map.
 
 ```
---seam code-wheel --seam explored --document "<the code wheel>"
+--seam code-wheel --code-wheel-answered --seam explored
 --watch 49F3:1 --watch 49FA:1
---press A@7601 --press Return@7651      the code wheel
---press L@8951 --press J@9201           LOAD SAVED GAME, slot J
---press Up@10600 ... every 150 frames   eight steps north
+--press L@7551 --press J@7801           LOAD SAVED GAME, slot J
+--press Up@9200 ... every 150 frames   eight steps north
 ```
 
 Slot J's party stands on a wilderness area (view kind 2 on disk 6). The
-mode byte becomes 3 at frame 9,552, the screen has settled by 10,275, and
+mode byte becomes 3 at frame 8,152, the screen has settled by 8,875, and
 wandering brings an encounter within a few virtual minutes.
 
 What to see: fog of war. Every square the party has stood on is the
@@ -924,11 +921,11 @@ checker, because it reads thin and is the colour of mountain rock
 
 Checks: every pixel differing from the seam-off run is inside the window
 `8,8,127,127` (`tests/visual/exp-trail.leg`, `exp-steady.leg`), and the
-still after the last step repeats to the end. Sweep: `wild-trail` is 107
-of 140 checkpoints identical, then divergent from tick 204,866,288, the
+still after the last step repeats to the end. Sweep: `wild-trail` is 72
+of 103 checkpoints identical, then divergent from tick 178,216,368, the
 arrival; on with the overworld never shown, `quiet-explored.rec` is all
-126 checkpoints of the baseline. These were measured at the radius-one
-grey and are re-driven under #293.
+90 checkpoints of the baseline. Measured at the black covering, radius
+zero.
 
 Store: `--save-sidecars` writes the trail into `\SAVE\AFMAP.DAT` with a
 snapshot per slot, and the automap alone records the wilderness too
@@ -950,16 +947,15 @@ Slot C stands in the Kobold Caves (disk 8, area 13), which has shut
 faces. Kovel Mansion (#199) is not needed.
 
 ```
---seam code-wheel --seam automap --trace
---press A@7600 --press Return@7650      the code wheel
---press L@8950 --press C@9200           LOAD SAVED GAME, slot C
---press Tab@11000                       the panel
---press Up@11200 Up@11350 Up@11500      west along the corridor
---press Right@11650                     turn north
---press Up@11800 Up@11950               north to 1,1
---press Left@12100 --press Up@12250     west to 0,1
---press Right@12400 --press Up@12550    and north through the door
---until 290000000
+--seam code-wheel --code-wheel-answered --seam automap --trace
+--press L@7550 --press C@7800           LOAD SAVED GAME, slot C
+--press Tab@9600                       the panel
+--press Up@9800 Up@9950 Up@10100      west along the corridor
+--press Right@10250                     turn north
+--press Up@10400 Up@10550               north to 1,1
+--press Left@10700 --press Up@10850     west to 0,1
+--press Right@11000 --press Up@11150    and north through the door
+--until 262156800
 ```
 
 If something wanders in, `--seam cheat-kill-all` and a pull clears it.
@@ -1004,10 +1000,11 @@ swallows it and so does this machine. Anything else, a `stop`, a
 
 Not driven by decision: training and the inn (#104, #145), and the
 dungeon beyond the gate at `0,4` (#102, #144). Open: nobody has typed a
-correct answer into the real program (#290); every script and number
-above is owed a re-drive on the shorter boot (#293); the journal's
-residual is #270; an entry read on a display, the fog walked, a rest
-heard, and any of it in a browser are `docs/hosts.md` §3's. With no
+correct answer into the real program (#290); the observation blocks in
+legs 2, 6, 7 and 12 are owed a re-measurement on the shorter boot their
+scripts now use (#293); the journal's residual is #270; an entry read on
+a display, the fog walked, a rest heard, and any of it in a browser are
+`docs/hosts.md` §3's. With no
 issue: `--watch` has no web equivalent, and no sound of this program has
 been measured, though `--dump`, `tools/drive.mjs --dump` and
 `amberfolio-dump` write the same `.edges` file (`docs/hosts.md` §4).

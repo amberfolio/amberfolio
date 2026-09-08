@@ -156,8 +156,17 @@ class Descriptor:
         self.store_digest = ""
         # Documents this recording's seams are gated on, by digest. A
         # document is never committed here (PLAN.md §6), so there is one
-        # form and it is a fingerprint.
+        # form and it is a fingerprint. No seam in this build is gated
+        # (docs/seams.md §5), so nothing here says one today.
         self.documents: list[str] = []
+        # Whether the code-wheel challenge had already been answered when
+        # this run was made (M6-C1, #291, #293). Not a digest and not a
+        # file: since #290 the possession proof is the act, so what a
+        # replay has to be told is a *condition*, and the only honest
+        # spelling of it is a word. Every game session here says it,
+        # because the boot that reaches the game at all is the boot that
+        # was not stopped by the challenge.
+        self.code_wheel_answered = False
         # DOS path (upper case, backslash-separated) -> (size, digest), and
         # the set of directories. A directory has no digest; a digest of a
         # directory is not a thing (the recording's preamble says the same).
@@ -184,6 +193,8 @@ class Descriptor:
                 self.identical = word[1]
             elif word[0] == "document" and len(word) == 2:
                 self.documents.append(word[1])
+            elif word[0] == "code-wheel-answered" and len(word) == 1:
+                self.code_wheel_answered = True
             elif word[0] == "journal-store" and len(word) in (2, 3):
                 self.store = word[1]
                 self.store_digest = word[2] if len(word) == 3 else ""
@@ -666,6 +677,23 @@ def sweep_desktop(host: Path, session: Session, disk: Path,
                 # Presented rather than copied: a host hashes what it is
                 # handed and never writes to it (`present_document`).
                 command += ["--document", str(one)]
+            if session.descriptor is not None \
+                    and session.descriptor.code_wheel_answered:
+                # The one input to a replay that is not a file (#291).
+                # Here, where `--document` is, and for the reason it was
+                # here: the host applies both *before* the seams, so a
+                # recording made on the boot that never drew the
+                # challenge is replayed on that boot rather than on one
+                # that stops at a screen the keys in the recording were
+                # never aimed at.
+                #
+                # Nothing is written and nothing is remembered: this
+                # states the condition for this run only, which is what
+                # a replay of somebody else's run needs. The store
+                # (`--code-wheel-store`) is deliberately not passed —
+                # a replay must not depend on what this machine happens
+                # to have answered.
+                command += ["--code-wheel-answered"]
             if store is not None:
                 # The recording's other input (`Session.store()`). The
                 # host reads it whenever it is named, which is what a

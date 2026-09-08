@@ -1,16 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# One of M5-V1's fidelity pairs (#177): `quiet`'s script with `automap`
-# on as well and Tab never pressed. Its hotkey is the one place a seam
-# can change what the program observes.
-# The `identical` line is the whole session: a seam that is on, armed and
-# idle leaves a machine indistinguishable from one where it was off
-# (PLAN.md §5), checked with no disk, so CI checks it on every push.
+# The same boot with the `code-wheel` seam on and the challenge still
+# unanswered (M6-C1, #293) - the seam's "on and never triggered" half,
+# which the matrix in README.md had no entry for until now.
+#
+# The seam is not idle here: it watches, and its end-of-run line says
+# `fired=144`, once per call of the program's own string compare that
+# lands inside the word table during the boot. Every one of those
+# firings reads the machine and writes nothing, and this pair is what
+# says so - checkpoint for checkpoint against a run with no engine at
+# all.
+#
+# `identical` and not `contrast`, and it is the seam's own claim
+# (docs/seams.md §10): on and unanswered it cannot move the machine.
+# The moment somebody answers the challenge it may, which is what every
+# other game session here records.
 
-about the automap on and **Tab never pressed**. Its hotkey is the one place a seam can change what the program observes, and this is the run that says it does not when nobody presses it
+about the boot with the challenge unanswered and the code-wheel seam on,
+about watching: 144 firings, and not one of them moves the machine
 disk external
-code-wheel-answered
-identical quiet
+identical boot
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

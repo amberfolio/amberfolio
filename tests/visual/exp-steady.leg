@@ -14,27 +14,26 @@ kind single
 program START.EXE
 both code-wheel
 
-# The code-wheel bypass is gated on the wheel itself (#115), pinned by
-# digest because a document never enters this tree.
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+# No document, and no gate: since #290 the possession proof is the act,
+# so what a leg says is a condition rather than a digest, and the run is
+# made on the boot the challenge never stops (#291, #293).
+code-wheel-answered
 seam explored
-until 260000000
+until 232156800
 every 25
 
-key A@7601
-key Return@7651
-key L@8951
-key J@9201
-key Up@10600
-key Up@10750
-key Up@10900
-key Up@11050
-key Up@11200
-key Up@11350
-key Up@11500
-key Up@11650
+key L@7551
+key J@7801
+key Up@9200
+key Up@9350
+key Up@9500
+key Up@9650
+key Up@9800
+key Up@9950
+key Up@10100
+key Up@10250
 
 # From the frame after the last step to the end of the run: the party is
 # standing on the wilderness map inside the corridor it uncovered, with the
 # fog round it, and nothing about the screen may change.
-same 11750-13000
+same 10350-11600
