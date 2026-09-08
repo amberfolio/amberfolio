@@ -98,6 +98,12 @@ export const AF_SEAM_NONE = 3;
 /// There was a name here that went the other way: `save_state_changed`
 /// left with the enhancement that would have called it (M5-D1, #169),
 /// because a service with no consumer is a surface built on spec.
+///
+/// It cannot go stale quietly again: `tests/smoke.mjs` reads
+/// `seam_host_service_count` and `seam_host_service_name()` out of core
+/// and fails if this list disagrees with either in length or in
+/// spelling (#296) — the export list's guard, applied to the other pair
+/// of lists that has to agree.
 export const HOST_SERVICES = [
   'journal-open',
   'automap-update',
