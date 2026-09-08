@@ -249,19 +249,63 @@ TEST(SessionLibrary, TheBootPairLeavesTheChallengeUnanswered) {
 // carries is a store that has to be there: the reader replays with no
 // text without one, and a recording of the reader would then diverge for
 // a reason that is not the machine (#235).
-TEST(SessionLibrary, AJournalSessionNamesAStoreThatIsThere) {
-  for (const std::string_view name : {"reader.session", "notes.session"}) {
-    const std::string text = read_session_file(name);
-    ASSERT_FALSE(text.empty()) << name;
-    EXPECT_THAT(text, ::testing::HasSubstr(
-                          "journal-store tests/visual/reader-store.txt"))
-        << name;
+//
+// Every one of them is now a store **this repository wrote**, and that
+// is the thing worth checking rather than which sessions name which file
+// (#290). `cite` used to pin a real ingestion by digest, on the reasoning
+// that a citation of the program's own wanted a real journal behind it.
+// It does not: what the session proves is the program's — that the city
+// hall's event names four proclamations, that the log takes them, and
+// that opening one reaches the reader — and four proclamations written
+// here prove it on anybody's machine instead of on one.
+//
+// The rule that replaces it: a store the library carries says `engine
+// hand` and has no edition, so it cannot be a transcription of anybody's
+// booklet. The `journal-store external` form stays in the grammar for a
+// session that needs one; nothing uses it.
+TEST(SessionLibrary, AJournalSessionNamesAStoreThisRepositoryWrote) {
+  struct named_store {
+    std::string_view session;
+    std::string_view named;  // as the descriptor spells it
+    std::string_view here;   // as this test, rooted at tests/sessions, reads it
+  };
+  const named_store named[] = {
+      {.session = "reader.session",
+       .named = "tests/visual/reader-store.txt",
+       .here = "../visual/reader-store.txt"},
+      {.session = "notes.session",
+       .named = "tests/visual/reader-store.txt",
+       .here = "../visual/reader-store.txt"},
+      {.session = "cite.session",
+       .named = "tests/visual/cite-store.txt",
+       .here = "../visual/cite-store.txt"},
+  };
+  for (const named_store& row : named) {
+    const std::string text = read_session_file(row.session);
+    ASSERT_FALSE(text.empty()) << row.session;
+    EXPECT_THAT(text, ::testing::HasSubstr(std::string("journal-store ") +
+                                           std::string(row.named)))
+        << row.session;
+
+    const std::string carried = read_session_file(row.here);
+    EXPECT_FALSE(carried.empty())
+        << row.named << ": the store " << row.session << " names";
+    EXPECT_THAT(carried, ::testing::HasSubstr("engine hand"))
+        << row.named << ": a store here is written here, never read off a page";
+    EXPECT_THAT(carried, ::testing::HasSubstr(std::string("edition ") +
+                                              std::string(64, '0')))
+        << row.named << ": and belongs to no edition of anybody's booklet";
   }
-  EXPECT_FALSE(read_session_file("../visual/reader-store.txt").empty())
-      << "the store those two name";
-  EXPECT_THAT(read_session_file("cite.session"),
-              ::testing::HasSubstr("journal-store external "))
-      << "a real ingestion is pinned by digest and never carried here";
+
+  // No session pins somebody's own ingestion any more. The form is still
+  // in the grammar; a session that used it would be one nobody but its
+  // author could verify.
+  for (const std::string_view session :
+       {"reader.session", "notes.session", "cite.session"}) {
+    EXPECT_THAT(read_session_file(session),
+                ::testing::Not(::testing::HasSubstr("journal-store external")))
+        << session;
+  }
 }
 
 // And so does the other half of an initial condition: the same recording
