@@ -589,6 +589,62 @@ the program had loaded, and a roster walked through a far pointer out of
 the wrong segment leaves `unmapped_memory_read` notices with the suite
 green. Every point has an address.
 
+### A party with no cure memorized (M5-E1h, #350)
+
+Slot C's four — `HULK`, `MULE`, `THIEF`, `PRINCESS FATIMA` — hold no
+memorized spell of any kind, so `cheat-wound-party` alone makes the case
+a player meets most: hurt, and nothing to cast. No cheat that empties a
+spellbook is needed. On the shorter boot (#291):
+
+```
+--seam code-wheel --code-wheel-answered --seam encamp-fix
+--seam cheat-wound-party --watch 49F3 --watch 6DCA:2
+--press L@7550 --press C@7800           LOAD SAVED GAME, slot C
+--press E@8800                          ENCAMP
+--pull cheat-wound-party@9500           everybody down to one hit point
+--press F@9600                          the Fix
+```
+
+`FIX` is on the bar and choosing it starts the program's own rest:
+`6DCA=0052` at 9,630 is eighty-two days — `MULE`'s maximum of 82, one
+down, plus the day of slack — and the rest screen reads
+`REST TIME:  82:00:00`. **The `00:00` is the answer to what sizes the
+rest**: the wounds write the days, and the memorization time the
+program's own wrapper writes under them is nothing, because there is
+nothing queued to memorize. A day in, the roster panel reads `2` for
+everybody: the program's own one hit point a member a day.
+
+Eighty-two days of camp is eighty-two days of the area's
+wandering-monster check, and it fires at 1 day 16 hours; the mode word
+leaves camp at 10,599 and the fourth point draws the report:
+
+```
+                 FIX: INTERRUPTED!
+HEALED 4 HP IN 1:16:00.
+HULK              2/51      SHORT 49
+MULE              2/82      SHORT 80
+...AND 2 MORE.
+```
+
+**No spell clause, because no spell was spent** — the summary names the
+hit points and the days and nothing else, so nothing in the box implies
+a cure was cast. By 10,800 the panel is blank and the encounter that
+ended the rest is on the screen: the teardown is clean, and not a second
+shape of #298.
+
+Of the shipped slots only A's camp is somewhere a rest that long
+survives — slot A ran a thirty-one-day one to the end, where C's dungeon
+and J's wilderness both interrupt — so `Fix: Interrupted!` is the ordinary
+outcome for a party with nothing to cast, and `Fix: Party Healed` wants
+either cures or a quiet place to sleep. Held by
+`RestsForTheWoundsAloneWhenNobodyHasMemorizedAnything` and
+`SaysTheRestWasTheHealingWhenNobodyHeldACure`.
+
+Trap: the boot is not always the same length. The main menu is up at
+7,450 in most runs of this script and was up at 10,000 in one, which
+puts every key before the screen that reads it; check the menu is there
+before believing a run that did nothing (#293).
+
 ### A party the game hurt (#269)
 
 Slot B walked south from `4,3` to `4,6` is met by the council guard over
