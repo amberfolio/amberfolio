@@ -19,7 +19,7 @@ namespace {
 /// The Adventurer's Journal as the currently sold archive release ships
 /// it: **all three of its numbered sections** — fifty-eight journal
 /// entries, twenty-three tavern tales and eighteen proclamations, in
-/// ninety-nine rows and a hundred and nineteen pieces, across eleven
+/// ninety-nine rows and a hundred and eighteen pieces, across eleven
 /// two-page scans (M5-E3b #214, M5-E3d #218).
 ///
 /// **Measured, never transcribed.** Every number below is a fact about
@@ -148,12 +148,23 @@ constexpr std::array<journal_fragment, 1> entry03{{
      .image = spread,
      .region = {.left = 992, .top = 267, .width = 297, .height = 691}},
 }};
+// **A text piece stops at its entry's own picture**, and resumes under
+// it if there is more prose there (#357). Twelve entries have a drawing
+// set in the column their caption is in, and a rectangle measured to the
+// whole column hands the engine the drawing as well: the hand lettering
+// on a map, the label beside a maze's door, two runes and a path
+// symbol, the place names of an atlas. None of it is prose, all of it
+// arrives as the entry's own words, and the reader draws the picture
+// anyway. So the
+// column is cut around the art rectangle -- above it, and below it where
+// prose continues, which in this edition is entry 26 alone -- and a
+// piece with no ink left in it is dropped.
 constexpr std::array<journal_fragment, 1> entry04{{
     {.page = 9,
      .offset = scan09_at,
      .length = scan09_bytes,
      .image = spread,
-     .region = {.left = 50, .top = 23, .width = 290, .height = 344}},
+     .region = {.left = 50, .top = 23, .width = 290, .height = 55}},
 }};
 constexpr std::array<journal_fragment, 1> entry05{{
     {.page = 9,
@@ -162,12 +173,23 @@ constexpr std::array<journal_fragment, 1> entry05{{
      .image = spread,
      .region = {.left = 50, .top = 371, .width = 290, .height = 269}},
 }};
+// The two pieces on this printed page stop at row 780 and not at the
+// foot of the scan, and so does entry 7's first piece beside them: the
+// page carries the edition's legend for its map symbols under a printed
+// rule at rows 784 to 787, the width of the page and below its two
+// columns. That is #344's finding upside down -- there the matter was
+// printed *above* the grid, here below it -- and it costs the same
+// thing, because the walk that measured this table runs an item from its
+// heading to the next one down the columns and steps straight over
+// anything set outside them. Both entries showed the legend spliced into
+// their middle, at the seam between the column they end and the one they
+// resume in.
 constexpr std::array<journal_fragment, 2> entry06{{
     {.page = 9,
      .offset = scan09_at,
      .length = scan09_bytes,
      .image = spread,
-     .region = {.left = 50, .top = 644, .width = 290, .height = 314}},
+     .region = {.left = 50, .top = 644, .width = 290, .height = 137}},
     {.page = 9,
      .offset = scan09_at,
      .length = scan09_bytes,
@@ -179,7 +201,7 @@ constexpr std::array<journal_fragment, 2> entry07{{
      .offset = scan09_at,
      .length = scan09_bytes,
      .image = spread,
-     .region = {.left = 340, .top = 247, .width = 289, .height = 711}},
+     .region = {.left = 340, .top = 247, .width = 289, .height = 534}},
     {.page = 9,
      .offset = scan09_at,
      .length = scan09_bytes,
@@ -210,7 +232,7 @@ constexpr std::array<journal_fragment, 1> entry10{{
      .offset = scan09_at,
      .length = scan09_bytes,
      .image = spread,
-     .region = {.left = 992, .top = 218, .width = 297, .height = 311}},
+     .region = {.left = 992, .top = 218, .width = 297, .height = 84}},
 }};
 constexpr std::array<journal_fragment, 2> entry11{{
     {.page = 9,
@@ -250,7 +272,7 @@ constexpr std::array<journal_fragment, 1> entry15{{
      .offset = scan10_at,
      .length = scan10_bytes,
      .image = spread,
-     .region = {.left = 340, .top = 475, .width = 289, .height = 347}},
+     .region = {.left = 340, .top = 475, .width = 289, .height = 65}},
 }};
 constexpr std::array<journal_fragment, 2> entry16{{
     {.page = 10,
@@ -309,7 +331,7 @@ constexpr std::array<journal_fragment, 1> entry22{{
      .offset = scan11_at,
      .length = scan11_bytes,
      .image = spread,
-     .region = {.left = 50, .top = 518, .width = 290, .height = 271}},
+     .region = {.left = 50, .top = 518, .width = 290, .height = 76}},
 }};
 constexpr std::array<journal_fragment, 2> entry23{{
     {.page = 11,
@@ -342,12 +364,20 @@ constexpr std::array<journal_fragment, 2> entry25{{
      .image = spread,
      .region = {.left = 702, .top = 8, .width = 290, .height = 457}},
 }};
-constexpr std::array<journal_fragment, 2> entry26{{
+// The one entry of the edition whose prose resumes *under* its drawing
+// rather than ending at it, which is why the cut above is two pieces and
+// not a shorter one.
+constexpr std::array<journal_fragment, 3> entry26{{
     {.page = 11,
      .offset = scan11_at,
      .length = scan11_bytes,
      .image = spread,
-     .region = {.left = 702, .top = 469, .width = 290, .height = 489}},
+     .region = {.left = 702, .top = 469, .width = 290, .height = 166}},
+    {.page = 11,
+     .offset = scan11_at,
+     .length = scan11_bytes,
+     .image = spread,
+     .region = {.left = 702, .top = 855, .width = 290, .height = 103}},
     {.page = 11,
      .offset = scan11_at,
      .length = scan11_bytes,
@@ -366,14 +396,14 @@ constexpr std::array<journal_fragment, 1> entry28{{
      .offset = scan11_at,
      .length = scan11_bytes,
      .image = spread,
-     .region = {.left = 992, .top = 703, .width = 297, .height = 255}},
+     .region = {.left = 992, .top = 703, .width = 297, .height = 71}},
 }};
 constexpr std::array<journal_fragment, 1> entry29{{
     {.page = 12,
      .offset = scan12_at,
      .length = scan12_bytes,
      .image = spread,
-     .region = {.left = 50, .top = 32, .width = 290, .height = 344}},
+     .region = {.left = 50, .top = 32, .width = 290, .height = 64}},
 }};
 constexpr std::array<journal_fragment, 1> entry30{{
     {.page = 12,
@@ -425,7 +455,7 @@ constexpr std::array<journal_fragment, 2> entry35{{
      .offset = scan12_at,
      .length = scan12_bytes,
      .image = spread,
-     .region = {.left = 992, .top = 8, .width = 297, .height = 130}},
+     .region = {.left = 992, .top = 8, .width = 297, .height = 68}},
 }};
 constexpr std::array<journal_fragment, 1> entry36{{
     {.page = 12,
@@ -434,27 +464,18 @@ constexpr std::array<journal_fragment, 1> entry36{{
      .image = spread,
      .region = {.left = 992, .top = 142, .width = 297, .height = 816}},
 }};
-constexpr std::array<journal_fragment, 4> entry37{{
+// The atlas, and the one row whose rectangle is **not** a column: a
+// heading and a caption set the width of the left printed page, and
+// after them the whole spread is maps. Two column-shaped pieces cut the
+// caption's own longest word in half, and each half was read as a word
+// (#357). The right page held no prose at all once the maps were
+// measured out of it, so it has no piece here.
+constexpr std::array<journal_fragment, 1> entry37{{
     {.page = 13,
      .offset = scan13_at,
      .length = scan13_bytes,
      .image = spread,
-     .region = {.left = 50, .top = 22, .width = 290, .height = 890}},
-    {.page = 13,
-     .offset = scan13_at,
-     .length = scan13_bytes,
-     .image = spread,
-     .region = {.left = 340, .top = 8, .width = 289, .height = 904}},
-    {.page = 13,
-     .offset = scan13_at,
-     .length = scan13_bytes,
-     .image = spread,
-     .region = {.left = 702, .top = 8, .width = 290, .height = 950}},
-    {.page = 13,
-     .offset = scan13_at,
-     .length = scan13_bytes,
-     .image = spread,
-     .region = {.left = 992, .top = 8, .width = 297, .height = 950}},
+     .region = {.left = 50, .top = 22, .width = 579, .height = 78}},
 }};
 constexpr std::array<journal_fragment, 1> entry38{{
     {.page = 14,
@@ -463,12 +484,18 @@ constexpr std::array<journal_fragment, 1> entry38{{
      .image = spread,
      .region = {.left = 50, .top = 21, .width = 290, .height = 470}},
 }};
+// The same shape again, and the matter below the grid is a drawing:
+// entry 42's sketch is printed the width of this page under a rule at
+// rows 731 and 732, so both columns end above it -- this one at 728, and
+// entry 42's own at 751, under the caption the sketch belongs to. Left
+// at the foot of the scan, this entry carried half of somebody else's
+// labels and entry 42 carried the other half, ahead of its own heading.
 constexpr std::array<journal_fragment, 2> entry39{{
     {.page = 14,
      .offset = scan14_at,
      .length = scan14_bytes,
      .image = spread,
-     .region = {.left = 50, .top = 495, .width = 290, .height = 463}},
+     .region = {.left = 50, .top = 495, .width = 290, .height = 234}},
     {.page = 14,
      .offset = scan14_at,
      .length = scan14_bytes,
@@ -487,14 +514,14 @@ constexpr std::array<journal_fragment, 1> entry41{{
      .offset = scan14_at,
      .length = scan14_bytes,
      .image = spread,
-     .region = {.left = 340, .top = 352, .width = 289, .height = 349}},
+     .region = {.left = 340, .top = 352, .width = 289, .height = 66}},
 }};
 constexpr std::array<journal_fragment, 1> entry42{{
     {.page = 14,
      .offset = scan14_at,
      .length = scan14_bytes,
      .image = spread,
-     .region = {.left = 340, .top = 705, .width = 289, .height = 253}},
+     .region = {.left = 340, .top = 705, .width = 289, .height = 66}},
 }};
 constexpr std::array<journal_fragment, 2> entry43{{
     {.page = 14,
@@ -626,7 +653,7 @@ constexpr std::array<journal_fragment, 1> entry58{{
      .offset = scan16_at,
      .length = scan16_bytes,
      .image = spread,
-     .region = {.left = 992, .top = 189, .width = 297, .height = 765}},
+     .region = {.left = 992, .top = 189, .width = 297, .height = 60}},
 }};
 constexpr std::array<journal_fragment, 1> tale01{{
     {.page = 17,
@@ -956,12 +983,16 @@ constexpr std::array<journal_fragment, 1> art04{{
      .image = spread,
      .region = {.left = 53, .top = 78, .width = 270, .height = 269}},
 }};
+// Measured again: the box stopped at row 509 and the map's own bottom
+// border line is rows 512 to 515, so the drawing was shown open at the
+// foot. A picture is the bounding box of its ink (section 11.1) and this
+// is now exactly that, 1014..1267 by 302..515.
 constexpr std::array<journal_fragment, 1> art10{{
     {.page = 9,
      .offset = scan09_at,
      .length = scan09_bytes,
      .image = spread,
-     .region = {.left = 1013, .top = 302, .width = 255, .height = 208}},
+     .region = {.left = 1014, .top = 302, .width = 254, .height = 214}},
 }};
 constexpr std::array<journal_fragment, 1> art15{{
     {.page = 10,
@@ -1010,22 +1041,27 @@ constexpr std::array<journal_fragment, 1> art35{{
 // one in pieces -- the reader turns a page between them -- which is the
 // other way art differs from the fragments above, whose pieces are
 // joined into one text.
+//
+// Each map's own title is inside its rectangle, and so are the labels
+// printed outside the first one's frame: they are the drawing's words,
+// not the entry's, and measured out of it they arrived in the prose as
+// the first map's title, between the two halves of the caption (#357).
 constexpr std::array<journal_fragment, 3> art37{{
     {.page = 13,
      .offset = scan13_at,
      .length = scan13_bytes,
      .image = spread,
-     .region = {.left = 55, .top = 120, .width = 577, .height = 331}},
+     .region = {.left = 55, .top = 100, .width = 577, .height = 359}},
     {.page = 13,
      .offset = scan13_at,
      .length = scan13_bytes,
      .image = spread,
-     .region = {.left = 55, .top = 520, .width = 579, .height = 401}},
+     .region = {.left = 55, .top = 500, .width = 579, .height = 421}},
     {.page = 13,
      .offset = scan13_at,
      .length = scan13_bytes,
      .image = spread,
-     .region = {.left = 708, .top = 114, .width = 584, .height = 803}},
+     .region = {.left = 708, .top = 103, .width = 584, .height = 814}},
 }};
 constexpr std::array<journal_fragment, 1> art41{{
     {.page = 14,
@@ -1034,12 +1070,18 @@ constexpr std::array<journal_fragment, 1> art41{{
      .image = spread,
      .region = {.left = 366, .top = 418, .width = 254, .height = 253}},
 }};
+// Measured again from a band below the caption, which is the rule
+// (section 11.1) and was not what the first measurement did: rows 748 to
+// 752 of this band are the descenders of `drawing.` on the caption line,
+// eighteen rows above the sketch's own first ink, and a rectangle that
+// began there both carried a strip of somebody's prose and left the
+// entry's caption nowhere to be measured.
 constexpr std::array<journal_fragment, 1> art42{{
     {.page = 14,
      .offset = scan14_at,
      .length = scan14_bytes,
      .image = spread,
-     .region = {.left = 95, .top = 752, .width = 503, .height = 195}},
+     .region = {.left = 95, .top = 771, .width = 502, .height = 176}},
 }};
 constexpr std::array<journal_fragment, 1> art58{{
     {.page = 16,
