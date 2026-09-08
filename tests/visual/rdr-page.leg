@@ -1,10 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# RDR-5, RDR-6 and RDR-8: page a long entry with F1, step back with
-# Backspace, and leave by the far end. Since M5-E4d (#305) the page a
-# player opens from the bar is a full screen, the same box the `Notes`
-# listing is drawn in, so the give-back is the whole screen and not the
-# roster's cells.
+# RDR-5, RDR-6 and RDR-8: page a long entry with `NEXT`, step back with
+# Backspace, and leave by the far end. Since M5-E4d (#305) a page is a
+# full screen, the same box the `Notes` listing is drawn in, so the
+# give-back is the whole screen and not the roster's cells.
+#
+# **The keys are the `Notes` path since #346**, because there is no other:
+# F1 opened a number prompt and both are gone. The frame ranges below
+# were measured against the F1 script and have not been measured against
+# this one - this leg is owed its re-drive with the rest (#293), and the
+# keys are corrected here so that what it asks for is the reader that
+# exists.
 # A single leg, and it has to be one: the page covers the screen, so a
 # rect that allowed it would check nothing, and the composer that puts
 # the screen back resets the command bar's highlight, so the frames after
@@ -34,22 +40,22 @@ key Return@7651
 key L@8951
 key A@9201
 
-# F1 opens the prompt, which stays in the panel, and Return opens the entry
-# on the whole screen.
-key F1@10600
-key 3@10700
+# `Notes` opens the log, and Return opens the row the cursor is on, which
+# is the long entry the store puts first.
+key N@10600
 key Return@10800
 
 # Forward, back, forward, and then out through the far end: the entry is two
 # pages at thirty-eight columns by twenty rows.
-key F1@11600
+key N@11600
 key Backspace@12400
-key F1@13200
+key N@13200
 
-# The way out, and it is `E` rather than a fourth F1 since M5-E4f (#317): a
-# full-screen page carries `NEXT`, `PREV` and `EXIT` as words on a bar of
-# its own, so F1 is the first of those.
+# The way out, twice: `EXIT` off the page's own bar returns to the listing
+# it was opened from (#305), and `EXIT` off the listing's composes the
+# screen back.
 key E@14000
+key E@14800
 
 rect bar 0,190,319,199
 
@@ -65,4 +71,4 @@ same 13500-13975
 # group this seam had spliced on. Fixed since #330; the exception stays
 # until this leg is re-driven on the shorter boot (#293), and rdr-bar.leg
 # asserts the same give-back with nothing excepted.
-equal 10600 14400 bar
+equal 10600 15200 bar

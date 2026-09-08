@@ -772,7 +772,7 @@ to carry.
 | `code-wheel` | asks the copy-protection challenge once (#291): unanswered it watches; answered by a person, it steps over the boot's call and the challenge is never drawn again | the resident image |
 | `encamp-fix` | a `FIX` command on the camp bar: spends the cures the party holds, rests off the deficit, reports in a box the game draws | the camp screen's overlay |
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
-| `journal` | what the game cites opens on the game's screen out of the player's ingested journal; **Notes** on the party's bar opens the log, **F1** the number prompt | the resident image, and the adventuring loop's module |
+| `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
@@ -1025,14 +1025,14 @@ reader's give-back paints over it inside a batch, so the reader calls
 `automap_state::note_panel_painted_over()` and the map redraws at its
 next arrival with its open flag untouched (#332).
 
-### The journal reader (#175, #221, #222, #232, #305, #328)
+### The journal reader (#175, #221, #222, #232, #305, #328, #346)
 
 PLAN.md §5 item 2's in-game half; ingestion is #174 and
 `docs/journal.md`, and §9 there is the door between the halves.
 
 | point | module | what the handler does |
 | --- | --- | --- |
-| the automap's five: both key routines, both clears, the roster drawer's `retf` | resident image | as the automap's, for the reader's panel; F1 and the modal keys claimed here |
+| the automap's five: both key routines, both clears, the roster drawer's `retf` | resident image | as the automap's: the screen is drawn and repainted here, and the reader's modal keys are claimed here |
 | the program's word-wrapping **message box**, where a script's every PRINT ends | resident image | the citation watch: reads the Pascal string (offset at SP+4, segment at SP+6) into a rolling window; the box's home-and-clear flag is the message boundary |
 | the adventuring loop's call into the menu-bar routine, one pair per view mode (M5-E4a, #221) | the adventuring loop's module | before: splices `Notes` onto the party's bar, sets `bar_live()`; at the return: splices it out, clears `bar_live()`, reads the letter from `AL` and the routine's out-parameter, puts the highlight byte back where the routine found it (#330) |
 
@@ -1046,30 +1046,30 @@ section's notation (decimal; Roman for proclamations), a plural
 followed by a list joined by commas and "and". The window is normalized
 to upper case and single spaces with commas kept, emptied at the message
 boundary and on a match; a list that runs off the end of what has been
-printed waits for the rest. Every entry named goes on the log in order
-and the first opens. The word "journal" is not part of the shape.
+printed waits for the rest. Every entry named goes on the log in order,
+unread, and **none of them opens** (#346): the program's own narration is
+what tells a player a note arrived. The word "journal" is not part of the
+shape.
 `journal_citations_in()` is the pattern as a free function;
 `JournalCitation.*` tests it.
 
 **Where it draws**:
 
-- **The panel**: the automap's rect, twenty-two columns by fourteen rows
-  of the program's font, plane surgery in glyphs read from the font
-  pointer. It is the one region a seam can take and give back, and the
-  reader is modal over the map (the same pixels). A citation's page is
-  always the panel, because it fires inside narration where an NPC can
-  be in the viewport.
-- **The full screen** (M5-E4b #222, M5-E4d #305): the log, and a page
-  opened from the bar, drawn by the program's frame and string drawers
-  as a box of twenty rows of thirty-eight characters (the log ten rows
-  of forty), painted over several arrivals inside the batch limits. The
-  interior is cleared and the frame redrawn on every page. Allowed
-  exactly while `journal_state::bar_live()` holds, the one state in
-  which the composer may be asked to put a screen back; so F1 at camp or
-  under a vendor's bar stays in the panel.
-- **Give-back**: the panel asks for the roster drawer; the full screen
-  calls the routine the program uses on the way out of every full-screen
-  view (the scaffold, view, roster and status line) plus one injected
+- **The full screen** (M5-E4b #222, M5-E4d #305, #346): the log and every
+  page of an entry, drawn by the program's frame and string drawers as a
+  box of twenty rows of thirty-eight characters, painted over several
+  arrivals inside the batch limits. The interior is cleared and the frame
+  redrawn on every page. There is no second size: the panel page a
+  citation used to open went with the citation's page. Allowed exactly
+  while `journal_state::bar_live()` holds, the one state in which the
+  composer may be asked to put a screen back — and **that needs no rule
+  of its own**, because `Notes` is a command on the party's own bar and
+  is the only way in there is. What follows is that the reader's whole
+  reach is the log: a citation puts a row there, `Return` opens a row,
+  and there is no path to an entry the game has not named. The reader is
+  modal over the map, which is the same pixels either way.
+- **Give-back**: one, since #346 — the routine the program uses on the
+  way out of every full-screen view (the scaffold, view, roster and status line) plus one injected
   space so the menu-bar routine returns and redraws the bar. **At the
   blocking read that space is the read's answer and nothing is posted
   behind it** (#325): the program's read routine drains its buffer after
@@ -1080,7 +1080,7 @@ and the first opens. The word "journal" is not part of the shape.
   poll and recovered it. Rejected:
   the routine that *enters* the adventuring screen, because it sets the
   mode byte and draws the bottom panel alone. A page from a listing row
-  returns to the listing. Both give-backs call
+  returns to the listing and gives nothing back. The give-back calls
   `automap_state::note_panel_painted_over()` (#332).
 - **The bar** (#329, #330, #341, #342): flush left, spaced one, drawn in
   a call for the row (green) and one more for each word's initial
@@ -1100,10 +1100,9 @@ and the first opens. The word "journal" is not part of the shape.
   program's commands. `tests/visual/rdr-bar.leg` is the measurement:
   without the give-back, 190 pixels differ between the frame before the
   journal opened and the frame after it closed, all on the bar row.
-- **Art** (#328): an entry's picture is the page after the caption;
-  full-screen it is painted by plane surgery in the arrival *after* the
-  frame's batch (§8.4), in the panel at half scale. `docs/journal.md`
-  §11.
+- **Art** (#328): an entry's picture is the page after the caption,
+  painted whole by plane surgery in the arrival *after* the frame's batch
+  (§8.4). `docs/journal.md` §11.
 - The prompt's cursor is a rule in the seam's own pixels, because an
   underscore hits a font index nothing else uses. The log's timestamp is
   the machine's seeded wall clock.
@@ -1115,16 +1114,18 @@ configuration, restored by `host::restore_journal_log()`. Both hosts
 print the callout at the end of a run
 (`host-service journal-open calls=1 last=4`).
 
-**Keys**: F1 opens the reader, cycles the section at the prompt (#218),
-turns pages, closes on the last. While the reader is up: Escape closes,
-Backspace pages back or rubs out a digit, digits and Return are the
-prompt's. Space and Return are **not** taken on a panel page, because a
-citation opens in a story event and the key that turns the game's page
-stays the game's. The log and a full-screen page take **every** key
-(the bar is live underneath, and a key let through walked the party
-unseen, #230); `E` leaves the log. Reads are answered with `-`. Function
-keys have no character (`keyboard.h`); F11 and F12 never reach the
-machine (`docs/hosts.md` §3).
+**Keys**: **none at all while the reader is down** (#346). There was one,
+F1, claimed on every screen with a party roster and defended on the
+grounds that a function key has no character (`keyboard.h`) and so cannot
+be a command on any of this program's bars; the argument held and the key
+went anyway, because `Notes` is the way in and a second one is a second
+thing to learn. The number prompt it opened (#218) went with it, and
+with the prompt went naming an entry: what the reader can open is what
+the log holds. While the reader *is* up: Escape closes, Backspace goes a screenful back,
+Return opens the row the cursor is on, and `N`/`P`/`E` are the bar's own
+three. The log and a page take **every** key (the bar is live underneath,
+and a key let through walked the party unseen, #230). Reads are answered
+with `-`.
 
 **State**: `journal_state` (`bar_live()`, the window, the page);
 `machine::journal()` for the text. **Gate**: deliberately unset, though
@@ -1132,12 +1133,14 @@ machine (`docs/hosts.md` §3).
 refuse a player whose store was copied from another machine, and the
 reader already says when the host has no text.
 
-**Fidelity**: on, nothing cited and F1 never pressed, the run is
-identical until the party's bar is first drawn; `quiet-journal` is
-therefore contrast `quiet`, the one seam that cannot claim `identical`
-(§7). Exercised sessions: `reader`, `notes`, `cite` (a real citation, no
-key pressed), `subset-map-reader`. There is no contrast pair, because
-the store is a host file and not in the stream. Legs:
+**Fidelity**: on and the reader never opened, the run is identical until
+the party's bar is first drawn — a citation included, since #346 leaves
+it writing a log line and drawing nothing. `quiet-journal` is therefore
+contrast `quiet`, the one seam that cannot claim `identical` (§7), and
+the splice is the whole of what it is contrasting on. Exercised sessions:
+`reader`, `notes`, `cite` (a real citation, no key pressed),
+`subset-map-reader`. There is no contrast pair, because the store is a
+host file and not in the stream. Legs:
 `tests/visual/not-bars.leg`, `not-log-giveback.leg`, `not-log-modal.leg`,
 `not-page-back.leg`, `not-page-modal.leg`, `rdr-prompt.leg`,
 `rdr-page.leg`, `rdr-bar.leg`, `rdr-art.leg`, `rdr-map-back.leg`.
@@ -1145,7 +1148,7 @@ the store is a host file and not in the stream. Legs:
 **Traps specific to it**: the watch address and the shape (#232); the
 blocking read (#266); the batch ordering for pictures (#328); the
 give-back inside a batch (#332); the composer under a vendor's bar
-(M5-E2d); the one keystroke a read is answered with (#325). Open: #312.
+(M5-E2d); the one keystroke a read is answered with (#325).
 
 ### The explored overlay (#179, M5-E5a to M5-E5g)
 

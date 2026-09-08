@@ -118,15 +118,16 @@ with the engine linked in has; a default build reports `pictures=0/14`.
 
 ### The reader
 
-**What it does.** When the game cites an entry, tale or proclamation, the
-entry opens on the game's screen in the game's font, in the roster panel.
-A **`Notes`** command on the party's own bar opens a paged log of
-everything cited, newest first with a `*` on the unread, as a full
-screen; **F1** opens a number prompt for the entries nothing cites. An
-entry opened from the log or F1 while the party's own bar is live is a
-full screen with `NEXT`, `PREV` and `EXIT`; a picture is the page after
-its caption. Closing gives the screen back through the program's own
-composer.
+**What it does.** When the game cites an entry, tale or proclamation, it
+goes on your list — the game's own narration is what tells you, and the
+entry is there to read when you want it. A **`Notes`** command on the
+party's own bar opens that log, newest first with a `*` on the unread,
+as a full screen. Picking a row opens the entry on the game's screen in
+the game's font, a full screen with `NEXT`, `PREV` and `EXIT`; a picture
+is the page after its caption. Closing gives the screen back through the
+program's own composer. **`Notes` is the only way in**, and that is why:
+it is a command on the party's own bar, which is the one place a whole
+screen can be handed back.
 
 **How you turn it on.** `--seam journal`, and `--journal-store` if the
 text is not where the host would look.
@@ -140,6 +141,10 @@ of the program's prose.
 all (cheat)* on the page, puts every entry on the log so the OCR text can
 be read off the game's screen. It is a host action, not a seam, and the
 log stays filled until the store's `seen` lines are removed.
+
+**What it will not do.** Open an entry the game has not sent you to. The
+log is what the story has told you to read, and the reader shows the log;
+to read the rest of a journal, `--cite-all-journal`.
 
 ## The debug cheats
 

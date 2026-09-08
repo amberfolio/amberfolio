@@ -28,7 +28,7 @@ text store, the seam half reads it back onto the game's screen.
 | **Ingestion**: locate, inflate or carry, crop, OCR, keep | `hosts/common/src/journal_*.cpp`; `--journal`; the page's file input |
 | **Store**: scanned text, corrections, read log, pictures | `journal_store.cpp`, `page/journal.mjs` |
 | **Citation watch**: "section word plus a number" at the message box | `seam_journal.cpp`, `journal_citation_in()` |
-| **Reader panel**: F1's prompt, section cycling, paging, close | `seam_journal.cpp`, `machine/journal.h` |
+| **Reader**: opening a row, paging, close | `seam_journal.cpp`, `machine/journal.h` |
 | **Notes and the log**: `Notes` on the party's bar, `N` opens the log | `seam_journal.cpp`, the overlay 14 points |
 
 Three properties cut across all five: the **fidelity invariant**,
@@ -48,7 +48,7 @@ person's, reported per `docs/journal.md` §8. What CI runs, by surface:
 | Ingestion | `journal_*_test.cpp`, `run-journal.cmake`, `smoke.mjs` |
 | Store | `journal_store_test.cpp` |
 | Citation watch | `JournalCitation.*`, `JournalWindow.*` |
-| Reader panel | `seam_journal_test.cpp`, 96 cases |
+| Reader | `seam_journal_test.cpp`, 157 cases |
 | Notes and log | `JournalNotes.*`, `JournalList.*` |
 | Sessions | the recordings, and the `contrast` sweep |
 
@@ -82,8 +82,9 @@ time, off a contact sheet (`frames.py sheet`).
 
 **Rules a leg has to obey** (#233, #234):
 
-- Confinement is masking, not a bounding box: the panel and the `Notes`
-  cells are far apart, so the difference's bounding box fits neither.
+- Confinement is masking, not a bounding box: what a seam draws and the
+  `Notes` cells can be far apart, so the difference's bounding box fits
+  neither.
   `scripts/frames.py diff --allow` blanks every allowed rect and asserts
   what survives is empty.
 - A screen can appear in the two runs a dump apart, because a claimed key
@@ -103,19 +104,19 @@ time, off a contact sheet (`frames.py sheet`).
 
 | Rect | Pixels | Cells | Note |
 | --- | --- | --- | --- |
-| Reader panel | x 136..311, y 8..119 (176 × 112) | cols 0x11..0x26, rows 1..14 | `automap_panel_*` in `automap.h`; the party roster's cells |
 | `Notes` splice, 3D bar | x 273..311, y 192..199 | six cells at the bar's end | measured by diff, §9; the area-mode bar's word sits further right and is unmeasured |
 | Log screen | whole frame | | |
 | Give-back | ∅ | | after the way out the diff is empty; since #330 the bar row included |
 
 Colours: the caption row is EGA index 14 (highlight yellow), the body
 rows index 2 (message green). Structural checks a rect can carry without
-a golden: caption-row non-black pixels all 14 and body-row all 2; the
-panel non-blank when a page should be up; two stores differing only in
-curly versus straight quotes give byte-identical panels (RDR-11).
+a golden: caption-row non-black pixels all 14 and body-row all 2; two
+stores differing only in curly versus straight quotes give byte-identical
+screens (RDR-11). Since #346 everything this seam draws takes the whole
+frame, so a rect narrower than one confines nothing.
 
-**A test-only readback** of the panel's cells as text (an SDL flag and an
-`af_web_` call, on `--journal-probe`'s precedent) is unbuilt; worth it
+**A test-only readback** of the screen's cells as text (an SDL flag and
+an `af_web_` call, on `--journal-probe`'s precedent) is unbuilt; worth it
 only if the hash checks are too blunt.
 
 ## 4. The test matrix
@@ -150,13 +151,13 @@ disk, scripted. **C** is a person with a display.
 | ID | Case | Tier | Status |
 | --- | --- | --- | --- |
 | CIT-1 | Recognizer and window over test strings | A | exists |
-| CIT-2 | A real citation opens a real entry: square `3,4` facing east at the city hall, Up and Return; `--seam journal`, ING-2's store, `--dump-every 25`, `journal-open calls=1 last=131136` (proclamation 64) | B | driven (#232, PR #241) |
-| CIT-3 | A citation split over two message-box calls; the first opens nothing | B | driven (#232) |
+| CIT-2 | A real citation logs a real entry: square `3,4` facing east at the city hall, Up and Return; `--seam journal`, ING-2's store, `--dump-every 25`. Since #346 it draws nothing and asks no host: `journal-open calls=0`, four rows on the `Notes` log, each unread | B | driven for the old behaviour (#232, PR #241); owed a re-drive for #346 |
+| CIT-3 | A citation split over two message-box calls; the first logs nothing | B | driven (#232) |
 | CIT-4 | No false positives: `calls=0` on sessions that do not cite | B | blocked: the host refuses `--seam` beside `--replay` (#235) |
-| CIT-5 | A citation under a story page keeps Space and Return the program's | B | needs a square; CIT-2 cites on the last page |
-| CIT-6 | A citation with an empty store: `calls=1`, nothing drawn; refusals are the F1 path only (#175) | B | driven (#232) |
+| CIT-5 | A citation leaves every key the program's, because it draws nothing (#346) | B | subsumed: nothing is claimed at a citation |
+| CIT-6 | A citation with an empty store: nothing drawn and no host asked; refusals are the reader's own path only (#175) | B | driven (#232) |
 
-### Reader panel
+### Reader
 
 All scripts start from the Leg 9 prefix (§10): the party is on the street
 from about frame 10,000. Leave 100 frames between presses.
@@ -164,20 +165,18 @@ from about frame 10,000. Leave 100 frames between presses.
 | ID | Case | Tier | Status |
 | --- | --- | --- | --- |
 | RDR-1 | Unit suite, pixel buffer against a test font | A | exists |
-| RDR-2 | F1 opens the prompt; `JOURNAL` caption in 14, footer, cursor rule | B | `tests/visual/rdr-prompt.leg` (#234) |
-| RDR-3 | Digits, Backspace, Return open an entry; `ENTRY 4` in 14, body in 2, no row over 22 cells | B | `rdr-prompt.leg` (#234) |
-| RDR-4 | F1 cycles ENTRY, TALE, PROCLAMATION, ENTRY | B | a leg (#234) |
+| RDR-2 | Return on a listing row opens it; `ENTRY 3` in 14, body in 2, no row over 38 cells | B | `tests/visual/rdr-page.leg`; owed a drive (#293) |
 | RDR-5 | Paging a long entry; the last key gives the screen back | B | `tests/visual/rdr-page.leg`, single since #305; owed a drive (#293) |
-| RDR-6 | Escape from prompt and page; Backspace back a page | B | `rdr-prompt.leg`, `rdr-page.leg` (#234, #305) |
+| RDR-6 | Escape from a page and from the listing; Backspace back a page | B | `rdr-page.leg` (#234, #305) |
 | RDR-7 | The four refusals: no store, entry 999, empty scan, over 4 KiB | B | new |
-| RDR-8 | Give-back exact: the frame after the page closes equals the frame before F1 | B | `rdr-page.leg` as an `equal` (#234, #305) |
+| RDR-8 | Give-back exact: the frame after the listing closes equals the frame before `Notes` | B | `rdr-page.leg` as an `equal` (#234, #305) |
 | RDR-9 | Modal over the automap, map back after: `tests/visual/rdr-map-back.leg`; `--seam automap`, Tab, `Notes`, `E`, Tab twice | B | a leg (#332); owed a drive (#293) |
-| RDR-10 | Off a roster screen the key is nobody's: F1 in a shop gives `calls=0` | B | new |
-| RDR-11 | Transliteration: curly and plain stores, identical panels | B | new |
+| RDR-10 | With the reader down no key is this seam's at all (#346): every keystroke reaches the program, on every screen | A | `JournalKeys.WithTheReaderDownEveryKeyIsTheProgramsOwn` |
+| RDR-11 | Transliteration: curly and plain stores, identical screens | B | new |
 | RDR-12 | Every reader script on the wasm module, `cmp` of final frames | B | done for three sessions (#177) |
 | RDR-13 | A real entry read by a person, windowed; never screenshot it | C | new |
 | RDR-14 | An entry that is a picture: `tests/visual/rdr-art.leg`; prompt, caption, `NEXT`, `EXIT`, over `reader-art-store.txt` | B | a leg (#328); owed a drive (#293) |
-| RDR-15 | A real picture on a display, whole and halved | C | dumped stills at 2x only (#328; `docs/journal.md` §11.6) |
+| RDR-15 | A real picture on a display, whole | C | dumped stills at 2x only (#328; `docs/journal.md` §11.6) |
 
 ### Notes and the log
 
@@ -187,12 +186,11 @@ from about frame 10,000. Leave 100 frames between presses.
 | NOT-2 | `Notes` on both bars: six cells on the bar row | B | `tests/visual/not-bars.leg` |
 | NOT-3 | Not on a vendor's bar: diff ∅ in a shop | B | new |
 | NOT-4 | The empty log: frame, title, one sentence, `EXIT`, in one frame (`--dump-every 1` around the press shows no partial screen) | B | `tests/visual/not-log-giveback.leg` (#234) |
-| NOT-5 | A filled log after CIT-2: four in order, `*` on the unread, cursor row in 14; an F1-opened entry is never logged (#233) | B | a leg (#234) |
+| NOT-5 | A filled log after CIT-2: four in order, `*` on every one of them because a citation reads nothing (#346), cursor row in 14 | B | a leg (#234) |
 | NOT-6 | Cursor at the ends; a log longer than a screenful pages | B | new |
 | NOT-7 | Return opens the line on the whole screen (#305); the star comes off | B | seen; #233's defect removed by #305 |
 | NOT-8 | Nothing reaches the program under the log (#230): `tests/visual/not-log-modal.leg`, one digest across 1,475 frames | B | a leg (#234) |
 | NOT-9 | Give-back in every mode: `not-log-giveback.leg` and `tests/visual/rdr-bar.leg`, bar row included, whichever key point the way out lands on (#325); area mode and the alternate screen uncovered | B | 3D mode only (#234, #330, #325) |
-| NOT-10 | F1 from the log goes to the prompt | B | new |
 | NOT-11 | The log on the wasm module, `cmp` equal | B | done for `notes.rec` (#177) |
 | NOT-12 | Nothing reaches the program under a full-screen page: `tests/visual/not-page-modal.leg` | B | derived (#305); owed a drive (#293) |
 | NOT-13 | A page from the log goes back to the log: `tests/visual/not-page-back.leg` | B | derived (#305); owed a drive (#293) |
@@ -204,7 +202,7 @@ from about frame 10,000. Leave 100 frames between presses.
 | FID-1 | Seam on, nothing cited, no key: identical run | B | not reachable, not a bug (#235): `Notes` is spliced as the party's bar is drawn, so `cpu` and `ram` differ too. `docs/seams.md` §7's seam-off invariant holds instead; `quiet-journal` is a `contrast`, not an `identical` |
 | FID-2 | `reader.rec` over `tests/visual/reader-store.txt`, 156 checkpoints | B | recorded (#235); owed a re-recording for the full screen (#293) |
 | FID-3 | `notes.rec`, 146 checkpoints | B | recorded (#235) |
-| FID-4 | `cite.rec` over an external store pinned by digest, 291 checkpoints; skips loudly without it | B | recorded (#235) |
+| FID-4 | `cite.rec` over an external store pinned by digest; skips loudly without it. A citation draws nothing since #346, so the run diverges from the seam-off run only where the `Notes` splice does | B | recorded (#235); stale, and re-recorded with the rest of the library under #293 |
 
 ## 5. Harness work the matrix needs
 
@@ -268,10 +266,10 @@ display and cannot run it.
       the page says the browser would not keep it and still works.
 - [ ] A private window, and a browser blocking site data: the page loads,
       ingests, and says it kept nothing.
-- [ ] Drop a game directory, tick the `journal` seam, load slot A. F1
-      opens the prompt and not the browser's help; Tab with the automap
-      on does not move focus; Backspace at the prompt does not navigate
-      back; Escape does not leave full screen.
+- [ ] Drop a game directory, tick the `journal` seam, load slot A. `N`
+      opens the log; Tab with the automap on does not move focus;
+      Backspace on the log does not navigate back; Escape does not leave
+      full screen.
 - [ ] Open entry 1 and compare by eye with the desktop windowed at the
       same point: same wrapping, same colours.
 - [ ] `N` opens the log; `E` gives the screen back with nothing left
@@ -322,7 +320,7 @@ ingestion use `build/ocr-linked/hosts/sdl/Debug/amberfolio.exe`.
 ```sh
 export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy
 KEYS="--press A@7601 --press Return@7651 --press L@8951 --press A@9201
-      --press F1@10600 --press 3@10700 --press Return@10800"
+      --press N@10600 --press Return@10800"
 $HOST "$SCR/por" START.EXE --seam code-wheel --seam journal \
   --journal-store "$SCR/store.txt" --fast max --until 240000000 $KEYS \
   --dump "$SCR/on" --dump-every 100
@@ -357,9 +355,8 @@ python3 scripts/frames.py changed "$SCR/on"        # the stills that differ
 `--allow` it exits 0 when nothing differs outside the allowed rects and 2
 when something does. `sheet` collapses consecutive identical stills into
 one tile. Over Leg 9's script the on-run differs from the off-run in the
-panel and the `Notes` cells at every still after the entry opens
-(bounding box `136,8,311,198`; PIL prints it half-open as
-`(136, 8, 312, 199)`), and nowhere before F1.
+whole box and the `Notes` cells at every still after the log opens, and
+nowhere before it.
 
 **The wasm side.** `build/wasm/hosts/web/Debug/drive.mjs` takes the same
 flags; the wasm preset builds Debug only unless told otherwise, and the
@@ -371,14 +368,13 @@ import needs a `file:///C:/...` URL.
 | --- | --- | --- |
 | Frame rate for `--press` | 60 per virtual second; `--until` in PIT ticks at 1,193,182 per second | `docs/playable.md` |
 | Boot to the street, slot A | `--seam code-wheel --fast max --until 240000000 --press A@7601 --press Return@7651 --press L@8951 --press A@9201`; ends at frame 12,069 | Leg 9 |
-| Leg 9 reader keys | `F1@10600 3@10700 Return@10800 F1@11200` | Leg 9 |
-| Notes keys as driven | `N`, `4`, `Return` at the same spacing; `E` leaves the log | `docs/seams.md` §10 |
+| Leg 9 reader keys | `N@10600 Return@10800 N@11600`; `E` twice leaves the page and then the log | Leg 9 |
 | Dummy drivers | `SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy`, and no `--headless`, or `--press` is refused | learnt twice |
 | The document | the archive edition's PDF, in `games/por-journal`, never committed | this machine |
-| Panel rect | x 136..311, y 8..119; cells 0x11..0x26 by rows 1..14; 22 columns by 14 rows, 12 of body | `automap.h` |
+| The box everything is drawn in | cells 1..0x26 by rows 1..0x16; 38 columns by 20 rows of body, from row 3; the bar on row 0x18 | `seam_journal.cpp` |
 | `Notes` rect, 3D bar | x 273..311, y 192..199 | §9, measured |
-| Strings the seam draws | `ENTRY`, `TALE`, `PROCLAMATION`, `JOURNAL`, `RETURN OPENS IT`, `ESC CLOSES`, `F1 CLOSES`, `NO JOURNAL / HAS BEEN READ`, `NO SUCH ENTRY / IN THIS JOURNAL`, `NOTHING WAS READ / FROM THAT ENTRY`, `ADVENTURER'S JOURNAL`, `THE GAME HAS NOT SENT YOU HERE YET.`, `EXIT`, `NEXT`, `PREV` | `seam_journal.cpp` |
+| Strings the seam draws | `ENTRY`, `TALE`, `PROCLAMATION`, `NO JOURNAL / HAS BEEN READ`, `NO SUCH ENTRY / IN THIS JOURNAL`, `NOTHING WAS READ / FROM THAT ENTRY`, `THE PICTURE / IS NOT HERE`, `ADVENTURER'S JOURNAL`, `THE GAME HAS NOT SENT YOU HERE YET.`, `EXIT`, `NEXT`, `PREV` | `seam_journal.cpp` |
 | Delivery cap | 4 KiB per entry; longer is truncated and the reader says so | `docs/journal.md` §9 |
-| Web key handling | Recognised keys are `preventDefault`ed, F1 included; unrecognised ones are left to the browser | `app.mjs` |
+| Web key handling | Recognised keys are `preventDefault`ed; unrecognised ones are left to the browser | `app.mjs` |
 | Session hashes | A checkpoint's state hash includes the framebuffer | `tests/sessions/README.md` |
 | Report rule | An ingestion is reported as counts, fingerprints and the engine version; never text, an excerpt or a screenshot | `docs/journal.md` §8 |

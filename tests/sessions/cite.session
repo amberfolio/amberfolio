@@ -2,9 +2,16 @@
 #
 # FID-4 (#235): #232's citation as a session. A new party through the
 # city to the hall at 3,4 facing east, where the game's own entrance
-# event names four proclamations in one sentence; the reader opens on the
-# first with nobody having pressed a key, and from that checkpoint on the
-# panel's pixels are in every hash.
+# event names four proclamations in one sentence.
+#
+# **Recorded before #346**, when a citation opened the first of them in
+# the roster panel with nobody having pressed a key, so from that
+# checkpoint on the panel's pixels are in every hash. A citation writes a
+# log line and draws nothing now, and the log is not machine state, so
+# the run this describes no longer exists. It is re-recorded with the
+# rest of the library under #293; the store it needs is a real ingestion
+# of a real player's journal and is not on any machine but the
+# maintainer's.
 # The store is external and pinned by digest: it is a real ingestion of a
 # real player's own journal, ninety-nine entries, and no byte of it may
 # enter this tree (PLAN.md §6). Without the digest the session is skipped

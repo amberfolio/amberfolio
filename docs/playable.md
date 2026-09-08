@@ -756,27 +756,26 @@ over a real store pinned by digest (#232).
 --seam code-wheel --seam journal --journal-store ./journal.txt
 --press A@7601 --press Return@7651      the code wheel
 --press L@8951 --press A@9201           LOAD SAVED GAME, slot A
---press F1@10600                        the reader
---press 3@10700 --press Return@10800    the entry to open
---press F1@11200                        and the party list back
+--press N@10600                         Notes, the log
+--press Return@10800                    the row the cursor is on
+--press N@11600                         NEXT, the entry's second page
+--press E@13000 --press E@13800         out of the page, out of the log
 ```
 
 ```
-amberfolio: journal store ./journal.txt entries=1 corrections=0
-amberfolio: seam journal armed fired=602659
-amberfolio: host-service journal-open calls=1 last=3 at=214790400
+amberfolio: journal store ./journal.txt entries=2 corrections=0 seen=2
+amberfolio: host-service journal-open calls=1 last=3
 ```
 
-F1 has no character (`keyboard.h` answers AL=0 for F1 to F10) and the
-program picks its commands by character, so it cannot be one. F11 and
-F12 are the SDL host's own (`docs/hosts.md` §3).
+**`Notes` is the only way in** (#346). F1 opened a number prompt until
+then; the key is claimed by nothing now, and a script that presses it
+gets the program's own answer to a key it has no use for.
 
 The screen: `ENTRY 3` in the program's highlight yellow, the body in its
-message green. This run predates #305: a page opened from F1 on the
-adventuring screen is a full screen now, a citation's page is still the
-panel, and the frames are owed a re-drive (#293). With `--seam automap`
-on too, the entry draws over the map and F1 gives the map back
-(`tests/sessions/subset-map-reader.rec`).
+message green, `NEXT PREV EXIT` on the bottom row. With `--seam automap`
+on too, the entry draws over the map and leaving gives the map back
+(`tests/sessions/subset-map-reader.rec`). The frames are owed a re-drive
+(#293).
 
 The same script through `drive.mjs`, same flag spellings, with
 `--until 240000000 --quiet --dump wasmj` reports `fired=602779` and
@@ -815,10 +814,10 @@ While it is up:
 - `E` leaves.
 - **Scripts leave by Escape.** `E` on the party's own bar is ENCAMP, so a
   seam-off run pressing `E` ends up somewhere else.
-- `N` is ignored while a page is up; a script that wants the log after a
-  citation closes the panel first.
+- `N` on a page is `NEXT` and not the bar's `Notes`, which is under the
+  screen and unreachable while one is up.
 - Return on a row opens that entry full-screen in the same box (#305);
-  Escape or F1 brings the log back with the cursor where it was and the
+  Escape or `E` brings the log back with the cursor where it was and the
   `*` gone. `tests/visual/not-page-back.leg` and `not-page-modal.leg`
   are the claims, not yet driven (#293).
 

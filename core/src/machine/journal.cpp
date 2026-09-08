@@ -531,9 +531,6 @@ void journal_state::clear() noexcept {
   mode_ = journal_reader_mode::closed;
   page_ = 0;
   page_count_ = 0;
-  digit_count_ = 0;
-  asked_kind_ = journal_kind::entry;
-  place_ = journal_page_place::panel;
   from_list_ = false;
   bar_live_ = false;
   seen_count_ = 0;
@@ -731,18 +728,6 @@ void journal_state::set_reader(journal_reader_mode mode) noexcept {
   screen_drawn_ = 0;
 }
 
-void journal_state::set_page_place(journal_page_place place) noexcept {
-  if (place_ == place) {
-    return;
-  }
-  place_ = place;
-  // The two sizes are not the same pixels, so nothing that was drawn for
-  // one counts as drawn for the other.
-  on_screen_ = false;
-  drawn_signature_ = 0;
-  screen_drawn_ = 0;
-}
-
 void journal_state::set_page(std::uint16_t page) noexcept {
   if (page_ == page) {
     return;
@@ -752,37 +737,6 @@ void journal_state::set_page(std::uint16_t page) noexcept {
   // A turned page is a screen drawn again from the top, the same way a
   // moved cursor is (#305).
   screen_drawn_ = 0;
-}
-
-bool journal_state::push_digit(char digit) noexcept {
-  if (digit_count_ == journal_prompt_digits || !is_digit(digit)) {
-    return false;
-  }
-  digits_[digit_count_++] = digit;
-  drawn_signature_ = 0;
-  return true;
-}
-
-void journal_state::pop_digit() noexcept {
-  if (digit_count_ != 0) {
-    --digit_count_;
-    drawn_signature_ = 0;
-  }
-}
-
-void journal_state::clear_digits() noexcept {
-  if (digit_count_ != 0) {
-    digit_count_ = 0;
-    drawn_signature_ = 0;
-  }
-}
-
-std::uint16_t journal_state::asked_entry() const noexcept {
-  unsigned value = 0;
-  for (std::size_t i = 0; i < digit_count_; ++i) {
-    value = (value * 10U) + static_cast<unsigned>(digits_[i] - '0');
-  }
-  return static_cast<std::uint16_t>(value);
 }
 
 void journal_state::note_seen(journal_citation what, std::uint8_t month,
@@ -865,14 +819,6 @@ void journal_state::move_list_cursor(int by) noexcept {
     screen_drawn_ = 0;
     drawn_signature_ = 0;
   }
-}
-
-void journal_state::cycle_asked_kind() noexcept {
-  const auto next = static_cast<std::size_t>(asked_kind_) + 1U;
-  asked_kind_ = static_cast<journal_kind>(next % journal_kinds);
-  // The panel says which section it is pointed at, so it has to be drawn
-  // again — the digits did not change and nothing else would notice.
-  drawn_signature_ = 0;
 }
 
 void journal_state::set_covered(bool covered) noexcept {

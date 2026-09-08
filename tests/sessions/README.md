@@ -14,6 +14,10 @@ watches, so a replay with a disk arrives at a screen still waiting. The
 `contrast`/`identical` checks CI makes read the recordings and are
 unaffected.
 
+`cite` is stale twice over: since #346 a citation writes a line on the
+`Notes` log and draws nothing, so the panel that is in every hash after
+its checkpoint is a panel the seam no longer paints.
+
 ## What a session is
 
     tests/sessions/spin.rec       the recording
@@ -66,7 +70,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `wild-trail` | same | + explored | `contrast wild` | 107 of 140 identical, divergent at the **arrival** (tick 204,866,288), because fog marks the unknown. Recorded at the grey checker, radius one; #293 re-records it |
 | `reader` | shipped slots, `journal-store tests/visual/reader-store.txt` | code-wheel, journal | | F1, the section cycled, entry three opened by number, paged, closed. 156 checkpoints. Draws a page #305 now draws full-screen; re-recorded under #293 |
 | `notes` | same | code-wheel, journal | | `Notes` opens an empty log; six adventuring keys reach nothing while it is up. 146 checkpoints |
-| `cite` | external, pristine; `journal-store external SHA256` | code-wheel, journal | | a real citation (#232): a new party to the city hall at 3,4 E, whose event names four proclamations, the first opened with no key pressed. 291 checkpoints |
+| `cite` | external, pristine; `journal-store external SHA256` | code-wheel, journal | | a real citation (#232): a new party to the city hall at 3,4 E, whose event names four proclamations. 291 checkpoints. Recorded when a citation *opened* the first of them; since #346 it opens nothing and only the log moves, which is not machine state — re-recorded under #293 |
 | `subset-map-reader` | shipped slots | code-wheel, automap, journal | | the panel up, an entry opened over it, the map given back and put away. 146 checkpoints. Re-recorded under #293 |
 | `quiet` | shipped slots | code-wheel | | the baseline: slot A, four steps walked. 126 checkpoints |
 | `quiet-automap` | same | + automap | `identical quiet` | Tab never pressed |
