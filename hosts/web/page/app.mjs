@@ -200,50 +200,16 @@ export function runDevPage() {
     appendConsole(`[host] amberfolio ${major}.${minor}.${patch}\n`);
     if (speedSelect && speedSelect.value !== 'xt') applySpeed();
 
-    // And what day it is out in the world, said once, before the machine
-    // has taken a step (#320).
+    // And what day it is out in the world, before the machine has taken
+    // a step (#320). Said again the moment it starts running, which is
+    // `seedWallClock`'s own comment and #343.
     //
-    // The clock inside is a seed plus virtual time and never a callout
-    // into here (host.mjs's `wallClockFields`, `machine/platform.h`), so
-    // a machine nobody tells is not a machine with an approximate date —
-    // it is one counting from the DOS epoch, and every INT 21h AH=2Ah
-    // answers 1 January 1980 plus its own uptime. The journal's listing
-    // is where that surfaced: every entry stamped `01-01 00:04`, which is
-    // four minutes after Boot was pressed.
-    //
-    // Here rather than at the Boot handler beside `codeWheelApply()`,
-    // even though that is where the same sentence about "before the first
-    // step" is written, because this one needs no program: the code
-    // wheel's answer is looked up by the loaded file's fingerprint and
-    // the date is not. One place, so the demo program and a player's own
-    // copy are told the same thing the same way.
-    const wall = wallClockFields(new Date());
-    if (
-      wall &&
-      machine.setWallClock(
-        wall.year,
-        wall.month,
-        wall.day,
-        wall.hour,
-        wall.minute,
-        wall.second,
-        wall.centisecond,
-      ) === AF_OK
-    ) {
-      const two = (n) => String(n).padStart(2, '0');
-      appendConsole(
-        `[host] wall clock ${wall.year}-${two(wall.month)}-${two(wall.day)} ` +
-          `${two(wall.hour)}:${two(wall.minute)}:${two(wall.second)}\n`,
-      );
-    } else {
-      // Log, don't fake: a browser whose year DOS has no room for gets
-      // the machine this build has always had, and is told so, rather
-      // than a date somebody here invented for it.
-      appendConsole(
-        '[host] wall clock not set - this browser reports a date outside ' +
-          "DOS's own 1980-2099; the machine counts from 1980-01-01\n",
-      );
-    }
+    // Here as well as there because this one needs no program and no run:
+    // the journal panel's *Cite them all* stamps every row off this
+    // clock, and a person may press it on a tab that has never booted
+    // anything. That is #352 in the browser, and a seed taken only at
+    // the run would leave it reading 1 January 1980.
+    seedWallClock(machine, appendConsole);
 
     // The journal this browser already read, back into the module's store
     // (M5-E3f). Here rather than at an ingestion because the point of it
@@ -951,6 +917,66 @@ function keepCodeWheelStore(machine) {
 }
 
 /// Present, run, and report — everything both entry points share.
+/// Tell `machine` what the clock out here reads, at the tick it reads it
+/// (#320, #343).
+///
+/// The clock inside is a **seed plus virtual time and never a callout**
+/// into here (`host.mjs`'s `wallClockFields`, `machine/platform.h`), so a
+/// machine nobody tells is not a machine with an approximate date — it is
+/// one counting from the DOS epoch, and every INT 21h AH=2Ah answers 1
+/// January 1980 plus its own uptime. The journal's listing is where that
+/// surfaced: every entry stamped `01-01 00:04` (#320).
+///
+/// **And a seed is only as good as the tick it was taken at, which is why
+/// this is called twice** (#343). `ensureMachine()` makes the machine on
+/// whichever gesture comes first — a dropped directory, a journal picked
+/// for ingestion — and virtual time does not begin until somebody presses
+/// **start** or **boot**. Every second in between is wall time the
+/// machine's clock never sees, and it is not recovered later: the seed is
+/// an origin, so a stamp taken an hour into play is that origin plus an
+/// hour of *virtual* time, and the whole listing reads that many seconds
+/// stale for the rest of the session. Picking a journal and waiting out
+/// its ingestion is minutes of it. So the run loop takes a fresh seed at
+/// the tick it is about to start stepping from, which is where the
+/// desktop host has always taken its one (`hosts/sdl/src/main.cpp`,
+/// before the first instruction).
+///
+/// Re-seeding is not a second clock and not a jump: `wall_clock::set()`
+/// records an instant *and* the tick it belongs to, so the machine's
+/// answers stay a monotonic function of virtual time either way. It is
+/// still a seed, so a run is still reproducible from what the host wrote
+/// down.
+function seedWallClock(machine, appendConsole) {
+  const wall = wallClockFields(new Date());
+  if (
+    wall &&
+    machine.setWallClock(
+      wall.year,
+      wall.month,
+      wall.day,
+      wall.hour,
+      wall.minute,
+      wall.second,
+      wall.centisecond,
+    ) === AF_OK
+  ) {
+    const two = (n) => String(n).padStart(2, '0');
+    appendConsole(
+      `[host] wall clock ${wall.year}-${two(wall.month)}-${two(wall.day)} ` +
+        `${two(wall.hour)}:${two(wall.minute)}:${two(wall.second)}\n`,
+    );
+    return true;
+  }
+  // Log, don't fake: a browser whose year DOS has no room for gets the
+  // machine this build has always had, and is told so, rather than a date
+  // somebody here invented for it.
+  appendConsole(
+    '[host] wall clock not set - this browser reports a date outside ' +
+      "DOS's own 1980-2099; the machine counts from 1980-01-01\n",
+  );
+  return false;
+}
+
 async function run(
   machine,
   {
@@ -1127,6 +1153,15 @@ async function run(
   // counter (platform.h's pull contract): a frame is drawn when a new one
   // exists, which on a 240 Hz display is now every fourth callback rather
   // than every one.
+  // What the clock out here reads, at the tick this run is about to step
+  // from (#343). `ensureMachine()` took one too, and this one replaces
+  // it: everything between the two — choosing a directory, ingesting a
+  // journal, reading the code wheel — is wall time the machine's clock
+  // would otherwise never have seen, and a seed is an origin, so it would
+  // have left every journal row stamped that far behind for the whole
+  // session. `seedWallClock`'s own comment has the rest.
+  seedWallClock(machine, appendConsole);
+
   const ticksPerSecond = machine.ticksPerSecond();
   let next = machine.time();
   let lastTimestamp = null;

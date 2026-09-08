@@ -552,13 +552,26 @@ elapsed real time says virtual time should be. A frame is drawn when
 The wall clock is a **seed and never a callout**
 (`af_machine_set_wall_clock()`): a host says "at this tick the clock read
 this", and every later read (INT 21h AH=2Ah and 2Ch, and so every journal
-row's stamp) is that instant plus virtual time. `ensureMachine()` seeds it
-once, after `reset()`, which carries a seed across. `wallClockFields()` in
+row's stamp) is that instant plus virtual time. `wallClockFields()` in
 `host.mjs` is the conversion, pure so `tests/smoke.mjs` can drive it:
 `Date` months from zero to DOS's from one, milliseconds floored to
 hundredths, years outside 1980-2099 refused. **Local fields, not UTC.** No
 control on the page; the desktop host has `--wall` because the seed is
 machine state (`docs/replay.md` §6).
+
+**Seeded twice, and the second one is the one that counts** (#343).
+`ensureMachine()` seeds it after `reset()`, which carries a seed across,
+and the run loop seeds it again at the tick it is about to start stepping
+from — where the desktop host has always taken its one, before the first
+instruction. A page makes its machine on whichever gesture comes first and
+does not step until **start** or **boot**, so without the second seed every
+second in between — choosing a directory, ingesting a journal, reading the
+code wheel — is wall time the clock never sees. A seed is an origin, not a
+correction, so that gap does not close later: the whole journal listing
+reads that many minutes stale for the rest of the session, which is what
+#343 reported. The first seed stays because *Cite them all* stamps rows off
+this clock and can be pressed on a tab that has booted nothing (#352's
+shape, in a browser).
 
 ### What a browser run says about itself
 
