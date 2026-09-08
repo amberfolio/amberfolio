@@ -208,12 +208,25 @@ TEST(JournalTable, TheArchiveEditionIsMostlyButNotAlwaysOnePiece) {
   // could not have described this document (#214).
   std::size_t one = 0;
   std::size_t many = 0;
+  std::size_t pieces = 0;
   for (const journal_entry_fact& fact : known_journals().front().entries) {
+    if (fact.kind != journal_kind::entry) {
+      continue;
+    }
     (fact.fragments.size() == 1U ? one : many) += 1U;
+    pieces += fact.fragments.size();
   }
   EXPECT_GT(one, 0U);
   EXPECT_GT(many, 0U) << "if every entry fits one rectangle, the fragment"
                          " list has stopped earning its keep";
+  // The counts the prose quotes -- `journal_facts.cpp`'s own header,
+  // `journal_ocr.h`, `journal.mjs` and `docs/journal.md` all say them.
+  // Pinned because they drifted once already: #344 took a piece off
+  // entry one and four sentences went on claiming seventeen entries in
+  // seventy-six pieces.
+  EXPECT_EQ(one + many, 58U);
+  EXPECT_EQ(many, 16U);
+  EXPECT_EQ(pieces, 75U);
 }
 
 /// Every rule a row has to satisfy, applied to whatever table is handed
@@ -246,6 +259,14 @@ void CheckRows(std::span<const journal_edition> table) {
           << journal_kind_name(fact.kind) << ' ' << fact.number;
       EXPECT_FALSE(fact.fragments.empty())
           << "entry " << fact.number << " is nowhere";
+      // A boundary is what carries a paragraph break (#361), so the
+      // first piece cannot be one: there is nothing before it to break
+      // from, and a row that said so would be a row somebody edited by
+      // hand and shifted.
+      if (!fact.fragments.empty()) {
+        EXPECT_FALSE(fact.fragments.front().begins_paragraph)
+            << "entry " << fact.number << " opens on a paragraph break";
+      }
       for (const journal_fragment& piece : fact.fragments) {
         EXPECT_NE(piece.length, 0U)
             << "entry " << fact.number << " has a piece of no bytes";
@@ -292,6 +313,11 @@ void CheckRows(std::span<const journal_edition> table) {
         EXPECT_TRUE(journal_filter_supported(picture.image.filter))
             << "entry " << fact.number << " has a picture under a filter"
             << " this build cannot carry";
+        // A picture is not prose, so the one field that is about prose
+        // means nothing on it (#361).
+        EXPECT_FALSE(picture.begins_paragraph)
+            << "entry " << fact.number << " has a picture that claims to"
+            << " open a paragraph";
         // And it has to reduce to something the reader has room for,
         // which is the one rule that is about the *screen* rather than
         // about the document. A rectangle a thousand samples tall is
@@ -365,6 +391,27 @@ TEST(JournalTable, NoPieceOfTextIsMeasuredOverAPicture) {
       }
     }
   }
+}
+
+TEST(JournalTable, SixOfTheArchiveEditionsBoundariesAreParagraphBreaks) {
+  // The finding #361 is (see `journal_facts.cpp`): a fragment boundary
+  // is usually a continuation and a third of the time it is not. Both
+  // numbers are pinned because both are the claim -- a table where every
+  // boundary continued would be the reading that ran two sentences
+  // together, and one where every boundary broke would be the paragraph
+  // the printed page does not have.
+  std::size_t boundaries = 0;
+  std::size_t breaks = 0;
+  for (const journal_entry_fact& fact : known_journals().front().entries) {
+    for (std::size_t i = 1; i < fact.fragments.size(); ++i) {
+      ++boundaries;
+      if (fact.fragments[i].begins_paragraph) {
+        ++breaks;
+      }
+    }
+  }
+  EXPECT_EQ(boundaries, 18U);
+  EXPECT_EQ(breaks, 6U);
 }
 
 TEST(JournalTable, EveryShippedRowIsAWellFormedFact) {

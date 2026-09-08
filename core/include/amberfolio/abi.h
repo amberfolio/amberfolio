@@ -324,8 +324,14 @@ uint32_t af_version(void);
 ///     seam's once needs. What *did* change under it is behaviour rather
 ///     than surface — no seam is gated any more (#290) — and behaviour
 ///     is what a build's own version says, not what an ABI's does.
+///   * **1.3** — #361, one added entry point and nothing changed:
+///     `af_web_journal_part_begins_paragraph`, which is how a fragment
+///     boundary that is a paragraph break reaches the page that joins
+///     the pieces. Minor and not major, because every call that was
+///     there answers what it answered: a page written for 1.2 asks
+///     nothing about paragraphs and gets the transcription it got.
 #define AF_ABI_VERSION_MAJOR 1u
-#define AF_ABI_VERSION_MINOR 2u
+#define AF_ABI_VERSION_MINOR 3u
 
 // --- Facts about the machine ------------------------------------------
 //

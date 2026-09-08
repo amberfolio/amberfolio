@@ -180,10 +180,10 @@ bool tesseract_linked_ocr::recognize(const host::journal_scan& scan,
       quality_ = {};
       return false;
     }
-    if (!out.empty()) {
-      out.push_back('\n');
-    }
-    out += piece;
+    // One newline, and two where the table says this piece opens a
+    // paragraph (#361) -- the same call the program-driven engine makes,
+    // for the same reason.
+    host::journal_join_piece(out, piece, part.begins_paragraph);
     // Weighted by words, so an entry whose second piece is three words
     // does not pull the whole entry's confidence around (#315).
     if (how.known) {

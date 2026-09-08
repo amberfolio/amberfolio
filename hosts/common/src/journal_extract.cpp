@@ -416,6 +416,10 @@ journal_trouble extract_scan(std::span<const std::uint8_t> document,
       out = journal_scan{};
       return why;
     }
+    // Set after the extraction and not inside it, because both routes
+    // clear the part they fill and this is the one field neither of them
+    // reads a document to learn (#361).
+    part.begins_paragraph = fragment.begins_paragraph;
     out.parts.push_back(std::move(part));
   }
   return journal_trouble::none;

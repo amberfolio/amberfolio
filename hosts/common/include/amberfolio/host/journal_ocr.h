@@ -90,11 +90,22 @@
 //   * a **space** between two words of one printed line;
 //   * **one newline** between two lines of one paragraph;
 //   * a **blank line** between two paragraphs;
-//   * **one newline** between two fragments of one entry, which is a
-//     continuation and not a break — an entry is a list of rectangles
-//     because entries flow out of a column onto the facing page
-//     (`journal_facts.h`), and seventeen of the first edition's fifty-eight
-//     do. Both hosts join their pieces here, not in the engine.
+//   * **one newline** between two fragments of one entry, which is
+//     usually a continuation and not a break — an entry is a list of
+//     rectangles because entries flow out of a column onto the facing
+//     page (`journal_facts.h`), and sixteen of the first edition's
+//     fifty-eight do. Both hosts join their pieces here, not in the
+//     engine.
+//   * **a blank line between two fragments the table says are two
+//     paragraphs** (#361). A boundary is a continuation by default and
+//     is not always one: a paragraph can end exactly where its column
+//     does, and since #357 a piece can resume under its entry's own
+//     drawing. The fact is the fact table's — `journal_fragment`'s
+//     `begins_paragraph`, carried to the engine on the part — because
+//     it is a measurement off a printed page and not something an
+//     engine handed one rectangle at a time could see. Six of the first
+//     edition's eighteen boundaries are breaks, and each of them reads
+//     as two sentences run together on one line without this.
 //
 // It is written down here for the reason the region rule above is: an
 // engine that got this wrong would not look broken. Every paragraph break
@@ -169,6 +180,32 @@ namespace amberfolio::host {
 /// page segmentation is right. Tesseract's scale is 0 to 100 and both
 /// engines report on it.
 inline constexpr double journal_doubtful_confidence = 60.0;
+
+/// Join one piece of an entry onto the pieces already read, the way a
+/// reader reads them (#331, #361).
+///
+/// The whitespace rule above, as code, because two hosts spelling it out
+/// separately is two hosts that can disagree about one page — which is
+/// the thing this whole header exists to prevent. Nothing before the
+/// first piece; **one** newline between two pieces, which the reader
+/// reflows as a space, because a fragment boundary is a continuation;
+/// **two** where the fact table measured a paragraph break there.
+///
+/// No guard against an empty `piece`, and that is a statement about the
+/// callers rather than an omission: both desktop engines fail an entry
+/// whose piece read nothing, so a piece that reaches here read
+/// something. The page, whose engine drops such a piece instead, carries
+/// the dropped piece's break onto the next one.
+inline void journal_join_piece(std::string& out, std::string_view piece,
+                               bool begins_paragraph) {
+  if (!out.empty()) {
+    out.push_back('\n');
+    if (begins_paragraph) {
+      out.push_back('\n');
+    }
+  }
+  out += piece;
+}
 
 /// What an engine knew about the reading it just answered.
 ///

@@ -117,7 +117,10 @@ inline constexpr std::size_t journal_probe_colliding_entry = 3;
 /// goes through undecoded" is the fact and its index is an accident.
 ///
 /// It is also the one with **two** fragments (M5-E3b, #214), so the probe
-/// exercises an entry that flows the way a real edition's do.
+/// exercises an entry that flows the way a real edition's do — and its
+/// second one is the document's only fragment that **opens a paragraph**
+/// (#361), so the one fact about a piece that is neither pixels nor a
+/// rectangle is carried across every target rather than defaulted.
 inline constexpr std::size_t journal_probe_encoded_entry = 2;
 
 /// How many pieces the three entries have between them: one, one, two.

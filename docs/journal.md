@@ -61,8 +61,9 @@ amberfolio <dir> <program.exe> --seam journal
 One edition is in the table (#214): the Adventurer's Journal as the
 currently sold archive release ships it, fingerprint
 `67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c`. Its
-pages are `/DCTDecode` (§4a). It has 58 entries in 76 pieces, and 14
-pictures on 12 of those entries (§11).
+pages are `/DCTDecode` (§4a). It has 58 entries in 75 pieces, and 14
+pictures on 12 of those entries (§11). Six of the 18 boundaries between
+those pieces are paragraph breaks rather than continuations (§5).
 
 An edition is data in two places:
 
@@ -74,9 +75,10 @@ An edition is data in two places:
    `journal_fragment`s, each with the page, the byte offset of the
    stream's first data byte, its `/Length`, the image's `/Width`,
    `/Height`, `/BitsPerComponent`, component count, filter,
-   `/DecodeParms /Predictor`, whether it is `/Decode [1 0]`, and the
-   rectangle of that image which is that piece. Pictures are a second
-   span, `art` (§11.1).
+   `/DecodeParms /Predictor`, whether it is `/Decode [1 0]`, the
+   rectangle of that image which is that piece, and whether that piece
+   opens a paragraph (step 7 below). Pictures are a second span, `art`
+   (§11.1).
 
 CI checks the two against each other, and every row's shape: region
 inside its image, no two rows for one *(section, number)*, pieces in
@@ -98,9 +100,11 @@ read as journal entries and written back as the current version.
 
 **An entry is a list of pieces.** Entries are set two columns to a page
 and two pages to a scan, and they flow out of a column and, for four of
-the 58, onto the facing page. Seventeen are in more than one piece.
+the 58, onto the facing page. Sixteen are in more than one piece.
 `journal_entry_fact` carries a span of `journal_fragment` in reading
-order, and what an engine reads is joined in that order.
+order, and what an engine reads is joined in that order — with one
+newline, unless the piece's `begins_paragraph` says the boundary is a
+paragraph break and not a continuation (§5).
 
 **Measuring an edition's rectangles.** The tooling stays out of the
 repository: it reads a document this project may never carry. The method:
@@ -139,6 +143,13 @@ repository: it reads a document this project may never carry. The method:
    order catches a swash `CIX` read as `CLIX`; settle by eye.
 5. **Drop a piece with no ink in it**.
 6. **Pictures** are found and measured by §11.1's rule.
+7. **Mark the boundaries that are paragraph breaks** (#361). A boundary
+   is a continuation by default, and this edition's six exceptions are
+   ink rather than judgement: a paragraph opens with an indent, so
+   compare the first line of the resuming piece with that piece's own
+   left margin. Twelve of the eighteen start within two samples of it;
+   six start 18 to 22 right of it. Nothing lands between, which is what
+   makes the rule a measurement. Set `begins_paragraph` on the six.
 
 ## 4. What the extractor decodes, and what it refuses
 
@@ -260,9 +271,16 @@ reader reflows on it (§9):
 | two lines of a paragraph | one newline |
 | two paragraphs | a blank line |
 | two fragments of one entry | one newline, the hosts' own join |
+| two fragments the table calls two paragraphs | a blank line, the same join |
 
-- A fragment boundary is a continuation (§3): one newline, never a blank
-  line.
+- A fragment boundary is **usually** a continuation (§3): one newline,
+  because an entry is in pieces from running out of column and not from
+  the writer stopping. Where it is not, the fact is
+  `journal_fragment::begins_paragraph` and the join is a blank line
+  (#361). No engine can see this: it is handed one rectangle, and the
+  paragraph ended in the rectangle before it. Six of the tabled
+  edition's eighteen boundaries are breaks, and each of them read as two
+  sentences run together on one line until the flag existed.
 - The program-driven engine derives paragraphs from Tesseract's `tsv`
   columns `block_num`, `par_num` and `line_num`. Trap: each count
   restarts inside its parent, so joining on `line_num` alone runs two
@@ -460,7 +478,12 @@ filter, predictor and crop were right. Three levels:
 
 Also in CI: the region filter against word boxes in the pinned engine's
 own shape (§4a); paragraph breaks in `hosts/sdl/tests/tsv_words_test.cpp`,
-the page's smoke check and the probe (#331); the score harness (§5a).
+the page's smoke check and the probe (#331); the score harness (§5a). The
+probe's carried entry has a second piece that **opens a paragraph**, so
+the flag of #361 crosses the extractor, the ABI and the page on every
+target, and the join it feeds runs on its own in
+`hosts/common/tests/journal_ocr_test.cpp` and the page's smoke check —
+which is the only way to run it, no real engine being there to ask.
 
 **Never in CI**: any real engine or real document; the desktop engine is
 off by default and no runner has the document. Huffman-coded Flate

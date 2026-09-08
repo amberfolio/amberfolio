@@ -212,6 +212,34 @@ struct journal_fragment {
   journal_image image{};
   /// Which rectangle of that image this piece of the entry is.
   journal_region region{};
+  /// Whether the prose in this piece **opens a paragraph** rather than
+  /// carrying on the one the piece before it ended (#361).
+  ///
+  /// A fragment boundary is a continuation by default, and that is the
+  /// whole reason a row is a list: an entry is in pieces because it ran
+  /// out of column, not because the writer stopped. So the hosts join
+  /// two pieces with one newline, which the reader reflows as a space
+  /// (`journal_ocr.h`), and a blank line there would be a paragraph the
+  /// printed page does not have — which is what #331 was, for the length
+  /// of a release.
+  ///
+  /// It is not *always* a continuation, and this is the exception said
+  /// out loud. Two things put a paragraph break on a boundary: a
+  /// paragraph that happened to end exactly where its column did, and a
+  /// piece that resumes under its entry's own drawing (#357). The first
+  /// edition has six of them out of eighteen boundaries, and every one
+  /// reads as two sentences run together on one line without this.
+  ///
+  /// **Measured, like every other number in a row.** In this edition a
+  /// paragraph opens with an indent, so the fact is the ink: the first
+  /// line of the resuming piece starts 18 to 22 samples right of that
+  /// piece's own left margin, and every boundary that continues starts
+  /// within two of it. `docs/journal.md` §3 is the method.
+  ///
+  /// Meaningless on the first fragment of an entry, which has nothing
+  /// before it to break from, and on an `art` fragment, which has no
+  /// prose in it at all.
+  bool begins_paragraph{false};
 };
 
 /// Which of the journal's numbered sections an item is in.

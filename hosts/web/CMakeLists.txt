@@ -201,6 +201,7 @@ set(_amberfolio_web_export_names
   _af_web_journal_region_top
   _af_web_journal_region_width
   _af_web_journal_region_height
+  _af_web_journal_part_begins_paragraph
   _af_web_journal_set_text
   _af_web_journal_correct
   _af_web_journal_text
