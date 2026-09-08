@@ -835,7 +835,12 @@ Facts it relies on:
 - **Days** = the worst survivor's deficit plus one (the heal counter is
   zeroed on camp entry and not by a rest, so a second rest starts mid
   day); **zero when there is no deficit**, which leaves the program's
-  own duration. With nothing to rest for the command declines.
+  own duration. With nothing to rest for the command declines. **An
+  empty spellbook adds to neither half** (#350): nothing is cast, and
+  the program's wrapper computes no memorization time, so the rest is
+  the deficit plus one over `00:00` — which for a party a fight left
+  low is days, and days of camp are what the area's wandering-monster
+  check is rolled against.
 - **Cures**: only Cure Light Wounds a member holds **ready** is cast;
   one is queued back **before** each cast by the memorize command's own
   two writes (the slot gets `id | 0x80`, then the program's slot sort),
@@ -874,7 +879,12 @@ drawer (`0x076B6`) in one batch:
 ```
 
 - Seven titles: healed, rest stopped, stopped by the player, no cure
-  memorized, nobody knows a cure, cannot cast here, `Interrupted!`. A
+  memorized, nobody knows a cure, cannot cast here, `Interrupted!`. **A
+  player meets four of them** (#350): a wounded party is rested before
+  anything is concluded about it, so the three middle titles are reached
+  only where something took the program out of the command mid-run —
+  `outcome_without_a_rest()` is otherwise asked only about a party that
+  is whole, and a party that is whole is healed. A
   member resting cannot mend is named by a pointer into the program's
   own status table. The list truncates to `...and N more.`
 - The box is drawn before the bar goes out, so the live bar under it is

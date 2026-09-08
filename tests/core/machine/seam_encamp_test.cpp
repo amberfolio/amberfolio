@@ -1638,6 +1638,74 @@ TEST(SeamEncampFix, ReportsWhatTheCommandDeclinedToDo) {
          "rather than a list of nobody";
 }
 
+// --- No cure memorized: the rest is the healing (M5-E1h, #350) -------------
+//
+// The case a player meets most — a party out of Cure Light Wounds after a
+// hard fight — and the one nothing had watched. Driven on a shipped save
+// slot whose party holds no memorized spell at all: `FIX` is on the camp
+// bar, choosing it starts the program's own rest, the rest screen comes
+// up reading the days the wounds want and **nothing below them**, and the
+// report that follows carries no spell clause because nothing was cast.
+//
+// The two rules that size a rest meet here and only one of them has
+// anything to say: `DialsTheDaysTheWorstWoundedMemberNeedsAndPressesRest`
+// writes the days, and `RestsForTheMemorizationWhenSpellsArePending` is
+// the program's own wrapper writing the fields below them — which an
+// empty spellbook leaves at zero, because there is nothing to memorize.
+
+TEST(SeamEncampFix, RestsForTheWoundsAloneWhenNobodyHasMemorizedAnything) {
+  const rig r;
+  r.arm();
+  r.camp();
+  // An empty spellbook: nothing held ready, nothing queued, nobody who
+  // knows a cure. All a rest can be sized by is the wounds.
+  r.party({{.status = status_unhurt, .hit_points = 15, .most_hit_points = 17},
+           {.status = status_unhurt, .hit_points = 14, .most_hit_points = 18}});
+
+  r.one_menu_pass(fix_letter);
+
+  EXPECT_EQ(r.word_at(data_segment, data_rest_days), 5u)
+      << "four down plus the day of slack";
+  EXPECT_EQ(r.first_key(), rest_keystroke)
+      << "the command falls back to the program's own rest";
+  EXPECT_EQ(r.word_at(data_segment, data_cast_anchor), 0u)
+      << "nothing was cast, so no target was named";
+  // The fields below the days are the program's own wrapper's, and the
+  // seam writes none of them: what an empty spellbook gets is the days
+  // and whatever the wrapper computed, which is nothing when there is
+  // nothing to memorize. Driven, that is a rest screen reading the days
+  // and `00:00`.
+  EXPECT_EQ(r.word_at(data_segment, data_rest_hours), 3u);
+  EXPECT_EQ(r.word_at(data_segment, data_rest_minute_units), 7u);
+}
+
+TEST(SeamEncampFix, SaysTheRestWasTheHealingWhenNobodyHeldACure) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.clock(5, 10 * 60);
+  r.party({{.status = status_unhurt, .hit_points = 15, .most_hit_points = 17},
+           {.status = status_unhurt, .hit_points = 14, .most_hit_points = 18}});
+
+  r.one_menu_pass(fix_letter);
+  r.step_at(point_rest_entry);
+  // The program's own rest, five days of it: a hit point a member a day,
+  // and the party comes out of it whole.
+  r.clock(10, 10 * 60);
+  r.party({{.status = status_unhurt, .hit_points = 17, .most_hit_points = 17},
+           {.status = status_unhurt, .hit_points = 18, .most_hit_points = 18}});
+  r.step_at(point_before_input);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.title(), "Fix: Party Healed");
+  EXPECT_EQ(r.summary(), "Healed 6 HP in 5:00:00.")
+      << "no spell clause, because no spell was spent: what the player is "
+         "told is the hit points and the days the rest took";
+  EXPECT_EQ(r.lines_drawn(), 3u)
+      << "the title, the summary, and a line saying the party is whole";
+}
+
 // --- The title leaves with the camp screen (M5-E1e, #298) ------------------
 //
 // **The rule: every row of the report is a row the camp's own teardown

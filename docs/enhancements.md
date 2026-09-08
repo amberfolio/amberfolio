@@ -47,9 +47,15 @@ Interrupted!` and does not retry.
 
 **How you turn it on.** `--seam encamp-fix`.
 
+**With nobody holding a cure ready** — the ordinary state of a party
+after a hard fight — the rest is the whole of the healing, and the
+report says so: hit points, the days it took, and no spell. The rest is
+then as long as the worst wound, so in an area the game rolls wandering
+monsters for it is likely to be interrupted before it finishes.
+
 **What it will not do.** Write hit points, mend the wound statuses a
-fight leaves that resting cannot mend, or print an elapsed time for a rest
-of a day or more (the game's clock has no day counter).
+fight leaves that resting cannot mend, or memorize a cure into a slot
+that was empty to begin with.
 
 ## The automap
 
