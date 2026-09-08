@@ -334,11 +334,17 @@ if(AMBERFOLIO_NODE)
   # beside the module: they are source, and a check that read a stale
   # copy of a golden would be the one failure this whole apparatus exists
   # to make impossible (tests/sessions/README.md).
+  #
+  # `--core` comes in by path for the same reason: `page/host.mjs`'s
+  # `HOST_SERVICES` is a transcription of `machine::seam_host_service`,
+  # and the check that the two agree (#296) has to read core's own files
+  # rather than a copy of them.
   add_test(NAME wasm-module-smoke
     COMMAND "${AMBERFOLIO_NODE}"
       "${AMBERFOLIO_WEB_OUTPUT_DIR}/smoke.mjs"
       --expect "${PROJECT_VERSION}"
-      --sessions "${PROJECT_SOURCE_DIR}/tests/sessions")
+      --sessions "${PROJECT_SOURCE_DIR}/tests/sessions"
+      --core "${PROJECT_SOURCE_DIR}/core")
   set_tests_properties(wasm-module-smoke PROPERTIES LABELS smoke)
 else()
   # Loud and unregistered rather than quietly skipped: the test presets set

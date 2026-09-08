@@ -8,10 +8,12 @@
 //
 //     node smoke.mjs --expect <major.minor.patch>
 //
-// Usable by hand too: pass no --expect and it just reports what it found.
+// Usable by hand too: pass no --expect and it just reports what it found;
+// the checks that need the source tree are skipped without --sessions and
+// --core rather than failing.
 //
-// Eight checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84, M4-W1 #108, #157,
-// M5-E3 #174):
+// Nine checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84, M4-W1 #108, #157,
+// M5-E3 #174, M6-C1 #296):
 //
 //   1. The version the module reports is the version CMake built.
 //   2. **Every name in the export list is actually exported.** This is
@@ -64,6 +66,13 @@
 //      M5-E3f, that the store it produces goes out to a browser's own
 //      key-value drawer and comes back with its corrections intact, which
 //      is what makes an ingestion a thing a player does once.
+//   9. **The host-service list agrees with core's** (#296). host.mjs
+//      transcribes `machine::seam_host_service` and had gone short by
+//      one, which is check 2's failure mode in the other list: nothing
+//      is wrong, the list merely stops early, and the rows past its end
+//      are never read. Checked against `seam_host_service_count` and
+//      `seam_host_service_name()` in the source tree, which is why
+//      --core is a path.
 
 import { spawnSync } from 'node:child_process';
 import {
@@ -81,6 +90,7 @@ import { fileURLToPath } from 'node:url';
 import {
   loadAmberfolio,
   formatVersion,
+  HOST_SERVICES,
   Machine,
   loadDemoProgram,
   decodeConsoleBytes,
@@ -341,18 +351,28 @@ function parseArgs(argv) {
     process.exit(2);
   }
 
+  // The source tree's `core/`, so the host-service check below can read
+  // the list it is a transcription of (#296). Optional, like --sessions:
+  // run by hand with neither and what is left is still the module.
+  const coreIndex = argv.indexOf('--core');
+  const core = coreIndex === -1 ? null : argv[coreIndex + 1];
+  if (coreIndex !== -1 && !core) {
+    console.error('smoke: --core needs a directory argument');
+    process.exit(2);
+  }
+
   const expectIndex = argv.indexOf('--expect');
-  if (expectIndex === -1) return { expected: null, sessions };
+  if (expectIndex === -1) return { expected: null, sessions, core };
 
   const expected = argv[expectIndex + 1];
   if (!expected) {
     console.error('smoke: --expect needs a version argument');
     process.exit(2);
   }
-  return { expected, sessions };
+  return { expected, sessions, core };
 }
 
-const { expected, sessions } = parseArgs(process.argv.slice(2));
+const { expected, sessions, core } = parseArgs(process.argv.slice(2));
 
 // Keep the module's own stdout/stderr distinguishable from ours: a version
 // that matches for the wrong reason is exactly what this is meant to catch.
@@ -387,6 +407,72 @@ if (typeof module.HEAPU8 === 'undefined' || typeof module.HEAPF32 === 'undefined
   problems.push('HEAPU8/HEAPF32 are not on the module; a host cannot read the framebuffer');
 }
 console.log(`smoke: ${EXPECTED_EXPORTS.length - missing.length}/${EXPECTED_EXPORTS.length} ABI exports present`);
+
+// --- The host-service list, against core's own (#296) -----------------
+//
+// `HOST_SERVICES` in host.mjs is a transcription of
+// `machine::seam_host_service`, and a transcription drifts silently: at
+// v0.4.0 it listed three names where core had four, so
+// `Machine.seamHostServices()` answered three rows, the dev page
+// reported nothing about `code-wheel-answered`, and
+// `_af_machine_seam_host_calls(handle, 3)` was never read. Nothing said
+// so, because a list that is short is not a list that is wrong — it is
+// one that stops early.
+//
+// So this is the export list's guard applied to the other pair of lists
+// that has to agree. Both halves are checked, because the two ways to
+// drift are different failures: the **count** against
+// `seam_host_service_count`, which is the number the ABI bounds `which`
+// against, and the **names** against `seam_host_service_name()`, which
+// is what both hosts print and which a reader comparing a browser run
+// with a desktop one is comparing.
+//
+// Read out of the source rather than asked of the module: the ABI has no
+// door onto either, and a door cut only so a test could look through it
+// would be a surface built on spec (host.mjs says the same about
+// `save_state_changed`).
+if (core !== null) {
+  const header = readFileSync(
+    join(core, 'include', 'amberfolio', 'machine', 'seam.h'), 'utf8');
+  const body = readFileSync(
+    join(core, 'src', 'machine', 'seam.cpp'), 'utf8');
+
+  const countMatch = /seam_host_service_count\s*=\s*(\d+)\s*;/.exec(header);
+  const nameFunction =
+    /seam_host_service_name\(seam_host_service which\) noexcept \{([\s\S]*?)\n\}/
+      .exec(body);
+  if (countMatch === null || nameFunction === null) {
+    problems.push(
+      'core/include/amberfolio/machine/seam.h or core/src/machine/seam.cpp no' +
+        ' longer reads the way this check parses it; the host-service list is' +
+        ' unguarded until that is fixed',
+    );
+  } else {
+    const count = Number(countMatch[1]);
+    // The switch's own arms, in the order they are written, which is the
+    // order the enumeration numbers them in. `unknown` is the function's
+    // fall-through and names no service.
+    const names = [...nameFunction[1].matchAll(/return "([^"]+)";/g)]
+      .map((match) => match[1])
+      .filter((name) => name !== 'unknown');
+    if (HOST_SERVICES.length !== count) {
+      problems.push(
+        `host.mjs's HOST_SERVICES has ${HOST_SERVICES.length} name(s) and core's` +
+          ` seam_host_service_count is ${count} — add the missing name(s) to` +
+          ' hosts/web/page/host.mjs, in the order the ABI numbers them',
+      );
+    }
+    if (names.join(',') !== HOST_SERVICES.join(',')) {
+      problems.push(
+        `host.mjs's HOST_SERVICES is ${JSON.stringify(HOST_SERVICES)} where` +
+          ` seam_host_service_name() says ${JSON.stringify(names)}`,
+      );
+    }
+    console.log(
+      `smoke: ${HOST_SERVICES.length} host service(s), named as core names them`,
+    );
+  }
+}
 
 // --- The machine ------------------------------------------------------
 //
