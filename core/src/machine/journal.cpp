@@ -490,6 +490,61 @@ journal_citation journal_citation_in(std::string_view text) noexcept {
   return journal_citations_in(text, found) == 0 ? journal_citation{} : found[0];
 }
 
+journal_number journal_number_as_printed(journal_kind kind,
+                                         unsigned number) noexcept {
+  journal_number out;
+  const auto put = [&out](char ch) noexcept {
+    if (out.length < out.text.size()) {
+      out.text[out.length++] = ch;
+    }
+  };
+
+  // The subtractive pairs are in the table, so the loop writes canonical
+  // numerals and nothing else -- which is the form `roman_value()` above
+  // reads, and the form the booklet sets.
+  static constexpr std::array<std::pair<unsigned, std::string_view>, 13>
+      symbols{{{1000, "M"},
+               {900, "CM"},
+               {500, "D"},
+               {400, "CD"},
+               {100, "C"},
+               {90, "XC"},
+               {50, "L"},
+               {40, "XL"},
+               {10, "X"},
+               {9, "IX"},
+               {5, "V"},
+               {4, "IV"},
+               {1, "I"}}};
+  if (kind == journal_kind::proclamation && number != 0 && number < 4000) {
+    unsigned left = number;
+    for (const auto& [value, symbol] : symbols) {
+      while (left >= value) {
+        left -= value;
+        for (const char ch : symbol) {
+          put(ch);
+        }
+      }
+    }
+    return out;
+  }
+
+  // Decimal, and the fallback for a proclamation the grammar above
+  // cannot write: a number nobody can read beats a numeral that is not
+  // one (`docs/machine.md` §5 is the same choice one level down).
+  std::array<char, 10> digits{};
+  std::size_t count = 0;
+  unsigned left = number;
+  do {
+    digits[count++] = static_cast<char>('0' + (left % 10U));
+    left /= 10U;
+  } while (left != 0 && count < digits.size());
+  while (count > 0) {
+    put(digits[--count]);
+  }
+  return out;
+}
+
 const char* journal_kind_name(journal_kind which) noexcept {
   switch (which) {
     case journal_kind::entry:
