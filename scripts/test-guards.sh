@@ -54,6 +54,29 @@ git -C "$r" rm -q START_TEST.EXE
 git -C "$r" commit -q -s -m "remove bad file"
 expect "violation buried in history still fails" 1 bash "$r/scripts/check-clean.sh"
 
+# A violation that exists on no parent and only in the merge itself: a
+# conflict resolved by hand into something neither side had. The history
+# pass reads `git log --raw`, which says nothing at all about a merge
+# unless asked, so this is the case that walk has to be asked for.
+r=$(mkrepo mergeonly)
+git -C "$r" checkout -q -b side
+echo side > "$r/shared.txt"
+git -C "$r" add -A
+git -C "$r" commit -q -s -m side
+git -C "$r" checkout -q main
+echo main > "$r/shared.txt"
+git -C "$r" add -A
+git -C "$r" commit -q -s -m main
+git -C "$r" merge --no-commit side >/dev/null 2>&1 || true
+printf 'junk' > "$r/START_TEST.EXE"
+printf 'resolved' > "$r/shared.txt"
+git -C "$r" add -A
+git -C "$r" commit -q -m "merge, resolved into a violation"
+expect "a violation only a merge commit holds fails" 1 bash "$r/scripts/check-clean.sh"
+git -C "$r" rm -q START_TEST.EXE
+git -C "$r" commit -q -s -m "remove it again"
+expect "that violation is still found once it is history" 1 bash "$r/scripts/check-clean.sh"
+
 r=$(mkrepo bigfile)
 head -c 300000 /dev/zero > "$r/big.bin"
 git -C "$r" add big.bin
