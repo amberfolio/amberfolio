@@ -7,13 +7,15 @@
 # panel, that rect being the only region the program can be asked to
 # repaint (M5-E4 #175), so the reader is modal over the map and one
 # condition in `seam_automap.cpp` is what makes it so.
-# 146 checkpoints, the framebuffer in every one, so "the third still
+# 108 checkpoints, the framebuffer in every one, so "the third still
 # equals the first" is a hash rather than a look.
+# The way in is `Notes` and the row the cursor is on (#346); it was F1
+# and a typed number when this was first recorded.
 
 about the automap panel up, an entry opened over it, and the map back
 about again: two seams sharing one rect, pinned at every checkpoint
 disk external
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+code-wheel-answered
 journal-store tests/visual/reader-store.txt
 
 dir SAVE

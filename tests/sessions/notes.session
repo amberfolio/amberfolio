@@ -1,19 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# FID-3 (#235): the journal's log as a session, being NOT-4's empty log,
+# FID-3 (#235): the journal's log as a session, being NOT-4's listing,
 # NOT-8's key barrage, and the give-back.
 # The barrage is #230's regression net: with the log up, `S`, `C`, `L`
 # and three movement keys must reach nothing, and the hashes say so at
-# 146 checkpoints on every target.
+# 111 checkpoints on every target.
+# The log is not empty: the committed store carries two `seen` lines, so
+# what opens is two rows with `*` on the unread one. It was empty when
+# this was first recorded, before the store had a log at all.
 # It leaves by Escape rather than by `E`, for
 # tests/visual/not-log-giveback.leg's reason: `E` on the party's own bar
 # is ENCAMP, and a session compared with a seam-off twin could not press
 # it.
 
-about the log with nothing in it, six keys that must reach nothing while
+about the log the store carries, six keys that must reach nothing while
 about it is up, and Escape to give the screen back
 disk external
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+code-wheel-answered
 journal-store tests/visual/reader-store.txt
 
 dir SAVE

@@ -441,6 +441,38 @@ cp "$tmp/other.pdf" "$tmp/held.pdf" "$tmp/doc-dir/"
 sweep "$r" --document "$tmp/doc-dir"
 expect_silent "a directory of documents finds the right one" "no document with digest"
 
+# --- The challenge answered before the run (#291, #293) ----------------
+#
+# The one input to a replay that is not a file. Since #290 the code
+# wheel's possession proof is the act rather than the document, so a game
+# session says a *condition* — `code-wheel-answered`, one word and no
+# argument — where it used to name a digest, and the sweep states it to
+# the host before the recording's seams. A descriptor line nobody parses
+# is a line the runner silently ignores, so both halves are checked here:
+# that the word is grammar, and that the word with an argument is not.
+
+r=$(mkrepo answered)
+mkrec "$r" answered
+mkdisk "$r/tests/sessions/disk"
+{
+  echo "about a session recorded after the challenge was answered"
+  echo "disk disk"
+  echo "code-wheel-answered"
+} > "$r/tests/sessions/answered.session"
+
+sweep "$r"
+expect_silent "code-wheel-answered is a descriptor line" "not a descriptor line"
+
+{
+  echo "about the same line with something after it"
+  echo "disk disk"
+  echo "code-wheel-answered yes"
+} > "$r/tests/sessions/answered.session"
+
+sweep "$r"
+expect_code "the line takes no argument" 1
+expect_says "and says so rather than ignoring it" "not a descriptor line"
+
 # --- The other half of a pair: identical (#177) ------------------------
 #
 # `contrast` asks whether a seam that is on did something. `identical`

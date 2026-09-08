@@ -11,8 +11,8 @@
 # A single leg, for rdr-bar.leg's reason: `N` and `E` reach the program
 # in a seam-off run, so a pair would be diffing the program's own answer
 # to two letters as well as the reader.
-# Driven by hand on the shorter boot (`--code-wheel-answered`, #291),
-# which the runner cannot yet drive; #293 owes every leg its re-drive.
+# Driven on the shorter boot (`--code-wheel-answered`, #291), which the
+# runner asks for with the leg's own line.
 
 about a picture of an entry: the caption, the drawing after it, and the screen given back
 kind single
@@ -43,11 +43,6 @@ every 25
 # twice - off the page back to the listing, and off the listing out
 # through the program's own composer. It was F1 and a typed number before
 # #346, which is the one way in there was left when that went.
-#
-# **The frame ranges below were measured against the F1 script** and have
-# not been measured against this one; the leg is owed its re-drive with
-# the rest (#293), and the keys are corrected here so that what it asks
-# for is the reader that exists.
 key L@7550
 key A@7800
 key N@9600
@@ -56,19 +51,20 @@ key N@11600
 key E@13000
 key E@13800
 
-# Each screen, holding still with nothing pressed. A picture page settles
-# in about 75 frames where a twenty-row text page takes about 230 (#305):
-# one batch for the clear, the frame and the bar, and then one arrival
-# more, which for a picture is a single blit. The numbers themselves are
-# owed a re-measurement with the keys above (#293).
-same 9700-9975
-same 10100-10375
-same 10600-11575
-same 11700-12975
+# Each screen, holding still with nothing pressed, measured against the
+# keys above (#293). A picture page settles in about 75 frames where a
+# twenty-row text page takes about 230 (#305): one batch for the clear,
+# the frame and the bar, and then one arrival more, which for a picture
+# is a single blit. The listing is the slowest of the three and wants
+# 125 frames from the key to the last pixel.
+same 9750-10400
+same 10600-11600
+same 11700-13000
+same 13125-13800
 
 # And the screen the journal was opened over, back again after it with
 # nothing excepted - the same `equal` rdr-bar.leg earned when the `Notes`
 # splice began handing the bar highlight back (#330). Nothing here touches
-# that bar, so 13,200 onwards is the 9,000-9,600 still exactly.
-same 13250-15075
-equal 9575 13500
+# that bar, so 14,025 onwards is the 9,250-9,600 still exactly.
+same 14025-15075
+equal 9575 14025

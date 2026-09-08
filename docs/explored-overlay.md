@@ -110,23 +110,21 @@ so a marking confined to a cell needs nothing shifted.
 
 ## 4. The recipe that reaches the screen
 
-No committed session reaches this screen. On the desktop host under
+`tests/sessions/wild.rec` and `wild-trail.rec` are this screen as a
+pair; by hand, on the desktop host under
 SDL's dummy drivers:
 
     SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy amberfolio <disk> START.EXE \
       --code-wheel-answered \
-      --fast max --until 260000000 \
-      --press A@7601 --press Return@7651 \
-      --press L@8951 --press J@9201 \
-      --press Up@10600 --press Up@10750 --press Up@10900 --press Up@11050
+      --fast max --until 232156800 \
+      --press L@7551 --press J@7801 \
+      --press Up@9200 --press Up@9350 --press Up@9500 --press Up@9650
 
 - The disk is the edition's own installation **with its shipped save
   slots** (the snapshot `tests/sessions/temple.rec` pins). **Slot J**'s
   party is already standing on a wilderness area (view kind 2, disk 6).
-- The frames above are from the pre-#291 boot with `--document` and
-  `--seam code-wheel`; the shorter boot moves them (#293).
-- The party is on the overworld from **frame 9,552** (mode byte becomes
-  3); the screen has settled by 10,275. Moves are 150 frames apart.
+- The party is on the overworld from **frame 8,152** (mode byte becomes
+  3); the screen has settled by 8,875. Moves are 150 frames apart.
   Wandering brings an encounter within a few virtual minutes.
 - `--watch 49F3:1 --watch 49FA:1` shows the arrival without a picture;
   the data segment is `0CDC` on this edition.

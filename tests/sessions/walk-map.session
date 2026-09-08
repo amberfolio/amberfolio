@@ -13,10 +13,10 @@
 about the same forty-eight moves with the automap on: Tab is taken out of
 about the keystroke buffer before the program asks for it, and the panel
 about is drawn over the party roster in the game's own screen, the streets
-about filling in behind the party as it walks. 19,201 frames,
-about 203 checkpoints, 106 key events
+about filling in behind the party as it walks. 17,798 frames,
+about 190 checkpoints, 102 key events
 disk external
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+code-wheel-answered
 contrast walk
 
 dir SAVE

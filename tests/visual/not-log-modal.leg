@@ -15,27 +15,26 @@ program START.EXE
 store tests/visual/reader-store.txt
 both code-wheel
 
-# The code-wheel bypass is gated on the wheel itself (#115), pinned by
-# digest because a document never enters this tree.
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+# No document, and no gate: since #290 the possession proof is the act,
+# so what a leg says is a condition rather than a digest, and the run is
+# made on the boot the challenge never stops (#291, #293).
+code-wheel-answered
 seam journal
-until 300000000
+until 272156800
 every 25
 
-key A@7601
-key Return@7651
-key L@8951
-key A@9201
+key L@7551
+key A@7801
 
 # The log, then the barrage.
-key N@10600
-key S@10900
-key C@11100
-key L@11300
-key Left@11500
-key Right@11700
-key Up@11900
-key E@12200
+key N@9200
+key S@9500
+key C@9700
+key L@9900
+key Left@10100
+key Right@10300
+key Up@10500
+key E@10800
 
 # From the log settling to the last of the barrage, one frame.
-same 10900-12100
+same 9500-10700

@@ -14,33 +14,32 @@ program START.EXE
 store tests/visual/reader-store.txt
 both code-wheel
 
-# The code-wheel bypass is gated on the wheel itself (#115), pinned by
-# digest because a document never enters this tree.
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+# No document, and no gate: since #290 the possession proof is the act,
+# so what a leg says is a condition rather than a digest, and the run is
+# made on the boot the challenge never stops (#291, #293).
+code-wheel-answered
 seam journal
-until 260000000
+until 232156800
 every 25
 
 # A screen may appear in the two runs a dump apart, because a repaint
 # lands where it lands. One dump of slack, measured (#234).
 slack 1
 
-key A@7601
-key Return@7651
-key L@8951
-key A@9201
-key A@10600
+key L@7551
+key A@7801
+key A@9200
 
 rect notes 273,192,311,199
 rect bar 0,190,319,199
 
-allow 0-9000 none
+allow 0-7600 none
 
 # The 3D view's bar: the difference is the six cells at its end.
-allow 9025-10599 notes
+allow 7625-9199 notes
 
 # The swap redraws the whole screen and the two runs do it a few frames
 # apart, so its own frames are named by nobody. The area map's words are a
 # different length, so where the splice falls there is its own question and
 # the assertion here is the row.
-allow 11200-end bar
+allow 9800-end bar

@@ -3,21 +3,22 @@
 # `wild`'s script, disk and tick budget with `explored` on and nothing
 # else changed (M5-E5 #179; the marking reversed to fog by M5-E5f #263).
 # `contrast wild` says two things.
-# The 107 identical checkpoints run to the arrival and no further: they
-# end at tick 204,866,288, the frame the wilderness screen settles at,
+# The 72 identical checkpoints run to the arrival and no further: they
+# end at tick 178,216,368, the frame the wilderness screen settles at,
 # which is where the fog first appears.
-# The 33 that differ are the picture. A fog drawn one square out, over
+# The 31 that differ are the picture. A fog drawn one square out, over
 # the party's own icon, in the wrong colour, on the wrong half of the
 # pixels or not at all moves one of them.
-# The .rec is still the radius-one grey covering; M5-E5g (#299) made it
-# black at radius zero, and #293 is the pass that re-records it.
+# Recorded at the covering M5-E5g (#299) settled on: black, radius
+# zero, so the only square the window shows is the one underfoot and
+# the ones the party has stood on.
 
 about the same eight steps with the explored overlay on: every square of
 about the game's own overworld window the party has not been near is
-about covered with fog, and the fog lifts behind it as it goes. 140
-about checkpoints, 24 key events
+about covered with fog, and the fog lifts behind it as it goes. 103
+about checkpoints, 20 key events
 disk external
-document 0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd
+code-wheel-answered
 contrast wild
 
 dir SAVE

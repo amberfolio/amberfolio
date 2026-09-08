@@ -1,16 +1,23 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# One of M5-V1's fidelity pairs (#177): `quiet`'s script with `automap`
-# on as well and Tab never pressed. Its hotkey is the one place a seam
-# can change what the program observes.
-# The `identical` line is the whole session: a seam that is on, armed and
-# idle leaves a machine indistinguishable from one where it was off
-# (PLAN.md §5), checked with no disk, so CI checks it on every push.
+# The boot itself, with the challenge unanswered and no seam at all
+# (M6-C1, #293). The run presses nothing: it ends on the screen the
+# program puts up to ask for the code word, which is where a copy this
+# machine has never been told about stops.
+#
+# It exists to be the *baseline* of the one pair the code-wheel seam
+# could not have before #290. While the gate was the mechanism, a seam
+# that had not been handed a document was `unavailable` and there was
+# nothing to turn on; since #291 an unanswered seam is on and watching,
+# which is a state with a fidelity claim to make - and the claim is
+# that it makes no difference. `boot-wheel` is that claim.
+#
+# No `code-wheel-answered` line, and that is the whole point: the
+# challenge is not answered here, on either half.
 
-about the automap on and **Tab never pressed**. Its hotkey is the one place a seam can change what the program observes, and this is the run that says it does not when nobody presses it
+about the boot with the challenge unanswered and no seams: the baseline
+about of the pair that says an unanswered code-wheel seam is not there
 disk external
-code-wheel-answered
-identical quiet
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021
