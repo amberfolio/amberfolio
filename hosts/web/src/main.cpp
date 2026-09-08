@@ -52,6 +52,7 @@
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
 #include "amberfolio/host/journal_ingest.h"
+#include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/host/slot_store.h"
@@ -415,6 +416,55 @@ uint32_t af_web_journal_extract(uint32_t index) {
   return static_cast<uint32_t>(journal().ingester.extract(index));
 }
 
+/// Reduce entry `index`'s pictures into this tab's store (#345), and
+/// answer how many it made.
+///
+/// **The one step of the ingestion that needs no engine**, which is why
+/// it is its own call and not part of `af_web_journal_extract()`: a
+/// drawing has no words in it, so the picture of an entry is made whether
+/// or not tesseract.js loaded and whether or not it read anything. The
+/// desktop's `run()` does the identical thing in the identical place —
+/// before the text, and with its own failure — and this is the browser's
+/// half of the same loop being driven from the page instead
+/// (`host/journal_ingest.h`).
+///
+/// There is no decoding for the page to do. Until #345 there was, in the
+/// sense that nobody had written any: the module could not read a
+/// `/DCTDecode` page, and the browser made no pictures at all. It can
+/// now, on every target, so the picture crosses this boundary already
+/// reduced and the page never sees a sample.
+///
+/// Zero is both "this entry has no drawings" and "none of them could be
+/// made". `af_web_journal_art_count()` is the other half of that pair,
+/// the way the desktop's report carries both numbers.
+uint32_t af_web_journal_reduce_art(uint32_t index) {
+  journal_session& session = journal();
+  std::vector<amberfolio::host::journal_picture> made;
+  const amberfolio::host::journal_trouble why =
+      session.ingester.reduce_art(index, made);
+  // The trouble is dropped rather than returned, and the count is the
+  // answer: a page that has both numbers can already say which of the two
+  // kinds of nothing it got, and an entry whose pictures failed is not an
+  // entry whose *text* failed. The desktop keeps the first reason for its
+  // report; the page's report is the counts.
+  (void)why;
+  uint32_t made_count = 0;
+  for (amberfolio::host::journal_picture& one : made) {
+    if (session.store.record_picture(std::move(one))) {
+      ++made_count;
+    }
+  }
+  return made_count;
+}
+
+/// How many pictures entry `index` is supposed to have, out of the fact
+/// table — what `af_web_journal_reduce_art()` is measured against.
+uint32_t af_web_journal_art_count(uint32_t index) {
+  const amberfolio::host::journal_entry_fact* fact =
+      journal().ingester.entry_at(index);
+  return fact == nullptr ? 0U : static_cast<uint32_t>(fact->art.size());
+}
+
 /// Which shape the last `af_web_journal_extract` produced: 0 for gray
 /// samples this module decoded, 1 for a stream it did not (#212).
 ///
@@ -555,6 +605,12 @@ uint32_t af_web_journal_store_recognized(void) {
 
 uint32_t af_web_journal_store_corrections(void) {
   return static_cast<uint32_t>(journal().store.corrections());
+}
+
+/// How many pictures the store holds (#345) — the fourth of the numbers
+/// the page reports, and the one that used to always be zero here.
+uint32_t af_web_journal_store_pictures(void) {
+  return static_cast<uint32_t>(journal().store.picture_count());
 }
 
 /// The store as its file would be, and the same bytes back in.

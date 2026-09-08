@@ -37,6 +37,12 @@ add_library(amberfolio-host-services STATIC
   # host does to a player's own document, on the player's own machine, and
   # writes into the same store.
   src/journal_picture.cpp
+  # The decoder in front of the reducer (#345). A picture has no OCR
+  # engine to hand a `/DCTDecode` page to, so before this the only build
+  # that could make one was the one that had linked Leptonica for another
+  # reason -- cmake/AmberfolioStbImage.cmake is why that stopped being
+  # good enough and why the library it calls is the one it is.
+  src/journal_jpeg.cpp
   # How well an ingestion went, as a number (#315). In the library and
   # not in a test, because the thing that has to answer it is a *host*
   # reporting to a player -- and because the ground truth is the store's
@@ -57,10 +63,22 @@ target_include_directories(amberfolio-host-services PUBLIC include)
 # implementation detail of journal_extract.cpp and nothing above this
 # library ever names it.
 include(AmberfolioLibdeflate)
+include(AmberfolioStbImage)
+
+# stb ships its implementation inside the header it declares from, behind
+# a macro, and stb_image_impl.cpp is the one translation unit that defines
+# it. Its own target, and the only one here that does **not** link
+# amberfolio::warnings: our baseline is warnings-as-errors and a
+# third-party implementation is not held to it. Everything of ours that
+# *calls* it is, which is why this is a target of one file rather than a
+# flag on a source of the library.
+add_library(amberfolio-stb-image-impl STATIC src/stb_image_impl.cpp)
+target_link_libraries(amberfolio-stb-image-impl PUBLIC amberfolio::stb_image)
 
 target_link_libraries(amberfolio-host-services
   PUBLIC amberfolio::core
-  PRIVATE amberfolio::warnings libdeflate::libdeflate_static)
+  PRIVATE amberfolio::warnings libdeflate::libdeflate_static
+          amberfolio-stb-image-impl)
 
 # The object's own suite. The *mechanism* it plugs into is core's and is
 # tested there (tests/core/machine/seam_test.cpp); this asserts the thing
@@ -77,6 +95,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/journal_facts_test.cpp
     tests/journal_extract_test.cpp
     tests/journal_picture_test.cpp
+    tests/journal_jpeg_test.cpp
     tests/journal_store_test.cpp
     tests/journal_ingest_test.cpp
     tests/journal_score_test.cpp

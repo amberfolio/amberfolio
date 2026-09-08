@@ -65,16 +65,18 @@ endif()
 expect("journal Amber Folio journal probe \\(synthetic\\) entries=4")
 expect("journal engine amberfolio journal probe fixture")
 expect("journal entries=4 extracted=4 recognized=4")
-# The entries that are pictures (#328). The probe has two, on the two
-# pages that reach the extractor by different routes: the one this build
-# decodes itself is reduced here with nothing installed, and the
-# `/DCTDecode` one is refused **by name**, because a picture has no OCR
-# engine to hand the decoding to and a default desktop build links no
-# image library. Both numbers, so "this build cannot decode the pages"
-# cannot read as "this journal has no drawings".
-expect("journal pictures=1/2")
-expect("journal picture of entry 3: the stream's filter")
-expect("journal store .*entries=4 corrections=0 pictures=1 sha256=[0-9a-f][0-9a-f]+")
+# The entries that are pictures (#328, #345). The probe has two, on the
+# two pages that reach the extractor by different routes: one this build
+# inflates itself, one `/DCTDecode`. **Both** are made here, in a default
+# build with nothing installed, which is what #345 changed -- before it,
+# the second needed a host that had linked an image library for some
+# other reason, and a player of a default build got the caption of an
+# entry with the map missing under it. Both numbers all the same, so
+# "this build cannot decode the pages" could never read as "this journal
+# has no drawings".
+expect("journal pages decoded by stb_image")
+expect("journal pictures=2/2")
+expect("journal store .*entries=4 corrections=0 pictures=2 sha256=[0-9a-f][0-9a-f]+")
 # With nothing corrected there is nothing to score against, and the host
 # says which rather than printing a zero that would read as a perfect
 # transcription (#315). The fixture engine reports no confidences either,

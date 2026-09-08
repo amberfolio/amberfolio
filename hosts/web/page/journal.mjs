@@ -187,6 +187,48 @@ export function wordsWithin(data, region) {
 /// their ingestions would be comparing different things.
 export const DOUBTFUL_CONFIDENCE = 60;
 
+/// How far past the column's margin a line has to start before it counts
+/// as indented, as a fraction of a line's own height; and how short of
+/// the column a line has to fall before it can be a paragraph's last one
+/// when it does not end in a stop. `tsv_words.h` argues for both, and the
+/// desktop's filter carries the identical pair.
+const INDENT_OF_LINE_HEIGHT = 0.6;
+const SHORT_LINE_OF_COLUMN = 0.75;
+
+/// Whether a line ends a sentence, allowing for a closing quote after the
+/// stop. A colon counts: the journal's headings end in one.
+function endsASentence(text) {
+  return /[.!?:]["')\]]?$/.test(text);
+}
+
+/// Whether `here` opens a new paragraph after `before`.
+///
+/// **The engine's blocks are trusted and its paragraphs are not** (#345).
+/// A new block is a different region of the page - a heading over a
+/// column, one column beside another - and it breaks. Inside a block the
+/// break comes from the printed page instead: a paragraph opens on an
+/// indented line whose predecessor ended, with a stop or well short of
+/// the column.
+///
+/// The engine's paragraphs looked like the right signal and were not. On
+/// the shipped edition they split a single printed paragraph wherever the
+/// engine had failed to read the first word of a line - the line then
+/// looks indented to it, exactly as it does to the rule below, and the
+/// difference is that this one also asks whether the line before it had
+/// finished. `margin` and `edge` are the column's own sides, off the
+/// lines that were kept rather than off the rectangle.
+function opensParagraph(before, here, margin, edge, unit) {
+  const column = edge - margin;
+  const ended =
+    endsASentence(before.text) ||
+    (column > 0 && before.right - margin < column * SHORT_LINE_OF_COLUMN);
+  if (!ended) return false;
+  return (
+    here.block !== before.block ||
+    here.left - margin > unit * INDENT_OF_LINE_HEIGHT
+  );
+}
+
 /// The words of `data` that fall inside `region`, as lines, and what the
 /// engine thought of them.
 ///
@@ -215,27 +257,19 @@ export const DOUBTFUL_CONFIDENCE = 60;
 /// entry, and a confidence averaged over those would be a number about
 /// somebody else's page.
 ///
-/// **And the paragraphs survive the walk** (#331). The reader's reflow
-/// honours exactly one break — a blank line, which it draws as a
-/// paragraph (#316) — and reads a single newline as a space, because an
-/// engine emits one per *printed* line. This loop was pushing every line
-/// flat and joining with one newline whatever paragraph it came from, so
-/// a real entry arrived as one solid block of prose from the first row to
-/// the last. The structure is right here in the walk: a space between two
-/// words of a line, one newline between two lines of a paragraph, and a
-/// blank line between two paragraphs.
+/// **And the paragraphs are the page's, not the engine's** (#331, #345).
+/// The reader's reflow honours exactly one break — a blank line, which it
+/// draws as a paragraph (#316) — and reads a single newline as a space,
+/// because an engine emits one per *printed* line. So where the blank
+/// lines fall is the whole of how an entry reads, and `opensParagraph()`
+/// above is the rule that decides it: a space between two words of a
+/// line, one newline between two printed lines, and a blank line where a
+/// paragraph opened.
 ///
-/// A **new block counts as a new paragraph**, which is what Tesseract's
-/// own plain-text output does — `TessBaseAPI::GetUTF8Text` walks
-/// paragraphs across the whole page and ends each with a line separator
-/// and a paragraph separator, both `"\n"` — so this host, the desktop's
-/// `tsv` filter and the desktop's linked engine all break in the same
-/// places rather than in three sets of places.
-///
-/// The break is only ever put **between** two paragraphs that both kept
+/// The break is only ever put **between** two lines that both kept
 /// something, and that is what keeps the two wrong breaks out: a
-/// rectangle that clips a paragraph in half gains none at the crop, and
-/// the join between two *fragments* of one entry is the caller's single
+/// rectangle that clips a block in half gains none at the crop, and the
+/// join between two *fragments* of one entry is the caller's single
 /// newline, because entries flow out of a column onto the facing page and
 /// a break there would be a paragraph the printed page does not have.
 export function readWithin(data, region) {
@@ -249,20 +283,23 @@ export function readWithin(data, region) {
   }
   const right = region ? region.left + region.width : 0;
   const bottom = region ? region.top + region.height : 0;
-  const lines = [];
+  // Gathered before anything is joined, because the rule that puts the
+  // blank lines in is about the column and not about one word: the
+  // margin, the far edge and the size of the type are facts about every
+  // line that was kept, and none is known until the last one is.
+  const rows = [];
   let words = 0;
   let doubtful = 0;
   let total = 0;
-  for (const block of blocks) {
-    for (const paragraph of block?.paragraphs ?? []) {
-      // Whether this paragraph has put a line on the page yet, which is
-      // what makes the blank line below fall **between** two paragraphs
-      // and never before the first or after the last (#331). A paragraph
-      // the rectangle kept nothing of is invisible here: it neither
-      // earns a break nor swallows one.
-      let opened = false;
+  let block = 0;
+  for (const one of blocks) {
+    ++block;
+    for (const paragraph of one?.paragraphs ?? []) {
       for (const line of paragraph?.lines ?? []) {
         const kept = [];
+        let left = 0;
+        let far = 0;
+        let height = 0;
         for (const word of line?.words ?? []) {
           const box = word?.bbox;
           const text = word?.text ?? '';
@@ -274,6 +311,10 @@ export function readWithin(data, region) {
               continue;
             }
           }
+          if (kept.length === 0) left = box.x0;
+          else left = Math.min(left, box.x0);
+          far = Math.max(far, box.x1);
+          height = Math.max(height, box.y1 - box.y0);
           kept.push(text);
           // A word whose confidence the engine did not give counts
           // towards nothing: this page has no opinion about it, and
@@ -286,13 +327,32 @@ export function readWithin(data, region) {
           }
         }
         if (kept.length > 0) {
-          if (!opened && lines.length > 0) lines.push('');
-          opened = true;
-          lines.push(kept.join(' '));
+          rows.push({ block, left, right: far, height, text: kept.join(' ') });
         }
       }
     }
   }
+
+  // The column, off the lines that were kept, and then the reading. A
+  // break falls only *between* two lines that were kept, so a rectangle
+  // that clips a block gains none at the crop and a reading never opens
+  // or ends on one.
+  const lines = [];
+  if (rows.length > 0) {
+    const margin = Math.min(...rows.map((row) => row.left));
+    const edge = Math.max(...rows.map((row) => row.right));
+    // The median, because one line of a column can be a heading in a
+    // larger face, or a box the engine drew around a speck, and a mean
+    // would take either seriously.
+    const heights = rows.map((row) => row.height).sort((a, b) => a - b);
+    const unit = heights[Math.floor(heights.length / 2)];
+    lines.push(rows[0].text);
+    for (let i = 1; i < rows.length; ++i) {
+      if (opensParagraph(rows[i - 1], rows[i], margin, edge, unit)) lines.push('');
+      lines.push(rows[i].text);
+    }
+  }
+
   return {
     text: lines.join('\n'),
     quality: {
@@ -753,9 +813,28 @@ export async function ingestJournal(
   // "which of my ninety-nine entries should I look at", and only the
   // per-item numbers answer that.
   const quality = [];
+  // The pictures, counted the way the desktop's report counts them: how
+  // many the fact table says this edition has, and how many were made
+  // (#345). Both numbers, because "this journal has no drawings" and
+  // "none of them could be made" are different sentences and a single
+  // count says neither.
+  let art = 0;
+  let pictures = 0;
   for (let index = 0; index < count; ++index) {
     const citation = module._af_web_journal_entry_citation(index);
     if (onProgress) onProgress({ index, count, citation });
+
+    // The pictures first and **independently of the engine**: a drawing
+    // has no words in it, so an entry that is a map is reduced whether or
+    // not tesseract.js loaded, whether or not it read anything, and even
+    // where the extraction below fails. `journal_ingest.cpp`'s `run()`
+    // puts this in the same place for the same reason, and this loop is
+    // that loop turned inside out.
+    const has = module._af_web_journal_art_count(index);
+    if (has > 0) {
+      art += has;
+      pictures += module._af_web_journal_reduce_art(index);
+    }
 
     const why = module._af_web_journal_extract(index);
     if (why !== JOURNAL_OK) {
@@ -830,6 +909,10 @@ export async function ingestJournal(
     entries: count,
     extracted,
     recognized,
+    /// The drawings: how many this edition has, and how many were
+    /// reduced into the store (#345).
+    art,
+    pictures,
     engine: engineName,
     store: storeStats(module),
     /// What the engine was sure of, per item and altogether (#315).
@@ -953,6 +1036,7 @@ export function storeStats(module) {
     size: module._af_web_journal_store_size(),
     recognized: module._af_web_journal_store_recognized(),
     corrections: module._af_web_journal_store_corrections(),
+    pictures: module._af_web_journal_store_pictures(),
     fingerprint: readText(module, (out, cap) =>
       module._af_web_journal_store_fingerprint(out, cap),
     ),
@@ -1080,7 +1164,7 @@ export function storedStore({
 /// The drawer's store back into the module.
 ///
 /// Answers `{ restored, characters, entries, recognized, corrections,
-/// fingerprint, why }`. Three of the four ways it declines are ordinary
+/// pictures, fingerprint, why }`. Three of the four ways it declines are ordinary
 /// and carry no `why` at all — no drawer, nothing in it, or a module that
 /// already holds a store, which is the guard that stops a restore landing
 /// on top of an ingestion. The fourth is a store this build could not
@@ -1097,6 +1181,7 @@ export function restoreStore(
     entries: 0,
     recognized: 0,
     corrections: 0,
+    pictures: 0,
     fingerprint: '',
     why: null,
   };
@@ -1119,6 +1204,7 @@ export function restoreStore(
     entries: module._af_web_journal_store_size(),
     recognized: module._af_web_journal_store_recognized(),
     corrections: module._af_web_journal_store_corrections(),
+    pictures: module._af_web_journal_store_pictures(),
     fingerprint: readText(module, (out, cap) =>
       module._af_web_journal_store_fingerprint(out, cap),
     ),
