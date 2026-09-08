@@ -785,7 +785,8 @@ export async function drive(opts) {
         say(
           `amberfolio: journal store ${opts.journalStore}` +
             ` entries=${module._af_web_journal_store_size()}` +
-            ` corrections=${module._af_web_journal_store_corrections()}`,
+            ` corrections=${module._af_web_journal_store_corrections()}` +
+            ` pictures=${module._af_web_journal_store_pictures()}`,
         );
       }
     }

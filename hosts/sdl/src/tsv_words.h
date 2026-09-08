@@ -38,7 +38,7 @@
 // tell a player which of their entries to look at.
 //
 //
-// Where the line breaks come from, and where the blank lines do (#331)
+// Where the line breaks come from, and where the blank lines do (#331, #345)
 // --------------------------------------------------------------------
 //
 // The reader's reflow honours exactly one break: a **blank line**, which
@@ -47,39 +47,70 @@
 // *printed* line and the journal is set in a sixty-character column that
 // has nothing to do with the twenty-two or thirty-eight the reader draws.
 //
-// So the four layout columns of a `tsv` row are not decoration: they are
-// the only place the paragraph structure exists. This file reads them and
-// emits
+// So this file emits
 //
 //   * a space, between two words of one line;
-//   * one newline, between two lines of one paragraph;
-//   * a blank line, between two paragraphs.
+//   * one newline, between two printed lines;
+//   * a blank line, where a paragraph opened.
 //
 // Every one of the four counts **restarts inside its parent**, so what
-// identifies a paragraph is `(page_num, block_num, par_num)` and not
-// `par_num` alone. Comparing `line_num` by itself — which is what this
-// did until #331 — also ran two one-line paragraphs together, since both
-// are `line_num` 1.
+// identifies a printed line is the whole tuple and not `line_num` alone.
+// Comparing `line_num` by itself - which is what this did until #331 -
+// ran two one-line paragraphs together, since both are `line_num` 1.
 //
-// **A new block counts as a new paragraph.** That is broader than "a
-// paragraph break inside a block", and it is deliberate: it is what
-// Tesseract's own plain-text output does, so the host's three engines
-// agree by construction rather than by three separate decisions.
-// `TessBaseAPI::GetUTF8Text` walks `RIL_PARA` across the whole page and
-// `AppendUTF8ParagraphText` ends every paragraph with a line separator
-// and a paragraph separator, both `"\n"` — read off tesseract 5.5.1's
-// own source, which is the version `.tesseract-version` pins, and not
-// run here (see `tesseract_linked_ocr.h`).
 //
-// The break is emitted **between** two words that were kept and never
+// Where a paragraph opens, which is not where the engine says (#345)
+// -------------------------------------------------------------------
+//
+// This used to take `par_num` at face value: a change of paragraph in the
+// engine's tree was a blank line in the reading. On the shipped edition
+// that is wrong about a third of the time, and wrong in a way a player
+// sees immediately - a sentence cut in half with a blank line in the
+// middle of it.
+//
+// The cause is worth knowing, because it is not so much a bad heuristic
+// as a compounding one. Tesseract opens a paragraph at a line it reads as
+// indented. On a 1328x1003 scan of a two-page spread the engine
+// occasionally fails on the *first word of a line* - and that line then
+// begins where its second word does, which looks exactly like an indent.
+// So the reading loses a word and gains a paragraph break at the same
+// place, and the break is the half a player notices.
+//
+// The rule here asks for two things instead, and neither alone is enough:
+//
+//   * the line **before** it has to have ended - with a stop, or well
+//     short of the column;
+//   * the line itself has to **start** something - a new block, which is
+//     a different region of the page, or an indent past the column's own
+//     margin.
+//
+// A line the engine mangled fails the first test, because the line above
+// it is a full line of prose that ends mid-sentence. A real paragraph
+// passes both. Measured over the whole shipped edition - ninety-nine
+// items, read in a browser - against the engine's own paragraphs: breaks
+// that follow a finished sentence went from 157 to 183, and breaks that
+// fall mid-sentence, which are nearly all wrong, from 110 to 66.
+//
+// The margin and the far edge are measured off the lines that were
+// **kept**, not off the rectangle: a rectangle is measured to the column
+// (`host/journal_facts.h`) and the ink inside it starts where it starts.
+// The indent threshold is a fraction of the type's own height rather than
+// a number of pixels, because the same edition read at one and at two
+// arrives here with every measurement doubled.
+//
+// The break is emitted **between** two lines that were kept and never
 // before the first or after the last, which is what keeps two hazards
-// out. A rectangle that clips a paragraph in half gains no break at the
-// crop, because nothing was kept after it to break against; and the join
+// out. A rectangle that clips a block in half gains no break at the crop,
+// because nothing was kept after it to break against; and the join
 // between two *fragments* of one entry stays the single newline its
 // callers write, because it happens outside this function altogether. An
 // entry is a list of rectangles precisely because entries flow out of a
 // column onto the facing page (`host/journal_facts.h`), and a break there
 // would be a paragraph the printed page does not have.
+//
+// `hosts/web/page/journal.mjs` carries the identical rule, because a
+// browser's engine answers the same boxes and a player should not get a
+// different transcription for choosing a different host.
 //
 //
 // Two callers, one of which has no rectangle (#315)

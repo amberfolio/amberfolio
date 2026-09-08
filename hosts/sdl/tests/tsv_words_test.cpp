@@ -68,60 +68,107 @@ TEST(TsvWords, JoinsOneLineWithSpacesAndTwoWithANewline) {
   EXPECT_EQ(tsv_words_within(table, kBox), "one two\nthree");
 }
 
-TEST(TsvWords, TwoParagraphsAreSeparatedByABlankLine) {
-  // The reader honours a blank line and nothing else (#316), and until
-  // #331 nothing upstream ever emitted one - so a real entry read as one
-  // solid block of prose from the first row to the last.
+TEST(TsvWords, AParagraphOpensOnAnIndentAfterALineThatEnded) {
+  // The rule that puts the blank lines in (#345). The reader honours a
+  // blank line and nothing else (#316), so where these fall is the whole
+  // of how an entry reads.
+  //
+  // A heading at the margin, then a line indented past it: that is a
+  // paragraph opening, and the heading is short enough to have ended.
+  const std::string table =
+      std::string(kHeader) + Word(1, 110, 110, 30, 10, "heading") +
+      Word(2, 130, 130, 150, 10, "indented") +
+      Word(3, 110, 150, 150, 10, "and") + Word(4, 110, 170, 150, 10, "on");
+  EXPECT_EQ(tsv_words_within(table, kBox), "heading\n\nindented\nand\non");
+}
+
+TEST(TsvWords, AnIndentAfterAFullLineIsNotAParagraph) {
+  // What the engine's own paragraphs got wrong on the real edition, and
+  // the reason this file stopped trusting them (tsv_words.h). A word the
+  // engine failed to read at the start of a line leaves the line looking
+  // indented; the line before it ran the width of the column and ended
+  // mid-sentence, so nothing opened.
   const std::string table = std::string(kHeader) +
-                            WordIn(1, 1, 1, 110, 110, 30, 10, "one") +
-                            WordIn(1, 1, 2, 110, 120, 30, 10, "two") +
-                            WordIn(1, 2, 1, 110, 140, 30, 10, "three");
-  EXPECT_EQ(tsv_words_within(table, kBox), "one\ntwo\n\nthree");
+                            WordIn(1, 1, 1, 110, 110, 150, 10, "they must be") +
+                            WordIn(1, 2, 1, 140, 130, 120, 10, "of monsters");
+  EXPECT_EQ(tsv_words_within(table, kBox), "they must be\nof monsters");
+}
+
+TEST(TsvWords, ALineThatEndedInAStopCanOpenTheNextParagraph) {
+  // The other half of "the line before it ended": a full-width line that
+  // finishes a sentence is a paragraph's last line however long it is.
+  const std::string table = std::string(kHeader) +
+                            WordIn(1, 1, 1, 110, 110, 150, 10, "use to me.") +
+                            WordIn(1, 2, 1, 140, 130, 120, 10, "Bring any");
+  EXPECT_EQ(tsv_words_within(table, kBox), "use to me.\n\nBring any");
+}
+
+TEST(TsvWords, ANewBlockStartsAParagraphWithoutNeedingAnIndent) {
+  // A block is a different region of the page - a heading over a column,
+  // a column beside another - so it is the other way a line can *start* a
+  // paragraph. The line before it still has to have ended, and this one
+  // has, by being far short of the column. Both of these are `par_num` 1
+  // and `line_num` 1 of their own block.
+  const std::string table = std::string(kHeader) +
+                            WordIn(1, 1, 1, 110, 110, 30, 10, "heading") +
+                            WordIn(2, 1, 1, 110, 140, 150, 10, "body");
+  EXPECT_EQ(tsv_words_within(table, kBox), "heading\n\nbody");
+}
+
+TEST(TsvWords, ANewBlockAfterALineThatDidNotEndIsNotAParagraph) {
+  // The half of the rule the engine's own blocks do not carry: on a real
+  // scan it opens a block mid-sentence where it lost a word, and a break
+  // there is a paragraph the printed page does not have (#345).
+  const std::string table = std::string(kHeader) +
+                            WordIn(1, 1, 1, 110, 110, 150, 10, "for the") +
+                            WordIn(2, 1, 1, 110, 130, 150, 10, "band of");
+  EXPECT_EQ(tsv_words_within(table, kBox), "for the\nband of");
 }
 
 TEST(TsvWords, TwoOneLineParagraphsDoNotRunTogether) {
   // Every count restarts inside its parent, so both of these lines are
   // `line_num` 1. The filter compared that number alone until #331 and
-  // joined them with a space - two paragraphs read as one line.
+  // joined them with a space - two lines read as one.
   const std::string table = std::string(kHeader) +
                             WordIn(1, 1, 1, 110, 110, 30, 10, "first") +
                             WordIn(1, 2, 1, 110, 130, 30, 10, "second");
-  EXPECT_EQ(tsv_words_within(table, kBox), "first\n\nsecond");
-}
-
-TEST(TsvWords, ANewBlockIsANewParagraphToo) {
-  // Broader than "a paragraph break inside a block", on purpose: it is
-  // what Tesseract's own text output does, so this host's three engines
-  // break in the same places (tsv_words.h). Both of these are `par_num`
-  // 1 and `line_num` 1 of their own block.
-  const std::string table = std::string(kHeader) +
-                            WordIn(1, 1, 1, 110, 110, 30, 10, "heading") +
-                            WordIn(2, 1, 1, 110, 140, 30, 10, "body");
-  EXPECT_EQ(tsv_words_within(table, kBox), "heading\n\nbody");
+  EXPECT_EQ(tsv_words_within(table, kBox), "first\nsecond");
 }
 
 TEST(TsvWords, ABreakFallsBetweenKeptWordsAndNeverAtTheCrop) {
   // The two ways to get this wrong, both of which produce a *wrong* break
   // rather than a missing one (#331).
   //
-  // A rectangle clips a paragraph: the words of paragraph 2 that fall
-  // outside are dropped, and what is kept ends without a break, because a
-  // break is only ever emitted between two words that were both kept. So
-  // the fragment this is half of joins to the next one with the single
-  // newline its caller writes, and the paragraph is not cut in two.
+  // A rectangle clips a block: the words that fall outside are dropped,
+  // and what is kept ends without a break, because a break is only ever
+  // emitted between two lines that were both kept. So the fragment this
+  // is half of joins to the next one with the single newline its caller
+  // writes, and the paragraph is not cut in two.
   const std::string clipped = std::string(kHeader) +
-                              WordIn(1, 1, 1, 110, 110, 30, 10, "kept") +
-                              WordIn(1, 2, 1, 110, 140, 30, 10, "opens") +
-                              WordIn(1, 2, 2, 110, 500, 30, 10, "past") +
-                              WordIn(1, 3, 1, 110, 520, 30, 10, "elsewhere");
-  EXPECT_EQ(tsv_words_within(clipped, kBox), "kept\n\nopens");
+                              WordIn(1, 1, 1, 110, 110, 30, 10, "kept.") +
+                              WordIn(2, 1, 1, 110, 140, 30, 10, "opens") +
+                              WordIn(2, 1, 2, 110, 500, 30, 10, "past") +
+                              WordIn(3, 1, 1, 110, 520, 30, 10, "elsewhere");
+  EXPECT_EQ(tsv_words_within(clipped, kBox), "kept.\n\nopens");
 
-  // And a table whose first paragraphs kept nothing does not open on a
-  // break either.
+  // And a table whose first blocks kept nothing does not open on a break
+  // either.
   const std::string late = std::string(kHeader) +
                            WordIn(1, 1, 1, 10, 10, 30, 10, "above") +
-                           WordIn(1, 2, 1, 110, 110, 30, 10, "inside");
+                           WordIn(2, 1, 1, 110, 110, 30, 10, "inside");
   EXPECT_EQ(tsv_words_within(late, kBox), "inside");
+}
+
+TEST(TsvWords, TheIndentIsMeasuredFromTheInkAndNotTheRectangle) {
+  // The margin is the leftmost line that was *kept*, not the rectangle's
+  // own left edge: a rectangle is measured to the column and the ink
+  // inside it starts where it starts (journal_facts.h). Every line here
+  // sits well inside the box, and the second is still not indented
+  // relative to the first.
+  const std::string table = std::string(kHeader) +
+                            Word(1, 150, 110, 30, 10, "one.") +
+                            Word(2, 150, 130, 30, 10, "two");
+  EXPECT_EQ(tsv_words_within(table, kBox), "one.\ntwo");
 }
 
 TEST(TsvWords, AWordBelongsToWhicheverSideItsCentreIsOn) {

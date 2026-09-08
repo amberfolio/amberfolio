@@ -144,11 +144,7 @@ void expand_row(std::span<const std::uint8_t> row, const journal_image& image,
   }
   for (std::uint32_t x = 0; x < image.width; ++x) {
     const std::size_t at = static_cast<std::size_t>(x) * 3U;
-    // Rec. 601 luma, in integers: 0.299 / 0.587 / 0.114 scaled by 1000.
-    const unsigned luma = ((299U * row[at]) + (587U * row[at + 1U]) +
-                           (114U * row[at + 2U]) + 500U) /
-                          1000U;
-    const std::uint8_t v = static_cast<std::uint8_t>(std::min(luma, 255U));
+    const std::uint8_t v = journal_gray(row[at], row[at + 1U], row[at + 2U]);
     out[x] = image.inverted ? static_cast<std::uint8_t>(0xFFU - v) : v;
   }
 }

@@ -242,7 +242,7 @@ constexpr journal_region probe_art_region_three{
 /// the DC coefficient and nothing anywhere else, and eight divided by
 /// eight is one. So the whole image is one DC value and a run of zero
 /// differences, which is why there is no transform in this file.
-constexpr std::uint8_t probe_jpeg_gray = 160;
+constexpr std::uint8_t probe_jpeg_gray = journal_probe_encoded_tone;
 constexpr std::uint8_t probe_jpeg_quant = 8;
 
 /// ...which is that one number, derived rather than asserted: level-shift

@@ -33,13 +33,8 @@ add_executable(amberfolio-sdl
 # stays in the build either way: a linked build should still be able to
 # run a player's own newer engine if they ask for it.
 if(AMBERFOLIO_LINK_TESSERACT)
-  # And the page decoder the entries that are pictures need (#328),
-  # which exists only here because Leptonica and libjpeg-turbo are only
-  # here: src/leptonica_decoder.h says why that is the rule rather than
-  # an accident.
   target_sources(amberfolio-sdl PRIVATE
-    src/tesseract_linked_ocr.cpp
-    src/leptonica_decoder.cpp)
+    src/tesseract_linked_ocr.cpp)
   target_compile_definitions(amberfolio-sdl PRIVATE
     AMBERFOLIO_HAVE_LINKED_TESSERACT=1
     AMBERFOLIO_TESSDATA_DIR="${AMBERFOLIO_TESSDATA_DIR}")

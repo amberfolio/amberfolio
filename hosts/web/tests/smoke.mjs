@@ -251,6 +251,9 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_store_size',
   '_af_web_journal_store_recognized',
   '_af_web_journal_store_corrections',
+  '_af_web_journal_reduce_art',
+  '_af_web_journal_art_count',
+  '_af_web_journal_store_pictures',
   '_af_web_journal_store_write',
   '_af_web_journal_store_read',
   '_af_web_journal_store_changed',
@@ -3471,12 +3474,11 @@ if (missing.length === 0 && sessions !== null) {
   );
   check(wordsWithin({ blocks: [] }, region) === '', 'an empty page is not empty');
 
-  // The paragraphs the walk used to throw away (#331). The reader honours
-  // a blank line and nothing else (#316), and every line was being pushed
-  // flat and joined with one newline whatever paragraph it came from - so
-  // a real entry read as one solid block of prose. A space between two
-  // words of a line, one newline between two lines of a paragraph, a
-  // blank line between two paragraphs.
+  // Where the blank lines go (#331, #345). The reader honours a blank
+  // line and nothing else (#316), so this is the whole of how an entry
+  // reads. A new *block* breaks; inside a block the printed page decides,
+  // because the engine's own paragraphs split a real column wherever it
+  // had failed to read a line's first word.
   const para = (...lines) => ({ lines });
   const broken = {
     blocks: [
@@ -3486,37 +3488,54 @@ if (missing.length === 0 && sessions !== null) {
             { words: [word('one', 10, 2), word('two', 30, 2)] },
             { words: [word('three', 10, 8)] },
           ),
+          // The engine calls this a new paragraph and it is not one: the
+          // line is not indented, so nothing opens.
           para({ words: [word('four', 10, 14)] }),
         ],
       },
-      // A new block is a new paragraph too, which is what Tesseract's own
-      // text output does - so this host and the desktop's two engines
-      // break in the same places rather than in three sets of places.
+      // A new block is a different region of the page and does break.
       { paragraphs: [para({ words: [word('five', 10, 20)] })] },
     ],
   };
   check(
-    wordsWithin(broken, region) === 'one two\nthree\n\nfour\n\nfive',
+    wordsWithin(broken, region) === 'one two\nthree\nfour\n\nfive',
     `the paragraphs came out as ${JSON.stringify(wordsWithin(broken, region))}`,
   );
 
-  // And the two ways to get it wrong, both of which produce a *wrong*
-  // break rather than a missing one. A break falls only between two
-  // paragraphs that both kept something: a rectangle that clips a
-  // paragraph gains none at the crop, so the fragment joins to the next
-  // one with the single newline `recognize` writes, and a page whose
-  // first paragraphs fell outside does not open on a blank line either.
-  const clipped = {
+  // And an indent that *is* one: a heading at the margin, ended, with an
+  // indented line under it. The desktop's filter carries the identical
+  // rule and `tsv_words.h` argues for it.
+  const indented = {
     blocks: [
       {
         paragraphs: [
-          para({ words: [word('outside', 200, 200)] }),
-          para({ words: [word('kept', 10, 2)] }),
-          // Clipped: nothing of this paragraph is inside the rectangle,
-          // so it neither earns a break nor swallows one.
-          para({ words: [word('past', 200, 210)] }),
+          para(
+            { words: [word('heading.', 10, 2)] },
+            { words: [word('indented', 22, 8)] },
+            { words: [word('flush', 10, 14)] },
+          ),
         ],
       },
+    ],
+  };
+  check(
+    wordsWithin(indented, region) === 'heading.\n\nindented\nflush',
+    `the indent came out as ${JSON.stringify(wordsWithin(indented, region))}`,
+  );
+
+  // And the two ways to get it wrong, both of which produce a *wrong*
+  // break rather than a missing one. A break falls only between two lines
+  // that both kept something: a rectangle that clips a block gains none
+  // at the crop, so the fragment joins to the next one with the single
+  // newline `recognize` writes, and a page whose first blocks fell
+  // outside does not open on a blank line either.
+  const clipped = {
+    blocks: [
+      { paragraphs: [para({ words: [word('outside', 200, 200)] })] },
+      { paragraphs: [para({ words: [word('kept', 10, 2)] })] },
+      // Clipped: nothing of this block is inside the rectangle, so it
+      // neither earns a break nor swallows one.
+      { paragraphs: [para({ words: [word('past', 200, 210)] })] },
     ],
   };
   check(
@@ -3675,6 +3694,28 @@ if (missing.length === 0 && sessions !== null) {
     `the store reports ${again.store.corrections} corrections after one`,
   );
 
+  // --- The entries that are pictures (#345) ------------------------------
+  //
+  // A browser made none of these until the decoder moved into the library
+  // both hosts link: a drawing has no words in it, so there is no OCR
+  // engine to hand a `/DCTDecode` page to, and what a player got was an
+  // entry's caption with the map missing under it. The probe has two
+  // pictures on purpose and they arrive by different routes -- one off a
+  // page this module inflates, one off a page it decodes -- so a wasm
+  // build that could only do the first fails here.
+  check(
+    again.art === 2 && again.pictures === 2,
+    `the ingestion reports ${again.pictures} of ${again.art} pictures, not 2 of 2`,
+  );
+  check(
+    again.store.pictures === 2,
+    `the store holds ${again.store.pictures} pictures, not two`,
+  );
+  check(
+    module._af_web_journal_art_count(0) === 1,
+    'the fact table does not say the probe entry one has a picture',
+  );
+
   const text = serializeStore(module);
   check(
     text.startsWith('amberfolio-journal 5\n'),
@@ -3687,6 +3728,10 @@ if (missing.length === 0 && sessions !== null) {
   check(
     text.includes(corrected),
     'the serialized store does not carry the correction',
+  );
+  check(
+    (text.match(/^picture /gm) ?? []).length === 2,
+    'the serialized store does not carry the two pictures',
   );
 
   // --- Kept between visits (M5-E3f) --------------------------------------

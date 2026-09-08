@@ -29,17 +29,21 @@ from source, never committed here.
 | [SDL3](https://github.com/libsdl-org/SDL) | release-3.4.14 | zlib | the desktop host's window, audio and input |
 | [simdjson](https://github.com/simdjson/simdjson) | v4.6.7 | Apache-2.0 | parsing the condensed CPU conformance vectors |
 | [libdeflate](https://github.com/ebiggers/libdeflate) | v1.25 | MIT | decompressing them, and inflating the journal's image streams |
+| [stb_image](https://github.com/nothings/stb) | v2.30 | Unlicense or MIT | decoding the `/DCTDecode` pages of a journal's drawings |
 
-SDL3 and libdeflate have a bearing on a shipped binary; GoogleTest and
-simdjson are test-only. A build with `AMBERFOLIO_LINK_TESSERACT` on
-carries three more, listed below. SDL3 is linked into the desktop host. libdeflate
-was test-only until M5-E3 (#174) gave the journal's extractor a use for
-it, and it is now linked into both hosts — decompression only, so the
-half of it that writes a stream is not built at all. The pins live in
+SDL3, libdeflate and stb_image have a bearing on a shipped binary;
+GoogleTest and simdjson are test-only. A build with
+`AMBERFOLIO_LINK_TESSERACT` on carries three more, listed below. SDL3 is
+linked into the desktop host. libdeflate was test-only until M5-E3 (#174)
+gave the journal's extractor a use for it, and it is now linked into both
+hosts — decompression only, so the half of it that writes a stream is not
+built at all. stb_image arrived with #345, JPEG only and with its file
+half switched off, and is likewise in both hosts. The pins live in
 `cmake/AmberfolioGoogleTest.cmake`, `cmake/AmberfolioSDL3.cmake`,
-`cmake/AmberfolioLibdeflate.cmake` and `cmake/AmberfolioConformance.cmake`;
-the version numbers above are those files' defaults and those files are
-authoritative if the two ever disagree.
+`cmake/AmberfolioLibdeflate.cmake`, `cmake/AmberfolioStbImage.cmake` and
+`cmake/AmberfolioConformance.cmake`; the version numbers above are those
+files' defaults and those files are authoritative if the two ever
+disagree.
 
 The WebAssembly host is built with
 [Emscripten](https://emscripten.org/) (MIT / University of Illinois

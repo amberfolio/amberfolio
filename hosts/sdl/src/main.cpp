@@ -699,7 +699,6 @@
 #include "press_spec.h"
 #include "tesseract_ocr.h"
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
-#include "leptonica_decoder.h"
 #include "tesseract_linked_ocr.h"
 #endif
 
@@ -2565,15 +2564,11 @@ void ingest_journal(machine::machine& box, const options& opts,
   }
 
   // And who turns a page this build does not decode into samples, for
-  // the entries that are pictures (#328). Only a build that already
-  // links an image library has one — `leptonica_decoder.h` is why that
-  // is the rule and not an omission — and a build without one says so,
-  // because "this journal has no drawings" and "this build cannot read
-  // the ones it has" are different sentences.
-#if AMBERFOLIO_HAVE_LINKED_TESSERACT
-  sdl::leptonica_page_decoder pages;
-  ingester.set_page_decoder(&pages);
-#endif
+  // the entries that are pictures (#328). Every build has one now
+  // (`host/journal_jpeg.h`); this used to be the line where a build that
+  // had linked Leptonica for the OCR got pictures and every other build
+  // got none (#345). Still printed, because which decoder read a page is
+  // a fact about the store that was written.
   if (ingester.page_decoder() != nullptr) {
     std::fprintf(stderr, "amberfolio: journal pages decoded by %s\n",
                  ingester.page_decoder()->name());

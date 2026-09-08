@@ -149,10 +149,9 @@ into samples on the way (`journal_filter_decoded()`).
 ## 4a. The pages this build does not decode (M5-E3a, #212)
 
 The archive edition is a 21-page PDF whose every page scan is
-`/DCTDecode`, `/DeviceRGB`, 8 bits a component. Rejected: a JPEG decoder
-in this tree, because a decoder tested only against its own encoder is
-untested. `extract_scan()` (`journal_extract.h`) answers one of two
-things:
+`/DCTDecode`, `/DeviceRGB`, 8 bits a component. A page of *text* is
+carried to the engine undecoded, and that is still the arrangement:
+`extract_scan()` (`journal_extract.h`) answers one of two things:
 
 | | `gray` | `jpeg` |
 |---|---|---|
@@ -175,6 +174,13 @@ read the page.
 Not a PDF parser, ever: no objects found, no cross-reference table, no
 page tree. A wrong row points at bytes that do not inflate, or inflate to
 the wrong size, and the extractor says which.
+
+A **picture** has no engine to carry a page to, so it needs the page
+decoded, and since #345 every build can (`host/journal_jpeg.h`, §11.4).
+That is not a JPEG decoder written here — #212's reason for refusing one
+stands, and is the same reason `AmberfolioLibdeflate.cmake` gives for not
+writing an inflate — it is a pinned one fetched at build time. Nothing on
+the text path goes through it.
 
 **Traps in the pinned tesseract.js** (#306):
 
@@ -255,11 +261,24 @@ reader reflows on it (§9):
   engine's `TessBaseAPI::GetUTF8Text` already ends each line with `"\n"`
   and each paragraph with one more (tesseract 5.5.1's source; not run
   here).
-- A new block is a new paragraph, as in `GetUTF8Text`. A break is emitted
-  only *between* two kept things, so a clipped paragraph gains none.
-- All three depend on Tesseract finding the paragraphs; whether it finds
-  this edition's, which open with a quotation mark rather than an indent,
-  has not been measured.
+- **The engine's paragraphs are not taken at face value** (#345). It
+  measured badly on this edition: where the engine fails on the *first
+  word* of a line, the line begins where its second word does, which
+  looks to it exactly like an indent — so the reading loses a word and
+  gains a break in the middle of a sentence at the same place. Two things
+  have to be true instead: the line before it **ended** (a stop, or well
+  short of the column), and the line itself **starts** something (a new
+  block, or an indent past the column's own margin). Over the ninety-nine
+  items: breaks after a finished sentence 157 → 183, breaks mid-sentence
+  110 → 66.
+- The margin, the far edge and the type's height are measured off the
+  lines that were *kept*, so the indent is relative to the ink and the
+  threshold survives a page drawn at any scale.
+- A break is emitted only *between* two kept lines, so a clipped block
+  gains none at the crop.
+- Both hosts carry the identical rule: `hosts/sdl/src/tsv_words.h` argues
+  for it and `hosts/web/page/journal.mjs` mirrors it, because a player
+  should not get a different transcription for choosing a different host.
 
 ## 5a. How well it reads, and how anybody knows (#315)
 
@@ -293,10 +312,12 @@ per-entry score instead.
 
 **The asymmetry.** Drawing the page 2x needs it decoded. The browser does
 that (`createImageBitmap` and a canvas, one recognition per scan); the
-program-driven desktop engine has no decoder and Tesseract's CLI has no
-crop or scale flag, so a default desktop ingestion reads worse than a
-browser one, and the linked engine (#216) is the way to close that. The
-desktop's installed engine has never been measured.
+program-driven desktop engine hands the CLI a file and Tesseract's CLI
+has no crop or scale flag, so a default desktop ingestion reads worse
+than a browser one, and the linked engine (#216) is the way to close
+that. The desktop's installed engine has never been measured. (§11.4's
+decoder is not the missing piece: it would decode the page, but the CLI
+takes a path and this host does not write an image out.)
 
 The commonest surviving errors are the opening single quote that starts
 each paragraph, read as a curly double quote or `*`, and hyphenated line
@@ -656,11 +677,10 @@ The reduction, in `journal_picture.h`:
    point would lose one end.
 3. **Nearest quantization** to `journal_art_levels`.
 
-Integer arithmetic throughout, so a store's `fingerprint()` is stable
-across builds of one host. Not across hosts: the JPEG decode in front of
-the reducer is each image library's own, and two decoders differ on
-0.37% of the pixels by exactly one level, so two hosts' ingestions of one
-document are not expected to report the same hash.
+Integer arithmetic throughout, and since #345 one decoder in front of it
+on every target (§11.4), so a store's `fingerprint()` is stable across
+builds and across hosts: two ingestions of one document report the same
+hash wherever they were made.
 
 The knobs, none needing a re-ingestion: `journal_art_levels`, the ramp,
 and the fit.
@@ -678,26 +698,41 @@ The format is version 4; a version 3 store has no pictures and
 re-ingesting adds them. There is no `corrected` beside a picture: a
 better reduction is a re-ingestion.
 
-### 11.4 Who decodes the page, which is the part nothing else needed
+### 11.4 Who decodes the page, and why every build now does (#345)
 
 A `/DCTDecode` page reaches an OCR engine as its own bytes (§4a), but a
-picture has no engine to hand the decoding to. `journal_page_decoder` is
-a door and this tree has no decoder behind it:
+picture has no engine to hand the decoding to. `journal_page_decoder` was
+built as a door for a host to fill out of something it already linked,
+and what that produced was a feature one build of one host had:
 
-- **The linked desktop build** (`AMBERFOLIO_LINK_TESSERACT`, §5) has
-  Leptonica and libjpeg-turbo already. `hosts/sdl/src/leptonica_decoder.cpp`
-  is a short file over `pixReadMem` and `pixConvertTo8`, the first of
-  which `tesseract_linked_ocr.cpp` already calls on the same bytes.
-- **A default desktop build** has no decoder and therefore no pictures
-  out of this edition: `pictures=0/14`, with the filter named.
-- **The browser** makes no pictures yet, so its ingestion and a linked
-  desktop's produce different stores. It draws them: a store carried
-  over from a desktop ingestion shows its pictures in a browser.
+- the `AMBERFOLIO_LINK_TESSERACT` desktop build made pictures out of
+  Leptonica;
+- a default desktop build reported `pictures=0/14` and named the filter;
+- the browser had no picture path at all.
 
-An edition this build decodes itself needs none of this, and that is
-what CI runs: `journal_probe.h` has a Flate picture reduced on every
-target with nothing installed, and a `/DCTDecode` one refused by name
-with no decoder and reduced with a fixture one.
+So a player who had done nothing wrong saw an entry's caption with the
+map missing under it, and no way to tell that from a journal with no
+drawings in it. The decoder is now `host/journal_jpeg.h`, compiled into
+the library both hosts link, and every build has it;
+`cmake/AmberfolioStbImage.cmake` says why it is stb_image and not the
+libjpeg-turbo the OCR chain already builds.
+
+The door itself stays, and `set_page_decoder(nullptr)` still means *no
+decoder* - which is what an edition in a filter nobody has written code
+for really gets, and what the probe's refusal cases are.
+
+**One decoder, so one answer.** While Leptonica did this on one build and
+nothing did it on the others, two ingestions of one document could not be
+expected to agree; §11.2's note that two decoders differ on 0.37% of the
+pixels by one level was about exactly that. They agree now. That same
+0.37% is what checked the new decoder: stb_image's fourteen against
+Leptonica's fourteen, identical shapes, no pixel more than one level
+apart.
+
+CI proves it on every target over the probe, whose `/DCTDecode` page is a
+baseline JPEG this project assembles marker by marker - a hand-written
+encoder and a third-party decoder agreeing on a page is a fact about both
+of them (`hosts/common/tests/journal_jpeg_test.cpp`).
 
 ### 11.5 How it is drawn
 
@@ -746,23 +781,31 @@ ordering: `tests/core/machine/seam_journal_test.cpp`'s `JournalArt` and
 `JournalArtScreen`, and `hosts/common/tests/host_services_test.cpp`'s
 `HostServicesArt`.
 
-**By hand**, the linked desktop host with `--journal` over the archive
+**By hand**, a **default** desktop host with `--journal` over the archive
 edition and the OCR engine off:
 
 ```
 journal Pool of Radiance Adventurer's Journal, archive release entries=99
-journal pages decoded by leptonica (linked)
+journal pages decoded by stb_image
 journal entries=99 extracted=99 recognized=0
 journal pictures=14/14
 journal store <path> entries=0 corrections=0 pictures=14
-  sha256=a0b81e0d8950beb4017f226f3f9af222218f4f80ade89c6e4ec743bfc226f4c4
+  sha256=f7e23b0bc10b0fa7e05808725ff12234b4633176766f6d7fdfb8fea6c2728807
 ```
 
-`reduce_entry_pictures` over the same fourteen, from greymaps of the
+Those fourteen were compared, picture by picture, with the fourteen the
+linked build made out of Leptonica before #345: identical shapes, and
+0.37% of the levels one step apart, which is the difference between two
+JPEG decoders and nothing else (§11.4).
+
+**And in a browser**, the built page driven headlessly over the same
+document: `99 of 99 entries read by tesseract.js 6.0.1, 14 of 14
+pictures`. That is the number that was zero, on the host most players
+use. `reduce_entry_pictures` over the same fourteen, from greymaps of the
 scans, is byte-identical to the prototype §11.2's candidates were chosen
 on. The harness, the greymaps and the store stay out of the repository.
 
-**Not proven**: nobody has looked at a picture on a display, in either
-size; they have been seen only as dumped stills at 2x. The ramp's four
+**Not proven**: nobody has looked at a picture on a display; they have
+been seen only as dumped stills at 2x. The ramp's four
 tones are side by side in `tests/visual/reader-art-store.txt`'s synthetic
 picture and have not been judged. #270 tracks the rows.

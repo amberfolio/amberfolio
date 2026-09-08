@@ -228,4 +228,21 @@ struct journal_scan {
                                    const journal_region& region,
                                    journal_bitmap& out);
 
+/// One colour sample as this project's gray.
+///
+/// Rec. 601 luma in integers, rounded: 0.299 / 0.587 / 0.114 scaled by a
+/// thousand. Stated here rather than in the two places that need it,
+/// because the two places are the two ways a page can arrive — expanded
+/// from a stream this build inflated, or handed over by
+/// `journal_page_decoder` — and a picture out of one edition must not
+/// differ from a picture out of another by a level because two files
+/// wrote the same formula slightly differently.
+[[nodiscard]] constexpr std::uint8_t journal_gray(std::uint8_t red,
+                                                  std::uint8_t green,
+                                                  std::uint8_t blue) noexcept {
+  const unsigned luma =
+      ((299U * red) + (587U * green) + (114U * blue) + 500U) / 1000U;
+  return static_cast<std::uint8_t>(luma < 255U ? luma : 255U);
+}
+
 }  // namespace amberfolio::host

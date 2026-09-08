@@ -208,6 +208,12 @@ set(_amberfolio_web_export_names
   _af_web_journal_store_size
   _af_web_journal_store_recognized
   _af_web_journal_store_corrections
+  # The entries that are pictures (#345). `reduce_art` is the step of the
+  # ingestion that needs no engine, so the page drives it beside the
+  # recognition rather than through it.
+  _af_web_journal_reduce_art
+  _af_web_journal_art_count
+  _af_web_journal_store_pictures
   _af_web_journal_store_write
   _af_web_journal_store_read
   _af_web_journal_store_changed

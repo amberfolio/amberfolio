@@ -142,6 +142,16 @@ inline constexpr std::size_t journal_probe_art_decoded_entry = 0;
 inline constexpr std::size_t journal_probe_art_encoded_entry =
     journal_probe_encoded_entry;
 
+/// The one tone the probe's `/DCTDecode` page actually is.
+///
+/// Its stream is a hand-written baseline JPEG of a **flat field**, which
+/// is not the pattern `journal_probe_decoder` answers for it: the fixture
+/// decoder stands for a host's own image library and says what the probe
+/// *meant*, while this is what the bytes on the page say. The two differ
+/// on purpose, and the difference is what lets one test prove a real
+/// decoder read the stream rather than guessed the fixture (#345).
+inline constexpr std::uint8_t journal_probe_encoded_tone = 160;
+
 /// The probe document's bytes — the same bytes on every target, every
 /// time. Built once and cached.
 [[nodiscard]] const std::vector<std::uint8_t>& journal_probe_pdf();

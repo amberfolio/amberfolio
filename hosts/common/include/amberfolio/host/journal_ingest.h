@@ -69,6 +69,7 @@
 
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
+#include "amberfolio/host/journal_jpeg.h"
 #include "amberfolio/host/journal_ocr.h"
 #include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_store.h"
@@ -212,12 +213,17 @@ class journal_ingester {
   /// Who turns this edition's pages into samples, for an edition this
   /// build does not decode itself (`journal_picture.h`).
   ///
-  /// Null by default and null in most builds, which is the honest state
-  /// rather than a gap: #212 refused to put a JPEG decoder in this
-  /// project, and a picture — unlike a page of text — has no OCR engine
-  /// to hand the decoding to. A host that already links one for another
-  /// reason passes it here and gets pictures; one that does not gets a
-  /// count of zero and a sentence.
+  /// **`default_page_decoder()` to begin with**, which is a real decoder
+  /// in every build (`journal_jpeg.h`). It used to be null, on the
+  /// grounds that #212 had kept a JPEG decoder out of this project and a
+  /// host that linked one for another reason could pass it in; what that
+  /// produced was pictures on one build of one host and none anywhere
+  /// else (#345).
+  ///
+  /// Still settable, and **null is still meaningful**: it is how a caller
+  /// asks for the behaviour of a build that cannot read the filter, which
+  /// is what the probe's refusal cases are and what an edition in some
+  /// filter nobody has written code for would really get.
   ///
   /// Borrowed, and must outlive this object.
   void set_page_decoder(journal_page_decoder* decoder) noexcept {
@@ -242,7 +248,7 @@ class journal_ingester {
   std::span<const journal_edition> table_;
   std::span<const std::uint8_t> document_;
   const journal_edition* edition_{nullptr};
-  journal_page_decoder* decoder_{nullptr};
+  journal_page_decoder* decoder_{&default_page_decoder()};
   sha256_digest fingerprint_{};
   journal_scan scan_;
 };

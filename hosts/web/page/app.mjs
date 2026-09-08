@@ -403,6 +403,7 @@ export function runDevPage() {
         (restored.corrections > 0
           ? `, ${restored.corrections} corrected`
           : '') +
+        (restored.pictures > 0 ? `, ${restored.pictures} pictures` : '') +
         `) - sha256=${restored.fingerprint}`,
     );
   }
@@ -453,6 +454,12 @@ export function runDevPage() {
         setJournalStatus(
           `${report.edition}: ${report.recognized} of ${report.entries} entries` +
             ` read by ${report.engine}` +
+            // The drawings, and only when the edition has any: an entry
+            // that is a map has no words, so the count above says nothing
+            // about whether its picture arrived (#345).
+            (report.art > 0
+              ? `, ${report.pictures} of ${report.art} pictures`
+              : '') +
             (report.firstTrouble
               ? ` (${journalKind(report.firstTrouble.citation)}` +
                 ` ${journalNumber(report.firstTrouble.citation)}:` +

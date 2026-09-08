@@ -307,21 +307,38 @@ TEST(JournalPictureRoutes, AnEntryWithNoArtProducesNothingAndSaysNothing) {
 
 TEST(JournalPictureIngest, PicturesAreMadeWithNoOcrEngineAtAll) {
   // A drawing has no words in it, so an ingestion with no engine still
-  // produces every picture this build can decode -- and the report says
-  // both numbers, so "this build has no decoder" cannot read as "this
-  // journal has no drawings".
+  // produces every picture -- both of them, since #345, because the
+  // decoder in front of the reducer is no longer something a host had to
+  // bring (host/journal_jpeg.h).
   journal_ingester ingester(journal_probe_table());
   ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
+  journal_store store;
+  const journal_ingest_report report = ingester.run(nullptr, store);
+  EXPECT_EQ(report.art, journal_probe_art);
+  EXPECT_EQ(report.pictures, journal_probe_art);
+  EXPECT_EQ(report.first_art_trouble, journal_trouble::none);
+  EXPECT_EQ(store.picture_count(), journal_probe_art);
+  EXPECT_EQ(store.recognized(), 0U);
+}
+
+TEST(JournalPictureIngest, WithNoDecoderTheEncodedPageIsRefusedAndCounted) {
+  // What a build that cannot read the filter gets, which is still a
+  // reachable state: an edition in some encoding nobody has written code
+  // for, and the probe's own refusal cases. The report says both numbers,
+  // so "this build has no decoder" cannot read as "this journal has no
+  // drawings".
+  journal_ingester ingester(journal_probe_table());
+  ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
+  ingester.set_page_decoder(nullptr);
   journal_store store;
   const journal_ingest_report report = ingester.run(nullptr, store);
   EXPECT_EQ(report.art, journal_probe_art);
   EXPECT_EQ(report.pictures, 1U);
   EXPECT_EQ(report.first_art_trouble, journal_trouble::filter_unsupported);
   EXPECT_EQ(store.picture_count(), 1U);
-  EXPECT_EQ(store.recognized(), 0U);
 }
 
-TEST(JournalPictureIngest, ADecoderMakesTheOtherOne) {
+TEST(JournalPictureIngest, AHostsOwnDecoderIsStillTakenOverThisOne) {
   journal_ingester ingester(journal_probe_table());
   ASSERT_EQ(ingester.begin(journal_probe_pdf()), journal_trouble::none);
   journal_probe_decoder decoder;
