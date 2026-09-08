@@ -1204,8 +1204,10 @@ struct reader_pages {
 /// Separate from `machine::journal_kind_name()`, which is the lower-case
 /// token a store file and a log line use. This is a *caption*: upper case
 /// because that is the case the program's font is legible in, and short
-/// enough that it and a four-digit number fit the prompt's twenty-two
-/// columns — which `PROCLAMATION 214` does, with five to spare.
+/// enough that it and its section's own numbering fit the prompt's
+/// twenty-two columns — the longest this edition can print is
+/// `PROCLAMATION CCXIV`, which does, with four to spare
+/// (`machine::journal_number_as_printed`).
 [[nodiscard]] constexpr std::string_view reader_word(
     journal_kind which) noexcept {
   switch (which) {
@@ -1286,7 +1288,7 @@ class list_line {
   line.add(row.read ? "  " : "* ");
   line.add(reader_word(row.what.kind));
   line.add(" ");
-  line.add(row.what.number);
+  line.add(journal_number_as_printed(row.what.kind, row.what.number).view());
   return line;
 }
 
@@ -1982,7 +1984,8 @@ constexpr std::size_t page_rows_per_pass = 4;
   list_line title;
   title.add(reader_word(state.entry().kind));
   title.add(" ");
-  title.add(state.entry().number);
+  title.add(journal_number_as_printed(state.entry().kind, state.entry().number)
+                .view());
   return title;
 }
 

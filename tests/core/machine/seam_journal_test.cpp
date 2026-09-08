@@ -967,6 +967,43 @@ TEST(JournalCitation, AProclamationIsNumberedTheWayTheBookletNumbersIt) {
   EXPECT_EQ(journal_citation_in("TALE IV"), Nothing());
 }
 
+TEST(JournalNumber, EachSectionIsWrittenTheWayItIsNumbered) {
+  // The other direction (#358): the store keeps a proclamation's number
+  // as its value, so the reader owes the numeral back. A list that
+  // skipped it offered `PROCLAMATION 101` for a thing the game's own
+  // sentence, and the player's own booklet, both call CI.
+  EXPECT_EQ(journal_number_as_printed(journal_kind::proclamation, 101).view(),
+            "CI");
+  EXPECT_EQ(journal_number_as_printed(journal_kind::proclamation, 59).view(),
+            "LIX");
+  EXPECT_EQ(journal_number_as_printed(journal_kind::proclamation, 214).view(),
+            "CCXIV");
+  EXPECT_EQ(journal_number_as_printed(journal_kind::proclamation, 3999).view(),
+            "MMMCMXCIX");
+  EXPECT_EQ(journal_number_as_printed(journal_kind::entry, 6).view(), "6");
+  EXPECT_EQ(journal_number_as_printed(journal_kind::tale, 23).view(), "23");
+  // A number with no canonical numeral is written as a number rather
+  // than as something that is not one.
+  EXPECT_EQ(journal_number_as_printed(journal_kind::proclamation, 0).view(),
+            "0");
+  EXPECT_EQ(journal_number_as_printed(journal_kind::proclamation, 4000).view(),
+            "4000");
+}
+
+TEST(JournalNumber, WhatItWritesIsWhatTheRecognizerReads) {
+  // The two halves are one grammar, so the whole of it round-trips: the
+  // recognizer takes only canonical numerals, and this writes canonical
+  // numerals or it does not write one at all.
+  for (unsigned number = 1; number < 4000; ++number) {
+    const journal_number written =
+        journal_number_as_printed(journal_kind::proclamation, number);
+    const std::string cited = "PROCLAMATION " + std::string(written.view());
+    EXPECT_EQ(journal_citation_in(cited),
+              Proclamation(static_cast<std::uint16_t>(number)))
+        << "wrote " << written.view() << " for " << number;
+  }
+}
+
 TEST(JournalCitation, AProclamationAndItsNumeralMayTouch) {
   // The program prints the word and the numeral as two operands with
   // nothing between them, so the screen reads them as one word.

@@ -208,6 +208,34 @@ inline constexpr std::size_t journal_kinds = 3;
 [[nodiscard]] bool journal_kind_from_name(std::string_view word,
                                           journal_kind& out) noexcept;
 
+/// A section number written the way the booklet prints it, as a string
+/// with its own storage: decimal for entries and tales, a **Roman
+/// numeral** for proclamations.
+///
+/// The store keeps a proclamation's number as its *value*, because a
+/// numeral is a way of writing a number and comparing, sorting and
+/// keying all want the number (`docs/journal.md` §3). The writing is
+/// therefore owed at the other end, and this is it — the mirror of the
+/// recognizer below, which reads the numerals the program itself writes.
+/// A reader that skipped it showed `PROCLAMATION 101` for a thing the
+/// player's own booklet, and the game's own sentence, both call CI.
+///
+/// The largest number in the one edition measured is 214; nothing here
+/// depends on that, and a value with no canonical numeral (zero, or over
+/// 3999) comes back decimal rather than wrong.
+struct journal_number {
+  std::array<char, 16> text{};
+  std::uint8_t length{};
+
+  [[nodiscard]] constexpr std::string_view view() const noexcept {
+    return {text.data(), length};
+  }
+};
+
+/// `number` as its own section prints it. Never empty.
+[[nodiscard]] journal_number journal_number_as_printed(
+    journal_kind kind, unsigned number) noexcept;
+
 /// What the game just told a player to read: which section, and which
 /// number of it.
 ///

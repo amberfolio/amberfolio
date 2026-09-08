@@ -520,6 +520,14 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   dropped, when there is a letter on each side (a guess: `WITH-` against
   `WELL-`). Cost: a list of one-line items runs together; the fix is a
   blank line between items in the correction field.
+- **Each section is numbered the way its own booklet numbers it**
+  (#358): decimal for entries and tales, a Roman numeral for
+  proclamations, on the listing's rows and in a page's title alike.
+  §3 keeps a proclamation's number as the numeral's *value* because
+  comparing, sorting and keying all want a number; the writing is owed
+  back here, and `machine::journal_number_as_printed()` is it — the
+  mirror of the recognizer that reads the numerals the program itself
+  writes, and checked against it over every number the grammar can say.
 - **Transliteration** (M5-E4c, #219): the program draws one of its own
   sixty-four glyphs per byte, so on the way into the delivery buffer
   curly quotes and dashes become their plain forms, an ellipsis three
