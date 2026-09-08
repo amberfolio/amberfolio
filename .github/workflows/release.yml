@@ -129,6 +129,27 @@ jobs:
       - name: test (optimised)
         run: ctest --preset wasm-release
 
+      # The browser's OCR engine, beside the module the bundler is about
+      # to stage (#287). The *tag's* own fetch script and its own pin, so
+      # a backfilled release carries the tesseract.js that tag's
+      # journal.mjs was written against rather than today's.
+      #
+      # Guarded because this is the path for tags older than the script:
+      # a tree from before M5-E3e has no fetcher and no digest record, and
+      # then this release carries no engine and release-bundle.sh says so
+      # on stderr. Not guarded against the fetch *failing* — bytes that do
+      # not match the committed digests are the one thing this must not
+      # ship past.
+      - name: The browser's OCR engine, if this tag has a fetcher for one
+        run: |
+          if [ -f scripts/fetch-ocr-engine.py ] &&
+            [ -f scripts/ocr-engine.sha256sums ]; then
+            python3 scripts/fetch-ocr-engine.py --into build/wasm/hosts/web/Release
+          else
+            echo "this tag predates scripts/fetch-ocr-engine.py;" \
+              "the release will carry no OCR engine"
+          fi
+
       - name: Stage the release
         env:
           TAG: ${{ steps.what.outputs.tag }}

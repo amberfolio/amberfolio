@@ -43,6 +43,13 @@
 #      object really is a commit, because `refs/tags/v0.2.0` names an
 #      *annotated tag object* whose own sha is forty hex characters that
 #      look exactly like a commit and resolve to nothing.
+#   4. **The OCR engine travels as one asset, or not at all.** The engine
+#      `page/journal.mjs` is written against is a fact about the bundle
+#      rather than a choice a site makes, so a consumer pinning a tag has
+#      to be able to get it (#287). It rides as a single tarball with a
+#      single hash, described under `engine` in the manifest; a build tree
+#      that has not fetched one stages without it and says so. `ENGINE_DIR`
+#      below has the argument.
 #
 # The version is read from the top-level CMakeLists.txt and asserted equal
 # to the tag, which makes CONTRIBUTING.md's "its name matches
@@ -97,6 +104,36 @@ BUNDLE=(
 # is in the next release with no edit here.
 NOTICES=(LICENSE NOTICE.md)
 NOTICES_DIR=LICENSES
+
+# The browser's OCR engine, when the build tree has one (#287).
+#
+# `page/journal.mjs` refuses a CDN by design and reads one library
+# version's output shape, so *which* tesseract.js a page serves is a fact
+# about the bundle and not a decision a site gets to make. The engine is
+# about 32 MB of third-party binaries and is never committed
+# (`scripts/fetch-ocr-engine.py` carries the argument): CI fetches it into
+# the build tree beside the module and this attaches it, so a site pinning
+# a tag can serve it from its own origin without choosing a version. The
+# release carried seven files and no engine, and a site could decode every
+# entry of a recognised journal and recognise none.
+#
+# **One tarball rather than an asset per file**, because the directory is
+# one thing: `loadEngine()` wants a directory, and attaching its files
+# separately would make every consumer reassemble it. Its entries are
+# `vendor/tesseract/...`, so unpacking it where the bundle is served puts
+# the engine exactly where `ENGINE_URL` looks — no rewriting of paths, no
+# choice to get wrong.
+#
+# **A missing engine is not an error**, for the `abi` key's reason:
+# `release.yml` stages the tree of an older tag, and somebody staging by
+# hand has fetched nothing. That gets a manifest with no `engine` key and
+# a line on stderr. What *is* an error is a directory that is there and is
+# not one — no `version.txt`, so nothing can say which library it is, or
+# no `tesseract.min.js`, the one file `journal.mjs` asks for by name.
+ENGINE_DIR=vendor/tesseract
+ENGINE_ASSET=vendor-tesseract.tar.gz
+ENGINE_VERSION_FILE=version.txt
+ENGINE_ENTRY=tesseract.min.js
 
 die() {
   echo "release-bundle: $*" >&2
@@ -275,6 +312,63 @@ while IFS= read -r path; do
   copy_notice "$path" "$(basename "$path")"
 done < <(find "$repo_root/$NOTICES_DIR" -maxdepth 1 -type f | sort)
 
+# The engine, if this build tree fetched one (#287). Staged after the
+# notices so that a refusal here still leaves nothing behind: the trap is
+# armed until the very end.
+engine_files=
+engine_version=
+if [ -d "$built/$ENGINE_DIR" ]; then
+  if [ ! -f "$built/$ENGINE_DIR/$ENGINE_VERSION_FILE" ]; then
+    die "$built/$ENGINE_DIR has no $ENGINE_VERSION_FILE: the manifest states" \
+      "which tesseract.js these bytes are, and an engine nothing can name is" \
+      "one a lockfile cannot pin. Every fetch writes that file beside what it" \
+      "fetched (scripts/fetch-ocr-engine.py)"
+  fi
+  if [ ! -f "$built/$ENGINE_DIR/$ENGINE_ENTRY" ]; then
+    die "$built/$ENGINE_DIR has no $ENGINE_ENTRY, which is the one file" \
+      "page/journal.mjs asks for by name: whatever is in that directory, it" \
+      "is not the engine this bundle is written against"
+  fi
+  engine_version=$(tr -d '\r\n' <"$built/$ENGINE_DIR/$ENGINE_VERSION_FILE")
+  # A version goes into JSON unescaped, so it has to be a version. A file
+  # holding a quote or a backslash would produce a manifest that parses as
+  # nothing at all, which is the one failure a consumer meets with nothing
+  # pointing back at here.
+  case $engine_version in
+    "" | *[!A-Za-z0-9.+-]*)
+      die "$built/$ENGINE_DIR/$ENGINE_VERSION_FILE does not hold a version" \
+        "(got '$engine_version'): manifest.json states it, unescaped"
+      ;;
+  esac
+  # Reproducible where tar can be: names sorted, no timestamps, no owner,
+  # and gzip told not to record its own. Two people staging one tree then
+  # get one digest, which is the property a lockfile wants. bsdtar has
+  # none of those flags and still makes a correct tarball — the digest is
+  # a fact about the bytes attached either way, and only its equality
+  # across machines is lost.
+  case $(tar --version 2>/dev/null) in
+    *"GNU tar"*)
+      tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+        --format=ustar -cf - -C "$built" "$ENGINE_DIR" |
+        gzip -n -9 >"$out/$ENGINE_ASSET"
+      ;;
+    *)
+      tar -cf - -C "$built" "$ENGINE_DIR" | gzip -n -9 >"$out/$ENGINE_ASSET"
+      ;;
+  esac
+  staged+=("$ENGINE_ASSET")
+  # Every file inside it, by the path it unpacks to, so a consumer can
+  # check what it downloaded *and* what it ended up serving.
+  engine_files=$(cd "$built" && find "$ENGINE_DIR" -type f | LC_ALL=C sort)
+  if [ -z "$engine_files" ]; then
+    die "$built/$ENGINE_DIR holds no files"
+  fi
+else
+  echo "release-bundle: $built/$ENGINE_DIR is missing, so this release" \
+    "carries no OCR engine and manifest.json will have no \"engine\" key —" \
+    "which a consumer reads as \"fetch one yourself\" (#287)" >&2
+fi
+
 # Hex, plain `sha256sum` output, sorted by name: the copy a person checks
 # by hand. It covers everything attached, notices included.
 : >"$out/SHA256SUMS"
@@ -305,6 +399,31 @@ done < <(printf '%s\n' "${staged[@]}" | sort)
       "$(wc -c <"$out/$name" | tr -d ' ')" "$comma"
   done
   printf '  ],\n'
+  # The OCR engine, when there is one (#287): one asset, its digest, and
+  # the digest of every file it unpacks to, so a consumer can verify the
+  # download and again what it is about to serve. `unpacksTo` is where
+  # those paths land, which is where `journal.mjs`'s `ENGINE_URL` looks.
+  if [ -n "$engine_files" ]; then
+    printf '  "engine": {\n'
+    printf '    "name": "%s",\n' "$ENGINE_ASSET"
+    printf '    "sha256": "%s",\n' "$(sha256_of "$out/$ENGINE_ASSET")"
+    printf '    "size": %s,\n' "$(wc -c <"$out/$ENGINE_ASSET" | tr -d ' ')"
+    printf '    "library": "tesseract.js",\n'
+    printf '    "version": "%s",\n' "$engine_version"
+    printf '    "unpacksTo": "%s/",\n' "$ENGINE_DIR"
+    printf '    "files": [\n'
+    engine_first=1
+    while IFS= read -r name; do
+      if [ "$engine_first" -eq 1 ]; then engine_first=0; else printf ',\n'; fi
+      printf '      { "name": "%s", "sha256": "%s", "size": %s }' \
+        "$name" "$(sha256_of "$built/$name")" \
+        "$(wc -c <"$built/$name" | tr -d ' ')"
+    done <<ENGINE_FILES
+$engine_files
+ENGINE_FILES
+    printf '\n    ]\n'
+    printf '  },\n'
+  fi
   # Every entry point the module exports, in the order the link line
   # takes them. `abi` above is what a loader compares; this is what it
   # prints when the comparison fails, and what a host checks a single

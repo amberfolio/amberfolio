@@ -405,8 +405,8 @@ python3 scripts/serve-web.py
 ### The release bundle
 
 `scripts/release-bundle.sh` stages seven files from the module and
-`hosts/web/page/`, plus `SHA256SUMS` and `manifest.json`.
-`scripts/test-release-bundle.sh` is its self-test.
+`hosts/web/page/`, the OCR engine when the tree has one, plus `SHA256SUMS`
+and `manifest.json`. `scripts/test-release-bundle.sh` is its self-test.
 
 | file | what it is |
 | --- | --- |
@@ -417,9 +417,40 @@ python3 scripts/serve-web.py
 | `audio-worklet.mjs` | the speaker worklet |
 | `picker.mjs` | the directory picker |
 | `journal.mjs` | the journal store and ingestion; `host.mjs` imports it (#229) |
+| `vendor-tesseract.tar.gz` | the browser's OCR engine, when the tree has one (#287) |
 
-Not `index.html`: the release is the emulator, not the page. The OCR engine
-`journal.mjs` looks for is not in the bundle (#287).
+Not `index.html`: the release is the emulator, not the page.
+
+**The OCR engine rides as one tarball** (#287). `journal.mjs` refuses a CDN
+and reads one library version's output shape, so which tesseract.js a page
+serves is a fact about the bundle rather than a site's choice. The
+`vendor/tesseract/` directory the wasm CI job stages
+(`scripts/fetch-ocr-engine.py`, digests in `scripts/ocr-engine.sha256sums`)
+is attached as `vendor-tesseract.tar.gz`, listed in `SHA256SUMS` and
+described in `manifest.json` under `engine` — the asset's own digest and
+size, the library and its pinned version, `unpacksTo`, and a digest per
+file so a consumer can check what it is about to serve as well as what it
+downloaded. Its entries are `vendor/tesseract/...`, so unpacking it beside
+the bundle puts the engine where `ENGINE_URL` looks; a site serving under
+`<origin>/emulator/<tag>/` then passes that path to
+`loadEngine({ url })` and no request leaves the origin. About 13 MB as the
+tarball and 32 MB unpacked, and a visitor who never picks a journal fetches
+none of it — `loadEngine()` is called at an ingestion, not at page load. A
+build tree that fetched no engine stages without one and says so, and the
+manifest then has no `engine` key at all, the same way it has no `abi` key
+for a tree older than the declaration.
+
+```json
+{
+  "engine": {
+    "name": "vendor-tesseract.tar.gz",
+    "sha256": "…", "size": 0,
+    "library": "tesseract.js", "version": "…",
+    "unpacksTo": "vendor/tesseract/",
+    "files": [ { "name": "vendor/tesseract/tesseract.min.js", "sha256": "…", "size": 0 } ]
+  }
+}
+```
 
 **Which `journal.mjs` exports are a page's** (#288). A consumer that pins a
 tag transcribes the module's surface, so the file's own top comment splits
