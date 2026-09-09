@@ -329,7 +329,8 @@ Ordered by dependency; each has a crisp exit criterion. From M3 on,
 every milestone exit is tagged as a **0.x pre-release** (M3 → 0.1
 "boots", M4 → 0.2 "playable", M5 → 0.3 "enhanced", M6 → 0.4
 "onboarded"), so there is always a current, runnable tag while the work
-converges on **1.0** — the release the gate in §1 defines.
+converges on **1.0** — the release the gate in §1 defines. M8 is the
+first milestone *past* it, and exits as 1.1.
 
 - **M0 — Bootstrap.** CMake + presets, CI matrix for all four targets,
   unit-test rig, format/lint/sanitizer gates, DCO check, and automatic
@@ -358,19 +359,32 @@ converges on **1.0** — the release the gate in §1 defines.
   (F)ix, explored overlay — each individually toggleable, each off by
   default, each native in feel (§5). *Exit: all six v1 seams work and
   toggle independently on desktop + web.*
-- **M6 — Onboarding, shells + gamepad.** The reference web shell
-  (file-picker / drag-drop onboarding, artifact fingerprinting with a
-  clear unrecognized-edition path, IndexedDB persistence, touch
-  controls, toggle panel), desktop onboarding polish (first-run
-  pointing at the game directory, config file), and the gamepad
-  mapping layer + virtual keyboard on both hosts. *Exit: a new player
-  goes from artifacts-in-hand to playing without reading source code,
-  and the game is fully playable — including text entry — with only a
-  gamepad in hand.*
+- **M6 — Onboarding and shells.** The reference web shell (file-picker
+  / drag-drop onboarding, artifact fingerprinting with a clear
+  unrecognized-edition path, IndexedDB persistence, touch controls,
+  toggle panel) and desktop onboarding polish (first-run pointing at
+  the game directory, config file). *Exit: a new player goes from
+  artifacts-in-hand to playing without reading source code.*
 - **M7 — Release 1.0.** Versioning, GitHub Releases with prebuilt
   binaries for the three desktop targets + the wasm bundle, README/docs
   refresh, a short "supplying your artifacts" guide. *Exit: tagged 1.0
   release, binaries downloadable, release gate (§1) green.*
+- **M8 — Gamepad, and the look of the thing.** Two player-facing layers
+  1.0 ships without, deliberately. The gamepad mapping layer and
+  virtual keyboard on both hosts, built from one data model rather than
+  from one shell's DOM, so that text entry works with only a gamepad in
+  hand. And a CRT presentation filter — 4:3 aspect correction, a
+  scanline pass, phosphor persistence, an optional overscan border —
+  off by default on both hosts, because a period monitor is what this
+  program was drawn for and a flat panel is not. **Nothing under
+  `core/`:** the composed frame stays the frame the machine drew, at
+  the size and depth it drew it, and the filter is what a host does on
+  the way to a window. So a recording, a state hash and a dumped still
+  are the same afterwards as before, which is what keeps this a
+  *presentation* step and not a fidelity claim. *Exit: the game is
+  fully playable, text entry included, with only a gamepad in hand, and
+  both hosts show one frame through one filter with one set of
+  controls.*
 
 ## 8. Risks and mitigations
 
@@ -401,6 +415,10 @@ converges on **1.0** — the release the gate in §1 defines.
 - Other audio hardware (Ad Lib, Roland, Tandy), mouse support, other
   video modes (CGA/MCGA/Hercules), machine save-states, localization,
   32-bit builds.
+- Gamepad control and the CRT look are **deferred rather than dropped**:
+  they are M8 (§7), the first milestone past 1.0. A keyboard is what 1.0
+  is playable with, and square pixels on a flat panel are what it looks
+  like.
 
 ## 10. Open questions
 
