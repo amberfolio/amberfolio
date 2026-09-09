@@ -12,6 +12,7 @@
 //                                     [--seam ID] [--seams]
 //                                     [--document PATH] [--vfs-list]
 //                                     [--vfs-get PATH] [--vfs-remove PATH]
+//                                     [--save-layer]
 //                                     [--speed NAME]
 //                                     [--fast N|max] [-- ARGUMENTS...]
 //
@@ -333,6 +334,22 @@
 //     prints beside the fingerprint is the other half of #95: which
 //     known edition the file is, or that it is not one, in which case no
 //     seam is available (machine/edition.h).
+//
+//   --save-layer     which of the disk's files are the player's (#208)
+//
+//     Two things, either side of the run. Before it, with the edition
+//     line, the table itself: one row per path pattern, what kind of
+//     file it is, whether a slot is incomplete without it, and a line
+//     saying what it holds. After it, the disk read against that table
+//     — the files the layer claims, each with the slot letter and the
+//     party-member index its name carries.
+//
+//     It is the same question a browser has to answer before it writes
+//     `\SAVE\` into its own storage, and the reason it is a table
+//     rather than a heuristic is that the publisher's bytes are on one
+//     side of the line and the player's on the other. A program this
+//     build has no table for says so and lists nothing, which is the
+//     honest answer and not a failure (machine/save_layer.h).
 //
 //   --vfs-list       list every file on the disk, after the run
 //   --vfs-get PATH   read one file back through the door, after the run
@@ -686,6 +703,7 @@
 #include "amberfolio/machine/renderer.h"
 #include "amberfolio/machine/replay.h"
 #include "amberfolio/machine/report.h"
+#include "amberfolio/machine/save_layer.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/state.h"
@@ -1388,6 +1406,13 @@ struct options {
   bool list_vfs{false};
   std::vector<std::string> vfs_gets;
   std::vector<std::string> vfs_removes;
+
+  /// The save layer (#208): which of the files on the disk are the
+  /// player's, and which of those make up a slot. The table comes off
+  /// the loaded program and is printed with the edition line; the files
+  /// it matches are printed after the run, for the same reason
+  /// `--vfs-list` is.
+  bool save_layer{false};
   /// Documents the player presents (M5-D3, #171), as paths on this
   /// machine's own filesystem — not on the emulated one. A code wheel
   /// lives wherever a person keeps their PDFs, which is very often not
@@ -1854,6 +1879,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.vfs_gets.emplace_back(argv[++i]);
     } else if (arg == "--vfs-remove" && i + 1 < argc) {
       opts.vfs_removes.emplace_back(argv[++i]);
+    } else if (arg == "--save-layer") {
+      opts.save_layer = true;
     } else if (arg == "--document" && i + 1 < argc) {
       opts.documents.emplace_back(argv[++i]);
     } else if (arg == "--code-wheel-answered") {
@@ -1986,6 +2013,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         "                                      [--seam ID] [--seams]\n"
         "                                      [--vfs-list]"
         " [--vfs-get PATH] [--vfs-remove PATH]\n"
+        "                                      [--save-layer]\n"
         "                                      [--document PATH]\n"
         "                                      [--record FILE]"
         " [--record-every N] [--replay FILE]\n"
@@ -2153,6 +2181,106 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
   std::array<char, machine::dos_path_capacity> text{};
   static_cast<void>(machine::format_dos_path(path, text));
   return {text.data()};
+}
+
+/// `--save-layer`'s first half: the table itself, printed with the
+/// edition line (#208).
+///
+/// Before the run and not after it, because it is a fact about the
+/// program rather than about the disk — the same reason the edition line
+/// is where it is. A pattern is spelled with its placeholders in it:
+/// `<S>` a slot letter, `<N>` a party-member index, `<NAME>` a name the
+/// player chose (`machine/save_layer.h`).
+void report_save_layer_table(const machine::machine& box, const options& opts) {
+  if (!opts.save_layer) {
+    return;
+  }
+  const machine::save_layer* layer =
+      machine::save_layer_for(box.seams().program());
+  if (layer == nullptr) {
+    std::fprintf(stderr,
+                 "amberfolio: save-layer unrecognized - this build has no"
+                 " table for this program\n");
+    return;
+  }
+  std::fprintf(stderr,
+               "amberfolio: save-layer %llu row(s) slots=%.*s members=%u\n",
+               static_cast<unsigned long long>(layer->files.size()),
+               static_cast<int>(layer->slots.size()), layer->slots.data(),
+               static_cast<unsigned>(layer->members));
+  for (const machine::save_file& row : layer->files) {
+    std::fprintf(stderr, "amberfolio: save-layer %.*s %s%s - %.*s\n",
+                 static_cast<int>(row.pattern.size()), row.pattern.data(),
+                 machine::save_file_kind_name(row.kind),
+                 row.required ? " required" : "",
+                 static_cast<int>(row.about.size()), row.about.data());
+  }
+}
+
+/// `--save-layer`'s second half: which of the disk's files are the
+/// player's, once the run has left what it left (#208).
+///
+/// The table itself is printed with the edition line, before the run,
+/// because it is a fact about the program rather than about the disk.
+/// This is the disk read against it — the same question a browser asks
+/// before it writes `\SAVE\` into its own storage, answered here so the
+/// two hosts can be compared rather than described.
+///
+/// Files the layer does not claim are simply absent: this is a listing
+/// of the playthrough's, and `--vfs-list` is the listing of everything.
+void report_save_layer_files(const machine::machine& box,
+                             machine::filesystem& files, const options& opts) {
+  if (!opts.save_layer || !box.seams().have_program()) {
+    return;
+  }
+  const machine::save_layer* layer =
+      machine::save_layer_for(box.seams().program());
+  if (layer == nullptr) {
+    std::fprintf(stderr,
+                 "amberfolio: save-layer unrecognized - this build has no"
+                 " table for this program\n");
+    return;
+  }
+  std::vector<machine::tree_file> found(machine::tree_file_count(files));
+  const std::size_t count = machine::tree_files(files, found);
+  std::size_t named = 0;
+  std::size_t theirs = 0;
+  for (std::size_t i = 0; i < count && i < found.size(); ++i) {
+    const machine::save_layer_row row =
+        machine::match_save_file(*layer, found[i].path);
+    if (row.file == nullptr) {
+      continue;
+    }
+    ++named;
+    if (row.file->kind != machine::save_file_kind::config) {
+      ++theirs;
+    }
+    std::array<char, 32> where{};
+    int used = 0;
+    if (row.slot != 0) {
+      used = std::snprintf(where.data(), where.size(), " slot=%c", row.slot);
+    }
+    if (row.member != 0 && used >= 0 &&
+        static_cast<std::size_t>(used) < where.size()) {
+      std::snprintf(where.data() + used,
+                    where.size() - static_cast<std::size_t>(used), " member=%u",
+                    static_cast<unsigned>(row.member));
+    }
+    std::fprintf(stderr, "amberfolio: save-layer file %s %s%s\n",
+                 spell_vfs_path(found[i].path).c_str(),
+                 machine::save_file_kind_name(row.file->kind), where.data());
+  }
+  // Two numbers, because they are not the same claim. The table *names*
+  // the program's configuration file so that a host is told to leave it
+  // with the game's own (machine/save_layer.h), and a single count that
+  // folded it in with the saves would be saying the opposite of what
+  // that row is there to say.
+  std::fprintf(stderr,
+               "amberfolio: save-layer %llu of %llu file(s) named,"
+               " %llu the playthrough's\n",
+               static_cast<unsigned long long>(named),
+               static_cast<unsigned long long>(count),
+               static_cast<unsigned long long>(theirs));
 }
 
 /// `--vfs-list`, `--vfs-get` and `--vfs-remove`, in that order, after the
@@ -2840,6 +2968,7 @@ int main(int argc, char** argv) try {
                    "amberfolio: edition unrecognized - no seams are"
                    " available for this program\n");
     }
+    report_save_layer_table(box, opts);
   }
   // The documents the player presented, before the seams that may be
   // gated on them (#171). Before, and not after, so that a gated seam's
@@ -3932,6 +4061,7 @@ int main(int argc, char** argv) try {
   // left behind. Removals last: a listing that happened after them would
   // be a listing of a disk nobody had.
   report_vfs(files, opts);
+  report_save_layer_files(box, files, opts);
 
   if (!opts.dump_prefix.empty()) {
     const std::filesystem::path ppm(opts.dump_prefix + ".ppm");

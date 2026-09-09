@@ -283,6 +283,11 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
                         anything the program wrote below the root
   --vfs-get PATH        read one file back after the run and print its
                         size and SHA-256, never its bytes (repeatable)
+  --save-layer          which of the disk's files are the player's (#208):
+                        the loaded program's table with the edition line,
+                        and after the run the files it names, each with
+                        the slot letter and party-member index its name
+                        carries
   --speed xt|turbo|at|386
   --trace               keep the trace ring and the service-call channel
   --dump PREFIX         write PREFIX.ppm, PREFIX.wav and PREFIX.edges
@@ -314,6 +319,7 @@ export function parseArgs(argv) {
     replay: null,
     listSeams: false,
     listVfs: false,
+    saveLayer: false,
     vfsGets: [],
     speed: null,
     trace: false,
@@ -393,6 +399,8 @@ export function parseArgs(argv) {
       opts.seams.push(next());
     } else if (arg === '--vfs-list') {
       opts.listVfs = true;
+    } else if (arg === '--save-layer') {
+      opts.saveLayer = true;
     } else if (arg === '--vfs-get' && i + 1 < argv.length) {
       opts.vfsGets.push(next());
     } else if (arg === '--document' && i + 1 < argv.length) {
@@ -704,6 +712,7 @@ export async function drive(opts) {
       ? 'amberfolio: edition unrecognized - no seams are available for this program'
       : `amberfolio: edition ${edition}`,
   );
+  if (opts.saveLayer) reportSaveLayerTable(machine);
 
   if (opts.speed !== null) {
     machine.setSpeed(SPEED_PRESETS[opts.speed]);
@@ -1074,6 +1083,7 @@ export async function drive(opts) {
     say('amberfolio: code wheel answered - remembered for this copy');
   }
   if (opts.listVfs) reportVfs(machine);
+  if (opts.saveLayer) reportSaveLayerFiles(machine);
   for (const path of opts.vfsGets) reportVfsGet(machine, path);
 
   // --- Throughput --------------------------------------------------------
@@ -1180,6 +1190,71 @@ function reportVfs(machine) {
   for (const entry of listing) {
     say(`amberfolio: vfs ${entry.path} ${entry.size}`);
   }
+}
+
+/// The loaded program's save layer, printed with the edition line
+/// (#208) — the SDL host's `--save-layer`, spelled identically.
+///
+/// Before the run, because it is a fact about the program and not about
+/// the disk. A pattern carries its placeholders: `<S>` a slot letter,
+/// `<N>` a party-member index, `<NAME>` a name the player chose.
+function reportSaveLayerTable(machine) {
+  const layer = machine.saveLayer();
+  if (layer === null) {
+    say(
+      'amberfolio: save-layer unrecognized - this build has no table for' +
+        ' this program',
+    );
+    return;
+  }
+  say(
+    `amberfolio: save-layer ${layer.files.length} row(s)` +
+      ` slots=${layer.slots} members=${layer.members}`,
+  );
+  for (const row of layer.files) {
+    const required = row.required ? ' required' : '';
+    say(`amberfolio: save-layer ${row.pattern} ${row.kind}${required} - ${row.about}`);
+  }
+}
+
+/// And the disk read against that table, after the run: the files the
+/// layer names, each with the slot letter and the party-member index its
+/// own name carries.
+///
+/// This is the question a page has to answer before it writes `\\SAVE\\`
+/// into IndexedDB, asked here so the two hosts' answers about one
+/// directory can be compared rather than described. Files the layer does
+/// not name are simply absent; `--vfs-list` is the listing of everything.
+function reportSaveLayerFiles(machine) {
+  const layer = machine.saveLayer();
+  if (layer === null) {
+    say(
+      'amberfolio: save-layer unrecognized - this build has no table for' +
+        ' this program',
+    );
+    return;
+  }
+  const listing = machine.vfsList();
+  let named = 0;
+  let theirs = 0;
+  for (const entry of listing) {
+    const row = machine.saveLayerOf(entry.path);
+    if (row === null) continue;
+    named += 1;
+    // Two numbers, because they are not the same claim: the table names
+    // the program's own configuration file so that a host is told to
+    // leave it with the game's (machine/save_layer.h), and folding it in
+    // with the saves would say the opposite of what that row is for.
+    if (row.kind !== 'config') theirs += 1;
+    const where =
+      (row.slot === null ? '' : ` slot=${row.slot}`) +
+      (row.member === 0 ? '' : ` member=${row.member}`);
+    say(`amberfolio: save-layer file ${entry.path} ${row.kind}${where}`);
+  }
+  say(
+    `amberfolio: save-layer ${named} of ${listing.length} file(s) named,` +
+      ` ${theirs} the playthrough's`,
+  );
 }
 
 /// One file read back through the door after the run, as its size and

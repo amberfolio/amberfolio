@@ -155,6 +155,13 @@ TEST(Abi, EveryCallToleratesANullHandle) {
   EXPECT_EQ(af_machine_vfs_size_at(nullptr, 0), 0u);
   EXPECT_EQ(af_machine_vfs_bytes_used(nullptr), 0.0);
   EXPECT_EQ(af_machine_vfs_generation(nullptr), 0.0);
+  EXPECT_EQ(af_machine_save_layer_members(nullptr), 0u);
+  EXPECT_EQ(af_machine_save_layer_count(nullptr), 0u);
+  EXPECT_EQ(af_machine_save_layer_required_at(nullptr, 0), 0);
+  EXPECT_EQ(af_machine_save_layer_row_of(nullptr, "SAVE/SAVGAMA.DAT"),
+            AF_SAVE_LAYER_NO_ROW);
+  EXPECT_EQ(af_machine_save_layer_slot_of(nullptr, "SAVE/SAVGAMA.DAT"), 0u);
+  EXPECT_EQ(af_machine_save_layer_member_of(nullptr, "SAVE/CHRDATA1.SAV"), 0u);
 
   std::array<char, 128> text{};
   EXPECT_EQ(af_machine_vfs_name_at(nullptr, 0, text.data(),
@@ -169,6 +176,21 @@ TEST(Abi, EveryCallToleratesANullHandle) {
   EXPECT_EQ(af_machine_trace_report(nullptr, text.data(),
                                     static_cast<std::uint32_t>(text.size())),
             0u);
+  EXPECT_EQ(af_machine_save_layer_slots(
+                nullptr, text.data(), static_cast<std::uint32_t>(text.size())),
+            0u);
+  EXPECT_EQ(
+      af_machine_save_layer_pattern_at(nullptr, 0, text.data(),
+                                       static_cast<std::uint32_t>(text.size())),
+      0u);
+  EXPECT_EQ(
+      af_machine_save_layer_kind_at(nullptr, 0, text.data(),
+                                    static_cast<std::uint32_t>(text.size())),
+      0u);
+  EXPECT_EQ(
+      af_machine_save_layer_about_at(nullptr, 0, text.data(),
+                                     static_cast<std::uint32_t>(text.size())),
+      0u);
 
   std::array<float, 4> samples{};
   EXPECT_EQ(af_machine_render_audio(nullptr, samples.data(), 4, 44100), 0u);
@@ -958,6 +980,74 @@ TEST(AbiVfs, LoadsAnMzProgramOffTheFilesystem) {
   // And it runs: a frame of virtual time with nothing refused.
   EXPECT_EQ(af_machine_run_until(box.get(), 1000.0), AF_OK);
   EXPECT_GT(af_machine_steps(box.get()), 0.0);
+}
+
+// --- The save layer (machine/save_layer.h, #208) -------------------------
+//
+// A host asking which of the files on the machine's filesystem are the
+// player's. What can be checked here is the fail-closed half: an
+// unrecognized program has no table, and a host that asks anyway gets
+// nothing rather than a guess. The table's own contents are checked in
+// `machine/save_layer_test.cpp`, and that they are *true* is a fact
+// about a program no test in this repository may run (CLAUDE.md) —
+// `docs/hosts.md` §6 has the runs it came from.
+
+TEST(AbiSaveLayer, SaysNothingUntilAProgramIsLoaded) {
+  const equipped_machine box;
+
+  std::array<char, 128> text{};
+  EXPECT_EQ(af_machine_save_layer_count(box.get()), 0u);
+  EXPECT_EQ(af_machine_save_layer_members(box.get()), 0u);
+  EXPECT_EQ(
+      af_machine_save_layer_slots(box.get(), text.data(),
+                                  static_cast<std::uint32_t>(text.size())),
+      0u);
+  EXPECT_EQ(af_machine_save_layer_row_of(box.get(), "SAVE/SAVGAMA.DAT"),
+            AF_SAVE_LAYER_NO_ROW);
+  EXPECT_EQ(af_machine_save_layer_slot_of(box.get(), "SAVE/SAVGAMA.DAT"), 0u);
+}
+
+TEST(AbiSaveLayer, HasNoTableForAProgramItDoesNotRecognize) {
+  const equipped_machine box;
+
+  // The same two-paragraph MZ image the loader test uses: a legal
+  // program, and not one this build has any facts about.
+  std::array<std::uint8_t, 34> image{};
+  image[0] = 'M';
+  image[1] = 'Z';
+  image[2] = 34;
+  image[4] = 1;
+  image[8] = 2;
+  image[10] = 0x10;
+  image[17] = 0x01;
+  image[24] = 0x1C;
+  image[32] = 0xEB;
+  image[33] = 0xFE;
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "TINY.EXE", image.data(),
+                               static_cast<std::uint32_t>(image.size())),
+            AF_OK);
+  ASSERT_EQ(af_machine_load_from_vfs(box.get(), "TINY.EXE", nullptr), AF_OK);
+
+  // Loaded, and unrecognized — which is what `af_machine_edition`
+  // already answers nothing for, and what this has to answer nothing
+  // for as well. A layer guessed from a filename is the one thing
+  // #208 exists to stop.
+  std::array<char, 128> text{};
+  ASSERT_EQ(af_machine_edition(box.get(), text.data(),
+                               static_cast<std::uint32_t>(text.size())),
+            0u);
+  EXPECT_EQ(af_machine_save_layer_count(box.get()), 0u);
+  EXPECT_EQ(af_machine_save_layer_members(box.get()), 0u);
+  EXPECT_EQ(af_machine_save_layer_required_at(box.get(), 0), 0);
+  EXPECT_EQ(
+      af_machine_save_layer_pattern_at(box.get(), 0, text.data(),
+                                       static_cast<std::uint32_t>(text.size())),
+      0u);
+  EXPECT_EQ(af_machine_save_layer_row_of(box.get(), "SAVE/SAVGAMA.DAT"),
+            AF_SAVE_LAYER_NO_ROW);
+  EXPECT_EQ(af_machine_save_layer_slot_of(box.get(), "SAVE/CHRDATA1.SAV"), 0u);
+  EXPECT_EQ(af_machine_save_layer_member_of(box.get(), "SAVE/CHRDATA1.SAV"),
+            0u);
 }
 
 TEST(AbiVfs, ReportsWhyALoadFailedWithoutFoldingItIntoTheStatus) {

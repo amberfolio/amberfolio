@@ -132,6 +132,7 @@
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/diagnostics.h"
+#include "amberfolio/machine/save_layer.h"
 #include "amberfolio/machine/vfs.h"
 
 namespace amberfolio::machine {
@@ -145,11 +146,19 @@ namespace amberfolio::host {
 /// Eight-three, and prefixed so that nothing this project writes can
 /// collide with anything the program ships or anything another
 /// enhancement of somebody else's has left there.
-inline constexpr std::string_view slot_store_directory = "SAVE";
+///
+/// Spelled in core rather than here since #208, which is where the save
+/// layer is stated as a table a host can read: these two files are rows
+/// in it, because a page splitting its filesystem in two has to put them
+/// on the playthrough's side. Aliases and not copies — a name written
+/// down twice is a name that can differ in one of the two places
+/// (`machine/save_layer.h`).
+inline constexpr std::string_view slot_store_directory =
+    machine::save_layer_directory;
 inline constexpr std::string_view slot_store_automap_working =
-    "SAVE\\AFMAP.DAT";
+    machine::save_layer_automap_working;
 inline constexpr std::string_view slot_store_journal_working =
-    "SAVE\\AFSEEN.DAT";
+    machine::save_layer_journal_working;
 
 /// The largest the exploration sidecar can be: the header plus every
 /// record the store can hold. A fixed buffer, because a host has no

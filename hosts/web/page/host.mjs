@@ -934,6 +934,83 @@ export class Machine {
     );
   }
 
+  /// The loaded program's **save layer** (#208): which of the files on
+  /// this machine's filesystem are the player's, and which of those make
+  /// up a save slot. `null` when nothing is loaded, and `null` for a
+  /// program this build has no table for — the same honest "I do not
+  /// know this file" `edition()` answers, and a page that gets it should
+  /// persist nothing rather than persist a guess.
+  ///
+  /// `{ slots, members, files: [{ pattern, kind, required, about }] }`.
+  /// `slots` is the slot letters in the order the program asks the
+  /// directory about them; `members` is what `<N>` runs up to. A pattern
+  /// carries its placeholders — `<S>` a slot letter, `<N>` a
+  /// party-member index, `<NAME>` a DOS name the player chose — and
+  /// `saveLayerOf()` below is the other direction, which is the one a
+  /// page writing `\\SAVE\\` back into IndexedDB actually calls.
+  ///
+  /// **Rendered, not restated.** A page that kept its own list of which
+  /// names are saves would be a second answer to the question of what
+  /// belongs to the publisher and what belongs to the player, and it is
+  /// the one question this project cannot have two answers to.
+  saveLayer() {
+    const count = this.module._af_machine_save_layer_count(this.handle);
+    if (count === 0) {
+      return null;
+    }
+    const files = [];
+    for (let i = 0; i < count; ++i) {
+      files.push({
+        pattern:
+          this.#text((out, max) => this.module._af_machine_save_layer_pattern_at(this.handle, i, out, max), 64) ?? '',
+        kind:
+          this.#text((out, max) => this.module._af_machine_save_layer_kind_at(this.handle, i, out, max), 32) ?? '',
+        about:
+          this.#text((out, max) => this.module._af_machine_save_layer_about_at(this.handle, i, out, max), 256) ?? '',
+        required: this.module._af_machine_save_layer_required_at(this.handle, i) !== 0,
+      });
+    }
+    return {
+      slots: this.#text((out, max) => this.module._af_machine_save_layer_slots(this.handle, out, max), 64) ?? '',
+      members: this.module._af_machine_save_layer_members(this.handle),
+      files,
+    };
+  }
+
+  /// Read one path against the loaded program's save layer.
+  ///
+  /// `{ row, kind, required, slot, member }` for a path the layer
+  /// claims; `null` for one it does not, which is the answer for every
+  /// game file and the one a page splitting its filesystem is asking
+  /// for. `slot` is the letter or `null`; `member` the party-member
+  /// index or 0.
+  ///
+  /// The path is spelled the way `vfsGet()` takes one — `/` and `\\`
+  /// alike — and is canonicalized in core before it is matched (#146),
+  /// so a page cannot reach a different answer by spelling a name
+  /// differently.
+  saveLayerOf(path) {
+    return this.#withCString(path, (ptr) => {
+      // `>>> 0` because a `uint32_t` comes back through wasm as a signed
+      // i32 and `AF_SAVE_LAYER_NO_ROW` is 0xFFFFFFFF, which arrives as
+      // -1. Comparing against the constant without the coercion is a
+      // check that never fires, and the symptom is every game file
+      // reported as belonging to the player.
+      const row = this.module._af_machine_save_layer_row_of(this.handle, ptr) >>> 0;
+      if (row === 0xffffffff) {
+        return null;
+      }
+      const slot = this.module._af_machine_save_layer_slot_of(this.handle, ptr);
+      return {
+        row,
+        kind: this.#text((out, max) => this.module._af_machine_save_layer_kind_at(this.handle, row, out, max), 32) ?? '',
+        required: this.module._af_machine_save_layer_required_at(this.handle, row) !== 0,
+        slot: slot === 0 ? null : String.fromCharCode(slot),
+        member: this.module._af_machine_save_layer_member_of(this.handle, ptr),
+      };
+    });
+  }
+
   /// The whole-state hash right now, as 64 lowercase hex characters, or
   /// null if it could not be taken. The same digest a recording's
   /// checkpoint carries (docs/replay.md §2), so a page can take one at

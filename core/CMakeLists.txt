@@ -66,6 +66,7 @@ add_library(amberfolio-core STATIC
   src/machine/renderer.cpp
   src/machine/replay.cpp
   src/machine/report.cpp
+  src/machine/save_layer.cpp
   src/machine/scheduler.cpp
   src/machine/seam.cpp
   src/machine/seam_automap.cpp
