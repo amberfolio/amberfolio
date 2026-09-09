@@ -77,6 +77,37 @@ export const AF_UNRECOGNIZED = 7;
 export const AF_KEY_UP = 0;
 export const AF_KEY_DOWN = 1;
 
+// --- The on-screen keyboard's model (#377) ----------------------------
+//
+// A phone has no keyboard and this game asks for a character's name, so
+// the page paints one. What it paints is `readScreenKeyboard()` below,
+// out of core, and not a table of its own: the desktop host draws the
+// same three layouts from the same numbers, and a layout change has to be
+// a change to `machine/screen_keyboard.h` and to no page at all.
+
+/// What `keyAt()` and `moveFocus()` answer when there is no key — a point
+/// in a gap between two keys, or a question about a layout with none.
+export const AF_NO_KEY = 0xffffffff;
+
+/// Which way `moveFocus()` moves the focus.
+export const AF_NAV_LEFT = 0;
+export const AF_NAV_RIGHT = 1;
+export const AF_NAV_UP = 2;
+export const AF_NAV_DOWN = 3;
+
+/// The bits of the latch mask a page carries between commits, and what a
+/// key's `latch` is. Zero is every other key, which taps. The two shifts
+/// have a bit each because the mask is what says which key to let go of
+/// again.
+export const AF_LATCH_LEFT_SHIFT = 0x01;
+export const AF_LATCH_RIGHT_SHIFT = 0x02;
+export const AF_LATCH_CTRL = 0x04;
+export const AF_LATCH_ALT = 0x08;
+
+/// The most key events one commit can produce: a key's make and break,
+/// then the breaks of the three modifiers latched under it.
+export const AF_COMMIT_CAPACITY = 5;
+
 /// Where a seam stands (abi.h's AF_SEAM_*): off, on, unavailable — and
 /// the answer for an index that names no seam.
 export const AF_SEAM_OFF = 0;
@@ -1842,6 +1873,158 @@ export class HeldKeys {
     const codes = [...this.#held].sort((a, b) => a - b);
     this.#held.clear();
     return codes;
+  }
+}
+
+// --- The on-screen keyboard, read out of core (#377) ------------------
+//
+// Machine-less, all of it: a keyboard is not a fact about a loaded
+// program — a Y/N prompt is a Y/N prompt — and the page paints one before
+// anything is loaded. So these are functions taking the module, not
+// methods on `Machine`.
+//
+// What a commit produces is scan codes, and the page posts them with
+// `machine.postKey()` in the order they arrive. There is **no key
+// repeat**: a finger held on a painted key is one keystroke, because
+// nothing in the machine repeats a key and a page that invented a repeat
+// would be inventing input.
+
+/// Read a NUL-terminated string out of one of the string calls.
+function screenKeyboardText(module, call, capacity) {
+  const scratch = module._malloc(capacity);
+  if (scratch === 0) {
+    throw new Error('out of wasm heap while reading a key label');
+  }
+  try {
+    const length = call(scratch, capacity);
+    if (length === 0) return '';
+    return String.fromCharCode(...module.HEAPU8.subarray(scratch, scratch + length));
+  } finally {
+    module._free(scratch);
+  }
+}
+
+/// The whole model, in one object a page can render and then forget the
+/// ABI about:
+///
+///   `[{ name, about, rows, width, focus, keys: [{ label, scancode, row,
+///      column, width, latch }] }]`
+///
+/// plus `unit`, the quarter units in one key width — every `column` and
+/// `width` is in those, and every row is one unit tall, so a page picks
+/// what a unit is worth in pixels and multiplies.
+///
+/// Read once and kept: the tables never change under a running page.
+export function readScreenKeyboard(module) {
+  const layouts = [];
+  for (let i = 0; i < module._af_screen_keyboard_layouts(); ++i) {
+    const keys = [];
+    for (let k = 0; k < module._af_screen_keyboard_keys(i); ++k) {
+      keys.push({
+        label: screenKeyboardText(
+          module,
+          (out, max) => module._af_screen_keyboard_key_label(i, k, out, max),
+          32,
+        ),
+        scancode: module._af_screen_keyboard_key_scancode(i, k),
+        row: module._af_screen_keyboard_key_row(i, k),
+        column: module._af_screen_keyboard_key_column(i, k),
+        width: module._af_screen_keyboard_key_width(i, k),
+        latch: module._af_screen_keyboard_key_latch(i, k),
+      });
+    }
+    layouts.push({
+      name: screenKeyboardText(
+        module,
+        (out, max) => module._af_screen_keyboard_name(i, out, max),
+        64,
+      ),
+      about: screenKeyboardText(
+        module,
+        (out, max) => module._af_screen_keyboard_about(i, out, max),
+        256,
+      ),
+      rows: module._af_screen_keyboard_rows(i),
+      width: module._af_screen_keyboard_width(i),
+      focus: module._af_screen_keyboard_focus(i) >>> 0,
+      keys,
+    });
+  }
+  return { unit: module._af_screen_keyboard_unit(), layouts };
+}
+
+/// The key covering a point, or `AF_NO_KEY` for a gap — the pointer and
+/// finger path. The page divides a pixel by the key size it chose and
+/// asks, rather than deciding for itself what "close enough" means.
+export function keyAt(module, layout, row, column) {
+  return module._af_screen_keyboard_key_at(layout, row, column) >>> 0;
+}
+
+/// Where the focus goes when a direction is pushed — the path a d-pad and
+/// the arrow keys drive. `AF_NO_KEY` in gives the layout's own start.
+export function moveFocus(module, layout, key, where) {
+  return module._af_screen_keyboard_move(layout, key, where) >>> 0;
+}
+
+/// Unpack the events a commit or a release wrote: each is
+/// `(scancode << 1) | down`.
+function readEvents(module, scratch, count) {
+  const events = [];
+  for (let i = 0; i < count; ++i) {
+    const packed = module.HEAPU32[(scratch >> 2) + i];
+    events.push({ scancode: packed >>> 1, down: (packed & 1) !== 0 });
+  }
+  return events;
+}
+
+/// Commit a key and get back `{ events, latched }`: what to post, in
+/// order, and the mask to carry into the next commit.
+///
+/// An ordinary key is a tap. A modifier *latches* — committing it puts it
+/// down, committing it again lets it go, and committing any ordinary key
+/// sends that key and then lets every latched modifier go behind it,
+/// because a finger cannot hold Shift and press A.
+export function commitKey(module, layout, key, latched) {
+  const scratch = module._malloc(AF_COMMIT_CAPACITY * 4 + 4);
+  if (scratch === 0) {
+    throw new Error('out of wasm heap while committing a key');
+  }
+  const after = scratch + AF_COMMIT_CAPACITY * 4;
+  try {
+    const count = module._af_screen_keyboard_commit(
+      layout,
+      key,
+      latched,
+      scratch,
+      AF_COMMIT_CAPACITY,
+      after,
+    );
+    return {
+      events: readEvents(module, scratch, count),
+      latched: module.HEAPU32[after >> 2],
+    };
+  } finally {
+    module._free(scratch);
+  }
+}
+
+/// Let go of everything the mask says is down, and nothing else — what
+/// the page posts when the keyboard is closed or the tab loses focus, so
+/// a latched Shift does not outlive the keyboard that latched it.
+export function releaseLatched(module, latched) {
+  const scratch = module._malloc(AF_COMMIT_CAPACITY * 4);
+  if (scratch === 0) {
+    throw new Error('out of wasm heap while letting a latch go');
+  }
+  try {
+    const count = module._af_screen_keyboard_release(
+      latched,
+      scratch,
+      AF_COMMIT_CAPACITY,
+    );
+    return readEvents(module, scratch, count);
+  } finally {
+    module._free(scratch);
   }
 }
 

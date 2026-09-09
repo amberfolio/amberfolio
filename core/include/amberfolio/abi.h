@@ -257,6 +257,38 @@ extern "C" {
 /// of the boundary, and the answer a host asks the question to get.
 #define AF_SAVE_LAYER_NO_ROW 0xFFFFFFFFu
 
+// --- The on-screen keyboard (machine/screen_keyboard.h, #377) ----------
+//
+// What `af_screen_keyboard_key_at` and `af_screen_keyboard_move` answer
+// when there is no key: a point in a gap between two keys, or a question
+// asked about a layout that has none. `machine::screen_keyboard::no_key`
+// is the same answer one side over.
+#define AF_NO_KEY 0xFFFFFFFFu
+
+/// Which way `af_screen_keyboard_move` moves the focus.
+#define AF_NAV_LEFT 0u
+#define AF_NAV_RIGHT 1u
+#define AF_NAV_UP 2u
+#define AF_NAV_DOWN 3u
+
+/// The bits of the latch mask a host carries between commits, and what
+/// `af_screen_keyboard_key_latch` answers for a key that latches. Zero is
+/// every other key, which taps.
+///
+/// The two shifts have a bit each although the BDA gives them one flag
+/// between them: what the mask is for is knowing which key to let go of
+/// again, and letting go of the shift that was never pressed would leave
+/// the one that was held down for the rest of the run.
+#define AF_LATCH_LEFT_SHIFT 0x01u
+#define AF_LATCH_RIGHT_SHIFT 0x02u
+#define AF_LATCH_CTRL 0x04u
+#define AF_LATCH_ALT 0x08u
+
+/// How many key events one `af_screen_keyboard_commit` can produce: a
+/// key's make and break, then the breaks of the three modifiers that may
+/// have been latched under it.
+#define AF_COMMIT_CAPACITY 5u
+
 // --- Version ----------------------------------------------------------
 
 /// The version of the core, packed as 0x00MMmmpp: major in bits 16-23,
@@ -342,8 +374,15 @@ uint32_t af_version(void);
 ///     Minor, because a host that never asks keeps the filesystem it
 ///     had; what it could not do before was tell one file from another
 ///     without a heuristic of its own.
+///   * **1.5** — #377, eighteen added entry points and nothing changed:
+///     the `af_screen_keyboard_*` family, which is where both hosts read
+///     the layouts and the navigation model of the keyboard they paint on
+///     the screen. The wasm module also began exporting the `HEAPU32`
+///     view, which is how a page unpacks a committed key. Minor, and
+///     machine-less: a host that never asks has the keyboard it had,
+///     which on a device with none attached was none.
 #define AF_ABI_VERSION_MAJOR 1u
-#define AF_ABI_VERSION_MINOR 4u
+#define AF_ABI_VERSION_MINOR 5u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -1403,6 +1442,118 @@ uint32_t af_machine_save_layer_slot_of(const af_machine* box, const char* path);
 /// member.
 uint32_t af_machine_save_layer_member_of(const af_machine* box,
                                          const char* path);
+
+// --- The on-screen keyboard (machine/screen_keyboard.h, #377) ----------
+//
+// A phone has no keyboard and this game asks for a character's name, so
+// M6's exit needs one painted on the screen. The widget is each host's
+// own; the tables it is drawn from and the rules it is driven by are
+// here, so that a layout change is a change to one file in core and to no
+// host at all.
+//
+// **None of these calls takes a machine.** A keyboard is not a fact about
+// a loaded program — a Y/N prompt is a Y/N prompt — and a host draws its
+// onboarding keyboard before anything is loaded, so they sit beside
+// `af_frame_width` rather than in the `af_machine_*` family.
+//
+// **What a commit produces is scan codes, and a host posts them through
+// `af_machine_post_key`** in the order the commit gives them. Nothing new
+// crosses the boundary: the BIOS cannot tell a key committed on a painted
+// keyboard from a key struck on a real one. There is **no key repeat**
+// and no held-key contract beyond the latch below — nothing in this
+// machine repeats a key, so a host that invented one would be inventing
+// input.
+//
+// `docs/hosts.md` §7 has the format, the three layouts and the geometry;
+// `machine/screen_keyboard.h` has the reasoning.
+
+/// How many layouts there are, and the name and one-line description of
+/// layout `layout` — `prompt`, `name`, `full`, smallest first. The strings
+/// are written NUL-terminated into `out`; each answers its length, or zero
+/// for an index past the end or a buffer too small.
+uint32_t af_screen_keyboard_layouts(void);
+uint32_t af_screen_keyboard_name(uint32_t layout, char* out, uint32_t max);
+uint32_t af_screen_keyboard_about(uint32_t layout, char* out, uint32_t max);
+
+/// Quarter units in one unit — four. A key's width and its offset along
+/// its row are in quarter units and every row is one unit tall, so a host
+/// picks what a unit is worth in pixels and multiplies. A function rather
+/// than a macro for the reason `af_frame_width` is one: a browser has no
+/// headers and learns this by calling.
+uint32_t af_screen_keyboard_unit(void);
+
+/// How many rows layout `layout` has, how wide its widest row is in
+/// quarter units, and how many keys are on it. A host sizes the whole
+/// keyboard from the first two. Zero for an index past the end.
+uint32_t af_screen_keyboard_rows(uint32_t layout);
+uint32_t af_screen_keyboard_width(uint32_t layout);
+uint32_t af_screen_keyboard_keys(uint32_t layout);
+
+/// The key the focus starts on, as an index into the layout's keys, or
+/// `AF_NO_KEY`.
+uint32_t af_screen_keyboard_focus(uint32_t layout);
+
+/// Key `key` of layout `layout`: the legend printed on it, the XT set-1
+/// make code it produces, which row it is on, how many quarter units from
+/// the layout's left edge it starts, how many it is wide, and which
+/// modifier it latches (`AF_LATCH_*`, or zero for the keys that tap).
+///
+/// The keys are ordered row by row and, within a row, left to right, so a
+/// host can draw them in one pass.
+uint32_t af_screen_keyboard_key_label(uint32_t layout, uint32_t key, char* out,
+                                      uint32_t max);
+uint32_t af_screen_keyboard_key_scancode(uint32_t layout, uint32_t key);
+uint32_t af_screen_keyboard_key_row(uint32_t layout, uint32_t key);
+uint32_t af_screen_keyboard_key_column(uint32_t layout, uint32_t key);
+uint32_t af_screen_keyboard_key_width(uint32_t layout, uint32_t key);
+uint32_t af_screen_keyboard_key_latch(uint32_t layout, uint32_t key);
+
+/// The key covering the point (`row`, `column`) — a row index and a
+/// quarter-unit offset from the layout's left edge — or `AF_NO_KEY` for a
+/// point in a gap or off the end.
+///
+/// A host drawing into a framebuffer divides a pixel by the key size it
+/// chose and asks, rather than deciding for itself what "close enough to
+/// a key" means. A host whose keys are widgets — the page's are buttons,
+/// positioned from the same columns and widths — has its own toolkit's
+/// answer and needs none of this.
+uint32_t af_screen_keyboard_key_at(uint32_t layout, uint32_t row,
+                                   uint32_t column);
+
+/// Where the focus goes from `key` when `where` (an `AF_NAV_*`) is
+/// pushed: left and right step within the row and wrap at its ends, up and
+/// down change row and land under the column they left. `AF_NO_KEY` in
+/// gives the layout's starting focus back.
+///
+/// The path a d-pad, a stick and the arrow keys drive; a pointer uses
+/// `af_screen_keyboard_key_at` instead and needs none of it.
+uint32_t af_screen_keyboard_move(uint32_t layout, uint32_t key, uint32_t where);
+
+/// Commit key `key`, with `latched` the mask standing from earlier
+/// commits, and answer the key events a host must now post, in order.
+///
+/// Each event is written into `events` as `(scancode << 1) | down`, and
+/// the call answers how many there are — at most `AF_COMMIT_CAPACITY`, and
+/// zero for a key that is not there or a buffer too small. The new mask is
+/// written to `latched_after`, which a host carries into the next commit
+/// and lights its keys from.
+///
+/// An ordinary key is a tap, make and break together. A modifier
+/// *latches*: committing it puts it down, committing it again lets it go,
+/// and committing any ordinary key sends that key and then lets every
+/// latched modifier go behind it — because a finger cannot hold Shift and
+/// press A, and because the shift's make has to reach 40:17 before the
+/// letter's does.
+uint32_t af_screen_keyboard_commit(uint32_t layout, uint32_t key,
+                                   uint32_t latched, uint32_t* events,
+                                   uint32_t max, uint32_t* latched_after);
+
+/// Let go of everything `latched` says is down, and nothing else, in the
+/// same form. What a host posts when the keyboard is closed or the window
+/// loses focus, so that a latched Shift does not outlive the keyboard that
+/// latched it.
+uint32_t af_screen_keyboard_release(uint32_t latched, uint32_t* events,
+                                    uint32_t max);
 
 // --- Replay (machine/replay.h, docs/replay.md) ------------------------
 //

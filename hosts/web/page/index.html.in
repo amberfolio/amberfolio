@@ -138,6 +138,34 @@
         background: #0a0805;
         border: 1px solid #3a2f22;
       }
+      /* The on-screen keyboard (#377). Every number below comes out of
+         core: `--quarter` is what one quarter unit is worth in pixels
+         here, and a key's left, width and top are its own column, width
+         and row multiplied by it. Nothing about the shape of the board
+         is in this stylesheet. */
+      #keyboard {
+        position: relative;
+        margin: 0.75rem 0 0;
+        --quarter: 8.5px;
+        touch-action: manipulation;
+      }
+      #keyboard button {
+        position: absolute;
+        padding: 0;
+        font-size: 0.75rem;
+        line-height: 1;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      #keyboard button.focused {
+        border-color: #e0a33c;
+        color: #e0a33c;
+      }
+      #keyboard button.latched {
+        background: #e0a33c;
+        border-color: #e0a33c;
+        color: #14100c;
+      }
       footer {
         margin: 2rem 0 0;
         padding: 1rem 0 0;
@@ -255,6 +283,44 @@
         name is not a legal DOS 8.3 name is refused by the emulator's own
         filesystem rules and listed as skipped — that refusal is the
         emulator being honest, not a fault.
+      </p>
+    </fieldset>
+
+    <!-- The on-screen keyboard (M6, #377). A phone has no keyboard and
+         this game asks for a character's name, answers Y or N a dozen
+         times an hour and takes single-letter commands off its own bars -
+         so M6's exit needs one painted on the screen.
+
+         Every key below is drawn from `machine/screen_keyboard.h`
+         through the ABI: the legends, the make codes, the widths and the
+         rows. The desktop host draws the same three layouts from the
+         same numbers, and a layout change is a change to that one file
+         in core and to nothing here. -->
+    <fieldset>
+      <legend>the on-screen keyboard</legend>
+      <div class="controls">
+        <label>
+          <input id="keyboard-show" type="checkbox" disabled />
+          show it
+        </label>
+        <label>
+          layout
+          <select id="keyboard-layout" disabled></select>
+        </label>
+      </div>
+      <div class="controls">
+        <span id="keyboard-about"></span>
+      </div>
+      <div id="keyboard" hidden></div>
+      <p class="note">
+        Tap a key and the machine gets its scan code, exactly as if you
+        had struck one. Shift, Ctrl and Alt <em>latch</em> - a finger
+        cannot hold one down and press a letter with the other hand - so
+        they stay down until the next key goes under them. There is no
+        key repeat: a finger held on a key is one keystroke.
+        While the keyboard is up the arrow keys and Return drive
+        <em>it</em> rather than the machine, which is the path a gamepad
+        will take in M8; close it and they go back to the game.
       </p>
     </fieldset>
 

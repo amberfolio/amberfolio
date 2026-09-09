@@ -2227,4 +2227,144 @@ TEST(Abi, ResetLeavesNothingOfTheLastRunOnTheScreen) {
   EXPECT_EQ(lit(), 0u);
 }
 
+// --- The on-screen keyboard (#377) -------------------------------------
+//
+// The model itself is `screen_keyboard_test.cpp`'s. What is here is the
+// boundary: no call takes a machine, every index is bounds-checked, and a
+// commit's events arrive packed in the one form that crosses.
+
+TEST(AbiScreenKeyboard, NeedsNoMachineAndNamesItsLayouts) {
+  ASSERT_EQ(af_screen_keyboard_layouts(), 3u);
+  EXPECT_EQ(af_screen_keyboard_unit(), 4u);
+
+  std::array<char, 64> text{};
+  const auto max = static_cast<std::uint32_t>(text.size());
+  ASSERT_GT(af_screen_keyboard_name(0, text.data(), max), 0u);
+  EXPECT_STREQ(text.data(), "prompt");
+  ASSERT_GT(af_screen_keyboard_name(2, text.data(), max), 0u);
+  EXPECT_STREQ(text.data(), "full");
+  EXPECT_GT(af_screen_keyboard_about(2, text.data(), max), 0u);
+
+  EXPECT_GT(af_screen_keyboard_rows(2), 0u);
+  EXPECT_GT(af_screen_keyboard_width(2), 0u);
+  EXPECT_EQ(af_screen_keyboard_keys(2), 83u);
+}
+
+TEST(AbiScreenKeyboard, AnswersNothingForAnIndexPastTheEnd) {
+  std::array<char, 64> text{};
+  const auto max = static_cast<std::uint32_t>(text.size());
+  EXPECT_EQ(af_screen_keyboard_name(3, text.data(), max), 0u);
+  EXPECT_EQ(af_screen_keyboard_about(3, text.data(), max), 0u);
+  EXPECT_EQ(af_screen_keyboard_rows(3), 0u);
+  EXPECT_EQ(af_screen_keyboard_keys(3), 0u);
+  EXPECT_EQ(af_screen_keyboard_focus(3), AF_NO_KEY);
+  EXPECT_EQ(af_screen_keyboard_key_scancode(0, 99), 0u);
+  EXPECT_EQ(af_screen_keyboard_key_label(0, 99, text.data(), max), 0u);
+  EXPECT_EQ(af_screen_keyboard_key_at(3, 0, 0), AF_NO_KEY);
+  EXPECT_EQ(af_screen_keyboard_move(3, 0, AF_NAV_LEFT), AF_NO_KEY);
+  EXPECT_EQ(af_screen_keyboard_move(0, 0, 9), AF_NO_KEY);
+}
+
+TEST(AbiScreenKeyboard, HandsOutOneKeyAtATime) {
+  const std::uint32_t focus = af_screen_keyboard_focus(0);
+  ASSERT_NE(focus, AF_NO_KEY);
+
+  std::array<char, 64> text{};
+  ASSERT_GT(af_screen_keyboard_key_label(
+                0, focus, text.data(), static_cast<std::uint32_t>(text.size())),
+            0u);
+  EXPECT_STREQ(text.data(), "Y");
+  EXPECT_EQ(af_screen_keyboard_key_scancode(0, focus), 0x15u);
+  EXPECT_EQ(af_screen_keyboard_key_row(0, focus), 0u);
+  EXPECT_EQ(af_screen_keyboard_key_column(0, focus), 0u);
+  EXPECT_GT(af_screen_keyboard_key_width(0, focus), 0u);
+  EXPECT_EQ(af_screen_keyboard_key_latch(0, focus), 0u);
+
+  // The point the key covers finds it again, and the point past its end
+  // finds the next one instead.
+  EXPECT_EQ(af_screen_keyboard_key_at(0, 0, 0), focus);
+  EXPECT_NE(af_screen_keyboard_key_at(0, 0, 8), focus);
+  EXPECT_EQ(af_screen_keyboard_key_at(0, 1, 0), AF_NO_KEY);
+}
+
+TEST(AbiScreenKeyboard, MovesTheFocusAndStartsFromNoneAtAll) {
+  const std::uint32_t start = af_screen_keyboard_focus(0);
+  EXPECT_EQ(af_screen_keyboard_move(0, AF_NO_KEY, AF_NAV_RIGHT), start);
+  EXPECT_NE(af_screen_keyboard_move(0, start, AF_NAV_RIGHT), start);
+  // One row, so up and down come back to where they were.
+  EXPECT_EQ(af_screen_keyboard_move(0, start, AF_NAV_DOWN), start);
+}
+
+/// A commit's events pack as `(scancode << 1) | down`, and the latch mask
+/// comes back for the host to carry into the next one.
+TEST(AbiScreenKeyboard, PacksACommitsEventsAndTheMaskItLeaves) {
+  std::array<std::uint32_t, AF_COMMIT_CAPACITY> events{};
+  const auto max = static_cast<std::uint32_t>(events.size());
+  std::uint32_t latched = 0;
+
+  const std::uint32_t y = af_screen_keyboard_focus(0);
+  ASSERT_EQ(af_screen_keyboard_commit(0, y, 0, events.data(), max, &latched),
+            2u);
+  EXPECT_EQ(events[0], (0x15u << 1) | 1u) << "the make";
+  EXPECT_EQ(events[1], 0x15u << 1) << "and the break";
+  EXPECT_EQ(latched, 0u);
+}
+
+TEST(AbiScreenKeyboard, LatchesAModifierAndLetsItGoBehindTheNextKey) {
+  // The `full` layout is the one with a shift on it.
+  const std::uint32_t full = 2;
+  std::uint32_t shift = AF_NO_KEY;
+  std::uint32_t letter = AF_NO_KEY;
+  for (std::uint32_t i = 0; i < af_screen_keyboard_keys(full); ++i) {
+    const std::uint32_t code = af_screen_keyboard_key_scancode(full, i);
+    if (code == 0x2Au) {
+      shift = i;
+    }
+    if (code == 0x1Eu) {
+      letter = i;
+    }
+  }
+  ASSERT_NE(shift, AF_NO_KEY);
+  ASSERT_NE(letter, AF_NO_KEY);
+  EXPECT_EQ(af_screen_keyboard_key_latch(full, shift), AF_LATCH_LEFT_SHIFT);
+
+  std::array<std::uint32_t, AF_COMMIT_CAPACITY> events{};
+  const auto max = static_cast<std::uint32_t>(events.size());
+  std::uint32_t latched = 0;
+
+  ASSERT_EQ(af_screen_keyboard_commit(full, shift, latched, events.data(), max,
+                                      &latched),
+            1u);
+  EXPECT_EQ(events[0], (0x2Au << 1) | 1u) << "down and staying down";
+  EXPECT_EQ(latched, AF_LATCH_LEFT_SHIFT);
+
+  ASSERT_EQ(af_screen_keyboard_commit(full, letter, latched, events.data(), max,
+                                      &latched),
+            3u);
+  EXPECT_EQ(events[2], 0x2Au << 1) << "the shift comes up behind the letter";
+  EXPECT_EQ(latched, 0u);
+}
+
+TEST(AbiScreenKeyboard, PostsNothingAndMovesNothingIntoABufferTooSmall) {
+  std::array<std::uint32_t, 1> events{};
+  std::uint32_t latched = AF_LATCH_CTRL;
+  EXPECT_EQ(af_screen_keyboard_commit(0, af_screen_keyboard_focus(0), latched,
+                                      events.data(), 1, &latched),
+            0u);
+  EXPECT_EQ(latched, AF_LATCH_CTRL) << "a latch it never pressed would be "
+                                       "worse than nothing happening";
+  EXPECT_EQ(af_screen_keyboard_commit(0, 0, 0, nullptr, 0, nullptr), 0u);
+}
+
+TEST(AbiScreenKeyboard, LetsGoOfEverythingTheMaskSaysIsDown) {
+  std::array<std::uint32_t, AF_COMMIT_CAPACITY> events{};
+  const auto max = static_cast<std::uint32_t>(events.size());
+  EXPECT_EQ(af_screen_keyboard_release(0, events.data(), max), 0u);
+  ASSERT_EQ(af_screen_keyboard_release(AF_LATCH_CTRL | AF_LATCH_ALT,
+                                       events.data(), max),
+            2u);
+  EXPECT_EQ(events[0], 0x1Du << 1) << "ctrl first, ascending scan code";
+  EXPECT_EQ(events[1], 0x38u << 1);
+}
+
 }  // namespace

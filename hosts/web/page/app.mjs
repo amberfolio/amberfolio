@@ -59,6 +59,14 @@ import {
   pacedAdvance,
   MAX_CATCH_UP_SECONDS,
   wallClockFields,
+  readScreenKeyboard,
+  commitKey,
+  moveFocus,
+  releaseLatched,
+  AF_NAV_LEFT,
+  AF_NAV_RIGHT,
+  AF_NAV_UP,
+  AF_NAV_DOWN,
 } from './host.mjs';
 import { wireDirectoryPicker } from './picker.mjs';
 import {
@@ -77,6 +85,10 @@ import {
 } from './journal.mjs';
 
 const CANVAS_ID = 'screen';
+const KEYBOARD_ID = 'keyboard';
+const KEYBOARD_SHOW_ID = 'keyboard-show';
+const KEYBOARD_LAYOUT_ID = 'keyboard-layout';
+const KEYBOARD_ABOUT_ID = 'keyboard-about';
 const START_BUTTON_ID = 'start';
 const BOOT_BUTTON_ID = 'boot';
 const STATUS_ID = 'status';
@@ -977,6 +989,160 @@ function seedWallClock(machine, appendConsole) {
   return false;
 }
 
+/// The on-screen keyboard (#377), drawn from core's own tables.
+///
+/// A phone has no keyboard and this game asks for a character's name, so
+/// M6's exit needs one painted on the screen. What is *here* is only the
+/// painting: the legends, the make codes, the widths, the rows, which
+/// key the focus starts on and what a commit produces all come across
+/// the ABI from `machine/screen_keyboard.h`, and the desktop host draws
+/// the same three layouts from the same numbers. A layout change is a
+/// change to that one file in core and to nothing in this page.
+///
+/// The keys are real buttons, positioned from the model's own columns and
+/// widths, so the browser does the hit testing and a gap between two keys
+/// is a gap in both hosts because both put the keys in the same places.
+/// A host drawing into a framebuffer has no widget under the pointer and
+/// asks core instead (`af_screen_keyboard_key_at`).
+///
+/// Returns `{ owns, press, dispose }`: while the keyboard is up it *owns*
+/// the four arrows and Return, which move its focus and commit the key
+/// under it rather than reaching the machine — the path a gamepad will
+/// drive in M8 (#210), proven here with the only four-way control a
+/// browser has today.
+function wireScreenKeyboard(machine, postKey) {
+  const container = document.getElementById(KEYBOARD_ID);
+  const show = document.getElementById(KEYBOARD_SHOW_ID);
+  const chooser = document.getElementById(KEYBOARD_LAYOUT_ID);
+  const about = document.getElementById(KEYBOARD_ABOUT_ID);
+  const { layouts } = readScreenKeyboard(machine.module);
+
+  let index = 0;
+  let focus = layouts[index].focus;
+  let latched = 0;
+  let buttons = [];
+
+  /// A length in quarter units, as the stylesheet's own `--quarter`
+  /// multiplied out. No pixel count reaches this file: what a key is
+  /// worth on a screen is the page's to style and core's to know nothing
+  /// about.
+  const quarters = (n, inset = 0) =>
+    `calc(var(--quarter) * ${n}${inset === 0 ? '' : ` - ${inset}px`})`;
+
+  const paint = () => {
+    for (const [at, button] of buttons.entries()) {
+      const key = layouts[index].keys[at];
+      button.classList.toggle('focused', at === focus);
+      button.classList.toggle(
+        'latched',
+        key.latch !== 0 && (latched & key.latch) !== 0,
+      );
+    }
+  };
+
+  const commit = (at) => {
+    focus = at;
+    const made = commitKey(machine.module, index, at, latched);
+    for (const event of made.events) postKey(event.scancode, event.down);
+    latched = made.latched;
+    paint();
+  };
+
+  /// Let go of whatever is latched, and post the breaks for it: a shift
+  /// latched on one layout has no business surviving into the next one,
+  /// or outliving the keyboard that latched it.
+  const unlatch = () => {
+    for (const event of releaseLatched(machine.module, latched)) {
+      postKey(event.scancode, event.down);
+    }
+    latched = 0;
+  };
+
+  const render = () => {
+    const layout = layouts[index];
+    container.replaceChildren();
+    container.style.width = quarters(layout.width);
+    container.style.height = quarters(layout.rows * 4);
+    buttons = layout.keys.map((key, at) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = key.label;
+      button.style.left = quarters(key.column);
+      button.style.top = quarters(key.row * 4);
+      button.style.width = quarters(key.width, 2);
+      button.style.height = quarters(4, 2);
+      button.addEventListener('click', () => commit(at));
+      container.append(button);
+      return button;
+    });
+    about.textContent = layout.about;
+    paint();
+  };
+
+  const onShow = () => {
+    container.hidden = !show.checked;
+    if (!show.checked) unlatch();
+  };
+  const onChoose = () => {
+    unlatch();
+    index = Number(chooser.value);
+    focus = layouts[index].focus;
+    render();
+  };
+
+  chooser.replaceChildren();
+  for (const [at, layout] of layouts.entries()) {
+    const option = document.createElement('option');
+    option.value = String(at);
+    option.textContent = layout.name;
+    chooser.append(option);
+  }
+  chooser.value = String(index);
+  chooser.disabled = false;
+  show.disabled = false;
+  show.addEventListener('change', onShow);
+  chooser.addEventListener('change', onChoose);
+  render();
+  onShow();
+
+  /// The four arrows and Return, while the keyboard is up. `true` means
+  /// the page took the key and the machine must not also see it.
+  const DIRECTIONS = {
+    ArrowLeft: AF_NAV_LEFT,
+    ArrowRight: AF_NAV_RIGHT,
+    ArrowUp: AF_NAV_UP,
+    ArrowDown: AF_NAV_DOWN,
+  };
+
+  const commits = (code) => code === 'Enter' || code === 'NumpadEnter';
+
+  return {
+    owns(code) {
+      return show.checked && (code in DIRECTIONS || commits(code));
+    },
+    press(code) {
+      if (commits(code)) {
+        commit(focus);
+        return;
+      }
+      focus = moveFocus(machine.module, index, focus, DIRECTIONS[code]);
+      paint();
+    },
+    dispose() {
+      unlatch();
+      show.removeEventListener('change', onShow);
+      chooser.removeEventListener('change', onChoose);
+      chooser.disabled = true;
+      show.disabled = true;
+      container.replaceChildren();
+      container.hidden = true;
+      about.textContent = '';
+      show.checked = false;
+      buttons = [];
+    },
+  };
+}
+
 async function run(
   machine,
   {
@@ -1036,10 +1202,27 @@ async function run(
     machine.postKey(scancode, down);
     held.note(scancode, down);
   };
+  // The on-screen keyboard (#377). While it is up it takes the four
+  // arrows and Return for itself — a person with a keyboard in front of
+  // them closes it and gets them back, and a person without one never had
+  // them. The *up* of such a key is swallowed only if its down was:
+  // toggling the keyboard between the two would otherwise post a break
+  // for a make the machine never saw, or leave a key held down forever.
+  const keyboard = wireScreenKeyboard(machine, postKey);
+  const takenByKeyboard = new Set();
   const onKey = (down) => (event) => {
     const scancode = scancodeFor(event.code);
     if (scancode === undefined) return;
     event.preventDefault();
+    if (down) {
+      if (keyboard.owns(event.code)) {
+        takenByKeyboard.add(event.code);
+        keyboard.press(event.code);
+        return;
+      }
+    } else if (takenByKeyboard.delete(event.code)) {
+      return;
+    }
     postKey(scancode, down);
   };
   const onKeyDown = onKey(true);
@@ -1203,6 +1386,7 @@ async function run(
       if (seam.state !== AF_SEAM_ON) continue;
       appendConsole(`amberfolio: seam ${seam.id} ${formatSeamFired(seam)}\n`);
     }
+    keyboard.dispose();
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('blur', releaseHeld);
