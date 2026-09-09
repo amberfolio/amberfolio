@@ -91,6 +91,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--seam ID` | turn one seam on (PLAN.md §5, `machine/seam.h`), refused unless the loaded program is the binary its addresses are facts about. Repeatable. |
 | `--seams` | list every seam this build carries, and exit. |
 | `--vfs-list`, `--vfs-get PATH`, `--vfs-remove PATH` | after the run: list the disk; print one file's size and SHA-256, never its bytes; delete one. |
+| `--save-layer` | which of the disk's files are the player's (#208, §6): the loaded program's table beside the edition line, and after the run the files it names, each with the slot letter and party-member index its name carries. |
 | `--document PATH` | present a document the player holds (`docs/seams.md`). |
 | `--record FILE`, `--record-every N`, `--replay FILE` | write the run down, checkpoint every N frames, replay a recording and check it (`docs/replay.md`). |
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
@@ -495,12 +496,15 @@ are `Machine` methods (below).
 **The bump rule:** `major` moves when an entry point is removed, renamed or
 changes meaning; `minor` when entry points are added and nothing that was
 there changed. A loader compares `major` against what it was written for
-and refuses before fetching the module. The ABI is 1.3: 1.1 added the two
+and refuses before fetching the module. The ABI is 1.4: 1.1 added the two
 doors below (#228, #229), 1.2 added `af_machine_code_wheel_answered` and
-`af_machine_set_code_wheel_answered` (#291), and 1.3 added
+`af_machine_set_code_wheel_answered` (#291), 1.3 added
 `af_web_journal_part_begins_paragraph` (#361), which is how a fragment
 boundary that is a paragraph break reaches the page that joins the pieces
-(`docs/journal.md` §5). `v0.4.0` shipped 1.2 and `v0.5.0` ships 1.3.
+(`docs/journal.md` §5), and 1.4 added the ten `af_machine_save_layer_*`
+calls (#208), which are where a host learns which of the files on the
+machine's filesystem are the player's (§6). `v0.4.0` shipped 1.2 and
+`v0.5.0` shipped 1.3.
 
 `scripts/test-release-bundle.sh` refuses a release whose header talks about
 the version without defining one, whose export block has moved out from
@@ -653,6 +657,7 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames. |
 | `--vfs-list` | every file on the disk after the run, in the SDL host's spelling. |
 | `--vfs-get PATH` | one file read back after the run, as size and SHA-256, never bytes (#273). Repeatable. |
+| `--save-layer` | which of the disk's files are the player's (#208, §6), in the SDL host's spelling: the table beside the edition line, the files it names after the run. |
 | `--quiet` | only the report lines. |
 | `-- ARGUMENTS` | the command tail, with DOS's leading space. |
 
@@ -740,3 +745,151 @@ means the machines were not powered on the same way, `reset()` blanking and
 republishing the frame and advancing the generation counter. Both hosts
 pull the line, `wired_machine`'s constructor and `ensureMachine()` in
 `app.mjs`. Procedure: `docs/first-light.md`, then `docs/playable.md`.
+
+---
+
+## 6. The save layer
+
+Which of the files on the machine's filesystem are the **player's**, and
+which of those make up save slot `S`. `machine/save_layer.h` is the fact
+table; `af_machine_save_layer_*` is how a host reads it (`abi.h`), and
+both hosts show it under `--save-layer`.
+
+A host that persists a playthrough has to draw this line. A browser keeps
+the game's files one side of it and writes the other side back into its
+own storage after a run; the desktop host is looking at a real directory
+and can say what in it is the player's. Drawing it from a filename
+heuristic — *anything under `\SAVE\`*, *anything written since the run
+began* — is a guess at the one place where a guess is worst, with the
+publisher's bytes on one side and the player's on the other. So it is a
+table, keyed on the loaded program the way a seam's addresses are.
+
+### The table this build carries
+
+For the one edition it knows (`machine/edition.h`). Slots are the ten
+letters **A** to **J**; a party's records are numbered **1** to **8**.
+
+| pattern | kind | required | what it is |
+|---|---|---|---|
+| `\SAVE\SAVGAM<S>.DAT` | slot | yes | the saved game |
+| `\SAVE\CHRDAT<S><N>.SAV` | member | yes | one party member's record |
+| `\SAVE\CHRDAT<S><N>.ITM` | member | no | what that member carries |
+| `\SAVE\CHRDAT<S><N>.SPC` | member | no | that member's memorized spells |
+| `\SAVE\CHARLIST.TXT` | roster | no | the characters in no party, shared by every slot |
+| `\SAVE\AFMAP<S>.DAT` | sidecar | no | **ours**: the automap's exploration, as slot `<S>` was written |
+| `\SAVE\AFSEEN<S>.DAT` | sidecar | no | **ours**: the journal's read log, as slot `<S>` was written |
+| `\SAVE\AFMAP.DAT` | sidecar | no | **ours**: the working exploration table |
+| `\SAVE\AFSEEN.DAT` | sidecar | no | **ours**: the working read log |
+| `POOL.CFG` | config | no | the program's settings — **a game file** |
+| `\SAVE\<NAME>.CHA` | character | no | a character kept under a name the player chose |
+| `\SAVE\<NAME>.ITM` | character | no | what that character carries |
+| `\SAVE\<NAME>.SPC` | character | no | that character's memorized spells |
+
+Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
+`<NAME>` a DOS name the player chose and this build cannot enumerate.
+**Rows are tried in order and the first match wins** — `<NAME>.ITM` would
+otherwise swallow a member's `CHRDAT<S><N>.ITM`, which is why the three
+`<NAME>` rows are last.
+
+**`required` means the slot is incomplete without it**: the program
+writes it for every save and reads it back for every load. The optional
+member rows are absent when there was nothing to put in them, and a save
+that finds an old items file where the member now carries nothing
+*unlinks* it — so the absence is written down rather than left to a stale
+file to contradict.
+
+**Two rows are not the program's**, and are in the table because a host
+splitting a filesystem needs to be told where they go. The four `AF*`
+sidecars are this build's own (`host::slot_store`) and belong on the
+playthrough's side: they are what the automap and the reader learnt while
+that party played. `POOL.CFG` belongs on the game's side: the program
+reads it at boot and only the configuration program beside it ever writes
+it. A boundary is as much about what is on the other side of it, which is
+why the `--save-layer` summary prints two numbers.
+
+### Where the table came from
+
+By watching a real copy, which is how every other fact here was gathered
+— no test in this repository runs the game (CLAUDE.md), so what follows
+is a procedure and not a check.
+
+- **Ten slots, `A` to `J`.** The load menu asks the directory about
+  `SAVGAM<L>.DAT` for each letter in turn, and stops at `J`. `--trace`
+  over a copy with five slots in it shows five opens answering `none` and
+  five answering `file_not_found`.
+- **Eight members.** Loading a slot reads `CHRDAT<S>1..8`, and no
+  further, whatever is on the disk.
+- **What a save writes.** From the camp bar, `SAVE` into an unused
+  letter: `SAVGAM<S>.DAT`, then `.SAV` for every member, `.ITM` for
+  members carrying something and `.SPC` for members who cast. A party of
+  six with items and no casters wrote thirteen files; a party of four
+  with three casters wrote ten; a party of three in the wilderness wrote
+  six.
+- **A save does not tidy up after a smaller party.** Saving three members
+  over a slot that held six leaves members four to six where they were.
+  So the file set does not say how big the party is, and a host writing a
+  directory back should write back everything the table names rather than
+  everything it thinks is current.
+- **`CHARLIST.TXT` is not part of a save.** It is written when a
+  character is made or taken into a party; a save leaves it alone.
+
+The runs, for anyone repeating them (`docs/playable.md` has the method):
+
+```sh
+amberfolio <a copy> START.EXE --seam code-wheel --code-wheel-answered
+  --wall none --fast max --trace --save-layer
+  --press L\7550 --press A\7800      LOAD SAVED GAME, slot A
+  --press E\8800 --press S\9400      ENCAMP, SAVE
+  --press D\10000                    into slot D, which is empty
+  --until 220000000
+```
+
+and the same script through `tools/drive.mjs` with `--frames 11100
+--quiet --save-layer --vfs-list`, whose listing and whose save-layer
+lines name the same thirteen files.
+
+### What the table does not name
+
+A file it does not claim is one no traced run of this edition reads or
+writes. A player's `\SAVE\` may still hold some: a record past member
+eight, left by nothing this program writes; and `MINIMAP.DAT` /
+`MINIMAP<S>.DAT`, which some copies carry, which the program never names
+in any run traced here — not a load, not a save, in the city or on the
+wilderness map — and which are therefore some other tool's.
+
+These belong with the files the player dropped, and stay wherever a host
+put those. **The honest failure to watch for** is the other direction: a
+file that *appears during a run* and that the table does not name.
+`af_machine_vfs_generation()` says when the disk moved; a host that
+notices such a file has found a gap in this table, and that is an issue
+to file rather than a file to drop.
+
+### Reading it
+
+Both hosts take `--save-layer` and print the same two things: the table,
+beside the edition line, because it is a fact about the program; and,
+after the run, the disk read against it.
+
+```
+amberfolio: save-layer 13 row(s) slots=ABCDEFGHIJ members=8
+amberfolio: save-layer \SAVE\SAVGAM<S>.DAT slot required - the saved game; ...
+...
+amberfolio: save-layer file \SAVE\SAVGAMF.DAT slot slot=F
+amberfolio: save-layer file \SAVE\CHRDATF1.SAV member slot=F member=1
+amberfolio: save-layer 79 of 205 file(s) named, 78 the playthrough's
+```
+
+A page uses `Machine.saveLayer()` for the table and
+`Machine.saveLayerOf(path)` for one path — `{ row, kind, required, slot,
+member }`, or `null` for a path the layer does not claim, which is the
+answer for every game file and the one a page writing `\SAVE\` back is
+asking for. Paths are spelled either way and canonicalized in core
+(#146), so no host can reach a different answer by spelling a name
+differently.
+
+**No program loaded, or one this build has no table for, answers
+nothing** — `null` from `saveLayer()`, zero from the counts,
+`AF_SAVE_LAYER_NO_ROW` from `af_machine_save_layer_row_of`. That is the
+same "I do not know this file" `af_machine_edition` answers for an
+unrecognized binary (`machine/edition.h`), and a host that gets it should
+persist nothing rather than persist a guess.

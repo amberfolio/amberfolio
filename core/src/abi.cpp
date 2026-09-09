@@ -39,6 +39,7 @@
 #include "amberfolio/machine/renderer.h"
 #include "amberfolio/machine/replay.h"
 #include "amberfolio/machine/report.h"
+#include "amberfolio/machine/save_layer.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/vfs.h"
@@ -472,6 +473,40 @@ const amberfolio::machine::memory_filesystem* vfs_of(
     return nullptr;
   }
   return &devices_live->fs;
+}
+
+/// The loaded program's save layer, or null when nothing is loaded or
+/// this build has no table for what is. Every call below starts here,
+/// which is what makes "no program" and "an edition with no table"
+/// answer the same nothing.
+[[nodiscard]] const amberfolio::machine::save_layer* layer_of(
+    const af_machine* handle) noexcept {
+  const machine* box = box_of(handle);
+  if (box == nullptr || !box->seams().have_program()) {
+    return nullptr;
+  }
+  return amberfolio::machine::save_layer_for(box->seams().program());
+}
+
+/// The row `path` is, matched against the loaded program's layer.
+[[nodiscard]] amberfolio::machine::save_layer_row row_of(
+    const af_machine* handle, const char* path) noexcept {
+  const amberfolio::machine::save_layer* layer = layer_of(handle);
+  amberfolio::machine::dos_path where;
+  if (layer == nullptr || !path_of(path, where) || where.is_root()) {
+    return {};
+  }
+  return amberfolio::machine::match_save_file(*layer, where);
+}
+
+/// Row `index` of the loaded program's layer, or null past the end.
+[[nodiscard]] const amberfolio::machine::save_file* file_at(
+    const af_machine* handle, uint32_t index) noexcept {
+  const amberfolio::machine::save_layer* layer = layer_of(handle);
+  if (layer == nullptr || index >= layer->files.size()) {
+    return nullptr;
+  }
+  return &layer->files[index];
 }
 
 }  // namespace
@@ -1405,6 +1440,87 @@ uint32_t af_machine_seam_gate(const af_machine* handle, uint32_t index,
   const std::string_view name =
       amberfolio::machine::document_kind_name(seam->gate);
   return copy_out(std::span<const char>(name.data(), name.size()), out, max);
+}
+
+uint32_t af_machine_save_layer_slots(const af_machine* handle, char* out,
+                                     uint32_t max) {
+  const amberfolio::machine::save_layer* layer = layer_of(handle);
+  if (layer == nullptr) {
+    return 0;
+  }
+  return copy_out(
+      std::span<const char>(layer->slots.data(), layer->slots.size()), out,
+      max);
+}
+
+uint32_t af_machine_save_layer_members(const af_machine* handle) {
+  const amberfolio::machine::save_layer* layer = layer_of(handle);
+  return layer == nullptr ? 0 : layer->members;
+}
+
+uint32_t af_machine_save_layer_count(const af_machine* handle) {
+  const amberfolio::machine::save_layer* layer = layer_of(handle);
+  return layer == nullptr ? 0 : static_cast<uint32_t>(layer->files.size());
+}
+
+uint32_t af_machine_save_layer_pattern_at(const af_machine* handle,
+                                          uint32_t index, char* out,
+                                          uint32_t max) {
+  const amberfolio::machine::save_file* file = file_at(handle, index);
+  if (file == nullptr) {
+    return 0;
+  }
+  return copy_out(
+      std::span<const char>(file->pattern.data(), file->pattern.size()), out,
+      max);
+}
+
+uint32_t af_machine_save_layer_kind_at(const af_machine* handle, uint32_t index,
+                                       char* out, uint32_t max) {
+  const amberfolio::machine::save_file* file = file_at(handle, index);
+  if (file == nullptr) {
+    return 0;
+  }
+  const std::string_view name =
+      amberfolio::machine::save_file_kind_name(file->kind);
+  return copy_out(std::span<const char>(name.data(), name.size()), out, max);
+}
+
+uint32_t af_machine_save_layer_about_at(const af_machine* handle,
+                                        uint32_t index, char* out,
+                                        uint32_t max) {
+  const amberfolio::machine::save_file* file = file_at(handle, index);
+  if (file == nullptr) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(file->about.data(), file->about.size()),
+                  out, max);
+}
+
+int32_t af_machine_save_layer_required_at(const af_machine* handle,
+                                          uint32_t index) {
+  const amberfolio::machine::save_file* file = file_at(handle, index);
+  return (file != nullptr && file->required) ? 1 : 0;
+}
+
+uint32_t af_machine_save_layer_row_of(const af_machine* handle,
+                                      const char* path) {
+  const amberfolio::machine::save_layer_row found = row_of(handle, path);
+  if (found.file == nullptr) {
+    return AF_SAVE_LAYER_NO_ROW;
+  }
+  return static_cast<uint32_t>(found.index);
+}
+
+uint32_t af_machine_save_layer_slot_of(const af_machine* handle,
+                                       const char* path) {
+  return static_cast<uint32_t>(
+      static_cast<unsigned char>(row_of(handle, path).slot));
+}
+
+uint32_t af_machine_save_layer_member_of(const af_machine* handle,
+                                         const char* path) {
+  return row_of(handle, path).member;
 }
 
 uint32_t af_machine_write_memory(af_machine* handle, uint32_t address,

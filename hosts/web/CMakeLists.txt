@@ -146,6 +146,16 @@ set(_amberfolio_web_export_names
   _af_machine_document_name_at
   _af_machine_code_wheel_answered
   _af_machine_set_code_wheel_answered
+  _af_machine_save_layer_slots
+  _af_machine_save_layer_members
+  _af_machine_save_layer_count
+  _af_machine_save_layer_pattern_at
+  _af_machine_save_layer_kind_at
+  _af_machine_save_layer_about_at
+  _af_machine_save_layer_required_at
+  _af_machine_save_layer_row_of
+  _af_machine_save_layer_slot_of
+  _af_machine_save_layer_member_of
   _af_machine_write_memory
   _af_machine_read_memory
   _af_machine_set_entry

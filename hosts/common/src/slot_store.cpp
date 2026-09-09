@@ -22,6 +22,12 @@ namespace {
 /// The stem of the program's own save slots. A path is one of them when
 /// it is `SAVE\SAVGAM<L>.DAT` — the letter is what this is here to read,
 /// and everything else about the traffic is the program's business.
+///
+/// The same fact `machine::save_layer` states as a pattern (#208), in
+/// the form this file needs it: that table is keyed on the loaded
+/// edition and is read by a host deciding what to persist, and this is a
+/// letter read off a file event as it happens, before anything here
+/// knows what was loaded.
 constexpr std::string_view slot_stem = "SAVGAM";
 constexpr std::string_view slot_extension = ".DAT";
 

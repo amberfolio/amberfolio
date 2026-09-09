@@ -251,6 +251,12 @@ extern "C" {
 /// already answers.
 #define AF_PATH_CAPACITY 106u
 
+/// What `af_machine_save_layer_row_of` answers for a path that is not in
+/// the save layer at all — a game file, or a name the program never
+/// builds. Not an error: it is the "this one is not the player's" half
+/// of the boundary, and the answer a host asks the question to get.
+#define AF_SAVE_LAYER_NO_ROW 0xFFFFFFFFu
+
 // --- Version ----------------------------------------------------------
 
 /// The version of the core, packed as 0x00MMmmpp: major in bits 16-23,
@@ -330,8 +336,14 @@ uint32_t af_version(void);
 ///     the pieces. Minor and not major, because every call that was
 ///     there answers what it answered: a page written for 1.2 asks
 ///     nothing about paragraphs and gets the transcription it got.
+///   * **1.4** — #208, ten added entry points and nothing changed: the
+///     `af_machine_save_layer_*` family, which is where a host learns
+///     which of the files on the machine's filesystem are the player's.
+///     Minor, because a host that never asks keeps the filesystem it
+///     had; what it could not do before was tell one file from another
+///     without a heuristic of its own.
 #define AF_ABI_VERSION_MAJOR 1u
-#define AF_ABI_VERSION_MINOR 3u
+#define AF_ABI_VERSION_MINOR 4u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -1317,6 +1329,80 @@ uint32_t af_machine_set_code_wheel_answered(af_machine* box, int answered);
 /// today. Written NUL-terminated into `out`; answers its length.
 uint32_t af_machine_seam_gate(const af_machine* box, uint32_t index, char* out,
                               uint32_t max);
+
+// --- The save layer (machine/save_layer.h, #208) ----------------------
+//
+// Which of the files on this machine's filesystem are the *player's*,
+// and which of those make up save slot `S`. A host that persists a
+// playthrough — a browser writing `\SAVE\` back into its own storage
+// after a run, a desktop host telling somebody what a directory holds —
+// has to draw that line, and drawing it from a filename heuristic is a
+// guess at the one place where a guess is worst: the publisher's bytes
+// on one side of it and the player's on the other.
+//
+// So it is a fact table, keyed by the loaded program the way a seam's
+// addresses are, and read here rather than restated by each host. Every
+// call answers zero (or `AF_SAVE_LAYER_NO_ROW`) when no program is
+// loaded and when the loaded one has no table — which is the same honest
+// "I do not know this file" `af_machine_edition` answers, and a host
+// that gets it should persist nothing rather than persist a guess.
+//
+// `docs/hosts.md` §6 has the table for the edition this build knows, the
+// runs it was gathered from, and the placeholder grammar the patterns
+// are written in: `<S>` a slot letter, `<N>` a party-member index,
+// `<NAME>` a DOS name the player chose.
+
+/// The slot letters, in the order the program asks the directory about
+/// them, NUL-terminated into `out`; answers the length.
+uint32_t af_machine_save_layer_slots(const af_machine* box, char* out,
+                                     uint32_t max);
+
+/// The largest party-member index a slot's records are numbered with —
+/// what `<N>` runs up to. Zero when there is no table.
+uint32_t af_machine_save_layer_members(const af_machine* box);
+
+/// How many rows the table has.
+uint32_t af_machine_save_layer_count(const af_machine* box);
+
+/// Row `index`'s path pattern, the name of what kind of file it is
+/// (`machine::save_file_kind_name` — `slot`, `member`, `roster`,
+/// `character`, `config`, `sidecar`), and the one line a host can show a
+/// player; each NUL-terminated into `out`, each answering its length, or
+/// zero for an index past the end or a buffer too small.
+uint32_t af_machine_save_layer_pattern_at(const af_machine* box, uint32_t index,
+                                          char* out, uint32_t max);
+uint32_t af_machine_save_layer_kind_at(const af_machine* box, uint32_t index,
+                                       char* out, uint32_t max);
+uint32_t af_machine_save_layer_about_at(const af_machine* box, uint32_t index,
+                                        char* out, uint32_t max);
+
+/// Whether a slot is incomplete without row `index`: the program writes
+/// it for every save and reads it back for every load. Non-zero means
+/// yes. Zero for every row that is not part of a slot, where the
+/// question does not arise, and for an index past the end.
+int32_t af_machine_save_layer_required_at(const af_machine* box,
+                                          uint32_t index);
+
+/// Which row `path` is, or `AF_SAVE_LAYER_NO_ROW` for a path that is not
+/// in the save layer — which is the answer for every game file, and the
+/// one a host writing a directory back is asking for.
+///
+/// `path` is spelled the way every other `af_machine_vfs_*` call takes
+/// one, `/` and `\` alike, and is canonicalized in core before it is
+/// matched (#146), so a host cannot reach a different answer by spelling
+/// a name differently.
+uint32_t af_machine_save_layer_row_of(const af_machine* box, const char* path);
+
+/// Which slot `path` belongs to, as the letter's own character code, or
+/// zero for a path that is in no slot — a roster file, a sidecar's
+/// working table, a game file.
+uint32_t af_machine_save_layer_slot_of(const af_machine* box, const char* path);
+
+/// Which party member `path` is the record of, 1 to
+/// `af_machine_save_layer_members`, or zero for a path that names no
+/// member.
+uint32_t af_machine_save_layer_member_of(const af_machine* box,
+                                         const char* path);
 
 // --- Replay (machine/replay.h, docs/replay.md) ------------------------
 //

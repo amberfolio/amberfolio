@@ -213,6 +213,16 @@ const EXPECTED_EXPORTS = [
   '_af_machine_document_name_at',
   '_af_machine_code_wheel_answered',
   '_af_machine_set_code_wheel_answered',
+  '_af_machine_save_layer_slots',
+  '_af_machine_save_layer_members',
+  '_af_machine_save_layer_count',
+  '_af_machine_save_layer_pattern_at',
+  '_af_machine_save_layer_kind_at',
+  '_af_machine_save_layer_about_at',
+  '_af_machine_save_layer_required_at',
+  '_af_machine_save_layer_row_of',
+  '_af_machine_save_layer_slot_of',
+  '_af_machine_save_layer_member_of',
   '_af_machine_write_memory',
   '_af_machine_read_memory',
   '_af_machine_set_entry',
@@ -1931,6 +1941,71 @@ if (missing.length === 0) {
   console.log(
     'smoke: an unrecognized document was reported with its fingerprint and ' +
       'satisfied nothing; every seam says what it needs',
+  );
+}
+
+// --- The save layer (#208) ------------------------------------------------
+//
+// Which of the files on the machine's filesystem are the player's, asked
+// through the module a browser actually fetches. A page splitting its
+// filesystem in two — the game's files one side, the playthrough's the
+// other — has to draw that line, and this is the door it draws it with.
+//
+// **The fail-closed half is what can be checked here.** The table this
+// build carries is about a program no test in this repository may run
+// (CLAUDE.md), so what is asserted is the answer for a program it does
+// not know: nothing, rather than a guess. The table's own shape is
+// checked natively (`SaveLayer.*`), and that it is *true* was gathered
+// by watching a real copy write its files (`docs/hosts.md` §6).
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  check(
+    machine.attachReferenceDevices() === AF_OK,
+    'attaching the reference devices failed',
+  );
+  machine.reset();
+
+  // Before a program: no layer, and no row for a name that would match
+  // one if there were.
+  check(machine.saveLayer() === null, 'a save layer was reported before anything loaded');
+  check(
+    machine.saveLayerOf('SAVE/SAVGAMA.DAT') === null,
+    'a path was placed in a save layer before a program was loaded',
+  );
+
+  const ptr = module._af_web_probe_program_bytes();
+  const size = module._af_web_probe_program_size();
+  check(size > 0, 'the probe program is empty');
+  check(
+    machine.vfsPut('PROBE.EXE', module.HEAPU8.slice(ptr, ptr + size)) === AF_OK,
+    'putting PROBE.EXE failed',
+  );
+  check(machine.loadFromVfs('PROBE.EXE', '') === AF_OK, 'loading PROBE.EXE failed');
+
+  // Loaded, and unrecognized — the same answer `edition()` gives, and
+  // the one this has to give too. A layer guessed from a filename is the
+  // single thing #208 exists to stop.
+  check(machine.edition() === null, 'a test program was recognized as a known edition');
+  check(
+    machine.saveLayer() === null,
+    'a save layer was reported for a program this build has no table for',
+  );
+  for (const path of ['SAVE/SAVGAMA.DAT', 'SAVE/CHRDATA1.SAV', 'START.EXE']) {
+    check(
+      machine.saveLayerOf(path) === null,
+      `${path} was placed in the save layer of an unrecognized program`,
+    );
+  }
+
+  machine.destroy();
+  console.log(
+    'smoke: a program this build has no table for has no save layer, and no ' +
+      'path is claimed for one',
   );
 }
 
