@@ -150,13 +150,21 @@ Every milestone from M3 on gets a **0.x pre-release** tag (PLAN.md §7).
 same gate the deploy job waits on, publishes a GitHub Release carrying the
 web host's build: seven files (`amberfolio.wasm`, `amberfolio.mjs`,
 `host.mjs`, `app.mjs`, `audio-worklet.mjs`, `picker.mjs`, `journal.mjs`)
-plus `SHA256SUMS`, `manifest.json` and the notices, flattened into one
-namespace. `manifest.json`'s `sourceCommit` is a full commit sha, never
-the tag. The seven filenames are lockfile keys in a consuming site:
-renaming one is a breaking change. `scripts/release-bundle.sh` is the
-bundle and `scripts/test-release-bundle.sh` asserts its refusals (the
-list by name and in order, a notices collision, and `GITHUB_SHA` being
-the tag object rather than a commit). A `0.x` tag is a pre-release, so
+plus `vendor-tesseract.tar.gz`, `SHA256SUMS`, `manifest.json` and the
+notices, flattened into one namespace. `manifest.json`'s `sourceCommit`
+is a full commit sha, never the tag. The seven filenames are lockfile
+keys in a consuming site: renaming one is a breaking change. The tarball
+is the OCR engine `page/journal.mjs` asks for by name (#287): the page
+refuses a CDN and reads one library version's output shape, so which
+tesseract.js a site serves is a fact about the bundle rather than a
+choice the site makes. `manifest.json` describes it under `engine`:
+digest, size, library and pinned version, `unpacksTo`, and a digest per
+file, so a consumer can check what it is about to serve as well as what
+it downloaded. `scripts/release-bundle.sh` is the bundle and
+`scripts/test-release-bundle.sh` asserts its refusals (the list by name
+and in order, a notices collision, an engine directory with no
+`tesseract.min.js`, and `GITHUB_SHA` being the tag object rather than a
+commit). A `0.x` tag is a pre-release, so
 `/releases/latest` shows nothing until 1.0.
 
 **A tag older than the release job** is released by `release.yml`,

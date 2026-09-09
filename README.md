@@ -10,7 +10,7 @@ the emulator runs the unmodified original program. Quality-of-life
 enhancements are opt-in runtime patches to the machine's memory
 ("seams"), off by default, leaving the bytes on disk untouched.
 
-**Status: early development.** `v0.4.0` is the current tag. Pool of
+**Status: early development.** `v0.5.0` is the current tag. Pool of
 Radiance plays end to end on all four targets from a player-supplied copy,
 and the six v1 enhancements work and toggle independently on desktop and
 in the browser: the code-wheel bypass (it asks once), the Encamp Fix, the
