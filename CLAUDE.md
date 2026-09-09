@@ -14,9 +14,9 @@ milestones and settled decisions live there. Don't re-litigate them.
 boots, plays end to end, and all six v1 enhancements work and toggle
 independently on both hosts. The current milestone is **M6**
 (onboarding, shells, the on-screen keyboard); its worklist is #265.
-Gamepad input and the CRT look are **M8**, the first milestone past 1.0
-(#372). Open issues are the complete list of known gaps; docs describe
-what *is*, not what is owed.
+Native controller support — a seam, not a key mapping — and the CRT look
+are **M8**, the first milestone past 1.0 (#372). Open issues are the
+complete list of known gaps; docs describe what *is*, not what is owed.
 
 **No test in this repository runs the game, and none ever will.** The
 maintainer's own copy drives the game locally; CI runs everything that

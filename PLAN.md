@@ -294,7 +294,10 @@ were declined.
 
 Known engine bug-fix seams (roster and money-handling bugs, a map-edge
 transition trap) are a documented fast-follow after v1, on the same
-seam machinery.
+seam machinery. So is the controller layer (§7, M8), which is an
+enhancement of this kind rather than a host feature: it moves the
+program's own bar highlight and takes the program's own commands, which
+is seam work and lives under every rule above.
 
 ## 6. Testing
 
@@ -372,21 +375,39 @@ first milestone *past* it, and exits as 1.1.
   binaries for the three desktop targets + the wasm bundle, README/docs
   refresh, a short "supplying your artifacts" guide. *Exit: tagged 1.0
   release, binaries downloadable, release gate (§1) green.*
-- **M8 — Gamepad, and the look of the thing.** Two player-facing layers
-  1.0 ships without, deliberately. The gamepad mapping layer on both
-  hosts — sticks and d-pad to movement, buttons to the commands,
-  remappable profiles, and a cursor that drives M6's on-screen keyboard
-  so that text entry works with only a gamepad in hand. And a CRT
-  presentation filter — 4:3 aspect correction, a scanline pass,
-  phosphor persistence, an optional overscan border — off by default on
-  both hosts, because a period monitor is what this program was drawn
-  for and a flat panel is not. **Nothing under `core/`:** the composed
-  frame stays the frame the machine drew, at the size and depth it drew
-  it, and the filter is what a host does on the way to a window. So a
-  recording, a state hash and a dumped still are the same afterwards as
-  before, which is what keeps this a *presentation* step and not a
-  fidelity claim. *Exit: the game is fully playable, text entry
-  included, with only a gamepad in hand, and both hosts show one frame
+- **M8 — A controller, and the look of the thing.** Two things 1.0 ships
+  without, deliberately, and they are not the same kind of work.
+
+  **Native controller support** is an *enhancement*, on the seam
+  machinery of §5 and under all of its rules. The point is not a pad
+  that types: a mapping from a stick to the arrow keys would leave a
+  player driving a keyboard through a controller, one letter at a time,
+  which is the thing worth not building. The point is that the game's
+  own command bar becomes something a controller **selects** from — the
+  highlight moves under the stick and a button takes the entry the
+  program itself would have taken — and that movement, the bars, combat
+  and the camp are reachable without a player ever learning which
+  letter a command hides behind. The program's own bar, its own
+  highlight and its own commands: the seam changes how a person reaches
+  them, not what they are. Off by default and individually toggleable,
+  like every other seam, and with the same obligation to be *native in
+  feel* — a controller layer that looks bolted on is a failed one. Text
+  the player has to spell is still text: a character's name goes
+  through M6's on-screen keyboard (§7, M6), driven by the pad.
+
+  **A CRT presentation filter** — 4:3 aspect correction, a scanline
+  pass, phosphor persistence, an optional overscan border — off by
+  default on both hosts, because a period monitor is what this program
+  was drawn for and a flat panel is not. **This half touches nothing
+  under `core/`:** the composed frame stays the frame the machine drew,
+  at the size and depth it drew it, and the filter is what a host does
+  on the way to a window. So a recording, a state hash and a dumped
+  still are the same afterwards as before, which is what keeps it a
+  *presentation* step and not a fidelity claim.
+
+  *Exit: a player reaches every command, every movement and every fight
+  from a controller — text entry included — without the seam ever
+  telling them which key it stands for; and both hosts show one frame
   through one filter with one set of controls.*
 
 ## 8. Risks and mitigations
@@ -418,10 +439,10 @@ first milestone *past* it, and exits as 1.1.
 - Other audio hardware (Ad Lib, Roland, Tandy), mouse support, other
   video modes (CGA/MCGA/Hercules), machine save-states, localization,
   32-bit builds.
-- Gamepad control and the CRT look are **deferred rather than dropped**:
-  they are M8 (§7), the first milestone past 1.0. 1.0 is playable with a
-  keyboard, real or on-screen, and square pixels on a flat panel are what
-  it looks like.
+- Native controller support and the CRT look are **deferred rather than
+  dropped**: they are M8 (§7), the first milestone past 1.0. 1.0 is
+  playable with a keyboard, real or on-screen, and square pixels on a
+  flat panel are what it looks like.
 
 ## 10. Open questions
 
