@@ -999,6 +999,13 @@ function seedWallClock(machine, appendConsole) {
 /// the same three layouts from the same numbers. A layout change is a
 /// change to that one file in core and to nothing in this page.
 ///
+/// **This widget is a reference implementation and not an interface.** A
+/// serving page is free to replace it outright: the model's four layers
+/// (`docs/hosts.md` §7) are what a page builds on, a page with keys of
+/// its own takes `commitScancode()` and none of the tables, and a page
+/// that wants no painted keyboard at all posts scan codes with
+/// `machine.postKey()` and imports none of this.
+///
 /// The keys are real buttons, positioned from the model's own columns and
 /// widths, so the browser does the hit testing and a gap between two keys
 /// is a gap in both hosts because both put the keys in the same places.

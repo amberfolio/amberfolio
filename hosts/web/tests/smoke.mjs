@@ -115,12 +115,15 @@ import {
   MAX_CATCH_UP_SECONDS,
   readScreenKeyboard,
   commitKey,
+  commitScancode,
+  latchOf,
   moveFocus,
   keyAt,
   releaseLatched,
   AF_NO_KEY,
   AF_NAV_RIGHT,
   AF_LATCH_LEFT_SHIFT,
+  AF_LATCH_CTRL,
 } from './host.mjs';
 import {
   encodePpm,
@@ -247,6 +250,8 @@ const EXPECTED_EXPORTS = [
   '_af_screen_keyboard_key_column',
   '_af_screen_keyboard_key_width',
   '_af_screen_keyboard_key_latch',
+  '_af_screen_keyboard_latch_of',
+  '_af_screen_keyboard_commit_scancode',
   '_af_screen_keyboard_key_at',
   '_af_screen_keyboard_move',
   '_af_screen_keyboard_commit',
@@ -587,6 +592,29 @@ if (missing.length === 0) {
     }
     if (releaseLatched(module, AF_LATCH_LEFT_SHIFT).length !== 1) {
       problems.push('letting a latch go did not produce its break');
+    }
+
+    // The same contract with no layout in the call — the layer a page
+    // that paints its own keys takes, and the claim that the keyboards
+    // this repository ships are a reference implementation rather than
+    // the interface.
+    if (latchOf(module, 0x2a) !== AF_LATCH_LEFT_SHIFT || latchOf(module, 0x1e) !== 0) {
+      problems.push('latchOf() does not answer for a bare scan code');
+    }
+    const bare = commitScancode(module, 0x2a, 0);
+    const bareTyped = commitScancode(module, 0x1e, bare.latched);
+    const bareOk = [
+      bare.events.length === 1 && bare.latched === AF_LATCH_LEFT_SHIFT,
+      bareTyped.events.length === 3,
+      bareTyped.events[2].scancode === 0x2a && bareTyped.events[2].down === false,
+      bareTyped.latched === 0,
+      // And a code this machine's keyboard has not got is refused.
+      commitScancode(module, 0xe0, AF_LATCH_CTRL).events.length === 0,
+    ];
+    if (bareOk.some((ok) => !ok)) {
+      problems.push(
+        `the layout-free commit does not match the contract: ${JSON.stringify({ bare, bareTyped })}`,
+      );
     }
     console.log(
       `smoke: ${keyboard.layouts.length} keyboard layout(s), ${full.keys.length}` +

@@ -927,6 +927,39 @@ second copy. A layout change is a change to that one file and to no host.
 
 The header has the reasoning. What is here is the format a host reads.
 
+### The keyboards here are reference implementations, not the interface
+
+**Nothing in this section is obligatory.** A host's whole obligation for
+input is `af_machine_post_key` — an XT set-1 make code and a direction —
+and a host with a native on-screen keyboard, a chorded pad, a phone's own
+IME or no screen at all is expected to post scan codes and ignore the
+rest. The SDL host's rectangles and the page's buttons are *one* way of
+spelling a keyboard, kept in the repository so that both hosts are usable
+today and so that the model has two consumers rather than one.
+
+What is offered is four separable layers. A host takes as many as suit it
+and writes the rest; core holds no state about any of them, so they can be
+mixed freely or stopped at:
+
+| layer | calls | a host that skips it |
+|---|---|---|
+| 1. the wire | `af_machine_post_key` | cannot: this is the machine's whole input surface |
+| 2. the contract | `af_screen_keyboard_commit_scancode`, `_latch_of`, `_release` | writes the tap-versus-latch rule and the event ordering itself |
+| 3. the tables | `_layouts`, `_name`, `_about`, `_rows`, `_width`, `_keys`, `_key_*`, `_unit` | paints its own keys |
+| 4. the navigation | `_focus`, `_move`, `_key_at` | has its own focus model, or none |
+
+Layer 2 takes **no layout** — a host painting keys this build has never
+heard of still gets the ordering right, which is the part that is easy to
+get wrong and impossible to notice. Layer 3 needs no focus. A host that
+renders the tables with its own toolkit and its own hit testing — the page
+does exactly that — takes 3 and skips `_key_at`.
+
+`tests/core/machine/keyboard_test.cpp`'s
+`a_latched_shift_reaches_40_17_with_no_keyboard` is the claim, driven with
+no layout, no host, no widget and no pixels: `commit_scancode()` and
+`post_key()`, and the BIOS delivering the same shifted `'A'` a person
+holding the key down gets.
+
 ### Three layouts
 
 A layout is chosen by what the program is waiting for, and the three are
@@ -986,12 +1019,20 @@ answer.
 **A modifier latches; everything else taps.** A finger cannot hold Shift
 and press A, so Shift, Ctrl and Alt stay down when committed and come up
 behind the next ordinary key. `af_screen_keyboard_key_latch()` says which
-bit a key is (`AF_LATCH_LEFT_SHIFT`, `_RIGHT_SHIFT`, `_CTRL`, `_ALT`), and
-a host lights the keys whose bit is in the mask. The order matters and is
-core's: the shift's make has to reach 40:17 before the letter's does,
-because a program reads that byte directly. `af_screen_keyboard_release()`
-is the same events for closing the keyboard or losing the window, so a
-latched Shift does not outlive the keyboard that latched it.
+bit a key is (`AF_LATCH_LEFT_SHIFT`, `_RIGHT_SHIFT`, `_CTRL`, `_ALT`) —
+`af_screen_keyboard_latch_of()` is the same question about a bare scan
+code — and a host lights the keys whose bit is in the mask. The order
+matters and is core's: the shift's make has to reach 40:17 before the
+letter's does, because a program reads that byte directly.
+`af_screen_keyboard_release()` is the same events for closing the keyboard
+or losing the window, so a latched Shift does not outlive the keyboard
+that latched it.
+
+**A latch is momentary, and 40:17 says so.** Because the shift comes up
+behind the letter inside the same commit, a program that polls the
+shift-flag byte afterwards reads it *clear* — nobody is holding a key. The
+keystroke in the buffer is still the shifted one. That is the honest
+answer and not a gap: a painted Shift is not a Shift wedged down.
 
 The **lock** keys are not latching: Caps, Num and Scroll Lock toggle
 inside the BIOS on the make code, so a tap is already what they want.
@@ -1039,4 +1080,7 @@ the recording's.
 **The page** renders the keys as buttons from the same numbers
 (`readScreenKeyboard()` in `host.mjs`), with a checkbox to show it and a
 select to choose the layout. `commitKey()`, `moveFocus()` and
-`releaseLatched()` are the same three calls one layer up.
+`releaseLatched()` are the same three calls one layer up, and
+`commitScancode()` / `latchOf()` are layer 2 for a page that paints its
+own keys. The widget itself is `wireScreenKeyboard()` in `app.mjs`, which
+is the dev page's and which a serving page is free to replace outright.

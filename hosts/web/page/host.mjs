@@ -1883,6 +1883,14 @@ export class HeldKeys {
 // anything is loaded. So these are functions taking the module, not
 // methods on `Machine`.
 //
+// **None of it is obligatory.** `app.mjs`'s keyboard is a reference
+// implementation, and a page's whole obligation for input is
+// `machine.postKey()` — a scan code and a direction. A page with a
+// keyboard of its own design takes `commitScancode()` for the latch rule
+// and leaves the tables alone; one that likes the tables takes
+// `readScreenKeyboard()` and renders them however it likes; one that
+// wants neither posts scan codes and imports none of this.
+//
 // What a commit produces is scan codes, and the page posts them with
 // `machine.postKey()` in the order they arrive. There is **no key
 // repeat**: a finger held on a painted key is one keystroke, because
@@ -1977,28 +1985,62 @@ function readEvents(module, scratch, count) {
   return events;
 }
 
-/// Commit a key and get back `{ events, latched }`: what to post, in
-/// order, and the mask to carry into the next commit.
+/// Which modifier a make code latches (`AF_LATCH_*`), or 0 for a key that
+/// taps — the layout-free form, for a page keeping its own list of keys.
+export function latchOf(module, scancode) {
+  return module._af_screen_keyboard_latch_of(scancode);
+}
+
+/// Commit a make code and get back `{ events, latched }`: what to post,
+/// in order, and the mask to carry into the next commit. **The contract,
+/// with no layout in the call** — a page painting its own keys, in its
+/// own shape, gets the rule and the ordering without taking a layout, a
+/// legend or a geometry from this file.
 ///
 /// An ordinary key is a tap. A modifier *latches* — committing it puts it
 /// down, committing it again lets it go, and committing any ordinary key
 /// sends that key and then lets every latched modifier go behind it,
-/// because a finger cannot hold Shift and press A.
+/// because a finger cannot hold Shift and press A. A scan code this
+/// machine's keyboard has not got answers no events and the mask
+/// unchanged.
+export function commitScancode(module, scancode, latched) {
+  return withCommitScratch(module, (scratch, after) =>
+    module._af_screen_keyboard_commit_scancode(
+      scancode,
+      latched,
+      scratch,
+      AF_COMMIT_CAPACITY,
+      after,
+    ),
+  );
+}
+
+/// `commitScancode()` for key `key` of `layout` — the convenience for a
+/// page rendering one of the layouts, and a lookup in front of it.
 export function commitKey(module, layout, key, latched) {
-  const scratch = module._malloc(AF_COMMIT_CAPACITY * 4 + 4);
-  if (scratch === 0) {
-    throw new Error('out of wasm heap while committing a key');
-  }
-  const after = scratch + AF_COMMIT_CAPACITY * 4;
-  try {
-    const count = module._af_screen_keyboard_commit(
+  return withCommitScratch(module, (scratch, after) =>
+    module._af_screen_keyboard_commit(
       layout,
       key,
       latched,
       scratch,
       AF_COMMIT_CAPACITY,
       after,
-    );
+    ),
+  );
+}
+
+/// The events buffer and the one-word mask both commit calls write into,
+/// unpacked into `{ events, latched }`. One helper because the two calls
+/// differ only in which key they name.
+function withCommitScratch(module, call) {
+  const scratch = module._malloc(AF_COMMIT_CAPACITY * 4 + 4);
+  if (scratch === 0) {
+    throw new Error('out of wasm heap while committing a key');
+  }
+  const after = scratch + AF_COMMIT_CAPACITY * 4;
+  try {
+    const count = call(scratch, after);
     return {
       events: readEvents(module, scratch, count),
       latched: module.HEAPU32[after >> 2],

@@ -8,6 +8,13 @@
 // keeping a second copy: the page draws the same three layouts from the
 // same numbers, and a layout change is a change to that one file.
 //
+// **This file is a reference implementation and not an interface.** It is
+// how *this* host chose to spell a keyboard; core's four layers
+// (screen_keyboard.h) are what another host builds on, and one with its
+// own keys takes `commit_scancode()` and none of what is below. Nothing
+// else in this host depends on any of it: delete this file and the
+// machine still takes every key the window sends.
+//
 // What is here is the two things core has no business knowing. **Pixels**:
 // how big a key is in this window, where the keyboard sits in it, and
 // which key a pointer landed on. And **the paint**: rectangles and a

@@ -173,6 +173,8 @@ set(_amberfolio_web_export_names
   _af_screen_keyboard_key_column
   _af_screen_keyboard_key_width
   _af_screen_keyboard_key_latch
+  _af_screen_keyboard_latch_of
+  _af_screen_keyboard_commit_scancode
   _af_screen_keyboard_key_at
   _af_screen_keyboard_move
   _af_screen_keyboard_commit

@@ -2345,6 +2345,43 @@ TEST(AbiScreenKeyboard, LatchesAModifierAndLetsItGoBehindTheNextKey) {
   EXPECT_EQ(latched, 0u);
 }
 
+/// The layer a host with its own keys takes. No layout index appears in
+/// either call, which is the claim: the contract is available without the
+/// tables, and a host is not obliged to paint the keyboards this
+/// repository ships.
+TEST(AbiScreenKeyboard, AppliesTheContractWithNoLayoutInTheCall) {
+  EXPECT_EQ(af_screen_keyboard_latch_of(0x2Au), AF_LATCH_LEFT_SHIFT);
+  EXPECT_EQ(af_screen_keyboard_latch_of(0x1Eu), 0u) << "a letter taps";
+  EXPECT_EQ(af_screen_keyboard_latch_of(0x3Au), 0u) << "and so does a lock";
+  EXPECT_EQ(af_screen_keyboard_latch_of(0x1234u), 0u);
+
+  std::array<std::uint32_t, AF_COMMIT_CAPACITY> events{};
+  const auto max = static_cast<std::uint32_t>(events.size());
+  std::uint32_t latched = 0;
+
+  ASSERT_EQ(af_screen_keyboard_commit_scancode(0x2Au, latched, events.data(),
+                                               max, &latched),
+            1u);
+  EXPECT_EQ(latched, AF_LATCH_LEFT_SHIFT);
+  ASSERT_EQ(af_screen_keyboard_commit_scancode(0x1Eu, latched, events.data(),
+                                               max, &latched),
+            3u);
+  EXPECT_EQ(events[0], (0x1Eu << 1) | 1u);
+  EXPECT_EQ(events[2], 0x2Au << 1) << "the shift comes up behind the letter";
+  EXPECT_EQ(latched, 0u);
+
+  // A key no layout here carries commits just as well.
+  EXPECT_EQ(
+      af_screen_keyboard_commit_scancode(0x4Cu, 0, events.data(), max, nullptr),
+      2u);
+  // And one the machine has not got is refused, with the mask untouched.
+  latched = AF_LATCH_CTRL;
+  EXPECT_EQ(af_screen_keyboard_commit_scancode(0xE0u, latched, events.data(),
+                                               max, &latched),
+            0u);
+  EXPECT_EQ(latched, AF_LATCH_CTRL);
+}
+
 TEST(AbiScreenKeyboard, PostsNothingAndMovesNothingIntoABufferTooSmall) {
   std::array<std::uint32_t, 1> events{};
   std::uint32_t latched = AF_LATCH_CTRL;

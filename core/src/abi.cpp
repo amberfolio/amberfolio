@@ -1783,6 +1783,29 @@ uint32_t af_screen_keyboard_move(uint32_t layout, uint32_t key,
   return found == osk::no_key ? AF_NO_KEY : static_cast<uint32_t>(found);
 }
 
+uint32_t af_screen_keyboard_latch_of(uint32_t scancode) {
+  if (scancode > 0xFFU) {
+    return 0;
+  }
+  return static_cast<uint32_t>(
+      osk::latch_of(static_cast<std::uint8_t>(scancode)));
+}
+
+uint32_t af_screen_keyboard_commit_scancode(uint32_t scancode, uint32_t latched,
+                                            uint32_t* events, uint32_t max,
+                                            uint32_t* latched_after) {
+  const osk::commit made =
+      scancode > 0xFFU
+          ? osk::commit{}
+          : osk::commit_scancode(static_cast<std::uint8_t>(scancode),
+                                 static_cast<std::uint8_t>(latched & 0xFFU));
+  const uint32_t count = pack_commit(made, events, max);
+  if (latched_after != nullptr) {
+    *latched_after = count == 0 ? latched : made.latched;
+  }
+  return count;
+}
+
 uint32_t af_screen_keyboard_commit(uint32_t layout, uint32_t key,
                                    uint32_t latched, uint32_t* events,
                                    uint32_t max, uint32_t* latched_after) {

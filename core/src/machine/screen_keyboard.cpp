@@ -368,13 +368,24 @@ std::size_t move(const layout& which, std::size_t focus, nav where) noexcept {
 
 commit commit_key(const layout& which, std::size_t index,
                   std::uint8_t latched) noexcept {
+  if (index >= which.keys.size()) {
+    return {.events = {}, .count = 0, .latched = latched};
+  }
+  return commit_scancode(which.keys[index].scancode, latched);
+}
+
+commit commit_scancode(std::uint8_t scancode, std::uint8_t latched) noexcept {
   commit out{};
   out.latched = latched;
-  if (index >= which.keys.size()) {
+  // A code this keyboard has not got is refused rather than passed
+  // through: `xt_table` is what says which keys exist, and inventing one
+  // here would be a key the BIOS cannot translate arriving as though it
+  // could.
+  if (scancode == 0 || scancode >= xt_keyboard::table_size ||
+      xt_keyboard::xt_table[scancode].kind == xt_keyboard::key_kind::unmapped) {
     return out;
   }
 
-  const std::uint8_t scancode = which.keys[index].scancode;
   const auto bit = static_cast<std::uint8_t>(latch_of(scancode));
   if (bit != 0) {
     // A modifier: down if it is up, up if it is down, and nothing else

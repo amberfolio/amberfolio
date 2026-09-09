@@ -374,13 +374,15 @@ uint32_t af_version(void);
 ///     Minor, because a host that never asks keeps the filesystem it
 ///     had; what it could not do before was tell one file from another
 ///     without a heuristic of its own.
-///   * **1.5** — #377, eighteen added entry points and nothing changed:
-///     the `af_screen_keyboard_*` family, which is where both hosts read
-///     the layouts and the navigation model of the keyboard they paint on
-///     the screen. The wasm module also began exporting the `HEAPU32`
-///     view, which is how a page unpacks a committed key. Minor, and
-///     machine-less: a host that never asks has the keyboard it had,
-///     which on a device with none attached was none.
+///   * **1.5** — #377, twenty added entry points and nothing changed:
+///     the `af_screen_keyboard_*` family, which is where a host reads the
+///     layouts, the navigation model and the latch contract of an
+///     on-screen keyboard. The wasm module also began exporting the
+///     `HEAPU32` view, which is how a page unpacks a committed key.
+///     Minor, and machine-less: a host that never asks has the keyboard
+///     it had, which on a device with none attached was none — and a host
+///     that wants only the contract can take `_commit_scancode` and none
+///     of the tables.
 #define AF_ABI_VERSION_MAJOR 1u
 #define AF_ABI_VERSION_MINOR 5u
 
@@ -1451,6 +1453,25 @@ uint32_t af_machine_save_layer_member_of(const af_machine* box,
 // here, so that a layout change is a change to one file in core and to no
 // host at all.
 //
+// **The keyboards this repository ships are reference implementations,
+// not the interface.** Nothing below has to be used at all. A host's
+// whole obligation for input is `af_machine_post_key` — an XT set-1 make
+// code and a direction — and a host with a native on-screen keyboard, a
+// chorded pad or no screen whatever is expected to post scan codes and
+// ignore this family entirely. What is offered is four separable layers,
+// and a host takes as many as suit it:
+//
+//   1. **The wire**: `af_machine_post_key`, and nothing here.
+//   2. **The contract**: `af_screen_keyboard_commit_scancode` and
+//      `_release`, which apply the tap-versus-latch rule to *any* scan
+//      code, with no layout in the call. A host painting its own keys
+//      still gets the ordering right.
+//   3. **The tables**: the layouts, legends, make codes and geometry.
+//   4. **The navigation**: `_key_at`, `_move` and `_focus`.
+//
+// Each is usable without the ones below it, and core holds no state about
+// any of it, so a host may mix them freely or stop at layer 1.
+//
 // **None of these calls takes a machine.** A keyboard is not a fact about
 // a loaded program — a Y/N prompt is a Y/N prompt — and a host draws its
 // onboarding keyboard before anything is loaded, so they sit beside
@@ -1529,8 +1550,30 @@ uint32_t af_screen_keyboard_key_at(uint32_t layout, uint32_t row,
 /// `af_screen_keyboard_key_at` instead and needs none of it.
 uint32_t af_screen_keyboard_move(uint32_t layout, uint32_t key, uint32_t where);
 
+/// Which modifier make code `scancode` latches (`AF_LATCH_*`), or zero
+/// for a key that taps and for a code this machine's keyboard has not
+/// got. The layout-free form of `af_screen_keyboard_key_latch` above, for
+/// a host that keeps its own list of keys.
+uint32_t af_screen_keyboard_latch_of(uint32_t scancode);
+
+/// Commit the key with make code `scancode` — **the contract, with no
+/// layout in the call**. A host that paints its own keys, in its own
+/// shape, gets the tap-versus-latch rule and the order of the events
+/// without taking a layout, a legend or a geometry from this family.
+///
+/// Answers and writes exactly as `af_screen_keyboard_commit` below does.
+/// A scan code this machine's keyboard has not got writes nothing and
+/// answers zero, with the mask handed back unchanged.
+uint32_t af_screen_keyboard_commit_scancode(uint32_t scancode, uint32_t latched,
+                                            uint32_t* events, uint32_t max,
+                                            uint32_t* latched_after);
+
 /// Commit key `key`, with `latched` the mask standing from earlier
 /// commits, and answer the key events a host must now post, in order.
+///
+/// The convenience for a host drawing one of the layouts above, and
+/// nothing more than a lookup in front of
+/// `af_screen_keyboard_commit_scancode`.
 ///
 /// Each event is written into `events` as `(scancode << 1) | down`, and
 /// the call answers how many there are — at most `AF_COMMIT_CAPACITY`, and

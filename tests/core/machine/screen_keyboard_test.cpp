@@ -302,6 +302,61 @@ TEST(ScreenKeyboardCommit, TapsTheLockKeys) {
   }
 }
 
+/// The layer a host that paints its own keys takes: the rule, with no
+/// layout in the call. `commit_key()` is a lookup in front of this, so
+/// the two must agree key for key or the convenience has grown a second
+/// contract.
+TEST(ScreenKeyboardCommit, IsTheSameRuleWithNoLayoutInTheCall) {
+  const layout& board = named("full");
+  for (std::size_t i = 0; i < board.keys.size(); ++i) {
+    SCOPED_TRACE(board.keys[i].label);
+    constexpr std::array<std::uint8_t, 3> masks{
+        {0, static_cast<std::uint8_t>(latch::left_shift),
+         static_cast<std::uint8_t>(static_cast<std::uint8_t>(latch::ctrl) |
+                                   static_cast<std::uint8_t>(latch::alt))}};
+    for (const std::uint8_t mask : masks) {
+      const commit through = commit_key(board, i, mask);
+      const commit direct = commit_scancode(board.keys[i].scancode, mask);
+      ASSERT_EQ(through.count, direct.count);
+      EXPECT_EQ(through.latched, direct.latched);
+      for (std::size_t at = 0; at < through.count; ++at) {
+        EXPECT_EQ(through.events[at].scancode, direct.events[at].scancode);
+        EXPECT_EQ(through.events[at].down, direct.events[at].down);
+      }
+    }
+  }
+}
+
+/// And it works for a key no layout here carries, which is the whole
+/// point of it: a host is not confined to the three keyboards this
+/// repository happens to ship.
+TEST(ScreenKeyboardCommit, TakesAnyKeyTheMachineHasWhateverIsPaintedOnIt) {
+  // The keypad's centre key is on `full` and on neither of the others; a
+  // host painting only a movement cluster would still commit it.
+  const commit five = commit_scancode(0x4C, 0);
+  ASSERT_EQ(five.count, 2U);
+  EXPECT_EQ(five.events[0].scancode, 0x4C);
+  EXPECT_TRUE(five.events[0].down);
+
+  // Ctrl latches wherever it is painted, or is not painted at all.
+  const commit ctrl = commit_scancode(0x1D, 0);
+  ASSERT_EQ(ctrl.count, 1U);
+  EXPECT_EQ(ctrl.latched, static_cast<std::uint8_t>(latch::ctrl));
+}
+
+/// A code the machine's keyboard has not got is refused rather than
+/// passed through: this is not the place to invent a key the BIOS cannot
+/// translate.
+TEST(ScreenKeyboardCommit, RefusesAScanCodeThisKeyboardHasNotGot) {
+  constexpr std::array<std::uint8_t, 4> absent{{0x00, 0x60, 0xE0, 0xFF}};
+  for (const std::uint8_t code : absent) {
+    SCOPED_TRACE(static_cast<int>(code));
+    const commit out = commit_scancode(code, 5);
+    EXPECT_EQ(out.count, 0U);
+    EXPECT_EQ(out.latched, 5U) << "and hands the mask back untouched";
+  }
+}
+
 TEST(ScreenKeyboardCommit, AnswersNothingForAnIndexThatIsNotAKey) {
   const layout& board = named("full");
   const commit out = commit_key(board, no_key, 3);

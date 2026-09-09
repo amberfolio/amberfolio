@@ -22,6 +22,42 @@
 // change to this file and to nothing else.
 //
 //
+// Four layers, and a host may start at any of them
+// --------------------------------------------------
+//
+// **The keyboards this repository ships are reference implementations,
+// not the interface.** The SDL host's rectangles and the page's buttons
+// are one way of spelling a keyboard; a host with a native on-screen
+// keyboard, a radial menu, a chorded pad, a voice command or a test
+// harness with no screen at all is not expected to want any of them, and
+// nothing here asks it to. What is offered is four separable layers, and
+// a host takes as many as suit it and writes the rest:
+//
+//   1. **The wire.** `machine::post_key(scancode, action)` —
+//      `af_machine_post_key`. An XT set-1 make code and a direction, and
+//      that is the whole of the machine's input surface. A host that
+//      wants nothing else on this page needs nothing else on this page:
+//      post scan codes and the BIOS cannot tell where they came from.
+//   2. **The contract** (`commit_scancode()` and `release_latched()`).
+//      The tap-versus-latch rule below, applied to *any* scan code and
+//      any latch mask, with no layout anywhere in the call. A host that
+//      paints its own keys — different keys, a different shape, keys this
+//      file has never heard of — still gets the ordering right, which is
+//      the part that is easy to get wrong and impossible to notice.
+//   3. **The tables** (`layouts()`). The three layouts, the legends, the
+//      make codes and the geometry, for a host that would rather render
+//      an answer than invent one.
+//   4. **The navigation** (`move()`, `key_at()`, `default_focus()`).
+//      Which key is focused and what moves it, for a host driving a
+//      keyboard from a four-way control or a pointer.
+//
+// Each layer is usable without the ones below it. Layer 2 needs no
+// layout; layer 3 needs no focus; a host that renders the tables with its
+// own toolkit and its own hit testing — the page does exactly that — uses
+// 3 and skips `key_at()`. Nothing in core knows or cares which a host
+// chose, because nothing in core holds any state about it.
+//
+//
 // What crosses the boundary is a scan code, and nothing else
 // -----------------------------------------------------------
 //
@@ -67,6 +103,13 @@
 // toggle inside the BIOS on the make code, so a tap is already what they
 // want, and treating one as a latch would leave the key physically down
 // and toggle it a second time when it came up.
+//
+// **A latch is momentary, and 40:17 says so.** Because the shift comes up
+// behind the letter inside the same commit, a program that polls the
+// shift-flag byte afterwards reads it clear — nobody is holding a key —
+// while the keystroke sitting in the buffer is still the shifted one.
+// That is the honest answer rather than a gap: a painted Shift is not a
+// Shift wedged down, and `keyboard_test.cpp` pins both halves of it.
 //
 //
 // Three layouts, because the program asks three kinds of question
@@ -285,11 +328,28 @@ struct commit {
   std::uint8_t latched{0};
 };
 
-/// Commit key `index` of `which`, with `latched` the mask standing from
-/// earlier commits. See the header comment for the contract; the events
-/// are in the order a host must post them, and the modifiers' breaks are
-/// in ascending scan-code order, which is the order
-/// `host::held_keys::release_all()` uses and for the same reason.
+/// Commit the key with make code `scancode`, with `latched` the mask
+/// standing from earlier commits. **This is the contract, and it takes no
+/// layout**: a host that paints its own keys — different keys, a
+/// different shape, keys no layout here carries — gets the tap-versus-
+/// latch rule and the order of the events without taking anything else
+/// from this file.
+///
+/// See the header comment for the rule. The events are in the order a
+/// host must post them, and the modifiers' breaks are in ascending
+/// scan-code order, which is the order `host::held_keys::release_all()`
+/// uses and for the same reason.
+///
+/// A scan code this machine's keyboard has not got gives an empty commit
+/// and the mask back unchanged — the same refusal a layout index past the
+/// end gets, and for the same reason: this is not the place to invent a
+/// key.
+[[nodiscard]] commit commit_scancode(std::uint8_t scancode,
+                                     std::uint8_t latched) noexcept;
+
+/// `commit_scancode()` for key `index` of `which` — the convenience for a
+/// host that is drawing one of the layouts above, and nothing more than a
+/// lookup in front of it.
 ///
 /// An index that is not a key gives an empty commit and the mask back
 /// unchanged.
