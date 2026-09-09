@@ -17,8 +17,9 @@ in the browser: the code-wheel bypass (it asks once), the Encamp Fix, the
 automap, the journal, fog of war on the overworld, and the debug cheats.
 The 8086 core passes all 323 files of the
 [SingleStepTests/8088](https://github.com/SingleStepTests/8088) v2 set in
-CI on every push. The current milestone is M6: onboarding and a real web
-shell. [PLAN.md](PLAN.md) is the plan of record;
+CI on every push. The current milestone is M6: onboarding, a real web
+shell, and an on-screen keyboard. [PLAN.md](PLAN.md) is the plan of
+record;
 [`docs/enhancements.md`](docs/enhancements.md) is what each enhancement
 does for a player.
 
