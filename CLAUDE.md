@@ -10,7 +10,7 @@ Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
 Radiance. **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
-**Status.** M0–M5 are done and `v0.4.0` is the current tag. The game
+**Status.** M0–M5 are done and `v0.5.0` is the current tag. The game
 boots, plays end to end, and all six v1 enhancements work and toggle
 independently on both hosts. The current milestone is **M6** (onboarding,
 shells, gamepad); its worklist is #265. Open issues are the complete list

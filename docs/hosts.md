@@ -500,7 +500,7 @@ doors below (#228, #229), 1.2 added `af_machine_code_wheel_answered` and
 `af_machine_set_code_wheel_answered` (#291), and 1.3 added
 `af_web_journal_part_begins_paragraph` (#361), which is how a fragment
 boundary that is a paragraph break reaches the page that joins the pieces
-(`docs/journal.md` §5). `v0.4.0` shipped 1.2.
+(`docs/journal.md` §5). `v0.4.0` shipped 1.2 and `v0.5.0` ships 1.3.
 
 `scripts/test-release-bundle.sh` refuses a release whose header talks about
 the version without defining one, whose export block has moved out from
