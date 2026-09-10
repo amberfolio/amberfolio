@@ -672,7 +672,14 @@ def sweep_desktop(host: Path, session: Session, disk: Path,
         shutil.copytree(disk, copy)
         try:
             command = [str(host), str(copy), str(session.program),
-                       "--headless", "--replay", str(session.path)]
+                       "--headless", "--replay", str(session.path),
+                       # A replay reads no config anyway (#382), and this
+                       # says so at the call site for the reason
+                       # `--code-wheel-store` is deliberately absent
+                       # above: a recording is verified by exact
+                       # comparison, and its answer must not be a
+                       # property of the machine it is verified on.
+                       "--no-config"]
             for one in documents:
                 # Presented rather than copied: a host hashes what it is
                 # handed and never writes to it (`present_document`).

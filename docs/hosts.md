@@ -59,8 +59,13 @@ The host takes a directory and a program (#83). The method (#94): run it,
 read the line it stopped on, widen that service, run it again.
 
 ```sh
-amberfolio <dir> <program.exe> [options...] [-- ARGUMENTS...]
+amberfolio [<dir> [<program.exe>]] [options...] [-- ARGUMENTS...]
 ```
+
+Both arguments come from the config file (§2a) when they are not given,
+so a launch after the first needs neither. A launch with neither and no
+config is a **first run**: it says what it needs and where to point it,
+and exits successfully. No game directory yet is not an error.
 
 A run prints the file's identity before anything executes and a report when
 it ends:
@@ -106,6 +111,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--code-wheel-answered`, `--code-wheel-store PATH`, `--forget-code-wheel` | say the code-wheel challenge has been answered on this copy; where answered copies are remembered; forget this one (#290). |
 | `--journal PATH`, `--journal-store PATH`, `--journal-ocr PATH\|none`, `--journal-probe`, `--cite-all-journal` | ingest a journal; where its text lives; which OCR engine; add the synthetic probe edition; cite every entry onto the `Notes` log (`docs/journal.md`). |
 | `--volume 0-100`, `--mute` | how loudly to play it (§4); a run at 25% is the same run as one at 100%, to the last edge. |
+| `--config PATH`, `--no-config`, `--remember`, `--forget-config` | the settings file (§2a): where it is, ignore it, write this run's settings into it, empty it. |
 | `-- ARGUMENTS` | the program's command tail, with the leading space DOS leaves. |
 
 ### The keys the host takes for itself
@@ -184,6 +190,76 @@ matter. A path is never truncated: the name has been through
 not resolve renders as `\`. `docs/machine.md` §5 has the channel's rules
 and §7 why `--dump`, not a golden, is the instrument for "the title
 renders".
+
+---
+
+## 2a. The config file (#382)
+
+`config.txt`, in the per-user data directory this platform keeps
+application data in — `%APPDATA%\amberfolio\` on Windows,
+`~/Library/Application Support/amberfolio/` on macOS,
+`$XDG_DATA_HOME/amberfolio/` on Linux — beside the journal's text
+(`docs/journal.md` §6) and the answered code wheels (#292). `--config
+PATH` points at another file, which is what the checks in
+`hosts/sdl/cmake/` use so that no run of the suite reads or writes a
+person's own.
+
+```
+amberfolio-config 1
+game-directory C:\Games\POR
+program START.EXE
+seam automap
+seam journal
+journal-ocr none
+volume 75
+mute off
+speed at
+scale 3
+save-sidecars on
+```
+
+One `key value` a line, the value being the whole rest of the line so a
+path with spaces needs no quoting; `seam` is the one repeatable key;
+every key is optional. The version is the first line's second token, so a
+file from a later build is refused rather than half-read.
+`hosts/sdl/src/desktop_config.h` is the authority.
+
+**Precedence is flag > config > default**, stated once as `prefer()` in
+that header and checked in `desktop_config_test.cpp`. A flag is never
+overruled — including a flag that names the default, which is why the
+host records *which* settings the command line mentioned rather than
+comparing values. `--seam` on the command line **replaces** the file's
+list rather than adding to it, so a run can turn a remembered seam off
+without editing anything.
+
+**Only `--remember` writes it.** A host that wrote its settings down at
+the end of every run would make the next run's seams whatever the last
+command line happened to say, so a driving script's `--seam automap`
+would leave the seam on for a player who never chose one. Every seam is
+off for somebody who never chose (CLAUDE.md's fidelity invariant), and
+asking is how that stays true. A discovered OCR engine is not written
+down either (`docs/journal.md` §5): a path frozen into a file is the
+answer that stops being true without saying so.
+
+**A malformed file is a loud line and a clean start on the defaults.**
+The line number and the line itself are printed, the file is left where
+it is, and nothing half-read reaches the run.
+
+**A `--replay` run reads no config at all**, and says so when there was
+one to ignore. A recording carries its own seams, speed, keys and date
+(`docs/replay.md`) and is verified by exact comparison — by the session
+library, by `scripts/sweep.py`, on whatever machine happens to run them
+— so a settings file that reached the run would make a recording's
+answer a property of the desk it ran at.
+`hosts/sdl/cmake/run-replay-past-config.cmake` replays `spin.rec` with
+every setting a config can carry pointed the other way. `sweep.py` and
+`scripts/visual-legs.py` pass `--no-config` as well, for the same reason
+`visual-legs.py` passes `--wall none`.
+
+**What is not in it**: the instruments. `--trace`, `--watch`, `--dump`,
+`--steps`, `--press`, `--pull`, `--record` and `--replay` are things a
+person points at a problem on the day they have one, and `--journal
+PATH` is an ingestion that happens once.
 
 ---
 
