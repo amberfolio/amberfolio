@@ -36,6 +36,11 @@ add_executable(amberfolio-sdl
   # and the machine's character generator both overlays draw text with.
   src/seam_panel.cpp
   src/glyph_atlas.cpp
+  # The question this host asks before it writes into somebody's game
+  # directory (#385). Its own unit for desktop_config.cpp's reason: what
+  # is in it is three decisions, and a decision that can be read without
+  # a terminal is a decision a test can hold down.
+  src/sidecar_consent.cpp
   # The desktop's OCR engine (M5-E3, #174) -- the player's own Tesseract,
   # run as a program rather than linked; src/tesseract_ocr.h says why.
   # `tsv_words` is the one part of it that can be checked without an
@@ -479,6 +484,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     src/press_spec.cpp
     src/screen_keyboard_view.cpp
     src/seam_panel.cpp
+    src/sidecar_consent.cpp
     src/tsv_words.cpp
     tests/audio_gain_test.cpp
     tests/desktop_config_test.cpp
@@ -487,6 +493,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/press_spec_test.cpp
     tests/screen_keyboard_view_test.cpp
     tests/seam_panel_test.cpp
+    tests/sidecar_consent_test.cpp
     tests/tsv_words_test.cpp)
   target_include_directories(amberfolio-sdl-tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src")

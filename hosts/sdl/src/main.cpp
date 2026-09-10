@@ -169,7 +169,9 @@
 //     yellow, so without this a leaf on a screenshot cannot be told from
 //     a leaf the table guessed — which is exactly what #268 was about.
 //
-//   --save-sidecars  keep this playthrough's progress beside its saves
+//   --save-sidecars, --no-save-sidecars
+//                    keep this playthrough's progress beside its
+//                    saves, or do not
 //
 //     M5-E2c (#173) and #351. Two enhancements learn something as a
 //     party plays — what the automap has explored, and which journal
@@ -187,6 +189,16 @@
 //     session in `tests/sessions` pins its disk by name, size and
 //     SHA-256, so a sidecar written by a verification run would make the
 //     next run's disk a different disk.
+//
+//     **Which is why a launch with a person in it asks** (#385), once,
+//     and keeps the answer in the settings file beside everything else a
+//     player chose. `--no-save-sidecars` is the other side of it: an
+//     answer for one launch, whatever is remembered. A run that is
+//     driven, headless, replayed, recorded, dumped or verified is asked
+//     nothing at all and keeps them off — a prompt nobody is watching
+//     never comes back, and a sweep that answered its own question would
+//     be writing into the disks it replays over.
+//     `sidecar_consent.h` has the rule and the reasons.
 //
 //   --seam ID        turn on one seam, by its config key
 //
@@ -735,6 +747,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -793,6 +806,7 @@
 #include "press_spec.h"
 #include "screen_keyboard_view.h"
 #include "seam_panel.h"
+#include "sidecar_consent.h"
 #include "tesseract_ocr.h"
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
 #include "tesseract_linked_ocr.h"
@@ -2143,6 +2157,13 @@ void print_usage() {
       opts.trace = true;
     } else if (arg == "--save-sidecars") {
       opts.save_sidecars = true;
+      opts.given.save_sidecars = true;
+    } else if (arg == "--no-save-sidecars") {
+      // The other side of the same answer (#385). A player who said yes
+      // once and wants one launch that writes nothing needs a way to say
+      // so, and a driving script that wants to be explicit about the
+      // disk it is about to replay over needs the same one.
+      opts.save_sidecars = false;
       opts.given.save_sidecars = true;
     } else if (arg == "--config" && i + 1 < argc) {
       opts.config_path = argv[++i];
