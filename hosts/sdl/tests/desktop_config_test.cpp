@@ -44,8 +44,13 @@ TEST(DesktopConfig, ReadsEverySettingItCanHold) {
   // desktops.
   EXPECT_EQ(config.game_directory, "/home/somebody/games/a game");
   EXPECT_EQ(config.program, "START.EXE");
-  ASSERT_TRUE(config.seams.has_value());
-  EXPECT_THAT(*config.seams, ElementsAre("automap", "journal"));
+  // Compared as the optional it is, rather than dereferenced behind an
+  // ASSERT: `bugprone-unchecked-optional-access` cannot see a gtest
+  // macro's early return, and a `*` here fails the lint on a claim that
+  // is already the stronger one — that the file said these two seams and
+  // said them at all.
+  EXPECT_EQ(config.seams,
+            (std::optional<std::vector<std::string>>{{"automap", "journal"}}));
   EXPECT_EQ(config.journal_ocr, "/usr/bin/tesseract");
   EXPECT_EQ(config.volume_percent, 75U);
   EXPECT_EQ(config.muted, true);
