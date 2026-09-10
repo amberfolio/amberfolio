@@ -115,8 +115,8 @@ mkbuild() { # mkbuild <name> -> prints directory path
   mkdir -p "$d"
   local f
   for f in amberfolio.wasm amberfolio.mjs host.mjs app.mjs \
-    audio-worklet.mjs picker.mjs journal.mjs editions.mjs editions.json \
-    smoke.mjs drive.mjs boot.mjs index.html; do
+    audio-worklet.mjs picker.mjs journal.mjs persist.mjs editions.mjs \
+    editions.json smoke.mjs drive.mjs boot.mjs index.html; do
     echo "contents of $f" >"$d/$f"
   done
   echo "$d"
@@ -141,11 +141,11 @@ out=$tmp/green-out
 expect "a complete build stages" 0 \
   bash "$repo/scripts/release-bundle.sh" "$build" "$out" v0.2.0
 
-check "the nine bundle files are attached" test \
+check "the ten bundle files are attached" test \
   -f "$out/amberfolio.wasm" -a -f "$out/amberfolio.mjs" -a -f "$out/host.mjs" \
   -a -f "$out/app.mjs" -a -f "$out/audio-worklet.mjs" -a -f "$out/picker.mjs" \
-  -a -f "$out/journal.mjs" -a -f "$out/editions.mjs" \
-  -a -f "$out/editions.json"
+  -a -f "$out/journal.mjs" -a -f "$out/persist.mjs" \
+  -a -f "$out/editions.mjs" -a -f "$out/editions.json"
 check "the notices are attached" test \
   -f "$out/LICENSE" -a -f "$out/NOTICE.md" -a -f "$out/Apache-2.0.txt"
 check "SHA256SUMS and manifest.json are written" test \
@@ -181,7 +181,7 @@ with open(os.path.join(out, "manifest.json"), "rb") as f:
 expected = [
     "amberfolio.wasm", "amberfolio.mjs", "host.mjs",
     "app.mjs", "audio-worklet.mjs", "picker.mjs", "journal.mjs",
-    "editions.mjs", "editions.json",
+    "persist.mjs", "editions.mjs", "editions.json",
 ]
 assert manifest["version"] == "0.2.0", manifest["version"]
 assert manifest["abi"] == {"major": 1, "minor": 4}, manifest["abi"]
@@ -326,11 +326,11 @@ assert names == [
     "vendor/tesseract/version.txt",
 ], names
 # The bundle's own list is untouched by any of this: the engine is beside
-# it, not in it, so a consumer pinning the nine goes on pinning nine.
+# it, not in it, so a consumer pinning the ten goes on pinning ten.
 assert [f["name"] for f in manifest["files"]] == [
     "amberfolio.wasm", "amberfolio.mjs", "host.mjs",
     "app.mjs", "audio-worklet.mjs", "picker.mjs", "journal.mjs",
-    "editions.mjs", "editions.json",
+    "persist.mjs", "editions.mjs", "editions.json",
 ], manifest["files"]
 PY
 

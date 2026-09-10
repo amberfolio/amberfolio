@@ -8,11 +8,13 @@
 // host.mjs stays DOM-free so `ctest --preset wasm` can import it; this
 // file is the half that cannot be.
 //
-// It is a **dev-page affordance and nothing more**. Onboarding,
-// fingerprint UX and IndexedDB persistence are M6's reference shell; what
-// this does is read the bytes and hand them over. Nothing is kept: a
-// reload starts from an empty filesystem, which is the honest behaviour
-// for scaffolding and one less thing to be wrong about a player's files.
+// It is a **dev-page affordance and nothing more**. Onboarding and
+// fingerprint UX are M6's reference shell; what this does is read the
+// bytes and hand them over. Nothing is kept *here*: what the page does
+// with a directory afterwards — putting it in the machine, and since #381
+// keeping a copy of it in this browser — is `app.mjs`'s and
+// `persist.mjs`'s, and this file stays the one thing that knows how a
+// browser hands over a folder.
 //
 //
 // Two ways in, one answer
