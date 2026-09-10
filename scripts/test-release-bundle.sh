@@ -191,6 +191,73 @@ for entry in manifest["files"]:
     blob = open(os.path.join(out, entry["name"]), "rb").read()
     assert entry["sha256"] == hashlib.sha256(blob).hexdigest(), entry
     assert entry["size"] == len(blob), entry
+
+# Generated from the exports list read back above, sorted the way
+# release-bundle.sh sorts it — not transcribed from the script, so a
+# change to how the digest is built would have to change this line too.
+digest = manifest["exportsDigest"]
+assert digest.startswith("sha256:"), digest
+want = hashlib.sha256(
+    ("\n".join(sorted(manifest["exports"])) + "\n").encode()
+).hexdigest()
+assert digest == f"sha256:{want}", (digest, want)
+PY
+
+# The digest catches the exact shape #375 found: an export list that grew
+# while one name left it, which a bare count cannot tell apart from a
+# release that only added names. `_af_web_demo_program_size` leaves,
+# `_af_web_something_else` and `_af_web_a_new_export` arrive, so the count
+# goes up by one — and the digest still has to move, because a rename
+# hiding behind a net gain is the bug.
+renamed=$(mkrepo renamed 0.2.0)
+cat >"$renamed/hosts/web/CMakeLists.txt" <<'RENAMED'
+set(_amberfolio_web_export_names
+  _main
+  _af_version
+  _af_machine_create
+  _af_web_something_else
+  _af_web_a_new_export)
+list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
+RENAMED
+renamed_out=$tmp/renamed-out
+expect "a build with a renamed export still stages" 0 \
+  bash "$renamed/scripts/release-bundle.sh" "$build" "$renamed_out" v0.2.0
+check "a rename moves exportsDigest even though the export count only grew" \
+  python3 - "$out" "$renamed_out" <<'PY'
+import json, sys
+
+green = json.load(open(sys.argv[1] + "/manifest.json"))
+renamed = json.load(open(sys.argv[2] + "/manifest.json"))
+assert len(renamed["exports"]) > len(green["exports"]), \
+    (green["exports"], renamed["exports"])
+assert renamed["exportsDigest"] != green["exportsDigest"], renamed["exportsDigest"]
+PY
+
+# And a digest that does not move for a change that is not one: reordering
+# the CMake list is a no-op for a consumer, and a digest that moved for it
+# would be a false alarm on every unrelated refactor of that block.
+reordered=$(mkrepo reordered 0.2.0)
+cat >"$reordered/hosts/web/CMakeLists.txt" <<'REORDERED'
+set(_amberfolio_web_export_names
+  _af_machine_create
+  _main
+  _af_web_demo_program_size
+  _af_version)
+list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
+REORDERED
+reordered_out=$tmp/reordered-out
+expect "a build with the same exports in a different order stages" 0 \
+  bash "$reordered/scripts/release-bundle.sh" "$build" "$reordered_out" v0.2.0
+check "reordering the export list does not move exportsDigest" python3 - \
+  "$out" "$reordered_out" <<'PY'
+import json, sys
+
+green = json.load(open(sys.argv[1] + "/manifest.json"))
+reordered = json.load(open(sys.argv[2] + "/manifest.json"))
+assert sorted(reordered["exports"]) == sorted(green["exports"])
+assert reordered["exports"] != green["exports"], "fixture did not reorder anything"
+assert reordered["exportsDigest"] == green["exportsDigest"], \
+    (green["exportsDigest"], reordered["exportsDigest"])
 PY
 
 # --- the OCR engine, as one asset with one hash (#287) ----------------
@@ -352,7 +419,8 @@ expect "a tree from before the declaration still stages" 0 \
   bash "$older/scripts/release-bundle.sh" "$build" "$tmp/older-out" v0.2.0
 check "and its manifest carries no abi key at all" python3 -c \
   'import json,sys; m=json.load(open(sys.argv[1])); assert "abi" not in m, m; \
-assert m["exports"], m' "$tmp/older-out/manifest.json"
+assert m["exports"], m; assert m["exportsDigest"].startswith("sha256:"), m' \
+  "$tmp/older-out/manifest.json"
 
 # Whereas a header that talks about the version without defining one is a
 # botched edit, and dropping the key quietly would hide it. A manifest

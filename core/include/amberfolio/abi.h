@@ -383,8 +383,20 @@ uint32_t af_version(void);
 ///     it had, which on a device with none attached was none — and a host
 ///     that wants only the contract can take `_commit_scancode` and none
 ///     of the tables.
-#define AF_ABI_VERSION_MAJOR 1u
-#define AF_ABI_VERSION_MINOR 5u
+///   * **2.0** — #375, nothing added, removed or renamed *today*: the
+///     number moves to pay a debt 1.3 left unpaid. `v0.5.0` renamed
+///     `af_web_automap_store` to `af_web_save_sidecars` (#351) while this
+///     comment already said the surface the rule covers is the module's
+///     and not this header's alone, which made that rename a major change
+///     the day it shipped — 1.3 called it minor anyway. History is not
+///     rewritten: `v0.5.0`'s own manifest still declares 1.3 and always
+///     will. What moves is the running number, here, so that a host
+///     written against major 1 — which was never safe past that rename —
+///     is told so, and a host written against major 2 is one that has
+///     read `docs/hosts.md` §5's bump rule as it now states the surface
+///     it is about.
+#define AF_ABI_VERSION_MAJOR 2u
+#define AF_ABI_VERSION_MINOR 0u
 
 // --- Facts about the machine ------------------------------------------
 //
