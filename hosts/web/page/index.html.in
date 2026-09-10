@@ -333,6 +333,27 @@
       </p>
     </fieldset>
 
+    <!-- Keeping a playthrough's progress beside its saves (M6, #385).
+         The one surface here that writes a file of this project's own
+         into the copy a player dropped, so it is asked for rather than
+         assumed - once, and remembered.
+
+         The question's text and what an answer to it is are
+         `page/sidecars.mjs`; the two buttons below only record one. It is
+         *applied* at the boot, because turning the store on attaches it
+         and the attach replaces every record in the machine's map -
+         which is why there is no live toggle here and why the note says
+         which launch a change takes effect on. -->
+    <fieldset>
+      <legend>keep your progress beside your saves</legend>
+      <div class="controls">
+        <span id="sidecars-status">not answered yet</span>
+        <button id="sidecars-yes" type="button">Keep them</button>
+        <button id="sidecars-no" type="button">Do not keep them</button>
+      </div>
+      <p class="note" id="sidecars-about"></p>
+    </fieldset>
+
     <!-- What this browser is holding on to (M6, #381). One database,
          four drawers: the copy that was dropped, the games saved on it,
          the small strings the journal and the code wheel own, and this

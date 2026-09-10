@@ -205,6 +205,31 @@ set_tests_properties(sdl-host-config-file PROPERTIES
   FIXTURES_REQUIRED sdl_smoke_disk
   RESOURCE_LOCK sdl_smoke_disk_contents)
 
+# --- The one question this host asks a person (#385) -------------------
+#
+# `--save-sidecars` writes into the player's own game directory, so a
+# launch with a person in it asks before it does, once, and keeps the
+# answer with everything else they chose. What only a whole host can
+# check is the part that spans two launches — that answering `y` once
+# means never being asked again — and the part the session library
+# depends on, which is that a driven run is asked nothing whatever is on
+# its stdin.
+#
+# Not headless, unlike everything else here: a headless run is defined as
+# one nobody is watching and is therefore the case that must *not* ask.
+# The script points SDL at the same driverless drivers
+# `run-verify-program.cmake` does.
+add_test(NAME sdl-host-asks-about-sidecars
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/smoke-disk"
+    "-DSCRATCH=${CMAKE_CURRENT_BINARY_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-sidecar-consent.cmake")
+set_tests_properties(sdl-host-asks-about-sidecars PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_smoke_disk
+  RESOURCE_LOCK sdl_smoke_disk_contents)
+
 # --- Presenting a document (M5-D3, #171) -------------------------------
 #
 # The other end of PLAN.md §5's possession gate: `--document PATH` reads

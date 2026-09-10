@@ -336,6 +336,7 @@ set(_amberfolio_web_files
   "${CMAKE_CURRENT_SOURCE_DIR}/page/journal.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/persist.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/toggle-panel.mjs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/page/sidecars.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/editions.mjs"
   # The edition table itself (#207), placed rather than compiled in: a
   # page renders the checklist while the module is still downloading, so

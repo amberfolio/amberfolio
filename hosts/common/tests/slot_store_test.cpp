@@ -712,6 +712,12 @@ TEST(SlotStore, ASlotWithNoReadLogComesBackEmpty) {
   r.store.enable(true);
   r.store.attach(*r.box);
   r.cite(journal_kind::entry, 12);
+  // The last party's list, on the disk. Here so that what the load does
+  // to it is a *replacement* and can be seen as one: a working log that
+  // was never written would come back empty for the uninteresting
+  // reason that nothing writes an empty one (#385).
+  r.store.journal_changed();
+  ASSERT_TRUE(r.has(log_working_path));
 
   // A save made before this was ever switched on. An empty log is the
   // truth about a playthrough nobody recorded one for, and keeping the
@@ -768,6 +774,67 @@ TEST(SlotStore, SomethingElseUnderTheLogsNameIsRefusedAndSaidOutLoud) {
   EXPECT_EQ(r.store.trouble(), slot_trouble::not_a_sidecar);
   ASSERT_EQ(r.log.seen().size(), 1u)
       << "a file that is not ours is a reason to say so, not to forget";
+}
+
+// ---------------------------------------------------------------------------
+// Nothing appears until there is something to put in it (#385)
+// ---------------------------------------------------------------------------
+
+TEST(SlotStore, ASaveWithNothingAccumulatedPutsNoFileInTheDirectory) {
+  // The sentence the desktop host prints when it asks permission, as an
+  // assertion (`hosts/sdl/src/sidecar_consent.h`): a player who says yes
+  // and then saves before walking anywhere or being cited anything finds
+  // their `SAVE\` exactly as they left it. Without this the save close
+  // wrote three eight-byte headers into it — the two working tables and
+  // the slot's own — every one of them a file of ours in a directory of
+  // theirs, saying nothing.
+  rig r;
+  r.store.enable(true);
+  r.store.attach(*r.box);
+
+  r.store.saw(event_of(file_action::create, game_slot_a));
+  r.store.saw(event_of(file_action::close, game_slot_a));
+
+  EXPECT_FALSE(r.has(working_path));
+  EXPECT_FALSE(r.has(slot_a_path));
+  EXPECT_FALSE(r.has(log_working_path));
+  EXPECT_FALSE(r.has(log_slot_a_path));
+  EXPECT_EQ(r.store.writes(), 0u);
+  EXPECT_EQ(r.store.trouble(), slot_trouble::none);
+}
+
+TEST(SlotStore, AnEmptySnapshotStillReplacesOneThatIsThere) {
+  // The other half, and the half that must not be lost to the one above:
+  // a header-only sidecar is refused only where it would *create* a file.
+  // Over a snapshot that exists it is written like any other, because an
+  // empty map and an empty log are the truth about the party saving now
+  // and the last party's would be a lie about it.
+  rig r;
+  r.store.enable(true);
+  r.store.attach(*r.box);
+  r.explore(3, 0, 0, 1, 1);
+  r.cite(journal_kind::entry, 12);
+  r.store.saw(event_of(file_action::create, game_slot_a));
+  r.store.saw(event_of(file_action::close, game_slot_a));
+  ASSERT_TRUE(r.has(slot_a_path));
+  ASSERT_TRUE(r.has(log_slot_a_path));
+
+  // A different party in the same machine, saving over slot A.
+  r.maps().clear();
+  r.box->journal().clear_seen();
+  r.log.set_seen({});
+  r.store.saw(event_of(file_action::create, game_slot_a));
+  r.store.saw(event_of(file_action::close, game_slot_a));
+
+  ASSERT_TRUE(r.has(slot_a_path));
+  ASSERT_TRUE(r.has(log_slot_a_path));
+  automap_state read_back;
+  ASSERT_TRUE(read_back.read_sidecar(r.bytes_of(slot_a_path)));
+  EXPECT_EQ(read_back.records_used(), 0u)
+      << "the last party's streets are not this one's";
+  journal_store log_back;
+  ASSERT_TRUE(log_back.read_log_sidecar(r.bytes_of(log_slot_a_path)));
+  EXPECT_TRUE(log_back.seen().empty());
 }
 
 }  // namespace

@@ -28,7 +28,7 @@ constexpr std::array<std::string_view, 8> question{
     "  Two of the enhancements learn something as you play: which streets",
     "  the automap has drawn for you, and which journal entries the game",
     "  has sent you to. Neither survives the machine stopping.",
-    "  Kept, they go in \\SAVE\\AFMAP.DAT and \\SAVE\\AFSEEN.DAT - files of",
+    R"(  Kept, they go in \SAVE\AFMAP.DAT and \SAVE\AFSEEN.DAT - files of)",
     "  this project's own, in your game directory, beside your saves and",
     "  never inside one. Your own files are never written to, and neither",
     "  of these appears at all until there is something to put in it.",
@@ -54,9 +54,7 @@ constexpr std::string_view prompt = "keep them beside my saves? [y/n] ";
 /// One ASCII letter, folded down. Nothing here is locale-aware and
 /// nothing here needs to be: the four words this accepts are ASCII.
 [[nodiscard]] constexpr char lowered(char one) noexcept {
-  return (one >= 'A' && one <= 'Z')
-             ? static_cast<char>(one - 'A' + 'a')
-             : one;
+  return (one >= 'A' && one <= 'Z') ? static_cast<char>(one - 'A' + 'a') : one;
 }
 
 /// `text` against `word`, case-folded, whole.

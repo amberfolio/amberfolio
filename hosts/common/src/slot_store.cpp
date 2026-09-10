@@ -250,10 +250,27 @@ void slot_store::saw(const machine::file_event& event) {
   }
 }
 
+bool slot_store::nothing_to_put_in_it(const machine::dos_path& path,
+                                      std::size_t size,
+                                      std::size_t header_bytes) {
+  if (size != header_bytes) {
+    return false;
+  }
+  machine::filesystem* fs = box_->vfs();
+  // A file that is already there is replaced by the empty one whatever
+  // it holds — that is the "a snapshot must replace the last party's
+  // list" rule above, and an empty snapshot is the truth about a party
+  // that has been cited nothing. What this refuses is *creating* one.
+  return fs == nullptr || path.is_root() || !fs->exists(path);
+}
+
 void slot_store::write_automap_to(const machine::dos_path& path) {
   std::array<std::uint8_t, slot_store_automap_capacity> bytes{};
   const std::size_t size = box_->automap().write_sidecar(bytes);
   if (size == 0) {
+    return;
+  }
+  if (nothing_to_put_in_it(path, size, machine::automap_sidecar_header_bytes)) {
     return;
   }
   write_whole(path, {bytes.data(), size});
@@ -263,6 +280,9 @@ void slot_store::write_journal_to(const machine::dos_path& path) {
   std::array<std::uint8_t, slot_store_journal_capacity> bytes{};
   const std::size_t size = journal_->write_log_sidecar(bytes);
   if (size == 0) {
+    return;
+  }
+  if (nothing_to_put_in_it(path, size, journal_log_sidecar_header_bytes)) {
     return;
   }
   write_whole(path, {bytes.data(), size});
