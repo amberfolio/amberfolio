@@ -1467,6 +1467,25 @@ uint32_t af_machine_document_name_at(const af_machine* handle, uint32_t index,
       max);
 }
 
+uint32_t af_machine_document_kind_at(const af_machine* handle, uint32_t index,
+                                     char* out, uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr) {
+    return 0;
+  }
+  const amberfolio::machine::document_edition* document =
+      box->seams().document_at(index);
+  if (document == nullptr) {
+    return 0;
+  }
+  // Core's own word for the kind, the one `af_machine_seam_gate` writes
+  // into a seam's `waits for` column: a host comparing the two is
+  // comparing the same spelling.
+  const std::string_view name =
+      amberfolio::machine::document_kind_name(document->kind);
+  return copy_out(std::span<const char>(name.data(), name.size()), out, max);
+}
+
 uint32_t af_machine_seam_gate(const af_machine* handle, uint32_t index,
                               char* out, uint32_t max) {
   const machine* box = box_of(handle);

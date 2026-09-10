@@ -111,6 +111,11 @@ import {
   PANEL_COLUMNS,
 } from './toggle-panel.mjs';
 import {
+  describeDocument,
+  showDocument,
+  DOCUMENT_NO_BYTES,
+} from './documents.mjs';
+import {
   SIDECARS_SETTING,
   SIDECARS_ASK,
   SIDECARS_NOWHERE_TO_REMEMBER,
@@ -142,6 +147,8 @@ const SPEED_SELECT_ID = 'speed';
 const VOLUME_INPUT_ID = 'volume';
 const MUTE_CHECKBOX_ID = 'mute';
 const HEALTH_ID = 'health';
+const DOCUMENT_INPUT_ID = 'document';
+const DOCUMENT_STATUS_ID = 'document-status';
 const JOURNAL_INPUT_ID = 'journal';
 const JOURNAL_STATUS_ID = 'journal-status';
 const JOURNAL_FORGET_ID = 'journal-forget';
@@ -202,6 +209,19 @@ let playPaths = new Set();
 /// refusal is remembered and never asked about again, while an unanswered
 /// question keeps the sidecars off *and comes back*.
 let sidecarAnswer = null;
+
+/// The toggle panel's own `refresh()`, so that something outside the
+/// boot can relight its rows — the document control (#384) is the one
+/// thing that does, because presenting a document is what takes
+/// `document_not_presented` off a row.
+///
+/// At module scope for the reason the four above are: `renderSeams()` is
+/// called inside the boot handler and the document input is wired
+/// outside it, and a control that could not reach the panel would say a
+/// gate was satisfied while the row beside it still said it was not. It
+/// stays a no-op until there is a panel, which is a page where nobody
+/// has booted anything yet.
+let refreshSeamRows = () => {};
 
 /// Whatever this browser kept, opened once, awaited by everything that
 /// might look at it. Answers what the page has to say about it.
@@ -995,6 +1015,67 @@ export function runDevPage() {
     });
   }
 
+  // --- The document control (M6, #384) ----------------------------------
+  //
+  // Any PDF in, what it was recognised as out, and the rows it lights.
+  // `presentDocument()` has been across the ABI since #171 and no shell
+  // called it: a player holding one of PLAN.md §2's documents had no way
+  // to show it to this page at all.
+  //
+  // Like the journal input above it, this is onboarding and not the
+  // machine's business — it happens whether or not a game has been
+  // loaded, because a document is a thing the *player* holds. It does
+  // need a module (the hashing is core's), which is what `ensureMachine`
+  // is for.
+  //
+  // Both outcomes are said out loud in the same words the desktop host
+  // prints (`page/documents.mjs`), and the unrecognised one is the one
+  // this exists for: it carries the SHA-256, which is the part a player
+  // can act on and what an entry in this build's table would be made of.
+  const documentInput = el(DOCUMENT_INPUT_ID);
+  const documentStatusEl = el(DOCUMENT_STATUS_ID);
+  //
+  // Lines, not a line: the outcome is two sentences and they are joined
+  // by neither host, because the second one already contains a ` - ` of
+  // its own and a sentence run into another reads as one long refusal.
+  // On the page they are a line each (`#document-status` is `pre-line`);
+  // in the console they are a line each for the reason every other line
+  // there is one.
+  const setDocumentStatus = (lines) => {
+    const said = Array.isArray(lines) ? lines : [lines];
+    if (documentStatusEl) documentStatusEl.textContent = said.join('\n');
+    for (const line of said) appendConsole(`[host] ${line}\n`);
+  };
+  if (documentInput) {
+    documentInput.addEventListener('change', async () => {
+      const file = documentInput.files?.[0];
+      if (!file) return;
+      try {
+        setDocumentStatus(`hashing ${file.name}...`);
+        const box = await ensureMachine();
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (bytes.length === 0) {
+          // Not one of the two outcomes: nothing was hashed, so there is
+          // no fingerprint to report and nothing to say about a gate.
+          setDocumentStatus(DOCUMENT_NO_BYTES);
+          return;
+        }
+        const outcome = showDocument(box, bytes);
+        setDocumentStatus(describeDocument(outcome));
+        // And the rows relight themselves: a gate is a condition the
+        // engine re-reads, so a seam that was on and inert with
+        // `document_not_presented` on it is armed the moment the
+        // document arrives. The panel is re-read rather than rebuilt,
+        // which is the same `refresh()` the run loop calls.
+        refreshSeamRows();
+      } catch (problem) {
+        setDocumentStatus(
+          `that document could not be shown: ${problem.message ?? problem}`,
+        );
+      }
+    });
+  }
+
   // Reset: the drawer emptied and the tab's own copy with it (M5-E3f).
   //
   // Both halves, because a button that emptied only the drawer would
@@ -1504,6 +1585,10 @@ export function runDevPage() {
       const refreshSeams = renderSeams(box, el(SEAMS_ID), appendConsole, (ids) =>
         rememberSetting(SEAMS_SETTING, ids),
       );
+      // And where the document control can reach it (#384): a document
+      // presented after this boot relights the rows that were waiting on
+      // it, and the panel is the only place a player sees that happen.
+      refreshSeamRows = refreshSeams;
 
       // Which program, so a returning player finds it chosen (#381).
       // This page's own choice and nothing the machine sees, which is

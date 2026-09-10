@@ -311,6 +311,13 @@
 //     it is not machine state, and a run with a document presented and
 //     every seam off is byte-for-byte the run without one.
 //
+//     **The flag is not the control.** A file dropped on the window goes
+//     through the same path and says the same two lines, and says them
+//     in the toggle panel as well as on stderr (#384, `document_control.h`
+//     for the words). A player does not have to know a flag exists to
+//     show this build a document, which is what M6 is about; the flag
+//     stays because a driving script has no hands.
+//
 //   --journal PATH   ingest the player's own Adventurer's Journal
 //
 //     M5-E3 (#174), and the one place this host reads *inside* a
@@ -805,6 +812,7 @@
 #include "audio_gain.h"
 #include "desktop_config.h"
 #include "directory_vfs.h"
+#include "document_control.h"
 #include "dump.h"
 #include "keymap.h"
 #include "ocr_discovery.h"
@@ -2770,24 +2778,21 @@ void report_unrecognized_edition(machine::filesystem& files) {
 /// (#174) has already read and hashed the file it is about to read the
 /// insides of, and hashing it a second time to say the same sentence
 /// would be a second answer that could differ from the first.
-void present_digest(machine::machine& box, const sha256_digest& digest) {
-  std::array<char, sha256_digest::text_length + 1> hex{};
-  static_cast<void>(format_hex(digest, hex));
-
-  const machine::document_edition* known = box.seams().present_document(digest);
-  if (known != nullptr) {
-    std::fprintf(stderr, "amberfolio: document %.*s (%s) sha256=%s\n",
-                 static_cast<int>(known->name.size()), known->name.data(),
-                 machine::document_kind_name(known->kind), hex.data());
-    return;
+/// Answers the lines it printed, so that a caller with somewhere else to
+/// put them — the panel, when a player dropped the file on the window
+/// rather than naming it on the command line — puts the same words there
+/// (#384).
+std::vector<std::string> present_digest(machine::machine& box,
+                                        const sha256_digest& digest) {
+  // The two outcomes, and the words for them, are `document_control.h`'s:
+  // the page says them too, and a sentence built here would be a sentence
+  // no test can read.
+  const std::vector<std::string> lines =
+      sdl::document_lines(sdl::present_document_to(box.seams(), digest));
+  for (const std::string& line : lines) {
+    std::fprintf(stderr, "amberfolio: %s\n", line.c_str());
   }
-  // Reported, not guessed (machine/document.h). The fingerprint goes on
-  // the line because it is the thing somebody can act on: it is what an
-  // entry in the table is made of.
-  std::fprintf(stderr,
-               "amberfolio: document unrecognized sha256=%s - no gate is"
-               " satisfied by it\n",
-               hex.data());
+  return lines;
 }
 
 /// Read `path` off *this* machine's filesystem, hash it, and present it
@@ -2801,12 +2806,20 @@ void present_digest(machine::machine& box, const sha256_digest& digest) {
 /// The bytes are hashed and dropped. This host never keeps a document,
 /// never parses one, and never writes one anywhere (PLAN.md §2, §6): a
 /// possession gate is over bytes, and that is the whole of it.
-void present_document(machine::machine& box, const std::string& path) {
+///
+/// Answers the lines a player reads, `present_digest()`'s, so that the
+/// two ways this host takes a document — `--document PATH` and a file
+/// dropped on the window (#384) — cannot say different things about the
+/// same file. A file that would not open is one line and no outcome:
+/// nothing was hashed, so there is no fingerprint to report and nothing
+/// to say about a gate.
+std::vector<std::string> present_document(machine::machine& box,
+                                          const std::string& path) {
   std::ifstream file(path, std::ios::binary);
   if (!file) {
-    std::fprintf(stderr, "amberfolio: document %s could not be read\n",
-                 path.c_str());
-    return;
+    std::string trouble = "document " + path + " could not be read";
+    std::fprintf(stderr, "amberfolio: %s\n", trouble.c_str());
+    return {std::move(trouble)};
   }
   sha256_hasher hasher;
   std::array<char, std::size_t{64} * 1024> buffer{};
@@ -2822,7 +2835,7 @@ void present_document(machine::machine& box, const std::string& path) {
         reinterpret_cast<const std::uint8_t*>(buffer.data()),
         static_cast<std::size_t>(got)));
   }
-  present_digest(box, hasher.finish());
+  return present_digest(box, hasher.finish());
 }
 
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
@@ -3515,7 +3528,7 @@ void ingest_journal(machine::machine& box, const options& opts,
   // The same sentence `--document` would have printed, off the digest
   // this already computed: a journal is a document, and presenting it is
   // what satisfies a journal-gated seam.
-  present_digest(box, ingester.fingerprint());
+  static_cast<void>(present_digest(box, ingester.fingerprint()));
 
   if (opened != host::journal_trouble::none) {
     std::fprintf(stderr, "amberfolio: journal unrecognized sha256=%s - %s\n",
@@ -3894,8 +3907,15 @@ int main(int argc, char** argv) try {
   // very first `enable()` sees the gate satisfied and its startup line
   // says `armed` rather than saying `inert` and then quietly changing
   // its mind at the first overlay read.
+  //
+  // What each one turned out to be is kept as well as printed, because
+  // the panel says it too (#384): a player who launched with
+  // `--document` and never looks at a terminal reads the same two lines
+  // under the table that a player who dropped the file on the window
+  // does.
+  std::vector<std::string> document_notice;
   for (const std::string& path : opts.documents) {
-    present_document(box, path);
+    document_notice = present_document(box, path);
   }
 
   // And the one thing a person shows this machine that is not a file:
@@ -4969,6 +4989,37 @@ int main(int argc, char** argv) try {
           keyboard_taken.fill(false);
           keyboard_repaint = true;
           panel_taken.fill(false);
+        } else if (event.type == SDL_EVENT_DROP_FILE) {
+          // **The document control** (#384): a file dropped on this
+          // window is hashed, presented, and answered for — the desktop's
+          // half of "any PDF in, what it was recognised as out". A flag
+          // is not a control a player finds, and M6's exit criterion is
+          // that they do not have to read source code to use what this
+          // build has.
+          //
+          // Whatever was dropped, not whatever is named `.pdf`: the
+          // matching is on the bytes, so a document a player renamed
+          // still matches, and a file that is something else entirely is
+          // reported with its hash rather than guessed at. The panel is
+          // opened on the answer, because a drop that printed to a
+          // terminal nobody is looking at is a control that did nothing.
+          if (event.drop.data == nullptr) {
+            // A drop with no filename is SDL's begin/complete pair; the
+            // file itself arrives on its own event.
+          } else if (replaying) {
+            // A recording's documents are its own initial condition, the
+            // same rule the panel's toggles follow (docs/replay.md).
+            std::fprintf(stderr,
+                         "amberfolio: a replay's documents are the"
+                         " recording's\n");
+          } else {
+            document_notice = present_document(box, event.drop.data);
+            panel_shown = true;
+            if (panel_focus == sdl::panel_no_row && box.seams().count() != 0) {
+              panel_focus = 0;
+            }
+            panel_repaint = true;
+          }
         } else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
           // The middle button steps the on-screen keyboard on (#377), the
           // right one opens and closes the toggle panel (#383), and the
@@ -4997,8 +5048,9 @@ int main(int argc, char** argv) try {
               const std::vector<sdl::panel_row> rows =
                   sdl::panel_rows(box.seams());
               const std::size_t at = sdl::row_under(
-                  sdl::fit_panel(sdl::panel_lines(rows, panel_focus),
-                                 window_width, window_height),
+                  sdl::fit_panel(
+                      sdl::panel_lines(rows, panel_focus, document_notice),
+                      window_width, window_height),
                   rows.size(), event.button.x, event.button.y);
               if (at != sdl::panel_no_row) {
                 panel_focus = at;
@@ -5168,10 +5220,10 @@ int main(int argc, char** argv) try {
       // to read. Its rows are built here, from the engine, at every
       // paint: `fired` is only a live number if nothing caches it.
       if (panel_shown) {
-        panel_paint.draw(
-            renderer,
-            sdl::panel_lines(sdl::panel_rows(box.seams()), panel_focus),
-            panel_focus);
+        panel_paint.draw(renderer,
+                         sdl::panel_lines(sdl::panel_rows(box.seams()),
+                                          panel_focus, document_notice),
+                         panel_focus);
       }
       keyboard_repaint = false;
       panel_repaint = false;

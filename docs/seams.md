@@ -431,10 +431,13 @@ reason, not `module_not_resident`, because a person and not the program
 answers it). A shut gate arms no points at all; the test is in the one
 function `status()` and `arm_all()` share, beside `modules_resident`.
 
-- Presenting: `--document PATH` on the SDL host and on `drive.mjs`,
-  `af_machine_present_document` for a page. The file is hashed and
-  dropped; nothing is parsed or kept. Unrecognized is reported, never
-  guessed, and the fingerprint comes back either way.
+- Presenting: `--document PATH` or a file dropped on the window on the
+  SDL host, the *show a document you hold* input on the page,
+  `--document PATH` on `drive.mjs`; `af_machine_present_document`
+  underneath all four. The file is hashed and dropped; nothing is parsed
+  or kept. Unrecognized is reported, never guessed, and the fingerprint
+  comes back either way — `docs/hosts.md` §9 is the control and the two
+  sentences both hosts say.
 - Presenting is configuration: it survives `reset()`, is not in the
   serialization, and a machine with a document presented and every seam
   off is byte for byte the machine without one.

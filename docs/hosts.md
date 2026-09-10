@@ -101,7 +101,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--seams` | list every seam this build carries, and exit. |
 | `--vfs-list`, `--vfs-get PATH`, `--vfs-remove PATH` | after the run: list the disk; print one file's size and SHA-256, never its bytes; delete one. |
 | `--save-layer` | which of the disk's files are the player's (#208, §6): the loaded program's table beside the edition line, and after the run the files it names, each with the slot letter and party-member index its name carries. |
-| `--document PATH` | present a document the player holds (`docs/seams.md`). |
+| `--document PATH` | present a document the player holds (`docs/seams.md`, §9). Repeatable. A file **dropped on the window** does the same thing and says the same two lines, in the panel as well as on stderr. |
 | `--keyboard prompt\|name\|full` | open with the on-screen keyboard up, at that layout (#377, §7). Refused with `--headless` and with `--replay`. |
 | `--record FILE`, `--record-every N`, `--replay FILE` | write the run down, checkpoint every N frames, replay a recording and check it (`docs/replay.md`). |
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
@@ -568,7 +568,7 @@ python3 scripts/serve-web.py
 
 ### The release bundle
 
-`scripts/release-bundle.sh` stages ten files from the module,
+`scripts/release-bundle.sh` stages twelve files from the module,
 `hosts/web/page/` and `data/`, the OCR engine when the tree has one, plus
 `SHA256SUMS` and `manifest.json`. `scripts/test-release-bundle.sh` is its
 self-test.
@@ -583,6 +583,9 @@ self-test.
 | `picker.mjs` | the directory picker |
 | `journal.mjs` | the journal store and ingestion; `host.mjs` imports it (#229) |
 | `persist.mjs` | what the page keeps between visits, in IndexedDB (#381) |
+| `toggle-panel.mjs` | the panel's rows and the stored choice (§8); `app.mjs` imports it (#383) |
+| `documents.mjs` | the document control's two outcomes (§9); `app.mjs` imports it (#384) |
+| `sidecars.mjs` | the one question the page asks before writing beside a save (§2b, #385) |
 | `editions.mjs` | the reader over the table below; `app.mjs` imports it (#207) |
 | `editions.json` | what this build recognises and what each edition is made of (#207) |
 | `vendor-tesseract.tar.gz` | the browser's OCR engine, when the tree has one (#287) |
@@ -755,7 +758,9 @@ screen (§7), and 2.0 corrects a bump 1.3 owed and did not take:
 squarely the module's surface the rule above covers, and declared that
 minor. `v0.4.0` shipped 1.2 and `v0.5.0` shipped 1.3 — neither tag's own
 manifest is rewritten by this correction; the running number moves from
-here instead (#375).
+here instead (#375). 2.1 adds `af_machine_document_kind_at` (#384), which
+is what a page needs to say about a presented document what the desktop
+host says about it: the kind, beside the name it already had (§9).
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -1500,8 +1505,13 @@ can act on, which is the complaint the issue was filed over.
 correct rather than unfinished: since #290 no seam is gated on a
 document (`seam_definition::gate`), the code-wheel bypass having become
 a question a person answers. The column was carried through the ABI from
-#171 and rendered nowhere until now; #384's document control is what
-lights it, and it needs no change here.
+#171 and rendered nowhere until now. §9's document control is what
+lights it, and it needed no change to a column or a row here — the rows
+are re-read from the engine, so a gate satisfied while the panel is up
+takes `document_not_presented` off the row it was on. What §9 did add to
+the desktop panel is a **notice under the table**: what the file a player
+dropped on the window turned out to be, which is the one thing this panel
+says that is not about a row.
 
 Under the row, `seam_reading_text()` — core's sentence about what the
 numbers on that row *mean* (#163), decided once in
@@ -1583,3 +1593,87 @@ seam that takes a trigger. Toggling is a configuration call between
 frames, and the listing is re-read after every one so an on-but-inert
 seam shows as such. A choice core refused puts the checkbox back and is
 not written down.
+
+---
+
+## 9. The document control (#384)
+
+One control on each host that takes any PDF, hashes it, and says either
+what edition it was recognised as — lighting the seam rows that were
+waiting on it — or that **nobody here has fingerprinted this one, and
+here is its SHA-256**. `af_machine_present_document` has been across the
+ABI since #171 and `--document PATH` since the same issue, and until now
+no shell put a face on either.
+
+| host | the control |
+| --- | --- |
+| desktop | a file **dropped on the window**, or `--document PATH` (§2). The outcome goes to stderr and into the toggle panel, under the table. |
+| page | the *show a document you hold* file input, `page/documents.mjs` over `Machine.presentDocument()`. The outcome goes to the status line beside it and into the console. |
+
+### The two outcomes, in the same words on both hosts
+
+```
+document Pool of Radiance code wheel, archive release (PDF) (code wheel) sha256=0db301ae…
+nothing in this build waits on the code wheel
+```
+
+```
+document unrecognized sha256=ba7816bf… - no gate is satisfied by it
+nobody here has fingerprinted this one - that sha256 is what an entry in the table is made of
+```
+
+The first line says what it is; the second says what it is *for* here.
+When seams do wait on that kind the second line names them — `the code
+wheel lights 2 seams: a, b` — and the count is a number for `fired`'s
+reason (§8). The words are `document_lines()` in
+`hosts/sdl/src/document_control.cpp` and `describeDocument()` in
+`page/documents.mjs`, spelled once each and deliberately identical, with
+`DocumentControl.*` and `tests/smoke.mjs` holding each side down.
+`tools/drive.mjs` prints the same two lines with this project's
+`amberfolio: ` prefix, which is the only difference between them.
+
+**The fingerprint is on the line either way**, and that is the point of
+the control rather than a detail of it: a player holding a re-scanned PDF
+or a release nobody here has seen (PLAN.md §9) can act on the hash, which
+is exactly what a row in `machine/document.h`'s table is made of. An
+unrecognised document is a clean, loud outcome and never a guess at which
+edition it might be; a report that named a likely edition would be a gate
+that armed on anything, one layer up.
+
+A file with no bytes in it is neither outcome — nothing was hashed, so
+there is no fingerprint to report — and so is a path the desktop host
+cannot open. Both say that instead.
+
+### Nothing waits on a document today, and both hosts say so
+
+Since #290 no seam in this build is gated: the code-wheel bypass, the one
+that was, waits for a person to answer the program's own challenge
+instead (#291, §8). So every real document a player shows this build gets
+`nothing in this build waits on the …`, and that is the honest current
+answer rather than a control that does not work. The path that lights a
+row is exercised over a stood-up gated seam and a stood-up document, in
+`hosts/sdl/tests/document_control_test.cpp`, in `tests/smoke.mjs`, and by
+`SeamGate.*` in core's own suite.
+
+A seam that is on and gated is on and **inert**, with
+`document_not_presented` on its row; presenting the document arms it with
+no re-enable, because a gate is a condition and not a toggle. Both panels
+re-read the engine at every paint or refresh, so that row relights itself
+— the page's document control calls the panel's own `refresh()`, and the
+desktop's rebuilds the rows from the engine anyway.
+
+### What neither host keeps
+
+The bytes are hashed and dropped. Neither host writes a document
+anywhere, parses one, or remembers that one was shown: a possession gate
+is over bytes, and presenting is configuration — it survives `reset()`,
+it is not in the serialization, and no checkpoint in a recording hashes
+any of it (`docs/replay.md`). A document is therefore shown once per
+launch or per visit, and both controls say so rather than implying
+otherwise. A drop during a `--replay` is refused for the reason a panel
+toggle is: a recording's documents are its own initial condition.
+
+The matching is on the bytes and never on the name — a document a player
+renamed still matches, and a file called `wheel.pdf` that is something
+else is reported with its hash — which is `host::match_edition()`'s rule
+one artifact over (§5).

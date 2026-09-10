@@ -72,10 +72,20 @@ set -euo pipefail
 
 # The files hosts/web/CMakeLists.txt emits for a page to run the
 # module: the Emscripten pair (OUTPUT_NAME amberfolio, SUFFIX .mjs,
-# EXPORT_ES6, MODULARIZE), the seven page scripts it copies beside them
+# EXPORT_ES6, MODULARIZE), the nine page scripts it copies beside them
 # and the edition table they read.
 # Deliberately *not* index.html — the release is the emulator, and the
 # page around it belongs to whoever is hosting it.
+#
+# **documents.mjs and toggle-panel.mjs joined the list in M6 (#384).**
+# documents.mjs is the document control's own half of the page — the two
+# sentences a presented document gets, in the desktop host's words — and
+# app.mjs imports it by name. toggle-panel.mjs was owed since #383 and
+# was missed: app.mjs has imported it since that merge and it was never
+# staged, so a consumer serving the released app.mjs got a 404 for the
+# file holding the panel's rows. That is the #229 lesson landing a fourth
+# time, which is the argument for the assertion in test-release-bundle.sh
+# rather than for a longer comment here.
 #
 # **sidecars.mjs joined the list in M6 (#385)**, for persist.mjs's reason
 # exactly: app.mjs imports it by name, so a consumer serving the released
@@ -123,6 +133,8 @@ BUNDLE=(
   picker.mjs
   journal.mjs
   persist.mjs
+  toggle-panel.mjs
+  documents.mjs
   sidecars.mjs
   editions.mjs
   editions.json

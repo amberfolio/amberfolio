@@ -1397,6 +1397,23 @@ TEST(AbiDocuments, ARecognizedDocumentIsHeldAndNamed) {
       af_machine_document_name_at(box.get(), 1, name.data(),
                                   static_cast<std::uint32_t>(name.size())),
       0u);
+
+  // And what it is a document *for* (#384). A page prints the same
+  // sentence about a presented document the desktop host does —
+  // `document NAME (KIND) sha256=…` — and the kind is the half that says
+  // which seams were waiting for it, so it comes from core rather than
+  // from a table a page keeps of its own.
+  std::array<char, 128> kind{};
+  EXPECT_EQ(
+      af_machine_document_kind_at(box.get(), 0, kind.data(),
+                                  static_cast<std::uint32_t>(kind.size())),
+      std::string_view("code wheel").size());
+  EXPECT_STREQ(kind.data(), "code wheel");
+  EXPECT_EQ(
+      af_machine_document_kind_at(box.get(), 1, kind.data(),
+                                  static_cast<std::uint32_t>(kind.size())),
+      0u)
+      << "an index past the end is not a kind";
 }
 
 TEST(AbiSeams, EverySeamSaysWhatDocumentItNeeds) {

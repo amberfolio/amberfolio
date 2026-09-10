@@ -115,7 +115,8 @@ mkbuild() { # mkbuild <name> -> prints directory path
   mkdir -p "$d"
   local f
   for f in amberfolio.wasm amberfolio.mjs host.mjs app.mjs \
-    audio-worklet.mjs picker.mjs journal.mjs persist.mjs sidecars.mjs \
+    audio-worklet.mjs picker.mjs journal.mjs persist.mjs toggle-panel.mjs \
+    documents.mjs sidecars.mjs \
     editions.mjs editions.json smoke.mjs drive.mjs boot.mjs index.html; do
     echo "contents of $f" >"$d/$f"
   done
@@ -141,10 +142,11 @@ out=$tmp/green-out
 expect "a complete build stages" 0 \
   bash "$repo/scripts/release-bundle.sh" "$build" "$out" v0.2.0
 
-check "the eleven bundle files are attached" test \
+check "the thirteen bundle files are attached" test \
   -f "$out/amberfolio.wasm" -a -f "$out/amberfolio.mjs" -a -f "$out/host.mjs" \
   -a -f "$out/app.mjs" -a -f "$out/audio-worklet.mjs" -a -f "$out/picker.mjs" \
   -a -f "$out/journal.mjs" -a -f "$out/persist.mjs" \
+  -a -f "$out/toggle-panel.mjs" -a -f "$out/documents.mjs" \
   -a -f "$out/sidecars.mjs" \
   -a -f "$out/editions.mjs" -a -f "$out/editions.json"
 check "the notices are attached" test \
@@ -182,7 +184,8 @@ with open(os.path.join(out, "manifest.json"), "rb") as f:
 expected = [
     "amberfolio.wasm", "amberfolio.mjs", "host.mjs",
     "app.mjs", "audio-worklet.mjs", "picker.mjs", "journal.mjs",
-    "persist.mjs", "sidecars.mjs", "editions.mjs", "editions.json",
+    "persist.mjs", "toggle-panel.mjs", "documents.mjs", "sidecars.mjs",
+    "editions.mjs", "editions.json",
 ]
 assert manifest["version"] == "0.2.0", manifest["version"]
 assert manifest["abi"] == {"major": 1, "minor": 4}, manifest["abi"]
@@ -332,7 +335,8 @@ assert names == [
 assert [f["name"] for f in manifest["files"]] == [
     "amberfolio.wasm", "amberfolio.mjs", "host.mjs",
     "app.mjs", "audio-worklet.mjs", "picker.mjs", "journal.mjs",
-    "persist.mjs", "sidecars.mjs", "editions.mjs", "editions.json",
+    "persist.mjs", "toggle-panel.mjs", "documents.mjs", "sidecars.mjs",
+    "editions.mjs", "editions.json",
 ], manifest["files"]
 PY
 

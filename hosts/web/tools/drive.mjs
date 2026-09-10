@@ -139,6 +139,7 @@ import {
   AF_RUN_END_TICK_BUDGET,
 } from './host.mjs';
 import { readStore, troubleName } from './journal.mjs';
+import { describeDocument, showDocument } from './documents.mjs';
 
 /// `AF_SEAM_*` as core spells the states (`machine::seam_state_name`), so
 /// the seam table below reads exactly like the SDL host's `--seams`.
@@ -731,20 +732,18 @@ export async function drive(opts) {
   // the gate satisfied rather than reporting inert and quietly changing
   // its mind.
   for (const path of opts.documents) {
-    const { status, fingerprint } = machine.presentDocument(
-      new Uint8Array(readFileSync(path)),
-    );
-    if (status === AF_OK) {
-      say(`amberfolio: document ${machine.documentsHeld().at(-1)} sha256=${fingerprint}`);
-    } else if (status === AF_UNRECOGNIZED) {
-      // Reported, not guessed (machine/document.h). The fingerprint is on
-      // the line because it is the thing somebody can act on: it is what
-      // an entry in the table is made of.
-      say(
-        `amberfolio: document unrecognized sha256=${fingerprint} - no gate is satisfied by it`,
-      );
+    const outcome = showDocument(machine, new Uint8Array(readFileSync(path)));
+    if (outcome.status === AF_OK || outcome.status === AF_UNRECOGNIZED) {
+      // The document control's own two outcomes, in the words both hosts
+      // say them (`page/documents.mjs`, `hosts/sdl/src/document_control.h`).
+      // Reported, never guessed (machine/document.h), and the fingerprint
+      // is on the line either way because it is the thing somebody can act
+      // on: it is what an entry in the table is made of.
+      for (const line of describeDocument(outcome)) say(`amberfolio: ${line}`);
     } else {
-      say(`amberfolio: document ${path} could not be presented (status ${status})`);
+      say(
+        `amberfolio: document ${path} could not be presented (status ${outcome.status})`,
+      );
     }
   }
 
