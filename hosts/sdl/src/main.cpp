@@ -704,6 +704,7 @@
 #include "amberfolio/machine/replay.h"
 #include "amberfolio/machine/report.h"
 #include "amberfolio/machine/save_layer.h"
+#include "amberfolio/machine/screen_keyboard.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/state.h"
@@ -715,6 +716,7 @@
 #include "dump.h"
 #include "keymap.h"
 #include "press_spec.h"
+#include "screen_keyboard_view.h"
 #include "tesseract_ocr.h"
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
 #include "tesseract_linked_ocr.h"
@@ -1413,6 +1415,14 @@ struct options {
   /// it matches are printed after the run, for the same reason
   /// `--vfs-list` is.
   bool save_layer{false};
+
+  /// Which on-screen keyboard layout the run opens with, or empty for one
+  /// that opens with none (#377). The names are
+  /// `machine::screen_keyboard`'s own — `prompt`, `name`, `full` — and
+  /// the window's middle mouse button steps it on through the layouts and
+  /// off again either way.
+  std::string keyboard;
+
   /// Documents the player presents (M5-D3, #171), as paths on this
   /// machine's own filesystem — not on the emulated one. A code wheel
   /// lives wherever a person keeps their PDFs, which is very often not
@@ -1881,6 +1891,13 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.vfs_removes.emplace_back(argv[++i]);
     } else if (arg == "--save-layer") {
       opts.save_layer = true;
+    } else if (arg == "--keyboard" && i + 1 < argc) {
+      opts.keyboard = argv[++i];
+      if (machine::screen_keyboard::layout_named(opts.keyboard) == nullptr) {
+        std::fprintf(stderr,
+                     "amberfolio: --keyboard wants prompt, name or full\n");
+        return opts;
+      }
     } else if (arg == "--document" && i + 1 < argc) {
       opts.documents.emplace_back(argv[++i]);
     } else if (arg == "--code-wheel-answered") {
@@ -2014,6 +2031,8 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         "                                      [--vfs-list]"
         " [--vfs-get PATH] [--vfs-remove PATH]\n"
         "                                      [--save-layer]\n"
+        "                                      [--keyboard prompt|name|full]"
+        "\n"
         "                                      [--document PATH]\n"
         "                                      [--record FILE]"
         " [--record-every N] [--replay FILE]\n"
@@ -2056,6 +2075,25 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
     std::fprintf(stderr,
                  "amberfolio: --verify and --press need a window;"
                  " they cannot be combined with --headless\n");
+    return opts;
+  }
+  // A keyboard nobody can see is a keyboard nobody can press: it is
+  // drawn over the window and driven by the pointer at it. Refused on
+  // the same reasoning as the two above.
+  if (opts.headless && !opts.keyboard.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: --keyboard needs a window; --headless opens"
+                 " none\n");
+    return opts;
+  }
+  // And a replay's keys are the recording's. A keyboard a person could
+  // press during one would be an input the recorded run never had —
+  // which is why a keystroke at the window is dropped during a replay and
+  // why `--pull` is refused, and this is neither more nor less than that.
+  if (!opts.keyboard.empty() && !opts.replay_path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: a replay's keys are the recording's;"
+                 " --keyboard cannot be combined with --replay\n");
     return opts;
   }
   // The stills share `--dump`'s prefix, so without one there is nowhere
@@ -3574,6 +3612,125 @@ int main(int argc, char** argv) try {
     input_this_frame = true;
   };
 
+  // --- The on-screen keyboard (#377) ------------------------------------
+  //
+  // Painted over the window and driven by the pointer at it. What it is —
+  // the keys, the legends, the make codes, the geometry, what moves the
+  // focus and what a commit produces — is core's
+  // (`machine/screen_keyboard.h`), read here rather than restated; the
+  // page draws the same three layouts from the same numbers.
+  //
+  // A committed key goes out through `post_key` above, so it is counted,
+  // recorded and let go of at a focus loss exactly like a key struck at
+  // the window. Nothing else about it reaches the machine, and nothing at
+  // all reaches it while a replay is running: a keyboard the recording
+  // never had is the same input a window keystroke would be.
+  //
+  // **The middle mouse button steps it on**: hidden, then each layout in
+  // turn, then hidden again. One button, because this machine has no
+  // mouse at all and a mouse button is a control the game can never want
+  // back — unlike a key, which is the argument the F11/F12/Pause table
+  // above had to make three times.
+  namespace osk = machine::screen_keyboard;
+  sdl::keyboard_painter keyboard_paint;
+  const std::span<const osk::layout> keyboard_layouts = osk::layouts();
+  std::size_t keyboard_index = 0;
+  bool keyboard_shown = false;
+  std::size_t keyboard_focus = osk::no_key;
+  std::uint8_t keyboard_latched = 0;
+  /// The overlay changed without the machine drawing anything: the
+  /// present below is gated on the display's generation, and a focus that
+  /// moved over a still picture would otherwise not be drawn until the
+  /// game moved.
+  bool keyboard_repaint = false;
+
+  if (!opts.keyboard.empty()) {
+    for (std::size_t i = 0; i < keyboard_layouts.size(); ++i) {
+      if (keyboard_layouts[i].name == opts.keyboard) {
+        keyboard_index = i;
+        keyboard_shown = true;
+      }
+    }
+  }
+  if (keyboard_shown) {
+    keyboard_focus = osk::default_focus(keyboard_layouts[keyboard_index]);
+  }
+
+  /// Let go of every latched modifier, and post the breaks for it: a
+  /// shift latched on one layout has no business surviving into the next,
+  /// or outliving the keyboard that latched it.
+  const auto keyboard_unlatch = [&]() {
+    const osk::commit made = osk::release_latched(keyboard_latched);
+    for (std::size_t i = 0; i < made.count; ++i) {
+      post_key(made.events[i].scancode, made.events[i].down
+                                            ? machine::key_action::down
+                                            : machine::key_action::up);
+    }
+    keyboard_latched = 0;
+  };
+
+  /// Hidden, then each layout in turn, then hidden again.
+  const auto keyboard_step = [&]() {
+    keyboard_unlatch();
+    if (!keyboard_shown) {
+      keyboard_index = 0;
+      keyboard_shown = true;
+    } else if (keyboard_index + 1 < keyboard_layouts.size()) {
+      ++keyboard_index;
+    } else {
+      keyboard_shown = false;
+    }
+    keyboard_focus = keyboard_shown
+                         ? osk::default_focus(keyboard_layouts[keyboard_index])
+                         : osk::no_key;
+    keyboard_repaint = true;
+  };
+
+  const auto keyboard_commit = [&](std::size_t at) {
+    keyboard_focus = at;
+    const osk::commit made =
+        osk::commit_key(keyboard_layouts[keyboard_index], at, keyboard_latched);
+    for (std::size_t i = 0; i < made.count; ++i) {
+      post_key(made.events[i].scancode, made.events[i].down
+                                            ? machine::key_action::down
+                                            : machine::key_action::up);
+    }
+    keyboard_latched = made.latched;
+    keyboard_repaint = true;
+  };
+
+  /// The keys the keyboard takes for itself while it is up: four to move
+  /// the focus and two to commit. A key it took the make of is a key it
+  /// also takes the break of — swallowing an unmatched break would be an
+  /// input the player never made, and posting one whose make it ate would
+  /// leave the machine holding a key nobody is pressing.
+  struct keyboard_control {
+    SDL_Scancode code;
+    osk::nav where;
+    bool commits;
+  };
+  static constexpr std::array<keyboard_control, 6> keyboard_controls{{
+      {.code = SDL_SCANCODE_LEFT, .where = osk::nav::left, .commits = false},
+      {.code = SDL_SCANCODE_RIGHT, .where = osk::nav::right, .commits = false},
+      {.code = SDL_SCANCODE_UP, .where = osk::nav::up, .commits = false},
+      {.code = SDL_SCANCODE_DOWN, .where = osk::nav::down, .commits = false},
+      // The two that commit carry a direction they never use: an
+      // aggregate has to fill every field, and `left` is as arbitrary as
+      // any of them.
+      {.code = SDL_SCANCODE_RETURN, .where = osk::nav::left, .commits = true},
+      {.code = SDL_SCANCODE_KP_ENTER, .where = osk::nav::left, .commits = true},
+  }};
+  std::array<bool, keyboard_controls.size()> keyboard_taken{};
+
+  const auto keyboard_control_of = [&](SDL_Scancode code) {
+    for (std::size_t i = 0; i < keyboard_controls.size(); ++i) {
+      if (keyboard_controls[i].code == code) {
+        return i;
+      }
+    }
+    return keyboard_controls.size();
+  };
+
   // How much of the speaker's timeline one frame of virtual time is
   // worth, in samples. Only pulled when there is no audio device doing
   // the pulling — see the call site.
@@ -3794,17 +3951,76 @@ int main(int argc, char** argv) try {
           for (const std::uint8_t code : held.release_all()) {
             post_key(code, machine::key_action::up);
           }
+          // Including whatever the on-screen keyboard had latched: the
+          // breaks have just gone out with the rest, so the mask has to
+          // stop claiming they are down (#377).
+          keyboard_latched = 0;
+          keyboard_taken.fill(false);
+          keyboard_repaint = true;
+        } else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+          // The middle button steps the on-screen keyboard on (#377), and
+          // the left one presses whatever key is under the pointer. This
+          // machine has no mouse, so neither is taken from anything.
+          if (event.button.button == SDL_BUTTON_MIDDLE && !replaying) {
+            keyboard_step();
+          } else if (event.button.button == SDL_BUTTON_LEFT && keyboard_shown &&
+                     !replaying) {
+            const osk::layout& shown = keyboard_layouts[keyboard_index];
+            int window_width = 0;
+            int window_height = 0;
+            if (SDL_GetRenderOutputSize(renderer, &window_width,
+                                        &window_height)) {
+              const std::size_t at = sdl::key_under(
+                  sdl::fit_keyboard(shown, window_width, window_height), shown,
+                  event.button.x, event.button.y);
+              if (at != osk::no_key) {
+                keyboard_commit(at);
+              }
+            }
+          }
         } else if (event.type == SDL_EVENT_KEY_DOWN ||
                    event.type == SDL_EVENT_KEY_UP) {
-          const std::uint8_t code = sdl::xt_scancode(event.key.scancode);
-          // A replay's keys are the recording's, delivered by the player
-          // at the ticks it names. A key struck at the window during one
-          // would be an input the recorded run never had, so the window
-          // still closes and nothing else gets through.
-          if (code != 0 && !event.key.repeat && !replaying) {
-            post_key(code, event.type == SDL_EVENT_KEY_DOWN
-                               ? machine::key_action::down
-                               : machine::key_action::up);
+          const bool down = event.type == SDL_EVENT_KEY_DOWN;
+          // While the on-screen keyboard is up it owns the four arrows
+          // and Return: they move its focus and commit the key under it,
+          // which is the path a gamepad will drive in M8 (#210) and is
+          // proven here with the only four-way control a desktop has. A
+          // person with a keyboard in front of them steps the overlay off
+          // and gets them back; a person without one never had them.
+          //
+          // The break of a key it took the make of is taken too, and the
+          // break of one it did not is not: stepping the overlay on
+          // between the two would otherwise leave the machine holding a
+          // key nobody is pressing.
+          const std::size_t control = keyboard_control_of(event.key.scancode);
+          const bool owned = control < keyboard_controls.size() &&
+                             (down ? keyboard_shown : keyboard_taken[control]);
+          if (owned && down) {
+            keyboard_taken[control] = true;
+            if (!event.key.repeat && !replaying) {
+              if (keyboard_controls[control].commits) {
+                if (keyboard_focus != osk::no_key) {
+                  keyboard_commit(keyboard_focus);
+                }
+              } else {
+                keyboard_focus =
+                    osk::move(keyboard_layouts[keyboard_index], keyboard_focus,
+                              keyboard_controls[control].where);
+                keyboard_repaint = true;
+              }
+            }
+          } else if (owned) {
+            keyboard_taken[control] = false;
+          } else {
+            const std::uint8_t code = sdl::xt_scancode(event.key.scancode);
+            // A replay's keys are the recording's, delivered by the player
+            // at the ticks it names. A key struck at the window during one
+            // would be an input the recorded run never had, so the window
+            // still closes and nothing else gets through.
+            if (code != 0 && !event.key.repeat && !replaying) {
+              post_key(code, down ? machine::key_action::down
+                                  : machine::key_action::up);
+            }
           }
         }
       }
@@ -3857,7 +4073,11 @@ int main(int argc, char** argv) try {
       capture_samples(bridge, headless_audio);
     }
 
-    if (!opts.headless && box.display().generation() != presented) {
+    // The overlay is a reason to present as much as a new frame is: a
+    // focus that moved over a picture the game is not redrawing would
+    // otherwise not appear until the game moved (#377).
+    if (!opts.headless &&
+        (box.display().generation() != presented || keyboard_repaint)) {
       presented = box.display().generation();
       const std::span<const std::uint8_t> pixels = box.display().pixels();
       const std::span<const machine::rgb> palette = box.display().palette();
@@ -3875,6 +4095,14 @@ int main(int argc, char** argv) try {
       if (opts.verify) {
         verify_target(renderer, argb, report);
       }
+      // After the read-back, and deliberately: `--verify` is a claim
+      // about the machine's own pixels, and an overlay in the target
+      // would make it a claim about this host's furniture instead.
+      if (keyboard_shown) {
+        keyboard_paint.draw(renderer, keyboard_layouts[keyboard_index],
+                            keyboard_focus, keyboard_latched);
+      }
+      keyboard_repaint = false;
       SDL_RenderPresent(renderer);
       ++report.presented;
     }

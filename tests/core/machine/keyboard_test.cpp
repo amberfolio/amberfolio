@@ -24,6 +24,7 @@
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/platform.h"
+#include "amberfolio/machine/screen_keyboard.h"
 #include "amberfolio/machine/service_floor.h"
 #include "gtest/gtest.h"
 #include "machine/test_device.h"
@@ -306,6 +307,61 @@ TEST(keyboard_shift_flags, shift_and_ctrl_and_caps_lock_all_reach_40_17) {
   ASSERT_TRUE(r.pc().processor().halted());
   EXPECT_EQ(r.regs()[cpu::reg16::bx] & 0xFFu, xt_keyboard::left_shift_mask);
   EXPECT_EQ(r.regs()[cpu::reg16::cx], 0x1E41);  // AH=1E, AL='A'
+}
+
+/// The on-screen keyboard's latch rule, driven with **no keyboard**:
+/// no layout, no host, no widget, no pixels — `commit_scancode()` and
+/// `post_key()` and nothing else (#377).
+///
+/// This is the claim the keyboards this repository ships are *reference
+/// implementations* rests on. A host with its own painted keys, a chorded
+/// pad or a test harness with no screen takes the rule and posts what it
+/// answers, and the BIOS cannot tell the result from a shift held down on
+/// a real keyboard — which is what the assertion below says, since it is
+/// the same `0x1E41` the test above gets from a person holding one.
+TEST(keyboard_shift_flags, a_latched_shift_reaches_40_17_with_no_keyboard) {
+  const rig r;
+
+  //   0000  B4 02      MOV AH, 02h
+  //   0002  CD 16      INT 16h        ; AL = 40:17
+  //   0004  89 C3      MOV BX, AX
+  //   0006  B4 00      MOV AH, 00h
+  //   0008  CD 16      INT 16h        ; whatever the latch made of it
+  //   000A  89 C1      MOV CX, AX
+  //   000C  F4         HLT
+  r.program({0xB4, 0x02, 0xCD, 0x16, 0x89, 0xC3, 0xB4, 0x00, 0xCD, 0x16, 0x89,
+             0xC1, 0xF4});
+
+  // Commit the shift, then the letter, posting exactly what the contract
+  // answers in exactly the order it answers it.
+  std::uint8_t latched = 0;
+  for (const std::uint8_t code : {sc_left_shift, sc_a}) {
+    const screen_keyboard::commit made =
+        screen_keyboard::commit_scancode(code, latched);
+    ASSERT_GT(made.count, 0u) << static_cast<int>(code);
+    for (std::size_t i = 0; i < made.count; ++i) {
+      r.pc().post_key(made.events[i].scancode,
+                      made.events[i].down ? key_action::down : key_action::up);
+    }
+    latched = made.latched;
+  }
+  // The letter took the shift down with it, so nothing is left held.
+  EXPECT_EQ(latched, 0u);
+
+  r.run_until([&] { return r.pc().processor().halted(); });
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  // The keystroke is the shifted one — the same `AH=1E, AL='A'` the test
+  // above gets from a person holding the key down.
+  EXPECT_EQ(r.regs()[cpu::reg16::cx], 0x1E41);
+
+  // And 40:17 reads *clear*, which is right and is the difference a latch
+  // makes: the shift came up behind the letter inside the same batch, so
+  // by the time the program looks, nobody is holding a key. A latch is a
+  // momentary thing that exists across one commit, not a shift wedged
+  // down until something else lifts it — and a program that polls the
+  // flag byte rather than reading the buffer sees exactly what is true.
+  EXPECT_EQ(r.regs()[cpu::reg16::bx] & 0xFFu, 0u);
 }
 
 TEST(keyboard_shift_flags, ctrl_letter_gives_the_control_code) {

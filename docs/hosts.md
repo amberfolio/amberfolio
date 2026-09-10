@@ -42,6 +42,10 @@ renderer, texture, audio stream and event queue, pointed at no hardware.
   queue, so it returns from `SDL_PollEvent` through the real mapping table.
 - `hosts/sdl/tests/keymap_test.cpp` checks the SDL-scancode to XT-scan-code
   table against core's `xt_keyboard::xt_table`.
+- `hosts/sdl/tests/screen_keyboard_view_test.cpp` checks the on-screen
+  keyboard's pixels (§7): every key inside the window at four window
+  sizes, and a point in the middle of a key's own rectangle finding that
+  key.
 
 Rejected: SDL's `offscreen` video driver, because it creates windows
 through EGL and a macOS runner has none. A system SDL3 without the `dummy`
@@ -93,6 +97,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--vfs-list`, `--vfs-get PATH`, `--vfs-remove PATH` | after the run: list the disk; print one file's size and SHA-256, never its bytes; delete one. |
 | `--save-layer` | which of the disk's files are the player's (#208, §6): the loaded program's table beside the edition line, and after the run the files it names, each with the slot letter and party-member index its name carries. |
 | `--document PATH` | present a document the player holds (`docs/seams.md`). |
+| `--keyboard prompt\|name\|full` | open with the on-screen keyboard up, at that layout (#377, §7). Refused with `--headless` and with `--replay`. |
 | `--record FILE`, `--record-every N`, `--replay FILE` | write the run down, checkpoint every N frames, replay a recording and check it (`docs/replay.md`). |
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step, `xt` by default. Not a fast-forward. |
@@ -110,9 +115,17 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | **F11** | toggle the mute (#148) |
 | **F12** | step the volume through 25/50/75/100% and wrap (#148) |
 | **Pause/Break** | pull the trigger of every triggered seam that is on (#161) |
+| **middle mouse button** | step the on-screen keyboard on: hidden, then each layout in turn, then hidden again (#377, §7) |
+| **left mouse button** | press the on-screen key under the pointer, while it is up |
+| **the four arrows, Return** | move the on-screen keyboard's focus and commit, **while it is up**; they reach the machine as usual when it is not |
 
-An 83-key XT board has no scan code for any of the three, so
-`sdl::xt_scancode()` answers 0; `keymap_test.cpp` pins that. Rejected: the
+An 83-key XT board has no scan code for any of the first three, so
+`sdl::xt_scancode()` answers 0; `keymap_test.cpp` pins that. **The mouse
+needs no such argument**: this machine has no mouse at all, so a button is
+a control the game can never want back. The arrows and Return are the one
+exception to the rule, and they are borrowed rather than taken — only
+while the keyboard is up, which is a state a person put it in and can step
+out of. Rejected: the
 keypad's `/` and Enter, which sit inside the game's movement cluster.
 **Tab** (automap) is claimed by a seam inside
 the machine, only while the seam is on (`docs/seams.md` §10). F11 and F12
@@ -496,15 +509,17 @@ are `Machine` methods (below).
 **The bump rule:** `major` moves when an entry point is removed, renamed or
 changes meaning; `minor` when entry points are added and nothing that was
 there changed. A loader compares `major` against what it was written for
-and refuses before fetching the module. The ABI is 1.4: 1.1 added the two
+and refuses before fetching the module. The ABI is 1.5: 1.1 added the two
 doors below (#228, #229), 1.2 added `af_machine_code_wheel_answered` and
 `af_machine_set_code_wheel_answered` (#291), 1.3 added
 `af_web_journal_part_begins_paragraph` (#361), which is how a fragment
 boundary that is a paragraph break reaches the page that joins the pieces
-(`docs/journal.md` §5), and 1.4 added the ten `af_machine_save_layer_*`
-calls (#208), which are where a host learns which of the files on the
-machine's filesystem are the player's (§6). `v0.4.0` shipped 1.2 and
-`v0.5.0` shipped 1.3.
+(`docs/journal.md` §5), 1.4 added the ten `af_machine_save_layer_*` calls
+(#208), which are where a host learns which of the files on the machine's
+filesystem are the player's (§6), and 1.5 added the eighteen
+`af_screen_keyboard_*` calls (#377), which are the layouts and the
+navigation model of the keyboard both hosts paint on the screen (§7).
+`v0.4.0` shipped 1.2 and `v0.5.0` shipped 1.3.
 
 `scripts/test-release-bundle.sh` refuses a release whose header talks about
 the version without defining one, whose export block has moved out from
@@ -893,3 +908,179 @@ nothing** — `null` from `saveLayer()`, zero from the counts,
 same "I do not know this file" `af_machine_edition` answers for an
 unrecognized binary (`machine/edition.h`), and a host that gets it should
 persist nothing rather than persist a guess.
+
+---
+
+## 7. The on-screen keyboard (#377)
+
+A phone has no keyboard and this game asks for a character's name,
+answers Y or N a dozen times an hour, and takes single-letter commands
+off its own bars. So M6's exit — *playable, text entry included, on a
+device with no keyboard attached to it* — needs one painted on the
+screen, and both hosts paint the same one.
+
+**The model is core's, in `machine/screen_keyboard.h`.** Which keys are
+on which layout, the legend on each, the make code it produces, where it
+sits, which key the focus starts on, what moves the focus and what a
+commit produces: all of it comes across the ABI, and neither host keeps a
+second copy. A layout change is a change to that one file and to no host.
+
+The header has the reasoning. What is here is the format a host reads.
+
+### The keyboards here are reference implementations, not the interface
+
+**Nothing in this section is obligatory.** A host's whole obligation for
+input is `af_machine_post_key` — an XT set-1 make code and a direction —
+and a host with a native on-screen keyboard, a chorded pad, a phone's own
+IME or no screen at all is expected to post scan codes and ignore the
+rest. The SDL host's rectangles and the page's buttons are *one* way of
+spelling a keyboard, kept in the repository so that both hosts are usable
+today and so that the model has two consumers rather than one.
+
+What is offered is four separable layers. A host takes as many as suit it
+and writes the rest; core holds no state about any of them, so they can be
+mixed freely or stopped at:
+
+| layer | calls | a host that skips it |
+|---|---|---|
+| 1. the wire | `af_machine_post_key` | cannot: this is the machine's whole input surface |
+| 2. the contract | `af_screen_keyboard_commit_scancode`, `_latch_of`, `_release` | writes the tap-versus-latch rule and the event ordering itself |
+| 3. the tables | `_layouts`, `_name`, `_about`, `_rows`, `_width`, `_keys`, `_key_*`, `_unit` | paints its own keys |
+| 4. the navigation | `_focus`, `_move`, `_key_at` | has its own focus model, or none |
+
+Layer 2 takes **no layout** — a host painting keys this build has never
+heard of still gets the ordering right, which is the part that is easy to
+get wrong and impossible to notice. Layer 3 needs no focus. A host that
+renders the tables with its own toolkit and its own hit testing — the page
+does exactly that — takes 3 and skips `_key_at`.
+
+`tests/core/machine/keyboard_test.cpp`'s
+`a_latched_shift_reaches_40_17_with_no_keyboard` is the claim, driven with
+no layout, no host, no widget and no pixels: `commit_scancode()` and
+`post_key()`, and the BIOS delivering the same shifted `'A'` a person
+holding the key down gets.
+
+### Three layouts
+
+A layout is chosen by what the program is waiting for, and the three are
+not the same size or the same shape:
+
+| name | what it is for | keys |
+| --- | --- | --- |
+| `prompt` | the yes/no question, and the page of text waiting to be dismissed | `Y` `N` `Enter` `Esc` |
+| `name` | free text: a character's name | the digits, the letters, a shift, a space, a backspace, a return |
+| `full` | everything else | **all eighty-three keys this machine's keyboard has** |
+
+The `full` layout carries scan codes `0x01` to `0x53` exactly once each,
+and `screen_keyboard_test.cpp` derives that against
+`xt_keyboard::xt_table` rather than trusting the list — a keyboard with a
+missing key is a game with a missing command. The three sets were taken
+from the screens `docs/playable.md` documents, whose legs press letters,
+the digits, Return, Escape, Tab and the movement cluster.
+
+**Which layout is up is the host's choice, and both hosts make it by
+asking the player.** Nothing in core watches the program to see what it
+is waiting for, because nothing outside the seam engine may look
+(PLAN.md §4). A seam that knew the prompt could choose one later.
+
+### The geometry, in quarter units
+
+Every row is one unit tall. A key's width and its offset along its row
+are in **quarter** units — `af_screen_keyboard_unit()` is that four — so
+that a shift two keys wide and a return two-and-a-quarter are both
+expressible without anybody inventing a fraction. A host picks what a
+unit is worth in pixels and multiplies; nothing in core is in pixels.
+
+`af_screen_keyboard_rows(layout)` and `_width(layout)` are what a host
+sizes the whole keyboard from. The keys are ordered row by row and, in a
+row, left to right, so a host draws them in one pass.
+
+Nothing here is a picture of a physical board: the function keys are a
+row where an XT has them in a two-by-five block, and the keypad is two
+rows of seven carrying both of each key's legends, because Num Lock is
+what decides between them and it decides inside the BIOS
+(`machine/keyboard.h`).
+
+### What a commit produces, and the held-key contract
+
+`af_screen_keyboard_commit(layout, key, latched, events, max,
+latched_after)` answers the key events a host must post, in order, packed
+one to a `uint32_t` as `(scancode << 1) | down`. A host posts each
+through `af_machine_post_key` and carries `latched_after` into the next
+commit. Nothing new crosses the boundary — the BIOS cannot tell a key
+committed on a painted keyboard from a key struck on a real one.
+
+**There is no key repeat.** A finger held on a painted key is one
+keystroke. Nothing in this machine repeats a key — there is no IRQ 1 and
+no typematic timer — so a repeat would have to be invented by a host, and
+a host inventing input is the same fault as a host inventing a port's
+answer.
+
+**A modifier latches; everything else taps.** A finger cannot hold Shift
+and press A, so Shift, Ctrl and Alt stay down when committed and come up
+behind the next ordinary key. `af_screen_keyboard_key_latch()` says which
+bit a key is (`AF_LATCH_LEFT_SHIFT`, `_RIGHT_SHIFT`, `_CTRL`, `_ALT`) —
+`af_screen_keyboard_latch_of()` is the same question about a bare scan
+code — and a host lights the keys whose bit is in the mask. The order
+matters and is core's: the shift's make has to reach 40:17 before the
+letter's does, because a program reads that byte directly.
+`af_screen_keyboard_release()` is the same events for closing the keyboard
+or losing the window, so a latched Shift does not outlive the keyboard
+that latched it.
+
+**A latch is momentary, and 40:17 says so.** Because the shift comes up
+behind the letter inside the same commit, a program that polls the
+shift-flag byte afterwards reads it *clear* — nobody is holding a key. The
+keystroke in the buffer is still the shifted one. That is the honest
+answer and not a gap: a painted Shift is not a Shift wedged down.
+
+The **lock** keys are not latching: Caps, Num and Scroll Lock toggle
+inside the BIOS on the make code, so a tap is already what they want.
+
+### Focus, and the two ways to drive it
+
+One key is focused, and the focus is the *host's* — one integer, UI
+state, and core keeps none of it. `af_screen_keyboard_focus(layout)` is
+where it starts.
+
+- **A pointer or a finger** lands on a key and commits it in one gesture.
+  The page's keys are buttons, positioned from the model's own columns and
+  widths, so the browser does the hit testing; the desktop host draws into
+  a window where there is no widget under the pointer and asks
+  `af_screen_keyboard_key_at(layout, row, column)` instead. Both put the
+  keys in the same places, so a gap is a gap in both.
+- **A four-way control** moves the focus with
+  `af_screen_keyboard_move(layout, key, AF_NAV_*)` and commits separately.
+  Left and right step within the row and wrap at its ends; up and down
+  change row, wrap top to bottom, and land on the key whose span covers
+  the *column* the focus left — so a wide space bar is reached from every
+  key above it, and leaving it again arrives under the finger. Today that
+  control is the arrow keys on both hosts; in M8 it is a gamepad (#210),
+  and this is the path it will drive.
+
+### What each host does with it
+
+**The desktop host** draws the keyboard over the window, sitting on the
+bottom edge, at whatever size the window allows — nearly its full width
+and never more than half its height. The legends are the machine's own
+character generator (`machine/font.h`) at one size for the whole board,
+so the keyboard looks like the machine it is attached to. `--keyboard
+NAME` opens with it up; the middle mouse button steps it on through the
+layouts and off again; the left button presses the key under the pointer.
+
+A committed key goes out through the same path a key struck at the window
+takes — counted, recorded, and let go of at a focus loss — so a run
+driven from the painted keyboard records and replays like any other.
+It is drawn **after** `--verify`'s read-back, deliberately: `--verify` is
+a claim about the machine's own pixels, and an overlay in the target
+would make it a claim about this host's furniture instead. And it is
+refused with `--replay` for the reason `--pull` is: a replay's keys are
+the recording's.
+
+**The page** renders the keys as buttons from the same numbers
+(`readScreenKeyboard()` in `host.mjs`), with a checkbox to show it and a
+select to choose the layout. `commitKey()`, `moveFocus()` and
+`releaseLatched()` are the same three calls one layer up, and
+`commitScancode()` / `latchOf()` are layer 2 for a page that paints its
+own keys. The widget itself is `wireScreenKeyboard()` in `app.mjs`, which
+is the dev page's and which a serving page is free to replace outright.

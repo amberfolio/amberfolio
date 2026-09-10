@@ -113,6 +113,17 @@ import {
   pacedAdvance,
   wallClockFields,
   MAX_CATCH_UP_SECONDS,
+  readScreenKeyboard,
+  commitKey,
+  commitScancode,
+  latchOf,
+  moveFocus,
+  keyAt,
+  releaseLatched,
+  AF_NO_KEY,
+  AF_NAV_RIGHT,
+  AF_LATCH_LEFT_SHIFT,
+  AF_LATCH_CTRL,
 } from './host.mjs';
 import {
   encodePpm,
@@ -223,6 +234,28 @@ const EXPECTED_EXPORTS = [
   '_af_machine_save_layer_row_of',
   '_af_machine_save_layer_slot_of',
   '_af_machine_save_layer_member_of',
+  // The M6 on-screen keyboard's model (#377) — machine-less, and the
+  // page's keyboard is drawn from it rather than from a table of its own.
+  '_af_screen_keyboard_layouts',
+  '_af_screen_keyboard_name',
+  '_af_screen_keyboard_about',
+  '_af_screen_keyboard_unit',
+  '_af_screen_keyboard_rows',
+  '_af_screen_keyboard_width',
+  '_af_screen_keyboard_keys',
+  '_af_screen_keyboard_focus',
+  '_af_screen_keyboard_key_label',
+  '_af_screen_keyboard_key_scancode',
+  '_af_screen_keyboard_key_row',
+  '_af_screen_keyboard_key_column',
+  '_af_screen_keyboard_key_width',
+  '_af_screen_keyboard_key_latch',
+  '_af_screen_keyboard_latch_of',
+  '_af_screen_keyboard_commit_scancode',
+  '_af_screen_keyboard_key_at',
+  '_af_screen_keyboard_move',
+  '_af_screen_keyboard_commit',
+  '_af_screen_keyboard_release',
   '_af_machine_write_memory',
   '_af_machine_read_memory',
   '_af_machine_set_entry',
@@ -414,8 +447,15 @@ if (missing.length > 0) {
       ' — add them to -sEXPORTED_FUNCTIONS in hosts/web/CMakeLists.txt',
   );
 }
-if (typeof module.HEAPU8 === 'undefined' || typeof module.HEAPF32 === 'undefined') {
-  problems.push('HEAPU8/HEAPF32 are not on the module; a host cannot read the framebuffer');
+if (
+  typeof module.HEAPU8 === 'undefined' ||
+  typeof module.HEAPF32 === 'undefined' ||
+  typeof module.HEAPU32 === 'undefined'
+) {
+  problems.push(
+    'HEAPU8/HEAPF32/HEAPU32 are not all on the module; a host cannot read the' +
+      ' framebuffer, fill an audio buffer or unpack a committed key',
+  );
 }
 console.log(`smoke: ${EXPECTED_EXPORTS.length - missing.length}/${EXPECTED_EXPORTS.length} ABI exports present`);
 
@@ -481,6 +521,104 @@ if (core !== null) {
     }
     console.log(
       `smoke: ${HOST_SERVICES.length} host service(s), named as core names them`,
+    );
+  }
+}
+
+// --- The on-screen keyboard's model (#377) ----------------------------
+//
+// The model itself is core's, and core's own tests pin it. What is
+// checked here is the crossing: the page's reader gets three layouts with
+// keys on them, the hit test and the focus move answer indices, and a
+// commit's packed events come back out of HEAPU32 the right way round —
+// the one place a wrong shift or a wrong heap view would leave the page
+// posting nonsense at the machine and nothing saying so.
+
+if (missing.length === 0) {
+  const keyboard = readScreenKeyboard(module);
+  const named = Object.fromEntries(
+    keyboard.layouts.map((layout, index) => [layout.name, index]),
+  );
+  if (keyboard.unit !== 4) {
+    problems.push(`the keyboard's unit is ${keyboard.unit}, not 4 quarter units`);
+  }
+  if (!('prompt' in named) || !('name' in named) || !('full' in named)) {
+    problems.push(
+      `the keyboard's layouts are ${JSON.stringify(Object.keys(named))}, not` +
+        ' prompt/name/full',
+    );
+  } else {
+    const full = keyboard.layouts[named.full];
+    if (full.keys.length !== 83) {
+      problems.push(
+        `the full layout has ${full.keys.length} keys, not the machine's 83`,
+      );
+    }
+    if (full.keys.some((one) => one.label === '' || one.scancode === 0)) {
+      problems.push('a key came across with no legend or no scan code');
+    }
+
+    // The hit test finds the key the model says is at that point, and a
+    // point past the last row is a gap.
+    const first = full.keys[0];
+    if (keyAt(module, named.full, first.row, first.column) !== 0) {
+      problems.push("the hit test did not find the layout's first key under it");
+    }
+    if (keyAt(module, named.full, full.rows, 0) !== AF_NO_KEY) {
+      problems.push('the hit test found a key on a row that is not there');
+    }
+    if (moveFocus(module, named.full, AF_NO_KEY, AF_NAV_RIGHT) !== full.focus) {
+      problems.push('moving from no focus at all did not start where the layout says');
+    }
+
+    // A shift latches and comes up behind the next key — the contract the
+    // page's own posting loop depends on.
+    const shift = full.keys.findIndex((one) => one.latch === AF_LATCH_LEFT_SHIFT);
+    const letter = full.keys.findIndex((one) => one.scancode === 0x1e);
+    const down = commitKey(module, named.full, shift, 0);
+    const typed = commitKey(module, named.full, letter, down.latched);
+    const packed = [
+      down.events.length === 1 && down.events[0].down,
+      down.latched === AF_LATCH_LEFT_SHIFT,
+      typed.events.length === 3,
+      typed.events[2].scancode === full.keys[shift].scancode,
+      typed.events[2].down === false,
+      typed.latched === 0,
+    ];
+    if (packed.some((ok) => !ok)) {
+      problems.push(
+        `a latched shift did not come back the way it went in: ${JSON.stringify({ down, typed })}`,
+      );
+    }
+    if (releaseLatched(module, AF_LATCH_LEFT_SHIFT).length !== 1) {
+      problems.push('letting a latch go did not produce its break');
+    }
+
+    // The same contract with no layout in the call — the layer a page
+    // that paints its own keys takes, and the claim that the keyboards
+    // this repository ships are a reference implementation rather than
+    // the interface.
+    if (latchOf(module, 0x2a) !== AF_LATCH_LEFT_SHIFT || latchOf(module, 0x1e) !== 0) {
+      problems.push('latchOf() does not answer for a bare scan code');
+    }
+    const bare = commitScancode(module, 0x2a, 0);
+    const bareTyped = commitScancode(module, 0x1e, bare.latched);
+    const bareOk = [
+      bare.events.length === 1 && bare.latched === AF_LATCH_LEFT_SHIFT,
+      bareTyped.events.length === 3,
+      bareTyped.events[2].scancode === 0x2a && bareTyped.events[2].down === false,
+      bareTyped.latched === 0,
+      // And a code this machine's keyboard has not got is refused.
+      commitScancode(module, 0xe0, AF_LATCH_CTRL).events.length === 0,
+    ];
+    if (bareOk.some((ok) => !ok)) {
+      problems.push(
+        `the layout-free commit does not match the contract: ${JSON.stringify({ bare, bareTyped })}`,
+      );
+    }
+    console.log(
+      `smoke: ${keyboard.layouts.length} keyboard layout(s), ${full.keys.length}` +
+        ' keys on the full one',
     );
   }
 }

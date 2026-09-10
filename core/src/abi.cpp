@@ -40,6 +40,7 @@
 #include "amberfolio/machine/replay.h"
 #include "amberfolio/machine/report.h"
 #include "amberfolio/machine/save_layer.h"
+#include "amberfolio/machine/screen_keyboard.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/vfs.h"
@@ -507,6 +508,46 @@ const amberfolio::machine::memory_filesystem* vfs_of(
     return nullptr;
   }
   return &layer->files[index];
+}
+
+// --- The on-screen keyboard (machine/screen_keyboard.h, #377) ----------
+//
+// The one thing every call below has to do first: turn an index a host
+// handed in into a layout, or refuse. None of them takes a machine, so
+// there is no handle to check and this is the whole of the guard.
+
+namespace osk = amberfolio::machine::screen_keyboard;
+
+[[nodiscard]] const osk::layout* layout_at(uint32_t index) noexcept {
+  const std::span<const osk::layout> all = osk::layouts();
+  return index < all.size() ? &all[index] : nullptr;
+}
+
+[[nodiscard]] const osk::key* osk_key_at(uint32_t layout,
+                                         uint32_t key) noexcept {
+  const osk::layout* which = layout_at(layout);
+  if (which == nullptr || key >= which->keys.size()) {
+    return nullptr;
+  }
+  return &which->keys[key];
+}
+
+/// A commit's events, in the one form that crosses the boundary:
+/// `(scancode << 1) | down`, packed rather than paired because a host
+/// posting them wants one array and not two.
+[[nodiscard]] uint32_t pack_commit(const osk::commit& made, uint32_t* events,
+                                   uint32_t max) noexcept {
+  if (events == nullptr || made.count > max) {
+    return 0;
+  }
+  const std::span<uint32_t> out(events, max);
+  for (std::size_t i = 0; i < made.count; ++i) {
+    out[i] = static_cast<uint32_t>(made.events[i].scancode) << 1U;
+    if (made.events[i].down) {
+      out[i] |= 1U;
+    }
+  }
+  return static_cast<uint32_t>(made.count);
 }
 
 }  // namespace
@@ -1625,6 +1666,171 @@ uint32_t af_machine_verify_recording(af_machine* handle, const char* text,
     static_cast<void>(verifier.report(std::span<char>(out, max)));
   }
   return result.ok() ? AF_OK : AF_INVALID;
+}
+
+// --- The on-screen keyboard (machine/screen_keyboard.h, #377) ----------
+
+uint32_t af_screen_keyboard_layouts(void) {
+  return static_cast<uint32_t>(osk::layouts().size());
+}
+
+uint32_t af_screen_keyboard_name(uint32_t layout, char* out, uint32_t max) {
+  const osk::layout* which = layout_at(layout);
+  if (which == nullptr) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(which->name.data(), which->name.size()),
+                  out, max);
+}
+
+uint32_t af_screen_keyboard_about(uint32_t layout, char* out, uint32_t max) {
+  const osk::layout* which = layout_at(layout);
+  if (which == nullptr) {
+    return 0;
+  }
+  return copy_out(
+      std::span<const char>(which->about.data(), which->about.size()), out,
+      max);
+}
+
+uint32_t af_screen_keyboard_unit(void) { return osk::unit; }
+
+uint32_t af_screen_keyboard_rows(uint32_t layout) {
+  const osk::layout* which = layout_at(layout);
+  return which == nullptr ? 0 : which->rows;
+}
+
+uint32_t af_screen_keyboard_width(uint32_t layout) {
+  const osk::layout* which = layout_at(layout);
+  return which == nullptr ? 0 : which->width;
+}
+
+uint32_t af_screen_keyboard_keys(uint32_t layout) {
+  const osk::layout* which = layout_at(layout);
+  return which == nullptr ? 0 : static_cast<uint32_t>(which->keys.size());
+}
+
+uint32_t af_screen_keyboard_focus(uint32_t layout) {
+  const osk::layout* which = layout_at(layout);
+  if (which == nullptr) {
+    return AF_NO_KEY;
+  }
+  const std::size_t focus = osk::default_focus(*which);
+  return focus == osk::no_key ? AF_NO_KEY : static_cast<uint32_t>(focus);
+}
+
+uint32_t af_screen_keyboard_key_label(uint32_t layout, uint32_t key, char* out,
+                                      uint32_t max) {
+  const osk::key* one = osk_key_at(layout, key);
+  if (one == nullptr) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(one->label.data(), one->label.size()),
+                  out, max);
+}
+
+uint32_t af_screen_keyboard_key_scancode(uint32_t layout, uint32_t key) {
+  const osk::key* one = osk_key_at(layout, key);
+  return one == nullptr ? 0 : one->scancode;
+}
+
+uint32_t af_screen_keyboard_key_row(uint32_t layout, uint32_t key) {
+  const osk::key* one = osk_key_at(layout, key);
+  return one == nullptr ? 0 : one->row;
+}
+
+uint32_t af_screen_keyboard_key_column(uint32_t layout, uint32_t key) {
+  const osk::key* one = osk_key_at(layout, key);
+  return one == nullptr ? 0 : one->column;
+}
+
+uint32_t af_screen_keyboard_key_width(uint32_t layout, uint32_t key) {
+  const osk::key* one = osk_key_at(layout, key);
+  return one == nullptr ? 0 : one->width;
+}
+
+uint32_t af_screen_keyboard_key_latch(uint32_t layout, uint32_t key) {
+  const osk::key* one = osk_key_at(layout, key);
+  if (one == nullptr) {
+    return 0;
+  }
+  return static_cast<uint32_t>(osk::latch_of(one->scancode));
+}
+
+uint32_t af_screen_keyboard_key_at(uint32_t layout, uint32_t row,
+                                   uint32_t column) {
+  const osk::layout* which = layout_at(layout);
+  if (which == nullptr || row > 0xFFU || column > 0xFFFFU) {
+    return AF_NO_KEY;
+  }
+  const std::size_t found = osk::key_at(*which, static_cast<std::uint8_t>(row),
+                                        static_cast<std::uint16_t>(column));
+  return found == osk::no_key ? AF_NO_KEY : static_cast<uint32_t>(found);
+}
+
+uint32_t af_screen_keyboard_move(uint32_t layout, uint32_t key,
+                                 uint32_t where) {
+  const osk::layout* which = layout_at(layout);
+  if (which == nullptr || where > static_cast<uint32_t>(osk::nav::down)) {
+    return AF_NO_KEY;
+  }
+  // `AF_NO_KEY` in means "nothing is focused yet", which core spells as
+  // its own `no_key` and answers with the layout's starting focus.
+  const std::size_t from =
+      key == AF_NO_KEY ? osk::no_key : static_cast<std::size_t>(key);
+  const std::size_t found =
+      osk::move(*which, from, static_cast<osk::nav>(where));
+  return found == osk::no_key ? AF_NO_KEY : static_cast<uint32_t>(found);
+}
+
+uint32_t af_screen_keyboard_latch_of(uint32_t scancode) {
+  if (scancode > 0xFFU) {
+    return 0;
+  }
+  return static_cast<uint32_t>(
+      osk::latch_of(static_cast<std::uint8_t>(scancode)));
+}
+
+uint32_t af_screen_keyboard_commit_scancode(uint32_t scancode, uint32_t latched,
+                                            uint32_t* events, uint32_t max,
+                                            uint32_t* latched_after) {
+  const osk::commit made =
+      scancode > 0xFFU
+          ? osk::commit{}
+          : osk::commit_scancode(static_cast<std::uint8_t>(scancode),
+                                 static_cast<std::uint8_t>(latched & 0xFFU));
+  const uint32_t count = pack_commit(made, events, max);
+  if (latched_after != nullptr) {
+    *latched_after = count == 0 ? latched : made.latched;
+  }
+  return count;
+}
+
+uint32_t af_screen_keyboard_commit(uint32_t layout, uint32_t key,
+                                   uint32_t latched, uint32_t* events,
+                                   uint32_t max, uint32_t* latched_after) {
+  const osk::layout* which = layout_at(layout);
+  if (which == nullptr) {
+    return 0;
+  }
+  const osk::commit made = osk::commit_key(
+      *which, key == AF_NO_KEY ? osk::no_key : static_cast<std::size_t>(key),
+      static_cast<std::uint8_t>(latched & 0xFFU));
+  const uint32_t count = pack_commit(made, events, max);
+  // The mask is written whether or not the events fitted: a host whose
+  // buffer was too small posts nothing, and a mask that had moved anyway
+  // would be a latch it never pressed.
+  if (latched_after != nullptr) {
+    *latched_after = count == 0 ? latched : made.latched;
+  }
+  return count;
+}
+
+uint32_t af_screen_keyboard_release(uint32_t latched, uint32_t* events,
+                                    uint32_t max) {
+  return pack_commit(
+      osk::release_latched(static_cast<std::uint8_t>(latched & 0xFFU)), events,
+      max);
 }
 
 }  // extern "C"

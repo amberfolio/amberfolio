@@ -156,6 +156,29 @@ set(_amberfolio_web_export_names
   _af_machine_save_layer_row_of
   _af_machine_save_layer_slot_of
   _af_machine_save_layer_member_of
+  # The M6 on-screen keyboard's model (#377). Machine-less, like
+  # _af_frame_width above: a keyboard is not a fact about a loaded
+  # program, and a page paints one before anything is loaded.
+  _af_screen_keyboard_layouts
+  _af_screen_keyboard_name
+  _af_screen_keyboard_about
+  _af_screen_keyboard_unit
+  _af_screen_keyboard_rows
+  _af_screen_keyboard_width
+  _af_screen_keyboard_keys
+  _af_screen_keyboard_focus
+  _af_screen_keyboard_key_label
+  _af_screen_keyboard_key_scancode
+  _af_screen_keyboard_key_row
+  _af_screen_keyboard_key_column
+  _af_screen_keyboard_key_width
+  _af_screen_keyboard_key_latch
+  _af_screen_keyboard_latch_of
+  _af_screen_keyboard_commit_scancode
+  _af_screen_keyboard_key_at
+  _af_screen_keyboard_move
+  _af_screen_keyboard_commit
+  _af_screen_keyboard_release
   _af_machine_write_memory
   _af_machine_read_memory
   _af_machine_set_entry
@@ -261,12 +284,13 @@ target_link_options(amberfolio-web PRIVATE
   "-sENVIRONMENT=web,node"
   "-sEXPORTED_FUNCTIONS=${AMBERFOLIO_WEB_EXPORTS}"
   # The typed-array views over linear memory. A JS host reads the
-  # framebuffer through HEAPU8 and writes sample buffers through HEAPF32,
-  # and recent Emscripten only attaches them to the module object when
-  # they are asked for by name. Note the trap abi.h states: a view is
+  # framebuffer through HEAPU8, writes sample buffers through HEAPF32 and
+  # reads the on-screen keyboard's packed key events through HEAPU32
+  # (#377), and recent Emscripten only attaches them to the module object
+  # when they are asked for by name. Note the trap abi.h states: a view is
   # detached when memory grows, so a host re-derives it rather than
   # caching one.
-  "-sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPF32"
+  "-sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPF32,HEAPU32"
   # The reference device set (core/src/abi.cpp's `reference_devices`,
   # attached through af_machine_attach_reference_devices()) adds the
   # EGA's 256 KiB of planar VRAM and the in-memory VFS's 8 MiB on top of
