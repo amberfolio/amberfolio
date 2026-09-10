@@ -223,5 +223,38 @@ TEST(SeamPanel, FindsTheRowAPointerLandedOn) {
             panel_no_row);
 }
 
+TEST(SeamPanel, PutsTheDocumentNoticeUnderTheTableWithItsHashWhole) {
+  // The document control's outcome (#384). An unrecognised document's
+  // SHA-256 is the one thing that player can act on, and this line is
+  // wider than the panel — so it wraps rather than being cut, and the
+  // hash lands on one line of its own with all sixty-four characters on
+  // it.
+  const std::string hash(64, 'a');
+  const std::vector<panel_row> rows{
+      panel_row_of(a_status(), machine::document_kind::none)};
+  const std::vector<std::string> lines = panel_lines(
+      rows, 0,
+      {"document unrecognized sha256=" + hash + " - no gate is satisfied by it",
+       "nobody here has fingerprinted this one"});
+
+  bool whole = false;
+  for (const std::string& line : lines) {
+    if (line.find(hash) != std::string::npos) {
+      whole = true;
+    }
+  }
+  EXPECT_TRUE(whole) << "the digest did not survive the panel's width";
+  // Under the table, so the rows are where `row_under()` says they are.
+  EXPECT_NE(row_line(lines, 0).find("automap"), std::string::npos);
+  EXPECT_EQ(row_under(fit_panel(lines, 1920, 1200), rows.size(), 0.0F, 0.0F),
+            panel_no_row);
+}
+
+TEST(SeamPanel, AddsNoLinesWhenThereIsNoNotice) {
+  const std::vector<panel_row> rows{
+      panel_row_of(a_status(), machine::document_kind::none)};
+  EXPECT_EQ(panel_lines(rows, 0).size(), panel_lines(rows, 0, {}).size());
+}
+
 }  // namespace
 }  // namespace amberfolio::sdl

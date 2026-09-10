@@ -155,6 +155,7 @@ import {
   storedSeams,
   PANEL_COLUMNS,
 } from './toggle-panel.mjs';
+import { describeDocument, seamsWaitingOn, showDocument } from './documents.mjs';
 import {
   readSidecarAnswer,
   shouldAskAboutSidecars,
@@ -257,6 +258,7 @@ const EXPECTED_EXPORTS = [
   '_af_machine_present_document',
   '_af_machine_document_count',
   '_af_machine_document_name_at',
+  '_af_machine_document_kind_at',
   '_af_machine_code_wheel_answered',
   '_af_machine_set_code_wheel_answered',
   '_af_machine_save_layer_slots',
@@ -2165,6 +2167,87 @@ if (missing.length === 0) {
       `seam ${JSON.stringify(seam.id)} reports gate ${JSON.stringify(seam.gate)}, wanted "no document"`,
     );
   }
+
+  // --- The document control (#384) ---------------------------------------
+  //
+  // The two outcomes as a player reads them, in the words the desktop
+  // host prints (`hosts/sdl/src/document_control.cpp`'s
+  // `document_lines()`, held down by `DocumentControl.*` over there).
+  // The unrecognised one is what every real document gets from this
+  // build's tables through this file's own three bytes, and its whole
+  // point is the hash: a page that said "not recognised" and stopped
+  // would have thrown away the only thing that player can act on.
+  //
+  // The whole path first, through the control the page wires to its file
+  // input: bytes in, an outcome out, and the fingerprint on it whichever
+  // way it went.
+  const control = showDocument(machine, abc);
+  check(
+    control.status === AF_UNRECOGNIZED &&
+      !control.recognized &&
+      control.fingerprint === shown.fingerprint &&
+      control.name === '' &&
+      control.waiting.length === 0,
+    `the document control answered ${JSON.stringify(control)}`,
+  );
+
+  const unknown = describeDocument({
+    recognized: false,
+    fingerprint: shown.fingerprint,
+    name: '',
+    kind: '',
+    waiting: [],
+  });
+  check(
+    unknown[0] ===
+      `document unrecognized sha256=${shown.fingerprint} - no gate is` +
+        ' satisfied by it',
+    `the unrecognised line reads ${JSON.stringify(unknown[0])}`,
+  );
+  check(
+    unknown[1] ===
+      'nobody here has fingerprinted this one - that sha256 is what an entry' +
+        ' in the table is made of',
+    `the second unrecognised line reads ${JSON.stringify(unknown[1])}`,
+  );
+
+  // And a recognised one, over a document and a gated row this file
+  // stands up: no seam in this build is gated (#290), so the path that
+  // lights a row has nothing here to light and would otherwise never be
+  // exercised at all.
+  const lit = describeDocument({
+    recognized: true,
+    fingerprint: shown.fingerprint,
+    name: 'a code wheel this test claims',
+    kind: 'code wheel',
+    waiting: seamsWaitingOn(
+      [
+        { id: 'gated-here', gate: 'code wheel' },
+        { id: 'gated-elsewhere', gate: 'journal' },
+        { id: 'waits-on-nothing', gate: 'no document' },
+      ],
+      'code wheel',
+    ),
+  });
+  check(
+    lit[0] ===
+      `document a code wheel this test claims (code wheel) sha256=${shown.fingerprint}`,
+    `the recognised line reads ${JSON.stringify(lit[0])}`,
+  );
+  check(
+    lit[1] === 'the code wheel lights 1 seam: gated-here',
+    `the lit-rows line reads ${JSON.stringify(lit[1])}`,
+  );
+
+  // What this build actually says today, and it says it plainly rather
+  // than looking broken: nothing here waits on a document.
+  check(
+    seamsWaitingOn(
+      machine.seamList().map((seam) => ({ id: seam.id, gate: seam.gate })),
+      'code wheel',
+    ).length === 0,
+    'a seam in this build claims to wait on the code wheel',
+  );
 
   machine.destroy();
   console.log(

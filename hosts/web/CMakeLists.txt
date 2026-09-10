@@ -144,6 +144,7 @@ set(_amberfolio_web_export_names
   _af_machine_present_document
   _af_machine_document_count
   _af_machine_document_name_at
+  _af_machine_document_kind_at
   _af_machine_code_wheel_answered
   _af_machine_set_code_wheel_answered
   _af_machine_save_layer_slots
@@ -336,6 +337,7 @@ set(_amberfolio_web_files
   "${CMAKE_CURRENT_SOURCE_DIR}/page/journal.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/persist.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/toggle-panel.mjs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/page/documents.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/sidecars.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/editions.mjs"
   # The edition table itself (#207), placed rather than compiled in: a

@@ -20,6 +20,11 @@ add_executable(amberfolio-sdl
   # window, an audio device or an engine installed.
   src/desktop_config.cpp
   src/directory_vfs.cpp
+  # Any PDF in, what it was recognised as out (#384). Its own unit for
+  # seam_panel.cpp's reason: the two sentences a player reads are the
+  # deliverable, and a sentence built inside a main() is a sentence no
+  # test can read.
+  src/document_control.cpp
   src/dump.cpp
   src/keymap.cpp
   src/main.cpp
@@ -503,6 +508,7 @@ if(AMBERFOLIO_BUILD_TESTS)
   add_executable(amberfolio-sdl-tests
     src/audio_gain.cpp
     src/desktop_config.cpp
+    src/document_control.cpp
     src/keymap.cpp
     src/ocr_discovery.cpp
     src/glyph_atlas.cpp
@@ -513,6 +519,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     src/tsv_words.cpp
     tests/audio_gain_test.cpp
     tests/desktop_config_test.cpp
+    tests/document_control_test.cpp
     tests/keymap_test.cpp
     tests/ocr_discovery_test.cpp
     tests/press_spec_test.cpp

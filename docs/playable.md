@@ -791,13 +791,19 @@ node build/wasm/hosts/web/Release/drive.mjs <dir> START.EXE   --document "/path/
 
 ```
 amberfolio: document Pool of Radiance code wheel, archive release (PDF) (code wheel) sha256=0db301ae...
+amberfolio: nothing in this build waits on the code wheel
 ```
 
 The file is read, hashed and dropped; `machine/document.h` holds the
 fingerprint table and no byte of any document (CONTRIBUTING.md). An
 unknown document is reported with its fingerprint, never guessed. No
 seam in this build is gated: the code wheel's gate became answering once
-(#290, #291), and `--seams` says what each needs (`no document`).
+(#290, #291), and `--seams` says what each needs (`no document`) — which
+is why the second line above says what it says.
+
+Dropping the file on the window does the same thing and prints the same
+two lines, in the toggle panel as well as on stderr, and so does the
+page's own *show a document you hold* input (#384, `docs/hosts.md` §9).
 
 ---
 

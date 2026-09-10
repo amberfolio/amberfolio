@@ -104,14 +104,25 @@ struct panel_row {
     const machine::seam_engine& seams);
 
 /// The panel as lines of text: a title, a column header, one line per
-/// seam, and the focused seam's description last.
+/// seam, the focused seam's description, and last whatever `notice` was
+/// handed in.
 ///
 /// Fixed columns, so that the numbers under `fired` line up and a reader
 /// can see a zero among them at a glance. A `focus` past the end is no
 /// focus: the description line then says what to do rather than what a
 /// row is.
+///
+/// `notice` is the document control's outcome (`document_control.h`,
+/// #384) — what a dropped file turned out to be, which is the one thing
+/// this host has to say to a player that is not about a row. It goes
+/// **under** the table so the rows keep the line numbers `row_under()`
+/// computes from, and it is **wrapped on spaces** rather than cut to the
+/// panel's width: an unrecognised document's whole SHA-256 is the only
+/// thing that player can act on, and a hash with its last six characters
+/// off the edge is worse than no hash at all.
 [[nodiscard]] std::vector<std::string> panel_lines(
-    const std::vector<panel_row>& rows, std::size_t focus);
+    const std::vector<panel_row>& rows, std::size_t focus,
+    const std::vector<std::string>& notice = {});
 
 /// Which line of `panel_lines()` the first seam sits on. The title and
 /// the header are above it.

@@ -1341,20 +1341,35 @@ export class Machine {
     }
   }
 
-  /// The documents presented and recognized so far, by name, in the order
-  /// they were presented — what a page prints back so a run says what was
+  /// The documents presented and recognized so far, in the order they
+  /// were presented — what a page prints back so a run says what was
   /// shown to it.
+  ///
+  /// `{ name, kind }` per document, both in core's own words: the name a
+  /// player would call the edition, and what it is a document *for*
+  /// (`code wheel`, `journal`) spelled the way a seam's `waits for`
+  /// column spells it. The kind is what lets this page say about a
+  /// document exactly what the desktop host says (#384), and comparing
+  /// it against a row's gate is how either host finds the rows that were
+  /// waiting.
   documentsHeld() {
     const count = this.module._af_machine_document_count(this.handle);
     const held = [];
     for (let i = 0; i < count; ++i) {
-      held.push(
-        this.#text(
-          (out, max) =>
-            this.module._af_machine_document_name_at(this.handle, i, out, max),
-          256,
-        ) ?? '',
-      );
+      held.push({
+        name:
+          this.#text(
+            (out, max) =>
+              this.module._af_machine_document_name_at(this.handle, i, out, max),
+            256,
+          ) ?? '',
+        kind:
+          this.#text(
+            (out, max) =>
+              this.module._af_machine_document_kind_at(this.handle, i, out, max),
+            64,
+          ) ?? '',
+      });
     }
     return held;
   }

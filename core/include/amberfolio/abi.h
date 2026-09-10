@@ -395,8 +395,13 @@ uint32_t af_version(void);
 ///     is told so, and a host written against major 2 is one that has
 ///     read `docs/hosts.md` §5's bump rule as it now states the surface
 ///     it is about.
+///   * **2.1** — #384 adds `af_machine_document_kind_at`, which is what
+///     a page needs to say about a presented document what the desktop
+///     host says about it: the kind, beside the name it already had.
+///     Minor: nothing that was there changed, and a host that never asks
+///     is unaffected.
 #define AF_ABI_VERSION_MAJOR 2u
-#define AF_ABI_VERSION_MINOR 0u
+#define AF_ABI_VERSION_MINOR 1u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -1346,6 +1351,22 @@ uint32_t af_machine_present_document(af_machine* box, const uint8_t* bytes,
 /// buffer too small.
 uint32_t af_machine_document_count(const af_machine* box);
 uint32_t af_machine_document_name_at(const af_machine* box, uint32_t index,
+                                     char* out, uint32_t max);
+
+/// What the document at `index` is a document *for*, as the name a host
+/// shows (`machine::document_kind_name`) — `code wheel`, `journal`.
+/// Written NUL-terminated into `out`; answers its length, or zero for an
+/// index past the end or a buffer too small.
+///
+/// Added with the document control (#384) because without it a page
+/// cannot say what the desktop host says. Both hosts print one sentence
+/// about a document a player presented — `document NAME (KIND)
+/// sha256=…` — and the kind is the half that says which seams were
+/// waiting for it. A page that had only the name would have to work the
+/// kind out from a table of its own, and two tables spelling the same
+/// document differently is exactly what the ABI is here to prevent
+/// (`machine/report.h`'s argument, one fact over).
+uint32_t af_machine_document_kind_at(const af_machine* box, uint32_t index,
                                      char* out, uint32_t max);
 
 // --- The code wheel, answered (M6-C1a, #291) --------------------------

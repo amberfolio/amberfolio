@@ -164,6 +164,15 @@
       #status {
         color: #b3a58c;
       }
+      /* The document control's outcome (#384) is two lines, and they are
+         two sentences: what the document is, and what it is for here. A
+         `pre-line` keeps the break the host puts between them without
+         making the SHA-256 on the first one a fixed-width block that
+         cannot wrap on a phone. */
+      #document-status {
+        white-space: pre-line;
+        overflow-wrap: anywhere;
+      }
       #health {
         color: #b3a58c;
         font-size: 0.875rem;
@@ -443,6 +452,44 @@
         writes down that <em>this copy</em> has answered; every visit
         after that goes from the titles to the menu with nothing asked.
         <em>Ask me again</em> forgets it.
+      </p>
+    </fieldset>
+
+    <!-- The document control (M6, #384). Any PDF in, what it was
+         recognised as out, and the rows it lights.
+
+         `presentDocument()` has been in the ABI since #171 and no shell
+         called it: a player holding one of PLAN.md §2's documents had no
+         way to show it to this page. The two outcomes are both first
+         class - an edition this build knows, or an edition nobody has
+         fingerprinted *and here is its SHA-256*, which is the part that
+         player can act on and the part a report to this project is made
+         of.
+
+         Nothing is kept: the bytes are hashed inside the module and
+         dropped, which is the whole of a possession gate. So a document
+         is shown once per visit, and the note says so rather than
+         pretending otherwise. -->
+    <fieldset>
+      <legend>show a document you hold</legend>
+      <div class="controls">
+        <label>
+          document PDF
+          <input id="document" type="file" accept="application/pdf,.pdf" />
+        </label>
+      </div>
+      <div class="controls">
+        <span id="document-status">nothing shown this visit</span>
+      </div>
+      <p class="note">
+        Your document is hashed in your browser and dropped - no page of
+        it is read, parsed or kept, because a document here only ever
+        demonstrates that you hold it. If this build knows the edition it
+        says which, and any seam waiting on that document lights up in
+        the list above. If it does not, it says so and gives you the
+        file's SHA-256: nobody has fingerprinted that edition yet, and
+        that hash is exactly what an entry for it would be made of. Show
+        it again next visit - this page keeps nothing about it.
       </p>
     </fieldset>
 

@@ -68,6 +68,40 @@ void place(std::string& line, std::size_t at, std::string_view text,
   return line;
 }
 
+/// `text` broken into lines of at most `panel_columns` characters, on
+/// spaces.
+///
+/// A word longer than the panel is wide — which is what a 64-character
+/// SHA-256 is not, deliberately: the panel is 78 columns and a hash is
+/// 64, so a wrap on spaces always leaves one whole — is put on a line of
+/// its own and left to `place()` to cut. Nothing here hyphenates,
+/// because the words being wrapped are a filename's worth of English and
+/// a digest, and a broken digest is a wrong digest.
+[[nodiscard]] std::vector<std::string> wrapped(std::string_view text) {
+  std::vector<std::string> out;
+  std::string line;
+  while (!text.empty()) {
+    const std::size_t space = text.find(' ');
+    const std::string_view word = text.substr(0, space);
+    if (!line.empty() && line.size() + 1 + word.size() > panel_columns) {
+      out.push_back(line);
+      line.clear();
+    }
+    if (!line.empty()) {
+      line += ' ';
+    }
+    line += word;
+    if (space == std::string_view::npos) {
+      break;
+    }
+    text.remove_prefix(space + 1);
+  }
+  if (!line.empty()) {
+    out.push_back(line);
+  }
+  return out;
+}
+
 /// The colours, the on-screen keyboard's (`screen_keyboard_view.cpp`) so
 /// that this host's two overlays look like one host's furniture.
 constexpr SDL_Color panel_colour{.r = 20, .g = 16, .b = 12, .a = 232};
@@ -133,9 +167,10 @@ std::vector<panel_row> panel_rows(const machine::seam_engine& seams) {
 }
 
 std::vector<std::string> panel_lines(const std::vector<panel_row>& rows,
-                                     std::size_t focus) {
+                                     std::size_t focus,
+                                     const std::vector<std::string>& notice) {
   std::vector<std::string> lines;
-  lines.reserve(rows.size() + 4);
+  lines.reserve(rows.size() + notice.size() + 5);
 
   std::string title = blank_line();
   place(title, 0, panel_title, panel_columns);
@@ -188,6 +223,18 @@ std::vector<std::string> panel_lines(const std::vector<panel_row>& rows,
   }
   lines.push_back(about);
   lines.push_back(reading);
+
+  // And last, what the document control had to say (#384) — the outcome
+  // of the file a player dropped on this window, which is the one thing
+  // the panel says that is not about a row. Under the table, so the row
+  // arithmetic above it is untouched.
+  for (const std::string& said : notice) {
+    for (const std::string& piece : wrapped(said)) {
+      std::string line = blank_line();
+      place(line, column_mark, piece, panel_columns);
+      lines.push_back(line);
+    }
+  }
   return lines;
 }
 
