@@ -289,6 +289,10 @@ in the commit.
       that should have fired is the failure (#131); a dropped real
       installation, with `.EXE`s at the top of the listing (#158); the legs
       of `docs/playable.md` in the page.
+- [ ] A real copy through the page's persistence (#381): drop the
+      directory, boot, save a party, reload, boot, and load that slot. CI
+      checks where a file is kept and what a refusal says (`smoke.mjs`),
+      never a party, because no test here runs the game.
 - [ ] A resync produced on purpose: a stalled tab, a dragged window, or
       `--fast` past what a 48 kHz device can consume (§4).
 - [ ] Whether the game sounds right, and whether 25% is a useful quarter.
@@ -494,7 +498,7 @@ python3 scripts/serve-web.py
 
 ### The release bundle
 
-`scripts/release-bundle.sh` stages nine files from the module,
+`scripts/release-bundle.sh` stages ten files from the module,
 `hosts/web/page/` and `data/`, the OCR engine when the tree has one, plus
 `SHA256SUMS` and `manifest.json`. `scripts/test-release-bundle.sh` is its
 self-test.
@@ -508,6 +512,7 @@ self-test.
 | `audio-worklet.mjs` | the speaker worklet |
 | `picker.mjs` | the directory picker |
 | `journal.mjs` | the journal store and ingestion; `host.mjs` imports it (#229) |
+| `persist.mjs` | what the page keeps between visits, in IndexedDB (#381) |
 | `editions.mjs` | the reader over the table below; `app.mjs` imports it (#207) |
 | `editions.json` | what this build recognises and what each edition is made of (#207) |
 | `vendor-tesseract.tar.gz` | the browser's OCR engine, when the tree has one (#287) |
@@ -731,8 +736,8 @@ entry point, so the ABI version does not move.
 ### Running your own copy in a browser
 
 **start** runs the embedded demo; **run your own copy** takes a dropped or
-chosen directory, a program, and **boot**. Nothing is persisted; onboarding
-and IndexedDB are M6's (#265).
+chosen directory, a program, and **boot**. What the page keeps between
+visits is below; onboarding beyond this is M6's (#265).
 
 - Paths are decided in core: every one crosses the ABI as the player's own
   text and goes through `machine::canonicalize()`. The picker keeps
@@ -753,6 +758,119 @@ and IndexedDB are M6's (#265).
 - The speed preset is a control, not a build option (#107, #108), with the
   same four names as `--speed`; the volume slider and mute box are the
   page's (#148), applied inside the worklet (§4).
+
+### What this browser keeps (#381)
+
+One IndexedDB database, `amberfolio`, version 1, four object stores, all
+of them out-of-line keyed. `hosts/web/page/persist.mjs` is the whole of
+it; `app.mjs` uses it and no other file knows the schema.
+
+| store | key | value | written |
+| --- | --- | --- | --- |
+| `disk` | the file's canonical path (`\SAVE\SAVGAMA.DAT`) | its bytes | at the drop, and for a `config` row that changed |
+| `play` | the same | the same | when `af_machine_vfs_generation()` moves |
+| `text` | the `localStorage` key it had | one string | at an ingestion, a correction, a *Forget*, an answered code wheel |
+| `settings` | a name | JSON | the program last booted |
+
+**The save layer draws the line between the first two** (§6). On a
+generation change the page walks `vfsList()` and asks
+`Machine.saveLayerOf()` about each path: a `config` row is the program's
+settings and goes back into `disk`, every other row it claims is the
+player's and goes into `play`, and a path it claims not at all is a game
+file already in `disk`. A path the layer does not claim *and* nobody
+dropped is §6's honest failure — a file that appeared during a run and
+that the table does not name — so it is reported and **not** kept.
+**No save layer, nothing written**: a program this build has no table for
+answers `null`, and §6's rule for that answer is to persist nothing
+rather than persist a guess, so the write-back is not armed at all and
+the page says so.
+
+- **The generation counter is what makes it cheap** (#228). One integer
+  per readout tick; the walk happens only when it differs. Half a virtual
+  second rather than every frame, because what moves it is a save writing
+  thirteen files over several frames and a walk per frame would be twelve
+  write-backs of a half-written slot to reach the one that matters. The
+  run's end takes one more.
+- **A save that removes a file removes the record.** §6: a save over a
+  smaller party unlinks the items file of a member who now carries
+  nothing, so the write-back deletes what the store holds and the disk no
+  longer does.
+- **The reads are `vfsList()` and `vfsGet()`** — the doors #170 opened
+  and the page had never called. What goes in is what actually landed on
+  the filesystem, spelled the way core canonicalized it, so putting it
+  back reaches the same paths.
+- **The journal moved off `localStorage`.** The store, its read log and
+  the code wheel's answered copies are records in `text`, under the names
+  they had in the old drawer; what an older visit left there is copied
+  across on the first open and left where it was. `journal.mjs`'s store
+  functions are unchanged and still synchronous — they are called before
+  anything can look at the store, where a database cannot answer — so the
+  page reads the records once and hands them a `cacheDrawer()` over them,
+  and reports what the database said about the write a moment later.
+- **A second drop replaces the copy and keeps the saves.** Two
+  installations in one filesystem is not a state any real machine has, so
+  `disk` is emptied and rewritten; a party is the player's whichever copy
+  it was made on, so `play` is left alone. *Forget everything* is how it
+  goes.
+- **Nothing here is machine state.** Everything crosses the ABI through
+  `vfsPut()`/`vfsGet()` and the store doors, and none of it reaches the
+  serialization or a recording's checkpoints (`docs/replay.md` §2). The
+  bookkeeping — the generation last seen, which records the drawer owes —
+  is the page's.
+- **Nothing here turns a seam on.** Seam state is configuration and is
+  safe to persist, but off-by-default has to survive persistence: the
+  `settings` store holds none today, and a panel that persists one (#383)
+  applies it through the same `seamEnable()` a click takes and reports
+  the refusal.
+
+**Quota is a report, not an exception.** A write that a browser refuses —
+`QuotaExceededError` or anything else — aborts its transaction, and the
+page prints `NOT kept: <what> (<size>) - <error>.` with what
+`navigator.storage.estimate()` says the origin is using, that nothing
+already kept was touched, and what to do about it. The flag that says a
+store has moved (`af_web_journal_store_changed`,
+`af_web_code_wheel_store_changed`) is lowered only once the bytes are
+somewhere, and a refused record stays owed, so the next write tries
+again. A browser that keeps nothing at all — a private window, site data
+blocked — is a sentence on the page and not a failure to load.
+
+**Forgetting.** The per-thing controls are where they were: *Forget it*
+for the journal (the record and the module's own store), *Ask me again*
+for the code wheel. *Forget everything* deletes the database, removes
+what the old `localStorage` drawer still holds, clears the module's two
+stores, and — only when nothing is running — empties the machine's
+filesystem too. It says how many files of each kind there were, because
+a saved game is the one thing it cannot give back.
+
+### Driving the page in a real browser
+
+Some of §3's list — the persistence above, the on-screen keyboard, a
+worklet's fade — can only be looked at in a browser, and a headless one
+over the DevTools protocol needs no dependency at all: Node's global
+`WebSocket` against `http://127.0.0.1:<port>/json/list`.
+
+```sh
+python3 scripts/serve-web.py --config Debug --port 8381
+msedge --headless=new --remote-debugging-port=9333 --remote-allow-origins=* \
+  --autoplay-policy=no-user-gesture-required \
+  --user-data-dir=<somewhere of your own> --no-first-run about:blank
+```
+
+Three rules, because two of them cost somebody their open windows:
+
+- **Always `--user-data-dir`, and one nobody else is using.** Without it
+  the browser may attach to the person's already-running instance rather
+  than starting its own, and everything below then applies to *their*
+  windows.
+- **Close only what you started**: `Browser.close` on the connection you
+  hold, or the PID you kept. Never by process name — this is somebody's
+  desktop.
+- **If the port answers and you did not just start something, move**, do
+  not clear it.
+
+`--autoplay-policy=no-user-gesture-required` is not optional: without it
+`run()` hangs at `audioWorklet.addModule`, the machine never advances, and
+every keystroke silently echoes nothing.
 
 ### How the page keeps time
 

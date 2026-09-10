@@ -1061,9 +1061,11 @@ export function restoreSeen(module, box) {
 /// (#351).
 ///
 /// The log left the store's own file and went beside the save it belongs
-/// to. A browser has no directory to put a sidecar in until M6 gives it a
-/// disk, so this is the page's working copy of one — the same bytes,
-/// base64 — and it goes in a drawer of its own beside the store's.
+/// to. This is the page's working copy of that sidecar — the same bytes,
+/// base64 — and it goes in a record of its own beside the store's. The
+/// machine's own `\SAVE\AFSEEN.DAT` is written back with the rest of the
+/// playthrough since #381, when the save layer is armed; this is the copy
+/// that survives a browser with no game loaded in it.
 ///
 /// `readLog` answers 1 for a log it took and 0 for text that is not one,
 /// leaving whatever the module holds alone.
@@ -1169,14 +1171,21 @@ export function clearStoreChanged(module) {
 // few tens of kilobytes of text, already serialized, already strict about
 // what it will read back.
 //
-// **`localStorage`, and IndexedDB is still M6's.** Those are not in
-// competition. What M6 owes is the *disk* — a player's installation kept
-// between visits, which is megabytes of binary and needs a real database.
-// What this is, is one small string, wanted synchronously at the moment
-// the module comes up and before anything can look at the store. A
-// key-value drawer is the right size for it, and reaching for the
-// database now would be borrowing M6's complexity to solve a problem it
-// does not have.
+// **A drawer, and the page says which one.** Every function below takes
+// the drawer as an argument, with `localStorage` as the default, because
+// what a store is kept *in* is a page's decision and not this module's.
+// The dev page hands them a drawer over its IndexedDB database (#381,
+// `page/persist.mjs`), where the disk and the saves also live; a host
+// that wants the key-value drawer these were written against passes
+// nothing and gets it. The contract either way is the one these functions
+// have always had: synchronous, and every refusal a sentence.
+//
+// The synchronous part is the reason the shape did not change. These are
+// called at the moment the module comes up, before anything can look at
+// the store, and a database cannot answer then — so the page reads its
+// records once and hands over a drawer over them, and reports what the
+// database said about the write a moment later. `cacheDrawer()` in
+// `persist.mjs` is that drawer and its own comment argues it.
 //
 // **One slot, not one per edition.** The module holds one store and
 // clears it when a document of another edition is ingested

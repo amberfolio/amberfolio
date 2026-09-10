@@ -83,7 +83,26 @@ import {
   forgetStore,
   forgetLog,
   clearStore,
+  browserStorage,
+  JOURNAL_STORE_KEY,
+  JOURNAL_LOG_KEY,
 } from './journal.mjs';
+import {
+  open as openDatabase,
+  forgetEverything,
+  textDrawer,
+  cacheDrawer,
+  describeRefusal,
+  estimateStorage,
+  partitionDisk,
+  readBack,
+  sized,
+  DISK_STORE,
+  PLAY_STORE,
+  TEXT_STORE,
+  SETTINGS_STORE,
+  PROGRAM_SETTING,
+} from './persist.mjs';
 
 const CANVAS_ID = 'screen';
 const KEYBOARD_ID = 'keyboard';
@@ -112,6 +131,8 @@ const JOURNAL_FORGET_ID = 'journal-forget';
 const JOURNAL_CITE_ALL_ID = 'journal-cite-all';
 const CODE_WHEEL_STATUS_ID = 'code-wheel-status';
 const CODE_WHEEL_FORGET_ID = 'code-wheel-forget';
+const KEPT_STATUS_ID = 'kept-status';
+const KEPT_FORGET_ID = 'kept-forget';
 
 /// Where this browser remembers the copies whose code-wheel challenge
 /// has been answered (M6-C1b, #292).
@@ -120,16 +141,114 @@ const CODE_WHEEL_FORGET_ID = 'code-wheel-forget';
 /// format this build could not parse is a different drawer rather than a
 /// puzzle. What goes in it is the store's own text — a header line and a
 /// digest per copy, and nothing else about anybody.
+///
+/// A record in the database's `text` store since #381, under the name it
+/// had in `localStorage`: a drawer that moved house kept its label, which
+/// is what lets a player's answer come across with it.
 const CODE_WHEEL_STORE_KEY = 'amberfolio.code-wheel.store.v1';
 
-/// The drawer, or null where there is none. Behind a try for the reason
-/// `journal.mjs`'s own accessor is: `localStorage` does not merely go
-/// missing under node, it *throws* in a browser told to block site data.
-function codeWheelStorage() {
+/// The three strings this page keeps on behalf of a module that owns
+/// them: the journal's transcription, the journal's read log and the code
+/// wheel's answered copies. The order is the order they are migrated in
+/// and means nothing else.
+const TEXT_RECORDS = [
+  JOURNAL_STORE_KEY,
+  JOURNAL_LOG_KEY,
+  CODE_WHEEL_STORE_KEY,
+];
+
+// --- What this browser keeps between visits (M6, #381) ------------------
+//
+// `persist.mjs` has the reasoning and the schema. What is here is the
+// page's half: one open database, one drawer over its small strings, and
+// the two sets that say what the two file stores are holding, so a
+// write-back can tell a file that went away from one that never existed.
+//
+// At module scope for `el`'s reason — `ensureMachine()` and the frame
+// loop both reach them, and neither is inside `runDevPage()`'s scope.
+let kept = null;
+let drawer = cacheDrawer();
+let diskPaths = new Set();
+let playPaths = new Set();
+
+/// Whatever this browser kept, opened once, awaited by everything that
+/// might look at it. Answers what the page has to say about it.
+async function openKeptStore() {
+  const { kept: opened, why } = await openDatabase();
+  kept = opened;
+  const counts = { disk: 0, play: 0 };
   try {
-    return globalThis.localStorage ?? null;
+    // `browserStorage()` is where an older visit of this page put the
+    // journal and the code wheel; `textDrawer` brings them across once
+    // and leaves them where they were.
+    const { drawer: made, migrated } = await textDrawer(
+      kept,
+      TEXT_RECORDS,
+      browserStorage(),
+    );
+    drawer = made;
+    if (kept) {
+      counts.disk = await kept.count(DISK_STORE);
+      counts.play = await kept.count(PLAY_STORE);
+    }
+    return { why, migrated, counts };
+  } catch (problem) {
+    return {
+      why: describeRefusal(problem, {
+        what: 'what an older visit left in this browser',
+        estimate: await estimateStorage(),
+      }),
+      migrated: [],
+      counts,
+    };
+  }
+}
+
+/// Whatever the drawer owes the database, written.
+///
+/// Answers `{ ok, why }`, and `why` is a whole sentence: this is the one
+/// place a player's transcription or their answered copy can be refused,
+/// and a quota is not an exception a page may swallow (CLAUDE.md). A
+/// refused key stays owed, so the next change tries again.
+async function flushText() {
+  const changes = drawer.changes();
+  if (changes.length === 0) return { ok: true, why: null };
+  if (!kept) {
+    return { ok: false, why: 'this browser keeps nothing, so nothing was kept' };
+  }
+  const puts = changes.filter(([, value]) => value !== null);
+  const removes = changes
+    .filter(([, value]) => value === null)
+    .map(([key]) => key);
+  let bytes = 0;
+  for (const [, value] of puts) bytes += value.length;
+  try {
+    await kept.write(TEXT_STORE, puts, removes);
+    drawer.settled(changes.map(([key]) => key));
+    return { ok: true, why: null };
+  } catch (problem) {
+    return {
+      ok: false,
+      why: describeRefusal(problem, {
+        what: 'what this browser read out of your own documents',
+        bytes,
+        estimate: await estimateStorage(),
+      }),
+    };
+  }
+}
+
+/// One value in the `settings` store — this page's own choices, and
+/// nothing the machine can see. Quiet on failure, and deliberately: what
+/// is in there is a convenience, and a page that made a fuss about
+/// failing to remember which program you picked last time would be
+/// spending a player's attention on the wrong thing.
+async function rememberSetting(key, value) {
+  if (!kept) return;
+  try {
+    await kept.write(SETTINGS_STORE, [[key, value]]);
   } catch {
-    return null;
+    /* a convenience, not a promise */
   }
 }
 
@@ -186,8 +305,19 @@ export function runDevPage() {
   let machine = null;
   let started = false;
 
+  // What this browser kept, opened before anything asks for it (#381).
+  // Started here rather than lazily because the answer decides whether
+  // the page has a disk to put back, and a player who dropped one last
+  // week should not have to press anything to get it.
+  let keptReady = openKeptStore();
+
   const ensureMachine = async () => {
     if (machine) return machine;
+    // The database first, always: the journal, the code wheel and the
+    // disk are all read out of the drawer this settles, and a machine
+    // made before it would come up with an empty one. What it had to say
+    // was said at page load, below.
+    await keptReady;
     setStatus('loading the wasm module...');
     loaded = await loadAmberfolio({ print: appendConsole, printErr: appendConsole });
     for (const line of loaded.output) appendConsole(`${line}\n`);
@@ -235,7 +365,12 @@ export function runDevPage() {
     // ingestion — `restoreStore` declines when the store already holds
     // something — and a module that comes up twice is not a thing this
     // page does.
-    reportRestoredJournal(restoreStore(loaded.module));
+    //
+    // Out of the database's `text` store since #381, through the drawer
+    // `openKeptStore()` filled: `restoreStore` wants an answer at the
+    // moment it is called and IndexedDB cannot give one, so the records
+    // are read once and this is the drawer over them (`persist.mjs`).
+    reportRestoredJournal(restoreStore(loaded.module, { storage: drawer }));
     // And the *read log*, out of its own drawer (#351) and then into the
     // machine, which is a second call because the store is the module's
     // and the log is the machine's (#237). Without the second a player's
@@ -243,7 +378,7 @@ export function runDevPage() {
     // rather than a decision; without the first there would be nothing
     // for it to put there, because the log left the store's own file
     // when it went beside the save it belongs to.
-    restoreLog(loaded.module);
+    restoreLog(loaded.module, { storage: drawer });
     machine.journalSeenRestore();
 
     // And what this browser remembers about the code wheel (M6-C1b,
@@ -252,8 +387,348 @@ export function runDevPage() {
     // look at the store — and the *applying* is later, at the load, when
     // there is a program with a fingerprint to look up.
     restoreCodeWheelStore(machine);
+
+    // And the copy the player dropped, with their own files on top of it
+    // (#381). Last, because it is the only one of the four that needs the
+    // filesystem, and because a disk that could not be put back is a
+    // sentence about this visit rather than about the machine.
+    await restoreDisk(machine);
     return machine;
   };
+
+  /// What to offer as bootable, out of `files` (`{ path, bytes }`).
+  ///
+  /// What went in, not `vfsList()`: the root listing is the root's, and
+  /// since #146 an entry in it may be a directory `vfsPut` made on the
+  /// way to a file below (abi.h). This page knows which of the things it
+  /// handed over were files, because it handed them over — and since
+  /// #381 the other caller is the restore, which knows for the same
+  /// reason.
+  ///
+  /// Programs first, everything else after: a player wants the .EXE and
+  /// should not have to hunt for it, and the rest is still offered
+  /// because nothing here should be deciding what is and is not bootable.
+  /// Ordering is the whole of what this looks at — the name itself goes
+  /// to `loadFromVfs` as the player spelled it, for core to canonicalize.
+  function offerPrograms(files) {
+    const isProgram = (path) => /\.(exe|com)$/i.test(path);
+    const ordered = [
+      ...files.filter((file) => isProgram(file.path)),
+      ...files.filter((file) => !isProgram(file.path)),
+    ];
+    programSelect.replaceChildren(
+      ...ordered.map((file) => {
+        const option = document.createElement('option');
+        option.value = file.path;
+        option.textContent = `${file.path} (${file.bytes.length} bytes)`;
+        return option;
+      }),
+    );
+    programSelect.disabled = ordered.length === 0;
+    bootButton.disabled = ordered.length === 0;
+    return ordered;
+  }
+
+  // --- The disk, kept between visits (M6, #381) --------------------------
+  //
+  // `persist.mjs` argues the schema; this is the page's use of it. Three
+  // moments: the drop writes the copy, a reload puts it back, and a run
+  // writes back whatever the *player* made — which is the save layer's
+  // question and not this page's (docs/hosts.md §6).
+
+  /// The files the machine holds, into the `disk` store, replacing
+  /// whatever was there.
+  ///
+  /// Read back off the machine rather than out of the list the picker
+  /// handed over, which is the point of `vfsList()`/`vfsGet()` and the
+  /// reason #170 opened them: what goes in the database is what actually
+  /// landed on the filesystem, spelled the way core canonicalized it, so
+  /// putting it back next visit reaches the same paths.
+  async function keepDisk(box) {
+    if (!kept) return;
+    const paths = box.vfsList().map((entry) => entry.path);
+    const { records, unreadable, bytes } = readBack(box, paths);
+    if (unreadable.length > 0) {
+      appendConsole(
+        `[host] ${unreadable.length} file(s) would not read back off the ` +
+          'machine and are not being kept: ' +
+          `${unreadable.join(', ')}\n`,
+      );
+    }
+    try {
+      await kept.write(DISK_STORE, records, [], { emptyFirst: true });
+      diskPaths = new Set(records.map(([path]) => path));
+      appendConsole(
+        `[host] kept ${records.length} file(s) (${sized(bytes)}) in this ` +
+          'browser - this copy comes back on its own next visit\n',
+      );
+      sayWhatIsKept();
+    } catch (problem) {
+      const why = describeRefusal(problem, {
+        what: 'the copy you dropped',
+        bytes,
+        estimate: await estimateStorage(),
+      });
+      appendConsole(`[host] ${why}\n`);
+      sayWhatIsKept(why);
+    }
+  }
+
+  /// The `play` store back onto the machine's filesystem.
+  ///
+  /// After the copy and never before it: a saved game is written over the
+  /// slot the copy shipped with, and the other order would put the
+  /// publisher's empty slot over the player's party.
+  async function restorePlayFiles(box) {
+    if (!kept) return 0;
+    const records = await kept.all(PLAY_STORE);
+    let put = 0;
+    for (const [path, bytes] of records) {
+      if (box.vfsPut(path, bytes) === AF_OK) put += 1;
+      else {
+        appendConsole(
+          `[host] ${path} was kept in this browser and would not go back ` +
+            'onto the machine\n',
+        );
+      }
+    }
+    playPaths = new Set(records.keys());
+    return put;
+  }
+
+  /// Everything this browser holds, back onto a fresh machine.
+  ///
+  /// A `function` rather than a `const` because `ensureMachine` calls it
+  /// and is written above it, which is the same hoisting
+  /// `reportRestoredJournal` relies on.
+  async function restoreDisk(box) {
+    if (!kept) return;
+    let files;
+    try {
+      files = await kept.all(DISK_STORE);
+    } catch (problem) {
+      appendConsole(
+        `[host] this browser would not hand back the copy it kept ` +
+          `(${problem?.name ?? problem})\n`,
+      );
+      return;
+    }
+    if (files.size === 0) {
+      // Still worth doing: a player may have saves kept from a copy they
+      // have since dropped again in another tab, and the honest thing is
+      // to put them where the game will look.
+      const alone = await restorePlayFiles(box);
+      if (alone > 0) {
+        appendConsole(
+          `[host] ${alone} file(s) of your own came back, but the copy they ` +
+            'belong to did not - drop your game directory again\n',
+        );
+      }
+      sayWhatIsKept();
+      return;
+    }
+    let bytes = 0;
+    const taken = [];
+    const refused = [];
+    for (const [path, content] of files) {
+      const status = box.vfsPut(path, content);
+      if (status === AF_OK) {
+        taken.push({ path, bytes: content });
+        bytes += content.length;
+      } else {
+        refused.push(`${path} (${describeSkip(status)})`);
+      }
+    }
+    diskPaths = new Set(taken.map((file) => file.path));
+    const own = await restorePlayFiles(box);
+    appendConsole(
+      `[host] this browser had your copy: ${taken.length} file(s), ` +
+        `${sized(bytes)}` +
+        (own > 0 ? `, and ${own} file(s) of your own on top of it` : '') +
+        (refused.length > 0
+          ? `; ${refused.length} would not go back: ${refused.join(', ')}`
+          : '') +
+        '\n',
+    );
+    if (refused.length > 0) {
+      // The same sentence a drop gets for the same reason (#158): a disk
+      // with holes in it is about to be booted, and that is not a thing
+      // to leave in a console line nobody opened.
+      appendConsole(
+        '[host] INCOMPLETE: the disk this page will boot is missing files ' +
+          'this browser was keeping. Drop your game directory again.\n',
+      );
+    }
+    offerPrograms(taken);
+    // The program last booted, chosen again if it is still there.
+    //
+    // The *browser* decides whether it is still there: a `<select>` given
+    // a value that matches no option answers the empty string, and that
+    // is the whole of the matching. A page comparing the two names itself
+    // would be deciding whether `Start.exe` and `\START.EXE` are one
+    // file, which is core's rule and not a thing to have a second
+    // implementation of (abi.h, #146).
+    const last = await kept.get(SETTINGS_STORE, PROGRAM_SETTING);
+    if (typeof last === 'string') programSelect.value = last;
+    if (programSelect.value === '') programSelect.selectedIndex = 0;
+    setStatus(
+      `${taken.length} files came back from this browser - choose a program` +
+        ' and press boot.',
+    );
+    sayWhatIsKept();
+  }
+
+  /// The write-back, armed for a loaded program, or null.
+  ///
+  /// **Armed only where there is a save layer to arm it with.** A program
+  /// this build has no table for answers null from `saveLayer()`, and
+  /// `docs/hosts.md` §6's rule for that answer is to persist nothing
+  /// rather than persist a guess: with no table there is no line between
+  /// the publisher's bytes and the player's, and a page that drew one
+  /// from a filename would be drawing it at the one place a guess is
+  /// worst. So an unrecognized program runs, and this says so and keeps
+  /// nothing it writes.
+  ///
+  /// Answers a function the run loop calls on its readout cadence. It is
+  /// cheap when nothing has happened: one integer off the ABI
+  /// (`vfsGeneration()`), which is what #228 opened that door for.
+  function armWriteBack(box) {
+    const layer = box.saveLayer();
+    if (layer === null) {
+      appendConsole(
+        '[host] this build has no save layer for this program, so nothing ' +
+          'it writes to the disk will be kept between visits ' +
+          '(docs/hosts.md §6)\n',
+      );
+      return null;
+    }
+    if (!kept) return null;
+
+    let seen = box.vfsGeneration();
+    let busy = false;
+    const told = new Set();
+
+    const writeBack = async () => {
+      const { play, config, strangers } = partitionDisk(box, diskPaths);
+
+      // §6's honest failure to watch for, said once per path: a file that
+      // appeared during a run and that the table does not name is a gap
+      // in the table, and an issue to file rather than a file to quietly
+      // keep. It is not persisted, because whose bytes those are is the
+      // one thing this must not guess about.
+      for (const path of strangers) {
+        if (told.has(path)) continue;
+        told.add(path);
+        appendConsole(
+          `[host] ${path} appeared during this run and the save layer does ` +
+            'not name it, so it is not being kept. That is a gap in the ' +
+            'table (docs/hosts.md §6) and an issue to file.\n',
+        );
+      }
+
+      const { records, unreadable, bytes } = readBack(box, play);
+      if (unreadable.length > 0) {
+        appendConsole(
+          `[host] ${unreadable.length} of your own file(s) would not read ` +
+            `back off the machine and are not being kept: ${unreadable.join(', ')}\n`,
+        );
+      }
+      const now = new Set(records.map(([path]) => path));
+      // What the store holds and the disk no longer does. A save over a
+      // smaller party unlinks the items file of a member who now carries
+      // nothing (§6), and a record left behind would hand that file back
+      // next visit and contradict the save that removed it.
+      const gone = [...playPaths].filter((path) => !now.has(path));
+
+      try {
+        await kept.write(PLAY_STORE, records, gone);
+        playPaths = now;
+        appendConsole(
+          `[host] kept ${records.length} file(s) of your own (${sized(bytes)})` +
+            (gone.length > 0 ? `, ${gone.length} removed` : '') +
+            ' in this browser\n',
+        );
+      } catch (problem) {
+        const why = describeRefusal(problem, {
+          what: 'the game you just saved',
+          bytes,
+          estimate: await estimateStorage(),
+        });
+        appendConsole(`[host] ${why}\n`);
+        sayWhatIsKept(why);
+        return false;
+      }
+
+      // `POOL.CFG` is the program's settings, so §6 puts it on the game's
+      // side of the boundary — but it is the one file on that side that a
+      // player changes, so it goes back into the copy's own store rather
+      // than being left to go stale.
+      const changed = readBack(box, config);
+      if (changed.records.length > 0) {
+        try {
+          await kept.write(DISK_STORE, changed.records);
+          for (const [path] of changed.records) diskPaths.add(path);
+        } catch (problem) {
+          appendConsole(
+            `[host] ${describeRefusal(problem, {
+              what: "the program's own settings",
+              bytes: changed.bytes,
+              estimate: await estimateStorage(),
+            })}\n`,
+          );
+          return false;
+        }
+      }
+      sayWhatIsKept();
+      return true;
+    };
+
+    return () => {
+      if (busy) return;
+      const now = box.vfsGeneration();
+      if (now === seen) return;
+      busy = true;
+      void writeBack()
+        // `seen` moves only on a write that landed, so a refusal is tried
+        // again at the next look rather than being counted as done.
+        .then((ok) => {
+          if (ok) seen = now;
+        })
+        .catch((problem) => {
+          appendConsole(`[host] the write-back failed: ${problem}\n`);
+        })
+        .finally(() => {
+          busy = false;
+        });
+    };
+  }
+
+  /// The one line under *Forget everything* that says what there is to
+  /// forget. A `why` replaces it, because a refusal is the more
+  /// interesting fact.
+  function sayWhatIsKept(why = null) {
+    const status = el(KEPT_STATUS_ID);
+    if (!status) return;
+    if (why) {
+      status.textContent = why;
+      return;
+    }
+    if (!kept) {
+      status.textContent =
+        'this browser keeps nothing, so every visit starts over';
+      return;
+    }
+    const parts = [];
+    if (diskPaths.size > 0) parts.push(`${diskPaths.size} file(s) of a copy`);
+    if (playPaths.size > 0) parts.push(`${playPaths.size} file(s) of your own`);
+    const text = drawer.characters();
+    if (text > 0) parts.push(`${sized(text)} of read documents`);
+    status.textContent =
+      parts.length === 0
+        ? 'nothing kept in this browser yet'
+        : `kept in this browser: ${parts.join(', ')}`;
+  }
+
 
   // --- Speed: #107's presets, this page's half (#108) --------------------
   //
@@ -427,8 +902,10 @@ export function runDevPage() {
         // reader will show it — but it *is* the difference between doing
         // this once and doing it every visit, so it is said out loud
         // rather than left for a player to discover next week.
-        const kept = keepStore(loaded.module);
-        keepLog(loaded.module);
+        const stored = keepStore(loaded.module, { storage: drawer });
+        keepLog(loaded.module, { storage: drawer });
+        const wrote = await flushText();
+        sayWhatIsKept();
         setJournalStatus(
           `${report.edition}: ${report.recognized} of ${report.entries} entries` +
             ` read by ${report.engine}` +
@@ -443,10 +920,10 @@ export function runDevPage() {
                 ` ${journalNumber(report.firstTrouble.citation)}:` +
                 ` ${report.firstTrouble.what})`
               : '') +
-            (kept.kept
-              ? ' - kept in this browser for next time'
-              : kept.why
-                ? ` - NOT kept for next time: ${kept.why}`
+            (!wrote.ok
+              ? ` - ${wrote.why}`
+              : stored.kept
+                ? ' - kept in this browser for next time'
                 : ''),
         );
       } catch (problem) {
@@ -474,28 +951,38 @@ export function runDevPage() {
       // exist would be this page doing work on their behalf that they can
       // see and did not ask for. When there is no module there is no
       // tab-side copy either, so the drawer is the whole of it.
-      const had = loaded ? loaded.module._af_web_journal_store_size() : 0;
-      const corrections = loaded
-        ? loaded.module._af_web_journal_store_corrections()
-        : 0;
-      const { forgotten, why } = forgetStore();
-      forgetLog();
-      if (loaded) clearStore(loaded.module);
-      if (why) {
-        setJournalStatus(why);
-        return;
-      }
-      if (!forgotten && had === 0) {
-        setJournalStatus('there was no journal to forget');
-        return;
-      }
-      setJournalStatus(
-        `forgotten${had > 0 ? `: ${had} entries` : ''}` +
-          (corrections > 0
-            ? `, including ${corrections} you corrected`
-            : '') +
-          ' - read your journal again to put it back',
-      );
+      //
+      // The *database* is waited for, though, which it was not before
+      // #381: the drawer is only filled once it is open, and forgetting
+      // an empty drawer would leave the record where it was and hand the
+      // journal back on the next reload.
+      void (async () => {
+        await keptReady;
+        const had = loaded ? loaded.module._af_web_journal_store_size() : 0;
+        const corrections = loaded
+          ? loaded.module._af_web_journal_store_corrections()
+          : 0;
+        const { forgotten } = forgetStore({ storage: drawer });
+        forgetLog({ storage: drawer });
+        if (loaded) clearStore(loaded.module);
+        const wrote = await flushText();
+        sayWhatIsKept();
+        if (!wrote.ok) {
+          setJournalStatus(wrote.why);
+          return;
+        }
+        if (!forgotten && had === 0) {
+          setJournalStatus('there was no journal to forget');
+          return;
+        }
+        setJournalStatus(
+          `forgotten${had > 0 ? `: ${had} entries` : ''}` +
+            (corrections > 0
+              ? `, including ${corrections} you corrected`
+              : '') +
+            ' - read your journal again to put it back',
+        );
+      })().catch(fail);
     });
   }
 
@@ -524,20 +1011,21 @@ export function runDevPage() {
           );
           return;
         }
-        const kept = keepStore(loaded.module);
-        if (kept.kept) loaded.module._af_web_journal_store_clear_changed();
+        keepStore(loaded.module, { storage: drawer });
         // And the log, which is where the citing actually landed (#351):
         // the store's text did not move, so without this the cheat would
         // be forgotten on the next reload.
-        keepLog(loaded.module);
+        keepLog(loaded.module, { storage: drawer });
+        const wrote = await flushText();
+        // The flag is lowered only once the bytes are somewhere, never
+        // before: a store cleared on a database that refused it would
+        // lose the citations at the next write.
+        if (wrote.ok) loaded.module._af_web_journal_store_clear_changed();
+        sayWhatIsKept();
         setJournalStatus(
           `cited all ${cited} entries onto the Notes log (cheat)` +
             ' - it stays that way until you press Forget it' +
-            (kept.kept
-              ? ''
-              : kept.why
-                ? ` - NOT kept for next time: ${kept.why}`
-                : ''),
+            (wrote.ok ? '' : ` - ${wrote.why}`),
         );
       } catch (problem) {
         setJournalStatus(`citing failed: ${problem.message ?? problem}`);
@@ -561,27 +1049,103 @@ export function runDevPage() {
   const codeWheelForgetButton = el(CODE_WHEEL_FORGET_ID);
   if (codeWheelForgetButton) {
     codeWheelForgetButton.addEventListener('click', () => {
-      const status = el(CODE_WHEEL_STATUS_ID);
-      const storage = codeWheelStorage();
-      let emptied = false;
-      if (storage) {
-        try {
-          storage.removeItem(CODE_WHEEL_STORE_KEY);
-          emptied = true;
-        } catch {
-          emptied = false;
+      void (async () => {
+        await keptReady;
+        const status = el(CODE_WHEEL_STATUS_ID);
+        drawer.removeItem(CODE_WHEEL_STORE_KEY);
+        // The module's own store, when there is a module. Not fetched to
+        // do this, for the journal button's reason: a player pressing
+        // this before anything is loaded wants the drawer emptied and
+        // nothing else downloaded on their behalf.
+        if (loaded) loaded.module._af_web_code_wheel_store_clear();
+        const wrote = await flushText();
+        sayWhatIsKept();
+        if (status) {
+          status.textContent = wrote.ok
+            ? 'forgotten - the game will ask again on the next launch'
+            : wrote.why;
         }
-      }
-      // The module's own store, when there is a module. Not fetched to do
-      // this, for the journal button's reason: a player pressing this
-      // before anything is loaded wants the drawer emptied and nothing
-      // else downloaded on their behalf.
-      if (loaded) loaded.module._af_web_code_wheel_store_clear();
-      if (status) {
-        status.textContent = emptied
-          ? 'forgotten - the game will ask again on the next launch'
-          : 'this browser would not forget it';
-      }
+      })().catch(fail);
+    });
+  }
+
+  // --- Forget everything (#381) ------------------------------------------
+  //
+  // The per-thing forgets stay where they are — *Forget it* for the
+  // journal, *Ask me again* for the code wheel — because the thing a
+  // player usually wants is one of them and not all of them. This is the
+  // other one: the whole database gone, the copy and the saves with it.
+  //
+  // No confirmation prompt, which is a decision and a different one from
+  // the two above. What goes is a copy of files the player still has on
+  // their own machine, a transcription of a document they still hold, and
+  // one line saying a copy has answered a question. What it cannot give
+  // back is a *saved game*, so the sentence says how many there were
+  // rather than pretending nothing of consequence happened.
+  const forgetAllButton = el(KEPT_FORGET_ID);
+  if (forgetAllButton) {
+    forgetAllButton.addEventListener('click', () => {
+      void (async () => {
+        await keptReady;
+        const had = { disk: diskPaths.size, play: playPaths.size };
+        const { forgotten, why } = kept
+          ? await forgetEverything({ kept })
+          : { forgotten: true, why: null };
+        if (!forgotten) {
+          sayWhatIsKept(why ?? 'this browser would not forget it');
+          return;
+        }
+        // And what an older visit left in `localStorage`, which
+        // `textDrawer` copied across rather than moved — so this is the
+        // one place both copies go.
+        const legacy = browserStorage();
+        if (legacy) {
+          for (const record of TEXT_RECORDS) {
+            try {
+              legacy.removeItem(record);
+            } catch {
+              /* a drawer that will not be emptied is one that is closed */
+            }
+          }
+        }
+        // The tab's own copies, for the two per-thing buttons' reason: a
+        // page that emptied only the database would go on showing what it
+        // had just said it had forgotten.
+        if (loaded) {
+          clearStore(loaded.module);
+          loaded.module._af_web_code_wheel_store_clear();
+        }
+        // The machine's filesystem too, but only while nothing is
+        // running: a page does not pull the disk out from under a program
+        // that is reading it.
+        if (machine && !started) {
+          machine.vfsClear();
+          offerPrograms([]);
+        }
+        diskPaths = new Set();
+        playPaths = new Set();
+        // Reopened, empty, so the rest of this session still keeps what
+        // the player does next.
+        keptReady = openKeptStore();
+        await keptReady;
+        sayWhatIsKept();
+        const parts = [];
+        if (had.disk > 0) parts.push(`${had.disk} file(s) of a copy`);
+        if (had.play > 0) parts.push(`${had.play} file(s) of your own`);
+        appendConsole(
+          `[host] forgotten${parts.length > 0 ? `: ${parts.join(', ')}` : ''}` +
+            (started
+              ? ' - the machine is still running on the disk it has\n'
+              : '\n'),
+        );
+        setStatus(
+          started
+            ? 'this browser has forgotten everything; the run keeps the disk' +
+              ' it is on.'
+            : 'this browser has forgotten everything - drop a directory to' +
+              ' start again.',
+        );
+      })().catch(fail);
     });
   }
 
@@ -646,33 +1210,22 @@ export function runDevPage() {
         );
       }
 
-      // What to offer as bootable is what went in, not `vfsList()`: the
-      // root listing is the root's, and since #146 an entry in it may be
-      // a directory `vfsPut` made on the way to a file below (abi.h).
-      // This page knows which of the things it handed over were files,
-      // because it handed them over.
+      const ordered = offerPrograms(taken);
+
+      // Into this browser, so the next visit needs no drop (#381). After
+      // the puts and before the boot: what is kept is what landed on the
+      // filesystem, read back off it.
       //
-      // Programs first, everything else after: a player wants the .EXE
-      // and should not have to hunt for it, and the rest is still offered
-      // because nothing here should be deciding what is and is not
-      // bootable. Ordering is the whole of what this looks at — the name
-      // itself goes to `loadFromVfs` as the player spelled it, for core
-      // to canonicalize.
-      const isProgram = (path) => /\.(exe|com)$/i.test(path);
-      const ordered = [
-        ...taken.filter((file) => isProgram(file.path)),
-        ...taken.filter((file) => !isProgram(file.path)),
-      ];
-      programSelect.replaceChildren(
-        ...ordered.map((file) => {
-          const option = document.createElement('option');
-          option.value = file.path;
-          option.textContent = `${file.path} (${file.bytes.length} bytes)`;
-          return option;
-        }),
-      );
-      programSelect.disabled = ordered.length === 0;
-      bootButton.disabled = ordered.length === 0;
+      // The `play` store is deliberately *not* emptied here. A second
+      // directory replaces the first — two installations in one
+      // filesystem is not a state any real machine has — but a player's
+      // own saves are theirs whichever copy they were made on, and
+      // throwing a party away because somebody re-dropped a directory to
+      // fix one missing file is the wrong way round of that trade.
+      // *Forget everything* is how they go.
+      await keepDisk(box);
+      await restorePlayFiles(box);
+
       // The one line a player who did not open the console will read, so
       // "the disk is incomplete" has to survive into it (#158). A boot
       // is still offered — it is their disk and their decision — but not
@@ -741,6 +1294,11 @@ export function runDevPage() {
 
       const refreshSeams = renderSeams(box, el(SEAMS_ID), appendConsole);
 
+      // Which program, so a returning player finds it chosen (#381).
+      // This page's own choice and nothing the machine sees, which is
+      // what the `settings` store is for.
+      await rememberSetting(PROGRAM_SETTING, program);
+
       const budget = Number.parseInt(el(STEPS_INPUT_ID)?.value ?? '', 10);
       await run(box, {
         canvas,
@@ -750,12 +1308,50 @@ export function runDevPage() {
         refreshSeams,
         volumeInput,
         muteCheckbox,
+        writeBack: armWriteBack(box),
         stepBudget: Number.isFinite(budget) && budget > 0 ? budget : 0,
         message: `running ${program} - the console below is what it says and ` +
           'what the machine refuses.',
       });
     })().catch(fail);
   });
+
+  // --- The visit after the first one (#381) ------------------------------
+  //
+  // A player who dropped a directory last week should find it here, and
+  // not have to press anything to be told so. So: as soon as the database
+  // says it is holding files, the module is loaded and the disk goes
+  // back, which is what `ensureMachine()` ends with.
+  //
+  // **Only when there is something to put back.** A first-time visitor
+  // fetches nothing extra and the page is exactly as it was: this is the
+  // one thing on the page that does work before a gesture, and it does it
+  // because the player already made the gesture — on their last visit.
+  // Nothing here starts audio or steps the machine; both still wait for
+  // **start** or **boot**, as the autoplay policy and PLAN.md §4 require.
+  //
+  // This is also where the database's own two sentences are said, rather
+  // than in `ensureMachine()`: a browser that keeps nothing, and records
+  // that came across from `localStorage`, are both facts about *this
+  // visit* and are true whether or not anybody ever makes a machine. Said
+  // there, a player whose journal moved house and who then read it in the
+  // game would never have been told anything had happened.
+  void keptReady
+    .then((store) => {
+      if (store.why) appendConsole(`[host] ${store.why}\n`);
+      if (store.migrated.length > 0) {
+        appendConsole(
+          `[host] moved ${store.migrated.length} thing(s) this browser was ` +
+            'keeping in localStorage into its database - the same bytes, and ' +
+            'the old copies are left where they were\n',
+        );
+      }
+      sayWhatIsKept();
+      if (store.counts.disk === 0 && store.counts.play === 0) return null;
+      setStatus('putting back the copy this browser kept...');
+      return ensureMachine();
+    })
+    .catch(fail);
 }
 
 /// The rest of the unrecognized answer (#207).
@@ -924,20 +1520,17 @@ function restoreCodeWheelStore(machine) {
   const say = (text) => {
     if (status) status.textContent = text;
   };
-  const storage = codeWheelStorage();
-  if (!storage) {
-    say('this browser keeps nothing, so the game will ask every visit');
-    return;
-  }
-  let text = null;
-  try {
-    text = storage.getItem(CODE_WHEEL_STORE_KEY);
-  } catch {
-    say('this browser would not say what it had kept');
-    return;
-  }
+  // The drawer, not the database, and the order matters: a browser with
+  // no IndexedDB but with what an older visit left in `localStorage` has
+  // the answer right there, and telling that player it keeps nothing
+  // would be this page throwing away a fact it is holding.
+  const text = drawer.getItem(CODE_WHEEL_STORE_KEY);
   if (text === null || text === '') {
-    say('nothing answered in this browser yet');
+    say(
+      kept
+        ? 'nothing answered in this browser yet'
+        : 'this browser keeps nothing, so the game will ask every visit',
+    );
     return;
   }
   const trouble = machine.codeWheelStoreRead(text);
@@ -951,16 +1544,17 @@ function restoreCodeWheelStore(machine) {
   say('this browser remembers a copy that has answered');
 }
 
-/// Put the module's store in the drawer, and say whether it went.
-function keepCodeWheelStore(machine) {
-  const storage = codeWheelStorage();
-  if (!storage) return { kept: false, why: 'this browser keeps nothing' };
-  try {
-    storage.setItem(CODE_WHEEL_STORE_KEY, machine.codeWheelStoreWrite());
-  } catch (problem) {
-    return { kept: false, why: `${problem?.name ?? problem}` };
-  }
-  return { kept: true, why: null };
+/// Put the module's store in the drawer and on to the database, and say
+/// whether it went.
+///
+/// Asynchronous since #381, which is why the frame loop below does not
+/// wait for it: the answer arrives a moment later and is a sentence on
+/// the page either way, and the flag that says a store has moved stays
+/// raised until the bytes are somewhere.
+async function keepCodeWheelStore(machine) {
+  drawer.setItem(CODE_WHEEL_STORE_KEY, machine.codeWheelStoreWrite());
+  const wrote = await flushText();
+  return { kept: wrote.ok, why: wrote.why };
 }
 
 /// Present, run, and report — everything both entry points share.
@@ -1197,8 +1791,18 @@ async function run(
     muteCheckbox,
     stepBudget,
     message,
+    // What to call when the disk may have moved (#381), or null when
+    // there is nothing to write back to — no database, or a program this
+    // build has no save layer for, which `docs/hosts.md` §6 says is the
+    // answer to persist nothing on rather than to guess on.
+    writeBack = null,
   },
 ) {
+  // A keep of the code wheel's answer in flight, or null. The write is
+  // asynchronous and the flag that asks for it stays raised until it
+  // lands, so without this every frame after an answer would start
+  // another one.
+  let codeWheelKeep = null;
   const ctx = canvas.getContext('2d');
   const width = machine.frameWidth();
   const height = machine.frameHeight();
@@ -1400,6 +2004,11 @@ async function run(
   /// make by eye.
   const finish = (how) => {
     showHealth();
+    // One last look at the disk before the loop stops (#381). A machine
+    // that stopped on its own — a program that exited, a refusal — is
+    // exactly the case where the last half-second's writes would
+    // otherwise never be looked at again.
+    if (writeBack) writeBack();
     setStatus(
       how === AF_RUN_END_STOPPED
         ? `the machine stopped - see the report below.`
@@ -1545,23 +2154,39 @@ async function run(
     // raised — the same arrangement the journal's store has, and the
     // reason #229 put a door on that flag rather than making a page hash
     // a store every frame.
-    if (machine.codeWheelStoreChanged()) {
-      const { kept, why } = keepCodeWheelStore(machine);
-      // Lowered only once the bytes are somewhere, never before: a flag
-      // cleared on a drawer that refused them would lose the answer.
-      if (kept) machine.codeWheelStoreClearChanged();
-      const status = el(CODE_WHEEL_STATUS_ID);
-      if (status) {
-        status.textContent = kept
-          ? 'answered, and remembered for this copy'
-          : `answered, but this browser would not keep it (${why})`;
-      }
-      appendConsole(
-        kept
-          ? '[host] code wheel answered - remembered for this copy\n'
-          : `[host] code wheel answered, but not kept (${why})\n`,
-      );
+    //
+    // The write is asynchronous since #381, so the flag is left raised
+    // and a second attempt is kept out with `codeWheelKeep` rather than
+    // by lowering something early. A refusal is reported and not retried
+    // in this run: the drawer still owes the key, so the next thing that
+    // flushes it — an ingestion, a forget, the next answer — tries again.
+    if (machine.codeWheelStoreChanged() && codeWheelKeep === null) {
+      codeWheelKeep = keepCodeWheelStore(machine)
+        .then(({ kept: went, why }) => {
+          // Lowered only once the bytes are somewhere, never before: a
+          // flag cleared on a database that refused them would lose the
+          // answer.
+          if (went) {
+            machine.codeWheelStoreClearChanged();
+            codeWheelKeep = null;
+          }
+          const status = el(CODE_WHEEL_STATUS_ID);
+          if (status) {
+            status.textContent = went
+              ? 'answered, and remembered for this copy'
+              : `answered, but ${why}`;
+          }
+          appendConsole(
+            went
+              ? '[host] code wheel answered - remembered for this copy\n'
+              : `[host] code wheel answered. ${why}\n`,
+          );
+        })
+        .catch((problem) => {
+          appendConsole(`[host] keeping the code wheel's answer failed: ${problem}\n`);
+        });
     }
+
 
     // Exactly the audio this callback's slice of virtual time contains —
     // not a fixed frame's worth, which on a 240 Hz display would be four
@@ -1580,6 +2205,15 @@ async function run(
     // callbacks only while a callback was a fixed frame.
     if (next >= nextHealthTick) {
       showHealth();
+      // And whatever the player has written to the disk, back into this
+      // browser (#381). On this cadence rather than every frame: what
+      // moves the generation is a save, which writes a file at a time
+      // over several frames, and a walk per frame would be thirteen
+      // write-backs of a half-written slot to reach the one that
+      // matters. Half a second of virtual time is late enough that the
+      // save is done and early enough that a tab closed straight after
+      // one still kept it.
+      if (writeBack) writeBack();
       nextHealthTick = next + ticksPerSecond / 2;
     }
 

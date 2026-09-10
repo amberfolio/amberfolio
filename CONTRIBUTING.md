@@ -148,12 +148,13 @@ Every milestone from M3 on gets a **0.x pre-release** tag (PLAN.md §7).
 
 **What a tag publishes.** Pushing a `v*` tag runs `ci.yml` and, past the
 same gate the deploy job waits on, publishes a GitHub Release carrying the
-web host's build: seven files (`amberfolio.wasm`, `amberfolio.mjs`,
-`host.mjs`, `app.mjs`, `audio-worklet.mjs`, `picker.mjs`, `journal.mjs`)
-plus `vendor-tesseract.tar.gz`, `SHA256SUMS`, `manifest.json` and the
-notices, flattened into one namespace. `manifest.json`'s `sourceCommit`
-is a full commit sha, never the tag. The seven filenames are lockfile
-keys in a consuming site: renaming one is a breaking change. The tarball
+web host's build: eight files (`amberfolio.wasm`, `amberfolio.mjs`,
+`host.mjs`, `app.mjs`, `audio-worklet.mjs`, `picker.mjs`, `journal.mjs`,
+`persist.mjs`) plus `vendor-tesseract.tar.gz`, `SHA256SUMS`,
+`manifest.json` and the notices, flattened into one namespace.
+`manifest.json`'s `sourceCommit` is a full commit sha, never the tag. The
+eight filenames are lockfile keys in a consuming site: renaming one is a
+breaking change. The tarball
 is the OCR engine `page/journal.mjs` asks for by name (#287): the page
 refuses a CDN and reads one library version's output shape, so which
 tesseract.js a site serves is a fact about the bundle rather than a

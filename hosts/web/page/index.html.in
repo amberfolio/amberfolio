@@ -8,10 +8,12 @@
      had no web half without it.
 
      Deliberately bare, still: this is scaffolding, not the M6 reference
-     shell (no onboarding, no touch, no styling worth the name). A reload
-     starts over, with one exception: the text an ingestion read out of a
-     player's own journal is kept in this browser (M5-E3f), because doing
-     that again on every visit is minutes of OCR nobody asked for.
+     shell (no onboarding, no touch, no styling worth the name). What it
+     does keep, it keeps in one IndexedDB database (#381): the copy the
+     player dropped, the games they saved on it, the text an ingestion
+     read out of their own journal, and the copies whose code-wheel
+     challenge has been answered. `page/persist.mjs` has the schema and
+     docs/hosts.md §5 states it; *Forget everything* below empties it.
 
      ES modules need a real origin, so open it over HTTP, not file://:
          cmake --build --preset wasm
@@ -236,9 +238,9 @@
     <pre id="console"></pre>
 
     <!-- The M3-F2 (#84) half: a directory, a program, and the same stop
-         report the desktop host prints. Nothing here is kept - the files
-         live in the machine's own filesystem for as long as the page is
-         open and no longer. -->
+         report the desktop host prints. Since #381 the files are kept in
+         this browser's own database as well as in the machine, so a
+         reload comes back to the same disk with nothing re-dropped. -->
     <fieldset>
       <legend>run your own copy</legend>
       <div id="drop">drop a game directory here</div>
@@ -282,7 +284,38 @@
         Files are read in your browser and never leave it. A file whose
         name is not a legal DOS 8.3 name is refused by the emulator's own
         filesystem rules and listed as skipped — that refusal is the
-        emulator being honest, not a fault.
+        emulator being honest, not a fault. What you drop is kept in this
+        browser and comes back on its own next visit, and so does anything
+        you save while playing; dropping a second directory replaces the
+        first, and your saved games stay.
+      </p>
+    </fieldset>
+
+    <!-- What this browser is holding on to (M6, #381). One database,
+         four drawers: the copy that was dropped, the games saved on it,
+         the small strings the journal and the code wheel own, and this
+         page's own choices. `page/persist.mjs` argues the schema and
+         docs/hosts.md §5 states it.
+
+         The per-thing forgets are where they belong, beside the thing
+         they forget - Forget it for the journal, Ask me again for the
+         code wheel. This is the one that empties the lot. -->
+    <fieldset>
+      <legend>what this browser is keeping</legend>
+      <div class="controls">
+        <span id="kept-status">nothing kept in this browser yet</span>
+        <button id="kept-forget" type="button">Forget everything</button>
+      </div>
+      <p class="note">
+        Everything above is kept on this machine, in this browser, and
+        nothing is uploaded anywhere. <em>Forget everything</em> empties
+        it: the copy you dropped, the games you saved on it, whatever was
+        read out of your journal, and the note that says this copy has
+        answered the code wheel. Your own files on your own disk are
+        untouched — this is a copy the page made, not the original. If a
+        browser refuses to keep something because it has run out of room,
+        the reason is printed in the console below rather than swallowed:
+        nothing already kept is lost when that happens.
       </p>
     </fieldset>
 
@@ -356,7 +389,7 @@
          input - and not the guided flow, which is M6's.
 
          "Read once" means once, not once per visit (M5-E3f): the text
-         goes into this browser's own key-value store and comes back when
+         goes into this browser's own database (#381) and comes back when
          the page next loads, so the Forget button beside the input is the
          only way it goes away. -->
     <fieldset>
@@ -378,8 +411,8 @@
         in this browser's own storage, so that reading a journal is
         something you do once rather than every visit. It stays on this
         machine, in this browser, and <em>Forget it</em> removes it and
-        anything you corrected. (The game's own files are still this
-        tab's alone; keeping those between visits is M6's.) Recognition
+        anything you corrected. (It shares a database with the copy you
+        dropped, and <em>Forget everything</em> empties both.) Recognition
         needs an OCR engine beside this page; without one every entry is
         still located and decoded, and this page says so rather than
         quietly finding nothing. <em>Cite them all</em> is a debug cheat:

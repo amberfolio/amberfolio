@@ -72,10 +72,16 @@ set -euo pipefail
 
 # The nine files hosts/web/CMakeLists.txt emits for a page to run the
 # module: the Emscripten pair (OUTPUT_NAME amberfolio, SUFFIX .mjs,
-# EXPORT_ES6, MODULARIZE), the six page scripts it copies beside them and
-# the edition table they read.
+# EXPORT_ES6, MODULARIZE), the seven page scripts it copies beside them
+# and the edition table they read.
 # Deliberately *not* index.html — the release is the emulator, and the
 # page around it belongs to whoever is hosting it.
+#
+# **persist.mjs joined the list in M6 (#381)**, for the reason journal.mjs
+# did: app.mjs imports it by name, and a consumer serving the released
+# app.mjs without it gets a 404 for the file that holds everything the
+# page remembers between visits. It is additive for a consumer that reads
+# manifest.json and a fetch to add for one that spells the names out.
 #
 # **journal.mjs joined the list in M5-C1 (#229), and was owed before
 # that.** app.mjs has imported it since #174 and it was never staged, so
@@ -111,6 +117,7 @@ BUNDLE=(
   audio-worklet.mjs
   picker.mjs
   journal.mjs
+  persist.mjs
   editions.mjs
   editions.json
 )

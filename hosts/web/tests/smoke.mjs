@@ -12,8 +12,8 @@
 // the checks that need the source tree are skipped without --sessions and
 // --core rather than failing.
 //
-// Nine checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84, M4-W1 #108, #157,
-// M5-E3 #174, M6-C1 #296):
+// Ten checks now (M2-F4 #45, M2-H2 #55, M3-F2 #84, M4-W1 #108, #157,
+// M5-E3 #174, M6-C1 #296, M6 #381):
 //
 //   1. The version the module reports is the version CMake built.
 //   2. **Every name in the export list is actually exported.** This is
@@ -73,6 +73,12 @@
 //      are never read. Checked against `seam_host_service_count` and
 //      `seam_host_service_name()` in the source tree, which is why
 //      --core is a path.
+//  10. **What the page keeps between visits** (#381). The database
+//      cannot be driven here — node has no `indexedDB` — so the three
+//      decisions that matter are plain functions in `page/persist.mjs`
+//      and this drives them: which side of the save layer a file is kept
+//      on, what a refused write says, and that the synchronous drawer
+//      `journal.mjs` is handed stays owed until the database takes it.
 
 import { spawnSync } from 'node:child_process';
 import {
@@ -131,6 +137,16 @@ import {
   parseArgs as parseDriveArgs,
 } from './drive.mjs';
 import { matchEdition, readEditions } from './editions.mjs';
+import {
+  cacheDrawer,
+  describeRefusal,
+  partitionDisk,
+  readBack,
+  sized,
+  textDrawer,
+  STORES,
+  TEXT_STORE,
+} from './persist.mjs';
 
 /// The ABI's guest list, as hosts/web/CMakeLists.txt sets it. Keep the
 /// two in step; that is the whole job of this array.
@@ -2306,6 +2322,317 @@ if (missing.length === 0) {
   console.log(
     'smoke: the code wheel\'s store went out to a browser drawer and back, ' +
       'and told a machine about the copy it was running',
+  );
+}
+
+// --- What the page keeps between visits (M6, #381) ------------------------
+//
+// The database itself cannot be driven from here — node has no
+// `indexedDB` — and that is why the three decisions worth arguing about
+// are plain functions in `page/persist.mjs` with no database anywhere
+// near them. What is checked here is those:
+//
+//   * where a file goes, which is the save layer's answer and not the
+//     page's (`docs/hosts.md` §6), including the two fail-closed cases: a
+//     program with no layer, and a file that appeared during a run that
+//     the table does not name;
+//   * what a refusal says, because a quota is a report and not an
+//     exception a page may swallow (CLAUDE.md);
+//   * that the synchronous drawer `journal.mjs`'s store functions are
+//     handed keeps its word — including the one thing a `localStorage`
+//     drawer never had to do, which is stay owed after a refused write.
+
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  // --- Where a file goes ---------------------------------------------
+  //
+  // A stand-in machine, because the real table is about a program no test
+  // in this repository may run (CLAUDE.md) and what is being checked is
+  // the page's reading of an answer, not the answer.
+  const standIn = (paths, rows) => ({
+    vfsList: () => paths.map((path) => ({ path, name: path, size: 0 })),
+    saveLayerOf: (path) => rows[path] ?? null,
+  });
+
+  const split = partitionDisk(
+    standIn(
+      [
+        '\\SAVE\\SAVGAMA.DAT',
+        '\\SAVE\\CHRDATA1.SAV',
+        '\\SAVE\\AFMAPA.DAT',
+        '\\SAVE\\CHARLIST.TXT',
+        'POOL.CFG',
+        '\\START.EXE',
+        '\\SAVE\\MINIMAP.DAT',
+      ],
+      {
+        '\\SAVE\\SAVGAMA.DAT': { kind: 'slot' },
+        '\\SAVE\\CHRDATA1.SAV': { kind: 'member' },
+        '\\SAVE\\AFMAPA.DAT': { kind: 'sidecar' },
+        '\\SAVE\\CHARLIST.TXT': { kind: 'roster' },
+        'POOL.CFG': { kind: 'config' },
+      },
+    ),
+    new Set(['POOL.CFG', '\\START.EXE']),
+  );
+  check(
+    split.play.join(',') ===
+      '\\SAVE\\SAVGAMA.DAT,\\SAVE\\CHRDATA1.SAV,\\SAVE\\AFMAPA.DAT,' +
+        '\\SAVE\\CHARLIST.TXT',
+    `the playthrough's files came out as ${split.play.join(',')}`,
+  );
+  check(
+    split.config.join(',') === 'POOL.CFG',
+    "the program's own settings were not put back with the copy",
+  );
+  check(
+    split.game.join(',') === '\\START.EXE',
+    `a dropped game file came out as ${split.game.join(',')}`,
+  );
+  // §6's honest failure to watch for: a file the table does not name and
+  // nobody dropped. Reported, and deliberately not kept — whose bytes
+  // those are is the one thing this must not guess about.
+  check(
+    split.strangers.join(',') === '\\SAVE\\MINIMAP.DAT',
+    `a file nothing claims came out as ${split.strangers.join(',')}`,
+  );
+
+  // --- The same, through the real ABI, for a program with no layer ----
+  //
+  // `saveLayerOf()` answers null for every path when this build has no
+  // table for the loaded program, and §6's rule for that answer is to
+  // persist nothing rather than persist a guess. So nothing may land on
+  // the playthrough's side, whatever the names look like.
+  if (missing.length === 0) {
+    const box = new Machine(module);
+    check(
+      box.attachReferenceDevices() === AF_OK,
+      'attaching the reference devices for the persistence check failed',
+    );
+    box.reset();
+    check(
+      box.vfsPut('A.DAT', Uint8Array.of(1, 2, 3)) === AF_OK,
+      'putting A.DAT failed',
+    );
+    check(
+      box.vfsPut('SAVE/SAVGAMA.DAT', Uint8Array.of(9)) === AF_OK,
+      'putting a save-shaped file failed',
+    );
+    const ptr = module._af_web_probe_program_bytes();
+    const size = module._af_web_probe_program_size();
+    check(
+      box.vfsPut('PROBE.EXE', module.HEAPU8.slice(ptr, ptr + size)) === AF_OK,
+      'putting PROBE.EXE for the persistence check failed',
+    );
+    check(
+      box.loadFromVfs('PROBE.EXE', '') === AF_OK,
+      'loading PROBE.EXE for the persistence check failed',
+    );
+    check(box.saveLayer() === null, 'the probe program grew a save layer');
+
+    const blind = partitionDisk(box, new Set(['\\A.DAT']));
+    check(
+      blind.play.length === 0,
+      'a program with no save layer had files placed on the playthrough side',
+    );
+    check(
+      blind.config.length === 0,
+      'a program with no save layer had a config file claimed',
+    );
+    check(
+      blind.game.join(',') === '\\A.DAT',
+      `a dropped file came out as ${blind.game.join(',')} with no save layer`,
+    );
+    check(
+      blind.strangers.includes('\\SAVE\\SAVGAMA.DAT'),
+      'a save-shaped name nobody dropped was not reported as unclaimed',
+    );
+
+    // Reading back is what actually crosses the ABI on the way out
+    // (#170's door, which the page had never called). A path that will
+    // not read whole is skipped and counted, never kept as a file of no
+    // bytes — which would come back next visit as a corrupt save wearing
+    // the shape of a real one.
+    const out = readBack(box, ['\\A.DAT', '\\NOWHERE.DAT']);
+    check(
+      out.records.length === 1 && out.records[0][0] === '\\A.DAT',
+      'reading the disk back did not answer the one file that is there',
+    );
+    check(out.bytes === 3, `reading back counted ${out.bytes} bytes, wanted 3`);
+    check(
+      out.records[0][1].length === 3 && out.records[0][1][0] === 1,
+      'the bytes read back off the machine are not the bytes put in',
+    );
+    check(
+      out.unreadable.join(',') === '\\NOWHERE.DAT',
+      'a path that reads back as nothing was kept rather than counted',
+    );
+    box.destroy();
+  }
+
+  // --- What a refusal says --------------------------------------------
+  const quota = describeRefusal(
+    { name: 'QuotaExceededError', message: 'no room' },
+    {
+      what: 'the copy you dropped',
+      bytes: 3 * 1024 * 1024,
+      estimate: { usage: 1024, quota: 2048 },
+    },
+  );
+  for (const wanted of [
+    'the copy you dropped',
+    '3.0 MiB',
+    'QuotaExceededError',
+    'no room',
+    '1 KiB of 2 KiB',
+    'Nothing was written',
+    'Free some',
+  ]) {
+    check(quota.includes(wanted), `a quota refusal does not say '${wanted}'`);
+  }
+  const other = describeRefusal(new Error('the write was aborted'), {
+    what: 'your saved games',
+  });
+  check(
+    other.includes('the write was aborted') &&
+      other.includes('would not say how much room'),
+    `a refusal with no estimate reads '${other}'`,
+  );
+  check(
+    !other.includes('Free some'),
+    'a failure that is not a quota was reported as one',
+  );
+  check(
+    sized(0) === '0 bytes' &&
+      sized(1536) === '2 KiB' &&
+      sized(3 * 1024 * 1024) === '3.0 MiB' &&
+      // A browser's own answer to "how much room is there" is measured in
+      // these, and `10240.0 MiB` is a number nobody reads.
+      sized(10 * 1024 * 1024 * 1024) === '10.0 GiB',
+    'byte counts are not rendered the way a person reads one',
+  );
+
+  // --- The drawer -----------------------------------------------------
+  const drawer = cacheDrawer([['kept.v1', 'already here']]);
+  check(drawer.getItem('kept.v1') === 'already here', 'the drawer lost a record');
+  check(drawer.getItem('missing') === null, 'the drawer invented a record');
+  check(
+    drawer.changes().length === 0,
+    'a drawer nobody wrote to owed the database something',
+  );
+  drawer.setItem('kept.v1', 'already here');
+  check(
+    drawer.changes().length === 0,
+    'writing the same text back owed the database a write',
+  );
+  drawer.removeItem('never there');
+  check(
+    drawer.changes().length === 0,
+    'removing a record that was never there owed the database a delete',
+  );
+  drawer.setItem('kept.v1', 'new');
+  drawer.setItem('other.v1', 'x');
+  check(drawer.changes().length === 2, 'two writes did not owe two records');
+  // A refused write settles nothing, so both stay owed and the next
+  // flush tries again. This is the whole reason the drawer exists rather
+  // than a `Map`: `localStorage` threw where a database cannot.
+  check(
+    drawer.changes().length === 2,
+    'a write nobody settled stopped being owed on its own',
+  );
+  drawer.settled(['other.v1']);
+  const owed = drawer.changes();
+  check(
+    owed.length === 1 && owed[0][0] === 'kept.v1' && owed[0][1] === 'new',
+    'settling one record left the wrong one owed',
+  );
+  drawer.settled(['kept.v1']);
+  drawer.removeItem('kept.v1');
+  const removed = drawer.changes();
+  check(
+    removed.length === 1 && removed[0][0] === 'kept.v1' && removed[0][1] === null,
+    'a removed record is not offered to the database as a delete',
+  );
+  check(drawer.getItem('kept.v1') === null, 'a removed record is still readable');
+  check(drawer.characters() === 1, `the drawer holds ${drawer.characters()} characters, wanted 1`);
+
+  // --- The move off localStorage --------------------------------------
+  //
+  // A player who spent an hour of OCR in the old drawer is not going to
+  // be told to do it again because the drawer moved house. What the
+  // database already holds wins, what only the old drawer holds comes
+  // across, and the old copy is **left where it is** — bytes some later
+  // build cannot read are bytes a player still has, and *Forget
+  // everything* is what removes both.
+  {
+    const written = [];
+    const database = {
+      all: async (store) => {
+        check(store === TEXT_STORE, `the drawer read ${store}`);
+        return new Map([['a', 'in the database']]);
+      },
+      write: async (store, puts) => {
+        written.push([store, puts]);
+      },
+    };
+    const old = new Map([
+      ['a', 'in the old drawer'],
+      ['b', 'only in the old drawer'],
+    ]);
+    const legacy = {
+      getItem: (key) => (old.has(key) ? old.get(key) : null),
+      setItem: (key, value) => old.set(key, value),
+      removeItem: (key) => old.delete(key),
+    };
+    const { drawer: moved, migrated } = await textDrawer(
+      database,
+      ['a', 'b', 'c'],
+      legacy,
+    );
+    check(migrated.join(',') === 'b', `${migrated.join(',')} came across, wanted b`);
+    check(
+      moved.getItem('a') === 'in the database',
+      'a record in the database was overwritten by the old drawer',
+    );
+    check(
+      moved.getItem('b') === 'only in the old drawer',
+      'a record only the old drawer had did not come across',
+    );
+    check(moved.getItem('c') === null, 'a record nobody had came across anyway');
+    check(
+      old.get('b') === 'only in the old drawer',
+      'the old copy was deleted rather than left where it was',
+    );
+    check(
+      written.length === 1 && written[0][1].length === 1,
+      'the migration wrote something other than the one record it moved',
+    );
+    check(
+      moved.changes().length === 0,
+      'a record that came across was owed to the database a second time',
+    );
+
+    // A browser that keeps nothing: no database, no throw, an empty
+    // drawer, and nothing claimed to have moved.
+    const nowhere = await textDrawer(null, ['a'], null);
+    check(
+      nowhere.drawer.getItem('a') === null && nowhere.migrated.length === 0,
+      'a browser that keeps nothing produced a drawer with something in it',
+    );
+  }
+
+  check(
+    STORES.length === 4 && STORES.includes(TEXT_STORE),
+    `the schema has ${STORES.length} stores, wanted 4`,
+  );
+
+  console.log(
+    'smoke: the save layer decides which side of the boundary a file is' +
+      ' kept on, a program with no layer keeps nothing, a refusal says why,' +
+      ' and the drawer stays owed until the database takes it',
   );
 }
 
