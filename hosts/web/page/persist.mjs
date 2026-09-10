@@ -34,9 +34,9 @@
 //               the code wheel's answered copies. Keyed by the names they
 //               had in `localStorage`, because a drawer that moved house
 //               kept its label.
-//   `settings`  this page's own choices, as JSON. One today, the program
-//               last booted. The toggle panel's are #383's, and this is
-//               the empty drawer they go in.
+//   `settings`  this page's own choices, as JSON. Two: the program last
+//               booted, and the seams the player turned on in the toggle
+//               panel (#383).
 //
 // **Which of `disk` and `play` a file belongs in is not this file's
 // decision.** `machine/save_layer.h` is the fact table for that — which
@@ -67,10 +67,12 @@
 // **And nothing here turns a seam on.** Seam state is configuration and
 // is safe to persist (#265), but *off by default* has to survive
 // persistence too: a player who never opened a panel must not find a seam
-// enabled because a previous visit's record said so. So the `settings`
-// drawer holds no seam state today, and the rule for #383 when it does is
-// that a stored choice is applied through the same `seamEnable()` a click
-// takes, with the refusal reported — never by assuming it took.
+// enabled because a previous visit's record said so. So the `seams` key
+// this drawer holds is a *record of a choice*, and every reading of it
+// happens in `toggle-panel.mjs`: anything that is not an array of strings
+// is no choice, and a choice that is there is applied through the same
+// `seamEnable()` a click takes, with the refusal reported — never by
+// assuming it took.
 //
 //
 // Refusals
@@ -110,6 +112,23 @@ export const STORES = Object.freeze([
 /// returning player finds it already chosen. This page's own choice and
 /// not the machine's, which is what the `settings` store is for.
 export const PROGRAM_SETTING = 'program';
+
+/// The seams this player turned on in the toggle panel, as an array of
+/// ids (#383). `toggle-panel.mjs`'s `storedSeams()` is what reads it,
+/// and it treats **anything that is not an array of strings as no
+/// choice** — which is why the key is safe to add to a store older
+/// visits already have records in.
+///
+/// Written by a click in the panel and by nothing else. A seam turned on
+/// from the console or by a driving script is not a player choosing an
+/// enhancement, and the desktop host draws the same line between a panel
+/// and a `--seam` flag (`hosts/sdl/src/main.cpp`).
+///
+/// A player who has turned every seam back off leaves **no record at
+/// all** rather than an empty array, so that what they have is what a
+/// player who has never opened the panel has. There is one meaning of
+/// off.
+export const SEAMS_SETTING = 'seams';
 
 /// The database factory, or null where there is none.
 ///

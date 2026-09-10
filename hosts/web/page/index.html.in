@@ -123,6 +123,44 @@
         cursor: default;
         opacity: 0.6;
       }
+      /* The toggle panel (#383). Five columns in a fixed order, and
+         `fired` right-aligned under its heading: the point of it being a
+         number is that a reader spots a zero among the others, which a
+         ragged column defeats. */
+      table.seams {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 0.875rem;
+      }
+      table.seams th {
+        text-align: left;
+        font-weight: 600;
+        color: #e0a33c;
+        border-bottom: 1px solid #3a2f22;
+      }
+      /* The five facts are short and stay on one line each; the two
+         sentences under the row are what wraps. */
+      table.seams th,
+      table.seams td {
+        padding: 0.25rem 1rem 0.25rem 0;
+        vertical-align: top;
+        white-space: nowrap;
+      }
+      table.seams .num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      table.seams tr.reading td {
+        white-space: normal;
+        padding-bottom: 0.5rem;
+      }
+      table.seams .about {
+        color: #b3a58c;
+      }
+      table.seams .says {
+        display: block;
+        color: #e0a33c;
+      }
       #status {
         color: #b3a58c;
       }
@@ -272,14 +310,18 @@
         </label>
         <button id="boot" type="button" disabled>boot</button>
       </div>
-      <!-- The M4-F4 (#98) half: every seam this build carries, listed once
-           the program is loaded and identified, with a checkbox per seam
-           — off by default, and disabled with the reason when the seam is
-           not available for this program (PLAN.md §5). -->
+      <!-- The toggle panel (#383), which is M4-F4's listing (#98) grown a
+           face: every seam this build carries, once the program is loaded
+           and identified, with the five facts on each row — name, state,
+           `fired` as a number, the refusal reason in core's own word, and
+           the document the row waits for. A checkbox per seam, off by
+           default and disabled with the reason when the seam is not
+           available for this program (PLAN.md §5). A choice made here is
+           remembered in this browser; a seam nobody chose is off. -->
       <div class="controls">
         <span id="edition"></span>
       </div>
-      <div id="seams" class="controls"></div>
+      <div id="seams"></div>
       <p class="note">
         Files are read in your browser and never leave it. A file whose
         name is not a legal DOS 8.3 name is refused by the emulator's own

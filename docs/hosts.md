@@ -241,6 +241,18 @@ asking is how that stays true. A discovered OCR engine is not written
 down either (`docs/journal.md` §5): a path frozen into a file is the
 answer that stops being true without saying so.
 
+**The one exception is a toggle in the panel** (§8, #383), which writes
+the `seam` lines and nothing else about the run. The rule above is about
+a *flag*, and the reason it exists is that a script's `--seam` may not be
+a player's choice. A click or a Return in a panel is nobody but a player.
+
+**A remembered seam this program refuses does not stop the launch.** A
+`--seam` flag that cannot be honoured is a command line to fix and still
+does; a remembered choice that no longer fits — a player who turned a
+seam on last week and has loaded another program today — is a row in the
+panel with a reason on it, and taking the game away over one is
+persistence doing harm. `run-config-file.cmake` checks both halves.
+
 **A malformed file is a loud line and a clean start on the defaults.**
 The line number and the line itself are printed, the file is left where
 it is, and nothing half-read reaches the run.
@@ -1377,3 +1389,132 @@ select to choose the layout. `commitKey()`, `moveFocus()` and
 `commitScancode()` / `latchOf()` are layer 2 for a page that paints its
 own keys. The widget itself is `wireScreenKeyboard()` in `app.mjs`, which
 is the dev page's and which a serving page is free to replace outright.
+
+---
+
+## 8. The toggle panel (#383)
+
+M5 built every seam and no face for one. They were reachable from
+`--seam` and `--seams` on the desktop and from a line of checkboxes in
+the page, which is a person reading source code to turn on an
+enhancement — the thing M6's exit criterion says a new player must not
+have to do. So: **one panel, the same five facts on both hosts, and a
+choice made in it is remembered.**
+
+### The five facts, and why each is on the row
+
+A row is **name, state, fired, reason, gate**, in that order, on both
+hosts. None of them is decoration.
+
+| column | what it is |
+|---|---|
+| seam | `seam_status::id`, with what the seam is for beside it |
+| state | `off`, `on armed`, `on inert` or `unavailable` |
+| fired | how many times a handler has **acted**, as a number |
+| reason | `seam_reason_name()` — core's word, or `-` |
+| waits for | the document the row is gated on, or `-` |
+
+**`state` distinguishes the two claims an enabled seam can make.** The
+difference is `seam_status::armed`: an address was computed out of the
+seam's fact table, or the module it lives in is not resident yet
+(`seams.md` §4). A panel that showed both as "on" would hide the
+commonest reason an enhancement does nothing yet.
+
+**`fired` is a number and never a tick** (#131, #163). A seam that armed
+and fired nothing reads exactly like one that worked, and the count is
+the only thing on the row that makes that visible. It is why the column
+is fixed-width and right-aligned on both hosts: a reader has to be able
+to find a zero among the others at a glance, and a column that moved
+with the longest id would put every run's zeros somewhere different.
+
+**`reason` is core's own word.** A panel that showed `off` where core
+said `document_not_presented` would be throwing away the part a player
+can act on, which is the complaint the issue was filed over.
+
+**`waits for` reads `-` on every row in this build**, and that is
+correct rather than unfinished: since #290 no seam is gated on a
+document (`seam_definition::gate`), the code-wheel bypass having become
+a question a person answers. The column was carried through the ABI from
+#171 and rendered nowhere until now; #384's document control is what
+lights it, and it needs no change here.
+
+Under the row, `seam_reading_text()` — core's sentence about what the
+numbers on that row *mean* (#163), decided once in
+`machine::seam_reading_of()` so that a browser run and a desktop run
+cannot disagree about the same seam.
+
+### Where a choice is kept, and how "never chose" stays off
+
+| host | where | key |
+|---|---|---|
+| desktop | `config.txt` (§2a) | `seam ID`, one line each |
+| page | IndexedDB, the `settings` store | `seams`, an array of ids |
+
+**Absence of a stored choice is *off*, never "unset means inherit".** A
+player who has never opened the panel gets every seam off, which is the
+fidelity invariant and not a preference. Both hosts read it fail-closed:
+a config with no `seam` line is a player who chose none, and
+`storedSeams()` in `page/toggle-panel.mjs` answers "no choice" for a
+record that is missing, `null`, a string, a number, or a list with
+anything but names in it. A player who turns every seam back off leaves
+the same record a player who never opened the panel has — there is one
+meaning of off and it does not depend on how you reached it.
+
+A stored choice is **applied through the same `enable()` a click takes,
+with the refusal reported** — never by assuming it took. And a refusal
+never stops the launch: a seam a player turned on last week, against a
+program they are not running today, is a row with a reason on it. A
+`--seam` flag this host cannot honour still stops the run, because that
+is a command line to fix.
+
+**A toggle in the panel is written down; a `--seam` flag is not.** §2a's
+rule is that only `--remember` writes the config, and the reason is that
+a driving script's `--seam automap` is not somebody choosing an
+enhancement — remembering it would leave the seam on for the next person
+who ran the script. A click or a Return **in a panel** is nobody but a
+player, and it is the only gesture either host has that cannot be
+anything else. So the desktop panel writes `.seams` and nothing else
+about the run (`remember_panel_seams()` in `main.cpp` — only the seams,
+because `config_of()` would also write down this run's `--speed` and
+`--scale`), and the page writes its `seams` key. `--no-config` says so
+and writes nothing.
+
+Nothing persisted is machine state. `reset()` still clears seam state,
+the serialization still omits it, and no checkpoint in a recording
+hashes any of it (`replay.md`).
+
+### What each host does with it
+
+**The desktop host** paints the panel over the window in the machine's
+own character generator, at whatever size the window allows, sharing the
+glyph atlas with the on-screen keyboard (`src/glyph_atlas.h`). The
+columns are fixed and the arithmetic is in `src/seam_panel.{h,cpp}` where
+a test can reach it — a lambda inside `main()` is arithmetic nobody can
+check.
+
+- `--seam-panel` opens with it up, the way `--keyboard` does. Refused
+  with `--headless` (nothing to paint on) and with `--replay` (a
+  recording's seams are its own).
+- **The right mouse button opens and closes it**, on the middle button's
+  own argument (#377): this machine has no mouse, so no mouse button is a
+  control the game can ever want back.
+- The left button picks a row and toggles it. The panel is asked before
+  the on-screen keyboard, because the two overlays can be over the same
+  pixel and a click belongs to the one in front; a click on no row falls
+  through to the keyboard.
+- Up, down and Return drive it **only while the on-screen keyboard is
+  not shown**. The keyboard already claims all four arrows and Return
+  (§7), and two overlays fighting over one key is worse for a player
+  than one of them waiting for the other to be stepped off.
+- Drawn after `--verify`'s read-back, for §7's reason. While it is up the
+  frame is presented every frame and the rows are rebuilt from the engine
+  at every paint, so `fired` is a live number rather than one taken
+  before the machine had run a step.
+
+**The page** renders the same five columns as a table (`renderSeams()`
+in `app.mjs`, over `page/toggle-panel.mjs`'s rows), with a checkbox in
+front of each row and the pull button (`seams.md` §3a) after it for a
+seam that takes a trigger. Toggling is a configuration call between
+frames, and the listing is re-read after every one so an on-but-inert
+seam shows as such. A choice core refused puts the checkbox back and is
+not written down.

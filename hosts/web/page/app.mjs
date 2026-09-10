@@ -51,7 +51,6 @@ import {
   AF_NO_ROOM,
   describeSkip,
   AF_SEAM_ON,
-  AF_SEAM_UNAVAILABLE,
   formatSeamFired,
   AF_RUN_END_STOPPED,
   AF_RUN_END_STEP_BUDGET,
@@ -102,7 +101,15 @@ import {
   TEXT_STORE,
   SETTINGS_STORE,
   PROGRAM_SETTING,
+  SEAMS_SETTING,
 } from './persist.mjs';
+import {
+  applyStoredSeams,
+  panelRows,
+  seamsToStore,
+  storedSeams,
+  PANEL_COLUMNS,
+} from './toggle-panel.mjs';
 
 const CANVAS_ID = 'screen';
 const KEYBOARD_ID = 'keyboard';
@@ -246,9 +253,26 @@ async function flushText() {
 async function rememberSetting(key, value) {
   if (!kept) return;
   try {
-    await kept.write(SETTINGS_STORE, [[key, value]]);
+    if (value === null) await kept.write(SETTINGS_STORE, [], [key]);
+    else await kept.write(SETTINGS_STORE, [[key, value]]);
   } catch {
     /* a convenience, not a promise */
+  }
+}
+
+/// One value back out of the `settings` store, or null.
+///
+/// Null for a browser that keeps nothing, for a key nothing has written
+/// and for a read that threw — three different things that mean the same
+/// one thing to a caller, which is that nobody has chosen. What a
+/// particular value *means* is the caller's; `storedSeams()` is the one
+/// that matters and it is fail-closed on purpose.
+async function readSetting(key) {
+  if (!kept) return null;
+  try {
+    return await kept.get(SETTINGS_STORE, key);
+  } catch {
+    return null;
   }
 }
 
@@ -1292,7 +1316,38 @@ export function runDevPage() {
         if (status) status.textContent = 'this copy has answered; it will not be asked';
       }
 
-      const refreshSeams = renderSeams(box, el(SEAMS_ID), appendConsole);
+      // The seams this player chose in the panel on a previous visit
+      // (#383). After the load, because a seam is keyed on the program's
+      // own fingerprint and there is nothing to enable before one is
+      // there; before the run, for `--seam`'s reason on the desktop —
+      // a seam turned on after the first step is a seam that missed the
+      // points the boot went through.
+      //
+      // **Off is what a browser with no record gives**, and that is the
+      // fidelity invariant rather than a preference: `storedSeams()`
+      // answers null for a record that is missing, empty, or anything
+      // but a list of names, and null turns nothing on.
+      const chosen = storedSeams(await readSetting(SEAMS_SETTING));
+      if (chosen !== null && chosen.length !== 0) {
+        // Through the same `seamEnable()` a click takes, never by
+        // assuming it took: a remembered seam this program has no
+        // addresses for is a row with a reason on it, and the run goes
+        // on without it.
+        const { on, refused } = applyStoredSeams(box, chosen);
+        if (on.length !== 0) {
+          appendConsole(`[host] seams remembered here: ${on.join(', ')}\n`);
+        }
+        for (const { id, reason } of refused) {
+          appendConsole(
+            `[host] seam ${id} was remembered here and this program refuses ` +
+              `it (${reason}) - the panel says so and the run goes on\n`,
+          );
+        }
+      }
+
+      const refreshSeams = renderSeams(box, el(SEAMS_ID), appendConsole, (ids) =>
+        rememberSetting(SEAMS_SETTING, ids),
+      );
 
       // Which program, so a returning player finds it chosen (#381).
       // This page's own choice and nothing the machine sees, which is
@@ -1385,127 +1440,208 @@ async function reportUnrecognizedEdition(box, appendConsole) {
   }
 }
 
-/// What an enabled seam's row says beside its name: `armed fired=N`, in
-/// the same words the desktop host ends a run with (hosts/sdl/src/main.cpp).
+/// The toggle panel, as a table (#383).
 ///
-/// The two halves are different claims and that is the whole point
-/// (#131): `armed` says an address was computed out of the seam's fact
-/// table, `fired` says a handler ran there. `armed fired=0` after a run
-/// that should have fired is the failure that reads exactly like
-/// success, so it is called out in words rather than left to a reader to
-/// notice a zero.
-function seamRowText(seam) {
-  if (seam.state === AF_SEAM_UNAVAILABLE) return `unavailable: ${seam.reason}`;
-  if (seam.state !== AF_SEAM_ON) return 'off';
-  // The reason is worth an extra word in a row a person is looking at,
-  // and only there: an inert seam is waiting for its module and the row
-  // is where somebody would ask what for. The console line below is the
-  // desktop host's, unembellished.
-  const why = !seam.armed && seam.reason !== 'none' ? ` (${seam.reason})` : '';
-  return formatSeamFired(seam) + why;
-}
-
-/// One checkbox per seam, off by default, disabled with its reason when
-/// the seam is not available for the loaded program. Toggling is a
-/// configuration call between frames (host.mjs) — the page does it in
-/// the change handler, which runs between two rAF callbacks and so never
-/// from inside `runUntil()`. The listing is re-read after every toggle so
-/// an on-but-inert seam (its module is not resident yet) shows as such.
+/// One row per seam carrying the five facts `toggle-panel.mjs` builds —
+/// name, state, **`fired` as a number**, the refusal reason in core's own
+/// word, and the document the row waits for — with a checkbox in front of
+/// it. The desktop host paints the same five in the same order and the
+/// same spellings (`hosts/sdl/src/seam_panel.h`); a player who reads
+/// about one is reading about the other.
 ///
-/// A seam that is **pulled** rather than left on gets a button beside its
-/// checkbox (#161), because a trigger is a different affordance from a
-/// toggle and one shown as the other is a promise the seam does not
-/// keep. The button is live only while the seam is on — a latch waiting
-/// on a seam nobody turned on would fire at some unrelated later moment,
-/// which is what the trigger exists to remove.
+/// It used to be a line of text per checkbox, and the two columns it did
+/// not have are the two #383 was filed over: a refusal that showed `off`
+/// where core said `document_not_presented` threw away the part a player
+/// can act on, and the document a row waits for crossed the ABI and was
+/// rendered nowhere.
+///
+/// **`fired` is a number and not a tick** (#131, #163). A seam that armed
+/// and fired nothing reads exactly like one that worked, and the count is
+/// the only thing on the row that makes the difference visible — so the
+/// column is right-aligned, and core's own sentence about what the
+/// numbers mean goes under the row whenever it has one to say.
+///
+/// Toggling is a configuration call between frames (host.mjs) — the
+/// change handler runs between two rAF callbacks and so never from
+/// inside `runUntil()`. The listing is re-read after every toggle so an
+/// on-but-inert seam (its module is not resident yet) shows as such, and
+/// **a choice that core refused is never written down**: the box goes
+/// back the way it was and `remember` is not called.
+///
+/// A seam that is **pulled** rather than left on keeps its button (#161),
+/// because a trigger is a different affordance from a toggle and one
+/// shown as the other is a promise the seam does not keep. It is live
+/// only while the seam is on.
 ///
 /// Answers a `refresh()` the run loop calls on its own readout cadence,
-/// which is how `fired=` becomes a live number instead of one taken once
-/// before the machine had run a step. It rewrites the status text only —
-/// rebuilding the checkboxes under a person's pointer while they were
-/// aiming at one would be worse than the number being half a second old.
-function renderSeams(machine, container, appendConsole) {
+/// which is how `fired` stays a live number instead of one taken once
+/// before the machine had run a step. It rewrites the cells only —
+/// rebuilding the table under a person's pointer while they were aiming
+/// at a checkbox would be worse than a number being half a second old.
+function renderSeams(machine, container, appendConsole, remember = async () => {}) {
   if (!container) return () => {};
-  const seams = machine.seamList();
-  const rows = new Map();
+  const rows = panelRows(machine);
+  if (rows.length === 0) {
+    container.replaceChildren('this build carries no seams');
+    return () => {};
+  }
+
+  const table = document.createElement('table');
+  table.className = 'seams';
+  const head = document.createElement('tr');
+  // The empty leading cell is the checkbox column; the trailing one is
+  // the pull button's, and both are headed by nothing because a heading
+  // over a control says less than the control does.
+  head.append(document.createElement('th'));
+  for (const column of PANEL_COLUMNS) {
+    const cell = document.createElement('th');
+    cell.textContent = column.heading;
+    if (column.numeric) cell.className = 'num';
+    head.append(cell);
+  }
+  head.append(document.createElement('th'));
+  const header = document.createElement('thead');
+  header.append(head);
+  const body = document.createElement('tbody');
+
+  /// The cells one seam's facts are written into, so `refresh()` can
+  /// rewrite them without touching the controls beside them.
+  const cells = new Map();
   const buttons = new Map();
-  container.replaceChildren(
-    ...seams.map((seam) => {
-      const label = document.createElement('label');
-      const box = document.createElement('input');
-      box.type = 'checkbox';
-      box.checked = seam.state === AF_SEAM_ON;
-      box.disabled = seam.state === AF_SEAM_UNAVAILABLE;
-      const status = document.createElement('span');
-      status.textContent = ` [${seamRowText(seam)}]`;
-      rows.set(seam.id, status);
 
-      let trigger = null;
-      if (seam.trigger) {
-        trigger = document.createElement('button');
-        trigger.type = 'button';
-        trigger.textContent = 'pull';
-        trigger.title =
-          'act once, at the next time the program reaches this seam’s point';
-        trigger.disabled = seam.state !== AF_SEAM_ON;
-        buttons.set(seam.id, trigger);
-        trigger.addEventListener('click', (event) => {
-          // The button sits inside the seam's `<label>`, and a label
-          // forwards a click to its control. HTML says it must not do
-          // that for a click on interactive content inside it, and a
-          // button is interactive content — but the failure if a browser
-          // disagreed would be a pull that also toggled the seam off, so
-          // this does not rest on the paragraph.
-          event.stopPropagation();
-          event.preventDefault();
-          const answer = machine.seamPull(seam.id);
-          const after = machine.seamList().find((s) => s.id === seam.id);
-          // What the pull is waiting for, said at the moment it is made.
-          // A trigger acts at a CS:IP breakpoint, so "immediately" means
-          // "at the next arrival at the point" and nothing else can; a
-          // person told neither has a button that did nothing.
-          appendConsole(
-            `[host] seam ${seam.id} pulled` +
-              (answer !== AF_OK
-                ? ' refused'
-                : after && !after.armed
-                  ? ` - inert (${after.reason}); it will act when its module is back`
-                  : ' - acts at the next arrival at its point') +
-              '\n',
-          );
-          if (after) status.textContent = ` [${seamRowText(after)}]`;
-        });
+  /// Everything about a row that can change while the machine runs.
+  const writeRow = (row) => {
+    const held = cells.get(row.id);
+    if (!held) return;
+    for (const column of PANEL_COLUMNS) {
+      if (column.key === 'id') continue;
+      held.facts[column.key].textContent = String(row[column.key]);
+    }
+    // Core's sentence about what this row's numbers mean (#163), shown
+    // only when there is one: an empty reading is core saying the
+    // numbers speak for themselves.
+    held.reading.textContent = row.reading;
+    held.reading.hidden = row.reading === '';
+    const trigger = buttons.get(row.id);
+    if (trigger) trigger.disabled = !row.on;
+  };
+
+  for (const row of rows) {
+    const line = document.createElement('tr');
+
+    const tick = document.createElement('td');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = row.on;
+    box.disabled = !row.available;
+    box.title = row.available ? row.about : `unavailable: ${row.reason}`;
+    tick.append(box);
+    line.append(tick);
+
+    const facts = {};
+    for (const column of PANEL_COLUMNS) {
+      const cell = document.createElement('td');
+      if (column.numeric) cell.className = 'num';
+      if (column.key === 'id') {
+        // The name alone. What the seam is *for* goes on the line under
+        // the row rather than in this cell: a sentence in a column makes
+        // the column as wide as the sentence, and then `fired` is
+        // somewhere different on every build — which is the one thing
+        // the fixed columns exist to prevent (#131).
+        cell.textContent = row.id;
+      } else {
+        cell.textContent = String(row[column.key]);
+        facts[column.key] = cell;
       }
+      line.append(cell);
+    }
 
-      box.addEventListener('change', () => {
-        const answer = box.checked ? machine.seamEnable(seam.id) : machine.seamDisable(seam.id);
-        const after = machine.seamList().find((s) => s.id === seam.id);
+    const pull = document.createElement('td');
+    let trigger = null;
+    if (row.trigger) {
+      trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.textContent = 'pull';
+      trigger.title =
+        'act once, at the next time the program reaches this seam’s point';
+      trigger.disabled = !row.on;
+      buttons.set(row.id, trigger);
+      trigger.addEventListener('click', () => {
+        const answer = machine.seamPull(row.id);
+        const after = panelRows(machine).find((seam) => seam.id === row.id);
+        // What the pull is waiting for, said at the moment it is made. A
+        // trigger acts at a CS:IP breakpoint, so "immediately" means "at
+        // the next arrival at the point" and nothing else can; a person
+        // told neither has a button that did nothing.
         appendConsole(
-          `[host] seam ${seam.id} ${box.checked ? 'on' : 'off'}` +
-            (answer === AF_OK ? '' : ` refused (${after?.reason ?? '?'})`) +
-            (after && after.state === AF_SEAM_ON && !after.armed ? ` (inert: ${after.reason})` : '') +
+          `[host] seam ${row.id} pulled` +
+            (answer !== AF_OK
+              ? ' refused'
+              : after && after.state === 'on inert'
+                ? ` - inert (${after.reason}); it will act when its module is back`
+                : ' - acts at the next arrival at its point') +
             '\n',
         );
-        if (answer !== AF_OK) box.checked = !box.checked;
-        if (after) status.textContent = ` [${seamRowText(after)}]`;
-        if (trigger) trigger.disabled = !after || after.state !== AF_SEAM_ON;
+        if (after) writeRow(after);
       });
-      label.append(box, ` ${seam.id} - ${seam.about}`, status);
-      if (trigger) label.append(' ', trigger);
-      label.title =
-        seam.state === AF_SEAM_UNAVAILABLE ? `unavailable: ${seam.reason}` : seam.about;
-      return label;
-    }),
-  );
-  if (seams.length === 0) container.textContent = 'this build carries no seams';
+      pull.append(trigger);
+    }
+    line.append(pull);
+
+    // What the seam is for, and — when core has one to give — its
+    // sentence about the numbers, on a line of their own under the row
+    // and indented past the checkbox. The desktop panel says the same
+    // two things under the table for whichever row has the focus; a page
+    // has room to say them on every row.
+    const readingRow = document.createElement('tr');
+    readingRow.className = 'reading';
+    readingRow.append(document.createElement('td'));
+    const under = document.createElement('td');
+    under.colSpan = PANEL_COLUMNS.length + 1;
+    const about = document.createElement('span');
+    about.className = 'about';
+    about.textContent = row.about;
+    const reading = document.createElement('span');
+    reading.className = 'says';
+    reading.textContent = row.reading;
+    reading.hidden = row.reading === '';
+    under.append(about, reading);
+    readingRow.append(under);
+
+    cells.set(row.id, { facts, reading });
+
+    box.addEventListener('change', () => {
+      const wanted = box.checked;
+      const answer = wanted ? machine.seamEnable(row.id) : machine.seamDisable(row.id);
+      const after = panelRows(machine).find((seam) => seam.id === row.id);
+      appendConsole(
+        `[host] seam ${row.id} ${wanted ? 'on' : 'off'}` +
+          (answer === AF_OK ? '' : ` refused (${after?.reason ?? '?'})`) +
+          (after && after.state === 'on inert' ? ` (inert: ${after.reason})` : '') +
+          '\n',
+      );
+      // **A choice core refused is not a choice**, so the box goes back
+      // and nothing is remembered: a page that wrote one down would turn
+      // on a seam at the next visit that this visit could not.
+      if (answer !== AF_OK) {
+        box.checked = !wanted;
+        if (after) writeRow(after);
+        return;
+      }
+      if (after) writeRow(after);
+      // And a toggle **in the panel** is a player choosing, which is the
+      // only gesture on this page that is. `persist.mjs`'s `seams` key.
+      void remember(seamsToStore(panelRows(machine)));
+    });
+
+    body.append(line, readingRow);
+  }
+
+  table.append(header, body);
+  container.replaceChildren(table);
 
   return () => {
-    for (const seam of machine.seamList()) {
-      const status = rows.get(seam.id);
-      if (status) status.textContent = ` [${seamRowText(seam)}]`;
-      const trigger = buttons.get(seam.id);
-      if (trigger) trigger.disabled = seam.state !== AF_SEAM_ON;
-    }
+    for (const row of panelRows(machine)) writeRow(row);
   };
 }
 

@@ -188,6 +188,68 @@ if(NOT err MATCHES "config forgotten ")
   message(FATAL_ERROR "--forget-config said nothing.\nstderr: ${err}")
 endif()
 
+# --- 8. A remembered seam this program refuses does not stop it -------
+#
+# The bug #382 could already write with `--remember` (#383): a player
+# turns a seam on for one program, loads another a week later, and the
+# launch dies on a refusal there is nothing wrong with. A `--seam` flag
+# is a command line to fix and still stops the run; a *remembered* choice
+# that no longer fits is a row in the panel with a reason on it, and
+# taking the game away over one is persistence doing harm.
+#
+# `HELLO.EXE` is not a known edition, so every seam is `wrong_binary` for
+# it — which is exactly the shape of a config carried to another program.
+file(WRITE "${config}"
+  "amberfolio-config 1\ngame-directory ${DISK}\nprogram HELLO.EXE\nseam automap\n")
+execute_process(
+  COMMAND "${HOST}" --headless --config "${config}"
+  RESULT_VARIABLE code
+  OUTPUT_VARIABLE out
+  ERROR_VARIABLE err)
+
+# 7 is the code HELLO.EXE itself exits with: the program ran.
+if(NOT code EQUAL 7)
+  message(FATAL_ERROR
+    "a remembered seam this program refuses killed the launch;"
+    " the host returned '${code}'.\nstdout: ${out}\nstderr: ${err}")
+endif()
+foreach(expected
+    "seam automap refused"
+    "was remembered, not asked for on this command line")
+  if(NOT err MATCHES "${expected}")
+    message(FATAL_ERROR
+      "a refused remembered seam never said '${expected}'.\nstderr: ${err}")
+  endif()
+endforeach()
+if(NOT out MATCHES "amberfolio host says hello")
+  message(FATAL_ERROR
+    "a refused remembered seam stopped the program running.\n"
+    "stdout: ${out}\nstderr: ${err}")
+endif()
+
+# --- 9. The same seam as a flag still does stop it --------------------
+#
+# The other half of the claim, and the half that keeps the first from
+# being "refusals are ignored now". Nothing is remembered here, so the
+# refusal is somebody's command line.
+execute_process(
+  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --no-config
+    --seam automap
+  RESULT_VARIABLE code
+  OUTPUT_VARIABLE out
+  ERROR_VARIABLE err)
+
+if(code EQUAL 7 OR code EQUAL 0)
+  message(FATAL_ERROR
+    "--seam naming a seam this program refuses ran anyway;"
+    " the host returned '${code}'.\nstdout: ${out}\nstderr: ${err}")
+endif()
+if(err MATCHES "was remembered")
+  message(FATAL_ERROR
+    "a --seam refusal was treated as a remembered one.\nstderr: ${err}")
+endif()
+
 message(STATUS
   "sdl host config: a first run, a remembered one, a second launch with"
-  " no arguments, a flag that beat the file, and a file that was refused")
+  " no arguments, a flag that beat the file, a file that was refused, and"
+  " a remembered seam that this program refuses without killing it")
