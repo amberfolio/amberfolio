@@ -57,6 +57,13 @@
 // one for each. With the seams on and the flag off — which is what every
 // session in `tests/sessions` is — nothing here reads or writes a byte.
 //
+// And a host with a person in front of it **asks** for that flag rather
+// than assuming it (#385): `hosts/sdl/src/sidecar_consent.h` on the
+// desktop, `hosts/web/page/sidecars.mjs` in the browser, once each and
+// remembered. A run nobody is watching is asked nothing and keeps it
+// off, which is what stops a verification run changing the disk every
+// recorded session pins.
+//
 //
 // Scoped to the playthrough, which is what a slot is
 // --------------------------------------------------
@@ -77,6 +84,18 @@
 //     **over** the working table when the program reads it — over it even
 //     when there is no snapshot there, because an empty map and an empty
 //     log are the truth about a playthrough nobody recorded one for.
+//
+// **A file appears only when there is something to put in it** (#385).
+// A sidecar with no records in it is its header and nothing else, and a
+// save made by a party that has walked nowhere and been cited nothing
+// would otherwise put three eight-byte files into somebody's `\SAVE\` —
+// a directory of theirs, changed by this build, saying nothing. So a
+// header-only sidecar is written only *over* a file that is already
+// there, never as a new one, which is what the host asking permission
+// promises a player in so many words (`hosts/sdl/src/sidecar_consent.h`).
+// The replacing half is untouched, and has to be: a snapshot that is
+// empty is the truth about this party and must still replace the last
+// one's list.
 //
 // **A slot the program only looked at is not a slot it loaded.** The load
 // menu opens every save file in the directory in turn to find out which
@@ -320,6 +339,16 @@ class slot_store {
   /// The read log out of the journal store and into `path`, and back.
   void write_journal_to(const machine::dos_path& path);
   void read_journal_from(const machine::dos_path& path);
+
+  /// Whether writing `size` bytes to `path` would create a file that
+  /// says nothing (#385): a sidecar that is its header alone, going
+  /// somewhere there is no file yet. False for a header-only write over
+  /// a file that exists, which is a snapshot replacing the last party's
+  /// and is the whole reason this is a question about the *path* rather
+  /// than about the bytes.
+  [[nodiscard]] bool nothing_to_put_in_it(const machine::dos_path& path,
+                                          std::size_t size,
+                                          std::size_t header_bytes);
 
   /// The bytes of one whole file, into `into`, and how many into `got`.
   /// False for a file that is not there or would not open — the first of

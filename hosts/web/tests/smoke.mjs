@@ -155,6 +155,16 @@ import {
   storedSeams,
   PANEL_COLUMNS,
 } from './toggle-panel.mjs';
+import {
+  readSidecarAnswer,
+  shouldAskAboutSidecars,
+  sidecarQuestion,
+  sidecarStatus,
+  SIDECARS_ALREADY_ANSWERED,
+  SIDECARS_ASK,
+  SIDECARS_NOTHING_TO_WRITE_BESIDE,
+  SIDECARS_NOWHERE_TO_REMEMBER,
+} from './sidecars.mjs';
 
 /// The ABI's guest list, as hosts/web/CMakeLists.txt sets it. Keep the
 /// two in step; that is the whole job of this array.
@@ -2810,6 +2820,91 @@ if (missing.length === 0) {
     'smoke: the toggle panel says the same five facts a desktop panel' +
       ' does, a stored choice that is not a list of names is no choice,' +
       ' and one that is goes through seamEnable with its refusals kept',
+  );
+}
+
+// --- The one permission this page asks for (M6, #385) ---------------------
+//
+// `saveSidecars(on)` writes this build's own files into the copy a player
+// dropped, so the page asks before it does, once. The panel is DOM and is
+// not checked here; the two decisions under it are plain functions with
+// no browser anywhere near them, and both of them are the kind that go
+// wrong quietly.
+//
+// The one with teeth is that **silence is neither a yes nor a no**. An
+// absent setting read as consent would write files on the strength of a
+// click that never happened; read as a refusal it would write down an
+// answer nobody gave and stop the question ever being asked again.
+
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  check(readSidecarAnswer(true) === true, 'a yes did not come back as one');
+  check(readSidecarAnswer(false) === false, 'a no did not come back as one');
+  for (const notAnAnswer of [undefined, null, 'true', 'on', 1, 0, {}, '']) {
+    check(
+      readSidecarAnswer(notAnAnswer) === null,
+      `${JSON.stringify(notAnAnswer) ?? 'undefined'} was read as an answer`,
+    );
+  }
+
+  const visit = (over = {}) => ({
+    answered: null,
+    canRemember: true,
+    haveDisk: true,
+    ...over,
+  });
+  check(
+    shouldAskAboutSidecars(visit()) === SIDECARS_ASK,
+    'a visit with a disk and nothing remembered was not asked',
+  );
+  check(
+    shouldAskAboutSidecars(visit({ answered: false })) ===
+      SIDECARS_ALREADY_ANSWERED,
+    'a remembered no was asked again, which is not asking once',
+  );
+  check(
+    shouldAskAboutSidecars(visit({ canRemember: false })) ===
+      SIDECARS_NOWHERE_TO_REMEMBER,
+    'a browser that keeps nothing was asked a question it could not keep',
+  );
+  check(
+    shouldAskAboutSidecars(visit({ haveDisk: false })) ===
+      SIDECARS_NOTHING_TO_WRITE_BESIDE,
+    'a visit with no copy in it was asked about files with nowhere to go',
+  );
+  // Remembered first, whatever else is true of the visit: an answer this
+  // browser is holding is the answer, and a page that asked again because
+  // the disk had not come back yet would be asking twice.
+  check(
+    shouldAskAboutSidecars(visit({ answered: true, haveDisk: false })) ===
+      SIDECARS_ALREADY_ANSWERED,
+    'a remembered answer lost to a visit with no disk in it yet',
+  );
+
+  // The question names the files, because a player can only delete a file
+  // they have been told the name of - and it says the thing `slot_store`
+  // makes true, which is the sentence the two have to keep in step.
+  const whole = sidecarQuestion().join(' ');
+  for (const wanted of [
+    '\\SAVE\\AFMAP.DAT',
+    '\\SAVE\\AFSEEN.DAT',
+    'until there is something to put in it',
+    'remembers what you answer',
+  ]) {
+    check(whole.includes(wanted), `the question never says '${wanted}'`);
+  }
+  check(
+    sidecarStatus(null).includes('not answered yet') &&
+      !sidecarStatus(false).includes('not answered yet'),
+    'the panel cannot tell a refusal from a question nobody answered',
+  );
+
+  console.log(
+    'smoke: the page asks about the sidecars once, remembers the answer,' +
+      ' and reads silence as neither a yes nor a no',
   );
 }
 

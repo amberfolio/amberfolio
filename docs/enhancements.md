@@ -73,14 +73,20 @@ after the journal has used the same cells.
 caller), which writes `\SAVE\AFMAP.DAT` beside the game's saves, with a
 snapshot per save slot — and the journal's read log beside it, on the one
 flag. The sidecars are off unless asked, because a file appearing in your
-game directory changes it.
+game directory changes it: **the desktop asks you before your first run
+and the page asks in a panel**, once each, and remembers what you said
+(`docs/hosts.md` §2b). Neither file appears until there is something to
+put in it, so answering yes and then saving straight away leaves your
+directory as it was.
 
 **If you are writing a host**: turn the store on **once, at install,
 after the files are in and before the program is loaded**, whatever the
 seam's state. Every call re-attaches and reading the sidecar replaces
 every record, so turning it on mid-session discards what the player
-walked. With the store on and the seam off, a save still writes a
-header-only `\SAVE\AFMAP.DAT`.
+walked. A save with the store on and the seam off writes **nothing**: a
+sidecar with no records in it is its header alone, and one of those goes
+over a file that already exists and never into a directory that has
+none.
 
 **What it will not do.** Map the overworld; that is the explored overlay.
 

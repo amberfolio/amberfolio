@@ -107,7 +107,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step, `xt` by default. Not a fast-forward. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. Only the loop's sleep changes (`platform.h`); the run is byte-identical. |
-| `--save-sidecars` | keep what this playthrough has accumulated beside its saves (M5-E2c #173, #351): the automap's exploration in `\SAVE\AFMAP.DAT` and the journal's read log in `\SAVE\AFSEEN.DAT`, each with a snapshot per slot, never inside a save. Off by default. |
+| `--save-sidecars`, `--no-save-sidecars` | keep what this playthrough has accumulated beside its saves (M5-E2c #173, #351): the automap's exploration in `\SAVE\AFMAP.DAT` and the journal's read log in `\SAVE\AFSEEN.DAT`, each with a snapshot per slot, never inside a save. Off by default, and a launch with a person in it is **asked** (#385, §2b); neither file appears until there is something to put in it. |
 | `--code-wheel-answered`, `--code-wheel-store PATH`, `--forget-code-wheel` | say the code-wheel challenge has been answered on this copy; where answered copies are remembered; forget this one (#290). |
 | `--journal PATH`, `--journal-store PATH`, `--journal-ocr PATH\|none`, `--journal-probe`, `--cite-all-journal` | ingest a journal; where its text lives; which OCR engine; add the synthetic probe edition; cite every entry onto the `Notes` log (`docs/journal.md`). |
 | `--volume 0-100`, `--mute` | how loudly to play it (§4); a run at 25% is the same run as one at 100%, to the last edge. |
@@ -158,7 +158,9 @@ same on `blur` and on the tab going hidden.
   `scripts/visual-legs.py` states `--wall none` on both sides of every leg,
   and so does every recording in the session library (#293).
 - **`--save-sidecars` changes the player's disk**, and every recorded
-  session pins its disk by name, size and SHA-256.
+  session pins its disk by name, size and SHA-256. A run that is
+  headless, driven, replayed, recorded, dumped or verified is never asked
+  about it and keeps it off (§2b).
 - **A hard-disk install's config names absolute paths.** This host mounts
   its directory as the DOS root, so every path built from that config
   misses and the program asks for a floppy. A failed open is a legitimate
@@ -232,14 +234,19 @@ comparing values. `--seam` on the command line **replaces** the file's
 list rather than adding to it, so a run can turn a remembered seam off
 without editing anything.
 
-**Only `--remember` writes it.** A host that wrote its settings down at
-the end of every run would make the next run's seams whatever the last
-command line happened to say, so a driving script's `--seam automap`
-would leave the seam on for a player who never chose one. Every seam is
-off for somebody who never chose (CLAUDE.md's fidelity invariant), and
-asking is how that stays true. A discovered OCR engine is not written
-down either (`docs/journal.md` §5): a path frozen into a file is the
-answer that stops being true without saying so.
+**Only `--remember` writes it**, with one exception (§2b). A host that
+wrote its settings down at the end of every run would make the next run's
+seams whatever the last command line happened to say, so a driving
+script's `--seam automap` would leave the seam on for a player who never
+chose one. Every seam is off for somebody who never chose (CLAUDE.md's
+fidelity invariant), and asking is how that stays true. A discovered OCR
+engine is not written down either (`docs/journal.md` §5): a path frozen
+into a file is the answer that stops being true without saying so.
+
+The exception is an **answered question**, and it writes what the file
+already said plus the one key that was asked about — never this run's
+settings. The reason above is untouched by it: a key a person was asked
+for in so many words is not a driving script's flag.
 
 **The one exception is a toggle in the panel** (§8, #383), which writes
 the `seam` lines and nothing else about the run. The rule above is about
@@ -272,6 +279,57 @@ every setting a config can carry pointed the other way. `sweep.py` and
 `--steps`, `--press`, `--pull`, `--record` and `--replay` are things a
 person points at a problem on the day they have one, and `--journal
 PATH` is an ingestion that happens once.
+
+---
+
+## 2b. The one question either host asks (#385)
+
+`--save-sidecars` / `saveSidecars(on)` writes files of this project's own
+into the copy the player has: `\SAVE\AFMAP.DAT` and `\SAVE\AFSEEN.DAT`,
+plus a snapshot per save slot. It is the one M6 surface that changes
+something somebody else owns, so both hosts ask before they do, once, and
+keep the answer with the rest of the settings.
+
+**The desktop asks on stdin, from `settle_config`**, before SDL comes up
+— the only surface this host has at that point, and where flag > config >
+default is already settled. **The page asks in a panel**, and the two
+buttons record an answer rather than applying one.
+
+**Three states, not two.** Yes, no, and *nobody has answered*. An
+unanswered question keeps the sidecars off, writes nothing anywhere, and
+is asked again — an empty line, a closed stdin and an absent setting are
+all the third state. Reading silence as consent would write into somebody's
+directory on the strength of a keypress that never happened; reading it as
+a refusal would write down an answer nobody gave.
+
+**A run nobody is watching is never asked.** Headless, `--press`,
+`--pull`, `--record`, `--dump`, `--verify` — and `--replay`, which reads
+no config at all (§2a). The guard is the *shape* of the run and not
+`isatty`: a script that inherited a terminal is still not a person. This
+is not politeness. A prompt in a sweep run hangs it, and a sidecar written
+by a verification run makes the disk every recorded session pins a
+different disk, which `scripts/sweep.py` answers by **skipping** the
+session and naming it rather than failing it — so a wrong answer here
+turns the whole session library into skips without anything going red.
+
+**Once, at install.** Turning the store on attaches it, and the attach
+reads the working exploration table with `read_sidecar`, which replaces
+every record in the machine. So it happens once per run, after the files
+are in and before the program is loaded, on both hosts — which is why the
+page's panel says a change takes effect at the next boot.
+
+**Neither file appears until there is something to put in it.** A sidecar
+with no records is its header alone, and one of those is written *over* a
+file that already exists and never as a new one
+(`hosts/common/include/amberfolio/host/slot_store.h`). Without that rule a
+save by a party that had walked nowhere and been cited nothing put three
+eight-byte files into the player's `\SAVE\`. The replacing half stays: an
+empty snapshot is the truth about the party saving now, and must still
+replace the last one's.
+
+`hosts/sdl/src/sidecar_consent.h` and `hosts/web/page/sidecars.mjs` are
+the two halves; `hosts/sdl/cmake/run-sidecar-consent.cmake` is the check
+that spans two launches.
 
 ---
 
@@ -782,7 +840,7 @@ it; `app.mjs` uses it and no other file knows the schema.
 | `disk` | the file's canonical path (`\SAVE\SAVGAMA.DAT`) | its bytes | at the drop, and for a `config` row that changed |
 | `play` | the same | the same | when `af_machine_vfs_generation()` moves |
 | `text` | the `localStorage` key it had | one string | at an ingestion, a correction, a *Forget*, an answered code wheel |
-| `settings` | a name | JSON | the program last booted |
+| `settings` | a name | JSON | the program last booted; whether this build may keep sidecars beside the saves (#385, §2b) |
 
 **The save layer draws the line between the first two** (§6). On a
 generation change the page walks `vfsList()` and asks
@@ -834,6 +892,13 @@ the page says so.
   `settings` store holds none today, and a panel that persists one (#383)
   applies it through the same `seamEnable()` a click takes and reports
   the refusal.
+- **The sidecar answer is three-state** (§2b). `save-sidecars` in
+  `settings` is `true`, `false`, or *not there* — and *not there* is not
+  a `false`: it keeps the sidecars off and leaves the question to ask.
+  Anything that is not exactly `true` or `false` reads as unanswered, so a
+  record from a later build is a question rather than a permission
+  (`page/sidecars.mjs`). It is applied once, at the boot, before
+  `loadFromVfs()`; the panel's two buttons record it.
 
 **Quota is a report, not an exception.** A write that a browser refuses —
 `QuotaExceededError` or anything else — aborts its transaction, and the
@@ -965,7 +1030,7 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161). Repeatable. |
 | `--seam ID` | turn one seam on after the load, before the first step. Repeatable; a refusal **ends the run**, so a script never silently gets a plain machine. |
 | `--seams` | list every seam this build carries, and exit. |
-| `--save-sidecars` | the playthrough's sidecars, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on after the files are in and before the program is loaded: it reads the working exploration table back. The read log comes back with the journal store, which is this side's. |
+| `--save-sidecars` | the playthrough's sidecars, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on once, after the files are in and before the program is loaded: it reads the working exploration table back, and a second call would replace every record in the machine. The read log comes back with the journal store, which is this side's. A driven run is never asked about this and states it (§2b). |
 | `--document PATH` | present a document the player holds; hashed and dropped. Repeatable. |
 | `--code-wheel-answered` | say the challenge has been answered on this copy (#291). Without it the seam only watches, and a driven run sits at the challenge for ever. |
 | `--code-wheel-store PATH` | where answered copies are remembered, in the desktop host's format. Read before the first step, written when somebody answers. |

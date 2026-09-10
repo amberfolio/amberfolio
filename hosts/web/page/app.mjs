@@ -110,6 +110,16 @@ import {
   storedSeams,
   PANEL_COLUMNS,
 } from './toggle-panel.mjs';
+import {
+  SIDECARS_SETTING,
+  SIDECARS_ASK,
+  SIDECARS_NOWHERE_TO_REMEMBER,
+  SIDECARS_NOTHING_TO_WRITE_BESIDE,
+  readSidecarAnswer,
+  shouldAskAboutSidecars,
+  sidecarQuestion,
+  sidecarStatus,
+} from './sidecars.mjs';
 
 const CANVAS_ID = 'screen';
 const KEYBOARD_ID = 'keyboard';
@@ -140,6 +150,10 @@ const CODE_WHEEL_STATUS_ID = 'code-wheel-status';
 const CODE_WHEEL_FORGET_ID = 'code-wheel-forget';
 const KEPT_STATUS_ID = 'kept-status';
 const KEPT_FORGET_ID = 'kept-forget';
+const SIDECARS_STATUS_ID = 'sidecars-status';
+const SIDECARS_YES_ID = 'sidecars-yes';
+const SIDECARS_NO_ID = 'sidecars-no';
+const SIDECARS_ABOUT_ID = 'sidecars-about';
 
 /// Where this browser remembers the copies whose code-wheel challenge
 /// has been answered (M6-C1b, #292).
@@ -178,6 +192,17 @@ let drawer = cacheDrawer();
 let diskPaths = new Set();
 let playPaths = new Set();
 
+/// Whether this player said their progress may be kept beside their
+/// saves (#385): `true`, `false`, or `null` for a question nobody has
+/// answered yet. Read out of the `settings` drawer once the database is
+/// open and written back the instant somebody presses one of the two
+/// buttons, so the boot has an answer in hand without awaiting anything.
+///
+/// `null` is not a `false`, and the difference is the whole feature: a
+/// refusal is remembered and never asked about again, while an unanswered
+/// question keeps the sidecars off *and comes back*.
+let sidecarAnswer = null;
+
 /// Whatever this browser kept, opened once, awaited by everything that
 /// might look at it. Answers what the page has to say about it.
 async function openKeptStore() {
@@ -197,6 +222,13 @@ async function openKeptStore() {
     if (kept) {
       counts.disk = await kept.count(DISK_STORE);
       counts.play = await kept.count(PLAY_STORE);
+      // And the one permission this page asks for (#385). Read here so
+      // the boot has it without awaiting a database: a boot that had to
+      // wait would be a boot that could arrive before the answer did,
+      // and the answer has to be in hand *before* `loadFromVfs`.
+      sidecarAnswer = readSidecarAnswer(
+        await kept.get(SETTINGS_STORE, SIDECARS_SETTING),
+      );
     }
     return { why, migrated, counts };
   } catch (problem) {
@@ -246,17 +278,24 @@ async function flushText() {
 }
 
 /// One value in the `settings` store — this page's own choices, and
-/// nothing the machine can see. Quiet on failure, and deliberately: what
-/// is in there is a convenience, and a page that made a fuss about
-/// failing to remember which program you picked last time would be
-/// spending a player's attention on the wrong thing.
+/// nothing the machine can see. Answers whether it landed.
+///
+/// It throws nothing and says nothing, deliberately: most of what is in
+/// there is a convenience, and a page that made a fuss about failing to
+/// remember which program you picked last time would be spending a
+/// player's attention on the wrong thing. The **answer** is for the one
+/// setting that is not a convenience — the permission in #385, where a
+/// player told their answer was remembered and then asked again next
+/// visit has been told something untrue — and the caller that cares says
+/// so in its own words.
 async function rememberSetting(key, value) {
-  if (!kept) return;
+  if (!kept) return false;
   try {
     if (value === null) await kept.write(SETTINGS_STORE, [], [key]);
     else await kept.write(SETTINGS_STORE, [[key, value]]);
+    return true;
   } catch {
-    /* a convenience, not a promise */
+    return false;
   }
 }
 
@@ -1093,6 +1132,90 @@ export function runDevPage() {
     });
   }
 
+  // --- May this build keep your progress beside your saves? (#385) -------
+  //
+  // The one permission this page asks for. `sidecars.mjs` has the
+  // question, what an answer to it is, and why an unanswered one is
+  // neither a yes nor a no; this is the panel over it.
+  //
+  // Two buttons rather than a checkbox, and that is the decision worth
+  // stating: a checkbox has a state before anybody has touched it, so an
+  // unanswered question would be indistinguishable from a refusal, and
+  // *asked once* would quietly become *assumed once*. Both stay live
+  // afterwards, because a player who changes their mind is entitled to.
+  // What the panel says about itself when nothing has just happened.
+  // Through `shouldAskAboutSidecars` so that the page and the terminal
+  // answer the same question the same way, including the two states that
+  // are not a choice at all: a browser keeping nothing has nowhere to
+  // remember an answer, and a visit with no copy in it has nothing for a
+  // sidecar to go beside.
+  const sidecarSentence = () => {
+    switch (
+      shouldAskAboutSidecars({
+        answered: sidecarAnswer,
+        canRemember: kept !== null,
+        haveDisk: diskPaths.size > 0,
+      })
+    ) {
+      case SIDECARS_NOWHERE_TO_REMEMBER:
+        return 'this browser is keeping nothing, so an answer here could ' +
+          'not be remembered';
+      case SIDECARS_NOTHING_TO_WRITE_BESIDE:
+        return 'drop your game directory first - there is nothing for ' +
+          'these to go beside yet';
+      case SIDECARS_ASK:
+      default:
+        return sidecarStatus(sidecarAnswer);
+    }
+  };
+
+  const paintSidecars = (why = null) => {
+    const status = el(SIDECARS_STATUS_ID);
+    if (status) status.textContent = why ?? sidecarSentence();
+    const about = el(SIDECARS_ABOUT_ID);
+    if (about) about.textContent = sidecarQuestion().join(' ');
+    const yes = el(SIDECARS_YES_ID);
+    const no = el(SIDECARS_NO_ID);
+    // Which of the two is the one that would change something. A pressed
+    // look rather than a disabled one: disabling the chosen button would
+    // hide the answer from anybody reading the panel with a screen
+    // reader, and there is nothing wrong with pressing it again.
+    if (yes) yes.setAttribute('aria-pressed', String(sidecarAnswer === true));
+    if (no) no.setAttribute('aria-pressed', String(sidecarAnswer === false));
+  };
+
+  const answerSidecars = (answer) => {
+    void (async () => {
+      await keptReady;
+      sidecarAnswer = answer;
+      // Written down straight away, because "asked once" is a promise
+      // about the *next* visit and this is the only moment it can be
+      // kept. A refusal to write is said out loud rather than swallowed:
+      // a player told their answer was remembered and then asked again
+      // has been lied to.
+      const wrote = await rememberSetting(SIDECARS_SETTING, answer);
+      paintSidecars(
+        wrote
+          ? `${sidecarStatus(sidecarAnswer)}${
+              machine ? ' - from the next boot' : ''
+            }`
+          : 'this browser would not remember that, so you will be asked' +
+              ' again next visit',
+      );
+      sayWhatIsKept();
+    })().catch(fail);
+  };
+
+  const sidecarsYes = el(SIDECARS_YES_ID);
+  if (sidecarsYes) {
+    sidecarsYes.addEventListener('click', () => answerSidecars(true));
+  }
+  const sidecarsNo = el(SIDECARS_NO_ID);
+  if (sidecarsNo) {
+    sidecarsNo.addEventListener('click', () => answerSidecars(false));
+  }
+  paintSidecars();
+
   // --- Forget everything (#381) ------------------------------------------
   //
   // The per-thing forgets stay where they are — *Forget it* for the
@@ -1262,6 +1385,9 @@ export function runDevPage() {
               'fit - this disk is incomplete; see the console.'
             : `${taken.length} files loaded - choose a program and press boot.`,
       );
+      // There is somewhere for a sidecar to go now, so the panel stops
+      // saying there is not (#385).
+      paintSidecars();
     },
   });
 
@@ -1280,6 +1406,36 @@ export function runDevPage() {
       appendConsole(`[host] load ${program} sha256=${digest ?? 'unreadable'}\n`);
 
       box.setTrace(el(TRACE_CHECKBOX_ID)?.checked === true);
+
+      // The playthrough's sidecars, if this player said yes (#385, #351).
+      //
+      // **Here, once, and nowhere else.** `saveSidecars(true)` turns the
+      // store on *and attaches it*, and the attach reads the working
+      // exploration table with `read_sidecar`, which replaces every
+      // record in the machine — so a second call later in a visit would
+      // hand a player an older map than the one on their screen. This is
+      // the one moment that is both after the files are in (there is a
+      // filesystem to read) and before `loadFromVfs()` (nothing has been
+      // drawn yet), which is why the panel above records an answer
+      // rather than applying one.
+      //
+      // Only `true` turns it on. `false` and *not answered yet* are
+      // different facts about a player and the same instruction to this
+      // page, which is to write nothing into the copy they dropped.
+      if (sidecarAnswer === true) {
+        box.saveSidecars(true);
+        // And the read log out of its own sidecar beside the save. A
+        // second call, on purpose: `ensureMachine()` makes this one
+        // before the disk is put back, when there is no `\SAVE\` to read
+        // — so without this the log beside a save could never be picked
+        // up on the page at all. Twice is harmless (`host.mjs`), and the
+        // rows do not double.
+        box.journalSeenRestore();
+        appendConsole(
+          '[host] save-sidecars on - your map and the entries you have ' +
+            'been sent to are kept beside your saved games\n',
+        );
+      }
 
       const tail = el(TAIL_INPUT_ID)?.value ?? '';
       const status = box.loadFromVfs(program, tail === '' ? '' : ` ${tail}`);
@@ -1402,6 +1558,11 @@ export function runDevPage() {
         );
       }
       sayWhatIsKept();
+      // And what this browser remembers about the one permission (#385).
+      // Here rather than at the panel's own setup because the answer is
+      // read out of the database, and the panel is painted before there
+      // is one.
+      paintSidecars();
       if (store.counts.disk === 0 && store.counts.play === 0) return null;
       setStatus('putting back the copy this browser kept...');
       return ensureMachine();

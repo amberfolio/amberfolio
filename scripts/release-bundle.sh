@@ -70,12 +70,17 @@
 # Self-tested by scripts/test-release-bundle.sh — run it after editing.
 set -euo pipefail
 
-# The nine files hosts/web/CMakeLists.txt emits for a page to run the
+# The files hosts/web/CMakeLists.txt emits for a page to run the
 # module: the Emscripten pair (OUTPUT_NAME amberfolio, SUFFIX .mjs,
 # EXPORT_ES6, MODULARIZE), the seven page scripts it copies beside them
 # and the edition table they read.
 # Deliberately *not* index.html — the release is the emulator, and the
 # page around it belongs to whoever is hosting it.
+#
+# **sidecars.mjs joined the list in M6 (#385)**, for persist.mjs's reason
+# exactly: app.mjs imports it by name, so a consumer serving the released
+# app.mjs without it gets a 404 for the file holding the one question this
+# page asks a player.
 #
 # **persist.mjs joined the list in M6 (#381)**, for the reason journal.mjs
 # did: app.mjs imports it by name, and a consumer serving the released
@@ -118,6 +123,7 @@ BUNDLE=(
   picker.mjs
   journal.mjs
   persist.mjs
+  sidecars.mjs
   editions.mjs
   editions.json
 )

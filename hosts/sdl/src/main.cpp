@@ -169,7 +169,9 @@
 //     yellow, so without this a leaf on a screenshot cannot be told from
 //     a leaf the table guessed — which is exactly what #268 was about.
 //
-//   --save-sidecars  keep this playthrough's progress beside its saves
+//   --save-sidecars, --no-save-sidecars
+//                    keep this playthrough's progress beside its
+//                    saves, or do not
 //
 //     M5-E2c (#173) and #351. Two enhancements learn something as a
 //     party plays — what the automap has explored, and which journal
@@ -181,12 +183,26 @@
 //     save slot so two playthroughs do not share one map or one list.
 //     The wilderness the explored overlay draws is in the first of them
 //     already: it keeps no records of its own and reads the automap's.
+//     **Neither file appears until there is something to put in it**: a
+//     sidecar with no records in it is its header and nothing else, and
+//     one of those is written over a file that is already there and
+//     never as a new one (`slot_store.h`).
 //
 //     Off by default, and deliberately: this is a real directory of the
 //     player's, and a file appearing in it changes it. Every recorded
 //     session in `tests/sessions` pins its disk by name, size and
 //     SHA-256, so a sidecar written by a verification run would make the
 //     next run's disk a different disk.
+//
+//     **Which is why a launch with a person in it asks** (#385), once,
+//     and keeps the answer in the settings file beside everything else a
+//     player chose. `--no-save-sidecars` is the other side of it: an
+//     answer for one launch, whatever is remembered. A run that is
+//     driven, headless, replayed, recorded, dumped or verified is asked
+//     nothing at all and keeps them off — a prompt nobody is watching
+//     never comes back, and a sweep that answered its own question would
+//     be writing into the disks it replays over.
+//     `sidecar_consent.h` has the rule and the reasons.
 //
 //   --seam ID        turn on one seam, by its config key
 //
@@ -735,9 +751,11 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <string>
@@ -793,6 +811,7 @@
 #include "press_spec.h"
 #include "screen_keyboard_view.h"
 #include "seam_panel.h"
+#include "sidecar_consent.h"
 #include "tesseract_ocr.h"
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
 #include "tesseract_linked_ocr.h"
@@ -2144,6 +2163,13 @@ void print_usage() {
     } else if (arg == "--save-sidecars") {
       opts.save_sidecars = true;
       opts.given.save_sidecars = true;
+    } else if (arg == "--no-save-sidecars") {
+      // The other side of the same answer (#385). A player who said yes
+      // once and wants one launch that writes nothing needs a way to say
+      // so, and a driving script that wants to be explicit about the
+      // disk it is about to replay over needs the same one.
+      opts.save_sidecars = false;
+      opts.given.save_sidecars = true;
     } else if (arg == "--config" && i + 1 < argc) {
       opts.config_path = argv[++i];
     } else if (arg == "--no-config") {
@@ -3064,6 +3090,76 @@ void report_first_run(const options& opts, const std::string& config_path) {
                config_path.c_str());
 }
 
+/// Whether this launch is one nobody is watching (#385).
+///
+/// The shape of the run rather than `isatty`, for two reasons. A script
+/// that inherited a terminal would pass an `isatty` check and is still
+/// not a person; and a shape is something a test can state, where a
+/// terminal is not. `--replay` is not in the list because `settle_config`
+/// returns before the ask for one.
+///
+/// `sidecar_consent.h` argues each of these; the short version is that a
+/// prompt in a run nobody is watching either hangs it or is answered by
+/// something that did not know it was answering.
+[[nodiscard]] bool nobody_is_at_the_keyboard(const options& opts) {
+  return opts.headless || !opts.presses.empty() || !opts.pulls.empty() ||
+         !opts.record_path.empty() || !opts.dump_prefix.empty() || opts.verify;
+}
+
+/// The question, printed, and the line that came back (#385).
+///
+/// stdin and stderr and nothing else: this host has no window yet when
+/// this runs — `settle_config` happens before SDL comes up — and the
+/// terminal it was launched from is the only surface it has. The
+/// question's text and the reading of an answer are
+/// `sidecar_consent.h`'s, so this is the two lines of plumbing between
+/// them and nothing that needs deciding.
+///
+/// `std::nullopt` for anything that is not a yes or a no, **the end of a
+/// closed stdin included**. A caller writes nothing at all for that.
+[[nodiscard]] std::optional<bool> ask_about_sidecars() {
+  for (const std::string_view line : sdl::sidecar_question()) {
+    std::fprintf(stderr, "amberfolio: %.*s\n", static_cast<int>(line.size()),
+                 line.data());
+  }
+  const std::string_view prompt = sdl::sidecar_prompt();
+  std::fprintf(stderr, "amberfolio: %.*s", static_cast<int>(prompt.size()),
+               prompt.data());
+  std::fflush(stderr);
+
+  std::array<char, 64> typed{};
+  if (std::fgets(typed.data(), static_cast<int>(typed.size()), stdin) ==
+      nullptr) {
+    std::fprintf(stderr, "\n");
+    return std::nullopt;
+  }
+  return sdl::read_sidecar_answer(std::string_view(typed.data()));
+}
+
+/// One answered question, written down, and **the one place this host
+/// writes a config without `--remember`** (#385).
+///
+/// #382's rule is that a config is written only when a player asks for
+/// one, and its reason is that a driving script's `--seam` must never
+/// become somebody's remembered choice. That reason is untouched here: a
+/// person was asked a question in so many words and answered it, and
+/// "asked once" is not a thing this host can deliver without writing the
+/// answer somewhere.
+///
+/// So it writes `from_file` — whatever was already in that file, refused
+/// files excluded by the caller — with that **one key** replaced, and
+/// never `config_of(opts)`. A run that named a seam and answered this
+/// question must not leave the seam behind in the file, and the only way
+/// to be sure of that is not to look at the seams at all.
+///
+/// Its own function so it can be read, argued with, and taken back out
+/// on its own.
+void remember_the_sidecar_answer(const std::string& path,
+                                 sdl::desktop_config from_file, bool answer) {
+  from_file.save_sidecars = answer;
+  write_config(path, from_file, "remembered your answer in");
+}
+
 /// The config file, and the one place **flag > config > default**
 /// happens (#382, `desktop_config.h`).
 ///
@@ -3113,11 +3209,20 @@ void report_first_run(const options& opts, const std::string& config_path) {
     write_config(path, sdl::desktop_config{}, "forgotten");
   }
 
+  // Hoisted out of the block below because the question at the end of
+  // this function needs both of them: what the file already said, so an
+  // answer can be written back beside it rather than over it, and
+  // whether there is a file here this build is allowed to write at all.
+  // A config it *refused* is left exactly where it is (CLAUDE.md's "log,
+  // don't fake"), which means there is nowhere to put an answer, which
+  // means nothing is asked.
+  sdl::desktop_config from_file;
+  bool config_writable = !opts.no_config;
+
   if (!opts.no_config && !opts.forget_config) {
     bool found = false;
     const std::string text = slurp_file(path, found);
     if (found) {
-      sdl::desktop_config from_file;
       if (const sdl::config_reading read = from_file.parse(text); !read.ok()) {
         // Loud, and then the defaults -- never a guess, and never half a
         // file (CLAUDE.md's "log, don't fake"). Left where it is rather
@@ -3129,6 +3234,7 @@ void report_first_run(const options& opts, const std::string& config_path) {
         std::fprintf(stderr,
                      "amberfolio: config starting on the defaults; the"
                      " file was left where it is\n");
+        config_writable = false;
       } else {
         // **flag > config > default**, nine times, one rule
         // (`desktop_config.h`).
@@ -3159,6 +3265,37 @@ void report_first_run(const options& opts, const std::string& config_path) {
                     opts.save_sidecars);
         std::fprintf(stderr, "amberfolio: config read %s\n", path.c_str());
       }
+    }
+  }
+
+  // The one question this host asks a person (#385). After the settling,
+  // because a config that already answered it is the "once" in "asked
+  // once" and because `--save-sidecars` on the command line has to beat
+  // both; before the writing below, so that a run that was asked *and*
+  // said `--remember` writes one file holding both answers.
+  const sdl::sidecar_ask why = sdl::should_ask_about_sidecars(
+      {.named_on_the_command_line = opts.given.save_sidecars,
+       .config_answered = from_file.save_sidecars.has_value(),
+       .can_remember = config_writable && !path.empty(),
+       .driven = nobody_is_at_the_keyboard(opts),
+       .have_game = !opts.root.empty() && !opts.program.empty()});
+  if (why == sdl::sidecar_ask::ask) {
+    if (const std::optional<bool> answer = ask_about_sidecars();
+        answer.has_value()) {
+      opts.save_sidecars = *answer;
+      // Never `opts.given`: the command line did not say this, and a
+      // later launch must be free to remember something else.
+      if (!opts.remember) {
+        remember_the_sidecar_answer(path, from_file, *answer);
+      }
+    } else {
+      // Silence is neither a yes nor a no. Off for this run, because off
+      // is what everything of this project's own is until somebody asks
+      // for it — and nothing written down, so the next person at this
+      // keyboard is asked again.
+      std::fprintf(stderr,
+                   "amberfolio: no answer, so nothing is written beside"
+                   " your saves and nothing is remembered\n");
     }
   }
 
@@ -3619,6 +3756,14 @@ int main(int argc, char** argv) try {
   // before the filesystem is attached would be too early — `attach()`
   // reads the working table — so the wiring is here and the attach is
   // after the disk is mounted, below.
+  //
+  // **Once, here, and nowhere else** (#385). `attach()` below reads the
+  // working table with `read_sidecar`, which *replaces* every record it
+  // finds — so a second enable-and-attach later in a run would throw
+  // away whatever the party had walked since the first one. A host has
+  // one moment to decide this and it is before the disk is read, which
+  // is why the desktop's question is asked in `settle_config` and not
+  // from a panel a player can click during a game.
   services.slots().enable(opts.save_sidecars);
   log.set_slot_store(&services.slots());
   // And the other thing that door drives (M5-E4, #175): the text the
@@ -3659,6 +3804,11 @@ int main(int argc, char** argv) try {
   // `--save-sidecars` asked for it. The read log is the other half and
   // waits for the journal store below, which is parsed wholesale and
   // would throw away anything put there first (`slot_store.h`).
+  //
+  // **Once** (#385), and this is the call the rule is about: the read it
+  // does replaces every record in `box.automap()`, so calling it again
+  // later would hand a player an older map than the one they are looking
+  // at. One machine, one attach.
   services.slots().attach(box);
 
   const machine::vfs_result<machine::dos_path> where = machine::canonicalize(

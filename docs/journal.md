@@ -444,7 +444,9 @@ one from a seam's callout without allocating.
 `--save-sidecars` is the flag on the desktop, `saveSidecars(true)` on the
 page, and it is the same flag the automap's sidecar rides: the permission
 being asked for is "may this build write its own files beside your
-saves", and that sentence is the same one for each.
+saves", and that sentence is the same one for each — which is why it is
+one question and both hosts ask it once (#385, `docs/hosts.md` §2b). An
+empty log writes no new file; it replaces one that is there.
 
 The store's own **changed flag** is the text's; `log_changed()` is the
 log's. Without the split a citation would have a host rewrite a player's
