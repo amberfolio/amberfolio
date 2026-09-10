@@ -13,9 +13,137 @@
 # adds nothing to the wasm module's dependency footprint that was not
 # already there.
 
+# --- The edition table, compiled from data/editions.json (#207) --------
+#
+# One table, two shapes. A page has to render "here is what you dropped
+# and here is what is missing" while the wasm module is still
+# downloading, so the requirements have to be a file a site can fetch —
+# `data/editions.json`, attached to every release beside manifest.json
+# (docs/hosts.md §5). A desktop host has neither a page nor a fetch, so
+# it needs the same facts linked in. Rather than write them twice, the
+# JSON *is* the table and this turns it into the arrays behind
+# `edition_requirements_table()`.
+#
+# At configure time, in CMake, because CMake is already required and
+# nothing else here is: a python3 in the build path would be a new
+# prerequisite on three platforms for a file of a hundred and thirty
+# lines. CMAKE_CONFIGURE_DEPENDS below is what makes editing the JSON
+# re-run this, the way tests/CMakeLists.txt watches the conformance
+# manifest.
+set(_amberfolio_editions_json "${PROJECT_SOURCE_DIR}/data/editions.json")
+set_property(DIRECTORY APPEND PROPERTY
+  CMAKE_CONFIGURE_DEPENDS "${_amberfolio_editions_json}")
+file(READ "${_amberfolio_editions_json}" _amberfolio_editions_text)
+
+# The schema is a version, and it is checked rather than assumed: a
+# consumer pins it (docs/hosts.md §5), so a table that changed shape
+# under this parser must stop the configure and not compile to something
+# subtly wrong.
+string(JSON _amberfolio_editions_schema GET
+  "${_amberfolio_editions_text}" schema)
+if(NOT _amberfolio_editions_schema STREQUAL "amberfolio.editions/1")
+  message(FATAL_ERROR
+    "${_amberfolio_editions_json} declares schema "
+    "'${_amberfolio_editions_schema}'; this parser reads "
+    "amberfolio.editions/1. A schema change is a change to what every "
+    "consumer pinning a release reads, so it is a decision and not a "
+    "field edit.")
+endif()
+
+set(AMBERFOLIO_EDITION_ARTIFACTS "")
+set(AMBERFOLIO_EDITIONS "")
+set(AMBERFOLIO_EDITION_ARTIFACT_COUNT 0)
+string(JSON AMBERFOLIO_EDITION_COUNT LENGTH
+  "${_amberfolio_editions_text}" editions)
+if(AMBERFOLIO_EDITION_COUNT LESS 1)
+  message(FATAL_ERROR
+    "${_amberfolio_editions_json} names no editions: a build that "
+    "recognises a program image and cannot say what that edition is "
+    "made of is the gap #207 exists to close.")
+endif()
+
+math(EXPR _amberfolio_edition_last "${AMBERFOLIO_EDITION_COUNT} - 1")
+foreach(_amberfolio_e RANGE ${_amberfolio_edition_last})
+  string(JSON _amberfolio_ed GET
+    "${_amberfolio_editions_text}" editions ${_amberfolio_e})
+  string(JSON _amberfolio_ed_id GET "${_amberfolio_ed}" id)
+  string(JSON _amberfolio_ed_name GET "${_amberfolio_ed}" name)
+  string(JSON _amberfolio_ed_boot GET "${_amberfolio_ed}" boot)
+  string(JSON _amberfolio_ed_fingerprint GET "${_amberfolio_ed}" fingerprint)
+  string(JSON _amberfolio_ed_artifacts LENGTH "${_amberfolio_ed}" artifacts)
+
+  set(_amberfolio_ed_offset ${AMBERFOLIO_EDITION_ARTIFACT_COUNT})
+  math(EXPR _amberfolio_a_last "${_amberfolio_ed_artifacts} - 1")
+  foreach(_amberfolio_a RANGE ${_amberfolio_a_last})
+    string(JSON _amberfolio_art GET
+      "${_amberfolio_ed}" artifacts ${_amberfolio_a})
+    string(JSON _amberfolio_art_kind GET "${_amberfolio_art}" kind)
+    string(JSON _amberfolio_art_required GET "${_amberfolio_art}" required)
+    # The four optional keys. ERROR_VARIABLE rather than a membership
+    # test: a directory has no digest and no size and a document has no
+    # filename, and "" / 0 is exactly what the C++ reads those as.
+    string(JSON _amberfolio_art_name ERROR_VARIABLE _amberfolio_ignored
+      GET "${_amberfolio_art}" name)
+    string(JSON _amberfolio_art_about ERROR_VARIABLE _amberfolio_ignored
+      GET "${_amberfolio_art}" about)
+    string(JSON _amberfolio_art_sha ERROR_VARIABLE _amberfolio_ignored
+      GET "${_amberfolio_art}" sha256)
+    string(JSON _amberfolio_art_size ERROR_VARIABLE _amberfolio_ignored
+      GET "${_amberfolio_art}" size)
+    string(JSON _amberfolio_art_document ERROR_VARIABLE _amberfolio_ignored
+      GET "${_amberfolio_art}" document)
+    foreach(_amberfolio_field name about sha size document)
+      if(_amberfolio_art_${_amberfolio_field} MATCHES "NOTFOUND$")
+        set(_amberfolio_art_${_amberfolio_field} "")
+      endif()
+    endforeach()
+    if(_amberfolio_art_size STREQUAL "")
+      set(_amberfolio_art_size 0)
+    endif()
+    if(_amberfolio_art_document STREQUAL "")
+      set(_amberfolio_art_document none)
+    endif()
+    if(_amberfolio_art_required)
+      set(_amberfolio_art_required_cxx true)
+    else()
+      set(_amberfolio_art_required_cxx false)
+    endif()
+    string(APPEND AMBERFOLIO_EDITION_ARTIFACTS
+      "        {.name = \"${_amberfolio_art_name}\","
+      " .about = \"${_amberfolio_art_about}\","
+      " .fingerprint = \"${_amberfolio_art_sha}\",\n"
+      "         .size = ${_amberfolio_art_size}U,"
+      " .kind = artifact_kind::${_amberfolio_art_kind},\n"
+      "         .document = machine::document_kind::"
+      "${_amberfolio_art_document},\n"
+      "         .required = ${_amberfolio_art_required_cxx}},\n")
+    math(EXPR AMBERFOLIO_EDITION_ARTIFACT_COUNT
+      "${AMBERFOLIO_EDITION_ARTIFACT_COUNT} + 1")
+  endforeach()
+
+  string(APPEND AMBERFOLIO_EDITIONS
+    "        {.id = \"${_amberfolio_ed_id}\",\n"
+    "         .name = \"${_amberfolio_ed_name}\",\n"
+    "         .boot = \"${_amberfolio_ed_boot}\",\n"
+    "         .fingerprint = \"${_amberfolio_ed_fingerprint}\",\n"
+    "         .artifacts = std::span<const edition_artifact>{\n"
+    "             all_artifacts.data() + ${_amberfolio_ed_offset},\n"
+    "             ${_amberfolio_ed_artifacts}}},\n")
+endforeach()
+
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/edition_table.h.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/amberfolio/host/edition_table.h"
+  @ONLY)
+
 add_library(amberfolio-host-services STATIC
   src/host_services.cpp
   src/slot_store.cpp
+  # What each edition is made of, and what a host has in front of it
+  # (M6, #207). Here rather than in core because it is not the machine's
+  # business: core keys its seam tables on one fingerprint, and this is
+  # the checklist a *host* renders before anything is loaded.
+  src/edition_facts.cpp
   # What a player answered, so the code wheel asks once and not once a
   # launch (M6-C1b, #292). Here for the same reason the two above are:
   # both hosts keep the identical thing, and only where the bytes land
@@ -57,6 +185,12 @@ add_library(amberfolio::host_services ALIAS amberfolio-host-services)
 
 target_include_directories(amberfolio-host-services PUBLIC include)
 
+# The generated edition table (#207). PRIVATE: it is what
+# src/edition_facts.cpp is built out of, and nothing above this library
+# has any business including it — `edition_facts.h` is the surface.
+target_include_directories(amberfolio-host-services PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
 # libdeflate is the extractor's inflate, and it is the first third-party
 # library that reaches a shipped host -- cmake/AmberfolioLibdeflate.cmake
 # says why a hand-written one was the wrong call. PRIVATE: it is an
@@ -92,6 +226,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/host_services_test.cpp
     tests/slot_store_test.cpp
     tests/code_wheel_store_test.cpp
+    tests/edition_facts_test.cpp
     tests/journal_facts_test.cpp
     tests/journal_extract_test.cpp
     tests/journal_ocr_test.cpp
@@ -106,6 +241,14 @@ if(AMBERFOLIO_BUILD_TESTS)
     amberfolio::host_services
     amberfolio::warnings
     GTest::gmock_main)
+
+  # Where the committed recordings live, for the one case that reads a
+  # descriptor: the edition table's file list against the pristine disk
+  # `party.session` pins (#207). A compile definition and not a search,
+  # for tests/CMakeLists.txt's reason — the sessions are source, and a
+  # test that hunted for them could pass by finding nothing.
+  target_compile_definitions(amberfolio-host-services-tests PRIVATE
+    "AMBERFOLIO_SESSIONS_DIR=\"${PROJECT_SOURCE_DIR}/tests/sessions\"")
 
   gtest_discover_tests(amberfolio-host-services-tests
     DISCOVERY_MODE PRE_TEST

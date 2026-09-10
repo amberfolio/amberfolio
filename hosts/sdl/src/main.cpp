@@ -676,6 +676,7 @@
 
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/host/code_wheel_store.h"
+#include "amberfolio/host/edition_facts.h"
 #include "amberfolio/host/held_keys.h"
 #include "amberfolio/host/host_services.h"
 #include "amberfolio/host/journal_extract.h"
@@ -2391,6 +2392,93 @@ void report_vfs(machine::filesystem& files, const options& opts) {
   }
 }
 
+/// What the player's directory turned out to be, when the program in it
+/// is not one this build recognises (#207).
+///
+/// The identity line says `unrecognized` and stops, which is true and is
+/// nothing a player can act on. This is the rest of that answer, off the
+/// one table both hosts read (`host/edition_facts.h`, `data/editions.json`):
+/// the closest edition, how much of it is here, which required artifacts
+/// are not — and every file that was looked at with its hash, because an
+/// edition nobody has fingerprinted yet is a first-class answer
+/// (`machine/edition.h`) and that list is exactly what a report asking
+/// for one has to carry.
+void report_unrecognized_edition(machine::filesystem& files) {
+  struct looked_at {
+    std::string name;
+    std::uint32_t size{};
+    sha256_digest digest;
+  };
+
+  std::vector<machine::tree_file> found(machine::tree_file_count(files));
+  const std::size_t count =
+      std::min(machine::tree_files(files, found), found.size());
+  std::vector<looked_at> seen;
+  seen.reserve(count);
+  for (std::size_t i = 0; i < count; ++i) {
+    const machine::vfs_result<sha256_digest> digest =
+        machine::fingerprint_file(files, found[i].path);
+    if (!digest.ok()) {
+      std::fprintf(stderr, "amberfolio: edition %s could not be hashed\n",
+                   spell_vfs_path(found[i].path).c_str());
+      continue;
+    }
+    seen.push_back({.name = spell_vfs_path(found[i].path),
+                    .size = found[i].size,
+                    .digest = digest.value});
+  }
+
+  // Built after the names are all in place: `offered_file` holds views,
+  // and a vector that grew while they were being taken would have left
+  // every one of them pointing at freed characters.
+  std::vector<host::offered_file> offered;
+  offered.reserve(seen.size());
+  for (const looked_at& file : seen) {
+    offered.push_back({.name = file.name, .digest = file.digest});
+  }
+
+  const host::edition_match match = host::match_edition(offered);
+  if (match.edition == nullptr) {
+    std::fprintf(stderr,
+                 "amberfolio: edition no file here belongs to any edition"
+                 " this build knows (%zu looked at)\n",
+                 seen.size());
+  } else {
+    std::size_t required = 0;
+    for (const host::edition_artifact& artifact : match.edition->artifacts) {
+      required += artifact.required ? 1U : 0U;
+    }
+    std::fprintf(stderr,
+                 "amberfolio: edition closest %.*s - %zu of %zu required"
+                 " artifact(s) here\n",
+                 static_cast<int>(match.edition->name.size()),
+                 match.edition->name.data(), required - match.missing.size(),
+                 required);
+    for (const std::size_t index : match.missing) {
+      const host::edition_artifact& artifact = match.edition->artifacts[index];
+      std::fprintf(stderr, "amberfolio: edition missing %.*s%s\n",
+                   static_cast<int>(artifact.name.size()), artifact.name.data(),
+                   artifact.kind == host::artifact_kind::directory
+                       ? " (a directory)"
+                       : "");
+    }
+  }
+
+  // The files nothing claimed, with their digests: all of them when
+  // nothing matched at all, which is the directory that holds an edition
+  // this build has never seen.
+  const std::size_t unclaimed_count =
+      match.edition == nullptr ? seen.size() : match.unclaimed.size();
+  for (std::size_t i = 0; i < unclaimed_count; ++i) {
+    const looked_at& file =
+        match.edition == nullptr ? seen[i] : seen[match.unclaimed[i]];
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(file.digest, hex));
+    std::fprintf(stderr, "amberfolio: edition looked at %s %u sha256=%s\n",
+                 file.name.c_str(), file.size, hex.data());
+  }
+}
+
 /// Present `digest` to the engine and say what it turned out to be.
 ///
 /// Split out of `present_document` below because the journal's ingestion
@@ -3005,6 +3093,7 @@ int main(int argc, char** argv) try {
       std::fprintf(stderr,
                    "amberfolio: edition unrecognized - no seams are"
                    " available for this program\n");
+      report_unrecognized_edition(files);
     }
     report_save_layer_table(box, opts);
   }

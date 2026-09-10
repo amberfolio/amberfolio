@@ -334,6 +334,14 @@ set(_amberfolio_web_files
   "${CMAKE_CURRENT_SOURCE_DIR}/page/audio-worklet.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/picker.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/journal.mjs"
+  "${CMAKE_CURRENT_SOURCE_DIR}/page/editions.mjs"
+  # The edition table itself (#207), placed rather than compiled in: a
+  # page renders the checklist while the module is still downloading, so
+  # it has to be a file the page can fetch. It is the same file
+  # hosts/common builds its C++ arrays out of, which is what keeps a
+  # browser and a desktop from disagreeing about what an edition is made
+  # of.
+  "${PROJECT_SOURCE_DIR}/data/editions.json"
   "${CMAKE_CURRENT_SOURCE_DIR}/tools/drive.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke.mjs")
 

@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Generated from data/editions.json by hosts/common/CMakeLists.txt.
+// Do not edit, and do not commit: the JSON is the table (#207).
+
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <span>
+
+#include "amberfolio/host/edition_facts.h"
+#include "amberfolio/machine/document.h"
+
+namespace amberfolio::host::generated {
+
+inline constexpr std::array<edition_artifact,
+                            @AMBERFOLIO_EDITION_ARTIFACT_COUNT@>
+    all_artifacts{{
+@AMBERFOLIO_EDITION_ARTIFACTS@    }};
+
+inline constexpr std::array<edition_requirements, @AMBERFOLIO_EDITION_COUNT@>
+    all_editions{{
+@AMBERFOLIO_EDITIONS@    }};
+
+}  // namespace amberfolio::host::generated
