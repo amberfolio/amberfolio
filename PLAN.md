@@ -330,10 +330,13 @@ that line:
 
 Ordered by dependency; each has a crisp exit criterion. From M3 on,
 every milestone exit is tagged as a **0.x pre-release** (M3 → 0.1
-"boots", M4 → 0.2 "playable", M5 → 0.3 "enhanced", M6 → 0.4
+"boots", M4 → 0.2 "playable", M5 → 0.3 "enhanced", M6 → 0.6
 "onboarded"), so there is always a current, runnable tag while the work
 converges on **1.0** — the release the gate in §1 defines. M8 is the
-first milestone *past* it, and exits as 1.1.
+first milestone *past* it, and exits as 1.1. A milestone takes the next
+0.x free when it exits rather than a number reserved in advance: 0.4 and
+0.5 were cut during M6, because a tag is made whenever the build is worth
+pinning and not only at a milestone.
 
 - **M0 — Bootstrap.** CMake + presets, CI matrix for all four targets,
   unit-test rig, format/lint/sanitizer gates, DCO check, and automatic
