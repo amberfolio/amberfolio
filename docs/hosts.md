@@ -418,9 +418,10 @@ python3 scripts/serve-web.py
 
 ### The release bundle
 
-`scripts/release-bundle.sh` stages seven files from the module and
-`hosts/web/page/`, the OCR engine when the tree has one, plus `SHA256SUMS`
-and `manifest.json`. `scripts/test-release-bundle.sh` is its self-test.
+`scripts/release-bundle.sh` stages nine files from the module,
+`hosts/web/page/` and `data/`, the OCR engine when the tree has one, plus
+`SHA256SUMS` and `manifest.json`. `scripts/test-release-bundle.sh` is its
+self-test.
 
 | file | what it is |
 | --- | --- |
@@ -431,6 +432,8 @@ and `manifest.json`. `scripts/test-release-bundle.sh` is its self-test.
 | `audio-worklet.mjs` | the speaker worklet |
 | `picker.mjs` | the directory picker |
 | `journal.mjs` | the journal store and ingestion; `host.mjs` imports it (#229) |
+| `editions.mjs` | the reader over the table below; `app.mjs` imports it (#207) |
+| `editions.json` | what this build recognises and what each edition is made of (#207) |
 | `vendor-tesseract.tar.gz` | the browser's OCR engine, when the tree has one (#287) |
 
 Not `index.html`: the release is the emulator, not the page.
@@ -476,6 +479,75 @@ store in `localStorage`, plus the #301 cheat, which another host need not
 copy; and *apparatus* — what `tests/smoke.mjs` and the tooling look inside
 with, which is no promise. The store's own six are in none of them: they
 are `Machine` methods (below).
+
+### The edition table (#207)
+
+`editions.json` is what this build recognises, as data, before anything is
+loaded. Per edition: an `id` a roster keys on, the `name`
+`machine::known_editions()` shows, the file that `boot`s it, that file's
+SHA-256 as `fingerprint`, and the `artifacts` a copy is made of.
+
+```json
+{
+  "schema": "amberfolio.editions/1",
+  "editions": [
+    { "id": "por-archive", "name": "…", "boot": "START.EXE",
+      "fingerprint": "…",
+      "artifacts": [
+        { "kind": "file", "name": "START.EXE", "required": true, "size": 0, "sha256": "…" },
+        { "kind": "directory", "name": "SAVE", "required": true },
+        { "kind": "document", "document": "journal", "required": false,
+          "about": "…", "sha256": "…" }
+      ] }
+  ]
+}
+```
+
+An artifact is one of three `kind`s. A `file` carries a name, a size and a
+digest; a `directory` carries a name and neither; a `document` is
+something the player *holds* rather than something the machine runs
+(`machine/document.h`), so it carries a digest, an `about` and which
+`document` it is, and never a filename — a player's own PDF is called
+whatever they called it.
+
+**`required` means the copy is incomplete without it.** Every file and
+directory an edition ships is required and neither document is, which is
+PLAN.md §2's policy exactly: the binaries are the one artifact nothing
+runs without, and a missing document leaves its enhancement unavailable
+and changes nothing else. It does not claim the machine *opens* every
+required file — which of them this emulator ever reads is not a fact
+anybody here has measured, and a table that guessed would tell a player
+their copy was fine when it was not.
+
+**One table, three readers.** `data/editions.json` is the table.
+`hosts/common/CMakeLists.txt` compiles it into the arrays behind
+`host::edition_requirements_table()` at configure time, so the desktop
+host and the module carry it with no fetch; `release-bundle.sh` attaches
+the file itself beside `manifest.json` and lists it in `files`, so a page
+renders the checklist while the wasm is still downloading and a site
+generates its edition roster without running anything;
+`hosts/web/page/editions.mjs` is the reader a page uses. Adding an edition
+is editing the JSON. The `schema` is a version and every reader refuses
+one it does not speak, the configure included.
+
+**Matching is on the digest, never on the name**, in both
+implementations. A renamed file still matches; a file carrying a required
+artifact's name with different bytes matches nothing, so it is reported as
+unclaimed while the artifact it is not is reported as missing, and those
+two lines together are the fact a player can act on.
+`host::match_edition()` and `matchEdition()` answer the closest edition,
+what matched, which required artifacts are missing, and which offered
+files nothing claimed. On the unrecognised path the desktop host prints
+all of it — `edition closest <name> - N of M required artifact(s) here`,
+`edition missing <name>`, `edition looked at <path> <size> sha256=…` — and
+the dev page appends the same lines to its console. An edition nobody has
+fingerprinted yet is a first-class answer (`machine/edition.h`), and that
+last line is what a request to add one has to carry.
+
+**No ABI call, and no version moved.** The matching half needs the table
+and both hosts have the table: the page reads the asset it fetched, the
+module and the desktop host read the arrays compiled into them. Nothing
+joined the export list.
 
 ### What a serving page has to know (#211)
 

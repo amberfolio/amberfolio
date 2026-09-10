@@ -69,6 +69,7 @@ import {
   AF_NAV_DOWN,
 } from './host.mjs';
 import { wireDirectoryPicker } from './picker.mjs';
+import { describeMatch, loadEditions, matchEdition } from './editions.mjs';
 import {
   ingestJournal,
   journalKind,
@@ -721,6 +722,9 @@ export function runDevPage() {
       );
       const editionEl = el(EDITION_ID);
       if (editionEl) editionEl.textContent = `edition: ${edition ?? 'unrecognized'}`;
+      if (edition === null) {
+        await reportUnrecognizedEdition(box, appendConsole);
+      }
       // What this browser remembers about *this copy* (M6-C1b, #292).
       // After the load, because the answer is keyed by the program's own
       // fingerprint and there is nothing to look up before one is
@@ -752,6 +756,37 @@ export function runDevPage() {
       });
     })().catch(fail);
   });
+}
+
+/// The rest of the unrecognized answer (#207).
+///
+/// `edition: unrecognized` is true and is nothing a player can act on.
+/// This says what they actually dropped: the closest edition, how much
+/// of it is here, which required artifacts are not, and every file that
+/// was looked at with its hash — which is exactly what a request to add
+/// an edition has to carry (`machine/edition.h`).
+///
+/// The table is fetched here, at the one place that asks for it. A shell
+/// that renders the checklist before a program is chosen fetches it
+/// earlier and calls the same two functions; the file is beside this
+/// module either way (`editions.mjs`). A table that cannot be fetched is
+/// said and nothing else happens: a missing checklist is not a reason to
+/// refuse somebody a run.
+async function reportUnrecognizedEdition(box, appendConsole) {
+  let editions;
+  try {
+    editions = await loadEditions();
+  } catch (why) {
+    appendConsole(`[host] edition checklist unavailable (${why.message})\n`);
+    return;
+  }
+  const offered = box.vfsList().map((entry) => ({
+    name: entry.path,
+    sha256: box.vfsFingerprint(entry.path) ?? '',
+  }));
+  for (const line of describeMatch(matchEdition(editions, offered))) {
+    appendConsole(`[host] edition ${line}\n`);
+  }
 }
 
 /// What an enabled seam's row says beside its name: `armed fired=N`, in

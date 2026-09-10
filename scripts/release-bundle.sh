@@ -10,11 +10,11 @@
 # it downloads do not hash to what it pinned. Two things follow, and they
 # are what this script exists to hold.
 #
-#   1. **The asset list is a contract, not a directory listing.** The six
+#   1. **The asset list is a contract, not a directory listing.** The
 #      names below are spelled out and every one of them must be present;
-#      a build tree that grew a seventh file, or lost one, stops the
-#      release here rather than shipping a set the consumer's lockfile
-#      does not describe. Copying a build directory wholesale would have
+#      a build tree that grew a file, or lost one, stops the release here
+#      rather than shipping a set the consumer's lockfile does not
+#      describe. Copying a build directory wholesale would have
 #      published `smoke.mjs`, `drive.mjs` and whatever else a preset
 #      happens to leave there — the wasm tree carries five such files
 #      today.
@@ -70,9 +70,10 @@
 # Self-tested by scripts/test-release-bundle.sh — run it after editing.
 set -euo pipefail
 
-# The seven files hosts/web/CMakeLists.txt emits for a page to run the
+# The nine files hosts/web/CMakeLists.txt emits for a page to run the
 # module: the Emscripten pair (OUTPUT_NAME amberfolio, SUFFIX .mjs,
-# EXPORT_ES6, MODULARIZE) and the five page scripts it copies beside them.
+# EXPORT_ES6, MODULARIZE), the six page scripts it copies beside them and
+# the edition table they read.
 # Deliberately *not* index.html — the release is the emulator, and the
 # page around it belongs to whoever is hosting it.
 #
@@ -92,6 +93,16 @@ set -euo pipefail
 # a person reading SHA256SUMS and manifest.json side by side. The list is
 # asserted by name and in order in test-release-bundle.sh, so it cannot
 # move quietly — changing it means editing a test that says why.
+#
+# **editions.mjs and editions.json joined the list in M6 (#207).** The
+# JSON is the table of what each edition this build recognises is made
+# of, and it is an asset rather than an ABI call for one reason: a page
+# renders the checklist while the module is still downloading, and a site
+# generates its edition roster without running anything at all. The same
+# file is what hosts/common compiles its C++ arrays out of, so a browser
+# and a desktop cannot disagree about it. editions.mjs is the reader over
+# it, and app.mjs imports it by name — the #229 lesson, applied before it
+# could bite again.
 BUNDLE=(
   amberfolio.wasm
   amberfolio.mjs
@@ -100,6 +111,8 @@ BUNDLE=(
   audio-worklet.mjs
   picker.mjs
   journal.mjs
+  editions.mjs
+  editions.json
 )
 
 # Shipped beside the bundle so a consumer can render the notices without
@@ -119,8 +132,8 @@ NOTICES_DIR=LICENSES
 # (`scripts/fetch-ocr-engine.py` carries the argument): CI fetches it into
 # the build tree beside the module and this attaches it, so a site pinning
 # a tag can serve it from its own origin without choosing a version. The
-# release carried seven files and no engine, and a site could decode every
-# entry of a recognised journal and recognise none.
+# release carried the page's files and no engine, and a site could decode
+# every entry of a recognised journal and recognise none.
 #
 # **One tarball rather than an asset per file**, because the directory is
 # one thing: `loadEngine()` wants a directory, and attaching its files
@@ -393,7 +406,7 @@ while IFS= read -r name; do
 done < <(printf '%s\n' "${staged[@]}" | sort)
 
 # manifest.json is the machine-readable one, and it describes the
-# *bundle* — the six files a consumer pins. The notices are in SHA256SUMS
+# *bundle* — the files a consumer pins. The notices are in SHA256SUMS
 # beside it; nothing downstream pins a licence text, and listing them here
 # would invite something to.
 {

@@ -130,6 +130,7 @@ import {
   keyNameToScancode,
   parseArgs as parseDriveArgs,
 } from './drive.mjs';
+import { matchEdition, readEditions } from './editions.mjs';
 
 /// The ABI's guest list, as hosts/web/CMakeLists.txt sets it. Keep the
 /// two in step; that is the whole job of this array.
@@ -523,6 +524,62 @@ if (core !== null) {
       `smoke: ${HOST_SERVICES.length} host service(s), named as core names them`,
     );
   }
+}
+
+// --- The edition table beside the module (#207) -----------------------
+//
+// `editions.json` is the requirement table both hosts read: a page
+// fetches it while the module is still downloading, and `hosts/common`
+// compiles its C++ arrays out of the same file. Two things can go wrong
+// here that nothing else would catch — the file is not placed beside the
+// module, so a served page 404s the checklist it asks for; and it is
+// placed but says something `editions.mjs` cannot read.
+//
+// The matching itself is the C++'s twin and is checked the same way
+// (hosts/common/tests/edition_facts_test.cpp): a whole copy is complete
+// but for the directory a file listing cannot carry, and a set that
+// belongs to nothing names no edition rather than guessing one.
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+  const table = JSON.parse(
+    readFileSync(fileURLToPath(new URL('./editions.json', import.meta.url)), 'utf8'),
+  );
+  const editions = readEditions(table);
+  console.log(`smoke: ${editions.length} edition(s) beside the module`);
+
+  for (const edition of editions) {
+    const boot = edition.artifacts.find(
+      (artifact) => artifact.kind === 'file' && artifact.name === edition.boot,
+    );
+    check(
+      boot !== undefined && boot.sha256 === edition.fingerprint,
+      `${edition.id}: the boot file ${edition.boot} is not an artifact carrying` +
+        " the edition's own fingerprint",
+    );
+
+    const whole = edition.artifacts
+      .filter((artifact) => artifact.kind === 'file')
+      .map((artifact) => ({ name: artifact.name, sha256: artifact.sha256 }));
+    const complete = matchEdition(editions, whole);
+    check(
+      complete.edition === edition && complete.unclaimed.length === 0,
+      `${edition.id}: a whole copy of it did not match it`,
+    );
+    check(
+      complete.missing.every((artifact) => artifact.kind === 'directory'),
+      `${edition.id}: a whole copy is missing something that is not a directory`,
+    );
+  }
+
+  const foreign = matchEdition(editions, [
+    { name: 'README.TXT', sha256: 'c'.repeat(64) },
+  ]);
+  check(
+    foreign.edition === null && foreign.unclaimed.length === 1,
+    'a file belonging to no edition named one anyway',
+  );
 }
 
 // --- The on-screen keyboard's model (#377) ----------------------------
