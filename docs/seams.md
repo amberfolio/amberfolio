@@ -508,8 +508,14 @@ compare as runs and not as spellings.
 Seam state is configuration, not machine state: `machine::reset()`
 clears it, the serialization omits it, a replay records the active set
 as an initial condition (#100). A trigger's latch is the same; *when* it
-was pulled is a stream event (§3a). The persisted config file and the
-shell's toggle panel are M6's (#265).
+was pulled is a stream event (§3a).
+
+**The panel a player works is `docs/hosts.md` §8** (#383): the same five
+facts on both hosts — name, state, `fired` as a number, the reason, the
+gate — with a checkbox in front of each, and a choice made in it
+remembered per player. Nothing there is a second answer to anything on
+this page: the panel reads `status()`, toggles through `enable()` and
+`disable()`, and prints core's own word for a refusal.
 
 ---
 

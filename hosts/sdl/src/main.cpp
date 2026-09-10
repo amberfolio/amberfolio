@@ -383,6 +383,29 @@
 //     known edition the file is, or that it is not one, in which case no
 //     seam is available (machine/edition.h).
 //
+//   --seam-panel     open with the toggle panel up (#383)
+//
+//     The same five facts, painted over the window instead of printed:
+//     each seam's name, its state, `fired` as a **number**, the refusal
+//     reason and the document it waits for. `--seams` answers a
+//     question and exits; this is the panel a player works, and the
+//     right mouse button opens and closes it whether or not this flag
+//     was given. Up and down pick a row and Return toggles it, through
+//     the same `enable()`/`disable()` a `--seam` flag takes.
+//
+//     A toggle made in the panel is **written to the config file**, and
+//     that is the difference between a person and a script: `--seam` is
+//     remembered only by `--remember` (a driving script's flag is not a
+//     player's choice), where a click in a panel is nobody but a
+//     player. A run with `--no-config` says so and writes nothing.
+//     Absence of a remembered choice is *off*, never "unset means
+//     inherit" -- a player who has never opened the panel gets every
+//     seam off, which is the fidelity invariant and not a preference.
+//
+//     The panel needs a window, and a replay's seams are the
+//     recording's, so it is refused with `--headless` and `--replay`
+//     for the reasons `--keyboard` and `--pull` are.
+//
 //   --save-layer     which of the disk's files are the player's (#208)
 //
 //     Two things, either side of the run. Before it, with the edition
@@ -769,6 +792,7 @@
 #include "ocr_discovery.h"
 #include "press_spec.h"
 #include "screen_keyboard_view.h"
+#include "seam_panel.h"
 #include "tesseract_ocr.h"
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
 #include "tesseract_linked_ocr.h"
@@ -1508,6 +1532,23 @@ struct options {
   std::vector<std::string> seams;
   bool list_seams{false};
 
+  /// Open with the toggle panel up (#383). The panel is the window's
+  /// own -- the right mouse button opens and closes it either way -- and
+  /// this is how a driven run puts it in front of a camera, the way
+  /// `--keyboard` does for the on-screen keyboard.
+  bool seam_panel{false};
+
+  /// Whether `opts.seams` came out of the config file rather than off
+  /// the command line (#383).
+  ///
+  /// It decides what a refusal costs. A `--seam` this host cannot honour
+  /// is a command line to fix and stops the run; a *remembered* choice
+  /// that no longer fits -- a player who turned a seam on last week and
+  /// has loaded another program today -- is a row in the panel with a
+  /// reason on it, and stopping the launch over it would be persistence
+  /// taking the game away.
+  bool seams_from_config{false};
+
   /// The VFS door (M5-D2, #170), against the directory this host was
   /// pointed at. Applied *after* the run, so `--vfs-list` says what is
   /// in `\\SAVE\\` once the game has saved rather than before it started.
@@ -1970,7 +2011,8 @@ void print_usage() {
       " [--until TICKS] [--dump PREFIX] [--dump-every N]\n"
       "                                      [--trace]"
       " [--watch OFF[:N]]\n"
-      "                                      [--seam ID] [--seams]\n"
+      "                                      [--seam ID] [--seams]"
+      " [--seam-panel]\n"
       "                                      [--vfs-list]"
       " [--vfs-get PATH] [--vfs-remove PATH]\n"
       "                                      [--save-layer]\n"
@@ -2095,6 +2137,8 @@ void print_usage() {
       opts.cite_all_journal = true;
     } else if (arg == "--seams") {
       opts.list_seams = true;
+    } else if (arg == "--seam-panel") {
+      opts.seam_panel = true;
     } else if (arg == "--trace") {
       opts.trace = true;
     } else if (arg == "--save-sidecars") {
@@ -2265,6 +2309,24 @@ void print_usage() {
                  " --keyboard cannot be combined with --replay\n");
     return opts;
   }
+  // The toggle panel is furniture over the window and is worked with
+  // the pointer, so it wants one for exactly the on-screen keyboard's
+  // reason; and a replay's seams are the recording's (docs/replay.md),
+  // so a panel that could turn one on during one would be changing the
+  // machine the recording describes.
+  if (opts.headless && opts.seam_panel) {
+    std::fprintf(stderr,
+                 "amberfolio: --seam-panel needs a window; --headless"
+                 " opens none\n");
+    return opts;
+  }
+  if (opts.seam_panel && !opts.replay_path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: a replay's seams are the recording's;"
+                 " --seam-panel cannot be combined with --replay\n");
+    return opts;
+  }
+
   // The stills share `--dump`'s prefix, so without one there is nowhere
   // to put them. Refused for the reason above: an option that silently
   // did nothing is worse than one that says why it cannot.
@@ -2892,6 +2954,68 @@ void write_config(const std::string& path, const sdl::desktop_config& what,
                path.c_str());
 }
 
+/// The seams that are on right now, written into the config file and
+/// **nothing else about this run** (#383).
+///
+/// This is the one place the desktop host writes a setting without
+/// `--remember`, and the argument for it is narrow on purpose. #382's
+/// rule is about a *flag*: a driving script's `--seam automap` is not
+/// somebody choosing an enhancement, and a host that wrote it down would
+/// leave the seam on for the next person who ran the script — which is
+/// the fidelity invariant lost to a convenience. A click or a Return
+/// **in a panel** is nobody but a player, and it is the only gesture
+/// this host has that cannot be anything else. So the panel remembers
+/// and the flag still does not.
+///
+/// Only `.seams`, over whatever the file already holds. `config_of()`
+/// would also write down this run's `--speed`, `--scale` and `--volume`,
+/// and a driving script's speed becoming a player's setting is the very
+/// thing `--remember` exists to prevent.
+///
+/// **Absence of a stored choice is off**, never "unset means inherit": a
+/// player who has turned every seam back off gets no `seam` line at all,
+/// which is exactly the file a player who never opened the panel has.
+///
+/// Kept as one function with one caller and a name that says what it is,
+/// so that it can be taken out on its own if this rule is the wrong one.
+void remember_panel_seams(const options& opts,
+                          const machine::seam_engine& seams) {
+  if (opts.no_config) {
+    std::fprintf(stderr,
+                 "amberfolio: --no-config, so this choice is not"
+                 " remembered\n");
+    return;
+  }
+  const std::string path = config_file_path(opts);
+  sdl::desktop_config what;
+  bool found = false;
+  const std::string text = slurp_file(path, found);
+  if (found) {
+    // A file this build cannot read is left exactly where it is, here as
+    // everywhere else: rewriting one to save a checkbox would throw away
+    // somebody's settings to keep a preference (CLAUDE.md's "log, don't
+    // fake").
+    if (const sdl::config_reading read = what.parse(text); !read.ok()) {
+      std::fprintf(stderr,
+                   "amberfolio: config %s line %zu - %s: %s; this choice"
+                   " is not remembered\n",
+                   path.c_str(), read.line, sdl::config_trouble_name(read.why),
+                   read.text.c_str());
+      return;
+    }
+  }
+  std::vector<std::string> on;
+  for (std::size_t i = 0; i < seams.count(); ++i) {
+    if (const machine::seam_status row = seams.status(i);
+        row.state == machine::seam_state::on) {
+      on.emplace_back(row.id);
+    }
+  }
+  what.seams = on.empty() ? std::optional<std::vector<std::string>>{}
+                          : std::optional<std::vector<std::string>>{on};
+  write_config(path, what, "seams remembered in");
+}
+
 /// What this host needs and where to point it: a first run (#382).
 ///
 /// Not an error and not the usage block. A person who has just unpacked
@@ -3012,6 +3136,11 @@ void report_first_run(const options& opts, const std::string& config_path) {
         sdl::prefer(opts.given.root, from_file.game_directory, root);
         opts.root = std::filesystem::path(root);
         sdl::prefer(opts.given.program, from_file.program, opts.program);
+        // The one setting whose *origin* outlives the settling, because
+        // a refusal costs a remembered choice something different from
+        // what it costs a flag (#383, `options::seams_from_config`).
+        opts.seams_from_config =
+            !opts.given.seams && from_file.seams.has_value();
         sdl::prefer(opts.given.seams, from_file.seams, opts.seams);
         sdl::prefer(opts.given.journal_ocr, from_file.journal_ocr,
                     opts.journal_ocr);
@@ -3719,6 +3848,20 @@ int main(int argc, char** argv) try {
     }
     std::fprintf(stderr, "amberfolio: seam %s refused (%s)\n", id.c_str(),
                  seam_refusal(why));
+    // **A remembered choice that no longer fits does not stop the
+    // launch** (#383). A `--seam` this host cannot honour is a command
+    // line to fix and still does; but a seam a player turned on last
+    // week, against a program they are not running today, is a row in
+    // the panel with a reason on it — and a config that killed the
+    // launch over one would be persistence taking the game away. #382
+    // could already produce exactly that file through `--remember`.
+    if (opts.seams_from_config) {
+      std::fprintf(stderr,
+                   "amberfolio: seam %s was remembered, not asked for on"
+                   " this command line - carrying on without it\n",
+                   id.c_str());
+      continue;
+    }
     return EXIT_FAILURE;
   }
 
@@ -4333,6 +4476,122 @@ int main(int argc, char** argv) try {
     return keyboard_controls.size();
   };
 
+  // --- The toggle panel (#383) ------------------------------------------
+  //
+  // The five facts about every seam, painted over the window, and the
+  // place a player turns one on. `seam_panel.h` argues the columns and
+  // says why `fired` is a number; what is here is the run loop's half —
+  // which button opens it, which keys drive it, and where a choice goes.
+  //
+  // **The right mouse button opens and closes it**, on the middle
+  // button's own recorded argument (#377): this machine has no mouse, so
+  // no mouse button is a control the game can ever want back.
+  //
+  // **The on-screen keyboard has priority for the keys.** It already
+  // claims all four arrows and Return, and two overlays fighting over
+  // one key is worse for a player than one of them being unreachable for
+  // as long as the other is up. So the panel takes up, down and Return
+  // only while the keyboard is *not* shown; a player with both up steps
+  // the keyboard off and has them back.
+  //
+  // The rows are rebuilt from the engine at every paint and at every
+  // click rather than kept, which is what makes `fired` a live number
+  // instead of one taken once before the machine had run a step.
+  sdl::panel_painter panel_paint;
+  bool panel_shown = opts.seam_panel;
+  std::size_t panel_focus = box.seams().count() == 0 ? sdl::panel_no_row : 0;
+  /// The overlay changed without the machine drawing anything —
+  /// `keyboard_repaint`'s reason, and the same fix.
+  bool panel_repaint = false;
+
+  /// Turn the seam on row `at` on or off, through the same
+  /// `enable()`/`disable()` a `--seam` flag takes and with the refusal
+  /// reported.
+  ///
+  /// **A choice that did not take is never written down.** A panel that
+  /// recorded a toggle core had refused would be the one failure a
+  /// fail-closed toggle surface cannot have: the next launch would turn
+  /// on a seam this one could not.
+  const auto panel_toggle = [&](std::size_t at) {
+    const std::vector<sdl::panel_row> rows = sdl::panel_rows(box.seams());
+    if (at >= rows.size() || !rows[at].available) {
+      return;
+    }
+    // By value: `rows` is gone by the end of this call and the id is a
+    // view into a string inside it.
+    const std::string id = rows[at].id;
+    const bool want_on = !rows[at].on;
+    panel_repaint = true;
+    if (replaying) {
+      // The panel is a view during a replay and nothing more, for the
+      // reason a keystroke at the window is refused: a recording's seams
+      // are its own initial condition (docs/replay.md).
+      std::fprintf(stderr,
+                   "amberfolio: a replay's seams are the recording's\n");
+      return;
+    }
+    const machine::seam_error why =
+        want_on ? box.seams().enable(id) : box.seams().disable(id);
+    if (why != machine::seam_error::none) {
+      std::fprintf(stderr, "amberfolio: seam %s %s refused (%s)\n", id.c_str(),
+                   want_on ? "on" : "off", seam_refusal(why));
+      return;
+    }
+    // Nothing is said about a toggle that took: the engine's own edge log
+    // already prints `seam automap on` and `seam automap armed`
+    // (`drain_edges()`), and a second sentence from this host would be
+    // the same transition twice. What follows says the other half — that
+    // the choice was written down.
+    remember_panel_seams(opts, box.seams());
+  };
+
+  /// The focus one row up or down, wrapping. A build with no seams has
+  /// no focus at all rather than a focus on row zero of nothing.
+  const auto panel_move = [&](int step) {
+    const std::size_t rows = box.seams().count();
+    panel_repaint = true;
+    if (rows == 0) {
+      panel_focus = sdl::panel_no_row;
+      return;
+    }
+    if (panel_focus >= rows) {
+      panel_focus = step < 0 ? rows - 1 : 0;
+      return;
+    }
+    if (step < 0) {
+      panel_focus = panel_focus == 0 ? rows - 1 : panel_focus - 1;
+    } else {
+      panel_focus = panel_focus + 1 == rows ? 0 : panel_focus + 1;
+    }
+  };
+
+  /// The keys the panel takes while it is up and the keyboard is not.
+  /// `keyboard_control`'s make/break rule applies here for its reason:
+  /// the break of a key whose make was taken is taken too.
+  struct panel_control {
+    SDL_Scancode code;
+    int step;
+    bool toggles;
+  };
+  static constexpr std::array<panel_control, 4> panel_controls{{
+      {.code = SDL_SCANCODE_UP, .step = -1, .toggles = false},
+      {.code = SDL_SCANCODE_DOWN, .step = 1, .toggles = false},
+      // The two that toggle carry a step they never use, for the reason
+      // the keyboard's two commits carry a direction they never use.
+      {.code = SDL_SCANCODE_RETURN, .step = 0, .toggles = true},
+      {.code = SDL_SCANCODE_KP_ENTER, .step = 0, .toggles = true},
+  }};
+  std::array<bool, panel_controls.size()> panel_taken{};
+
+  const auto panel_control_of = [&](SDL_Scancode code) {
+    for (std::size_t i = 0; i < panel_controls.size(); ++i) {
+      if (panel_controls[i].code == code) {
+        return i;
+      }
+    }
+    return panel_controls.size();
+  };
+
   // How much of the speaker's timeline one frame of virtual time is
   // worth, in samples. Only pulled when there is no audio device doing
   // the pulling — see the call site.
@@ -4559,19 +4818,46 @@ int main(int argc, char** argv) try {
           keyboard_latched = 0;
           keyboard_taken.fill(false);
           keyboard_repaint = true;
+          panel_taken.fill(false);
         } else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
-          // The middle button steps the on-screen keyboard on (#377), and
-          // the left one presses whatever key is under the pointer. This
-          // machine has no mouse, so neither is taken from anything.
+          // The middle button steps the on-screen keyboard on (#377), the
+          // right one opens and closes the toggle panel (#383), and the
+          // left one presses whatever is under the pointer. This machine
+          // has no mouse, so none of the three is taken from anything.
           if (event.button.button == SDL_BUTTON_MIDDLE && !replaying) {
             keyboard_step();
-          } else if (event.button.button == SDL_BUTTON_LEFT && keyboard_shown &&
-                     !replaying) {
-            const osk::layout& shown = keyboard_layouts[keyboard_index];
+          } else if (event.button.button == SDL_BUTTON_RIGHT) {
+            panel_shown = !panel_shown;
+            if (panel_shown && panel_focus == sdl::panel_no_row &&
+                box.seams().count() != 0) {
+              panel_focus = 0;
+            }
+            panel_repaint = true;
+          } else if (event.button.button == SDL_BUTTON_LEFT) {
             int window_width = 0;
             int window_height = 0;
-            if (SDL_GetRenderOutputSize(renderer, &window_width,
-                                        &window_height)) {
+            const bool sized = SDL_GetRenderOutputSize(renderer, &window_width,
+                                                       &window_height);
+            // **The panel is asked first.** The two overlays can be over
+            // the same pixel, and a click belongs to the one in front;
+            // a click that landed on no row of the panel falls through
+            // to the keyboard rather than being swallowed.
+            bool taken_by_panel = false;
+            if (sized && panel_shown) {
+              const std::vector<sdl::panel_row> rows =
+                  sdl::panel_rows(box.seams());
+              const std::size_t at = sdl::row_under(
+                  sdl::fit_panel(sdl::panel_lines(rows, panel_focus),
+                                 window_width, window_height),
+                  rows.size(), event.button.x, event.button.y);
+              if (at != sdl::panel_no_row) {
+                panel_focus = at;
+                panel_toggle(at);
+                taken_by_panel = true;
+              }
+            }
+            if (sized && !taken_by_panel && keyboard_shown && !replaying) {
+              const osk::layout& shown = keyboard_layouts[keyboard_index];
               const std::size_t at = sdl::key_under(
                   sdl::fit_keyboard(shown, window_width, window_height), shown,
                   event.button.x, event.button.y);
@@ -4597,7 +4883,27 @@ int main(int argc, char** argv) try {
           const std::size_t control = keyboard_control_of(event.key.scancode);
           const bool owned = control < keyboard_controls.size() &&
                              (down ? keyboard_shown : keyboard_taken[control]);
-          if (owned && down) {
+          // And the panel takes up, down and Return while it is up and
+          // the keyboard is not (#383) — asked first, because the same
+          // break has to reach whichever overlay took its make.
+          const std::size_t picked = panel_control_of(event.key.scancode);
+          const bool panel_owned =
+              picked < panel_controls.size() &&
+              (down ? (panel_shown && !keyboard_shown) : panel_taken[picked]);
+          if (panel_owned && down) {
+            panel_taken[picked] = true;
+            if (!event.key.repeat) {
+              if (panel_controls[picked].toggles) {
+                if (panel_focus != sdl::panel_no_row) {
+                  panel_toggle(panel_focus);
+                }
+              } else {
+                panel_move(panel_controls[picked].step);
+              }
+            }
+          } else if (panel_owned) {
+            panel_taken[picked] = false;
+          } else if (owned && down) {
             keyboard_taken[control] = true;
             if (!event.key.repeat && !replaying) {
               if (keyboard_controls[control].commits) {
@@ -4678,8 +4984,11 @@ int main(int argc, char** argv) try {
     // The overlay is a reason to present as much as a new frame is: a
     // focus that moved over a picture the game is not redrawing would
     // otherwise not appear until the game moved (#377).
-    if (!opts.headless &&
-        (box.display().generation() != presented || keyboard_repaint)) {
+    // And the panel is a live readout: while it is up, `fired` is a
+    // number that has to move when a handler runs, whether or not the
+    // game happened to redraw anything (#383).
+    if (!opts.headless && (box.display().generation() != presented ||
+                           keyboard_repaint || panel_shown || panel_repaint)) {
       presented = box.display().generation();
       const std::span<const std::uint8_t> pixels = box.display().pixels();
       const std::span<const machine::rgb> palette = box.display().palette();
@@ -4704,7 +5013,18 @@ int main(int argc, char** argv) try {
         keyboard_paint.draw(renderer, keyboard_layouts[keyboard_index],
                             keyboard_focus, keyboard_latched);
       }
+      // The panel over the keyboard, because the keyboard is what a
+      // person uses to drive the panel and the panel is what they came
+      // to read. Its rows are built here, from the engine, at every
+      // paint: `fired` is only a live number if nothing caches it.
+      if (panel_shown) {
+        panel_paint.draw(
+            renderer,
+            sdl::panel_lines(sdl::panel_rows(box.seams()), panel_focus),
+            panel_focus);
+      }
       keyboard_repaint = false;
+      panel_repaint = false;
       SDL_RenderPresent(renderer);
       ++report.presented;
     }

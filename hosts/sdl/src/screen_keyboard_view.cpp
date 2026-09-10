@@ -10,12 +10,11 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <string_view>
-#include <vector>
 
 #include "amberfolio/machine/font.h"
 #include "amberfolio/machine/screen_keyboard.h"
+#include "glyph_atlas.h"
 
 namespace amberfolio::sdl {
 namespace {
@@ -28,12 +27,6 @@ namespace osk = machine::screen_keyboard;
 /// a tall window with four enormous keys.
 constexpr float width_share = 0.94F;
 constexpr float height_share = 0.5F;
-
-/// Glyphs across the atlas, and so the atlas's side in pixels. The whole
-/// code page, because a legend is a `std::string_view` and this file has
-/// no business deciding which bytes may be in one.
-constexpr int atlas_across = 16;
-constexpr int atlas_side = atlas_across * machine::font::glyph_height;
 
 /// The colours. Dark enough that the frame underneath is still readable
 /// through the panel, and amber for the two states a player has to see at
@@ -81,32 +74,17 @@ void set_colour(SDL_Renderer* renderer, SDL_Color colour) {
   return std::max(1.0F, scale);
 }
 
-void draw_legend(SDL_Renderer* renderer, SDL_Texture* atlas,
+void draw_legend(SDL_Renderer* renderer, glyph_atlas& atlas,
                  const SDL_FRect& key, std::string_view label, float scale,
                  SDL_Color colour) {
-  if (atlas == nullptr || label.empty()) {
+  if (label.empty()) {
     return;
   }
   const auto glyph = static_cast<float>(machine::font::glyph_height);
-  const float width = scale * glyph * static_cast<float>(label.size());
-  float x = key.x + ((key.w - width) / 2.0F);
+  const float width = glyph_atlas::width_of(label.size(), scale);
+  const float x = key.x + ((key.w - width) / 2.0F);
   const float y = key.y + ((key.h - (scale * glyph)) / 2.0F);
-
-  SDL_SetTextureColorMod(atlas, colour.r, colour.g, colour.b);
-  for (const char character : label) {
-    const auto code = static_cast<int>(static_cast<unsigned char>(character));
-    // Deliberately integer: these are the atlas cell's column and row,
-    // not a fraction of one.
-    const int cell_x = (code % atlas_across) * machine::font::glyph_height;
-    const int cell_y = (code / atlas_across) * machine::font::glyph_height;
-    const SDL_FRect from{.x = static_cast<float>(cell_x),
-                         .y = static_cast<float>(cell_y),
-                         .w = glyph,
-                         .h = glyph};
-    const SDL_FRect to{.x = x, .y = y, .w = scale * glyph, .h = scale * glyph};
-    SDL_RenderTexture(renderer, atlas, &from, &to);
-    x += scale * glyph;
-  }
+  atlas.draw(renderer, label, x, y, scale, colour);
 }
 
 }  // namespace
@@ -169,58 +147,6 @@ std::size_t key_under(const keyboard_box& box, const osk::layout& which,
                      static_cast<std::uint16_t>(column));
 }
 
-keyboard_painter::~keyboard_painter() {
-  if (atlas_ != nullptr) {
-    SDL_DestroyTexture(atlas_);
-  }
-}
-
-void keyboard_painter::ensure_atlas(SDL_Renderer* renderer) {
-  if (atlas_tried_) {
-    return;
-  }
-  atlas_tried_ = true;
-
-  // White where the glyph is lit and fully transparent elsewhere, so that
-  // one colour mod paints a legend in whatever colour the key wants.
-  // On the heap: a whole code page of eight-by-eight cells is sixty-four
-  // kilobytes, which is not a thing to put on a stack for the one frame
-  // it is needed.
-  std::vector<std::uint32_t> pixels(static_cast<std::size_t>(atlas_side) *
-                                    static_cast<std::size_t>(atlas_side));
-  const std::span<const std::uint8_t> glyphs = machine::font::glyphs();
-  for (unsigned code = 0; code < machine::font::glyph_count; ++code) {
-    const std::size_t at =
-        static_cast<std::size_t>(code) * machine::font::glyph_height;
-    if (at + machine::font::glyph_height > glyphs.size()) {
-      break;
-    }
-    const auto cell_x = static_cast<std::size_t>(code % atlas_across) *
-                        machine::font::glyph_height;
-    const auto cell_y = static_cast<std::size_t>(code / atlas_across) *
-                        machine::font::glyph_height;
-    for (std::size_t line = 0; line < machine::font::glyph_height; ++line) {
-      const std::uint8_t bits = glyphs[at + line];
-      for (std::size_t bit = 0; bit < machine::font::glyph_height; ++bit) {
-        // Bit 7 is the leftmost pixel — the EGA's own order (font.h).
-        if ((bits & (0x80U >> bit)) != 0) {
-          pixels[((cell_y + line) * atlas_side) + cell_x + bit] = 0xFFFFFFFFU;
-        }
-      }
-    }
-  }
-
-  atlas_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32,
-                             SDL_TEXTUREACCESS_STATIC, atlas_side, atlas_side);
-  if (atlas_ == nullptr) {
-    return;
-  }
-  SDL_SetTextureBlendMode(atlas_, SDL_BLENDMODE_BLEND);
-  SDL_SetTextureScaleMode(atlas_, SDL_SCALEMODE_NEAREST);
-  SDL_UpdateTexture(atlas_, nullptr, pixels.data(),
-                    atlas_side * static_cast<int>(sizeof(std::uint32_t)));
-}
-
 void keyboard_painter::draw(SDL_Renderer* renderer, const osk::layout& which,
                             std::size_t focus, std::uint8_t latched) {
   if (renderer == nullptr) {
@@ -235,7 +161,6 @@ void keyboard_painter::draw(SDL_Renderer* renderer, const osk::layout& which,
   if (box.quarter <= 0.0F) {
     return;
   }
-  ensure_atlas(renderer);
   const float scale = board_scale(box, which);
 
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);

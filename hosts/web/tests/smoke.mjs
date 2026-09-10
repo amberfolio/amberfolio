@@ -146,7 +146,15 @@ import {
   textDrawer,
   STORES,
   TEXT_STORE,
+  SEAMS_SETTING,
 } from './persist.mjs';
+import {
+  applyStoredSeams,
+  panelRow,
+  seamsToStore,
+  storedSeams,
+  PANEL_COLUMNS,
+} from './toggle-panel.mjs';
 
 /// The ABI's guest list, as hosts/web/CMakeLists.txt sets it. Keep the
 /// two in step; that is the whole job of this array.
@@ -2633,6 +2641,175 @@ if (missing.length === 0) {
     'smoke: the save layer decides which side of the boundary a file is' +
       ' kept on, a program with no layer keeps nothing, a refusal says why,' +
       ' and the drawer stays owed until the database takes it',
+  );
+}
+
+// --- The toggle panel's model (#383) --------------------------------------
+//
+// One panel on both hosts, and the part that can be checked without a
+// browser is the part that matters: the five facts a row carries, spelled
+// the way the desktop host spells them, and what a *stored* choice means.
+//
+// The C++ half is `hosts/sdl/tests/seam_panel_test.cpp` and it makes the
+// same claims about the same words. Two hosts that disagreed about
+// whether a seam is `on inert` or `unavailable` would be two hosts a
+// player cannot compare.
+
+{
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  /// A `seamList()` row with nothing wrong with it, for a check to spoil
+  /// one field of.
+  const aSeam = (over = {}) => ({
+    id: 'automap',
+    about: 'a panel of where the party has been',
+    state: AF_SEAM_ON,
+    reason: 'none',
+    reading: '',
+    armed: true,
+    fired: 12,
+    trigger: false,
+    gate: 'no document',
+    ...over,
+  });
+
+  // --- The five facts, in the desktop host's words --------------------
+  const armed = panelRow(aSeam());
+  check(armed.state === 'on armed', `an armed seam reads '${armed.state}'`);
+  // A **number**, not a tick (#131, #163). A seam that armed and fired
+  // nothing reads exactly like one that worked, and this is the only
+  // thing on the row that says otherwise.
+  check(armed.fired === 12, `fired came out as ${armed.fired}`);
+  check(typeof armed.fired === 'number', 'fired is not a number');
+  check(armed.reason === '-', `a seam with nothing wrong reads '${armed.reason}'`);
+  check(armed.gate === '-', `a seam that waits on nothing reads '${armed.gate}'`);
+  check(armed.on && armed.available, 'an enabled seam is not on, or not available');
+
+  check(
+    PANEL_COLUMNS.map((column) => column.key).join(',') ===
+      'id,state,fired,reason,gate',
+    'the panel is not the five facts in the order both hosts put them in',
+  );
+  check(
+    PANEL_COLUMNS.filter((column) => column.numeric)
+      .map((column) => column.key)
+      .join(',') === 'fired',
+    'fired is not the column that lines up as a number',
+  );
+
+  const inert = panelRow(
+    aSeam({ armed: false, reason: 'document_not_presented', gate: 'journal' }),
+  );
+  check(inert.state === 'on inert', `an unarmed enabled seam reads '${inert.state}'`);
+  // Core's own word, never this host's paraphrase: the part a player can
+  // act on is the reason and the document it names.
+  check(
+    inert.reason === 'document_not_presented' && inert.gate === 'journal',
+    `a refusal came out as '${inert.reason}' waiting for '${inert.gate}'`,
+  );
+
+  const away = panelRow(
+    aSeam({ state: AF_SEAM_UNAVAILABLE, armed: false, reason: 'wrong_binary' }),
+  );
+  check(away.state === 'unavailable', `a seam for another program reads '${away.state}'`);
+  check(
+    !away.available && !away.on,
+    'a seam for another program came out as one a player may tick',
+  );
+  check(
+    panelRow(aSeam({ state: AF_SEAM_OFF, armed: false, fired: 0 })).state === 'off',
+    'a seam nobody turned on does not read off',
+  );
+
+  // Core's sentence about what the numbers mean (#163) arrives with the
+  // separator it is printed after; the panel supplies its own.
+  const said = panelRow(
+    aSeam({ fired: 0, reading: ' - armed, and never reached' }),
+  );
+  check(
+    said.reading === 'armed, and never reached',
+    `the reading came out as '${said.reading}'`,
+  );
+  check(said.fired === 0, 'a seam that fired nothing did not say zero');
+
+  // --- What a stored choice means, fail-closed ------------------------
+  //
+  // The rule #383 turns on: **a player who has never opened the panel
+  // gets every seam off.** So every reading of a record that is not a
+  // list of names is *no choice*, and there is no reading of any record
+  // that means "inherit whatever is on".
+  check(storedSeams(['automap', 'journal']).join(',') === 'automap,journal',
+    'a stored list of names did not come back as one');
+  check(
+    storedSeams(['automap', 'automap']).join(',') === 'automap',
+    'a stored list with a name twice turned it on twice',
+  );
+  check(storedSeams([]).length === 0, 'a stored empty list is not an empty choice');
+  for (const nothing of [
+    undefined,
+    null,
+    'automap',
+    7,
+    { automap: true },
+    ['automap', 7],
+    ['automap', ''],
+  ]) {
+    check(
+      storedSeams(nothing) === null,
+      `a record of ${JSON.stringify(nothing) ?? 'undefined'} was read as a choice`,
+    );
+  }
+
+  // A player who has turned everything back off leaves the record a
+  // player who never opened the panel has. There is one meaning of off.
+  check(
+    seamsToStore([panelRow(aSeam()), panelRow(aSeam({ id: 'journal' }))]).join(',') ===
+      'automap,journal',
+    'the seams that are on did not come out as the record to store',
+  );
+  check(
+    seamsToStore([panelRow(aSeam({ state: AF_SEAM_OFF, armed: false }))]) === null,
+    'a player who turned everything off left a record behind',
+  );
+  check(SEAMS_SETTING === 'seams', `the settings key is '${SEAMS_SETTING}'`);
+
+  // --- A stored choice is applied, never assumed ----------------------
+  //
+  // Through the same `seamEnable()` a click takes, with the refusal
+  // carried out with core's reason on it. A remembered seam this program
+  // has no addresses for is a row a player can read, not a page that
+  // will not come up.
+  {
+    const asked = [];
+    const stand = {
+      seamEnable: (id) => {
+        asked.push(id);
+        return id === 'gone' ? AF_INVALID : AF_OK;
+      },
+      seamList: () => [{ id: 'gone', reason: 'wrong_binary' }],
+    };
+    const applied = applyStoredSeams(stand, ['automap', 'gone']);
+    check(asked.join(',') === 'automap,gone', 'a stored choice skipped a seam');
+    check(applied.on.join(',') === 'automap', `${applied.on.join(',')} took`);
+    check(
+      applied.refused.length === 1 &&
+        applied.refused[0].id === 'gone' &&
+        applied.refused[0].reason === 'wrong_binary',
+      'a refused stored seam lost core\'s reason for it',
+    );
+    // Null is the whole point of `storedSeams()`: no record, nothing on.
+    check(
+      applyStoredSeams(stand, storedSeams(null)).on.length === 0,
+      'a browser with no record turned a seam on',
+    );
+  }
+
+  console.log(
+    'smoke: the toggle panel says the same five facts a desktop panel' +
+      ' does, a stored choice that is not a list of names is no choice,' +
+      ' and one that is goes through seamEnable with its refusals kept',
   );
 }
 

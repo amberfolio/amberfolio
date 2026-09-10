@@ -46,6 +46,7 @@
 #include <cstdint>
 
 #include "amberfolio/machine/screen_keyboard.h"
+#include "glyph_atlas.h"
 
 namespace amberfolio::sdl {
 
@@ -88,37 +89,22 @@ struct keyboard_box {
     const keyboard_box& box, const machine::screen_keyboard::layout& which,
     float x, float y) noexcept;
 
-/// Paints a layout, and owns the one texture it needs to do it: an atlas
-/// of the machine's character generator, built once on the renderer it
-/// will be drawn with.
-///
-/// A texture rather than a rectangle per lit pixel: a legend is eight
-/// rows of eight, and a full keyboard's worth of them is thousands of
-/// draw calls a frame the moment it is spelled the obvious way.
+/// Paints a layout, over the machine's own character generator
+/// (`glyph_atlas.h`), which it holds for the renderer's life.
 class keyboard_painter {
  public:
-  keyboard_painter() = default;
-  keyboard_painter(const keyboard_painter&) = delete;
-  keyboard_painter& operator=(const keyboard_painter&) = delete;
-  keyboard_painter(keyboard_painter&&) = delete;
-  keyboard_painter& operator=(keyboard_painter&&) = delete;
-  ~keyboard_painter();
-
   /// Draw `which` over whatever the renderer already holds, with `focus`
   /// outlined and every key whose latch bit is in `latched` lit.
   ///
-  /// The atlas is built on the first call and kept. A renderer that
-  /// refuses it costs the legends and nothing else — the keys are still
-  /// there, still hittable, and the run does not stop over a font.
+  /// A renderer that refuses the atlas costs the legends and nothing
+  /// else — the keys are still there, still hittable, and the run does
+  /// not stop over a font.
   void draw(SDL_Renderer* renderer,
             const machine::screen_keyboard::layout& which, std::size_t focus,
             std::uint8_t latched);
 
  private:
-  void ensure_atlas(SDL_Renderer* renderer);
-
-  SDL_Texture* atlas_{nullptr};
-  bool atlas_tried_{false};
+  glyph_atlas atlas_;
 };
 
 }  // namespace amberfolio::sdl
