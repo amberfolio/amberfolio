@@ -268,9 +268,15 @@ def run_side(host: Path, disk: Path, leg: Leg, into: Path,
     # in this directory was written against: unseeded, counting from the
     # DOS epoch.  A stated date would be a different machine, and a leg
     # is a claim about *this* one.
+    # `--no-config` for the same kind of reason as `--wall none`
+    # above (#382).  A leg is a pixel comparison of an on side against an
+    # off side, and the off side is off only if nothing on this machine
+    # turned a seam on behind it.  A settings file with `seam automap` in
+    # it would make both sides the on side, and the leg would pass by
+    # comparing a thing against itself.
     command = [str(host), str(copy), leg.program,
                "--fast", "max", "--until", str(leg.until),
-               "--wall", "none",
+               "--wall", "none", "--no-config",
                "--dump", str(into / "stills" / "f"),
                "--dump-every", str(leg.every)]
     for seam in seams:

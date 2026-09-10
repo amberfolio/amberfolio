@@ -14,10 +14,16 @@ include(AmberfolioTesseract)
 
 add_executable(amberfolio-sdl
   src/audio_gain.cpp
+  # The settings a player chose once, and where an OCR engine is looked
+  # for (#382). Their own units for press_spec.cpp's reason: a file
+  # format and a search order are both things a test can read without a
+  # window, an audio device or an engine installed.
+  src/desktop_config.cpp
   src/directory_vfs.cpp
   src/dump.cpp
   src/keymap.cpp
   src/main.cpp
+  src/ocr_discovery.cpp
   # `--press`'s grammar (#313) -- its own unit so tests/press_spec_test.cpp
   # can read it, on keymap.cpp's argument.
   src/press_spec.cpp
@@ -81,14 +87,21 @@ endif()
 # point of it (#80).
 #
 # The first is the M0 check kept alive: invoked with no arguments the host
-# prints usage and fails, which proves it starts, links and can talk. The
+# says what it needs, which proves it starts, links and can talk. The
 # second is the M2 one — it boots a real program out of a real directory
 # and checks the exit code the program itself chose. Neither needs a
 # window, which is the whole reason `--headless` exists.
-add_test(NAME sdl-host-usage COMMAND amberfolio-sdl)
+#
+# It used to expect a failure and a usage block; since #382 a launch with
+# no game directory yet is a **first run**, and a first run is not an
+# error. `--no-config` is what makes the case mean the same thing on a
+# runner and on a maintainer's machine, where there is a config file and
+# a game in it: a check whose answer depends on whose desk it runs at is
+# not a check.
+add_test(NAME sdl-host-usage COMMAND amberfolio-sdl --no-config)
 set_tests_properties(sdl-host-usage PROPERTIES
   LABELS smoke
-  WILL_FAIL TRUE)
+  PASS_REGULAR_EXPRESSION "no game directory yet")
 
 # The M2 check: a self-written program, assembled by the test rig into a
 # directory this test makes, run headless through the whole machine. It
@@ -158,6 +171,27 @@ add_test(NAME sdl-host-vfs-door
     "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/smoke-disk"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-vfs-door.cmake")
 set_tests_properties(sdl-host-vfs-door PROPERTIES
+  LABELS smoke
+  FIXTURES_REQUIRED sdl_smoke_disk
+  RESOURCE_LOCK sdl_smoke_disk_contents)
+
+# --- The config file, and a first run (#382) ---------------------------
+#
+# The desktop half of M6's onboarding: a launch with nothing to run says
+# what it needs instead of printing usage, `--remember` writes the answer
+# down, and the launch after it needs no arguments. Every step of it is
+# pointed at a scratch config by `--config`, so it never reads or writes
+# the per-user file a person's own settings live in.
+#
+# It reads the smoke disk and writes nothing to it, but it *runs* the
+# programs on it, so it takes the same lock as everything else that does.
+add_test(NAME sdl-host-config-file
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${CMAKE_CURRENT_BINARY_DIR}/smoke-disk"
+    "-DSCRATCH=${CMAKE_CURRENT_BINARY_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-config-file.cmake")
+set_tests_properties(sdl-host-config-file PROPERTIES
   LABELS smoke
   FIXTURES_REQUIRED sdl_smoke_disk
   RESOURCE_LOCK sdl_smoke_disk_contents)
@@ -393,6 +427,30 @@ set_tests_properties(sdl-host-verifies-a-session PROPERTIES
   LABELS smoke
   PASS_REGULAR_EXPRESSION "replay verified checkpoints=[1-9][0-9]*")
 
+# --- And the same session, with a config in the way (#382) -------------
+#
+# A recording is verified by exact comparison — here, by
+# `tests/core/machine/session_test.cpp`, by `hosts/web/tests/smoke.mjs`,
+# and by `scripts/sweep.py` on whatever machine happens to run it. So a
+# settings file on that machine must not reach the run, or a replay's
+# answer would depend on whose desk it ran at.
+#
+# The config this points at names a different directory, a different
+# program, three seams, another speed and another volume — every setting
+# the file can carry, each of them wrong for this recording. The
+# recording still verifies, and the host says why it ignored the file.
+# Without the rule this fails on a checkpoint hash, which is the divergence
+# three steps from its cause that #320 already paid for once.
+add_test(NAME sdl-host-replays-past-a-config
+  COMMAND "${CMAKE_COMMAND}"
+    "-DHOST=$<TARGET_FILE:amberfolio-sdl>"
+    "-DDISK=${PROJECT_SOURCE_DIR}/tests/sessions/spin"
+    "-DSESSION=${PROJECT_SOURCE_DIR}/tests/sessions/spin.rec"
+    "-DSCRATCH=${CMAKE_CURRENT_BINARY_DIR}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/run-replay-past-config.cmake")
+set_tests_properties(sdl-host-replays-past-a-config PROPERTIES
+  LABELS smoke)
+
 # --- The mapping table, on its own (#80) -------------------------------
 #
 # The check above posts one key. The table has eighty-odd rows, and a
@@ -410,12 +468,16 @@ if(AMBERFOLIO_BUILD_TESTS)
 
   add_executable(amberfolio-sdl-tests
     src/audio_gain.cpp
+    src/desktop_config.cpp
     src/keymap.cpp
+    src/ocr_discovery.cpp
     src/press_spec.cpp
     src/screen_keyboard_view.cpp
     src/tsv_words.cpp
     tests/audio_gain_test.cpp
+    tests/desktop_config_test.cpp
     tests/keymap_test.cpp
+    tests/ocr_discovery_test.cpp
     tests/press_spec_test.cpp
     tests/screen_keyboard_view_test.cpp
     tests/tsv_words_test.cpp)

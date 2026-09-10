@@ -22,9 +22,9 @@
 //
 // Where it goes is a host's business, because files are (PLAN.md §4):
 //
-//   * the desktop host writes one file, beside where M6's configuration
-//     will live (`--journal-store` overrides it, and the SDL host's
-//     `--help` says where the default is);
+//   * the desktop host writes one file, beside its config
+//     (`docs/hosts.md` 2a); `--journal-store` overrides it, and the line
+//     the host prints after an ingestion says which file it used;
 //   * the browser serializes one into its own key-value storage and reads
 //     it back when the page next loads (M5-E3f), because an ingestion of
 //     a real edition is minutes of OCR and asking for it on every visit
@@ -207,8 +207,8 @@ inline constexpr std::uint32_t journal_store_oldest_version = 1;
 inline constexpr std::string_view journal_store_magic = "amberfolio-journal";
 
 /// The file the desktop host writes when it was not told otherwise, under
-/// the per-user data directory M6's configuration will share
-/// (`journal_store_default_path()` in the SDL host).
+/// the per-user data directory it shares with the config and the
+/// answered code wheels (`per_user_path()` in the SDL host).
 inline constexpr std::string_view journal_store_filename = "journal.txt";
 
 // --- The read log's sidecar (#351) ------------------------------------

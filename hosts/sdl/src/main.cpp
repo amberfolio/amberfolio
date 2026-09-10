@@ -4,7 +4,7 @@
 // (PLAN.md §4). It builds a machine, points it at a directory, loads a
 // program, and gives it a screen, a speaker and a keyboard.
 //
-//     amberfolio <dir> <program.exe> [--headless] [--scale N]
+//     amberfolio [<dir> [<program.exe>]] [--headless] [--scale N]
 //                                     [--verify] [--press KEY@FRAME]
 //                                     [--steps N] [--until TICKS]
 //                                     [--dump PREFIX] [--trace]
@@ -14,7 +14,15 @@
 //                                     [--vfs-get PATH] [--vfs-remove PATH]
 //                                     [--save-layer]
 //                                     [--speed NAME]
+//                                     [--config PATH] [--no-config]
+//                                     [--remember] [--forget-config]
 //                                     [--fast N|max] [-- ARGUMENTS...]
+//
+// The two arguments come from the config file when they are not given
+// (#382), so a launch after the first needs neither. A launch with
+// neither and no config is a **first run**: it says what it needs and
+// where to point it, and exits successfully. No game directory yet is
+// not an error.
 //
 // `--headless` opens no window and no audio device. That is what keeps
 // the CI smoke test meaningful on a runner with neither, and it is the
@@ -227,6 +235,42 @@
 //     until somebody answers. A player can equally delete the file, and
 //     the format is one they can read.
 //
+//   --config PATH    where this player's settings are
+//   --no-config      ignore whatever is there
+//   --remember       write this run's settings into it
+//   --forget-config  empty it and be a first run again
+//
+//     M6's config (#382), and the thing this file's own comments have
+//     been pointing at since #174. `config.txt`, beside the journal's
+//     text in this platform's per-user data directory, holding the game
+//     directory and program, the seams, the journal engine, the volume,
+//     the mute, the speed, the scale and the sidecars answer.
+//     `desktop_config.h` has the format and the argument for every part
+//     of it; docs/hosts.md 2a is where a player reads about it.
+//
+//     Three rules, and each is somewhere a host could have been
+//     careless:
+//
+//       * **flag > config > default**, stated once as `prefer()` and
+//         checked once. A flag is never overruled, *including* a flag
+//         that names the default, which is why `given_on_the_command_line`
+//         exists rather than a comparison against a default value.
+//       * **only `--remember` writes.** A host that saved its settings
+//         at the end of every run would make the next run's seams
+//         whatever the last command line happened to say -- so a driving
+//         script's `--seam automap` would leave the seam on for a player
+//         who never chose it. Every seam is off for somebody who never
+//         chose one, and asking is how that stays true.
+//       * **a replay reads no config at all**, and says so when there
+//         was one to ignore. A recording is verified by exact comparison
+//         on whatever machine runs it (docs/replay.md), and a settings
+//         file that reached the run would make its answer a property of
+//         the desk it ran at.
+//
+//     A file this build cannot read is a loud line naming the line it
+//     stopped on, a clean start on the defaults, and the file left where
+//     it is. Never half-read, never repaired, never guessed at.
+//
 //   --document PATH  present a document the player holds
 //
 //     A possession gate, which demonstrates the player holds the
@@ -282,11 +326,15 @@
 //
 //   --journal-ocr PATH|none  which OCR engine to read with
 //
-//     The player's own Tesseract, `tesseract` off the path by default
-//     (`tesseract_ocr.h` says why it is run rather than linked).
+//     The player's own Tesseract (`tesseract_ocr.h` says why it is run
+//     rather than linked), and since #382 it is **discovered** rather
+//     than named: beside the binary first, then each directory of
+//     `PATH`, then a report of the filename and every place it was
+//     looked for. `ocr_discovery.h` has the order and the argument.
+//
 //     `none` ingests every image and stores no text, which is also what
-//     happens when the engine is not installed — said in as many words
-//     rather than quietly recognizing nothing.
+//     happens when no engine is found — said in as many words, with the
+//     places listed, rather than quietly recognizing nothing.
 //
 //   --journal-probe  add the synthetic probe edition, for checks
 //
@@ -642,10 +690,11 @@
 // What is deliberately not here
 // -----------------------------
 //
-// Config file, onboarding, gamepad and the virtual keyboard are M6. The
-// period-correct non-square-pixel option PLAN.md §4 lists is a `--scale`
-// integer for now and an obvious place to grow an aspect mode; M4's
-// polish is where that gets decided rather than guessed at here.
+// The period-correct non-square-pixel option PLAN.md §4 lists is a
+// `--scale` integer for now and an obvious place to grow an aspect mode;
+// M4's polish is where that gets decided rather than guessed at here.
+// Native controller support is a seam rather than a key mapping, and is
+// M8's (#372).
 
 #include <SDL3/SDL.h>
 
@@ -713,9 +762,11 @@
 #include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
 #include "audio_gain.h"
+#include "desktop_config.h"
 #include "directory_vfs.h"
 #include "dump.h"
 #include "keymap.h"
+#include "ocr_discovery.h"
 #include "press_spec.h"
 #include "screen_keyboard_view.h"
 #include "tesseract_ocr.h"
@@ -1024,6 +1075,42 @@ void SDLCALL feed_audio(void* userdata, SDL_AudioStream* stream, int additional,
       return "386 (33 MHz 386DX)";
   }
   return "unknown";
+}
+
+/// A speed preset as the word `--speed` takes, which is not the same
+/// thing as the sentence above: that one is for a person reading a log,
+/// this one goes into a config file and comes back out of it (#382).
+[[nodiscard]] const char* speed_word(machine::speed_preset preset) noexcept {
+  switch (preset) {
+    case machine::speed_preset::pc_xt:
+      return "xt";
+    case machine::speed_preset::turbo_xt:
+      return "turbo";
+    case machine::speed_preset::at:
+      return "at";
+    case machine::speed_preset::pc_386:
+      return "386";
+  }
+  return "xt";
+}
+
+/// And back again. False for a word that is not one of the four, which
+/// is what `--speed` refuses on and what a config file's reading refuses
+/// on — one table, so the two cannot drift apart.
+[[nodiscard]] bool speed_named(std::string_view word,
+                               machine::speed_preset& out) noexcept {
+  if (word == "xt") {
+    out = machine::speed_preset::pc_xt;
+  } else if (word == "turbo") {
+    out = machine::speed_preset::turbo_xt;
+  } else if (word == "at") {
+    out = machine::speed_preset::at;
+  } else if (word == "386") {
+    out = machine::speed_preset::pc_386;
+  } else {
+    return false;
+  }
+  return true;
 }
 
 /// Why a `--seam` was refused, in words. Named here rather than printed
@@ -1338,12 +1425,6 @@ void print_door_rule(const machine::machine& box, door_rule_log& log,
                now.drawn.no_evidence);
 }
 
-/// What `--journal-ocr` means when nobody said otherwise: the program to
-/// run. A build that carries its own engine takes this value as "use the
-/// one you carry", because a player who typed nothing did not ask for a
-/// program (`tesseract_linked_ocr.h`).
-constexpr std::string_view default_journal_ocr = "tesseract";
-
 /// Where this run slice has to stop: the next frame boundary, or a
 /// budget, whichever comes first.
 ///
@@ -1390,6 +1471,30 @@ constexpr std::string_view default_journal_ocr = "tesseract";
 
   return target;
 }
+
+/// Which settings the **command line** named (#382).
+///
+/// One bool per setting the config file can also carry, and the whole of
+/// what `prefer()` needs to keep "flag > config > default" true: a
+/// setting's value cannot say whether somebody chose it, because a
+/// player is allowed to choose the default.
+///
+/// It is also what the refusals below now test. `--headless` refuses
+/// `--volume` because a flag that does nothing is a mis-invocation; a
+/// *config* naming a volume on a run that opens no audio device is not
+/// one, and a host that refused to start over it would be refusing a
+/// player their own settings file.
+struct given_on_the_command_line {
+  bool root{false};
+  bool program{false};
+  bool seams{false};
+  bool journal_ocr{false};
+  bool volume{false};
+  bool muted{false};
+  bool speed{false};
+  bool scale{false};
+  bool save_sidecars{false};
+};
 
 struct options {
   std::filesystem::path root;
@@ -1447,9 +1552,18 @@ struct options {
   /// empty for this platform's default; `journal_ocr` is the engine, or
   /// `none`; `journal_probe` adds the synthetic edition and its fixture
   /// engine for a check that has no real document to use.
+  ///
+  /// `journal_ocr` empty means **nobody said**, and this host goes and
+  /// looks (`ocr_discovery.h`, #382): beside the binary, then the path,
+  /// then a report of what it looked for. A build that carries its own
+  /// engine reads the same emptiness as "use the one you carry", because
+  /// a player who typed nothing did not ask for a program
+  /// (`tesseract_linked_ocr.h`). Before #382 the default was the bare
+  /// word `tesseract` and the shell resolved it, which worked for a
+  /// player whose engine was on the path and told everybody else nothing.
   std::string journal;
   std::string journal_store;
-  std::string journal_ocr{default_journal_ocr};
+  std::string journal_ocr;
   bool journal_probe{false};
   /// The debug cheat that puts everything the store holds onto the
   /// journal's log (#301). A flag rather than a seam, on purpose: the
@@ -1535,6 +1649,29 @@ struct options {
   /// there was no `--`, which is a program invoked with no arguments
   /// rather than one invoked with an empty argument.
   std::string command_tail;
+
+  /// The config file (#382). `config_path` is where it is, or empty for
+  /// this platform's per-user data directory; `no_config` ignores
+  /// whatever is there; `remember` writes this run's settings back;
+  /// `forget_config` empties it.
+  ///
+  /// None of these can themselves be remembered, which is the point of
+  /// them: a flag that turned the config off would be useless if the
+  /// config could turn it back on.
+  std::string config_path;
+  bool no_config{false};
+  bool remember{false};
+  bool forget_config{false};
+
+  /// Which of the settings above the command line named, for the
+  /// precedence rule (`desktop_config.h`).
+  given_on_the_command_line given;
+
+  /// A launch with nothing to run and nowhere to run it from: a first
+  /// run, which is not an error (#382). `valid` is false because there is
+  /// no run to have, and this says why — `main` prints what it needs and
+  /// where to point it, and exits successfully.
+  bool first_run{false};
 
   bool valid{false};
 };
@@ -1817,6 +1954,41 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
   std::fflush(stdout);
 }
 
+/// Every option this host takes.
+///
+/// Printed on a **mis-invocation** and nowhere else since #382: a launch
+/// with nothing to run is a first run and gets `report_first_run()`
+/// instead, which is a sentence about what this needs rather than a wall
+/// of syntax about everything it can be told.
+void print_usage() {
+  std::fprintf(
+      stderr,
+      "usage: amberfolio [<dir> [<program.exe>]] [--headless]"
+      " [--scale N] [--verify] [--press KEY@FRAME]\n"
+      "                                      [--pull ID@FRAME]\n"
+      "                                      [--steps N]"
+      " [--until TICKS] [--dump PREFIX] [--dump-every N]\n"
+      "                                      [--trace]"
+      " [--watch OFF[:N]]\n"
+      "                                      [--seam ID] [--seams]\n"
+      "                                      [--vfs-list]"
+      " [--vfs-get PATH] [--vfs-remove PATH]\n"
+      "                                      [--save-layer]\n"
+      "                                      [--keyboard prompt|name|full]"
+      "\n"
+      "                                      [--document PATH]\n"
+      "                                      [--record FILE]"
+      " [--record-every N] [--replay FILE]\n"
+      "                                      [--wall now|none|"
+      "YYYY-MM-DD[THH:MM[:SS[.CC]]]]\n"
+      "                                      [--speed xt|turbo|at|386]\n"
+      "                                      [--fast N|max]\n"
+      "                                      [--volume 0-100] [--mute]\n"
+      "                                      [--config PATH] [--no-config]"
+      " [--remember] [--forget-config]\n"
+      "                                      [-- ARGUMENTS...]\n");
+}
+
 [[nodiscard]] options parse(int argc, char** argv) {
   options opts;
   std::vector<std::string_view> positional;
@@ -1880,10 +2052,13 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         return opts;
       }
       opts.volume = static_cast<float>(percent) / 100.0F;
+      opts.given.volume = true;
     } else if (arg == "--mute") {
       opts.muted = true;
+      opts.given.muted = true;
     } else if (arg == "--seam" && i + 1 < argc) {
       opts.seams.emplace_back(argv[++i]);
+      opts.given.seams = true;
     } else if (arg == "--vfs-list") {
       opts.list_vfs = true;
     } else if (arg == "--vfs-get" && i + 1 < argc) {
@@ -1913,6 +2088,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.journal_store = argv[++i];
     } else if (arg == "--journal-ocr" && i + 1 < argc) {
       opts.journal_ocr = argv[++i];
+      opts.given.journal_ocr = true;
     } else if (arg == "--journal-probe") {
       opts.journal_probe = true;
     } else if (arg == "--cite-all-journal") {
@@ -1923,6 +2099,15 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.trace = true;
     } else if (arg == "--save-sidecars") {
       opts.save_sidecars = true;
+      opts.given.save_sidecars = true;
+    } else if (arg == "--config" && i + 1 < argc) {
+      opts.config_path = argv[++i];
+    } else if (arg == "--no-config") {
+      opts.no_config = true;
+    } else if (arg == "--remember") {
+      opts.remember = true;
+    } else if (arg == "--forget-config") {
+      opts.forget_config = true;
     } else if (arg == "--dump" && i + 1 < argc) {
       opts.dump_prefix = argv[++i];
     } else if (arg == "--dump-every" && i + 1 < argc) {
@@ -1986,20 +2171,12 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
         opts.fast = value;
       }
     } else if (arg == "--speed" && i + 1 < argc) {
-      const std::string_view name = argv[++i];
-      if (name == "xt") {
-        opts.speed = machine::speed_preset::pc_xt;
-      } else if (name == "turbo") {
-        opts.speed = machine::speed_preset::turbo_xt;
-      } else if (name == "at") {
-        opts.speed = machine::speed_preset::at;
-      } else if (name == "386") {
-        opts.speed = machine::speed_preset::pc_386;
-      } else {
+      if (!speed_named(argv[++i], opts.speed)) {
         std::fprintf(stderr,
                      "amberfolio: --speed wants xt, turbo, at or 386\n");
         return opts;
       }
+      opts.given.speed = true;
     } else if (arg == "--scale" && i + 1 < argc) {
       // strtol rather than atoi, which cannot tell "0" from "not a
       // number" - a distinction worth having when the answer decides
@@ -2009,6 +2186,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
       opts.scale = (end != nullptr && *end == '\0' && value > 0)
                        ? static_cast<unsigned>(value)
                        : default_scale;
+      opts.given.scale = true;
     } else if (arg.starts_with("--")) {
       std::fprintf(stderr, "amberfolio: unknown option %.*s\n",
                    static_cast<int>(arg.size()), arg.data());
@@ -2018,32 +2196,22 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
     }
   }
 
-  if (positional.size() != 2) {
-    std::fprintf(
-        stderr,
-        "usage: amberfolio <dir> <program.exe> [--headless]"
-        " [--scale N] [--verify] [--press KEY@FRAME]\n"
-        "                                      [--pull ID@FRAME]\n"
-        "                                      [--steps N]"
-        " [--until TICKS] [--dump PREFIX] [--dump-every N]\n"
-        "                                      [--trace]"
-        " [--watch OFF[:N]]\n"
-        "                                      [--seam ID] [--seams]\n"
-        "                                      [--vfs-list]"
-        " [--vfs-get PATH] [--vfs-remove PATH]\n"
-        "                                      [--save-layer]\n"
-        "                                      [--keyboard prompt|name|full]"
-        "\n"
-        "                                      [--document PATH]\n"
-        "                                      [--record FILE]"
-        " [--record-every N] [--replay FILE]\n"
-        "                                      [--wall now|none|"
-        "YYYY-MM-DD[THH:MM[:SS[.CC]]]]\n"
-        "                                      [--speed xt|turbo|at|386]\n"
-        "                                      [--fast N|max]\n"
-        "                                      [--volume 0-100] [--mute]\n"
-        "                                      [-- ARGUMENTS...]\n");
+  // Two arguments, one, or none. Two is the whole invocation; one is a
+  // directory whose program the config names; none is a launch that
+  // takes everything from the config, which is what a second launch
+  // looks like (#382). Three is a mis-invocation and gets the usage
+  // block, because nothing here has ever taken three.
+  if (positional.size() > 2) {
+    print_usage();
     return opts;
+  }
+  if (!positional.empty()) {
+    opts.root = std::filesystem::path(positional[0]);
+    opts.given.root = true;
+  }
+  if (positional.size() == 2) {
+    opts.program = std::string(positional[1]);
+    opts.given.program = true;
   }
 
   // Both diagnostics need the window and the event queue that
@@ -2065,7 +2233,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
   // `--fast` above, and with one extra: `--dump`'s WAV is written before
   // the gain in any case, so a headless run that accepted `--mute` would
   // still write a tone — an option that appeared to do nothing at all.
-  if (opts.headless && (opts.muted || opts.volume != 1.0F)) {
+  if (opts.headless && (opts.given.muted || opts.given.volume)) {
     std::fprintf(stderr,
                  "amberfolio: --volume and --mute need an audio device;"
                  " --headless opens none\n");
@@ -2115,8 +2283,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
   // not any more: the reader reads that file on every run, so saying
   // where it is means something with no ingestion in sight. The note that
   // used to be here said reading was #175's; it is, and this is it.
-  if (opts.journal.empty() &&
-      (opts.journal_probe || opts.journal_ocr != default_journal_ocr)) {
+  if (opts.journal.empty() && (opts.journal_probe || opts.given.journal_ocr)) {
     std::fprintf(stderr,
                  "amberfolio: --journal-ocr and"
                  " --journal-probe need --journal, whose ingestion they"
@@ -2159,9 +2326,9 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
   // machine it was made on.
   if (!opts.replay_path.empty()) {
     const char* also = nullptr;
-    if (!opts.seams.empty()) {
+    if (opts.given.seams) {
       also = "--seam";
-    } else if (opts.speed != machine::default_speed) {
+    } else if (opts.given.speed) {
       also = "--speed";
     } else if (!opts.presses.empty()) {
       also = "--press";
@@ -2180,8 +2347,38 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
     }
   }
 
-  opts.root = std::filesystem::path(positional[0]);
-  opts.program = std::string(positional[1]);
+  // The config's own three, and each of them is a pair of options that
+  // ask for opposite things (#382). Refused rather than resolved by
+  // precedence, because there is no sensible precedence between "ignore
+  // the file" and "write the file".
+  if (opts.remember && opts.no_config) {
+    std::fprintf(stderr,
+                 "amberfolio: --remember writes the config --no-config"
+                 " says to ignore; ask for one\n");
+    return opts;
+  }
+  if (opts.remember && opts.forget_config) {
+    std::fprintf(stderr,
+                 "amberfolio: --forget-config empties the config"
+                 " --remember writes; ask for one\n");
+    return opts;
+  }
+  if (opts.no_config && !opts.config_path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: --config names a file --no-config says to"
+                 " ignore; ask for one\n");
+    return opts;
+  }
+  // And a replay's settings are the recording's, which is the same rule
+  // the five options above it follow: a run whose seams and speed came
+  // out of a recording has nothing of the player's to remember.
+  if (opts.remember && !opts.replay_path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: the recording decides the seams and the"
+                 " speed; --remember cannot be given with --replay\n");
+    return opts;
+  }
+
   opts.valid = true;
   return opts;
 }
@@ -2560,19 +2757,22 @@ void present_document(machine::machine& box, const std::string& path) {
 }
 #endif
 
-/// Where a journal's text lives when `--journal-store` did not say.
+/// `filename` in the per-user data directory this platform keeps
+/// application data in. Empty if this platform will not say where that
+/// is, in which case each caller asks for its own flag rather than
+/// picking somewhere.
 ///
-/// The per-user data directory this platform keeps application data in.
-/// Empty if this platform will not say where that is, in which case the
-/// host asks for `--journal-store` rather than picking somewhere.
-[[nodiscard]] std::string journal_store_default_path() {
+/// Three files live here now and they are all facts about **this
+/// player** rather than about their game directory: the journal's text
+/// (#174), the copies whose code-wheel challenge has been answered
+/// (#292), and the config (#382). One helper, so a player who goes
+/// looking finds them together.
+[[nodiscard]] std::string per_user_path(std::string_view filename) {
   // SDL's own answer, which is the right one on all three desktops and
   // is one call rather than three `#ifdef`s that would each be wrong on
   // somebody's machine: `%APPDATA%\\amberfolio\\` on Windows,
   // `~/Library/Application Support/amberfolio/` on macOS, and
-  // `$XDG_DATA_HOME/amberfolio/` on Linux. It creates the directory, and
-  // it is where M6's configuration will live too -- #174's "beside the
-  // config", written down before there is a config to be beside.
+  // `$XDG_DATA_HOME/amberfolio/` on Linux. It creates the directory.
   //
   // No organization, because there is no organization: an empty one
   // leaves the application's own directory directly under the platform's
@@ -2583,34 +2783,269 @@ void present_document(machine::machine& box, const std::string& path) {
   }
   std::string path(where);
   SDL_free(where);
-  path += host::journal_store_filename;
+  path += filename;
   return path;
 }
 
 /// Where the journal's text is, for this run: `--journal-store` if it was
 /// given, and this platform's per-user data directory otherwise.
 [[nodiscard]] std::string journal_store_path(const options& opts) {
-  return opts.journal_store.empty() ? journal_store_default_path()
-                                    : opts.journal_store;
+  return opts.journal_store.empty()
+             ? per_user_path(host::journal_store_filename)
+             : opts.journal_store;
 }
 
 /// Where the copies that have answered the code-wheel challenge are
 /// remembered, for this run (M6-C1b, #292): `--code-wheel-store` if it
-/// was given, and this platform's per-user data directory otherwise —
-/// the same directory the journal's text lives in, because both are
-/// facts about this player rather than about their game directory.
+/// was given, and this platform's per-user data directory otherwise.
 [[nodiscard]] std::string code_wheel_store_path(const options& opts) {
-  if (!opts.code_wheel_store.empty()) {
-    return opts.code_wheel_store;
-  }
-  char* where = SDL_GetPrefPath("", "amberfolio");
-  if (where == nullptr) {
+  return opts.code_wheel_store.empty()
+             ? per_user_path(host::code_wheel_store_filename)
+             : opts.code_wheel_store;
+}
+
+/// Where this player's settings are, for this run (#382): `--config` if
+/// it was given, and this platform's per-user data directory otherwise.
+[[nodiscard]] std::string config_file_path(const options& opts) {
+  return opts.config_path.empty() ? per_user_path(sdl::desktop_config_filename)
+                                  : opts.config_path;
+}
+
+/// A gain as the percentage `--volume` and the config file both speak
+/// in. One helper, so the rounding is the same on the way in and on the
+/// way out and a remembered 75 comes back as 75.
+[[nodiscard]] unsigned volume_percent(float gain) {
+  return static_cast<unsigned>(std::lround(static_cast<double>(gain) * 100.0));
+}
+
+/// The whole file, or nothing when there is no file. `found` tells the
+/// two apart: a config that is not there is the ordinary case for
+/// somebody who has never saved one, and says nothing, where a config
+/// that is there and unreadable is a sentence.
+[[nodiscard]] std::string slurp_file(const std::string& path, bool& found) {
+  std::ifstream file(path, std::ios::binary);
+  found = static_cast<bool>(file);
+  if (!found) {
     return {};
   }
-  std::string path(where);
-  SDL_free(where);
-  path += host::code_wheel_store_filename;
-  return path;
+  return {std::istreambuf_iterator<char>(file),
+          std::istreambuf_iterator<char>()};
+}
+
+/// What this run settled on, as a config file.
+///
+/// Written only by `--remember`, and that is the load-bearing part of
+/// #382 rather than a convenience. A host that wrote its settings down
+/// at the end of every run would make the next run's seams whatever the
+/// last run's command line happened to say -- so a driving script's
+/// `--seam automap` would leave the seam on for a player who never chose
+/// it, and the off side of `scripts/visual-legs.py`'s next pair would
+/// quietly be the on side. Every seam is off for somebody who never
+/// chose one (CLAUDE.md), and asking is how that stays true.
+[[nodiscard]] sdl::desktop_config config_of(const options& opts) {
+  sdl::desktop_config out;
+  if (!opts.root.empty()) {
+    out.game_directory = opts.root.string();
+  }
+  if (!opts.program.empty()) {
+    out.program = opts.program;
+  }
+  if (!opts.seams.empty()) {
+    out.seams = opts.seams;
+  }
+  // Only when somebody named one. A discovered engine is deliberately
+  // not written down: discovery is the answer that stays right when a
+  // player upgrades their Tesseract or their distribution moves it, and
+  // a path frozen into a config would be the answer that stops being
+  // true without saying so (`ocr_discovery.h`).
+  if (!opts.journal_ocr.empty()) {
+    out.journal_ocr = opts.journal_ocr;
+  }
+  out.volume_percent = volume_percent(opts.volume);
+  out.muted = opts.muted;
+  out.speed = speed_word(opts.speed);
+  out.scale = opts.scale;
+  out.save_sidecars = opts.save_sidecars;
+  return out;
+}
+
+/// A config file, written. Every outcome is a sentence: a player who
+/// asked to be remembered and was not has to be told, or they will find
+/// out on the launch after this one.
+void write_config(const std::string& path, const sdl::desktop_config& what,
+                  const char* what_happened) {
+  if (path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: config this platform does not say where"
+                 " per-user data lives; say --config PATH\n");
+    return;
+  }
+  std::ofstream file(path, std::ios::binary | std::ios::trunc);
+  const std::string text = what.serialize();
+  file.write(text.data(), static_cast<std::streamsize>(text.size()));
+  if (!file) {
+    std::fprintf(stderr, "amberfolio: config %s could not be written\n",
+                 path.c_str());
+    return;
+  }
+  std::fprintf(stderr, "amberfolio: config %s %s\n", what_happened,
+               path.c_str());
+}
+
+/// What this host needs and where to point it: a first run (#382).
+///
+/// Not an error and not the usage block. A person who has just unpacked
+/// this has one question -- what do I give it -- and a wall of syntax
+/// answers a different one. The three shapes below are the three ways a
+/// launch can be short of what it needs, and each says only the part
+/// that is missing.
+void report_first_run(const options& opts, const std::string& config_path) {
+  const bool have_root = !opts.root.empty();
+  const bool have_program = !opts.program.empty();
+  if (!have_root) {
+    std::fprintf(stderr,
+                 "amberfolio: no game directory yet, which is not a"
+                 " problem\n");
+    std::fprintf(stderr,
+                 "amberfolio: point this at a directory holding your own"
+                 " copy of the game, and the program in it to run:\n");
+    std::fprintf(stderr,
+                 "amberfolio:     amberfolio <dir> <program.exe>"
+                 " --remember\n");
+  } else if (!have_program) {
+    std::fprintf(stderr,
+                 "amberfolio: %s is the directory, and no program was"
+                 " named\n",
+                 opts.root.string().c_str());
+    std::fprintf(stderr,
+                 "amberfolio: name the program in it to run, and"
+                 " --vfs-list says what is on the disk:\n");
+    std::fprintf(stderr,
+                 "amberfolio:     amberfolio %s <program.exe>"
+                 " --remember\n",
+                 opts.root.string().c_str());
+  }
+  if (opts.no_config) {
+    std::fprintf(stderr,
+                 "amberfolio: --no-config, so nothing was read from a"
+                 " settings file\n");
+    return;
+  }
+  if (config_path.empty()) {
+    return;
+  }
+  std::fprintf(stderr,
+               "amberfolio: --remember writes %s, and a launch after that"
+               " needs no arguments\n",
+               config_path.c_str());
+}
+
+/// The config file, and the one place **flag > config > default**
+/// happens (#382, `desktop_config.h`).
+///
+/// False when this launch has nothing to run: `opts.first_run` then says
+/// whether that is a first run, which is not an error, or a command line
+/// this host could not make sense of, which is.
+[[nodiscard]] bool settle_config(options& opts) {
+  const std::string path = config_file_path(opts);
+
+  // **A replay reads no config at all**, and that is a rule rather than a
+  // tidiness. A recording is keys, ticks and hashes over a stated set of
+  // seams at a stated speed (`docs/replay.md`), and it is verified by
+  // exact comparison -- by `tests/sessions/`, by `scripts/sweep.py`, on
+  // whatever machine happens to run them. A host that let a settings file
+  // on that machine reach the run would make a replay's answer depend on
+  // whose desk it ran at, which is the one thing a recording is for.
+  //
+  // Said out loud when there was a file to ignore, because a player
+  // whose seams did not come on during a replay is owed the reason.
+  if (!opts.replay_path.empty()) {
+    std::error_code why;
+    if (!path.empty() && std::filesystem::exists(path, why)) {
+      std::fprintf(stderr,
+                   "amberfolio: config not read for --replay - a"
+                   " recording's seams, speed and keys are its own\n");
+    }
+    // And a replay that was given neither is not a first run: it is a
+    // replay missing the disk it was recorded against, which is a
+    // command line to fix rather than an invitation to point this
+    // somewhere. The config would have answered it and deliberately did
+    // not.
+    if (opts.root.empty() || opts.program.empty()) {
+      std::fprintf(stderr,
+                   "amberfolio: a replay needs the directory and the"
+                   " program it was recorded against; the config is not"
+                   " read for one\n");
+      return false;
+    }
+    return true;
+  }
+
+  // A player asking to start over, before anything is read: the file is
+  // emptied to its header, so this launch is a first run and every
+  // launch after it is too, until somebody says --remember. The whole of
+  // "forget it", and `--forget-code-wheel` next door is its sibling.
+  if (opts.forget_config) {
+    write_config(path, sdl::desktop_config{}, "forgotten");
+  }
+
+  if (!opts.no_config && !opts.forget_config) {
+    bool found = false;
+    const std::string text = slurp_file(path, found);
+    if (found) {
+      sdl::desktop_config from_file;
+      if (const sdl::config_reading read = from_file.parse(text); !read.ok()) {
+        // Loud, and then the defaults -- never a guess, and never half a
+        // file (CLAUDE.md's "log, don't fake"). Left where it is rather
+        // than repaired: whatever that file is, this build cannot read
+        // it, and a config from a later build is somebody's answer.
+        std::fprintf(stderr, "amberfolio: config %s line %zu - %s: %s\n",
+                     path.c_str(), read.line,
+                     sdl::config_trouble_name(read.why), read.text.c_str());
+        std::fprintf(stderr,
+                     "amberfolio: config starting on the defaults; the"
+                     " file was left where it is\n");
+      } else {
+        // **flag > config > default**, nine times, one rule
+        // (`desktop_config.h`).
+        std::string root = opts.root.string();
+        sdl::prefer(opts.given.root, from_file.game_directory, root);
+        opts.root = std::filesystem::path(root);
+        sdl::prefer(opts.given.program, from_file.program, opts.program);
+        sdl::prefer(opts.given.seams, from_file.seams, opts.seams);
+        sdl::prefer(opts.given.journal_ocr, from_file.journal_ocr,
+                    opts.journal_ocr);
+        unsigned percent = volume_percent(opts.volume);
+        sdl::prefer(opts.given.volume, from_file.volume_percent, percent);
+        opts.volume = static_cast<float>(percent) / 100.0F;
+        sdl::prefer(opts.given.muted, from_file.muted, opts.muted);
+        std::string speed = speed_word(opts.speed);
+        sdl::prefer(opts.given.speed, from_file.speed, speed);
+        // The reading already refused every word but the four, so this
+        // cannot fail; checked anyway, because a cast that assumes is
+        // exactly the shape of a bug nobody finds.
+        static_cast<void>(speed_named(speed, opts.speed));
+        sdl::prefer(opts.given.scale, from_file.scale, opts.scale);
+        sdl::prefer(opts.given.save_sidecars, from_file.save_sidecars,
+                    opts.save_sidecars);
+        std::fprintf(stderr, "amberfolio: config read %s\n", path.c_str());
+      }
+    }
+  }
+
+  // Written after the settling and before the run, so what lands in the
+  // file is what this run is about to do -- and so a run that ends badly
+  // has still remembered where the game is.
+  if (opts.remember) {
+    write_config(path, config_of(opts), "remembered");
+  }
+
+  if (opts.root.empty() || opts.program.empty()) {
+    report_first_run(opts, path);
+    opts.first_run = true;
+    return false;
+  }
+  return true;
 }
 
 /// Read it, and say what it turned out to be.
@@ -2663,6 +3098,56 @@ void save_code_wheel_store(const options& opts,
                  " next launch will ask again\n",
                  path.c_str());
   }
+}
+
+/// The engine this run reads with, when nobody named one (#382).
+///
+/// Beside the binary, then each directory of `PATH`, and then a report
+/// of what was looked for -- `ocr_discovery.h` has the order and the
+/// argument for it. Empty when nothing was found, in which case the
+/// report has already been printed and the caller says "no engine" in
+/// its own words.
+[[nodiscard]] std::string discover_journal_ocr() {
+  const char* base = SDL_GetBasePath();
+#ifdef _WIN32
+  constexpr char separator = ';';
+#else
+  constexpr char separator = ':';
+#endif
+  // SDL's own reader, not `std::getenv`: it is the thread-safe one on
+  // every platform this ships to, and MSVC deprecates the other outright.
+  const char* path_variable = SDL_getenv("PATH");
+  const std::vector<std::string> places = sdl::ocr_candidates(
+      base == nullptr ? std::string_view{} : std::string_view(base),
+      path_variable == nullptr ? std::string_view{}
+                               : std::string_view(path_variable),
+      separator, sdl::ocr_engine_filename);
+  std::error_code why;
+  for (const std::string& one : places) {
+    if (std::filesystem::is_regular_file(one, why)) {
+      std::fprintf(stderr, "amberfolio: journal-ocr discovered %s\n",
+                   one.c_str());
+      return one;
+    }
+  }
+  // The third thing, and not the absence of the first two. A player who
+  // is told "no engine" and nothing else has no next move; one who is
+  // told the name and the places has several.
+  std::fprintf(stderr,
+               "amberfolio: journal-ocr not found - looked for %.*s in %zu"
+               " place(s)\n",
+               static_cast<int>(sdl::ocr_engine_filename.size()),
+               sdl::ocr_engine_filename.data(), places.size());
+  constexpr std::size_t listed = 12;
+  for (std::size_t i = 0; i < places.size() && i < listed; ++i) {
+    std::fprintf(stderr, "amberfolio: journal-ocr looked %s\n",
+                 places[i].c_str());
+  }
+  if (places.size() > listed) {
+    std::fprintf(stderr, "amberfolio: journal-ocr looked ... and %zu more\n",
+                 places.size() - listed);
+  }
+  return {};
 }
 
 /// Read a journal store that is already there, for a run that is not
@@ -2782,8 +3267,23 @@ void ingest_journal(machine::machine& box, const options& opts,
   // rather than a silence, because a store with no text in it and no
   // explanation is the failure a player finds out about last
   // (`tesseract_ocr.h`).
+  //
+  // The player's own engine is **discovered** rather than named since
+  // #382: an empty `--journal-ocr` means nobody said, and this host goes
+  // and looks before it says there is nothing. A build that carries its
+  // own engine answers that emptiness first and never searches, because
+  // the engine it carries is the one it was built to use.
   host::journal_probe_ocr fixture;
-  sdl::tesseract_ocr tesseract(opts.journal_ocr);
+  std::string named = opts.journal_ocr;
+#if AMBERFOLIO_HAVE_LINKED_TESSERACT
+  const bool carried = true;
+#else
+  const bool carried = false;
+#endif
+  if (named.empty() && !opts.journal_probe && !carried) {
+    named = discover_journal_ocr();
+  }
+  sdl::tesseract_ocr tesseract(named);
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
   // A build that carries its own engine uses it, because a player who has
   // installed nothing is the reason it was carried (#216). Saying
@@ -2800,16 +3300,22 @@ void ingest_journal(machine::machine& box, const options& opts,
   } else if (opts.journal_probe) {
     engine = &fixture;
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
-  } else if (opts.journal_ocr == default_journal_ocr && linked.available()) {
+  } else if (opts.journal_ocr.empty() && linked.available()) {
     engine = &linked;
 #endif
-  } else if (tesseract.available()) {
+  } else if (!named.empty() && tesseract.available()) {
     engine = &tesseract;
+  } else if (named.empty()) {
+    // Nothing was named and nothing was found; the search above has
+    // already said what it looked for and where.
+    std::fprintf(stderr,
+                 "amberfolio: journal no engine - install one, or say"
+                 " --journal-ocr PATH, or --journal-ocr none\n");
   } else {
     std::fprintf(stderr,
                  "amberfolio: journal no engine - '%s' did not answer;"
                  " install it or say --journal-ocr PATH\n",
-                 opts.journal_ocr.c_str());
+                 named.c_str());
   }
   if (engine != nullptr) {
     std::fprintf(stderr, "amberfolio: journal engine %.*s\n",
@@ -2950,9 +3456,16 @@ void ingest_journal(machine::machine& box, const options& opts,
 }  // namespace
 
 int main(int argc, char** argv) try {
-  const options opts = parse(argc, argv);
+  options opts = parse(argc, argv);
   if (!opts.valid) {
     return EXIT_FAILURE;
+  }
+  // And then the settings file, which is the other half of the command
+  // line (#382): flag > config > default, once, here. It can end the run
+  // before it starts -- a launch with no game directory yet is a first
+  // run, which says what it needs and is **not an error**.
+  if (!settle_config(opts)) {
+    return opts.first_run ? EXIT_SUCCESS : EXIT_FAILURE;
   }
 
   sdl::directory_filesystem files(opts.root);

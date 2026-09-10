@@ -244,6 +244,22 @@ build option (M5-E3c, #216):
   installed is reported in as many words. Whether a packaged build ships
   one is M6's question (#265).
 
+  **The engine is discovered rather than named** (#382,
+  `hosts/sdl/src/ocr_discovery.h`): beside the binary first, because that
+  is where a packaged build would put one, then each directory of `PATH`
+  in the order the platform gave it. A miss is a report — the filename
+  looked for and every place looked in — and not a silence, because "no
+  engine" with nothing after it is the failure a player finds out about
+  last. `PATHEXT` is deliberately not consulted: a `.bat` in front of an
+  engine is a wrapper somebody wrote, and running one this host went
+  looking for is a step past discovery into guessing.
+
+  `--journal-ocr PATH` and `--journal-ocr none` win over discovery, and a
+  build that carries its own engine (above) answers first and never
+  searches. A discovered path is **not** written into the config file
+  (`docs/hosts.md` §2a): discovery stays right when a player upgrades
+  their engine, and a frozen path does not.
+
 **Browser.** tesseract.js, served from the page's own origin and never a
 CDN. `scripts/fetch-ocr-engine.py --into <the served directory>` fetches
 the pinned library, its wasm core and one language's data into
