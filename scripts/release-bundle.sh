@@ -28,6 +28,11 @@
 #      that a manifest disagreeing with the module it describes is worse
 #      than one that says nothing at all.
 #
+#      `exportsDigest` is the same export list again, sorted and hashed,
+#      so a consumer can pin one value against a whole surface rather than
+#      trusting that major/minor were bumped correctly for it (#375: they
+#      were not, the one time a name was renamed and not just added).
+#
 #      Which is also why a tree that declares no ABI version gets a
 #      manifest with no `abi` key rather than a refusal. `release.yml`
 #      runs *this* script against the tree of an older tag — current
@@ -144,8 +149,10 @@ die() {
 # from a laptop should not depend on which.
 if command -v sha256sum >/dev/null 2>&1; then
   sha256_of() { sha256sum "$1" | cut -d' ' -f1; }
+  sha256_of_stdin() { sha256sum | cut -d' ' -f1; }
 elif command -v shasum >/dev/null 2>&1; then
   sha256_of() { shasum -a 256 "$1" | cut -d' ' -f1; }
+  sha256_of_stdin() { shasum -a 256 | cut -d' ' -f1; }
 else
   die "no sha256sum and no shasum on this machine"
 fi
@@ -250,6 +257,15 @@ if ! printf '%s\n' "$exports" | grep -qx '_af_version'; then
   die "the export list read from $web_cmake has no _af_version in it, so" \
     "it is not the module's list — the set() block's shape has moved"
 fi
+
+# A digest of the export list a loader can pin instead of trusting that
+# `abi_major`/`abi_minor` above were bumped correctly (#375: v0.5.0 was
+# not, when a rename should have moved `abi_major`). Sorted so a harmless
+# reordering of the CMake block does not move it, and generated from this
+# same `$exports` rather than a second list kept in step by hand — an add,
+# a remove or a rename of any name changes it, which a bare export *count*
+# cannot see.
+exports_digest=$(printf '%s\n' "$exports" | LC_ALL=C sort | sha256_of_stdin)
 
 if [ -z "$commit" ]; then
   commit=$(git -C "$repo_root" rev-parse --verify "refs/tags/$tag^{commit}" \
@@ -387,6 +403,7 @@ done < <(printf '%s\n' "${staged[@]}" | sort)
   if [ -n "$abi_major" ]; then
     printf '  "abi": { "major": %s, "minor": %s },\n' "$abi_major" "$abi_minor"
   fi
+  printf '  "exportsDigest": "sha256:%s",\n' "$exports_digest"
   printf '  "sourceCommit": "%s",\n' "$commit"
   printf '  "files": [\n'
   last=$((${#BUNDLE[@]} - 1))
