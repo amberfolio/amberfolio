@@ -176,6 +176,22 @@ Read `platform.h`'s design essay first.
 - **Input is stamped with the machine's own clock**; a host posts only
   between `run()` calls.
 - **The wall clock is a seed plus virtual time.**
+- **The current directory is set by the host, before the load**
+  (`dos_services::set_current_directory`, `dos.h`). Every name a program
+  hands INT 21h is canonicalized against it, so a relative open
+  (`GAME.OVR`, `POOL.CFG`) resolves inside it and an absolute one
+  (`C:\POOLRAD\SAVGAMA.DAT`) ignores it. It must name a directory that
+  exists, or the call refuses and nothing moves; the root is the default,
+  and a machine left there resolves every name as before. The storefront
+  copies need it: their launchers mount the copy at `C:\POOLRAD` and run
+  `START` from there, and the program opens its own files by bare name.
+  AH=3Bh and AH=47h are not in the subset and nothing this build runs
+  calls them, so the program cannot move it: it is how the machine was
+  set up, like the program it loaded. `reset()` keeps it, the state hash
+  does not carry it, and a recording names it in its preamble
+  (`docs/replay.md`). Nothing else sees it — the loader builds no
+  environment block and no parent PSP, so the program's own path is
+  nowhere in memory.
 
 The C ABI (`abi.h`) mirrors this for the wasm host: an opaque handle, no
 structs by value, nothing the other side must free. **A symbol missing

@@ -208,6 +208,12 @@ expect("need --journal")
 set(cite_disk "${SCRATCH}/cite-disk")
 file(REMOVE_RECURSE "${cite_disk}")
 file(COPY "${DISK}/" DESTINATION "${cite_disk}")
+# The sidecars go where the copy says it saves (#397), and a disk that
+# does not say gets none. The smoke disk is two test programs and no
+# configuration file, so this copy is given one: four lines, the fourth
+# naming `C:\SAVE\` — the layout, not anybody's settings.
+# Bare line feeds: CMake writes them as CR LF on Windows by itself.
+file(WRITE "${cite_disk}/POOL.CFG" "-\n-\nC:\\\nC:\\SAVE\\\n")
 set(sidecar "${cite_disk}/SAVE/AFSEEN.DAT")
 
 function(run_cite_host)

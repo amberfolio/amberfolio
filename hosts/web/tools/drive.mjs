@@ -248,6 +248,9 @@ const USAGE = `usage: node drive.mjs <dir> <PROGRAM.EXE> [options]
                         (repeatable; the seam has to be on and to be one
                         that takes a trigger)
   --save-sidecars       keep this playthrough's progress beside its saves
+  --install DIR         put DIRECTORY's files at DIR (\\POOLRAD) and start
+                        the program there, as the SDL host's --install
+                        does (#397); the root by default
   --seam ID             turn one seam on before the first step (repeatable)
   --document PATH       present a document the player holds, by path on
                         this machine (repeatable) — a possession gate,
@@ -325,6 +328,7 @@ export function parseArgs(argv) {
     speed: null,
     trace: false,
     saveSidecars: false,
+    install: '',
     dumpPrefix: null,
     dumpEvery: 0,
     quiet: false,
@@ -396,6 +400,10 @@ export function parseArgs(argv) {
       opts.pulls.push({ id, frame });
     } else if (arg === '--save-sidecars') {
       opts.saveSidecars = true;
+    } else if (arg === '--install' && i + 1 < argv.length) {
+      // As the player spelled it, separators trimmed; core decides what
+      // it names when the directory is made current.
+      opts.install = next().replace(/^[\\/]+|[\\/]+$/g, '');
     } else if (arg === '--seam' && i + 1 < argv.length) {
       opts.seams.push(next());
     } else if (arg === '--vfs-list') {
@@ -573,7 +581,7 @@ export function encodeWav(samples, rate) {
 /// data files in the same words as a PDF it was right to ignore. So each
 /// skipped line names its reason, and `incomplete` says whether any of
 /// them is a hole rather than a filter.
-function putDirectory(machine, dir) {
+function putDirectory(machine, dir, base = '') {
   const skipped = [];
   const statuses = [];
   let taken = 0;
@@ -629,7 +637,7 @@ function putDirectory(machine, dir) {
     return here;
   };
 
-  walk(dir, '');
+  walk(dir, base);
   return { taken, made, skipped, incomplete: anySkipLostAFile(statuses) };
 }
 
@@ -655,7 +663,7 @@ export async function drive(opts) {
   // (docs/hosts.md §4).
   machine.reset();
 
-  const { taken, made, skipped, incomplete } = putDirectory(machine, opts.dir);
+  const { taken, made, skipped, incomplete } = putDirectory(machine, opts.dir, opts.install);
   // `dirs=` is the directories that had to be made because nothing went
   // into them (#273). Always printed, including as `dirs=0`: a field that
   // appears only sometimes is one a script has to guess about, and on a
@@ -678,10 +686,30 @@ export async function drive(opts) {
     );
   }
 
+  // The directory the program starts in (#397), before anything reads
+  // the disk relative to it — the sidecars below look for the save
+  // directory there. The same two lines the SDL host prints.
+  if (opts.install !== '') {
+    if (machine.setCurrentDirectory(opts.install) !== AF_OK) {
+      say(`amberfolio: ${opts.install} is not a directory here`);
+      machine.destroy();
+      return 1;
+    }
+    say(`amberfolio: install ${machine.currentDirectory()} (from --install) is current`);
+  }
+  const saves = machine.saveDirectory();
+  if (saves.directory !== null) {
+    say(`amberfolio: save directory ${saves.directory}`);
+  } else if (opts.install !== '') {
+    say(`amberfolio: save directory unknown (${saves.trouble})`);
+  }
+  // Named from the directory given, which is where it now sits.
+  const program = opts.install === '' ? opts.program : `${opts.install}/${opts.program}`;
+
   // The identity of the file, before anything executes — a fact about it
   // and never anything out of it (PLAN.md §2), and the same line the SDL
   // host prints at load.
-  const digest = machine.vfsFingerprint(opts.program);
+  const digest = machine.vfsFingerprint(program);
   say(`amberfolio: load ${opts.program} sha256=${digest ?? 'unreadable'}`);
 
   // Asked for before the load, so the ring covers the whole run rather
@@ -697,7 +725,7 @@ export async function drive(opts) {
     say('amberfolio: save-sidecars on');
   }
 
-  const loadStatus = machine.loadFromVfs(opts.program, opts.tail);
+  const loadStatus = machine.loadFromVfs(program, opts.tail);
   if (loadStatus !== AF_OK) {
     say(
       `amberfolio: cannot load ${opts.program} (status ${loadStatus}, ` +

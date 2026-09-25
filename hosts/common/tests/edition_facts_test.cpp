@@ -29,6 +29,8 @@
 
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/save_layer.h"
+#include "amberfolio/machine/vfs.h"
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
@@ -403,6 +405,70 @@ TEST(EditionMatch, OneSharedFileNamesTheBaseline) {
   EXPECT_EQ(match.matched.size(), 1U);
   EXPECT_THAT(match.unclaimed, IsEmpty());
   EXPECT_GT(match.missing.size(), 1U);
+}
+
+// --- Where an edition sits, and what of it is the player's (#397) --------
+
+TEST(EditionFacts, EveryInstallDirectoryIsADirectoryTheMachineCanName) {
+  for (const edition_requirements& edition : edition_requirements_table()) {
+    const machine::vfs_result<machine::dos_path> install =
+        machine::canonicalize_host_path(
+            {edition.install.data(), edition.install.size()});
+    EXPECT_TRUE(install.ok()) << edition.id << " says " << edition.install;
+  }
+}
+
+/// `name` inside `directory`, as the machine names it.
+machine::dos_path inside(const machine::dos_path& directory,
+                         std::string_view name) {
+  const machine::vfs_result<machine::dos_path> where =
+      machine::canonicalize(directory, {name.data(), name.size()});
+  EXPECT_TRUE(where.ok()) << name;
+  return where.value;
+}
+
+TEST(EditionFacts, NoFileAnEditionShipsIsEverAPlaythroughs) {
+  // The ordering trap the save layer's first-match rule has to survive: a
+  // copy that saves beside its own game files puts its save directory and
+  // its starting directory in one place, and then every file the
+  // publisher ships is a candidate for a row. Only the configuration file
+  // is named, and as the program's. Checked for every edition, laid out
+  // where it installs, against the three save directories a copy can
+  // name: its own folder, a folder below it, and the root's `\SAVE`.
+  for (const edition_requirements& edition : edition_requirements_table()) {
+    const machine::save_layer* layer =
+        machine::save_layer_for(digest_of(edition.fingerprint));
+    ASSERT_NE(layer, nullptr) << edition.id;
+    const machine::vfs_result<machine::dos_path> install =
+        machine::canonicalize_host_path(
+            {edition.install.data(), edition.install.size()});
+    ASSERT_TRUE(install.ok()) << edition.id;
+
+    for (const machine::dos_path& saves :
+         {install.value, inside(install.value, "SAVE"),
+          inside(machine::dos_path{}, "SAVE")}) {
+      const machine::save_layer_places places{
+          .save_directory = saves, .current_directory = install.value};
+      for (const edition_artifact& artifact : edition.artifacts) {
+        if (artifact.kind == artifact_kind::document) {
+          continue;
+        }
+        const machine::save_layer_row row = machine::match_save_file(
+            *layer, places, inside(install.value, artifact.name));
+        if (artifact.name == machine::save_layer_config_file) {
+          ASSERT_NE(row.file, nullptr) << edition.id;
+          EXPECT_EQ(row.file->kind, machine::save_file_kind::config)
+              << edition.id;
+        } else {
+          EXPECT_EQ(row.file, nullptr)
+              << edition.id << ": " << artifact.name << " was claimed as "
+              << (row.file != nullptr
+                      ? machine::save_file_kind_name(row.file->kind)
+                      : "");
+        }
+      }
+    }
+  }
 }
 
 }  // namespace

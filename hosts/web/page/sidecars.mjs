@@ -2,8 +2,8 @@
 //
 // The one question this page asks a player (#385).
 //
-// `saveSidecars(on)` writes `\SAVE\AFMAP.DAT` and `\SAVE\AFSEEN.DAT`
-// into the filesystem holding the copy somebody dropped — the same two
+// `saveSidecars(on)` writes `AFMAP.DAT` and `AFSEEN.DAT`, in the folder
+// the saves are in, into the filesystem holding the copy somebody dropped — the same two
 // files the desktop host's `--save-sidecars` writes, and the same
 // sentence being asked for: *may this build keep its own files beside
 // your saves*. It is the one surface in M6 that changes something of the
@@ -108,8 +108,8 @@ export function sidecarQuestion() {
     'Two of the enhancements learn something as you play: which streets ' +
       'the automap has drawn for you, and which journal entries the game ' +
       'has sent you to. Neither survives the machine stopping.',
-    'Kept, they go in \\SAVE\\AFMAP.DAT and \\SAVE\\AFSEEN.DAT - files of ' +
-      "this project's own, beside your saved games in the copy this " +
+    'Kept, they go in AFMAP.DAT and AFSEEN.DAT - files of ' +
+      "this project's own, in the folder your saved games are in, in the copy this " +
       'browser is keeping and never inside one. The files you dropped are ' +
       'never written to, and neither of these appears at all until there ' +
       'is something to put in it.',

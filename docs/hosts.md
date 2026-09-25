@@ -88,6 +88,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | option | what it is for |
 | --- | --- |
 | `--headless` | no window, no audio device; `--verify`, `--fast`, `--volume` and `--mute` are refused with it. |
+| `--install DIR` | where the directory given appears on the machine's drive, and the directory the program starts in (#397, §2c): `--install \POOLRAD` puts it at `C:\POOLRAD` and makes that current, as the storefront launchers do. Without it, the edition row's own `install` directory when every file that edition requires is here, else the root. |
 | `--scale N` | integer scale of the window. |
 | `--verify` | §1. |
 | `--press KEY@FRAME[:down\|:up]` | post a real SDL key event at frame `FRAME`. `KEY` is any `SDL_GetScancodeFromName` name: `A`, `Escape`, `Left`, `Keypad 5`. Bare, the make and the break; `:down` the make only, so the key stays held (`Left Alt@7580:down`); `:up` the break only. `hosts/sdl/src/press_spec.h`. Repeatable. |
@@ -107,7 +108,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step, `xt` by default. Not a fast-forward. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. Only the loop's sleep changes (`platform.h`); the run is byte-identical. |
-| `--save-sidecars`, `--no-save-sidecars` | keep what this playthrough has accumulated beside its saves (M5-E2c #173, #351): the automap's exploration in `\SAVE\AFMAP.DAT` and the journal's read log in `\SAVE\AFSEEN.DAT`, each with a snapshot per slot, never inside a save. Off by default, and a launch with a person in it is **asked** (#385, §2b); neither file appears until there is something to put in it. |
+| `--save-sidecars`, `--no-save-sidecars` | keep what this playthrough has accumulated beside its saves (M5-E2c #173, #351): the automap's exploration in `AFMAP.DAT` and the journal's read log in `AFSEEN.DAT`, in the save directory the copy's `POOL.CFG` names (§6), each with a snapshot per slot, never inside a save. A copy that names none gets none, and the end-of-run line says `trouble=no-save-directory`. Off by default, and a launch with a person in it is **asked** (#385, §2b); neither file appears until there is something to put in it. |
 | `--code-wheel-answered`, `--code-wheel-store PATH`, `--forget-code-wheel` | say the code-wheel challenge has been answered on this copy; where answered copies are remembered; forget this one (#290). |
 | `--journal PATH`, `--journal-store PATH`, `--journal-ocr PATH\|none`, `--journal-probe`, `--cite-all-journal` | ingest a journal; where its text lives; which OCR engine; add the synthetic probe edition; cite every entry onto the `Notes` log (`docs/journal.md`). |
 | `--volume 0-100`, `--mute` | how loudly to play it (§4); a run at 25% is the same run as one at 100%, to the last edge. |
@@ -285,8 +286,9 @@ PATH` is an ingestion that happens once.
 ## 2b. The one question either host asks (#385)
 
 `--save-sidecars` / `saveSidecars(on)` writes files of this project's own
-into the copy the player has: `\SAVE\AFMAP.DAT` and `\SAVE\AFSEEN.DAT`,
-plus a snapshot per save slot. It is the one M6 surface that changes
+into the copy the player has: `AFMAP.DAT` and `AFSEEN.DAT` in the folder
+its saves are in (`\SAVE\` on the archive release, §6), plus a snapshot
+per save slot. It is the one M6 surface that changes
 something somebody else owns, so both hosts ask before they do, once, and
 keep the answer with the rest of the settings.
 
@@ -323,13 +325,78 @@ with no records is its header alone, and one of those is written *over* a
 file that already exists and never as a new one
 (`hosts/common/include/amberfolio/host/slot_store.h`). Without that rule a
 save by a party that had walked nowhere and been cited nothing put three
-eight-byte files into the player's `\SAVE\`. The replacing half stays: an
-empty snapshot is the truth about the party saving now, and must still
-replace the last one's.
+eight-byte files into the player's save directory. The replacing half
+stays: an empty snapshot is the truth about the party saving now, and must
+still replace the last one's.
 
 `hosts/sdl/src/sidecar_consent.h` and `hosts/web/page/sidecars.mjs` are
 the two halves; `hosts/sdl/cmake/run-sidecar-consent.cmake` is the check
 that spans two launches.
+
+## 2c. Where a copy sits, and where it starts (#397)
+
+The copies on sale are laid out for a launcher: the folder holding
+`START.EXE` is mounted so it sits at `C:\POOLRAD`, the launcher changes
+into it, and the program opens its own files — `GAME.OVR`, the `.DAX`
+archives, `POOL.CFG` — by bare name. Its `POOL.CFG` names the save
+directory absolutely, so a copy put anywhere else finds neither its files
+nor its saves. The archive release sits at the root.
+
+| edition | where it sits | `POOL.CFG` line 4 | saves and sidecars in |
+| --- | --- | --- | --- |
+| archive release | `\` | `C:\SAVE\` | `\SAVE` |
+| GOG | `\POOLRAD` | `C:\POOLRAD\` | `\POOLRAD`, beside the game's files |
+| Steam | `\POOLRAD` | `C:\POOLRAD\SAVE\` | `\POOLRAD\SAVE` |
+
+So a host puts the files where the edition row's `install` directory says
+(`data/editions.json`) and makes that directory **current** before the
+load (`docs/machine.md` §6). DOS never made a program's folder current by
+itself — a shell or a launcher did — so the load does not either; the
+host is the launcher here.
+
+**The desktop**: `amberfolio <folder> START.EXE --install \POOLRAD` mounts
+the folder given at `\POOLRAD` (`hosts/sdl/src/mounted_vfs.h`: the
+directories above it exist and hold only it, and nothing can be written
+beside it), makes it current, and names the program from it. Without
+`--install`, a folder whose boot file an edition names and which holds
+every file that edition requires is laid out where that edition's row
+says; anything else sits at the root, as every run before this did. The
+log says `install \POOLRAD (from --install) is current` and
+`save directory \POOLRAD\SAVE` before the load.
+
+**The page**, in this order, which is the order the site's loader keeps
+too:
+
+1. `attachReferenceDevices()`, then `vfsPut()` every file at its place —
+   `POOLRAD/START.EXE`, `POOLRAD/SAVE/SAVGAMA.DAT`. Paths across the ABI
+   are always from the root.
+2. `setCurrentDirectory('\\POOLRAD')` (`af_machine_set_current_directory`).
+   `AF_INVALID` if the directory is not there.
+3. `saveSidecars(true)`, if the player said yes (§2b). It reads the save
+   directory from `POOL.CFG` in the current directory, so it comes after
+   2; a copy that does not say gets no sidecars.
+4. `journalStoreRead()` whenever the page has the store, then
+   `journalSeenRestore()`, which reads the read log's sidecar out of the
+   save directory, so after 3. An ingestion (`ingestJournal()`, whose
+   text route is `af_web_journal_reads_own_text` then
+   `af_web_journal_read_text` per entry, #398) fills the same store from
+   a document and never touches the machine's filesystem, so it is
+   independent of the directory; one made this visit goes before
+   `journalSeenRestore()` like a store read back.
+5. `loadFromVfs('\\POOLRAD\\START.EXE')`.
+
+`saveDirectory()` (`af_machine_save_directory`,
+`af_machine_save_directory_trouble`) answers where the program will save
+the moment the files are in, with no program loaded: `\POOLRAD\SAVE`, or
+`null` and `no-config`, `unreadable`, `too-short` or `not-a-path`.
+`currentDirectory()` reads the directory back. This page's own boot button
+makes the chosen program's folder current, which is what the storefront
+launchers do.
+
+**A recording names the directory** as a `cwd` line in its preamble, and a
+replay started anywhere else is refused before the first instruction
+(`docs/replay.md`). The desktop host is given the same `--install` to
+replay one, or finds the same edition row.
 
 ---
 
@@ -806,6 +873,12 @@ page ingests a journal typeset as text with no OCR engine, and
 `af_web_journal_text_probe_bytes`/`_size`, the synthetic document that is
 checked against (#398, §9); two `journal_trouble` codes joined the end of
 that enum.
+It also adds `af_machine_set_current_directory`, `af_machine_current_directory`,
+`af_machine_save_directory` and `af_machine_save_directory_trouble`
+(#397, §2c): the directory a program starts in, and where it saves. The
+`af_machine_save_layer_*` calls kept their names and their answers on the
+archive release; on another layout their rows follow the save directory
+the copy names (§6).
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -1080,6 +1153,7 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161). Repeatable. |
 | `--seam ID` | turn one seam on after the load, before the first step. Repeatable; a refusal **ends the run**, so a script never silently gets a plain machine. |
 | `--seams` | list every seam this build carries, and exit. |
+| `--install DIR` | put the directory's files at `DIR` (`\POOLRAD`) and make it current before the load, the desktop's `--install` (§2c). |
 | `--save-sidecars` | the playthrough's sidecars, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on once, after the files are in and before the program is loaded: it reads the working exploration table back, and a second call would replace every record in the machine. The read log comes back with the journal store, which is this side's. A driven run is never asked about this and states it (§2b). |
 | `--document PATH` | present a document the player holds; hashed and dropped. Repeatable. |
 | `--code-wheel-answered` | say the challenge has been answered on this copy (#291). Without it the seam only watches, and a driven run sits at the challenge for ever. |
@@ -1201,30 +1275,48 @@ table, keyed on the loaded program the way a seam's addresses are.
 
 ### The table this build carries
 
-For the one edition it knows (`machine/edition.h`). Slots are the ten
-letters **A** to **J**; a party's records are numbered **1** to **8**.
+For the program the editions this build knows share (`machine/edition.h`
+— the archive release and the storefront copies boot the same
+`START.EXE`). Slots are the ten letters **A** to **J**; a party's records
+are numbered **1** to **8**.
 
-| pattern | kind | required | what it is |
-|---|---|---|---|
-| `\SAVE\SAVGAM<S>.DAT` | slot | yes | the saved game |
-| `\SAVE\CHRDAT<S><N>.SAV` | member | yes | one party member's record |
-| `\SAVE\CHRDAT<S><N>.ITM` | member | no | what that member carries |
-| `\SAVE\CHRDAT<S><N>.SPC` | member | no | that member's memorized spells |
-| `\SAVE\CHARLIST.TXT` | roster | no | the characters in no party, shared by every slot |
-| `\SAVE\AFMAP<S>.DAT` | sidecar | no | **ours**: the automap's exploration, as slot `<S>` was written |
-| `\SAVE\AFSEEN<S>.DAT` | sidecar | no | **ours**: the journal's read log, as slot `<S>` was written |
-| `\SAVE\AFMAP.DAT` | sidecar | no | **ours**: the working exploration table |
-| `\SAVE\AFSEEN.DAT` | sidecar | no | **ours**: the working read log |
-| `POOL.CFG` | config | no | the program's settings — **a game file** |
-| `\SAVE\<NAME>.CHA` | character | no | a character kept under a name the player chose |
-| `\SAVE\<NAME>.ITM` | character | no | what that character carries |
-| `\SAVE\<NAME>.SPC` | character | no | that character's memorized spells |
+Every row is a leaf in one of two directories (#397): **saves**, the
+directory line 4 of the copy's `POOL.CFG` names, read relative to the
+directory the program starts in; and **start**, that directory itself
+(§2c). `\SAVE` and the root on the archive release, `\POOLRAD` for both
+on the GOG copy, `\POOLRAD\SAVE` and `\POOLRAD` on the Steam copy.
+
+| pattern | in | kind | required | what it is |
+|---|---|---|---|---|
+| `SAVGAM<S>.DAT` | saves | slot | yes | the saved game |
+| `CHRDAT<S><N>.SAV` | saves | member | yes | one party member's record |
+| `CHRDAT<S><N>.ITM` | saves | member | no | what that member carries |
+| `CHRDAT<S><N>.SPC` | saves | member | no | that member's memorized spells |
+| `CHARLIST.TXT` | saves | roster | no | the characters in no party, shared by every slot |
+| `AFMAP<S>.DAT` | saves | sidecar | no | **ours**: the automap's exploration, as slot `<S>` was written |
+| `AFSEEN<S>.DAT` | saves | sidecar | no | **ours**: the journal's read log, as slot `<S>` was written |
+| `AFMAP.DAT` | saves | sidecar | no | **ours**: the working exploration table |
+| `AFSEEN.DAT` | saves | sidecar | no | **ours**: the working read log |
+| `POOL.CFG` | start | config | no | the program's settings — **a game file** |
+| `<NAME>.CHA` | saves | character | no | a character kept under a name the player chose |
+| `<NAME>.ITM` | saves | character | no | what that character carries |
+| `<NAME>.SPC` | saves | character | no | that character's memorized spells |
+
+`af_machine_save_layer_pattern_at` and `--save-layer` spell each row with
+its directory in front, from the root: `SAVE\SAVGAM<S>.DAT` and
+`POOL.CFG` on the archive release, `POOLRAD\SAVGAM<S>.DAT` and
+`POOLRAD\POOL.CFG` on the GOG copy. **A copy whose `POOL.CFG` is absent
+or does not name a directory has no layer**, the same answer as a program
+with no table; `af_machine_save_directory_trouble` says which.
 
 Three placeholders: `<S>` a slot letter, `<N>` a party-member index,
 `<NAME>` a DOS name the player chose and this build cannot enumerate.
 **Rows are tried in order and the first match wins** — `<NAME>.ITM` would
 otherwise swallow a member's `CHRDAT<S><N>.ITM`, which is why the three
-`<NAME>` rows are last.
+`<NAME>` rows are last. On the GOG copy the two directories are one, so
+`POOL.CFG` sits among the saves, and its row is ahead of the `<NAME>`
+rows for that reason; `hosts/common/tests/edition_facts_test.cpp` checks
+that no file any edition ships is claimed as anything but that.
 
 **`required` means the slot is incomplete without it**: the program
 writes it for every save and reads it back for every load. The optional
@@ -1286,11 +1378,18 @@ lines name the same thirteen files.
 ### What the table does not name
 
 A file it does not claim is one no traced run of this edition reads or
-writes. A player's `\SAVE\` may still hold some: a record past member
-eight, left by nothing this program writes; and `MINIMAP.DAT` /
-`MINIMAP<S>.DAT`, which some copies carry, which the program never names
-in any run traced here — not a load, not a save, in the city or on the
-wilderness map — and which are therefore some other tool's.
+writes. A player's save directory may still hold some: a record past
+member eight, left by nothing this program writes; and `MINIMAP.DAT` /
+`MINIMAP<S>.DAT` or the Steam copy's `EXPLORED.DAT`, which some copies
+carry, which the program never names in any run traced here — not a
+load, not a save, in the city or on the wilderness map — and which are
+therefore some other tool's.
+
+The storefront copies were traced the same way (#397), from a copy laid
+out at `\POOLRAD` and started there: the load menu asks `\POOLRAD` (GOG)
+or `\POOLRAD\SAVE` (Steam) about `SAVGAMA` to `SAVGAMJ`, a load reads the
+slot's records from there, and a save into an empty letter created only
+files the table names there, every one of them claimed.
 
 These belong with the files the player dropped, and stay wherever a host
 put those. **The honest failure to watch for** is the other direction: a
@@ -1317,13 +1416,17 @@ amberfolio: save-layer 79 of 205 file(s) named, 78 the playthrough's
 A page uses `Machine.saveLayer()` for the table and
 `Machine.saveLayerOf(path)` for one path — `{ row, kind, required, slot,
 member }`, or `null` for a path the layer does not claim, which is the
-answer for every game file and the one a page writing `\SAVE\` back is
+answer for every game file and the one a page writing its saves back is
 asking for. Paths are spelled either way and canonicalized in core
 (#146), so no host can reach a different answer by spelling a name
-differently.
+differently. **What decides where the rows are is the copy's own
+`POOL.CFG`, read as the program reads it** — from the current directory,
+which the host set from the edition row before the load (§2c) — so a page
+draws its partition from the emulator for every edition and keeps no
+table of layouts of its own.
 
-**No program loaded, or one this build has no table for, answers
-nothing** — `null` from `saveLayer()`, zero from the counts,
+**No program loaded, one this build has no table for, or a copy that does
+not say where it saves, answers nothing** — `null` from `saveLayer()`, zero from the counts,
 `AF_SAVE_LAYER_NO_ROW` from `af_machine_save_layer_row_of`. That is the
 same "I do not know this file" `af_machine_edition` answers for an
 unrecognized binary (`machine/edition.h`), and a host that gets it should

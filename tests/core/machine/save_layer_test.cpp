@@ -14,12 +14,14 @@
 
 #include "amberfolio/machine/save_layer.h"
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
 
 #include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/memory_vfs.h"
 #include "amberfolio/machine/vfs.h"
 #include "amberfolio/sha256.h"
 #include "gtest/gtest.h"
@@ -52,8 +54,26 @@ namespace {
   return where.ok() ? where.value : dos_path{};
 }
 
-[[nodiscard]] save_layer_row match(std::string_view text) {
-  return match_save_file(baseline(), path_of(text));
+/// The archive release's layout: started at the root, saving in `\SAVE`.
+[[nodiscard]] save_layer_places at_root() {
+  return {.save_directory = path_of("SAVE"), .current_directory = {}};
+}
+
+/// A copy started in `\POOLRAD` that saves beside its game files.
+[[nodiscard]] save_layer_places beside() {
+  return {.save_directory = path_of("POOLRAD"),
+          .current_directory = path_of("POOLRAD")};
+}
+
+/// A copy started in `\POOLRAD` that saves one directory further down.
+[[nodiscard]] save_layer_places below() {
+  return {.save_directory = path_of("POOLRAD\\SAVE"),
+          .current_directory = path_of("POOLRAD")};
+}
+
+[[nodiscard]] save_layer_row match(
+    std::string_view text, const save_layer_places& places = at_root()) {
+  return match_save_file(baseline(), places, path_of(text));
 }
 
 // --- Finding a layer -----------------------------------------------------
@@ -208,12 +228,14 @@ TEST(SaveLayerMatch, PrefersTheMemberRowOverTheCharacterOne) {
 }
 
 TEST(SaveLayerMatch, KnowsThisBuildsOwnSidecars) {
-  const save_layer_row working = match(save_layer_automap_working);
+  const save_layer_row working =
+      match("SAVE\\" + std::string(save_layer_automap_working));
   ASSERT_NE(working.file, nullptr);
   EXPECT_EQ(working.file->kind, save_file_kind::sidecar);
   EXPECT_EQ(working.slot, 0);
 
-  const save_layer_row log = match(save_layer_journal_working);
+  const save_layer_row log =
+      match("SAVE\\" + std::string(save_layer_journal_working));
   ASSERT_NE(log.file, nullptr);
   EXPECT_EQ(log.file->kind, save_file_kind::sidecar);
   EXPECT_EQ(log.slot, 0);
@@ -242,7 +264,204 @@ TEST(SaveLayerMatch, AnswersNoRowForAGameFile) {
 }
 
 TEST(SaveLayerMatch, AnswersNoRowForTheRoot) {
-  EXPECT_EQ(match_save_file(baseline(), dos_path{}).file, nullptr);
+  EXPECT_EQ(match_save_file(baseline(), at_root(), dos_path{}).file, nullptr);
+}
+
+// --- Where the rows are (#397) -------------------------------------------
+//
+// One table, three layouts: the archive release at the root saving in
+// `\SAVE`, and two copies started in `\POOLRAD` — one saving beside its
+// game files, one in `\POOLRAD\SAVE`.
+
+TEST(SaveLayerPlaces, ClaimsASlotWhereverTheCopySavesAndNowhereElse) {
+  const save_layer_row gog = match("POOLRAD\\SAVGAMA.DAT", beside());
+  ASSERT_NE(gog.file, nullptr);
+  EXPECT_EQ(gog.file->kind, save_file_kind::slot);
+  EXPECT_EQ(gog.slot, 'A');
+
+  const save_layer_row steam = match("POOLRAD\\SAVE\\CHRDATJ6.SPC", below());
+  ASSERT_NE(steam.file, nullptr);
+  EXPECT_EQ(steam.file->kind, save_file_kind::member);
+  EXPECT_EQ(steam.slot, 'J');
+  EXPECT_EQ(steam.member, 6);
+
+  // The same name one directory off is not the copy's save.
+  EXPECT_EQ(match("SAVE\\SAVGAMA.DAT", beside()).file, nullptr);
+  EXPECT_EQ(match("POOLRAD\\SAVGAMA.DAT", below()).file, nullptr);
+  EXPECT_EQ(match("POOLRAD\\SAVGAMA.DAT", at_root()).file, nullptr);
+  EXPECT_EQ(match("SAVGAMA.DAT", at_root()).file, nullptr);
+}
+
+TEST(SaveLayerPlaces, PutsTheSidecarsBesideTheSaves) {
+  for (const save_layer_places& places : {at_root(), beside(), below()}) {
+    std::array<char, save_pattern_capacity> directory{};
+    const save_file sidecar{.pattern = "AFMAPB.DAT", .about = "a snapshot"};
+    ASSERT_GT(spell_save_pattern(sidecar, places, directory), 0U);
+    const save_layer_row row = match(directory.data(), places);
+    ASSERT_NE(row.file, nullptr) << directory.data();
+    EXPECT_EQ(row.file->kind, save_file_kind::sidecar) << directory.data();
+    EXPECT_EQ(row.slot, 'B') << directory.data();
+  }
+}
+
+TEST(SaveLayerPlaces, TheConfigurationFileIsInTheStartingDirectory) {
+  EXPECT_EQ(match("POOL.CFG", at_root()).file->kind, save_file_kind::config);
+  EXPECT_EQ(match("POOLRAD\\POOL.CFG", below()).file->kind,
+            save_file_kind::config);
+  EXPECT_EQ(match("POOL.CFG", below()).file, nullptr);
+  EXPECT_EQ(match("POOLRAD\\SAVE\\POOL.CFG", below()).file, nullptr);
+}
+
+TEST(SaveLayerPlaces, SavingBesideTheGameClaimsNoGameFile) {
+  // The ordering trap: with the save directory and the starting directory
+  // one and the same, the configuration file is in both, and it is the
+  // program's — never a playthrough's `<NAME>` row. The rest of the
+  // publisher's files are checked against every edition's file list in
+  // `hosts/common/tests/edition_facts_test.cpp`; these are the names a
+  // `<NAME>` row would be likeliest to swallow.
+  const save_layer_row config = match("POOLRAD\\POOL.CFG", beside());
+  ASSERT_NE(config.file, nullptr);
+  EXPECT_EQ(config.file->kind, save_file_kind::config);
+
+  for (const std::string_view game :
+       {"POOLRAD\\START.EXE", "POOLRAD\\GAME.OVR", "POOLRAD\\ITEMS",
+        "POOLRAD\\CFG.EXE", "POOLRAD\\ITEM1.DAX", "POOLRAD\\MON1ITM.DAX",
+        "POOLRAD\\MON2SPC.DAX", "POOLRAD\\MON1CHA.DAX"}) {
+    EXPECT_EQ(match(game, beside()).file, nullptr) << game;
+  }
+}
+
+TEST(SaveLayerPlaces, SpellsEachPatternWithItsDirectory) {
+  const save_layer& layer = baseline();
+  std::array<char, save_pattern_capacity> out{};
+  // The archive release spells every row the way the table always did.
+  ASSERT_GT(spell_save_pattern(layer.files.front(), at_root(), out), 0U);
+  EXPECT_STREQ(out.data(), "SAVE\\SAVGAM<S>.DAT");
+  ASSERT_GT(spell_save_pattern(layer.files.front(), below(), out), 0U);
+  EXPECT_STREQ(out.data(), "POOLRAD\\SAVE\\SAVGAM<S>.DAT");
+
+  for (const save_file& row : layer.files) {
+    if (row.kind != save_file_kind::config) {
+      continue;
+    }
+    ASSERT_GT(spell_save_pattern(row, at_root(), out), 0U);
+    EXPECT_STREQ(out.data(), "POOL.CFG");
+    ASSERT_GT(spell_save_pattern(row, beside(), out), 0U);
+    EXPECT_STREQ(out.data(), "POOLRAD\\POOL.CFG");
+  }
+
+  // Too small is nothing, and says so.
+  std::array<char, 4> tiny{};
+  EXPECT_EQ(spell_save_pattern(layer.files.front(), at_root(), tiny), 0U);
+}
+
+// --- Where the program saves: its own configuration file (#397) -----------
+//
+// Written here, four lines of layout, because the file the program reads
+// is not ours to copy: these say where to save and nothing else.
+
+class SaveDirectory : public ::testing::Test {
+ protected:
+  void put(std::string_view path, std::string_view text) {
+    const dos_path where = path_of(path);
+    if (!where.parent().is_root() && !fs.exists(where.parent())) {
+      ASSERT_EQ(fs.mkdir(where.parent()), vfs_error::none);
+    }
+    const vfs_result<file_handle> made = fs.create(where);
+    ASSERT_TRUE(made.ok());
+    const std::span<const std::uint8_t> bytes(
+        reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
+    ASSERT_TRUE(fs.write(made.value, bytes).ok());
+    ASSERT_EQ(fs.close(made.value), vfs_error::none);
+  }
+
+  [[nodiscard]] save_directory_answer read(std::string_view from = "") {
+    return read_save_directory(fs, from.empty() ? dos_path{} : path_of(from));
+  }
+
+  memory_filesystem fs;
+};
+
+TEST_F(SaveDirectory, ReadsTheFourthLineAgainstTheStartingDirectory) {
+  put("POOL.CFG", "a\r\nb\r\nC:\\\r\nC:\\SAVE\\\r\ne\r\n");
+  const save_directory_answer root = read();
+  ASSERT_TRUE(root.ok());
+  EXPECT_EQ(root.directory, path_of("SAVE"));
+
+  put("POOLRAD\\POOL.CFG", "a\r\nb\r\nC:\\POOLRAD\\\r\nC:\\POOLRAD\\\r\ne\r\n");
+  const save_directory_answer gog = read("POOLRAD");
+  ASSERT_TRUE(gog.ok());
+  EXPECT_EQ(gog.directory, path_of("POOLRAD"));
+}
+
+TEST_F(SaveDirectory, ARelativeLineIsRelativeToTheStartingDirectory) {
+  // As the program's own open of it would be: no drive, no leading
+  // separator, and the directory it started in is where it lands.
+  put("POOLRAD\\POOL.CFG", "a\nb\nc\nSAVE\\\n");
+  const save_directory_answer answer = read("POOLRAD");
+  ASSERT_TRUE(answer.ok());
+  EXPECT_EQ(answer.directory, path_of("POOLRAD\\SAVE"));
+}
+
+TEST_F(SaveDirectory, TakesALastLineWithNoEnding) {
+  put("POOL.CFG", "a\r\nb\r\nc\r\nC:\\POOLRAD\\SAVE");
+  const save_directory_answer answer = read();
+  ASSERT_TRUE(answer.ok());
+  EXPECT_EQ(answer.directory, path_of("POOLRAD\\SAVE"));
+}
+
+TEST_F(SaveDirectory, SaysWhenThereIsNoFile) {
+  const save_directory_answer none = read();
+  EXPECT_FALSE(none.ok());
+  EXPECT_EQ(none.trouble, save_directory_trouble::no_config);
+
+  // A configuration file somewhere else is not the one the program opens.
+  put("POOLRAD\\POOL.CFG", "a\nb\nc\nC:\\SAVE\\\n");
+  EXPECT_EQ(read().trouble, save_directory_trouble::no_config);
+}
+
+TEST_F(SaveDirectory, SaysWhenTheFileDoesNotSay) {
+  put("POOL.CFG", "a\r\nb\r\nc\r\n");
+  EXPECT_EQ(read().trouble, save_directory_trouble::too_short);
+
+  put("POOL.CFG", "a\r\nb\r\nc\r\n\r\ne\r\n");
+  EXPECT_EQ(read().trouble, save_directory_trouble::too_short);
+
+  put("POOL.CFG", "");
+  EXPECT_EQ(read().trouble, save_directory_trouble::too_short);
+}
+
+TEST_F(SaveDirectory, SaysWhenTheLineIsNotAPathThisMachineCanName) {
+  put("POOL.CFG", "a\nb\nc\nA:\\SAVE\\\n");
+  EXPECT_EQ(read().trouble, save_directory_trouble::not_a_path);
+
+  put("POOL.CFG", "a\nb\nc\nC:\\NINELETTER\\\n");
+  EXPECT_EQ(read().trouble, save_directory_trouble::not_a_path);
+}
+
+TEST_F(SaveDirectory, TheTroublesHaveTheirOwnSpellings) {
+  EXPECT_STREQ(save_directory_trouble_name(save_directory_trouble::none),
+               "none");
+  EXPECT_STREQ(save_directory_trouble_name(save_directory_trouble::no_config),
+               "no-config");
+  EXPECT_STREQ(save_directory_trouble_name(save_directory_trouble::unreadable),
+               "unreadable");
+  EXPECT_STREQ(save_directory_trouble_name(save_directory_trouble::too_short),
+               "too-short");
+  EXPECT_STREQ(save_directory_trouble_name(save_directory_trouble::not_a_path),
+               "not-a-path");
+}
+
+TEST_F(SaveDirectory, GivesTheMatcherItsPlaces) {
+  put("POOLRAD\\POOL.CFG", "a\r\nb\r\nc\r\nC:\\POOLRAD\\SAVE\\\r\n");
+  save_layer_places places;
+  ASSERT_TRUE(save_layer_places_of(fs, path_of("POOLRAD"), places));
+  EXPECT_EQ(places.save_directory, path_of("POOLRAD\\SAVE"));
+  EXPECT_EQ(places.current_directory, path_of("POOLRAD"));
+
+  save_layer_places untouched = at_root();
+  EXPECT_FALSE(save_layer_places_of(fs, dos_path{}, untouched));
+  EXPECT_EQ(untouched.save_directory, at_root().save_directory);
 }
 
 }  // namespace

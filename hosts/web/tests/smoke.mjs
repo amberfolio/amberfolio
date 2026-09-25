@@ -231,6 +231,11 @@ const EXPECTED_EXPORTS = [
   '_af_machine_vfs_fingerprint',
   '_af_machine_load_from_vfs',
   '_af_machine_load_error',
+  // The directory a program starts in, and where it saves (#397).
+  '_af_machine_set_current_directory',
+  '_af_machine_current_directory',
+  '_af_machine_save_directory',
+  '_af_machine_save_directory_trouble',
   '_af_machine_edition',
   '_af_machine_program_fingerprint',
   '_af_machine_seam_count',
@@ -2331,6 +2336,53 @@ if (missing.length === 0) {
   );
 }
 
+// --- The directory a program starts in, and where it saves (#397) ---------
+//
+// The storefront copies sit at `\POOLRAD` and are started there; the page
+// puts the files at their place, makes the directory current, and asks
+// where the program will save — all before a program is loaded. The
+// configuration file here is four lines of layout written for the check.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+  machine.reset();
+
+  check(machine.currentDirectory() === '\\', `a new machine starts in ${machine.currentDirectory()}`);
+  const none = machine.saveDirectory();
+  check(
+    none.directory === null && none.trouble === 'no-config',
+    `a disk with no configuration file says it saves in ${JSON.stringify(none)}`,
+  );
+
+  const cfg = new TextEncoder().encode('-\r\n-\r\n-\r\nC:\\POOLRAD\\SAVE\\\r\n');
+  check(machine.vfsPut('POOLRAD/POOL.CFG', cfg) === AF_OK, 'putting POOLRAD/POOL.CFG failed');
+  check(
+    machine.setCurrentDirectory('NOPE') === AF_INVALID,
+    'a directory that is not there was made current',
+  );
+  check(
+    machine.setCurrentDirectory('\\POOLRAD') === AF_OK,
+    'the directory the copy sits in could not be made current',
+  );
+  check(
+    machine.currentDirectory() === '\\POOLRAD',
+    `the current directory reads back as ${machine.currentDirectory()}`,
+  );
+  const saves = machine.saveDirectory();
+  check(
+    saves.directory === '\\POOLRAD\\SAVE' && saves.trouble === 'none',
+    `a copy started in \\POOLRAD saves in ${JSON.stringify(saves)}`,
+  );
+
+  machine.destroy();
+  console.log('smoke: a copy started in \\POOLRAD is told where it saves before it loads');
+}
+
 // --- The code wheel's answer, kept between visits (M6-C1b, #292) -----------
 //
 // The seam itself is exercised natively (`SeamCodeWheel.*`); what has no
@@ -2982,8 +3034,9 @@ if (missing.length === 0) {
   // makes true, which is the sentence the two have to keep in step.
   const whole = sidecarQuestion().join(' ');
   for (const wanted of [
-    '\\SAVE\\AFMAP.DAT',
-    '\\SAVE\\AFSEEN.DAT',
+    'AFMAP.DAT',
+    'AFSEEN.DAT',
+    'the folder your saved games are in',
     'until there is something to put in it',
     'remembers what you answer',
   ]) {

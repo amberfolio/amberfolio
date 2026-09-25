@@ -1050,6 +1050,107 @@ TEST(AbiSaveLayer, HasNoTableForAProgramItDoesNotRecognize) {
             0u);
 }
 
+// --- The directory it starts in, and where it saves (#397) --------------
+
+/// `text`, answered by one of the calls that write into a buffer.
+template <typename Call>
+[[nodiscard]] std::string text_of(Call call) {
+  std::array<char, 128> out{};
+  const std::uint32_t length =
+      call(out.data(), static_cast<std::uint32_t>(out.size()));
+  return {out.data(), length};
+}
+
+/// Put a configuration file at `path` whose save-directory line is
+/// `saves`: four lines of layout, written here.
+void configure(af_machine* box, const char* path, std::string_view saves) {
+  std::string text = "-\r\n-\r\n-\r\n";
+  text += saves;
+  text += "\r\n";
+  ASSERT_EQ(af_machine_vfs_put(
+                box, path, reinterpret_cast<const std::uint8_t*>(text.data()),
+                static_cast<std::uint32_t>(text.size())),
+            AF_OK);
+}
+
+TEST(AbiCurrentDirectory, IsTheRootUntilAHostSetsIt) {
+  const equipped_machine box;
+  EXPECT_EQ(text_of([&](char* out, std::uint32_t max) {
+              return af_machine_current_directory(box.get(), out, max);
+            }),
+            "\\");
+
+  const std::array<std::uint8_t, 1> byte{0};
+  ASSERT_EQ(af_machine_vfs_put(box.get(), "POOLRAD/START.EXE", byte.data(), 1),
+            AF_OK);
+  EXPECT_EQ(af_machine_set_current_directory(box.get(), "/poolrad/"), AF_OK);
+  EXPECT_EQ(text_of([&](char* out, std::uint32_t max) {
+              return af_machine_current_directory(box.get(), out, max);
+            }),
+            "\\POOLRAD");
+
+  // Not a directory, not there, not a name: refused, and nothing moved.
+  EXPECT_EQ(af_machine_set_current_directory(box.get(), "POOLRAD/START.EXE"),
+            AF_INVALID);
+  EXPECT_EQ(af_machine_set_current_directory(box.get(), "NOPE"), AF_INVALID);
+  EXPECT_EQ(af_machine_set_current_directory(box.get(), "A:\\"), AF_INVALID);
+  EXPECT_EQ(text_of([&](char* out, std::uint32_t max) {
+              return af_machine_current_directory(box.get(), out, max);
+            }),
+            "\\POOLRAD");
+
+  // And the root is one, spelled either way.
+  EXPECT_EQ(af_machine_set_current_directory(box.get(), ""), AF_OK);
+  EXPECT_EQ(af_machine_set_current_directory(box.get(), "\\"), AF_OK);
+}
+
+TEST(AbiCurrentDirectory, NeedsAMachineAndAFilesystem) {
+  EXPECT_EQ(af_machine_set_current_directory(nullptr, "\\"), AF_NO_MACHINE);
+  const machine_handle bare;
+  EXPECT_EQ(af_machine_set_current_directory(bare.get(), "\\"),
+            AF_NO_FILESYSTEM);
+  std::array<char, 16> out{};
+  EXPECT_EQ(af_machine_current_directory(nullptr, out.data(), 16), 0U);
+  EXPECT_EQ(af_machine_save_directory(nullptr, out.data(), 16), 0U);
+  EXPECT_EQ(af_machine_save_directory_trouble(nullptr, out.data(), 16), 0U);
+}
+
+TEST(AbiSaveDirectory,
+     IsWhatTheConfigurationFileSaysFromWhereTheProgramStarts) {
+  const equipped_machine box;
+  const auto saves = [&] {
+    return text_of([&](char* out, std::uint32_t max) {
+      return af_machine_save_directory(box.get(), out, max);
+    });
+  };
+  const auto trouble = [&] {
+    return text_of([&](char* out, std::uint32_t max) {
+      return af_machine_save_directory_trouble(box.get(), out, max);
+    });
+  };
+
+  // No file, and it says so rather than naming a likely directory.
+  EXPECT_EQ(saves(), "");
+  EXPECT_EQ(trouble(), "no-config");
+
+  configure(box.get(), "POOL.CFG", "C:\\SAVE\\");
+  EXPECT_EQ(saves(), "\\SAVE");
+  EXPECT_EQ(trouble(), "none");
+
+  // Started in `\POOLRAD`, the file there is the one read, and a copy
+  // that saves beside its game files says its own folder.
+  configure(box.get(), "POOLRAD/POOL.CFG", "C:\\POOLRAD\\");
+  ASSERT_EQ(af_machine_set_current_directory(box.get(), "POOLRAD"), AF_OK);
+  EXPECT_EQ(saves(), "\\POOLRAD");
+
+  configure(box.get(), "POOLRAD/POOL.CFG", R"(C:\POOLRAD\SAVE\)");
+  EXPECT_EQ(saves(), "\\POOLRAD\\SAVE");
+
+  configure(box.get(), "POOLRAD/POOL.CFG", "A:\\SAVE\\");
+  EXPECT_EQ(saves(), "");
+  EXPECT_EQ(trouble(), "not-a-path");
+}
+
 TEST(AbiVfs, ReportsWhyALoadFailedWithoutFoldingItIntoTheStatus) {
   const equipped_machine box;
 

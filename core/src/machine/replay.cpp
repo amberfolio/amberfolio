@@ -349,6 +349,9 @@ template <class Visit>
   if (word == "tail") {
     return replay_line::tail;
   }
+  if (word == "cwd") {
+    return replay_line::cwd;
+  }
   if (word == "speed") {
     return replay_line::speed;
   }
@@ -503,7 +506,8 @@ bool parse_replay_line(std::span<const char> line, replay_event& out) noexcept {
       return f.exhausted();
     }
 
-    case replay_line::dir: {
+    case replay_line::dir:
+    case replay_line::cwd: {
       if (!f.next(word) || !parse_path(word, out.path)) {
         return false;
       }
@@ -662,6 +666,10 @@ std::size_t format_replay_line(const replay_event& event,
       w.text("dir ");
       w.dos(event.path);
       break;
+    case replay_line::cwd:
+      w.text("cwd ");
+      w.dos(event.path);
+      break;
     case replay_line::wall:
       w.text("wall ");
       w.number(event.at);
@@ -784,6 +792,17 @@ std::size_t write_preamble(const machine& box, filesystem& fs,
   event.tail_length = tail.size();
   if (!emit(event)) {
     return 0;
+  }
+
+  // Only when it is not the root, which a manifest path cannot spell and
+  // which a recording without the line already means (replay.h).
+  if (!box.dos().current_directory().is_root()) {
+    event = replay_event{};
+    event.kind = replay_line::cwd;
+    event.path = box.dos().current_directory();
+    if (!emit(event)) {
+      return 0;
+    }
   }
 
   event = replay_event{};
@@ -945,6 +964,14 @@ bool replay_player::load(std::span<const char> text) {
         preamble_.tail = event.tail;
         preamble_.tail_length = event.tail_length;
         break;
+      case replay_line::cwd:
+        if (preamble_.format_version < recording_format_cwd) {
+          fail(replay_status::malformed,
+               "a preamble line this recording's format does not have", 0);
+          return false;
+        }
+        preamble_.current_directory = event.path;
+        break;
       case replay_line::speed:
         preamble_.subticks = event.subticks;
         preamble_.have_speed = true;
@@ -1011,6 +1038,14 @@ replay_status replay_player::check_initial(const machine& box, filesystem* fs) {
       !(box.seams().program() == preamble_.program_digest)) {
     fail(replay_status::malformed, "the program loaded is not the one recorded",
          0);
+    return status_;
+  }
+  // Every relative name the program opens resolves against it, so a run
+  // started anywhere else is a different run from its first open — said
+  // here, by name, rather than at a checkpoint hash later.
+  if (!(box.dos().current_directory() == preamble_.current_directory)) {
+    fail_path("the current directory is not the one recorded",
+              preamble_.current_directory);
     return status_;
   }
   if (preamble_.have_speed && box.step_cost_subticks() != preamble_.subticks) {
@@ -1329,6 +1364,7 @@ replay_status replay_player::apply(machine& box) {
       case replay_line::header:
       case replay_line::program:
       case replay_line::tail:
+      case replay_line::cwd:
       case replay_line::speed:
       case replay_line::seam:
       case replay_line::file:

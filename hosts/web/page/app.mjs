@@ -1494,6 +1494,25 @@ export function runDevPage() {
 
       box.setTrace(el(TRACE_CHECKBOX_ID)?.checked === true);
 
+      // The directory the program starts in (#397): the folder it was
+      // chosen from, which is what the copies' own launchers do — mount
+      // the copy and change into its folder before running it. DOS never
+      // made a program's folder current by itself; a shell did, and here
+      // this page is the shell. Before the sidecars, which look for the
+      // save directory in it, and before the load.
+      const cut = Math.max(program.lastIndexOf('/'), program.lastIndexOf('\\'));
+      const folder = cut === -1 ? '\\' : program.slice(0, cut);
+      if (box.setCurrentDirectory(folder) !== AF_OK) {
+        throw new Error(`${folder} is not a directory on this disk`);
+      }
+      const saves = box.saveDirectory();
+      appendConsole(
+        `[host] current directory ${box.currentDirectory()}, ` +
+          (saves.directory !== null
+            ? `saves in ${saves.directory}\n`
+            : `save directory unknown (${saves.trouble})\n`),
+      );
+
       // The playthrough's sidecars, if this player said yes (#385, #351).
       //
       // **Here, once, and nowhere else.** `saveSidecars(true)` turns the

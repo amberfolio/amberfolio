@@ -29,6 +29,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -95,6 +96,20 @@ struct rig {
         box(std::make_unique<machine::machine>(machine::memory_layout::pc)) {
     box->set_filesystem(*files);
     store.set_journal_store(&log);
+    // Where this disk says it saves (#397): the archive release's layout,
+    // which is what every path above is spelled in. Four lines written
+    // here, the fourth naming the directory and nothing else.
+    configure("POOL.CFG", "C:\\SAVE\\");
+  }
+
+  /// Write a configuration file at `path` whose save-directory line is
+  /// `saves`.
+  void configure(std::string_view path, std::string_view saves) {
+    std::string text = "-\r\n-\r\n-\r\n";
+    text += saves;
+    text += "\r\n";
+    put(path,
+        {reinterpret_cast<const std::uint8_t*>(text.data()), text.size()});
   }
 
   [[nodiscard]] automap_state& maps() const noexcept { return box->automap(); }
@@ -835,6 +850,81 @@ TEST(SlotStore, AnEmptySnapshotStillReplacesOneThatIsThere) {
   journal_store log_back;
   ASSERT_TRUE(log_back.read_log_sidecar(r.bytes_of(log_slot_a_path)));
   EXPECT_TRUE(log_back.seen().empty());
+}
+
+// ---------------------------------------------------------------------------
+// Beside the saves, wherever the copy keeps them (#397)
+// ---------------------------------------------------------------------------
+
+/// A rig laid out as a copy started in `\POOLRAD` whose configuration
+/// file names `saves`.
+void lay_out_in_poolrad(rig& r, std::string_view saves) {
+  ASSERT_EQ(r.files->mkdir(path_of("POOLRAD")), vfs_error::none);
+  r.configure("POOLRAD\\POOL.CFG", saves);
+  ASSERT_EQ(r.box->dos().set_current_directory(*r.files, path_of("POOLRAD")),
+            vfs_error::none);
+}
+
+TEST(SlotStoreDirectory, ACopyThatSavesBesideItsGameFilesGetsItsSidecarsThere) {
+  rig r;
+  lay_out_in_poolrad(r, "C:\\POOLRAD\\");
+  r.store.enable(true);
+  r.store.attach(*r.box);
+  ASSERT_NE(r.store.save_directory(), nullptr);
+  EXPECT_EQ(*r.store.save_directory(), path_of("POOLRAD"));
+
+  r.explore(3, 0, 0, 1, 1);
+  r.store.saw(event_of(file_action::create, "POOLRAD\\SAVGAMA.DAT"));
+  r.store.saw(event_of(file_action::close, "POOLRAD\\SAVGAMA.DAT"));
+  EXPECT_EQ(r.store.slot(), 'A');
+  EXPECT_TRUE(r.has("POOLRAD\\AFMAP.DAT"));
+  EXPECT_TRUE(r.has("POOLRAD\\AFMAPA.DAT"));
+  EXPECT_FALSE(r.has(working_path));
+  EXPECT_FALSE(r.has(slot_a_path));
+}
+
+TEST(SlotStoreDirectory, ACopyThatSavesOneFurtherDownGetsThemThere) {
+  rig r;
+  lay_out_in_poolrad(r, R"(C:\POOLRAD\SAVE\)");
+  r.store.enable(true);
+  r.store.attach(*r.box);
+
+  r.explore(3, 0, 0, 1, 1);
+  // The archive release's slot is not this copy's, and is not watched.
+  r.store.saw(event_of(file_action::create, game_slot_a));
+  r.store.saw(event_of(file_action::close, game_slot_a));
+  EXPECT_EQ(r.store.slot(), 0);
+
+  r.store.saw(event_of(file_action::create, "POOLRAD\\SAVE\\SAVGAMB.DAT"));
+  r.store.saw(event_of(file_action::close, "POOLRAD\\SAVE\\SAVGAMB.DAT"));
+  EXPECT_EQ(r.store.slot(), 'B');
+  EXPECT_TRUE(r.has("POOLRAD\\SAVE\\AFMAPB.DAT"));
+  EXPECT_TRUE(r.has("POOLRAD\\SAVE\\AFMAP.DAT"));
+}
+
+TEST(SlotStoreDirectory, ACopyThatDoesNotSayGetsNoSidecarsAndSaysSo) {
+  rig r;
+  // Started somewhere with no configuration file of its own: the one at
+  // the root is not the one the program would open.
+  ASSERT_EQ(r.files->mkdir(path_of("OTHERDIR")), vfs_error::none);
+  ASSERT_EQ(r.box->dos().set_current_directory(*r.files, path_of("OTHERDIR")),
+            vfs_error::none);
+  r.store.enable(true);
+  r.store.attach(*r.box);
+
+  EXPECT_EQ(r.store.save_directory(), nullptr);
+  EXPECT_EQ(r.store.trouble(), slot_trouble::no_save_directory);
+  EXPECT_EQ(r.store.save_directory_trouble(),
+            machine::save_directory_trouble::no_config);
+  EXPECT_STREQ(slot_trouble_name(r.store.trouble()), "no-save-directory");
+
+  r.explore(3, 0, 0, 1, 1);
+  r.store.changed();
+  r.store.saw(event_of(file_action::create, game_slot_a));
+  r.store.saw(event_of(file_action::close, game_slot_a));
+  EXPECT_EQ(r.store.writes(), 0u);
+  EXPECT_FALSE(r.has(working_path));
+  EXPECT_FALSE(r.has("OTHERDIR\\AFMAP.DAT"));
 }
 
 }  // namespace
