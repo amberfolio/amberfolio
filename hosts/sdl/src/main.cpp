@@ -330,7 +330,7 @@
 //     with its fingerprint and nothing is read: the offsets are only
 //     true of one file, and following them into another produces
 //     twenty failures rather than one sentence. `known_journals()` has
-//     one row — the archive release's own journal (#214) — so that is
+//     one row — the GOG release's own journal (#214) — so that is
 //     what every *other* journal gets, and `docs/journal.md` §3 is how
 //     an edition is added.
 //
@@ -2751,8 +2751,8 @@ void report_unrecognized_edition(machine::filesystem& files) {
       const host::edition_artifact& artifact = match.edition->artifacts[index];
       std::fprintf(stderr, "amberfolio: edition missing %.*s%s\n",
                    static_cast<int>(artifact.name.size()), artifact.name.data(),
-                   artifact.kind == host::artifact_kind::directory
-                       ? " (a directory)"
+                   artifact.kind == host::artifact_kind::configuration
+                       ? " (a configuration file, any contents)"
                        : "");
     }
   }

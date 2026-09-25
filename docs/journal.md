@@ -59,7 +59,7 @@ amberfolio <dir> <program.exe> --seam journal
 ## 3. Adding an edition
 
 One edition is in the table (#214): the Adventurer's Journal as the
-currently sold archive release ships it, fingerprint
+release sold on GOG ships it, fingerprint
 `67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c`. Its
 pages are `/DCTDecode` (§4a). It has 58 entries in 75 pieces, and 14
 pictures on 12 of those entries (§11). Six of the 18 boundaries between

@@ -572,9 +572,9 @@ if (core !== null) {
 // placed but says something `editions.mjs` cannot read.
 //
 // The matching itself is the C++'s twin and is checked the same way
-// (hosts/common/tests/edition_facts_test.cpp): a whole copy is complete
-// but for the directory a file listing cannot carry, and a set that
-// belongs to nothing names no edition rather than guessing one.
+// (hosts/common/tests/edition_facts_test.cpp): a whole copy of each row,
+// with a POOL.CFG of the player's own, matches that row complete, and a
+// set that belongs to nothing names no edition rather than guessing one.
 {
   const check = (condition, message) => {
     if (!condition) problems.push(message);
@@ -595,18 +595,20 @@ if (core !== null) {
         " the edition's own fingerprint",
     );
 
+    // Every file it ships, and a configuration file of the player's own:
+    // POOL.CFG is required by name, whatever the launcher wrote into it.
     const whole = edition.artifacts
-      .filter((artifact) => artifact.kind === 'file')
-      .map((artifact) => ({ name: artifact.name, sha256: artifact.sha256 }));
+      .filter((artifact) => artifact.kind === 'file' || artifact.kind === 'configuration')
+      .map((artifact) => ({
+        name: artifact.name,
+        sha256: artifact.kind === 'file' ? artifact.sha256 : 'e'.repeat(64),
+      }));
     const complete = matchEdition(editions, whole);
     check(
       complete.edition === edition && complete.unclaimed.length === 0,
       `${edition.id}: a whole copy of it did not match it`,
     );
-    check(
-      complete.missing.every((artifact) => artifact.kind === 'directory'),
-      `${edition.id}: a whole copy is missing something that is not a directory`,
-    );
+    check(complete.complete, `${edition.id}: a whole copy of it is not complete`);
   }
 
   const foreign = matchEdition(editions, [
@@ -616,6 +618,8 @@ if (core !== null) {
     foreign.edition === null && foreign.unclaimed.length === 1,
     'a file belonging to no edition named one anyway',
   );
+  const config = matchEdition(editions, [{ name: 'POOL.CFG', sha256: 'e'.repeat(64) }]);
+  check(config.edition === null, 'a lone configuration file named an edition');
 }
 
 // --- The on-screen keyboard's model (#377) ----------------------------

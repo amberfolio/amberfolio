@@ -15,9 +15,12 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The documents the currently sold archive release comes with — the copy
-/// every fact in this tree was gathered against, so the same release
-/// `known_editions()` names for the binary.
+/// The documents this tree's facts were gathered against. The journal is
+/// the PDF the release sold on GOG ships beside the game (the Steam
+/// collection's is a different file, and unrecognized). The code wheel is
+/// a PDF of the wheel that neither store ships: GOG ships a code
+/// generator application and Steam a different PDF. It gates nothing
+/// since the challenge is asked once instead (#290).
 ///
 /// Each name says what a player would call it and which game it belongs
 /// to; the title appears nominatively (TRADEMARK.md). Nothing here is a

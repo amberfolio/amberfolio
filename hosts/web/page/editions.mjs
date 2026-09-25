@@ -27,7 +27,7 @@ export const EDITIONS_URL = './editions.json';
 
 /// The schema this reader speaks. A consumer pins it, so a table that
 /// changed shape has to be refused rather than half-read.
-export const EDITIONS_SCHEMA = 'amberfolio.editions/1';
+export const EDITIONS_SCHEMA = 'amberfolio.editions/2';
 
 /// The editions in `table`, checked. Throws on a table this reader does
 /// not speak, which is the honest answer: a checklist rendered off a
@@ -65,12 +65,20 @@ export async function loadEditions(url = EDITIONS_URL) {
 /// found them — `Machine.vfsList()` and `Machine.vfsFingerprint()` are
 /// where a page gets both.
 ///
-/// **Matched on the digest, never on the name**, which is the same rule
-/// `host::match_edition()` follows: a renamed file still matches, and a
-/// file carrying a required artifact's name with different bytes matches
-/// nothing — so it lands in `unclaimed` while the artifact it is not
-/// lands in `missing`. Those two lines together are the fact a player
-/// can act on, and no single list says it.
+/// **Files are matched on the digest, never on the name**, which is the
+/// same rule `host::match_edition()` follows: a renamed file still
+/// matches, and a file carrying a required artifact's name with different
+/// bytes matches nothing — so it lands in `unclaimed` while the artifact
+/// it is not lands in `missing`. Those two lines together are the fact a
+/// player can act on, and no single list says it.
+///
+/// **A `configuration` row is matched on the name** — the last path
+/// component, any case — because its bytes are whatever the player's
+/// launcher wrote; and only once a row has been chosen by digest, so a
+/// lone POOL.CFG names nothing. The closest row is the one the most
+/// files belong to by digest, the earlier row on a tie: two releases of
+/// one program share most of their files, and the ones only one of them
+/// ships decide.
 ///
 /// Answers `{ edition, matched, missing, unclaimed, complete }`.
 /// `edition` is null when not one file belonged to any edition, which is
@@ -80,12 +88,18 @@ export async function loadEditions(url = EDITIONS_URL) {
 export function matchEdition(editions, offered) {
   const digest = (value) => (typeof value === 'string' ? value.toLowerCase() : '');
   const have = new Set(offered.map((file) => digest(file.sha256)).filter(Boolean));
+  const leaf = (name) =>
+    typeof name === 'string' ? name.split(/[\\/]/).pop().toUpperCase() : '';
+  const names = new Set(offered.map((file) => leaf(file.name)).filter(Boolean));
+  const isConfiguration = (artifact) => artifact.kind === 'configuration';
 
   let edition = null;
   let matched = [];
   for (const candidate of editions) {
     const artifacts = Array.isArray(candidate.artifacts) ? candidate.artifacts : [];
-    const here = artifacts.filter((artifact) => have.has(digest(artifact.sha256)));
+    const here = artifacts.filter(
+      (artifact) => !isConfiguration(artifact) && have.has(digest(artifact.sha256)),
+    );
     if (here.length === 0) continue;
     // Strictly greater, so a tie keeps the earlier row: the table's own
     // order is the only tiebreak, and taking the later one would make
@@ -99,15 +113,22 @@ export function matchEdition(editions, offered) {
     return { edition: null, matched: [], missing: [], unclaimed: [...offered], complete: false };
   }
 
-  const claimed = new Set(matched.map((artifact) => digest(artifact.sha256)));
-  // A required artifact nobody offered — the directory rows included.
-  // They have no digest and so can never match, and a copy with no
-  // `SAVE\` is a copy that cannot save, so they are deliberately still
-  // reported rather than quietly dropped.
-  const missing = edition.artifacts.filter(
-    (artifact) => artifact.required === true && !claimed.has(digest(artifact.sha256)),
+  // The configuration rows, by name, now that a row is chosen.
+  const configured = edition.artifacts.filter(
+    (artifact) => isConfiguration(artifact) && names.has(leaf(artifact.name)),
   );
-  const unclaimed = offered.filter((file) => !claimed.has(digest(file.sha256)));
+  matched = edition.artifacts.filter(
+    (artifact) => matched.includes(artifact) || configured.includes(artifact),
+  );
+  const claimed = new Set(matched.map((artifact) => digest(artifact.sha256)).filter(Boolean));
+  const claimedNames = new Set(configured.map((artifact) => leaf(artifact.name)));
+  // A required artifact nobody offered.
+  const missing = edition.artifacts.filter(
+    (artifact) => artifact.required === true && !matched.includes(artifact),
+  );
+  const unclaimed = offered.filter(
+    (file) => !claimed.has(digest(file.sha256)) && !claimedNames.has(leaf(file.name)),
+  );
   return { edition, matched, missing, unclaimed, complete: missing.length === 0 };
 }
 
@@ -120,7 +141,9 @@ export function requiredCount(edition) {
 /// What `artifact` is called on a player's disk: a filename, or the
 /// words the table gives a document, which has no filename of its own.
 export function artifactName(artifact) {
-  if (artifact.kind === 'directory') return `${artifact.name} (a directory)`;
+  if (artifact.kind === 'configuration') {
+    return `${artifact.name} (a configuration file, any contents)`;
+  }
   return artifact.name || artifact.about || '(unnamed)';
 }
 

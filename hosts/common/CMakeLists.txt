@@ -26,8 +26,8 @@
 #
 # At configure time, in CMake, because CMake is already required and
 # nothing else here is: a python3 in the build path would be a new
-# prerequisite on three platforms for a file of a hundred and thirty
-# lines. CMAKE_CONFIGURE_DEPENDS below is what makes editing the JSON
+# prerequisite on three platforms for a file of a few hundred lines.
+# CMAKE_CONFIGURE_DEPENDS below is what makes editing the JSON
 # re-run this, the way tests/CMakeLists.txt watches the conformance
 # manifest.
 set(_amberfolio_editions_json "${PROJECT_SOURCE_DIR}/data/editions.json")
@@ -41,11 +41,11 @@ file(READ "${_amberfolio_editions_json}" _amberfolio_editions_text)
 # subtly wrong.
 string(JSON _amberfolio_editions_schema GET
   "${_amberfolio_editions_text}" schema)
-if(NOT _amberfolio_editions_schema STREQUAL "amberfolio.editions/1")
+if(NOT _amberfolio_editions_schema STREQUAL "amberfolio.editions/2")
   message(FATAL_ERROR
     "${_amberfolio_editions_json} declares schema "
     "'${_amberfolio_editions_schema}'; this parser reads "
-    "amberfolio.editions/1. A schema change is a change to what every "
+    "amberfolio.editions/2. A schema change is a change to what every "
     "consumer pinning a release reads, so it is a decision and not a "
     "field edit.")
 endif()
@@ -70,6 +70,13 @@ foreach(_amberfolio_e RANGE ${_amberfolio_edition_last})
   string(JSON _amberfolio_ed_name GET "${_amberfolio_ed}" name)
   string(JSON _amberfolio_ed_boot GET "${_amberfolio_ed}" boot)
   string(JSON _amberfolio_ed_fingerprint GET "${_amberfolio_ed}" fingerprint)
+  string(JSON _amberfolio_ed_about GET "${_amberfolio_ed}" about)
+  # The directory the copy's files live in, which is also the current
+  # directory at load, in DOS spelling from the root. Read without a
+  # fallback: the root is a fact a row states, not a default it may
+  # forget. A C++ string literal doubles its backslashes.
+  string(JSON _amberfolio_ed_install GET "${_amberfolio_ed}" install)
+  string(REPLACE "\\" "\\\\" _amberfolio_ed_install "${_amberfolio_ed_install}")
   string(JSON _amberfolio_ed_artifacts LENGTH "${_amberfolio_ed}" artifacts)
 
   set(_amberfolio_ed_offset ${AMBERFOLIO_EDITION_ARTIFACT_COUNT})
@@ -79,8 +86,8 @@ foreach(_amberfolio_e RANGE ${_amberfolio_edition_last})
       "${_amberfolio_ed}" artifacts ${_amberfolio_a})
     string(JSON _amberfolio_art_kind GET "${_amberfolio_art}" kind)
     string(JSON _amberfolio_art_required GET "${_amberfolio_art}" required)
-    # The four optional keys. ERROR_VARIABLE rather than a membership
-    # test: a directory has no digest and no size and a document has no
+    # The optional keys. ERROR_VARIABLE rather than a membership test: a
+    # configuration file has no digest and no size and a document has no
     # filename, and "" / 0 is exactly what the C++ reads those as.
     string(JSON _amberfolio_art_name ERROR_VARIABLE _amberfolio_ignored
       GET "${_amberfolio_art}" name)
@@ -124,8 +131,10 @@ foreach(_amberfolio_e RANGE ${_amberfolio_edition_last})
   string(APPEND AMBERFOLIO_EDITIONS
     "        {.id = \"${_amberfolio_ed_id}\",\n"
     "         .name = \"${_amberfolio_ed_name}\",\n"
+    "         .about = \"${_amberfolio_ed_about}\",\n"
     "         .boot = \"${_amberfolio_ed_boot}\",\n"
     "         .fingerprint = \"${_amberfolio_ed_fingerprint}\",\n"
+    "         .install = \"${_amberfolio_ed_install}\",\n"
     "         .artifacts = std::span<const edition_artifact>{\n"
     "             all_artifacts.data() + ${_amberfolio_ed_offset},\n"
     "             ${_amberfolio_ed_artifacts}}},\n")

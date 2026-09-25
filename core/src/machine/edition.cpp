@@ -28,16 +28,20 @@ namespace {
   return 0xFF;
 }
 
-/// The baseline: the currently sold archive release's program image, the
-/// copy every address in this build's seam tables is a fact about. Named
-/// for what a player would recognize, with the file the fingerprint is
-/// of, so a listing says which of a directory's files it was looking at.
-/// The title appears nominatively (TRADEMARK.md) — it says which game the
-/// edition is an edition of, and nothing more.
+/// The baseline: the program image every address in this build's seam
+/// tables is a fact about. It is one image in two releases — the one sold
+/// on GOG and Steam, and a third-party repack of it that the facts were
+/// first gathered on — and a machine edition is a program image, so it is
+/// one row here and two in the host's requirement table
+/// (`host/edition_facts.h`). Named for what a player would recognize,
+/// with the file the fingerprint is of, so a listing says which of a
+/// directory's files it was looking at. The title appears nominatively
+/// (TRADEMARK.md) — it says which game the edition is an edition of, and
+/// nothing more.
 constexpr std::array<edition, 1> table{{
     {.fingerprint =
          "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd",
-     .name = "Pool of Radiance, archive release (START.EXE)"},
+     .name = "Pool of Radiance (START.EXE)"},
 }};
 
 }  // namespace

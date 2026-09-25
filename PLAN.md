@@ -44,8 +44,8 @@ The policy is progressive: a missing artifact simply leaves its
 enhancement unavailable — without the journal there is no in-game
 journal, and without the wheel the wheel challenge appears exactly as it
 did on the real machine. Fingerprints identify known editions (e.g. the
-officially sold archive releases); they are facts about the player's
-files, and the only thing the project ever stores about the originals.
+release sold on GOG and Steam); they are facts about the player's files,
+and the only thing the project ever stores about the originals.
 
 **The code wheel is the one artifact that is not a file** (#290). The
 releases sold today ship a code generator application rather than a PDF
@@ -451,10 +451,16 @@ pinning and not only at a milestone.
 
 - macOS signing/notarization for 1.0: acquire the developer account
   during the 0.x run, or ship 1.0 unsigned with instructions too?
-- Which game-binary editions to fingerprint at launch (the currently
-  sold archive release is the baseline — which others?).
+- Which game-binary editions to fingerprint beyond the one there is.
+  One START.EXE is known, and it is two releases: the one sold on GOG
+  and Steam (the baseline row) and a third-party repack of it, which
+  differ only in two bytes of the copy-protection overlay and in files
+  the repack adds; every seam is valid on both (`docs/seams.md` §5,
+  #396). Other builds of the program are open.
 - Which **document** editions to fingerprint. The table
-  (`machine/document.cpp`) has one row each for the archive release's
-  code wheel (a fact; it gates nothing since #290) and its Adventurer's
-  Journal (#214). Every other journal is refused as unrecognized, which
-  is the fail-closed direction. Which re-scans or reissues to add is open.
+  (`machine/document.cpp`) has one row for a PDF of the code wheel (a
+  fact; it gates nothing since #290) and one for the Adventurer's
+  Journal PDF the GOG release ships (#214). Every other journal is
+  refused as unrecognized, which is the fail-closed direction; the Steam
+  collection's journal is a different file and is one of them. Which
+  re-scans or reissues to add is open.

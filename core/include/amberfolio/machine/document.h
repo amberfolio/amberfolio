@@ -109,12 +109,10 @@ struct document_edition {
 
 /// Every document edition this build knows.
 ///
-/// One, today: the code wheel of the currently sold archive release —
-/// the copy this project's own facts were gathered against, which is the
-/// same answer `known_editions()` gives for the binary (PLAN.md §10).
-/// The journal has no entry yet and this file will not invent one; a
-/// fingerprint is a fact about a file somebody actually hashed, and
-/// nobody here has hashed that one.
+/// Two, today: a PDF of the code wheel and the Adventurer's Journal PDF
+/// the GOG release ships (`document.cpp` has which is which). A
+/// fingerprint is a fact about a file somebody actually hashed, and this
+/// table has no row nobody hashed.
 ///
 /// **Adding an edition is adding a line**: the SHA-256 of the file, a
 /// name a player would recognize, and the kind. It is a fact-table

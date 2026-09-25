@@ -24,11 +24,14 @@
 // no seams *available* — not misapplied ones, not guessed ones. Both
 // hosts can show the answer, and nothing downstream treats it as an error.
 //
-// PLAN.md §10 asks which editions to fingerprint at launch. M4's answer
-// is the baseline: the currently sold archive release, which is the copy
-// this project's own facts were gathered against. The table is built to
-// grow — add a line, with the fingerprint and a name — and growing it is
-// a fact-table change, not a mechanism change.
+// PLAN.md §10 asks which editions to fingerprint at launch. The answer
+// is the baseline: the START.EXE that both the release sold on GOG and
+// Steam and a third-party repack of it boot, which is the image this
+// project's own facts were gathered against. Which *release* a copy is
+// — what else it ships, where it is installed — is the host's
+// requirement table (`host/edition_facts.h`), not this one. The table is
+// built to grow — add a line, with the fingerprint and a name — and
+// growing it is a fact-table change, not a mechanism change.
 //
 //
 // What is deliberately not here

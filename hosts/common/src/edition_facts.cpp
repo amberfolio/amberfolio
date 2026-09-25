@@ -7,6 +7,7 @@
 
 #include "amberfolio/host/edition_facts.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <span>
 #include <string_view>
@@ -32,7 +33,7 @@ void score(const edition_requirements& edition,
   for (std::size_t a = 0; a < edition.artifacts.size(); ++a) {
     const edition_artifact& artifact = edition.artifacts[a];
     if (artifact.fingerprint.empty()) {
-      continue;  // a directory: nothing to hash, so nothing to match
+      continue;  // a configuration file: matched by name, and only later
     }
     for (const offered_file& file : offered) {
       if (machine::digest_is(file.digest, artifact.fingerprint)) {
@@ -43,6 +44,30 @@ void score(const edition_requirements& edition,
   }
 }
 
+/// Whether `path`'s last component is `name`, ignoring ASCII case. A
+/// host may offer a bare name or a path under the copy's install
+/// directory, with either slash; DOS names are case-blind.
+bool names(std::string_view path, std::string_view name) noexcept {
+  const std::size_t cut = path.find_last_of("/\\");
+  const std::string_view last =
+      cut == std::string_view::npos ? path : path.substr(cut + 1);
+  const auto lower = [](char c) {
+    return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+  };
+  return std::ranges::equal(last, name, {}, lower, lower);
+}
+
+/// Whether offered file `file` is claimed by artifact `artifact`: by the
+/// digest for everything that has one, by the name for a configuration
+/// file.
+bool claims(const edition_artifact& artifact, const offered_file& file) {
+  if (artifact.kind == artifact_kind::configuration) {
+    return names(file.name, artifact.name);
+  }
+  return !artifact.fingerprint.empty() &&
+         machine::digest_is(file.digest, artifact.fingerprint);
+}
+
 }  // namespace
 
 std::span<const edition_requirements> edition_requirements_table() {
@@ -51,6 +76,7 @@ std::span<const edition_requirements> edition_requirements_table() {
 
 const edition_requirements* find_requirements(
     std::string_view fingerprint) noexcept {
+  // The first row, in the table's order: the baseline (edition_facts.h).
   for (const edition_requirements& known : generated::all_editions) {
     if (known.fingerprint == fingerprint) {
       return &known;
@@ -78,20 +104,33 @@ edition_match match_edition(std::span<const offered_file> offered) {
   if (best.edition == nullptr) {
     return best;
   }
+  const std::span<const edition_artifact> artifacts = best.edition->artifacts;
 
-  // What is owed. A required artifact whose digest nobody offered is
-  // missing — including the directory rows, which have no digest and so
-  // can never match; a host that lists files only should say so rather
-  // than let a copy that cannot save look complete.
+  // The configuration rows, now that a row is chosen: by name, because
+  // the bytes are whatever the player's launcher wrote. Kept in index
+  // order, which the pass below relies on.
+  for (std::size_t a = 0; a < artifacts.size(); ++a) {
+    if (artifacts[a].kind != artifact_kind::configuration) {
+      continue;
+    }
+    for (const offered_file& file : offered) {
+      if (claims(artifacts[a], file)) {
+        best.matched.insert(std::ranges::upper_bound(best.matched, a), a);
+        break;
+      }
+    }
+  }
+
+  // What is owed: a required artifact nothing offered.
   std::size_t next = 0;
-  for (std::size_t a = 0; a < best.edition->artifacts.size(); ++a) {
+  for (std::size_t a = 0; a < artifacts.size(); ++a) {
     const bool was_matched =
         next < best.matched.size() && best.matched[next] == a;
     if (was_matched) {
       ++next;
       continue;
     }
-    if (best.edition->artifacts[a].required) {
+    if (artifacts[a].required) {
       best.missing.push_back(a);
     }
   }
@@ -100,14 +139,9 @@ edition_match match_edition(std::span<const offered_file> offered) {
   // of it claims. A host prints these with their hashes — that list is
   // what an edition nobody has fingerprinted looks like.
   for (std::size_t f = 0; f < offered.size(); ++f) {
-    bool claimed = false;
-    for (const std::size_t a : best.matched) {
-      if (machine::digest_is(offered[f].digest,
-                             best.edition->artifacts[a].fingerprint)) {
-        claimed = true;
-        break;
-      }
-    }
+    const bool claimed = std::ranges::any_of(
+        best.matched,
+        [&](const std::size_t a) { return claims(artifacts[a], offered[f]); });
     if (!claimed) {
       best.unclaimed.push_back(f);
     }

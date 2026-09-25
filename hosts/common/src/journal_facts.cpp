@@ -16,7 +16,7 @@
 namespace amberfolio::host {
 namespace {
 
-/// The Adventurer's Journal as the currently sold archive release ships
+/// The Adventurer's Journal as the release sold on GOG ships
 /// it: **all three of its numbered sections** — fifty-eight journal
 /// entries, twenty-three tavern tales and eighteen proclamations, in
 /// ninety-nine rows and a hundred and seventeen pieces, across eleven
