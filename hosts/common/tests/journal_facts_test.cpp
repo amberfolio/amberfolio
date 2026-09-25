@@ -34,14 +34,16 @@
 namespace amberfolio::host {
 namespace {
 
-TEST(JournalTable, HasTheOneEditionSomebodySatDownWith) {
+TEST(JournalTable, HasTheTwoEditionsSomebodySatDownWith) {
   // It was empty until M5-E3b (#214), and the header said why at length:
-  // these are facts about a document somebody has to sit down with. One
-  // person now has, so the fail-closed state has a row in it — and every
-  // rule below is what that row had to satisfy.
-  ASSERT_EQ(known_journals().size(), 1U)
+  // these are facts about a document somebody has to sit down with. The
+  // archive edition is first and the tests about scans below read it as
+  // `front()`; the Steam edition, typeset as text, is second (#398).
+  ASSERT_EQ(known_journals().size(), 2U)
       << "an edition came or went; the rules below are what a row has to"
-         " satisfy, and #214 is where this one came from";
+         " satisfy, and #214 and #398 are where these came from";
+  EXPECT_FALSE(known_journals().front().reads_own_text());
+  EXPECT_TRUE(known_journals()[1].reads_own_text());
   EXPECT_EQ(known_journals().front().entries.size(), 99U)
       << "the archive release's journal has fifty-eight entries,"
          " twenty-three tales and eighteen proclamations";
@@ -229,8 +231,58 @@ TEST(JournalTable, TheArchiveEditionIsMostlyButNotAlwaysOnePiece) {
   EXPECT_EQ(pieces, 75U);
 }
 
+/// The rules a text edition's own facts have to satisfy (#398): pages
+/// whose streams this build can decode and whose fonts are named, and
+/// rows that point at those pages with boxes that are boxes and a digest
+/// that is one.
+void CheckTextRows(const journal_edition& edition) {
+  std::set<std::uint16_t> pages;
+  for (const journal_text_page& page : edition.pages) {
+    EXPECT_TRUE(pages.insert(page.page).second)
+        << edition.name << " has two rows for page " << page.page;
+    EXPECT_NE(page.length, 0U);
+    EXPECT_NE(page.decoded, 0U);
+    EXPECT_TRUE(journal_filter_decoded(page.filter))
+        << edition.name << " page " << page.page << " is under a filter"
+        << " this build does not decode, and a content stream is read";
+    EXPECT_FALSE(page.fonts.empty())
+        << edition.name << " page " << page.page << " names no font";
+    for (const journal_text_font& font : page.fonts) {
+      EXPECT_FALSE(font.resource.empty());
+      EXPECT_NE(font.length, 0U);
+      EXPECT_NE(font.decoded, 0U);
+      EXPECT_TRUE(journal_filter_decoded(font.filter));
+    }
+  }
+  for (const journal_entry_fact& fact : edition.entries) {
+    // One route or the other, never both: an item read out of the
+    // document and off a picture as well would be two answers to one
+    // question.
+    EXPECT_TRUE(fact.fragments.empty())
+        << edition.name << ' ' << journal_kind_name(fact.kind) << ' '
+        << fact.number << " is text and a scan at once";
+    EXPECT_FALSE(fact.text.empty())
+        << journal_kind_name(fact.kind) << ' ' << fact.number << " is nowhere";
+    sha256_digest digest;
+    EXPECT_TRUE(machine::parse_digest(fact.text_sha256, digest))
+        << journal_kind_name(fact.kind) << ' ' << fact.number
+        << " has no digest, so nothing would check its text";
+    for (const char c : fact.text_sha256) {
+      EXPECT_TRUE((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
+    }
+    for (const journal_text_fragment& piece : fact.text) {
+      EXPECT_TRUE(pages.contains(piece.page))
+          << journal_kind_name(fact.kind) << ' ' << fact.number
+          << " is on page " << piece.page << ", which the edition names no"
+          << " stream for";
+      EXPECT_LT(piece.box.left, piece.box.right);
+      EXPECT_LT(piece.box.bottom, piece.box.top);
+    }
+  }
+}
+
 /// Every rule a row has to satisfy, applied to whatever table is handed
-/// in — the shipped one (empty, today) and the probe's (not).
+/// in — the shipped one and the probe's.
 void CheckRows(std::span<const journal_edition> table) {
   for (const journal_edition& edition : table) {
     sha256_digest parsed;
@@ -257,6 +309,11 @@ void CheckRows(std::span<const journal_edition> table) {
       EXPECT_TRUE(numbers.insert({fact.kind, fact.number}).second)
           << edition.name << " has two rows for "
           << journal_kind_name(fact.kind) << ' ' << fact.number;
+      if (edition.reads_own_text()) {
+        continue;  // CheckTextRows' business, below
+      }
+      EXPECT_TRUE(fact.text.empty() && fact.text_sha256.empty())
+          << "entry " << fact.number << " of a scanned edition has text rows";
       EXPECT_FALSE(fact.fragments.empty())
           << "entry " << fact.number << " is nowhere";
       // A boundary is what carries a paragraph break (#361), so the
@@ -332,6 +389,94 @@ void CheckRows(std::span<const journal_edition> table) {
       }
     }
   }
+}
+
+/// A picture row's rules, which are the same whichever route an
+/// edition's words take (#328, #398).
+void CheckPictures(const journal_entry_fact& fact) {
+  EXPECT_LE(fact.art.size(), machine::journal_art_per_entry);
+  for (const journal_fragment& picture : fact.art) {
+    EXPECT_NE(picture.length, 0U);
+    EXPECT_NE(picture.region.width, 0U);
+    EXPECT_NE(picture.region.height, 0U);
+    EXPECT_LE(picture.region.left + picture.region.width, picture.image.width);
+    EXPECT_LE(picture.region.top + picture.region.height, picture.image.height);
+    EXPECT_TRUE(journal_filter_supported(picture.image.filter));
+    EXPECT_FALSE(picture.begins_paragraph);
+    const journal_picture_shape shape =
+        fit_picture(picture.region.width, picture.region.height);
+    EXPECT_GT(shape.width, 0U);
+    EXPECT_GT(shape.height, 0U);
+  }
+}
+
+void CheckTextEditions(std::span<const journal_edition> table) {
+  for (const journal_edition& edition : table) {
+    if (!edition.reads_own_text()) {
+      continue;
+    }
+    CheckTextRows(edition);
+    for (const journal_entry_fact& fact : edition.entries) {
+      CheckPictures(fact);
+    }
+  }
+}
+
+TEST(JournalTable, TheSteamEditionHasTheArchiveEditionsItems) {
+  // The same ninety-nine items by the same numbers (#398): the game cites
+  // an item by section and number, and an edition whose numbering
+  // differed from the one the game was written against would open the
+  // wrong page for every citation.
+  const journal_edition& archive = known_journals()[0];
+  const journal_edition& steam = known_journals()[1];
+  std::set<std::pair<journal_kind, std::uint16_t>> archive_items;
+  std::set<std::pair<journal_kind, std::uint16_t>> steam_items;
+  std::set<std::pair<journal_kind, std::uint16_t>> archive_art;
+  std::set<std::pair<journal_kind, std::uint16_t>> steam_art;
+  std::size_t archive_pictures = 0;
+  std::size_t steam_pictures = 0;
+  for (const journal_entry_fact& fact : archive.entries) {
+    archive_items.insert({fact.kind, fact.number});
+    if (!fact.art.empty()) {
+      archive_art.insert({fact.kind, fact.number});
+    }
+    archive_pictures += fact.art.size();
+  }
+  for (const journal_entry_fact& fact : steam.entries) {
+    steam_items.insert({fact.kind, fact.number});
+    if (!fact.art.empty()) {
+      steam_art.insert({fact.kind, fact.number});
+    }
+    steam_pictures += fact.art.size();
+  }
+  EXPECT_EQ(steam.entries.size(), 99U);
+  EXPECT_EQ(steam_items, archive_items);
+  // And the drawings are on the same entries, the atlas three maps in
+  // both.
+  EXPECT_EQ(steam_art, archive_art);
+  EXPECT_EQ(steam_pictures, archive_pictures);
+}
+
+TEST(JournalTable, TheSteamEditionsPiecesAreInReadingOrder) {
+  // Down a column, then the next column, then the next sheet: a box's
+  // top is the one coordinate that runs *up* the page.
+  for (const journal_entry_fact& fact : known_journals()[1].entries) {
+    for (std::size_t i = 1; i < fact.text.size(); ++i) {
+      const journal_text_fragment& before = fact.text[i - 1];
+      const journal_text_fragment& after = fact.text[i];
+      const bool later_sheet = after.page > before.page;
+      const bool later_column =
+          after.page == before.page && after.box.left > before.box.left;
+      EXPECT_TRUE(later_sheet || later_column)
+          << journal_kind_name(fact.kind) << ' ' << fact.number
+          << " has a piece that does not follow the one before it";
+    }
+  }
+}
+
+TEST(JournalTable, EveryTextRowIsAWellFormedFact) {
+  CheckTextEditions(known_journals());
+  CheckTextEditions(journal_probe_table());
 }
 
 TEST(JournalTable, TheArchiveEditionsPicturesAreOnItsOwnScans) {
@@ -422,7 +567,7 @@ TEST(JournalTable, TheProbeSatisfiesTheSameRules) {
   // The probe is the only edition this build has, so it is the only thing
   // that can demonstrate the rules are checkable at all rather than
   // vacuously true over an empty table.
-  ASSERT_EQ(journal_probe_table().size(), 1U);
+  ASSERT_EQ(journal_probe_table().size(), 2U);
   CheckRows(journal_probe_table());
 }
 
@@ -446,12 +591,13 @@ TEST(JournalTable, TheProbeIsNotAThingAPlayersBuildKnows) {
   // A document this project made up has no business in a player's
   // listing, in the gate, or in the shipped table — the same rule the web
   // host's probe seam is held to.
-  sha256_digest digest;
-  ASSERT_TRUE(
-      machine::parse_digest(journal_probe_table().front().fingerprint, digest));
-  EXPECT_EQ(find_journal(digest), nullptr);
-  EXPECT_EQ(machine::find_document(digest), nullptr);
-  EXPECT_EQ(machine::find_edition(digest), nullptr);
+  for (const journal_edition& probe : journal_probe_table()) {
+    sha256_digest digest;
+    ASSERT_TRUE(machine::parse_digest(probe.fingerprint, digest));
+    EXPECT_EQ(find_journal(digest), nullptr) << probe.name;
+    EXPECT_EQ(machine::find_document(digest), nullptr) << probe.name;
+    EXPECT_EQ(machine::find_edition(digest), nullptr) << probe.name;
+  }
 }
 
 TEST(JournalTable, AnUnknownDocumentIsNull) {
@@ -505,7 +651,8 @@ TEST(JournalTrouble, EveryReasonHasWordsAPersonReads) {
         journal_trouble::stream_corrupt, journal_trouble::stream_size_wrong,
         journal_trouble::region_outside, journal_trouble::no_engine,
         journal_trouble::engine_failed, journal_trouble::not_a_store,
-        journal_trouble::too_large}) {
+        journal_trouble::too_large, journal_trouble::text_unreadable,
+        journal_trouble::text_mismatch}) {
     const char* name = journal_trouble_name(what);
     ASSERT_NE(name, nullptr);
     EXPECT_NE(std::string_view(name), "something unnamed went wrong")

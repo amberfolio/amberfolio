@@ -128,7 +128,9 @@
         {"kind": "file", "name": "WALLDEF8.DAX", "required": true, "size": 4998, "sha256": "1fc950ad158ef1542f13efc1d7ace02e61ba8e49b8042850098386648285bca2"},
         {"kind": "file", "name": "WILDCOM.DAX", "required": true, "size": 5786, "sha256": "b56655e896772d11322ef3bc8a69988704cdc27ce67b8ad6f7fcded90f1bfb7c"},
         {"kind": "document", "document": "code_wheel", "required": false, "about": "Pool of Radiance code wheel, archive release (PDF)", "sha256": "0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd"},
-        {"kind": "document", "document": "journal", "required": false, "about": "Pool of Radiance Adventurer's Journal, archive release (PDF)", "sha256": "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c"}
+        {"kind": "document", "document": "journal", "required": false, "about": "Pool of Radiance Adventurer's Journal, archive release (PDF)", "sha256": "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c"},
+        {"kind": "document", "document": "code_wheel", "required": false, "about": "Pool of Radiance code wheel, Steam release (PDF)", "sha256": "32b6bc792effc9778999702fa1801c41f58a504a1940ec4ce751ede8898f3f11"},
+        {"kind": "document", "document": "journal", "required": false, "about": "Pool of Radiance Adventurer's Journal, Steam release (PDF)", "sha256": "a31368c35c527ce3f760ffac0596ab96254c79b22f7e89be219c6238954ac1ee"}
       ]
     },
     {
@@ -260,7 +262,9 @@
         {"kind": "file", "name": "WALLDEF8.DAX", "required": true, "size": 4998, "sha256": "1fc950ad158ef1542f13efc1d7ace02e61ba8e49b8042850098386648285bca2"},
         {"kind": "file", "name": "WILDCOM.DAX", "required": true, "size": 5786, "sha256": "b56655e896772d11322ef3bc8a69988704cdc27ce67b8ad6f7fcded90f1bfb7c"},
         {"kind": "document", "document": "code_wheel", "required": false, "about": "Pool of Radiance code wheel, archive release (PDF)", "sha256": "0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd"},
-        {"kind": "document", "document": "journal", "required": false, "about": "Pool of Radiance Adventurer's Journal, archive release (PDF)", "sha256": "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c"}
+        {"kind": "document", "document": "journal", "required": false, "about": "Pool of Radiance Adventurer's Journal, archive release (PDF)", "sha256": "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c"},
+        {"kind": "document", "document": "code_wheel", "required": false, "about": "Pool of Radiance code wheel, Steam release (PDF)", "sha256": "32b6bc792effc9778999702fa1801c41f58a504a1940ec4ce751ede8898f3f11"},
+        {"kind": "document", "document": "journal", "required": false, "about": "Pool of Radiance Adventurer's Journal, Steam release (PDF)", "sha256": "a31368c35c527ce3f760ffac0596ab96254c79b22f7e89be219c6238954ac1ee"}
       ]
     }
   ]

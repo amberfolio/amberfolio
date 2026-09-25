@@ -220,8 +220,26 @@ const char* journal_trouble_name(journal_trouble what) noexcept {
       return "that is not a text store this build reads";
     case journal_trouble::too_large:
       return "that is larger than this build will read";
+    case journal_trouble::text_unreadable:
+      return "the page holds text this build does not read";
+    case journal_trouble::text_mismatch:
+      return "the text read out of the document is not the text the edition"
+             " table names";
   }
   return "something unnamed went wrong";
+}
+
+journal_trouble decode_stream_at(std::span<const std::uint8_t> document,
+                                 std::uint64_t offset, std::uint32_t length,
+                                 journal_filter filter, std::size_t expected,
+                                 std::vector<std::uint8_t>& out) {
+  out.clear();
+  if (offset > document.size() || length > document.size() - offset) {
+    return journal_trouble::stream_out_of_bounds;
+  }
+  return decode_stream(document.subspan(static_cast<std::size_t>(offset),
+                                        static_cast<std::size_t>(length)),
+                       filter, expected, out);
 }
 
 journal_trouble decode_image(std::span<const std::uint8_t> document,

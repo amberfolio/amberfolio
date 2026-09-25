@@ -41,6 +41,11 @@
 // facts, gathered once, and the extractor follows them
 // (`journal_extract.h`).
 //
+// **An edition typeset as text goes one step further, and no more**
+// (#398, `journal_text.h`): its content streams are interpreted, but only
+// streams the table names by offset, and only their text operators and
+// matrix. Still no object found, no cross-reference table, no page tree.
+//
 // The failure mode that leaves is the good one. A table entry that is
 // wrong points at bytes that do not inflate, or inflate to the wrong
 // size, and the extractor says so and stops. It cannot point at bytes
@@ -242,6 +247,72 @@ struct journal_fragment {
   bool begins_paragraph{false};
 };
 
+/// One font of an edition that is **text rather than scans** (#398): the
+/// name a page's `/Font` resources give it, and where its `/ToUnicode`
+/// CMap stream is.
+///
+/// A text edition's words are not pictures of words. They are character
+/// codes in a page's content stream, and the one fact that turns a code
+/// into a letter is the font's `/ToUnicode` map — so that stream is
+/// followed by offset like everything else here, and read by
+/// `journal_text.h`. Only a simple font's one-byte codes are read; a
+/// composite font is refused by name the day it is inside a rectangle.
+struct journal_text_font {
+  /// The resource name, without its slash: what a content stream's `Tf`
+  /// operator names.
+  std::string_view resource;
+  /// The CMap stream's data, as `journal_fragment` states a stream's: the
+  /// first byte past `stream` and its end of line, and `/Length`.
+  std::uint64_t offset{};
+  std::uint32_t length{};
+  /// How many bytes it decodes to. A fact like an image's shape, and
+  /// checked the same way: a row off by an object inflates to the wrong
+  /// size and says so.
+  std::uint32_t decoded{};
+  journal_filter filter{journal_filter::flate};
+};
+
+/// One page of a text edition: where its content stream is, and the
+/// fonts its text is set in.
+struct journal_text_page {
+  /// The page, one-based, as `journal_fragment::page` counts. A text
+  /// fragment names its page by this number.
+  std::uint16_t page{};
+  std::uint64_t offset{};
+  std::uint32_t length{};
+  std::uint32_t decoded{};
+  journal_filter filter{journal_filter::flate};
+  std::span<const journal_text_font> fonts;
+};
+
+/// A rectangle of a page **in its own text space**: PDF user space, in
+/// whole points, the origin at the bottom left and `top` above `bottom`.
+///
+/// A run of text is inside when the point it starts from — its origin on
+/// the baseline — is: `left <= x < right` and `bottom <= y < top`.
+/// Whole points are enough because lines are ten points apart and a box
+/// is drawn in the gaps, never through a baseline.
+///
+/// **`left` is the column's margin**, not just its edge, and it is read:
+/// a line that starts more than `journal_text_indent` points right of it
+/// opens a paragraph (`journal_text.h`).
+struct journal_text_box {
+  std::int32_t left{};
+  std::int32_t bottom{};
+  std::int32_t right{};
+  std::int32_t top{};
+};
+
+/// One piece of one item of a text edition: a page and a box on it.
+///
+/// The same idea as `journal_fragment` — an item flows out of its column
+/// and resumes in the next, so it is a list of these in reading order —
+/// with none of an image's facts, because there is no image.
+struct journal_text_fragment {
+  std::uint16_t page{};
+  journal_text_box box{};
+};
+
 /// Which of the journal's numbered sections an item is in.
 ///
 /// `machine::journal_kind`, not a second spelling of it: the recognizer
@@ -272,7 +343,10 @@ struct journal_entry_fact {
   /// Its pieces, **in reading order**: what an engine reads out of them
   /// is joined in this order, so a table whose fragments are out of order
   /// is an entry whose sentences are.
-  std::span<const journal_fragment> fragments;
+  ///
+  /// Empty for a row of an edition that is text (`text` below); the
+  /// suite checks every row has one or the other.
+  std::span<const journal_fragment> fragments{};
   /// The rectangles of this entry that are **pictures** rather than words
   /// (#328), in the order they are printed. Usually none.
   ///
@@ -298,6 +372,20 @@ struct journal_entry_fact {
   /// page between them — which is the other way this differs from
   /// `fragments`, whose pieces are joined.
   std::span<const journal_fragment> art{};
+  /// Where the item is, **for an edition whose words are text** (#398):
+  /// its pieces in reading order, in place of `fragments`. A row has one
+  /// or the other and never both — the suite checks — because an item is
+  /// either read off a picture by an engine or read out of the document.
+  std::span<const journal_text_fragment> text{};
+  /// The SHA-256, as 64 lowercase hex characters, of the UTF-8 this build
+  /// reads out of `text` (`journal_text.h`). Empty for a scanned row.
+  ///
+  /// **A digest and never the words**: it names a text without carrying
+  /// any of it, which is what CONTRIBUTING.md permits. It is what makes
+  /// "exact" a claim rather than a hope — a read that comes out a byte
+  /// different, on any build or either host, is refused with a sentence
+  /// rather than stored.
+  std::string_view text_sha256{};
 };
 
 /// One journal edition this build knows the insides of.
@@ -314,15 +402,20 @@ struct journal_edition {
   /// whose other half a player has not got yet, which is a better answer
   /// than none.
   std::span<const journal_entry_fact> entries;
+  /// The pages whose content streams hold its words, for an edition that
+  /// is **text rather than scans** (#398). Empty for a scanned edition.
+  std::span<const journal_text_page> pages{};
+
+  /// Whether this edition's words are read out of the document itself,
+  /// with no OCR engine anywhere (`journal_text.h`).
+  [[nodiscard]] bool reads_own_text() const noexcept { return !pages.empty(); }
 };
 
-/// Every journal edition this build knows the insides of.
-///
-/// **Empty**, today, and the file's own top comment says why. An empty
-/// table is not a broken one: it is the fail-closed direction, and the
-/// consequence is exactly the one `machine/document.cpp` already
-/// describes for the gate — every real journal is reported as an
-/// unrecognized edition until somebody sits down with one.
+/// Every journal edition this build knows the insides of: the archive
+/// release's, which is scans (#214), and the Steam release's, which is
+/// text (#398). Every other journal is reported as an unrecognized
+/// edition until somebody sits down with one, which is the fail-closed
+/// direction `machine/document.cpp` describes for the gate.
 [[nodiscard]] std::span<const journal_edition> known_journals();
 
 /// The edition `digest` names within `table`, or null.

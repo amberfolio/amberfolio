@@ -17,6 +17,7 @@
 
 #include "amberfolio/host/journal_extract.h"
 #include "amberfolio/host/journal_facts.h"
+#include "amberfolio/host/journal_text_probe.h"
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
@@ -588,11 +589,12 @@ const std::string& probe_fingerprint() {
   return hex;
 }
 
-const std::array<journal_edition, 1>& probe_editions() {
-  static const std::array<journal_edition, 1> table{{
+const std::array<journal_edition, 2>& probe_editions() {
+  static const std::array<journal_edition, 2> table{{
       {.fingerprint = probe_fingerprint(),
        .name = "Amber Folio journal probe (synthetic)",
        .entries = probe().facts},
+      journal_text_probe_edition(),
   }};
   return table;
 }
@@ -623,6 +625,11 @@ constexpr std::array<std::string_view, journal_probe_entries> probe_words{
 }  // namespace
 
 const std::vector<std::uint8_t>& journal_probe_pdf() { return probe().bytes; }
+
+std::vector<std::uint8_t> journal_probe_zlib_stored(
+    std::span<const std::uint8_t> data) {
+  return zlib_stored(data);
+}
 
 std::span<const journal_edition> journal_probe_table() {
   return probe_editions();

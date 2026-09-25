@@ -159,13 +159,21 @@ inline constexpr std::uint8_t journal_probe_encoded_tone = 160;
 /// time. Built once and cached.
 [[nodiscard]] const std::vector<std::uint8_t>& journal_probe_pdf();
 
-/// The probe edition: its fingerprint is of `journal_probe_pdf()`, and
-/// its entries are the facts about the two images in it.
+/// The probe editions: **first** the scanned one, whose fingerprint is of
+/// `journal_probe_pdf()` and whose entries are the facts about the images
+/// in it, and **second** the text one (#398, `journal_text_probe.h`).
 ///
-/// A one-element span, for handing to `journal_ingester`'s constructor.
-/// It is deliberately *not* in `known_journals()`: a player's build has
-/// no business knowing about a document this project made up.
+/// A span for handing to `journal_ingester`'s constructor, which finds
+/// whichever of the two documents it is handed. It is deliberately *not*
+/// in `known_journals()`: a player's build has no business knowing about
+/// a document this project made up.
 [[nodiscard]] std::span<const journal_edition> journal_probe_table();
+
+/// `data` as a zlib stream of stored deflate blocks — the one form of one
+/// this project writes, with no compressor (see the top of this file).
+/// Both probes' Flate streams are made by it.
+[[nodiscard]] std::vector<std::uint8_t> journal_probe_zlib_stored(
+    std::span<const std::uint8_t> data);
 
 /// What entry `index` of the probe is supposed to look like once it has
 /// been decoded and cropped — the answer the extractor has to produce.

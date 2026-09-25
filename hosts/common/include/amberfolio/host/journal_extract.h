@@ -71,6 +71,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -123,6 +124,15 @@ enum class journal_trouble : std::uint8_t {
   not_a_store,
   /// A store, or a document, larger than this build will read.
   too_large,
+  /// A text edition's page (#398) holds something inside an item's box
+  /// that this build does not read: an operator outside the text subset,
+  /// a font the table does not name, or a code its map does not.
+  /// `journal_text.h` has the list.
+  text_unreadable,
+  /// A text edition's item was read, and what came out is not the text
+  /// the table's digest names. Refused rather than kept: an item a byte
+  /// different is an item nothing downstream could tell was wrong.
+  text_mismatch,
 };
 
 /// The printable name of one — a short phrase a host puts in a sentence.
@@ -231,6 +241,20 @@ struct journal_scan {
 [[nodiscard]] journal_trouble decode_image(
     std::span<const std::uint8_t> document, const journal_fragment& fragment,
     journal_bitmap& out);
+
+/// `length` bytes of `document` at `offset`, under `filter`, decoded to
+/// **exactly** `expected` bytes into `out`, or a reason.
+///
+/// The step every stream this extractor follows goes through — an
+/// image's samples, and since #398 a text edition's content streams and
+/// font maps. Exposed for the second: `journal_text.h` reads streams whose
+/// decoded size is a fact in the table, the way an image's shape is, and
+/// a stream that inflates to any other size is a row that disagrees with
+/// the document.
+[[nodiscard]] journal_trouble decode_stream_at(
+    std::span<const std::uint8_t> document, std::uint64_t offset,
+    std::uint32_t length, journal_filter filter, std::size_t expected,
+    std::vector<std::uint8_t>& out);
 
 /// `region` of `image`, into `out`. `region_outside` if it is not.
 [[nodiscard]] journal_trouble crop(const journal_bitmap& image,

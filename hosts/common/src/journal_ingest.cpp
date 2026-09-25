@@ -17,6 +17,7 @@
 #include "amberfolio/host/journal_ocr.h"
 #include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_store.h"
+#include "amberfolio/host/journal_text.h"
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
@@ -91,6 +92,17 @@ journal_trouble journal_ingester::extract(std::size_t index) {
   return extract_scan(document_, *fact, scan_);
 }
 
+journal_trouble journal_ingester::read_text(std::size_t index,
+                                            std::string& out) {
+  out.clear();
+  const journal_entry_fact* fact = entry_at(index);
+  if (fact == nullptr) {
+    return edition_ == nullptr ? journal_trouble::unrecognized_edition
+                               : journal_trouble::no_such_entry;
+  }
+  return read_item_text(document_, *edition_, *fact, out);
+}
+
 journal_trouble journal_ingester::reduce_art(
     std::size_t index, std::vector<journal_picture>& out) {
   const journal_entry_fact* fact = entry_at(index);
@@ -122,8 +134,16 @@ journal_ingest_report journal_ingester::run(journal_ocr* engine,
   }
 
   adopt(into);
-  into.set_engine(engine == nullptr ? std::string_view{"none"}
-                                    : engine->engine());
+  // A text edition's words are read here, and an engine is not asked
+  // anything (#398): which is also why its store says so rather than
+  // naming an engine that never ran.
+  const bool own_text = reads_own_text();
+  if (own_text) {
+    into.set_engine(journal_text_engine);
+  } else {
+    into.set_engine(engine == nullptr ? std::string_view{"none"}
+                                      : engine->engine());
+  }
   report.entries = static_cast<std::uint32_t>(entries());
 
   std::string text;
@@ -149,8 +169,19 @@ journal_ingest_report journal_ingester::run(journal_ocr* engine,
         report.first_art_failure = {.kind = fact.kind, .number = fact.number};
       }
     }
-    journal_trouble why = extract(index);
-    if (why == journal_trouble::none) {
+    journal_trouble why = journal_trouble::none;
+    if (own_text) {
+      why = read_text(index, text);
+      if (why == journal_trouble::none) {
+        ++report.extracted;
+        if (into.record_scan({.kind = fact.kind, .number = fact.number},
+                             text)) {
+          ++report.recognized;
+        } else {
+          why = journal_trouble::too_large;
+        }
+      }
+    } else if (why = extract(index); why == journal_trouble::none) {
       ++report.extracted;
       if (engine == nullptr) {
         why = journal_trouble::no_engine;

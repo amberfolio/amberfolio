@@ -690,7 +690,7 @@ rows carry the same documents, because both run the same program.
 
 **`required` means the copy is incomplete without it.** Every file a
 release ships is required, its configuration file is required by name,
-and neither document is, which is PLAN.md §2's policy exactly: the
+and no document is, which is PLAN.md §2's policy exactly: the
 binaries are the one artifact nothing runs without, and a missing
 document leaves its enhancement unavailable and changes nothing else. A
 row lists only what that release ships, so a store copy is never stopped
@@ -784,7 +784,7 @@ rename or removal of either moves these numbers — `abi.h` says so at
 compares `major` against what it was written for and refuses before
 fetching the module.
 
-The ABI is 2.0: 1.1 added the two doors below (#228, #229), 1.2 added
+The ABI is 2.2: 1.1 added the two doors below (#228, #229), 1.2 added
 `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
 (#291), 1.3 added `af_web_journal_part_begins_paragraph` (#361), which is
 how a fragment boundary that is a paragraph break reaches the page that
@@ -800,7 +800,12 @@ minor. `v0.4.0` shipped 1.2 and `v0.5.0` shipped 1.3 — neither tag's own
 manifest is rewritten by this correction; the running number moves from
 here instead (#375). 2.1 adds `af_machine_document_kind_at` (#384), which
 is what a page needs to say about a presented document what the desktop
-host says about it: the kind, beside the name it already had (§9).
+host says about it: the kind, beside the name it already had (§9). 2.2
+adds `af_web_journal_reads_own_text` and `af_web_journal_read_text`, how a
+page ingests a journal typeset as text with no OCR engine, and
+`af_web_journal_text_probe_bytes`/`_size`, the synthetic document that is
+checked against (#398, §9); two `journal_trouble` codes joined the end of
+that enum.
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -1701,6 +1706,31 @@ no re-enable, because a gate is a condition and not a toggle. Both panels
 re-read the engine at every paint or refresh, so that row relights itself
 — the page's document control calls the panel's own `refresh()`, and the
 desktop's rebuilds the rows from the engine anyway.
+
+### The documents this build recognises
+
+Four, two releases' worth (`machine/document.cpp`, and the same four
+`document` artifacts on both rows of `data/editions.json`, because any of
+them serves the one program). The GOG release's two are named `archive
+release` in the table:
+
+| document | kind | sha256 |
+| --- | --- | --- |
+| the GOG release's code wheel (PDF) | code wheel | `0db301ae…586fd` |
+| the GOG release's Adventurer's Journal (PDF) | journal | `67cbfc0c…c737c` |
+| the Steam release's code wheel (`codewheel-pictures-ENG.pdf`) | code wheel | `32b6bc79…f3f11` |
+| the Steam release's Adventurer's Journal (PDF) | journal | `a31368c3…4ac1ee` |
+
+A code wheel is a fact that gates nothing (#290). Both journals are
+read, by different routes (`docs/journal.md` §3): the GOG release's
+pages are scans and go through an OCR engine; **the Steam release's are
+text and are read out of the document with no engine at all** (#398,
+`docs/journal.md` §3a). So on the page a player who picks the Steam
+journal fetches no OCR engine and nothing from `vendor/tesseract/`:
+`ingestJournal()` asks the module `af_web_journal_reads_own_text()` first
+and calls its engine loader only for a scanned edition. Both land in the
+same store format, version 5, whose `engine` line then says `document
+text`.
 
 ### What neither host keeps
 

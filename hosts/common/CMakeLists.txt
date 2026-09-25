@@ -168,6 +168,11 @@ add_library(amberfolio-host-services STATIC
   src/journal_extract.cpp
   src/journal_store.cpp
   src/journal_ingest.cpp
+  # The text route (#398): an edition typeset as text rather than scanned
+  # is read out of its own content streams, with no engine at all. Beside
+  # the extractor because it follows the same kind of fact -- an offset,
+  # a length, a decoded size -- one step further.
+  src/journal_text.cpp
   # The entries that are pictures (#328): a printed drawing reduced, once,
   # to the four tones and the box the in-game reader draws in. Beside the
   # extractor because it is the same half of the pipeline -- something a
@@ -186,6 +191,9 @@ add_library(amberfolio-host-services STATIC
   # own corrections, which only a running host holds.
   src/journal_score.cpp
   src/journal_probe.cpp
+  # And its twin for the text route (#398): a document whose words are
+  # text, generated at test time, since no real one may be committed.
+  src/journal_text_probe.cpp
   # The keys a host still holds a make for (#313), so a window that loses
   # the keyboard can let go of them through the machine's own key path.
   # Both hosts keep this bookkeeping; the page keeps its twin in JS.
@@ -243,6 +251,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/journal_jpeg_test.cpp
     tests/journal_store_test.cpp
     tests/journal_ingest_test.cpp
+    tests/journal_text_test.cpp
     tests/journal_score_test.cpp
     tests/held_keys_test.cpp)
   target_link_libraries(amberfolio-host-services-tests PRIVATE

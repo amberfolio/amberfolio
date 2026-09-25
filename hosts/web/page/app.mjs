@@ -960,18 +960,22 @@ export function runDevPage() {
         // knows, and the other way round, and each says so on its own.
         box.presentDocument(bytes);
 
-        const { engine, why } = await loadEngine();
-        if (!engine) setJournalStatus(why);
-
+        // The engine is fetched only if this edition needs one: an
+        // edition typeset as text is read out of the document by the
+        // module itself (#398), and the several megabytes of engine are
+        // not spent on it.
         const report = await ingestJournal(loaded.module, bytes, {
-          engine,
+          loadEngine: async () => {
+            const found = await loadEngine();
+            if (!found.engine) setJournalStatus(found.why);
+            return found;
+          },
           onProgress: ({ index, count, citation }) =>
             setJournalStatus(
               `${journalKind(citation)} ${journalNumber(citation)}` +
                 ` (${index + 1} of ${count})...`,
             ),
         });
-        if (engine?.close) await engine.close();
 
         if (!report.ok) {
           setJournalStatus(
@@ -991,7 +995,9 @@ export function runDevPage() {
         sayWhatIsKept();
         setJournalStatus(
           `${report.edition}: ${report.recognized} of ${report.entries} entries` +
-            ` read by ${report.engine}` +
+            (report.ownText
+              ? ' read from the document itself, no OCR engine needed'
+              : ` read by ${report.engine}`) +
             // The drawings, and only when the edition has any: an entry
             // that is a map has no words, so the count above says nothing
             // about whether its picture arrived (#345).

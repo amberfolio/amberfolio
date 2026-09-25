@@ -10,22 +10,31 @@
 // is a *document*, and the whole reason this one is generated is that no
 // real one may ever be in this tree (`host/journal_probe.h`,
 // CONTRIBUTING.md).
+//
+// `--text` writes the text probe instead (#398,
+// `host/journal_text_probe.h`): a document whose words are text, which
+// the host reads with no engine at all.
 
 #include <cstdio>
 #include <exception>
 #include <fstream>
+#include <string_view>
 #include <vector>
 
 #include "amberfolio/host/journal_probe.h"
+#include "amberfolio/host/journal_text_probe.h"
 
 int main(int argc, char** argv) try {
-  if (argc != 2) {
-    std::fprintf(stderr, "usage: amberfolio-sdl-journal-probe <file.pdf>\n");
+  const bool text = argc == 3 && std::string_view(argv[2]) == "--text";
+  if (argc != 2 && !text) {
+    std::fprintf(stderr,
+                 "usage: amberfolio-sdl-journal-probe <file.pdf> [--text]\n");
     return 1;
   }
 
   const std::vector<unsigned char>& bytes =
-      amberfolio::host::journal_probe_pdf();
+      text ? amberfolio::host::journal_text_probe_pdf()
+           : amberfolio::host::journal_probe_pdf();
   std::ofstream out(argv[1], std::ios::binary | std::ios::trunc);
   out.write(reinterpret_cast<const char*>(bytes.data()),
             static_cast<std::streamsize>(bytes.size()));

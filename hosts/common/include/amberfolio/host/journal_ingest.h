@@ -73,6 +73,7 @@
 #include "amberfolio/host/journal_ocr.h"
 #include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_store.h"
+#include "amberfolio/host/journal_text.h"
 #include "amberfolio/sha256.h"
 
 namespace amberfolio::host {
@@ -189,6 +190,19 @@ class journal_ingester {
   /// filter takes (`journal_extract.h`).
   [[nodiscard]] journal_trouble extract(std::size_t index);
 
+  /// Whether this edition's words are read out of the document itself
+  /// rather than by an engine (#398, `journal_text.h`). A host asks this
+  /// before it goes looking for an engine at all: for an edition that is
+  /// text there is none to find, and no download to make.
+  [[nodiscard]] bool reads_own_text() const noexcept {
+    return edition_ != nullptr && edition_->reads_own_text();
+  }
+
+  /// Item `index`'s text, read out of the document and checked against
+  /// its row's digest (`journal_text.h`). The text route's whole step:
+  /// what `extract()` and an engine are together for a scan.
+  [[nodiscard]] journal_trouble read_text(std::size_t index, std::string& out);
+
   /// What the last `extract()` produced. Empty if it failed.
   [[nodiscard]] const journal_scan& scan() const noexcept { return scan_; }
 
@@ -207,6 +221,11 @@ class journal_ingester {
   /// recognized, and the report says both numbers. `into` is the store
   /// already on disk — read it back before calling this, so corrections
   /// survive.
+  ///
+  /// An edition that `reads_own_text()` has no use for `engine` and never
+  /// calls it: each item is read and checked here, counted as extracted
+  /// and recognized both, and the store's engine line says
+  /// `journal_text_engine`.
   [[nodiscard]] journal_ingest_report run(journal_ocr* engine,
                                           journal_store& into);
 

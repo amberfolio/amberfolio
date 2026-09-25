@@ -323,6 +323,12 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_entry_count',
   '_af_web_journal_entry_citation',
   '_af_web_journal_extract',
+  // #398: an edition typeset as text, read with no engine, and the
+  // synthetic one the check below reads.
+  '_af_web_journal_reads_own_text',
+  '_af_web_journal_read_text',
+  '_af_web_journal_text_probe_bytes',
+  '_af_web_journal_text_probe_size',
   '_af_web_journal_image_bytes',
   '_af_web_journal_image_width',
   '_af_web_journal_image_height',
@@ -5246,10 +5252,63 @@ if (missing.length === 0 && sessions !== null) {
     `an unrecognized document was reported as '${stranger.trouble}'`,
   );
 
+  // --- An edition typeset as text (#398) --------------------------------
+  //
+  // Read inside the module with no engine at all: the loader handed in is
+  // one that fails the check if anything calls it, because the whole
+  // point for a page is that nothing is fetched. The two items' words are
+  // the text probe's own invention (hosts/common/src/journal_text_probe.cpp)
+  // and the module checks each against the edition table's digest, so a
+  // store with them in it is the route read exactly, across the ABI.
+  {
+    const { textProbeDocument, TEXT_ENGINE } = await import('./journal.mjs');
+    const text = textProbeDocument(module);
+    let asked = false;
+    const read = await ingestJournal(module, text, {
+      loadEngine: async () => {
+        asked = true;
+        return { engine: null, why: 'nobody should have asked' };
+      },
+    });
+    check(read.ok, `the text probe was not ingested: ${read.trouble}`);
+    check(!asked, 'an engine was loaded for an edition typeset as text');
+    check(read.ownText === true, 'the text probe was not read as text');
+    check(
+      read.entries === 2 && read.extracted === 2 && read.recognized === 2,
+      `the text probe read ${read.recognized} of ${read.entries}` +
+        ` (${read.firstTrouble?.what ?? 'no trouble named'})`,
+    );
+    check(
+      read.art === 1 && read.pictures === 1,
+      `the text probe made ${read.pictures} of ${read.art} pictures`,
+    );
+    check(read.engine === TEXT_ENGINE, `the engine is '${read.engine}'`);
+    const entry = journalText(module, journalCitation('entry', 1));
+    check(
+      entry ===
+        'Entry 1:\n\nThe amber lamp burns low over the folio, and its keeper' +
+          ' writes by night. A self-taught scribe, she keeps no calendar.' +
+          '\n\n\u201CTwo lamps,\u201D she says (softly).',
+      `the text probe's entry reads ${JSON.stringify(entry)}`,
+    );
+    check(
+      journalText(module, journalCitation('tale', 1)) ===
+        'Tale 1: A folio of amber pages sings when opened.',
+      "the text probe's tale does not read as written",
+    );
+    check(
+      serializeStore(module).includes(`engine ${TEXT_ENGINE}\n`),
+      "the text probe's store does not say how it was read",
+    );
+    clearStore(module);
+    module._af_web_journal_probe(0);
+  }
+
   console.log(
     'smoke: a synthetic journal edition ingested through the ABI, four rows' +
       ' read including two that share a number, a correction kept across a' +
-      ' re-ingestion, and the whole store out to a browser drawer and back',
+      ' re-ingestion, and the whole store out to a browser drawer and back;' +
+      ' and a synthetic edition typeset as text read with no engine at all',
   );
 }
 
