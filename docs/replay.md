@@ -16,9 +16,10 @@ library (`tests/sessions/README.md`) be committed.
 Plain text (`machine/replay.h`), one line per fact:
 
 ```
-amberfolio-recording 3 state=1
+amberfolio-recording 4 state=1
 program BOOT.EXE 3f1c…
 tail 202d4649525354 4c49474854
+cwd GAME
 speed 256
 seam probe
 dir SAVE
@@ -34,10 +35,20 @@ end 2000000 2000000
 ```
 
 The **preamble** is the initial conditions: the program and its
-fingerprint, the command tail as hex, the speed (step cost in 1/256ths of
-a tick; a replay runs at the recorded speed), every seam that was on, and
-the **manifest**. Then the **stream** in tick order: wall seeds, key
-events, seam pulls, checkpoints, and `end`.
+fingerprint, the command tail as hex, the directory the program was
+started in, the speed (step cost in 1/256ths of a tick; a replay runs at
+the recorded speed), every seam that was on, and the **manifest**. Then
+the **stream** in tick order: wall seeds, key events, seam pulls,
+checkpoints, and `end`.
+
+- A `cwd` line names the current directory the host set before the load
+  (#397, `docs/machine.md` §6), spelled like a manifest path. It is there
+  only when that is not the root, so a recording without one was made at
+  the root — every recording before format 4 was. A replay whose machine
+  starts anywhere else is refused before the first instruction (`the
+  current directory is not the one recorded`), because every relative
+  name the program opens would resolve somewhere else. The program line
+  names the program; the host finds it in that directory.
 
 - A `seam` line says the seam was on. A `pull` line says a person pulled
   its trigger at a tick (#161); it is an input event like a key, and a
@@ -87,6 +98,7 @@ and the stop record.
 | Out | Because |
 | --- | --- |
 | the speed governor | configuration; the preamble names it |
+| the current directory | set once before the load, and no DOS function this machine has can move it; the preamble names it (`cwd`) |
 | the seam engine and its toggles | configuration (`seam.h`); the preamble names each seam |
 | the overlay tracker | an observation, rebuilt by replaying |
 | the trace ring, first-touch notices | diagnostics; a run with `--trace` and one without must hash alike |
@@ -159,7 +171,7 @@ ahead of the program's own.
 | Report | What happened |
 | --- | --- |
 | `verified checkpoints=N keys=K pulls=P` | every condition matched and `end` was reached; the process then returns the program's own exit code |
-| `refused line=L why=…` | not a recording this player reads, or the initial conditions do not match (program, speed, seams, a file) |
+| `refused line=L why=…` | not a recording this player reads, or the initial conditions do not match (program, directory, speed, seams, a file) |
 | `refused … why=… path=SAVE\CHARLIST.TXT` | the manifest did not match, and that is the entry: a file whose digest or size differs, one the disk has and the recording does not, one the recording names and the disk lacks, or a directory where a file was named |
 | `diverged line=L tick=T section=S expected=… actual=…` | a checkpoint hash was not the machine's; `section` is the first of the thirteen to disagree |
 | `diverged … why=the machine ran past an event's tick` | the host overran an event: a frame period that is not the recorder's, or a `stopped` marker that is not true |
@@ -199,10 +211,10 @@ desktop from its own clock before the first instruction, the page from
 ## 7. Versions
 
 Two, independent, both on a recording's first line
-(`amberfolio-recording 3 state=1`):
+(`amberfolio-recording 4 state=1`):
 
 - **`recording_format_version`** (`machine/replay.h`), the line grammar.
-  It is **3** (#161's `pull` line); 2 was #155's recursing manifest.
+  It is **4** (#397's `cwd` line); 3 was #161's `pull` line and 2 #155's recursing manifest.
 - **`state_format_version`** (`machine/state.h`), the bytes a checkpoint
   hashes. It is **1**. A player refuses to compare across versions.
 

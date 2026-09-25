@@ -814,7 +814,9 @@
 #include "directory_vfs.h"
 #include "document_control.h"
 #include "dump.h"
+#include "install.h"
 #include "keymap.h"
+#include "mounted_vfs.h"
 #include "ocr_discovery.h"
 #include "press_spec.h"
 #include "screen_keyboard_view.h"
@@ -1550,6 +1552,10 @@ struct given_on_the_command_line {
 struct options {
   std::filesystem::path root;
   std::string program;
+  /// `--install DIR` (#397): the DOS directory `root` appears at, which
+  /// is made current before the load. Empty when not given, and then the
+  /// edition row's own install directory decides, or the root.
+  std::string install;
   bool headless{false};
   unsigned scale{default_scale};
   bool verify{false};
@@ -2031,7 +2037,7 @@ void print_watch(machine::machine& box, const std::vector<watch_point>& watches,
 void print_usage() {
   std::fprintf(
       stderr,
-      "usage: amberfolio [<dir> [<program.exe>]] [--headless]"
+      "usage: amberfolio [<dir> [<program.exe>]] [--install DIR] [--headless]"
       " [--scale N] [--verify] [--press KEY@FRAME]\n"
       "                                      [--pull ID@FRAME]\n"
       "                                      [--steps N]"
@@ -2128,6 +2134,8 @@ void print_usage() {
     } else if (arg == "--seam" && i + 1 < argc) {
       opts.seams.emplace_back(argv[++i]);
       opts.given.seams = true;
+    } else if (arg == "--install" && i + 1 < argc) {
+      opts.install = argv[++i];
     } else if (arg == "--vfs-list") {
       opts.list_vfs = true;
     } else if (arg == "--vfs-get" && i + 1 < argc) {
@@ -2523,16 +2531,42 @@ void print_usage() {
 /// is where it is. A pattern is spelled with its placeholders in it:
 /// `<S>` a slot letter, `<N>` a party-member index, `<NAME>` a name the
 /// player chose (`machine/save_layer.h`).
-void report_save_layer_table(const machine::machine& box, const options& opts) {
-  if (!opts.save_layer) {
-    return;
-  }
+/// The loaded program's layer and where its rows are on this disk, or
+/// null with the reason printed: no table for the program, or a copy
+/// that does not say where it saves (machine/save_layer.h, #397).
+[[nodiscard]] const machine::save_layer* save_layer_here(
+    const machine::machine& box, machine::filesystem& files,
+    machine::save_layer_places& places) {
   const machine::save_layer* layer =
       machine::save_layer_for(box.seams().program());
   if (layer == nullptr) {
     std::fprintf(stderr,
                  "amberfolio: save-layer unrecognized - this build has no"
                  " table for this program\n");
+    return nullptr;
+  }
+  const machine::save_directory_answer saves =
+      machine::read_save_directory(files, box.dos().current_directory());
+  if (!saves.ok()) {
+    std::fprintf(stderr,
+                 "amberfolio: save-layer none - the copy does not say where"
+                 " it saves (%s)\n",
+                 machine::save_directory_trouble_name(saves.trouble));
+    return nullptr;
+  }
+  places.save_directory = saves.directory;
+  places.current_directory = box.dos().current_directory();
+  return layer;
+}
+
+void report_save_layer_table(const machine::machine& box,
+                             machine::filesystem& files, const options& opts) {
+  if (!opts.save_layer) {
+    return;
+  }
+  machine::save_layer_places places;
+  const machine::save_layer* layer = save_layer_here(box, files, places);
+  if (layer == nullptr) {
     return;
   }
   std::fprintf(stderr,
@@ -2541,9 +2575,10 @@ void report_save_layer_table(const machine::machine& box, const options& opts) {
                static_cast<int>(layer->slots.size()), layer->slots.data(),
                static_cast<unsigned>(layer->members));
   for (const machine::save_file& row : layer->files) {
-    std::fprintf(stderr, "amberfolio: save-layer %.*s %s%s - %.*s\n",
-                 static_cast<int>(row.pattern.size()), row.pattern.data(),
-                 machine::save_file_kind_name(row.kind),
+    std::array<char, machine::save_pattern_capacity> spelled{};
+    static_cast<void>(machine::spell_save_pattern(row, places, spelled));
+    std::fprintf(stderr, "amberfolio: save-layer %s %s%s - %.*s\n",
+                 spelled.data(), machine::save_file_kind_name(row.kind),
                  row.required ? " required" : "",
                  static_cast<int>(row.about.size()), row.about.data());
   }
@@ -2565,12 +2600,9 @@ void report_save_layer_files(const machine::machine& box,
   if (!opts.save_layer || !box.seams().have_program()) {
     return;
   }
-  const machine::save_layer* layer =
-      machine::save_layer_for(box.seams().program());
+  machine::save_layer_places places;
+  const machine::save_layer* layer = save_layer_here(box, files, places);
   if (layer == nullptr) {
-    std::fprintf(stderr,
-                 "amberfolio: save-layer unrecognized - this build has no"
-                 " table for this program\n");
     return;
   }
   std::vector<machine::tree_file> found(machine::tree_file_count(files));
@@ -2579,7 +2611,7 @@ void report_save_layer_files(const machine::machine& box,
   std::size_t theirs = 0;
   for (std::size_t i = 0; i < count && i < found.size(); ++i) {
     const machine::save_layer_row row =
-        machine::match_save_file(*layer, found[i].path);
+        machine::match_save_file(*layer, places, found[i].path);
     if (row.file == nullptr) {
       continue;
     }
@@ -3759,12 +3791,28 @@ int main(int argc, char** argv) try {
     return opts.first_run ? EXIT_SUCCESS : EXIT_FAILURE;
   }
 
-  sdl::directory_filesystem files(opts.root);
-  if (!files.usable()) {
+  sdl::directory_filesystem host_files(opts.root);
+  if (!host_files.usable()) {
     std::fprintf(stderr, "amberfolio: %s is not a directory\n",
                  opts.root.string().c_str());
     return EXIT_FAILURE;
   }
+
+  // Where that directory sits on the machine's drive, and the directory
+  // the program starts in: the same one, as the copies' own launchers
+  // have it (install.h, #397). The root unless something says otherwise.
+  const sdl::install_choice placed =
+      sdl::settle_install(opts.install, opts.program, host_files);
+  if (!placed.ok) {
+    std::fprintf(stderr, "amberfolio: --install %s is not a DOS directory\n",
+                 opts.install.c_str());
+    return EXIT_FAILURE;
+  }
+  const machine::dos_path& install = placed.directory;
+  sdl::mounted_filesystem mounted(host_files, install);
+  machine::filesystem& files =
+      install.is_root() ? static_cast<machine::filesystem&>(host_files)
+                        : static_cast<machine::filesystem&>(mounted);
 
   stderr_diagnostics log;
   wired_machine wired(&log);
@@ -3823,6 +3871,34 @@ int main(int argc, char** argv) try {
   }
 
   box.set_filesystem(files);
+
+  // The directory the program starts in, before the sidecars below look
+  // for the save directory in it (machine/dos.h). Said when it is not the
+  // root, for a seam's reason: a run started elsewhere is another run.
+  if (box.dos().set_current_directory(files, install) !=
+      machine::vfs_error::none) {
+    std::fprintf(stderr, "amberfolio: %s is not a directory here\n",
+                 spell_vfs_path(install).c_str());
+    return EXIT_FAILURE;
+  }
+  if (!install.is_root() || placed.from != std::string_view("the root")) {
+    std::fprintf(stderr, "amberfolio: install %s (from %s) is current\n",
+                 spell_vfs_path(install).c_str(), placed.from);
+  }
+  {
+    const machine::save_directory_answer saves =
+        machine::read_save_directory(files, install);
+    if (saves.ok()) {
+      std::fprintf(stderr, "amberfolio: save directory %s\n",
+                   spell_vfs_path(saves.directory).c_str());
+    } else if (!install.is_root()) {
+      // Quiet at the root, where every test program lives with no
+      // configuration file; a copy laid out on purpose gets a line.
+      std::fprintf(stderr, "amberfolio: save directory unknown (%s)\n",
+                   machine::save_directory_trouble_name(saves.trouble));
+    }
+  }
+
   // And now there is a disk to read the exploration sidecar off (M5-E2c,
   // #173). Before the program is loaded, so a panel opened in the first
   // seconds of a run already has last night's map in it. A no-op unless
@@ -3836,8 +3912,11 @@ int main(int argc, char** argv) try {
   // at. One machine, one attach.
   services.slots().attach(box);
 
+  // The program is named from the directory given, which is the current
+  // one — `START.EXE` is `\POOLRAD\START.EXE` on a copy laid out there,
+  // as it would be typed at `C:\POOLRAD>`.
   const machine::vfs_result<machine::dos_path> where = machine::canonicalize(
-      machine::dos_path{},
+      box.dos().current_directory(),
       std::span<const char>(opts.program.data(), opts.program.size()));
   if (!where.ok()) {
     std::fprintf(stderr, "amberfolio: %s is not a usable DOS name\n",
@@ -3912,7 +3991,7 @@ int main(int argc, char** argv) try {
                    " available for this program\n");
       report_unrecognized_edition(files);
     }
-    report_save_layer_table(box, opts);
+    report_save_layer_table(box, files, opts);
   }
   // The documents the player presented, before the seams that may be
   // gated on them (#171). Before, and not after, so that a gated seam's

@@ -120,6 +120,10 @@ set(_amberfolio_web_export_names
   _af_machine_vfs_fingerprint
   _af_machine_load_from_vfs
   _af_machine_load_error
+  _af_machine_set_current_directory
+  _af_machine_current_directory
+  _af_machine_save_directory
+  _af_machine_save_directory_trouble
   _af_machine_edition
   _af_machine_program_fingerprint
   _af_machine_seam_count

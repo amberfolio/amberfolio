@@ -60,7 +60,14 @@ TEST(ReplayGrammar, RoundTripsEveryKindOfLine) {
   e.kind = replay_line::header;
   e.format_version = recording_format_version;
   e.state_version = state_format_version;
-  EXPECT_EQ(line_of(e), "amberfolio-recording 3 state=1\n");
+  EXPECT_EQ(line_of(e), "amberfolio-recording 4 state=1\n");
+
+  e = replay_event{};
+  e.kind = replay_line::cwd;
+  ASSERT_TRUE(parse("cwd POOLRAD\\SAVE", e));
+  EXPECT_EQ(e.kind, replay_line::cwd);
+  EXPECT_EQ(e.path.depth(), 2U);
+  EXPECT_EQ(line_of(e), "cwd POOLRAD\\SAVE\n");
 
   e = replay_event{};
   e.kind = replay_line::key;
@@ -1300,9 +1307,9 @@ TEST(Replay, APullInAnOlderFormatIsRefused) {
   ASSERT_EQ(first.box->seams().enable("test-poll-trigger"), seam_reason::none);
   std::string text =
       record(first, {}, 20'000, 100'000, {{40'000, "test-poll-trigger"}});
-  const std::size_t header = text.find("amberfolio-recording 3");
+  const std::size_t header = text.find("amberfolio-recording 4");
   ASSERT_EQ(header, 0u);
-  text.replace(0, std::strlen("amberfolio-recording 3"),
+  text.replace(0, std::strlen("amberfolio-recording 4"),
                "amberfolio-recording 2");
 
   const rig second;
@@ -1328,11 +1335,11 @@ TEST(Replay, RefusesATextThatIsNotARecording) {
   EXPECT_EQ(player.status(), replay_status::malformed);
 
   // A `std::string` and not a view: the concatenation below is a
-  // temporary, and a view of it would dangle at the semicolon. Version 4
-  // is one this build has never written; 1, 2 and 3 it has, and reads
-  // all three.
+  // temporary, and a view of it would dangle at the semicolon. Version 5
+  // is one this build has never written; 1 to 4 it has, and reads all
+  // four.
   const std::string other_version =
-      "amberfolio-recording 4 state=1\nprogram A.EXE " + std::string(64, 'a') +
+      "amberfolio-recording 5 state=1\nprogram A.EXE " + std::string(64, 'a') +
       "\n";
   EXPECT_FALSE(player.load(
       std::span<const char>(other_version.data(), other_version.size())));
@@ -1361,6 +1368,76 @@ TEST(Replay, ARecordingWithoutAnEndIsIncompleteNotDiverged) {
   ASSERT_TRUE(player.load(std::span<const char>(text.data(), text.size())));
   EXPECT_EQ(play(second, player), replay_status::malformed);
   EXPECT_EQ(player.checkpoints_verified(), 1u) << "what was there held";
+}
+
+// --- The current directory (#397) -----------------------------------------
+
+/// `rig` with a `\GAME` directory on its disk, made current when `enter`.
+void enter_game(const rig& r, bool enter) {
+  r.make_dir("\\GAME");
+  if (enter) {
+    dos_path game;
+    ASSERT_TRUE(
+        game.push(dos_name::parse(std::span<const char>("GAME", 4)).value));
+    ASSERT_EQ(r.box->dos().set_current_directory(*r.fs, game), vfs_error::none);
+  }
+}
+
+TEST(Replay, ARecordingAtTheRootSaysNothingAboutADirectory) {
+  const rig first;
+  enter_game(first, false);
+  first.start();
+  const std::string text = record(first, {}, 40'000, 60'000);
+  EXPECT_EQ(text.find("\ncwd "), std::string::npos) << text;
+}
+
+TEST(Replay, TheCurrentDirectoryIsAnInitialConditionTheReplayMustMatch) {
+  const rig first;
+  enter_game(first, true);
+  first.start();
+  const std::string text = record(first, {{5'000, 0x1E}}, 40'000, 100'000);
+  EXPECT_NE(text.find("\ncwd GAME\n"), std::string::npos) << text;
+
+  // Started in the same directory, it is the same run.
+  const rig same;
+  enter_game(same, true);
+  same.start();
+  replay_player player;
+  const verify_result held = verify_recording(
+      *same.box, same.fs.get(), std::span<const char>(text.data(), text.size()),
+      renderer::frame_period, player);
+  EXPECT_TRUE(held.ok()) << report_of(player);
+
+  // Started at the root, it is refused up front and by name — not left to
+  // diverge at the first hash after the program opens something.
+  const rig root;
+  enter_game(root, false);
+  root.start();
+  replay_player refused;
+  const verify_result verdict = verify_recording(
+      *root.box, root.fs.get(), std::span<const char>(text.data(), text.size()),
+      renderer::frame_period, refused);
+  EXPECT_EQ(verdict.status, replay_status::malformed);
+  EXPECT_NE(
+      report_of(refused).find("the current directory is not the one recorded"),
+      std::string::npos)
+      << report_of(refused);
+}
+
+TEST(Replay, ACwdLineInAnOlderFormatIsRefused) {
+  const rig first;
+  enter_game(first, true);
+  first.start();
+  std::string text = record(first, {}, 40'000, 60'000);
+  ASSERT_EQ(text.find("amberfolio-recording 4"), 0U);
+  text.replace(0, std::strlen("amberfolio-recording 4"),
+               "amberfolio-recording 3");
+  replay_player player;
+  EXPECT_FALSE(player.load(std::span<const char>(text.data(), text.size())));
+  EXPECT_NE(report_of(player).find(
+                "a preamble line this recording's format does not have"),
+            std::string::npos)
+      << report_of(player);
 }
 
 }  // namespace

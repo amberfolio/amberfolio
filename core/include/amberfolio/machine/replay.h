@@ -21,12 +21,13 @@
 // numbers in decimal and digests in lowercase hex. Lines that begin with
 // `#` and empty lines are ignored. The first line names the format:
 //
-//     amberfolio-recording 3 state=1
+//     amberfolio-recording 4 state=1
 //
 // Then the **initial conditions**, in this order:
 //
 //     program NAME SHA256          the program loaded, and its fingerprint
 //     tail HEX                     the command tail's bytes (may be empty)
+//     cwd PATH                     the current directory, when not the root
 //     speed SUBTICKS               the step cost, in 1/256ths of a tick
 //     seam ID                      each seam that was on, registry order
 //     dir PATH                     each directory on the disk
@@ -57,6 +58,13 @@
 //
 // The tail is hex because it can begin with a space, and a format whose
 // fields are space-separated cannot carry a leading space as a field.
+//
+// `cwd` is the directory the host made current before the load (dos.h,
+// #397), spelled like a manifest path. It is an initial condition and not
+// state — no DOS function this machine has can change it — so the player
+// checks it against the machine rather than finding it in a hash, and a
+// recording without the line was made at the root, which is every
+// recording before format 4.
 //
 //
 // The manifest (#155)
@@ -187,7 +195,10 @@ class filesystem;
 /// one, so a version-2 player reading one of these would refuse the line
 /// rather than misread it; the bump is so that the first line says what
 /// the file may contain, which is what a version is for.
-inline constexpr std::uint32_t recording_format_version = 3;
+///
+/// 4 (#397): the preamble may carry `cwd PATH` — the directory the
+/// program was started in, when it was not the root.
+inline constexpr std::uint32_t recording_format_version = 4;
 
 /// The oldest format a player still **reads**, and the rule: a version is
 /// readable for as long as a recording of it may still exist.
@@ -233,12 +244,20 @@ inline constexpr std::uint32_t recording_format_recursive_manifest = 2;
 /// is not a recording anything wrote.
 inline constexpr std::uint32_t recording_format_pull = 3;
 
+/// The first format whose preamble may carry a `cwd` line (#397). Older
+/// ones were all made at the root, and one that carries the line anyway
+/// is refused on the same rule as a `pull`.
+inline constexpr std::uint32_t recording_format_cwd = 4;
+
 /// What one line of a recording says.
 enum class replay_line : std::uint8_t {
   /// `amberfolio-recording` — the first line.
   header,
   program,
   tail,
+  /// `cwd PATH` — the current directory, when not the root (format 4
+  /// and up).
+  cwd,
   speed,
   seam,
   file,
@@ -320,7 +339,8 @@ struct replay_event {
   std::uint32_t size{};
   sha256_digest digest{};
 
-  /// `file`, `dir`: where on the disk, relative to the root. A `dos_path`
+  /// `file`, `dir`, `cwd`: where on the disk, relative to the root. A
+  /// `dos_path`
   /// and not a `dos_name` since #155, because the manifest recurses; the
   /// type is bounded at `dos_path::max_depth` components, so an event is
   /// still fixed-capacity and a line still cannot describe a path this
@@ -414,6 +434,8 @@ struct replay_preamble {
   std::size_t tail_length{};
   std::uint32_t subticks{};
   bool have_speed{false};
+  /// The `cwd` line, or the root when there was none.
+  dos_path current_directory{};
 
   static constexpr std::size_t max_seams = 16;
   std::array<std::array<char, replay_max_id + 1>, max_seams> seams{};
@@ -468,7 +490,8 @@ class replay_player {
   }
 
   /// Compare the initial conditions to `box` as it stands, the program
-  /// loaded, the speed set and the seams enabled — and to `fs`'s whole
+  /// loaded, the current directory, the speed set and the seams enabled
+  /// — and to `fs`'s whole
   /// tree, when `fs` is given. `ok`, or `malformed` with `report()`
   /// naming the first condition that did not hold, and the path it is
   /// about. A host applies the preamble's speed and seams first if it

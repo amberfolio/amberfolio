@@ -28,8 +28,8 @@ constexpr std::array<std::string_view, 8> question{
     "  Two of the enhancements learn something as you play: which streets",
     "  the automap has drawn for you, and which journal entries the game",
     "  has sent you to. Neither survives the machine stopping.",
-    R"(  Kept, they go in \SAVE\AFMAP.DAT and \SAVE\AFSEEN.DAT - files of)",
-    "  this project's own, in your game directory, beside your saves and",
+    "  Kept, they go in AFMAP.DAT and AFSEEN.DAT - files of this project's",
+    "  own, in your game directory, in the folder your saves are in and",
     "  never inside one. Your own files are never written to, and neither",
     "  of these appears at all until there is something to put in it.",
 };

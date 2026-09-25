@@ -35,6 +35,7 @@
 #include "amberfolio/machine/memory_vfs.h"
 #include "amberfolio/machine/report.h"
 #include "amberfolio/machine/service_floor.h"
+#include "amberfolio/machine/state.h"
 #include "amberfolio/machine/vfs.h"
 #include "gtest/gtest.h"
 #include "machine/test_device.h"
@@ -1047,6 +1048,111 @@ TEST(dos_break, a_console_call_detours_through_a_hooked_int23h) {
   std::array<std::uint8_t, 4> drained{};
   EXPECT_EQ(r.pc().console().read(drained), 0u);
   EXPECT_FALSE(r.pc().stopped());
+}
+
+// --- The current directory (#397) ----------------------------------------
+//
+// Set by a host before the load, and what every relative name a program
+// hands INT 21h resolves against. The root is the default, and a machine
+// left there resolves every name exactly as it did before there was one.
+
+[[nodiscard]] dos_path path_named(std::string_view text) {
+  const vfs_result<dos_path> where =
+      canonicalize(dos_path{}, std::span<const char>(text.data(), text.size()));
+  EXPECT_TRUE(where.ok()) << text;
+  return where.value;
+}
+
+[[nodiscard]] std::string opened_path(const rig& r) {
+  const std::vector<file_event> got = events(r);
+  EXPECT_FALSE(got.empty());
+  std::array<char, dos_path_capacity> text{};
+  if (!got.empty()) {
+    format_dos_path(got.back().path, text);
+  }
+  return {text.data()};
+}
+
+TEST(dos_current_directory, is_the_root_until_a_host_says_otherwise) {
+  const rig r;
+  EXPECT_TRUE(r.pc().dos().current_directory().is_root());
+  r.write_asciz(path_area, "GAME.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(opened_path(r), "\\GAME.DAT");
+}
+
+TEST(dos_current_directory, a_relative_name_resolves_inside_it) {
+  const rig r;
+  ASSERT_EQ(r.fs->mkdir(path_named("\\POOLRAD")), vfs_error::none);
+  ASSERT_EQ(r.pc().dos().set_current_directory(*r.fs, path_named("\\POOLRAD")),
+            vfs_error::none);
+
+  r.write_asciz(path_area, "GAME.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(opened_path(r), "\\POOLRAD\\GAME.DAT");
+  EXPECT_TRUE(r.fs->exists(path_named("\\POOLRAD\\GAME.DAT")));
+  EXPECT_FALSE(r.fs->exists(path_named("\\GAME.DAT")));
+}
+
+TEST(dos_current_directory, an_absolute_name_and_a_drive_ignore_it) {
+  const rig r;
+  ASSERT_EQ(r.fs->mkdir(path_named("\\POOLRAD")), vfs_error::none);
+  ASSERT_EQ(r.fs->mkdir(path_named("\\SAVE")), vfs_error::none);
+  ASSERT_EQ(r.pc().dos().set_current_directory(*r.fs, path_named("\\POOLRAD")),
+            vfs_error::none);
+
+  r.write_asciz(path_area, "C:\\SAVE\\SAVGAMA.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(opened_path(r), "\\SAVE\\SAVGAMA.DAT");
+
+  r.write_asciz(path_area, "\\SAVE\\SAVGAMB.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(opened_path(r), "\\SAVE\\SAVGAMB.DAT");
+
+  // And `..` climbs out of it, as it does in DOS.
+  r.write_asciz(path_area, "..\\TOP.DAT");
+  r.call(ah(0x3C), 0, 0, path_area);
+  ASSERT_FALSE(r.carry());
+  EXPECT_EQ(opened_path(r), "\\TOP.DAT");
+}
+
+TEST(dos_current_directory, refuses_a_directory_that_is_not_there) {
+  const rig r;
+  ASSERT_EQ(r.fs->mkdir(path_named("\\POOLRAD")), vfs_error::none);
+  ASSERT_EQ(r.pc().dos().set_current_directory(*r.fs, path_named("\\POOLRAD")),
+            vfs_error::none);
+
+  // Not there, and a file: both refused, and the directory stays put.
+  EXPECT_EQ(r.pc().dos().set_current_directory(*r.fs, path_named("\\NOPE")),
+            vfs_error::path_not_found);
+  ASSERT_TRUE(r.fs->create(path_named("\\FILE.DAT")).ok());
+  EXPECT_EQ(r.pc().dos().set_current_directory(*r.fs, path_named("\\FILE.DAT")),
+            vfs_error::path_not_found);
+  EXPECT_EQ(r.pc().dos().current_directory(), path_named("\\POOLRAD"));
+
+  // The root always is one.
+  EXPECT_EQ(r.pc().dos().set_current_directory(*r.fs, dos_path{}),
+            vfs_error::none);
+  EXPECT_TRUE(r.pc().dos().current_directory().is_root());
+}
+
+TEST(dos_current_directory, survives_a_reset_and_is_not_in_the_state) {
+  // How the machine was set up, like the program it was told to load: a
+  // warm reset keeps it, and the state a checkpoint hashes does not carry
+  // it — the recording's preamble does (docs/replay.md).
+  const rig r;
+  const state_hashes before = hash_state(r.pc());
+  ASSERT_EQ(r.fs->mkdir(path_named("\\POOLRAD")), vfs_error::none);
+  ASSERT_EQ(r.pc().dos().set_current_directory(*r.fs, path_named("\\POOLRAD")),
+            vfs_error::none);
+  EXPECT_EQ(hash_state(r.pc()).whole, before.whole);
+
+  r.pc().reset();
+  EXPECT_EQ(r.pc().dos().current_directory(), path_named("\\POOLRAD"));
 }
 
 }  // namespace

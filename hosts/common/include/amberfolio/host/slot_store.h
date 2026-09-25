@@ -21,7 +21,7 @@
 //
 // PLAN.md §4: the core is freestanding and touches no filesystem of its
 // own; a host owns files. #173 is specific about which files — *beside*
-// the save, under `\SAVE\`, through #170's door, and **never inside the
+// the save, in the save directory, through #170's door, and **never inside the
 // program's own files**. A save game the program wrote must still be a
 // save game the program wrote, byte for byte, with the seam off or on.
 // So a sidecar is a file of this project's own, with a name of its own,
@@ -33,6 +33,24 @@
 // filesystem there is. The second is that the DOS path semantics are
 // core's alone (#146): a host that built its own path would be a second
 // opinion about what `\SAVE\AFMAP.DAT` means.
+//
+//
+// Which directory is the save directory (#397)
+// --------------------------------------------
+//
+// The program's own, read the way it reads it: `POOL.CFG` in the
+// directory it was started in, line 4 against the same
+// (`machine::read_save_directory`). `\SAVE` on the archive release,
+// `\POOLRAD` on the copy that saves beside its game files, `\POOLRAD\SAVE`
+// on the other — and the sidecars go wherever that is, because they
+// belong beside the saves they are about. It is read once, at `attach()`,
+// which is why a host makes the current directory current before it.
+//
+// A copy that does not say — no configuration file, or one that does
+// not name a directory — gets **no sidecars**, and `trouble()` says
+// `no-save-directory`. Writing them under a likely directory instead
+// would be writing into a player's copy on a guess, and the saves they
+// are meant to follow would not be there.
 //
 //
 // Off unless a host is asked, and why that is not timidity
@@ -76,10 +94,10 @@
 // comes in two kinds of file, which is the proven design's own
 // arrangement carried over:
 //
-//   * `\SAVE\AFMAP.DAT`, `\SAVE\AFSEEN.DAT` — the working tables.
+//   * `AFMAP.DAT`, `AFSEEN.DAT` — the working tables.
 //     Written whenever the thing they hold moves, so a session that ends
 //     without saving has still kept what it walked and what it was told;
-//   * `\SAVE\AFMAP<L>.DAT`, `\SAVE\AFSEEN<L>.DAT` — a snapshot per save
+//   * `AFMAP<L>.DAT`, `AFSEEN<L>.DAT` — a snapshot per save
 //     slot. Written when the program writes slot `L`, and read back
 //     **over** the working table when the program reads it — over it even
 //     when there is no snapshot there, because an empty map and an empty
@@ -88,7 +106,7 @@
 // **A file appears only when there is something to put in it** (#385).
 // A sidecar with no records in it is its header and nothing else, and a
 // save made by a party that has walked nowhere and been cited nothing
-// would otherwise put three eight-byte files into somebody's `\SAVE\` —
+// would otherwise put three eight-byte files into somebody's save directory —
 // a directory of theirs, changed by this build, saying nothing. So a
 // header-only sidecar is written only *over* a file that is already
 // there, never as a new one, which is what the host asking permission
@@ -110,7 +128,8 @@
 // it prompts for one, builds a filename out of it and lets it go. What
 // there is instead is the DOS layer's own record of which files were
 // named and what happened to them (`machine/diagnostics.h`), which says
-// `SAVE\SAVGAMA.DAT` was *created* — a save — or *opened* — a load. No
+// `SAVGAMA.DAT` in the save directory was *created* — a save — or
+// *opened* — a load. No
 // game code is involved and no new address fact is needed, which is
 // exactly the argument the proven design made for hooking its own file
 // layer rather than the save routine.
@@ -160,7 +179,7 @@ class machine;
 
 namespace amberfolio::host {
 
-/// The directory the sidecars live in, and the two working tables.
+/// The two working tables, as leaves of the save directory.
 ///
 /// Eight-three, and prefixed so that nothing this project writes can
 /// collide with anything the program ships or anything another
@@ -172,8 +191,6 @@ namespace amberfolio::host {
 /// on the playthrough's side. Aliases and not copies — a name written
 /// down twice is a name that can differ in one of the two places
 /// (`machine/save_layer.h`).
-inline constexpr std::string_view slot_store_directory =
-    machine::save_layer_directory;
 inline constexpr std::string_view slot_store_automap_working =
     machine::save_layer_automap_working;
 inline constexpr std::string_view slot_store_journal_working =
@@ -210,6 +227,10 @@ enum class slot_trouble : std::uint8_t {
   /// a file from a later version of this format, or somebody else's.
   /// Refused rather than guessed at.
   not_a_sidecar,
+  /// The copy does not say where it saves, so there is nowhere beside
+  /// its saves to put anything (this file's "Which directory is the save
+  /// directory"). Nothing is read or written.
+  no_save_directory,
 };
 
 /// The printable name of one, for a host's end-of-run line. Never null.
@@ -244,7 +265,10 @@ class slot_store {
 
   /// The machine to persist for, and the first read: the working
   /// exploration table, if there is one, into `box.automap()`. Called
-  /// once, when a host has a machine with a filesystem attached.
+  /// once, when a host has a machine with a filesystem attached **and its
+  /// current directory set**: this is where the save directory is read
+  /// (this file's "Which directory is the save directory"), and a copy
+  /// that does not say leaves this reading and writing nothing.
   ///
   /// **The read log is not read here**, and that is the one asymmetry in
   /// this object. The exploration table is read into the machine, which
@@ -325,12 +349,33 @@ class slot_store {
   [[nodiscard]] slot_trouble trouble() const noexcept { return trouble_; }
   [[nodiscard]] machine::vfs_error refusal() const noexcept { return refusal_; }
 
+  /// The directory the sidecars go in, as `attach()` read it, or null
+  /// before an attach that was on and for a copy that did not say — and
+  /// then `save_directory_trouble()` is why.
+  [[nodiscard]] const machine::dos_path* save_directory() const noexcept {
+    return located_ ? &save_directory_ : nullptr;
+  }
+  [[nodiscard]] machine::save_directory_trouble save_directory_trouble()
+      const noexcept {
+    return save_directory_trouble_;
+  }
+
  private:
-  /// `SAVE\AFMAP<L>.DAT` and `SAVE\AFSEEN<L>.DAT` for a slot letter.
-  [[nodiscard]] static machine::dos_path automap_slot_path(
-      char letter) noexcept;
-  [[nodiscard]] static machine::dos_path journal_slot_path(
-      char letter) noexcept;
+  /// Whether this is on, attached, and knows where the saves are: every
+  /// read and write asks this first.
+  [[nodiscard]] bool live() const noexcept {
+    return enabled_ && box_ != nullptr && located_;
+  }
+
+  /// `leaf` in the save directory, or the root when it cannot be named —
+  /// which every reader and writer below takes as "do nothing".
+  [[nodiscard]] machine::dos_path in_save_directory(
+      std::string_view leaf) const noexcept;
+
+  /// `AFMAP<L>.DAT` and `AFSEEN<L>.DAT` in the save directory for a slot
+  /// letter.
+  [[nodiscard]] machine::dos_path automap_slot_path(char letter) const noexcept;
+  [[nodiscard]] machine::dos_path journal_slot_path(char letter) const noexcept;
 
   /// The exploration table out of the machine and into `path`, and back.
   void write_automap_to(const machine::dos_path& path);
@@ -360,13 +405,19 @@ class slot_store {
   void write_whole(const machine::dos_path& path,
                    std::span<const std::uint8_t> bytes);
 
-  /// The slot letter `path` names, if it is a save slot at all, and zero
-  /// otherwise.
-  [[nodiscard]] static char slot_of(const machine::dos_path& path) noexcept;
+  /// The slot letter `path` names, if it is a save slot in the save
+  /// directory at all, and zero otherwise.
+  [[nodiscard]] char slot_of(const machine::dos_path& path) const noexcept;
 
   bool enabled_{false};
   machine::machine* box_{nullptr};
   journal_store* journal_{nullptr};
+
+  /// The save directory, read at `attach()`.
+  bool located_{false};
+  machine::dos_path save_directory_{};
+  machine::save_directory_trouble save_directory_trouble_{
+      machine::save_directory_trouble::none};
 
   /// The slot the program has a save file open on, and whether it made
   /// that file (a save) or found it (a load). Cleared at the close that

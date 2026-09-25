@@ -942,6 +942,52 @@ export class Machine {
     return this.module._af_machine_load_error(this.handle);
   }
 
+  // --- The directory it starts in (#397) ---------------------------------
+  //
+  // The copies on sale are run from `C:\POOLRAD`, not the root: their
+  // launchers mount the folder one directory down and change into it.
+  // A page that puts such a copy at `\POOLRAD\` makes that directory
+  // current **after the files are in and before `saveSidecars()` and
+  // `loadFromVfs()`** — the sidecars look for the save directory in it,
+  // and the program opens its own files in it. `loadFromVfs()` still
+  // takes a path from the root: `\POOLRAD\START.EXE`.
+
+  /// Make `path` (`\POOLRAD`, `POOLRAD`, `/POOLRAD/`; `\` or `''` is the
+  /// root) the directory relative names resolve in. `AF_OK`, or
+  /// `AF_INVALID` for a path that names no directory, and nothing changed.
+  setCurrentDirectory(path) {
+    return this.#withCString(path, (ptr) =>
+      this.module._af_machine_set_current_directory(this.handle, ptr),
+    );
+  }
+
+  /// The current directory, `\POOLRAD`, or `\` for the root.
+  currentDirectory() {
+    return this.#text(
+      (out, max) => this.module._af_machine_current_directory(this.handle, out, max),
+      112,
+    );
+  }
+
+  /// Where the program will save, read the way it reads it — `POOL.CFG`
+  /// in the current directory, its save-directory line against the same:
+  /// `{ directory: '\\POOLRAD\\SAVE', trouble: 'none' }`, or
+  /// `{ directory: null, trouble }` with `no-config`, `unreadable`,
+  /// `too-short` or `not-a-path` when the copy does not say. Nothing is
+  /// assumed in its place, and `saveLayer()` answers null for such a copy.
+  saveDirectory() {
+    const directory = this.#text(
+      (out, max) => this.module._af_machine_save_directory(this.handle, out, max),
+      112,
+    );
+    const trouble =
+      this.#text(
+        (out, max) => this.module._af_machine_save_directory_trouble(this.handle, out, max),
+        32,
+      ) ?? 'none';
+    return { directory, trouble };
+  }
+
   // --- Identity and seams (M4-F1 #95, M4-F4 #98) -------------------------
   //
   // `loadFromVfs()` identifies the program as it loads it (abi.h), and

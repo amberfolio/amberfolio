@@ -89,6 +89,18 @@ const dos_services::handle_state* dos_services::find(
   return &handles_[handle];
 }
 
+vfs_error dos_services::set_current_directory(const filesystem& fs,
+                                              const dos_path& directory) {
+  if (!directory.is_root()) {
+    const vfs_result<file_stat> found = fs.stat(directory);
+    if (!found.ok() || !found.value.is_directory) {
+      return vfs_error::path_not_found;
+    }
+  }
+  current_directory_ = directory;
+  return vfs_error::none;
+}
+
 void dos_services::save_state(state_sink& out) const {
   for (const handle_state& slot : handles_) {
     out.flag(slot.in_use);
@@ -193,10 +205,9 @@ void succeed_with(service_floor& floor, std::uint16_t ax) {
 }
 
 /// Read an ASCIZ pathname from DS:DX and canonicalize it against the
-/// root. There is no chdir/getcwd in this subset (PLAN.md §3's DOS
-/// surface does not list them), so the current directory is always the
-/// root — when a later issue adds AH=3Bh/47h, this is the one call site
-/// that starts reading real per-machine state instead.
+/// current directory the host set before the load (dos.h's top comment,
+/// #397). The program cannot change it — AH=3Bh/47h are not in this
+/// subset — so this is the one place it is read.
 ///
 /// `what` is the naming call this is being read for, and it is here
 /// because a name that does not canonicalize at all — a drive letter that
@@ -206,7 +217,9 @@ void succeed_with(service_floor& floor, std::uint16_t ax) {
 /// on `A:`, got a refusal indistinguishable from a missing file, and put
 /// a "please insert the disk" message on the screen with nothing in the
 /// log to say why. There is no canonical path to name, so the event
-/// carries the root and `error` is what says what happened.
+/// carries the root and `error` is what says what happened. (The root,
+/// and not the current directory: the name resolved to nothing, and
+/// naming the directory it was relative to would read as a path.)
 [[nodiscard]] vfs_result<dos_path> read_path(service_floor& floor,
                                              file_action what) {
   cpu::processor& cpu = floor.box().processor();
@@ -226,7 +239,8 @@ void succeed_with(service_floor& floor, std::uint16_t ax) {
   }
 
   const vfs_result<dos_path> resolved =
-      canonicalize(dos_path{}, std::span<const char>(raw.data(), length));
+      canonicalize(floor.box().dos().current_directory(),
+                   std::span<const char>(raw.data(), length));
   if (!resolved.ok()) {
     floor.report_file(what, dos_path{}, 0, resolved.error);
   }

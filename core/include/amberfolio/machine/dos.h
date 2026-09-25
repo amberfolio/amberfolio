@@ -142,6 +142,34 @@
 // Checked on the three console-affecting functions the scope lists
 // (AH=02h, AH=09h, and AH=40h when the handle is console-backed) and
 // nowhere else — "keep it minimal," the issue's own words.
+//
+//
+// The current directory (#397)
+// ----------------------------
+//
+// Every path a program hands INT 21h is canonicalized against
+// `dos_services::current_directory()`, and a relative name — `GAME.OVR`,
+// `POOL.CFG` — resolves inside it. It is the directory a person would
+// have typed `cd` into before starting the program: the releases sold
+// today mount their copy so it sits at `C:\POOLRAD` and run `START` from
+// there, and a relative open at the root would find nothing.
+//
+// **Set by the host before the load, once, and never by the program.**
+// AH=3Bh (change directory) and AH=47h (get it) are not in this subset;
+// no edition this build knows calls either, and one that did would stop
+// on them like any other unbacked function. So the directory is how the
+// machine was set up, exactly as the program it was told to load is:
+// `reset()` leaves it, `save_state()` does not write it, and a recording
+// names it in its preamble instead (`docs/replay.md`). The day a program
+// can change it, it becomes state and the state layout moves.
+//
+// Nothing else DOS keeps sees it. The loader builds no environment block
+// and fills no parent PSP (loader.h), so a program's own path is nowhere
+// in memory; the directory is observable only through what a relative
+// name opens, which is also all DOS itself makes of it without AH=47h.
+//
+// The root is the default, and a machine whose directory is the root
+// canonicalizes every path exactly as it did before there was one.
 
 #pragma once
 
@@ -270,6 +298,23 @@ class dos_services {
   /// The state behind `handle`, or null if it names nothing open.
   [[nodiscard]] const handle_state* find(std::uint16_t handle) const noexcept;
 
+  /// The directory relative names resolve in. See this file's top
+  /// comment: set by a host before the load, the root until then.
+  [[nodiscard]] const dos_path& current_directory() const noexcept {
+    return current_directory_;
+  }
+
+  /// Make `directory` current, after checking that `fs` holds it as a
+  /// directory. `vfs_error::none` on success; `path_not_found` for a path
+  /// that names nothing, or a file, and nothing changed. The root is
+  /// always a directory.
+  ///
+  /// A host calls this once, before the program is loaded. It is not a
+  /// DOS function and a program cannot reach it (this file's top
+  /// comment).
+  vfs_error set_current_directory(const filesystem& fs,
+                                  const dos_path& directory);
+
   /// The handle table and the exit state (state.h). The position of each
   /// open file is the backend's and is asked of it by `machine`, which
   /// has the filesystem; this writes what the table itself holds.
@@ -297,6 +342,9 @@ class dos_services {
   /// `handle_state`, because that struct is serialized in full and this
   /// is not machine state. See `read_through()` above.
   std::array<bool, max_handles> read_through_{};
+  /// Not touched by `reset()` and not serialized: how the machine was set
+  /// up, not what a program did (this file's top comment).
+  dos_path current_directory_{};
   std::uint8_t exit_code_{};
   bool exited_{};
 };

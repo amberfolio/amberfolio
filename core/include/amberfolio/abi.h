@@ -409,6 +409,15 @@ uint32_t af_version(void);
 ///     added at the end, after `too_large`: a page that names them by
 ///     `af_web_journal_trouble_name` needs nothing new, and every code
 ///     that was there means what it meant.
+///     In the same minor, before the same tag, #397 adds
+///     `af_machine_set_current_directory`, `af_machine_current_directory`,
+///     `af_machine_save_directory` and
+///     `af_machine_save_directory_trouble`: the directory a program is
+///     started in, and where it saves. Minor: a host that never sets a
+///     directory runs at the root as before. What moved under the
+///     `af_machine_save_layer_*` family is behaviour and not surface — its
+///     rows now follow the directory the copy's own configuration file
+///     names, and a copy that names none has no layer.
 #define AF_ABI_VERSION_MAJOR 2u
 #define AF_ABI_VERSION_MINOR 2u
 
@@ -1057,6 +1066,67 @@ uint32_t af_machine_load_from_vfs(af_machine* box, const char* name,
 /// make `AF_OK == 0` stop being the only thing a host has to check.
 uint32_t af_machine_load_error(const af_machine* box);
 
+// --- The directory it starts in (#397) ----------------------------------
+//
+// DOS resolves a relative name against the current directory, and the
+// copies on sale are run from one that is not the root: their launchers
+// mount the copy so that it sits at `C:\POOLRAD` and change into it
+// before starting the program, whose data files and configuration file
+// are then opened by bare name. A host that puts such a copy at
+// `\POOLRAD\` sets that directory current, then loads
+// `\POOLRAD\START.EXE`.
+//
+// **Set before the load, once.** It is how the machine was set up, the
+// way the program it was told to load is: no DOS function this machine
+// offers can change it, `machine::reset()` leaves it, the state hash does
+// not carry it, and a recording names it (docs/replay.md). The load does
+// not make the program's own folder current — DOS never did; a shell or
+// a launcher did — and `af_machine_load_from_vfs` still takes a path from
+// the root. The edition row's `install` directory (`editions.json`) is
+// what a host sets it to when it knows the copy.
+
+/// Make `path` the directory relative names resolve in. `path` is a
+/// directory spelled from the root the way every path here is —
+/// `POOLRAD`, `\POOLRAD`, `/POOLRAD/` — and `\` or the empty string is the
+/// root, which is where a machine starts.
+///
+/// `AF_OK`; `AF_INVALID`, and nothing changed, for a path that names no
+/// directory — one that is not there, a file, or text no DOS path can
+/// equal; `AF_NO_FILESYSTEM` without one; `AF_NO_MACHINE` for a null
+/// handle.
+uint32_t af_machine_set_current_directory(af_machine* box, const char* path);
+
+/// The current directory, `\POOLRAD`, or `\` for the root, NUL-terminated
+/// into `out`; answers its length, or zero for a null handle or a buffer
+/// that will not hold it (`AF_PATH_CAPACITY` always does).
+uint32_t af_machine_current_directory(const af_machine* box, char* out,
+                                      uint32_t max);
+
+/// Where the program will save, read the way it reads it: its
+/// configuration file (`POOL.CFG`) opened relative to the current
+/// directory, and the line that names the save directory canonicalized
+/// against the same. `\SAVE` on the archive release, `\POOLRAD` and
+/// `\POOLRAD\SAVE` on the two storefront copies, NUL-terminated into
+/// `out`; answers its length.
+///
+/// Zero when that file is not there or does not say, and then
+/// `af_machine_save_directory_trouble` says which. Nothing is assumed in
+/// its place. Needs no program loaded: the file is the copy's, and the
+/// question can be asked the moment the files are in.
+///
+/// This is the input the `af_machine_save_layer_*` family decides with:
+/// a row is a file in this directory, or — the configuration file itself
+/// — in the current one.
+uint32_t af_machine_save_directory(const af_machine* box, char* out,
+                                   uint32_t max);
+
+/// Why `af_machine_save_directory` answered zero, as a word:
+/// `no-config`, `unreadable`, `too-short`, `not-a-path` — or `none` when
+/// it did not (`machine::save_directory_trouble_name`). NUL-terminated
+/// into `out`; answers its length, or zero for a null handle.
+uint32_t af_machine_save_directory_trouble(const af_machine* box, char* out,
+                                           uint32_t max);
+
 // --- Identity and seams (M4-F1 #95, M4-F4 #98) --------------------------
 //
 // `af_machine_load_from_vfs` also *identifies* the program: it takes the
@@ -1424,11 +1494,16 @@ uint32_t af_machine_seam_gate(const af_machine* box, uint32_t index, char* out,
 // on one side of it and the player's on the other.
 //
 // So it is a fact table, keyed by the loaded program the way a seam's
-// addresses are, and read here rather than restated by each host. Every
-// call answers zero (or `AF_SAVE_LAYER_NO_ROW`) when no program is
-// loaded and when the loaded one has no table — which is the same honest
-// "I do not know this file" `af_machine_edition` answers, and a host
-// that gets it should persist nothing rather than persist a guess.
+// addresses are, and read here rather than restated by each host. Its
+// rows are files in the directory the copy saves into
+// (`af_machine_save_directory`) and — the configuration file — in the
+// current directory, so the same table claims the archive release's
+// `\SAVE\SAVGAMA.DAT` and a storefront copy's `\POOLRAD\SAVGAMA.DAT`.
+// Every call answers zero (or `AF_SAVE_LAYER_NO_ROW`) when no program is
+// loaded, when the loaded one has no table, and when the copy does not
+// say where it saves — which is the same honest "I do not know this
+// file" `af_machine_edition` answers, and a host that gets it should
+// persist nothing rather than persist a guess.
 //
 // `docs/hosts.md` §6 has the table for the edition this build knows, the
 // runs it was gathered from, and the placeholder grammar the patterns
@@ -1447,7 +1522,9 @@ uint32_t af_machine_save_layer_members(const af_machine* box);
 /// How many rows the table has.
 uint32_t af_machine_save_layer_count(const af_machine* box);
 
-/// Row `index`'s path pattern, the name of what kind of file it is
+/// Row `index`'s path pattern — its leaf with the directory it is in, from
+/// the root with no leading separator: `SAVE\SAVGAM<S>.DAT`,
+/// `POOLRAD\POOL.CFG` — the name of what kind of file it is
 /// (`machine::save_file_kind_name` — `slot`, `member`, `roster`,
 /// `character`, `config`, `sidecar`), and the one line a host can show a
 /// player; each NUL-terminated into `out`, each answering its length, or

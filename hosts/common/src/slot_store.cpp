@@ -20,8 +20,9 @@ namespace amberfolio::host {
 namespace {
 
 /// The stem of the program's own save slots. A path is one of them when
-/// it is `SAVE\SAVGAM<L>.DAT` — the letter is what this is here to read,
-/// and everything else about the traffic is the program's business.
+/// it is `SAVGAM<L>.DAT` in the save directory — the letter is what this
+/// is here to read, and everything else about the traffic is the
+/// program's business.
 ///
 /// The same fact `machine::save_layer` states as a pattern (#208), in
 /// the form this file needs it: that table is keyed on the loaded
@@ -36,34 +37,6 @@ constexpr std::string_view slot_extension = ".DAT";
 [[nodiscard]] std::string_view text_of(const machine::dos_name& name) noexcept {
   const std::span<const char> chars = name.text();
   return {chars.data(), chars.size()};
-}
-
-/// Build a path under `SAVE\` from a leaf name. Through
-/// `canonicalize_host_path` and not by hand, because DOS name semantics
-/// are core's alone (#146) and a host with its own opinion about what a
-/// path means is a second opinion.
-[[nodiscard]] machine::vfs_result<machine::dos_path> under_save(
-    std::span<const char> leaf) noexcept {
-  std::array<char, machine::max_host_path_text> raw{};
-  std::size_t used = 0;
-  for (const char ch : slot_store_directory) {
-    raw[used++] = ch;
-  }
-  raw[used++] = '\\';
-  for (const char ch : leaf) {
-    raw[used++] = ch;
-  }
-  return machine::canonicalize_host_path({raw.data(), used});
-}
-
-/// One of the two working tables, as a path. Its name is a constant and
-/// canonicalizing it cannot fail, but the result is checked all the same
-/// — a path this build could not build is a reason to write nothing, not
-/// a reason to write somewhere else.
-[[nodiscard]] machine::dos_path working_path(std::string_view text) noexcept {
-  const machine::vfs_result<machine::dos_path> where =
-      machine::canonicalize_host_path({text.data(), text.size()});
-  return where.ok() ? where.value : machine::dos_path{};
 }
 
 /// One reason, refused by the filesystem, recorded with what it said.
@@ -83,17 +56,31 @@ const char* slot_trouble_name(slot_trouble what) noexcept {
       return "out-of-room";
     case slot_trouble::not_a_sidecar:
       return "not-a-sidecar";
+    case slot_trouble::no_save_directory:
+      return "no-save-directory";
     case slot_trouble::none:
       break;
   }
   return "none";
 }
 
-char slot_store::slot_of(const machine::dos_path& path) noexcept {
-  if (path.depth() != 2) {
-    return 0;
+machine::dos_path slot_store::in_save_directory(
+    std::string_view leaf) const noexcept {
+  // Through `canonicalize` and not by hand, because DOS name semantics
+  // are core's alone (#146). A leaf with no separator in it resolves to
+  // exactly one component below the directory; one that does not name
+  // is a reason to write nothing, not a reason to write somewhere else.
+  const machine::vfs_result<machine::dos_path> where = machine::canonicalize(
+      save_directory_, std::span<const char>(leaf.data(), leaf.size()));
+  if (!where.ok() || where.value.depth() != save_directory_.depth() + 1) {
+    return {};
   }
-  if (text_of(path.component(0)) != slot_store_directory) {
+  return where.value;
+}
+
+char slot_store::slot_of(const machine::dos_path& path) const noexcept {
+  if (!located_ || path.depth() != save_directory_.depth() + 1 ||
+      !(path.parent() == save_directory_)) {
     return 0;
   }
   const std::string_view leaf = text_of(path.leaf());
@@ -107,25 +94,21 @@ char slot_store::slot_of(const machine::dos_path& path) noexcept {
   return (letter >= 'A' && letter <= 'Z') ? letter : 0;
 }
 
-machine::dos_path slot_store::automap_slot_path(char letter) noexcept {
+machine::dos_path slot_store::automap_slot_path(char letter) const noexcept {
   // `AFMAP<L>.DAT`: the working table's name with the letter spliced in,
   // which keeps every one of these files sorting together in a directory
   // listing beside the saves they belong to.
   const std::array<char, 12> leaf{'A',    'F', 'M', 'A', 'P',
                                   letter, '.', 'D', 'A', 'T'};
-  const machine::vfs_result<machine::dos_path> where =
-      under_save({leaf.data(), 10});
-  return where.ok() ? where.value : machine::dos_path{};
+  return in_save_directory({leaf.data(), 10});
 }
 
-machine::dos_path slot_store::journal_slot_path(char letter) noexcept {
+machine::dos_path slot_store::journal_slot_path(char letter) const noexcept {
   // `AFSEEN<L>.DAT`, on the same rule. Six and a letter is seven, which
   // is inside eight-three with a character to spare.
   const std::array<char, 12> leaf{'A',    'F', 'S', 'E', 'E', 'N',
                                   letter, '.', 'D', 'A', 'T'};
-  const machine::vfs_result<machine::dos_path> where =
-      under_save({leaf.data(), 11});
-  return where.ok() ? where.value : machine::dos_path{};
+  return in_save_directory({leaf.data(), 11});
 }
 
 void slot_store::attach(machine::machine& box) {
@@ -133,29 +116,47 @@ void slot_store::attach(machine::machine& box) {
   if (!enabled_) {
     return;
   }
-  read_automap_from(working_path(slot_store_automap_working));
+  // Where the program saves, read the way it reads it (#397). Once, here:
+  // the copy's configuration file does not change under a running
+  // program, and a host sets the current directory before this.
+  located_ = false;
+  machine::filesystem* fs = box.vfs();
+  if (fs == nullptr) {
+    save_directory_trouble_ = machine::save_directory_trouble::no_config;
+    trouble_ = slot_trouble::no_save_directory;
+    return;
+  }
+  const machine::save_directory_answer saves =
+      machine::read_save_directory(*fs, box.dos().current_directory());
+  save_directory_trouble_ = saves.trouble;
+  if (!saves.ok()) {
+    trouble_ = slot_trouble::no_save_directory;
+    return;
+  }
+  save_directory_ = saves.directory;
+  located_ = true;
+  read_automap_from(in_save_directory(slot_store_automap_working));
 }
 
 void slot_store::read_journal_log() {
-  if (!enabled_ || box_ == nullptr || journal_ == nullptr) {
+  if (!live() || journal_ == nullptr) {
     return;
   }
-  read_journal_from(working_path(slot_store_journal_working));
+  read_journal_from(in_save_directory(slot_store_journal_working));
 }
 
 void slot_store::changed() {
-  if (!enabled_ || box_ == nullptr) {
+  if (!live()) {
     return;
   }
-  write_automap_to(working_path(slot_store_automap_working));
+  write_automap_to(in_save_directory(slot_store_automap_working));
 }
 
 void slot_store::journal_changed() {
-  if (!enabled_ || box_ == nullptr || journal_ == nullptr ||
-      !journal_->log_changed()) {
+  if (!live() || journal_ == nullptr || !journal_->log_changed()) {
     return;
   }
-  write_journal_to(working_path(slot_store_journal_working));
+  write_journal_to(in_save_directory(slot_store_journal_working));
   // Down, because the bytes are on the disk now. The flag is what stops
   // this being written again by the save that follows a citation, and
   // what lets a load refresh the working file through this same call.
@@ -163,7 +164,7 @@ void slot_store::journal_changed() {
 }
 
 void slot_store::saw(const machine::file_event& event) {
-  if (!enabled_ || box_ == nullptr || !event.ok()) {
+  if (!live() || !event.ok()) {
     return;
   }
 

@@ -476,38 +476,81 @@ const amberfolio::machine::memory_filesystem* vfs_of(
   return &devices_live->fs;
 }
 
-/// The loaded program's save layer, or null when nothing is loaded or
-/// this build has no table for what is. Every call below starts here,
-/// which is what makes "no program" and "an edition with no table"
-/// answer the same nothing.
+/// What the program saves into, read the way it reads it: its
+/// configuration file relative to the current directory, line 4 against
+/// the same (machine/save_layer.h, #397). A machine with no filesystem
+/// has no configuration file either, and says so the same way.
+[[nodiscard]] amberfolio::machine::save_directory_answer saves_of(
+    const af_machine* handle) {
+  // Reading a file opens it, which a `const` filesystem cannot do; the
+  // one this reaches is the live device set's, the object `vfs_of`
+  // answers for a handle that has one.
+  const machine* box = box_of(handle);
+  if (box == nullptr || vfs_of(handle) == nullptr) {
+    return {};
+  }
+  return amberfolio::machine::read_save_directory(
+      devices_live->fs, box->dos().current_directory());
+}
+
+/// The loaded program's save layer and where its rows are, or null when
+/// nothing is loaded, this build has no table for what is, or the copy
+/// does not say where it saves. Every call below starts here, which is
+/// what makes all three answer the same nothing: a host that cannot be
+/// told which files are the player's persists none of them.
 [[nodiscard]] const amberfolio::machine::save_layer* layer_of(
-    const af_machine* handle) noexcept {
+    const af_machine* handle, amberfolio::machine::save_layer_places& places) {
   const machine* box = box_of(handle);
   if (box == nullptr || !box->seams().have_program()) {
     return nullptr;
   }
-  return amberfolio::machine::save_layer_for(box->seams().program());
+  const amberfolio::machine::save_layer* layer =
+      amberfolio::machine::save_layer_for(box->seams().program());
+  if (layer == nullptr) {
+    return nullptr;
+  }
+  const amberfolio::machine::save_directory_answer saves = saves_of(handle);
+  if (!saves.ok()) {
+    return nullptr;
+  }
+  places.save_directory = saves.directory;
+  places.current_directory = box->dos().current_directory();
+  return layer;
+}
+
+[[nodiscard]] const amberfolio::machine::save_layer* layer_of(
+    const af_machine* handle) {
+  amberfolio::machine::save_layer_places places;
+  return layer_of(handle, places);
 }
 
 /// The row `path` is, matched against the loaded program's layer.
 [[nodiscard]] amberfolio::machine::save_layer_row row_of(
-    const af_machine* handle, const char* path) noexcept {
-  const amberfolio::machine::save_layer* layer = layer_of(handle);
+    const af_machine* handle, const char* path) {
+  amberfolio::machine::save_layer_places places;
+  const amberfolio::machine::save_layer* layer = layer_of(handle, places);
   amberfolio::machine::dos_path where;
   if (layer == nullptr || !path_of(path, where) || where.is_root()) {
     return {};
   }
-  return amberfolio::machine::match_save_file(*layer, where);
+  return amberfolio::machine::match_save_file(*layer, places, where);
 }
 
 /// Row `index` of the loaded program's layer, or null past the end.
 [[nodiscard]] const amberfolio::machine::save_file* file_at(
-    const af_machine* handle, uint32_t index) noexcept {
-  const amberfolio::machine::save_layer* layer = layer_of(handle);
+    const af_machine* handle, uint32_t index,
+    amberfolio::machine::save_layer_places& places) {
+  const amberfolio::machine::save_layer* layer = layer_of(handle, places);
   if (layer == nullptr || index >= layer->files.size()) {
     return nullptr;
   }
   return &layer->files[index];
+}
+
+[[nodiscard]] const amberfolio::machine::save_file* file_at(
+    const af_machine* handle, uint32_t index) {
+  amberfolio::machine::save_layer_places places;
+  return file_at(handle, index, places);
 }
 
 // --- The on-screen keyboard (machine/screen_keyboard.h, #377) ----------
@@ -1403,6 +1446,70 @@ uint32_t af_machine_load_error(const af_machine* handle) {
   return static_cast<uint32_t>(last_load_error);
 }
 
+uint32_t af_machine_set_current_directory(af_machine* handle,
+                                          const char* path) {
+  machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
+  if (fs == nullptr) {
+    return AF_NO_FILESYSTEM;
+  }
+  // The root is a directory like any other here: `\` and the empty
+  // string both name it, and making it current puts a machine back where
+  // every run before #397 was.
+  amberfolio::machine::dos_path where;
+  if (!path_of(path, where)) {
+    return AF_INVALID;
+  }
+  return box->dos().set_current_directory(*fs, where) ==
+                 amberfolio::machine::vfs_error::none
+             ? AF_OK
+             : AF_INVALID;
+}
+
+uint32_t af_machine_current_directory(const af_machine* handle, char* out,
+                                      uint32_t max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr) {
+    return 0;
+  }
+  std::array<char, amberfolio::machine::dos_path_capacity> text{};
+  const std::size_t length = amberfolio::machine::format_dos_path(
+      box->dos().current_directory(), text);
+  if (length >= text.size()) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(text.data(), length), out, max);
+}
+
+uint32_t af_machine_save_directory(const af_machine* handle, char* out,
+                                   uint32_t max) {
+  const amberfolio::machine::save_directory_answer saves = saves_of(handle);
+  if (!saves.ok()) {
+    return 0;
+  }
+  std::array<char, amberfolio::machine::dos_path_capacity> text{};
+  const std::size_t length =
+      amberfolio::machine::format_dos_path(saves.directory, text);
+  if (length >= text.size()) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(text.data(), length), out, max);
+}
+
+uint32_t af_machine_save_directory_trouble(const af_machine* handle, char* out,
+                                           uint32_t max) {
+  if (box_of(handle) == nullptr) {
+    return 0;
+  }
+  const std::string_view name =
+      amberfolio::machine::save_directory_trouble_name(
+          saves_of(handle).trouble);
+  return copy_out(std::span<const char>(name.data(), name.size()), out, max);
+}
+
 uint32_t af_machine_present_document(af_machine* handle, const uint8_t* bytes,
                                      uint32_t size, char* out, uint32_t max) {
   machine* box = box_of(handle);
@@ -1526,13 +1633,21 @@ uint32_t af_machine_save_layer_count(const af_machine* handle) {
 uint32_t af_machine_save_layer_pattern_at(const af_machine* handle,
                                           uint32_t index, char* out,
                                           uint32_t max) {
-  const amberfolio::machine::save_file* file = file_at(handle, index);
+  amberfolio::machine::save_layer_places places;
+  const amberfolio::machine::save_file* file = file_at(handle, index, places);
   if (file == nullptr) {
     return 0;
   }
-  return copy_out(
-      std::span<const char>(file->pattern.data(), file->pattern.size()), out,
-      max);
+  // With its directory in front: `SAVE\SAVGAM<S>.DAT` on the archive
+  // release, exactly the spelling this answered before the rows had
+  // directories, and `POOLRAD\SAVGAM<S>.DAT` on a copy that saves there.
+  std::array<char, amberfolio::machine::save_pattern_capacity> spelled{};
+  const std::size_t length =
+      amberfolio::machine::spell_save_pattern(*file, places, spelled);
+  if (length == 0) {
+    return 0;
+  }
+  return copy_out(std::span<const char>(spelled.data(), length), out, max);
 }
 
 uint32_t af_machine_save_layer_kind_at(const af_machine* handle, uint32_t index,

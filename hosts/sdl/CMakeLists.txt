@@ -26,8 +26,11 @@ add_executable(amberfolio-sdl
   # test can read.
   src/document_control.cpp
   src/dump.cpp
+  src/install.cpp
   src/keymap.cpp
   src/main.cpp
+  # `--install` (#397): the directory given, one directory down.
+  src/mounted_vfs.cpp
   src/ocr_discovery.cpp
   # `--press`'s grammar (#313) -- its own unit so tests/press_spec_test.cpp
   # can read it, on keymap.cpp's argument.
@@ -509,7 +512,9 @@ if(AMBERFOLIO_BUILD_TESTS)
     src/audio_gain.cpp
     src/desktop_config.cpp
     src/document_control.cpp
+    src/install.cpp
     src/keymap.cpp
+    src/mounted_vfs.cpp
     src/ocr_discovery.cpp
     src/glyph_atlas.cpp
     src/press_spec.cpp
@@ -520,7 +525,9 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/audio_gain_test.cpp
     tests/desktop_config_test.cpp
     tests/document_control_test.cpp
+    tests/install_test.cpp
     tests/keymap_test.cpp
+    tests/mounted_vfs_test.cpp
     tests/ocr_discovery_test.cpp
     tests/press_spec_test.cpp
     tests/screen_keyboard_view_test.cpp
