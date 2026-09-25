@@ -634,22 +634,23 @@ copy; and *apparatus* — what `tests/smoke.mjs` and the tooling look inside
 with, which is no promise. The store's own six are in none of them: they
 are `Machine` methods (below).
 
-### The edition table (#207)
+### The edition table (#207, #396)
 
 `editions.json` is what this build recognises, as data, before anything is
-loaded. Per edition: an `id` a roster keys on, the `name`
-`machine::known_editions()` shows, the file that `boot`s it, that file's
-SHA-256 as `fingerprint`, and the `artifacts` a copy is made of.
+loaded. A row is a **release**: what one seller ships. Per row: an `id` a
+roster keys on, the release's own `name` and a sentence `about` it, the
+file that `boot`s it, that file's SHA-256 as `fingerprint`, the `install`
+directory, and the `artifacts` a copy is made of.
 
 ```json
 {
-  "schema": "amberfolio.editions/1",
+  "schema": "amberfolio.editions/2",
   "editions": [
-    { "id": "por-archive", "name": "…", "boot": "START.EXE",
-      "fingerprint": "…",
+    { "id": "por-store", "name": "…", "about": "…", "boot": "START.EXE",
+      "fingerprint": "…", "install": "\\POOLRAD",
       "artifacts": [
         { "kind": "file", "name": "START.EXE", "required": true, "size": 0, "sha256": "…" },
-        { "kind": "directory", "name": "SAVE", "required": true },
+        { "kind": "configuration", "name": "POOL.CFG", "required": true },
         { "kind": "document", "document": "journal", "required": false,
           "about": "…", "sha256": "…" }
       ] }
@@ -657,21 +658,50 @@ SHA-256 as `fingerprint`, and the `artifacts` a copy is made of.
 }
 ```
 
-An artifact is one of three `kind`s. A `file` carries a name, a size and a
-digest; a `directory` carries a name and neither; a `document` is
-something the player *holds* rather than something the machine runs
-(`machine/document.h`), so it carries a digest, an `about` and which
-`document` it is, and never a filename — a player's own PDF is called
-whatever they called it.
+**Two rows, one program image.** `por-store` is the release sold on GOG
+and Steam, whose two installs are byte-identical in every program and
+data file; it is first, and it is the baseline. `por-archive` is a
+third-party repack of the same program, the copy the session library was
+recorded on (`tests/sessions/party.session` pins it and
+`edition_facts_test.cpp` checks the row against it). Both boot the same
+START.EXE, so `machine::known_editions()` has one row and this table two
+with one `fingerprint`; a row's `name` is the release's, not the machine
+edition's. The repack differs from the store release in GAME.OVR (two
+bytes, in the copy-protection overlay; `docs/seams.md` §5), in the
+CFG.C, CFG.EXE and POOL.BAT only it ships, and in `install`.
 
-**`required` means the copy is incomplete without it.** Every file and
-directory an edition ships is required and neither document is, which is
-PLAN.md §2's policy exactly: the binaries are the one artifact nothing
-runs without, and a missing document leaves its enhancement unavailable
-and changes nothing else. It does not claim the machine *opens* every
-required file — which of them this emulator ever reads is not a fact
-anybody here has measured, and a table that guessed would tell a player
-their copy was fine when it was not.
+**`install` is the directory of the machine's filesystem the copy's files
+live in, which is also the DOS current directory when the program is
+loaded.** DOS spelling, from the root: `\POOLRAD` for the store release,
+where both storefronts' own launchers mount the copy and change into it
+before running START, and `\` for the repack, which is where every
+existing player's copy already is. Each launcher writes its own POOL.CFG
+naming paths under that directory.
+
+An artifact is one of three `kind`s. A `file` carries a name, a size and a
+digest. A `configuration` file carries a name and neither: it is
+POOL.CFG, which each seller's launcher writes for its own install (GOG's
+is 35 bytes, Steam's 40, the repack's 24), so a player's copy carries
+whatever theirs wrote. A `document` is something the player *holds*
+rather than something the machine runs (`machine/document.h`), so it
+carries a digest, an `about` and which `document` it is, and never a
+filename — a player's own PDF is called whatever they called it. Both
+rows carry the same documents, because both run the same program.
+
+**`required` means the copy is incomplete without it.** Every file a
+release ships is required, its configuration file is required by name,
+and neither document is, which is PLAN.md §2's policy exactly: the
+binaries are the one artifact nothing runs without, and a missing
+document leaves its enhancement unavailable and changes nothing else. A
+row lists only what that release ships, so a store copy is never stopped
+over a file only the repack has. **The save directory is not an
+artifact**: the program makes it itself (INT 21h AH=39h) the first time
+it saves, so a copy without one is complete. The saved games a store
+ships beside its files are not artifacts either; they are the player's
+state from the first save on. `required` does not claim the machine
+*opens* every required file — which of them this emulator ever reads is
+not a fact anybody here has measured, and a table that guessed would tell
+a player their copy was fine when it was not.
 
 **One table, three readers.** `data/editions.json` is the table.
 `hosts/common/CMakeLists.txt` compiles it into the arrays behind
@@ -684,11 +714,21 @@ generates its edition roster without running anything;
 is editing the JSON. The `schema` is a version and every reader refuses
 one it does not speak, the configure included.
 
-**Matching is on the digest, never on the name**, in both
+**Files are matched on the digest, never on the name**, in both
 implementations. A renamed file still matches; a file carrying a required
 artifact's name with different bytes matches nothing, so it is reported as
 unclaimed while the artifact it is not is reported as missing, and those
-two lines together are the fact a player can act on.
+two lines together are the fact a player can act on. **A configuration
+file is matched on its name** (the last path component, any case), and
+only once a row has been chosen by digest, so a lone POOL.CFG names
+nothing. The closest row is the one the most offered files belong to by
+digest, the earlier row on a tie: a store copy matches `por-store`
+complete, the repack's disk matches `por-archive` complete, and a set
+holding only files both ship names the baseline.
+`host::find_requirements(fingerprint)` answers the first row for a
+fingerprint, which is the baseline; which release a particular copy *is*
+is a question about its other files, and the match is the answer.
+
 `host::match_edition()` and `matchEdition()` answer the closest edition,
 what matched, which required artifacts are missing, and which offered
 files nothing claimed. On the unrecognised path the desktop host prints

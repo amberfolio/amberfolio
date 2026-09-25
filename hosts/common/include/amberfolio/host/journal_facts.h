@@ -53,7 +53,7 @@
 //
 // This table had no rows for a stated reason: these offsets are facts
 // about a document somebody has to sit down with, and nobody had. M5-E3b
-// (#214) is somebody sitting down with one — the archive release's own
+// (#214) is somebody sitting down with one — the GOG release's own
 // journal, fifty-eight entries in seventy-eight pieces across nine
 // two-page scans, every rectangle measured off the scans and every
 // number checked against the printed headings. `docs/journal.md` §3 is

@@ -416,11 +416,41 @@ engine once, after the load:
 `af_machine_load_from_vfs` does it for a page.
 
 `machine/edition.h` is the table of editions (fingerprint and name); the
-baseline is the currently sold archive release. `find_edition()`
-answering null is the **unrecognized path**: the game runs as a plain
-machine, the hosts say so, and no seam is available. Availability is
-per seam: a seam is unavailable for any binary its `fingerprints` do not
-name.
+baseline is the START.EXE every address in the seam tables is a fact
+about. `find_edition()` answering null is the **unrecognized path**: the
+game runs as a plain machine, the hosts say so, and no seam is
+available. Availability is per seam: a seam is unavailable for any
+binary its `fingerprints` do not name.
+
+**One program image, two releases, every seam valid on both** (#396).
+The release sold on GOG and Steam and the third-party repack the facts
+were gathered on boot the same START.EXE; their requirement rows are
+`por-store` and `por-archive` (`docs/hosts.md` §5). Every file the two
+share is byte-identical but GAME.OVR, and GAME.OVR differs in two bytes,
+at file offsets 3288–3289, inside overlay 2 (code at file offset 2476,
+862 bytes), the copy-protection overlay. None of the three modules a
+seam pins by digest (§4) is overlay 2, and the one seam on that path is
+`code-wheel`, whose points are both in the resident image. Observed on a
+copy of the GOG install, driven headlessly beside the repack with the
+same keys:
+
+- **All seams off**, the challenge is drawn on the store copy exactly as
+  on the repack, and **a wrong answer is accepted**: the program goes on
+  to its main menu. The repack refuses the same answer and asks again.
+  That is the store release's own behaviour, the plain machine's; the
+  same copy with the repack's GAME.OVR in it refuses.
+- **`--seam code-wheel --code-wheel-answered`**: the boot steps over the
+  challenge on both, with pixel-identical stills over the whole run and
+  the same 144 firings.
+- **`--seam code-wheel`, unanswered**, with a wrong answer: the program's
+  compare still runs (145 firings, the one more being the challenge's),
+  the seam latches nothing, and the store copy goes on to the main menu
+  while the repack asks again. The seam's conclusion is the resident
+  compare's, which is the same code in both, so it latches exactly the
+  answers it latches on the repack.
+
+So no seam is withheld from the store copy, and `fingerprints` stays
+keyed on START.EXE alone.
 
 **The player's documents, and the gate (M5-D3, #171).** PLAN.md §2's
 other two artifacts, the Adventurer's Journal and the code wheel, are
@@ -818,6 +848,12 @@ PLAN.md §5 item 1. It never answers the challenge for anybody.
   on, the challenge unanswered, 144 firings over the boot, and every one
   of the 72 checkpoints equal to `boot.rec`'s, which has no engine at
   all (#293).
+- **On the store release** (#396): valid unchanged. Its GAME.OVR differs
+  from the repack's only inside the protection overlay, both points are
+  in the resident image, and the answered boot is pixel-identical on
+  both. With every seam off its challenge accepts a wrong answer by
+  itself; the seam watching it latches only what the resident compare
+  finds equal (§5).
 - **Rejected**: a document gate on the wheel PDF (#115, #171), because
   the releases sold today ship a code generator application (#290).
 - **Open**: `cite.rec` is the one session still on the boot that asked

@@ -7,8 +7,9 @@
 // whether the two agree — they are one thing. What is here is everything
 // the JSON could still get wrong on its own: an edition core does not
 // recognise, a document core does not know, a boot file that is not in
-// its own artifact list, and a file list that has drifted from the
-// pristine disk `tests/sessions/party.session` pins.
+// its own artifact list, a repack file list that has drifted from the
+// pristine disk `tests/sessions/party.session` pins, and two releases of
+// one program that the match cannot tell apart.
 
 #include "amberfolio/host/edition_facts.h"
 
@@ -16,10 +17,10 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
-#include <cstdint>
 #include <fstream>
 #include <ios>
 #include <limits>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -45,27 +46,53 @@ sha256_digest digest_of(std::string_view hex) {
   return out;
 }
 
-/// The one edition this build states requirements for, and the one every
-/// case below is about.
-const edition_requirements& only_edition() {
-  const std::span<const edition_requirements> table =
-      edition_requirements_table();
-  EXPECT_THAT(table, Not(IsEmpty()));
-  return table[0];
+/// The row with this id. Every case below names the release it is
+/// about, because two rows share one program image.
+const edition_requirements& row(std::string_view id) {
+  for (const edition_requirements& edition : edition_requirements_table()) {
+    if (edition.id == id) {
+      return edition;
+    }
+  }
+  ADD_FAILURE() << "no row " << id;
+  return edition_requirements_table()[0];
 }
 
+/// The release sold on GOG and Steam: the baseline, and the first row.
+const edition_requirements& store() { return row("por-store"); }
+/// The third-party repack the session library was recorded on.
+const edition_requirements& repack() { return row("por-archive"); }
+
+/// What a player's POOL.CFG hashes to: whatever their launcher wrote,
+/// which is nothing the table knows.
+constexpr std::string_view players_config =
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
 /// A player's whole copy of `edition`, as a host that walked the
-/// directory would offer it: every file, and nothing that is not one.
+/// directory would offer it: every file, and a configuration file of the
+/// player's own.
 std::vector<offered_file> whole_copy(const edition_requirements& edition) {
   std::vector<offered_file> offered;
   for (const edition_artifact& artifact : edition.artifacts) {
-    if (artifact.kind != artifact_kind::file) {
-      continue;
+    if (artifact.kind == artifact_kind::file) {
+      offered.push_back(
+          {.name = artifact.name, .digest = digest_of(artifact.fingerprint)});
+    } else if (artifact.kind == artifact_kind::configuration) {
+      offered.push_back(
+          {.name = artifact.name, .digest = digest_of(players_config)});
     }
-    offered.push_back(
-        {.name = artifact.name, .digest = digest_of(artifact.fingerprint)});
   }
   return offered;
+}
+
+/// Whether `match` says `name` is missing.
+bool misses(const edition_match& match, std::string_view name) {
+  for (const std::size_t a : match.missing) {
+    if (match.edition->artifacts[a].name == name) {
+      return true;
+    }
+  }
+  return false;
 }
 
 TEST(EditionFacts, EveryEditionIsOneTheMachineRecognizes) {
@@ -73,13 +100,39 @@ TEST(EditionFacts, EveryEditionIsOneTheMachineRecognizes) {
     sha256_digest digest;
     ASSERT_TRUE(machine::parse_digest(edition.fingerprint, digest))
         << edition.id;
-    const machine::edition* known = machine::find_edition(digest);
-    ASSERT_NE(known, nullptr)
+    EXPECT_NE(machine::find_edition(digest), nullptr)
         << edition.id
         << ": the requirements name an edition machine::known_editions() "
            "does not, so a host could render a checklist for a program "
            "this build would then refuse every seam for";
-    EXPECT_EQ(known->name, edition.name);
+    EXPECT_THAT(edition.name, Not(IsEmpty())) << edition.id;
+    EXPECT_THAT(edition.about, Not(IsEmpty())) << edition.id;
+  }
+}
+
+TEST(EditionFacts, TheStoreReleaseIsTheBaselineAndTheRepackKeepsItsId) {
+  const std::span<const edition_requirements> table =
+      edition_requirements_table();
+  ASSERT_EQ(table.size(), 2U);
+  EXPECT_EQ(&table[0], &store());
+  // The site keys on ids and the session library pins this disk, so the
+  // repack's id is the one it has always had.
+  EXPECT_EQ(repack().id, "por-archive");
+  // One program image, two releases.
+  EXPECT_EQ(store().fingerprint, repack().fingerprint);
+  EXPECT_EQ(machine::known_editions().size(), 1U);
+}
+
+TEST(EditionFacts, EachRowStatesWhereItIsInstalled) {
+  // Where the store's own launcher mounts the copy and changes into it,
+  // and the root for the repack, which is where every existing player's
+  // copy already is.
+  EXPECT_EQ(store().install, "\\POOLRAD");
+  EXPECT_EQ(repack().install, "\\");
+  for (const edition_requirements& edition : edition_requirements_table()) {
+    ASSERT_THAT(edition.install, Not(IsEmpty())) << edition.id;
+    EXPECT_EQ(edition.install.front(), '\\') << edition.id;
+    EXPECT_EQ(edition.install.find('/'), std::string_view::npos) << edition.id;
   }
 }
 
@@ -100,13 +153,13 @@ TEST(EditionFacts, TheBootFileIsAnArtifactAndCarriesTheFingerprint) {
 }
 
 TEST(EditionFacts, EveryDocumentIsOneTheMachineKnowsAndNoneIsRequired) {
-  std::size_t documents = 0;
+  std::set<std::string_view> documents;
   for (const edition_requirements& edition : edition_requirements_table()) {
     for (const edition_artifact& artifact : edition.artifacts) {
       if (artifact.kind != artifact_kind::document) {
         continue;
       }
-      ++documents;
+      documents.insert(artifact.fingerprint);
       // PLAN.md §2: the binaries are the one artifact nothing runs
       // without. A document that came back required would be this build
       // refusing a copy over a PDF.
@@ -121,7 +174,8 @@ TEST(EditionFacts, EveryDocumentIsOneTheMachineKnowsAndNoneIsRequired) {
       EXPECT_EQ(known->name, artifact.about);
     }
   }
-  EXPECT_EQ(documents, machine::known_documents().size());
+  // Both releases run one program, so both carry the same documents.
+  EXPECT_EQ(documents.size(), machine::known_documents().size());
 }
 
 TEST(EditionFacts, EveryFileIsRequiredAndCarriesASizeAndADigest) {
@@ -139,19 +193,43 @@ TEST(EditionFacts, EveryFileIsRequiredAndCarriesASizeAndADigest) {
   }
 }
 
+TEST(EditionFacts, TheConfigurationFileIsRequiredByNameAlone) {
+  for (const edition_requirements& edition : edition_requirements_table()) {
+    std::size_t configurations = 0;
+    for (const edition_artifact& artifact : edition.artifacts) {
+      if (artifact.kind != artifact_kind::configuration) {
+        continue;
+      }
+      ++configurations;
+      EXPECT_EQ(artifact.name, "POOL.CFG") << edition.id;
+      EXPECT_TRUE(artifact.required) << edition.id;
+      EXPECT_THAT(artifact.fingerprint, IsEmpty()) << edition.id;
+      EXPECT_EQ(artifact.size, 0U) << edition.id;
+    }
+    EXPECT_EQ(configurations, 1U) << edition.id;
+  }
+}
+
+TEST(EditionFacts, TheStoreRowListsOnlyWhatTheStoresShip) {
+  for (const edition_artifact& artifact : store().artifacts) {
+    EXPECT_NE(artifact.name, "CFG.C");
+    EXPECT_NE(artifact.name, "CFG.EXE");
+    EXPECT_NE(artifact.name, "POOL.BAT");
+  }
+}
+
 /// The one place in this repository that already pins a pristine copy of
-/// this edition, file by file: the descriptor of the session recorded on
-/// one (`tests/sessions/README.md`). If the two disagree, one of them is
+/// the repack, file by file: the descriptor of the session recorded on it
+/// (`tests/sessions/README.md`). If the two disagree, one of them is
 /// wrong about the player's disk, and a checklist that is wrong about it
 /// is worse than none.
-TEST(EditionFacts, TheFileListIsThePristineDiskTheSessionPins) {
+TEST(EditionFacts, TheRepackFileListIsThePristineDiskTheSessionPins) {
   const std::string path =
       std::string(AMBERFOLIO_SESSIONS_DIR) + "/party.session";
   std::ifstream descriptor(path);
   ASSERT_TRUE(descriptor.is_open()) << path;
 
   std::unordered_map<std::string, std::string> pinned;  // name -> "size sha"
-  std::vector<std::string> pinned_dirs;
   std::string keyword;
   while (descriptor >> keyword) {
     if (keyword == "file") {
@@ -162,83 +240,99 @@ TEST(EditionFacts, TheFileListIsThePristineDiskTheSessionPins) {
       std::string pin(size);
       pin.append(" ").append(sha);
       pinned.emplace(name, pin);
-    } else if (keyword == "dir") {
-      std::string name;
-      ASSERT_TRUE(static_cast<bool>(descriptor >> name));
-      pinned_dirs.push_back(name);
     } else {
+      // A `dir` line included: the disk pins its SAVE directory, which
+      // the program makes itself and no row requires.
       descriptor.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     }
   }
   ASSERT_THAT(pinned, Not(IsEmpty()));
 
-  const edition_requirements& edition = only_edition();
-  std::size_t files = 0;
-  std::size_t directories = 0;
-  for (const edition_artifact& artifact : edition.artifacts) {
+  std::size_t named = 0;
+  for (const edition_artifact& artifact : repack().artifacts) {
     if (artifact.kind == artifact_kind::document) {
       continue;
     }
-    const std::string name(artifact.name);
-    if (artifact.kind == artifact_kind::directory) {
-      ++directories;
-      EXPECT_THAT(pinned_dirs, ::testing::Contains(name));
-      continue;
-    }
-    ++files;
-    const auto found = pinned.find(name);
+    ++named;
+    const auto found = pinned.find(std::string(artifact.name));
     ASSERT_NE(found, pinned.end())
-        << name << " is required by the table and is not on the disk "
-        << "party.session pins";
-    EXPECT_EQ(found->second, std::to_string(artifact.size) + " " +
-                                 std::string(artifact.fingerprint));
+        << artifact.name << " is required by the table and is not on the "
+        << "disk party.session pins";
+    if (artifact.kind == artifact_kind::file) {
+      EXPECT_EQ(found->second, std::to_string(artifact.size) + " " +
+                                   std::string(artifact.fingerprint));
+    }
   }
-  EXPECT_EQ(files, pinned.size());
-  EXPECT_EQ(directories, pinned_dirs.size());
+  EXPECT_EQ(named, pinned.size());
 }
 
-TEST(EditionFacts, FindsRequirementsByTheBootFingerprint) {
-  const edition_requirements& edition = only_edition();
-  EXPECT_EQ(find_requirements(edition.fingerprint), &edition);
+TEST(EditionFacts, TheFingerprintFindsTheBaseline) {
+  EXPECT_EQ(find_requirements(store().fingerprint), &store());
+  EXPECT_EQ(find_requirements(repack().fingerprint), &store());
   EXPECT_EQ(find_requirements(""), nullptr);
   EXPECT_EQ(find_requirements(std::string(sha256_digest::text_length, 'a')),
             nullptr);
 }
 
-TEST(EditionMatch, AWholeCopyIsCompleteExceptForWhatIsNotAFile) {
-  const edition_requirements& edition = only_edition();
-  const std::vector<offered_file> offered = whole_copy(edition);
-  const edition_match match = match_edition(offered);
+TEST(EditionMatch, AWholeCopyOfEachReleaseMatchesItsOwnRowComplete) {
+  for (const edition_requirements& edition : edition_requirements_table()) {
+    const std::vector<offered_file> offered = whole_copy(edition);
+    const edition_match match = match_edition(offered);
 
-  ASSERT_EQ(match.edition, &edition);
+    ASSERT_EQ(match.edition, &edition) << edition.id;
+    EXPECT_THAT(match.unclaimed, IsEmpty()) << edition.id;
+    // The two documents are absent and say nothing, because neither is
+    // required; the player's own POOL.CFG answers for its row.
+    EXPECT_THAT(match.missing, IsEmpty()) << edition.id;
+    EXPECT_TRUE(match.complete()) << edition.id;
+  }
+}
+
+TEST(EditionMatch, TheConfigurationFileIsMatchedOnItsNameInAnyCaseOrPath) {
+  std::vector<offered_file> offered = whole_copy(store());
+  for (offered_file& file : offered) {
+    if (file.name == "POOL.CFG") {
+      file.name = "POOLRAD/pool.cfg";
+    }
+  }
+  const edition_match match = match_edition(offered);
+  ASSERT_EQ(match.edition, &store());
+  EXPECT_TRUE(match.complete());
   EXPECT_THAT(match.unclaimed, IsEmpty());
-  // The directory is the one required row a list of files cannot carry,
-  // and it is deliberately still reported: a copy with no SAVE\ is a
-  // copy that cannot save. The two documents are absent as well and say
-  // nothing here, because neither is required.
-  ASSERT_EQ(match.missing.size(), 1U);
-  EXPECT_EQ(edition.artifacts[match.missing[0]].kind, artifact_kind::directory);
-  EXPECT_FALSE(match.complete());
+}
+
+TEST(EditionMatch, ACopyWithNoConfigurationIsMissingIt) {
+  std::vector<offered_file> offered = whole_copy(store());
+  std::erase_if(offered, [](const offered_file& file) {
+    return file.name == "POOL.CFG";
+  });
+  const edition_match match = match_edition(offered);
+  ASSERT_EQ(match.edition, &store());
+  EXPECT_TRUE(misses(match, "POOL.CFG"));
+  EXPECT_EQ(match.missing.size(), 1U);
+}
+
+TEST(EditionMatch, AConfigurationFileAloneNamesNothing) {
+  const std::vector<offered_file> offered = {
+      {.name = "POOL.CFG", .digest = digest_of(players_config)}};
+  const edition_match match = match_edition(offered);
+  EXPECT_EQ(match.edition, nullptr);
 }
 
 TEST(EditionMatch, SaysWhichRequiredFilesAreMissing) {
-  const edition_requirements& edition = only_edition();
+  const edition_requirements& edition = store();
   std::vector<offered_file> offered = whole_copy(edition);
   ASSERT_GT(offered.size(), 2U);
-  const std::string_view dropped = offered.back().name;
-  offered.pop_back();
+  const std::string_view dropped = offered.front().name;
+  offered.erase(offered.begin());
 
   const edition_match match = match_edition(offered);
   ASSERT_EQ(match.edition, &edition);
-  bool named = false;
-  for (const std::size_t a : match.missing) {
-    named = named || edition.artifacts[a].name == dropped;
-  }
-  EXPECT_TRUE(named) << dropped;
+  EXPECT_TRUE(misses(match, dropped)) << dropped;
 }
 
 TEST(EditionMatch, MatchesOnBytesSoARenamedFileStillCounts) {
-  const edition_requirements& edition = only_edition();
+  const edition_requirements& edition = store();
   std::vector<offered_file> offered = whole_copy(edition);
   offered.front().name = "SOMETHING.ELSE";
 
@@ -248,7 +342,7 @@ TEST(EditionMatch, MatchesOnBytesSoARenamedFileStillCounts) {
 }
 
 TEST(EditionMatch, TheRightNameWithTheWrongBytesIsMissingAndUnclaimed) {
-  const edition_requirements& edition = only_edition();
+  const edition_requirements& edition = store();
   std::vector<offered_file> offered = whole_copy(edition);
   const std::string_view name = offered.front().name;
   offered.front().digest = digest_of(std::string(64, 'b'));
@@ -257,13 +351,32 @@ TEST(EditionMatch, TheRightNameWithTheWrongBytesIsMissingAndUnclaimed) {
   ASSERT_EQ(match.edition, &edition);
   // Both halves of the answer, which is the whole reason there are two
   // lists: the artifact is not here, and this file is not one of ours.
-  bool missed = false;
-  for (const std::size_t a : match.missing) {
-    missed = missed || edition.artifacts[a].name == name;
-  }
-  EXPECT_TRUE(missed) << name;
+  EXPECT_TRUE(misses(match, name)) << name;
   ASSERT_EQ(match.unclaimed.size(), 1U);
   EXPECT_EQ(offered[match.unclaimed[0]].name, name);
+}
+
+TEST(EditionMatch, TheOverlayTellsTheTwoReleasesApart) {
+  // A store copy with the repack's GAME.OVR in it: the repack's row is
+  // the closer one, and what it is missing is the three files only the
+  // repack ships.
+  std::vector<offered_file> offered = whole_copy(store());
+  for (offered_file& file : offered) {
+    if (file.name == "GAME.OVR") {
+      for (const edition_artifact& artifact : repack().artifacts) {
+        if (artifact.name == "GAME.OVR") {
+          file.digest = digest_of(artifact.fingerprint);
+        }
+      }
+    }
+  }
+  const edition_match match = match_edition(offered);
+  ASSERT_EQ(match.edition, &repack());
+  EXPECT_THAT(match.unclaimed, IsEmpty());
+  EXPECT_EQ(match.missing.size(), 3U);
+  EXPECT_TRUE(misses(match, "CFG.C"));
+  EXPECT_TRUE(misses(match, "CFG.EXE"));
+  EXPECT_TRUE(misses(match, "POOL.BAT"));
 }
 
 TEST(EditionMatch, KnowsNothingRatherThanGuessingWhenNothingBelongs) {
@@ -278,8 +391,10 @@ TEST(EditionMatch, KnowsNothingRatherThanGuessingWhenNothingBelongs) {
   EXPECT_THAT(match.missing, IsEmpty());
 }
 
-TEST(EditionMatch, OneFileIsEnoughToNameTheClosestEdition) {
-  const edition_requirements& edition = only_edition();
+TEST(EditionMatch, OneSharedFileNamesTheBaseline) {
+  // START.EXE belongs to both rows equally; a tie keeps the earlier row,
+  // which is the release sold today.
+  const edition_requirements& edition = store();
   const std::vector<offered_file> offered = {
       {.name = edition.boot, .digest = digest_of(edition.fingerprint)}};
   const edition_match match = match_edition(offered);

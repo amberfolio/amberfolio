@@ -25,11 +25,26 @@
 // edition is editing the JSON; nothing here is written twice, and the
 // two cannot drift because there is only one of them.
 //
-// `tests/edition_facts_test.cpp` holds the other two joints this table
-// has to keep: every edition's `fingerprint` is one
+// `tests/edition_facts_test.cpp` holds the other joints this table has
+// to keep: every edition's `fingerprint` is one
 // `machine::known_editions()` names, every document artifact is one
-// `machine::known_documents()` names, and the file list agrees with the
-// pristine disk `tests/sessions/party.session` pins.
+// `machine::known_documents()` names, and the repack's file list agrees
+// with the pristine disk `tests/sessions/party.session` pins.
+//
+//
+// Two rows, one program image
+// ---------------------------
+//
+// A row is a *release*: what one seller ships. The release sold on GOG
+// and Steam (`por-store`, the baseline and the first row) and a
+// third-party repack of it (`por-archive`, the copy the session library
+// was recorded on) boot the same START.EXE, so the machine has one
+// edition and this table has two rows with one `fingerprint`. They
+// differ in GAME.OVR (two bytes, inside the copy-protection overlay;
+// docs/seams.md §5), in the launcher and configurator only the repack
+// carries, and in where the copy is installed. `find_requirements()`
+// answers the baseline for that fingerprint; `match_edition()` picks
+// the row the offered files belong to.
 //
 //
 // Nothing here reproduces anything
@@ -55,12 +70,14 @@ namespace amberfolio::host {
 
 /// What one row of an edition's requirement list is.
 enum class artifact_kind : std::uint8_t {
-  /// A file on the machine's filesystem, with a size and a digest.
+  /// A file the release ships, with a size and a digest. Matched on the
+  /// digest.
   file,
-  /// A directory the edition ships. It has no digest and no size; the
-  /// game writes its saved games into one, so a copy without it is a
-  /// copy that cannot save.
-  directory,
+  /// A file the copy is launched with rather than one the release ships
+  /// the same bytes of: POOL.CFG, which each seller's launcher writes
+  /// for its own install. Required **by name** — no size, no digest —
+  /// because a player's copy carries whatever their launcher wrote.
+  configuration,
   /// Something the player *holds* rather than something the machine
   /// runs (`machine/document.h`): a digest, no filename, and never
   /// required.
@@ -76,7 +93,7 @@ struct edition_artifact {
   /// every file; the document rows carry the same words
   /// `machine::known_documents()` uses.
   std::string_view about;
-  /// 64 lowercase hex characters. Empty for a directory.
+  /// 64 lowercase hex characters. Empty for a configuration file.
   std::string_view fingerprint;
   /// Bytes. Zero when the table states no size, which is every row that
   /// is not a file.
@@ -86,10 +103,14 @@ struct edition_artifact {
   /// row.
   machine::document_kind document{machine::document_kind::none};
   /// **Required means the copy is incomplete without it.** Every file
-  /// and directory the edition ships is required; the documents are
-  /// not, which is PLAN.md §2's policy exactly — the binaries are the
-  /// one artifact nothing runs without, and a missing document leaves
-  /// its enhancement unavailable and changes nothing else.
+  /// the release ships is required, and so is its configuration file by
+  /// name; the documents are not, which is PLAN.md §2's policy exactly —
+  /// the binaries are the one artifact nothing runs without, and a
+  /// missing document leaves its enhancement unavailable and changes
+  /// nothing else. A row lists only what that release ships: a store
+  /// copy is never stopped over a file only the repack carries. The
+  /// save directory is not a row at all — the program makes it itself
+  /// (INT 21h AH=39h) the first time it saves.
   ///
   /// It does not claim the machine *opens* every required file. Which
   /// of them this emulator ever reads is not a fact anybody here has
@@ -98,20 +119,29 @@ struct edition_artifact {
   bool required{false};
 };
 
-/// One edition, as a host has to render it before anything is loaded.
+/// One release, as a host has to render it before anything is loaded.
 struct edition_requirements {
   /// A stable key for whoever generates a roster from this. Never a
   /// display string.
   std::string_view id;
-  /// The words `machine::known_editions()` shows for the same edition,
-  /// spelled once and asserted equal by the test beside this.
+  /// The release's own name, for a player. Not the machine edition's
+  /// name: two releases of one program image are one
+  /// `machine::known_editions()` row and two of these.
   std::string_view name;
+  /// One sentence on what this release is.
+  std::string_view about;
   /// The file that boots it — what a host offers as the program to run,
   /// and the artifact whose digest is the `fingerprint` below.
   std::string_view boot;
   /// The boot file's SHA-256: the key `machine::find_edition()` looks
-  /// this edition up by.
+  /// this edition up by. Several rows may share one.
   std::string_view fingerprint;
+  /// The directory of the machine's filesystem the copy's files live in,
+  /// which is also the DOS current directory when the program is loaded
+  /// — DOS spelling, from the root: `\POOLRAD` for the store release,
+  /// where its own launcher mounts the copy and changes into it, and `\`
+  /// for the repack. The default is the root.
+  std::string_view install{"\\"};
   std::span<const edition_artifact> artifacts;
 };
 
@@ -120,9 +150,15 @@ struct edition_requirements {
 [[nodiscard]] std::span<const edition_requirements>
 edition_requirements_table();
 
-/// The requirements of the edition whose boot file has this fingerprint,
-/// or null. The 64-hex spelling, so a caller holding a
-/// `machine::edition` can look up its own row without hashing anything.
+/// The first row whose boot file has this fingerprint, or null. The
+/// 64-hex spelling, so a caller holding a `machine::edition` can look up
+/// a row without hashing anything.
+///
+/// **One program image can be several releases**, and this answers the
+/// first of them in the table's order, which is the baseline: the table
+/// puts the release sold today first. Which release a particular copy
+/// *is* is a question about its other files, and `match_edition()` is
+/// the answer to it.
 [[nodiscard]] const edition_requirements* find_requirements(
     std::string_view fingerprint) noexcept;
 
@@ -135,22 +171,29 @@ struct offered_file {
 
 /// What a set of fingerprinted files turned out to be.
 ///
-/// **Matched on the digest, never on the name.** A file that was renamed
-/// still matches, and a file that carries a required artifact's name and
-/// different bytes matches nothing — so it lands in `unclaimed` while
-/// the artifact it is not lands in `missing`. Those two lines together
-/// are the fact a player can act on ("START.EXE is here and is a
-/// different build"), and no single-bucket answer says it.
+/// **Files are matched on the digest, never on the name.** A file that
+/// was renamed still matches, and a file that carries a required
+/// artifact's name and different bytes matches nothing — so it lands in
+/// `unclaimed` while the artifact it is not lands in `missing`. Those two
+/// lines together are the fact a player can act on ("START.EXE is here
+/// and is a different build"), and no single-bucket answer says it.
+///
+/// **A configuration row is matched on the name**, case-insensitively
+/// and on the last path component, because its bytes are whatever the
+/// player's launcher wrote. It is matched only once a row has been
+/// chosen by digest: a directory holding a POOL.CFG and nothing else is
+/// not a copy of anything.
 struct edition_match {
-  /// The closest edition — the one the most of these files belong to —
-  /// or null when not one file belonged to any of them, which is the
-  /// honest answer for a directory that holds something else entirely.
+  /// The closest edition — the one the most of these files belong to by
+  /// digest, the earlier row on a tie — or null when not one file
+  /// belonged to any of them, which is the honest answer for a directory
+  /// that holds something else entirely. Two releases of one program
+  /// share most of their files, so it is the files one release has and
+  /// the other does not that decide between them.
   const edition_requirements* edition{nullptr};
   /// Indices into `edition->artifacts`.
   std::vector<std::size_t> matched;
   /// Indices into `edition->artifacts`: required rows nothing offered.
-  /// A directory is one of them — a host that lists files only will see
-  /// it here, which is why this says `missing` and not `absent`.
   std::vector<std::size_t> missing;
   /// Indices into the offered files: the ones this edition does not
   /// name. A host prints them with their hashes, because that list plus
