@@ -162,10 +162,12 @@ same on `blur` and on the tab going hidden.
   session pins its disk by name, size and SHA-256. A run that is
   headless, driven, replayed, recorded, dumped or verified is never asked
   about it and keeps it off (§2b).
-- **A hard-disk install's config names absolute paths.** This host mounts
-  its directory as the DOS root, so every path built from that config
-  misses and the program asks for a floppy. A failed open is a legitimate
-  DOS answer, so the trace's file lines are where this shows (#121).
+- **A hard-disk install's config names absolute paths.** A copy mounted
+  somewhere its config does not expect — a store copy at the root, say —
+  misses every path built from it and the program asks for a floppy. The
+  edition row's `install` (or `--install`, §2c) is what puts it where its
+  config looks. A failed open is a legitimate DOS answer, so the trace's
+  file lines are where this shows (#121).
 - **`--dump`'s sound capture follows whoever pulls the timeline**, exactly
   one consumer (`platform.h`): SDL's audio thread when a device is open,
   the machine thread when headless. It holds a minute of virtual time, then

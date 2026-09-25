@@ -3881,7 +3881,7 @@ int main(int argc, char** argv) try {
                  spell_vfs_path(install).c_str());
     return EXIT_FAILURE;
   }
-  if (!install.is_root()) {
+  if (!install.is_root() || placed.from != std::string_view("the root")) {
     std::fprintf(stderr, "amberfolio: install %s (from %s) is current\n",
                  spell_vfs_path(install).c_str(), placed.from);
   }
