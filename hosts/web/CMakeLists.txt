@@ -224,6 +224,11 @@ set(_amberfolio_web_export_names
   _af_web_journal_entry_count
   _af_web_journal_entry_citation
   _af_web_journal_extract
+  # #398: an edition typeset as text is read out of the document here,
+  # with no engine on the page's side at all -- so the page asks which
+  # kind it has before it fetches one.
+  _af_web_journal_reads_own_text
+  _af_web_journal_read_text
   _af_web_journal_image_bytes
   _af_web_journal_image_width
   _af_web_journal_image_height
@@ -273,7 +278,9 @@ set(_amberfolio_web_export_names
   _af_web_journal_probe_bytes
   _af_web_journal_probe_size
   _af_web_journal_probe_text
-  _af_web_journal_probe_hash)
+  _af_web_journal_probe_hash
+  _af_web_journal_text_probe_bytes
+  _af_web_journal_text_probe_size)
 list(JOIN _amberfolio_web_export_names "," AMBERFOLIO_WEB_EXPORTS)
 
 target_link_options(amberfolio-web PRIVATE

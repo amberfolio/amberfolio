@@ -57,7 +57,8 @@
 // - **A page's.** The ingestion and what a reader asks of it, and the one
 //   surface a host that is not this repository's dev page is expected to
 //   call: `loadEngine`, `ENGINE_URL`, `ENGINE_HINT`, `ENGINE_VERSION_FILE`
-//   and `engineVersion`; `ingestJournal`; `JOURNAL_KINDS`, `journalKind`,
+//   and `engineVersion`; `ingestJournal` and `TEXT_ENGINE`;
+//   `JOURNAL_KINDS`, `journalKind`,
 //   `journalNumber` and `journalCitation`; `journalText`,
 //   `correctJournalEntry`, `clearStore`; `troubleName` and `JOURNAL_OK`.
 // - **The dev page's drawer and panel.** How *this* repository's page
@@ -68,7 +69,8 @@
 //   `serializeLog`, `readLog`, and `citeAllJournal` (the #301 cheat).
 // - **Apparatus.** What `tests/smoke.mjs` and the tooling look inside
 //   with, and what the ingestion itself is built out of; nothing here is
-//   a promise: `probeDocument`, `probeEngine`, `hashBytes`, `hashPixels`,
+//   a promise: `probeDocument`, `textProbeDocument`, `probeEngine`,
+//   `hashBytes`, `hashPixels`,
 //   `currentScan`, `currentImage`, `wordsWithin`, `readWithin`,
 //   `joinPieces`, `wordCount`, `DOUBTFUL_CONFIDENCE`, `PAGE_SCALE`,
 //   `JOURNAL_GRAY`, `JOURNAL_JPEG`.
@@ -100,6 +102,12 @@ export const ENGINE_URL = './vendor/tesseract/tesseract.min.js';
 export const ENGINE_HINT =
   'this build ships without one; a local build can fetch the pinned' +
   ' tesseract.js with scripts/fetch-ocr-engine.py';
+
+/// What a store read out of an edition typeset as text says for its
+/// engine (#398): `host::journal_text_engine`, the module's own words.
+/// Such an edition is read out of the document with no engine at all, so
+/// a page that sees this in a report has fetched nothing to get it.
+export const TEXT_ENGINE = 'document text';
 
 /// `journal_trouble::none`. Every journal call in the module answers one
 /// of that enum's values rather than an `AF_*` code, because each of the
@@ -855,6 +863,14 @@ export function journalCitation(kind, number) {
 /// extracted and none recognized, which is what a page with no engine
 /// installed should show rather than an error.
 ///
+/// `loadEngine`, instead of `engine`, is an async function answering
+/// `{ engine, why }` — `loadEngine()` below is one — and is called **only
+/// if the edition needs an engine** (#398). An edition typeset as text is
+/// read out of the document by the module itself, so a page that passes
+/// the loader rather than a loaded engine fetches nothing for it. An
+/// engine this function loaded, it closes. `report.engineWhy` carries the
+/// loader's sentence when it found none.
+///
 /// `onProgress({ index, count, citation })` is called before each entry,
 /// so a page can say where it is; a hundred entries through a wasm OCR
 /// engine is not a moment. A citation is opaque here — `journalKind()`
@@ -862,7 +878,7 @@ export function journalCitation(kind, number) {
 export async function ingestJournal(
   module,
   bytes,
-  { engine = null, onProgress = null } = {},
+  { engine = null, loadEngine: load = null, onProgress = null } = {},
 ) {
   const scratch = module._malloc(bytes.length);
   if (scratch === 0) throw new Error('out of wasm heap while passing a document');
@@ -895,10 +911,92 @@ export async function ingestJournal(
   const edition = readText(module, (out, cap) =>
     module._af_web_journal_edition_name(out, cap),
   );
+  const count = module._af_web_journal_entry_count();
+
+  // An edition typeset as text needs no engine and gets none (#398):
+  // the module reads each item out of the document and checks it against
+  // the edition table's digest, and the loop below only counts.
+  if (module._af_web_journal_reads_own_text() === 1) {
+    return readOwnText(module, { edition, fingerprint, count, onProgress });
+  }
+
+  let loaded = false;
+  let engineWhy = null;
+  if (!engine && load) {
+    const found = await load();
+    engine = found?.engine ?? null;
+    engineWhy = engine ? null : (found?.why ?? null);
+    loaded = engine !== null;
+  }
+  try {
+    return await readScans(module, {
+      edition,
+      fingerprint,
+      count,
+      engine,
+      engineWhy,
+      onProgress,
+    });
+  } finally {
+    if (loaded && engine?.close) await engine.close();
+  }
+}
+
+/// The text route's loop (#398): pictures as a scan's are made, then the
+/// item itself, read and kept inside the module in one call.
+function readOwnText(module, { edition, fingerprint, count, onProgress }) {
+  let extracted = 0;
+  let recognized = 0;
+  let firstTrouble = null;
+  let art = 0;
+  let pictures = 0;
+  for (let index = 0; index < count; ++index) {
+    const citation = module._af_web_journal_entry_citation(index);
+    if (onProgress) onProgress({ index, count, citation });
+    const has = module._af_web_journal_art_count(index);
+    if (has > 0) {
+      art += has;
+      pictures += module._af_web_journal_reduce_art(index);
+    }
+    const why = module._af_web_journal_read_text(index);
+    if (why !== JOURNAL_OK) {
+      firstTrouble ??= { citation, what: troubleName(module, why) };
+      continue;
+    }
+    ++extracted;
+    ++recognized;
+  }
+  return {
+    ok: true,
+    trouble: null,
+    firstTrouble,
+    fingerprint,
+    edition,
+    entries: count,
+    extracted,
+    recognized,
+    art,
+    pictures,
+    engine: TEXT_ENGINE,
+    engineWhy: null,
+    /// True when no engine was asked for or fetched: the words came out
+    /// of the document itself.
+    ownText: true,
+    store: storeStats(module),
+    quality: [],
+    reading: { known: false, words: 0, doubtful: 0, confidence: 0 },
+    worstFirst: [],
+  };
+}
+
+/// The scanned route's loop: extract, recognize in JS, hand the text back.
+async function readScans(
+  module,
+  { edition, fingerprint, count, engine, engineWhy, onProgress },
+) {
   const engineName = engine ? engine.name : 'none';
   withUtf8(module, engineName, (ptr) => module._af_web_journal_set_engine(ptr));
 
-  const count = module._af_web_journal_entry_count();
   let extracted = 0;
   let recognized = 0;
   let firstTrouble = null;
@@ -1009,6 +1107,8 @@ export async function ingestJournal(
     art,
     pictures,
     engine: engineName,
+    engineWhy,
+    ownText: false,
     store: storeStats(module),
     /// What the engine was sure of, per item and altogether (#315).
     /// `worstFirst` is the order somebody proof-reading wants: least
@@ -1421,6 +1521,16 @@ export function probeDocument(module) {
   module._af_web_journal_probe(1);
   const at = module._af_web_journal_probe_bytes();
   const size = module._af_web_journal_probe_size();
+  return module.HEAPU8.slice(at, at + size);
+}
+
+/// The **text** probe (#398): a synthetic edition typeset as text, which
+/// the module reads with no engine. Turns the probe table on too; the
+/// two probes are told apart by their fingerprints.
+export function textProbeDocument(module) {
+  module._af_web_journal_probe(1);
+  const at = module._af_web_journal_text_probe_bytes();
+  const size = module._af_web_journal_text_probe_size();
   return module.HEAPU8.slice(at, at + size);
 }
 

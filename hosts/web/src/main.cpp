@@ -55,6 +55,8 @@
 #include "amberfolio/host/journal_picture.h"
 #include "amberfolio/host/journal_probe.h"
 #include "amberfolio/host/journal_store.h"
+#include "amberfolio/host/journal_text.h"
+#include "amberfolio/host/journal_text_probe.h"
 #include "amberfolio/host/slot_store.h"
 #include "amberfolio/machine/log.h"
 #include "amberfolio/machine/machine.h"
@@ -414,6 +416,43 @@ uint32_t af_web_journal_entry_citation(uint32_t index) {
 /// what it reads out of them in this order.
 uint32_t af_web_journal_extract(uint32_t index) {
   return static_cast<uint32_t>(journal().ingester.extract(index));
+}
+
+/// 1 when the edition in hand is **typeset as text** and is read out of
+/// the document itself (#398), 0 for a scanned edition or none.
+///
+/// Asked right after `af_web_journal_ingest()`, and before a page fetches
+/// an OCR engine: for an edition that is text there is no engine to load,
+/// and the several megabytes it costs are not spent.
+uint32_t af_web_journal_reads_own_text(void) {
+  return journal().ingester.reads_own_text() ? 1U : 0U;
+}
+
+/// Read item `index` of a text edition out of the document, check it
+/// against its row's digest, and keep it in this tab's store — the whole
+/// of what `af_web_journal_extract()`, an engine and
+/// `af_web_journal_set_text()` are together for a scan (#398).
+///
+/// Answers a `journal_trouble`: `text_mismatch` for text the edition
+/// table does not name, which is kept nowhere, and `no_such_entry` for a
+/// scanned edition's row, which has no text to read. The store's engine
+/// line says `document text` from the first item read.
+uint32_t af_web_journal_read_text(uint32_t index) {
+  journal_session& session = journal();
+  std::string text;
+  const amberfolio::host::journal_trouble why =
+      session.ingester.read_text(index, text);
+  if (why != amberfolio::host::journal_trouble::none) {
+    return static_cast<uint32_t>(why);
+  }
+  const amberfolio::host::journal_entry_fact* fact =
+      session.ingester.entry_at(index);
+  session.store.set_engine(amberfolio::host::journal_text_engine);
+  if (!session.store.record_scan({.kind = fact->kind, .number = fact->number},
+                                 text)) {
+    return static_cast<uint32_t>(amberfolio::host::journal_trouble::too_large);
+  }
+  return static_cast<uint32_t>(amberfolio::host::journal_trouble::none);
 }
 
 /// Reduce entry `index`'s pictures into this tab's store (#345), and
@@ -894,6 +933,19 @@ const uint8_t* af_web_journal_probe_bytes(void) {
 
 uint32_t af_web_journal_probe_size(void) {
   return static_cast<uint32_t>(amberfolio::host::journal_probe_pdf().size());
+}
+
+/// The **text** probe document (#398): the second edition of the probe
+/// table, whose words are text. Found by the same `af_web_journal_probe(1)`
+/// as the scanned one, because the ingestion looks a document up by its
+/// fingerprint and the two have different ones.
+const uint8_t* af_web_journal_text_probe_bytes(void) {
+  return amberfolio::host::journal_text_probe_pdf().data();
+}
+
+uint32_t af_web_journal_text_probe_size(void) {
+  return static_cast<uint32_t>(
+      amberfolio::host::journal_text_probe_pdf().size());
 }
 
 /// The text the probe's fixture engine answers for entry `index`, so a

@@ -35,7 +35,13 @@ namespace {
 /// inside the file — is `hosts/common/src/journal_facts.cpp`. The two are
 /// checked against each other in CI, so a document known here and not
 /// there fails a test rather than a player's ingestion.
-constexpr std::array<document_edition, 2> table{{
+///
+/// **The Steam release's two** arrived with #398. Its journal is the same
+/// ninety-nine items typeset again as text, and is read out of the
+/// document rather than by an engine (`hosts/common/.../journal_text.h`);
+/// its code wheel is a row like the one above, a fact that gates nothing
+/// since #290.
+constexpr std::array<document_edition, 4> table{{
     {.fingerprint =
          "0db301aeac4d2ec1e63b409ca6d3c9d39c63381d6712ff2ce7edc0528c6586fd",
      .name = "Pool of Radiance code wheel, archive release (PDF)",
@@ -43,6 +49,14 @@ constexpr std::array<document_edition, 2> table{{
     {.fingerprint =
          "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c",
      .name = "Pool of Radiance Adventurer's Journal, archive release (PDF)",
+     .kind = document_kind::journal},
+    {.fingerprint =
+         "32b6bc792effc9778999702fa1801c41f58a504a1940ec4ce751ede8898f3f11",
+     .name = "Pool of Radiance code wheel, Steam release (PDF)",
+     .kind = document_kind::code_wheel},
+    {.fingerprint =
+         "a31368c35c527ce3f760ffac0596ab96254c79b22f7e89be219c6238954ac1ee",
+     .name = "Pool of Radiance Adventurer's Journal, Steam release (PDF)",
      .kind = document_kind::journal},
 }};
 

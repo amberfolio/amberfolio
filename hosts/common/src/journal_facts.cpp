@@ -1250,16 +1250,1177 @@ constexpr std::array<journal_entry_fact, 99> archive_entries{{
     {.kind = journal_kind::proclamation, .number = 214, .fragments = procl214},
 }};
 
-/// The edition, and the one this build knows the insides of.
+/// The Adventurer's Journal as the Steam release ships it (#398): **the
+/// same ninety-nine items, typeset again as text** rather than scanned.
+/// Its pages are two printed pages to a sheet, two columns to a printed
+/// page, like the scans above; the words are character codes in each
+/// page's content stream, in one font whose `/ToUnicode` map is the only
+/// fact needed to read them (`journal_text.h`).
 ///
-/// Its fingerprint is the same one `machine::known_documents()` carries
+/// **Measured, never transcribed**, by the rule every row in this file
+/// keeps: offsets, lengths, decoded sizes, boxes in points, and a SHA-256
+/// per item of the text this build reads out of those boxes. No word of
+/// the document is here.
+///
+/// How the boxes were found, because the next person needs to know
+/// whether to trust them. Every run of the eleven pages was placed by its
+/// origin and cut into the four column bands by the column margins
+/// (19.84, 167.24, 340.16 and 487.56 points). An item runs from its
+/// heading to the next heading in reading order: `Journal Entry N:`,
+/// `Proclamation` and a numeral, `Tale N:`, each the whole of its line or
+/// the start of it. **Matter outside the grid ends an item's run in that
+/// column**, as it does for the scans (`docs/journal.md` §3): a section's
+/// title and introduction, the map legend's note under entry 6, and the
+/// atlas's three map titles, which are set in another font and in another
+/// size. A box's top and bottom are the midpoints to the nearest line
+/// outside the item, and no line of anything else is inside one.
+///
+/// What came out: fifty-eight entries, twenty-three tales and eighteen
+/// proclamations — the archive edition's ninety-nine items, by the same
+/// numbers — in a hundred and fifteen pieces; every section ascends in
+/// reading order and every item begins with its own heading.
+///
+/// **The pictures** are the archive edition's fourteen, on the same
+/// entries: each is an image XObject placed inside its entry's column, or
+/// across the page under it (entry 42), and each rectangle is the part of
+/// the image the page's clip shows. Entry 37's first two maps are one
+/// image here, cut at the blank band between them; the three map titles
+/// are type set above the images and so are in no picture.
+constexpr std::array<journal_text_font, 1> steam_fonts{{
+    {.resource = "T1_0", .offset = 15555, .length = 609, .decoded = 1335},
+}};
+constexpr std::array<journal_text_page, 11> steam_pages{{
+    {.page = 8,
+     .offset = 570438,
+     .length = 5456,
+     .decoded = 31945,
+     .fonts = steam_fonts},
+    {.page = 9,
+     .offset = 576881,
+     .length = 5651,
+     .decoded = 31244,
+     .fonts = steam_fonts},
+    {.page = 10,
+     .offset = 583571,
+     .length = 5836,
+     .decoded = 29910,
+     .fonts = steam_fonts},
+    {.page = 11,
+     .offset = 899622,
+     .length = 6352,
+     .decoded = 33291,
+     .fonts = steam_fonts},
+    {.page = 12,
+     .offset = 1038729,
+     .length = 6295,
+     .decoded = 32350,
+     .fonts = steam_fonts},
+    {.page = 13,
+     .offset = 1398956,
+     .length = 6384,
+     .decoded = 33300,
+     .fonts = steam_fonts},
+    {.page = 14,
+     .offset = 1516500,
+     .length = 549,
+     .decoded = 1404,
+     .fonts = steam_fonts},
+    {.page = 15,
+     .offset = 2986009,
+     .length = 5891,
+     .decoded = 30833,
+     .fonts = steam_fonts},
+    {.page = 16,
+     .offset = 3402647,
+     .length = 7123,
+     .decoded = 37946,
+     .fonts = steam_fonts},
+    {.page = 17,
+     .offset = 3410788,
+     .length = 4807,
+     .decoded = 24882,
+     .fonts = steam_fonts},
+    {.page = 18,
+     .offset = 3588833,
+     .length = 4822,
+     .decoded = 23794,
+     .fonts = steam_fonts},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation059{{
+    {.page = 8, .box = {.left = 19, .bottom = 239, .right = 166, .top = 352}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation064{{
+    {.page = 8, .box = {.left = 19, .bottom = 140, .right = 166, .top = 238}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation078{{
+    {.page = 8, .box = {.left = 19, .bottom = 52, .right = 166, .top = 139}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation101{{
+    {.page = 8, .box = {.left = 167, .bottom = 239, .right = 339, .top = 378}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation109{{
+    {.page = 8, .box = {.left = 167, .bottom = 159, .right = 339, .top = 238}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation110{{
+    {.page = 8, .box = {.left = 167, .bottom = 72, .right = 339, .top = 158}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation114{{
+    {.page = 8, .box = {.left = 340, .bottom = 356, .right = 486, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation120{{
+    {.page = 8, .box = {.left = 340, .bottom = 237, .right = 486, .top = 355}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation126{{
+    {.page = 8, .box = {.left = 340, .bottom = 157, .right = 486, .top = 236}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation129{{
+    {.page = 8, .box = {.left = 340, .bottom = 49, .right = 486, .top = 156}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation134{{
+    {.page = 8, .box = {.left = 487, .bottom = 356, .right = 640, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation154{{
+    {.page = 8, .box = {.left = 487, .bottom = 237, .right = 640, .top = 355}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation156{{
+    {.page = 8, .box = {.left = 487, .bottom = 117, .right = 640, .top = 236}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_proclamation170{{
+    {.page = 8, .box = {.left = 487, .bottom = 40, .right = 640, .top = 116}},
+    {.page = 9, .box = {.left = 19, .bottom = 407, .right = 166, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation190{{
+    {.page = 9, .box = {.left = 19, .bottom = 269, .right = 166, .top = 406}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation201{{
+    {.page = 9, .box = {.left = 19, .bottom = 152, .right = 166, .top = 268}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation204{{
+    {.page = 9, .box = {.left = 167, .bottom = 326, .right = 339, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_proclamation214{{
+    {.page = 9, .box = {.left = 167, .bottom = 219, .right = 339, .top = 325}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry001{{
+    {.page = 9, .box = {.left = 340, .bottom = 157, .right = 486, .top = 359}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry002{{
+    {.page = 9, .box = {.left = 340, .bottom = 20, .right = 486, .top = 156}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry003{{
+    {.page = 9, .box = {.left = 487, .bottom = 22, .right = 640, .top = 382}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry004{{
+    {.page = 10, .box = {.left = 19, .bottom = 364, .right = 166, .top = 461}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry004_art{{
+    {.page = 10,
+     .offset = 762137,
+     .length = 136467,
+     .image = {.width = 561,
+               .height = 558,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 0, .width = 561, .height = 558}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry005{{
+    {.page = 10, .box = {.left = 19, .bottom = 166, .right = 166, .top = 363}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry006{{
+    {.page = 10, .box = {.left = 19, .bottom = 111, .right = 166, .top = 165}},
+    {.page = 10, .box = {.left = 167, .bottom = 358, .right = 339, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry007{{
+    {.page = 10, .box = {.left = 167, .bottom = 114, .right = 339, .top = 357}},
+    {.page = 10, .box = {.left = 340, .bottom = 270, .right = 486, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry008{{
+    {.page = 10, .box = {.left = 340, .bottom = 122, .right = 486, .top = 269}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry009{{
+    {.page = 10, .box = {.left = 340, .bottom = 24, .right = 486, .top = 121}},
+    {.page = 10, .box = {.left = 487, .bottom = 368, .right = 640, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry010{{
+    {.page = 10, .box = {.left = 487, .bottom = 269, .right = 640, .top = 367}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry010_art{{
+    {.page = 10,
+     .offset = 591323,
+     .length = 115464,
+     .image = {.width = 537,
+               .height = 455,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::flate},
+     .region = {.left = 2, .top = 5, .width = 535, .height = 450}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry011{{
+    {.page = 10, .box = {.left = 487, .bottom = 24, .right = 640, .top = 268}},
+    {.page = 11, .box = {.left = 19, .bottom = 407, .right = 166, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry012{{
+    {.page = 11, .box = {.left = 19, .bottom = 308, .right = 166, .top = 406}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry013{{
+    {.page = 11, .box = {.left = 19, .bottom = 54, .right = 166, .top = 307}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry014{{
+    {.page = 11, .box = {.left = 167, .bottom = 246, .right = 339, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry015{{
+    {.page = 11, .box = {.left = 167, .bottom = 152, .right = 339, .top = 245}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry015_art{{
+    {.page = 11,
+     .offset = 907832,
+     .length = 129857,
+     .image = {.width = 532,
+               .height = 552,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 3, .width = 532, .height = 546}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry016{{
+    {.page = 11, .box = {.left = 167, .bottom = 30, .right = 339, .top = 151}},
+    {.page = 11, .box = {.left = 340, .bottom = 290, .right = 486, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry017{{
+    {.page = 11, .box = {.left = 340, .bottom = 161, .right = 486, .top = 289}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry018{{
+    {.page = 11, .box = {.left = 340, .bottom = 24, .right = 486, .top = 160}},
+    {.page = 11, .box = {.left = 487, .bottom = 388, .right = 640, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry019{{
+    {.page = 11, .box = {.left = 487, .bottom = 269, .right = 640, .top = 387}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry020{{
+    {.page = 11, .box = {.left = 487, .bottom = 44, .right = 640, .top = 268}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry021{{
+    {.page = 12, .box = {.left = 19, .bottom = 227, .right = 166, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry022{{
+    {.page = 12, .box = {.left = 19, .bottom = 142, .right = 166, .top = 226}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry022_art{{
+    {.page = 12,
+     .offset = 1046882,
+     .length = 107151,
+     .image = {.width = 571,
+               .height = 361,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 4, .top = 4, .width = 567, .height = 353}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry023{{
+    {.page = 12, .box = {.left = 19, .bottom = 30, .right = 166, .top = 141}},
+    {.page = 12, .box = {.left = 167, .bottom = 349, .right = 339, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry024{{
+    {.page = 12, .box = {.left = 167, .bottom = 73, .right = 339, .top = 348}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry025{{
+    {.page = 12, .box = {.left = 167, .bottom = 24, .right = 339, .top = 72}},
+    {.page = 12, .box = {.left = 340, .bottom = 241, .right = 486, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry026{{
+    {.page = 12, .box = {.left = 340, .bottom = 26, .right = 486, .top = 240}},
+    {.page = 12, .box = {.left = 487, .bottom = 339, .right = 640, .top = 463}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry026_art{{
+    {.page = 12,
+     .offset = 1155949,
+     .length = 179137,
+     .image = {.width = 549,
+               .height = 461,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::flate},
+     .region = {.left = 0, .top = 0, .width = 549, .height = 459}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry027{{
+    {.page = 12, .box = {.left = 487, .bottom = 132, .right = 640, .top = 338}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry028{{
+    {.page = 12, .box = {.left = 487, .bottom = 103, .right = 640, .top = 131}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry028_art{{
+    {.page = 12,
+     .offset = 1336943,
+     .length = 60984,
+     .image = {.width = 561,
+               .height = 298,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 0, .width = 561, .height = 296}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry029{{
+    {.page = 13, .box = {.left = 19, .bottom = 369, .right = 166, .top = 461}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry029_art{{
+    {.page = 13,
+     .offset = 1417808,
+     .length = 97650,
+     .image = {.width = 522,
+               .height = 529,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 0, .width = 522, .height = 529}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry030{{
+    {.page = 13, .box = {.left = 19, .bottom = 61, .right = 166, .top = 368}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry031{{
+    {.page = 13, .box = {.left = 167, .bottom = 246, .right = 339, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry032{{
+    {.page = 13, .box = {.left = 167, .bottom = 90, .right = 339, .top = 245}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry033{{
+    {.page = 13, .box = {.left = 340, .bottom = 305, .right = 486, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry034{{
+    {.page = 13, .box = {.left = 340, .bottom = 166, .right = 486, .top = 304}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry035{{
+    {.page = 13, .box = {.left = 340, .bottom = 30, .right = 486, .top = 165}},
+    {.page = 13, .box = {.left = 487, .bottom = 358, .right = 640, .top = 463}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry035_art{{
+    {.page = 13,
+     .offset = 1407195,
+     .length = 8756,
+     .image = {.width = 471,
+               .height = 76,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 0, .width = 471, .height = 76}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry036{{
+    {.page = 13, .box = {.left = 487, .bottom = 65, .right = 640, .top = 357}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry037{{
+    {.page = 14, .box = {.left = 19, .bottom = 431, .right = 166, .top = 463}},
+}};
+constexpr std::array<journal_fragment, 3> steam_entry037_art{{
+    {.page = 14,
+     .offset = 1518909,
+     .length = 819641,
+     .image = {.width = 1213,
+               .height = 1642,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 5, .width = 1213, .height = 694}},
+    {.page = 14,
+     .offset = 1518909,
+     .length = 819641,
+     .image = {.width = 1213,
+               .height = 1642,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 815, .width = 1213, .height = 813}},
+    {.page = 14,
+     .offset = 2340410,
+     .length = 644570,
+     .image = {.width = 1197,
+               .height = 1626,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 3, .top = 5, .width = 1190, .height = 1621}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry038{{
+    {.page = 15, .box = {.left = 19, .bottom = 246, .right = 166, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry039{{
+    {.page = 15, .box = {.left = 19, .bottom = 129, .right = 166, .top = 245}},
+    {.page = 15, .box = {.left = 167, .bottom = 388, .right = 339, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry040{{
+    {.page = 15, .box = {.left = 167, .bottom = 308, .right = 339, .top = 387}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry041{{
+    {.page = 15, .box = {.left = 167, .bottom = 213, .right = 339, .top = 307}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry041_art{{
+    {.page = 15,
+     .offset = 3087968,
+     .length = 313691,
+     .image = {.width = 533,
+               .height = 540,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::flate},
+     .region = {.left = 0, .top = 5, .width = 533, .height = 530}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry042{{
+    {.page = 15, .box = {.left = 167, .bottom = 121, .right = 339, .top = 212}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry042_art{{
+    {.page = 15,
+     .offset = 2993758,
+     .length = 92294,
+     .image = {.width = 1072,
+               .height = 381,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 0, .width = 1072, .height = 381}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry043{{
+    {.page = 15, .box = {.left = 340, .bottom = 23, .right = 486, .top = 461}},
+    {.page = 15, .box = {.left = 487, .bottom = 388, .right = 640, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry044{{
+    {.page = 15, .box = {.left = 487, .bottom = 46, .right = 640, .top = 387}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry045{{
+    {.page = 16, .box = {.left = 19, .bottom = 23, .right = 166, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry046{{
+    {.page = 16, .box = {.left = 167, .bottom = 119, .right = 339, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry047{{
+    {.page = 16, .box = {.left = 167, .bottom = 31, .right = 339, .top = 118}},
+    {.page = 16, .box = {.left = 340, .bottom = 368, .right = 486, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry048{{
+    {.page = 16, .box = {.left = 340, .bottom = 132, .right = 486, .top = 367}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry049{{
+    {.page = 16, .box = {.left = 340, .bottom = 24, .right = 486, .top = 131}},
+    {.page = 16, .box = {.left = 487, .bottom = 349, .right = 640, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry050{{
+    {.page = 16, .box = {.left = 487, .bottom = 85, .right = 640, .top = 348}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry051{{
+    {.page = 17, .box = {.left = 19, .bottom = 237, .right = 166, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry052{{
+    {.page = 17, .box = {.left = 19, .bottom = 90, .right = 166, .top = 236}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry053{{
+    {.page = 17, .box = {.left = 167, .bottom = 364, .right = 339, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry054{{
+    {.page = 17, .box = {.left = 167, .bottom = 149, .right = 339, .top = 363}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry055{{
+    {.page = 17, .box = {.left = 340, .bottom = 305, .right = 486, .top = 461}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry056{{
+    {.page = 17, .box = {.left = 340, .bottom = 215, .right = 486, .top = 304}},
+}};
+constexpr std::array<journal_text_fragment, 2> steam_entry057{{
+    {.page = 17, .box = {.left = 340, .bottom = 108, .right = 486, .top = 214}},
+    {.page = 17, .box = {.left = 487, .bottom = 358, .right = 640, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_entry058{{
+    {.page = 17, .box = {.left = 487, .bottom = 330, .right = 640, .top = 357}},
+}};
+constexpr std::array<journal_fragment, 1> steam_entry058_art{{
+    {.page = 17,
+     .offset = 3417453,
+     .length = 170392,
+     .image = {.width = 557,
+               .height = 556,
+               .bits_per_component = 8,
+               .components = 3,
+               .filter = journal_filter::dct},
+     .region = {.left = 0, .top = 5, .width = 557, .height = 546}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale001{{
+    {.page = 18, .box = {.left = 19, .bottom = 240, .right = 166, .top = 277}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale002{{
+    {.page = 18, .box = {.left = 19, .bottom = 202, .right = 166, .top = 239}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale003{{
+    {.page = 18, .box = {.left = 19, .bottom = 164, .right = 166, .top = 201}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale004{{
+    {.page = 18, .box = {.left = 19, .bottom = 116, .right = 166, .top = 163}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale005{{
+    {.page = 18, .box = {.left = 19, .bottom = 81, .right = 166, .top = 115}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale006{{
+    {.page = 18, .box = {.left = 167, .bottom = 345, .right = 339, .top = 408}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale007{{
+    {.page = 18, .box = {.left = 167, .bottom = 307, .right = 339, .top = 344}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale008{{
+    {.page = 18, .box = {.left = 167, .bottom = 279, .right = 339, .top = 306}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale009{{
+    {.page = 18, .box = {.left = 167, .bottom = 221, .right = 339, .top = 278}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale010{{
+    {.page = 18, .box = {.left = 167, .bottom = 184, .right = 339, .top = 220}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale011{{
+    {.page = 18, .box = {.left = 167, .bottom = 148, .right = 339, .top = 183}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale012{{
+    {.page = 18, .box = {.left = 340, .bottom = 417, .right = 486, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale013{{
+    {.page = 18, .box = {.left = 340, .bottom = 379, .right = 486, .top = 416}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale014{{
+    {.page = 18, .box = {.left = 340, .bottom = 341, .right = 486, .top = 378}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale015{{
+    {.page = 18, .box = {.left = 340, .bottom = 294, .right = 486, .top = 340}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale016{{
+    {.page = 18, .box = {.left = 340, .bottom = 256, .right = 486, .top = 293}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale017{{
+    {.page = 18, .box = {.left = 340, .bottom = 208, .right = 486, .top = 255}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale018{{
+    {.page = 18, .box = {.left = 340, .bottom = 151, .right = 486, .top = 207}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale019{{
+    {.page = 18, .box = {.left = 340, .bottom = 105, .right = 486, .top = 150}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale020{{
+    {.page = 18, .box = {.left = 487, .bottom = 407, .right = 640, .top = 463}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale021{{
+    {.page = 18, .box = {.left = 487, .bottom = 360, .right = 640, .top = 406}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale022{{
+    {.page = 18, .box = {.left = 487, .bottom = 302, .right = 640, .top = 359}},
+}};
+constexpr std::array<journal_text_fragment, 1> steam_tale023{{
+    {.page = 18, .box = {.left = 487, .bottom = 257, .right = 640, .top = 301}},
+}};
+constexpr std::array<journal_entry_fact, 99> steam_entries{{
+    {.kind = journal_kind::proclamation,
+     .number = 59,
+     .art = {},
+     .text = steam_proclamation059,
+     .text_sha256 =
+         "8aac1c6502f2f8e9c46fac5001dbbcfd542f283c20e392a14d69c63edd306c24"},
+    {.kind = journal_kind::proclamation,
+     .number = 64,
+     .art = {},
+     .text = steam_proclamation064,
+     .text_sha256 =
+         "70bdaf2b484d537df8422451da246bcbe45280fa84e52fc41d3b25c2247f6a83"},
+    {.kind = journal_kind::proclamation,
+     .number = 78,
+     .art = {},
+     .text = steam_proclamation078,
+     .text_sha256 =
+         "60a7a261d4089eb669e1afc8dad2fda84889511e27adf1a9852e0b4c26deb5eb"},
+    {.kind = journal_kind::proclamation,
+     .number = 101,
+     .art = {},
+     .text = steam_proclamation101,
+     .text_sha256 =
+         "e716ea58b66e644ee2576cf5889b562951e512d3637e1fa7e1b01c5b62dd18fe"},
+    {.kind = journal_kind::proclamation,
+     .number = 109,
+     .art = {},
+     .text = steam_proclamation109,
+     .text_sha256 =
+         "5178f1940d82b869011afcbeb76afa6c9911ae0af00c448cbf3dfbcbbbc7e214"},
+    {.kind = journal_kind::proclamation,
+     .number = 110,
+     .art = {},
+     .text = steam_proclamation110,
+     .text_sha256 =
+         "2f770e9de80342b48af6cecd151185850215273d659d5c3accfd71df6f814d96"},
+    {.kind = journal_kind::proclamation,
+     .number = 114,
+     .art = {},
+     .text = steam_proclamation114,
+     .text_sha256 =
+         "601d15798bc322a36dced22473c68e59fe95cf153fbb078f3cb9ec6b3c562f29"},
+    {.kind = journal_kind::proclamation,
+     .number = 120,
+     .art = {},
+     .text = steam_proclamation120,
+     .text_sha256 =
+         "7873d72756263b6b79e91d3cce760096d3a1b501a9d91e349c8b6304e1120726"},
+    {.kind = journal_kind::proclamation,
+     .number = 126,
+     .art = {},
+     .text = steam_proclamation126,
+     .text_sha256 =
+         "da8da89f8525bc2fc3d6873b2c337a6b72aceded5b543c2c3ae831e37cb158e2"},
+    {.kind = journal_kind::proclamation,
+     .number = 129,
+     .art = {},
+     .text = steam_proclamation129,
+     .text_sha256 =
+         "499b9b756cb2aeccf8702ae451e2d4a11f3324afe94d47c592034d26c8f14c53"},
+    {.kind = journal_kind::proclamation,
+     .number = 134,
+     .art = {},
+     .text = steam_proclamation134,
+     .text_sha256 =
+         "dd6710646dd145916ccd1f0ba7a6bee2678dc6b2f089b8d48869406cc0845dfa"},
+    {.kind = journal_kind::proclamation,
+     .number = 154,
+     .art = {},
+     .text = steam_proclamation154,
+     .text_sha256 =
+         "8ba9dad4c84b8d4ddf6745398022c80fbfe27491fda801d263f5fcb48ba51688"},
+    {.kind = journal_kind::proclamation,
+     .number = 156,
+     .art = {},
+     .text = steam_proclamation156,
+     .text_sha256 =
+         "0b2dcdd8aa9c5d52b4cd25aab994ee85f68d85544b4e458783cd4776ac2ee182"},
+    {.kind = journal_kind::proclamation,
+     .number = 170,
+     .art = {},
+     .text = steam_proclamation170,
+     .text_sha256 =
+         "099f3f2dd99b543ba444bf2edaf29c7798f8fb21eac10a0526c2c9504d6f5df7"},
+    {.kind = journal_kind::proclamation,
+     .number = 190,
+     .art = {},
+     .text = steam_proclamation190,
+     .text_sha256 =
+         "ec7bfe423239586c55ea8d20f0edc519975be2b5c97f042e01957ad0eb69ca78"},
+    {.kind = journal_kind::proclamation,
+     .number = 201,
+     .art = {},
+     .text = steam_proclamation201,
+     .text_sha256 =
+         "d5aa7aafc5590e7d00d83839e77f4b6d41edc2770eb5360a319913f38786bf57"},
+    {.kind = journal_kind::proclamation,
+     .number = 204,
+     .art = {},
+     .text = steam_proclamation204,
+     .text_sha256 =
+         "60b65cdf8f3da60024ae86e07d956eaf59c786b227e9514903a19a0560dd5142"},
+    {.kind = journal_kind::proclamation,
+     .number = 214,
+     .art = {},
+     .text = steam_proclamation214,
+     .text_sha256 =
+         "21c3ab76af96d9bea8f86b0fbd42beafd52b5e7ce55849cb4f1579d7a7a117fe"},
+    {.kind = journal_kind::entry,
+     .number = 1,
+     .art = {},
+     .text = steam_entry001,
+     .text_sha256 =
+         "a5706c12d653738f5748f08e91c4cdb21fd70a4c4c3fa04ac9bf50d882978fe9"},
+    {.kind = journal_kind::entry,
+     .number = 2,
+     .art = {},
+     .text = steam_entry002,
+     .text_sha256 =
+         "b7dfb14070bb075486f116d6a2307498b755815835357ea493bf78ceb0423edd"},
+    {.kind = journal_kind::entry,
+     .number = 3,
+     .art = {},
+     .text = steam_entry003,
+     .text_sha256 =
+         "5a85a9cb57e42a234dda90c46d841e6723d632e87d980652f601dc2ba2b30de4"},
+    {.kind = journal_kind::entry,
+     .number = 4,
+     .art = steam_entry004_art,
+     .text = steam_entry004,
+     .text_sha256 =
+         "6e3b89f56a87aca876fe84ff55603beca6c52f944760dcf2b892f596e6f2867f"},
+    {.kind = journal_kind::entry,
+     .number = 5,
+     .art = {},
+     .text = steam_entry005,
+     .text_sha256 =
+         "8464933f831c2309eda415ae95dd214c18d85eef3ac659861eb447772c4f9c48"},
+    {.kind = journal_kind::entry,
+     .number = 6,
+     .art = {},
+     .text = steam_entry006,
+     .text_sha256 =
+         "529265903d64e1878e70954e484c4e74f584e8834a1a53c6d303fca295dd4f98"},
+    {.kind = journal_kind::entry,
+     .number = 7,
+     .art = {},
+     .text = steam_entry007,
+     .text_sha256 =
+         "5f4b0ca392fa659ebecbce5fe4863254ab4b93226fea6302cf69267fe9bcb549"},
+    {.kind = journal_kind::entry,
+     .number = 8,
+     .art = {},
+     .text = steam_entry008,
+     .text_sha256 =
+         "38cb207bfe6bdf5bdb5b699297d41ab542313d1170723fb3800bba22df084c8e"},
+    {.kind = journal_kind::entry,
+     .number = 9,
+     .art = {},
+     .text = steam_entry009,
+     .text_sha256 =
+         "70132a04d88c71fa6cc94decd3c2244d21b393c38b3ed49da7e258303ad8399a"},
+    {.kind = journal_kind::entry,
+     .number = 10,
+     .art = steam_entry010_art,
+     .text = steam_entry010,
+     .text_sha256 =
+         "bc30899093c9878aa22493d0581653f7a823d1260fe2cf0917beb9d0e56a7236"},
+    {.kind = journal_kind::entry,
+     .number = 11,
+     .art = {},
+     .text = steam_entry011,
+     .text_sha256 =
+         "d8cca90f5a1167a896dffd0814dea9985f9e84f0bc2c4349f53c407b0d03e7f4"},
+    {.kind = journal_kind::entry,
+     .number = 12,
+     .art = {},
+     .text = steam_entry012,
+     .text_sha256 =
+         "0057a81af2c823e695f5b4c186acef738a4309166f2edf28b3eb8df2aaaf3208"},
+    {.kind = journal_kind::entry,
+     .number = 13,
+     .art = {},
+     .text = steam_entry013,
+     .text_sha256 =
+         "606761492842a37c47926c16343b0a98495a200db39f5f3f47dea464519aa2f6"},
+    {.kind = journal_kind::entry,
+     .number = 14,
+     .art = {},
+     .text = steam_entry014,
+     .text_sha256 =
+         "e8a88ebd6bb289d9eba22e8eb220f1086141afb6a603c07c5287a7ee6318415e"},
+    {.kind = journal_kind::entry,
+     .number = 15,
+     .art = steam_entry015_art,
+     .text = steam_entry015,
+     .text_sha256 =
+         "5f4bbaf8e7fc022eb53887774a322e00a3a438fb0caa798c432a39907049fae5"},
+    {.kind = journal_kind::entry,
+     .number = 16,
+     .art = {},
+     .text = steam_entry016,
+     .text_sha256 =
+         "b0e6bfde0eba2f9437aaa03c5c9684c1090c0b0bec752cc7c93bea994cca0dfa"},
+    {.kind = journal_kind::entry,
+     .number = 17,
+     .art = {},
+     .text = steam_entry017,
+     .text_sha256 =
+         "d9f871dcbcbe764b5aae978a68214f0ae75a70c67041e4e8b2dc8baabf3cd7a3"},
+    {.kind = journal_kind::entry,
+     .number = 18,
+     .art = {},
+     .text = steam_entry018,
+     .text_sha256 =
+         "958853b27ab3089ff4ec8a0fbfb01f67634c137e5e98ab8957fc712cf7deaf39"},
+    {.kind = journal_kind::entry,
+     .number = 19,
+     .art = {},
+     .text = steam_entry019,
+     .text_sha256 =
+         "3b00a6e21d23ebe92be6724e65cbf0ecc662a86967bc7c586aabef6b16725d46"},
+    {.kind = journal_kind::entry,
+     .number = 20,
+     .art = {},
+     .text = steam_entry020,
+     .text_sha256 =
+         "de31d2f7f7d77c822b6072681384790ba9069e3fe8ff376f8c945c02cf88545b"},
+    {.kind = journal_kind::entry,
+     .number = 21,
+     .art = {},
+     .text = steam_entry021,
+     .text_sha256 =
+         "c0ba8d4111d873c1507d58cfe4d6925f81100272e5597df652215d29a03f10f8"},
+    {.kind = journal_kind::entry,
+     .number = 22,
+     .art = steam_entry022_art,
+     .text = steam_entry022,
+     .text_sha256 =
+         "ad392b7b59a9d09186e76a82f45546524f805c2104776d26f63a9dbcf1d676c2"},
+    {.kind = journal_kind::entry,
+     .number = 23,
+     .art = {},
+     .text = steam_entry023,
+     .text_sha256 =
+         "0d10dc557e9d4f036da1a5fe780986f5a0c44d9ab8d3f050b0745cfdd68cf19f"},
+    {.kind = journal_kind::entry,
+     .number = 24,
+     .art = {},
+     .text = steam_entry024,
+     .text_sha256 =
+         "6397528e841754a6a7ca0040b865b05ffe0fd68e4d01e74fea2fbe7593d649a9"},
+    {.kind = journal_kind::entry,
+     .number = 25,
+     .art = {},
+     .text = steam_entry025,
+     .text_sha256 =
+         "3b63728c0254138013257a5806686d8a4f6630dc2fbfd307d55ad49a7c408a14"},
+    {.kind = journal_kind::entry,
+     .number = 26,
+     .art = steam_entry026_art,
+     .text = steam_entry026,
+     .text_sha256 =
+         "e2dbd07b184f661e45b0a0aa1feb674001d686f0d9b7b299a701873048b9e3bc"},
+    {.kind = journal_kind::entry,
+     .number = 27,
+     .art = {},
+     .text = steam_entry027,
+     .text_sha256 =
+         "3986b5620999ff1d75cc225c3f38407b73de42f7d9bd08892fb235c6f725249e"},
+    {.kind = journal_kind::entry,
+     .number = 28,
+     .art = steam_entry028_art,
+     .text = steam_entry028,
+     .text_sha256 =
+         "a10c7fdd21dd2c381cddfdfa3e8eae132e0fe64973140307f42ed32e592189ee"},
+    {.kind = journal_kind::entry,
+     .number = 29,
+     .art = steam_entry029_art,
+     .text = steam_entry029,
+     .text_sha256 =
+         "d96bc586c832a5aba939a2cfa35b99476c2acc0e1ce29695e70118cfb66716bf"},
+    {.kind = journal_kind::entry,
+     .number = 30,
+     .art = {},
+     .text = steam_entry030,
+     .text_sha256 =
+         "8f3977514702836c2a04d85e218e1915743b0a0ef5fe74fff5af1d429a71f57f"},
+    {.kind = journal_kind::entry,
+     .number = 31,
+     .art = {},
+     .text = steam_entry031,
+     .text_sha256 =
+         "5bb2ff2f5c0f89c1eada6cc281178c1d66d256a1b3507256fa2369ad9f4b2b58"},
+    {.kind = journal_kind::entry,
+     .number = 32,
+     .art = {},
+     .text = steam_entry032,
+     .text_sha256 =
+         "52e588d8c1cede02af62dde7eda488497a3cfd0623337e82c639b43cf136a972"},
+    {.kind = journal_kind::entry,
+     .number = 33,
+     .art = {},
+     .text = steam_entry033,
+     .text_sha256 =
+         "362e7f00fb773f6889649e8ca08831c9f12fdde44b6a1dfab021d4aa56fcf662"},
+    {.kind = journal_kind::entry,
+     .number = 34,
+     .art = {},
+     .text = steam_entry034,
+     .text_sha256 =
+         "e104e3cef853ba243441f1a42c055f71261e4fbde6b85f31c789310da7aa4a7e"},
+    {.kind = journal_kind::entry,
+     .number = 35,
+     .art = steam_entry035_art,
+     .text = steam_entry035,
+     .text_sha256 =
+         "b8949a25d191d5395195c33dba065599a962a51fa6acc423f40cec1f3875ede3"},
+    {.kind = journal_kind::entry,
+     .number = 36,
+     .art = {},
+     .text = steam_entry036,
+     .text_sha256 =
+         "88ed23ecb73df96fce871d138fcd6921c90fa27d766477bccdd3c36928de4853"},
+    {.kind = journal_kind::entry,
+     .number = 37,
+     .art = steam_entry037_art,
+     .text = steam_entry037,
+     .text_sha256 =
+         "c98546b189555a2d46789a70dfdc4373187c135286954fe079d565b8c4960ce5"},
+    {.kind = journal_kind::entry,
+     .number = 38,
+     .art = {},
+     .text = steam_entry038,
+     .text_sha256 =
+         "ba6e25d7feb62d4cc6f2ea710b824c962bb72ea3545f9ea1589bf855e43d85f1"},
+    {.kind = journal_kind::entry,
+     .number = 39,
+     .art = {},
+     .text = steam_entry039,
+     .text_sha256 =
+         "4b77c38f29b59cc465f557a288447a32398274c4bcf603a265eff7486448c342"},
+    {.kind = journal_kind::entry,
+     .number = 40,
+     .art = {},
+     .text = steam_entry040,
+     .text_sha256 =
+         "2e0f6c62faa189365892dd8c93bfee1886b54f05c4596d9ace1c0929dbb6fff6"},
+    {.kind = journal_kind::entry,
+     .number = 41,
+     .art = steam_entry041_art,
+     .text = steam_entry041,
+     .text_sha256 =
+         "8c5f0cd4748b75b1a084e04c5556d0a1b86ceb083464c7aa46b63a475c8e8409"},
+    {.kind = journal_kind::entry,
+     .number = 42,
+     .art = steam_entry042_art,
+     .text = steam_entry042,
+     .text_sha256 =
+         "a003a8801e0e817c4ac9946acb0d896a62447ae558b0c216f33cdb9d47427ace"},
+    {.kind = journal_kind::entry,
+     .number = 43,
+     .art = {},
+     .text = steam_entry043,
+     .text_sha256 =
+         "322f5e5682938dd6a932b1f1e20ac4aec523cac0ca2a53c8f3d825a5e07a6aa0"},
+    {.kind = journal_kind::entry,
+     .number = 44,
+     .art = {},
+     .text = steam_entry044,
+     .text_sha256 =
+         "3af4f3fde3013eca895df8271185ede582fb307c02db1190dd8a8cab40638d1e"},
+    {.kind = journal_kind::entry,
+     .number = 45,
+     .art = {},
+     .text = steam_entry045,
+     .text_sha256 =
+         "14f673a0ed9864c5ca0ac99ce67c62e1d764aa0553d3b17ad800f0eaa7be4951"},
+    {.kind = journal_kind::entry,
+     .number = 46,
+     .art = {},
+     .text = steam_entry046,
+     .text_sha256 =
+         "7962302b8d6f1bd772216f2bb9ec226cd6f5748b4de31e240cc37fb16af2473b"},
+    {.kind = journal_kind::entry,
+     .number = 47,
+     .art = {},
+     .text = steam_entry047,
+     .text_sha256 =
+         "875c1c9a91eb4769c12505c29ec1e9ac70b5dd7f583a27622b01773a77ab3a33"},
+    {.kind = journal_kind::entry,
+     .number = 48,
+     .art = {},
+     .text = steam_entry048,
+     .text_sha256 =
+         "ba5bbdf91aa99a9eec6ad1152b100d11524b21640150e61cb49c6cc40ced606e"},
+    {.kind = journal_kind::entry,
+     .number = 49,
+     .art = {},
+     .text = steam_entry049,
+     .text_sha256 =
+         "b0fa01e447f7c33f28e8499fafa9eecd4b8b140cf85158a142065a5f9a0949f0"},
+    {.kind = journal_kind::entry,
+     .number = 50,
+     .art = {},
+     .text = steam_entry050,
+     .text_sha256 =
+         "011116e98190260438e2579fd6756cb169291baad17e54d8d2aad72b2a21f34a"},
+    {.kind = journal_kind::entry,
+     .number = 51,
+     .art = {},
+     .text = steam_entry051,
+     .text_sha256 =
+         "922ff1a6fd636475f287ab514d42d5e17fc44615e736335cabaea7788cc71189"},
+    {.kind = journal_kind::entry,
+     .number = 52,
+     .art = {},
+     .text = steam_entry052,
+     .text_sha256 =
+         "61084c38bdaa5703dfa50b6e29ca4cffc1fee33e6e5cf99996af94c4c80ed1be"},
+    {.kind = journal_kind::entry,
+     .number = 53,
+     .art = {},
+     .text = steam_entry053,
+     .text_sha256 =
+         "6aa44121868e87b34aa89e959641320a23653b93c87787ad16c925c6a30bf693"},
+    {.kind = journal_kind::entry,
+     .number = 54,
+     .art = {},
+     .text = steam_entry054,
+     .text_sha256 =
+         "36b78defdbc6f3a7ca53f8a4ae4af65689720c46a4cff2ae6ddf93597c23e77b"},
+    {.kind = journal_kind::entry,
+     .number = 55,
+     .art = {},
+     .text = steam_entry055,
+     .text_sha256 =
+         "8892b61d925219a4377309b730ac11eceb451618abeb80734b53513e2ba0914e"},
+    {.kind = journal_kind::entry,
+     .number = 56,
+     .art = {},
+     .text = steam_entry056,
+     .text_sha256 =
+         "66c686174ffce5c03e135b1fd565b7f2f4de1776a3c83213baabca4ff1ab8cf7"},
+    {.kind = journal_kind::entry,
+     .number = 57,
+     .art = {},
+     .text = steam_entry057,
+     .text_sha256 =
+         "ccebcb8f82b76d2e0cf384c03f5b0e296f2e098df997067a0d9b4a6ad5a02271"},
+    {.kind = journal_kind::entry,
+     .number = 58,
+     .art = steam_entry058_art,
+     .text = steam_entry058,
+     .text_sha256 =
+         "b81038a7ab8af419f5280d057ca9f90e3726877dab66228a5880d5a5e138f210"},
+    {.kind = journal_kind::tale,
+     .number = 1,
+     .art = {},
+     .text = steam_tale001,
+     .text_sha256 =
+         "57cdb0843d5301dd076feb0fc3bbba59196dd904df0d95368cc6057321da1c1d"},
+    {.kind = journal_kind::tale,
+     .number = 2,
+     .art = {},
+     .text = steam_tale002,
+     .text_sha256 =
+         "d0a1fa31052bc9b5e21c5a268a60fad6533b54dada15b662c9caf6b7b5d71c83"},
+    {.kind = journal_kind::tale,
+     .number = 3,
+     .art = {},
+     .text = steam_tale003,
+     .text_sha256 =
+         "be5c3304c0c18069595273f07e6e91bc79722451060036a1172fdc2019f9430e"},
+    {.kind = journal_kind::tale,
+     .number = 4,
+     .art = {},
+     .text = steam_tale004,
+     .text_sha256 =
+         "461e4a33c0ca73563329649167a8164c06675f1932b2cc3331830e3035b160d3"},
+    {.kind = journal_kind::tale,
+     .number = 5,
+     .art = {},
+     .text = steam_tale005,
+     .text_sha256 =
+         "0e18124fb28af61bb0de2d8f0685912b2589ee3f21d373a88249e570f9034085"},
+    {.kind = journal_kind::tale,
+     .number = 6,
+     .art = {},
+     .text = steam_tale006,
+     .text_sha256 =
+         "7d863ac8da3956cdbd0e3778f3aceaa15a249fc926352f4694ffd365a92d3906"},
+    {.kind = journal_kind::tale,
+     .number = 7,
+     .art = {},
+     .text = steam_tale007,
+     .text_sha256 =
+         "36f1d6592183911ce7a29d0df93c8d88af2bf1d8d25938e6027075139923ff40"},
+    {.kind = journal_kind::tale,
+     .number = 8,
+     .art = {},
+     .text = steam_tale008,
+     .text_sha256 =
+         "c4f3c7223ff07ee3a4e227c790a82e2b171a2fd967fee3fdc90b003872436d82"},
+    {.kind = journal_kind::tale,
+     .number = 9,
+     .art = {},
+     .text = steam_tale009,
+     .text_sha256 =
+         "43ef20f3d32a2143556112959eeecdf4228b270a3954d1bd25cf4d182edff86f"},
+    {.kind = journal_kind::tale,
+     .number = 10,
+     .art = {},
+     .text = steam_tale010,
+     .text_sha256 =
+         "28b80bc440dff59b1c684b5083aae08083b8d026bbe91898a31804d48d7d53b6"},
+    {.kind = journal_kind::tale,
+     .number = 11,
+     .art = {},
+     .text = steam_tale011,
+     .text_sha256 =
+         "e492dabf3fcd17da239d47a2c38629078ac6e98a235c27fcbd855a65e287af24"},
+    {.kind = journal_kind::tale,
+     .number = 12,
+     .art = {},
+     .text = steam_tale012,
+     .text_sha256 =
+         "2d77dad0f4db61aa3a2bb1ec7436e4a5a2598871203cdfcd28894914128b21a7"},
+    {.kind = journal_kind::tale,
+     .number = 13,
+     .art = {},
+     .text = steam_tale013,
+     .text_sha256 =
+         "e706f0ac7fdc57da0947812aca1166dd501dd3c09851605990577a445650eb50"},
+    {.kind = journal_kind::tale,
+     .number = 14,
+     .art = {},
+     .text = steam_tale014,
+     .text_sha256 =
+         "ebc0e681c3187ff3fdb67d0d1653f08904a2f418068ce7f246d1e82ac4b721e0"},
+    {.kind = journal_kind::tale,
+     .number = 15,
+     .art = {},
+     .text = steam_tale015,
+     .text_sha256 =
+         "df4235b4c5052a56bfb6515b6219f44d7a1abd24b3dc09eb7611f6d1077b1fb7"},
+    {.kind = journal_kind::tale,
+     .number = 16,
+     .art = {},
+     .text = steam_tale016,
+     .text_sha256 =
+         "ae9530e7c9f2ecfee8988ecce65b53d0bafdbe8dfc0ba7d7bdbfa13ee919d410"},
+    {.kind = journal_kind::tale,
+     .number = 17,
+     .art = {},
+     .text = steam_tale017,
+     .text_sha256 =
+         "2b725451f687625c6f32059573f93571a328d2413230321891a503adb776fd56"},
+    {.kind = journal_kind::tale,
+     .number = 18,
+     .art = {},
+     .text = steam_tale018,
+     .text_sha256 =
+         "4ea0e09e6632cb9a8a6fb1d4fc84657cb0b80d6f7b8dc4e1936f420baf6080fd"},
+    {.kind = journal_kind::tale,
+     .number = 19,
+     .art = {},
+     .text = steam_tale019,
+     .text_sha256 =
+         "4e0de4002ce820a176478c96a34ef163fbbf7ac31f659d5f5e62ed219efae8c8"},
+    {.kind = journal_kind::tale,
+     .number = 20,
+     .art = {},
+     .text = steam_tale020,
+     .text_sha256 =
+         "9887fa62fd3b26749716ade413e627fcb36e694d52438f0b7b966179cffe155a"},
+    {.kind = journal_kind::tale,
+     .number = 21,
+     .art = {},
+     .text = steam_tale021,
+     .text_sha256 =
+         "c5805608ffb086790551afa998148b19922c8f09705fe004336c7e88049db4c7"},
+    {.kind = journal_kind::tale,
+     .number = 22,
+     .art = {},
+     .text = steam_tale022,
+     .text_sha256 =
+         "db3f054a0466c306b66e47923736505e6e67e6639eb367cd6be659f5955fb4db"},
+    {.kind = journal_kind::tale,
+     .number = 23,
+     .art = {},
+     .text = steam_tale023,
+     .text_sha256 =
+         "577d8db41a73af2a061365e0f11cd1feabc9dca9488b244da094cf46005a6285"},
+}};
+
+/// The editions this build knows the insides of.
+///
+/// Each fingerprint is the same one `machine::known_documents()` carries
 /// for the gate: one artifact seen twice, and the suite checks that the
 /// two agree.
-constexpr std::array<journal_edition, 1> table{{
+constexpr std::array<journal_edition, 2> table{{
     {.fingerprint =
          "67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c",
      .name = "Pool of Radiance Adventurer's Journal, archive release",
      .entries = archive_entries},
+    {.fingerprint =
+         "a31368c35c527ce3f760ffac0596ab96254c79b22f7e89be219c6238954ac1ee",
+     .name = "Pool of Radiance Adventurer's Journal, Steam release",
+     .entries = steam_entries,
+     .pages = steam_pages},
 }};
 
 }  // namespace

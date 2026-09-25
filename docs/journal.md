@@ -6,8 +6,9 @@ PLAN.md §5 item 2.*
 
 This document is the half underneath the reader: locating each entry's
 scan inside the player's own PDF, decoding it, reading it once with an
-OCR engine, reducing the entries that are drawings (§11), and keeping all
-of it on the player's machine. The reader itself is M5-E4 (#175), a seam
+OCR engine — or, for an edition typeset as text, reading the text out of
+the document with no engine at all (§3a) — reducing the entries that are
+drawings (§11), and keeping all of it on the player's machine. The reader itself is M5-E4 (#175), a seam
 (`docs/seams.md` §10); §9 is where the two halves meet.
 
 **Nothing from a journal is in this repository, ever**: no page, image,
@@ -24,12 +25,13 @@ is CONTRIBUTING.md's rule for the game binary.
 | The extractor | `hosts/common/.../journal_extract.h` | Follows an offset, inflates the stream, undoes the predictor, expands samples to gray, crops the region. |
 | The reducer | `hosts/common/.../journal_picture.h` | Reduces a printed drawing, once, to four tones and the box the reader draws in (§11). |
 | The engine | `hosts/common/.../journal_ocr.h` | One virtual call. The desktop runs the player's own Tesseract; the browser drives tesseract.js. |
+| The text route | `hosts/common/.../journal_text.h` | For an edition typeset as text: follows each page's content stream and its font's `/ToUnicode` map by offset, reads the runs inside an item's boxes, and checks the result against the item's digest (§3a). No engine. |
 | The store | `hosts/common/.../journal_store.h` | Section and number to text, with what the engine read and what a person corrected kept apart. |
 | The reader | `core/.../machine/seam_journal.cpp` | The seam that shows an entry in the game (§9). |
 
-The first six are the ingestion and run once. `journal_ingest.h` is the
-order they go in. `journal_probe.h` is the synthetic document all of it
-is tested against.
+The first seven are the ingestion and run once. `journal_ingest.h` is the
+order they go in. `journal_probe.h` and `journal_text_probe.h` are the
+synthetic documents all of it is tested against.
 
 ## 2. Running it
 
@@ -43,7 +45,9 @@ amberfolio <dir> <program.exe> --journal J.pdf --journal-ocr none
 ```
 
 - `--journal` presents the document the way `--document` does, so a
-  journal-gated seam arms, then reads inside it.
+  journal-gated seam arms, then reads inside it. An edition typeset as
+  text (§3a) needs no engine: the host says `journal text read from the
+  document itself - no OCR engine needed` and looks for none.
 - The store goes to `journal.txt` under the per-user data directory
   (SDL's `SDL_GetPrefPath`); `--journal-store` says otherwise.
 - An ingestion that goes wrong is one printed sentence; the run continues.
@@ -58,12 +62,21 @@ amberfolio <dir> <program.exe> --seam journal
 
 ## 3. Adding an edition
 
-One edition is in the table (#214): the Adventurer's Journal as the
-release sold on GOG ships it, fingerprint
-`67cbfc0c833b835494310680ad298bc4de1cdcc0168115cc3608c2f6074c737c`. Its
-pages are `/DCTDecode` (§4a). It has 58 entries in 75 pieces, and 14
-pictures on 12 of those entries (§11). Six of the 18 boundaries between
-those pieces are paragraph breaks rather than continuations (§5).
+Two editions are in the table:
+
+| edition | fingerprint | its words are | pieces | pictures |
+| --- | --- | --- | --- | --- |
+| the GOG release's (#214) | `67cbfc0c…c737c` | scans, `/DCTDecode` (§4a), read by an engine | 58 entries in 75 pieces; 99 items in 117 | 14 on 12 entries |
+| the Steam release's (#398) | `a31368c3…4ac1ee` | text, read out of the document (§3a) | 99 items in 115 pieces | 14 on the same 12 entries |
+
+Both have the same ninety-nine items by the same numbers — 58 entries,
+23 tales, 18 proclamations — which the suite checks, because the game
+cites an item by section and number. In the GOG edition six of the 18
+boundaries between an entry's pieces are paragraph breaks rather than
+continuations (§5); the Steam edition measures that itself (§3a).
+
+The rest of this section is a **scanned** edition's row; §3a is a text
+edition's.
 
 An edition is data in two places:
 
@@ -151,6 +164,76 @@ repository: it reads a document this project may never carry. The method:
    six start 18 to 22 right of it. Nothing lands between, which is what
    makes the rule a measurement. Set `begins_paragraph` on the six.
 
+## 3a. An edition typeset as text (#398)
+
+The Steam release's journal is the same text typeset again, with the
+pictures placed as images. Its words are character codes in each page's
+content stream, so an engine would be guessing at text that is sitting
+right there: `journal_text.h` reads it instead, and no OCR engine is
+downloaded, installed or asked. On the page, `af_web_journal_reads_own_text()`
+says so right after `af_web_journal_ingest()`, and `ingestJournal()` never
+calls the engine loader it was handed.
+
+**The facts** (`journal_facts.h`): the edition carries `pages` — for each
+page, its content stream's offset, `/Length`, decoded size and filter, and
+its fonts' resource names with each one's `/ToUnicode` stream stated the
+same way. An item carries `text` in place of `fragments`: in reading
+order, a page and a box in **points of the page's own text space**, origin
+bottom left. And a `text_sha256`: the digest of the UTF-8 this build
+reads out of those boxes. Never the text.
+
+**The rules** the route reads by, each a finding off the one edition
+measured:
+
+- A run belongs to a box when its **origin** is inside. Nothing reads a
+  glyph's width. A run inside a box in a font the page's facts do not
+  name, or with a code its map does not, is `text_unreadable`.
+- Runs on one baseline are a line; lines read top to bottom.
+- A typesetter's **discretionary hyphen** is drawn as a run of its own
+  at the line's end: dropped, and the word joined. A hyphen inside a run
+  is the writer's and kept, so a compound broken at its hyphen joins with
+  the hyphen in it. The edition has fifty discretionary hyphens in its
+  items and four writer's hyphens at a line's end — two compounds, and
+  two words hyphenated by hand, which therefore keep a hyphen the way
+  they were printed.
+- **A paragraph opens with an indent**: a line starting more than three
+  points right of its box's left edge, which is the column's margin. Its
+  paragraphs indent 8.5 points and every other line sits within a point
+  of the margin. A fragment boundary is a continuation unless the next
+  line is indented, so `begins_paragraph` is measured, not tabled.
+- Lines join with a space unless the line before ended in one or in a
+  hyphen; runs of spaces become one; **one line per paragraph**, blank
+  lines between, so the reader's reflow (#316) has nothing to guess.
+- A **Cyrillic letter drawn as a Latin one** is the Latin one. This
+  edition's font maps five glyphs to Cyrillic twins (`Т`, `а`, `с`, `е`,
+  `р`); the reader draws sixty-four glyphs and would otherwise draw a
+  substitute where the page has a `T`.
+
+Then the digest: an item a byte different is `text_mismatch` and nothing
+is kept for it. That is also what makes the two hosts agree: the store
+the desktop and the module make of the real document have the same
+`journal_store::fingerprint()`.
+
+**Measuring an edition's boxes.** The tooling stays out of the
+repository, as in §3. The method: place every run by its origin; cut the
+page into its four column bands by the column margins; find each item's
+heading — `Journal Entry N:`, `Proclamation` and a numeral, `Tale N:`,
+the whole of a line or its start; run an item from its heading to the
+next, **stopping at matter outside the grid** (a section's title and
+introduction, the map legend's note under entry 6, the atlas's map titles,
+each in another size or font); and set a box's top and bottom at the
+midpoints to the nearest line outside it, then check that no line of
+anything else is inside. Take each item's digest from what this build
+reads, and check the count, the numbering and that every item begins with
+its own heading. Pictures are §11.1's rule, with one difference: an image
+is already cut out, so its rectangle is the part of it the page's clip
+shows.
+
+**What it read**, by hand, over the real document on both hosts:
+`entries=99 extracted=99 recognized=99`, `pictures=14/14`, and the same
+store fingerprint from the desktop host and the wasm module. The longest
+item is under two kilobytes, inside the reader's four.
+
 ## 4. What the extractor decodes, and what it refuses
 
 Two questions, kept apart: whether an entry can reach an engine at all
@@ -194,7 +277,9 @@ read the page.
 
 Not a PDF parser, ever: no objects found, no cross-reference table, no
 page tree. A wrong row points at bytes that do not inflate, or inflate to
-the wrong size, and the extractor says which.
+the wrong size, and the extractor says which. The text route (§3a) goes
+one step further and interprets a content stream, but only one the table
+names and only its text operators and matrix.
 
 A **picture** has no engine to carry a page to, so it needs the page
 decoded, and since #345 every build can (`host/journal_jpeg.h`, §11.4).
@@ -391,6 +476,9 @@ picture entry 4 0 193 160 10404
 - `picture <kind> <number> <nth> <width> <height> <bytes>`, the body
   base64 (§11): which of the entry's pictures, and its size in screen
   pixels.
+- The `engine` line names what read the text: an engine and its version,
+  `none`, or `document text` for an edition read by §3a's route. The
+  format is the same either way; a text edition moved no version.
 - Two texts per item and only one is ever overwritten: ingestion replaces
   `scanned` and never touches `corrected`; the reader shows the
   correction where there is one.
@@ -478,6 +566,20 @@ a row nobody restored does not.
 
 ## 7. What is checked, and what is not
 
+**The text route, in CI on every target**, over `journal_text_probe.h`:
+a second generated PDF, two pages set in an encoding of its own with a
+`/ToUnicode` map, whose invented items exercise every rule of §3a — a
+discretionary hyphen, a writer's hyphen, an item flowing into a second
+column, an indented paragraph, a folded look-alike, `TJ`, `'`, `T*`, hex
+and escaped strings, an inline image — and one picture. Its digests are
+taken from the text the generator meant, not from the route's output.
+`hosts/common/tests/journal_text_test.cpp` reads it and refuses a font
+and a code the facts do not name, a digest that does not match, and a
+stream that is not where the table says; step 8 of
+`hosts/sdl/cmake/run-journal.cmake` ingests it on the desktop with no
+engine; `tests/smoke.mjs` ingests it through the module with an engine
+loader that fails the check if called.
+
 **In CI, on every target**, over `journal_probe.h`: a small
 byte-deterministic PDF this project generates, whose fact table is what
 the generator measured while generating. Three image XObjects: eight-bit
@@ -507,6 +609,13 @@ which is the only way to run it, no real engine being there to ask.
 off by default and no runner has the document. Huffman-coded Flate
 streams are not exercised either: the probe's are stored blocks, and
 inflation is libdeflate's business (`cmake/AmberfolioLibdeflate.cmake`).
+
+**By hand, the Steam edition** (§3a): every item through the desktop host
+and through the module under node with the page's own `journal.mjs`, one
+store fingerprint between them; in the game, `--cite-all-journal` and the
+listing's keys opened entry 1 (two text pages, its paragraphs as printed)
+and entry 4's drawing. Not done: the dev page in a browser over this
+document.
 
 **By hand, once each, reported per §8**: the archive edition through the
 linked engine (`entries=58 extracted=58 recognized=58`; 57 of 58 begin
@@ -702,6 +811,13 @@ The result is in `hosts/common/src/journal_facts.cpp`. Not in the table:
 the edition's legend for its map symbols, printed under its own heading
 and belonging to no numbered item, so it has no key and is unreachable
 from the game.
+
+The Steam edition's fourteen are the same drawings on the same entries,
+each an image of its own. Entry 37's first two maps are one image there,
+cut at the blank band between them; its three map titles are type set
+above the images, so they are in no picture and in no entry's text. They
+are drawn by §11.2's fit from their own sizes, so the table below is the
+GOG edition's.
 
 ### 11.2 What it becomes
 

@@ -400,8 +400,17 @@ uint32_t af_version(void);
 ///     host says about it: the kind, beside the name it already had.
 ///     Minor: nothing that was there changed, and a host that never asks
 ///     is unaffected.
+///   * **2.2** — #398, four added entry points on the web host's own
+///     surface and nothing changed: `af_web_journal_reads_own_text` and
+///     `af_web_journal_read_text`, which are how a page ingests a journal
+///     typeset as text with no OCR engine at all, and
+///     `af_web_journal_text_probe_bytes` / `_size`, the synthetic document
+///     that route is checked against. Two `journal_trouble` codes were
+///     added at the end, after `too_large`: a page that names them by
+///     `af_web_journal_trouble_name` needs nothing new, and every code
+///     that was there means what it meant.
 #define AF_ABI_VERSION_MAJOR 2u
-#define AF_ABI_VERSION_MINOR 1u
+#define AF_ABI_VERSION_MINOR 2u
 
 // --- Facts about the machine ------------------------------------------
 //

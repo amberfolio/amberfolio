@@ -274,9 +274,47 @@ if(EXISTS "${SCRATCH}/journal-nothing-here.txt")
     "citing with no journal wrote a store, which it must never do")
 endif()
 
+# --- 8. An edition typeset as text (#398) -----------------------------
+#
+# The text probe (`host/journal_text_probe.h`): its words are text in its
+# own content streams, so the host reads them with no engine at all --
+# not looked for, not named, not missed. The probe table finds it by its
+# fingerprint, the same `--journal-probe` as the scanned one.
+
+set(text_document "${SCRATCH}/journal-text-probe.pdf")
+set(text_store "${SCRATCH}/journal-text-store.txt")
+file(REMOVE "${text_store}")
+execute_process(COMMAND "${PROBE}" "${text_document}" --text
+  RESULT_VARIABLE code)
+if(NOT code EQUAL 0)
+  message(FATAL_ERROR "the text probe document was not written (${code})")
+endif()
+
+run_host(--journal "${text_document}" --journal-probe
+  --journal-store "${text_store}")
+expect("journal Amber Folio journal text probe \\(synthetic\\) entries=2")
+expect("journal text read from the document itself - no OCR engine needed")
+expect("journal entries=2 extracted=2 recognized=2")
+expect("journal pictures=1/1")
+if(err MATCHES "journal engine " OR err MATCHES "journal no engine")
+  message(FATAL_ERROR
+    "an edition typeset as text went looking for an engine.\n"
+    "stderr: ${err}")
+endif()
+file(READ "${text_store}" text)
+foreach(want "amberfolio-journal 5" "engine document text"
+             "Tale 1: A folio of amber pages sings when opened.")
+  string(FIND "${text}" "${want}" at)
+  if(at EQUAL -1)
+    message(FATAL_ERROR
+      "the text probe's store does not contain '${want}':\n${text}")
+  endif()
+endforeach()
+
 message(STATUS
   "sdl host journal: a synthetic edition ingested end to end, a"
   " correction kept across a re-ingestion, two unrecognized"
   " documents reported with their fingerprints, and the cheat that"
   " cites everything kept in the sidecar beside the save, which the"
-  " next launch read back")
+  " next launch read back; and a synthetic edition typeset as text read"
+  " with no engine at all")

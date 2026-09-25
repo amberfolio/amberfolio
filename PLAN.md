@@ -253,7 +253,9 @@ Design requirements:
    parameters are part of the fact-table), not a general-purpose PDF
    parser or renderer; unrecognized editions are already rejected by
    the fingerprint gate — decoded by the host's image decoder, and the
-   text extracted once by OCR (Tesseract). In-game, the established journal reader layout is
+   text extracted once by OCR (Tesseract); an edition typeset as text
+   is read out of its own content streams instead, by offsets in the
+   same fact-table, with no OCR at all (#398). In-game, the established journal reader layout is
    rendered on the game's own screen, and a seam watches the game's
    text output to auto-open the right entry when the game cites one.
 3. **Automap** — an in-game map panel drawn by the seam directly into
@@ -458,9 +460,9 @@ pinning and not only at a milestone.
   the repack adds; every seam is valid on both (`docs/seams.md` §5,
   #396). Other builds of the program are open.
 - Which **document** editions to fingerprint. The table
-  (`machine/document.cpp`) has one row for a PDF of the code wheel (a
-  fact; it gates nothing since #290) and one for the Adventurer's
-  Journal PDF the GOG release ships (#214). Every other journal is
-  refused as unrecognized, which is the fail-closed direction; the Steam
-  collection's journal is a different file and is one of them. Which
-  re-scans or reissues to add is open.
+  (`machine/document.cpp`) has a code wheel (a fact; it gates nothing
+  since #290) and an Adventurer's Journal for each of the GOG and Steam
+  releases: the GOG journal is scans, read by OCR (#214), and the Steam
+  collection's is text, read out of the document (#398). Every other
+  journal is refused as unrecognized, which is the fail-closed direction.
+  Which re-scans or reissues to add is open.

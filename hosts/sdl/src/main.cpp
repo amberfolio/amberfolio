@@ -3539,6 +3539,16 @@ void ingest_journal(machine::machine& box, const options& opts,
   std::fprintf(stderr, "amberfolio: journal %.*s entries=%zu\n",
                static_cast<int>(ingester.edition()->name.size()),
                ingester.edition()->name.data(), ingester.entries());
+  // An edition typeset as text is read out of the document itself (#398),
+  // so there is no engine to look for and nothing to say about one that
+  // is missing: the search below would only report a problem this
+  // edition does not have.
+  const bool own_text = ingester.reads_own_text();
+  if (own_text) {
+    std::fprintf(stderr,
+                 "amberfolio: journal text read from the document itself -"
+                 " no OCR engine needed\n");
+  }
 
   // The engine, and what it is. Each way this can go is said out loud:
   // the fixture the probe installs, the engine built into this binary,
@@ -3559,7 +3569,7 @@ void ingest_journal(machine::machine& box, const options& opts,
 #else
   const bool carried = false;
 #endif
-  if (named.empty() && !opts.journal_probe && !carried) {
+  if (named.empty() && !opts.journal_probe && !carried && !own_text) {
     named = discover_journal_ocr();
   }
   sdl::tesseract_ocr tesseract(named);
@@ -3572,7 +3582,9 @@ void ingest_journal(machine::machine& box, const options& opts,
   sdl::tesseract_linked_ocr linked(linked_tessdata_path());
 #endif
   host::journal_ocr* engine = nullptr;
-  if (opts.journal_ocr == "none") {
+  if (own_text) {
+    // Nothing to choose: `run()` never asks an engine about this edition.
+  } else if (opts.journal_ocr == "none") {
     std::fprintf(stderr,
                  "amberfolio: journal no engine asked for - the entries"
                  " will be read and no text kept\n");
