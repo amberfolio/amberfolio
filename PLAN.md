@@ -384,8 +384,7 @@ pinning and not only at a milestone.
   binaries for the three desktop targets + the wasm bundle, README/docs
   refresh, a short "supplying your artifacts" guide. *Exit: tagged 1.0
   release, binaries downloadable, release gate (§1) green.*
-- **M8 — A controller, and the look of the thing.** Two things 1.0 ships
-  without, deliberately, and they are not the same kind of work.
+- **M8 — A controller.** One thing 1.0 ships without, deliberately.
 
   **Native controller support** is an *enhancement*, on the seam
   machinery of §5 and under all of its rules. The point is not a pad
@@ -404,20 +403,9 @@ pinning and not only at a milestone.
   the player has to spell is still text: a character's name goes
   through M6's on-screen keyboard (§7, M6), driven by the pad.
 
-  **A CRT presentation filter** — 4:3 aspect correction, a scanline
-  pass, phosphor persistence, an optional overscan border — off by
-  default on both hosts, because a period monitor is what this program
-  was drawn for and a flat panel is not. **This half touches nothing
-  under `core/`:** the composed frame stays the frame the machine drew,
-  at the size and depth it drew it, and the filter is what a host does
-  on the way to a window. So a recording, a state hash and a dumped
-  still are the same afterwards as before, which is what keeps it a
-  *presentation* step and not a fidelity claim.
-
   *Exit: a player reaches every command, every movement and every fight
   from a controller — text entry included — without the seam ever
-  telling them which key it stands for; and both hosts show one frame
-  through one filter with one set of controls.*
+  telling them which key it stands for.*
 
 ## 8. Risks and mitigations
 
@@ -448,10 +436,12 @@ pinning and not only at a milestone.
 - Other audio hardware (Ad Lib, Roland), mouse support, other
   video modes (CGA/MCGA/Hercules), machine save-states, localization,
   32-bit builds.
-- Native controller support and the CRT look are **deferred rather than
-  dropped**: they are M8 (§7), the first milestone past 1.0. 1.0 is
-  playable with a keyboard, real or on-screen, and square pixels on a
-  flat panel are what it looks like.
+- Native controller support is **deferred rather than dropped**: it is
+  M8 (§7), the first milestone past 1.0. 1.0 is playable with a
+  keyboard, real or on-screen.
+- A CRT presentation filter. What a frame looks like on the way to a
+  screen is a host's to decide, and amberfolio.org has its own; the
+  hosts here show the frame the machine drew.
 
 ## 10. Open questions
 

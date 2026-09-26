@@ -17,8 +17,8 @@ independently on both hosts, and a player reaches all of it from the
 shells: onboarding, a config file, a toggle panel, a document control and
 the on-screen keyboard. The current milestone is **M7** (1.0: release
 engineering, binaries, the docs refresh).
-Native controller support — a seam, not a key mapping — and the CRT look
-are **M8**, the first milestone past 1.0 (#372). Open issues are the
+Native controller support — a seam, not a key mapping — is **M8**, the
+first milestone past 1.0 (#372). Open issues are the
 complete list of known gaps; docs describe what *is*, not what is owed.
 
 **No test in this repository runs the game, and none ever will.** The
