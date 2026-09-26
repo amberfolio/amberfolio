@@ -136,8 +136,9 @@ are the pair.
 --press Q@22400                                           QUICK, one round
 ```
 
-`C` at `COMBAT WAIT FLEE PARLAY` opens the tactical map. The speaker's
-first sound in the run is here: `--dump`'s WAV holds a burst at each hit.
+`C` at `COMBAT WAIT FLEE PARLAY` opens the tactical map. The walk has
+been sounding since the party moved — footsteps, on the Tandy chip's
+noise voice (`docs/hosts.md` §4a) — and combat adds its hits.
 
 A first-level character does not survive it. The cheats
 (`docs/seams.md` §10):
@@ -1012,5 +1013,6 @@ scripts now use (#293); the journal's residual is #270; an entry read on
 a display, the fog walked, a rest heard, and any of it in a browser are
 `docs/hosts.md` §3's. With no
 issue: `--watch` has no web equivalent, and no sound of this program has
-been measured, though `--dump`, `tools/drive.mjs --dump` and
-`amberfolio-dump` write the same `.edges` file (`docs/hosts.md` §4).
+been measured beyond a walk and a fight (`docs/hosts.md` §4a); `--dump`,
+`tools/drive.mjs --dump` and `amberfolio-dump` write the same `.edges`
+file (§4), which holds the speaker and not the chip.

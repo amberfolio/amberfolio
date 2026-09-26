@@ -16,7 +16,7 @@ library (`tests/sessions/README.md`) be committed.
 Plain text (`machine/replay.h`), one line per fact:
 
 ```
-amberfolio-recording 4 state=1
+amberfolio-recording 4 state=2
 program BOOT.EXE 3f1c…
 tail 202d4649525354 4c49474854
 cwd GAME
@@ -90,8 +90,8 @@ observes next: registers and interrupt latches, clock and step count,
 every byte of RAM, every device's architectural state in attach order,
 the armed deadlines, the DOS handle table and every open file's position,
 the wall seed, queued input, undrained console bytes, the speaker's edge
-list as a count and a running digest, the framebuffer and its generation,
-and the stop record.
+list and the Tandy chip's writes as a count and a running digest each,
+the framebuffer and its generation, and the stop record.
 
 **Out**, by decision:
 
@@ -211,24 +211,44 @@ desktop from its own clock before the first instruction, the page from
 ## 7. Versions
 
 Two, independent, both on a recording's first line
-(`amberfolio-recording 4 state=1`):
+(`amberfolio-recording 4 state=2`):
 
 - **`recording_format_version`** (`machine/replay.h`), the line grammar.
   It is **4** (#397's `cwd` line); 3 was #161's `pull` line and 2 #155's recursing manifest.
 - **`state_format_version`** (`machine/state.h`), the bytes a checkpoint
-  hashes. It is **1**. A player refuses to compare across versions.
+  hashes. It is **2** (#404's Tandy chip: its registers among the devices,
+  its writes counted and digested beside the speaker's edges). A player
+  refuses to compare across versions.
 
 **A recording format is read for as long as a recording of it may
 exist.** `recording_format_oldest_read` says which versions a player
 accepts, and each is read the way it was written: a version-1 manifest
 names the root and goes on meaning exactly that. Bumping
 `recording_format_version` does not invalidate a golden; only retiring a
-version does, and that is a deliberate act. Seven of the library's
-recordings are version 1, six of them over a disk nobody in this tree can
-re-record;
+version does, and that is a deliberate act. `spin.rec` is the library's
+one version-1 recording and the game sessions are version 3;
 `SessionLibrary.EveryCommittedRecordingIsAFormatThisBuildStillReads`
 asserts the version on the files. A recording that carries a line its
 version does not allow is refused.
 
 `state_format_version` has no such escape: bumping it invalidates every
-golden and the library is re-recorded in the same change.
+golden and the library is re-hashed in the same change. **A re-hash, not
+a re-recording**: the desktop host's `--rehash FILE` replays a recording's
+own inputs at their own ticks, still demands each checkpoint's step count
+and stop, takes the machine's hash there instead of comparing it, and
+writes the recording back with only the header's state version and the
+hashes changed. A leg typed again by `--press` would land its keys on
+frame boundaries rather than the recorded ticks and could play a
+different game. The whole library, over the disks the maintainer holds:
+
+```sh
+python3 scripts/sweep.py --targets sdl --rehash --game-disk DIR ...
+python3 scripts/sweep.py --targets sdl,contrast --game-disk DIR ...
+```
+
+The second run is the check: every session verifies, and every pair
+keeps its relation — the same identical checkpoints, the same tick of
+first divergence — which is what says the legs still play the game they
+were recorded on. Before the first, verify the library on the build the
+bump started from: a session that was already diverging would otherwise
+be re-hashed into agreeing.

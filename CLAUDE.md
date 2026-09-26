@@ -113,7 +113,7 @@ per-platform prerequisites; the wasm preset needs the emsdk pinned in
 | Writing or changing a seam | `docs/seams.md` (§8 house style, §8.4 traps, §10 per-seam facts) |
 | Recording or verifying a run | `docs/replay.md`, `tests/sessions/README.md` |
 | Driving the game headlessly | `docs/playable.md` (legs and keystrokes), `docs/first-light.md` (the boot) |
-| Hosts, flags, the wasm ABI, the speaker | `docs/hosts.md` |
+| Hosts, flags, the wasm ABI, the speaker, the Tandy chip | `docs/hosts.md` |
 | The journal (ingestion, store, reader) | `docs/journal.md`, `docs/journal-test-plan.md` |
 | The explored overlay's facts and decisions | `docs/explored-overlay.md` |
 | What each enhancement does for a player | `docs/enhancements.md` |

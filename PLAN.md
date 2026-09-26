@@ -85,9 +85,13 @@ special handling beyond working DOS file I/O.
   presents.
 - **Timer** — 8253 PIT, channels 0 (system tick, delivered as the timer
   interrupt) and 2 (speaker tone).
-- **Sound** — PC speaker only for v1: PIT channel 2 plus the port 61h
-  gate, box-filtered into the host audio stream. Writes to any other
-  sound hardware are ignored (logged, not faked).
+- **Sound** — the PC speaker (PIT channel 2 plus the port 61h gate) and
+  the Tandy 1000's sound chip (an SN76489-family part at port C0h: three
+  tone voices and a noise voice), both box-filtered into the host audio
+  stream. The program plays its music and effects through the chip only
+  when its configuration file says Tandy, so every host starts every
+  copy that way, the way the Steam release's own launcher does (#404).
+  Writes to any other sound hardware are ignored (logged, not faked).
 - **Input** — BIOS keyboard services (poll / blocking read) and the
   Ctrl-Break path.
 - **DOS/BIOS services** — the small INT 21h subset the game actually
@@ -441,7 +445,7 @@ pinning and not only at a milestone.
   the reference shell here is its future substrate).
 - Other Gold Box titles (the design keeps the door open; the work
   starts post-v1).
-- Other audio hardware (Ad Lib, Roland, Tandy), mouse support, other
+- Other audio hardware (Ad Lib, Roland), mouse support, other
   video modes (CGA/MCGA/Hercules), machine save-states, localization,
   32-bit builds.
 - Native controller support and the CRT look are **deferred rather than
