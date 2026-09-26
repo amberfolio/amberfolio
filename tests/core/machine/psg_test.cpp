@@ -68,17 +68,30 @@ TEST(PsgRegisters, AnAttenuationLatchSetsOnlyThatVoice) {
   EXPECT_EQ(regs.attenuation[2], 3);
   EXPECT_EQ(regs.attenuation[0], psg_silent);
 
-  // A data byte after an attenuation latch rewrites that attenuation.
+  // The NCR part ignores a data byte after an attenuation latch (#407).
   EXPECT_FALSE(regs.write(0x07));
-  EXPECT_EQ(regs.attenuation[2], 7);
+  EXPECT_EQ(regs.attenuation[2], 3);
 }
 
-TEST(PsgRegisters, TheNoiseRegisterSaysItWasWritten) {
+TEST(PsgRegisters, OnlyAChangeOfNoiseModeReseeds) {
   psg_registers regs = psg_registers::powered_on();
+  // Power-on is periodic, so a periodic latch changes nothing.
+  EXPECT_FALSE(regs.write(noise(1)));
+  EXPECT_EQ(regs.noise, 1);
   EXPECT_TRUE(regs.write(noise(6)));
   EXPECT_EQ(regs.noise, 6);
-  EXPECT_TRUE(regs.write(0x03));
-  EXPECT_EQ(regs.noise, 3);
+  // The same mode again, even at another rate: the register runs on.
+  EXPECT_FALSE(regs.write(noise(6)));
+  EXPECT_FALSE(regs.write(noise(5)));
+  EXPECT_EQ(regs.noise, 5);
+  EXPECT_TRUE(regs.write(noise(2)));
+}
+
+TEST(PsgRegisters, ADataByteAfterANoiseLatchIsIgnored) {
+  psg_registers regs = psg_registers::powered_on();
+  EXPECT_TRUE(regs.write(noise(6)));
+  EXPECT_FALSE(regs.write(0x03));
+  EXPECT_EQ(regs.noise, 6);
 }
 
 // --- What the chip sounds like ------------------------------------------
@@ -148,6 +161,32 @@ TEST(PsgSynth, WhiteNoiseSounds) {
   const double mean = chip.run(span) / static_cast<double>(span * 3);
   EXPECT_GT(mean, full * 0.25);
   EXPECT_LT(mean, full * 0.75);
+}
+
+TEST(PsgSynth, PeriodicNoiseIsHighOneShiftInFifteen) {
+  psg_synth chip;
+  chip.write(noise(0));  // periodic, a shift every 512 chip clocks
+  chip.write(volume(3, 0));
+  const ticks span = 512 * 15 * 40 / psg_clocks_per_tick;
+  const double mean = chip.run(span) / static_cast<double>(span * 3);
+  EXPECT_NEAR(mean, full / 15.0, full / 150.0);
+}
+
+TEST(PsgSynth, RewritingTheSameNoiseModeLeavesItRunning) {
+  // The footstep's shape (#407): the noise control rewritten every
+  // 3.9 ms. It must sound exactly like noise never rewritten, not like
+  // the first few shifts after a seed played over and over.
+  psg_synth rewritten;
+  psg_synth left;
+  for (psg_synth* chip : {&rewritten, &left}) {
+    chip->write(noise(6));
+    chip->write(volume(3, 0));
+  }
+  const ticks every = 4653;  // 3.9 ms
+  for (int i = 0; i < 50; ++i) {
+    rewritten.write(noise(6));
+    ASSERT_EQ(rewritten.run(every), left.run(every)) << i;
+  }
 }
 
 TEST(PsgSynth, ResetSilencesIt) {
