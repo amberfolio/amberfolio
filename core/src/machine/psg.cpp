@@ -25,22 +25,28 @@ constexpr std::array<float, 16> levels{
 }  // namespace
 
 bool psg_registers::write(std::uint8_t value) noexcept {
-  if ((value & latch_bit) != 0) {
+  const bool is_latch = (value & latch_bit) != 0;
+  if (is_latch) {
     latched = static_cast<std::uint8_t>((value >> 4) & 0x07);
   }
   const auto voice = static_cast<std::size_t>(latched >> 1);
   const bool is_attenuation = (latched & 0x01) != 0;
   const auto low = static_cast<std::uint8_t>(value & 0x0F);
 
+  // The NCR part ignores a data byte for anything but a tone period.
+  if (!is_latch && (is_attenuation || voice == psg_noise_voice)) {
+    return false;
+  }
   if (is_attenuation) {
     attenuation[voice] = low;
     return false;
   }
   if (voice == psg_noise_voice) {
+    const bool mode_changed = ((noise ^ low) & white_noise_bit) != 0;
     noise = static_cast<std::uint8_t>(low & 0x07);
-    return true;
+    return mode_changed;
   }
-  if ((value & latch_bit) != 0) {
+  if (is_latch) {
     period[voice] = static_cast<std::uint16_t>((period[voice] & 0x3F0) | low);
   } else {
     period[voice] = static_cast<std::uint16_t>((period[voice] & 0x00F) |
@@ -93,10 +99,12 @@ void psg_synth::step() noexcept {
       continue;
     }
     const bool white = (regs_.noise & white_noise_bit) != 0;
-    if ((shift_ & 0x01) != 0) {
-      shift_ ^= white ? psg_white_feedback : psg_periodic_feedback;
+    const bool tap = (shift_ & psg_noise_tap) != 0;
+    const bool white_tap = white && (shift_ & psg_white_tap) == 0;
+    shift_ = static_cast<std::uint16_t>(shift_ >> 1);
+    if (tap != white_tap) {
+      shift_ |= psg_noise_feedback;
     }
-    shift_ >>= 1;
     high_[psg_noise_voice] = (shift_ & 0x01) != 0;
   }
 }

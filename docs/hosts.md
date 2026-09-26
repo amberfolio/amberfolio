@@ -455,7 +455,7 @@ in the commit.
       `--fast` past what a 48 kHz device can consume (§4).
 - [ ] Whether the game sounds right, and whether 25% is a useful quarter.
 - [ ] The Tandy chip heard against a real Tandy 1000 or the Steam release
-      under its own DOSBox (#404, §4a): footsteps in the city, a fight, and
+      under its own launcher (#404, §4a): footsteps in the city, a fight, and
       the balance between them and the speaker. CI checks the chip's
       arithmetic (`PsgSynth.*`, `ChipTimeline.*`), never an ear.
 
@@ -669,16 +669,17 @@ sounds as it did before the chip existed.
 | one voice at attenuation 0 | 0.125 of full scale (`psg_voice_amplitude`); four at once reach 0.5, and the speaker's 0.25 on top still fits |
 | a tone of period N | 3,579,545 / (32 N) Hz; period 0 counts as 1024 |
 | noise rates 0-3 | the register shifts every 32, 64 or 128 counter steps, or at twice tone voice 2's period |
-| the noise register | DOSBox's: a Galois shift register seeded with 0x0F35, fed back with 0x14002 (white) or 0x08000 (periodic), reseeded by every write to the noise control |
+| the noise register | the NCR 8496's: sixteen bits seeded with 0x8000, each shift feeding bit 1 XOR (white AND NOT bit 5) in at the top; reseeded only by a noise latch that changes white/periodic |
+| a data byte | a tone period's high six bits; after an attenuation or noise latch, ignored |
 
 **The noise register is the one choice that matters to the ear.** The
-program rewrites the noise control every two or three milliseconds while
-a footstep or a hit sounds, and each write reseeds the register, so what
-a player hears is the first few shifts after a seed, again and again. A
-seed whose low bits are zero (the 0x8000 some datasheet-derived models
-use) makes every one of those stretches silent. DOSBox's is the machine
-the Steam release's own launcher starts, so a store copy sounds here as it
-sounds there.
+program rewrites the noise control every 3.9 ms while a footstep sounds,
+with the same white-noise mode each time and the attenuation one step
+lower, timed by the PIT and so the same at every `--speed`. A chip that reseeded on each of those writes would play
+only the first few shifts after a seed, over and over: a ~470 Hz buzz in
+place of a footstep (#407). The Tandy 1000's NCR 8496 reseeds only when
+the mode changes, so the register runs on through the step and it
+sounds as noise.
 
 **What the program sends it.** Walking in the city is footsteps on the
 noise voice, about 50-90 ms each; combat uses the tone voices as well.
