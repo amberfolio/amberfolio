@@ -309,6 +309,7 @@
 #include <span>
 
 #include "amberfolio/machine/clock.h"
+#include "amberfolio/machine/psg.h"
 
 namespace amberfolio::machine {
 
@@ -470,6 +471,17 @@ struct audio_edge {
 /// only, `render()` belongs to exactly one other thread, and there is no
 /// mutex anywhere because an audio callback cannot afford to wait for
 /// one.
+/// One byte written to the Tandy sound chip's port, at tick `at`
+/// (tandy_sound.h, #404). The chip's half of the canonical audio state,
+/// as `audio_edge` is the speaker's.
+struct chip_write {
+  ticks at{};
+  std::uint8_t value{};
+
+  friend constexpr bool operator==(const chip_write&,
+                                   const chip_write&) = default;
+};
+
 class audio_timeline {
  public:
   /// How many unconsumed edges the ring holds. A 1 kHz tone at 60 pulls a
@@ -481,6 +493,11 @@ class audio_timeline {
   ///
   /// A power of two, so the index-to-slot mapping is a mask.
   static constexpr std::size_t edge_capacity = 2048;
+
+  /// How many unconsumed chip writes the second ring holds (#404). A
+  /// note is two or three writes, and music is a few notes a frame; this
+  /// is seconds of it between pulls. A power of two for the same reason.
+  static constexpr std::size_t chip_write_capacity = 1024;
 
   /// The sample rates `render()` will accept. The upper bound is well
   /// under `pit_input_hz`, which is what guarantees a sample interval is
@@ -513,6 +530,17 @@ class audio_timeline {
   /// attention.
   bool publish(ticks at, bool level) noexcept;
 
+  /// A byte was written to the Tandy sound chip at tick `at` (#404).
+  ///
+  /// The chip is not an edge list: four voices with sixteen levels each
+  /// would be thousands of edges a second, and a ten-bit period can put
+  /// a voice far above anything a ring could keep up with. What is
+  /// published instead is what the program *did* — the write — and the
+  /// consumer runs the chip itself (psg.h) to hear it. Writes at the
+  /// same tick keep their order; one before the last is refused, and a
+  /// full ring drops and counts, the same rules as `publish()`.
+  bool publish_chip(ticks at, std::uint8_t value) noexcept;
+
   /// Everything up to `now` is settled — the horizon. `machine::run()`
   /// calls this when its loop ends.
   ///
@@ -539,6 +567,20 @@ class audio_timeline {
 
   [[nodiscard]] std::uint64_t dropped_edges() const noexcept {
     return dropped_.load(std::memory_order_relaxed);
+  }
+
+  /// Chip writes the second ring had no room for.
+  [[nodiscard]] std::uint64_t dropped_chip_writes() const noexcept {
+    return chip_dropped_.load(std::memory_order_relaxed);
+  }
+
+  /// How many chip writes were published since the last restart, and a
+  /// running digest of them — `published()` and `edge_digest()`'s twins.
+  [[nodiscard]] std::uint64_t chip_published() const noexcept {
+    return chip_published_;
+  }
+  [[nodiscard]] std::uint64_t chip_digest() const noexcept {
+    return chip_digest_;
   }
 
   /// How many edges the producer has published since the last restart,
@@ -628,7 +670,8 @@ class audio_timeline {
 
   /// Fill `out` with mono samples at `sample_rate`, box-filtered from the
   /// edge list: each sample is the fraction of its interval the speaker
-  /// output spent high, times `speaker_amplitude`.
+  /// output spent high, times `speaker_amplitude`, plus the Tandy chip's
+  /// mean output over the same interval, run from its writes (psg.h).
   ///
   /// `out` is **always written in full**. The return value is how many of
   /// those frames came from settled virtual time; the remainder, if any,
@@ -670,14 +713,23 @@ class audio_timeline {
 
   /// Jump the cursor forward to `at`, consuming — and so discarding the
   /// audio of — every edge up to it. The overrun rule.
-  void skip_to(ticks at, std::uint64_t head) noexcept;
+  void skip_to(ticks at, std::uint64_t head, std::uint64_t chip_head) noexcept;
 
   /// A new epoch: throw away every unconsumed edge whatever its tick, and
   /// start again silent at tick 0. The producer's `restart()` seen from
   /// the other side.
-  void restart_playback(std::uint64_t head) noexcept;
+  void restart_playback(std::uint64_t head, std::uint64_t chip_head) noexcept;
+
+  /// Run the chip across `[from, to)`, applying each write inside it at
+  /// its tick, and answer its output summed in thirds of a tick.
+  [[nodiscard]] double integrate_chip(ticks from, ticks to,
+                                      std::uint64_t chip_head) noexcept;
+
+  /// Apply, without hearing them, every chip write up to `at`.
+  void skip_chip_to(ticks at, std::uint64_t chip_head) noexcept;
 
   std::array<audio_edge, edge_capacity> edges_{};
+  std::array<chip_write, chip_write_capacity> chip_writes_{};
 
   /// Written by the producer, read by the consumer. `head_` is published
   /// with release *after* the slot it names is written, which is what
@@ -691,6 +743,11 @@ class audio_timeline {
   /// ring is full. The only value that travels that direction.
   std::atomic<std::uint64_t> tail_{};
 
+  /// The chip ring's indices, on the same terms as `head_` and `tail_`.
+  std::atomic<std::uint64_t> chip_head_{};
+  std::atomic<std::uint64_t> chip_tail_{};
+  std::atomic<std::uint64_t> chip_dropped_{};
+
   std::atomic<std::uint64_t> underruns_{};
   std::atomic<std::uint64_t> resyncs_{};
 
@@ -703,6 +760,12 @@ class audio_timeline {
   /// into a running FNV-1a over (tick, level) — see `published()`.
   std::uint64_t published_{};
   std::uint64_t edge_digest_{1469598103934665603ULL};
+
+  /// The chip's producer side: the last write's tick, and every write
+  /// counted and folded into the same FNV-1a over (tick, value).
+  ticks last_chip_at_{};
+  std::uint64_t chip_published_{};
+  std::uint64_t chip_digest_{1469598103934665603ULL};
 
   /// The edge log, and the setting that fills it. Producer-only, all of
   /// it: written by `publish()` and emptied by `read_edge_log()`, both on
@@ -726,6 +789,11 @@ class audio_timeline {
   std::uint64_t cursor_remainder_{};
   unsigned remainder_scale_{};
   bool level_{};
+
+  /// The chip as the consumer hears it, and how far into its ring.
+  std::uint64_t chip_taken_{};
+  ticks chip_at_{};
+  psg_synth synth_{};
 };
 
 // --- Input in ---------------------------------------------------------

@@ -35,6 +35,8 @@ add_executable(amberfolio-sdl
   # `--press`'s grammar (#313) -- its own unit so tests/press_spec_test.cpp
   # can read it, on keymap.cpp's argument.
   src/press_spec.cpp
+  # `--rehash` (#404): a recording written back with this build's hashes.
+  src/rehash.cpp
   # The on-screen keyboard's pixels (#377) -- its own unit for the reason
   # press_spec is one: the geometry is arithmetic nobody can check by eye,
   # and tests/screen_keyboard_view_test.cpp cannot reach a lambda inside a
@@ -49,12 +51,16 @@ add_executable(amberfolio-sdl
   # is in it is three decisions, and a decision that can be read without
   # a terminal is a decision a test can hold down.
   src/sidecar_consent.cpp
+  # The two lines said about the Tandy chip (#404).
+  src/sound_report.cpp
   # The desktop's OCR engine (M5-E3, #174) -- the player's own Tesseract,
   # run as a program rather than linked; src/tesseract_ocr.h says why.
   # `tsv_words` is the one part of it that can be checked without an
   # engine installed, which is why it is its own file (M5-E3a, #212).
   src/tesseract_ocr.cpp
-  src/tsv_words.cpp)
+  src/tsv_words.cpp
+  # `--wall`'s date (#320), its own unit on press_spec's argument.
+  src/wall_spec.cpp)
 
 # ...and the linked one beside it when there is one. Both implement
 # `journal_ocr`, `main.cpp` picks between them, and the program-driven one
@@ -518,10 +524,13 @@ if(AMBERFOLIO_BUILD_TESTS)
     src/ocr_discovery.cpp
     src/glyph_atlas.cpp
     src/press_spec.cpp
+    src/rehash.cpp
     src/screen_keyboard_view.cpp
     src/seam_panel.cpp
     src/sidecar_consent.cpp
+    src/sound_report.cpp
     src/tsv_words.cpp
+    src/wall_spec.cpp
     tests/audio_gain_test.cpp
     tests/desktop_config_test.cpp
     tests/document_control_test.cpp
@@ -530,10 +539,13 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/mounted_vfs_test.cpp
     tests/ocr_discovery_test.cpp
     tests/press_spec_test.cpp
+    tests/rehash_test.cpp
     tests/screen_keyboard_view_test.cpp
     tests/seam_panel_test.cpp
     tests/sidecar_consent_test.cpp
-    tests/tsv_words_test.cpp)
+    tests/sound_report_test.cpp
+    tests/tsv_words_test.cpp
+    tests/wall_spec_test.cpp)
   target_include_directories(amberfolio-sdl-tests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src")
   target_link_libraries(amberfolio-sdl-tests PRIVATE

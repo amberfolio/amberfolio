@@ -792,6 +792,7 @@
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/fingerprint.h"
 #include "amberfolio/machine/int10.h"
+#include "amberfolio/machine/launcher_view.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
@@ -806,6 +807,7 @@
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/state.h"
+#include "amberfolio/machine/tandy_sound.h"
 #include "amberfolio/machine/trace.h"
 #include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
@@ -819,10 +821,13 @@
 #include "mounted_vfs.h"
 #include "ocr_discovery.h"
 #include "press_spec.h"
+#include "rehash.h"
 #include "screen_keyboard_view.h"
 #include "seam_panel.h"
 #include "sidecar_consent.h"
+#include "sound_report.h"
 #include "tesseract_ocr.h"
+#include "wall_spec.h"
 #if AMBERFOLIO_HAVE_LINKED_TESSERACT
 #include "tesseract_linked_ocr.h"
 #endif
@@ -868,11 +873,13 @@ struct wired_machine {
         timer(*box, irq),
         spk(*box, timer),
         video(std::make_unique<machine::ega>(*box)),
-        render(*box, *video) {
+        render(*box, *video),
+        chip(*box) {
     box->attach(irq);
     box->attach(timer);
     box->attach(spk);
     box->attach(*video);
+    box->attach(chip);
 
     box->schedule(timer.channel0_deadline());
     box->schedule(timer.channel2_deadline());
@@ -892,6 +899,7 @@ struct wired_machine {
   machine::speaker spk;
   std::unique_ptr<machine::ega> video;
   machine::renderer render;
+  machine::tandy_sound chip;
 };
 
 /// Reports what the core would not fake, to stderr. A host has to have
@@ -1682,6 +1690,9 @@ struct options {
   std::string record_path;
   std::string replay_path;
 
+  /// `--rehash FILE`, with `--replay` (rehash.h, #404).
+  std::string rehash_path;
+
   /// `--record-every`: take a checkpoint every this many frames rather
   /// than every one. One — a checkpoint a frame — is what `--record`
   /// alone has always done and is right for a run a person is pointing
@@ -1829,87 +1840,6 @@ struct options {
   return true;
 }
 
-/// `YYYY-MM-DD`, and optionally `THH:MM`, `:SS` and `.CC` after it, into
-/// an instant (`--wall`, #320). False for anything that is not that.
-///
-/// One `T` and no space, because a date and a time with a space between
-/// them is two command-line arguments on most shells and one on a shell
-/// somebody remembered to quote it for. The separator DOS itself never
-/// had is ISO 8601's, which is the one everybody already types.
-///
-/// The last word on whether the date is *real* is `wall_clock::set()`
-/// itself, called here on a throwaway clock: 31 April and 29 February
-/// 2100 are refused by the machine's own rule rather than by a second
-/// copy of it living in this parser, which could only ever come to a
-/// different conclusion than the machine does.
-[[nodiscard]] bool parse_wall(std::string_view spec, machine::wall_time& out) {
-  const auto number = [spec](std::size_t at, std::size_t width,
-                             unsigned& value) -> bool {
-    if (at + width > spec.size()) {
-      return false;
-    }
-    value = 0;
-    for (std::size_t i = at; i < at + width; ++i) {
-      if (spec[i] < '0' || spec[i] > '9') {
-        return false;
-      }
-      value = (value * 10) + static_cast<unsigned>(spec[i] - '0');
-    }
-    return true;
-  };
-
-  unsigned year = 0;
-  unsigned month = 0;
-  unsigned day = 0;
-  unsigned hour = 0;
-  unsigned minute = 0;
-  unsigned second = 0;
-  unsigned centisecond = 0;
-
-  if (spec.size() < 10 || !number(0, 4, year) || spec[4] != '-' ||
-      !number(5, 2, month) || spec[7] != '-' || !number(8, 2, day)) {
-    return false;
-  }
-  std::size_t at = 10;
-  if (at != spec.size()) {
-    // A time, which is `THH:MM` at the least. Midnight is what a bare
-    // date means, and that is a real answer rather than a rounding: a
-    // person naming a day for a reproducible run is naming its start.
-    if (spec[at] != 'T' || !number(at + 1, 2, hour) || at + 3 >= spec.size() ||
-        spec[at + 3] != ':' || !number(at + 4, 2, minute)) {
-      return false;
-    }
-    at += 6;
-    if (at != spec.size() && spec[at] == ':') {
-      if (!number(at + 1, 2, second)) {
-        return false;
-      }
-      at += 3;
-      if (at != spec.size() && spec[at] == '.') {
-        if (!number(at + 1, 2, centisecond)) {
-          return false;
-        }
-        at += 3;
-      }
-    }
-    if (at != spec.size()) {
-      return false;
-    }
-  }
-
-  out = machine::wall_time{
-      .year = static_cast<std::uint16_t>(year),
-      .month = static_cast<std::uint8_t>(month),
-      .day = static_cast<std::uint8_t>(day),
-      .hour = static_cast<std::uint8_t>(hour),
-      .minute = static_cast<std::uint8_t>(minute),
-      .second = static_cast<std::uint8_t>(second),
-      .centisecond = static_cast<std::uint8_t>(centisecond),
-  };
-  machine::wall_clock probe;
-  return probe.set(out, 0);
-}
-
 /// What the operating system says the date and the time are, in the local
 /// calendar the person in front of this host keeps (#320).
 ///
@@ -2053,7 +1983,7 @@ void print_usage() {
       "\n"
       "                                      [--document PATH]\n"
       "                                      [--record FILE]"
-      " [--record-every N] [--replay FILE]\n"
+      " [--record-every N] [--replay FILE] [--rehash FILE]\n"
       "                                      [--wall now|none|"
       "YYYY-MM-DD[THH:MM[:SS[.CC]]]]\n"
       "                                      [--speed xt|turbo|at|386]\n"
@@ -2215,13 +2145,15 @@ void print_usage() {
       }
     } else if (arg == "--replay" && i + 1 < argc) {
       opts.replay_path = argv[++i];
+    } else if (arg == "--rehash" && i + 1 < argc) {
+      opts.rehash_path = argv[++i];
     } else if (arg == "--wall" && i + 1 < argc) {
       const std::string_view spec = argv[++i];
       if (spec == "now") {
         opts.wall = wall_source::host_clock;
       } else if (spec == "none") {
         opts.wall = wall_source::unseeded;
-      } else if (parse_wall(spec, opts.wall_stated)) {
+      } else if (sdl::parse_wall(spec, opts.wall_stated)) {
         opts.wall = wall_source::stated;
       } else {
         std::fprintf(stderr,
@@ -2412,6 +2344,13 @@ void print_usage() {
     std::fprintf(stderr,
                  "amberfolio: --record and --replay are the two halves of"
                  " one thing; ask for one\n");
+    return opts;
+  }
+
+  if (!opts.rehash_path.empty() && opts.replay_path.empty()) {
+    std::fprintf(stderr,
+                 "amberfolio: --rehash rewrites a recording; name it with"
+                 " --replay\n");
     return opts;
   }
 
@@ -3870,7 +3809,10 @@ int main(int argc, char** argv) try {
     std::fprintf(stderr, "amberfolio: fast-forward %gx wall time\n", opts.fast);
   }
 
-  box.set_filesystem(files);
+  // The program reads the disk through the launcher's view
+  // (launcher_view.h, #404); this host reads and writes `files`.
+  machine::launcher_view launched(files);
+  box.set_filesystem(launched);
 
   // The directory the program starts in, before the sidecars below look
   // for the save directory in it (machine/dos.h). Said when it is not the
@@ -3898,6 +3840,12 @@ int main(int argc, char** argv) try {
                    machine::save_directory_trouble_name(saves.trouble));
     }
   }
+  // The copy's own sound line, when it is not what the program will
+  // read (sound_report.h, #404).
+  std::fputs(
+      sdl::started_sound_line(machine::read_configured_sound(files, install))
+          .c_str(),
+      stderr);
 
   // And now there is a disk to read the exploration sidecar off (M5-E2c,
   // #173). Before the program is loaded, so a panel opened in the first
@@ -4187,6 +4135,7 @@ int main(int argc, char** argv) try {
     }
     replay_text.assign(std::istreambuf_iterator<char>(in),
                        std::istreambuf_iterator<char>());
+    player.set_rehash(!opts.rehash_path.empty());
     if (!player.load(
             std::span<const char>(replay_text.data(), replay_text.size()))) {
       std::array<char, machine::replay_report_capacity> line{};
@@ -4869,8 +4818,11 @@ int main(int argc, char** argv) try {
   // only once `apply()` has looked at the recording, and an event
   // recorded at tick 0 — a key on the very first frame — has to be
   // delivered before the machine has taken a step, not after.
+  sdl::rehash_collector rehashed;
+  const auto apply_replay = [&]() { rehashed.apply(player, box); };
+
   if (replaying) {
-    static_cast<void>(player.apply(box));
+    apply_replay();
   }
 
   // The schedule this run paces against: one fixed instant, taken once,
@@ -5248,7 +5200,7 @@ int main(int argc, char** argv) try {
     // about the machine at a tick, and the display and the speaker are
     // read from it just below.
     if (replaying) {
-      static_cast<void>(player.apply(box));
+      apply_replay();
     }
 
     // A checkpoint every `--record-every` frames, and every frame that
@@ -5601,6 +5553,11 @@ int main(int argc, char** argv) try {
                    static_cast<unsigned long long>(resyncs),
                    static_cast<unsigned long long>(dropped), level.data());
     }
+    // The Tandy chip's traffic, when there was any (sound_report.h).
+    std::fputs(sdl::chip_traffic_line(box.audio().chip_published(),
+                                      box.audio().dropped_chip_writes())
+                   .c_str(),
+               stderr);
   }
 
   // What the recording said, and whether this machine was it. Printed
@@ -5616,6 +5573,10 @@ int main(int argc, char** argv) try {
     std::fputs(line.data(), stderr);
     if (!player.done()) {
       std::fflush(stdout);
+      return EXIT_FAILURE;
+    }
+    if (player.rehashing() &&
+        !sdl::write_rehashed(opts.rehash_path, replay_text, rehashed.lines())) {
       return EXIT_FAILURE;
     }
   }

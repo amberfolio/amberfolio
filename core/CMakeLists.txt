@@ -54,6 +54,7 @@ add_library(amberfolio-core STATIC
   src/machine/journal.cpp
   src/machine/keyboard.cpp
   src/machine/loader.cpp
+  src/machine/launcher_view.cpp
   src/machine/log.cpp
   src/machine/machine.cpp
   src/machine/memory_map.cpp
@@ -63,6 +64,7 @@ add_library(amberfolio-core STATIC
   src/machine/pit.cpp
   src/machine/platform.cpp
   src/machine/port_map.cpp
+  src/machine/psg.cpp
   src/machine/renderer.cpp
   src/machine/replay.cpp
   src/machine/report.cpp
@@ -79,6 +81,7 @@ add_library(amberfolio-core STATIC
   src/machine/seam_table.cpp
   src/machine/service_floor.cpp
   src/machine/speaker.cpp
+  src/machine/tandy_sound.cpp
   src/machine/state.cpp
   src/machine/trace.cpp
   src/machine/vfs.cpp

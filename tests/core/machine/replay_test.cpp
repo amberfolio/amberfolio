@@ -60,7 +60,7 @@ TEST(ReplayGrammar, RoundTripsEveryKindOfLine) {
   e.kind = replay_line::header;
   e.format_version = recording_format_version;
   e.state_version = state_format_version;
-  EXPECT_EQ(line_of(e), "amberfolio-recording 4 state=1\n");
+  EXPECT_EQ(line_of(e), "amberfolio-recording 4 state=2\n");
 
   e = replay_event{};
   e.kind = replay_line::cwd;
@@ -777,6 +777,114 @@ TEST(Replay, ARecordingOfOneRunVerifiesAgainstAnother) {
       << report.data();
 }
 
+// --- Re-hashing (#404) ---------------------------------------------------
+
+/// Every checkpoint line of `text`, in order.
+[[nodiscard]] std::vector<std::string> checkpoint_lines(std::string_view text) {
+  std::vector<std::string> lines;
+  while (!text.empty()) {
+    const std::size_t end = text.find('\n');
+    const std::string_view line = text.substr(0, end + 1);
+    text.remove_prefix(line.size());
+    if (line.starts_with("checkpoint ")) {
+      lines.emplace_back(line);
+    }
+  }
+  return lines;
+}
+
+/// `play()`, keeping the line each re-hashed checkpoint becomes.
+[[nodiscard]] std::vector<std::string> rehash(const rig& r,
+                                              replay_player& player,
+                                              replay_status& status) {
+  std::vector<std::string> lines;
+  std::array<char, replay_max_line> line{};
+  const auto apply = [&]() {
+    const std::size_t before = player.checkpoints_verified();
+    status = player.apply(*r.box);
+    if (player.checkpoints_verified() != before) {
+      const std::size_t n = format_replay_line(player.rehashed(), line);
+      lines.emplace_back(line.data(), n);
+    }
+  };
+  apply();
+  while (status == replay_status::ok) {
+    ticks target = r.box->time() + renderer::frame_period;
+    if (player.next_tick() < target) {
+      target = player.next_tick();
+    }
+    r.box->run(target);
+    apply();
+  }
+  return lines;
+}
+
+// A state layout moved and every hash in the recording is stale: the
+// re-hash still plays its inputs at their ticks, and what it writes down
+// is exactly what a fresh recording of the same run says.
+TEST(Replay, ARehashOfStaleHashesGivesBackTheRunsOwnCheckpoints) {
+  const rig first;
+  first.start();
+  const std::string text =
+      record(first, {{5'000, 0x1E}, {50'000, 0x20}}, 40'000, 200'000);
+  const std::vector<std::string> fresh = checkpoint_lines(text);
+  ASSERT_EQ(fresh.size(), 5u);
+
+  // Another layout's recording: an older version, and hashes this build
+  // would never take.
+  std::string stale = text;
+  const std::string header = "state=" + std::to_string(state_format_version);
+  stale.replace(stale.find(header), header.size(), "state=0");
+  for (std::size_t at = stale.find("checkpoint "); at != std::string::npos;
+       at = stale.find("checkpoint ", at + 1)) {
+    const std::size_t digest = stale.find(' ', stale.find(' ', at + 11) + 1);
+    stale.replace(digest + 1, 64, std::string(64, 'a'));
+  }
+
+  {
+    const rig second;
+    second.start();
+    replay_player player;
+    EXPECT_FALSE(player.load(std::span<const char>(stale.data(), stale.size())))
+        << "a verifier refuses another layout";
+  }
+
+  const rig second;
+  second.start();
+  replay_player player;
+  player.set_rehash(true);
+  ASSERT_TRUE(player.load(std::span<const char>(stale.data(), stale.size())));
+  ASSERT_EQ(player.check_initial(*second.box, second.fs.get()),
+            replay_status::ok);
+  replay_status status = replay_status::ok;
+  EXPECT_EQ(rehash(second, player, status), fresh);
+  EXPECT_EQ(status, replay_status::done);
+  EXPECT_EQ(player.keys_delivered(), 2u);
+}
+
+// A re-hash takes the machine's hash, never its step count or its stop:
+// a recording whose inputs no longer describe the run is still refused.
+TEST(Replay, ARehashStillRefusesACheckpointAtTheWrongStep) {
+  const rig first;
+  first.start();
+  std::string text = record(first, {}, 40'000, 100'000);
+  const std::size_t at = text.find("checkpoint ");
+  ASSERT_NE(at, std::string::npos);
+  const std::size_t steps = text.find(' ', at + 11) + 1;
+  text.insert(steps, "9");
+
+  const rig second;
+  second.start();
+  replay_player player;
+  player.set_rehash(true);
+  ASSERT_TRUE(player.load(std::span<const char>(text.data(), text.size())));
+  ASSERT_EQ(player.check_initial(*second.box, second.fs.get()),
+            replay_status::ok);
+  replay_status status = replay_status::ok;
+  EXPECT_TRUE(rehash(second, player, status).empty());
+  EXPECT_EQ(status, replay_status::diverged);
+}
+
 TEST(Replay, AKeyAtAnotherTickIsADivergenceNamedBySection) {
   const rig first;
   first.start();
@@ -1033,7 +1141,7 @@ TEST(Replay, AVersionOneRecordingStillVerifiesAndPinsOnlyTheRoot) {
   first.start();
   const std::string two = record(first, {}, 40'000, 50'000);
   const std::string one = downgraded_to_version_one(two);
-  EXPECT_TRUE(one.starts_with("amberfolio-recording 1 state=1\n")) << one;
+  EXPECT_TRUE(one.starts_with("amberfolio-recording 1 state=2\n")) << one;
   EXPECT_NE(one.find("\nfile SAVE 0 " +
                      std::string(sha256_digest::text_length, '0') + "\n"),
             std::string::npos)
@@ -1339,12 +1447,12 @@ TEST(Replay, RefusesATextThatIsNotARecording) {
   // is one this build has never written; 1 to 4 it has, and reads all
   // four.
   const std::string other_version =
-      "amberfolio-recording 5 state=1\nprogram A.EXE " + std::string(64, 'a') +
+      "amberfolio-recording 5 state=2\nprogram A.EXE " + std::string(64, 'a') +
       "\n";
   EXPECT_FALSE(player.load(
       std::span<const char>(other_version.data(), other_version.size())));
 
-  const std::string no_program = "amberfolio-recording 1 state=1\nspeed 256\n";
+  const std::string no_program = "amberfolio-recording 1 state=2\nspeed 256\n";
   EXPECT_FALSE(
       player.load(std::span<const char>(no_program.data(), no_program.size())));
   std::array<char, 256> report{};

@@ -169,8 +169,9 @@ Read `platform.h`'s design essay first.
 - **Frames are pulled**, with a monotonic generation counter; a slow host
   drops frames and never slows the machine.
 - **`audio_timeline::render()` is the only core function callable off
-  the machine thread**, by exactly one thread. The edge list is canonical
-  machine state; the float samples are not. The edge list can also be
+  the machine thread**, by exactly one thread. The speaker's edge list and
+  the Tandy chip's writes (`docs/hosts.md` §4a) are canonical machine
+  state; the float samples are not. The edge list can also be
   read as an opt-in log the host drains between slices (`docs/hosts.md`
   §4).
 - **Input is stamped with the machine's own clock**; a host posts only

@@ -172,5 +172,9 @@ Only when the machine it describes legitimately changes:
   test: the change was chosen, argued on an issue, and visible in the
   seam's source, never that a red line went green.
 
+A version bump is a **re-hash**, never a re-typing: `docs/replay.md` §7
+has the two commands, and the order that keeps a real divergence from
+being re-hashed away.
+
 If a session stops verifying and none of the above changed, the machine
 changed and the finding is real.

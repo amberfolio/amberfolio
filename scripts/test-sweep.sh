@@ -83,7 +83,7 @@ mkrepo() { # mkrepo <name> -> prints repo path
 # running one in this file.
 mkrec() { # mkrec <repo> <name>
   {
-    echo "amberfolio-recording 1 state=1"
+    echo "amberfolio-recording 1 state=2"
     echo "program MADEUP.EXE 00"
     echo "file MADEUP.EXE 4 00"
     echo "end 1 1"
@@ -228,7 +228,7 @@ expect_silent "and not the one beside it that was not" "Debug"
 mkpair() { # mkpair <repo> <name> <partner> <hashes...>
   local repo="$1" name="$2" partner="$3"; shift 3
   {
-    echo "amberfolio-recording 1 state=1"
+    echo "amberfolio-recording 1 state=2"
     echo "program MADEUP.EXE 00"
     local tick=1000
     for h in "$@"; do
@@ -492,7 +492,7 @@ mkdisk "$r/tests/sessions/disk"
 # Two recordings with the same checkpoints: identical holds.
 for n in base idle; do
   {
-    echo "amberfolio-recording 1 state=1"
+    echo "amberfolio-recording 1 state=2"
     echo "program MADEUP.EXE 00"
     echo "file MADEUP.EXE 4 00"
     echo "checkpoint 10 1 aaaa"
@@ -513,7 +513,7 @@ expect_says "and what that means" "never triggered moved the machine"
 
 # And a pair that is not the same run cannot pass by comparing nothing.
 {
-  echo "amberfolio-recording 1 state=1"
+  echo "amberfolio-recording 1 state=2"
   echo "program MADEUP.EXE 00"
   echo "file MADEUP.EXE 4 00"
   echo "checkpoint 10 1 aaaa"

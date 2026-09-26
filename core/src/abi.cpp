@@ -29,6 +29,7 @@
 #include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/fingerprint.h"
 #include "amberfolio/machine/int10.h"
+#include "amberfolio/machine/launcher_view.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/log.h"
 #include "amberfolio/machine/machine.h"
@@ -43,6 +44,7 @@
 #include "amberfolio/machine/screen_keyboard.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
+#include "amberfolio/machine/tandy_sound.h"
 #include "amberfolio/machine/vfs.h"
 #include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
@@ -354,6 +356,16 @@ struct reference_devices {
   /// machine's audio timeline (speaker.h).
   amberfolio::machine::speaker spk;
 
+  /// Port C0h, the Tandy 1000's sound chip, published onto the same
+  /// timeline (tandy_sound.h, #404).
+  amberfolio::machine::tandy_sound chip;
+
+  /// What the program reads the disk through: `fs` with `POOL.CFG`'s
+  /// sound line read the way this machine's launcher writes it
+  /// (launcher_view.h, #404). Host puts and reads go to `fs` itself, so
+  /// a page keeps the player's own file.
+  amberfolio::machine::launcher_view view;
+
   /// Construction order is declaration order, not this list's order —
   /// worth stating because every later member's constructor takes a
   /// reference to an earlier one: `pic_ctrl` before `pit_dev` (the PIT
@@ -367,7 +379,9 @@ struct reference_devices {
         pit_dev(box, pic_ctrl),
         video(box),
         render(box, video),
-        spk(box, pit_dev) {
+        spk(box, pit_dev),
+        chip(box),
+        view(fs) {
     // Every attach() here claims a distinct, non-overlapping memory
     // window or port range (ega.h's 0xA0000 window; pic.h's 20h-21h;
     // pit.h's 40h-43h; speaker.h's 61h), so none of these can fail on a
@@ -383,11 +397,12 @@ struct reference_devices {
     // list the same way. It is otherwise free — the claims below do not
     // overlap, so no dispatch depends on it — which is exactly why it
     // can be spent on this.
-    box.set_filesystem(fs);
+    box.set_filesystem(view);
     box.attach(pic_ctrl);
     box.attach(pit_dev);
     box.attach(spk);
     box.attach(video);
+    box.attach(chip);
     box.schedule(pit_dev.channel0_deadline());
     box.schedule(pit_dev.channel2_deadline());
     box.schedule(spk);
@@ -1143,18 +1158,15 @@ double af_machine_vfs_bytes_used(const af_machine* handle) {
 }
 
 double af_machine_vfs_generation(const af_machine* handle) {
-  // `machine::vfs()` and not `vfs_of()`: the counter is on the interface
-  // (machine/vfs.h), so this is the one call in the family with nothing
-  // to reach past — it answers about whatever filesystem the machine was
-  // attached to, which is what a caller asking "did the disk move" means
-  // by "the disk". A machine with none answers zero, which is also what
-  // a filesystem nothing has happened to answers; abi.h says why that is
-  // not an ambiguity a caller can be hurt by.
-  const machine* box = box_of(handle);
-  if (box == nullptr) {
-    return 0.0;
-  }
-  const amberfolio::machine::filesystem* fs = box->vfs();
+  // The disk the host puts files on, as every other call in the family
+  // answers about. The machine reads it through the launcher's view
+  // (launcher_view.h, #404), and that view's own counter moves only for
+  // what the program does through it; every change, the program's and
+  // the host's, lands on the disk underneath and moves this one. A
+  // machine with none answers zero, which is also what a filesystem
+  // nothing has happened to answers; abi.h says why that is not an
+  // ambiguity a caller can be hurt by.
+  const amberfolio::machine::memory_filesystem* fs = vfs_of(handle);
   return fs == nullptr ? 0.0 : static_cast<double>(fs->generation());
 }
 

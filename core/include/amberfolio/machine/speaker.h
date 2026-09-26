@@ -3,7 +3,7 @@
 // M2-D4 (#49): the PC speaker — port 61h (System Control Port B) gating
 // PIT channel 2's tone into the host's audio pull. PLAN.md §3: "PIT
 // channel 2 plus the port 61h gate, box-filtered into the host audio
-// stream" — the one sound device of v1.
+// stream". The Tandy chip (tandy_sound.h, #404) is the other.
 //
 //
 // Composition, mostly

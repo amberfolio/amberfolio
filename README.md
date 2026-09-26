@@ -4,8 +4,8 @@ A low-level emulator for the SSI Gold Box games.
 
 Amber Folio is a purpose-built emulator for the machine the Gold Box CRPGs
 (Pool of Radiance and its family) ran on: real-mode x86, EGA graphics,
-PC-speaker sound. It runs in the browser via WebAssembly and natively on
-Windows, macOS and Linux. You bring your own legally-owned copy of a game;
+PC-speaker and Tandy sound. It runs in the browser via WebAssembly and
+natively on Windows, macOS and Linux. You bring your own legally-owned copy of a game;
 the emulator runs the unmodified original program. Quality-of-life
 enhancements are opt-in runtime patches to the machine's memory
 ("seams"), off by default, leaving the bytes on disk untouched.

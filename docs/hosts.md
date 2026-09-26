@@ -94,7 +94,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--press KEY@FRAME[:down\|:up]` | post a real SDL key event at frame `FRAME`. `KEY` is any `SDL_GetScancodeFromName` name: `A`, `Escape`, `Left`, `Keypad 5`. Bare, the make and the break; `:down` the make only, so the key stays held (`Left Alt@7580:down`); `:up` the break only. `hosts/sdl/src/press_spec.h`. Repeatable. |
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161, `docs/seams.md` §3a). Needs `--seam ID`, works headless, refused with `--replay`. Repeatable. |
 | `--steps N`, `--until TICKS` | bound the run, the only way to catch a hang. `--steps N` ends on step N exactly. |
-| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.wav` (speaker rendered) and `PREFIX.edges` (§4). |
+| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
 | `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
 | `--trace` | keep and print with the report the last 256 instructions, 64 service calls and 32 naming file calls; print each file the program names as it happens. |
 | `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/main.cpp`. |
@@ -105,6 +105,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--document PATH` | present a document the player holds (`docs/seams.md`, §9). Repeatable. A file **dropped on the window** does the same thing and says the same two lines, in the panel as well as on stderr. |
 | `--keyboard prompt\|name\|full` | open with the on-screen keyboard up, at that layout (#377, §7). Refused with `--headless` and with `--replay`. |
 | `--record FILE`, `--record-every N`, `--replay FILE` | write the run down, checkpoint every N frames, replay a recording and check it (`docs/replay.md`). |
+| `--rehash FILE` | with `--replay`: every input, tick and step count as recorded, the machine's own hash taken at each checkpoint instead of compared, and the recording written to `FILE` with only its header's state version and its hashes changed. What a `state_format_version` bump asks of the session library (`docs/replay.md` §7). |
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step, `xt` by default. Not a fast-forward. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. Only the loop's sleep changes (`platform.h`); the run is byte-identical. |
@@ -400,6 +401,24 @@ replay started anywhere else is refused before the first instruction
 (`docs/replay.md`). The desktop host is given the same `--install` to
 replay one, or finds the same edition row.
 
+**The program is told it has a Tandy sound chip** (#404). `POOL.CFG`'s
+line 2 names the sound device: `P` the speaker, `T` the Tandy 1000's
+chip, `S` nothing. The program plays its footsteps and its combat
+through the chip only when told `T`; told `P` it has the speaker's few
+beeps. Steam's launcher writes `T` and the repack's `P`.
+This machine has both (§4a), so both hosts start every copy the way the
+Tandy launcher does: the program reads its configuration through
+`machine::launcher_view`, which answers a read-only open of `POOL.CFG`
+with line 2's letter read as `T` and everything else as the file has it.
+The player's own file is never written — the page's copy in the browser
+and the desktop's folder both keep what the launcher wrote — and every
+host and every replay makes the same choice, so a recording needs no line
+for it. The desktop says so when the file disagrees:
+
+```
+amberfolio: POOL.CFG sound P, started as T (Tandy sound)
+```
+
 ---
 
 ## 3. What a person still has to check
@@ -435,6 +454,10 @@ in the commit.
 - [ ] A resync produced on purpose: a stalled tab, a dragged window, or
       `--fast` past what a 48 kHz device can consume (§4).
 - [ ] Whether the game sounds right, and whether 25% is a useful quarter.
+- [ ] The Tandy chip heard against a real Tandy 1000 or the Steam release
+      under its own DOSBox (#404, §4a): footsteps in the city, a fight, and
+      the balance between them and the speaker. CI checks the chip's
+      arithmetic (`PsgSynth.*`, `ChipTimeline.*`), never an ear.
 
 ### The demo disk
 
@@ -620,6 +643,56 @@ Four properties hold on both, each a test:
 tone; `--verify`'s `sounded` count is after it, so a muted run reports
 `sounded 0`. The report line carries `volume=muted`, or the level, only
 when it is not unity.
+
+## 4a. The Tandy chip (#404)
+
+The Tandy 1000's sound chip sits at port C0h (`machine/tandy_sound.h`):
+an SN76489-family part clocked at 3,579,545 Hz, three times the PIT's
+input, with three square-wave tone voices and one noise voice, each with
+a four-bit attenuation in 2 dB steps. It is write-only; a read answers
+open bus. `machine/psg.h` is the chip: what a written byte means, and what
+it sounds like.
+
+**The writes are the canonical state, not edges.** Four voices at sixteen
+levels would be thousands of edges a second, so the device publishes each
+byte the program writes, at its tick, onto a second ring in
+`audio_timeline` (`publish_chip`). `render()` runs the chip forward over
+each sample's interval on the audio thread, applying each write at its
+own tick, and box-filters it exactly as it does the speaker; the two are
+summed. The machine thread keeps the chip's registers as device state and
+the writes as a count and a running digest, which is what a checkpoint
+hashes. A silent chip is exactly 0.0, so a run that never writes C0h
+sounds as it did before the chip existed.
+
+| | |
+| --- | --- |
+| one voice at attenuation 0 | 0.125 of full scale (`psg_voice_amplitude`); four at once reach 0.5, and the speaker's 0.25 on top still fits |
+| a tone of period N | 3,579,545 / (32 N) Hz; period 0 counts as 1024 |
+| noise rates 0-3 | the register shifts every 32, 64 or 128 counter steps, or at twice tone voice 2's period |
+| the noise register | DOSBox's: a Galois shift register seeded with 0x0F35, fed back with 0x14002 (white) or 0x08000 (periodic), reseeded by every write to the noise control |
+
+**The noise register is the one choice that matters to the ear.** The
+program rewrites the noise control every two or three milliseconds while
+a footstep or a hit sounds, and each write reseeds the register, so what
+a player hears is the first few shifts after a seed, again and again. A
+seed whose low bits are zero (the 0x8000 some datasheet-derived models
+use) makes every one of those stretches silent. DOSBox's is the machine
+the Steam release's own launcher starts, so a store copy sounds here as it
+sounds there.
+
+**What the program sends it.** Walking in the city is footsteps on the
+noise voice, about 50-90 ms each; combat uses the tone voices as well.
+Nothing is written on the title and credits screens: this program has no
+title music. `--dump`'s WAV holds the first minute of a run; the desktop
+prints the chip's traffic at the end of any run that had some:
+
+```
+amberfolio: tandy writes=1907 dropped=0
+```
+
+`dropped` is the ring overflowing, sound the machine made and no host
+got. It should be zero; `psg_test.cpp`'s `ChipTimeline` suite pins the
+ring's rules and `PsgSynth` the waveform.
 
 ---
 

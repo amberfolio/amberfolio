@@ -166,7 +166,7 @@ TEST(SessionLibrary, ASessionWithAWrongCheckpointIsRefused) {
 TEST(SessionLibrary, EveryCommittedRecordingIsAFormatThisBuildStillReads) {
   const std::string text = read_session_file("spin.rec");
   ASSERT_FALSE(text.empty());
-  EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 1 state=1\n"))
+  EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 1 state=2\n"))
       << "spin.rec is the tree's only format 1 recording and the whole of"
          " what keeps that reader honest; re-recording it is a decision"
          " (tests/sessions/README.md).";
@@ -204,7 +204,7 @@ TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
                                       "subset-map-reader.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
-    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 3 state=1\n"))
+    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 3 state=2\n"))
         << name;
   }
 }
