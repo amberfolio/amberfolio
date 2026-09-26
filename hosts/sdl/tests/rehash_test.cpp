@@ -31,14 +31,15 @@ TEST(Rehash, OnlyTheHeaderAndTheCheckpointsChange) {
   const std::optional<std::string> out = rehash_text(
       recording, {"checkpoint 10 2 cc\n", "checkpoint 20 5 dd\n"}, why);
   ASSERT_TRUE(out.has_value()) << why;
-  EXPECT_EQ(*out, "amberfolio-recording 3 state=" +
-                      std::to_string(machine::state_format_version) +
-                      "\n"
-                      "program A.EXE 00\n"
-                      "key 10 1e down\n"
-                      "checkpoint 10 2 cc\n"
-                      "checkpoint 20 5 dd\n"
-                      "end 20 5\n");
+  EXPECT_EQ(out.value_or(""),
+            "amberfolio-recording 3 state=" +
+                std::to_string(machine::state_format_version) +
+                "\n"
+                "program A.EXE 00\n"
+                "key 10 1e down\n"
+                "checkpoint 10 2 cc\n"
+                "checkpoint 20 5 dd\n"
+                "end 20 5\n");
 }
 
 TEST(Rehash, CheckpointsThatDoNotPairOffAreRefused) {
