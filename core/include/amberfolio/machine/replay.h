@@ -21,7 +21,7 @@
 // numbers in decimal and digests in lowercase hex. Lines that begin with
 // `#` and empty lines are ignored. The first line names the format:
 //
-//     amberfolio-recording 4 state=1
+//     amberfolio-recording 4 state=2
 //
 // Then the **initial conditions**, in this order:
 //
@@ -479,6 +479,22 @@ enum class replay_status : std::uint8_t {
 /// first thing that differed.
 class replay_player {
  public:
+  /// Re-hash instead of verify: every checkpoint still has to land on
+  /// its tick with its step count and its stop, and the machine's own
+  /// hash is taken there instead of compared — a recording whose inputs
+  /// still describe the run, re-hashed after `state_format_version`
+  /// moved (docs/replay.md §7). A recording of any state version loads.
+  /// Set before `load()`. The host writes the new checkpoint lines;
+  /// `checkpoints_verified()` counts them.
+  void set_rehash(bool on) noexcept { rehash_ = on; }
+  [[nodiscard]] bool rehashing() const noexcept { return rehash_; }
+
+  /// The checkpoint line the last re-hashed checkpoint becomes: its tick,
+  /// steps and stop as recorded, and the machine's hashes there.
+  [[nodiscard]] const replay_event& rehashed() const noexcept {
+    return rehashed_;
+  }
+
   /// Parse the preamble of `text` and stand at its first event. The text
   /// is the host's and must outlive the player; nothing is copied but
   /// the preamble. False, with `report()` saying which line, for a text
@@ -571,6 +587,8 @@ class replay_player {
   std::size_t checkpoints_{};
   std::size_t keys_{};
   std::size_t pulls_{};
+  bool rehash_{false};
+  replay_event rehashed_{};
 
   /// The report's pieces: a message, the line it is about, the tick, and
   /// for a hash divergence the two digests.

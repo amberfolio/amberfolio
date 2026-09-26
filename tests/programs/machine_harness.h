@@ -102,6 +102,7 @@
 #include "amberfolio/machine/renderer.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
+#include "amberfolio/machine/tandy_sound.h"
 
 namespace amberfolio::programs {
 
@@ -470,6 +471,7 @@ class machine_harness {
   std::unique_ptr<machine::speaker> sound_;
   std::unique_ptr<machine::ega> video_;
   std::unique_ptr<machine::renderer> screen_;
+  std::unique_ptr<machine::tandy_sound> chip_;
 
   /// The harness's own `seam_host_services`, attached when
   /// `machine_setup::host_services` asked for one and left detached

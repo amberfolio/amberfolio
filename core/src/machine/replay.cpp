@@ -912,7 +912,10 @@ const replay_player blank{};
 }  // namespace
 
 bool replay_player::load(std::span<const char> text) {
+  // A setting, not a recording's state: it survives the reset.
+  const bool rehash = rehash_;
   *this = blank;
+  rehash_ = rehash;
   text_ = text;
 
   replay_event event{};
@@ -929,7 +932,7 @@ bool replay_player::load(std::span<const char> text) {
          "a recording format this player does not read", event.format_version);
     return false;
   }
-  if (event.state_version != state_format_version) {
+  if (event.state_version != state_format_version && !rehash_) {
     fail(replay_status::malformed,
          "a state layout this build does not hash; re-record",
          event.state_version);
@@ -1332,6 +1335,14 @@ replay_status replay_player::apply(machine& box) {
                                   " did not",
                pending_.at);
           return status_;
+        }
+        if (rehash_) {
+          // The line as the recording wrote it, section fields or not,
+          // so that a re-hash changes hashes and nothing else.
+          rehashed_ = checkpoint_of(box);
+          rehashed_.have_sections = pending_.have_sections;
+          ++checkpoints_;
+          break;
         }
         const state_hashes hashes = hash_state(box);
         if (!(hashes.whole == pending_.digest)) {

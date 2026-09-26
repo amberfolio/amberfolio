@@ -216,6 +216,35 @@ bool audio_timeline::publish(ticks at, bool level) noexcept {
   return true;
 }
 
+bool audio_timeline::publish_chip(ticks at, std::uint8_t value) noexcept {
+  if (chip_published_ != 0 && at < last_chip_at_) {
+    return false;
+  }
+
+  // The same ordering as `publish()`: the slot first, then the release
+  // store that hands it over.
+  const std::uint64_t head = chip_head_.load(std::memory_order_relaxed);
+  const std::uint64_t tail = chip_tail_.load(std::memory_order_acquire);
+  if (head - tail >= chip_write_capacity) {
+    chip_dropped_.fetch_add(1, std::memory_order_relaxed);
+    return false;
+  }
+  chip_writes_[head % chip_write_capacity] = {.at = at, .value = value};
+  chip_head_.store(head + 1, std::memory_order_release);
+
+  last_chip_at_ = at;
+  ++chip_published_;
+  std::uint64_t hash = chip_digest_;
+  for (unsigned i = 0; i < 8; ++i) {
+    hash ^= static_cast<std::uint8_t>(at >> (8U * i));
+    hash *= 1099511628211ULL;
+  }
+  hash ^= value;
+  hash *= 1099511628211ULL;
+  chip_digest_ = hash;
+  return true;
+}
+
 std::size_t audio_timeline::read_edge_log(std::span<audio_edge> out) noexcept {
   std::size_t taken = 0;
   while (taken < out.size() && log_count_ > 0) {
@@ -232,6 +261,8 @@ void audio_timeline::save_state(state_sink& out) const {
   out.u64(edge_digest_);
   out.flag(have_published_);
   out.u64(have_published_ ? last_published_ : 0);
+  out.u64(chip_published_);
+  out.u64(chip_digest_);
 }
 
 void audio_timeline::advance(ticks now) noexcept {
@@ -256,6 +287,9 @@ void audio_timeline::restart() noexcept {
   have_published_ = false;
   published_ = 0;
   edge_digest_ = 1469598103934665603ULL;
+  last_chip_at_ = 0;
+  chip_published_ = 0;
+  chip_digest_ = 1469598103934665603ULL;
 
   // The log's contents, but not the setting that fills it: what it holds
   // is in-flight traffic from the run that just ended (the same rule
@@ -298,7 +332,45 @@ std::uint64_t audio_timeline::integrate(ticks from, ticks to,
   return high;
 }
 
-void audio_timeline::skip_to(ticks at, std::uint64_t head) noexcept {
+double audio_timeline::integrate_chip(ticks from, ticks to,
+                                      std::uint64_t chip_head) noexcept {
+  double total = 0.0;
+  chip_at_ = from;
+  // `<` rather than `!=`, for the reason `integrate` gives.
+  while (chip_taken_ < chip_head) {
+    const chip_write& next = chip_writes_[chip_taken_ % chip_write_capacity];
+    if (next.at >= to) {
+      break;
+    }
+    if (next.at > chip_at_) {
+      total += synth_.run(next.at - chip_at_);
+      chip_at_ = next.at;
+    }
+    synth_.write(next.value);
+    ++chip_taken_;
+  }
+  total += synth_.run(to - chip_at_);
+  chip_at_ = to;
+  return total;
+}
+
+void audio_timeline::skip_chip_to(ticks at, std::uint64_t chip_head) noexcept {
+  // The writes still land, because the registers they set are what the
+  // chip plays next; only the sound of the skipped stretch is lost.
+  while (chip_taken_ < chip_head) {
+    const chip_write& next = chip_writes_[chip_taken_ % chip_write_capacity];
+    if (next.at > at) {
+      break;
+    }
+    synth_.write(next.value);
+    ++chip_taken_;
+  }
+  chip_at_ = at;
+}
+
+void audio_timeline::skip_to(ticks at, std::uint64_t head,
+                             std::uint64_t chip_head) noexcept {
+  skip_chip_to(at, chip_head);
   // `<` rather than `!=`, for the reason `integrate` gives.
   while (taken_ < head) {
     const audio_edge& next = edges_[taken_ % edge_capacity];
@@ -312,7 +384,11 @@ void audio_timeline::skip_to(ticks at, std::uint64_t head) noexcept {
   cursor_remainder_ = 0;
 }
 
-void audio_timeline::restart_playback(std::uint64_t head) noexcept {
+void audio_timeline::restart_playback(std::uint64_t head,
+                                      std::uint64_t chip_head) noexcept {
+  chip_taken_ = chip_head;
+  chip_at_ = 0;
+  synth_.reset();
   // Everything in the ring is stamped with ticks from a clock that no
   // longer exists, so none of it can be integrated — it is dropped
   // wholesale rather than walked, which is the one case `skip_to` cannot
@@ -332,14 +408,15 @@ std::size_t audio_timeline::render(std::span<float> out,
   const std::uint64_t epoch = epoch_.load(std::memory_order_acquire);
   const ticks limit = horizon_.load(std::memory_order_acquire);
   const std::uint64_t head = head_.load(std::memory_order_acquire);
+  const std::uint64_t chip_head = chip_head_.load(std::memory_order_acquire);
 
   if (epoch != seen_epoch_) {
     seen_epoch_ = epoch;
-    restart_playback(head);
+    restart_playback(head, chip_head);
   }
 
   if (limit > cursor_ && limit - cursor_ > max_lag) {
-    skip_to(limit - resync_lag, head);
+    skip_to(limit - resync_lag, head, chip_head);
     resyncs_.fetch_add(1, std::memory_order_relaxed);
   }
 
@@ -374,14 +451,17 @@ std::size_t audio_timeline::render(std::span<float> out,
       // generated this audio yet; when it does, playback resumes at
       // exactly this tick and nothing is lost.
       underran = true;
-      sample = level_ ? speaker_amplitude : 0.0F;
+      sample = (level_ ? speaker_amplitude : 0.0F) + synth_.level();
       continue;
     }
 
     const std::uint64_t high = integrate(cursor_, next, head);
+    const double chip = integrate_chip(cursor_, next, chip_head);
     const auto span = static_cast<std::uint64_t>(next - cursor_);
-    sample =
-        speaker_amplitude * static_cast<float>(high) / static_cast<float>(span);
+    sample = speaker_amplitude * static_cast<float>(high) /
+                 static_cast<float>(span) +
+             static_cast<float>(
+                 chip / static_cast<double>(span * psg_clocks_per_tick));
     cursor_ = next;
     cursor_remainder_ = remainder;
     ++generated;
@@ -395,6 +475,7 @@ std::size_t audio_timeline::render(std::span<float> out,
   // again. Once per call rather than per edge: the producer only reads it
   // to decide whether it is full, and it has 2048 slots of slack.
   tail_.store(taken_, std::memory_order_release);
+  chip_tail_.store(chip_taken_, std::memory_order_release);
   return generated;
 }
 

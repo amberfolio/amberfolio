@@ -71,7 +71,7 @@ endif()
 # agreed on the wrong format would agree with each other all day.
 file(READ "${recording}" text)
 
-if(NOT text MATCHES "^amberfolio-recording 4 state=1\n")
+if(NOT text MATCHES "^amberfolio-recording 4 state=2\n")
   message(FATAL_ERROR "the recording does not begin with its header.\n${context}")
 endif()
 

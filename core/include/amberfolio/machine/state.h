@@ -81,7 +81,7 @@ namespace amberfolio::machine {
 class machine;
 
 /// The layout version. Bump it, and only it, when the bytes change.
-inline constexpr std::uint32_t state_format_version = 1;
+inline constexpr std::uint32_t state_format_version = 2;
 
 /// The sections, in the order they are written. Named so a divergence
 /// report can say which.

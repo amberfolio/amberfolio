@@ -231,7 +231,7 @@ TEST(StateLayout, NamesEverySection) {
   EXPECT_STREQ(state_section_name(state_section::clock), "clock");
   EXPECT_STREQ(state_section_name(state_section::devices), "devices");
   EXPECT_STREQ(state_section_name(state_section::stop), "stop");
-  EXPECT_EQ(state_format_version, 1u);
+  EXPECT_EQ(state_format_version, 2u);
 }
 
 }  // namespace

@@ -652,7 +652,8 @@ def run(command: list[str], env: dict[str, str] | None = None):
 
 def sweep_desktop(host: Path, session: Session, disk: Path,
                   store: Path | None,
-                  documents: list[Path]) -> tuple[str, str]:
+                  documents: list[Path],
+                  rehash: bool = False) -> tuple[str, str]:
     """The desktop host replaying the session over a copy of its disk.
 
     A copy, because a program may write to it: a replay is a run of the
@@ -680,6 +681,13 @@ def sweep_desktop(host: Path, session: Session, disk: Path,
                        # comparison, and its answer must not be a
                        # property of the machine it is verified on.
                        "--no-config"]
+            if rehash:
+                # The recording written back over itself with this
+                # build's hashes (`--rehash`): the host has read the whole
+                # text before the first step and writes only once the run
+                # reached its `end`, so a run that fails leaves the file
+                # as it was.
+                command += ["--rehash", str(session.path)]
             for one in documents:
                 # Presented rather than copied: a host hashes what it is
                 # handed and never writes to it (`present_document`).
@@ -843,6 +851,11 @@ def main() -> int:
                         help="a copy of a disk the game sessions were"
                              f" recorded against; repeatable (or"
                              f" ${GAME_DISK_ENV}, {os.pathsep}-separated)")
+    parser.add_argument("--rehash", action="store_true",
+                        help="rewrite every session the desktop host"
+                             " replays with this build's checkpoint hashes;"
+                             " what a state_format_version bump asks for"
+                             " (docs/replay.md section 7)")
     parser.add_argument("--pin", metavar="SESSION",
                         help="rewrite that session's descriptor with the"
                              " names, sizes and digests --game-disk holds")
@@ -995,7 +1008,8 @@ def main() -> int:
             skipped.append(session.name)
             continue
         host_used = host
-        state, detail = sweep_desktop(host, session, disk, store, documents)
+        state, detail = sweep_desktop(host, session, disk, store, documents,
+                                      args.rehash)
         rows.append((session.name, "sdl", state, detail))
         failures += state == "FAIL"
         verified += state == "ok"

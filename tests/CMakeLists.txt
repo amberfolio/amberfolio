@@ -44,6 +44,7 @@ add_executable(amberfolio-core-tests
   core/machine/int10_test.cpp
   core/machine/keyboard_test.cpp
   core/machine/loader_test.cpp
+  core/machine/launcher_view_test.cpp
   core/machine/log_test.cpp
   core/machine/machine_program_test.cpp
   core/machine/machine_test.cpp
@@ -53,6 +54,7 @@ add_executable(amberfolio-core-tests
   core/machine/pic_test.cpp
   core/machine/pit_test.cpp
   core/machine/platform_test.cpp
+  core/machine/psg_test.cpp
   core/machine/renderer_test.cpp
   core/machine/replay_test.cpp
   core/machine/report_test.cpp
