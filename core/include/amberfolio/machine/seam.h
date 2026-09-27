@@ -458,7 +458,7 @@ struct seam_definition {
 
   /// The document the player must hold for this seam to do anything
   /// (PLAN.md §5, #171), or `document_kind::none` for a seam that is not
-  /// gated. **No seam in this build names one.** The code-wheel bypass
+  /// gated. **No seam in this build names one.** The code-wheel seam
   /// did, on the wheel itself (#115), until the releases sold today
   /// turned out to ship a code generator application rather than a PDF
   /// of it (#290): what it waits for now is a person answering the

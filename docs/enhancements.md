@@ -11,7 +11,7 @@ injected into the game**: a seam is native C++ that stops the program at
 an address, reads or writes memory, and lets it continue. The program on
 the disk and every file the game owns are never modified.
 
-## The code-wheel bypass
+## The code wheel, asked once
 
 **What it does.** The game asks you to look up a word on the code wheel
 before it starts. **It asks you once.** The first time, the challenge

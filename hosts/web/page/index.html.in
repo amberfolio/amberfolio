@@ -435,7 +435,7 @@
          What is kept is the SHA-256 of the copy you answered for and
          nothing else - not the question, not the answer.
 
-         The bypass is a seam like any other and is off by default; turn
+         It is a seam like any other and is off by default; turn
          it on in the seam list above, answer the challenge once, and the
          next visit goes straight to the menu. -->
     <fieldset>

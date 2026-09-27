@@ -13,7 +13,7 @@ enhancements are opt-in runtime patches to the machine's memory
 **Status: early development.** `v0.5.0` is the current tag. Pool of
 Radiance plays end to end on all four targets from a player-supplied copy,
 and the six v1 enhancements work and toggle independently on desktop and
-in the browser: the code-wheel bypass (it asks once), the Encamp Fix, the
+in the browser: the code wheel asked once, the Encamp Fix, the
 automap, the journal, fog of war on the overworld, and the debug cheats.
 The 8086 core passes all 323 files of the
 [SingleStepTests/8088](https://github.com/SingleStepTests/8088) v2 set in
