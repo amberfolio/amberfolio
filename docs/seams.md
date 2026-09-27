@@ -821,7 +821,7 @@ to carry.
 
 All are keyed to the baseline edition (§5).
 
-### The code-wheel bypass (#94, #119, #290, #291)
+### The code wheel, asked once (#94, #119, #290, #291)
 
 PLAN.md §5 item 1. It never answers the challenge for anybody.
 

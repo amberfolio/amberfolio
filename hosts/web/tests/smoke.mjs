@@ -2168,7 +2168,7 @@ if (missing.length === 0) {
   // (#163's argument, one field over).
   //
   // **No seam in this build is gated**, and that is the answer since
-  // #290: the code-wheel bypass was the one that was, on a PDF of the
+  // #290: the code-wheel seam was the one that was, on a PDF of the
   // wheel, and the releases sold today ship a code generator application
   // instead of that file — so it waits for a person answering the
   // program's own challenge instead (#291). The door is unchanged, and

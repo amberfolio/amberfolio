@@ -38,7 +38,7 @@ graceful "unrecognized artifact" path for editions we don't know yet:
 |---|---|---|
 | Game binaries + data files | **Yes** — nothing runs without them | The game itself |
 | Adventurer's Journal (PDF) | Optional | The in-game journal enhancement |
-| Code wheel (any form) | Optional | The copy-protection bypass, which asks for it **once** |
+| Code wheel (any form) | Optional | The code-wheel seam, which asks for it **once** |
 
 The policy is progressive: a missing artifact simply leaves its
 enhancement unavailable — without the journal there is no in-game
@@ -230,7 +230,7 @@ Design requirements:
   the game's own commands are reached (a key at a menu, not a modern
   overlay floating above the game); where the game already has a
   routine for the job, the seam drives that routine rather than
-  replacing it (the code-wheel bypass engages the program's own skip,
+  replacing it (the code-wheel seam engages the program's own skip,
   the Encamp (F)ix drives the game's own camp loop); and it changes
   nothing a player did not ask for. A player who turns a seam on should
   feel that the game gained a feature it could always have had, not
@@ -241,7 +241,7 @@ Design requirements:
 
 ### The v1 seam set
 
-1. **Code-wheel bypass** — **it asks once** (#290, #291). With the seam
+1. **Code wheel, asked once** (#290, #291). With the seam
    on, the first launch is the machine's own: the challenge appears and
    the seam only watches. When the player answers it correctly, off
    whatever form of the wheel they own, the seam sees the program's own
@@ -366,7 +366,7 @@ pinning and not only at a milestone.
   engine lands here, and debug cheats land first to power the sweep.
   Replay harness + first goldens. *Exit: a full playthrough sweep
   passes on all targets; cheats seam toggleable end-to-end.*
-- **M5 — Player enhancements.** Code-wheel bypass, journal (OCR
+- **M5 — Player enhancements.** Code wheel asked once, journal (OCR
   ingestion + in-game reader + auto-open), automap panel, Encamp
   (F)ix, explored overlay — each individually toggleable, each off by
   default, each native in feel (§5). *Exit: all six v1 seams work and
