@@ -711,7 +711,7 @@ python3 scripts/serve-web.py
 
 ### The release bundle
 
-`scripts/release-bundle.sh` stages twelve files from the module,
+`scripts/release-bundle.sh` stages thirteen files from the module,
 `hosts/web/page/` and `data/`, the OCR engine when the tree has one, plus
 `SHA256SUMS` and `manifest.json`. `scripts/test-release-bundle.sh` is its
 self-test.
