@@ -282,10 +282,9 @@ uint32_t af_web_attach_host_services(af_machine* box) {
 /// it is what makes progress outlive the machine.
 ///
 /// **Call it after the files are in and before the program is loaded.**
-/// Turning it on reads the working exploration table off the filesystem,
-/// so a filesystem that is still empty has nothing to give it. The read
-/// log is the other half and is read by `af_web_journal_seen_restore`,
-/// after the page has handed back the store it kept.
+/// Turning it on reads where the copy saves off the filesystem, so a
+/// filesystem that is still empty has nothing to say; and a program that
+/// has already loaded a slot has done so unwatched.
 ///
 /// The file events it needs — which save slot the program touched — reach
 /// it through the diagnostic log's relay (`machine/log.h`), because in
@@ -698,31 +697,6 @@ uint32_t af_web_journal_store_read(const char* text, uint32_t size) {
       journal().store.parse(std::string_view(text, size)));
 }
 
-/// This tab's **read log**, out into the page's drawer and back (#351).
-///
-/// The log left the store's own file and went beside the save it belongs
-/// to, which on the desktop is `\SAVE\AFSEEN<L>.DAT`. A browser has no
-/// directory to put one in until it is given a disk, so this is the
-/// page's own working copy: the same bytes the sidecar holds, base64 so
-/// they fit in a key-value drawer of strings. A slot's snapshot still
-/// wins over it when a page has asked for sidecars, exactly as the
-/// desktop's working file loses to one.
-///
-/// `_write` hands out the text; `_read` answers 1 for a log it took and
-/// 0 for text that is not one, in which case the log is left alone —
-/// what a player was told is not something to forget over a file this
-/// build cannot read.
-uint32_t af_web_journal_log_write(char* out, uint32_t cap) {
-  return hand_out(journal().store.serialize_log(), out, cap);
-}
-
-uint32_t af_web_journal_log_read(const char* text, uint32_t size) {
-  if (text == nullptr) {
-    return 0U;
-  }
-  return journal().store.parse_log(std::string_view(text, size)) ? 1U : 0U;
-}
-
 /// Whether this tab's store has moved since the page last kept it, and
 /// the page saying it has now (M5-C1, #229).
 ///
@@ -839,13 +813,11 @@ uint32_t af_web_code_wheel_apply(af_machine* box) {
 /// is harmless, because a log that already holds a row does not gain a
 /// second copy of it.
 ///
-/// **And it reads the log's sidecar first** (#351). The log left the
-/// store's own file and went beside the save it belongs to, so this is
-/// the moment it comes back: after the page has handed over whatever it
-/// kept, and before any of it reaches the machine. A no-op unless
-/// `af_web_save_sidecars` asked for one, in which case what a page kept
-/// from an older build — a version 4 store's `seen` lines — is what gets
-/// restored, which is the migration and is the whole of it.
+/// **What it puts there is whatever the store holds** (#351): nothing for
+/// a store kept since the log left the store's own file, and a version 4
+/// store's `seen` lines for one from before, which is the migration and
+/// the whole of it. A slot's own list arrives when the program loads it,
+/// from beside the save (`slot_store.h`).
 ///
 /// The ordering that makes it right — oldest first, backwards through the
 /// store — is `host::restore_journal_log()`'s, in `hosts/common`, so that
@@ -857,7 +829,6 @@ uint32_t af_web_journal_seen_restore(af_machine* box) {
   if (pc == nullptr) {
     return AF_NO_MACHINE;
   }
-  services().slots().read_journal_log();
   amberfolio::host::restore_journal_log(pc->journal(), journal().store);
   return AF_OK;
 }

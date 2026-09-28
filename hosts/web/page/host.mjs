@@ -1302,16 +1302,15 @@ export class Machine {
 
   /// Keep this playthrough's progress beside its saves, in this module's
   /// own filesystem (M5-E2c #173, #351) — the same object and the same
-  /// two files the desktop host's `--save-sidecars` writes: what the
-  /// automap has explored, and which journal entries the game has cited.
+  /// files the desktop host's `--save-sidecars` writes, one pair per saved
+  /// game: what the automap has explored, and which journal entries the
+  /// game has cited.
   ///
   /// **Call it once the files are in and before the program is loaded**:
-  /// turning it on reads the working exploration table off the
-  /// filesystem, and an empty filesystem has nothing to give it. The read
-  /// log comes back through `journalSeenRestore()`, which is called later
-  /// because the store it goes into is the page's. Off unless a caller
-  /// asks, because writing into a filesystem somebody dropped a game into
-  /// is not something to do unasked.
+  /// turning it on reads where the copy saves off the filesystem, and it
+  /// has to be watching before the program loads a slot. Off unless a
+  /// caller asks, because writing into a filesystem somebody dropped a
+  /// game into is not something to do unasked.
   saveSidecars(on) {
     return this.module._af_web_save_sidecars(this.handle, on ? 1 : 0);
   }
@@ -1382,17 +1381,12 @@ export class Machine {
   /// one of them. The text reaches the reader through the host-service
   /// pointer, which is the module's; the log — what the game has cited
   /// and which of it this player has opened — lives in the machine, and
-  /// this is what puts it there. Without it a browser forgets every `*`
-  /// on reload while a terminal does not.
+  /// this is what puts it there (#237).
   ///
   /// **Call it after `journalStoreRead()`**, on the machine the reader
   /// will run in: the rows come out of the store, so a store that has
   /// not been read back yet has none to give. Twice is harmless — a log
   /// that already holds a row does not gain a second copy of it.
-  ///
-  /// It also picks up the log's sidecar beside the save, when
-  /// `saveSidecars()` asked for one; that is why it is called after the
-  /// files are in.
   ///
   /// `AF_OK`, or `AF_NO_MACHINE` for a machine that has been destroyed.
   journalSeenRestore() {

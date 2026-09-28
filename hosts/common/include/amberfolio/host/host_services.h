@@ -38,12 +38,12 @@
 // the machine at the moment of the call, and it remembers what it saw, so
 // that a host can say afterwards that the callout arrived and when.
 //
-// **And since M5-E2c it has consumers.** `automap_update` drives the
-// exploration sidecar (`slot_store.h`), which reads what the panel has
-// explored out of the machine and writes it into a file beside the save.
-// `journal_seen` drives the other one there (#351), the same way. That is
-// a host doing host work — files are a host's, by PLAN.md §4 — and both
-// are off unless a host has been asked for them.
+// **And it has consumers.** `journal_seen` copies the machine's read log
+// into the journal store, which is what a slot's sidecar is written from
+// when the program saves (`slot_store.h`, #351). `automap_update` has
+// none: the exploration is written from the machine at the same save, and
+// a host keeps no file that follows it between saves, so the door is
+// taken and remembered and nothing more.
 //
 // `journal_open` is the other (M5-E4, #175), and it is the one that has to
 // hand something *back* — as does `journal_art` beside it (#328), which
@@ -149,8 +149,8 @@ class host_services final : public machine::seam_host_services {
   }
   [[nodiscard]] journal_store* journal() noexcept { return journal_; }
 
-  /// The playthrough's sidecars, which `automap_update` and
-  /// `journal_seen` drive (M5-E2c #173, #351).
+  /// The playthrough's sidecars (M5-E2c #173, #351), written and read
+  /// when the program saves and loads a slot.
   ///
   /// They live here because this is the object both hosts already attach,
   /// so a browser gets the persistence with no wiring of its own beyond

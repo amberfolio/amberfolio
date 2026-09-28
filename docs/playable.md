@@ -755,20 +755,20 @@ The store (M5-E2c), as a second run:
 ```
 
 ```
-amberfolio: save-sidecars writes=4 reads=0 slot=A trouble=none
+amberfolio: save-sidecars writes=1 reads=0 slot=A trouble=none
 ```
 
-leaves `\SAVE\AFMAP.DAT`, the working table, and `\SAVE\AFMAPA.DAT`,
-slot A's snapshot. Remove the working table and load slot A again:
-`amberfolio: save-sidecars reads=1 slot=A`, and the panel comes up with
-the streets on it; the module's final frame is byte for byte the
-desktop's. The sidecars are off unless asked for: one would change the
-disk every session pins by name, size and SHA-256.
+leaves `\SAVE\AFMAPA.DAT`, slot A's map, and nothing else. Load slot A
+again in a second run: `amberfolio: save-sidecars writes=0 reads=1
+slot=A`, and the panel comes up with the streets on it; the module's
+final frame is byte for byte the desktop's. A new party instead (leg 0,
+then the tour) starts with an empty map whatever is in `\SAVE\`. The
+sidecars are off unless asked for: one would change the disk every
+session pins by name, size and SHA-256.
 
-The same flag keeps the journal's read log, in `\SAVE\AFSEEN.DAT` and
-`\SAVE\AFSEEN<L>.DAT` beside those two. Drive it the same way: cite
-something on slot A, save, load slot B, and `amberfolio: journal log
-seen=` at the next launch is B's count and not A's.
+The same flag keeps the journal's read log, in `\SAVE\AFSEEN<L>.DAT`
+beside the map. Drive it the same way: cite something on slot A, save,
+then load slot B, and the reader's `Notes` list is B's and not A's.
 
 Traps:
 
@@ -934,8 +934,8 @@ arrival; on with the overworld never shown, `quiet-explored.rec` is all
 90 checkpoints of the baseline. Measured at the black covering, radius
 zero.
 
-Store: `--save-sidecars` writes the trail into `\SAVE\AFMAP.DAT` with a
-snapshot per slot, and the automap alone records the wilderness too
+Store: `--save-sidecars` writes the trail into `\SAVE\AFMAP<L>.DAT` when
+slot `L` is saved, and the automap alone records the wilderness too
 (#254) — so the overlay is per-slot without a file of its own (#351). A
 slot with no snapshot loads an empty table, so the arrival is the party's
 square and fog everywhere else.

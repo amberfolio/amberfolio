@@ -75,16 +75,12 @@ import {
   journalNumber,
   loadEngine,
   keepStore,
-  keepLog,
   restoreStore,
-  restoreLog,
   citeAllJournal,
   forgetStore,
-  forgetLog,
   clearStore,
   browserStorage,
   JOURNAL_STORE_KEY,
-  JOURNAL_LOG_KEY,
 } from './journal.mjs';
 import {
   open as openDatabase,
@@ -175,15 +171,10 @@ const SIDECARS_ABOUT_ID = 'sidecars-about';
 /// is what lets a player's answer come across with it.
 const CODE_WHEEL_STORE_KEY = 'amberfolio.code-wheel.store.v1';
 
-/// The three strings this page keeps on behalf of a module that owns
-/// them: the journal's transcription, the journal's read log and the code
-/// wheel's answered copies. The order is the order they are migrated in
-/// and means nothing else.
-const TEXT_RECORDS = [
-  JOURNAL_STORE_KEY,
-  JOURNAL_LOG_KEY,
-  CODE_WHEEL_STORE_KEY,
-];
+/// The two strings this page keeps on behalf of a module that owns them:
+/// the journal's transcription and the code wheel's answered copies. The
+/// order is the order they are migrated in and means nothing else.
+const TEXT_RECORDS = [JOURNAL_STORE_KEY, CODE_WHEEL_STORE_KEY];
 
 // --- What this browser keeps between visits (M6, #381) ------------------
 //
@@ -454,14 +445,10 @@ export function runDevPage() {
     // moment it is called and IndexedDB cannot give one, so the records
     // are read once and this is the drawer over them (`persist.mjs`).
     reportRestoredJournal(restoreStore(loaded.module, { storage: drawer }));
-    // And the *read log*, out of its own drawer (#351) and then into the
-    // machine, which is a second call because the store is the module's
-    // and the log is the machine's (#237). Without the second a player's
-    // `*` marks came back on the desktop and not here, which was a gap
-    // rather than a decision; without the first there would be nothing
-    // for it to put there, because the log left the store's own file
-    // when it went beside the save it belongs to.
-    restoreLog(loaded.module, { storage: drawer });
+    // And whatever read log the store holds, into the machine, which is a
+    // second call because the store is the module's and the log is the
+    // machine's (#237). Nothing, for a store kept since #351: a party's
+    // list comes back with the slot the program loads.
     machine.journalSeenRestore();
 
     // And what this browser remembers about the code wheel (M6-C1b,
@@ -990,7 +977,6 @@ export function runDevPage() {
         // this once and doing it every visit, so it is said out loud
         // rather than left for a player to discover next week.
         const stored = keepStore(loaded.module, { storage: drawer });
-        keepLog(loaded.module, { storage: drawer });
         const wrote = await flushText();
         sayWhatIsKept();
         setJournalStatus(
@@ -1113,7 +1099,6 @@ export function runDevPage() {
           ? loaded.module._af_web_journal_store_corrections()
           : 0;
         const { forgotten } = forgetStore({ storage: drawer });
-        forgetLog({ storage: drawer });
         if (loaded) clearStore(loaded.module);
         const wrote = await flushText();
         sayWhatIsKept();
@@ -1143,10 +1128,10 @@ export function runDevPage() {
   // The module *is* loaded to do this, unlike the two forget buttons: the
   // log lives in the machine, so there has to be one, and `ensureMachine`
   // is also what restores the store this cites from. What it cites goes
-  // into the store's own log the way a real citation does, and is kept
-  // in the drawer right here — so the log stays filled across reloads,
-  // for good, until *Forget it*. The sentence says so, because a game
-  // that appears to have said everything already is otherwise a mystery.
+  // into the store's own log the way a real citation does, which lasts as
+  // long as the machine and goes beside a slot the program saves while it
+  // is there (#351). The sentence says so, because a game that appears to
+  // have said everything already is otherwise a mystery.
   //
   // A page that has never read a journal cites nothing and says so; the
   // log is left as it was.
@@ -1162,10 +1147,6 @@ export function runDevPage() {
           return;
         }
         keepStore(loaded.module, { storage: drawer });
-        // And the log, which is where the citing actually landed (#351):
-        // the store's text did not move, so without this the cheat would
-        // be forgotten on the next reload.
-        keepLog(loaded.module, { storage: drawer });
         const wrote = await flushText();
         // The flag is lowered only once the bytes are somewhere, never
         // before: a store cleared on a database that refused it would
@@ -1174,7 +1155,8 @@ export function runDevPage() {
         sayWhatIsKept();
         setJournalStatus(
           `cited all ${cited} entries onto the Notes log (cheat)` +
-            ' - it stays that way until you press Forget it' +
+            ' - until the page is reloaded or a game is loaded, and in' +
+            ' any game you save meanwhile if it is kept beside your saves' +
             (wrote.ok ? '' : ` - ${wrote.why}`),
         );
       } catch (problem) {
@@ -1516,27 +1498,18 @@ export function runDevPage() {
       // The playthrough's sidecars, if this player said yes (#385, #351).
       //
       // **Here, once, and nowhere else.** `saveSidecars(true)` turns the
-      // store on *and attaches it*, and the attach reads the working
-      // exploration table with `read_sidecar`, which replaces every
-      // record in the machine — so a second call later in a visit would
-      // hand a player an older map than the one on their screen. This is
-      // the one moment that is both after the files are in (there is a
-      // filesystem to read) and before `loadFromVfs()` (nothing has been
-      // drawn yet), which is why the panel above records an answer
-      // rather than applying one.
+      // store on *and attaches it*, and the attach reads where the copy
+      // saves — so it wants the files in, and it has to be watching
+      // before the program loads a slot, or that load's map is never read.
+      // This is the one moment that is both after the files are in and
+      // before `loadFromVfs()`, which is why the panel above records an
+      // answer rather than applying one.
       //
       // Only `true` turns it on. `false` and *not answered yet* are
       // different facts about a player and the same instruction to this
       // page, which is to write nothing into the copy they dropped.
       if (sidecarAnswer === true) {
         box.saveSidecars(true);
-        // And the read log out of its own sidecar beside the save. A
-        // second call, on purpose: `ensureMachine()` makes this one
-        // before the disk is put back, when there is no `\SAVE\` to read
-        // — so without this the log beside a save could never be picked
-        // up on the page at all. Twice is harmless (`host.mjs`), and the
-        // rows do not double.
-        box.journalSeenRestore();
         appendConsole(
           '[host] save-sidecars on - your map and the entries you have ' +
             'been sent to are kept beside your saved games\n',

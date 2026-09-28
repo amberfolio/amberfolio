@@ -70,9 +70,11 @@ after the journal has used the same cells.
 **How you turn it on.** `--seam automap`. To keep the map between runs,
 `--save-sidecars` on the desktop or `saveSidecars(true)` on the page
 (`af_web_save_sidecars`; `hosts/web/tools/drive.mjs` is the reference
-caller), which writes `\SAVE\AFMAP.DAT` beside the game's saves, with a
-snapshot per save slot — and the journal's read log beside it, on the one
-flag. The sidecars are off unless asked, because a file appearing in your
+caller), which writes `\SAVE\AFMAP<L>.DAT` beside the game's saves each
+time the game saves slot `L` and reads it back when you load that slot —
+and the journal's read log beside it, on the one flag. A new game starts
+with an empty map, and what you explore without saving goes with the
+session. The sidecars are off unless asked, because a file appearing in your
 game directory changes it: **the desktop asks you before your first run
 and the page asks in a panel**, once each, and remembers what you said
 (`docs/hosts.md` §2b). Neither file appears until there is something to

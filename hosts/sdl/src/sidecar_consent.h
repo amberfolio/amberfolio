@@ -2,9 +2,9 @@
 //
 // The one question this host asks a person (#385).
 //
-// `--save-sidecars` writes `AFMAP.DAT` and `AFSEEN.DAT` into the
-// player's own game directory, in the folder the saves are in
-// (`host/slot_store.h`). It is the one
+// `--save-sidecars` writes `AFMAP<L>.DAT` and `AFSEEN<L>.DAT`, one pair
+// per saved game, into the player's own game directory, in the folder the
+// saves are in (`host/slot_store.h`). It is the one
 // surface in M6 that changes a file somebody else owns, so this build
 // asks before it does, once, and keeps the answer with the rest of the
 // settings (`desktop_config.h`).

@@ -109,7 +109,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--wall now\|none\|YYYY-MM-DD[THH:MM[:SS[.CC]]]` | seed the wall clock (#320): this host's clock; unseeded (1 January 1980 plus uptime, which every recording in `tests/sessions/` was made on); or a stated date. Read once before the first instruction, recorded as a `wall` line. Refused with `--replay`. |
 | `--speed xt\|turbo\|at\|386` | which machine to be (`machine/clock.h`): 4, 2, 1 or 51/256 ticks a step, `xt` by default. Not a fast-forward. |
 | `--fast N\|max` | run virtual time N times faster than the wall, or unpaced. Only the loop's sleep changes (`platform.h`); the run is byte-identical. |
-| `--save-sidecars`, `--no-save-sidecars` | keep what this playthrough has accumulated beside its saves (M5-E2c #173, #351): the automap's exploration in `AFMAP.DAT` and the journal's read log in `AFSEEN.DAT`, in the save directory the copy's `POOL.CFG` names (§6), each with a snapshot per slot, never inside a save. A copy that names none gets none, and the end-of-run line says `trouble=no-save-directory`. Off by default, and a launch with a person in it is **asked** (#385, §2b); neither file appears until there is something to put in it. |
+| `--save-sidecars`, `--no-save-sidecars` | keep what this playthrough has accumulated beside its saves (M5-E2c #173, #351): the automap's exploration in `AFMAP<L>.DAT` and the journal's read log in `AFSEEN<L>.DAT`, written when the program saves slot `L` and read when it loads it, in the save directory the copy's `POOL.CFG` names (§6), never inside a save. Nothing follows the machine between saves: a new game starts empty. An `AFMAP.DAT` or `AFSEEN.DAT` an earlier build left there is removed at startup. A copy that names none gets none, and the end-of-run line says `trouble=no-save-directory`. Off by default, and a launch with a person in it is **asked** (#385, §2b); neither file appears until there is something to put in it. |
 | `--code-wheel-answered`, `--code-wheel-store PATH`, `--forget-code-wheel` | say the code-wheel challenge has been answered on this copy; where answered copies are remembered; forget this one (#290). |
 | `--journal PATH`, `--journal-store PATH`, `--journal-ocr PATH\|none`, `--journal-probe`, `--cite-all-journal` | ingest a journal; where its text lives; which OCR engine; add the synthetic probe edition; cite every entry onto the `Notes` log (`docs/journal.md`). |
 | `--volume 0-100`, `--mute` | how loudly to play it (§4); a run at 25% is the same run as one at 100%, to the last edge. |
@@ -289,9 +289,9 @@ PATH` is an ingestion that happens once.
 ## 2b. The one question either host asks (#385)
 
 `--save-sidecars` / `saveSidecars(on)` writes files of this project's own
-into the copy the player has: `AFMAP.DAT` and `AFSEEN.DAT` in the folder
-its saves are in (`\SAVE\` on the archive release, §6), plus a snapshot
-per save slot. It is the one M6 surface that changes
+into the copy the player has: `AFMAP<L>.DAT` and `AFSEEN<L>.DAT` for
+each slot `L` the program saves, in the folder its saves are in (`\SAVE\`
+on the archive release, §6). It is the one M6 surface that changes
 something somebody else owns, so both hosts ask before they do, once, and
 keep the answer with the rest of the settings.
 
@@ -318,10 +318,11 @@ session and naming it rather than failing it — so a wrong answer here
 turns the whole session library into skips without anything going red.
 
 **Once, at install.** Turning the store on attaches it, and the attach
-reads the working exploration table with `read_sidecar`, which replaces
-every record in the machine. So it happens once per run, after the files
-are in and before the program is loaded, on both hosts — which is why the
-page's panel says a change takes effect at the next boot.
+reads where the copy saves, so it needs the files in; and it has to be
+watching before the program loads a slot, or that load's map is never
+read. So it happens once per run, after the files are in and before the
+program is loaded, on both hosts — which is why the page's panel says a
+change takes effect at the next boot.
 
 **Neither file appears until there is something to put in it.** A sidecar
 with no records is its header alone, and one of those is written *over* a
@@ -1230,7 +1231,7 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--seam ID` | turn one seam on after the load, before the first step. Repeatable; a refusal **ends the run**, so a script never silently gets a plain machine. |
 | `--seams` | list every seam this build carries, and exit. |
 | `--install DIR` | put the directory's files at `DIR` (`\POOLRAD`) and make it current before the load, the desktop's `--install` (§2c). |
-| `--save-sidecars` | the playthrough's sidecars, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on once, after the files are in and before the program is loaded: it reads the working exploration table back, and a second call would replace every record in the machine. The read log comes back with the journal store, which is this side's. A driven run is never asked about this and states it (§2b). |
+| `--save-sidecars` | the playthrough's sidecars, the same filenames and bytes as the desktop's, in this module's filesystem. Turn it on once, after the files are in and before the program is loaded, so the first load is watched. A driven run is never asked about this and states it (§2b). |
 | `--document PATH` | present a document the player holds; hashed and dropped. Repeatable. |
 | `--code-wheel-answered` | say the challenge has been answered on this copy (#291). Without it the seam only watches, and a driven run sits at the challenge for ever. |
 | `--code-wheel-store PATH` | where answered copies are remembered, in the desktop host's format. Read before the first step, written when somebody answers. |
@@ -1371,8 +1372,6 @@ on the GOG copy, `\POOLRAD\SAVE` and `\POOLRAD` on the Steam copy.
 | `CHARLIST.TXT` | saves | roster | no | the characters in no party, shared by every slot |
 | `AFMAP<S>.DAT` | saves | sidecar | no | **ours**: the automap's exploration, as slot `<S>` was written |
 | `AFSEEN<S>.DAT` | saves | sidecar | no | **ours**: the journal's read log, as slot `<S>` was written |
-| `AFMAP.DAT` | saves | sidecar | no | **ours**: the working exploration table |
-| `AFSEEN.DAT` | saves | sidecar | no | **ours**: the working read log |
 | `POOL.CFG` | start | config | no | the program's settings — **a game file** |
 | `<NAME>.CHA` | saves | character | no | a character kept under a name the player chose |
 | `<NAME>.ITM` | saves | character | no | what that character carries |
@@ -1481,7 +1480,7 @@ beside the edition line, because it is a fact about the program; and,
 after the run, the disk read against it.
 
 ```
-amberfolio: save-layer 13 row(s) slots=ABCDEFGHIJ members=8
+amberfolio: save-layer 11 row(s) slots=ABCDEFGHIJ members=8
 amberfolio: save-layer \SAVE\SAVGAM<S>.DAT slot required - the saved game; ...
 ...
 amberfolio: save-layer file \SAVE\SAVGAMF.DAT slot slot=F

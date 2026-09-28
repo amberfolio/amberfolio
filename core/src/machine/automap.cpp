@@ -468,7 +468,7 @@ bool automap_state::read_sidecar(std::span<const std::uint8_t> in) noexcept {
   }
 
   // **Two versions are read and one is written** (automap.h). A player's
-  // `AFMAP.DAT` from the build before the overland existed has to open:
+  // `AFMAP<S>.DAT` from the build before the overland existed has to open:
   // a version bump that refused it would throw away exactly what the
   // sidecar is for. Anything else is still refused with nothing touched.
   const std::uint8_t version = in[automap_sidecar_magic.size()];

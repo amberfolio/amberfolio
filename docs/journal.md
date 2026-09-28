@@ -488,8 +488,8 @@ picture entry 4 0 193 160 10404
 - A store of a different edition is cleared, not merged.
 - **No read log.** A version 4 store had `seen` lines here; version 5 has
   none, and they went beside the save (§6a). A version 4 store's lines
-  are still read and are then that run's working log, and it is written
-  back as version 5 without them.
+  are still read into that run's log, and it is written back as
+  version 5 without them.
 - Only a store's counts and `journal_store::fingerprint()` may be written
   down anywhere (§8).
 
@@ -518,9 +518,12 @@ a sidecar beside the saves, per slot, off unless the player asked
 
 | where | what |
 | --- | --- |
-| `\SAVE\AFSEEN.DAT` | the working log, written whenever it moves |
-| `\SAVE\AFSEEN<L>.DAT` | slot `L`'s snapshot, written at that slot's save and read **over** the working log at its load, even when it is not there |
-| the browser's `amberfolio.journal.log.v1` drawer | the page's working log, base64 of exactly those bytes (`af_web_journal_log_write`/`_read`), because a browser has no directory to put a sidecar in until M6 gives it a disk |
+| `\SAVE\AFSEEN<L>.DAT` | slot `L`'s log, written at that slot's save and read **over** the log in hand at its load, even when it is not there |
+
+Nothing keeps the log between saves. A run starts at the program's main
+menu with no party; a load brings the slot's list and a new party's is
+empty. The `--cite-all-journal` cheat therefore lasts for the run, and
+for any slot saved during it.
 
 Binary and fixed-stride where the store's own file is text: `AFS`,
 version 1, a count and a stride, then eight bytes a row — section,
@@ -536,9 +539,9 @@ saves", and that sentence is the same one for each — which is why it is
 one question and both hosts ask it once (#385, `docs/hosts.md` §2b). An
 empty log writes no new file; it replaces one that is there.
 
-The store's own **changed flag** is the text's; `log_changed()` is the
-log's. Without the split a citation would have a host rewrite a player's
-whole transcription to record something that is no longer in it.
+The store's own **changed flag** is the text's, and a citation does not
+raise it: otherwise a host would rewrite a player's whole transcription
+to record something that is no longer in it.
 
 **The rows still live in `journal_store`** and reach the reader exactly
 as they did: `set_seen` puts them in, `restore_journal_log()` hands them

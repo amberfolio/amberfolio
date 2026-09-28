@@ -1062,9 +1062,9 @@ the same records, so the wilderness is in the same file): off unless
 asked (`--save-sidecars`, `af_web_save_sidecars`) because a sidecar
 changes the disk every session pins, and a launch with a person in it is
 asked for that permission once (#385, `docs/hosts.md` §2b); a header-only
-sidecar replaces one that is there and is never written as a new file; a
-working table follows the party
-and a snapshot per save slot replaces it on load, even when empty; a slot
+sidecar replaces one that is there and is never written as a new file;
+one file per save slot is written at the save and replaces the table on
+load, even when empty, and nothing is kept between saves; a slot
 the load menu only opened is told from one loaded by whether bytes moved
 through the handle (`file_event`'s traffic flags).
 
