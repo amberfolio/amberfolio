@@ -231,8 +231,9 @@ All four items are settled; none added mechanism to the seam or the core.
    kept separate because the legs that fill the log with
    `--cite-all-journal` open whatever row the cursor lands on. A leg says
    `kind pair` or `kind single`; a pair uses `allow <range> <rects>`, a
-   single uses `same <range>` and `equal <before> <after> [rects to leave
-   out]`. It has the sweep's three outcomes, and
+   single uses `same <range>`, `equal <before> <after> [rects to leave
+   out]` and `text <frame> <sha256>`, the digest of the host's screen
+   text beside that still (`docs/hosts.md` §10). It has the sweep's three outcomes, and
    `scripts/test-visual-legs.sh` asserts in CI that a skip is loud. Trap:
    **a leg run rewrites the store it was pointed at**; check the fixture
    out again rather than committing it.

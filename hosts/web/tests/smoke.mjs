@@ -130,6 +130,8 @@ import {
   AF_NAV_RIGHT,
   AF_LATCH_LEFT_SHIFT,
   AF_LATCH_CTRL,
+  screenTextRows,
+  SCREEN_TEXT_CELL_BYTES,
 } from './host.mjs';
 import {
   encodePpm,
@@ -198,6 +200,10 @@ const EXPECTED_EXPORTS = [
   '_af_machine_stop_report',
   '_af_machine_trace_report',
   '_af_machine_framebuffer',
+  // The screen read back as text (machine/screen_text.h).
+  '_af_screen_text_columns',
+  '_af_screen_text_rows',
+  '_af_machine_screen_text',
   '_af_machine_palette',
   '_af_machine_frame_generation',
   '_af_machine_render_audio',
@@ -872,6 +878,64 @@ if (missing.length === 0) {
   }
 
   console.log('smoke: the machine ran a frame and every interface answered');
+}
+
+// --- Screen text (machine/screen_text.h) --------------------------------
+//
+// The matcher is the core's, and tests/core holds it down. What is here is
+// the page's half: that a machine with nothing to read says why, and that
+// the cells become the rows and runs a reader is handed.
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  const none = machine.screenText();
+  check(
+    none.rows === null && none.reason === 'no_program',
+    `screenText() on a machine with no program answered ${JSON.stringify(none)}`,
+  );
+  machine.destroy();
+
+  // One row of forty cells: a white shortcut letter, the rest of its word
+  // in green, one blank, a second word, two blanks, a third word, then a
+  // cell that is not text and one whose bitmap is two characters'.
+  const columns = 40;
+  const cells = new Uint8Array(columns * 2 * SCREEN_TEXT_CELL_BYTES);
+  const put = (x, y, code, fg, bg) => {
+    const at = (y * columns + x) * SCREEN_TEXT_CELL_BYTES;
+    cells.set([code, fg, bg], at);
+  };
+  for (let x = 0; x < columns; x += 1) {
+    put(x, 0, 0x20, 0, 0);
+    put(x, 1, 0x20, 0, 0);
+  }
+  // A blank is ink on ink, as the core reports it: one colour, no glyph.
+  [...'CREATE NEW'].forEach((ch, i) => {
+    if (ch !== ' ') put(1 + i, 1, ch.charCodeAt(0), i === 0 ? 15 : 10, 0);
+  });
+  [...'BOB'].forEach((ch, i) => put(13 + i, 1, ch.charCodeAt(0), 10, 0));
+  put(17, 1, 0x00, 0, 0);
+  put(18, 1, 0x01, 10, 0);
+  const rows = screenTextRows(cells, columns, 2);
+  const want = [
+    {
+      y: 1,
+      runs: [
+        { x: 1, text: 'C', fg: 15, bg: 0 },
+        { x: 2, text: 'REATE NEW', fg: 10, bg: 0 },
+        { x: 13, text: 'BOB', fg: 10, bg: 0 },
+        { x: 18, text: '�', fg: 10, bg: 0 },
+      ],
+    },
+  ];
+  check(
+    JSON.stringify(rows) === JSON.stringify(want),
+    `screenTextRows() answered ${JSON.stringify(rows)}`,
+  );
+
+  console.log('smoke: screen text says why there is none, and groups runs');
 }
 
 // --- The M2-H2 demo program ---------------------------------------------

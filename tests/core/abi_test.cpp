@@ -276,6 +276,38 @@ TEST(Abi, MemoryGoesInAndComesBackOut) {
   EXPECT_EQ(af_machine_write_memory(box.get(), 0, nullptr, 4), AF_INVALID);
 }
 
+TEST(Abi, ScreenTextSaysWhyThereIsNone) {
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+  EXPECT_EQ(af_screen_text_columns(), 40U);
+  EXPECT_EQ(af_screen_text_rows(), 25U);
+
+  const std::size_t size = std::size_t{af_screen_text_columns()} *
+                           af_screen_text_rows() * AF_SCREEN_TEXT_CELL_BYTES;
+  std::vector<std::uint8_t> cells(size, 0xEE);
+  std::array<char, 32> why{};
+  ASSERT_EQ(af_machine_screen_text(box.get(), cells.data(),
+                                   static_cast<std::uint32_t>(size), why.data(),
+                                   static_cast<std::uint32_t>(why.size())),
+            AF_OK);
+  // A machine nobody has loaded a program into has no font to read with,
+  // and every cell says it is not text rather than keeping what was there.
+  EXPECT_STREQ(why.data(), "no_program");
+  EXPECT_EQ(cells.front(), 0x00);
+  EXPECT_EQ(cells.back(), 0x00);
+
+  EXPECT_EQ(
+      af_machine_screen_text(nullptr, cells.data(),
+                             static_cast<std::uint32_t>(size), why.data(), 32),
+      AF_NO_MACHINE);
+  EXPECT_EQ(af_machine_screen_text(box.get(), cells.data(),
+                                   static_cast<std::uint32_t>(size - 1),
+                                   why.data(), 32),
+            AF_INVALID);
+  EXPECT_EQ(af_machine_screen_text(box.get(), nullptr, 0, why.data(), 32),
+            AF_INVALID);
+}
+
 // --- The filesystem (M3-F2, #84) ---------------------------------------
 //
 // The wasm counterpart of the directory the SDL host is pointed at. The

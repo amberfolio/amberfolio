@@ -94,8 +94,8 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--press KEY@FRAME[:down\|:up]` | post a real SDL key event at frame `FRAME`. `KEY` is any `SDL_GetScancodeFromName` name: `A`, `Escape`, `Left`, `Keypad 5`. Bare, the make and the break; `:down` the make only, so the key stays held (`Left Alt@7580:down`); `:up` the break only. `hosts/sdl/src/press_spec.h`. Repeatable. |
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161, `docs/seams.md` §3a). Needs `--seam ID`, works headless, refused with `--replay`. Repeatable. |
 | `--steps N`, `--until TICKS` | bound the run, the only way to catch a hang. `--steps N` ends on step N exactly. |
-| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
-| `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
+| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.txt` (its screen text, §10), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm` and `.txt` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
 | `--trace` | keep and print with the report the last 256 instructions, 64 service calls and 32 naming file calls; print each file the program names as it happens. |
 | `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/main.cpp`. |
 | `--seam ID` | turn one seam on (PLAN.md §5, `machine/seam.h`), refused unless the loaded program is the binary its addresses are facts about. Repeatable. |
@@ -1238,8 +1238,8 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--replay PATH` | be the run a recording describes (`af_machine_verify_recording`), and check it. The recording decides seams and speed, so `--seam` is refused beside it; a document or journal store it needs is still this side's. |
 | `--speed xt\|turbo\|at\|386` | the governor, spelled as on the desktop host. |
 | `--trace` | the trace ring and the service-call and file channels. |
-| `--dump PREFIX` | `PREFIX.ppm`, `PREFIX.wav` and `PREFIX.edges`, in the SDL host's formats. |
-| `--dump-every N` | also `PREFIX-NNNNNN.ppm` every N frames. |
+| `--dump PREFIX` | `PREFIX.ppm`, `PREFIX.wav` and `PREFIX.edges`, in the SDL host's formats, and `PREFIX.json`, `screenText()`'s answer (§10). |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm` and `.json` every N frames. |
 | `--vfs-list` | every file on the disk after the run, in the SDL host's spelling. |
 | `--vfs-get PATH` | one file read back after the run, as size and SHA-256, never bytes (#273). Repeatable. |
 | `--save-layer` | which of the disk's files are the player's (#208, §6), in the SDL host's spelling: the table beside the edition line, the files it names after the run. |
@@ -1926,3 +1926,73 @@ The matching is on the bytes and never on the name — a document a player
 renamed still matches, and a file called `wheel.pdf` that is something
 else is reported with its hash — which is `host::match_edition()`'s rule
 one artifact over (§5).
+
+## 10. Screen text
+
+What the program has on the screen now, read back as characters: a host
+that cannot look at a picture — a screen reader, an assistant playing
+for a player, a test that wants to say what a screen *says* — asks the
+core rather than rasterizing a font of its own
+(`core/include/amberfolio/machine/screen_text.h`).
+
+### How it reads
+
+The frame is cut into the 8x8 grid the program's text lies on, 40
+columns by 25 rows, and each cell is matched against the program's own
+font, read out of its memory at call time through the data-segment far
+pointer the automap's zone label follows (`docs/seams.md` §10). A cell
+of exactly two colours is text when one of them, as the ink, draws a
+glyph exactly; a cell of one colour is a blank; anything else is not
+text. Nothing about the font is stored or shipped.
+
+- **Upper case only.** The font is sixty-four glyphs indexed by the
+  character upper-cased, so that is what comes back.
+- **The colours are information.** A menu's shortcut letter is a
+  different ink from the rest of its word, a highlighted list item is the
+  whole item in another ink, and the Modify screen's stat being changed
+  is in its own ink: each is a run of its own. None of them is drawn any
+  other way.
+- **No guesses.** A bitmap that is two characters' reads as neither
+  (U+FFFD on the page). Artwork can still happen to be exactly a glyph
+  in two colours — a portrait has produced a lone `^` — so a run of one
+  character in the middle of a picture is worth a second look.
+- **Per program.** The font's location is a fact about a binary, like a
+  seam's addresses. A program this build has no location for answers
+  `wrong_binary`; one that has not installed its font yet, `no_font`;
+  no program at all, `no_program`.
+- **Measured, not assumed.** The grid was checked on every screen from
+  the credits through character creation to the party menu and Modify;
+  no text in the program is off it. The machine's own BIOS font was
+  tried as a second table and matched nothing the program's had not, so
+  it is not consulted.
+
+It is a read, like the framebuffer: taken between runs, computed on the
+spot, not machine state, in no hash and no recording.
+
+### The two doors
+
+- **The page:** `Machine.screenText()` in `hosts/web/page/host.mjs`
+  answers `{ rows: [{ y, runs: [{ x, text, fg, bg }] }] }`, `x` and `y`
+  in cells, `fg` and `bg` palette indices; or `{ rows: null, reason }`.
+  A run is text in one pair of colours; a single blank is a space inside
+  a run, two end it. `screenTextRows()` is the grouping, exported on its
+  own. Under it, `af_machine_screen_text` (ABI 2.3) fills a caller's
+  buffer with three bytes a cell — character, ink, paper — and names the
+  reason.
+- **The desktop:** `--dump` writes `PREFIX.txt` beside `PREFIX.ppm`, and
+  `--dump-every` a `.txt` beside each still: a `screen-text REASON`
+  line, then per row a `text`, an `ink` and a `paper` line, `#` for a
+  cell that is not text and `%` for an ambiguous one
+  (`hosts/sdl/src/screen_text_dump.h`). `tools/drive.mjs` writes the
+  page's answer as `.json` beside its stills, and the two hosts agree on
+  every still of the same run.
+
+### The check
+
+`tests/core/machine/screen_text_test.cpp` holds the matcher and the
+lookup down in CI with this project's own glyphs laid out as the
+program lays its font out. `tests/visual/text-create.leg` holds eight
+screens of leg 0 — the main menu, the four creation lists, the name
+prompt over the rolled character, the party menu and Modify — to the
+digests of the program's own `.txt` output, over a copy of the disk
+(`scripts/visual-legs.py`'s `text` line).
