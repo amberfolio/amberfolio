@@ -367,8 +367,6 @@ const EXPECTED_EXPORTS = [
   '_af_web_journal_store_changed',
   '_af_web_journal_store_clear_changed',
   '_af_web_journal_seen_restore',
-  '_af_web_journal_log_write',
-  '_af_web_journal_log_read',
   '_af_web_journal_cite_all',
   '_af_web_journal_store_clear',
   '_af_web_journal_store_fingerprint',
@@ -3098,8 +3096,8 @@ if (missing.length === 0) {
   // makes true, which is the sentence the two have to keep in step.
   const whole = sidecarQuestion().join(' ');
   for (const wanted of [
-    'AFMAP.DAT',
-    'AFSEEN.DAT',
+    'AFMAPA.DAT',
+    'AFSEENA.DAT',
     'the folder your saved games are in',
     'until there is something to put in it',
     'remembers what you answer',
@@ -4465,8 +4463,6 @@ if (missing.length === 0 && sessions !== null) {
     forgetStore,
     clearStore,
     restoreSeen,
-    serializeLog,
-    readLog,
     citeAllJournal,
     storeChanged,
     clearStoreChanged,
@@ -5067,10 +5063,9 @@ if (missing.length === 0 && sessions !== null) {
     // four `seen` lines into the store, Entry 1 first. The ordering is
     // held down in C++ (`JournalCiteAll` in
     // `hosts/common/tests/journal_store_test.cpp`); what is checked here
-    // is the door and the write: that it raises the store's flag, so a
-    // page that keeps the store keeps this, and that twice is four rows
-    // and not eight. The store is emptied again at the end, because the
-    // checks below expect it empty.
+    // is the door: that it answers four, twice, and that it leaves the
+    // text's flag alone. The store is emptied again at the end, because
+    // the checks below expect it empty.
     check(
       citeAllJournal(module, 0) === 0,
       'citing into no machine claimed to have cited something',
@@ -5092,32 +5087,20 @@ if (missing.length === 0 && sessions !== null) {
       'citing raised the *text* flag, so a page would rewrite a transcription',
     );
 
-    // Where the rows actually landed since #351: the read log, which has
-    // its own drawer because it is a fact about a playthrough and the
-    // text beside it is a fact about the player's document. The store's
-    // own serialization no longer carries a word of it.
+    // Where the rows actually landed since #351: the read log, which is a
+    // fact about a playthrough and goes beside a slot the program saves;
+    // the text beside it is a fact about the player's document. The
+    // store's own serialization no longer carries a word of it. The row
+    // order and the fields are held down in C++ (`JournalCiteAll`,
+    // `JournalStore` in `hosts/common/tests/journal_store_test.cpp`),
+    // because the log is not readable across this ABI.
     check(
       !serializeStore(module).includes('\nseen '),
       'the store still carries the read log in its own file',
     );
-    const log = serializeLog(module);
-    check(log.length > 0, 'the read log serialized to nothing after four citations');
     check(
-      citeAllJournal(module, box.handle) === 4 && serializeLog(module) === log,
-      'citing everything twice changed the log',
-    );
-
-    // And it round-trips: base64 in, base64 out, and rubbish refused with
-    // what a player was told left alone. The row order and the fields are
-    // held down in C++ (`JournalCiteAll`, `JournalStore` in
-    // `hosts/common/tests/journal_store_test.cpp`), because the log is
-    // not readable across this ABI.
-    check(readLog(module, log) === 1, 'a read log this module wrote was refused');
-    check(serializeLog(module) === log, 'a read log did not survive its own round trip');
-    check(readLog(module, 'not a log at all') === 0, 'rubbish was taken as a read log');
-    check(
-      serializeLog(module) === log,
-      'a refused read log did not leave the log alone',
+      citeAllJournal(module, box.handle) === 4,
+      'citing everything twice cited a different number of rows',
     );
 
     clearStore(module);
@@ -5266,32 +5249,11 @@ if (missing.length === 0 && sessions !== null) {
       'scanned entry 2 6\nsecond\n' +
       'seen entry 1 9 6 21 53 1\n';
 
-    // The log as `journal_store::write_log_sidecar` writes it
-    // (`hosts/common/src/journal_store.cpp`): `AFS`, a version, a row
-    // count and a record size, then eight bytes a row with the read flag
-    // last.
-    const rowsOf = (base64) => {
-      const bytes = Buffer.from(base64, 'base64');
-      check(
-        bytes.length >= 8 &&
-          String.fromCharCode(bytes[0], bytes[1], bytes[2]) === 'AFS',
-        'the read log did not serialize to a sidecar',
-      );
-      const count = bytes[4] | (bytes[5] << 8);
-      const stride = bytes[6] | (bytes[7] << 8);
-      const rows = [];
-      for (let i = 0; i < count; ++i) {
-        const at = 8 + i * stride;
-        rows.push({
-          number: bytes[at + 1] | (bytes[at + 2] << 8),
-          read: bytes[at + 7] !== 0,
-        });
-      }
-      return rows;
-    };
-
-    // Without the restore: the machine's log starts empty, so citing
-    // everything files both entries unread.
+    // Without the restore: the machine's log starts empty, and citing
+    // everything files both entries. Which rows come back read, and in
+    // what order, is `restore_journal_log`'s and is held down in C++
+    // (`hosts/common/tests/journal_store_test.cpp`): the log is not
+    // readable across this ABI, so what is checked here is the facade.
     const cold = new Machine(module);
     check(
       cold.attachReferenceDevices() === AF_OK,
@@ -5303,16 +5265,9 @@ if (missing.length === 0 && sessions !== null) {
       citeAllJournal(module, cold.handle) === 2,
       'citing the kept store cited the wrong number of rows',
     );
-    const without = rowsOf(serializeLog(module));
-    check(
-      without.length === 2 && !without[0].read && !without[1].read,
-      'a machine nobody restored a log into came up with a row already read',
-    );
     cold.destroy();
 
-    // With it, through the facade and nothing else: the `seen` line's row
-    // is in the reader's log before the cite, so the cite re-dates it and
-    // leaves it read.
+    // With it, through the facade and nothing else.
     const warm = new Machine(module);
     check(
       warm.attachReferenceDevices() === AF_OK,
@@ -5336,19 +5291,6 @@ if (missing.length === 0 && sessions !== null) {
     check(
       citeAllJournal(module, warm.handle) === 2,
       'citing after a restore cited the wrong number of rows',
-    );
-    const restored = rowsOf(serializeLog(module));
-    check(
-      restored.length === 2,
-      `restoring through the facade left ${restored.length} rows, wanted 2`,
-    );
-    check(
-      restored[0].number === 1 && restored[0].read,
-      "the `seen` line restored through the facade is not in the reader's log",
-    );
-    check(
-      restored[1].number === 2 && !restored[1].read,
-      'a row nobody had read came back read',
     );
     warm.destroy();
     clearStore(module);

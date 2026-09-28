@@ -27,7 +27,7 @@ namespace {
 /// because each of them would otherwise match a member's record, and the
 /// configuration file is ahead of them because on a copy that saves
 /// beside its game files it is in the save directory too.
-constexpr std::array<save_file, 13> baseline_files{{
+constexpr std::array<save_file, 11> baseline_files{{
     {.pattern = "SAVGAM<S>.DAT",
      .kind = save_file_kind::slot,
      .required = true,
@@ -63,16 +63,6 @@ constexpr std::array<save_file, 13> baseline_files{{
      .required = false,
      .about = "this build's own: which journal entries the game had cited "
               "when slot <S> was written"},
-    {.pattern = save_layer_automap_working,
-     .kind = save_file_kind::sidecar,
-     .required = false,
-     .about = "this build's own: what the automap has explored right now, "
-              "belonging to the playthrough rather than to a slot"},
-    {.pattern = save_layer_journal_working,
-     .kind = save_file_kind::sidecar,
-     .required = false,
-     .about = "this build's own: which journal entries the game has cited "
-              "right now, belonging to the playthrough rather than to a slot"},
     {.pattern = save_layer_config_file,
      .kind = save_file_kind::config,
      .required = false,

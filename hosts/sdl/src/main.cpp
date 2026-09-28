@@ -177,12 +177,13 @@
 //     party plays — what the automap has explored, and which journal
 //     entries the game has cited — and both are observation rather than
 //     machine state, so both are gone when the machine stops. This
-//     writes them into `\SAVE\AFMAP.DAT` and `\SAVE\AFSEEN.DAT` —
-//     files of this project's own, beside the program's saves and never
-//     inside one — and reads them back at startup, with a snapshot per
-//     save slot so two playthroughs do not share one map or one list.
-//     The wilderness the explored overlay draws is in the first of them
-//     already: it keeps no records of its own and reads the automap's.
+//     writes them, when the program saves slot `L`, into
+//     `\SAVE\AFMAP<L>.DAT` and `\SAVE\AFSEEN<L>.DAT` — files of this
+//     project's own, beside the program's saves and never inside one —
+//     and reads them back when the program loads that slot, so two
+//     playthroughs do not share one map or one list. The wilderness the
+//     explored overlay draws is in the first of them already: it keeps
+//     no records of its own and reads the automap's.
 //     **Neither file appears until there is something to put in it**: a
 //     sidecar with no records in it is its header and nothing else, and
 //     one of those is written over a file that is already there and
@@ -3767,18 +3768,14 @@ int main(int argc, char** argv) try {
   // same thing on both.
   host::host_services services;
   box.seams().set_host(&services);
-  // And the sidecars that door drives (M5-E2c #173, #351). Enabled
-  // before the filesystem is attached would be too early — `attach()`
-  // reads the working table — so the wiring is here and the attach is
-  // after the disk is mounted, below.
+  // And the sidecars beside the saves (M5-E2c #173, #351). Enabled here
+  // and attached after the disk is mounted, below, because `attach()`
+  // reads where the copy saves.
   //
-  // **Once, here, and nowhere else** (#385). `attach()` below reads the
-  // working table with `read_sidecar`, which *replaces* every record it
-  // finds — so a second enable-and-attach later in a run would throw
-  // away whatever the party had walked since the first one. A host has
-  // one moment to decide this and it is before the disk is read, which
-  // is why the desktop's question is asked in `settle_config` and not
-  // from a panel a player can click during a game.
+  // **Once, here, and nowhere else** (#385). A host has one moment to
+  // decide this and it is before the disk is read, which is why the
+  // desktop's question is asked in `settle_config` and not from a panel
+  // a player can click during a game.
   services.slots().enable(opts.save_sidecars);
   log.set_slot_store(&services.slots());
   // And the other thing that door drives (M5-E4, #175): the text the
@@ -4023,15 +4020,12 @@ int main(int argc, char** argv) try {
     load_journal_store(opts, journal_text);
   }
 
-  // The read log, and then the machine the reader draws it from.
+  // The read log into the machine the reader draws it from. The log left
+  // the per-user store file (#351), so what a version 5 store holds is
+  // nothing and what a version 4 one holds is this player's list from
+  // before slots; a slot's own list arrives when the program loads it.
   //
-  // The working sidecar first (#351): the log left the per-user store
-  // file, so what a version 5 store holds is nothing and what a version 4
-  // one holds is this player's list from before slots — either way the
-  // slot's own file is the truer answer and goes over the top. A no-op
-  // unless `--save-sidecars` asked for one.
-  //
-  // Then into `machine::journal_state`, which is observation there and
+  // Into `machine::journal_state`, which is observation there and
   // configuration here, which is why it travels this way round rather
   // than living in either place alone (`machine/journal.h`). Those eight
   // lines were in this file and nowhere else, so the browser did not have
@@ -4042,12 +4036,11 @@ int main(int argc, char** argv) try {
   // **Outside the branch above**, unlike before: a run that ingested a
   // journal goes on to play, and one that restored no log would have the
   // first citation overwrite the list with a list of one.
-  services.slots().read_journal_log();
   host::restore_journal_log(box.journal(), journal_text);
   if (wants_journal) {
     // Said out loud for the reason the store's own line is: a reader that
     // comes up with an empty `Notes` list is either a party nothing has
-    // cited or a sidecar that is not being read, and those are not the
+    // cited or a store that is not being read, and those are not the
     // same thing.
     std::fprintf(stderr, "amberfolio: journal log seen=%zu\n",
                  journal_text.seen().size());
@@ -4862,20 +4855,13 @@ int main(int argc, char** argv) try {
     // and a flag rather than a timer, because most frames have nothing to
     // say.
     //
-    // **The log is no longer one of the things that raises it** (#351).
-    // It is not in this file any more, so a citation writes the sidecar
-    // beside the save and leaves a player's transcription alone.
+    // **The log is not one of the things that raises it** (#351). It is
+    // not in this file, so a citation leaves a player's transcription
+    // alone; it reaches a file beside the saves when the program saves.
     if (journal_text.changed()) {
       save_journal_store(opts, journal_text);
       journal_text.clear_changed();
     }
-    // And the read log's sidecar, on its own flag and beside the save it
-    // belongs to (#351). The `journal_seen` service writes it the instant
-    // a citation lands, so on an ordinary run this finds nothing to do;
-    // it is here for the paths that move the log without going through
-    // that service, of which `--cite-all-journal` is one and is the
-    // reason it was noticed. A no-op unless `--save-sidecars` asked.
-    services.slots().journal_changed();
     // And the code wheel's answer, the same way and for the same reason
     // (M6-C1b, #292) — except that this one moves at most once in a run,
     // at the instant a person gets the question right. Written then

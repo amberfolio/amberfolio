@@ -287,7 +287,7 @@ inline constexpr std::size_t automap_max_markers = 12;
 ///
 /// **Version 2 is the overland's** (M5-E5b, #254): a kind byte, and a
 /// bitmap wide enough for 576 cells. A reader here reads 1 *and* 2 and
-/// writes 2, because a player's existing `AFMAP.DAT` has to open rather
+/// writes 2, because a player's existing `AFMAP<S>.DAT` has to open rather
 /// than be refused — a version bump that threw the map away would be the
 /// same loss the sidecar exists to prevent.
 inline constexpr std::uint8_t automap_sidecar_version = 2;

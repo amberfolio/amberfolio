@@ -245,8 +245,7 @@ TEST(JournalStore, TheLogIsNoLongerInTheStoresOwnFile) {
 TEST(JournalStore, AVersionFourStoresLogIsReadAndThenLeftBehind) {
   // The one migration there will ever be. An old store's rows are this
   // player's list from before slots existed, so they are read — and the
-  // store written back is version 5 without them, because by then they
-  // are in the sidecar of whoever asked for one.
+  // store written back is version 5 without them.
   journal_store store;
   ASSERT_EQ(store.parse("amberfolio-journal 4\nedition a\nengine b\n"
                         "scanned entry 4 6\nfourth\n"
@@ -255,7 +254,7 @@ TEST(JournalStore, AVersionFourStoresLogIsReadAndThenLeftBehind) {
   ASSERT_EQ(store.seen().size(), 1u);
   EXPECT_EQ(store.seen()[0].what, Entry(4));
   EXPECT_TRUE(store.seen()[0].read);
-  EXPECT_FALSE(store.log_changed())
+  EXPECT_FALSE(store.changed())
       << "rows that came from a host are not rows that moved";
 
   const std::string back = store.serialize();
@@ -578,26 +577,16 @@ TEST(JournalStoreChanged, EveryOtherWriteRaisesItToo) {
        .minute = 5,
        .read = false},
   }};
-  // The log has its own flag since #351, because it has its own file:
-  // a citation that raised the store's would have a host rewrite a
-  // player's whole transcription to record something not in it.
+  // The log is not in the store's own file since #351, so a citation
+  // that raised the flag would have a host rewrite a player's whole
+  // transcription to record something not in it.
   store.set_seen(rows);
   EXPECT_FALSE(store.changed());
-  EXPECT_TRUE(store.log_changed());
-  store.clear_log_changed();
-
   store.forget_seen();
   EXPECT_FALSE(store.changed());
-  EXPECT_TRUE(store.log_changed());
-  store.clear_log_changed();
-
-  EXPECT_FALSE(store.log_changed()) << "and forgetting nothing is not a move";
-  store.forget_seen();
-  EXPECT_FALSE(store.log_changed());
 
   store.clear();
   EXPECT_TRUE(store.changed());
-  EXPECT_TRUE(store.log_changed());
 }
 
 TEST(JournalStoreChanged, AWriteThatWasRefusedRaisesNothing) {
@@ -774,14 +763,12 @@ TEST(JournalCiteAll, TheProbeEditionIsCitedEntryOneFirstAndAllUnread) {
 TEST(JournalCiteAll, TheStoreGetsTheSameLogThroughTheSameWrite) {
   // What makes it outlive the machine: the rows go into the store's own
   // log through `set_seen`, which is the `journal_seen` service's write,
-  // and that raises the *log's* flag (#351) so a host writes the sidecar
-  // beside the save — while the machine's own flag comes down, because
-  // the host now has it.
+  // and are in a slot's sidecar from the next save (#351) — while the
+  // machine's own flag comes down, because the host now has it.
   journal_store store = probe_store();
   machine::journal_state into;
   static_cast<void>(cite_all_journal(into, store, At));
 
-  EXPECT_TRUE(store.log_changed());
   EXPECT_FALSE(store.changed())
       << "a cheat that cites is not an edit to a player's transcription";
   EXPECT_FALSE(into.seen_changed());

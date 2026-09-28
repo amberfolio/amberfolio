@@ -1588,8 +1588,8 @@ int32_t af_machine_save_layer_required_at(const af_machine* box,
 uint32_t af_machine_save_layer_row_of(const af_machine* box, const char* path);
 
 /// Which slot `path` belongs to, as the letter's own character code, or
-/// zero for a path that is in no slot — a roster file, a sidecar's
-/// working table, a game file.
+/// zero for a path that is in no slot — a roster file, a character kept
+/// under a name, a game file.
 uint32_t af_machine_save_layer_slot_of(const af_machine* box, const char* path);
 
 /// Which party member `path` is the record of, 1 to

@@ -267,9 +267,8 @@ void journal_store::set_seen(std::span<const machine::journal_seen_row> rows) {
   seen_.assign(rows.begin(), rows.size() > machine::journal_log_rows
                                  ? rows.begin() + machine::journal_log_rows
                                  : rows.end());
-  // The log's flag and not the text's (#351): what moved is not in the
-  // store's own file any more.
-  log_changed_ = true;
+  // No flag (#351): the log is not in the store's own file, so a
+  // citation gives a host nothing of the store's to write.
 }
 
 void journal_store::forget_seen() {
@@ -277,7 +276,6 @@ void journal_store::forget_seen() {
     return;
   }
   seen_.clear();
-  log_changed_ = true;
 }
 
 std::size_t journal_store::recognized() const noexcept {
@@ -297,7 +295,6 @@ void journal_store::clear() {
   pictures_.clear();
   seen_.clear();
   changed_ = true;
-  log_changed_ = true;
 }
 
 std::string journal_store::serialize() const {
@@ -548,11 +545,6 @@ journal_trouble journal_store::parse(std::string_view whole) {
   // raise the flag). Without this line every host would save, on
   // startup, the file it had just read.
   changed_ = false;
-  // And the log's, for the same reason, however it got here: rows out of
-  // a version 4 store are this run's working log (journal_store.h), and
-  // the first thing that happens to them is being written to a sidecar
-  // by whoever asked for one — not by this.
-  log_changed_ = false;
   return journal_trouble::none;
 }
 
@@ -683,24 +675,7 @@ bool journal_store::read_log_sidecar(std::span<const std::uint8_t> in) {
   }
 
   seen_ = std::move(rows);
-  log_changed_ = true;
   return true;
-}
-
-std::string journal_store::serialize_log() const {
-  std::vector<std::uint8_t> bytes(log_sidecar_bytes());
-  if (write_log_sidecar(bytes) != bytes.size()) {
-    return {};
-  }
-  return encode_base64(bytes);
-}
-
-bool journal_store::parse_log(std::string_view text) {
-  std::vector<std::uint8_t> bytes;
-  if (!decode_base64(text, bytes)) {
-    return false;
-  }
-  return read_log_sidecar(bytes);
 }
 
 sha256_digest journal_store::fingerprint() const {

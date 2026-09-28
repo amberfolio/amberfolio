@@ -2,9 +2,10 @@
 //
 // The one question this page asks a player (#385).
 //
-// `saveSidecars(on)` writes `AFMAP.DAT` and `AFSEEN.DAT`, in the folder
-// the saves are in, into the filesystem holding the copy somebody dropped — the same two
-// files the desktop host's `--save-sidecars` writes, and the same
+// `saveSidecars(on)` writes `AFMAP<L>.DAT` and `AFSEEN<L>.DAT`, one pair
+// per saved game, in the folder the saves are in, into the filesystem
+// holding the copy somebody dropped — the same files the desktop host's
+// `--save-sidecars` writes, and the same
 // sentence being asked for: *may this build keep its own files beside
 // your saves*. It is the one surface in M6 that changes something of the
 // player's, so it is asked for rather than assumed, once, and the answer
@@ -50,12 +51,11 @@
 //
 // The *applying* is not here, and where it happens is a rule rather than
 // a convenience: `saveSidecars(true)` turns the store on **and attaches
-// it**, and the attach reads the working exploration table with
-// `read_sidecar`, which replaces every record in the machine. So a second
-// call part-way through a visit would hand a player an older map than the
-// one they are looking at. `app.mjs` calls it once, at the boot, after
-// the files are in and before `loadFromVfs()` — which is also the only
-// moment there is a filesystem to read and nothing has been drawn yet.
+// it**, and the attach reads where the copy saves — so it wants the files
+// in — and has to be watching before the program loads a slot, or that
+// load's map is never read. `app.mjs` calls it once, at the boot, after
+// the files are in and before `loadFromVfs()`, which is the only moment
+// that is both.
 // A click on the panel therefore records an answer and takes effect on
 // the next boot, and the panel says so.
 
@@ -108,11 +108,12 @@ export function sidecarQuestion() {
     'Two of the enhancements learn something as you play: which streets ' +
       'the automap has drawn for you, and which journal entries the game ' +
       'has sent you to. Neither survives the machine stopping.',
-    'Kept, they go in AFMAP.DAT and AFSEEN.DAT - files of ' +
-      "this project's own, in the folder your saved games are in, in the copy this " +
-      'browser is keeping and never inside one. The files you dropped are ' +
-      'never written to, and neither of these appears at all until there ' +
-      'is something to put in it.',
+    'Kept, each saved game gets its own pair - AFMAPA.DAT and ' +
+      'AFSEENA.DAT beside slot A, and so on. They are files of ' +
+      "this project's own, in the folder your saved games are in, in the " +
+      'copy this browser is keeping and never inside one. The files you ' +
+      'dropped are never written to, and none of these appears at all ' +
+      'until there is something to put in it.',
     'This browser remembers what you answer, and you can change it here ' +
       'whenever you like. A change takes effect the next time you boot.',
   ];

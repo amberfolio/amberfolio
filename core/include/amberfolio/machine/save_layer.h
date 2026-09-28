@@ -117,8 +117,8 @@
 // the automap and the reader learnt while that party played, and a
 // player who loses them loses the map they filled in — and a table that
 // listed only the program's files would leave a host to work that out
-// alone. Their names live here, beside the format `automap.h` already
-// states, so the tree spells `AFMAP.DAT` once. They go in the save
+// alone. There is one of each per slot, `AFMAP<S>.DAT` and
+// `AFSEEN<S>.DAT`, and nothing that is not a slot's. They go in the save
 // directory, whichever one that is, because they are about the saves
 // beside them.
 //
@@ -344,11 +344,5 @@ struct save_directory_answer {
 [[nodiscard]] bool save_layer_places_of(filesystem& fs,
                                         const dos_path& current_directory,
                                         save_layer_places& places);
-
-/// The two files this build writes into the save directory, as leaves,
-/// so that `host::slot_store` and the table above cannot disagree about
-/// their names. `automap.h` and `journal_store.h` have their formats.
-inline constexpr std::string_view save_layer_automap_working = "AFMAP.DAT";
-inline constexpr std::string_view save_layer_journal_working = "AFSEEN.DAT";
 
 }  // namespace amberfolio::machine

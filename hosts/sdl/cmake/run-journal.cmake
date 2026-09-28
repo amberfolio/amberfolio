@@ -192,18 +192,18 @@ expect("need --journal")
 #
 # Over the store step 2 left: four rows, and — since #351 — a store file
 # that carries no log at all. The flag puts all four on the machine's log,
-# Entry 1 first, and the host writes them into `\SAVE\AFSEEN.DAT` beside
-# the saves, which is a file it only writes when it was asked to:
-# `--save-sidecars`. So this runs over a *copy* of the smoke disk, because
-# the point of the flag is that a run does not change a directory nobody
-# offered it.
+# Entry 1 first. A log reaches a file only beside a saved game, when the
+# program saves a slot (`slot_store.h`), and this program saves nothing —
+# so what is checked here is that citing writes nothing anywhere, with
+# `--save-sidecars` or without it. The rows and their order are held down
+# in C++ (`JournalCiteAll` in `hosts/common/tests/journal_store_test.cpp`),
+# and a slot's own file in `SlotStore`.
 #
-# What is checked here is that the file arrives, that it is the sidecar it
-# says it is, and that a second run reads it back — four rows and not
-# eight. The row order and the fields are held down in C++
-# (`JournalCiteAll` in `hosts/common/tests/journal_store_test.cpp`); a
-# sidecar is bytes, and this is the place to check that the bytes are
-# where a player's next launch will look for them.
+# And one thing the flag does do at startup: take away the file an
+# earlier build kept between saves, `AFSEEN.DAT`, which handed a new
+# party the last one's list. Over a *copy* of the smoke disk, because the
+# point of the flag is that a run does not change a directory nobody
+# offered it.
 
 set(cite_disk "${SCRATCH}/cite-disk")
 file(REMOVE_RECURSE "${cite_disk}")
@@ -214,7 +214,8 @@ file(COPY "${DISK}/" DESTINATION "${cite_disk}")
 # naming `C:\SAVE\` — the layout, not anybody's settings.
 # Bare line feeds: CMake writes them as CR LF on Windows by itself.
 file(WRITE "${cite_disk}/POOL.CFG" "-\n-\nC:\\\nC:\\SAVE\\\n")
-set(sidecar "${cite_disk}/SAVE/AFSEEN.DAT")
+set(retired "${cite_disk}/SAVE/AFSEEN.DAT")
+file(WRITE "${retired}" "left by an earlier build")
 
 function(run_cite_host)
   execute_process(
@@ -227,8 +228,16 @@ function(run_cite_host)
   set(err "${err}" PARENT_SCOPE)
 endfunction()
 
-# Without the flag, nothing is written anywhere: the cheat still cites,
-# and a directory nobody asked this build to write into is left alone.
+function(expect_no_new_sidecar why)
+  file(GLOB written "${cite_disk}/SAVE/AFMAP*.DAT"
+                    "${cite_disk}/SAVE/AFSEEN?.DAT")
+  if(written)
+    message(FATAL_ERROR "${why} wrote ${written}")
+  endif()
+endfunction()
+
+# Without the flag, nothing is written or taken away: the cheat still
+# cites, and a directory nobody asked this build to touch is left alone.
 run_cite_host(--journal-store "${store}" --cite-all-journal)
 if(NOT code EQUAL 7)
   message(FATAL_ERROR
@@ -236,9 +245,11 @@ if(NOT code EQUAL 7)
     "stdout: ${out}\nstderr: ${err}")
 endif()
 expect("journal cited all 4 - the Notes log holds every entry \\(log=4\\)")
-if(EXISTS "${sidecar}")
+expect_no_new_sidecar("a run without --save-sidecars")
+if(NOT EXISTS "${retired}")
   message(FATAL_ERROR
-    "a run without --save-sidecars wrote ${sidecar}, which it must never do")
+    "a run without --save-sidecars took away ${retired}, which it must "
+    "never do")
 endif()
 
 # And the store's own file never carries the log again.
@@ -248,30 +259,21 @@ if(text MATCHES "\nseen ")
     "the store file still carries the read log:\n${text}")
 endif()
 
-# With the flag, the sidecar is there and is one: `AFS`, version 1, four
-# rows of eight bytes each behind an eight-byte header.
+# With the flag, still nothing new: a citation is not a save. The old
+# file is gone.
 run_cite_host(--journal-store "${store}" --cite-all-journal --save-sidecars)
 expect("journal cited all 4")
-expect("save-sidecars writes=[1-9]")
-if(NOT EXISTS "${sidecar}")
+expect("save-sidecars writes=0 reads=0")
+expect_no_new_sidecar("citing everything with --save-sidecars")
+if(EXISTS "${retired}")
   message(FATAL_ERROR
-    "citing everything with --save-sidecars wrote no ${sidecar}")
-endif()
-file(SIZE "${sidecar}" sidecar_bytes)
-if(NOT sidecar_bytes EQUAL 40)
-  message(FATAL_ERROR
-    "the read log's sidecar is ${sidecar_bytes} bytes, wanted 8 + 4 * 8")
-endif()
-file(READ "${sidecar}" head LIMIT 4 HEX)
-if(NOT head STREQUAL "41465301")
-  message(FATAL_ERROR
-    "the read log's sidecar begins '${head}', wanted 'AFS' and version 1")
+    "--save-sidecars left ${retired}, which nothing reads any more")
 endif()
 
-# And a launch after it reads the four rows back, before anything has
-# cited anything: which is the whole point of a sidecar.
+# And a launch after it starts with nothing cited: the list a run is
+# handed comes from a slot the program loads, never from the last run.
 run_cite_host(--journal-store "${store}" --save-sidecars)
-expect("journal log seen=4")
+expect("journal log seen=0")
 
 run_host(--journal-store "${SCRATCH}/journal-nothing-here.txt" --cite-all-journal)
 expect("journal nothing to cite - no journal has been ingested")
@@ -321,6 +323,6 @@ message(STATUS
   "sdl host journal: a synthetic edition ingested end to end, a"
   " correction kept across a re-ingestion, two unrecognized"
   " documents reported with their fingerprints, and the cheat that"
-  " cites everything kept in the sidecar beside the save, which the"
-  " next launch read back; and a synthetic edition typeset as text read"
-  " with no engine at all")
+  " cites everything writing nothing beside the saves until one is"
+  " saved; and a synthetic edition typeset as text read with no engine"
+  " at all")
