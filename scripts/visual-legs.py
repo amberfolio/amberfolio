@@ -14,7 +14,7 @@ detail:
   program painting its own bar over the journal.
 
 * A **single** leg runs once and asserts that a range of frames is one
-  frame.  NOT-8 is the example and the reason the kind exists: "nothing
+  frame, or that a frame *says* what it said before (`text`, below).  NOT-8 is the example and the reason the kind exists: "nothing
   reaches the program while the log is up" is a screen holding still,
   not a difference from anything.  It *cannot* be a pair, because the
   seam-off run has no log to swallow those keys, so they reach the
@@ -116,6 +116,9 @@ class Leg:
         #: (before, after, [rect names to leave out]): two frames that
         #: must be the same screen, apart from the rects named.
         self.equals: list[tuple[int, int, list[str]]] = []
+        #: (frame, SHA-256): the screen text the host dumped beside that
+        #: still (`machine/screen_text.h`) must have this digest.
+        self.texts: list[tuple[int, str]] = []
         self.problems: list[str] = []
         self._read()
 
@@ -144,9 +147,10 @@ class Leg:
         if self.kind == "pair" and not self.allows:
             self.problems.append("a pair leg with no `allow` line checks "
                                  "nothing")
-        if self.kind == "single" and not (self.sames or self.equals):
-            self.problems.append("a single leg with no `same` or `equal` "
-                                 "line checks nothing")
+        if self.kind == "single" and not (self.sames or self.equals
+                                          or self.texts):
+            self.problems.append("a single leg with no `same`, `equal` or "
+                                 "`text` line checks nothing")
         for first, last, names in (
                 self.allows + [(a, b, n) for a, b, n in self.equals]):
             for one in names:
@@ -208,6 +212,15 @@ class Leg:
             self.sames.append((int(first), self._frame(last)))
         elif head == "equal":
             self.equals.append((int(word[1]), int(word[2]), word[3:]))
+        elif head == "text":
+            # What a screen says, held to the program's own output: the
+            # digest of the text dump beside the still, and never the
+            # text itself, which is the program's and stays out of this
+            # tree. The dump carries every cell's ink and paper, so a
+            # shortcut letter that lost its colour fails here too.
+            if len(word[2]) != 64:
+                raise ValueError("a `text` digest is 64 hex characters")
+            self.texts.append((int(word[1]), word[2].lower()))
         else:
             raise ValueError(f"no keyword {head!r}")
 
@@ -403,10 +416,29 @@ def check_single(leg: Leg, run: Path) -> tuple[list[str], str]:
                     f"frames {first}-{last}: frame {frame_of(path)} differs "
                     f"from {frame_of(held[0])} by {count} pixels, box {box}")
                 break
-    note = f"{held_total} frames held still"
+    for frame, want in leg.texts:
+        if frame not in at:
+            wrong.append(f"frame {frame}: not dumped")
+            continue
+        said = at[frame].with_suffix(".txt")
+        if not said.is_file():
+            wrong.append(f"frame {frame}: no screen text beside the still "
+                         "(a host older than screen text?)")
+            continue
+        got = sha256_of(said)
+        if got != want:
+            first = said.read_text(encoding="utf-8").splitlines()[0]
+            wrong.append(f"frame {frame}: the screen says something else "
+                         f"({first}, sha256 {got}); --keep to read it")
+
+    said = []
+    if leg.sames:
+        said.append(f"{held_total} frames held still")
     if leg.equals:
-        note += f", {len(leg.equals)} given back"
-    return wrong, note
+        said.append(f"{len(leg.equals)} given back")
+    if leg.texts:
+        said.append(f"{len(leg.texts)} screens read")
+    return wrong, ", ".join(said)
 
 
 def documents_for(leg: Leg, held: list[Path]) -> tuple[list[Path], str]:

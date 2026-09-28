@@ -71,6 +71,7 @@ add_library(amberfolio-core STATIC
   src/machine/save_layer.cpp
   src/machine/scheduler.cpp
   src/machine/screen_keyboard.cpp
+  src/machine/screen_text.cpp
   src/machine/seam.cpp
   src/machine/seam_automap.cpp
   src/machine/seam_cheats.cpp

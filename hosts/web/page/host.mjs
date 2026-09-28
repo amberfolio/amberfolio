@@ -257,6 +257,64 @@ export const AF_TRACE_REPORT_CAPACITY = 32768;
 
 /// Unpack af_version()'s 0x00MMmmpp. The one place JS knows the packing;
 /// keep it in step with AF_VERSION_* in core/include/amberfolio/abi.h.
+/// Bytes a cell takes in the screen-text buffer: the character, then the
+/// ink, then the paper (abi.h's `AF_SCREEN_TEXT_CELL_BYTES`).
+export const SCREEN_TEXT_CELL_BYTES = 3;
+
+/// The screen-text buffer as rows of runs, which is the shape a reader
+/// wants: `[{ y, runs: [{ x, text, fg, bg }] }]`, `x` and `y` in cells
+/// (eight pixels each), `fg` and `bg` palette indices.
+///
+/// A run is text drawn in one pair of colours, so a letter drawn in a
+/// different ink from its word — a menu's shortcut letter — is a run of
+/// its own, and that is the point. A blank cell is a space inside a run
+/// on the same paper; two blanks together, or a cell that is not text,
+/// end it, so things that are apart on the screen are apart here.
+/// A cell whose bitmap is more than one character's reads as U+FFFD.
+/// Rows with no text are left out.
+export function screenTextRows(cells, columns, rows) {
+  const out = [];
+  for (let y = 0; y < rows; y += 1) {
+    const runs = [];
+    let run = null;
+    let blanks = 0;
+    const close = () => {
+      if (run !== null) {
+        run.text = run.text.trimEnd();
+        runs.push(run);
+      }
+      run = null;
+      blanks = 0;
+    };
+    for (let x = 0; x < columns; x += 1) {
+      const at = (y * columns + x) * SCREEN_TEXT_CELL_BYTES;
+      const code = cells[at];
+      const fg = cells[at + 1];
+      const bg = cells[at + 2];
+      if (code === 0) {
+        close();
+      } else if (code === 0x20) {
+        if (run === null) continue;
+        if (fg !== run.bg || blanks === 1) {
+          close();
+          continue;
+        }
+        blanks += 1;
+        run.text += ' ';
+      } else {
+        const text = code === 1 ? '�' : String.fromCharCode(code);
+        if (run !== null && (run.fg !== fg || run.bg !== bg)) close();
+        if (run === null) run = { x, text: '', fg, bg };
+        blanks = 0;
+        run.text += text;
+      }
+    }
+    close();
+    if (runs.length !== 0) out.push({ y, runs });
+  }
+  return out;
+}
+
 export function unpackVersion(packed) {
   return {
     major: (packed >>> 16) & 0xff,
@@ -448,6 +506,45 @@ export class Machine {
     const entries = this.paletteEntries();
     const ptr = this.module._af_machine_palette(this.handle);
     return this.module.HEAPU8.subarray(ptr, ptr + entries * 3);
+  }
+
+  /// The text on the screen now, read back in the program's own font
+  /// (`machine/screen_text.h`): `{ rows }`, grouped by `screenTextRows()`
+  /// below, or `{ rows: null, reason }` when there is none to read —
+  /// `no_program`, `wrong_binary` (a program this build has no font
+  /// location for) or `no_font` (the program has not installed it yet).
+  ///
+  /// A read, like `framebufferView()`: taken between `runUntil()` calls,
+  /// computed on the spot, and nothing about the machine changes.
+  screenText() {
+    const columns = this.module._af_screen_text_columns();
+    const rows = this.module._af_screen_text_rows();
+    const size = columns * rows * SCREEN_TEXT_CELL_BYTES;
+    const whyMax = 32;
+    const scratch = this.module._malloc(size + whyMax);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while reading the screen text');
+    }
+    try {
+      const status = this.module._af_machine_screen_text(
+        this.handle,
+        scratch,
+        size,
+        scratch + size,
+        whyMax,
+      );
+      if (status !== AF_OK) return { rows: null, reason: 'no_machine' };
+      const heap = this.module.HEAPU8;
+      let end = scratch + size;
+      while (end < scratch + size + whyMax && heap[end] !== 0) end += 1;
+      const reason = String.fromCharCode(...heap.subarray(scratch + size, end));
+      if (reason !== 'none') return { rows: null, reason };
+      return {
+        rows: screenTextRows(heap.slice(scratch, scratch + size), columns, rows),
+      };
+    } finally {
+      this.module._free(scratch);
+    }
   }
 
   /// Copy `bytes` into the machine's RAM at physical `address`. Answers

@@ -823,6 +823,7 @@
 #include "press_spec.h"
 #include "rehash.h"
 #include "screen_keyboard_view.h"
+#include "screen_text_dump.h"
 #include "seam_panel.h"
 #include "sidecar_consent.h"
 #include "sound_report.h"
@@ -995,6 +996,8 @@ void write_still(const std::string& prefix, std::uint64_t frame,
                 static_cast<unsigned long long>(frame));
   (void)sdl::write_ppm(std::filesystem::path(prefix + suffix.data()),
                        box.display().pixels(), box.display().palette());
+  std::memcpy(suffix.data() + 7, ".txt", 4);
+  sdl::write_screen_text(prefix + suffix.data(), box);
 }
 
 /// Drain whatever DOS console output has accumulated to stdout.
@@ -5460,6 +5463,7 @@ int main(int argc, char** argv) try {
 
   if (!opts.dump_prefix.empty()) {
     const std::filesystem::path ppm(opts.dump_prefix + ".ppm");
+    sdl::write_screen_text(opts.dump_prefix + ".txt", box);
     if (sdl::write_ppm(ppm, box.display().pixels(), box.display().palette())) {
       std::fprintf(stderr, "amberfolio: dump frame=%s generation=%llu\n",
                    ppm.string().c_str(),

@@ -42,6 +42,7 @@
 #include "amberfolio/machine/report.h"
 #include "amberfolio/machine/save_layer.h"
 #include "amberfolio/machine/screen_keyboard.h"
+#include "amberfolio/machine/screen_text.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/tandy_sound.h"
@@ -826,6 +827,36 @@ double af_machine_frame_generation(const af_machine* handle) {
   const machine* box = box_of(handle);
   return box == nullptr ? 0.0
                         : static_cast<double>(box->display().generation());
+}
+
+uint32_t af_screen_text_columns(void) {
+  return amberfolio::machine::text_columns;
+}
+
+uint32_t af_screen_text_rows(void) { return amberfolio::machine::text_rows; }
+
+uint32_t af_machine_screen_text(const af_machine* handle, uint8_t* out,
+                                uint32_t size, char* why, uint32_t why_max) {
+  const machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_NO_MACHINE;
+  }
+  constexpr std::size_t needed =
+      amberfolio::machine::text_cells * AF_SCREEN_TEXT_CELL_BYTES;
+  if (out == nullptr || size < needed) {
+    return AF_INVALID;
+  }
+  amberfolio::machine::text_grid grid{};
+  const std::string_view said = amberfolio::machine::screen_text_trouble_name(
+      amberfolio::machine::read_screen_text(*box, grid));
+  const std::span<std::uint8_t> cells(out, needed);
+  for (std::size_t i = 0; i < grid.size(); ++i) {
+    cells[i * AF_SCREEN_TEXT_CELL_BYTES] = grid[i].code;
+    cells[(i * AF_SCREEN_TEXT_CELL_BYTES) + 1] = grid[i].ink;
+    cells[(i * AF_SCREEN_TEXT_CELL_BYTES) + 2] = grid[i].paper;
+  }
+  (void)copy_out(std::span<const char>(said.data(), said.size()), why, why_max);
+  return AF_OK;
 }
 
 uint32_t af_machine_render_audio(af_machine* handle, float* out,

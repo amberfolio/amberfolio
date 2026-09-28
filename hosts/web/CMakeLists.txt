@@ -87,6 +87,10 @@ set(_amberfolio_web_export_names
   _af_machine_stop_report
   _af_machine_trace_report
   _af_machine_framebuffer
+  # The screen read back as text, in the program's own font.
+  _af_screen_text_columns
+  _af_screen_text_rows
+  _af_machine_screen_text
   _af_machine_palette
   _af_machine_frame_generation
   _af_machine_render_audio

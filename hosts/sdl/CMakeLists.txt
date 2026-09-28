@@ -42,6 +42,8 @@ add_executable(amberfolio-sdl
   # and tests/screen_keyboard_view_test.cpp cannot reach a lambda inside a
   # main().
   src/screen_keyboard_view.cpp
+  # `--dump`'s text beside its pictures (machine/screen_text.h).
+  src/screen_text_dump.cpp
   # The toggle panel's columns and pixels (#383), on the same argument,
   # and the machine's character generator both overlays draw text with.
   src/seam_panel.cpp

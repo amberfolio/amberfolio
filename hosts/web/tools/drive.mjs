@@ -1365,6 +1365,12 @@ function writeFrame(machine, path, announce) {
     path,
     encodePpm(width, height, machine.framebufferView(), machine.paletteView()),
   );
+  // What the still says, beside it: `Machine.screenText()`'s answer, as
+  // the SDL host writes its own `.txt` beside each of its stills.
+  writeFileSync(
+    path.replace(/\.ppm$/, '.json'),
+    `${JSON.stringify(machine.screenText())}\n`,
+  );
   if (announce) {
     say(`amberfolio: dump frame=${path} generation=${machine.frameGeneration()}`);
   }

@@ -418,8 +418,12 @@ uint32_t af_version(void);
 ///     `af_machine_save_layer_*` family is behaviour and not surface — its
 ///     rows now follow the directory the copy's own configuration file
 ///     names, and a copy that names none has no layer.
+///   * **2.3** — three added entry points and nothing changed:
+///     `af_machine_screen_text`, `af_screen_text_columns` and
+///     `af_screen_text_rows`, the text on the screen read back in the
+///     program's own font. Minor: a host that never asks is unaffected.
 #define AF_ABI_VERSION_MAJOR 2u
-#define AF_ABI_VERSION_MINOR 2u
+#define AF_ABI_VERSION_MINOR 3u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -626,6 +630,36 @@ const uint8_t* af_machine_palette(const af_machine* box);
 /// and missing frames is correct behaviour for a host that cannot keep up
 /// (platform.h).
 double af_machine_frame_generation(const af_machine* box);
+
+// --- Screen text ------------------------------------------------------
+//
+// What the program has on the screen now, read back as characters by
+// matching the frame against the glyphs it was drawn with
+// (`machine/screen_text.h`). A read, like the framebuffer: taken between
+// `af_machine_run_until` slices, it changes nothing, is not machine
+// state, and is in no hash and no recording.
+
+/// The text grid: 40 columns by 25 rows of 8x8 cells.
+uint32_t af_screen_text_columns(void);
+uint32_t af_screen_text_rows(void);
+
+/// Bytes a cell takes in `af_machine_screen_text`'s `out`: the character
+/// as ASCII (0x20-0x5F), then the ink and the paper as palette indices.
+/// A character of 0x00 is a cell that is not text; 0x01 is one whose
+/// bitmap is more than one character's, and so is not read as any.
+#define AF_SCREEN_TEXT_CELL_BYTES 3u
+
+/// Read the screen into `out`, `columns * rows * AF_SCREEN_TEXT_CELL_BYTES`
+/// bytes row-major, and say into `why` — NUL-terminated, 32 bytes is
+/// enough — `none` when there is text, or why there is none: `no_program`,
+/// `wrong_binary` (a program this build has no font location for) or
+/// `no_font` (the program has not installed its font yet). Every cell is
+/// 0x00 unless `why` says `none`.
+///
+/// `AF_OK`; `AF_NO_MACHINE` for a null handle; `AF_INVALID`, and nothing
+/// written, for a null or short `out`.
+uint32_t af_machine_screen_text(const af_machine* box, uint8_t* out,
+                                uint32_t size, char* why, uint32_t why_max);
 
 // --- Audio pull -------------------------------------------------------
 
