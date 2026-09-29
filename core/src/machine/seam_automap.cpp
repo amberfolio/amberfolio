@@ -160,14 +160,16 @@
 //     different scan code, and it is the program's.
 //
 // Tab is not the only key claimed, though it is the only one claimed
-// unconditionally. **While the panel is up it also takes the two keys
-// that step the program's roster cursor** — the next and previous party
-// member. The adventuring screen answers them by redrawing the party
-// list, which is the block of cells the panel is drawn on: the map is
-// painted over, the seam puts it back on the next pass, and what the
-// player sees is a flash. A command whose whole visible effect is behind
-// the panel is one the panel may decline while it is the thing on the
-// screen. They are given straight back the moment it comes down.
+// unconditionally. **While the panel is up it also takes every key that
+// steps the program's roster cursor** — Home and End (the next and
+// previous party member), and every other extended key and keypad digit
+// that is not a move. The adventuring screen answers each of them by
+// redrawing the party list, which is the block of cells the panel is
+// drawn on: the map is painted over, the seam puts it back on the next
+// pass, and what the player sees is a flash. A command whose whole
+// visible effect is behind the panel is one the panel may decline while
+// it is the thing on the screen. They are given straight back the moment
+// it comes down.
 //
 // The claim at the *read* routine cannot turn a poll that said "a key is
 // waiting" into a wait that never ends, and the argument is worth having
@@ -279,6 +281,7 @@
 //     "measurably different" is not "legible", and only somebody looking
 //     can say which one this is.
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -1798,31 +1801,39 @@ void blit(machine& box, const automap_state& state) {
 /// Ctrl-I, which is the program's key and not this seam's.
 constexpr std::uint16_t key_tab = 0x0F09;
 
-/// The two keystrokes that step the program's roster cursor, which the
-/// panel takes for as long as it is up (M5-E2d).
+/// The keystrokes the party's bar answers by stepping the program's
+/// roster cursor and redrawing the party list, which the panel takes for
+/// as long as it is up (M5-E2d).
 ///
-/// **Why it takes them at all.** The adventuring screen answers a key it
-/// has no command for by stepping that cursor and then redrawing the
-/// party list — which is the block of cells the panel is drawn on. The
-/// map is painted over, this seam puts it back on the next pass, and what
-/// the player sees is a flash. Most of those keys are a stray press; two
-/// of them are a command a player means, the next and the previous party
-/// member, and a command whose whole visible effect is behind the panel
-/// is one the panel may decline while it is the thing on the screen.
+/// **Why it takes them at all.** The redraw is of the block of cells the
+/// panel is drawn on: the map is painted over, this seam puts it back on
+/// the next pass, and what the player sees is the roster flashing up in
+/// its place. Two of these keys are a command a player means, the next
+/// and the previous party member; the rest step the cursor back to the
+/// party's first member. Every one of them has its whole visible effect
+/// behind the panel, and a command like that is one the panel may decline
+/// while it is the thing on the screen.
 ///
-/// **Why two shapes each.** They reach the program as one of two things.
-/// With Num Lock on the keypad sends the digits, which the program's own
-/// menu reader translates into command letters through a table in its
-/// data segment; with Num Lock off the same keys send extended
-/// keystrokes, and the program takes those at their scan code — which,
-/// for these two keys, *is* the letter the table would have produced.
-/// Hence a character for the one and a scan code for the other. The
-/// character alone is enough here, unlike Tab: nothing else on this
-/// machine makes a '1'.
-constexpr std::uint8_t key_next_member_char = '1';
-constexpr std::uint8_t key_prev_member_char = '7';
-constexpr std::uint8_t key_next_member_scan = 0x4F;
-constexpr std::uint8_t key_prev_member_scan = 0x47;
+/// **Which keys, exactly.** The bar's input routine is called in its raw
+/// mode, and in that mode it hands the adventuring screen two kinds of
+/// key the menu does not name:
+///
+///   * **every extended keystroke**, at its scan code. Four of those are
+///     the moves (up, left, right, down); every other one — Home, End,
+///     PgUp, PgDn, the keypad's 5 with Num Lock off, the function keys,
+///     Insert, Delete, an Alt chord — goes to the roster cursor.
+///   * **a keypad digit or `\`**, translated through a table in the data
+///     segment. The even digits are the moves; 1, 3, 7 and 9 become the
+///     scan codes of End, PgDn, Home and PgUp, 5 becomes a space, and `\`
+///     becomes the character `7` — all of them roster-cursor steps.
+///
+/// Anything else it either answers from the menu or throws away, so the
+/// rule is the program's own, and nothing outside it is taken. The
+/// character is enough for the second kind, unlike Tab: nothing else on
+/// this machine makes a digit.
+constexpr std::array<std::uint8_t, 4> key_move_scans{0x48, 0x4B, 0x4D, 0x50};
+constexpr std::array<std::uint8_t, 6> key_roster_chars{'1', '3', '5',
+                                                       '7', '9', '\\'};
 
 /// What the keystroke at the head of the buffer is, to this seam.
 enum class claimable : std::uint8_t {
@@ -1841,14 +1852,15 @@ enum class claimable : std::uint8_t {
   }
   const auto character = static_cast<std::uint8_t>(key & 0xFFU);
   const auto scan = static_cast<std::uint8_t>(key >> 8U);
-  if (character == key_next_member_char || character == key_prev_member_char) {
-    return claimable::roster_cursor;
+  if (character == 0) {
+    const bool move =
+        std::ranges::find(key_move_scans, scan) != key_move_scans.end();
+    return scan == 0 || move ? claimable::none : claimable::roster_cursor;
   }
-  if (character == 0 &&
-      (scan == key_next_member_scan || scan == key_prev_member_scan)) {
-    return claimable::roster_cursor;
-  }
-  return claimable::none;
+  return std::ranges::find(key_roster_chars, character) !=
+                 key_roster_chars.end()
+             ? claimable::roster_cursor
+             : claimable::none;
 }
 
 /// Take the next keystroke out of the BIOS buffer if it is one this seam
