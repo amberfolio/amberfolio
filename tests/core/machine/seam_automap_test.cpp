@@ -1742,8 +1742,9 @@ TEST(AutomapPanel, SomebodyElseAskingTakesThePanelWithIt) {
   r.somebody_else_asks();
   r.stand_on(r.point(0));
   r.pc().step();
-  EXPECT_FALSE(r.map_state().panel_open()) << "nobody had to press Tab";
-  EXPECT_FALSE(r.map_state().panel_on_screen());
+  EXPECT_FALSE(r.map_state().panel_on_screen()) << "nobody had to press Tab";
+  EXPECT_TRUE(r.map_state().panel_open())
+      << "the program's question is not the player's Tab";
 
   for (int i = 0; i < 40; ++i) {
     r.pc().step();
@@ -1751,6 +1752,61 @@ TEST(AutomapPanel, SomebodyElseAskingTakesThePanelWithIt) {
   EXPECT_EQ(r.word_at(rig::dgroup(), roster_witness),
             static_cast<std::uint16_t>(image_load_segment + roster_paragraph))
       << "and the roster is back under the question";
+
+  // The program keeps polling while the player answers; the map must not
+  // come back over the question.
+  r.poll(3);
+  EXPECT_FALSE(r.map_state().panel_on_screen());
+}
+
+TEST(AutomapPanel, TheMapComesBackWhenThePartysBarDoes) {
+  // The maintainer's report: the panel up, a wandering encounter's
+  // `COMBAT WAIT FLEE PARLAY`, a successful flee, and the party back on
+  // its own bar with no map. The encounter's prompt is somebody else's
+  // bar; the flee puts the party's own back.
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.type(key_tab);
+  r.poll(2);
+  ASSERT_TRUE(r.map_state().panel_on_screen());
+  install_the_programs_repaint(r);
+
+  r.somebody_else_asks();
+  r.stand_on(r.point(0));
+  r.pc().step();
+  for (int i = 0; i < 40; ++i) {
+    r.pc().step();
+  }
+  ASSERT_FALSE(r.map_state().panel_on_screen());
+
+  r.put_up_the_bar(rig::dgroup(), data_menu_3d_view);
+  r.poll(1);
+  EXPECT_TRUE(r.map_state().panel_open());
+  EXPECT_TRUE(r.map_state().panel_on_screen())
+      << "drawn again with no Tab pressed";
+
+  // And it is still the player's to put away.
+  r.type(key_tab);
+  r.stand_on(r.point(0));
+  r.pc().step();
+  EXPECT_FALSE(r.map_state().panel_open());
+}
+
+TEST(AutomapPanel, AMapPutAwayBeforeTheQuestionStaysAway) {
+  rig r;
+  r.attach_video();
+  r.enable();
+  r.adventuring(7, 5, lane_north);
+  r.poll(4);
+  r.somebody_else_asks();
+  r.poll(2);
+  r.put_up_the_bar(rig::dgroup(), data_menu_3d_view);
+  r.poll(2);
+  EXPECT_FALSE(r.map_state().panel_open());
+  EXPECT_FALSE(r.map_state().panel_on_screen());
 }
 
 TEST(AutomapPanel, SomethingThatTookTheCellsIsLeftToPutThemBack) {
