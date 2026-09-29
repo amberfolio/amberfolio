@@ -1068,7 +1068,11 @@ load, even when empty, and nothing is kept between saves; a slot
 the load menu only opened is told from one loaded by whether bytes moved
 through the handle (`file_event`'s traffic flags).
 
-**Keys**: Tab; up and down (the roster cursor) while the panel is up.
+**Keys**: Tab; while the panel is up, every key the party's bar answers
+with a roster-cursor step and a roster redraw: every extended key but
+the four moves (scan `48 4B 4D 50`), and the characters `1 3 5 7 9 \`,
+which the bar's raw mode translates through DGROUP `0x288C` (digits
+`1`–`9` → `O P Q K space M G H I`; `\` → `7`).
 
 **Fidelity**: on and Tab never pressed, byte for byte the seam-off run
 (`AutomapFidelity.OnAndNeverAskedLeavesTheRunIdentical`;

@@ -114,6 +114,24 @@ constexpr std::uint16_t key_keypad_prev_member = 0x4737;  // '7'
 constexpr std::uint16_t key_end = 0x4F00;
 constexpr std::uint16_t key_home = 0x4700;
 
+/// Keys the party's bar answers with the same cursor step and roster
+/// redraw, though no player means them as a command: every other extended
+/// key that is not a move, and the keypad's odd digits.
+constexpr std::uint16_t key_page_up = 0x4900;
+constexpr std::uint16_t key_page_down = 0x5100;
+constexpr std::uint16_t key_keypad_centre = 0x4C00;  // 5, Num Lock off
+constexpr std::uint16_t key_keypad_five = 0x4C35;    // 5, Num Lock on
+constexpr std::uint16_t key_keypad_nine = 0x4939;
+constexpr std::uint16_t key_f2 = 0x3C00;
+
+/// Keys the bar has its own answer for, which the panel never takes.
+constexpr std::uint16_t key_up = 0x4800;
+constexpr std::uint16_t key_left = 0x4B00;
+constexpr std::uint16_t key_right = 0x4D00;
+constexpr std::uint16_t key_down = 0x5000;
+constexpr std::uint16_t key_keypad_eight = 0x4838;
+constexpr std::uint16_t key_letter_s = 0x1F73;
+
 /// What the seam hands the program's blocking read back when it has taken
 /// the key that read was going to be answered with (#266, seam_key_read.h):
 /// the scan code and character of `-`, which the program throws away.
@@ -1849,7 +1867,9 @@ TEST(AutomapHotkey, AwayFromThePartysBarTabIsNotThisSeamsKey) {
 
 TEST(AutomapHotkey, TheRosterCursorKeysAreThePanelsWhileItIsUp) {
   for (const std::uint16_t key :
-       {key_keypad_next_member, key_keypad_prev_member, key_end, key_home}) {
+       {key_keypad_next_member, key_keypad_prev_member, key_end, key_home,
+        key_page_up, key_page_down, key_keypad_centre, key_keypad_five,
+        key_keypad_nine, key_f2}) {
     const rig r;
     r.enable();
     r.adventuring(7, 5, lane_north);
@@ -1863,6 +1883,23 @@ TEST(AutomapHotkey, TheRosterCursorKeysAreThePanelsWhileItIsUp) {
         << "the whole visible effect of keystroke " << key
         << " is a repaint of the cells the panel is on";
     EXPECT_TRUE(r.map_state().panel_open()) << "and it is still up";
+  }
+}
+
+TEST(AutomapHotkey, AMoveOrACommandIsNeverThePanels) {
+  for (const std::uint16_t key : {key_up, key_left, key_right, key_down,
+                                  key_keypad_eight, key_letter_s}) {
+    const rig r;
+    r.enable();
+    r.adventuring(7, 5, lane_north);
+    r.type(key_tab);
+    r.poll(1);
+    ASSERT_TRUE(r.map_state().panel_open());
+
+    r.type(key);
+    r.poll(1);
+    EXPECT_EQ(r.keys_waiting(), 1u)
+        << "keystroke " << key << " is a command the bar answers itself";
   }
 }
 
