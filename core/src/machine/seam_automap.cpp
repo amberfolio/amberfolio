@@ -2024,9 +2024,16 @@ void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
              roster_draw_offset, current));
 }
 
-/// Take the panel away because somebody other than the adventuring
-/// screen is asking the player something, and the panel is sitting on the
-/// party roster while they answer (M5-E2d).
+/// Take the panel off the screen because somebody other than the
+/// adventuring screen is asking the player something, and the panel is
+/// sitting on the party roster while they answer (M5-E2d).
+///
+/// **Off the screen, not closed.** The player asked for the panel and has
+/// not un-asked: an encounter's `COMBAT WAIT FLEE PARLAY`, a vendor's
+/// yes/no or a script's menu is the program's question and not the
+/// player's Tab, so `panel_open()` is left alone and the map comes back
+/// at the first poll under the party's own bar — after a successful
+/// flee the party is back on its bar with the map it had.
 ///
 /// **Only when it is really on the screen**, and that is the whole of the
 /// distinction. Everything that takes the panel's *cells* cleared them
@@ -2039,13 +2046,12 @@ void give_the_roster_back(machine& box, seam_context& ctx, std::uint16_t ds) {
 /// True when it acted, and then the handler is finished for this pass: a
 /// batch may be outstanding, and there is nothing to draw while the panel
 /// is coming down anyway.
-[[nodiscard]] bool close_for_the_program(machine& box, seam_context& ctx,
-                                         std::uint16_t ds) {
-  automap_state& state = box.automap();
+[[nodiscard]] bool yield_to_the_program(machine& box, seam_context& ctx,
+                                        std::uint16_t ds) {
+  const automap_state& state = box.automap();
   if (!state.panel_open() || !state.panel_on_screen()) {
     return false;
   }
-  state.set_panel_open(false);
   give_the_roster_back(box, ctx, ds);
   return true;
 }
@@ -2090,14 +2096,15 @@ void at_key_pending(machine& box, seam_context& ctx) {
 
   if (!state.at_command_bar()) {
     // Somebody other than the adventuring screen is asking the player
-    // something. The panel comes down if it is sitting on the roster
-    // while they answer, and its key is nobody's until the party's own
-    // bar is back. Exploration is deliberately *not* gated on this — the
+    // something. The panel comes off the screen if it is sitting on the
+    // roster while they answer, and it is not drawn and its key is
+    // nobody's until the party's own bar is back — when it is drawn again
+    // if the player still has it open. Exploration is deliberately *not* gated on this — the
     // party can be standing where a script has something to say about,
     // and a map that skipped that square would stay wrong for the rest of
     // the session. Only the presentation and the key yield, which is the
     // line the covered-cells rule draws too.
-    if (close_for_the_program(box, ctx, ds)) {
+    if (yield_to_the_program(box, ctx, ds)) {
       return;
     }
   } else {
@@ -2189,8 +2196,11 @@ void at_key_pending(machine& box, seam_context& ctx) {
   // into the program run with no points offered at all, so this seam's
   // clear and roster points never saw a pixel of it. Either seam still
   // works with the other switched off.
+  //
+  // And it is drawn only under the party's own bar: under anybody else's
+  // it stays open and waits (`yield_to_the_program()`).
   const bool shown = state.panel_open() && !state.panel_covered() &&
-                     !box.journal().reader_open();
+                     state.at_command_bar() && !box.journal().reader_open();
   const bool want_reveal = where != state.revealed_signature();
   const bool want_appearance =
       shown && !state.appearance_is_for(now.area, now.geo, banks);
@@ -2267,7 +2277,7 @@ void at_key_read(machine& box, seam_context& ctx) {
   }
   automap_state& state = box.automap();
   if (!state.at_command_bar()) {
-    (void)close_for_the_program(box, ctx, ds);
+    (void)yield_to_the_program(box, ctx, ds);
     return;
   }
   const claimable which =
