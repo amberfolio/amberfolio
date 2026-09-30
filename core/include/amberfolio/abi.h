@@ -422,8 +422,18 @@ uint32_t af_version(void);
 ///     `af_machine_screen_text`, `af_screen_text_columns` and
 ///     `af_screen_text_rows`, the text on the screen read back in the
 ///     program's own font. Minor: a host that never asks is unaffected.
-#define AF_ABI_VERSION_MAJOR 2u
-#define AF_ABI_VERSION_MINOR 3u
+///   * **3.0** — #413, two entry points removed from the web host's own
+///     surface and nothing added: `af_web_journal_log_write` and
+///     `af_web_journal_log_read`, whose only caller was the dev page's
+///     working-log drawer. The working sidecars (`AFMAP.DAT`,
+///     `AFSEEN.DAT`) are gone with it: the explored map and the read log
+///     ride each slot's own pair, and nothing is kept between saves.
+///     Major, because a removal is by the rule 2.0 paid for. What moved
+///     under the `af_machine_save_layer_*` family is behaviour and not
+///     surface — two fewer rows — and turning sidecars on now removes the
+///     two retired files rather than reading them.
+#define AF_ABI_VERSION_MAJOR 3u
+#define AF_ABI_VERSION_MINOR 0u
 
 // --- Facts about the machine ------------------------------------------
 //
