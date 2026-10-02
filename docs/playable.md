@@ -985,6 +985,29 @@ serialized, and print only under `--trace`. `seen` and `table` are both
 `0200` here; the case where they differ, a wall-set slot filled from a
 multi-block load, is a unit test and no save stands on one.
 
+## Leg 13 — the game's lettering in another face
+
+Slot A, its character sheet, with a face on. `font-chisel` in place of
+`font-sans` is the other face; the script is the same.
+
+```
+--seam code-wheel --code-wheel-answered --seam font-sans
+--press L@7550 --press A@7800           LOAD SAVED GAME, slot A
+--press V@9600                          VIEW the first character
+--until 230000000 --wall none --dump run --dump-every 500
+```
+
+```
+amberfolio: seam font-sans armed fired=50834
+```
+
+The still: `FIGHTER1`'s sheet with every letter, digit and sign in the
+face, and the rope border, its corners and the portrait the program's
+own. Every `.txt` beside the stills — 48 of them, from the credits on —
+is byte-for-byte the `.txt` of the same script with no face on: screen
+text reads the face. `fired` counts every row fetch the handler let
+through, a picture's or a kept glyph's included.
+
 ---
 
 ## What the run should not say

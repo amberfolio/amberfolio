@@ -543,16 +543,29 @@ seam_error seam_engine::enable(std::string_view id) {
   }
 
   // Room, before anything is changed: a seam that would not fit is
-  // refused whole rather than half-armed.
+  // refused whole rather than half-armed. A sibling in its group is about
+  // to make room of its own, so its points are not counted.
+  const auto sibling = [&s](const slot& other) {
+    return !s.seam->group.empty() && &other != &s &&
+           other.seam->group == s.seam->group;
+  };
   std::size_t wanted = s.seam->points.size();
   for (std::size_t i = 0; i < registered_; ++i) {
-    if (slots_[i].enabled) {
+    if (slots_[i].enabled && !sibling(slots_[i])) {
       wanted += slots_[i].seam->points.size();
     }
   }
   if (wanted > max_points) {
     report(id, seam_event_kind::refused, seam_reason::too_many_points);
     return seam_reason::too_many_points;
+  }
+
+  // Alternatives: the sibling goes off first, through the one door a
+  // seam goes off by, so it says so and its points come down with it.
+  for (std::size_t i = 0; i < registered_; ++i) {
+    if (slots_[i].enabled && sibling(slots_[i])) {
+      static_cast<void>(disable(slots_[i].seam->id));
+    }
   }
 
   s.enabled = true;

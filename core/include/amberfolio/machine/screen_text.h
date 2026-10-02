@@ -22,6 +22,12 @@
 // sixty-four, so every character read back is upper case. Nothing about
 // the font is stored, committed or shipped.
 //
+// **Or the face a font seam is drawing it in** (text_face.h): with one
+// on, a cell is read against the program's table with the face's glyphs
+// written over it first, and against the program's own after that, for
+// text drawn before the switch. Either way every character read back is
+// the program's character, not the face's.
+//
 // Only that font. Every screen from the credits through character
 // creation was measured with this machine's own BIOS font (font.h) as a
 // second table, and not one cell matched it that the program's font had
@@ -105,9 +111,14 @@ enum class screen_text_trouble : std::uint8_t {
 /// Read every cell of `pixels` (a `frame_width * frame_height` frame of
 /// palette indices) against `program_font`, `program_font_bytes` of
 /// glyphs. The matcher alone: no machine, no program facts.
+///
+/// `drawn_font`, when it is not empty, is the table the program's text
+/// is being drawn in now (a face, text_face.h), tried first; a cell it
+/// finds nothing in is tried against `program_font`, which is what text
+/// drawn before the face changed is still in.
 void read_text_cells(std::span<const std::uint8_t> pixels,
-                     std::span<const std::uint8_t> program_font,
-                     text_grid& out) noexcept;
+                     std::span<const std::uint8_t> program_font, text_grid& out,
+                     std::span<const std::uint8_t> drawn_font = {}) noexcept;
 
 /// The text on `box`'s screen now. Every cell is `cell_not_text` unless
 /// the answer is `none`.

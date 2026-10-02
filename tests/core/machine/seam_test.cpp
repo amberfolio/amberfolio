@@ -124,6 +124,19 @@ constexpr seam_definition edit_seam{.id = "test-edit",
                                     .fingerprints = claimed_binaries,
                                     .points = edit_points};
 
+/// Two alternatives (`seam_definition::group`): the same point, and at
+/// most one of them on.
+constexpr seam_definition first_choice{.id = "test-choice-a",
+                                       .about = "one of two alternatives",
+                                       .fingerprints = claimed_binaries,
+                                       .points = edit_points,
+                                       .group = "test-choice"};
+constexpr seam_definition second_choice{.id = "test-choice-b",
+                                        .about = "the other alternative",
+                                        .fingerprints = claimed_binaries,
+                                        .points = edit_points,
+                                        .group = "test-choice"};
+
 constexpr std::array<seam_point, 1> key_points{
     {{.module = resident_image, .offset = key_offset, .run = &post_k}}};
 constexpr seam_definition key_seam{.id = "test-key",
@@ -343,6 +356,8 @@ struct rig {
     EXPECT_TRUE(box->seams().add(host_seam));
     EXPECT_TRUE(box->seams().add(gated_seam));
     EXPECT_TRUE(box->seams().add(journal_gated_seam));
+    EXPECT_TRUE(box->seams().add(first_choice));
+    EXPECT_TRUE(box->seams().add(second_choice));
     EXPECT_TRUE(box->seams().add_document(claimed_document));
     box->seams().loaded(claimed_digest(), image_load_segment);
   }
@@ -1209,8 +1224,9 @@ TEST(SeamGate, APresentedDocumentIsConfigurationAndSurvivesAReset) {
 TEST(SeamGate, ADefinitionWithAGateNamesTheCurrentSchema) {
   // The version moved for this field (seam.h): a definition written
   // before schema 5 read as ungated would be a possession gate silently
-  // not applied, which is the one failure a gate has.
-  EXPECT_EQ(seam_schema_version, 5);
+  // not applied, which is the one failure a gate has. It moved again for
+  // the group (schema 6).
+  EXPECT_EQ(seam_schema_version, 6);
   for (const seam_definition& seam : all_seams()) {
     EXPECT_EQ(seam.schema, seam_schema_version) << seam.id;
   }
@@ -2041,5 +2057,65 @@ TEST(SeamCodeWheel, AnAnsweredChallengeWithEverySeamOffChangesNothing) {
 
   EXPECT_EQ(plain_hash.whole, hash_state(answered.pc()).whole);
 }
+}  // namespace
+}  // namespace amberfolio::machine
+
+namespace amberfolio::machine {
+namespace {
+
+// --- Alternatives (seam_definition::group) ----------------------------------
+
+TEST(SeamGroup, EnablingOneAlternativeDisablesTheOther) {
+  const rig r;
+  seam_engine& seams = r.pc().seams();
+  ASSERT_EQ(seams.enable("test-choice-a"), seam_reason::none);
+  EXPECT_EQ(seams.status("test-choice-a").state, seam_state::on);
+
+  ASSERT_EQ(seams.enable("test-choice-b"), seam_reason::none);
+  EXPECT_EQ(seams.status("test-choice-a").state, seam_state::off);
+  EXPECT_EQ(seams.status("test-choice-b").state, seam_state::on);
+  EXPECT_TRUE(seams.status("test-choice-b").armed);
+}
+
+TEST(SeamGroup, AnAlternativeLeavesSeamsOutsideItsGroupAlone) {
+  const rig r;
+  seam_engine& seams = r.pc().seams();
+  ASSERT_EQ(seams.enable("test-key"), seam_reason::none);
+  ASSERT_EQ(seams.enable("test-choice-a"), seam_reason::none);
+  ASSERT_EQ(seams.enable("test-choice-b"), seam_reason::none);
+  EXPECT_EQ(seams.status("test-key").state, seam_state::on);
+}
+
+TEST(SeamGroup, TheAlternativeThatIsOnIsTheOneThatRuns) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-choice-a"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().enable("test-choice-b"), seam_reason::none);
+  r.program_at(0, {0x90, 0x90, 0x90, 0xF4});
+  for (int i = 0; i < 4; ++i) {
+    r.pc().step();
+  }
+  // One handler at the point, not two: the sibling's came down with it.
+  EXPECT_EQ(edit_hits, 1U);
+  EXPECT_EQ(r.pc().seams().status("test-choice-b").fired, 1U);
+  EXPECT_EQ(r.pc().seams().status("test-choice-a").fired, 0U);
+}
+
+TEST(SeamGroup, TheBuiltInFacesAreAlternatives) {
+  const seam_definition* sans = nullptr;
+  const seam_definition* chisel = nullptr;
+  for (const seam_definition& seam : all_seams()) {
+    if (seam.id == "font-sans") {
+      sans = &seam;
+    }
+    if (seam.id == "font-chisel") {
+      chisel = &seam;
+    }
+  }
+  ASSERT_NE(sans, nullptr);
+  ASSERT_NE(chisel, nullptr);
+  EXPECT_FALSE(sans->group.empty());
+  EXPECT_EQ(sans->group, chisel->group);
+}
+
 }  // namespace
 }  // namespace amberfolio::machine

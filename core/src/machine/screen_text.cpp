@@ -2,6 +2,7 @@
 
 #include "amberfolio/machine/screen_text.h"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +12,8 @@
 #include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
+#include "amberfolio/machine/seam.h"
+#include "amberfolio/machine/text_face.h"
 
 namespace amberfolio::machine {
 
@@ -88,8 +91,30 @@ struct candidates {
   return found;
 }
 
+/// One cell against one table: the character, the cell not text, or
+/// ambiguous. `bits` is the cell with its first colour as the ink.
+[[nodiscard]] text_cell match(std::span<const std::uint8_t> font,
+                              const glyph& bits, const glyph& inverse,
+                              std::uint8_t first,
+                              std::uint8_t second) noexcept {
+  const candidates as_first = lookup(font, bits);
+  const candidates as_second = lookup(font, inverse);
+  if (as_first.ambiguous || as_second.ambiguous ||
+      (as_first.code != cell_not_text && as_second.code != cell_not_text)) {
+    return {.code = cell_ambiguous, .ink = first, .paper = second};
+  }
+  if (as_first.code != cell_not_text) {
+    return {.code = as_first.code, .ink = first, .paper = second};
+  }
+  if (as_second.code != cell_not_text) {
+    return {.code = as_second.code, .ink = second, .paper = first};
+  }
+  return {};
+}
+
 [[nodiscard]] text_cell read_cell(std::span<const std::uint8_t> pixels,
                                   std::span<const std::uint8_t> program,
+                                  std::span<const std::uint8_t> drawn,
                                   unsigned column, unsigned row) noexcept {
   const std::size_t x0 = std::size_t{column} * text_cell_pixels;
   const std::size_t y0 = std::size_t{row} * text_cell_pixels;
@@ -121,19 +146,16 @@ struct candidates {
   for (std::size_t y = 0; y < text_cell_pixels; ++y) {
     inverse[y] = static_cast<std::uint8_t>(~bits[y]);
   }
-  const candidates as_first = lookup(program, bits);
-  const candidates as_second = lookup(program, inverse);
-  if (as_first.ambiguous || as_second.ambiguous ||
-      (as_first.code != cell_not_text && as_second.code != cell_not_text)) {
-    return {.code = cell_ambiguous, .ink = first, .paper = second};
+  // The face the program is drawing in now, then its own glyphs: text
+  // drawn before a face was switched on or off is still on the screen
+  // until the program draws over it.
+  if (!drawn.empty()) {
+    const text_cell found = match(drawn, bits, inverse, first, second);
+    if (found.code != cell_not_text) {
+      return found;
+    }
   }
-  if (as_first.code != cell_not_text) {
-    return {.code = as_first.code, .ink = first, .paper = second};
-  }
-  if (as_second.code != cell_not_text) {
-    return {.code = as_second.code, .ink = second, .paper = first};
-  }
-  return {};
+  return match(program, bits, inverse, first, second);
 }
 
 }  // namespace
@@ -153,8 +175,8 @@ const char* screen_text_trouble_name(screen_text_trouble trouble) noexcept {
 }
 
 void read_text_cells(std::span<const std::uint8_t> pixels,
-                     std::span<const std::uint8_t> program_font,
-                     text_grid& out) noexcept {
+                     std::span<const std::uint8_t> program_font, text_grid& out,
+                     std::span<const std::uint8_t> drawn_font) noexcept {
   out = {};
   if (pixels.size() < frame_pixels) {
     return;
@@ -162,7 +184,7 @@ void read_text_cells(std::span<const std::uint8_t> pixels,
   for (unsigned row = 0; row < text_rows; ++row) {
     for (unsigned column = 0; column < text_columns; ++column) {
       out[(std::size_t{row} * text_columns) + column] =
-          read_cell(pixels, program_font, column, row);
+          read_cell(pixels, program_font, drawn_font, column, row);
     }
   }
 }
@@ -205,8 +227,21 @@ screen_text_trouble read_screen_text(const machine& box,
     return screen_text_trouble::no_font;
   }
 
-  read_text_cells(box.display().pixels(),
-                  ram.subspan(glyphs, program_font_bytes), out);
+  // The lettering a font seam is drawing in, when one is (text_face.h):
+  // the program's table with the face's glyphs written over it, so the
+  // glyphs a face leaves alone are still found.
+  const std::span<const std::uint8_t> program =
+      ram.subspan(glyphs, program_font_bytes);
+  const text_face::face face = text_face::drawing(seams);
+  std::array<std::uint8_t, program_font_bytes> drawn{};
+  if (face != text_face::face::program) {
+    std::ranges::copy(program, drawn.begin());
+    text_face::apply(face, drawn);
+  }
+  read_text_cells(box.display().pixels(), program, out,
+                  face != text_face::face::program
+                      ? std::span<const std::uint8_t>(drawn)
+                      : std::span<const std::uint8_t>{});
   return screen_text_trouble::none;
 }
 

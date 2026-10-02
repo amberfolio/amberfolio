@@ -161,6 +161,35 @@ log stays filled until the store's `seen` lines are removed.
 log is what the story has told you to read, and the reader shows the log;
 to read the rest of a journal, `--cite-all-journal`.
 
+## The text faces
+
+**What they do.** Redraw the game's lettering in a face of your choice,
+in place of its own, everywhere it puts text on the screen: menus,
+the character sheet, the message panel, the journal reader. Two faces,
+both drawn for this project on the game's own eight-by-eight grid:
+**`font-sans`**, a plain bold sans with two-pixel strokes and a slashed
+zero, and **`font-chisel`**, the same face with every stroke cut at an
+angle as if by a broad pen. Only the letters, the digits and the
+punctuation change. The frame pieces, the blocks and the runes the game
+keeps in the same table stay its own, and the game still draws only
+capitals, because that is all it asks for.
+
+**How you turn one on.** `--seam font-sans` or `--seam font-chisel`; a
+toggle each in the panel. They are alternatives: turning one on turns the
+other off.
+
+**When it shows.** At the next character the game draws. Text already on
+the screen keeps the face it was drawn in until the game draws it again,
+which on most screens is the next key you press.
+
+**What else follows it.** Screen text (`docs/hosts.md` §10) reads the
+screen in whichever face is on, and the automap's zone label is lettered
+in it.
+
+**What it will not do.** Touch the game's own font: the seam changes each
+row of a glyph as the game reads it, so off is the game's own lettering
+again.
+
 ## The debug cheats
 
 **What they do.** `cheat-invulnerable` (the party takes no damage),

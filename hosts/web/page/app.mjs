@@ -1766,6 +1766,10 @@ function renderSeams(machine, container, appendConsole, remember = async () => {
     // numbers speak for themselves.
     held.reading.textContent = row.reading;
     held.reading.hidden = row.reading === '';
+    // The box follows core too: turning on one of a group of alternatives
+    // turns its siblings off (`seam_definition::group`), and their boxes
+    // have to say so.
+    held.box.checked = row.on;
     const trigger = buttons.get(row.id);
     if (trigger) trigger.disabled = !row.on;
   };
@@ -1852,7 +1856,7 @@ function renderSeams(machine, container, appendConsole, remember = async () => {
     under.append(about, reading);
     readingRow.append(under);
 
-    cells.set(row.id, { facts, reading });
+    cells.set(row.id, { facts, reading, box });
 
     box.addEventListener('change', () => {
       const wanted = box.checked;
@@ -1872,7 +1876,8 @@ function renderSeams(machine, container, appendConsole, remember = async () => {
         if (after) writeRow(after);
         return;
       }
-      if (after) writeRow(after);
+      // Every row, not this one: a sibling in its group may have gone off.
+      for (const seam of panelRows(machine)) writeRow(seam);
       // And a toggle **in the panel** is a player choosing, which is the
       // only gesture on this page that is. `persist.mjs`'s `seams` key.
       void remember(seamsToStore(panelRows(machine)));

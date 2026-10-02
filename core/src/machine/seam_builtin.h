@@ -38,4 +38,8 @@ namespace amberfolio::machine {
 [[nodiscard]] const seam_definition& cheat_kill_all_seam() noexcept;
 [[nodiscard]] const seam_definition& cheat_wound_party_seam() noexcept;
 
+/// The text faces, alternatives in one group (seam_font.cpp, text_face.h).
+[[nodiscard]] const seam_definition& font_sans_seam() noexcept;
+[[nodiscard]] const seam_definition& font_chisel_seam() noexcept;
+
 }  // namespace amberfolio::machine

@@ -209,6 +209,18 @@ TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
   }
 }
 
+// And the ones made since format four (#397), which is what the host
+// writes now: the faces' pair.
+TEST(SessionLibrary, TheRecordingsMadeSinceFormatFourAreStillRead) {
+  for (const std::string_view name :
+       {"quiet-font-sans.rec", "quiet-font-chisel.rec"}) {
+    const std::string text = read_session_file(name);
+    ASSERT_FALSE(text.empty()) << name;
+    EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 4 state=2\n"))
+        << name;
+  }
+}
+
 // The boot pair is the code-wheel seam's `identical` half (#293), and the
 // thing that makes it one is what its descriptors do *not* say: neither
 // states `code-wheel-answered`, so a replay of either reaches the

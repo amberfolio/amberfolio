@@ -80,7 +80,9 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `quiet-cheats` | same | + all three cheats | `identical quiet` | none pulled |
 | `quiet-explored` | same | + explored | `identical quiet` | the overworld never shown; the points are reached half a million times |
 | `quiet-journal` | same | + journal | **`contrast quiet`** | 76 of 90 identical: `Notes` goes on the party's bar the moment the bar is drawn, in `cpu`, `ram`, `devices`, `display`, `audio`. The enhancement, not a leak; `identical` is not loosened to fit |
-| `quiet-all` | same | every seam | `identical quiet-journal` | eight seams armed, none triggered, no more machine than the journal alone |
+| `quiet-font-sans` | same | + font-sans | **`contrast quiet`** | 1 of 90 identical: a face is seen from the credits' first text on, in `devices` and `display` only. The two agree again while the title's art covers every page |
+| `quiet-font-chisel` | same | + font-chisel | **`contrast quiet`** | the same, in the other face |
+| `quiet-all` | same | every seam but the faces | `identical quiet-journal` | eight seams armed, none triggered, no more machine than the journal alone. The faces are alternatives and seen from the first text, so they have their own pair |
 
 ## The matrix, by seam
 
@@ -92,6 +94,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
+| `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the
 same pixels), `camp-fix` (the Fix with a cheat), `wild-trail` (explored

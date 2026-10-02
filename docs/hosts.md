@@ -1946,6 +1946,13 @@ text. Nothing about the font is stored or shipped.
 
 - **Upper case only.** The font is sixty-four glyphs indexed by the
   character upper-cased, so that is what comes back.
+- **In whichever face is on.** With a text face drawing
+  (`docs/enhancements.md`, `machine/text_face.h`), a cell is matched
+  against the program's table with the face's glyphs written over it,
+  then against the program's own for text drawn before the switch. The
+  answer is the same characters either way: on the real game, 48 stills
+  from the credits to the character sheet read back identically with
+  either face on and with none.
 - **The colours are information.** A menu's shortcut letter is a
   different ink from the rest of its word, a highlighted list item is the
   whole item in another ink, and the Modify screen's stat being changed

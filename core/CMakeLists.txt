@@ -78,12 +78,14 @@ add_library(amberfolio-core STATIC
   src/machine/seam_code_wheel.cpp
   src/machine/seam_encamp_fix.cpp
   src/machine/seam_explored.cpp
+  src/machine/seam_font.cpp
   src/machine/seam_journal.cpp
   src/machine/seam_table.cpp
   src/machine/service_floor.cpp
   src/machine/speaker.cpp
   src/machine/tandy_sound.cpp
   src/machine/state.cpp
+  src/machine/text_face.cpp
   src/machine/trace.cpp
   src/machine/vfs.cpp
   src/sha256.cpp
