@@ -10,15 +10,15 @@ the emulator runs the unmodified original program. Quality-of-life
 enhancements are opt-in runtime patches to the machine's memory
 ("seams"), off by default, leaving the bytes on disk untouched.
 
-**Status: early development.** `v0.5.0` is the current tag. Pool of
+**Status: early development.** `v0.11.1` is the current tag. Pool of
 Radiance plays end to end on all four targets from a player-supplied copy,
 and the six v1 enhancements work and toggle independently on desktop and
-in the browser: the code-wheel bypass (it asks once), the Encamp Fix, the
+in the browser: *Answer the code wheel once*, the Encamp Fix, the
 automap, the journal, fog of war on the overworld, and the debug cheats.
 The 8086 core passes all 323 files of the
 [SingleStepTests/8088](https://github.com/SingleStepTests/8088) v2 set in
-CI on every push. The current milestone is M6: onboarding, a real web
-shell, and an on-screen keyboard. [PLAN.md](PLAN.md) is the plan of
+CI on every push. The current milestone is M7: 1.0's release
+engineering, binaries and docs refresh. [PLAN.md](PLAN.md) is the plan of
 record;
 [`docs/enhancements.md`](docs/enhancements.md) is what each enhancement
 does for a player.
