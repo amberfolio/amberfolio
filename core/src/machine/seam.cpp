@@ -184,7 +184,7 @@ bool seam_context::call_host(seam_host_service which, std::uint32_t argument) {
 
 bool seam_context::place_bytes(std::span<const std::uint8_t> bytes,
                                std::uint16_t& segment, std::uint16_t& offset) {
-  if (bytes.empty()) {
+  if (bytes.empty() || inside_batch_) {
     return false;
   }
   engine_->open_batch(*box_, id_);
@@ -215,7 +215,7 @@ bool seam_context::place_bytes(std::span<const std::uint8_t> bytes,
 
 bool seam_context::call_program(std::uint16_t segment, std::uint16_t offset,
                                 std::span<const std::uint16_t> words) {
-  if (words.size() > seam_engine::max_call_words) {
+  if (words.size() > seam_engine::max_call_words || inside_batch_) {
     return false;
   }
   engine_->open_batch(*box_, id_);
@@ -693,17 +693,23 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
       // guard is what keeps that a property of the table rather than a
       // belief about the caller.
       if (armed_ < max_points) {
-        points_[armed_] = {// A point with no address gets none: `at` is
-                           // never compared for it, and a plausible-looking
-                           // number in a field nothing reads is the kind of
-                           // fact this tree does not keep.
-                           .at = point.at_every_step ? 0 : base + point.offset,
-                           .module_base = base,
-                           .anchor = anchor,
-                           .offset = point.offset,
-                           .run = point.run,
-                           .owner = i,
-                           .at_every_step = point.at_every_step};
+        points_[armed_] = {
+            // A point with no address gets none: `at` is
+            // never compared for it, and a plausible-looking
+            // number in a field nothing reads is the kind of
+            // fact this tree does not keep.
+            .at = point.at_every_step ? 0 : base + point.offset,
+            .module_base = base,
+            .anchor = anchor,
+            .offset = point.offset,
+            .run = point.run,
+            .owner = i,
+            .at_every_step = point.at_every_step,
+            // Honoured only where seam.h says it is: an
+            // address point in a module that stays put,
+            // on a seam no latch gates.
+            .inside_calls = point.inside_calls && !point.at_every_step &&
+                            anchor == no_load_segment && !s.seam->trigger};
         ++armed_;
       }
     }
@@ -792,6 +798,26 @@ void seam_engine::abandon_batch(machine& box, seam_reason why) noexcept {
   report(id, seam_event_kind::inert, why);
 }
 
+void seam_engine::offer_inside_calls(machine& box, std::uint32_t at) {
+  // The points whose facts hold inside the program's code whoever called
+  // it (seam.h's `inside_calls`), and only those. Their handlers edit
+  // registers; a context made here refuses to start a batch.
+  for (std::size_t i = 0; i < armed_; ++i) {
+    const armed_point& point = points_[i];
+    if (!point.inside_calls || point.run == nullptr || point.at != at) {
+      continue;
+    }
+    slot& owner = slots_[point.owner];
+    ++owner.reached;
+    seam_context ctx(box, *this, owner.seam->id, at, point.module_base,
+                     image_base(), true);
+    point.run(box, ctx);
+    if (!ctx.declined_) {
+      ++owner.fired;
+    }
+  }
+}
+
 void seam_engine::dispatch(machine& box, std::uint32_t at) {
   if (call_.active) {
     // A batch is running, and while it is the engine does one thing.
@@ -801,6 +827,9 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
     if (!call_.running ||
         at != cpu::physical_address(service::stub_segment,
                                     service::call_return_offset)) {
+      if (call_.running) {
+        offer_inside_calls(box, at);
+      }
       if (call_.running && ++call_.steps > max_call_steps) {
         // The call is not coming back. That is a fact table naming an
         // address that is not a routine, and the one thing it must not

@@ -189,7 +189,12 @@ Properties:
   million steps. The program's cast driver repaints its screen off the
   disk at one to two million steps per call, and a budget of 250,000
   made the seam look broken (#189).
-- **A batch offers no points to any seam while it runs** (§8.4).
+- **A batch offers no points to any seam while it runs** (§8.4), but
+  one that says `seam_point::inside_calls`: an address point in a module
+  that stays put, on a seam that is not a trigger, whose facts hold
+  whoever called the code it is in. Its handler edits registers only;
+  `call_program()` and `place_bytes()` answer false there. The font
+  seams are the one user (`SeamCallProgram.OffersAnInsideCallsPoint…`).
 - **Limits**: twelve calls and 256 placed bytes per batch. A screen
   that needs more is painted over several arrivals.
 
@@ -697,8 +702,9 @@ than it looks (#165). The order to reach for the primitives:
   Check the cheap DS-local bytes first, follow no pointer until they
   hold, refuse any read outside conventional memory (Encamp Fix, #172:
   seven `unmapped_memory_read` notices on a driven run).
-- **A batch is invisible to every other seam's points.** While a batch
-  runs the engine offers no points, so anything a seam paints through
+- **A batch is invisible to every other seam's points** but
+  `inside_calls` ones (§3). While a batch runs the engine offers no
+  others, so anything a seam paints through
   the program reaches none of the points another seam watches those
   cells with. Two seams sharing a rect cannot learn about each other by
   watching the program; the one that drew has to say so
@@ -1291,6 +1297,10 @@ after v1's six.
 | --- | --- | --- |
 | the instruction after the glyph blitter's first EGA row fetch | resident image | DL holds the row; becomes the face's row if the glyph is one a face replaces |
 | the instruction after its second | resident image | the same; the blitter fetches once per page it draws to |
+
+Both points are `inside_calls` (§3): the journal draws its pages, and
+paints the screen back when it closes, through the program's routines
+in a batch, and the blitter is the blitter whoever called it.
 
 | fact | value |
 | --- | --- |

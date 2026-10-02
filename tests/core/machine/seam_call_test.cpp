@@ -167,6 +167,54 @@ constexpr seam_definition quiet_seam{.id = "test-no-call",
                                      .fingerprints = claimed_binaries,
                                      .points = quiet_points};
 
+// --- Points inside a batch (#419) ------------------------------------------
+//
+// Two points on the routine's own `inc word [call_count]`: one that says
+// `inside_calls`, the way the font seams' row swaps do, and one that does
+// not. Only a batch ever runs the routine, so only a batch reaches either.
+
+/// The `inc`, as an offset from the image segment the points count from.
+constexpr std::uint32_t routine_inc_offset =
+    ((std::uint32_t{routine_segment} - image_load_segment) * 16U) +
+    routine_offset + 26U;
+
+unsigned inside_runs = 0;
+unsigned outside_runs = 0;
+bool inside_call_refused = false;
+bool inside_place_refused = false;
+
+void run_inside(machine& /*box*/, seam_context& ctx) {
+  ++inside_runs;
+  const std::array<std::uint16_t, 1> words{first_word};
+  inside_call_refused =
+      !ctx.call_program(routine_segment, routine_offset, words);
+  std::uint16_t segment = 0;
+  std::uint16_t offset = 0;
+  const std::array<std::uint8_t, 1> bytes{placed_byte};
+  inside_place_refused = !ctx.place_bytes(bytes, segment, offset);
+}
+
+void run_outside(machine& /*box*/, seam_context& /*ctx*/) { ++outside_runs; }
+
+constexpr std::array<seam_point, 1> inside_points{
+    {{.module = resident_image,
+      .offset = routine_inc_offset,
+      .run = &run_inside,
+      .inside_calls = true}}};
+constexpr seam_definition inside_seam{.id = "test-inside",
+                                      .about = "runs inside other calls",
+                                      .fingerprints = claimed_binaries,
+                                      .points = inside_points};
+
+constexpr std::array<seam_point, 1> outside_points{
+    {{.module = resident_image,
+      .offset = routine_inc_offset,
+      .run = &run_outside}}};
+constexpr seam_definition outside_seam{.id = "test-outside",
+                                       .about = "an ordinary point",
+                                       .fingerprints = claimed_binaries,
+                                       .points = outside_points};
+
 struct rig {
   rig() : box(std::make_unique<machine>(memory_layout::pc, &log)) {
     handler_runs = 0;
@@ -176,8 +224,14 @@ struct rig {
     queue_how_many = 1;
     spin_instead = false;
     queue_batches = 1;
+    inside_runs = 0;
+    outside_runs = 0;
+    inside_call_refused = false;
+    inside_place_refused = false;
     EXPECT_TRUE(box->seams().add(call_seam));
     EXPECT_TRUE(box->seams().add(quiet_seam));
+    EXPECT_TRUE(box->seams().add(inside_seam));
+    EXPECT_TRUE(box->seams().add(outside_seam));
     box->seams().loaded(claimed_digest(), image_load_segment);
 
     // The routine, and the one that never returns, in their own segment.
@@ -404,6 +458,44 @@ TEST(SeamCallProgram, FinishesABatchEvenIfTheSeamIsSwitchedOffDuringIt) {
 
   EXPECT_EQ(r.word_at(data_segment, call_count), 1u);
   EXPECT_FALSE(r.box->seams().armed()) << "and then there is nothing left";
+}
+
+// --- Points inside a batch (#419) ------------------------------------------
+
+/// The journal draws through the program's own routines in a batch, and
+/// the font seams have to letter what it draws: a point that says
+/// `inside_calls` is offered there, and one that does not is not.
+TEST(SeamCallProgram, OffersAnInsideCallsPointWhileABatchRuns) {
+  const rig r;
+  queue_how_many = 2;
+  ASSERT_EQ(r.box->seams().enable("test-call"), seam_reason::none);
+  ASSERT_EQ(r.box->seams().enable("test-inside"), seam_reason::none);
+  ASSERT_EQ(r.box->seams().enable("test-outside"), seam_reason::none);
+  r.stand_on_the_point();
+
+  static_cast<void>(r.run(400));
+
+  EXPECT_EQ(r.word_at(data_segment, call_count), 2u);
+  EXPECT_EQ(inside_runs, 2u) << "once per call the batch made";
+  EXPECT_EQ(outside_runs, 0u)
+      << "an ordinary point's facts do not describe a seam's call";
+}
+
+TEST(SeamCallProgram, RefusesABatchFromInsideABatch) {
+  const rig r;
+  ASSERT_EQ(r.box->seams().enable("test-call"), seam_reason::none);
+  ASSERT_EQ(r.box->seams().enable("test-inside"), seam_reason::none);
+  r.stand_on_the_point();
+  const cpu::registers before = r.regs();
+
+  static_cast<void>(r.run(200));
+
+  ASSERT_EQ(inside_runs, 1u);
+  EXPECT_TRUE(inside_call_refused) << "the running batch owns the frame";
+  EXPECT_TRUE(inside_place_refused);
+  EXPECT_EQ(r.word_at(data_segment, call_count), 1u)
+      << "and nothing was queued behind the one call";
+  EXPECT_EQ(r.regs()[cpu::reg16::sp], before[cpu::reg16::sp]);
 }
 
 // --- What it costs a seam that does not use it -----------------------------

@@ -44,6 +44,15 @@
 // screen goes back as the program repaints it. Nothing about a face is
 // machine state but the pixels it drew.
 //
+// **Runs inside other seams' calls** (`seam_point::inside_calls`). The
+// journal draws its pages, and paints the screen back when it closes,
+// through the program's own string and frame routines in a batch, and
+// the engine offers no ordinary point while one runs. These points are
+// the blitter's own instructions whoever called it, and the handler
+// edits DL and nothing else, so they are offered there too; without it
+// the journal and the screen it hands back were lettered in the
+// program's face with a face on (#419).
+//
 // **Checks the fetch is the fetch.** The far pointer is read out of the
 // data segment the facts name, and ES:DI has to fall inside the glyphs it
 // points at. Anything else is not the instruction these facts describe,
@@ -145,18 +154,22 @@ void swap_chisel_row(machine& box, seam_context& ctx) {
 constexpr std::array<seam_point, 2> sans_points{
     {{.module = resident_image,
       .offset = row_fetched_offsets[0],
-      .run = &swap_sans_row},
+      .run = &swap_sans_row,
+      .inside_calls = true},
      {.module = resident_image,
       .offset = row_fetched_offsets[1],
-      .run = &swap_sans_row}}};
+      .run = &swap_sans_row,
+      .inside_calls = true}}};
 
 constexpr std::array<seam_point, 2> chisel_points{
     {{.module = resident_image,
       .offset = row_fetched_offsets[0],
-      .run = &swap_chisel_row},
+      .run = &swap_chisel_row,
+      .inside_calls = true},
      {.module = resident_image,
       .offset = row_fetched_offsets[1],
-      .run = &swap_chisel_row}}};
+      .run = &swap_chisel_row,
+      .inside_calls = true}}};
 
 /// The group the faces share: at most one is on.
 constexpr std::string_view font_group = "font";
