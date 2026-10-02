@@ -1554,7 +1554,7 @@ TEST(AbiSeams, EverySeamSaysWhatDocumentItNeeds) {
   // so a browser and a desktop say the same thing (machine/document.h).
   //
   // **No seam in this build is gated**, and that is the answer since
-  // #290: the code-wheel bypass was the one that was, on a PDF of the
+  // #290: the code-wheel seam was the one that was, on a PDF of the
   // wheel, and the releases sold today ship a code generator application
   // instead of that file — so the proof moved from the artifact to the
   // act, and the seam waits for a person rather than for a document

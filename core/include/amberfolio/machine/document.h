@@ -17,7 +17,7 @@
 // -----------------------------------
 //
 // PLAN.md §5 gates two enhancements on a fingerprint-verified document:
-// the code-wheel bypass on the code wheel, the journal on the journal.
+// the code-wheel seam on the code wheel, the journal on the journal.
 // The rule it states is exact — "a possession gate: it demonstrates the
 // player holds the document, no more" — and this file is built to that
 // sentence and no further.
@@ -77,7 +77,7 @@ namespace amberfolio::machine {
 /// "which one" are the same question asked once.
 enum class document_kind : std::uint8_t {
   none,
-  /// The code wheel, for the copy-protection bypass (PLAN.md §5 item 1,
+  /// The code wheel, for the code-wheel seam (PLAN.md §5 item 1,
   /// #115).
   code_wheel,
   /// The Adventurer's Journal, for the journal reader (PLAN.md §5 item

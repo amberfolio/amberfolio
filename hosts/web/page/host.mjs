@@ -1281,7 +1281,7 @@ export class Machine {
         pulledAt: this.module._af_machine_seam_pulled_at(this.handle, i),
         // What document this seam is gated on, in core's words (#171).
         // `no document` for every seam in this build since #290: the
-        // code-wheel bypass was the one gate, and it waits for a person
+        // code-wheel seam was the one gate, and it waits for a person
         // answering the challenge now rather than for a PDF (#291).
         gate: this.#text((out, max) => this.module._af_machine_seam_gate(this.handle, i, out, max), 64) ?? '',
       });

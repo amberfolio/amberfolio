@@ -1726,7 +1726,7 @@ can act on, which is the complaint the issue was filed over.
 
 **`waits for` reads `-` on every row in this build**, and that is
 correct rather than unfinished: since #290 no seam is gated on a
-document (`seam_definition::gate`), the code-wheel bypass having become
+document (`seam_definition::gate`), the code-wheel seam having become
 a question a person answers. The column was carried through the ABI from
 #171 and rendered nowhere until now. §9's document control is what
 lights it, and it needed no change to a column or a row here — the rows
@@ -1869,7 +1869,7 @@ cannot open. Both say that instead.
 
 ### Nothing waits on a document today, and both hosts say so
 
-Since #290 no seam in this build is gated: the code-wheel bypass, the one
+Since #290 no seam in this build is gated: the code-wheel seam, the one
 that was, waits for a person to answer the program's own challenge
 instead (#291, §8). So every real document a player shows this build gets
 `nothing in this build waits on the …`, and that is the honest current

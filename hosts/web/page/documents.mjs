@@ -48,7 +48,7 @@ const NO_GATE = 'no document';
 /// **whether or not the player has turned them on**, because a gated
 /// seam nobody has enabled yet is still a row this document is for.
 /// Today the answer is always none — since #290 no seam in this build is
-/// gated, the code-wheel bypass having become a question a person
+/// gated, the code-wheel seam having become a question a person
 /// answers — and saying that plainly is better than a feature that
 /// looks broken.
 export function seamsWaitingOn(rows, kind) {
