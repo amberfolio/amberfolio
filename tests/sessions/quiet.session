@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # The baseline of the fidelity pairs (M5-V1 #177): slot A loaded and four
-# steps walked with only the code-wheel bypass on, the one seam every one
+# steps walked with only the code-wheel seam on, the one seam every one
 # of these runs needs to get past the challenge at all.
 # Its siblings are the same script with one more seam on and nothing done
 # to trigger it, and each says in one line what it must be:
@@ -12,7 +12,7 @@
 # The script opens no camp, presses no Tab and cites nothing.
 
 about slot A loaded and four movement keys pressed with only the
-about code-wheel bypass on -- one step, a wall, a turn, a wall: the
+about code-wheel seam on -- one step, a wall, a turn, a wall: the
 about baseline every fidelity pair is measured against. 90 checkpoints
 disk external
 code-wheel-answered

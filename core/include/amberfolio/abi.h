@@ -1418,7 +1418,7 @@ uint32_t af_machine_set_entry(af_machine* box, uint32_t cs, uint32_t ip,
 // --- Document gates (M5-D3, #171) --------------------------------------
 //
 // PLAN.md §5 gates two enhancements on a document the player holds — the
-// code-wheel bypass on the code wheel, the journal on the journal — and
+// code-wheel seam on the code wheel, the journal on the journal — and
 // the rule is exact: "a possession gate: it demonstrates the player holds
 // the document, no more". So what crosses this boundary is bytes, once,
 // and what comes back is a fingerprint and a name.
@@ -1433,7 +1433,7 @@ uint32_t af_machine_set_entry(af_machine* box, uint32_t cs, uint32_t ip,
 // `document_not_presented`. It is not refused — the seam took, and the
 // player has not shown the thing PLAN.md §5 requires them to hold.
 //
-// **No seam in this build is gated** (#290). The code-wheel bypass was,
+// **No seam in this build is gated** (#290). The code-wheel seam was,
 // on a PDF of the wheel, until the releases sold today turned out to
 // ship a code generator application instead of one; it asks a person to
 // answer the challenge once now (#291). The door stays, and the journal
