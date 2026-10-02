@@ -384,7 +384,13 @@ struct edition;
 /// written before this version means "no group"; the version moves
 /// because a stale definition read that way could be on beside a seam it
 /// was written to replace.
-inline constexpr std::uint16_t seam_schema_version = 6;
+///
+/// 7: a point may say `inside_calls`, and then it is also offered while
+/// another seam's batch of calls is running (#419). A definition written
+/// before this version means "never inside a batch", which is what every
+/// point meant then; the field decides *when* a handler runs, which is
+/// not a thing to infer.
+inline constexpr std::uint16_t seam_schema_version = 7;
 
 /// What runs when execution reaches an armed interception point. Native
 /// C++, called from outside the emulated machine — see this file's top
@@ -429,6 +435,26 @@ struct seam_point {
   /// is the honest reading of "now" at a step boundary: the first step
   /// at which acting is provably safe.
   bool at_every_step{false};
+
+  /// This point is **also offered while a batch of calls is running**
+  /// (`seam_context::call_program`, #419) — any seam's, its own included.
+  ///
+  /// Every other point is not: inside a batch the machine is in the
+  /// program's code at a seam's request, which no point's facts
+  /// describe. Some facts do describe it. The font seams' point is an
+  /// instruction in the glyph blitter, and the blitter is the blitter
+  /// whoever called it; a journal page drawn through the program's own
+  /// string routine is drawn through it too, and a face that skipped it
+  /// would letter the game in one face and the journal in another.
+  ///
+  /// A handler run there **edits registers and nothing else of the
+  /// program's**, and may not start a batch of its own: `call_program`
+  /// and `place_bytes` answer false inside one, because the batch that
+  /// is running owns the stack frame they would build on. Only for an
+  /// address point in a module that stays put, on a seam that is not a
+  /// trigger, which is all the one user needs: anywhere else the field is
+  /// not honoured, and the unit suite checks `all_seams()` for it.
+  bool inside_calls{false};
 };
 
 /// A seam, as a fact table: what it is, what it applies to, and where it
@@ -947,8 +973,9 @@ class seam_context {
   /// program can read it from, and nowhere permanent.
   ///
   /// False, and nothing written, if the batch has no room left or the
-  /// stack has not got the space — a seam that cannot say what it wanted
-  /// to say declines, like any other unmet precondition.
+  /// stack has not got the space, or this handler is running inside a
+  /// batch already — a seam that cannot say what it wanted to say
+  /// declines, like any other unmet precondition.
   bool place_bytes(std::span<const std::uint8_t> bytes, std::uint16_t& segment,
                    std::uint16_t& offset);
 
@@ -962,7 +989,8 @@ class seam_context {
   /// why a batch rather than a call.
   ///
   /// False, and nothing queued, if the batch is full or `words` is longer
-  /// than a call may be.
+  /// than a call may be, or if this handler is running inside a batch
+  /// already (`seam_point::inside_calls`).
   bool call_program(std::uint16_t segment, std::uint16_t offset,
                     std::span<const std::uint16_t> words);
 
@@ -990,13 +1018,14 @@ class seam_context {
   friend class seam_engine;
   seam_context(machine& box, seam_engine& engine, std::string_view id,
                std::uint32_t at, std::uint32_t module_base,
-               std::uint32_t image_base) noexcept
+               std::uint32_t image_base, bool inside_batch = false) noexcept
       : box_(&box),
         engine_(&engine),
         id_(id),
         at_(at),
         module_base_(module_base),
-        image_base_(image_base) {}
+        image_base_(image_base),
+        inside_batch_(inside_batch) {}
 
   machine* box_;
   seam_engine* engine_;
@@ -1004,6 +1033,9 @@ class seam_context {
   std::uint32_t at_;
   std::uint32_t module_base_;
   std::uint32_t image_base_;
+  /// Run at an `inside_calls` point while a batch is running: the batch
+  /// owns the stack, and `call_program`/`place_bytes` answer false.
+  bool inside_batch_;
   /// Whether `decline()` was called during this one visit. Read by
   /// `seam_engine::dispatch()` to decide whether a trigger's latch was
   /// spent.
@@ -1387,6 +1419,8 @@ class seam_engine {
     /// `seam_point::at_every_step`: this point has no address and is
     /// offered at every step boundary while its seam's latch is set.
     bool at_every_step{false};
+    /// `seam_point::inside_calls`: also offered while a batch runs.
+    bool inside_calls{false};
   };
 
   /// One queued call: where, and the words to push before it.
@@ -1444,6 +1478,10 @@ class seam_engine {
 
   /// Put the machine back and drop the batch, with a line saying why.
   void abandon_batch(machine& box, seam_reason why) noexcept;
+
+  /// Run the `inside_calls` points armed at `at`, while a batch is
+  /// running and no other point may be offered.
+  void offer_inside_calls(machine& box, std::uint32_t at);
 
   /// The word at `address`, or zero if it is not wholly inside the RAM
   /// the engine was handed. Zero is the same answer as "the module is
