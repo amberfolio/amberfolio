@@ -10,12 +10,13 @@ Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
 Radiance. **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
-**Status.** M0–M6 are done and `v0.11.0` is the current tag, an interim
+**Status.** M0–M6 are done and `v0.11.1` is the current tag, an interim
 one inside M7 (the GOG/Steam release boots, saves and reads its journal
 as sold: #396–#398; every copy plays Tandy sound: #404, #407; a host can read the
 screen as text; the sidecars are one pair per save slot and nothing
 between saves: #413; the lettering can be a bold sans or a chisel
-face, two alternatives in one seam group: #417). The game boots, plays end to end, all six v1 enhancements work and toggle
+face, two alternatives in one seam group, the journal included: #417,
+#419). The game boots, plays end to end, all six v1 enhancements work and toggle
 independently on both hosts, and a player reaches all of it from the
 shells: onboarding, a config file, a toggle panel, a document control and
 the on-screen keyboard. The current milestone is **M7** (1.0: release
