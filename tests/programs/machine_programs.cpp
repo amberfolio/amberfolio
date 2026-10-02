@@ -3056,6 +3056,119 @@ struct explored_layout {
   return nullptr;
 }
 
+// ---------------------------------------------------------------------------
+// The font seams, at program scale
+// ---------------------------------------------------------------------------
+//
+// A font seam swaps the glyph row the program's blitter has just fetched,
+// so this program does exactly that much of a blitter: it installs a font
+// of its own behind the far pointer the seam's facts name, fetches two rows
+// with ES:DI on them — one from a letter, one from a glyph a face leaves
+// alone — and reports what landed in DL each time. The handler is the
+// build's own `font-sans`, at a made-up address.
+//
+//         mov  ax, cs / add ax, 0C7Ch / mov ds, ax   ; the data segment
+//         mov  word [5E20h], offset font             ; the far pointer
+//         mov  [5E22h], cs
+//         push cs / pop es
+//         mov  di, font + 8*1 / mov dl, es:[di]      ; `A`, its first row
+// letter: mov  bl, dl                                ; the seam's point
+//         mov  di, font + 8*28 / mov dl, es:[di]     ; a frame piece
+// kept:   push cs / pop ds                           ; the seam's point
+//         <store both> / exit 8Ch
+//   font: 29 glyphs of one stand-in row
+
+/// The data segment's paragraph offset and the font pointer in it, as
+/// `seam_font.cpp`'s facts have them. Restated: this program stands in
+/// for the real one.
+constexpr std::uint16_t font_dgroup_paragraphs = 0xC7C;
+constexpr std::uint16_t font_data_pointer = 0x5E20;
+
+/// Every row of this program's own font: no row of either face.
+constexpr std::uint8_t font_stand_in_row = 0x7E;
+
+/// The glyphs it fetches: `A`, which a face redraws, and the index the
+/// program keeps a frame piece at, which no face touches.
+constexpr std::uint16_t font_letter_index = 1;
+constexpr std::uint16_t font_kept_index = 28;
+constexpr unsigned font_glyphs_carried = 29;
+
+/// The sans `A`'s first row, restated: three pixels from column two.
+constexpr std::uint16_t font_sans_letter_row = 0x38;
+
+struct font_layout {
+  std::vector<std::uint8_t> file;
+  std::uint32_t letter_offset{};
+  std::uint32_t kept_offset{};
+};
+
+[[nodiscard]] const font_layout& font_probe() {
+  static const font_layout built = [] {
+    assembler a;
+    a.db({0x8C, 0xC8});  // mov ax, cs
+    a.db({0x05});
+    a.dw(font_dgroup_paragraphs);  // add ax, 0C7Ch
+    a.db({0x8E, 0xD8});            // mov ds, ax
+    a.db({0xC7, 0x06});
+    a.dw(font_data_pointer);
+    a.dw_label("font");  // mov word [5E20h], offset font
+    a.db({0x8C, 0x0E});
+    a.dw(static_cast<std::uint16_t>(font_data_pointer + 2));  // mov [5E22h], cs
+    a.db({0x0E, 0x07});  // push cs / pop es
+
+    a.db({0xBF});
+    a.dw_label("letter_glyph");  // mov di, font + 8
+    a.db({0x26, 0x8A, 0x15});    // mov dl, es:[di]
+    a.label("letter");
+    a.db({0x88, 0xD3});  // mov bl, dl
+    a.db({0xBF});
+    a.dw_label("kept_glyph");  // mov di, font + 8*28
+    a.db({0x26, 0x8A, 0x15});  // mov dl, es:[di]
+    a.label("kept");
+    a.db({0x0E, 0x1F});              // push cs / pop ds
+    a.db({0x30, 0xFF, 0x30, 0xF6});  // xor bh, bh / xor dh, dh
+    store(a, 0, reg_bx);
+    store(a, 1, reg_dx);
+    exit_with(a, 0x8C);
+    a.pad_to(machine_layout::result_offset + 0x10);
+    a.label("font");
+    for (unsigned glyph = 0; glyph < font_glyphs_carried; ++glyph) {
+      if (glyph == font_letter_index) {
+        a.label("letter_glyph");
+      }
+      if (glyph == font_kept_index) {
+        a.label("kept_glyph");
+      }
+      for (unsigned row = 0; row < 8; ++row) {
+        a.db({font_stand_in_row});
+      }
+    }
+
+    font_layout out;
+    out.letter_offset = static_cast<std::uint32_t>(a.offset_of("letter"));
+    out.kept_offset = static_cast<std::uint32_t>(a.offset_of("kept"));
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x1600,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
+}
+
+/// The `font-sans` handler, from the definition this build ships.
+[[nodiscard]] machine::seam_handler font_sans_handler() {
+  for (const machine::seam_definition& seam : machine::all_seams()) {
+    if (seam.id == "font-sans" && !seam.points.empty()) {
+      return seam.points.front().run;
+    }
+  }
+  return nullptr;
+}
+
 // --- 11. The call door ----------------------------------------------------
 //
 // M5-D4 (#188). A seam asks the program to run one of its own routines,
@@ -3872,6 +3985,36 @@ constexpr std::array<machine::seam_point, 1> door_points{
   }
 
   {
+    // The font seams: off, the program's own rows; on, the face's row for
+    // a letter and the program's for a glyph no face touches.
+    machine_program p;
+    p.name = "font_probe_off";
+    p.about = "no face: both rows are the program's own";
+    p.setup.exe = font_probe_file();
+    p.setup.exe_path = "\\FONT.EXE";
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "the letter's row", .value = font_stand_in_row},
+                 {.what = "the frame piece's row", .value = font_stand_in_row}};
+    p.exit_code = 0x8C;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "font_probe_sans";
+    p.about = "the sans face: the letter's row is the face's, the rest kept";
+    p.setup.exe = font_probe_file();
+    p.setup.exe_path = "\\FONT.EXE";
+    p.setup.seam_definitions = {&font_probe_definition()};
+    p.setup.seams = {"font-probe"};
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "the letter's row", .value = font_sans_letter_row},
+                 {.what = "the frame piece's row", .value = font_stand_in_row}};
+    p.exit_code = 0x8C;
+    list.push_back(std::move(p));
+  }
+
+  {
     // The trigger, both ways (#161). Pulled: the handler runs once and
     // the program stores the seam's word. On and not pulled: the point
     // is reached, nothing happens, and the result block is the plain
@@ -4462,6 +4605,31 @@ const std::vector<std::uint8_t>& seam_probe_file() { return probe().file; }
 const std::vector<std::uint8_t>& automap_probe_file() {
   return automap_probe().file;
 }
+
+const machine::seam_definition& font_probe_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(font_probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 2> points{
+      {{.module = machine::resident_image,
+        .offset = font_probe().letter_offset,
+        .run = font_sans_handler()},
+       {.module = machine::resident_image,
+        .offset = font_probe().kept_offset,
+        .run = font_sans_handler()}}};
+  static const machine::seam_definition definition{
+      .id = "font-probe",
+      .about = "the sans face's own row swap, at a made-up address",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
+
+const std::vector<std::uint8_t>& font_probe_file() { return font_probe().file; }
 
 const std::vector<std::uint8_t>& explored_probe_file() {
   return explored_probe().file;

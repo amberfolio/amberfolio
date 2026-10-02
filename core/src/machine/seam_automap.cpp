@@ -300,6 +300,7 @@
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
+#include "amberfolio/machine/text_face.h"
 #include "automap_overland.h"
 #include "seam_builtin.h"
 #include "seam_key_read.h"
@@ -2191,6 +2192,13 @@ void at_key_pending(machine& box, seam_context& ctx) {
   // And whether the glyphs are there, so a panel first drawn with an empty
   // band gets its label the moment the program installs its font.
   drawn = mix(drawn, cpu.read_word(ds, at(data_font_pointer, 2)));
+  // And the face the label is lettered in (text_face.h), so a switch
+  // re-letters it. Mixed only when there is one, so a panel with no face
+  // on signs exactly as it always has.
+  const text_face::face face = text_face::drawing(box.seams());
+  if (face != text_face::face::program) {
+    drawn = mix(drawn, static_cast<std::uint32_t>(face));
+  }
   if (drawn == 0) {
     // Zero is this seam's "nothing has been drawn" (automap.h), so it is
     // not allowed to be a real answer.
@@ -2260,6 +2268,9 @@ void at_key_pending(machine& box, seam_context& ctx) {
   }
   font_table font{};
   const bool have_font = read_font(cpu, ds, font);
+  // In the face the rest of the screen is lettered in, when a font seam
+  // is drawing one: the label is the program's text and has to match it.
+  text_face::apply(face, font);
   render(state, *map, grid, now, have_font ? &font : nullptr);
   blit(box, state);
   state.set_panel_on_screen(true);

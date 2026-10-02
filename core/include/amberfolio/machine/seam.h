@@ -378,7 +378,13 @@ struct edition;
 /// the version moves: a stale definition read as ungated would be a
 /// possession gate silently not applied, which is the one failure a gate
 /// has (PLAN.md §5).
-inline constexpr std::uint16_t seam_schema_version = 5;
+///
+/// 6: a definition may name a **group** (`seam_definition::group`), and
+/// then enabling it disables every other seam in that group. A definition
+/// written before this version means "no group"; the version moves
+/// because a stale definition read that way could be on beside a seam it
+/// was written to replace.
+inline constexpr std::uint16_t seam_schema_version = 6;
 
 /// What runs when execution reaches an armed interception point. Native
 /// C++, called from outside the emulated machine — see this file's top
@@ -482,6 +488,18 @@ struct seam_definition {
   /// computed by the one function `status()` and `arm_all()` share
   /// (`modules_resident`'s own argument, applied again).
   document_kind gate{document_kind::none};
+
+  /// Seams that are **alternatives** share a group, and at most one of
+  /// them is on: `seam_engine::enable()` disables the others first, each
+  /// with its own `disabled` event. Empty, the default, is no group.
+  ///
+  /// For seams that answer the same question differently — the text
+  /// faces (text_face.h) each swap the same glyph fetch, and two of them
+  /// on at once would leave the lettering to whichever handler the engine
+  /// happened to offer the point to last. A host shows them as the seams
+  /// they are; turning one on turns its sibling off everywhere at once,
+  /// the panel, a config file and a replay's preamble alike.
+  std::string_view group{};
 
   /// The schema this definition was written against — `seam_schema_version`
   /// at the time. Spelled in the definition rather than assumed, so the
@@ -1000,9 +1018,9 @@ class seam_context {
 class seam_engine {
  public:
   /// Definitions the registry holds. The v1 seam set is six (PLAN.md §5)
-  /// plus the cheats' two, and a test registers a dozen-odd of its own
-  /// beside them; twenty-four leaves room for the fast-follow fixes
-  /// without making this a data structure.
+  /// plus the cheats' two and the two text faces, and a test registers a
+  /// dozen-odd of its own beside them; thirty-two leaves room for the
+  /// fast-follow fixes without making this a data structure.
   ///
   /// It was sixteen, which the seam suite's own set reached exactly when
   /// M5-D1 added a thirteenth (#169), and M5-D3 two more behind it
@@ -1010,8 +1028,9 @@ class seam_engine {
   /// next definition*, which in a test rig
   /// is a seam quietly missing rather than a build that stops. The
   /// headroom is not for the seams this build carries; it is so that
-  /// adding one is never that.
-  static constexpr std::size_t max_seams = 24;
+  /// adding one is never that. It was twenty-four until the text faces
+  /// made the seam suite's rig twenty-five.
+  static constexpr std::size_t max_seams = 32;
 
   /// Points armed at once, across every enabled seam.
   static constexpr std::size_t max_points = 32;

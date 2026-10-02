@@ -40,6 +40,7 @@ style every seam in the tree follows.
 | `points` | interception points: a module, an offset in it, a handler |
 | `trigger` | whether this seam is **pulled** rather than left on (§3a) |
 | `gate` | a document the player must present before it arms (§5); unused by every shipped seam |
+| `group` | seams that are **alternatives** share one: enabling one disables the others (§6); the text faces |
 | `schema` | the `seam_schema_version` the definition was written against |
 
 Everything in it is a fact about the program (an address, an offset, a
@@ -538,6 +539,12 @@ compare as runs and not as spellings.
   `hosts/web/tests/smoke.mjs`, which also asserts the same two results
   the native suite does for `seam_probe` and `seam_probe_off`).
 
+**Alternatives.** Seams that share a `group` are one choice: `enable()`
+disables the others in it first, each with its own `disabled` event,
+so the panel, a config file and a replay's preamble all end with at most
+one of them on (`SeamGroup.*`). Both panels redraw every row after a
+toggle for that reason.
+
 Seam state is configuration, not machine state: `machine::reset()`
 clears it, the serialization omits it, a replay records the active set
 as an initial condition (#100). A trigger's latch is the same; *when* it
@@ -587,7 +594,9 @@ and never triggered.
 | `quiet-cheats` | identical | `quiet` |
 | `quiet-explored` | identical | `quiet` |
 | `quiet-journal` | contrast | `quiet` (the `Notes` splice changes the bar the moment it is drawn) |
-| `quiet-all` | identical | `quiet-journal` (every seam at once, and no more) |
+| `quiet-font-sans` | contrast | `quiet` (a face is seen from the first text drawn; `devices` and `display` only) |
+| `quiet-font-chisel` | contrast | `quiet` (the same) |
+| `quiet-all` | identical | `quiet-journal` (every seam but the faces, which are a contrast of their own) |
 
 Both relations are checked on the recordings with no disk
 (`scripts/sweep.py`), so CI checks them on every push. CONTRIBUTING.md
@@ -818,6 +827,7 @@ to carry.
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
+| `font-sans`, `font-chisel` | the program's lettering in a face of the player's choosing; alternatives, one `group` | the resident image |
 
 All are keyed to the baseline edition (§5).
 
@@ -1270,6 +1280,59 @@ the old claim (`ExploredFidelity.TheArrivalIsNoLongerTheScreenItWouldHaveBeen`,
 `tests/visual/exp-trail.leg` (slot J, eight steps north, the fogged
 squares named), `exp-steady.leg` (no flicker across the icon's
 animation).
+
+### The text faces
+
+`seam_font.cpp`, and the faces themselves in `machine/text_face.h`. Not a
+PLAN.md §5 item: a player's request (fonts readable at a glance), built
+after v1's six.
+
+| point | module | what the handler does |
+| --- | --- | --- |
+| the instruction after the glyph blitter's first EGA row fetch | resident image | DL holds the row; becomes the face's row if the glyph is one a face replaces |
+| the instruction after its second | resident image | the same; the blitter fetches once per page it draws to |
+
+| fact | value |
+| --- | --- |
+| the points | image offsets `0x749A` and `0x74C0`; ES:DI is on the row fetched |
+| the font | a far pointer at data-segment `0x5E20`, as screen text and the automap's zone label follow it; a buffer of 177 glyphs, 64 of text and the rest pictures |
+| an index | the character upper-cased modulo 64 |
+| replaced | the letters, the digits and the punctuation |
+| kept | `@ [ \ ] ^ _ $ %` and the space, whose slots the program fills with a frame corner, frame pieces, a mark and two solid blocks; every picture glyph past 63 |
+| the guard | ES is the pointer's segment and DI falls inside the buffer; otherwise decline |
+
+- **Writes DL and nothing else.** The program's font buffer is never
+  touched, so a face is gone at the next row fetched after it is
+  switched off. Text already on the screen keeps the face it was drawn
+  in until the program draws it again.
+- **Who else reads the face:** `text_face::drawing()` is the one answer.
+  Screen text matches the face first and the program's own glyphs
+  second, for text drawn before a switch; the automap's zone label is
+  rasterized in it, and the face is in the panel's drawing signature so a
+  switch re-letters it.
+- **Rejected:** writing the faces into the program's buffer, because off
+  would then need the original glyphs back and this build keeps none;
+  one seam with a parameter, because seams have none and a group gives
+  every host the choice with no new surface; replacing the nine
+  non-lettering glyphs, because the program draws its frames and blocks
+  with them.
+- **Candidates, kept with their reasons** (§8.4, show a person the
+  candidates): a light serif, the project's own BIOS face, a bold serif
+  (one thick and one thin stem at seven pixels wide read as uneven), a
+  sans with a nub on each leading stem, a slab, an uncial (its rounded
+  A, D, H read as lower case) and a slanted script. Sans and chisel were
+  chosen by the maintainer over real frames.
+
+**State**: none. **Host services**: none. **Keys**: none.
+
+**Fidelity**: seen from the first character the program draws, so the
+pair is a contrast: `quiet-font-sans` and `quiet-font-chisel` contrast
+`quiet`, divergent from the credits' first text and only in `devices`
+and `display`, never `cpu` or `ram`. `quiet-all` carries every seam but
+these, and says so. Unit: `SeamFont.*`, `TextFace.*`,
+`SeamFontScreenText.*`; stand-in: `font_probe_off`, `font_probe_sans`.
+Driven: 48 stills from the credits to the character sheet read back
+the same screen text with either face on as with none.
 
 ### The debug cheats (#99, #161, #163, #196)
 
