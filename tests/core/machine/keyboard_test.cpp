@@ -218,6 +218,33 @@ TEST(keyboard_buffer, dequeues_in_order_and_wraps_around_the_buffer) {
   }
 }
 
+TEST(keyboard_buffer, a_held_key_repeating_is_a_keystroke_for_every_make) {
+  const rig r;
+  load_read_loop(r, 4);
+
+  // The keyboard's own typematic: one make, then the same make again for
+  // as long as the key is held, then the break (platform.h's
+  // `key_action::down` is "went down, or is repeating"). Each make is a
+  // keystroke -- that is what scrolls a list while End is held -- and the
+  // break adds none. Nothing between the makes tells them apart.
+  r.pc().post_key(sc_a, key_action::down);
+  r.pc().post_key(sc_a, key_action::down);
+  r.pc().post_key(sc_a, key_action::down);
+  r.pc().post_key(sc_a, key_action::down);
+  r.pc().post_key(sc_a, key_action::up);
+  // A fifth read would find nothing and block, so a halt below says the
+  // four repeats were four keystrokes and the break was not a fifth.
+  r.run_until([&] { return r.pc().processor().halted(); });
+
+  ASSERT_TRUE(r.pc().processor().halted());
+  for (std::uint16_t i = 0; i < 4; ++i) {
+    EXPECT_EQ(r.code_byte(static_cast<std::uint16_t>(0x0100 + i)), 'a')
+        << "slot " << i;
+  }
+  EXPECT_EQ(r.bda_word(bda::keyboard_buffer_head),
+            r.bda_word(bda::keyboard_buffer_tail));
+}
+
 TEST(keyboard_buffer, a_full_buffer_drops_the_newest_keystrokes) {
   const rig r;
   load_read_loop(r, 20);

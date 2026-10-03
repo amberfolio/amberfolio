@@ -59,6 +59,8 @@ import {
   MAX_CATCH_UP_SECONDS,
   wallClockFields,
   readScreenKeyboard,
+  readKeyCard,
+  visibleKeyCard,
   commitKey,
   moveFocus,
   releaseLatched,
@@ -139,6 +141,7 @@ const STEPS_INPUT_ID = 'steps';
 const TRACE_CHECKBOX_ID = 'trace';
 const EDITION_ID = 'edition';
 const SEAMS_ID = 'seams';
+const KEYCARD_ID = 'keycard';
 const SPEED_SELECT_ID = 'speed';
 const VOLUME_INPUT_ID = 'volume';
 const MUTE_CHECKBOX_ID = 'mute';
@@ -1586,7 +1589,15 @@ export function runDevPage() {
       // And where the document control can reach it (#384): a document
       // presented after this boot relights the rows that were waiting on
       // it, and the panel is the only place a player sees that happen.
-      refreshSeamRows = refreshSeams;
+      // The key card (#427) rides the same refresh: a seam's keys are on
+      // it only while the seam is on, and the toggles above are what turn
+      // one.
+      const refreshCard = renderKeyCard(box, el(KEYCARD_ID));
+      const refreshBoth = () => {
+        refreshSeams();
+        refreshCard();
+      };
+      refreshSeamRows = refreshBoth;
 
       // Which program, so a returning player finds it chosen (#381).
       // This page's own choice and nothing the machine sees, which is
@@ -1599,7 +1610,7 @@ export function runDevPage() {
         setStatus,
         appendConsole,
         healthEl,
-        refreshSeams,
+        refreshSeams: refreshBoth,
         volumeInput,
         muteCheckbox,
         writeBack: armWriteBack(box),
@@ -1892,6 +1903,65 @@ function renderSeams(machine, container, appendConsole, remember = async () => {
   return () => {
     for (const row of panelRows(machine)) writeRow(row);
   };
+}
+
+/// The key card (#427): the game's keys by context, in the page.
+///
+/// The table is `hosts/common`'s, read once through `af_web_key_card_json`
+/// (`readKeyCard()` in host.mjs); the desktop host paints the same words
+/// over its window, and a change to the card is a change to that table and
+/// to nothing here. A row that belongs to a seam is shown only while that
+/// seam is on (`visibleKeyCard()`), so the card follows the toggles above
+/// it, and the page says which seam a row belongs to in the row's tooltip.
+///
+/// Drawn by the page and never into the game's screen (PLAN.md §5).
+///
+/// Answers a `refresh()` the run loop calls on its readout cadence; it
+/// rebuilds the section only when the set of seams that are on has moved,
+/// so a player reading the card is not handed a new one under their eyes
+/// every half second.
+function renderKeyCard(machine, container) {
+  if (!container) return () => {};
+  const card = readKeyCard(machine.module);
+  let drawn = null;
+  const draw = () => {
+    const on = new Set(
+      machine
+        .seamList()
+        .filter((seam) => seam.state === AF_SEAM_ON)
+        .map((seam) => seam.id),
+    );
+    const fingerprint = [...on].sort().join(',');
+    if (fingerprint === drawn) return;
+    drawn = fingerprint;
+    const sections = visibleKeyCard(card, 'page', (id) => on.has(id)).map((context) => {
+      const section = document.createElement('section');
+      section.id = `keycard-${context.id}`;
+      const heading = document.createElement('h3');
+      heading.textContent = context.title;
+      const table = document.createElement('table');
+      table.className = 'keycard';
+      for (const row of context.rows) {
+        const line = document.createElement('tr');
+        const keys = document.createElement('th');
+        keys.scope = 'row';
+        keys.textContent = row.keys;
+        const does = document.createElement('td');
+        does.textContent = row.does;
+        if (row.seam !== '') line.title = `only while the ${row.seam} seam is on`;
+        line.append(keys, does);
+        table.append(line);
+      }
+      section.append(heading, table);
+      return section;
+    });
+    const legend = document.createElement('p');
+    legend.className = 'note';
+    legend.textContent = card.legend;
+    container.replaceChildren(...sections, legend);
+  };
+  draw();
+  return draw;
 }
 
 /// The code wheel's drawer, into the module's store (M6-C1b, #292).

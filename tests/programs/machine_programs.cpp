@@ -49,6 +49,7 @@ constexpr unsigned reg_cx = 1;
 constexpr unsigned reg_dx = 2;
 constexpr unsigned reg_bx = 3;
 constexpr unsigned reg_bp = 5;
+constexpr unsigned reg_si = 6;
 
 /// The result block's word `index`, as a displacement.
 [[nodiscard]] std::uint16_t result_word(std::size_t index) {
@@ -3342,6 +3343,103 @@ struct font_layout {
   return nullptr;
 }
 
+// --- 10a. The list arrows ---------------------------------------------------
+//
+// #423. The seam's two handlers read a key in AL and a flag byte in the
+// caller's frame, and rewrite an arrow into Home or End when the flag
+// says the key is a raw one. This program stands in for the two callers:
+// it lays the flag where each handler looks (below BP, at the distances
+// `seam_list_arrows.cpp`'s facts name, restated here), puts a scan code in
+// AL, and lets the seam's point be the instruction that would store it.
+//
+//         mov  bp, 0800h / xor ax, ax
+//         mov  byte [bp-57h], 1          ; the list's flag: a raw key
+//         mov  al, 48h
+// up:     mov  bl, al                    ; the list's point
+//         mov  al, 50h
+// down:   mov  cl, al                    ; the list's point
+//         mov  byte [bp-57h], 0          ; a bar command, not a raw key
+//         mov  al, 50h
+// prev:   mov  dl, al                    ; the list's point, flag clear
+//         mov  byte [bp-2Bh], 1          ; the picker's flag
+// picker: mov  si, ax                    ; the picker's point, AL = 50h
+//         push cs / pop ds
+//         <store bx, cx, dx, si> / exit 8Dh
+
+/// Where the stand-in's frame is, and the two flags' distances below it.
+constexpr std::uint16_t list_arrows_frame = 0x0800;
+constexpr std::uint8_t list_arrows_list_flag = 0xA9;    // BP - 0x57
+constexpr std::uint8_t list_arrows_picker_flag = 0xD5;  // BP - 0x2B
+
+constexpr std::uint8_t scan_home = 0x47;
+constexpr std::uint8_t scan_up = 0x48;
+constexpr std::uint8_t scan_end = 0x4F;
+constexpr std::uint8_t scan_down = 0x50;
+
+struct list_arrows_layout {
+  std::vector<std::uint8_t> file;
+  std::uint32_t up_offset{};
+  std::uint32_t down_offset{};
+  std::uint32_t prev_offset{};
+  std::uint32_t picker_offset{};
+};
+
+[[nodiscard]] const list_arrows_layout& list_arrows_probe() {
+  static const list_arrows_layout built = [] {
+    assembler a;
+    a.db({0xBD});
+    a.dw(list_arrows_frame);  // mov bp, 0800h
+    a.db({0x31, 0xC0});       // xor ax, ax
+    a.db({0xC6, 0x46, list_arrows_list_flag, 0x01});
+    a.db({0xB0, scan_up});
+    a.label("up");
+    a.db({0x88, 0xC3});  // mov bl, al
+    a.db({0xB0, scan_down});
+    a.label("down");
+    a.db({0x88, 0xC1});  // mov cl, al
+    a.db({0xC6, 0x46, list_arrows_list_flag, 0x00});
+    a.db({0xB0, scan_down});
+    a.label("prev");
+    a.db({0x88, 0xC2});  // mov dl, al
+    a.db({0xC6, 0x46, list_arrows_picker_flag, 0x01});
+    a.label("picker");
+    a.db({0x89, 0xC6});                          // mov si, ax
+    a.db({0x0E, 0x1F});                          // push cs / pop ds
+    a.db({0x30, 0xFF, 0x30, 0xED, 0x30, 0xF6});  // xor bh/ch/dh
+    store(a, 0, reg_bx);
+    store(a, 1, reg_cx);
+    store(a, 2, reg_dx);
+    store(a, 3, reg_si);
+    exit_with(a, 0x8D);
+
+    list_arrows_layout out;
+    out.up_offset = static_cast<std::uint32_t>(a.offset_of("up"));
+    out.down_offset = static_cast<std::uint32_t>(a.offset_of("down"));
+    out.prev_offset = static_cast<std::uint32_t>(a.offset_of("prev"));
+    out.picker_offset = static_cast<std::uint32_t>(a.offset_of("picker"));
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x1600,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
+}
+
+/// One of the `list-arrows` handlers, from the definition this build
+/// ships: the list's (point 0) or the picker's (point 1).
+[[nodiscard]] machine::seam_handler list_arrows_handler(std::size_t point) {
+  for (const machine::seam_definition& seam : machine::all_seams()) {
+    if (seam.id == "list-arrows" && point < seam.points.size()) {
+      return seam.points[point].run;
+    }
+  }
+  return nullptr;
+}
+
 // --- 11. The call door ----------------------------------------------------
 //
 // M5-D4 (#188). A seam asks the program to run one of its own routines,
@@ -4226,6 +4324,41 @@ constexpr std::array<machine::seam_point, 1> door_points{
   }
 
   {
+    // The list arrows: off, an arrow is the program's own key; on, an
+    // arrow read as a raw key is Home or End, and the same code read as a
+    // bar command is not touched (#423).
+    machine_program p;
+    p.name = "list_arrows_probe_off";
+    p.about = "no seam: every key is the program's own";
+    p.setup.exe = list_arrows_probe_file();
+    p.setup.exe_path = "\\LISTARR.EXE";
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "the list's up", .value = scan_up},
+                 {.what = "the list's down", .value = scan_down},
+                 {.what = "a command's 50h", .value = scan_down},
+                 {.what = "the picker's down", .value = scan_down}};
+    p.exit_code = 0x8D;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "list_arrows_probe_on";
+    p.about = "the seam: raw arrows become Home and End, a command's 50h stays";
+    p.setup.exe = list_arrows_probe_file();
+    p.setup.exe_path = "\\LISTARR.EXE";
+    p.setup.seam_definitions = {&list_arrows_probe_definition()};
+    p.setup.seams = {"list-arrows-probe"};
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "the list's up", .value = scan_home},
+                 {.what = "the list's down", .value = scan_end},
+                 {.what = "a command's 50h", .value = scan_down},
+                 {.what = "the picker's down", .value = scan_end}};
+    p.exit_code = 0x8D;
+    list.push_back(std::move(p));
+  }
+
+  {
     // The trigger, both ways (#161). Pulled: the handler runs once and
     // the program stores the seam's word. On and not pulled: the point
     // is reached, nothing happens, and the result block is the plain
@@ -4870,6 +5003,39 @@ const machine::seam_definition& font_probe_definition() {
 }
 
 const std::vector<std::uint8_t>& font_probe_file() { return font_probe().file; }
+
+const std::vector<std::uint8_t>& list_arrows_probe_file() {
+  return list_arrows_probe().file;
+}
+
+const machine::seam_definition& list_arrows_probe_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(list_arrows_probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 4> points{
+      {{.module = machine::resident_image,
+        .offset = list_arrows_probe().up_offset,
+        .run = list_arrows_handler(0)},
+       {.module = machine::resident_image,
+        .offset = list_arrows_probe().down_offset,
+        .run = list_arrows_handler(0)},
+       {.module = machine::resident_image,
+        .offset = list_arrows_probe().prev_offset,
+        .run = list_arrows_handler(0)},
+       {.module = machine::resident_image,
+        .offset = list_arrows_probe().picker_offset,
+        .run = list_arrows_handler(1)}}};
+  static const machine::seam_definition definition{
+      .id = "list-arrows-probe",
+      .about = "the list arrows' own rewrite, at made-up addresses",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
 
 const std::vector<std::uint8_t>& explored_probe_file() {
   return explored_probe().file;

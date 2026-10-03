@@ -120,6 +120,8 @@ import {
   wallClockFields,
   MAX_CATCH_UP_SECONDS,
   readScreenKeyboard,
+  readKeyCard,
+  visibleKeyCard,
   commitKey,
   commitScancode,
   latchOf,
@@ -325,6 +327,8 @@ const EXPECTED_EXPORTS = [
   '_af_web_attach_host_services',
   '_af_web_host_service_at',
   '_af_web_save_sidecars',
+  // The key card (#427): the game's keys by context, as JSON.
+  '_af_web_key_card_json',
   // The M5-E3 (#174) journal ingestion, and the synthetic document the
   // check below drives it with.
   '_af_web_journal_ingest',
@@ -733,6 +737,79 @@ if (missing.length === 0) {
         ' keys on the full one',
     );
   }
+}
+
+// --- The key card (#427) ----------------------------------------------
+//
+// The table is `hosts/common`'s and `key_card_test.cpp` holds its shape.
+// What is checked here is the crossing and the page's half: the JSON comes
+// out of linear memory whole, every row says something, every seam a row
+// names is a seam this module carries, and the rule that shows a seam's
+// rows only while the seam is on does so — which is the rule the desktop
+// host applies in C++ to the same table.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+  const card = readKeyCard(module);
+  check(card.contexts.length > 0, 'the key card came across with no contexts');
+  check(typeof card.legend === 'string' && card.legend !== '', 'the key card has no legend');
+  const seen = new Set();
+  let rows = 0;
+  for (const context of card.contexts) {
+    check(!seen.has(context.id), `the key card names ${context.id} twice`);
+    seen.add(context.id);
+    check(
+      ['both', 'desktop', 'page'].includes(context.shell),
+      `${context.id} is for the shell ${JSON.stringify(context.shell)}`,
+    );
+    check(context.title !== '' && context.rows.length > 0, `${context.id} has no title or no rows`);
+    for (const row of context.rows) {
+      rows += 1;
+      check(
+        row.keys !== '' && row.does !== '' && typeof row.seam === 'string',
+        `a row of ${context.id} is missing a word: ${JSON.stringify(row)}`,
+      );
+    }
+  }
+
+  // The seams a row names are ones this module carries.
+  const machine = new Machine(module);
+  check(machine.attachReferenceDevices() === AF_OK, 'attaching the reference devices failed');
+  machine.reset();
+  const carried = new Set(machine.seamList().map((seam) => seam.id));
+  machine.destroy();
+  for (const context of card.contexts) {
+    for (const row of context.rows) {
+      check(
+        row.seam === '' || carried.has(row.seam),
+        `the key card names the seam ${row.seam}, which this module does not carry`,
+      );
+    }
+  }
+
+  // With nothing on, the card is the program as it is: no seam's row and
+  // no context made of nothing else, and none of the desktop's own.
+  const none = visibleKeyCard(card, 'page', () => false);
+  check(
+    none.every((context) => context.rows.every((row) => row.seam === '')),
+    'a seam row was shown with every seam off',
+  );
+  check(!none.some((context) => context.id === 'journal'), 'the journal context showed with the seam off');
+  check(!none.some((context) => context.shell === 'desktop'), "the desktop's keys were shown to the page");
+  // Turn one on and its rows and only its rows arrive.
+  const journal = visibleKeyCard(card, 'page', (id) => id === 'journal');
+  check(journal.some((context) => context.id === 'journal'), 'the journal context did not show with the seam on');
+  check(
+    journal.every((context) => context.rows.every((row) => row.seam === '' || row.seam === 'journal')),
+    "another seam's row was shown with only the journal on",
+  );
+  check(
+    visibleKeyCard(card, 'desktop', () => true).some((context) => context.id === 'desktop'),
+    "the desktop's own keys were not shown to the desktop",
+  );
+  console.log(`smoke: key card of ${card.contexts.length} contexts and ${rows} rows`);
 }
 
 // --- The machine ------------------------------------------------------

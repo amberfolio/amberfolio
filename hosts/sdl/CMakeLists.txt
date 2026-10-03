@@ -28,6 +28,9 @@ add_executable(amberfolio-sdl
   src/dump.cpp
   src/install.cpp
   src/keymap.cpp
+  # The key card's lines (#427), the toggle panel's second view -- its own
+  # unit for seam_panel.cpp's reason, and because main.cpp has no room.
+  src/key_card_view.cpp
   src/main.cpp
   # `--install` (#397): the directory given, one directory down.
   src/mounted_vfs.cpp
@@ -521,6 +524,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     src/desktop_config.cpp
     src/document_control.cpp
     src/install.cpp
+    src/key_card_view.cpp
     src/keymap.cpp
     src/mounted_vfs.cpp
     src/ocr_discovery.cpp
@@ -537,6 +541,7 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/desktop_config_test.cpp
     tests/document_control_test.cpp
     tests/install_test.cpp
+    tests/key_card_view_test.cpp
     tests/keymap_test.cpp
     tests/mounted_vfs_test.cpp
     tests/ocr_discovery_test.cpp

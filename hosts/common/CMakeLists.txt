@@ -197,7 +197,11 @@ add_library(amberfolio-host-services STATIC
   # The keys a host still holds a make for (#313), so a window that loses
   # the keyboard can let go of them through the machine's own key path.
   # Both hosts keep this bookkeeping; the page keeps its twin in JS.
-  src/held_keys.cpp)
+  src/held_keys.cpp
+  # The game's keys by context (#427): one table, painted by the desktop
+  # host and read by the page as JSON, so the two cannot describe the
+  # same key differently.
+  src/key_card.cpp)
 add_library(amberfolio::host_services ALIAS amberfolio-host-services)
 
 target_include_directories(amberfolio-host-services PUBLIC include)
@@ -253,7 +257,8 @@ if(AMBERFOLIO_BUILD_TESTS)
     tests/journal_ingest_test.cpp
     tests/journal_text_test.cpp
     tests/journal_score_test.cpp
-    tests/held_keys_test.cpp)
+    tests/held_keys_test.cpp
+    tests/key_card_test.cpp)
   target_link_libraries(amberfolio-host-services-tests PRIVATE
     amberfolio::core
     amberfolio::host_services

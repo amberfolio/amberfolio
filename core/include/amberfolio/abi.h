@@ -432,8 +432,13 @@ uint32_t af_version(void);
 ///     under the `af_machine_save_layer_*` family is behaviour and not
 ///     surface — two fewer rows — and turning sidecars on now removes the
 ///     two retired files rather than reading them.
+///   * **3.1** — #427, one added entry point on the web host's own surface
+///     and nothing changed: `af_web_key_card_json`, the game's keys by
+///     context as one JSON string, the table the desktop host paints from
+///     the same source. Minor, and machine-less: a host that never asks is
+///     unaffected.
 #define AF_ABI_VERSION_MAJOR 3u
-#define AF_ABI_VERSION_MINOR 0u
+#define AF_ABI_VERSION_MINOR 1u
 
 // --- Facts about the machine ------------------------------------------
 //

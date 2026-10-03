@@ -818,6 +818,7 @@
 #include "document_control.h"
 #include "dump.h"
 #include "install.h"
+#include "key_card_view.h"
 #include "keymap.h"
 #include "mounted_vfs.h"
 #include "ocr_discovery.h"
@@ -4691,7 +4692,8 @@ int main(int argc, char** argv) try {
   //
   // **The right mouse button opens and closes it**, on the middle
   // button's own recorded argument (#377): this machine has no mouse, so
-  // no mouse button is a control the game can ever want back.
+  // no mouse button is a control the game can ever want back. A second
+  // press turns it into the key card (#427), a third closes it.
   //
   // **The on-screen keyboard has priority for the keys.** It already
   // claims all four arrows and Return, and two overlays fighting over
@@ -4705,6 +4707,10 @@ int main(int argc, char** argv) try {
   // instead of one taken once before the machine had run a step.
   sdl::panel_painter panel_paint;
   bool panel_shown = opts.seam_panel;
+  // The panel's second view, the key card (#427): `panel_shown` with this
+  // set is the card, a page of it at `card_page`.
+  bool card_shown = false;
+  std::size_t card_page = 0;
   std::size_t panel_focus = box.seams().count() == 0 ? sdl::panel_no_row : 0;
   /// The overlay changed without the machine drawing anything —
   /// `keyboard_repaint`'s reason, and the same fix.
@@ -4756,6 +4762,13 @@ int main(int argc, char** argv) try {
   const auto panel_move = [&](int step) {
     const std::size_t rows = box.seams().count();
     panel_repaint = true;
+    if (card_shown) {
+      const std::size_t pages = sdl::card_pages(box.seams()).size();
+      if (pages != 0) {
+        card_page = (card_page + (step < 0 ? pages - 1 : 1)) % pages;
+      }
+      return;
+    }
     if (rows == 0) {
       panel_focus = sdl::panel_no_row;
       return;
@@ -5047,6 +5060,7 @@ int main(int argc, char** argv) try {
           } else {
             document_notice = present_document(box, event.drop.data);
             panel_shown = true;
+            card_shown = false;
             if (panel_focus == sdl::panel_no_row && box.seams().count() != 0) {
               panel_focus = 0;
             }
@@ -5060,7 +5074,10 @@ int main(int argc, char** argv) try {
           if (event.button.button == SDL_BUTTON_MIDDLE && !replaying) {
             keyboard_step();
           } else if (event.button.button == SDL_BUTTON_RIGHT) {
-            panel_shown = !panel_shown;
+            // Hidden, then the seams, then the key card, then hidden.
+            const bool cards = panel_shown && !card_shown;
+            panel_shown = !panel_shown || !card_shown;
+            card_shown = cards;
             if (panel_shown && panel_focus == sdl::panel_no_row &&
                 box.seams().count() != 0) {
               panel_focus = 0;
@@ -5076,7 +5093,10 @@ int main(int argc, char** argv) try {
             // a click that landed on no row of the panel falls through
             // to the keyboard rather than being swallowed.
             bool taken_by_panel = false;
-            if (sized && panel_shown) {
+            if (sized && panel_shown && card_shown) {
+              panel_move(1);  // a click on the card turns its page
+              taken_by_panel = true;
+            } else if (sized && panel_shown) {
               const std::vector<sdl::panel_row> rows =
                   sdl::panel_rows(box.seams());
               const std::size_t at = sdl::row_under(
@@ -5114,21 +5134,30 @@ int main(int argc, char** argv) try {
           // break of one it did not is not: stepping the overlay on
           // between the two would otherwise leave the machine holding a
           // key nobody is pressing.
+          //
+          // A *repeat* is not a make, and follows whoever took the make:
+          // the overlay stepping on or off under a held key must not
+          // send the repeats to a different owner than the first make
+          // went to, or the machine is left holding a key whose break
+          // was swallowed (#426).
+          const bool follows_make = !down || event.key.repeat;
           const std::size_t control = keyboard_control_of(event.key.scancode);
-          const bool owned = control < keyboard_controls.size() &&
-                             (down ? keyboard_shown : keyboard_taken[control]);
+          const bool owned =
+              control < keyboard_controls.size() &&
+              (follows_make ? keyboard_taken[control] : keyboard_shown);
           // And the panel takes up, down and Return while it is up and
           // the keyboard is not (#383) — asked first, because the same
           // break has to reach whichever overlay took its make.
           const std::size_t picked = panel_control_of(event.key.scancode);
           const bool panel_owned =
               picked < panel_controls.size() &&
-              (down ? (panel_shown && !keyboard_shown) : panel_taken[picked]);
+              (follows_make ? panel_taken[picked]
+                            : (panel_shown && !keyboard_shown));
           if (panel_owned && down) {
             panel_taken[picked] = true;
             if (!event.key.repeat) {
               if (panel_controls[picked].toggles) {
-                if (panel_focus != sdl::panel_no_row) {
+                if (panel_focus != sdl::panel_no_row && !card_shown) {
                   panel_toggle(panel_focus);
                 }
               } else {
@@ -5159,7 +5188,14 @@ int main(int argc, char** argv) try {
             // at the ticks it names. A key struck at the window during one
             // would be an input the recorded run never had, so the window
             // still closes and nothing else gets through.
-            if (code != 0 && !event.key.repeat && !replaying) {
+            //
+            // The operating system's repeats of a held key go through as
+            // the makes they are (#426): the original keyboard repeated
+            // in its own hardware, the machine cannot tell a repeat from
+            // a make (`key_action::down`), and the web host posts every
+            // keydown the same way. Only the host's own controls above
+            // ignore them.
+            if (code != 0 && !replaying) {
               post_key(code, down ? machine::key_action::down
                                   : machine::key_action::up);
             }
@@ -5252,10 +5288,13 @@ int main(int argc, char** argv) try {
       // to read. Its rows are built here, from the engine, at every
       // paint: `fired` is only a live number if nothing caches it.
       if (panel_shown) {
-        panel_paint.draw(renderer,
-                         sdl::panel_lines(sdl::panel_rows(box.seams()),
-                                          panel_focus, document_notice),
-                         panel_focus);
+        panel_paint.draw(
+            renderer,
+            card_shown
+                ? sdl::card_lines(sdl::card_pages(box.seams()), card_page)
+                : sdl::panel_lines(sdl::panel_rows(box.seams()), panel_focus,
+                                   document_notice),
+            card_shown ? sdl::panel_no_row : panel_focus);
       }
       keyboard_repaint = false;
       panel_repaint = false;
