@@ -161,6 +161,26 @@ log stays filled until the store's `seen` lines are removed.
 log is what the story has told you to read, and the reader shows the log;
 to read the rest of a journal, `--cite-all-journal`.
 
+## The list arrows
+
+**What it does.** The up and down arrows step the highlight in the game's
+pick-lists, as Home and End already do. A list that ignored the arrows (at
+character creation, in the spell and item lists, and in every other list
+the game builds with its one list routine) now follows them, one row a
+press, wrapping and skipping its headings as it does for Home and End.
+The party-member picker (who a spell is cast on, who an item is traded
+to) steps the same way. Keypad 8 and 2 come along, as 7 and 1 always did.
+
+**How you turn it on.** `--seam list-arrows`, or the toggle in the panel.
+
+**Where it works.** Only inside a pick-list or the party-member picker.
+In the 3D view, the wilderness and combat the arrows move the party as
+they always did: the seam is never offered a key there.
+
+**What it will not do.** Change the horizontal command bars, the Yes/No
+prompt or the ability-score screen, or make a held key repeat (the hosts
+drop OS key repeats, `docs/hosts.md`).
+
 ## The text faces
 
 **What they do.** Redraw the game's lettering in a face of your choice,

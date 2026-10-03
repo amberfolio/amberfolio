@@ -1008,6 +1008,56 @@ is byte-for-byte the `.txt` of the same script with no face on: screen
 text reads the face. `fired` counts every row fetch the handler let
 through, a picture's or a kept glyph's included.
 
+## Leg 14 — the arrows in a pick-list (#423)
+
+Three scripts, one seam. `docs/seams.md` §10 has the facts; the screen
+text (`--dump`'s `.txt`) is the instrument, because a highlighted row is
+the one whose ink is bright white.
+
+**Character creation.** The race, gender and class lists, with the
+arrows where `list-keys` presses End and Home (`list-down` and
+`list-down-arrows` are this script recorded):
+
+```
+--seam code-wheel --code-wheel-answered --seam list-arrows
+--press C@7550                           CREATE NEW CHARACTER
+--press Down@7700                        race: DWARF to ELF
+--press Return@7850
+--press Down@8000                        gender: MALE to FEMALE
+--press Return@8150
+--press Down@8300 --press Up@8450 --press Down@8600    class: second row,
+--press Return@8750 --press Return@8900                 first, second
+--until 184943210 --wall none --dump run --dump-every 50
+```
+
+The sheet at the end is a female elf, a magic-user. With the seam off
+every arrow is dropped and the same keys make a male dwarf, a fighter.
+
+**The picker.** Slot A, the cleric, a Cure Light Wounds cast:
+
+```
+--press L@7550 --press A@7800            LOAD SAVED GAME, slot A
+--press End@10300 --press End@10450 --press End@10600 --press End@10750
+                                         the roster cursor to the CLERIC
+--press C@10900                          CAST: the spell list
+--press Down@11300                       off PRAYER, round to the first cure
+--press C@11450                          cast it: "CAST SPELL ON WHOM"
+--press Down@11750 --press Down@11900 --press Up@12050
+```
+
+The highlight starts on the cleric, goes to the magic-user on the first
+Down, round to the head on the second and back to the tail on the Up.
+`fired=5`: the spell list's Down and its `C`, and the picker's three.
+
+**The 3D view is not touched.** The same slot, `Up@10300 Down@10500
+Left@10700`, with and without `--seam list-arrows`: the party goes from
+4,12 S to 4,13 S, turns to face N and then W in both, the stills are
+identical, and the seam's end-of-run line is `armed and never reached`.
+
+Not driven: the shops, training, coin selection and the encounter lists;
+the picker from Trade (the Items screen's `T` redrew the screen and did
+not open one); the picker from a script.
+
 ---
 
 ## What the run should not say

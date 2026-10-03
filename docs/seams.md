@@ -602,6 +602,8 @@ and never triggered.
 | `quiet-font-sans` | contrast | `quiet` (a face is seen from the first text drawn; `devices` and `display` only) |
 | `quiet-font-chisel` | contrast | `quiet` (the same) |
 | `quiet-all` | identical | `quiet-journal` (every seam but the faces, which are a contrast of their own) |
+| `list-keys-arrows` | identical | `list-keys` (the arrows' seam, on a creation script of Home and End) |
+| `list-down-arrows` | contrast | `list-down` (the same script with Down and Up, which the seam-off program drops) |
 
 Both relations are checked on the recordings with no disk
 (`scripts/sweep.py`), so CI checks them on every push. CONTRIBUTING.md
@@ -830,6 +832,7 @@ to carry.
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
+| `list-arrows` | the up and down arrows step the game's pick-lists and its party-member picker, as Home and End do | overlay 25 (the list routine), and the resident image |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -1286,6 +1289,88 @@ the old claim (`ExploredFidelity.TheArrivalIsNoLongerTheScreenItWouldHaveBeen`,
 `tests/visual/exp-trail.leg` (slot J, eight steps north, the fogged
 squares named), `exp-steady.leg` (no flicker across the icon's
 animation).
+
+### The list arrows (#423)
+
+`seam_list_arrows.cpp`. Not a PLAN.md §5 item: a player's request, built
+after v1's six. A setting, no key, nothing to pull.
+
+| point | module | what the handler does |
+|---|---|---|
+| image `0x0FE0` of overlay 25, the instruction after the pick-list's call into the menu-bar routine | overlay 25, through the manager's word | with the routine's out-parameter set, AL `0x48` becomes `0x47` and `0x50` becomes `0x4F` |
+| image `0x38AA`, the instruction after the party-member picker's call into the same routine | the resident image | the same, with the out-parameter in the picker's frame |
+
+| fact | value |
+|---|---|
+| the module | overlay 25: file offset 182479 (`0x2C8CF`), 4682 bytes (`0x124A`), digest `175454bc…3901`; the program's load-segment word is at image `0x3C60` |
+| the key, at both points | AL, as the routine returns; the next instruction stores it |
+| the out-parameter | a byte the caller passes by address: **1** a raw key (an extended key's scan code, or a translated keypad digit), **0** a bar command or a confirmation. The list's is at `BP-0x57`, the picker's at `BP-0x2B` |
+| what the list acts on | `0x47` up a row, `0x4F` down a row, `0x49` and `0x51` a page when one is there; Up and Down `0x48`, `0x50` fall through to "ask again" |
+| what the picker acts on | `0x4F` the next member (the head after the last), `0x47` the previous one (the tail from the head) |
+| who calls the list | driven: race, gender, class and alignment at creation, the spell list, the Items screen's list; from its callers, not driven: the shops, training, coin selection, the camp's Display |
+| who calls the picker | Trade's receiver, "Cast Spell on whom", a script's party pick |
+
+- **The out-parameter is read first, and only when AL is an arrow.** With
+  it **clear**, `0x50` is the bar's own `P`, the Prev command, and is
+  left alone (`SeamListArrows.LeavesTheBarsOwnPrevAloneWhereTheKeyIsACommand`).
+  A byte that is neither zero nor one is not the frame these facts
+  describe: the handler declines and touches nothing. A list driven with
+  Home and End alone costs the seam not one byte read.
+- **The scope is positive, not inferred.** The arrows move the party in
+  3D, in the wilderness and in combat, and nothing outside can tell from
+  here when an arrow is free. These two points are reached from inside a
+  pick-list and a picker and nowhere else, so no other screen's arrow is
+  ever offered. Driven: Up, Down and Left in the 3D view at 4,12 S with
+  the seam on and off give the same positions and identical stills, and
+  the seam's points are never reached (`armed and never reached`).
+- **The program's own stepper does the rest**, so wrapping, title
+  skipping and paging are the program's, not this seam's.
+- **Keypad and digits.** The menu-bar routine's raw mode turns the digits
+  1-9 into the movement letters the keypad's arrangement implies, with the
+  out-parameter set, so 7 and 1 already stepped a list and 8 and 2 come
+  back as `0x48` and `0x50`. The program cannot tell the number row from
+  the keypad, so with this seam on 8 and 2 step a list too.
+- **`fired` counts the keys a list or picker read**, not the arrows
+  rewritten: a handler that arrives and chooses to do nothing has been
+  served (§3a). An arrow-free run reads `fired=9` and is identical to the
+  seam off.
+- **Qualified as overlay 25**, resolved from the manager's word at every
+  step (§4); inert with `module_not_resident` while the overlay is out.
+  The store releases' GAME.OVR differs from the repack's only inside
+  overlay 2 (§5), so the digest holds on both. The word's address came
+  from the search §8.1 describes (one match; the same search returns
+  `0x360` for overlay 8 and `0x760` for overlay 15).
+- **How the facts were checked, by two routes.** The module row is the
+  overlay file's own table and the manager's record of the same two
+  numbers, which the search above found once; the two points are the
+  instructions after the two calls in the disassembly, and a driven run
+  reached each: the list's with the manager's word armed and `fired=9`
+  through creation, the picker's by casting a cure on a party member
+  from the adventuring bar and reading the highlight step on Down, Down
+  and Up (the head, the tail from the head, back).
+- **Driven:** race, gender and class lists at creation, the spell list,
+  the Items screen's list, the picker via a cast. **Read and tested, not
+  driven:** the shops, training, coin selection and encounter lists; the
+  picker from Trade, which did not open one from the Items screen's `T`
+  (the cast's did), and from a script.
+- **Rejected:** a host-side remap of the arrows, because a host cannot
+  say when an arrow is free; a point in the menu-bar routine itself,
+  because the Home and End codes mean something in its other callers;
+  rewriting in the BIOS buffer, because the list sees the key through the
+  routine and the buffer would carry a key nobody pressed.
+- **Not here** (#423): Enter on the Yes/No prompt, arrows and Enter on
+  the horizontal bars (#379's selection), a held key scrolling.
+
+**State**: none. **Host services**: none. **Keys**: Up and Down, and
+keypad 8 and 2, in a list or the picker only.
+
+**Fidelity**: on and no arrow pressed in a list, identical: the handler
+reads nothing and writes nothing unless AL is an arrow
+(`list-keys-arrows` identical `list-keys`: all 84 checkpoints). On and an
+arrow pressed, a contrast: `list-down-arrows` agrees with `list-down`
+for 62 of 84 checkpoints and diverges from the first Down, the program
+having dropped each arrow in the baseline. Unit: `SeamListArrows.*`;
+stand-in: `list_arrows_probe_off`, `list_arrows_probe_on`.
 
 ### The text faces
 

@@ -83,6 +83,10 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `quiet-font-sans` | same | + font-sans | **`contrast quiet`** | 1 of 90 identical: a face is seen from the credits' first text on, in `devices` and `display` only. The two agree again while the title's art covers every page |
 | `quiet-font-chisel` | same | + font-chisel | **`contrast quiet`** | the same, in the other face |
 | `quiet-all` | same | every seam but the faces | `identical quiet-journal` | eight seams armed, none triggered, no more machine than the journal alone. The faces are alternatives and seen from the first text, so they have their own pair |
+| `list-keys` | shipped slots | code-wheel | | character creation by Home and End: an elf, a woman, a magic-user, to the rolled sheet. 84 checkpoints |
+| `list-keys-arrows` | same | + list-arrows | `identical list-keys` | the same keys with the arrows' seam on and no arrow pressed |
+| `list-down` | same | code-wheel | | the same script with Down and Up where `list-keys` presses End and Home: the program drops them and the character is the first row of every list |
+| `list-down-arrows` | same | + list-arrows | **`contrast list-down`** | 62 of 84 identical, divergent from the first Down (tick 153,157,488): the highlight moves and the character is the one `list-keys` makes |
 
 ## The matrix, by seam
 
@@ -94,6 +98,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
+| `list-arrows` | `list-down-arrows` | `list-keys-arrows` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the
