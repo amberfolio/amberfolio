@@ -210,6 +210,36 @@ in it.
 row of a glyph as the game reads it, so off is the game's own lettering
 again.
 
+## The bar keys
+
+**What it does.** Makes the game's command bars answer the keys a player
+reaches for first. **Left and Right step the highlight** along a bar, as
+`,` and `.` always did, wherever the game would otherwise throw them away.
+**Enter takes the highlighted command**, as if you had typed its letter,
+at the Yes/No prompt, the camp bar and the adventuring bar. The bar, its
+highlight and its commands stay the game's own; nothing is drawn.
+
+**How you turn it on.** `--seam bar-keys`, or the toggle in the panel.
+
+**Where Enter works.** Three places, because the game hands Enter back to
+whoever called the bar and only some of them leave it alone. At the Yes/No
+prompt the highlight starts on `No`, so Enter answers No; Left steps it to
+`Yes` first. The camp bar and the adventuring bar (in the city, with its
+`Area` command, and in the wilderness, without it) take the command under
+the highlight. A command the other seams add, the Encamp Fix's
+`Fix` and the journal's `Notes`, is taken the same way.
+
+**Where Left and Right work.** On every bar the game draws that does not
+own the arrows. In 3D, in the wilderness and at camp the arrows move the
+party or the roster cursor, as they always did, and the seam is never
+offered them.
+
+**What it will not do.** Make Enter confirm a row in the pick-lists (it
+already does), or take a command at any bar not named above: those are
+left as the game has them until each is shown to ignore Enter. Make a held
+key repeat (`docs/hosts.md`) or step the pick-lists with the up and down
+arrows (`list-arrows`).
+
 ## The debug cheats
 
 **What they do.** `cheat-invulnerable` (the party takes no damage),

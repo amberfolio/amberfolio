@@ -2050,11 +2050,11 @@ builds it at every paint.
 context left with no row to show is not shown. Adding a seam's keys is one
 line in `key_card.cpp`, in the context where the key is pressed.
 `tests/key_card_test.cpp` holds every named seam to `all_seams()`, so a
-row for a seam that was renamed or never merged is a red test; the three
-seams that take a key today (automap, journal, Encamp Fix) are pinned
-there as the floor. Each shell has its own context for the keys it takes
-for itself (the desktop's are in §2's table); the page has none, because
-it takes none.
+row for a seam that was renamed or never merged is a red test; the five
+seams that take a key today (automap, journal, Encamp Fix, list-arrows,
+bar-keys) are pinned there as the floor. Each shell has its own context
+for the keys it takes for itself (the desktop's are in §2's table); the
+page has none, because it takes none.
 
 **The keypad is not needed.** In every bar the program reads in raw mode
 (the 3D view, the wilderness, pick-lists, combat's move, Modify) the

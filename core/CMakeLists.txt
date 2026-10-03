@@ -74,6 +74,7 @@ add_library(amberfolio-core STATIC
   src/machine/screen_text.cpp
   src/machine/seam.cpp
   src/machine/seam_automap.cpp
+  src/machine/seam_bar_keys.cpp
   src/machine/seam_cheats.cpp
   src/machine/seam_code_wheel.cpp
   src/machine/seam_encamp_fix.cpp

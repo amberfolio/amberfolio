@@ -45,7 +45,11 @@ constexpr std::array wilderness_rows{
 constexpr std::array bar_rows{
     key_row{"its capital letter", "take that command; lower case works"},
     key_row{", and .", "step the highlight left and right, wrapping"},
-    key_row{"Y, N", "answer a Yes/No question; Return does not"},
+    key_row{"Left, Right",
+            "step the highlight, except where they move the party", "bar-keys"},
+    key_row{"Return", "take the highlighted command: Yes/No, camp, exploring",
+            "bar-keys"},
+    key_row{"Y, N", "answer a Yes/No question"},
     key_row{"Esc", "leave camp, a list or a picker; not the exploring bar"},
     key_row{"F", "on the camp bar: Fix, rest as long as the party needs",
             "encamp-fix"},
@@ -54,6 +58,9 @@ constexpr std::array bar_rows{
 constexpr std::array list_rows{
     key_row{"Home, 7", "highlight the row above; wraps within the page"},
     key_row{"End, 1", "highlight the row below; wraps within the page"},
+    key_row{"Up, Down, 8, 2",
+            "highlight the row above or below, like Home and End",
+            "list-arrows"},
     key_row{"Return", "choose the highlighted row"},
     key_row{"PgUp, PgDn, 9, 3",
             "turn the page, when the list has more than one"},
@@ -63,6 +70,7 @@ constexpr std::array list_rows{
 constexpr std::array picker_rows{
     key_row{"Home, 7", "the previous member"},
     key_row{"End, 1", "the next member"},
+    key_row{"Up, Down, 8, 2", "the previous or next member", "list-arrows"},
     key_row{"S, Return", "choose this member"},
     key_row{"Esc, E", "choose nobody"},
 };

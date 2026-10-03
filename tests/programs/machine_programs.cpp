@@ -3058,6 +3058,179 @@ struct explored_layout {
 }
 
 // ---------------------------------------------------------------------------
+// The bar keys, at program scale
+// ---------------------------------------------------------------------------
+//
+// #425. The seam's handler reads the keystroke at the head of the BIOS ring
+// and the menu-bar routine's frame, and rewrites the ring's word. This
+// program stands in for the routine: it is its own overlay manager (it
+// writes its own segment into the word the facts name), lays out a frame
+// where the facts say the routine keeps one, and puts a key at the head of
+// the ring before each of five arrivals. After each, it reads what the ring
+// holds. The handler is the build's own `bar-keys`, at made-up addresses.
+//
+//         push cs / pop ds ; mov bp, 2000h ; mov ax, 40h / mov es, ax
+//         mov word es:[1Ah], 1Eh ; mov word es:[1Ch], 20h   ; one key waits
+//         mov ax, cs / mov [3C60h], ax        ; "overlay 25 is here"
+//         <the frame: return cs:ip, the bar's parse, the highlight>
+//  (each) mov byte [bp+0Ch], raw ; mov word [bp+2], return ; mov es:[1Eh], key
+//  point: mov ax, es:[1Eh]                    ; the seam's point
+//         <store ax>
+//
+// The bar is seven invented characters, two groups, the second highlighted.
+
+/// Where the stand-in lays its frame, clear of the code, the result block
+/// and the stack.
+constexpr std::uint16_t bar_keys_frame = 0x2000;
+
+/// The routine's frame, restated from `seam_bar_keys.cpp`'s facts: the
+/// return address and raw-mode argument above BP, the parse below it.
+constexpr std::uint16_t bar_keys_ret_ip = 2;
+constexpr std::uint16_t bar_keys_ret_cs = 4;
+constexpr std::uint16_t bar_keys_raw = 0x0C;
+constexpr std::uint16_t bar_keys_enter_allowed = 0x8F;
+constexpr std::uint16_t bar_keys_group_count = 0x8E;
+constexpr std::uint16_t bar_keys_bar = 0x53;
+
+/// The word the program's overlay manager keeps overlay 25's segment in, the
+/// highlight byte, and the Yes/No prompt's return offset: a tabled caller.
+constexpr std::uint16_t bar_keys_overlay_word = 0x3C60;
+constexpr std::uint16_t bar_keys_highlight = 0x6B2B;
+constexpr std::uint16_t bar_keys_tabled_return = 0x111E;
+/// A return offset no table names.
+constexpr std::uint16_t bar_keys_untabled_return = 0x0FE0;
+
+constexpr std::uint16_t bar_keys_left = 0x4B00;
+constexpr std::uint16_t bar_keys_right = 0x4D00;
+constexpr std::uint16_t bar_keys_enter = 0x1C0D;
+constexpr std::uint16_t bar_keys_comma = 0x332C;
+constexpr std::uint16_t bar_keys_period = 0x342E;
+/// The second group's letter, as Enter becomes it.
+constexpr std::uint16_t bar_keys_enter_as_b = 0x1C42;
+
+struct bar_keys_layout {
+  std::vector<std::uint8_t> file;
+  std::array<std::uint32_t, 5> offsets{};
+};
+
+/// `[bp - distance]` as the sixteen-bit displacement the encoding wants.
+[[nodiscard]] constexpr std::uint16_t bar_keys_below(
+    std::uint16_t distance) noexcept {
+  return static_cast<std::uint16_t>(0x10000U - distance);
+}
+
+/// A byte stored at `[bp + displacement]`, with a sixteen-bit displacement,
+/// because the routine's frame reaches further below BP than eight bits go:
+///
+///     mov  byte [bp + disp16], value     ; C6 86 dw db
+void bar_keys_frame_byte(assembler& a, std::uint16_t displacement,
+                         std::uint8_t value) {
+  a.db({0xC6, 0x86});
+  a.dw(displacement);
+  a.db({value});
+}
+
+/// One scenario's setup, then the arrival and its answer:
+///
+///     mov  byte [bp+0Ch], raw
+///     mov  word [bp+2], return_offset
+///     mov  word es:[1Eh], key
+/// point:
+///     mov  ax, es:[1Eh]
+///     mov  [result + 2*index], ax
+void bar_keys_scenario(assembler& a, std::size_t index, std::uint8_t raw,
+                       std::uint16_t return_offset, std::uint16_t key) {
+  bar_keys_frame_byte(a, bar_keys_raw, raw);
+  a.db({0xC7, 0x86});
+  a.dw(bar_keys_ret_ip);
+  a.dw(return_offset);
+  a.db({0x26, 0xC7, 0x06});
+  a.dw(0x001E);
+  a.dw(key);
+  a.label("point" + std::to_string(index));
+  a.db({0x26, 0xA1});
+  a.dw(0x001E);
+  store(a, index, reg_ax);
+}
+
+[[nodiscard]] const bar_keys_layout& bar_keys_probe() {
+  static const bar_keys_layout built = [] {
+    assembler a;
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+    a.db({0xBD});
+    a.dw(bar_keys_frame);  // mov bp, 2000h
+    a.db({0xB8});
+    a.dw(0x0040);        // mov ax, 40h
+    a.db({0x8E, 0xC0});  // mov es, ax
+    a.db({0x26, 0xC7, 0x06});
+    a.dw(0x001A);
+    a.dw(0x001E);  // mov word es:[1Ah], 1Eh   the head
+    a.db({0x26, 0xC7, 0x06});
+    a.dw(0x001C);
+    a.dw(0x0020);        // mov word es:[1Ch], 20h   the tail: one key waits
+    a.db({0x8C, 0xC8});  // mov ax, cs
+    a.db({0xA3});
+    a.dw(bar_keys_overlay_word);  // mov [3C60h], ax
+    a.db({0x89, 0x86});
+    a.dw(bar_keys_ret_cs);  // mov [bp+4], ax
+
+    // The routine's parse of a seven-character bar of two groups: Enter is
+    // allowed, two groups, the first at 1..3 and the second at 5..7, and
+    // the bar itself as a Pascal string.
+    bar_keys_frame_byte(a, bar_keys_below(bar_keys_enter_allowed), 1);
+    bar_keys_frame_byte(a, bar_keys_below(bar_keys_group_count), 2);
+    const std::array<std::uint8_t, 4> spans{1, 3, 5, 7};
+    for (std::size_t i = 0; i < spans.size(); ++i) {
+      bar_keys_frame_byte(a,
+                          static_cast<std::uint16_t>(
+                              bar_keys_below(bar_keys_enter_allowed) + 2U + i),
+                          spans[i]);
+    }
+    const std::array<std::uint8_t, 8> bar{7, 'A', 'n', 't', ' ', 'B', 'e', 'e'};
+    for (std::size_t i = 0; i < bar.size(); ++i) {
+      bar_keys_frame_byte(
+          a, static_cast<std::uint16_t>(bar_keys_below(bar_keys_bar) + i),
+          bar[i]);
+    }
+    a.db({0xC6, 0x06});
+    a.dw(bar_keys_highlight);
+    a.db({0x02});  // mov byte [6B2Bh], 2   the second group
+
+    bar_keys_scenario(a, 0, 0, bar_keys_tabled_return, bar_keys_left);
+    bar_keys_scenario(a, 1, 0, bar_keys_tabled_return, bar_keys_right);
+    bar_keys_scenario(a, 2, 1, bar_keys_tabled_return, bar_keys_left);
+    bar_keys_scenario(a, 3, 0, bar_keys_tabled_return, bar_keys_enter);
+    bar_keys_scenario(a, 4, 0, bar_keys_untabled_return, bar_keys_enter);
+    exit_with(a, 0x8E);
+
+    bar_keys_layout out;
+    for (std::size_t i = 0; i < out.offsets.size(); ++i) {
+      out.offsets[i] =
+          static_cast<std::uint32_t>(a.offset_of("point" + std::to_string(i)));
+    }
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x1600,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
+}
+
+/// The `bar-keys` handler, from the definition this build ships.
+[[nodiscard]] machine::seam_handler bar_keys_handler() {
+  for (const machine::seam_definition& seam : machine::all_seams()) {
+    if (seam.id == "bar-keys" && !seam.points.empty()) {
+      return seam.points.front().run;
+    }
+  }
+  return nullptr;
+}
+
+// ---------------------------------------------------------------------------
 // The font seams, at program scale
 // ---------------------------------------------------------------------------
 //
@@ -4083,6 +4256,44 @@ constexpr std::array<machine::seam_point, 1> door_points{
   }
 
   {
+    // The bar keys: off, every key is the program's own; on, an arrow
+    // at a bar that is not raw is the bar's own step key, an arrow at a
+    // raw bar is left, Enter at a tabled caller is the highlighted
+    // group's letter, and Enter at a caller no table names is left (#425).
+    machine_program p;
+    p.name = "bar_keys_probe_off";
+    p.about = "no seam: every key is the program's own";
+    p.setup.exe = bar_keys_probe_file();
+    p.setup.exe_path = "\\BARKEYS.EXE";
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "left, not raw", .value = bar_keys_left},
+                 {.what = "right, not raw", .value = bar_keys_right},
+                 {.what = "left, raw", .value = bar_keys_left},
+                 {.what = "enter, tabled", .value = bar_keys_enter},
+                 {.what = "enter, untabled", .value = bar_keys_enter}};
+    p.exit_code = 0x8E;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "bar_keys_probe_on";
+    p.about = "the seam: the bar's own keys, Enter as the group's letter";
+    p.setup.exe = bar_keys_probe_file();
+    p.setup.exe_path = "\\BARKEYS.EXE";
+    p.setup.seam_definitions = {&bar_keys_probe_definition()};
+    p.setup.seams = {"bar-keys-probe"};
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "left, not raw", .value = bar_keys_comma},
+                 {.what = "right, not raw", .value = bar_keys_period},
+                 {.what = "left, raw", .value = bar_keys_left},
+                 {.what = "enter, tabled", .value = bar_keys_enter_as_b},
+                 {.what = "enter, untabled", .value = bar_keys_enter}};
+    p.exit_code = 0x8E;
+    list.push_back(std::move(p));
+  }
+
+  {
     // The font seams: off, the program's own rows; on, the face's row for
     // a letter and the program's for a glyph no face touches.
     machine_program p;
@@ -4737,6 +4948,35 @@ const std::vector<std::uint8_t>& seam_probe_file() { return probe().file; }
 
 const std::vector<std::uint8_t>& automap_probe_file() {
   return automap_probe().file;
+}
+
+const std::vector<std::uint8_t>& bar_keys_probe_file() {
+  return bar_keys_probe().file;
+}
+
+const machine::seam_definition& bar_keys_probe_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(bar_keys_probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 5> points = [] {
+    std::array<machine::seam_point, 5> built{};
+    for (std::size_t i = 0; i < built.size(); ++i) {
+      built[i] = {.module = machine::resident_image,
+                  .offset = bar_keys_probe().offsets[i],
+                  .run = bar_keys_handler()};
+    }
+    return built;
+  }();
+  static const machine::seam_definition definition{
+      .id = "bar-keys-probe",
+      .about = "the bar keys' own rewrite, at made-up addresses",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
 }
 
 const machine::seam_definition& font_probe_definition() {

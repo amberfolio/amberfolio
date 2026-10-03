@@ -1,0 +1,402 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The bar-keys seam: Left and Right step a command bar's highlight, and
+// Enter takes the highlighted command (#425).
+//
+//
+// What the program does, stated as facts
+// --------------------------------------
+//
+// All of it addresses, offsets and key codes. Not one byte of the program
+// is reproduced here.
+//
+// **Every command bar in the game goes through one routine**, in overlay
+// 25 (`0x03BD`). It is handed the bar as a string, draws it with one
+// *group* highlighted, and loops: ask the program's key-pending routine
+// whether a key is waiting, and if one is, call the program's key-read
+// routine and decide what it was. The call into the key-read routine is at
+// `0x0572`, and is reached only when a key is waiting.
+//
+// What it does with the key it reads:
+//
+//   * `,` and `.` step the highlight, back and forward, wrapping at both
+//     ends, and redraw the bar. The highlight is a one-based group index,
+//     one byte in the data segment (`0x6B2B`) that every bar shares.
+//   * **A letter** is upper-cased and compared with every character of
+//     the bar. A match sets the highlight to that character's group and
+//     ends the loop. **The scan does not stop at its first match, so the
+//     last one wins.** Only the characters `0-9` and `A-Z` are command
+//     letters; a mixed-case bar has one capital to a group.
+//   * **Enter** ends the loop with `0x0D` as the answer, but only when the
+//     bar's colours are not both zero (a bar that is not drawn does not
+//     take Enter). The routine does nothing else with it: the caller is
+//     handed a `0x0D`.
+//   * **An extended key** (an arrow) is read as a zero and then its scan
+//     code. With the caller's **raw-mode** argument set, it ends the loop
+//     and is handed back with the out-parameter set, and the caller
+//     decides; this is how the party's arrows move it in 3D and in the
+//     wilderness. **With raw mode clear, the routine reads it and throws it
+//     away.**
+//
+// The routine parses the bar into locals of its own frame before it starts
+// asking for keys, and everything this seam reads about the bar it reads
+// there, so it sees the bar the routine sees and not a second reading of
+// it: a one-byte flag (Enter is allowed), the group count, a table of each
+// group's first and last position, and the bar itself as a Pascal string.
+// A seam that has spliced a command onto the bar (the Encamp Fix's `Fix`,
+// the journal's `Notes`) has done so before the routine copied it, so the
+// group of a spliced command is a group like any other here.
+//
+//
+// What the seam does
+// ------------------
+//
+// **One point, at the call into the key-read routine**, and so reached
+// only when a key is waiting and the program is about to read it. The
+// keystroke it is about to read is the head of the BIOS ring at 40:1Eh,
+// and the handler rewrites that word *before the program reads it*:
+//
+//   * **Left or Right** (scan `0x4B` or `0x4D`, character zero) becomes
+//     `,` or `.`, when this call's raw-mode argument is zero. A raw-mode
+//     bar is left alone, because its caller owns the arrows.
+//   * **Enter** (scan `0x1C`, character `0x0D`) becomes the command letter
+//     of the highlighted group, when the call's **caller** is one in the
+//     table below and the letter's *last* match in the bar is that same
+//     group. The program then takes the command by the route it would
+//     have taken for a typed letter: it sets the highlight (to the group
+//     it already holds), draws, and returns the letter.
+//
+// Nothing is drawn, no program routine is called, no key is posted. The
+// bar, its highlight and its commands stay the program's own.
+//
+// **The caller is identified by the routine's far return address**,
+// overlay-qualified: the frame holds the caller's offset and segment, and a
+// caller is in the table when its segment is the one the program's overlay
+// manager says that module is at now and its offset is the instruction
+// after the call. A caller the table does not name is never offered Enter.
+//
+// **Why a table and not every bar.** The routine hands Enter back, and
+// what a caller does with `0x0D` is the caller's own business: three
+// callers were read and each does nothing with it (it matches none of its
+// comparisons and the loop asks again). A caller that did something with
+// it, a pick-list that confirms its row, would be handed a letter it never
+// asked for. Each caller in the table is shown to ignore Enter by two
+// routes (docs/seams.md §10).
+//
+//   | caller | module | return offset | what it does with `0x0D` |
+//   |---|---|---|---|
+//   | the Yes/No prompt | overlay 25 | `0x111E` | loops until the answer is in {Y, N} |
+//   | the adventuring bar, overhead view | overlay 14 | `0x09D5` | none of its compares match; asks again |
+//   | the adventuring bar, 3D view | overlay 14 | `0x0C45` | the same |
+//   | the camp bar | overlay 15 | `0x1F24` | none of its compares match; asks again |
+//
+// **Why the BIOS ring and not AL.** The program reads the key two
+// routines deep, through INT 16h, so the first place any seam can see it
+// is the ring, which is also where the automap's and the journal's claims
+// take theirs (`seam_key_read.h`). Those claims are at the key-pending
+// routine, which the loop calls *first*: a key they want is gone before
+// this point is reached, and a key they do not want is the program's. This
+// point is not a claim, since it takes nothing off the ring. One race is
+// guarded: a key can land between the journal's claim and the poll's own
+// look at the ring, so the handler does nothing at all while the reader is
+// open.
+//
+// **The pushback slot.** The program keeps the second half of an extended
+// key in a one-byte slot (`0x8501`) and answers "a key is waiting" from it.
+// While it is armed the head of the ring is not the key about to be read,
+// so the handler touches nothing.
+//
+// **The last-match guard.** The highlighted group's first character is the
+// letter, and the routine's scan would give a letter that appears again
+// later in the bar to the *later* group. Enter is rewritten only when the
+// highlighted group's letter is the last one in the bar; otherwise the
+// handler declines and the program drops the Enter as it always did.
+//
+//
+// The fidelity claim (docs/seams.md §8.5)
+// ---------------------------------------
+//
+// On and no Left, Right or Enter pressed at a bar, the run is byte for byte
+// the run with the seam off: the handler reads the ring's head word and
+// writes nothing unless it is one of those three. The pair is an
+// `identical` and a `contrast` (tests/sessions/README.md).
+//
+//
+// What it is not yet, at the point of definition (docs/seams.md §8.5)
+// -------------------------------------------------------------------
+//
+// Enter at the other callers of the routine, which are listed with why in
+// docs/seams.md §10. Out of scope, filed apart: the pick-lists' arrows
+// (#423) and a held key repeating (#426).
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+
+#include "amberfolio/cpu/processor.h"
+#include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/journal.h"
+#include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/overlay.h"
+#include "amberfolio/machine/seam.h"
+#include "amberfolio/machine/service_floor.h"
+#include "seam_builtin.h"
+
+namespace amberfolio::machine {
+namespace {
+
+/// The baseline edition (edition.h), and only it.
+constexpr std::array<std::string_view, 1> bar_keys_binaries{
+    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
+
+// --- The module the menu-bar routine lives in ------------------------------
+
+/// Where the program keeps overlay 25's load segment, and what the module
+/// is: the same module `list-arrows` is in, whose facts and checks are
+/// documented there (docs/seams.md §10).
+constexpr std::uint32_t menu_load_segment_at = 0x3C60;
+
+constexpr seam_module menu_module{
+    .file = "GAME.OVR",
+    .file_offset = 182479,
+    .length = 4682,
+    .digest =
+        "175454bc2f527dd6757c89eaa50a6cdd27a9cf5d3aaa197b33a140f5b09a3901",
+    .load_segment_at = menu_load_segment_at};
+
+/// In the menu-bar routine: the call into the key-read routine, reached
+/// only when the key-pending routine has said a key is waiting. Offset from
+/// the module's start. The handler runs before the call, so nothing has
+/// been read yet.
+constexpr std::uint32_t key_read_call = 0x0572;
+
+// --- The routine's frame ---------------------------------------------------
+
+/// Above BP: the caller's return address, offset then segment, and the
+/// caller's raw-mode argument.
+constexpr std::uint16_t frame_return_ip = 2;
+constexpr std::uint16_t frame_return_cs = 4;
+constexpr std::uint16_t frame_raw_mode = 0x0C;
+
+/// Below BP: the routine's parse of the bar. `enter_allowed` is a byte,
+/// then the group count, then, from the same base, a pair of bytes per
+/// group (its first position and its last), group one first. The bar is a
+/// Pascal string whose characters are numbered from one.
+constexpr std::uint16_t local_enter_allowed = 0x8F;
+constexpr std::uint16_t local_group_count = 0x8E;
+constexpr std::uint16_t local_bar = 0x53;
+
+/// The table has room for twenty groups, and the bar copy is a
+/// `string[40]`.
+constexpr std::uint8_t max_groups = 20;
+constexpr std::uint8_t max_bar_length = 40;
+
+// --- The data segment ------------------------------------------------------
+
+/// The one-based index of the group a bar highlights, shared by every bar
+/// (docs/seams.md §10, the Encamp Fix, #304).
+constexpr std::uint16_t data_bar_highlight = 0x6B2B;
+
+/// The program's one-byte pushback slot for an extended key's second half.
+constexpr std::uint16_t data_key_pushback = 0x8501;
+
+// --- The callers that ignore Enter -----------------------------------------
+
+/// A caller of the routine, named by the word the program keeps its module's
+/// load segment in and the offset of the instruction after its call.
+struct bar_caller {
+  std::uint32_t load_segment_at;
+  std::uint16_t return_offset;
+};
+
+/// The words the program's overlay manager keeps the three modules' load
+/// segments in. The adventuring loop's and the camp screen's are the words
+/// `journal` and `encamp-fix` resolve their own points through.
+constexpr std::uint32_t adventure_load_segment_at = 0x730;
+constexpr std::uint32_t camp_load_segment_at = 0x760;
+
+constexpr std::array<bar_caller, 4> enter_callers{{
+    {.load_segment_at = menu_load_segment_at, .return_offset = 0x111E},
+    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
+    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
+    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1F24},
+}};
+
+// --- The keys, as the BIOS ring holds them: scan code high, character low --
+
+constexpr std::uint16_t key_left = 0x4B00;
+constexpr std::uint16_t key_right = 0x4D00;
+constexpr std::uint16_t key_enter = 0x1C0D;
+constexpr std::uint16_t key_comma = 0x332C;
+constexpr std::uint16_t key_period = 0x342E;
+
+/// The scan code a command letter is posted under: Enter's own, because the
+/// program reads the character and nothing else.
+constexpr std::uint16_t scan_enter = 0x1C00;
+
+/// Whether `c` is a character the routine takes as a command letter.
+[[nodiscard]] constexpr bool is_command_letter(std::uint8_t c) noexcept {
+  return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z');
+}
+
+/// The segment the program says `at` is loaded at now; zero while it is
+/// not loaded.
+[[nodiscard]] std::uint16_t loaded_at(cpu::processor& cpu,
+                                      const seam_context& ctx,
+                                      std::uint32_t at) {
+  return cpu.read_word(static_cast<std::uint16_t>(ctx.image_base() >> 4U),
+                       static_cast<std::uint16_t>(at));
+}
+
+/// Whether this call of the routine came from a caller that ignores Enter.
+[[nodiscard]] bool called_from_a_tabled_caller(cpu::processor& cpu,
+                                               const seam_context& ctx) {
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const std::uint16_t ip =
+      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_ip));
+  const std::uint16_t cs =
+      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
+
+  for (const bar_caller& caller : enter_callers) {
+    if (ip != caller.return_offset) {
+      continue;
+    }
+    const std::uint16_t segment = loaded_at(cpu, ctx, caller.load_segment_at);
+    if (segment != 0 && segment == cs) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// The keystroke Enter should become: the letter of the highlighted group,
+/// posted under Enter's own scan code. Zero if there is nothing to answer,
+/// and declines when the frame is not the one these facts describe or the
+/// letter would not be the group's.
+[[nodiscard]] std::uint16_t letter_for_enter(cpu::processor& cpu,
+                                             seam_context& ctx) {
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const auto below = [&](std::uint16_t distance) {
+    return static_cast<std::uint16_t>(bp - distance);
+  };
+
+  if (cpu.read_byte(ss, below(local_enter_allowed)) == 0) {
+    // The routine does not take Enter from a bar it does not draw.
+    return 0;
+  }
+
+  const std::uint8_t group =
+      cpu.read_byte(regs[cpu::sreg::ds], data_bar_highlight);
+  if (group == 0) {
+    // The index is one-based: no bar has been stepped or chosen from yet,
+    // so no group is the highlighted one and Enter has no command to take.
+    return 0;
+  }
+
+  const std::uint8_t groups = cpu.read_byte(ss, below(local_group_count));
+  const std::uint8_t length = cpu.read_byte(ss, below(local_bar));
+  if (groups == 0 || groups > max_groups || length == 0 ||
+      length > max_bar_length || group > groups) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return 0;
+  }
+
+  const std::uint8_t first = cpu.read_byte(
+      ss, static_cast<std::uint16_t>(below(local_enter_allowed) + 2U * group));
+  if (first == 0 || first > length) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return 0;
+  }
+  const auto bar_at = [&](std::uint8_t position) {
+    return cpu.read_byte(
+        ss, static_cast<std::uint16_t>(below(local_bar) + position));
+  };
+  const std::uint8_t letter = bar_at(first);
+  if (!is_command_letter(letter)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return 0;
+  }
+
+  // The routine's scan does not stop at its first match: the last position
+  // that holds the letter is the group it would set the highlight to.
+  std::uint8_t last = first;
+  for (std::uint8_t position = 1; position <= length; ++position) {
+    if (bar_at(position) == letter) {
+      last = position;
+    }
+  }
+  if (last != first) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return 0;
+  }
+  return static_cast<std::uint16_t>(scan_enter | letter);
+}
+
+/// The program is about to read the key at the head of the ring.
+void at_key_read(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  cpu::registers& regs = cpu.regs();
+
+  const std::uint16_t head =
+      cpu.read_word(bda::segment, bda::keyboard_buffer_head);
+  if (head == cpu.read_word(bda::segment, bda::keyboard_buffer_tail)) {
+    // Empty: the poll was answered from the pushback slot.
+    return;
+  }
+  const std::uint16_t key = cpu.read_word(bda::segment, head);
+  if (key != key_left && key != key_right && key != key_enter) {
+    return;
+  }
+  if (box.journal().reader_open()) {
+    // The reader takes every key at the poll; one that got past it is the
+    // reader's, not the bar's.
+    return;
+  }
+  if (cpu.read_byte(regs[cpu::sreg::ds], data_key_pushback) != 0) {
+    // The head of the ring is not the key about to be read.
+    return;
+  }
+
+  if (key == key_enter) {
+    if (!called_from_a_tabled_caller(cpu, ctx)) {
+      return;
+    }
+    const std::uint16_t answer = letter_for_enter(cpu, ctx);
+    if (answer != 0) {
+      cpu.write_word(bda::segment, head, answer);
+    }
+    return;
+  }
+
+  const std::uint8_t raw = cpu.read_byte(
+      regs[cpu::sreg::ss],
+      static_cast<std::uint16_t>(regs[cpu::reg16::bp] + frame_raw_mode));
+  if (raw != 0) {
+    // A raw-mode bar's caller owns the arrows.
+    return;
+  }
+  cpu.write_word(bda::segment, head, key == key_left ? key_comma : key_period);
+}
+
+constexpr std::array<seam_point, 1> bar_keys_points{
+    {{.module = menu_module, .offset = key_read_call, .run = &at_key_read}}};
+
+constexpr seam_definition bar_keys_definition{
+    .id = "bar-keys",
+    .about =
+        "Left and Right step a command bar's highlight, and Enter takes "
+        "the highlighted command",
+    .fingerprints = bar_keys_binaries,
+    .points = bar_keys_points,
+    .schema = seam_schema_version};
+
+}  // namespace
+
+const seam_definition& bar_keys_seam() noexcept { return bar_keys_definition; }
+
+}  // namespace amberfolio::machine

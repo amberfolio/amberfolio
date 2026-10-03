@@ -103,7 +103,7 @@ TEST(KeyCard, EverySeamARowNamesExists) {
 }
 
 TEST(KeyCard, TheSeamsThatTakeAKeyHaveRows) {
-  // The three seams whose keys a player has to be told. A seam that is
+  // The five seams whose keys a player has to be told. A seam that is
   // added later with a key adds its rows; this is the floor, so that
   // deleting one of these is a red test and not a silent gap.
   std::set<std::string_view> named;
@@ -117,6 +117,8 @@ TEST(KeyCard, TheSeamsThatTakeAKeyHaveRows) {
   EXPECT_TRUE(named.contains("automap"));
   EXPECT_TRUE(named.contains("journal"));
   EXPECT_TRUE(named.contains("encamp-fix"));
+  EXPECT_TRUE(named.contains("list-arrows"));
+  EXPECT_TRUE(named.contains("bar-keys"));
 }
 
 TEST(KeyCard, TheWordsFitTheGridTheDesktopSetsThemIn) {

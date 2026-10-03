@@ -35,6 +35,9 @@ namespace amberfolio::machine {
 
 /// The up and down arrows in the pick-lists (seam_list_arrows.cpp, #423).
 [[nodiscard]] const seam_definition& list_arrows_seam() noexcept;
+/// Left and Right step a command bar's highlight, and Enter takes it
+/// (seam_bar_keys.cpp, #425).
+[[nodiscard]] const seam_definition& bar_keys_seam() noexcept;
 
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;

@@ -346,6 +346,10 @@ struct machine_program {
 [[nodiscard]] const std::vector<std::uint8_t>& explored_probe_file();
 [[nodiscard]] const machine::seam_definition& explored_probe_definition();
 
+/// The bar keys' stand-in: the handler at five made-up arrivals (#425).
+[[nodiscard]] const std::vector<std::uint8_t>& bar_keys_probe_file();
+[[nodiscard]] const machine::seam_definition& bar_keys_probe_definition();
+
 /// The font stand-in's image, and the sans face's own handler at its two
 /// fetches.
 [[nodiscard]] const std::vector<std::uint8_t>& font_probe_file();

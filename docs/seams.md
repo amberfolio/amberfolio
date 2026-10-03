@@ -604,6 +604,9 @@ and never triggered.
 | `quiet-all` | identical | `quiet-journal` (every seam but the faces, which are a contrast of their own) |
 | `list-keys-arrows` | identical | `list-keys` (the arrows' seam, on a creation script of Home and End) |
 | `list-down-arrows` | contrast | `list-down` (the same script with Down and Up, which the seam-off program drops) |
+| `quiet-bar-keys` | identical | `quiet` (the party's own Right at a raw bar, which the seam leaves) |
+| `bar-enter-keys` | contrast | `bar-enter` (Return at the camp bar takes the highlighted command) |
+| `bar-yn-keys` | contrast | `bar-yn` (a Right at a bar that is not raw, and Return at the Yes/No prompt) |
 
 Both relations are checked on the recordings with no disk
 (`scripts/sweep.py`), so CI checks them on every push. CONTRIBUTING.md
@@ -833,6 +836,7 @@ to carry.
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `list-arrows` | the up and down arrows step the game's pick-lists and its party-member picker, as Home and End do | overlay 25 (the list routine), and the resident image |
+| `bar-keys` | Left and Right step a command bar's highlight; Enter takes the highlighted command at the Yes/No prompt, the camp bar and the adventuring bar | overlay 25 (the menu-bar routine) |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -1428,6 +1432,158 @@ these, and says so. Unit: `SeamFont.*`, `TextFace.*`,
 `SeamFontScreenText.*`; stand-in: `font_probe_off`, `font_probe_sans`.
 Driven: 48 stills from the credits to the character sheet read back
 the same screen text with either face on as with none.
+
+### The bar keys (#425)
+
+`seam_bar_keys.cpp`. Not a PLAN.md §5 item: a player's request, built after
+v1's six, and the keyboard half of #379's selection. A setting, no key,
+nothing to pull.
+
+| point | module | what the handler does |
+|---|---|---|
+| image `0x0572` of overlay 25, the call into the program's key-read routine inside the menu-bar routine (`0x03BD`) | overlay 25, through the manager's word | reads the keystroke at the head of the BIOS ring before the program does. Left or Right, with the caller's raw-mode argument clear, becomes `,` or `.`. Enter, from a caller in the table below and where the highlighted group's letter is its last match, becomes that letter |
+
+| fact | value |
+|---|---|
+| the module | overlay 25: file offset 182479 (`0x2C8CF`), 4682 bytes (`0x124A`), digest `175454bc…3901`; the program's load-segment word is at image `0x3C60` (the same module as `list-arrows`) |
+| the loop | the key-pending call at `0x0566` (resident image `0xA6FD`), and, only if it answered a key, the key-read call at `0x0572` |
+| the keystroke | the head word of the ring at 40:1Eh: scan code high, character low. Left `0x4B00`, Right `0x4D00`, Enter `0x1C0D`. A key behind the head is never read |
+| the routine's frame | caller's return IP at `BP+2` and CS at `BP+4`; the raw-mode argument at `BP+0x0C`, tested as a byte |
+| what the routine parsed | locals below BP: the Enter-allowed byte (`BP-0x8F`, the colours are not both zero), the group count (`BP-0x8E`), a pair of positions per group from the same base (first at `BP-0x8F+2g`, last the byte after), and the bar as a Pascal string at `BP-0x53`, characters numbered from one |
+| the highlight | DGROUP `0x6B2B`, the one-based group index every bar shares (#304) |
+| the pushback slot | DGROUP `0x8501`, the second half of an extended key; non-zero means the head of the ring is not the key about to be read |
+| `,` and `.` | step the highlight back and forward, wrapping, and redraw; the program's own |
+| a letter | upper-cased, compared with **every** character of the bar, no early exit: **the last match wins** and sets the highlight to its group. Command letters are `0-9A-Z` only |
+| an extended key | read as a zero, then its scan code. **Raw mode clear: thrown away.** Raw mode set: returned with the out-parameter set, and the caller decides |
+| Enter | returned as `0x0D` when the Enter-allowed byte is set; what then happens is the caller's |
+
+**The callers whose Enter is nothing.** A caller is identified by the far
+return address in the frame: its segment is the one the program's overlay
+manager says its module is at now (the word is read at every Enter), and
+its offset is the instruction after the call.
+
+| caller | module (manager's word) | return offset | what it does with `0x0D` |
+|---|---|---|---|
+| the Yes/No prompt | overlay 25 (`0x3C60`) | `0x111E` | loops until the answer is in `{N, Y}` (a class at `0x10B1`: two bits, `0x4E` and `0x59`); the loop's head is **after** the instruction that sets the highlight to the second group, so the highlight survives each loop |
+| the adventuring bar, city | overlay 14 (`0x730`), file offset 91851, 4268 bytes | `0x09D5` | compares the letter with A, C, V, E, S and L and with nothing else; falls to the status line and the loop |
+| the adventuring bar, wilderness | overlay 14 | `0x0C45` | the same chain without A |
+| the camp bar | overlay 15 (`0x760`), file offset 96305, 8158 bytes | `0x1F24` | compares with S, V, M, R and A and loops; the loop ends on the `changed` flag, or on `0x00` or `E` (a class at `0x1E3B`). The Encamp Fix's `F` is taken at the routine's return, before this compare |
+
+- **Each by two routes.** The disassembly of the caller from its return
+  offset on, read for a `0x0D` compare (none), and the loop's own exit
+  test (the Yes/No class; the camp class); and a driven run with the seam
+  off, where a Return at the bar leaves the screen as it was (slot C's
+  camp bar and the Yes/No prompt after Save; slot C's city bar; slot J's
+  wilderness bar). Then the same Return with the seam on, which takes the
+  highlighted command (`bar-enter-keys`, `bar-yn-keys`, and driven for the
+  two adventuring bars).
+- **The last-match guard.** The letter is the first character of the
+  highlighted group, read from the routine's own parse. Enter is rewritten
+  only if the last position in the bar holding that letter is that same
+  character; otherwise the handler declines and the Enter is dropped as
+  the program always dropped it. No bar the table names repeats a letter,
+  so the guard is never reached on this program (unit test:
+  `EnterIsRefusedWhereALaterGroupHoldsTheSameLetter`).
+- **A spliced command is a group like any other.** The Encamp Fix's `Fix`
+  and the journal's `Notes` are in the bar before the routine copies it,
+  so Enter on a highlighted `Fix` or `Notes` is the typed letter exactly:
+  frames from the Return to the end are identical to a typed `F` and a
+  typed `N` (121 stills each, driven).
+- **Raw-mode bars keep their arrows.** The party's own bar and the camp
+  bar are called raw, and so are some of the combat bars; their arrows are
+  the program's (the party's move in 3D and in the wilderness, the roster
+  cursor at camp). The handler reads the byte and leaves the key. Driven
+  in the wilderness with Up, Left and Right, 242 stills identical to the
+  seam off; in the city by `quiet-bar-keys`.
+- **Left and Right are the routine's own, caller-independent.** With raw
+  mode clear the routine throws an arrow away whoever called, so
+  rewriting it to `,` or `.` is the same for every non-raw bar. Driven at
+  the Yes/No prompt and the save-slot bar. The caller table is only for
+  Enter.
+- **The point is the read, not the poll.** A point at the poll call would
+  see the ring before the poll looks; a key can land between the two. At
+  the read call the key is waiting and nothing can change the head before
+  the read, so what the handler sees is what the program reads. The
+  pushback slot is checked because the poll answers from it first.
+- **The other seams' claims are ahead of this point.** The automap's and
+  the journal's claims are at the key-pending routine, which the loop
+  calls first, so a key either wants is gone from the ring before this
+  point is reached. One race remains: a key landing between a claim and
+  the poll's own look reaches this point, and with the journal reader up
+  would be the reader's. The handler does nothing while the reader is
+  open (`LeavesTheKeyAloneWhileTheJournalReaderIsOpen`). Driven with
+  `automap` and `journal` on, Tab, arrows, `Notes` and Return in the
+  reader are identical to the seam off.
+- **Posted under Enter's scan code.** A letter made of an Enter carries
+  scan `0x1C`: the program reads the character and nothing else.
+- **`fired` counts the keys the menu-bar routine read**, at the main menu
+  and every bar after it, not the rewrites: a handler that looks and
+  chooses to do nothing has been served (§3a). `quiet-bar-keys` reads six
+  and rewrites none.
+- **Enter at a bar the routine does not draw** (Enter-allowed clear) is
+  left alone: the routine would have dropped it. So is Enter while the
+  highlight index is still zero, before any bar has been stepped or chosen
+  from: no group is highlighted, so there is no command to take. A group
+  count or position the routine could not have written declines
+  (`point_not_recognized`).
+- **Rejected:** posting a second key with `inject_keystroke`, because the
+  program drains its keyboard after every key it reads (§8.4) and the
+  head would be read first anyway; a table of every caller, because a
+  caller that confirms on Enter would be handed a letter it never asked for
+  (below); rewriting AL in the key-read routine, because an arrow comes
+  back as a zero and then its scan code, two returns for one key.
+
+**Callers looked at and left out, and why.**
+
+- The pick-list (`0x0D9A`): Enter confirms its row. Never in the table.
+- The party-member picker (resident image `0x38AA`) and the script prompt,
+  where Enter is in the set that ends the loop or is returned when the
+  caller allows it.
+- The combat move loop: the key `0x0D` ends it.
+- The statistics screen of overlay 20 (`0x0721`): Enter becomes its `R`.
+- The others, which have no `0x0D` branch in the program's source but have
+  not been shown by two routes or driven: the combat command, aim and done
+  bars, the script stage prompt, the game-speed bar, the icon editor, the
+  main menu bar, the modify, move and camp's Alter, Magic and memorize
+  bars, the post-combat bars, the shops, temples and training, the View
+  bar, and the save and load slot bars. Each can join the table on the
+  same proof.
+
+**How the facts were checked, by two routes.** The module row is the
+overlay file's own table and the manager's record of the same two numbers
+(`list-arrows`). The point and the frame offsets are the disassembly of the
+routine (the call at `0x0572`, the reads of `BP+0x0C`, `BP-0x8F`, `BP-0x8E`
+and `BP-0x53`, and the scan that sets the highlight) and a driven run: a
+Left at the Yes/No prompt moves the highlight to `Yes` and Return then
+answers it (the program exits), and Return at character creation's *keep
+this character?* prompt answers its `No` and the character is rolled again. The caller offsets are
+the instructions after each call in the callers' disassembly and the
+offsets two other seams already place their points at (`journal`'s
+`0x09D5` and `0x0C45`, `encamp-fix`'s `0x1F24`).
+
+**What no check pins.** The callers' modules are identified by the manager's
+word and the return offset, not by digest: a point in each would make the
+whole seam inert while that overlay is out of memory, which is most of the
+time. `journal` and `encamp-fix` pin the same two modules by digest.
+
+**State**: none. **Host services**: none. **Keys**: Left and Right at a
+bar that is not raw; Enter at the three callers.
+
+**Fidelity**: on and none of the three keys pressed at a bar, identical:
+the handler reads the ring's head word and writes nothing unless it is one
+of them (`quiet-bar-keys` identical `quiet`: all 90 checkpoints, a Right
+at the party's own raw bar included). On and one pressed, a contrast:
+`bar-enter-keys` agrees with `bar-enter` for 86 of 93 checkpoints and
+diverges at the Return at the camp bar; `bar-yn-keys` agrees with `bar-yn`
+for 86 of 100 and diverges at the Right at the slot bar. Both stay apart to
+the end: besides the screens, the ring holds the rewritten word where the
+seam-off run holds the key. Unit: `SeamBarKeys.*`; stand-in:
+`bar_keys_probe_off`, `bar_keys_probe_on`.
+
+**One consequence a script feels.** A Return the program used to drop at a
+Yes/No prompt now answers it. Character creation's roll asks whether to
+keep the character; the leg-0 script's Return at that prompt answers `No`
+and the character is rolled again.
 
 ### The debug cheats (#99, #161, #163, #196)
 
