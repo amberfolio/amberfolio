@@ -85,6 +85,24 @@ rm "$r/big.bin"
 expect "staged blob with working copy deleted still fails" 1 \
   bash "$r/scripts/check-clean.sh"
 
+# The one size exception: the desktop host's main.cpp gets 512 KiB, by
+# path, and nothing else does.
+r=$(mkrepo bigmain)
+mkdir -p "$r/hosts/sdl/src"
+head -c 300000 /dev/zero | tr '\000' 'x' > "$r/hosts/sdl/src/main.cpp"
+git -C "$r" add hosts/sdl/src/main.cpp
+expect "main.cpp over 256 KiB and under 512 passes" 0 \
+  bash "$r/scripts/check-clean.sh"
+head -c 600000 /dev/zero | tr '\000' 'x' > "$r/hosts/sdl/src/main.cpp"
+git -C "$r" add hosts/sdl/src/main.cpp
+expect "main.cpp over 512 KiB fails" 1 bash "$r/scripts/check-clean.sh"
+r=$(mkrepo bigtext)
+mkdir -p "$r/hosts/sdl/src"
+head -c 300000 /dev/zero | tr '\000' 'x' > "$r/hosts/sdl/src/other.cpp"
+git -C "$r" add hosts/sdl/src/other.cpp
+expect "any other file over 256 KiB still fails" 1 \
+  bash "$r/scripts/check-clean.sh"
+
 # The binary allowlist (#134). The dump that got through was 4.6 KiB
 # under an invented name: below the cap, on no denylist. What is not
 # text now has to be named in the guard before it can be committed.

@@ -15,9 +15,9 @@
 // `seam_panel.h`'s: the first two lines are its heading and are drawn in
 // amber, the rest in the machine's paper white.
 //
-// Split from main.cpp for `seam_panel.h`'s reason, and because
-// main.cpp has no room: the column arithmetic is not checkable by eye, and
-// a lambda inside a `main()` is arithmetic no test can reach.
+// Split from main.cpp for `seam_panel.h`'s reason: the column arithmetic
+// is not checkable by eye, and a lambda inside a `main()` is arithmetic no
+// test can reach.
 
 #pragma once
 

@@ -57,8 +57,9 @@ screenshots.
   the list.
 - **The content guard** (`scripts/check-clean.sh`) scans every commit in
   history, the index, the working tree and untracked files beside it for
-  denylisted names, files over 256 KiB, and anything that is not text
-  whose path is not on its allowlist (one entry today). If your change
+  denylisted names, files over 256 KiB (512 KiB for
+  `hosts/sdl/src/main.cpp`, its one named exception), and anything that
+  is not text whose path is not on its allowlist (one entry today). If your change
   needs a committed binary, add it to the allowlist in the same pull
   request with a one-line note saying where the bytes came from.
 - **Never `git add -A`.** A stray dump beside the tree once reached
