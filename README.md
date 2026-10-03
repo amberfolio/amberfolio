@@ -27,6 +27,12 @@ does for a player.
 `main` on every push. It is a developer page rather than a shell: point it
 at a directory holding your own copy and it boots it.
 
+**The game's keys:** a list steps on Home and End, a bar's highlight on `,`
+and `.`, and none of it is on the screen. Both shells carry a card of the
+keys by screen, the page in the box under the seam list and the desktop
+host on the right mouse button's second press
+([`docs/hosts.md`](docs/hosts.md) §11).
+
 ## Building from source
 
 CMake 3.25+, Ninja, git, and a compiler with C++23 (C++20 is accepted as a

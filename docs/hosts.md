@@ -123,6 +123,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | **F11** | toggle the mute (#148) |
 | **F12** | step the volume through 25/50/75/100% and wrap (#148) |
 | **Pause/Break** | pull the trigger of every triggered seam that is on (#161) |
+| **right mouse button** | the toggle panel (§8), then the key card (§11), then closed |
 | **middle mouse button** | step the on-screen keyboard on: hidden, then each layout in turn, then hidden again (#377, §7) |
 | **left mouse button** | press the on-screen key under the pointer, while it is up |
 | **the four arrows, Return** | move the on-screen keyboard's focus and commit, **while it is up**; they reach the machine as usual when it is not |
@@ -945,7 +946,7 @@ rename or removal of either moves these numbers — `abi.h` says so at
 compares `major` against what it was written for and refuses before
 fetching the module.
 
-The ABI is 2.2: 1.1 added the two doors below (#228, #229), 1.2 added
+The ABI moved as follows (`abi.h` has the whole list, now at 3.1): 1.1 added the two doors below (#228, #229), 1.2 added
 `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
 (#291), 1.3 added `af_web_journal_part_begins_paragraph` (#361), which is
 how a fragment boundary that is a paragraph break reaches the page that
@@ -972,7 +973,7 @@ It also adds `af_machine_set_current_directory`, `af_machine_current_directory`,
 (#397, §2c): the directory a program starts in, and where it saves. The
 `af_machine_save_layer_*` calls kept their names and their answers on the
 archive release; on another layout their rows follow the save directory
-the copy names (§6).
+the copy names (§6). 3.1 adds `af_web_key_card_json` (#427, §11).
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -1814,7 +1815,8 @@ check.
   recording's seams are its own).
 - **The right mouse button opens and closes it**, on the middle button's
   own argument (#377): this machine has no mouse, so no mouse button is a
-  control the game can ever want back.
+  control the game can ever want back. A second press turns it into the
+  key card (§11).
 - The left button picks a row and toggles it. The panel is asked before
   the on-screen keyboard, because the two overlays can be over the same
   pixel and a click belongs to the one in front; a click on no row falls
@@ -2021,3 +2023,68 @@ screens of leg 0 — the main menu, the four creation lists, the name
 prompt over the rolled character, the party menu and Modify — to the
 digests of the program's own `.txt` output, over a copy of the disk
 (`scripts/visual-legs.py`'s `text` line).
+
+## 11. The key card (#427)
+
+The game's keys, by context, readable from either shell without leaving
+the game. The controls are undiscoverable rather than missing: a list
+steps on Home and End, a bar's highlight on `,` and `.`, and the 3D view
+walks on the arrows, and nothing on the screen says so.
+
+**One table, two readers.** The card is data in `hosts/common`
+(`amberfolio/host/key_card.h`, `src/key_card.cpp`): contexts, each a list
+of rows of *keys*, *what they do* and, for a seam's key, the seam. Neither
+shell keeps a second copy, so a change to the card is a change to that
+file.
+
+| host | where | how it reads the table |
+| --- | --- | --- |
+| desktop | the toggle panel's second view: the right mouse button steps hidden, seams, card, hidden. Up and Down, or a click, turn the page; one context to a page | `host::key_card_for()` over the seam engine (`src/key_card_view.*`) |
+| page | the *the game's keys* box, under the seam list | `Machine`-less `readKeyCard()` over `af_web_key_card_json` (ABI 3.1), filtered by `visibleKeyCard()`, both in `page/host.mjs` |
+
+Both are drawn by the shell and never into the game's screen. The page
+redraws the card when the set of seams that are on changes; the desktop
+builds it at every paint.
+
+**A seam's keys show only while it is on.** A row names a seam id, and a
+context left with no row to show is not shown. Adding a seam's keys is one
+line in `key_card.cpp`, in the context where the key is pressed.
+`tests/key_card_test.cpp` holds every named seam to `all_seams()`, so a
+row for a seam that was renamed or never merged is a red test; the three
+seams that take a key today (automap, journal, Encamp Fix) are pinned
+there as the floor. Each shell has its own context for the keys it takes
+for itself (the desktop's are in §2's table); the page has none, because
+it takes none.
+
+**The keypad is not needed.** In every bar the program reads in raw mode
+(the 3D view, the wilderness, pick-lists, combat's move, Modify) the
+digits `8 2 4 6` act as Up, Down, Left, Right, `7 1` as Home and End and
+`9 3` as PgUp and PgDn, whether typed on the keypad or on the number
+row. The card says so once, under every context.
+
+**How each row was checked.** Driven under SDL's dummy drivers with
+`--press`, reading the screen text and the stills beside them
+(`docs/playable.md`): the 3D view's four moves and the party-member
+cursor, on both the arrows and the number row; the wilderness's four moves
+and the same cursor (Tab does nothing there); a bar's capital letter,
+`,` and `.` (watching `0x6B2B`), Y and N with Return ignored at a Yes/No
+question, Return ignored at the exploring and camp bars, Esc leaving
+camp; a list's Home, End, Return, Esc and wrap, with Up, Down and a
+too-short list's PgUp and PgDn doing nothing; the member picker's Home,
+End, Return and Esc; combat's Move with all four arrows and two diagonals
+on the number row, Esc, Aim with N, P, M, arrows and E, Quick, and Done's
+second bar; Modify's Up, Down, Left, Right, `6`, `4`, `K` keeping, Esc and
+`E` restoring, and Return doing nothing; a name's Backspace, Esc
+accepting, Return and lower case shown as capitals; Tab, the camp bar's F
+and the Notes log's N, Up, Down, Return, N, P and Esc with those seams on.
+
+**Rows that rest on two readings, not a drive.** A list's PgUp and PgDn
+(no list in the shipped saves is longer than its window; the routine
+that pages and the bar's NEXT and PREV letters agree); moving into an
+enemy attacking (the routine, and the prompt's own *Move/Attack*); T in
+Aim (the routine, and TARGET appearing on the bar when one is in range);
+E in the member picker and in Modify (the routines, and the bar's EXIT);
+and the desktop's own keys (§2's table and
+`keymap.cpp`). A row that a drive contradicted was fixed before it was
+written: Return does not step Modify's rows, though one routine reads as
+if it does.

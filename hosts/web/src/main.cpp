@@ -57,6 +57,7 @@
 #include "amberfolio/host/journal_store.h"
 #include "amberfolio/host/journal_text.h"
 #include "amberfolio/host/journal_text_probe.h"
+#include "amberfolio/host/key_card.h"
 #include "amberfolio/host/slot_store.h"
 #include "amberfolio/machine/log.h"
 #include "amberfolio/machine/machine.h"
@@ -182,6 +183,14 @@ const uint8_t* af_web_probe_program_bytes(void) {
 
 uint32_t af_web_probe_program_size(void) {
   return static_cast<uint32_t>(amberfolio::programs::seam_probe_file().size());
+}
+
+/// The key card (#427) as JSON: the game's keys by context, the same
+/// table the desktop host paints, for a page to render. Machine-less, like
+/// the on-screen keyboard's tables, because a card is not a fact about a
+/// loaded program; the page filters it by which seams are on.
+uint32_t af_web_key_card_json(char* out, uint32_t cap) {
+  return hand_out(amberfolio::host::key_card_json(), out, cap);
 }
 
 /// Register the probe's three seams with `box`'s engine, so

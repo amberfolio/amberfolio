@@ -161,6 +161,42 @@
         display: block;
         color: #e0a33c;
       }
+      /* The key card (#427): one small table to a context, set out in
+         columns so a wide window shows several at once and a phone shows
+         one. The key is the heading of its row. */
+      #keycard {
+        columns: 22rem;
+        column-gap: 2rem;
+      }
+      #keycard section {
+        break-inside: avoid;
+        margin: 0 0 1rem;
+      }
+      #keycard h3 {
+        margin: 0 0 0.25rem;
+        font-size: 0.9375rem;
+        color: #e0a33c;
+      }
+      #keycard .note {
+        column-span: all;
+      }
+      table.keycard {
+        border-collapse: collapse;
+        font-size: 0.875rem;
+      }
+      table.keycard th,
+      table.keycard td {
+        padding: 0.125rem 1rem 0.125rem 0;
+        vertical-align: top;
+      }
+      table.keycard th {
+        text-align: left;
+        font-weight: 600;
+        white-space: nowrap;
+        /* The widest key text is twenty-one characters, and one width
+           keeps every context's second column in the same place. */
+        min-width: 13rem;
+      }
       #status {
         color: #b3a58c;
       }
@@ -340,6 +376,23 @@
         you save while playing; dropping a second directory replaces the
         first, and your saved games stay.
       </p>
+    </fieldset>
+
+    <!-- The key card (#427): the game's keys, by context. A list steps
+         on Home and End, a bar's highlight on `,` and `.`, and the 3D
+         view walks on the arrows, and nothing on the game's screen says
+         so - the controls are undiscoverable rather than missing.
+
+         The table is one in `hosts/common` and the desktop host paints
+         the same words over its window, so a change to the card is a
+         change to that table and to nothing here. A seam's keys appear
+         only while its box above is ticked. It is the page's furniture:
+         nothing here is drawn into the game's screen. -->
+    <fieldset>
+      <legend>the game's keys</legend>
+      <div id="keycard">
+        <span class="note">the keys appear here once a program is loaded</span>
+      </div>
     </fieldset>
 
     <!-- Keeping a playthrough's progress beside its saves (M6, #385).
