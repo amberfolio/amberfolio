@@ -2222,6 +2222,61 @@ export function releaseLatched(module, latched) {
   }
 }
 
+// --- The key card (#427) ------------------------------------------------
+//
+// The game's keys by context, as data: one table in `hosts/common`
+// (`amberfolio/host/key_card.h`) that the desktop host paints and this
+// page renders, so a change to the card is a change to that table and to
+// no shell. Machine-less, like the keyboard's tables above — a card is
+// not a fact about a loaded program — and plain data: a page that wants
+// the card reads it once with `readKeyCard()` and renders it however it
+// likes.
+//
+// A row may name a seam. It is shown only while that seam is on, which is
+// the page's to decide because it is the page that learns a seam has been
+// switched: `visibleKeyCard()` is that rule, the one `key_card_for()` has
+// in C++, and `tests/smoke.mjs` checks it over the card the module hands
+// out.
+
+/// The whole card, once:
+///
+///   `{ legend, contexts: [{ id, title, shell, rows: [{ keys, does, seam }] }] }`
+///
+/// `shell` is `both` for the game's own keys, and `desktop` or `page` for
+/// the keys one shell takes for itself. `seam` is empty for a row about
+/// the program as it is.
+export function readKeyCard(module) {
+  const needed = module._af_web_key_card_json(0, 0);
+  const scratch = module._malloc(needed + 1);
+  if (scratch === 0) {
+    throw new Error('out of wasm heap while reading the key card');
+  }
+  try {
+    module._af_web_key_card_json(scratch, needed + 1);
+    // Plain printable ASCII, which the unit suite holds the table to.
+    const text = String.fromCharCode(
+      ...module.HEAPU8.subarray(scratch, scratch + needed),
+    );
+    return JSON.parse(text);
+  } finally {
+    module._free(scratch);
+  }
+}
+
+/// The card as one shell shows it: the contexts for `shell` and for
+/// `both`, each with only the rows whose seam `seamIsOn(id)` says is on
+/// or that name none, and no context left with nothing to show. The
+/// rule `key_card_for()` has in C++.
+export function visibleKeyCard(card, shell, seamIsOn) {
+  const contexts = [];
+  for (const context of card.contexts) {
+    if (context.shell !== 'both' && context.shell !== shell) continue;
+    const rows = context.rows.filter((row) => row.seam === '' || seamIsOn(row.seam));
+    if (rows.length !== 0) contexts.push({ ...context, rows });
+  }
+  return contexts;
+}
+
 // --- Console bytes -> text -------------------------------------------------
 
 /// DOS console output is code page 437 bytes, not text (platform.h);

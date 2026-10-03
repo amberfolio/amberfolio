@@ -212,6 +212,9 @@ set(_amberfolio_web_export_names
   _af_web_attach_host_services
   _af_web_host_service_at
   _af_web_save_sidecars
+  # The key card (#427): the game's keys by context, as JSON for the page.
+  # Machine-less, like the on-screen keyboard's tables above.
+  _af_web_key_card_json
   # The M5-E3 (#174) journal ingestion. The loop is inverted here --
   # tesseract.js is on the far side of this boundary and is
   # asynchronous, so the page asks for one entry's pixels, recognizes

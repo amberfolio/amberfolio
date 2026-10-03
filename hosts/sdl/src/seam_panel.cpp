@@ -44,7 +44,7 @@ constexpr std::size_t panel_columns = 78;
 /// two questions — how do I work it, and does it stick — and the answer
 /// to both is shorter than a row.
 constexpr std::string_view panel_title =
-    "seams - up/down, Return toggles and remembers, right button closes";
+    "seams - up/down, Return toggles and remembers, right button: keys";
 
 /// `text` written into `line` at `at`, cut to `width` characters so a
 /// long value cannot walk into the column beside it.
