@@ -22,10 +22,17 @@ fail=0
 # Game-artifact filenames must never appear.
 # (These filenames are publicly documented; the list reveals nothing.)
 DENY='(^|/)(start[^/]*\.exe|game\.ovr|pool\.cfg)$|\.(dax|sav|itm|spc)$'
-# No large blobs (256 KiB cap until a documented exception exists).
+# No large blobs (256 KiB cap, with the documented exception below).
 # Original binaries and data files have no business here at any size;
 # the cap catches them and anything else that should be questioned.
 MAX=262144
+
+# The one exception: the desktop host's main.cpp, which is our own source
+# and had grown to within 2 KiB of the cap. It gets 512 KiB, by name, and
+# is still refused if it is not text; the cap stays put for everything
+# else. Adding a path here is a content decision: say what it is and why.
+BIG='^hosts/sdl/src/main\.cpp$'
+BIG_MAX=524288
 
 # Nothing that is not text may be committed unless its path is named
 # here. A denylist can only refuse names somebody thought of in advance,
@@ -68,7 +75,8 @@ is_binary() { # $1 = size, $2 = object id, or "-" to read $3 off disk
     # The trailing `cat` throws away the rest of the blob rather than
     # letting `head` close the pipe under git: git would die of EPIPE,
     # print about it, and hand pipefail a nonzero status to abort on.
-    # Blobs here are capped at 256 KiB, so draining one is cheap.
+    # Blobs here are capped at 256 KiB (one at 512), so draining one is
+    # cheap.
     kept=$(git cat-file blob "$oid" | { head -c "$window"; cat >/dev/null; } |
       LC_ALL=C tr -d '\000' | wc -c)
   fi
@@ -138,7 +146,7 @@ scan() { # $1 = label; stdin = "size<TAB>oid<TAB>path[<TAB>where]" lines
   # `where` is optional and names the commit a history row came from, so
   # a failure still says which one rather than only which path. The
   # index and worktree passes leave it off and fall back to the label.
-  local label="$1" size oid path where at
+  local label="$1" size oid path where at limit
   while IFS=$'\t' read -r size oid path where; do
     [ -n "$path" ] || continue
     at=${where:-$label}
@@ -152,7 +160,11 @@ scan() { # $1 = label; stdin = "size<TAB>oid<TAB>path[<TAB>where]" lines
     fi
     # A gitlink has no size and no blob; it is not a file to read.
     [ "$size" != "-" ] || continue
-    if [ "$size" -gt "$MAX" ]; then
+    limit=$MAX
+    if [[ $path =~ $BIG ]]; then
+      limit=$BIG_MAX
+    fi
+    if [ "$size" -gt "$limit" ]; then
       printf 'FAIL[%s]: oversized file %s (%s bytes)\n' "$at" "$path" "$size"
       fail=1
     fi
