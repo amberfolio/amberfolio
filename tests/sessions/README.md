@@ -83,6 +83,11 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `quiet-font-sans` | same | + font-sans | **`contrast quiet`** | 1 of 90 identical: a face is seen from the credits' first text on, in `devices` and `display` only. The two agree again while the title's art covers every page |
 | `quiet-font-chisel` | same | + font-chisel | **`contrast quiet`** | the same, in the other face |
 | `quiet-all` | same | every seam but the faces | `identical quiet-journal` | eight seams armed, none triggered, no more machine than the journal alone. The faces are alternatives and seen from the first text, so they have their own pair |
+| `quiet-bar-keys` | same | + bar-keys | `identical quiet` | the seam on, and `quiet`'s one Right is at the party's own bar, which is raw: the program keeps the arrow and the seam leaves it. Six keys read at bars, none rewritten |
+| `bar-enter` | shipped slots | code-wheel | | slot C, `ENCAMP`, `.` to step the highlight to ALTER, and Return at the camp bar, which the program ignores. 93 checkpoints |
+| `bar-enter-keys` | same | + bar-keys | **`contrast bar-enter`** | 86 of 93 identical, divergent from tick 206,218,672: the Return takes ALTER, and its sub-bar is up where the seam-off run shows the camp bar |
+| `bar-yn` | same | code-wheel | | slot C's camp, `SAVE`, a Right at the slot bar, Escape, and Return at the quit prompt that follows: the program drops the Right and the Return. 100 checkpoints |
+| `bar-yn-keys` | same | + bar-keys | **`contrast bar-yn`** | 86 of 100 identical, divergent from tick 206,218,672: the Right steps the slot bar's highlight, and the Return answers the prompt `No` |
 
 ## The matrix, by seam
 
@@ -94,6 +99,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
+| `bar-keys` | `bar-enter-keys`, `bar-yn-keys` | `quiet-bar-keys` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the

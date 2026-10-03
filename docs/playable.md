@@ -1008,6 +1008,70 @@ is byte-for-byte the `.txt` of the same script with no face on: screen
 text reads the face. `fired` counts every row fetch the handler let
 through, a picture's or a kept glyph's included.
 
+## Leg 15 — Enter and the arrows at the bars (#425)
+
+Four scripts, one seam. `docs/seams.md` §10 has the facts. The screen text
+(`--dump`'s `.txt`) is the instrument: a bar's highlighted group is the
+one whose ink is bright white. Every pair is told `--wall none`, because
+the program's dice are seeded from the date.
+
+**The camp bar** (`bar-enter` and `bar-enter-keys` are this script
+recorded). Slot C, `ENCAMP`, the highlight stepped from REST to ALTER by
+the program's own key, Return:
+
+```
+--seam code-wheel --code-wheel-answered --seam bar-keys
+--press L@7550 --press C@7800           LOAD SAVED GAME, slot C
+--press E@8800                          ENCAMP
+--press .@10000                         the highlight to ALTER
+--press Return@10300                    take it
+```
+
+With the seam on the screen at 10,400 is the Alter sub-bar, `ALTER: ORDER
+DROP SPEED ICON PICS EXIT`. With it off the camp bar is still up, ALTER
+highlighted, and the Return is gone.
+
+**The Yes/No prompt and a bar that is not raw** (`bar-yn`, `bar-yn-keys`):
+
+```
+--press S@10000                         SAVE: the slot bar
+--press Right@10300                     a step, at a bar that is not raw
+--press Escape@10600                    out of the slot bar; the quit prompt
+--press Return@11000                    the prompt's highlight is No
+```
+
+On, the camp bar is back at 11,200. Off, `QUIT TO DOS YES NO` is still up
+with `NO` highlighted. And `S@10000 Escape@10400 Left@10800 Return@11000`:
+the highlight steps to `YES` and Return answers it, so the program exits
+(`stop reason=program_exited`, exit 0), where with the seam off nothing
+moves.
+
+**The adventuring bar**, in the city and in the wilderness. Slot C, then
+`.@10000 Return@10300` on the bar with `AREA`: the highlight steps from
+VIEW to ENCAMP and Return enters the camp. Slot J (`L@7550 J@7800`), the
+bar without `AREA`: `.@9600 .@9750 Return@9900` steps from LOOK to VIEW and
+Return opens the View sub-bar. Off, neither does anything.
+
+**The arrows at a raw bar** (`quiet-bar-keys` is the city; the wilderness
+is by hand). Slot J, `Up@9700 Left@9850 Up@10000 Right@10150 Right@10300
+Up@10450`: the party goes from 3,32 S to 3,31 N, turns west and goes on,
+and all 242 stills with the seam on are byte for byte the stills without
+it. The party's bar is raw, so the seam reads that and leaves the keys.
+
+**With other seams on.** `journal`: Return on a highlighted `NOTES` opens
+the log, and every still of the run is the same as `N` typed (121 of
+121); a Return in the reader opens a row as it does with the seam off.
+`encamp-fix`: Return on a highlighted `FIX` is the typed `F` (121 of 121,
+`fired=3` both ways). `automap`: Tab, arrows and Return are the same with
+the seam on or off (126 of 126).
+
+**What it changes in a script.** A Return pressed at a Yes/No prompt now
+answers it. Character creation's roll asks *keep this character?* with
+`No` highlighted, so leg 0's Return at 8,300 (which arrives while the roll
+is being drawn and is read by the prompt) answers `No` and the character is
+rolled again; the pick-lists before it are the same on both. Leg 0 with
+the seam on wants no Return there.
+
 ---
 
 ## What the run should not say

@@ -33,6 +33,10 @@ namespace amberfolio::machine {
 /// PLAN.md §5 item 5, the explored overlay (seam_explored.cpp).
 [[nodiscard]] const seam_definition& explored_seam() noexcept;
 
+/// Left and Right step a command bar's highlight, and Enter takes it
+/// (seam_bar_keys.cpp, #425).
+[[nodiscard]] const seam_definition& bar_keys_seam() noexcept;
+
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;
 [[nodiscard]] const seam_definition& cheat_kill_all_seam() noexcept;

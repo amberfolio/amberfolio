@@ -63,6 +63,7 @@ add_executable(amberfolio-core-tests
   core/machine/screen_keyboard_test.cpp
   core/machine/screen_text_test.cpp
   core/machine/seam_automap_test.cpp
+  core/machine/seam_bar_keys_test.cpp
   core/machine/seam_explored_test.cpp
   core/machine/seam_font_test.cpp
   core/machine/seam_call_test.cpp
