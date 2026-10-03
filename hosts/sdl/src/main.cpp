@@ -5114,16 +5114,25 @@ int main(int argc, char** argv) try {
           // break of one it did not is not: stepping the overlay on
           // between the two would otherwise leave the machine holding a
           // key nobody is pressing.
+          //
+          // A *repeat* is not a make, and follows whoever took the make:
+          // the overlay stepping on or off under a held key must not
+          // send the repeats to a different owner than the first make
+          // went to, or the machine is left holding a key whose break
+          // was swallowed (#426).
+          const bool follows_make = !down || event.key.repeat;
           const std::size_t control = keyboard_control_of(event.key.scancode);
-          const bool owned = control < keyboard_controls.size() &&
-                             (down ? keyboard_shown : keyboard_taken[control]);
+          const bool owned =
+              control < keyboard_controls.size() &&
+              (follows_make ? keyboard_taken[control] : keyboard_shown);
           // And the panel takes up, down and Return while it is up and
           // the keyboard is not (#383) — asked first, because the same
           // break has to reach whichever overlay took its make.
           const std::size_t picked = panel_control_of(event.key.scancode);
           const bool panel_owned =
               picked < panel_controls.size() &&
-              (down ? (panel_shown && !keyboard_shown) : panel_taken[picked]);
+              (follows_make ? panel_taken[picked]
+                            : (panel_shown && !keyboard_shown));
           if (panel_owned && down) {
             panel_taken[picked] = true;
             if (!event.key.repeat) {
@@ -5159,7 +5168,14 @@ int main(int argc, char** argv) try {
             // at the ticks it names. A key struck at the window during one
             // would be an input the recorded run never had, so the window
             // still closes and nothing else gets through.
-            if (code != 0 && !event.key.repeat && !replaying) {
+            //
+            // The operating system's repeats of a held key go through as
+            // the makes they are (#426): the original keyboard repeated
+            // in its own hardware, the machine cannot tell a repeat from
+            // a make (`key_action::down`), and the web host posts every
+            // keydown the same way. Only the host's own controls above
+            // ignore them.
+            if (code != 0 && !replaying) {
               post_key(code, down ? machine::key_action::down
                                   : machine::key_action::up);
             }
