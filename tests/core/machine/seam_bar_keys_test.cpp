@@ -452,14 +452,24 @@ TEST(SeamBarKeys, EnterDeclinesAFrameThatIsNotTheOneTheFactsDescribe) {
   const rig r;
   r.arm();
 
-  // A highlight of zero, one past the group count, and a bar of no groups.
-  r.lay_bar("Ant Bee Cow", 0);
-  EXPECT_EQ(r.press(enter, camp_segment, ret_camp, 1), enter);
+  // A highlight one past the group count (the routine clamps one that is
+  // past it, so it is never there), and a bar of no command letters, whose
+  // one group begins nowhere.
   r.lay_bar("Ant Bee Cow", 4);
   EXPECT_EQ(r.press(enter, camp_segment, ret_camp, 1), enter);
   r.lay_bar("a b c", 1);
   EXPECT_EQ(r.press(enter, camp_segment, ret_camp, 1), enter);
-  EXPECT_EQ(r.box->seams().status(seam_id).declined, 3u);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 2u);
+}
+
+TEST(SeamBarKeys, EnterIsLeftAloneBeforeAnyGroupHasBeenHighlighted) {
+  // The index is one-based and starts at zero: nothing is highlighted, so
+  // there is no command to take, and it is not a frame to refuse.
+  const rig r;
+  r.arm();
+  r.lay_bar("Ant Bee Cow", 0);
+  EXPECT_EQ(r.press(enter, camp_segment, ret_camp, 1), enter);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
 
 TEST(SeamBarKeys, EnterReadsTheHighlightFromTheDataSegmentNotTheStack) {

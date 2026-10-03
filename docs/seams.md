@@ -1436,7 +1436,11 @@ its offset is the instruction after the call.
   chooses to do nothing has been served (§3a). `quiet-bar-keys` reads six
   and rewrites none.
 - **Enter at a bar the routine does not draw** (Enter-allowed clear) is
-  left alone: the routine would have dropped it.
+  left alone: the routine would have dropped it. So is Enter while the
+  highlight index is still zero, before any bar has been stepped or chosen
+  from: no group is highlighted, so there is no command to take. A group
+  count or position the routine could not have written declines
+  (`point_not_recognized`).
 - **Rejected:** posting a second key with `inject_keystroke`, because the
   program drains its keyboard after every key it reads (§8.4) and the
   head would be read first anyway; a table of every caller, because a

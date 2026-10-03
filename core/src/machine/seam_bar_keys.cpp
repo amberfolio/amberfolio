@@ -290,12 +290,18 @@ constexpr std::uint16_t scan_enter = 0x1C00;
     return 0;
   }
 
-  const std::uint8_t groups = cpu.read_byte(ss, below(local_group_count));
-  const std::uint8_t length = cpu.read_byte(ss, below(local_bar));
   const std::uint8_t group =
       cpu.read_byte(regs[cpu::sreg::ds], data_bar_highlight);
+  if (group == 0) {
+    // The index is one-based: no bar has been stepped or chosen from yet,
+    // so no group is the highlighted one and Enter has no command to take.
+    return 0;
+  }
+
+  const std::uint8_t groups = cpu.read_byte(ss, below(local_group_count));
+  const std::uint8_t length = cpu.read_byte(ss, below(local_bar));
   if (groups == 0 || groups > max_groups || length == 0 ||
-      length > max_bar_length || group == 0 || group > groups) {
+      length > max_bar_length || group > groups) {
     ctx.decline(seam_reason::point_not_recognized);
     return 0;
   }
