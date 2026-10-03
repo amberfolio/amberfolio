@@ -148,6 +148,23 @@ at the same tick — and never by writing the BDA shift flags (#313,
 `hosts/common/include/amberfolio/host/held_keys.h`). The page does the
 same on `blur` and on the tab going hidden.
 
+**A held physical key repeats on both hosts.** The operating system's
+auto-repeat of a held key reaches the machine as the same make code again,
+once per repeat, with no break between: SDL's `repeat` events on the
+desktop, the browser's repeating `keydown` on the page. That is what the
+original keyboard did in its own hardware, and the machine cannot tell a
+repeat from a make (`key_action::down`, `platform.h`): an ordinary key puts
+one keystroke in the BIOS ring per make, and a repeated Caps, Num or
+Scroll Lock make toggles its lock once (`machine/keyboard.h`). The rate is
+the player's keyboard's and the OS's; this project sets none. A recording
+holds each repeat as the `key ... down` line it is, a replay delivers them
+at their ticks, and nothing struck at the window reaches the machine
+during one. The host's *own* controls above ignore repeats — a held
+Return does not commit an on-screen key again, a held arrow does not walk
+the panel's focus — and a repeat follows whoever took its make, so
+stepping the on-screen keyboard on or off under a held arrow neither
+sends the machine a break it never had a make for nor swallows one it did.
+
 ### Traps
 
 - **A frame boundary is taken off the machine's clock**,
@@ -1608,11 +1625,13 @@ through `af_machine_post_key` and carries `latched_after` into the next
 commit. Nothing new crosses the boundary — the BIOS cannot tell a key
 committed on a painted keyboard from a key struck on a real one.
 
-**There is no key repeat.** A finger held on a painted key is one
-keystroke. Nothing in this machine repeats a key — there is no IRQ 1 and
-no typematic timer — so a repeat would have to be invented by a host, and
-a host inventing input is the same fault as a host inventing a port's
-answer.
+**There is no key repeat on the painted keyboard.** A finger held on a
+painted key is one keystroke. The machine has no IRQ 1 and no typematic
+timer, so a repeat of a *painted* key would have to be invented by a host,
+and a host inventing input is the same fault as a host inventing a port's
+answer. A held *physical* key is another matter: its repeat is the
+keyboard's own, and both hosts post it (§2, "A held physical key repeats on
+both hosts").
 
 **A modifier latches; everything else taps.** A finger cannot hold Shift
 and press A, so Shift, Ctrl and Alt stay down when committed and come up
