@@ -2267,7 +2267,11 @@ colour before the program draws with it.
   record has no colour and is not drawn. A script's menu is parsed from its
   `~`-marked letters, every other letter lower-cased, so a script's choice of
   two or more is mixed case with two command letters or more, and only a
-  one-choice prompt has one. A bar built at run time of the parts the program
+  one-choice prompt has one. One bar of the program's own with a single
+  command is on screen in the sessions: the ` Exit` under each of character
+  creation's pick-lists (a list's selection is its row, which is yellow). It
+  is left white beside the yellow row, and `list-keys-yellow` was re-recorded
+  for it. A bar built at run time of the parts the program
   has on hand (the item screens, the combat bars) is one capital to a word,
   and one with a single word has no choice to move between. `bar-script-yellow`
   is the notice and the question after it; the unit suite has the notice's

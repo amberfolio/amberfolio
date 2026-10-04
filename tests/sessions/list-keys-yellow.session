@@ -5,7 +5,9 @@
 # lists each draw their highlighted row in yellow.
 #
 # It agrees with `list-keys` until the first list is drawn, 61 of 84
-# checkpoints, and differs from there to the end.
+# checkpoints, and differs from there to the end. The `Exit` bar under each
+# list has one command letter and is not a selection, so it stays white
+# beside the yellow row (re-recorded for #460, when it was lit too).
 
 about character creation with select-yellow on: list-keys' keys, the
 about highlighted row of each pick-list drawn in yellow
