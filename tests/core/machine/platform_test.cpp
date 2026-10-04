@@ -40,6 +40,7 @@
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/state.h"
+#include "amberfolio/machine/tandy_sound.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "machine/test_host.h"
@@ -253,6 +254,123 @@ TEST(AudioTimeline, DropsEdgesRatherThanBlockingWhenNobodyIsPulling) {
 
   EXPECT_FALSE(audio.publish(audio_timeline::edge_capacity + 1, true));
   EXPECT_EQ(audio.dropped_edges(), 1u);
+}
+
+// --- Whether anybody listens is not machine state (#444) -----------------
+//
+// A live host drains both rings every pull; a headless replay never does.
+// A record of "what the ring accepted" would then differ between two runs
+// of one recording as soon as a run filled it, and a session recorded on
+// a window would not replay without one. What the state names is the
+// producer's record, which the ring cannot touch.
+
+/// The audio section of a timeline's state, hashed.
+state_hashes audio_state_of(const audio_timeline& audio) {
+  state_hasher hasher;
+  hasher.begin(state_section::audio);
+  audio.save_state(hasher);
+  return hasher.finish();
+}
+
+/// Settle everything up to `at` and play it, as a host's pull does.
+void listen(audio_timeline& audio, ticks at) {
+  std::array<float, 2048> out{};
+  audio.advance(at);
+  audio.render(out, 48000);
+}
+
+TEST(AudioState, TheEdgeListIsTheSameWhetherOrNotItIsDrained) {
+  audio_timeline listened;
+  audio_timeline deaf;
+  constexpr std::size_t total = (3 * audio_timeline::edge_capacity) + 5;
+  for (std::size_t i = 0; i < total; ++i) {
+    const auto at = static_cast<ticks>((i + 1) * 100);
+    ASSERT_TRUE(listened.publish(at, (i % 2) == 0));
+    static_cast<void>(deaf.publish(at, (i % 2) == 0));
+    if (i % 64 == 63) {
+      listen(listened, at);
+    }
+  }
+
+  // The rings did differ: that is the whole of the premise.
+  EXPECT_EQ(listened.dropped_edges(), 0u);
+  EXPECT_GT(deaf.dropped_edges(), 0u);
+
+  EXPECT_EQ(listened.published(), total);
+  EXPECT_EQ(deaf.published(), total);
+  EXPECT_EQ(audio_state_of(listened), audio_state_of(deaf));
+}
+
+TEST(AudioState, TheChipsWritesAreTheSameWhetherOrNotTheyAreDrained) {
+  audio_timeline listened;
+  audio_timeline deaf;
+  constexpr std::size_t total = (3 * audio_timeline::chip_write_capacity) + 17;
+  for (std::size_t i = 0; i < total; ++i) {
+    const auto at = static_cast<ticks>(i * 100);
+    const auto value = static_cast<std::uint8_t>(0x80 | (i & 0x7F));
+    ASSERT_TRUE(listened.publish_chip(at, value));
+    static_cast<void>(deaf.publish_chip(at, value));
+    if (i % 64 == 63) {
+      listen(listened, at);
+    }
+  }
+
+  EXPECT_EQ(listened.dropped_chip_writes(), 0u);
+  EXPECT_GT(deaf.dropped_chip_writes(), 0u);
+
+  EXPECT_EQ(listened.chip_published(), total);
+  EXPECT_EQ(deaf.chip_published(), total);
+  EXPECT_EQ(listened.chip_digest(), deaf.chip_digest());
+  EXPECT_EQ(audio_state_of(listened), audio_state_of(deaf));
+}
+
+// The digest covers the first `pinned_*` and no more, which is what the
+// session library's hashes were made with: a run too long for the ring
+// had a count and a digest that stopped there, and still does.
+TEST(AudioState, TheStateCoversTheFirstPinnedWritesAndNoMore) {
+  audio_timeline at_the_limit;
+  audio_timeline past_it;
+  for (std::uint64_t i = 0; i < audio_timeline::pinned_chip_writes + 9; ++i) {
+    const auto at = static_cast<ticks>(i * 100);
+    static_cast<void>(past_it.publish_chip(at, 0x9F));
+    if (i < audio_timeline::pinned_chip_writes) {
+      static_cast<void>(at_the_limit.publish_chip(at, 0x9F));
+    }
+  }
+  EXPECT_EQ(audio_state_of(at_the_limit), audio_state_of(past_it));
+
+  audio_timeline fewer;
+  for (std::uint64_t i = 0; i + 1 < audio_timeline::pinned_chip_writes; ++i) {
+    static_cast<void>(fewer.publish_chip(static_cast<ticks>(i * 100), 0x9F));
+  }
+  EXPECT_NE(audio_state_of(fewer), audio_state_of(at_the_limit));
+}
+
+// The same claim through the device and the machine's own serialization,
+// which is what a checkpoint hashes.
+TEST(AudioState, AMachineThatIsListenedToHashesAsOneThatIsNot) {
+  auto listened_box = std::make_unique<machine>(memory_layout::pc);
+  auto deaf_box = std::make_unique<machine>(memory_layout::pc);
+  tandy_sound listened_chip(*listened_box);
+  tandy_sound deaf_chip(*deaf_box);
+  listened_box->attach(listened_chip);
+  deaf_box->attach(deaf_chip);
+  listened_box->reset();
+  deaf_box->reset();
+
+  constexpr std::size_t total = (2 * audio_timeline::chip_write_capacity) + 3;
+  for (std::size_t i = 0; i < total; ++i) {
+    const auto value = static_cast<std::uint8_t>(0x90 | (i & 0x0F));
+    listened_chip.write_port(tandy_sound_port, value);
+    deaf_chip.write_port(tandy_sound_port, value);
+    if (i % 128 == 127) {
+      listen(listened_box->audio(), 1000 * ((i / 128) + 1));
+    }
+  }
+
+  EXPECT_EQ(listened_box->audio().dropped_chip_writes(), 0u);
+  EXPECT_GT(deaf_box->audio().dropped_chip_writes(), 0u);
+  EXPECT_EQ(hash_state(*listened_box), hash_state(*deaf_box));
 }
 
 TEST(AudioTimeline, RefusesASampleRateItCannotHonour) {

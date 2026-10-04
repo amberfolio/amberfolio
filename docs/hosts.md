@@ -716,8 +716,12 @@ prints the chip's traffic at the end of any run that had some:
 amberfolio: tandy writes=1907 dropped=0
 ```
 
-`dropped` is the ring overflowing, sound the machine made and no host
-got. It should be zero; `psg_test.cpp`'s `ChipTimeline` suite pins the
+`writes` is every write the program made. `dropped` is the ring
+overflowing, sound the machine made and no host got, and it is a fact
+about the host and not the machine: a run nobody drains (a headless
+replay) drops what a window would have played, and the two hash alike
+(`AudioState` in `platform_test.cpp`; `docs/replay.md` §2). It should be
+zero in a window; `psg_test.cpp`'s `ChipTimeline` suite pins the
 ring's rules and `PsgSynth` the waveform.
 
 ---
