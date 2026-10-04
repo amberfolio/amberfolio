@@ -82,7 +82,8 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `quiet-journal` | same | + journal | **`contrast quiet`** | 76 of 90 identical: `Notes` goes on the party's bar the moment the bar is drawn, in `cpu`, `ram`, `devices`, `display`, `audio`. The enhancement, not a leak; `identical` is not loosened to fit |
 | `quiet-font-sans` | same | + font-sans | **`contrast quiet`** | 1 of 90 identical: a face is seen from the credits' first text on, in `devices` and `display` only. The two agree again while the title's art covers every page |
 | `quiet-font-chisel` | same | + font-chisel | **`contrast quiet`** | the same, in the other face |
-| `quiet-all` | same | every seam but the faces | `identical quiet-journal` | eight seams armed, none triggered, no more machine than the journal alone. The faces are alternatives and seen from the first text, so they have their own pair |
+| `quiet-all` | same | every seam but the faces and hero-keys: the journal, the automap, the Encamp Fix, the explored overlay, the three cheats, list-arrows, bar-keys and menu-cursor | `identical quiet-journal` | eleven seams armed, the code word's among them, none triggered, no more machine than the journal alone: all 90 checkpoints. Left out, each with a pair of its own: the faces, which are alternatives and seen from the first text, and hero-keys, which draws the roster's numbers from the first time the party list is drawn |
+| `quiet-all-hero-keys` | same | + hero-keys | **`contrast quiet-all`** | 74 of 90 identical, divergent from tick 182,989,488, the same first checkpoint as `quiet-hero-keys` against `quiet`: the party list is the first thing that moves, with the other eleven seams on. What it adds is the seams together, hero-keys beside the three controls seams that read the same keys and beside the journal that redraws the bar |
 | `list-keys` | shipped slots | code-wheel | | character creation by Home and End: an elf, a woman, a magic-user, to the rolled sheet. 84 checkpoints |
 | `list-keys-arrows` | same | + list-arrows | `identical list-keys` | the same keys with the arrows' seam on and no arrow pressed |
 | `list-down` | same | code-wheel | | the same script with Down and Up where `list-keys` presses End and Home: the program drops them and the character is the first row of every list |
@@ -113,7 +114,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `hero-pick-3` | same | + hero-keys | **`contrast hero-pick`** | the same script with a 3 at the same tick: 77 of 87 identical, divergent from tick 190,944,688. The seam puts the third member under the cursor, the program steps onto it, and the party list is redrawn with the third name white |
 | `bar-esc` | same | code-wheel | | slot C's camp, `SAVE`, Escape out of the slot bar, and Escape at the quit prompt that follows, which the program ignores. 99 checkpoints |
 | `bar-esc-keys` | same | + bar-keys | **`contrast bar-esc`** | 91 of 99 identical, divergent from tick 216,799,088: the second Escape answers the prompt `No` and the camp bar is back |
-| `bar-script` | same | code-wheel | | slot A walked to the arena master's question (the status row reads 7,1): `.` steps the highlight to `NO`, then Return and Escape, which the program ignores because the script did not allow Enter. 164 checkpoints. Its recording was re-hashed (below) |
+| `bar-script` | same | code-wheel | | slot A walked to the arena master's question (the status row reads 7,1): `.` steps the highlight to `NO`, then Return and Escape, which the program ignores because the script did not allow Enter. 164 checkpoints. |
 | `bar-script-keys` | same | + bar-keys | **`contrast bar-script`** | 151 of 164 identical, divergent from tick 316,239,088: Return answers `No`, and Escape answers `No` to the partner question that follows. The press-Enter notice before the question, which allows Enter, is identical |
 
 ## The matrix, by seam
@@ -126,14 +127,14 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
-| `list-arrows` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows` | `list-keys-arrows`, `camp-roster-arrows` |
-| `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys` | `quiet-bar-keys` |
+| `list-arrows` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows` | `list-keys-arrows`, `camp-roster-arrows`, `quiet-all` |
+| `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys` | `quiet-bar-keys`, `quiet-all` |
 | `menu-cursor` | `menu-down-cursor`, `menu-down-cursor-yellow` | `menu-letters-cursor` (a `contrast`: the cursor is drawn as soon as the menu is) |
 | `select-yellow` | `bar-yn-yellow`, `list-keys-yellow`, `menu-down-cursor-yellow` | `quiet-select-yellow` (a `contrast`: a highlight is drawn at once, so none can exist) |
-| `hero-keys` | `hero-pick-3` | `quiet-hero-keys` (a `contrast`: the party list is seen as soon as it is drawn) |
+| `hero-keys` | `hero-pick-3` | `quiet-hero-keys` and `quiet-all-hero-keys` (both a `contrast`: the party list is seen as soon as it is drawn) |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
-Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the
+Subsets: `quiet-all` (all on but the two that draw on sight), `quiet-all-hero-keys` (that, with hero-keys), `subset-map-reader` (two seams wanting the
 same pixels), `camp-fix` (the Fix with a cheat), `wild-trail` (explored
 without automap; they share a store).
 
@@ -207,7 +208,7 @@ Only when the machine it describes legitimately changes:
   `tests/programs/machine_harness.cpp` move together);
 - what `machine::reset()` leaves behind changes;
 - a seam is added after the session was made and the session claims to
-  carry them all (`quiet-all`);
+  carry them all (`quiet-all`, `quiet-all-hero-keys`);
 - a seam the session turns on legitimately changes what it does. The
   test: the change was chosen, argued on an issue, and visible in the
   seam's source, never that a red line went green.
