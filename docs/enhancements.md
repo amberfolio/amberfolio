@@ -233,8 +233,8 @@ it) take the command under the highlight. A command the other seams add, the Enc
 **Where Left and Right work.** On every bar but the few that use the
 arrows themselves. Those keep them: the adventuring bar, where they turn
 and move the party; combat's move and aim cursors; the stat editor, where
-they lower and raise a score; the rest-time menu; and two press-Enter
-prompts after a fight. At the camp bar and its Magic and Alter bars the
+they lower and raise a score; and two press-Enter prompts after a
+fight. At the camp bar and its Magic and Alter bars the
 game used an arrow only to put the selected party member back on the
 first, and nobody presses an arrow for that; with the seam on they step
 the highlight instead, and Home and End still step the member.
@@ -243,7 +243,10 @@ the highlight instead, and Home and End still step the member.
 because its scan code is also a letter. At the post-combat Take bar Right
 used to take Money (`M`), and at the temple's keep-or-sell prompt Left used
 to keep the gem (`K`). With the seam on both step the highlight like any
-bar, and the letters still work.
+bar, and the letters still work. And one by decision: the game's rest-time
+menu picks its days, hours or minutes field on Left and Right, and with
+the seam on they step the highlight instead, as at any other bar. `Y`, `H`
+and `M` still pick the field.
 
 **What it will not do.** Make Enter confirm a row in the pick-lists (it
 already does), or take a command at any bar not named above: those are

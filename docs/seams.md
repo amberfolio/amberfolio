@@ -1517,7 +1517,7 @@ its offset is the instruction after the call.
   longer keeps; `M` and `K` still do.
 
   **The callers that keep their arrows**, by the return address in the
-  frame and the manager's word for the module. All eight are in
+  frame and the manager's word for the module. All seven are in
   `seam_bar_keys.cpp`'s table:
 
   | caller | module (manager's word) | return offset | what it does with an arrow |
@@ -1527,7 +1527,6 @@ its offset is the instruction after the call.
   | the combat move loop | overlay 8 (`0x360`) | `0x0AC8` | the scan code is the direction: Right steps the fighter east, Left west |
   | the combat aim cursor | overlay 13 (`0x690`) | `0x3178` | Left and Right move the cursor |
   | the stat editor (Modify, main menu) | overlay 16 (`0x790`) | `0x216E` | Left lowers the highlighted score, Right raises it (`K`, `M` with the out-flag set) |
-  | the rest-time menu | overlay 20 (`0x8D0`) | `0x076E` | Left and Right pick the field |
   | the treasure share's press-Enter prompt | overlay 5 (`0x260`) | `0x0AF8` | any extended key ends it |
   | the NPC share's press-Enter prompt | overlay 5 | `0x14C7` | the same |
 
@@ -1560,13 +1559,14 @@ its offset is the instruction after the call.
   | the temple bar | no `K` or `M` compare |
   | the temple's appraise bar (overlay 21) | no `K` or `M` compare |
   | the temple's keep-or-sell prompt (overlay 21) | **Left is `K`, Keep**; by decision stepped |
+  | the rest-time menu (overlay 20 `0x8D0`, `0x076E`) | Left and Right pick the days/hours/minutes field; **by decision stepped**, like any bar. `Y`, `H` and `M` still pick the field, and Up and Down still add and take away |
   | the game-speed bar, the icon editor's two bars, the move and process bars, the View bar, the save and load slot bars, the Yes/No prompt | not raw |
 
   **Each exclusion by two routes**: the caller's disassembly (the call,
   the raw argument pushed as one, the arrow compare in the loop after it),
   and a driven run with the seam on. Driven with a temporary print of the
   return address and the manager's word at the point: the adventuring bar
-  (`0x09D5`, `0x730`), the rest-time menu (`0x076E`, `0x8D0`), the combat
+  (`0x09D5`, `0x730`), the rest-time menu (`0x076E`, `0x8D0`, stepped since), the combat
   move loop (`0x0AC8`, `0x360`), the aim cursor (`0x3178`, `0x690`), the
   main menu (`0x02FD`, `0x790`), the combat command bar (`0x0819`,
   `0x360`) and the aim bar (`0x2C31`, `0x690`). Not driven: the stat
@@ -1580,8 +1580,7 @@ its offset is the instruction after the call.
   `0x760`, `0x8D0`) reproduced the values other seams carry.
   Driven with the seam on and off, identical: the city's 3D with Left,
   Left, Right, Right (96 of 96 stills), the wilderness with Up, Left and
-  Right (232 of 232), the rest-time menu with Left and Right (126 of
-  126), and by `quiet-bar-keys`.
+  Right (232 of 232), and by `quiet-bar-keys`.
 - **The trade at camp.** With the seam on, Left and Right at the camp
   bar, Magic, Alter and the party-order screen no longer put the selected
   member back on the first one. Nobody presses an arrow to do that, and
