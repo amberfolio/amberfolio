@@ -47,6 +47,7 @@ constexpr std::uint32_t word_combat = 0x360;
 constexpr std::uint32_t word_aim = 0x690;
 constexpr std::uint32_t word_editor = 0x790;
 constexpr std::uint32_t word_rest = 0x8D0;
+constexpr std::uint32_t word_script = 0x2C0;
 
 /// Where each module is, in this test.
 constexpr std::uint16_t menu_segment = 0x6000;
@@ -57,6 +58,7 @@ constexpr std::uint16_t combat_segment = 0x7000;
 constexpr std::uint16_t aim_segment = 0x7400;
 constexpr std::uint16_t editor_segment = 0x7800;
 constexpr std::uint16_t rest_segment = 0x7C00;
+constexpr std::uint16_t script_segment = 0x8000;
 
 /// The callers' return offsets.
 constexpr std::uint16_t ret_yes_no = 0x111E;
@@ -71,6 +73,8 @@ constexpr std::uint16_t ret_aim = 0x3178;
 constexpr std::uint16_t ret_editor = 0x216E;
 constexpr std::uint16_t ret_rest = 0x076E;
 constexpr std::uint16_t ret_share = 0x0AF8;
+/// The script runner's call into the routine, in overlay 7.
+constexpr std::uint16_t ret_script = 0x16EB;
 constexpr std::uint16_t ret_npc_share = 0x14C7;
 /// The post-combat Take bar and the temple's keep prompt, whose letters
 /// are the arrows' scan codes: not excluded, by decision.
@@ -93,6 +97,7 @@ constexpr std::uint16_t data_pushback = 0x8501;
 constexpr std::uint16_t left = 0x4B00;
 constexpr std::uint16_t right = 0x4D00;
 constexpr std::uint16_t enter = 0x1C0D;
+constexpr std::uint16_t escape = 0x011B;
 constexpr std::uint16_t comma = 0x332C;
 constexpr std::uint16_t period = 0x342E;
 
@@ -102,12 +107,21 @@ constexpr std::uint16_t frame_base = 0x0600;
 
 constexpr std::uint16_t ring_first = 0x1E;
 
+/// The script runner's allow-Enter argument, above its BP; and where this
+/// test puts the runner's frame: above the routine's own.
+constexpr std::uint16_t runner_allow = 8;
+constexpr std::uint16_t runner_bp = 0x0700;
+
 /// The character a keystroke word carries.
 [[nodiscard]] char letter_of(std::uint16_t key) {
   return static_cast<char>(key & 0xFFU);
 }
 
 struct rig {
+  /// Where the stack and the routine's frame are. Most tests leave them be.
+  mutable std::uint16_t stack = stack_segment;
+  mutable std::uint16_t frame = frame_base;
+
   rig() : box(std::make_unique<machine>(memory_layout::pc)) {
     sha256_digest baseline;
     EXPECT_TRUE(parse_digest(known_editions().front().fingerprint, baseline));
@@ -130,6 +144,7 @@ struct rig {
     manager_says(word_aim, aim_segment);
     manager_says(word_editor, editor_segment);
     manager_says(word_rest, rest_segment);
+    manager_says(word_script, script_segment);
   }
 
   /// What the overlay manager writes: where a module begins now.
@@ -162,55 +177,60 @@ struct rig {
   /// begins, and a bar with no such character still has the one group.
   void lay_bar(std::string_view bar, std::uint8_t highlight,
                std::uint8_t enter_allowed = 1) const {
-    const auto table = [](unsigned index) {
-      return static_cast<std::uint16_t>(frame_base - local_enter + index);
+    const auto table = [this](unsigned index) {
+      return static_cast<std::uint16_t>(frame - local_enter + index);
     };
     for (unsigned i = 0; i < 0x2A; ++i) {
-      put_byte(stack_segment, table(i), 0);
+      put_byte(stack, table(i), 0);
     }
-    put_byte(stack_segment, static_cast<std::uint16_t>(frame_base - local_bar),
+    put_byte(stack, static_cast<std::uint16_t>(frame - local_bar),
              static_cast<std::uint8_t>(bar.size()));
     unsigned group = 1;
     for (std::size_t i = 0; i < bar.size(); ++i) {
       const char c = bar[i];
-      put_byte(stack_segment,
-               static_cast<std::uint16_t>(frame_base - local_bar + 1 + i),
+      put_byte(stack, static_cast<std::uint16_t>(frame - local_bar + 1 + i),
                static_cast<std::uint8_t>(c));
       if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z'))) {
         continue;
       }
       const auto position = static_cast<std::uint8_t>(i + 1);
       if (byte_is_zero(table(2 * group))) {
-        put_byte(stack_segment, table(2 * group), position);
+        put_byte(stack, table(2 * group), position);
       } else {
-        put_byte(stack_segment, table(2 * group + 1),
+        put_byte(stack, table(2 * group + 1),
                  static_cast<std::uint8_t>(position - 2));
         ++group;
-        put_byte(stack_segment, table(2 * group), position);
+        put_byte(stack, table(2 * group), position);
       }
     }
-    put_byte(stack_segment, table(2 * group + 1),
+    put_byte(stack, table(2 * group + 1),
              static_cast<std::uint8_t>(bar.size()));
-    put_byte(stack_segment, table(1), static_cast<std::uint8_t>(group));
-    put_byte(stack_segment, table(0), enter_allowed);
+    put_byte(stack, table(1), static_cast<std::uint8_t>(group));
+    put_byte(stack, table(0), enter_allowed);
     put_byte(data_segment, data_highlight, highlight);
   }
 
   /// Whether the byte at `offset` in the stack segment is zero.
   [[nodiscard]] bool byte_is_zero(std::uint16_t offset) const {
-    return box->memory().ram()[cpu::physical_address(stack_segment, offset)] ==
-           0;
+    return box->memory().ram()[cpu::physical_address(stack, offset)] == 0;
   }
 
   /// Who called, and in what mode.
   void called_from(std::uint16_t segment, std::uint16_t offset,
                    std::uint8_t raw) const {
-    put_word(stack_segment, static_cast<std::uint16_t>(frame_base + frame_ip),
-             offset);
-    put_word(stack_segment, static_cast<std::uint16_t>(frame_base + frame_cs),
-             segment);
-    put_byte(stack_segment, static_cast<std::uint16_t>(frame_base + frame_raw),
-             raw);
+    put_word(stack, static_cast<std::uint16_t>(frame + frame_ip), offset);
+    put_word(stack, static_cast<std::uint16_t>(frame + frame_cs), segment);
+    put_byte(stack, static_cast<std::uint16_t>(frame + frame_raw), raw);
+  }
+
+  /// The routine's caller is the script runner, whose frame is at
+  /// `runner_bp` and whose allow-Enter argument is `allow_enter`: the
+  /// routine's saved BP is the runner's.
+  void runner_frame(std::uint16_t allow_enter,
+                    std::uint16_t at_bp = runner_bp) const {
+    put_word(stack, frame, at_bp);
+    put_word(stack, static_cast<std::uint16_t>(at_bp + runner_allow),
+             allow_enter);
   }
 
   /// A keystroke at the head of the ring, and nothing behind it.
@@ -238,9 +258,9 @@ struct rig {
     r[cpu::sreg::cs] = menu_segment;
     r.ip = point;
     r[cpu::sreg::ds] = data_segment;
-    r[cpu::sreg::ss] = stack_segment;
+    r[cpu::sreg::ss] = stack;
     r[cpu::reg16::sp] = 0x0400;
-    r[cpu::reg16::bp] = frame_base;
+    r[cpu::reg16::bp] = frame;
     box->step();
   }
 
@@ -603,6 +623,211 @@ TEST(SeamBarKeys, EnterReadsTheHighlightFromTheDataSegmentNotTheStack) {
   EXPECT_EQ(letter_of(r.press(enter, camp_segment, ret_camp, 1)), 'C');
 }
 
+// --- The script prompts ----------------------------------------------------
+
+TEST(SeamBarKeys, EnterTakesTheHighlightAtAScriptPromptThatDoesNotAllowIt) {
+  const rig r;
+  r.arm();
+  r.runner_frame(0);
+
+  r.lay_bar("Yes No", 1);
+  const std::uint16_t answer = r.press(enter, script_segment, ret_script, 1);
+  EXPECT_EQ(letter_of(answer), 'Y');
+  EXPECT_EQ(answer >> 8U, 0x1Cu) << "posted under Enter's own scan code";
+  r.lay_bar("Yes No", 2);
+  EXPECT_EQ(letter_of(r.press(enter, script_segment, ret_script, 1)), 'N');
+  // Any bar, not only a Yes/No: it is the script's own set of hotkeys.
+  r.lay_bar("Ant Bee Cow", 3);
+  EXPECT_EQ(letter_of(r.press(enter, script_segment, ret_script, 1)), 'C');
+}
+
+TEST(SeamBarKeys, EnterIsTheProgramsOwnAtAScriptPromptThatAllowsIt) {
+  const rig r;
+  r.arm();
+  r.lay_bar("Yes No", 2);
+
+  // The runner answers Enter with the first choice itself.
+  for (const std::uint16_t allow : {std::uint16_t{1}, std::uint16_t{0xFF}}) {
+    r.runner_frame(allow);
+    EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter) << allow;
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamBarKeys, EnterAtAScriptPromptHasTheGuardsEveryBarHas) {
+  const rig r;
+  r.arm();
+  r.runner_frame(0);
+
+  // The last-match guard, the bar that is not drawn, and the highlight that
+  // is not set yet.
+  r.lay_bar("Ant Bee Axe", 1);
+  EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 1u);
+  r.lay_bar("Yes No", 2, 0);
+  EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter);
+  r.lay_bar("Yes No", 0);
+  EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 1u);
+}
+
+TEST(SeamBarKeys, EnterIsLeftAloneWhereTheRunnerIsNotTheCallerOfRecord) {
+  const rig r;
+  r.arm();
+  r.lay_bar("Yes No", 2);
+  r.runner_frame(0);
+
+  // The runner's offset in another module, another offset in the runner's
+  // module, and the runner's module while the manager says it is out.
+  EXPECT_EQ(r.press(enter, camp_segment, ret_script, 1), enter);
+  EXPECT_EQ(r.press(enter, script_segment, 0x16EC, 1), enter);
+  EXPECT_EQ(r.press(enter, script_segment, 0x1688, 1), enter);
+  r.manager_says(word_script, 0);
+  EXPECT_EQ(r.press(enter, 0, ret_script, 1), enter);
+  r.manager_says(word_script, script_segment);
+  EXPECT_EQ(letter_of(r.press(enter, script_segment, ret_script, 1)), 'N');
+}
+
+TEST(SeamBarKeys, EnterReadsTheRunnersFrameOnlyWhereItIsTheRunnersFrame) {
+  const rig r;
+  r.arm();
+  r.lay_bar("Yes No", 2);
+
+  // A saved BP that is not above the routine's own is not a caller's frame.
+  r.runner_frame(0, r.frame);
+  EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter);
+  r.runner_frame(0, static_cast<std::uint16_t>(r.frame - 2));
+  EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter);
+  r.runner_frame(0, 0);
+  EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamBarKeys, EnterNeverReadsTheRunnersFramePastConventionalRam) {
+  // The stack stands at the top of the RAM the program owns: a saved BP that
+  // puts the argument past it is not read, and the key is left alone.
+  const rig r;
+  r.arm();
+  r.stack = 0x9F00;
+  r.frame = 0x0F00;
+  r.lay_bar("Yes No", 2);
+
+  r.runner_frame(0, 0x0FF0);
+  EXPECT_EQ(letter_of(r.press(enter, script_segment, ret_script, 1)), 'N')
+      << "the argument is the last bytes inside RAM";
+  r.runner_frame(0, 0x0FFC);
+  EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter);
+  r.runner_frame(0, 0xFFF0);
+  EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+// --- Esc at a Yes/No question ----------------------------------------------
+
+TEST(SeamBarKeys, EscAnswersNoAtTheYesNoPrompt) {
+  const rig r;
+  r.arm();
+  // Whichever answer is highlighted, and whatever mode the call is in.
+  for (std::uint8_t group = 1; group <= 2; ++group) {
+    r.lay_bar("Yup Nay", group);
+    for (const std::uint8_t raw : std::array<std::uint8_t, 2>{0, 1}) {
+      const std::uint16_t answer =
+          r.press(escape, menu_segment, ret_yes_no, raw);
+      EXPECT_EQ(letter_of(answer), 'N');
+      EXPECT_EQ(answer >> 8U, 0x1Cu) << "posted as the Enter letters are";
+    }
+  }
+}
+
+TEST(SeamBarKeys, EscAnswersNoAtAScriptPromptWhoseLettersAreYAndN) {
+  const rig r;
+  r.arm();
+
+  // Whether or not the runner takes Enter itself, and with the answers in
+  // either order.
+  for (const std::uint16_t allow : {std::uint16_t{0}, std::uint16_t{1}}) {
+    r.runner_frame(allow);
+    r.lay_bar("Yes No", 1);
+    EXPECT_EQ(r.press(escape, script_segment, ret_script, 1), 0x1C4E) << allow;
+    r.lay_bar("No Yes", 2);
+    EXPECT_EQ(r.press(escape, script_segment, ret_script, 1), 0x1C4E) << allow;
+  }
+}
+
+TEST(SeamBarKeys, EscIsTheProgramsAtAScriptPromptWithAnyOtherHotkeys) {
+  const rig r;
+  r.arm();
+  r.runner_frame(0);
+
+  // A third letter, a digit, one answer only, a different pair, and a bar
+  // with no command letter in it at all.
+  for (const std::string_view bar :
+       {"Yes No Maybe", "Yes No 3", "Yes", "No", "Ant Bee", "yes no", ""}) {
+    r.lay_bar(bar, 1);
+    EXPECT_EQ(r.press(escape, script_segment, ret_script, 1), escape) << bar;
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamBarKeys, EscIsTheProgramsAtEveryOtherBar) {
+  const rig r;
+  r.arm();
+  r.runner_frame(0);
+  // A Yes/No-shaped bar at a caller that is not a Yes/No question.
+  r.lay_bar("Yup Nay", 2);
+
+  struct caller {
+    std::uint16_t segment;
+    std::uint16_t offset;
+  };
+  for (const caller& c : std::array<caller, 11>{{
+           {.segment = adventure_segment, .offset = ret_area},
+           {.segment = adventure_segment, .offset = ret_view},
+           {.segment = camp_segment, .offset = ret_camp},
+           {.segment = camp_segment, .offset = ret_magic},
+           {.segment = camp_segment, .offset = ret_alter},
+           {.segment = camp_segment, .offset = ret_order},
+           {.segment = menu_segment, .offset = ret_pick_list},
+           {.segment = combat_segment, .offset = ret_move},
+           {.segment = rest_segment, .offset = ret_rest},
+           {.segment = stack_segment, .offset = 0x1234},
+           {.segment = camp_segment, .offset = ret_yes_no},
+       }}) {
+    EXPECT_EQ(r.press(escape, c.segment, c.offset, 0), escape)
+        << std::hex << c.segment << ":" << c.offset;
+  }
+  // The runner's own offset in another module, and the Yes/No's in one that
+  // is not overlay 25.
+  EXPECT_EQ(r.press(escape, camp_segment, ret_script, 1), escape);
+  EXPECT_EQ(r.press(escape, script_segment, ret_yes_no, 1), escape);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamBarKeys, EscIsLeftAloneWhileThePushbackSlotIsArmedOrTheReaderIsOpen) {
+  const rig r;
+  r.arm();
+  r.lay_bar("Yup Nay", 1);
+
+  r.put_byte(data_segment, data_pushback, 0x4B);
+  EXPECT_EQ(r.press(escape, menu_segment, ret_yes_no, 0), escape);
+  r.put_byte(data_segment, data_pushback, 0);
+  r.box->journal().set_reader(journal_reader_mode::listing);
+  EXPECT_EQ(r.press(escape, menu_segment, ret_yes_no, 0), escape);
+  r.box->journal().set_reader(journal_reader_mode::closed);
+  EXPECT_EQ(letter_of(r.press(escape, menu_segment, ret_yes_no, 0)), 'N');
+}
+
+TEST(SeamBarKeys, EscAndEnterAreNotRewrittenWhileTheSeamIsOff) {
+  const rig r;
+  r.manager_says(word_menu, menu_segment);
+  r.manager_says(word_script, script_segment);
+  r.lay_bar("Yes No", 1);
+  r.runner_frame(0);
+  EXPECT_EQ(r.press(escape, menu_segment, ret_yes_no, 0), escape);
+  EXPECT_EQ(r.press(escape, script_segment, ret_script, 1), escape);
+  EXPECT_EQ(r.press(enter, script_segment, ret_script, 1), enter);
+}
+
 // --- What the seam leaves alone --------------------------------------------
 
 TEST(SeamBarKeys, LeavesTheRingAloneWhenItIsEmpty) {
@@ -664,7 +889,7 @@ TEST(SeamBarKeys, WritesNothingButTheHeadWordAndTouchesNoRegister) {
 
 TEST(SeamBarKeys, DoesNotReadTheFrameForAKeyItHasNoBusinessWith) {
   // A letter at a bar whose frame is garbage costs nothing and declines
-  // nothing: only the three keys look at the frame at all.
+  // nothing: only the four keys look at the frame at all.
   const rig r;
   r.arm();
   r.lay_bar("", 0, 0);

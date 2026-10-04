@@ -47,10 +47,12 @@ constexpr std::array bar_rows{
     key_row{", and .", "step the highlight left and right, wrapping"},
     key_row{"Left, Right", "step the highlight, except where they move or edit",
             "bar-keys"},
-    key_row{"Return", "take the highlighted command: Yes/No, camp, exploring",
+    key_row{"Return",
+            "take the highlighted command: questions, camp, exploring",
             "bar-keys"},
     key_row{"Y, N", "answer a Yes/No question"},
     key_row{"Esc", "leave camp, a list or a picker; not the exploring bar"},
+    key_row{"Esc at Yes/No", "answer No to the question", "bar-keys"},
     key_row{"F", "on the camp bar: Fix, rest as long as the party needs",
             "encamp-fix"},
 };
