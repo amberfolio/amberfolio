@@ -94,6 +94,10 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `bar-camp-keys` | same | + bar-keys | **`contrast bar-camp`** | 83 of 93 identical, divergent from tick 201,127,344: the Right steps the highlight to ALTER and the Return takes it, and its sub-bar is up where the seam-off run shows the camp bar |
 | `bar-yn` | same | code-wheel | | slot C's camp, `SAVE`, a Right at the slot bar, Escape, and Return at the quit prompt that follows: the program drops the Right and the Return. 100 checkpoints |
 | `bar-yn-keys` | same | + bar-keys | **`contrast bar-yn`** | 86 of 100 identical, divergent from tick 206,218,672: the Right steps the slot bar's highlight, and the Return answers the prompt `No` |
+| `bar-esc` | same | code-wheel | | slot C's camp, `SAVE`, Escape out of the slot bar, and Escape at the quit prompt that follows, which the program ignores. 99 checkpoints |
+| `bar-esc-keys` | same | + bar-keys | **`contrast bar-esc`** | 91 of 99 identical, divergent from tick 216,799,088: the second Escape answers the prompt `No` and the camp bar is back |
+| `bar-script` | same | code-wheel | | slot A walked to the arena master's question (the status row reads 7,1): `.` steps the highlight to `NO`, then Return and Escape, which the program ignores because the script did not allow Enter. 164 checkpoints. Its recording was re-hashed (below) |
+| `bar-script-keys` | same | + bar-keys | **`contrast bar-script`** | 151 of 164 identical, divergent from tick 316,239,088: Return answers `No`, and Escape answers `No` to the partner question that follows. The press-Enter notice before the question, which allows Enter, is identical |
 
 ## The matrix, by seam
 
@@ -106,8 +110,18 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
 | `list-arrows` | `list-down-arrows` | `list-keys-arrows` |
-| `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys` | `quiet-bar-keys` |
+| `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys` | `quiet-bar-keys` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
+
+**`bar-script` and `bar-script-keys` were recorded and then re-hashed**
+(`--rehash FILE`, `docs/replay.md` §7). A run that walks long enough to
+leave the Tandy chip more than 1,024 writes has its live checkpoints
+disagree with its own replay in the `audio` section, at the first
+checkpoint past that; the chip's write ring holds 1,024 and a replay has
+nothing draining it. The re-hash takes the replay's hashes from the same
+inputs at the same ticks, and the pair keeps its relation (151 of 164
+identical, divergent at the Return). A new session that walks far wants
+the same.
 
 Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the
 same pixels), `camp-fix` (the Fix with a cheat), `wild-trail` (explored
