@@ -171,14 +171,26 @@ press, wrapping and skipping its headings as it does for Home and End.
 The party-member picker (who a spell is cast on, who an item is traded
 to) steps the same way. Keypad 8 and 2 come along, as 7 and 1 always did.
 
+**At camp and the other bars.** Home and End step the selected party
+member at the camp bar, its Magic and Alter bars, the post-combat
+treasure bars, the shops, the temples and the game's yes/no style script
+prompts; any other key put the selection back on the first member. With
+the seam on, **Up and Down step the member too**, as Home and End do. On
+the party-order screen, with a member picked up, they move it up and down
+the order.
+
 **How you turn it on.** `--seam list-arrows`, or the toggle in the panel.
 
-**Where it works.** Only inside a pick-list or the party-member picker.
-In the 3D view, the wilderness and combat the arrows move the party as
-they always did: the seam is never offered a key there.
+**Where it works.** Inside a pick-list or the party-member picker, and at
+the bars named above. Everywhere else the arrows are the game's own: in
+the 3D view, the wilderness and combat they move the party, in the rest
+time menu they raise and lower the time, in the stat editor they pick a
+score, and at the main menu they are left for their own seam. The seam
+names the bars it steps; it does not guess.
 
-**What it will not do.** Change the horizontal command bars, the Yes/No
-prompt or the ability-score screen, or make a held key repeat (the hosts
+**What it will not do.** Change the Yes/No prompt or the ability-score
+screen, step the member from the keypad's 8 and 2 at a bar (they still put
+the selection back on the first), or make a held key repeat (the hosts
 drop OS key repeats, `docs/hosts.md`).
 
 ## The text faces
@@ -233,8 +245,8 @@ it) take the command under the highlight. A command the other seams add, the Enc
 **Where Left and Right work.** On every bar but the few that use the
 arrows themselves. Those keep them: the adventuring bar, where they turn
 and move the party; combat's move and aim cursors; the stat editor, where
-they lower and raise a score; the rest-time menu; and two press-Enter
-prompts after a fight. At the camp bar and its Magic and Alter bars the
+they lower and raise a score; and two press-Enter prompts after a
+fight. At the camp bar and its Magic and Alter bars the
 game used an arrow only to put the selected party member back on the
 first, and nobody presses an arrow for that; with the seam on they step
 the highlight instead, and Home and End still step the member.
@@ -243,13 +255,47 @@ the highlight instead, and Home and End still step the member.
 because its scan code is also a letter. At the post-combat Take bar Right
 used to take Money (`M`), and at the temple's keep-or-sell prompt Left used
 to keep the gem (`K`). With the seam on both step the highlight like any
-bar, and the letters still work.
+bar, and the letters still work. And one by decision: the game's rest-time
+menu picks its days, hours or minutes field on Left and Right, and with
+the seam on they step the highlight instead, as at any other bar. `Y`, `H`
+and `M` still pick the field.
 
 **What it will not do.** Make Enter confirm a row in the pick-lists (it
 already does), or take a command at any bar not named above: those are
 left as the game has them until each is shown to ignore Enter. Make a held
-key repeat (`docs/hosts.md`) or step the pick-lists with the up and down
-arrows (`list-arrows`).
+key repeat (`docs/hosts.md`) or step the pick-lists and the selected member
+with the up and down arrows (`list-arrows`).
+
+## The menu cursor
+
+**What it does.** Gives the main menu a cursor. The main menu is the
+party-setup screen at the start of the game (Create, Add, Load, Exit and,
+once there is a party, Drop, Modify, View, Remove, Save, Begin), and the
+same menu again at a training hall, where Train is on. The game has no
+highlight there: a command is taken only by its first letter. With the seam
+on, **Up and Down** move a highlight over the commands the menu shows,
+skipping none that is shown and wrapping at both ends, and **Return** takes
+the command under it, as if you had typed its letter. The highlight is the
+game's own: the whole word in white, drawn by the game's own string
+routine, as a pick-list lights a row.
+
+**How you turn it on.** `--seam menu-cursor`, or the toggle in the panel.
+
+**Hidden until used.** Nothing changes on the screen until the first Up or
+Down, and a player who types letters sees the menu as the game draws it.
+The cursor starts on the first command, so the first press moves it: Down,
+Down is the third command shown. Taking a command, by its letter or by
+Return, ends in the game redrawing its menu, and the cursor is hidden again
+until the next Up or Down.
+
+**What it will not do.** Move the party member: Home and End still do that
+at this menu. Make Return do anything when no cursor is showing (the game
+drops it). Remember where the cursor was after a command, or follow the
+bar's own highlight, which is not where the menu left it. Work at any other
+screen: the pick-lists are `list-arrows` and the horizontal bars are
+`bar-keys`. A press made while the cursor is still being drawn is kept and
+used (the game draws a glyph at a time, so a move takes about a tenth of a
+second of the game's time).
 
 ## The hero keys
 

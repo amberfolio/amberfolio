@@ -3237,6 +3237,206 @@ void bar_keys_scenario(assembler& a, std::size_t index, std::uint8_t raw,
 }
 
 // ---------------------------------------------------------------------------
+// The menu cursor, at program scale
+// ---------------------------------------------------------------------------
+//
+// #434. The seam's handler reads the keystroke at the head of the BIOS ring,
+// the main menu's command records in the data segment and the menu-bar
+// routine's frame, queues calls to the program's string drawer, and writes
+// the ring's head word and one enable byte. This program stands in for the
+// routine, the loop and the drawer at once. It is its own overlay manager
+// (it writes its own segment into the word the facts name), keeps four
+// command records of made-up words where the facts say they are, and has a
+// string drawer at the offset the facts give, which appends what it was
+// asked to draw to a log. Seven arrivals: Return with no cursor, Down twice,
+// Return again, each followed by what the ring, the log and the cursor's
+// byte then hold. The handler is the build's own `menu-cursor`, at made-up
+// addresses.
+//
+// The program's data segment is its code segment, so a record's offset in
+// the data segment and the drawer's offset in the image are one address
+// space. The facts keep them apart in the real program, and nothing here
+// puts one on the other.
+
+/// Where the stand-in lays its frame, and what the facts say of it.
+constexpr std::uint16_t menu_cursor_frame = 0x2000;
+constexpr std::uint16_t menu_cursor_ret_ip = 2;
+constexpr std::uint16_t menu_cursor_ret_cs = 4;
+constexpr std::uint16_t menu_cursor_bar = 0x53;
+constexpr std::uint16_t menu_cursor_loop_return = 0x02FD;
+
+/// The word the program's overlay manager keeps the party-setup loop's
+/// segment in.
+constexpr std::uint16_t menu_cursor_loop_word = 0x0790;
+
+/// The command records: from 0x619, forty-two bytes each, the enable byte
+/// at +0x29. Four are laid, the second on (Drop) with the others, which is
+/// a menu with a party member.
+constexpr std::uint16_t menu_cursor_records = 0x0619;
+constexpr std::uint16_t menu_cursor_stride = 0x2A;
+constexpr std::uint16_t menu_cursor_enable = 0x29;
+constexpr std::uint16_t menu_cursor_drop_enable = 0x066C;
+constexpr std::array<std::string_view, 4> menu_cursor_words{"Cargo", "Dune",
+                                                            "Mist", "Tide"};
+
+/// The string drawer's offset, and the log it keeps: a pointer at 0x4000,
+/// then fifty-one bytes a call (five words and forty-one bytes of the
+/// string).
+constexpr std::uint16_t menu_cursor_draw = 0x76B6;
+constexpr std::uint16_t menu_cursor_log_pointer = 0x4000;
+constexpr std::uint16_t menu_cursor_log = 0x4010;
+constexpr std::uint16_t menu_cursor_log_stride = 51;
+
+constexpr std::uint16_t menu_cursor_down = 0x5000;
+constexpr std::uint16_t menu_cursor_enter = 0x1C0D;
+constexpr std::uint16_t menu_cursor_placeholder = 0x0C2D;
+/// Return, as the third command's letter.
+constexpr std::uint16_t menu_cursor_enter_as_m = 0x1C4D;
+
+struct menu_cursor_layout {
+  std::vector<std::uint8_t> file;
+  std::array<std::uint32_t, 4> offsets{};
+};
+
+/// One arrival and what the program reads after it:
+///
+///     mov  word es:[1Eh], key
+/// point:
+///     mov  ax, es:[1Eh]
+///     mov  [result + 2*index], ax
+void menu_cursor_arrival(assembler& a, std::size_t index, std::uint16_t key,
+                         std::size_t where) {
+  a.db({0x26, 0xC7, 0x06});
+  a.dw(0x001E);
+  a.dw(key);
+  a.label("point" + std::to_string(where));
+  a.db({0x26, 0xA1});
+  a.dw(0x001E);
+  store(a, index, reg_ax);
+}
+
+[[nodiscard]] const menu_cursor_layout& menu_cursor_probe() {
+  static const menu_cursor_layout built = [] {
+    assembler a;
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+    a.db({0xBD});
+    a.dw(menu_cursor_frame);  // mov bp, 2000h
+    a.db({0xB8});
+    a.dw(0x0040);        // mov ax, 40h
+    a.db({0x8E, 0xC0});  // mov es, ax
+    a.db({0x26, 0xC7, 0x06});
+    a.dw(0x001A);
+    a.dw(0x001E);  // mov word es:[1Ah], 1Eh   the head
+    a.db({0x26, 0xC7, 0x06});
+    a.dw(0x001C);
+    a.dw(0x0020);        // mov word es:[1Ch], 20h   the tail: one key waits
+    a.db({0x8C, 0xC8});  // mov ax, cs
+    a.db({0xA3});
+    a.dw(menu_cursor_loop_word);  // mov [0790h], ax   "the loop is here"
+    a.db({0x8C, 0x4E, static_cast<std::uint8_t>(menu_cursor_ret_cs)});
+    // mov [bp+4], cs                          the frame's return segment
+
+    // Return, with no cursor drawn.
+    menu_cursor_arrival(a, 0, menu_cursor_enter, 0);
+    // Down: the cursor appears on the second command. Then what it drew.
+    menu_cursor_arrival(a, 1, menu_cursor_down, 1);
+    load_ax_from(a, menu_cursor_log_pointer);
+    store(a, 2, reg_ax);
+    // Down again: the third. Then what has been drawn in all.
+    menu_cursor_arrival(a, 3, menu_cursor_down, 2);
+    load_ax_from(a, menu_cursor_log_pointer);
+    store(a, 4, reg_ax);
+    // The byte the cursor lives in.
+    a.db({0xA0});
+    a.dw(menu_cursor_drop_enable);  // mov al, [066Ch]
+    a.db({0x30, 0xE4});             // xor ah, ah
+    store(a, 5, reg_ax);
+    // Return, with the cursor on the third.
+    menu_cursor_arrival(a, 6, menu_cursor_enter, 3);
+    exit_with(a, 0x8F);
+
+    // Everything the program is told by its data, laid where the facts say.
+    a.pad_to(menu_cursor_records);
+    for (std::size_t r = 0; r < 11; ++r) {
+      std::array<std::uint8_t, menu_cursor_stride> record{};
+      if (r < menu_cursor_words.size()) {
+        record[0] = static_cast<std::uint8_t>(menu_cursor_words[r].size());
+        for (std::size_t i = 0; i < menu_cursor_words[r].size(); ++i) {
+          record[1 + i] = static_cast<std::uint8_t>(menu_cursor_words[r][i]);
+        }
+        record[menu_cursor_enable] = 1;
+      }
+      for (const std::uint8_t byte : record) {
+        a.db({byte});
+      }
+    }
+    a.pad_to(machine_layout::result_offset + 0x20);
+
+    // The routine's copy of the bar, below BP, and its return offset above.
+    a.pad_to(static_cast<std::size_t>(menu_cursor_frame - menu_cursor_bar));
+    constexpr std::string_view bar = "C D M T V A R L S B E J";
+    a.db({static_cast<std::uint8_t>(bar.size())});
+    for (const char c : bar) {
+      a.db({static_cast<std::uint8_t>(c)});
+    }
+    a.pad_to(static_cast<std::size_t>(menu_cursor_frame + menu_cursor_ret_ip));
+    a.dw(menu_cursor_loop_return);
+
+    // The log's pointer, at its first entry.
+    a.pad_to(menu_cursor_log_pointer);
+    a.dw(menu_cursor_log);
+
+    // The string drawer, as the real one is called: five words and a far
+    // pointer's worth of arguments, `retf 0Ah`. It appends them, and the
+    // forty-one bytes the pointer names, to the log.
+    a.pad_to(menu_cursor_draw);
+    a.db({0x55, 0x89, 0xE5, 0x1E, 0x1E, 0x07});  // push bp / mov bp, sp /
+                                                 // push ds / push ds / pop es
+    a.db({0x8B, 0x3E});
+    a.dw(menu_cursor_log_pointer);  // mov di, [log pointer]
+    for (const std::uint8_t k :
+         std::array<std::uint8_t, 5>{0x0E, 0x0C, 0x0A, 0x08, 0x06}) {
+      a.db({0x8B, 0x46, k, 0x89, 0x05, 0x83, 0xC7, 0x02});
+      // mov ax, [bp+k] / mov [di], ax / add di, 2
+    }
+    a.db({0xC5, 0x76, 0x06});        // lds si, [bp+6]
+    a.db({0xB9, 0x29, 0x00});        // mov cx, 41
+    a.db({0xFC, 0xF3, 0xA4, 0x1F});  // cld / rep movsb / pop ds
+    a.db({0x89, 0x3E});
+    a.dw(menu_cursor_log_pointer);   // mov [log pointer], di
+    a.db({0x5D, 0xCA, 0x0A, 0x00});  // pop bp / retf 0Ah
+
+    // The pushback slot is the byte at 0x8501, which the image reaches.
+    a.pad_to(0x8510);
+
+    menu_cursor_layout out;
+    for (std::size_t i = 0; i < out.offsets.size(); ++i) {
+      out.offsets[i] =
+          static_cast<std::uint32_t>(a.offset_of("point" + std::to_string(i)));
+    }
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x1600,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
+}
+
+/// The `menu-cursor` handler, from the definition this build ships.
+[[nodiscard]] machine::seam_handler menu_cursor_handler() {
+  for (const machine::seam_definition& seam : machine::all_seams()) {
+    if (seam.id == "menu-cursor" && !seam.points.empty()) {
+      return seam.points.front().run;
+    }
+  }
+  return nullptr;
+}
+
+// ---------------------------------------------------------------------------
 // The hero keys, at program scale
 // ---------------------------------------------------------------------------
 //
@@ -3711,6 +3911,121 @@ struct list_arrows_layout {
     }
   }
   return nullptr;
+}
+
+// --- 10b. The list arrows at the command bars -------------------------------
+//
+// #435. The seam's third handler reads the keystroke at the head of the BIOS
+// ring and the menu-bar routine's frame, and writes Home or End over an Up
+// or Down when the caller is one whose Home and End step the party cursor.
+// This program stands in for the routine as `bar_keys_probe` does: it is its
+// own overlay manager (it writes its own segment into the words the facts
+// name for the camp's module and the adventuring loop's), lays the caller's
+// return address in a frame, and puts a key at the head of the ring before
+// each of five arrivals, then reads what the ring holds.
+//
+//         push cs / pop ds ; mov bp, 2000h ; mov ax, 40h / mov es, ax
+//         mov word es:[1Ah], 1Eh ; mov word es:[1Ch], 20h   ; one key waits
+//         mov ax, cs / mov [0760h], ax / mov [0730h], ax    ; "they are here"
+//         mov [bp+4], ax                                    ; the caller's cs
+//  (each) mov word [bp+2], return ; mov word es:[1Eh], key
+//  point: mov ax, es:[1Eh]                                  ; the seam's point
+//         <store ax>
+
+constexpr std::uint16_t roster_frame = 0x2000;
+constexpr std::uint16_t roster_ret_ip = 2;
+constexpr std::uint16_t roster_ret_cs = 4;
+
+/// The words the program's overlay manager keeps the camp screen's and the
+/// adventuring loop's segments in, restated from the facts.
+constexpr std::uint16_t roster_camp_word = 0x0760;
+constexpr std::uint16_t roster_adventure_word = 0x0730;
+
+/// The camp bar's return offset, which steps the party cursor on Home and
+/// End; the adventuring bar's, which uses Up and Down to move the party;
+/// and an offset no table names.
+constexpr std::uint16_t roster_camp_return = 0x1F24;
+constexpr std::uint16_t roster_adventure_return = 0x09D5;
+constexpr std::uint16_t roster_unlisted_return = 0x0FE0;
+
+constexpr std::uint16_t roster_up = 0x4800;
+constexpr std::uint16_t roster_down = 0x5000;
+constexpr std::uint16_t roster_home = 0x4700;
+constexpr std::uint16_t roster_end = 0x4F00;
+/// The keypad's 2: Down's scan code with a character.
+constexpr std::uint16_t roster_pad_2 = 0x5032;
+
+struct roster_layout {
+  std::vector<std::uint8_t> file;
+  std::array<std::uint32_t, 5> offsets{};
+};
+
+/// One scenario's setup, then the arrival and its answer:
+///
+///     mov  word [bp+2], return_offset
+///     mov  word es:[1Eh], key
+/// point:
+///     mov  ax, es:[1Eh]
+///     mov  [result + 2*index], ax
+void roster_scenario(assembler& a, std::size_t index,
+                     std::uint16_t return_offset, std::uint16_t key) {
+  a.db({0xC7, 0x86});
+  a.dw(roster_ret_ip);
+  a.dw(return_offset);
+  a.db({0x26, 0xC7, 0x06});
+  a.dw(0x001E);
+  a.dw(key);
+  a.label("point" + std::to_string(index));
+  a.db({0x26, 0xA1});
+  a.dw(0x001E);
+  store(a, index, reg_ax);
+}
+
+[[nodiscard]] const roster_layout& roster_probe() {
+  static const roster_layout built = [] {
+    assembler a;
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+    a.db({0xBD});
+    a.dw(roster_frame);  // mov bp, 2000h
+    a.db({0xB8});
+    a.dw(0x0040);        // mov ax, 40h
+    a.db({0x8E, 0xC0});  // mov es, ax
+    a.db({0x26, 0xC7, 0x06});
+    a.dw(0x001A);
+    a.dw(0x001E);  // mov word es:[1Ah], 1Eh   the head
+    a.db({0x26, 0xC7, 0x06});
+    a.dw(0x001C);
+    a.dw(0x0020);        // mov word es:[1Ch], 20h   the tail: one key waits
+    a.db({0x8C, 0xC8});  // mov ax, cs
+    a.db({0xA3});
+    a.dw(roster_camp_word);  // mov [0760h], ax
+    a.db({0xA3});
+    a.dw(roster_adventure_word);  // mov [0730h], ax
+    a.db({0x89, 0x86});
+    a.dw(roster_ret_cs);  // mov [bp+4], ax
+
+    roster_scenario(a, 0, roster_camp_return, roster_up);
+    roster_scenario(a, 1, roster_camp_return, roster_down);
+    roster_scenario(a, 2, roster_adventure_return, roster_up);
+    roster_scenario(a, 3, roster_camp_return, roster_pad_2);
+    roster_scenario(a, 4, roster_unlisted_return, roster_down);
+    exit_with(a, 0x8F);
+
+    roster_layout out;
+    for (std::size_t i = 0; i < out.offsets.size(); ++i) {
+      out.offsets[i] =
+          static_cast<std::uint32_t>(a.offset_of("point" + std::to_string(i)));
+    }
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x1600,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
 }
 
 // --- 11. The call door ----------------------------------------------------
@@ -4568,6 +4883,50 @@ constexpr std::array<machine::seam_point, 1> door_points{
   }
 
   {
+    // The menu cursor: off, every key is the program's own and nothing is
+    // drawn; on, the first Down puts a cursor on the second command, the
+    // next moves it to the third and puts the second back, Return with it
+    // drawn is the third's letter, and Return with none is left (#434).
+    machine_program p;
+    p.name = "menu_cursor_probe_off";
+    p.about = "no seam: every key is the program's own and nothing is drawn";
+    p.setup.exe = menu_cursor_probe_file();
+    p.setup.exe_path = "\\MENUCUR.EXE";
+    p.setup.step_cap = 2'000;
+    p.results = {{.what = "return, no cursor", .value = menu_cursor_enter},
+                 {.what = "down", .value = menu_cursor_down},
+                 {.what = "the log after it", .value = menu_cursor_log},
+                 {.what = "down again", .value = menu_cursor_down},
+                 {.what = "the log after that", .value = menu_cursor_log},
+                 {.what = "the cursor's byte", .value = 1},
+                 {.what = "return", .value = menu_cursor_enter}};
+    p.exit_code = 0x8F;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "menu_cursor_probe_on";
+    p.about = "the seam: a cursor that moves, and Return that takes it";
+    p.setup.exe = menu_cursor_probe_file();
+    p.setup.exe_path = "\\MENUCUR.EXE";
+    p.setup.seam_definitions = {&menu_cursor_probe_definition()};
+    p.setup.seams = {"menu-cursor-probe"};
+    p.setup.step_cap = 20'000;
+    p.results = {{.what = "return, no cursor", .value = menu_cursor_enter},
+                 {.what = "down", .value = menu_cursor_placeholder},
+                 {.what = "the log after it",
+                  .value = menu_cursor_log + (1 * menu_cursor_log_stride)},
+                 {.what = "down again", .value = menu_cursor_placeholder},
+                 {.what = "the log after that",
+                  .value = menu_cursor_log + (4 * menu_cursor_log_stride)},
+                 {.what = "the cursor's byte", .value = 4},
+                 {.what = "return", .value = menu_cursor_enter_as_m}};
+    p.exit_code = 0x8F;
+    list.push_back(std::move(p));
+  }
+
+  {
     // The hero keys: off, every key and every row is the program's own;
     // on, the number row's 1 to 8 select a member at a tabled caller by
     // putting the selection where the program's own cursor lands on it
@@ -4710,6 +5069,44 @@ constexpr std::array<machine::seam_point, 1> door_points{
                  {.what = "a command's 50h", .value = scan_down},
                  {.what = "the picker's down", .value = scan_end}};
     p.exit_code = 0x8D;
+    list.push_back(std::move(p));
+  }
+
+  {
+    // The list arrows at the command bars: off, every key is the
+    // program's own; on, Up and Down at a caller whose Home and End step
+    // the party cursor are Home and End, and at a caller no table names,
+    // or as the keypad's digit, are left (#435).
+    machine_program p;
+    p.name = "list_arrows_bars_probe_off";
+    p.about = "no seam: every key is the program's own";
+    p.setup.exe = roster_probe_file();
+    p.setup.exe_path = "\\ROSTER.EXE";
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "up at the camp bar", .value = roster_up},
+                 {.what = "down at the camp bar", .value = roster_down},
+                 {.what = "up at the adventuring bar", .value = roster_up},
+                 {.what = "the keypad's 2", .value = roster_pad_2},
+                 {.what = "down at an unlisted caller", .value = roster_down}};
+    p.exit_code = 0x8F;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "list_arrows_bars_probe_on";
+    p.about = "the seam: Up and Down at the camp bar are Home and End";
+    p.setup.exe = roster_probe_file();
+    p.setup.exe_path = "\\ROSTER.EXE";
+    p.setup.seam_definitions = {&roster_probe_definition()};
+    p.setup.seams = {"list-arrows-bars-probe"};
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "up at the camp bar", .value = roster_home},
+                 {.what = "down at the camp bar", .value = roster_end},
+                 {.what = "up at the adventuring bar", .value = roster_up},
+                 {.what = "the keypad's 2", .value = roster_pad_2},
+                 {.what = "down at an unlisted caller", .value = roster_down}};
+    p.exit_code = 0x8F;
     list.push_back(std::move(p));
   }
 
@@ -5334,6 +5731,35 @@ const machine::seam_definition& bar_keys_probe_definition() {
   return definition;
 }
 
+const std::vector<std::uint8_t>& menu_cursor_probe_file() {
+  return menu_cursor_probe().file;
+}
+
+const machine::seam_definition& menu_cursor_probe_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(menu_cursor_probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 4> points = [] {
+    std::array<machine::seam_point, 4> built{};
+    for (std::size_t i = 0; i < built.size(); ++i) {
+      built[i] = {.module = machine::resident_image,
+                  .offset = menu_cursor_probe().offsets[i],
+                  .run = menu_cursor_handler()};
+    }
+    return built;
+  }();
+  static const machine::seam_definition definition{
+      .id = "menu-cursor-probe",
+      .about = "the menu cursor's own handler, at made-up addresses",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
+
 const std::vector<std::uint8_t>& hero_keys_probe_file() {
   return hero_keys_probe().file;
 }
@@ -5398,6 +5824,35 @@ const std::vector<std::uint8_t>& font_probe_file() { return font_probe().file; }
 
 const std::vector<std::uint8_t>& list_arrows_probe_file() {
   return list_arrows_probe().file;
+}
+
+const std::vector<std::uint8_t>& roster_probe_file() {
+  return roster_probe().file;
+}
+
+const machine::seam_definition& roster_probe_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(roster_probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 5> points = [] {
+    std::array<machine::seam_point, 5> built{};
+    for (std::size_t i = 0; i < built.size(); ++i) {
+      built[i] = {.module = machine::resident_image,
+                  .offset = roster_probe().offsets[i],
+                  .run = list_arrows_handler(2)};
+    }
+    return built;
+  }();
+  static const machine::seam_definition definition{
+      .id = "list-arrows-bars-probe",
+      .about = "the list arrows' bar rewrite, at made-up addresses",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
 }
 
 const machine::seam_definition& list_arrows_probe_definition() {

@@ -53,6 +53,8 @@ constexpr std::array bar_rows{
     key_row{", and .", "step the highlight left and right, wrapping"},
     key_row{"Left, Right", "step the highlight, except where they move or edit",
             "bar-keys"},
+    key_row{"Up, Down", "previous or next member where Home and End step it",
+            "list-arrows"},
     key_row{"Return", "take the highlighted command: Yes/No, camp, exploring",
             "bar-keys"},
     key_row{"1-8 on the number row",
@@ -61,6 +63,15 @@ constexpr std::array bar_rows{
     key_row{"Esc", "leave camp, a list or a picker; not the exploring bar"},
     key_row{"F", "on the camp bar: Fix, rest as long as the party needs",
             "encamp-fix"},
+};
+
+constexpr std::array menu_rows{
+    key_row{"its capital letter", "take that command; lower case works"},
+    key_row{"Home, End", "select the previous or next party member"},
+    key_row{"Up, Down", "move a cursor over the commands shown (not 8, 2)",
+            "menu-cursor"},
+    key_row{"Return", "take the command under the cursor, once one shows",
+            "menu-cursor"},
 };
 
 constexpr std::array list_rows{
@@ -130,6 +141,8 @@ constexpr std::array contexts{
                 explore_rows},
     key_context{"wilderness", "Exploring: the wilderness map", wilderness_rows},
     key_context{"bars", "Command bars (the line along the bottom)", bar_rows},
+    key_context{"menu", "The main menu (party setup, training halls)",
+                menu_rows},
     key_context{"lists", "Pick-lists (race, class, shops, spells, coins)",
                 list_rows},
     key_context{"picker", "Choosing a party member", picker_rows},

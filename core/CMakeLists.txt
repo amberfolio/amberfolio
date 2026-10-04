@@ -83,6 +83,7 @@ add_library(amberfolio-core STATIC
   src/machine/seam_font.cpp
   src/machine/seam_journal.cpp
   src/machine/seam_list_arrows.cpp
+  src/machine/seam_menu_cursor.cpp
   src/machine/seam_table.cpp
   src/machine/service_floor.cpp
   src/machine/speaker.cpp
