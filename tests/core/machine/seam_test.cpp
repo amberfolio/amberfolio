@@ -2119,3 +2119,176 @@ TEST(SeamGroup, TheBuiltInFacesAreAlternatives) {
 
 }  // namespace
 }  // namespace amberfolio::machine
+
+namespace amberfolio::machine {
+namespace {
+
+// --- The step filter (seam.h, `wants`) ---------------------------------------
+//
+// `machine::step()` asks `wants(at)` and calls `dispatch` only when it is
+// true, so the filter has to be exact in the direction that matters: it
+// may say yes to a step nothing happens at (a visit that costs a scan),
+// and must never say no to one where `dispatch` would have done anything.
+// What each of these pins is one of the ways that could go wrong.
+
+/// What `dispatch` has done so far, as the sum of the two things it
+/// counts.
+[[nodiscard]] std::uint64_t acts(const seam_engine& seams) {
+  std::uint64_t total = 0;
+  for (std::size_t i = 0; i < seams.count(); ++i) {
+    const seam_status row = seams.status(i);
+    total += row.fired + row.reached;
+  }
+  return total;
+}
+
+[[nodiscard]] std::uint32_t image_at(std::uint32_t offset) {
+  return cpu::physical_address(image_load_segment, 0) + offset;
+}
+
+TEST(SeamFilter, NothingArmedWantsNothing) {
+  const rig r;
+  EXPECT_FALSE(r.pc().seams().armed());
+  EXPECT_FALSE(r.pc().seams().wants(image_at(edit_offset)));
+}
+
+TEST(SeamFilter, WantsAFixedPointsAddressAndNoOtherInItsNeighbourhood) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  const seam_engine& seams = r.pc().seams();
+
+  EXPECT_TRUE(seams.wants(image_at(edit_offset)));
+  for (std::uint32_t offset = 0; offset < 0x40; ++offset) {
+    if (offset != edit_offset) {
+      EXPECT_FALSE(seams.wants(image_at(offset))) << offset;
+    }
+  }
+  EXPECT_FALSE(seams.wants(0));
+  EXPECT_FALSE(seams.wants(0xFFFFF));
+}
+
+TEST(SeamFilter, ADisabledSeamsPointIsNotWanted) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().enable("test-key"), seam_reason::none);
+  ASSERT_EQ(r.pc().seams().disable("test-edit"), seam_reason::none);
+  const seam_engine& seams = r.pc().seams();
+
+  EXPECT_FALSE(seams.wants(image_at(edit_offset)))
+      << "the point came down with its seam";
+  EXPECT_TRUE(seams.wants(image_at(key_offset))) << "and a sibling's did not";
+
+  ASSERT_EQ(r.pc().seams().disable("test-key"), seam_reason::none);
+  EXPECT_FALSE(seams.armed());
+  EXPECT_FALSE(seams.wants(image_at(key_offset)));
+}
+
+TEST(SeamFilter, AResetMachineWantsNothing) {
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-edit"), seam_reason::none);
+  r.pc().reset();
+  EXPECT_FALSE(r.pc().seams().wants(image_at(edit_offset)));
+}
+
+TEST(SeamFilter, AMovedModulesPointFollowsTheWordWithoutARearm) {
+  // The word is rewritten and nothing is told: no read, no enable, no
+  // `rearm()`. A filter built from the word's value at some earlier
+  // moment would be wrong from here on, so the answer has to come from
+  // the word as it is now.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-moving-overlay"), seam_reason::none);
+  const seam_engine& seams = r.pc().seams();
+  const std::uint32_t in_3000 = cpu::physical_address(0x3000, 2);
+  const std::uint32_t in_3400 = cpu::physical_address(0x3400, 2);
+
+  r.manager_says_module_at(0);
+  EXPECT_FALSE(seams.wants(in_3000)) << "zero is not loaded";
+  EXPECT_FALSE(seams.wants(in_3400));
+
+  r.manager_says_module_at(0x3000);
+  EXPECT_TRUE(seams.wants(in_3000));
+  EXPECT_FALSE(seams.wants(in_3400));
+  EXPECT_FALSE(seams.wants(in_3000 + 1)) << "right paragraph, wrong offset";
+  EXPECT_FALSE(seams.wants(in_3000 + 0x10)) << "right nibble, wrong paragraph";
+
+  r.manager_says_module_at(0x3400);
+  EXPECT_FALSE(seams.wants(in_3000));
+  EXPECT_TRUE(seams.wants(in_3400));
+
+  r.manager_says_module_at(0);
+  EXPECT_FALSE(seams.wants(in_3400));
+}
+
+TEST(SeamFilter, ALatchedPointWantsEveryStepUntilItIsServed) {
+  const rig r;
+  r.program_at(0, {0x90, 0x90, 0xF4});
+  ASSERT_EQ(r.pc().seams().enable("test-pull"), seam_reason::none);
+  seam_engine& seams = r.pc().seams();
+  const std::uint32_t anywhere = image_at(0x1234);
+
+  EXPECT_FALSE(seams.wants(anywhere)) << "nobody has pulled";
+  ASSERT_EQ(seams.pull("test-pull", r.pc().time()), seam_reason::none);
+  EXPECT_TRUE(seams.wants(anywhere));
+  EXPECT_TRUE(seams.wants(0));
+
+  r.pc().step();  // offered at once, and served
+  EXPECT_FALSE(seams.waiting("test-pull"));
+  EXPECT_FALSE(seams.wants(anywhere)) << "the latch went down with the run";
+
+  ASSERT_EQ(seams.pull("test-pull", r.pc().time()), seam_reason::none);
+  ASSERT_TRUE(seams.wants(anywhere));
+  ASSERT_EQ(seams.disable("test-pull"), seam_reason::none);
+  EXPECT_FALSE(seams.wants(anywhere)) << "and a pull dies with its seam";
+}
+
+TEST(SeamFilter, APointOnATriggerIsStillWantedWithTheLatchDown) {
+  // `reached` counts arrivals whether or not anybody pulled, so the
+  // filter must let that arrival through even though nothing will run.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-trigger"), seam_reason::none);
+  EXPECT_TRUE(r.pc().seams().wants(image_at(edit_offset)));
+}
+
+TEST(SeamFilter, AgreesWithWhatDispatchDoesAtEveryAddressItIsAskedAbout) {
+  // The oracle: ask `dispatch` itself, over every address at the points
+  // and beside them, with every kind of point armed, and hold the filter
+  // to what the loop did.
+  const rig r;
+  seam_engine& seams = r.pc().seams();
+  for (const std::string_view id :
+       {"test-edit", "test-key", "test-trigger", "test-moving-overlay",
+        "test-overlay", "test-pull-untriggered"}) {
+    ASSERT_EQ(seams.enable(id), seam_reason::none) << id;
+  }
+  // Segments chosen so that no two fixed points share their low sixteen
+  // address bits, which the filter folds (a false positive the equality
+  // below would otherwise have to excuse).
+  r.load_overlay(0x2100);
+  r.manager_says_module_at(0x3000);
+
+  std::size_t acted_at = 0;
+  const auto sweep = [&](std::uint32_t first, std::uint32_t last) {
+    for (std::uint32_t at = first; at < last; ++at) {
+      const bool wanted = seams.wants(at);
+      const std::uint64_t before = acts(seams);
+      seams.dispatch(*r.box, at);
+      const bool acted = acts(seams) != before;
+      EXPECT_TRUE(wanted || !acted) << "refused a step it would act at: " << at;
+      EXPECT_EQ(wanted, acted) << "said yes to one it would not: " << at;
+      acted_at += acted ? 1U : 0U;
+    }
+  };
+  sweep(image_at(0), image_at(0x40));
+  sweep(cpu::physical_address(0x2100, 0), cpu::physical_address(0x2100, 0x20));
+  sweep(cpu::physical_address(0x3000, 0), cpu::physical_address(0x3000, 0x20));
+  sweep(cpu::physical_address(0x3400, 0), cpu::physical_address(0x3400, 0x20));
+  EXPECT_GE(acted_at, 4U) << "the sweep has to have found the points";
+
+  // Move the module and sweep again: still exact.
+  r.manager_says_module_at(0x3400);
+  sweep(cpu::physical_address(0x3000, 0), cpu::physical_address(0x3000, 0x20));
+  sweep(cpu::physical_address(0x3400, 0), cpu::physical_address(0x3400, 0x20));
+}
+
+}  // namespace
+}  // namespace amberfolio::machine

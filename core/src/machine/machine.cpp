@@ -256,10 +256,16 @@ cpu::step_status machine::step() {
   // seam pointed at a BIOS stub sees the state the handler left rather
   // than the state that reached it.
   //
-  // The cost when nothing is enabled is the `armed()` test alone.
+  // The cost when nothing is enabled is the `armed()` test alone. When
+  // something is, a step at an address no point is at costs `wants()`,
+  // two tests of two words, and `dispatch` is not called (seam.h, "The
+  // cost when it is off").
   if (seams_.armed()) {
-    seams_.dispatch(*this, cpu::physical_address(cpu_.regs()[cpu::sreg::cs],
-                                                 cpu_.regs().ip));
+    const std::uint32_t at =
+        cpu::physical_address(cpu_.regs()[cpu::sreg::cs], cpu_.regs().ip);
+    if (seams_.wants(at)) {
+      seams_.dispatch(*this, at);
+    }
   }
 
   // Last thing before the instruction, so that what is recorded is where
