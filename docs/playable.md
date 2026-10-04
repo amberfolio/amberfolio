@@ -1206,6 +1206,21 @@ fighter) and the aim cursor (`A`, then `M` for Manual, then `Right`). A
 temporary print of the return address at the seam's point is the way to
 see which caller a key came from.
 
+**The bars the Enter audit added** (#459). Each is a Return at the bar,
+the seam off (nothing) and on (the lit command), read from the screen text
+beside the stills. The portrait bar of leg 0 (without its fifth
+Return, which lands on the keep prompt): `.@9300 Return@9400`, and with the
+seam on the body changes (`bar-portrait`, `bar-portrait-keys`). Leg 4's
+shop, `Return@13600` after the bar is up: Buy. Leg 5's temple,
+`Return@13201` after `Y@12701`: Heal. A fight from the saved disk (leg 2's
+keys to `C@11201`): `Return@12001` takes Move, and `D@12001` then
+`S@12400 Return@12800` takes Slower on the combat speed bar. Slot C's camp,
+`A@9400 P@9700 Return@10000` toggles Monsters, and `S@10600 Return@10900`
+takes Exit on the speed bar. `L@7550 Return@8200` loads the lit slot. And
+at the rest-time menu, `R` at slot B's camp opens it lit on `Mins`:
+`Left@9800 Left@9950 Return@10100` takes `daYs` (an `Up` then reads
+`REST TIME: 01:00:00`), where the seam off, `Left@9800 Return@10000`, rests.
+
 **With other seams on.** `journal`: Return on a highlighted `NOTES` opens
 the log, and every still of the run is the same as `N` typed (121 of
 121); a Return in the reader opens a row as it does with the seam off.

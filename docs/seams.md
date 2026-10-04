@@ -852,7 +852,7 @@ to carry.
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `list-arrows` | the up and down arrows step the game's pick-lists, its party-member picker and, at the bars where Home and End step the selected member, that member, as Home and End do | overlay 25 (the list routine and the menu-bar routine), and the resident image |
-| `bar-keys` | Left and Right step a command bar's highlight at every bar but the few that use them; Enter takes the highlighted command at the Yes/No prompt, the event scripts' questions, the camp bar and its Magic and Alter bars, and the adventuring bar; Esc answers No at a Yes/No question | overlay 25 (the menu-bar routine) |
+| `bar-keys` | Left and Right step a command bar's highlight at every bar but the few that use them; Enter takes the highlighted command at every bar that would drop it or that the maintainer chose (the Yes/No prompt, the event scripts' questions, camp, shops, temples, combat's command bar, View, the portrait bar and more: 20 callers, §10); Esc answers No at a Yes/No question | overlay 25 (the menu-bar routine) |
 | `menu-cursor` | a cursor on the main menu (the party-setup screen and a training hall), on the first command as soon as the menu is drawn: Up and Down move it over the commands shown, Return takes the one it is on | overlay 25 (the menu-bar routine) and overlay 16 (the loop) |
 | `hero-keys` | the number row's 1 to 8 select a party member where Home and End do, and the party list shows each member's number | overlay 25 (the menu-bar routine), and the resident image |
 | `edit-keys` | the arrows, Home, End, the page keys and the function keys no longer type letters at the game's name and text prompts | the resident image |
@@ -1596,33 +1596,74 @@ nothing to pull.
 | Esc | returned as a zero, in raw mode or not; what then happens is the caller's. Both callers below loop on it |
 | the script runner | overlay 7 (file offset 29907, `0x74D3`; 8730 bytes, `0x221A`), through the stub at `102B:0061`: entry `0x1684`, its call into the menu-bar routine at `0x16E6` (return offset `0x16EB`). The manager's word for the module is image `0x02C0`. The runner's saved BP is the one at the routine's `BP+0`; its allow-Enter argument is the word at its `BP+8`, read as a byte. The hotkeys are the script's `~`-marked letters, upper-cased in the bar, and every other letter of the bar is lower-cased |
 
-**The callers whose Enter is nothing.** A caller is identified by the far
-return address in the frame: its segment is the one the program's overlay
-manager says its module is at now (the word is read at every Enter), and
-its offset is the instruction after the call.
+**The callers whose Enter is nothing, and the one whose Enter is Rest by
+decision.** A caller is identified by the far return address in the frame:
+its segment is the one the program's overlay manager says its module is at
+now (the word is read at every Enter), and its offset is the instruction
+after the call. A caller is in the table when it **asks again** on a
+`0x0D` it was handed (#459): every compare misses, and the loop's exit test
+does not hold it. Checked: **D** is a driven run, the seam off (Return
+changes nothing) and on (Return takes the lit command); **S** is the
+disassembly from the return offset on and the ported source, both read for
+a `0x0D` compare and for the loop's exit test, and no more than that.
 
-| caller | module (manager's word) | return offset | what it does with `0x0D` |
-|---|---|---|---|
-| the Yes/No prompt | overlay 25 (`0x3C60`) | `0x111E` | loops until the answer is in `{N, Y}` (a class at `0x10B1`: two bits, `0x4E` and `0x59`); the loop's head is **after** the instruction that sets the highlight to the second group, so the highlight survives each loop |
-| the adventuring bar, city | overlay 14 (`0x730`), file offset 91851, 4268 bytes | `0x09D5` | compares the letter with A, C, V, E, S and L and with nothing else; falls to the status line and the loop |
-| the adventuring bar, wilderness | overlay 14 | `0x0C45` | the same chain without A |
-| the camp bar | overlay 15 (`0x760`), file offset 96305, 8158 bytes | `0x1F24` | compares with S, V, M, R and A and loops; the loop ends on the `changed` flag, or on `0x00` or `E` (a class at `0x1E3B`). The Encamp Fix's `F` is taken at the routine's return, before this compare |
-| camp's Magic bar | overlay 15 | `0x1447` | compares with C, M, S, D and R and loops; the loop ends on the caller's `changed` flag, or on `0x00` or `E` (a class at `0x13D1`) |
-| camp's Alter bar | overlay 15 | `0x1CA4` | compares with O, D, S, I and P and loops; the loop ends on `0x00` or `E` (a class at `0x1BF0`) |
-| the script runner, **when its allow-Enter argument is clear** | overlay 7 (`0x2C0`) | `0x16EB` | loops until the key is a letter or digit, or Enter **if the argument is set**; with it clear Enter asks again |
+| caller | module (manager's word) | return offset | what it does with `0x0D` | checked |
+|---|---|---|---|---|
+| the Yes/No prompt | overlay 25 (`0x3C60`) | `0x111E` | loops until the answer is in `{N, Y}` (a class at `0x10B1`: two bits, `0x4E` and `0x59`); the loop's head is **after** the instruction that sets the highlight to the second group, so the highlight survives each loop | D |
+| the adventuring bar, city | overlay 14 (`0x730`), file offset 91851, 4268 bytes | `0x09D5` | compares the letter with A, C, V, E, S and L and with nothing else; falls to the status line and the loop | D |
+| the adventuring bar, wilderness | overlay 14 | `0x0C45` | the same chain without A | D |
+| the camp bar | overlay 15 (`0x760`), file offset 96305, 8158 bytes | `0x1F24` | compares with S, V, M, R and A and loops; the loop ends on the `changed` flag, or on `0x00` or `E` (a class at `0x1E3B`). The Encamp Fix's `F` is taken at the routine's return, before this compare | D |
+| camp's Magic bar | overlay 15 | `0x1447` | compares with C, M, S, D and R and loops; the loop ends on the caller's `changed` flag, or on `0x00` or `E` (a class at `0x13D1`) | D |
+| camp's Alter bar | overlay 15 | `0x1CA4` | compares with O, D, S, I and P and loops; the loop ends on `0x00` or `E` (a class at `0x1BF0`) | D |
+| the script runner, **when its allow-Enter argument is clear** | overlay 7 (`0x2C0`) | `0x16EB` | loops until the key is a letter or digit, or Enter **if the argument is set**; with it clear Enter asks again | D |
+| alter's Portraits and Monsters bar | overlay 15 | `0x1DDF` | compares M and P; loops until `0x00` or `E` (a class at `0x1BF0`) | D: Return toggles Monsters |
+| camp's game-speed bar | overlay 15 | `0x1B91` | compares F and S (P and H under the out-flag); loops until `0x00` or `E` (a class at `0x1A77`) | D: Return takes Exit |
+| the portrait bar, `HEAD BODY KEEP` | overlay 16 (`0x790`) | `0x3449` | compares H, B and K and nothing else; loops until K | D: `bar-portrait` pair |
+| the shop's bar | overlay 6 (`0x290`) | `0x061F` | compares B, V, T, P, S, A, E, G and O; repaints the party list and loops while the done flag is clear | D: Return takes Buy |
+| the temple's bar | overlay 4 (`0x230`) | `0x0DAA` | compares H, V, T, P, S, A, E, G and O; repaints and loops while the done flag is clear | D: Return takes Heal |
+| the post-combat treasure bar | overlay 5 (`0x260`) | `0x1024` | compares V, T, P, S, D, E and `0x00`, G and O; loops while the done flag is clear | S |
+| the post-combat Take bar | overlay 5 | `0x0D91` | compares M, I, E and `0x00`, G and O; loops while the done flag is clear. The check that ends it on empty coins or total is on every pass, not on this key | S |
+| the combat command bar | overlay 8 (`0x360`) | `0x0819` | the loop ends on a class at `0x0646`, which does not hold `0x0D` (`0x10`, `0x13`, space, `-`, `2`, A, C, D, M, Q, T, U, V); asks again | D: Return takes Move |
+| the combat Done bar | overlay 8 | `0x0F70` | compares G, D, Q, B and S; loops until `0x00` or `E` (a class at `0x0E25`) | D: Return takes the lit command |
+| the combat game-speed bar | overlay 8 | `0x120C` | compares S and F; loops until `0x00` or `E` (a class at `0x10AF`). The source's header says Enter also exits; the disassembly's class does not hold it | D: Return takes Slower, three times, speed 1, 2, 3 |
+| the View bar | overlay 19 (`0x860`) | `0x0C9C` | compares I, S, T and D; loops until `0x00` or `E` (a class at `0x0A4C`) | D: Return takes Drop |
+| the temple's appraise bar | overlay 21 (`0x900`) | `0x1C47` | compares G and J, then `E` or `0x00` ends it; any other key falls to a recompute of the sheet and the loop | S |
+| the load-game slot bar | overlay 17 (`0x7D0`) | `0x16E2` | loops until the key is in a class at `0x159F`, which holds the letters A to J; `0x0D` is not in it | D: Return loads the lit slot |
+| the rest-time menu, **by decision** | overlay 20 (`0x8D0`) | `0x076E` | **takes it as `R`, Rest** (`0x0D` is mapped before the compares). With the seam on Enter follows the highlight instead | D |
 
-- **Each by two routes.** The disassembly of the caller from its return
-  offset on, read for a `0x0D` compare (none), and the loop's own exit
-  test (the Yes/No class; the camp, Magic and Alter classes); and a driven
-  run with the seam off, where a Return at the bar leaves the screen as it
-  was (slot C's camp bar, its Magic bar and its Alter bar, and the Yes/No
+- **Each by two routes.** The first row group (the Yes/No prompt, the
+  adventuring bars, camp) was read in the disassembly and driven with the
+  seam off, where a Return at the bar leaves the screen as it was (slot C's
+  camp bar, its Magic bar and its Alter bar, and the Yes/No
   prompt after Save; slot C's city bar; slot J's wilderness bar; the
-  arena master's question in slot A). Then the
-  same Return with the seam on, which takes the highlighted command
-  (`bar-enter-keys`, `bar-yn-keys`, and driven for the Magic and Alter
-  bars and the two adventuring bars). The party-order screen is not in
-  the table: Return is in the set of keys that pick a member up and put it
-  down there.
+  arena master's question in slot A), and with it on, where it takes the
+  highlighted command (`bar-enter-keys`, `bar-yn-keys`, and driven for the
+  Magic and Alter bars and the two adventuring bars). The audit's rows (#459)
+  were read the same way from the return offset (`ovrdis`, with each
+  `in_class` bitmap read out of the overlay's code at the offset the call
+  pushes), and the ones marked D were driven on the shipped slots with a
+  Return at the bar, once with the seam off and once with it on, reading
+  the screen text beside each still. S rows have both routes on the
+  program's text and none on a screen: the post-combat bars need a pooled
+  reward the fights reachable here do not leave, and the appraise bar needs
+  gems.
+- **The new modules' words** (#459): overlay 17 `0x7D0`, overlay 19
+  `0x860` and overlay 21 `0x900`, found by the search the other words were
+  (the overlay's file offset and length, packed, in the resident image: one
+  match each; the word is sixteen bytes into the record, less the
+  header). The search reproduced `0x230`, `0x260`, `0x290`, `0x2C0`,
+  `0x360`, `0x690`, `0x730`, `0x760`, `0x790`, `0x8D0` and `0x3C60`. The
+  driven rows are the proof they are right: the Return was rewritten only
+  where the word equalled the frame's segment.
+- **The highlight a bar starts on is the last bar's.** The index is one
+  byte shared by every bar and clamped to the group count, so a bar opens
+  lit on whichever group the last choice left. The rest-time menu is
+  entered by `R` at the camp bar, which is that bar's fourth group, so it
+  opens with `Mins` lit, not `Rest`: with the seam on a Return there takes
+  `Mins` (selects the minutes field, which is already the field) and the
+  menu stays up. Left once reaches `Hours`, twice `daYs`, and so on. A
+  word whose capital is mid-word, `daYs`, is a group that begins at the
+  capital, so its Enter is `Y`.
 - **The script runner's Enter, by two routes** (#438). The runner's
   disassembly (overlay 7 from `0x1684`): the loop's exit test is the
   letter-or-digit class, else `0x0D` with the byte at `BP+8` non-zero, and
@@ -1724,7 +1765,7 @@ its offset is the instruction after the call.
   | the temple bar | no `K` or `M` compare |
   | the temple's appraise bar (overlay 21) | no `K` or `M` compare |
   | the temple's keep-or-sell prompt (overlay 21) | **Left is `K`, Keep**; by decision stepped |
-  | the rest-time menu (overlay 20 `0x8D0`, `0x076E`) | Left and Right pick the days/hours/minutes field; **by decision stepped**, like any bar. `Y`, `H` and `M` still pick the field, and Up and Down still add and take away |
+  | the rest-time menu (overlay 20 `0x8D0`, `0x076E`) | Left and Right pick the days/hours/minutes field; **by decision stepped**, like any bar. `Y`, `H` and `M` still pick the field, and Up and Down still add and take away. Its Enter is Rest, and is the highlighted command's by the same decision (above) |
   | the game-speed bar, the icon editor's two bars, the move and process bars, the View bar, the save and load slot bars, the Yes/No prompt | not raw |
 
   **Each exclusion by two routes**: the caller's disassembly (the call,
@@ -1793,24 +1834,49 @@ its offset is the instruction after the call.
   (below); rewriting AL in the key-read routine, because an arrow comes
   back as a zero and then its scan code, two returns for one key.
 
-**Callers looked at and left out, and why.**
+**Every caller's Enter, one line each** (#459). The routine has 37 call
+sites in the overlays and one in the resident image (the party picker),
+38 in all; the first group is the Enter table above.
 
-- The pick-list (`0x0D9A`): Enter confirms its row. Never in the table.
-- The party-member picker (resident image `0x38AA`), where Enter is in the
-  set that ends the loop.
-- The script runner with its allow-Enter argument set: Enter is the
-  program's, and answers the first choice.
-- The combat move loop: the key `0x0D` ends it.
-- The statistics screen of overlay 20 (`0x0721`): Enter becomes its `R`.
-- The party-order screen (`0x17DA`), for Enter: Return is in the set of
-  keys that pick a member up and put it down.
-- The others, which have no `0x0D` branch in the program's source but have
-  not been shown by two routes or driven: the combat command, aim and done
-  bars, the script stage prompt, the game-speed bar, the icon editor, the
-  main menu bar, the modify and move bars and the memorize bar, the
-  post-combat bars, the shops, temples and training, the View bar, and the
-  save and load slot bars. Each can join the Enter table on the same
-  proof.
+*Enter is dropped, and now taken (in the table, 19 callers, and the
+script runner when its argument is clear):* the Yes/No prompt; the
+adventuring bar in the city and in the wilderness; the camp bar and its
+Magic and Alter bars; alter's Portraits and Monsters bar; camp's game-speed
+bar; the portrait bar; the shop's bar; the temple's bar; the post-combat
+treasure bar and Take bar; the combat command bar, Done bar and game-speed
+bar; the View bar; the temple's appraise bar; the load-game slot bar.
+
+*Enter meant Rest; taken by decision, so Enter follows the highlight:*
+the rest-time menu (overlay 20, `0x076E`). The player who never moves the
+highlight finds it on `Mins` (above), so a Return there no longer rests.
+
+*Enter means something already; left alone:*
+
+| caller | return offset | what Enter does there |
+|---|---|---|
+| the pick-lists (overlay 25) | `0x0FE0` | confirms the row |
+| the party-member picker (resident image `0x38AA`) | | in the set that ends the loop: chooses |
+| the party-order screen (overlay 15) | `0x17DA` | in the toggle class (`0x174E`): picks a member up, puts it down |
+| the combat move loop (overlay 8) | `0x0AC8` | `0x0D` ends it (the bar has no commands: no group to take) |
+| the combat aim cursor (overlay 13) | `0x3178` | confirms, as `T` does |
+| the combat aim bar (overlay 13) | `0x2C31` | the key is returned to the aim loop, whose compares miss and whose redraw then **repeats the last Next or Prev step** (the step is a stale local): it acts, by accident |
+| the door bars, Bash Pick Knock Exit (overlay 14) | `0x0EBF`, `0x0FFE` | one question, no loop: a key that is not B, P or K is no choice, the same as Exit, and the door stays |
+| the temple's keep-or-sell (overlay 21) | `0x1DC1`, `0x2114` | any key but `K` sells: **Enter sells** |
+| the two share prompts, *press Enter* (overlay 5) | `0x0AF8`, `0x14C7` | the prompt asks for it and ends on it |
+| the script runner, allow-Enter set (overlay 7) | `0x16EB` | the first choice |
+| the disk-swap prompt (overlay 17) | `0x236F` | one question: any key but `S` is Insert, a retry |
+| the icon editor's bars (overlay 16) | `0x39FE` | five states on one call: states 1, 4 and 5 drop it, **states 2 and 3 take it as the pick** (a block or a colour slot named `0x0D`, then the edit state): by accident, and by state, which this seam does not read |
+
+*Enter is dropped, and left out by decision (2 callers):*
+
+| caller | return offset | why not |
+|---|---|---|
+| the save-game slot bar (overlay 17) | `0x1DA1` | loops on Enter, but a Return would write whichever slot is lit, and nothing asks first; the highlight is the last bar's, not a choice |
+| the stat editor, Modify (overlay 16) | `0x216E` | the `0x0D` compare is under the out-flag, which Enter never sets (the keypad's 5 is a space in the table at `0x288C`), so it is dropped; but the bar is `Keep Exit`, the highlight is stale, and `Exit` discards the edit. The arrows are its controls. Not driven |
+
+*Not applicable (1):* the main menu bar (overlay 16, `0x02FD`): its colours
+are zero, so the routine does not take Enter (the Enter-allowed byte is
+clear); Up, Down and Return are `menu-cursor`'s.
 
 **How the facts were checked, by two routes.** The module row is the
 overlay file's own table and the manager's record of the same two numbers
@@ -1857,7 +1923,7 @@ whole seam inert while that overlay is out of memory, which is most of the
 time. `journal` and `encamp-fix` pin the same two modules by digest.
 
 **State**: none. **Host services**: none. **Keys**: Left and Right at
-every caller but the seven above; Enter at the six callers in the first
+every caller but the seven above; Enter at the twenty callers in the Enter
 table and at the script runner when its allow-Enter argument is clear; Esc
 at the Yes/No prompt and at a script prompt whose letters are `Y` and `N`.
 
@@ -1874,8 +1940,10 @@ of 93 checkpoints and diverges at the Right at the camp bar. `bar-esc-keys`
 agrees with `bar-esc` for 91 of 99 and diverges at the Esc at the quit
 prompt; `bar-script-keys` agrees with `bar-script` for 151 of 164 and
 diverges at the Return at the arena master's question (the press-Enter
-notice before it, which allows Enter, is identical). Unit:
-`SeamBarKeys.*`; stand-in:
+notice before it, which allows Enter, is identical). `bar-portrait-keys`
+agrees with `bar-portrait` for 85 of 89 and diverges at the Return at the
+portrait bar, with BODY lit (tick 186,967,088): the body is the next one.
+Unit: `SeamBarKeys.*`; stand-in:
 `bar_keys_probe_off`, `bar_keys_probe_on`.
 
 **One consequence a script feels.** A Return the program used to drop at a

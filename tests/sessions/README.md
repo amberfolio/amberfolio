@@ -101,6 +101,8 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `bar-camp-keys` | same | + bar-keys | **`contrast bar-camp`** | 83 of 93 identical, divergent from tick 201,127,344: the Right steps the highlight to ALTER and the Return takes it, and its sub-bar is up where the seam-off run shows the camp bar |
 | `bar-yn` | same | code-wheel | | slot C's camp, `SAVE`, a Right at the slot bar, Escape, and Return at the quit prompt that follows: the program drops the Right and the Return. 100 checkpoints |
 | `bar-yn-keys` | same | + bar-keys | **`contrast bar-yn`** | 86 of 100 identical, divergent from tick 206,218,672: the Right steps the slot bar's highlight, and the Return answers the prompt `No` |
+| `bar-portrait` | shipped slots | code-wheel | | character creation to the portrait bar (`HEAD BODY KEEP`), a `.` that steps the highlight to BODY, and a Return, which the program drops. 89 checkpoints |
+| `bar-portrait-keys` | same | + bar-keys | **`contrast bar-portrait`** | 85 of 89 identical, divergent from tick 186,967,088: the Return takes BODY and the body is the next one. The portrait bar is in the Enter table (#459) |
 | `menu-letters` | shipped slots | code-wheel | | the main menu by letters only: `A`, `A` adds the first character, `E` back to the menu, `V` the view screen, Escape. 77 checkpoints |
 | `menu-letters-cursor` | same | + menu-cursor | **`contrast menu-letters`** | the same keys with the cursor's seam on and no Up, Down or Return pressed at the menu: 58 of 77 identical, divergent from tick 147,668,400, the first frame the menu is drawn in (the cursor is on the first command from the start, #453). It was an `identical` while the cursor was hidden until the first key, and was re-recorded |
 | `menu-down` | same | code-wheel | | the main menu with no party, then Down, Down and Return, which the program drops: the menu has no cursor. 70 checkpoints |
@@ -134,7 +136,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
 | `list-arrows` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows` | `list-keys-arrows`, `camp-roster-arrows`, `quiet-all`, `quiet-all-on-sight` |
-| `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys` | `quiet-bar-keys`, `quiet-all`, `quiet-all-on-sight` |
+| `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys`, `bar-portrait-keys` | `quiet-bar-keys`, `quiet-all`, `quiet-all-on-sight` |
 | `menu-cursor` | `menu-down-cursor`, `menu-down-cursor-yellow` | `menu-letters-cursor` and `quiet-all-on-sight` (both a `contrast`: the cursor is drawn as soon as the menu is) |
 | `select-yellow` | `bar-yn-yellow`, `list-keys-yellow`, `bar-script-yellow`, `menu-down-cursor-yellow` | `quiet-select-yellow` and `quiet-all-on-sight` (both a `contrast`: a highlight is drawn at once, so none can exist) |
 | `hero-keys` | `hero-pick-3` | `quiet-hero-keys` and `quiet-all-on-sight` (both a `contrast`: the party list is seen as soon as it is drawn) |
