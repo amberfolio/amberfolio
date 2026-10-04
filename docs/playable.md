@@ -1124,9 +1124,7 @@ wilderness is by hand). Slot J, `Up@9700 Left@9850 Up@10000 Right@10150
 Right@10300 Up@10450`: the party goes from 3,32 S to 3,31 N, turns west and
 goes on, and all 232 stills with the seam on are byte for byte the stills
 without it. The adventuring bar is in the seam's exclusion table, so the
-seam leaves its keys. So are the rest-time menu (`R@10000` at camp, then
-`Left` and `Right`: 126 of 126 stills the same), and, in a fight from slot
-J, the move loop (`M` at the command bar, then `Right`, which steps the
+seam leaves its keys. So are, in a fight from slot J, the move loop (`M` at the command bar, then `Right`, which steps the
 fighter) and the aim cursor (`A`, then `M` for Manual, then `Right`). A
 temporary print of the return address at the seam's point is the way to
 see which caller a key came from.
