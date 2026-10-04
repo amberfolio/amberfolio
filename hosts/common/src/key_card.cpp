@@ -119,6 +119,8 @@ constexpr std::array text_rows{
     key_row{"letters, digits", "typed in; lower case shows as capitals"},
     key_row{"Backspace", "erase the last character"},
     key_row{"Return, Esc", "accept what is typed; Esc does not cancel"},
+    key_row{"arrows, Home, F-keys",
+            "do nothing here, and no longer type letters", "edit-keys"},
 };
 
 constexpr std::array journal_rows{

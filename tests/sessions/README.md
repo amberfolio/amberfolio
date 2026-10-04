@@ -112,6 +112,11 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `bar-esc-keys` | same | + bar-keys | **`contrast bar-esc`** | 91 of 99 identical, divergent from tick 216,799,088: the second Escape answers the prompt `No` and the camp bar is back |
 | `bar-script` | same | code-wheel | | slot A walked to the arena master's question (the status row reads 7,1): `.` steps the highlight to `NO`, then Return and Escape, which the program ignores because the script did not allow Enter. 164 checkpoints. |
 | `bar-script-keys` | same | + bar-keys | **`contrast bar-script`** | 151 of 164 identical, divergent from tick 316,239,088: Return answers `No`, and Escape answers `No` to the partner question that follows. The press-Enter notice before the question, which allows Enter, is identical |
+| `name-letters` | shipped slots | code-wheel | | character creation to the name prompt by the first row of every list, and the name BOB typed in letters and taken with Return: leg 0's creation. 84 checkpoints |
+| `name-letters-edit` | same | + edit-keys | `identical name-letters` | the same keys with the editor's seam on and no extended key pressed: all 84 checkpoints |
+| `name-arrows` | same | code-wheel | | the same creation with a Right, an Up, a Down and a Left among the letters of the name: the program's line editor types each arrow's scan code, and the name is BMOHBPK. 88 checkpoints |
+| `name-arrows-edit` | same | + edit-keys | **`contrast name-arrows`** | 77 of 88 identical, divergent from tick 173,642,128 (the first arrow the editor reads): the arrows type nothing and the name is BOB |
+| `quiet-edit-keys` | same | + edit-keys | `identical quiet` | the seam on and `quiet`'s four arrows pressed in the city, which the walk reads and the line editor never does: the seam's point is not reached, and all 90 checkpoints are equal |
 
 ## The matrix, by seam
 
@@ -127,6 +132,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys` | `quiet-bar-keys`, `quiet-all` |
 | `menu-cursor` | `menu-down-cursor` | `menu-letters-cursor`, `quiet-all` |
 | `hero-keys` | `hero-pick-3` | `quiet-hero-keys` and `quiet-all-hero-keys` (both a `contrast`: the party list is seen as soon as it is drawn) |
+| `edit-keys` | `name-arrows-edit` | `name-letters-edit`, `quiet-edit-keys` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 Subsets: `quiet-all` (all on but the two that draw on sight), `quiet-all-hero-keys` (that, with hero-keys), `subset-map-reader` (two seams wanting the

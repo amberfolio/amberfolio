@@ -2066,9 +2066,9 @@ card's.
 context left with no row to show is not shown. Adding a seam's keys is one
 line in `key_card.cpp`, in the context where the key is pressed.
 `tests/key_card_test.cpp` holds every named seam to `all_seams()`, so a
-row for a seam that was renamed or never merged is a red test; the seven
+row for a seam that was renamed or never merged is a red test; the eight
 seams that take a key today (automap, journal, Encamp Fix, list-arrows,
-bar-keys, menu-cursor, hero-keys) are pinned there as the floor. Each
+bar-keys, menu-cursor, hero-keys, edit-keys) are pinned there as the floor. Each
 shell has its own context for the keys it takes for itself (the desktop's
 are in §2's table); the page has none, because it takes none.
 
@@ -2098,7 +2098,9 @@ accepting, Return and lower case shown as capitals; Tab, the camp bar's F
 and the Notes log's N, Up, Down, Return, N, P and Esc with those seams on;
 the main menu's capital letters and Home and End, and, with the seam on,
 Up, Down and Return there (at the party-setup screen and at a training
-hall).
+hall); and, with `edit-keys` on, a name's arrows, Home, End and
+function keys typing nothing (the name prompt at creation and the
+code-word challenge).
 
 **Rows that rest on two readings, not a drive.** A list's PgUp and PgDn
 (no list in the shipped saves is longer than its window; the routine
