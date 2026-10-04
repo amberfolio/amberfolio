@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The bar-keys seam: Left and Right step a command bar's highlight, and
-// Enter takes the highlighted command (#425, #432).
+// The bar-keys seam: Left and Right step a command bar's highlight, Enter
+// takes the highlighted command, and Esc answers No at a Yes/No question
+// (#425, #432, #438).
 //
 //
 // What the program does, stated as facts
@@ -89,6 +90,18 @@
 // Enter, and a caller the exclusion table does not name is offered its
 // arrows as `,` and `.`.
 //
+// **The script prompts** (#438). The event scripts ask their questions
+// through one runner in overlay 7 (`0x1684`, reached through a stub), which
+// parses the `~`-marked hotkeys out of the script's text and calls the
+// menu-bar routine in raw mode until the key is a hotkey letter, or Enter
+// when the runner's own **allow-Enter** argument is set. With it clear, the
+// runner asks again on Enter. The argument is a word on the runner's frame,
+// `BP+8`, and the menu-bar routine's saved BP *is* the runner's BP, so
+// Enter at the runner's call (return offset `0x16EB`) is taken only when
+// that byte is zero. With it set, Enter is the program's own, which is the
+// first choice. The read is refused unless the byte is inside conventional
+// RAM.
+//
 // **Why a table and not every bar.** The routine hands Enter back, and
 // what a caller does with `0x0D` is the caller's own business: the
 // callers in the table were read and each does nothing with it (it matches
@@ -105,6 +118,13 @@
 //   | the camp bar | overlay 15 | `0x1F24` | none of its compares match; asks again |
 //   | camp's Magic bar | overlay 15 | `0x1447` | none of its compares match; asks again |
 //   | camp's Alter bar | overlay 15 | `0x1CA4` | none of its compares match; asks again |
+//
+// **Esc answers No** (#438), at two callers only: the Yes/No prompt (the
+// loop in the table above, which ignores Esc and asks again) and the script
+// runner, when the bar it handed over has exactly `Y` and `N` for its
+// command letters (a script's `~Yes ~No`). Esc becomes the letter `N`,
+// posted as Enter's letters are, and the program takes it by the route a
+// typed `N` takes. At every other caller, Esc is the program's own.
 //
 // **The callers that keep their arrows** (#432). Every caller of the
 // routine was read (docs/seams.md §10 lists each with its verdict); these
@@ -160,9 +180,9 @@
 // The fidelity claim (docs/seams.md §8.5)
 // ---------------------------------------
 //
-// On and no Left, Right or Enter pressed at a bar, the run is byte for byte
-// the run with the seam off: the handler reads the ring's head word and
-// writes nothing unless it is one of those three. The pair is an
+// On and no Left, Right, Enter or Esc pressed at a bar, the run is byte for
+// byte the run with the seam off: the handler reads the ring's head word and
+// writes nothing unless it is one of those four. The pair is an
 // `identical` and a `contrast` (tests/sessions/README.md).
 //
 //
@@ -180,10 +200,12 @@
 #include <span>
 #include <string_view>
 
+#include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
@@ -231,6 +253,7 @@ using menu_bar::camp_load_segment_at;
 using menu_bar::combat_load_segment_at;
 using menu_bar::post_combat_load_segment_at;
 using menu_bar::roster_load_segment_at;
+using menu_bar::script_load_segment_at;
 
 constexpr std::array<caller, 6> enter_callers{{
     {.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E},
@@ -240,6 +263,17 @@ constexpr std::array<caller, 6> enter_callers{{
     {.load_segment_at = camp_load_segment_at, .return_offset = 0x1447},
     {.load_segment_at = camp_load_segment_at, .return_offset = 0x1CA4},
 }};
+
+/// The Yes/No prompt, and the script runner's call into the routine (the
+/// instruction after it, in overlay 7).
+constexpr std::array<caller, 1> yes_no_caller{
+    {{.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E}}};
+constexpr std::array<caller, 1> script_caller{
+    {{.load_segment_at = script_load_segment_at, .return_offset = 0x16EB}}};
+
+/// Above the script runner's BP: its allow-Enter argument, a word of which
+/// the runner reads the low byte.
+constexpr std::uint16_t runner_allow_enter = 8;
 
 // --- The callers that keep Left and Right ---------------------------------
 
@@ -258,16 +292,72 @@ constexpr std::array<caller, 7> arrow_callers{{
 constexpr std::uint16_t key_left = 0x4B00;
 constexpr std::uint16_t key_right = 0x4D00;
 constexpr std::uint16_t key_enter = 0x1C0D;
+constexpr std::uint16_t key_escape = 0x011B;
 constexpr std::uint16_t key_comma = 0x332C;
 constexpr std::uint16_t key_period = 0x342E;
 
 /// The scan code a command letter is posted under: Enter's own, because the
-/// program reads the character and nothing else.
+/// program reads the character and nothing else. Esc's answer is posted the
+/// same way.
 constexpr std::uint16_t scan_enter = 0x1C00;
 
 /// Whether `c` is a character the routine takes as a command letter.
 [[nodiscard]] constexpr bool is_command_letter(std::uint8_t c) noexcept {
   return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z');
+}
+
+/// Whether the script runner that called the routine takes Enter itself: its
+/// allow-Enter argument, read through the routine's saved BP. True as well
+/// when the frame cannot be the runner's, or the byte would not be in
+/// conventional RAM, and nothing is read in either case: the program's own
+/// Enter is the answer to a frame this seam cannot vouch for.
+[[nodiscard]] bool runner_takes_enter_itself(cpu::processor& cpu) {
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const std::uint16_t runner_bp = cpu.read_word(ss, bp);
+  // The runner's frame is above this routine's, and its argument is the
+  // runner's own: refuse a BP that is not above ours, or an address that
+  // would reach past the RAM the program owns.
+  const std::uint32_t argument_at =
+      static_cast<std::uint32_t>(runner_bp) + runner_allow_enter;
+  if (runner_bp <= bp || argument_at > 0xFFFFU ||
+      cpu::physical_address(ss, static_cast<std::uint16_t>(argument_at)) >=
+          conventional_ram_size) {
+    return true;
+  }
+  return cpu.read_byte(ss, static_cast<std::uint16_t>(argument_at)) != 0;
+}
+
+/// Whether the bar the routine was handed has exactly `Y` and `N` for its
+/// command letters: the two answers of a Yes/No question.
+[[nodiscard]] bool bar_is_yes_no(cpu::processor& cpu) {
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const auto bar = static_cast<std::uint16_t>(bp - local_bar);
+
+  const std::uint8_t length = cpu.read_byte(ss, bar);
+  if (length == 0 || length > max_bar_length) {
+    return false;
+  }
+  bool yes = false;
+  bool no = false;
+  for (std::uint8_t position = 1; position <= length; ++position) {
+    const std::uint8_t c =
+        cpu.read_byte(ss, static_cast<std::uint16_t>(bar + position));
+    if (!is_command_letter(c)) {
+      continue;
+    }
+    if (c == 'Y') {
+      yes = true;
+    } else if (c == 'N') {
+      no = true;
+    } else {
+      return false;
+    }
+  }
+  return yes && no;
 }
 
 /// The keystroke Enter should become: the letter of the highlighted group,
@@ -339,7 +429,8 @@ constexpr std::uint16_t scan_enter = 0x1C00;
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
 
-  const std::array<std::uint16_t, 3> wanted{key_left, key_right, key_enter};
+  const std::array<std::uint16_t, 4> wanted{key_left, key_right, key_enter,
+                                            key_escape};
   const std::optional<menu_bar::pending_key> pending =
       menu_bar::key_about_to_be_read(box, wanted);
   if (!pending) {
@@ -348,8 +439,23 @@ void at_key_read(machine& box, seam_context& ctx) {
   const std::uint16_t head = pending->at;
   const std::uint16_t key = pending->key;
 
+  if (key == key_escape) {
+    // No at a Yes/No question, and nowhere else.
+    if (menu_bar::called_from(cpu, ctx, yes_no_caller) ||
+        (menu_bar::called_from(cpu, ctx, script_caller) &&
+         bar_is_yes_no(cpu))) {
+      cpu.write_word(bda::segment, head,
+                     static_cast<std::uint16_t>(scan_enter | 'N'));
+    }
+    return;
+  }
+
   if (key == key_enter) {
-    if (!menu_bar::called_from(cpu, ctx, enter_callers)) {
+    const bool tabled = menu_bar::called_from(cpu, ctx, enter_callers);
+    // A script prompt that does not take Enter itself is handed it as its
+    // highlighted answer.
+    if (!tabled && !(menu_bar::called_from(cpu, ctx, script_caller) &&
+                     !runner_takes_enter_itself(cpu))) {
       return;
     }
     const std::uint16_t answer = letter_for_enter(cpu, ctx);
@@ -374,8 +480,8 @@ constexpr std::array<seam_point, 1> bar_keys_points{
 constexpr seam_definition bar_keys_definition{
     .id = "bar-keys",
     .about =
-        "Left and Right step a command bar's highlight, and Enter takes "
-        "the highlighted command",
+        "Left and Right step a command bar's highlight, Enter takes the "
+        "highlighted command, and Esc answers No at a Yes/No question",
     .fingerprints = bar_keys_binaries,
     .points = bar_keys_points,
     .schema = seam_schema_version};

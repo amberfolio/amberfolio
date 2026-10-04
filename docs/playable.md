@@ -1090,9 +1090,9 @@ identical: the 3D view (`Up@10300 Down@10500 Left@10700 Up@10900
 Right@11100 Down@11300`, 252 of 252 stills) and the rest-time menu (camp's
 `R`, then `Up`, `Up`, `Down`, `Left`, `Up`, `Right`, `Down`, 272 of 272
 stills, the rest time going 00:00:05, 00:00:10, 00:00:05, then 00:01:05).
-## Leg 15 — Enter and the arrows at the bars (#425, #432)
+## Leg 15 — Enter, Esc and the arrows at the bars (#425, #432, #438)
 
-Five scripts, one seam. `docs/seams.md` §10 has the facts. The screen text
+Seven scripts, one seam. `docs/seams.md` §10 has the facts. The screen text
 (`--dump`'s `.txt`) is the instrument: a bar's highlighted group is the
 one whose ink is bright white. Every pair is told `--wall none`, because
 the program's dice are seeded from the date.
@@ -1145,6 +1145,42 @@ with `NO` highlighted. And `S@10000 Escape@10400 Left@10800 Return@11000`:
 the highlight steps to `YES` and Return answers it, so the program exits
 (`stop reason=program_exited`, exit 0), where with the seam off nothing
 moves.
+
+**Esc at the Yes/No prompt** (`bar-esc`, `bar-esc-keys`). The same
+slot and `SAVE`, then two Escapes:
+
+```
+--press S@10000                         SAVE: the slot bar
+--press Escape@10300                    out of the slot bar; the quit prompt
+--press Escape@10900                    at the prompt
+```
+
+On, the camp bar is back at 10,950: Esc answered `NO`. Off, `QUIT TO DOS YES
+NO` is still up, as the loop is until it is answered.
+
+**A question an event script asks** (`bar-script`, `bar-script-keys`). Slot
+A is at 4,12 facing south; the arena master's question is at 7,1 (the status
+row's own numbers). Twenty-two moves, 150 frames apart from 9,600, walk to
+6,1, where a notice needs no key; then:
+
+```
+--press L@7550 --press A@7800           LOAD SAVED GAME, slot A
+--press Right@9600 --press Right@9750   and so on, through the moves below
+--press Up@13800                        7,1: THE ROOM IS FILLED WITH DUELING PAIRS
+--press Return@14400                    its press-Enter prompt: the program's own
+--press .@15600                         at THE ARENA MASTER ASKS ... YES NO, the highlight to NO
+--press Return@15900                    take it
+--press Escape@16500                    at the partner question, YES NO
+```
+
+The moves are Right, Right, Up, Left, Up, Right, nine Ups, Right, Up,
+Left, Up, Right, Up, Up (north to 4,11, west, north to 3,2, east, north to
+4,1, east to 6,1). On, Return at the question answers `NO`, the partner
+question is asked, and Esc answers that `NO`; the adventuring bar is back
+at 16,900. Off, the first question is still up at the end: Return and
+Escape are both asked again. The Return at the press-Enter prompt works
+either way, and the stills of the two runs are the same until the Return
+at 15,900 (319 of 342 at a 50-frame cadence).
 
 **The adventuring bar**, in the city and in the wilderness. Slot C, then
 `.@10000 Return@10300` on the bar with `AREA`: the highlight steps from

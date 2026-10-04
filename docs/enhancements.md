@@ -228,18 +228,22 @@ again.
 reaches for first. **Left and Right step the highlight** along a bar, as
 `,` and `.` always did, wherever the game would otherwise throw them away.
 **Enter takes the highlighted command**, as if you had typed its letter,
-at the Yes/No prompt, the camp bar and its Magic and Alter bars, and the
-adventuring bar. The bar, its
-highlight and its commands stay the game's own; nothing is drawn.
+at the Yes/No prompt, the questions the game's event scripts ask, the camp
+bar and its Magic and Alter bars, and the adventuring bar. **Esc answers
+No** at a Yes/No question. The bar, its highlight and its commands stay the
+game's own; nothing is drawn.
 
 **How you turn it on.** `--seam bar-keys`, or the toggle in the panel.
 
 **Where Enter works.** A few places, because the game hands Enter back to
 whoever called the bar and only some of them leave it alone. At the Yes/No
 prompt the highlight starts on `No`, so Enter answers No; Left steps it to
-`Yes` first. The camp bar, camp's Magic and Alter bars, and the adventuring
-bar (in the city, with its `Area` command, and in the wilderness, without
-it) take the command under the highlight. A command the other seams add, the Encamp Fix's
+`Yes` first. The same goes for a question an event script asks, such as the
+arena master's *do you duel?*: whatever is highlighted is what Enter answers.
+A script's *press Enter to continue* is the game's own: Enter already
+continues it. The camp bar, camp's Magic and Alter bars, and the
+adventuring bar (in the city, with its `Area` command, and in the
+wilderness, without it) take the command under the highlight. A command the other seams add, the Encamp Fix's
 `Fix` and the journal's `Notes`, is taken the same way.
 
 **Where Left and Right work.** On every bar but the few that use the
@@ -250,6 +254,10 @@ fight. At the camp bar and its Magic and Alter bars the
 game used an arrow only to put the selected party member back on the
 first, and nobody presses an arrow for that; with the seam on they step
 the highlight instead, and Home and End still step the member.
+
+**Where Esc answers No.** At the Yes/No prompt (quit to DOS, keep this
+character, and the others that use it) and at an event script's two-answer
+question, *Yes* and *No*. Anywhere else Esc does what the game does with it.
 
 **What it changes.** Two bars the game lets an arrow act on by accident,
 because its scan code is also a letter. At the post-combat Take bar Right
