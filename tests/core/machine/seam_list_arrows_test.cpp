@@ -96,6 +96,15 @@ constexpr std::uint16_t ring_enter = 0x1C0D;
 /// with a character.
 constexpr std::uint16_t ring_pad_8 = 0x4838;
 constexpr std::uint16_t ring_pad_2 = 0x5032;
+/// The keypad's 7 and 1, which the menu-bar routine's own table turns into
+/// Home's and End's letters: what the seam writes over the keypad's 8 and 2.
+constexpr std::uint16_t ring_pad_7 = 0x4737;
+constexpr std::uint16_t ring_pad_1 = 0x4F31;
+/// The number row's digits, scan code `0x02` for 1 up to `0x0B` for 0.
+[[nodiscard]] constexpr std::uint16_t ring_row(unsigned digit) {
+  const unsigned scan = digit == 0 ? 0x0BU : 0x01U + digit;
+  return static_cast<std::uint16_t>((scan << 8U) | ('0' + digit));
+}
 
 /// A caller of the menu-bar routine: where it is, and the offset of the
 /// instruction after its call.
@@ -517,13 +526,93 @@ TEST(SeamListArrows, TheTableIsAsExactAsTheModuleAndTheOffset) {
   EXPECT_EQ(r.press(ring_up, camp_segment, 0x1F24), ring_home);
 }
 
-TEST(SeamListArrows, LeavesTheKeypadsDigitsAlone) {
+TEST(SeamListArrows,
+     TheKeypadsEightAndTwoBecomeSevenAndOneAtEachAllowedCaller) {
   const rig r;
   r.arm();
   for (const caller_at& c : allowed_callers) {
+    EXPECT_EQ(r.press(ring_pad_8, c.segment, c.offset), ring_pad_7) << c.name;
+    EXPECT_EQ(r.press(ring_pad_2, c.segment, c.offset), ring_pad_1) << c.name;
+  }
+}
+
+TEST(SeamListArrows, LeavesTheKeypadsEightAndTwoWhereTheArrowsAreLeft) {
+  const rig r;
+  r.arm();
+  // The adventuring bars, where the keypad's 8 and 2 walk, and every other
+  // caller the table does not name.
+  for (const caller_at& c : left_out_callers) {
     EXPECT_EQ(r.press(ring_pad_8, c.segment, c.offset), ring_pad_8) << c.name;
     EXPECT_EQ(r.press(ring_pad_2, c.segment, c.offset), ring_pad_2) << c.name;
   }
+  EXPECT_EQ(r.press(ring_pad_8, camp_segment, 0x1F25), ring_pad_8);
+  EXPECT_EQ(r.press(ring_pad_2, overlay_segment, list_point), ring_pad_2);
+}
+
+TEST(SeamListArrows, LeavesTheNumberRowsDigitsAlone) {
+  const rig r;
+  r.arm();
+  // The number row's 8 and 2 are the same characters under scan codes
+  // 0x09 and 0x03, which is how they are told from the keypad's.
+  EXPECT_EQ(ring_row(8), 0x0938);
+  EXPECT_EQ(ring_row(2), 0x0332);
+  for (const caller_at& c : allowed_callers) {
+    for (unsigned digit = 0; digit <= 9; ++digit) {
+      EXPECT_EQ(r.press(ring_row(digit), c.segment, c.offset), ring_row(digit))
+          << c.name << " row " << digit;
+    }
+  }
+}
+
+TEST(SeamListArrows, LeavesTheKeypadsOtherDigitsAlone) {
+  const rig r;
+  r.arm();
+  // With Num Lock on: 0, 9, 3, 4, 6 and 5, then the 7 and 1 the seam writes.
+  const std::array<std::uint16_t, 8> others{
+      0x5230, 0x4939, 0x5133, 0x4B34, 0x4D36, 0x4C35, ring_pad_7, ring_pad_1};
+  for (const caller_at& c : allowed_callers) {
+    for (const std::uint16_t key : others) {
+      EXPECT_EQ(r.press(key, c.segment, c.offset), key) << c.name;
+    }
+  }
+}
+
+TEST(SeamListArrows, TheKeypadsDigitNeedsTheKeypadsScanCode) {
+  const rig r;
+  r.arm();
+  // The character alone is not enough, nor is the scan code alone: an 8 or
+  // a 2 under any other scan code, or the keypad's scan code under another
+  // character, is left where it is.
+  const std::array<std::uint16_t, 6> not_the_keypads{0x0938, 0x0332, 0x4832,
+                                                     0x5038, 0x4B38, 0x4D32};
+  for (const caller_at& c : allowed_callers) {
+    for (const std::uint16_t key : not_the_keypads) {
+      EXPECT_EQ(r.press(key, c.segment, c.offset), key) << c.name;
+    }
+  }
+}
+
+TEST(SeamListArrows, TheKeypadRewriteWritesOnlyTheHeadWord) {
+  const rig r;
+  r.arm();
+  r.put_word(0x40, ring_first + 2, 0xBEEF);
+  EXPECT_EQ(r.press(ring_pad_2, camp_segment, 0x1F24), ring_pad_1);
+  EXPECT_EQ(r.word(0x40, ring_first + 2), 0xBEEF) << "the key behind it";
+  EXPECT_EQ(r.word(0x40, 0x1A), ring_first) << "the head did not move";
+  EXPECT_EQ(r.word(0x40, 0x1C), ring_first + 2) << "nor the tail";
+}
+
+TEST(SeamListArrows,
+     LeavesTheKeypadAloneWhileThePushbackSlotIsArmedOrTheReaderIsOpen) {
+  const rig r;
+  r.arm();
+  r.put_byte(rig::physical(data_segment, data_pushback), 0x48);
+  EXPECT_EQ(r.press(ring_pad_8, camp_segment, 0x1F24), ring_pad_8);
+  r.put_byte(rig::physical(data_segment, data_pushback), 0);
+  r.box->journal().set_reader(journal_reader_mode::listing);
+  EXPECT_EQ(r.press(ring_pad_2, camp_segment, 0x1F24), ring_pad_2);
+  r.box->journal().set_reader(journal_reader_mode::closed);
+  EXPECT_EQ(r.press(ring_pad_2, camp_segment, 0x1F24), ring_pad_1);
 }
 
 TEST(SeamListArrows, LeavesEveryOtherKeyWhereItIsAtAnAllowedCaller) {

@@ -32,11 +32,11 @@
 // With the byte *clear*, `0x50` is the bar's own `P`, the Prev command,
 // which is why the byte is read before anything is rewritten.
 //
-// The same routine translates the keypad: with NumLock on, 8 and 2 come
-// back as `0x48` and `0x50` with the byte set, and 7 and 1 as `0x47` and
-// `0x4F`. The program cannot tell the number row from the keypad (both
-// deliver the same character), so the digits 7 and 1 already step a list
-// and, with this seam, 8 and 2 do too.
+// The same routine translates the digits, on the number row and the keypad
+// alike: 8 and 2 come back as `0x48` and `0x50` with the byte set, and 7 and
+// 1 as `0x47` and `0x4F`. The program cannot tell the number row from the
+// keypad (both deliver the same character), so the digits 7 and 1 already
+// step a list and, with this seam, 8 and 2 do too.
 //
 // **The party-member picker** (Trade's receiver, "Cast Spell on whom",
 // a script's party pick) lives in the resident image. It reads through
@@ -86,6 +86,21 @@
 //
 // The program's own steppers do the rest, so the arrows wrap, skip titles
 // and scroll exactly as Home and End do.
+//
+// **The keypad's 8 and 2** (#447). With Num Lock on, the keypad delivers
+// the character: ring word `0x4838` and `0x5032`, the arrows' scan codes
+// with a digit for a character. The menu-bar routine translates a digit
+// in raw mode **after** its read, through the table in the data segment
+// (`0x288C`): `1` to `9` become `O P Q K` (a space) `M G H I`, the letters
+// the keypad's layout implies, and the out-parameter is set. So `8` comes
+// back as `H` and `2` as `P`, which the party cursor does not know, and
+// the selection goes to the head. The routine looks at the character and
+// never at the scan code, so a rewrite at the same point turns a keypad 8
+// into a keypad 7 (`0x4737`, which the table turns into `G`) and a keypad 2
+// into a keypad 1 (`0x4F31`, `O`): the cursor steps back and forward, as
+// Home and End. The number row's digits (scan codes `0x02` to `0x0B`)
+// are not touched: with `hero-keys` they select a member, and without it
+// they are the program's own.
 //
 // **The scope is positive rather than inferred.** The arrows move the
 // party in 3D, in the wilderness and in combat, and a host cannot tell
@@ -142,17 +157,15 @@
 //
 // On and no arrow pressed at a list or a bar, the run is byte for byte the
 // run with the seam off: the handlers read nothing and write nothing unless
-// AL, or the ring's head word, is an arrow. The pair is an `identical` and
-// a `contrast` (tests/sessions/README.md).
+// AL, or the ring's head word, is an arrow or the keypad's 8 or 2. The pair
+// is an `identical` and a `contrast` (tests/sessions/README.md).
 //
 //
 // What it is not yet, at the point of definition (docs/seams.md §8.5)
 // -------------------------------------------------------------------
 //
-// Nothing outstanding for the pick-lists. A keypad 8 or 2 at a bar is
-// translated inside the menu-bar routine, after the point that reads the
-// key, so it still resets the selection where Up and Down now step it.
-// Out of scope, filed apart: the main menu's Up, Down and Enter (#434).
+// Nothing outstanding. Out of scope, filed apart: the main menu's Up,
+// Down and Enter (#434).
 
 #include <array>
 #include <cstdint>
@@ -220,6 +233,15 @@ constexpr std::uint16_t ring_up = 0x4800;
 constexpr std::uint16_t ring_end = 0x4F00;
 constexpr std::uint16_t ring_down = 0x5000;
 
+/// The keypad's digits with Num Lock on: the scan code is the one the arrow
+/// or navigation key has, and the character is the digit, which is what
+/// tells them from the extended keys. 8 and 2 are what the seam reads; 7 and
+/// 1 are what it writes.
+constexpr std::uint16_t ring_pad_8 = 0x4838;
+constexpr std::uint16_t ring_pad_2 = 0x5032;
+constexpr std::uint16_t ring_pad_7 = 0x4737;
+constexpr std::uint16_t ring_pad_1 = 0x4F31;
+
 /// The menu-bar routine has just returned AL, with its out-parameter at
 /// SS:BP-`flag_below_bp`. If the byte says the key is a raw one and the
 /// key is an arrow, hand back Home or End instead.
@@ -285,20 +307,42 @@ constexpr std::array<caller, 9> roster_callers{{
      .return_offset = 0x16EB},  // the script prompts
 }};
 
+/// What each key the handler acts on becomes. The arrows become Home and End.
+/// The keypad's 8 and 2 with Num Lock on (a character, so not the arrows)
+/// become its 7 and 1, which the menu-bar routine's own table turns into
+/// `G` and `O`; the scan code is Home's and End's, so the keys are told
+/// apart from the number row's, whose scan codes are `0x02` to `0x0B`.
+struct rewrite {
+  std::uint16_t from;
+  std::uint16_t to;
+};
+
+constexpr std::array<rewrite, 4> rewrites{
+    {{.from = ring_up, .to = ring_home},
+     {.from = ring_down, .to = ring_end},
+     {.from = ring_pad_8, .to = ring_pad_7},
+     {.from = ring_pad_2, .to = ring_pad_1}}};
+
 /// The program is about to read the keystroke at the head of the ring. If it
-/// is an extended Up or Down and the caller is one that steps the party
-/// cursor on Home and End, make it Home or End.
+/// is an extended Up or Down, or the keypad's 8 or 2, and the caller is one
+/// that steps the party cursor on Home and End, make it Home or End (or the
+/// keypad's 7 or 1).
 void step_the_party(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
 
-  const std::array<std::uint16_t, 2> wanted{ring_up, ring_down};
+  const std::array<std::uint16_t, 4> wanted{ring_up, ring_down, ring_pad_8,
+                                            ring_pad_2};
   const std::optional<menu_bar::pending_key> pending =
       menu_bar::key_about_to_be_read(box, wanted);
   if (!pending || !menu_bar::called_from(cpu, ctx, roster_callers)) {
     return;
   }
-  cpu.write_word(bda::segment, pending->at,
-                 pending->key == ring_up ? ring_home : ring_end);
+  for (const rewrite& r : rewrites) {
+    if (r.from == pending->key) {
+      cpu.write_word(bda::segment, pending->at, r.to);
+      return;
+    }
+  }
 }
 
 constexpr std::array<seam_point, 3> list_arrows_points{

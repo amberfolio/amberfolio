@@ -91,6 +91,8 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `camp-roster-arrows` | same | + list-arrows | `identical camp-roster` | the same keys with the arrows' seam on and no Up or Down pressed |
 | `camp-down` | same | code-wheel | | slot C, `ENCAMP`, End, then Down, Down and Up at the camp bar: the program hands each arrow to the party cursor, which puts the selection back on the first member. 96 checkpoints |
 | `camp-down-arrows` | same | + list-arrows | **`contrast camp-down`** | 86 of 96 identical, divergent from tick 206,218,672: the first Down is read at the camp bar and written as End, and the selection steps to the third, fourth and third member where the seam-off run holds the first |
+| `camp-pad` | same | code-wheel | | slot C, `ENCAMP`, End, Num Lock, then the keypad's 2, 2 and 8 at the camp bar: the program translates each digit into a letter the party cursor does not know and puts the selection back on the first member. 96 checkpoints |
+| `camp-pad-arrows` | same | + list-arrows | **`contrast camp-pad`** | 87 of 96 identical, divergent from tick 206,218,672: the first keypad 2 is read at the camp bar and written as the keypad's 1, which the program's table turns into End, and the selection steps to the third, fourth and third member where the seam-off run holds the first |
 | `quiet-bar-keys` | same | + bar-keys | `identical quiet` | the seam on, and `quiet`'s one Right is at the adventuring bar, which uses its arrows: the program keeps the arrow and the seam leaves it. Six keys read at bars, none rewritten |
 | `bar-enter` | shipped slots | code-wheel | | slot C, `ENCAMP`, `.` to step the highlight to ALTER, and Return at the camp bar, which the program ignores. 93 checkpoints |
 | `bar-enter-keys` | same | + bar-keys | **`contrast bar-enter`** | 86 of 93 identical, divergent from tick 206,218,672: the Return takes ALTER, and its sub-bar is up where the seam-off run shows the camp bar |
@@ -120,7 +122,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
-| `list-arrows` | `list-down-arrows`, `camp-down-arrows` | `list-keys-arrows`, `camp-roster-arrows` |
+| `list-arrows` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows` | `list-keys-arrows`, `camp-roster-arrows` |
 | `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys` | `quiet-bar-keys` |
 | `menu-cursor` | `menu-down-cursor` | `menu-letters-cursor` |
 | `hero-keys` | `hero-pick-3` | `quiet-hero-keys` (a `contrast`: the party list is seen as soon as it is drawn) |

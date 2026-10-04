@@ -606,6 +606,7 @@ and never triggered.
 | `list-down-arrows` | contrast | `list-down` (the same script with Down and Up, which the seam-off program drops) |
 | `camp-roster-arrows` | identical | `camp-roster` (End, End and Home at the camp bar, which the seam never touches) |
 | `camp-down-arrows` | contrast | `camp-down` (Down and Up at the camp bar, which the program hands to the party cursor to put the first member back) |
+| `camp-pad-arrows` | contrast | `camp-pad` (the keypad's 2 and 8 with Num Lock on at the camp bar, which the routine translates into letters the cursor puts the first member back on) |
 | `quiet-bar-keys` | identical | `quiet` (the party's own Right at the adventuring bar, which keeps its arrows) |
 | `bar-enter-keys` | contrast | `bar-enter` (Return at the camp bar takes the highlighted command) |
 | `bar-yn-keys` | contrast | `bar-yn` (a Right at a bar that is not raw, and Return at the Yes/No prompt) |
@@ -1301,7 +1302,7 @@ the old claim (`ExploredFidelity.TheArrivalIsNoLongerTheScreenItWouldHaveBeen`,
 squares named), `exp-steady.leg` (no flicker across the icon's
 animation).
 
-### The list arrows (#423, #435)
+### The list arrows (#423, #435, #447)
 
 `seam_list_arrows.cpp`. Not a PLAN.md §5 item: a player's request, built
 after v1's six. A setting, no key, nothing to pull. The module, the read
@@ -1312,7 +1313,7 @@ routine are shared with `bar-keys` (`seam_menu_bar.h`).
 |---|---|---|
 | image `0x0FE0` of overlay 25, the instruction after the pick-list's call into the menu-bar routine | overlay 25, through the manager's word | with the routine's out-parameter set, AL `0x48` becomes `0x47` and `0x50` becomes `0x4F` |
 | image `0x38AA`, the instruction after the party-member picker's call into the same routine | the resident image | the same, with the out-parameter in the picker's frame |
-| image `0x0572` of overlay 25, the call into the program's key-read routine inside the menu-bar routine (the point `bar-keys` has too, `seam_menu_bar.h`) | overlay 25, through the manager's word | reads the keystroke at the head of the BIOS ring before the program does. An extended Up or Down, from a caller in the allowlist below, becomes Home or End |
+| image `0x0572` of overlay 25, the call into the program's key-read routine inside the menu-bar routine (the point `bar-keys` has too, `seam_menu_bar.h`) | overlay 25, through the manager's word | reads the keystroke at the head of the BIOS ring before the program does. An extended Up or Down, from a caller in the allowlist below, becomes Home or End; the keypad's 8 or 2, from the same callers, becomes its 7 or 1 |
 
 | fact | value |
 |---|---|
@@ -1324,7 +1325,7 @@ routine are shared with `bar-keys` (`seam_menu_bar.h`).
 | who calls the list | driven: race, gender, class and alignment at creation, the spell list, the Items screen's list; from its callers, not driven: the shops, training, coin selection, the camp's Display |
 | who calls the picker | Trade's receiver, "Cast Spell on whom", a script's party pick |
 | the party cursor | the resident thunk at `0x108A2`, called through the stub at `0085:0052` (`9A 52 00 85 00`): `G` steps the selected member back, `O` forward, **any other key moves the selection to the head of the party**. It is reached from sixteen call sites in twelve routines (found by searching GAME.OVR and the image for the far call); nine of those routines are the allowlist below |
-| the keystroke at the third point | the head word of the ring at 40:1Eh, scan code high and character low: Up `0x4800`, Down `0x5000`, Home `0x4700`, End `0x4F00`. The keypad's 8 and 2 carry the same scan codes **and a character**, so they are not `0x4800` and `0x5000` and are never rewritten |
+| the keystroke at the third point | the head word of the ring at 40:1Eh, scan code high and character low: Up `0x4800`, Down `0x5000`, Home `0x4700`, End `0x4F00`. The keypad's 8 and 2 with Num Lock on carry the same scan codes **and a character**: `0x4838` and `0x5032`, which is how the seam tells them from Up and Down; it writes `0x4737` and `0x4F31` (the keypad's 7 and 1) over them. The number row's digits (scan `0x02` to `0x0B`) are never touched |
 
 - **The out-parameter is read first, and only when AL is an arrow.** With
   it **clear**, `0x50` is the bar's own `P`, the Prev command, and is
@@ -1348,6 +1349,24 @@ routine are shared with `bar-keys` (`seam_menu_bar.h`).
   out-parameter set, so 7 and 1 already stepped a list and 8 and 2 come
   back as `0x48` and `0x50`. The program cannot tell the number row from
   the keypad, so with this seam on 8 and 2 step a list too.
+- **The keypad's 8 and 2 at the bars** (#447). With Num Lock on the
+  keypad delivers its digit as the character (`0x4838`, `0x5032`). The
+  routine translates a digit **after** the point reads the key, with the
+  table at DGROUP `0x288C` (`1` to `9` become `O P Q K` space `M G H I`; the
+  table is in the program's initial data and in a running image alike), and
+  it looks at the character and never at the scan code: the key comes from
+  the program's read routine as its low byte alone, and an extended key is
+  the pair zero then the scan code. A keypad 8 therefore reaches the party
+  cursor as `H` and a 2 as `P`, which it does not know, and the selection
+  goes to the head. The third point rewrites the ring's head word `0x4838`
+  to `0x4737` and `0x5032` to `0x4F31` at the same callers as the arrows;
+  the table turns the 7 into `G` and the 1 into `O` and the cursor steps
+  as it does for Home and End. Told from the arrows by the character, and
+  from the number row by the scan code, which is Up's, Down's, Home's or
+  End's and never `0x02` to `0x0B`. With `hero-keys` on at the same point
+  both run, in either order, and each keeps its own keys: the number row's
+  `8` selects the eighth member and the keypad's `8` steps back one
+  (`SeamHeroKeysWithListArrows.*`; driven in slot C's camp).
 - **`fired` counts the keys a list or picker read**, not the arrows
   rewritten: a handler that arrives and chooses to do nothing has been
   served (§3a). An arrow-free run reads `fired=9` and is identical to the
@@ -1382,10 +1401,8 @@ routine are shared with `bar-keys` (`seam_menu_bar.h`).
   through the routine's return and the buffer would carry a key nobody
   pressed.
 - **Not here:** the main menu's Up, Down and Enter (#434, a seam of its
-  own); the keypad's 8 and 2 at the bars (the routine turns them into
-  `0x48` and `0x50` after the point reads the key, so they still put the
-  selection back on the first member, as they did); a held key scrolling
-  (#426).
+  own); the keypad's 8 and 2 at the adventuring bars, where they walk; a
+  held key scrolling (#426).
 
 **The command bars** (#435). Many raw-mode callers of the menu-bar
 routine hand every raw key to the party cursor, which steps the selected
@@ -1460,8 +1477,8 @@ the `bar-keys` audit above, which has its verdict on arrows):
   is a count of looks, not rewrites (§3a).
 
 **State**: none. **Host services**: none. **Keys**: Up and Down, and
-keypad 8 and 2, in a list or the picker; Up and Down at the nine bars in
-the allowlist.
+keypad 8 and 2, in a list or the picker; Up and Down, and keypad 8 and 2
+with Num Lock on, at the nine bars in the allowlist.
 
 **Fidelity**: on and no arrow pressed in a list, identical: the handler
 reads nothing and writes nothing unless AL is an arrow
@@ -1476,7 +1493,11 @@ End and Home at the camp bar, all 94 checkpoints identical to
 agrees with `camp-down` for 86 of 96 checkpoints and diverges from the
 first Down (tick 206,218,672): the selection steps to the next member
 where the seam-off run puts the first back, and the two stay apart to the
-end. No session that existed before moved. Unit: `SeamListArrows.*`;
+end. The same for the keypad: `camp-pad-arrows` agrees with `camp-pad`
+(End, Num Lock, then the keypad's 2, 2 and 8) for 87 of 96 checkpoints and
+diverges from the first 2 (tick 206,218,672): MULE, THIEF, PRINCESS FATIMA,
+THIEF where the seam-off run holds MULE and then HULK. No session that
+existed before moved. Unit: `SeamListArrows.*`;
 stand-ins: `list_arrows_probe_off`, `list_arrows_probe_on`,
 `list_arrows_bars_probe_off`, `list_arrows_bars_probe_on`.
 
@@ -2045,7 +2066,9 @@ manager's word for it; the same far-return identification as `bar-keys`):
   adventuring bar `8`, `4`, `6` and `2` walked and turned and `1` and `7`
   selected a neighbour; with the seam on they select a member (`1` to `8`
   from the number row only). The keypad keeps all of it, with NumLock on
-  or off, and so do the arrows. At the post-combat Take bar `6` was `M`,
+  or off, and so do the arrows. With `list-arrows` on as well, the keypad's
+  8 and 2 at the bars that seam names step the member back and forward
+  (#447); they are never selections. At the post-combat Take bar `6` was `M`,
   Money (by the same coincidence as Right); with the seam on it selects the
   sixth member, and `M` still takes the money. `9` and `0` are never the
   seam's; `9` is the program's PgUp and still moves the selection to the
