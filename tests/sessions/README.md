@@ -87,6 +87,10 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `list-keys-arrows` | same | + list-arrows | `identical list-keys` | the same keys with the arrows' seam on and no arrow pressed |
 | `list-down` | same | code-wheel | | the same script with Down and Up where `list-keys` presses End and Home: the program drops them and the character is the first row of every list |
 | `list-down-arrows` | same | + list-arrows | **`contrast list-down`** | 62 of 84 identical, divergent from the first Down (tick 153,157,488): the highlight moves and the character is the one `list-keys` makes |
+| `camp-roster` | same | code-wheel | | slot C, `ENCAMP`, then End, End and Home at the camp bar: the party cursor steps the selected member to the second, the third and back to the second. 94 checkpoints |
+| `camp-roster-arrows` | same | + list-arrows | `identical camp-roster` | the same keys with the arrows' seam on and no Up or Down pressed |
+| `camp-down` | same | code-wheel | | slot C, `ENCAMP`, End, then Down, Down and Up at the camp bar: the program hands each arrow to the party cursor, which puts the selection back on the first member. 96 checkpoints |
+| `camp-down-arrows` | same | + list-arrows | **`contrast camp-down`** | 86 of 96 identical, divergent from tick 206,218,672: the first Down is read at the camp bar and written as End, and the selection steps to the third, fourth and third member where the seam-off run holds the first |
 | `quiet-bar-keys` | same | + bar-keys | `identical quiet` | the seam on, and `quiet`'s one Right is at the adventuring bar, which uses its arrows: the program keeps the arrow and the seam leaves it. Six keys read at bars, none rewritten |
 | `bar-enter` | shipped slots | code-wheel | | slot C, `ENCAMP`, `.` to step the highlight to ALTER, and Return at the camp bar, which the program ignores. 93 checkpoints |
 | `bar-enter-keys` | same | + bar-keys | **`contrast bar-enter`** | 86 of 93 identical, divergent from tick 206,218,672: the Return takes ALTER, and its sub-bar is up where the seam-off run shows the camp bar |
@@ -105,7 +109,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
-| `list-arrows` | `list-down-arrows` | `list-keys-arrows` |
+| `list-arrows` | `list-down-arrows`, `camp-down-arrows` | `list-keys-arrows`, `camp-roster-arrows` |
 | `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys` | `quiet-bar-keys` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 

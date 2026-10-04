@@ -604,6 +604,8 @@ and never triggered.
 | `quiet-all` | identical | `quiet-journal` (every seam but the faces, which are a contrast of their own) |
 | `list-keys-arrows` | identical | `list-keys` (the arrows' seam, on a creation script of Home and End) |
 | `list-down-arrows` | contrast | `list-down` (the same script with Down and Up, which the seam-off program drops) |
+| `camp-roster-arrows` | identical | `camp-roster` (End, End and Home at the camp bar, which the seam never touches) |
+| `camp-down-arrows` | contrast | `camp-down` (Down and Up at the camp bar, which the program hands to the party cursor to put the first member back) |
 | `quiet-bar-keys` | identical | `quiet` (the party's own Right at the adventuring bar, which keeps its arrows) |
 | `bar-enter-keys` | contrast | `bar-enter` (Return at the camp bar takes the highlighted command) |
 | `bar-yn-keys` | contrast | `bar-yn` (a Right at a bar that is not raw, and Return at the Yes/No prompt) |
@@ -836,7 +838,7 @@ to carry.
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
-| `list-arrows` | the up and down arrows step the game's pick-lists and its party-member picker, as Home and End do | overlay 25 (the list routine), and the resident image |
+| `list-arrows` | the up and down arrows step the game's pick-lists, its party-member picker and, at the bars where Home and End step the selected member, that member, as Home and End do | overlay 25 (the list routine and the menu-bar routine), and the resident image |
 | `bar-keys` | Left and Right step a command bar's highlight at every bar but the few that use them; Enter takes the highlighted command at the Yes/No prompt, the camp bar and its Magic and Alter bars, and the adventuring bar | overlay 25 (the menu-bar routine) |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
@@ -1295,15 +1297,18 @@ the old claim (`ExploredFidelity.TheArrivalIsNoLongerTheScreenItWouldHaveBeen`,
 squares named), `exp-steady.leg` (no flicker across the icon's
 animation).
 
-### The list arrows (#423)
+### The list arrows (#423, #435)
 
 `seam_list_arrows.cpp`. Not a PLAN.md §5 item: a player's request, built
-after v1's six. A setting, no key, nothing to pull.
+after v1's six. A setting, no key, nothing to pull. The module, the read
+point at overlay 25 `0x0572` and the test of who called the menu-bar
+routine are shared with `bar-keys` (`seam_menu_bar.h`).
 
 | point | module | what the handler does |
 |---|---|---|
 | image `0x0FE0` of overlay 25, the instruction after the pick-list's call into the menu-bar routine | overlay 25, through the manager's word | with the routine's out-parameter set, AL `0x48` becomes `0x47` and `0x50` becomes `0x4F` |
 | image `0x38AA`, the instruction after the party-member picker's call into the same routine | the resident image | the same, with the out-parameter in the picker's frame |
+| image `0x0572` of overlay 25, the call into the program's key-read routine inside the menu-bar routine (the point `bar-keys` has too, `seam_menu_bar.h`) | overlay 25, through the manager's word | reads the keystroke at the head of the BIOS ring before the program does. An extended Up or Down, from a caller in the allowlist below, becomes Home or End |
 
 | fact | value |
 |---|---|
@@ -1314,6 +1319,8 @@ after v1's six. A setting, no key, nothing to pull.
 | what the picker acts on | `0x4F` the next member (the head after the last), `0x47` the previous one (the tail from the head) |
 | who calls the list | driven: race, gender, class and alignment at creation, the spell list, the Items screen's list; from its callers, not driven: the shops, training, coin selection, the camp's Display |
 | who calls the picker | Trade's receiver, "Cast Spell on whom", a script's party pick |
+| the party cursor | the resident thunk at `0x108A2`, called through the stub at `0085:0052` (`9A 52 00 85 00`): `G` steps the selected member back, `O` forward, **any other key moves the selection to the head of the party**. It is reached from sixteen call sites in twelve routines (found by searching GAME.OVR and the image for the far call); nine of those routines are the allowlist below |
+| the keystroke at the third point | the head word of the ring at 40:1Eh, scan code high and character low: Up `0x4800`, Down `0x5000`, Home `0x4700`, End `0x4F00`. The keypad's 8 and 2 carry the same scan codes **and a character**, so they are not `0x4800` and `0x5000` and are never rewritten |
 
 - **The out-parameter is read first, and only when AL is an arrow.** With
   it **clear**, `0x50` is the bar's own `P`, the Prev command, and is
@@ -1323,11 +1330,13 @@ after v1's six. A setting, no key, nothing to pull.
   Home and End alone costs the seam not one byte read.
 - **The scope is positive, not inferred.** The arrows move the party in
   3D, in the wilderness and in combat, and nothing outside can tell from
-  here when an arrow is free. These two points are reached from inside a
-  pick-list and a picker and nowhere else, so no other screen's arrow is
-  ever offered. Driven: Up, Down and Left in the 3D view at 4,12 S with
-  the seam on and off give the same positions and identical stills, and
-  the seam's points are never reached (`armed and never reached`).
+  here when an arrow is free. The first two points are reached from inside
+  a pick-list and a picker and nowhere else, so no other screen's arrow is
+  ever offered. The third is reached from every command bar, and is a
+  table of callers (below): a caller is named or it is not touched.
+  Driven: Up, Down and Left in the 3D view at 4,12 S with the seam on and
+  off give the same positions and identical stills (252 of 252), and the
+  first two points are never reached there.
 - **The program's own stepper does the rest**, so wrapping, title
   skipping and paging are the program's, not this seam's.
 - **Keypad and digits.** The menu-bar routine's raw mode turns the digits
@@ -1359,23 +1368,113 @@ after v1's six. A setting, no key, nothing to pull.
   picker from Trade, which did not open one from the Items screen's `T`
   (the cast's did), and from a script.
 - **Rejected:** a host-side remap of the arrows, because a host cannot
-  say when an arrow is free; a point in the menu-bar routine itself,
-  because the Home and End codes mean something in its other callers;
-  rewriting in the BIOS buffer, because the list sees the key through the
-  routine and the buffer would carry a key nobody pressed.
-- **Not here** (#423): Enter on the Yes/No prompt, arrows and Enter on
-  the horizontal bars (#379's selection), a held key scrolling.
+  say when an arrow is free; a rewrite at the menu-bar routine's read
+  point for every caller, because Up and Down mean something at the
+  adventuring bar, in combat, in Modify and in the rest-time menu, which
+  is why the third point is an allowlist and not an exclusion table (a
+  caller nobody read would be stepped by default, and the cost of a wrong
+  guess is a party that does not move, or a selection that is reset);
+  rewriting in the BIOS buffer for the lists, because they see the key
+  through the routine's return and the buffer would carry a key nobody
+  pressed.
+- **Not here:** the main menu's Up, Down and Enter (#434, a seam of its
+  own); the keypad's 8 and 2 at the bars (the routine turns them into
+  `0x48` and `0x50` after the point reads the key, so they still put the
+  selection back on the first member, as they did); a held key scrolling
+  (#426).
+
+**The command bars** (#435). Many raw-mode callers of the menu-bar
+routine hand every raw key to the party cursor, which steps the selected
+member on Home and End and **on any other key puts the selection back on
+the first member**. There Up and Down were not dropped, they threw the
+selection away; Home and End were the only keys that stepped it. The third
+point rewrites Up as Home and Down as End in the ring, before the program
+reads them, at the callers below. The bar, its highlight and its commands
+are untouched, and nothing is drawn. A caller is identified exactly as
+`bar-keys` does it (`seam_menu_bar.h`, shared): the routine's far return
+address in its frame, whose segment must be the one the overlay manager
+says the caller's module is at now, and whose offset is the instruction
+after the call.
+
+**The allowlist.** A caller is in it when raw Home and End reach the party
+cursor there and Up and Down do nothing else. Each by two routes: the
+disassembly of the caller from its return offset on (the out-flag test, or
+the lack of one, and the compare chain: no compare against `0x48` or `0x50`
+outside an out-flag guard), and a driven run with the seam on. The driven
+runs print the return address and the manager's word at the point (a
+temporary print, removed) and read the party panel for the selected member.
+
+| caller | module (manager's word) | return offset | Up and Down today | checked |
+|---|---|---|---|---|
+| the camp bar | overlay 15 (`0x760`) | `0x1F24` | the cursor: selection to the head | disassembly; driven (`camp-down`, `camp-down-arrows`) |
+| camp's Magic bar | overlay 15 | `0x1447` | the same | disassembly; driven: Down steps the member |
+| camp's Alter bar | overlay 15 | `0x1CA4` | the same | disassembly; driven: Down steps the member |
+| the party-order screen | overlay 15 | `0x17DA` | not picked up: the same. Picked up: ignored | disassembly; driven on and off |
+| the post-combat treasure bar | overlay 5 (`0x260`) | `0x1024` | nothing: the cursor is called on `G` and `O` only; `P` is under the out-flag | disassembly; driven, one-member party (the arrow is rewritten, the member cannot move) |
+| the post-combat Take bar | overlay 5 | `0x0D91` | nothing: the compares are `M`, `I`, `E`, `0`, `G`, `O` | disassembly and the ported source; **not driven**: it is up only when both coins and items are pooled, and the fights reachable here drop coins |
+| the shop's bar | overlay 6 (`0x290`) | `0x061F` | nothing: `P` is under the out-flag | disassembly; driven at the armourer |
+| the temple's bar | overlay 4 (`0x230`) | `0x0DAA` | nothing: `H` (Up's scan code) and `P` (Down's) are under the out-flag | disassembly; driven at Sune's temple (Up does not open Heal) |
+| the script prompts | overlay 7 (`0x2C0`) | `0x16EB` | the cursor: selection to the head | disassembly; driven at the armourer's "show you our wares" |
+
+- **The party-order screen** is in, and its Home and End *move the
+  member*: with one picked up (Return), `G` moves it up the order and `O`
+  down. Up and Down do the same with the seam on (driven: THIEF picked up
+  at slot C's camp, Down puts it below PRINCESS FATIMA, Up puts it back).
+  Seam off, Up and Down there do nothing.
+- **Where a letter is a scan code.** Up is `H` and Down is `P`, and the
+  temple's bar has a Heal and the shop, temple and treasure bars a Pool.
+  Each of those compares the key with the letter **under** the out-flag,
+  so a raw Up or Down is never a command there; the two bars checked
+  driven (the temple's and the shop's) did not act on one.
+- **The module words** for overlays 4, 6 and 7 (`0x230`, `0x290`, `0x2C0`)
+  are the manager's records, found by the search `seam_cheats.cpp`
+  documents: one match each, and the same search returns the known
+  `0x260`, `0x360`, `0x690`, `0x730`, `0x760`, `0x790`, `0x8D0` and
+  `0x3C60`. Driven: the word read at the point equalled the frame's
+  segment at every allowlisted caller reached (camp `0x2837`, the
+  temple `0x2D53`, the shop `0x3158`, the script prompt `0x290B`,
+  post-combat `0x306A` on one run).
+
+**Left out, and why** (every other caller of the menu-bar routine is in
+the `bar-keys` audit above, which has its verdict on arrows):
+
+| caller | return offset | why |
+|---|---|---|
+| the adventuring bars, city and wilderness (overlay 14) | `0x09D5`, `0x0C45` | Up and Down move the party; driven, in=0 and identical stills |
+| the main menu (overlay 16) | `0x02FD` | #434's: its Up, Down and Enter are the `menu-cursor` seam's |
+| the combat move loop, the aim cursor, the command bar (overlay 8, 13) | `0x0AC8`, `0x3178`, `0x0819` | no party cursor: the fighter and the cursor are moved |
+| the stat editor (overlay 16) | `0x216E` | Up and Down are its rows |
+| the rest-time menu (overlay 20) | `0x076E` | Up and Down are Inc and Dec; driven, stills identical (272 of 272) |
+| the game-speed screen (overlay 15) | `0x1B91` | Down and Up are its two commands |
+| the temple's appraise bars (overlay 21) | `0x1C47`, `0x1DC1` | no party cursor; `0x47` is its Gems command and Up would start an appraisal |
+| the two share prompts (overlay 5) | `0x0AF8`, `0x14C7` | any extended key ends them |
+| every caller that is not raw | | the routine throws an arrow away; Home and End do nothing either |
+| the pick-lists and the picker | | their own points, above |
+
+- **Fired.** `fired` counts every key the menu-bar routine read at a bar
+  the point could be offered, plus the two earlier points' arrivals; it
+  is a count of looks, not rewrites (§3a).
 
 **State**: none. **Host services**: none. **Keys**: Up and Down, and
-keypad 8 and 2, in a list or the picker only.
+keypad 8 and 2, in a list or the picker; Up and Down at the nine bars in
+the allowlist.
 
 **Fidelity**: on and no arrow pressed in a list, identical: the handler
 reads nothing and writes nothing unless AL is an arrow
 (`list-keys-arrows` identical `list-keys`: all 84 checkpoints). On and an
 arrow pressed, a contrast: `list-down-arrows` agrees with `list-down`
 for 62 of 84 checkpoints and diverges from the first Down, the program
-having dropped each arrow in the baseline. Unit: `SeamListArrows.*`;
-stand-in: `list_arrows_probe_off`, `list_arrows_probe_on`.
+having dropped each arrow in the baseline. At the bars, on and no Up or
+Down pressed, identical: the third handler writes nothing unless the head
+of the ring is an extended Up or Down, and `camp-roster-arrows` is End,
+End and Home at the camp bar, all 94 checkpoints identical to
+`camp-roster`. On and a Down pressed, a contrast: `camp-down-arrows`
+agrees with `camp-down` for 86 of 96 checkpoints and diverges from the
+first Down (tick 206,218,672): the selection steps to the next member
+where the seam-off run puts the first back, and the two stay apart to the
+end. No session that existed before moved. Unit: `SeamListArrows.*`;
+stand-ins: `list_arrows_probe_off`, `list_arrows_probe_on`,
+`list_arrows_bars_probe_off`, `list_arrows_bars_probe_on`.
 
 ### The text faces
 
@@ -1581,6 +1680,11 @@ its offset is the instruction after the call.
   Driven with the seam on and off, identical: the city's 3D with Left,
   Left, Right, Right (96 of 96 stills), the wilderness with Up, Left and
   Right (232 of 232), and by `quiet-bar-keys`.
+- **Up and Down at those bars** are `list-arrows`' (#435), which has a
+  point at the same instruction and its own allowlist of the callers where
+  Home and End step the party cursor; the two seams share the module, the
+  read point and the caller test in `seam_menu_bar.h`. The rest-time menu
+  is not in that allowlist: Up and Down are its Inc and Dec.
 - **The trade at camp.** With the seam on, Left and Right at the camp
   bar, Magic, Alter and the party-order screen no longer put the selected
   member back on the first one. Nobody presses an arrow to do that, and

@@ -1057,6 +1057,39 @@ identical, and the seam's end-of-run line is `armed and never reached`.
 Not driven: the shops, training, coin selection and the encounter lists;
 the picker from Trade (the Items screen's `T` redrew the screen and did
 not open one); the picker from a script.
+
+**The camp bar** (`camp-roster`, `camp-roster-arrows`, `camp-down` and
+`camp-down-arrows` are these scripts recorded; #435). Slot C, `ENCAMP`,
+and the selected member read off the party panel (the name in bright
+white ink):
+
+```
+--seam code-wheel --code-wheel-answered --seam list-arrows
+--press L@7550 --press C@7800 --press E@8800          the camp bar
+--press End@10000 --press End@10300 --press Home@10600
+--until 220000000 --wall none --dump-every 100
+```
+
+End, End and Home select MULE, THIEF and MULE, with the seam on or off
+(`camp-roster-arrows` is identical to `camp-roster`). Then, with `End@10000
+Down@10300 Down@10600 Up@10900`: on, the selection goes to MULE, THIEF,
+PRINCESS FATIMA and THIEF; off, MULE, then HULK, the first member, for
+every Down and Up. Magic (`M`), Alter (`A`) and the party-order screen
+(`A`, then `O`) behave the same way; in the party-order screen `Return`
+picks a member up, and with the seam on Down and Up move it down and up
+the order (seam off, they do nothing).
+
+**The other bars.** From slot A, at the armourer (leg 4's route) the
+shop's bar and the "show you our wares?" prompt before it step the
+selected member on Down and Up; at Sune's temple (leg 5's route) the same,
+and Up does not open Heal. After a fight (leg 2, with `cheat-invulnerable`)
+the treasure bar's Down and Up are rewritten. Not driven: the Take bar.
+
+**Where the arrows keep their own meaning**, with the seam on and off
+identical: the 3D view (`Up@10300 Down@10500 Left@10700 Up@10900
+Right@11100 Down@11300`, 252 of 252 stills) and the rest-time menu (camp's
+`R`, then `Up`, `Up`, `Down`, `Left`, `Up`, `Right`, `Down`, 272 of 272
+stills, the rest time going 00:00:05, 00:00:10, 00:00:05, then 00:01:05).
 ## Leg 15 — Enter and the arrows at the bars (#425, #432)
 
 Five scripts, one seam. `docs/seams.md` §10 has the facts. The screen text

@@ -359,6 +359,11 @@ struct machine_program {
 [[nodiscard]] const std::vector<std::uint8_t>& list_arrows_probe_file();
 [[nodiscard]] const machine::seam_definition& list_arrows_probe_definition();
 
+/// The list arrows' third handler, the command bars', at five made-up
+/// arrivals (#435).
+[[nodiscard]] const std::vector<std::uint8_t>& roster_probe_file();
+[[nodiscard]] const machine::seam_definition& roster_probe_definition();
+
 /// One program by name, or null. The composite is `"composite"` — the
 /// program M2-H2's dev page (#55) embeds, which is why finding one by
 /// name is part of the interface rather than something a caller does with
