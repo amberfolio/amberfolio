@@ -152,6 +152,8 @@ jobs:
         run: bash scripts/check-dco.sh
       - name: host-time guard (no clock reads under core/)
         run: bash scripts/check-host-time.sh
+      - name: host-test guard (no desktop host test reads a developer's config)
+        run: bash scripts/check-host-tests.sh
       - name: format check (clang-format over tracked C++)
         run: bash scripts/check-format.sh
       - name: shell lint (shellcheck over scripts/)

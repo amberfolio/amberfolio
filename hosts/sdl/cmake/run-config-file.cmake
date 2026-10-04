@@ -249,7 +249,80 @@ if(err MATCHES "was remembered")
     "a --seam refusal was treated as a remembered one.\nstderr: ${err}")
 endif()
 
+# --- 10. A hostile config is real, and --no-config is what keeps it out ----
+#
+# Every other host test starts with `--no-config` (#445), so that what a
+# test answers never depends on the settings of whoever runs the suite.
+# This is the case that says the rule is worth having: a config that
+# turns every seam this build carries on, and `save-sidecars` with them,
+# does reach an ordinary launch, and the very same launch with
+# `--no-config` is untouched by it.
+#
+# The seams are read out of the host's own `--seams` listing rather than
+# named here, so a seam added tomorrow is in the hostile file tomorrow.
+execute_process(
+  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --no-config --seams
+  RESULT_VARIABLE code
+  OUTPUT_VARIABLE out
+  ERROR_VARIABLE err)
+string(REGEX MATCHALL "amberfolio: seams [a-z0-9-]+ " listed "${err}")
+list(LENGTH listed seam_count)
+if(seam_count LESS 5)
+  message(FATAL_ERROR
+    "--seams listed ${seam_count} seams, which is not every seam:\n${err}")
+endif()
+set(hostile
+  "amberfolio-config 1\ngame-directory ${DISK}\nprogram HELLO.EXE\n")
+foreach(line IN LISTS listed)
+  string(REGEX REPLACE "^amberfolio: seams ([a-z0-9-]+) $" "\\1" seam "${line}")
+  string(APPEND hostile "seam ${seam}\n")
+endforeach()
+string(APPEND hostile "speed at\nsave-sidecars on\n")
+file(WRITE "${config}" "${hostile}")
+
+execute_process(
+  COMMAND "${HOST}" --headless --config "${config}"
+  RESULT_VARIABLE code
+  OUTPUT_VARIABLE out
+  ERROR_VARIABLE err)
+if(NOT code EQUAL 7)
+  message(FATAL_ERROR
+    "the hostile config's launch did not run the program;"
+    " the host returned '${code}'.\nstderr: ${err}")
+endif()
+# Read, and acted on: the seams were asked for and refused by name, which
+# is what "reached the run" looks like for a program no seam fits.
+foreach(expected
+    "config read "
+    "seam automap refused"
+    "was remembered, not asked for on this command line")
+  if(NOT err MATCHES "${expected}")
+    message(FATAL_ERROR
+      "a hostile config never reached the run ('${expected}').\n"
+      "stderr: ${err}")
+  endif()
+endforeach()
+
+execute_process(
+  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --no-config
+  RESULT_VARIABLE code
+  OUTPUT_VARIABLE out
+  ERROR_VARIABLE err)
+if(NOT code EQUAL 7)
+  message(FATAL_ERROR
+    "--no-config did not run the program; the host returned '${code}'.\n"
+    "stderr: ${err}")
+endif()
+foreach(forbidden "config read " "seam automap" "remembered")
+  if(err MATCHES "${forbidden}")
+    message(FATAL_ERROR
+      "--no-config let a config reach the run ('${forbidden}').\n"
+      "stderr: ${err}")
+  endif()
+endforeach()
+
 message(STATUS
   "sdl host config: a first run, a remembered one, a second launch with"
-  " no arguments, a flag that beat the file, a file that was refused, and"
-  " a remembered seam that this program refuses without killing it")
+  " no arguments, a flag that beat the file, a file that was refused, a"
+  " remembered seam that this program refuses without killing it, and a"
+  " hostile config that --no-config keeps out")

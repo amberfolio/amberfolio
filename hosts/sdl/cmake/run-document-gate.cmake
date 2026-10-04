@@ -26,7 +26,8 @@ set(document "${SCRATCH}/not-a-document.bin")
 file(WRITE "${document}" "abc")
 
 execute_process(
-  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --document "${document}"
+  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --no-config
+    --document "${document}"
   RESULT_VARIABLE code
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err)
@@ -49,7 +50,7 @@ endif()
 # this" and "I do not recognize this" are two findings, and only one of
 # them is about the table.
 execute_process(
-  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless
+  COMMAND "${HOST}" --no-config "${DISK}" HELLO.EXE --headless
     --document "${SCRATCH}/nothing-is-here.bin"
   RESULT_VARIABLE code
   OUTPUT_VARIABLE out

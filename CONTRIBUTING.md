@@ -100,12 +100,13 @@ what `identical` means to fit.
 
 ## Checks and gates
 
-Six scripted checks gate every push. CI runs exactly these scripts:
+Seven scripted checks gate every push. CI runs exactly these scripts:
 
 ```sh
 bash scripts/check-clean.sh      # content guard: every commit, index, worktree, strays
 bash scripts/check-dco.sh        # every non-merge commit carries a sign-off
 bash scripts/check-host-time.sh  # nothing under core/ reads the host's clock
+bash scripts/check-host-tests.sh # every desktop host test says --no-config or --config
 bash scripts/check-format.sh     # clang-format over tracked C++
 bash scripts/check-tidy.sh       # clang-tidy; needs a configured build tree
 bash scripts/check-shell.sh      # shellcheck over scripts/
