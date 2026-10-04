@@ -89,7 +89,10 @@ constexpr std::uint32_t aim_load_segment_at = 0x690;          // overlay 13
 constexpr std::uint32_t adventure_load_segment_at = 0x730;    // overlay 14
 constexpr std::uint32_t camp_load_segment_at = 0x760;         // overlay 15
 constexpr std::uint32_t roster_load_segment_at = 0x790;       // overlay 16
+constexpr std::uint32_t slots_load_segment_at = 0x7D0;        // overlay 17
+constexpr std::uint32_t view_load_segment_at = 0x860;         // overlay 19
 constexpr std::uint32_t rest_load_segment_at = 0x8D0;         // overlay 20
+constexpr std::uint32_t appraise_load_segment_at = 0x900;     // overlay 21
 
 /// The segment the program says `at` is loaded at now; zero while it is
 /// not loaded.

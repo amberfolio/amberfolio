@@ -49,6 +49,14 @@ constexpr std::uint32_t word_aim = 0x690;
 constexpr std::uint32_t word_editor = 0x790;
 constexpr std::uint32_t word_rest = 0x8D0;
 constexpr std::uint32_t word_script = 0x2C0;
+/// The modules the Enter audit (#459) added: overlays 4 (the temple), 6
+/// (the shop), 17 (the save and load slot bars), 19 (View) and 21 (the
+/// temple's appraisal).
+constexpr std::uint32_t word_temple = 0x230;
+constexpr std::uint32_t word_shop = 0x290;
+constexpr std::uint32_t word_slots = 0x7D0;
+constexpr std::uint32_t word_view = 0x860;
+constexpr std::uint32_t word_appraise = 0x900;
 
 /// Where each module is, in this test.
 constexpr std::uint16_t menu_segment = 0x6000;
@@ -60,6 +68,11 @@ constexpr std::uint16_t aim_segment = 0x7400;
 constexpr std::uint16_t editor_segment = 0x7800;
 constexpr std::uint16_t rest_segment = 0x7C00;
 constexpr std::uint16_t script_segment = 0x8000;
+constexpr std::uint16_t temple_segment = 0x8400;
+constexpr std::uint16_t shop_segment = 0x8800;
+constexpr std::uint16_t slots_segment = 0x8C00;
+constexpr std::uint16_t view_segment = 0x9000;
+constexpr std::uint16_t appraise_segment = 0x9400;
 
 /// The callers' return offsets.
 constexpr std::uint16_t ret_yes_no = 0x111E;
@@ -83,6 +96,31 @@ constexpr std::uint16_t ret_take = 0x0D91;
 constexpr std::uint16_t ret_keep = 0x1DC1;
 /// The pick-list's call into the routine, which is in overlay 25.
 constexpr std::uint16_t ret_pick_list = 0x0FE0;
+
+/// The callers the Enter audit (#459) added to the table.
+constexpr std::uint16_t ret_alter_toggles = 0x1DDF;
+constexpr std::uint16_t ret_camp_speed = 0x1B91;
+constexpr std::uint16_t ret_portrait = 0x3449;
+constexpr std::uint16_t ret_shop = 0x061F;
+constexpr std::uint16_t ret_temple = 0x0DAA;
+constexpr std::uint16_t ret_loot = 0x1024;
+constexpr std::uint16_t ret_combat_command = 0x0819;
+constexpr std::uint16_t ret_combat_done = 0x0F70;
+constexpr std::uint16_t ret_combat_speed = 0x120C;
+constexpr std::uint16_t ret_view_bar = 0x0C9C;
+constexpr std::uint16_t ret_appraise = 0x1C47;
+constexpr std::uint16_t ret_load = 0x16E2;
+
+/// The callers the audit read and left out: Enter does something there, or
+/// the bar is one a stray Enter should not act on.
+constexpr std::uint16_t ret_aim_bar = 0x2C31;
+constexpr std::uint16_t ret_door_bash = 0x0EBF;
+constexpr std::uint16_t ret_door_stuck = 0x0FFE;
+constexpr std::uint16_t ret_keep_jewel = 0x2114;
+constexpr std::uint16_t ret_icon_editor = 0x39FE;
+constexpr std::uint16_t ret_save = 0x1DA1;
+constexpr std::uint16_t ret_stage = 0x236F;
+constexpr std::uint16_t ret_main_menu = 0x02FD;
 
 /// The frame, below and above BP.
 constexpr std::uint16_t frame_ip = 2;
@@ -146,6 +184,11 @@ struct rig {
     manager_says(word_editor, editor_segment);
     manager_says(word_rest, rest_segment);
     manager_says(word_script, script_segment);
+    manager_says(word_temple, temple_segment);
+    manager_says(word_shop, shop_segment);
+    manager_says(word_slots, slots_segment);
+    manager_says(word_view, view_segment);
+    manager_says(word_appraise, appraise_segment);
   }
 
   /// What the overlay manager writes: where a module begins now.
@@ -390,7 +433,6 @@ TEST(SeamBarKeys, LeftAndRightStepAtAnUnlistedRawCaller) {
       {.segment = menu_segment, .offset = ret_pick_list, .name = "pick-list"},
       {.segment = post_combat_segment, .offset = ret_take, .name = "take"},
       {.segment = stack_segment, .offset = ret_keep, .name = "keep"},
-      {.segment = rest_segment, .offset = ret_rest, .name = "rest time"},
       {.segment = stack_segment, .offset = 0x1234, .name = "unknown"},
   }};
   for (const caller_at& c : callers) {
@@ -485,28 +527,159 @@ TEST(SeamBarKeys, EveryOtherKeyIsLeftWhereItIs) {
 
 // --- Enter -----------------------------------------------------------------
 
+struct enter_caller {
+  std::uint16_t segment;
+  std::uint16_t offset;
+  const char* name;
+};
+
+/// Every caller in the Enter table, the audit's (#459) included.
+constexpr std::array<enter_caller, 20> tabled{{
+    {.segment = menu_segment, .offset = ret_yes_no, .name = "yes/no"},
+    {.segment = adventure_segment, .offset = ret_area, .name = "overhead"},
+    {.segment = adventure_segment, .offset = ret_view, .name = "3D"},
+    {.segment = camp_segment, .offset = ret_camp, .name = "camp"},
+    {.segment = camp_segment, .offset = ret_magic, .name = "magic"},
+    {.segment = camp_segment, .offset = ret_alter, .name = "alter"},
+    {.segment = camp_segment,
+     .offset = ret_alter_toggles,
+     .name = "alter's portraits and monsters"},
+    {.segment = camp_segment, .offset = ret_camp_speed, .name = "camp speed"},
+    {.segment = editor_segment, .offset = ret_portrait, .name = "portrait"},
+    {.segment = shop_segment, .offset = ret_shop, .name = "shop"},
+    {.segment = temple_segment, .offset = ret_temple, .name = "temple"},
+    {.segment = post_combat_segment, .offset = ret_loot, .name = "loot"},
+    {.segment = post_combat_segment, .offset = ret_take, .name = "take"},
+    {.segment = combat_segment,
+     .offset = ret_combat_command,
+     .name = "combat command"},
+    {.segment = combat_segment, .offset = ret_combat_done, .name = "done"},
+    {.segment = combat_segment,
+     .offset = ret_combat_speed,
+     .name = "combat speed"},
+    {.segment = view_segment, .offset = ret_view_bar, .name = "view"},
+    {.segment = appraise_segment, .offset = ret_appraise, .name = "appraise"},
+    {.segment = slots_segment, .offset = ret_load, .name = "load"},
+    {.segment = rest_segment, .offset = ret_rest, .name = "rest time"},
+}};
+
 TEST(SeamBarKeys, EnterTakesTheHighlightedCommandAtEachTabledCaller) {
-  struct caller {
-    std::uint16_t segment;
-    std::uint16_t offset;
-  };
-  const std::array<caller, 6> callers{
-      {{.segment = menu_segment, .offset = ret_yes_no},
-       {.segment = adventure_segment, .offset = ret_area},
-       {.segment = adventure_segment, .offset = ret_view},
-       {.segment = camp_segment, .offset = ret_camp},
-       {.segment = camp_segment, .offset = ret_magic},
-       {.segment = camp_segment, .offset = ret_alter}}};
-  for (const caller& c : callers) {
+  for (const enter_caller& c : tabled) {
     const rig r;
     r.arm();
     for (std::uint8_t group = 1; group <= 3; ++group) {
       r.lay_bar("Ant Bee Cow", group);
-      const std::uint16_t answer = r.press(enter, c.segment, c.offset, 1);
-      EXPECT_EQ(letter_of(answer), "ABC"[group - 1]) << int{group};
-      EXPECT_EQ(answer >> 8U, 0x1Cu) << "posted under Enter's own scan code";
+      for (const std::uint8_t raw : std::array<std::uint8_t, 2>{0, 1}) {
+        const std::uint16_t answer = r.press(enter, c.segment, c.offset, raw);
+        EXPECT_EQ(letter_of(answer), "ABC"[group - 1])
+            << c.name << " " << int{group};
+        EXPECT_EQ(answer >> 8U, 0x1Cu)
+            << c.name << ": posted under Enter's own scan code";
+      }
     }
   }
+}
+
+TEST(SeamBarKeys, EnterAtEveryTabledCallerHasTheGuardsEveryBarHas) {
+  for (const enter_caller& c : tabled) {
+    const rig r;
+    r.arm();
+    // The last-match guard, a bar that is not drawn, and a highlight that
+    // is not set yet.
+    r.lay_bar("Ant Bee Axe", 1);
+    EXPECT_EQ(r.press(enter, c.segment, c.offset, 1), enter) << c.name;
+    r.lay_bar("Ant Bee Cow", 2, 0);
+    EXPECT_EQ(r.press(enter, c.segment, c.offset, 1), enter) << c.name;
+    r.lay_bar("Ant Bee Cow", 0);
+    EXPECT_EQ(r.press(enter, c.segment, c.offset, 1), enter) << c.name;
+    EXPECT_EQ(r.box->seams().status(seam_id).declined, 1u) << c.name;
+  }
+}
+
+TEST(SeamBarKeys, EnterFollowsTheHighlightAtTheRestTimeMenuNotTheProgramsRest) {
+  // The program maps Enter to `R` there. The bar's `Y` is in the middle of
+  // its word, and the highlighted word's own capital is what Enter becomes.
+  const rig r;
+  r.arm();
+  const std::string_view bar = "Rest daYs Hours Mins Inc Dec Exit";
+  const std::array<char, 7> letters{'R', 'Y', 'H', 'M', 'I', 'D', 'E'};
+  for (std::size_t group = 1; group <= letters.size(); ++group) {
+    r.lay_bar(bar, static_cast<std::uint8_t>(group));
+    const std::uint16_t answer = r.press(enter, rest_segment, ret_rest, 1);
+    EXPECT_EQ(letter_of(answer), letters[group - 1]) << group;
+    EXPECT_EQ(answer >> 8U, 0x1Cu);
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamBarKeys, EnterIsLeftAloneWhereATabledOffsetIsInTheWrongModule) {
+  // Every tabled offset, asked from every module that does not own it: the
+  // table is exact in both halves of a caller.
+  const rig r;
+  r.arm();
+  r.lay_bar("Ant Bee Cow", 2);
+  for (const enter_caller& c : tabled) {
+    for (const enter_caller& other : tabled) {
+      bool owned = false;
+      for (const enter_caller& t : tabled) {
+        owned = owned || (t.segment == other.segment && t.offset == c.offset);
+      }
+      if (!owned) {
+        EXPECT_EQ(r.press(enter, other.segment, c.offset, 1), enter)
+            << c.name << " from " << other.name;
+      }
+    }
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+
+  r.manager_says(word_slots, 0);
+  EXPECT_EQ(r.press(enter, 0, ret_load, 1), enter);
+  r.manager_says(word_slots, slots_segment);
+  EXPECT_EQ(letter_of(r.press(enter, slots_segment, ret_load, 1)), 'B');
+}
+
+TEST(SeamBarKeys, EnterIsLeftAloneAtTheCallersTheAuditReadAndKeptOut) {
+  // Each does something with Enter already, or is a bar a stray Enter
+  // should not act on (docs/seams.md §10 has the verdict for each).
+  const rig r;
+  r.arm();
+  r.lay_bar("Ant Bee Cow", 2);
+
+  const std::array<enter_caller, 19> kept_out{{
+      {.segment = menu_segment, .offset = ret_pick_list, .name = "pick-list"},
+      {.segment = camp_segment, .offset = ret_order, .name = "party order"},
+      {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
+      {.segment = aim_segment, .offset = ret_aim, .name = "aim cursor"},
+      {.segment = aim_segment, .offset = ret_aim_bar, .name = "aim bar"},
+      {.segment = adventure_segment, .offset = ret_door_bash, .name = "door"},
+      {.segment = adventure_segment,
+       .offset = ret_door_stuck,
+       .name = "stuck door"},
+      {.segment = appraise_segment, .offset = ret_keep, .name = "keep gem"},
+      {.segment = appraise_segment,
+       .offset = ret_keep_jewel,
+       .name = "keep jewel"},
+      {.segment = post_combat_segment, .offset = ret_share, .name = "share"},
+      {.segment = post_combat_segment,
+       .offset = ret_npc_share,
+       .name = "npc share"},
+      {.segment = editor_segment,
+       .offset = ret_icon_editor,
+       .name = "icon editor"},
+      {.segment = editor_segment, .offset = ret_editor, .name = "stat editor"},
+      {.segment = editor_segment, .offset = ret_main_menu, .name = "main menu"},
+      {.segment = slots_segment, .offset = ret_save, .name = "save slot"},
+      {.segment = slots_segment, .offset = ret_stage, .name = "stage prompt"},
+      {.segment = stack_segment, .offset = 0x1234, .name = "unknown"},
+      {.segment = script_segment, .offset = ret_load, .name = "load, in 7"},
+      {.segment = slots_segment, .offset = ret_script, .name = "script, in 17"},
+  }};
+  for (const enter_caller& c : kept_out) {
+    for (const std::uint8_t raw : std::array<std::uint8_t, 2>{0, 1}) {
+      EXPECT_EQ(r.press(enter, c.segment, c.offset, raw), enter) << c.name;
+    }
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
 
 TEST(SeamBarKeys, EnterAtTheYesNoPromptTakesTheHighlightedAnswer) {

@@ -103,12 +103,15 @@
 // RAM.
 //
 // **Why a table and not every bar.** The routine hands Enter back, and
-// what a caller does with `0x0D` is the caller's own business: the
-// callers in the table were read and each does nothing with it (it matches
-// none of its comparisons and the loop asks again). A caller that did
-// something with it, a pick-list that confirms its row, would be handed a
-// letter it never asked for. Each caller in the table is shown to ignore Enter by two
-// routes (docs/seams.md §10).
+// what a caller does with `0x0D` is the caller's own business. A caller
+// is in the table when it **asks again** on a `0x0D` it was handed: its
+// compares match nothing, or its loop's exit class does not hold it, and
+// nothing happens. A caller that did something with it, a pick-list that
+// confirms its row, a prompt that Enter dismisses, a loop that Enter ends,
+// would be handed a letter it never asked for, so it is not here. Each
+// caller in the table was read in the disassembly from its return offset
+// on, and shown to ignore Enter by a second route (docs/seams.md §10 has
+// both routes for each, and a verdict for every caller that is not here).
 //
 //   | caller | module | return offset | what it does with `0x0D` |
 //   |---|---|---|---|
@@ -118,6 +121,20 @@
 //   | the camp bar | overlay 15 | `0x1F24` | none of its compares match; asks again |
 //   | camp's Magic bar | overlay 15 | `0x1447` | none of its compares match; asks again |
 //   | camp's Alter bar | overlay 15 | `0x1CA4` | none of its compares match; asks again |
+//   | alter's Portraits and Monsters bar | overlay 15 | `0x1DDF` | compares M and P; loops until {NUL, E} |
+//   | camp's game-speed bar | overlay 15 | `0x1B91` | compares F and S; loops until {NUL, E} |
+//   | the portrait bar | overlay 16 | `0x3449` | compares H, B and K; loops until K |
+//   | the shop's bar | overlay 6 | `0x061F` | compares nine letters; repaints and loops |
+//   | the temple's bar | overlay 4 | `0x0DAA` | compares nine letters; repaints and loops |
+//   | the post-combat treasure bar | overlay 5 | `0x1024` | compares V, T, P, S, D, E, G and O; loops |
+//   | the post-combat Take bar | overlay 5 | `0x0D91` | compares M, I, E, G and O; loops |
+//   | the combat command bar | overlay 8 | `0x0819` | not in the set of commands; asks again |
+//   | the combat Done bar | overlay 8 | `0x0F70` | compares G, D, Q, B and S; loops until {NUL, E} |
+//   | the combat game-speed bar | overlay 8 | `0x120C` | compares S and F; loops until {NUL, E} |
+//   | the View bar | overlay 19 | `0x0C9C` | compares I, S, T and D; loops until {NUL, E} |
+//   | the temple's appraise bar | overlay 21 | `0x1C47` | compares G, J and E; loops until E |
+//   | the load-game slot bar | overlay 17 | `0x16E2` | loops until the answer is a slot letter |
+//   | the rest-time menu | overlay 20 | `0x076E` | **takes it as `R`, Rest**; in the table by decision, so Enter follows the highlight |
 //
 // **Esc answers No** (#438), at two callers only: the Yes/No prompt (the
 // loop in the table above, which ignores Esc and asks again) and the script
@@ -149,10 +166,13 @@
 // and the temple's keep-or-sell prompt (Left is its `K`, Keep). With the
 // seam on the arrows step the highlight there like everywhere else.
 //
-// The rest-time menu (overlay 20, return `0x076E`) is not in the table
-// either, by decision: the program steps its days/hours/minutes field on
-// Left and Right, and with the seam on they step the bar's highlight
-// instead, as at any other bar. `Y`, `H` and `M` still pick the field.
+// The rest-time menu (overlay 20, return `0x076E`) is not in the exclusion
+// table either, by decision: the program steps its days/hours/minutes field
+// on Left and Right, and with the seam on they step the bar's highlight
+// instead, as at any other bar. `Y`, `H` and `M` still pick the field. Its
+// Enter is in the Enter table by the same decision: the program maps it to
+// `R`, Rest, and with the seam on it takes the highlighted command, which
+// is Rest until the highlight is moved.
 //
 // **Why the BIOS ring and not AL.** The program reads the key two
 // routines deep, through INT 16h, so the first place any seam can see it
@@ -189,8 +209,10 @@
 // What it is not yet, at the point of definition (docs/seams.md §8.5)
 // -------------------------------------------------------------------
 //
-// Enter at the other callers of the routine, which are listed with why in
-// docs/seams.md §10. Out of scope: Up and Down, which are `list-arrows`' (#423,
+// Enter at the callers that are not in the table, each with its verdict in
+// docs/seams.md §10: most of them do something with it already, and two
+// (the save-game slot bar and the stat editor) drop it and are left out on
+// purpose. Out of scope: Up and Down, which are `list-arrows`' (#423,
 // #435) at the same point, and a held key repeating (#426).
 
 #include <array>
@@ -255,13 +277,34 @@ using menu_bar::post_combat_load_segment_at;
 using menu_bar::roster_load_segment_at;
 using menu_bar::script_load_segment_at;
 
-constexpr std::array<caller, 6> enter_callers{{
+using menu_bar::appraise_load_segment_at;
+using menu_bar::shop_load_segment_at;
+using menu_bar::slots_load_segment_at;
+using menu_bar::temple_load_segment_at;
+using menu_bar::view_load_segment_at;
+
+constexpr std::array<caller, 20> enter_callers{{
     {.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
     {.load_segment_at = camp_load_segment_at, .return_offset = 0x1F24},
     {.load_segment_at = camp_load_segment_at, .return_offset = 0x1447},
     {.load_segment_at = camp_load_segment_at, .return_offset = 0x1CA4},
+    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1DDF},
+    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1B91},
+    {.load_segment_at = roster_load_segment_at, .return_offset = 0x3449},
+    {.load_segment_at = shop_load_segment_at, .return_offset = 0x061F},
+    {.load_segment_at = temple_load_segment_at, .return_offset = 0x0DAA},
+    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x1024},
+    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x0D91},
+    {.load_segment_at = combat_load_segment_at, .return_offset = 0x0819},
+    {.load_segment_at = combat_load_segment_at, .return_offset = 0x0F70},
+    {.load_segment_at = combat_load_segment_at, .return_offset = 0x120C},
+    {.load_segment_at = view_load_segment_at, .return_offset = 0x0C9C},
+    {.load_segment_at = appraise_load_segment_at, .return_offset = 0x1C47},
+    {.load_segment_at = slots_load_segment_at, .return_offset = 0x16E2},
+    {.load_segment_at = menu_bar::rest_load_segment_at,
+     .return_offset = 0x076E},
 }};
 
 /// The Yes/No prompt, and the script runner's call into the routine (the
