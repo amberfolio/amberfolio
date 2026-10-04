@@ -5106,7 +5106,7 @@ constexpr std::array<machine::seam_point, 1> door_points{
         {.what = "row", .value = 6},
         {.what = "colour, white", .value = 0x0F},
         {.what = "its character, the third member's", .value = '3'},
-        {.what = "the cut: left", .value = 0x20},
+        {.what = "the cut: left", .value = 0x21},
         {.what = "right, where a fifteen-character name ends", .value = 0x21},
         {.what = "two numbers were drawn", .value = 2},
         {.what = "and one name cut", .value = 1},
