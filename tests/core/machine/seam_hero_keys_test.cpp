@@ -901,10 +901,10 @@ struct row_run {
 TEST(SeamHeroKeys, ANameThatFitsIsMovedAndNeverCutAndTheColumnComesBack) {
   const rig r;
   r.arm();
-  // Thirteen characters from column 0x13 end at 0x1F, the last column the
-  // name had before.
+  // Fourteen characters from column 0x13 end at 0x20, the last column a
+  // name may reach.
   for (const std::uint8_t length :
-       {std::uint8_t{1}, std::uint8_t{6}, std::uint8_t{13}}) {
+       {std::uint8_t{1}, std::uint8_t{6}, std::uint8_t{13}, std::uint8_t{14}}) {
     const row_run run = run_a_row(r, 0x11, 6, length);
     EXPECT_EQ(run.calls.size(), 1u) << int{length};
     EXPECT_EQ(run.final_column, 0x11) << int{length};
@@ -912,26 +912,19 @@ TEST(SeamHeroKeys, ANameThatFitsIsMovedAndNeverCutAndTheColumnComesBack) {
   }
 }
 
-TEST(SeamHeroKeys, ALongNameKeepsThirteenCharactersBesideTheViewport) {
+TEST(SeamHeroKeys, ALongNameKeepsFourteenCharactersBesideTheViewport) {
   const rig r;
   r.arm();
-  // Fourteen characters end at 0x20, fifteen at 0x21: the tail from 0x20 is
-  // cleared, up to where the name would have ended.
-  const row_run fourteen = run_a_row(r, 0x11, 5, 14);
-  ASSERT_EQ(fourteen.calls.size(), 2u);
-  EXPECT_EQ(fourteen.calls[1].paragraph, clear_paragraph);
-  EXPECT_EQ(fourteen.calls[1].offset, clear_offset);
-  // Left, top, right, bottom, as the drawer pushes them.
-  EXPECT_EQ(fourteen.calls[1].args,
-            (std::vector<std::uint16_t>{0x20, 5, 0x20, 5}));
-  EXPECT_EQ(fourteen.calls[1].ip, name_drawn);
-  EXPECT_EQ(fourteen.final_column, 0x11);
-  EXPECT_EQ(fourteen.final_sp, drawer_sp);
-
+  // Fifteen characters end at 0x21: the tail from 0x21 is cleared, up to
+  // where the name would have ended.
   const row_run fifteen = run_a_row(r, 0x11, 7, 15);
   ASSERT_EQ(fifteen.calls.size(), 2u);
+  EXPECT_EQ(fifteen.calls[1].paragraph, clear_paragraph);
+  EXPECT_EQ(fifteen.calls[1].offset, clear_offset);
+  // Left, top, right, bottom, as the drawer pushes them.
   EXPECT_EQ(fifteen.calls[1].args,
-            (std::vector<std::uint16_t>{0x20, 7, 0x21, 7}));
+            (std::vector<std::uint16_t>{0x21, 7, 0x21, 7}));
+  EXPECT_EQ(fifteen.calls[1].ip, name_drawn);
   EXPECT_EQ(fifteen.final_column, 0x11);
   EXPECT_EQ(fifteen.final_sp, drawer_sp);
 }

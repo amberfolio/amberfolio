@@ -1865,7 +1865,7 @@ highlight finds it on `Mins` (above), so a Return there no longer rests.
 | the two share prompts, *press Enter* (overlay 5) | `0x0AF8`, `0x14C7` | the prompt asks for it and ends on it |
 | the script runner, allow-Enter set (overlay 7) | `0x16EB` | the first choice |
 | the disk-swap prompt (overlay 17) | `0x236F` | one question: any key but `S` is Insert, a retry |
-| the icon editor's bars (overlay 16) | `0x39FE` | five states on one call: states 1, 4 and 5 drop it, **states 2 and 3 take it as the pick** (a block or a colour slot named `0x0D`, then the edit state): by accident, and by state, which this seam does not read |
+| the icon editor's bars (overlay 16) | `0x39FE` | **taken**, by the maintainer's decision: states 1, 4 and 5 drop Enter; states 2 and 3 take it as a pick of the default (a block or colour slot named `0x0D`), and the highlighted entry is the pick a player means |
 
 *Enter is dropped, and left out by decision (2 callers):*
 
@@ -2109,7 +2109,7 @@ v1's six. A setting; keys and a display change. Nothing to pull.
 |---|---|---|
 | image `0x0572` of overlay 25, the call into the key-read routine inside the menu-bar routine (`bar-keys`' point) | overlay 25, through the manager's word | a number-row `1` to `8` at the head of the BIOS ring, from a caller in the table below: puts the selection on the target's successor (the head for the last member and for a party of one) and rewrites the key to Home. With nobody behind the digit, the key becomes the one the program throws away |
 | image `0x138F`, the instruction after the roster drawer clears a member's row | resident image, `inside_calls` | the name's column goes up two, and the program's glyph routine draws the member's number at the old column in white |
-| image `0x13CB`, where the drawer's two name paths meet, before the armour class | resident image, `inside_calls` | a name that now ends past column `0x1F` has its tail cleared by the program's clear routine; the column goes back |
+| image `0x13CB`, where the drawer's two name paths meet, before the armour class | resident image, `inside_calls` | a name that now ends past column `0x20` has its tail cleared by the program's clear routine; the column goes back |
 
 | fact | value |
 |---|---|
@@ -2207,11 +2207,12 @@ manager's word for it; the same far-return identification as `bar-keys`):
   the byte's own value as the only state (`1` and `0x11` are the program's;
   `3` and `0x13` mean the number is drawn, `2` and `0x12` that the cut is
   done). **What a name keeps.** Beside the viewport the field is columns
-  `0x13` to `0x1F`, thirteen characters: a fifteen-character name shows its
-  first thirteen, and a fourteen-character one its first thirteen too (its
-  last would land on the first column of the armour class, which a
-  value of -10 or lower fills). The cut is the program's clear over
-  `0x20` to where the name would have ended; nothing in the record is
+  `0x13` to `0x20`, fourteen characters: a fifteen-character name shows its
+  first fourteen. The armour class is right-aligned in `0x20` to `0x22`
+  (measured on a still), and only a value of -10 or lower reaches `0x20`;
+  the program draws it after the name, so its sign then takes that column.
+  The cut is the program's clear over `0x21` to where the name would have
+  ended; nothing in the record is
   touched. On the main menu the names start at column one and every name
   fits. **No other column moves**, and the header keeps its place.
 - **Where the list is drawn.** Driven: the 3D view and the wilderness, the
