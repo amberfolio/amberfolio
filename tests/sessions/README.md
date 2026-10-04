@@ -101,10 +101,14 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `bar-yn` | same | code-wheel | | slot C's camp, `SAVE`, a Right at the slot bar, Escape, and Return at the quit prompt that follows: the program drops the Right and the Return. 100 checkpoints |
 | `bar-yn-keys` | same | + bar-keys | **`contrast bar-yn`** | 86 of 100 identical, divergent from tick 206,218,672: the Right steps the slot bar's highlight, and the Return answers the prompt `No` |
 | `menu-letters` | shipped slots | code-wheel | | the main menu by letters only: `A`, `A` adds the first character, `E` back to the menu, `V` the view screen, Escape. 77 checkpoints |
-| `menu-letters-cursor` | same | + menu-cursor | `identical menu-letters` | the same keys with the cursor's seam on and no Up, Down or Return pressed at the menu: all 77 checkpoints |
+| `menu-letters-cursor` | same | + menu-cursor | **`contrast menu-letters`** | the same keys with the cursor's seam on and no Up, Down or Return pressed at the menu: 58 of 77 identical, divergent from tick 147,668,400, the first frame the menu is drawn in (the cursor is on the first command from the start, #453). It was an `identical` while the cursor was hidden until the first key, and was re-recorded |
 | `menu-down` | same | code-wheel | | the main menu with no party, then Down, Down and Return, which the program drops: the menu has no cursor. 70 checkpoints |
-| `menu-down-cursor` | same | + menu-cursor | **`contrast menu-down`** | 60 of 70 identical, divergent from tick 151,168,688 (the first Down): the cursor is drawn on Add, moves to Load, and the Return takes it, so the slot prompt is up where the seam-off run shows the plain menu |
+| `menu-down-cursor` | same | + menu-cursor | **`contrast menu-down`** | 58 of 70 identical, divergent from tick 147,668,400 (the first frame the menu is drawn in): the cursor is on Create, moves to Add and Load, and the Return takes it, so the slot prompt is up where the seam-off run shows the plain menu. Re-recorded for #453 |
+| `menu-down-cursor-yellow` | same | + menu-cursor, select-yellow | **`contrast menu-down-cursor`** | the same keys: 58 of 70 identical, divergent from the same tick, because the row is lit in two colours where the other lights it in one |
 | `quiet-hero-keys` | same | + hero-keys | **`contrast quiet`** | 74 of 90 identical, divergent from tick 182,989,488, the first checkpoint after the party list is first drawn: each name moves two columns right and its number is drawn, which is the enhancement |
+| `quiet-select-yellow` | same | + select-yellow | **`contrast quiet`** | 74 of 90 identical, divergent from tick 182,989,488, where the party list is first drawn: the selected name and the bar's highlighted word are yellow. In `cpu`, `ram`, `devices` and `display`, because the seam rewrites a colour the program has pushed |
+| `bar-yn-yellow` | same | + select-yellow | **`contrast bar-yn`** | slot C's camp and its quit question with the seam on: 73 of 100 identical, divergent from tick 178,216,368 |
+| `list-keys-yellow` | same | + select-yellow | **`contrast list-keys`** | character creation's pick-lists with the seam on: 61 of 84 identical, divergent from tick 152,759,728 |
 | `hero-pick` | same | + hero-keys | | slot A, and a 9 at the adventuring bar, which is never the seam's: the program steps the selection to the first member, where it already is. 87 checkpoints |
 | `hero-pick-3` | same | + hero-keys | **`contrast hero-pick`** | the same script with a 3 at the same tick: 77 of 87 identical, divergent from tick 190,944,688. The seam puts the third member under the cursor, the program steps onto it, and the party list is redrawn with the third name white |
 | `bar-esc` | same | code-wheel | | slot C's camp, `SAVE`, Escape out of the slot bar, and Escape at the quit prompt that follows, which the program ignores. 99 checkpoints |
@@ -124,7 +128,8 @@ frame that carries an input is checkpointed whatever the cadence says.
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
 | `list-arrows` | `list-down-arrows`, `camp-down-arrows`, `camp-pad-arrows` | `list-keys-arrows`, `camp-roster-arrows` |
 | `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys` | `quiet-bar-keys` |
-| `menu-cursor` | `menu-down-cursor` | `menu-letters-cursor` |
+| `menu-cursor` | `menu-down-cursor`, `menu-down-cursor-yellow` | `menu-letters-cursor` (a `contrast`: the cursor is drawn as soon as the menu is) |
+| `select-yellow` | `bar-yn-yellow`, `list-keys-yellow`, `menu-down-cursor-yellow` | `quiet-select-yellow` (a `contrast`: a highlight is drawn at once, so none can exist) |
 | `hero-keys` | `hero-pick-3` | `quiet-hero-keys` (a `contrast`: the party list is seen as soon as it is drawn) |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
