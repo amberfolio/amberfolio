@@ -337,6 +337,8 @@ the seam on:
   a bar whose keys are not the first letters of its words, like the icon
   editor's top bar, the game's own highlight runs on into the next word,
   and the seam lights the word that holds the key.
+  A prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
+  CONTINUE`, has nothing to select and stays as the game draws it.
 - **A pick-list's highlighted row** (race, class, spells, shops, coins, the
   list of characters to add) is yellow.
 - **The selected party member's name** in the party list is yellow, in the

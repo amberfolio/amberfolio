@@ -582,6 +582,58 @@ TEST(SeamSelectYellow, TheOtherTwoBarPointsDeclineTheSameWay) {
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 2u);
 }
 
+// --- A bar with one command letter is not a selection (#460) -----------------
+
+TEST(SeamSelectYellow, AOneChoiceNoticeIsNotLitLikeAMenu) {
+  // The script runner's `Press <enter>/<return> to continue`: one capital,
+  // so one group, which is the whole bar. The program draws it in the
+  // bright from end to end, and the seam leaves it so.
+  const rig r;
+  r.arm();
+  const std::string notice = "Press <enter>/<return> to continue";
+  EXPECT_EQ(r.colours_of(notice, 1, white, white),
+            std::string(notice.size(), 'W'));
+  EXPECT_EQ(r.colours_of(notice, 1, green, white),
+            std::string(notice.size(), 'W'));
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamSelectYellow, ALoneWordWithOneKeyIsLeftAsTheProgramDrawsIt) {
+  // A leading space is outside the group and is drawn in the dim.
+  const rig r;
+  r.arm();
+  EXPECT_EQ(r.colours_of("Exit", 1, green, white), "WWWW");
+  EXPECT_EQ(r.colours_of(" Pay it", 1, green, white), "GWWWWWW");
+}
+
+TEST(SeamSelectYellow, ANoticeHandedTheColoursTheWrongWayRoundIsPutRight) {
+  // The swapped pair is normalised whether or not there is a selection: the
+  // program draws this one green end to end, and a leading space white.
+  const rig r;
+  r.arm();
+  EXPECT_EQ(r.colours_of("Press <enter> to go", 1, white, green),
+            std::string(19, 'W'));
+  EXPECT_EQ(r.colours_of(" Pay it", 1, white, green), "GWWWWWW");
+}
+
+TEST(SeamSelectYellow, ABarOfAllCapitalsWithSeveralKeysIsStillAChoice) {
+  // The save and load slot bars are every letter a capital and one letter to
+  // a group. The rule is the number of keys, not the case: the letters stay
+  // white and the highlighted one is not lost.
+  const rig r;
+  r.arm();
+  EXPECT_EQ(r.colours_of("A B C E J ", 1, green, white), "WGWGWGWGWG");
+  EXPECT_EQ(r.colours_of("A B C E J ", 3, green, white), "WGWGWGWGWG");
+  EXPECT_EQ(r.colours_of("A B C E J ", 3, white, green), "WGWGWGWGWG");
+}
+
+TEST(SeamSelectYellow, AMixedCaseBarWithTwoKeysKeepsItsHighlight) {
+  const rig r;
+  r.arm();
+  EXPECT_EQ(r.colours_of("Yes No", 1, green, white), "WYYGWG");
+  EXPECT_EQ(r.colours_of("Yes No", 2, green, white), "WGGGWY");
+}
+
 // --- The pick-list's row ------------------------------------------------------
 
 TEST(SeamSelectYellow, TheListsRowIsYellow) {

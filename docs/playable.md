@@ -1379,13 +1379,15 @@ draws it looked at.
 | the icon editor's bar | `K` at the portrait bar | the lit word is `COLOR-2` and not the half of a word the game lights |
 | the main menu | leg 16 with `--seam menu-cursor` | `Create` yellow with its `C` white |
 | a swapped Yes/No | the temple's `PAY FOR CURE` (leg 5) | `Y` and `N` white, `es` green, `o` yellow |
+| a one-choice notice | slot A to the arena master's square (7,1), `bar-script`'s keys up to the Return | `PRESS <ENTER>/<RETURN> TO CONTINUE` white end to end, as with the seam off; the question after the Return has `Yes` yellow with its `Y` white |
 
 ```
 --seam code-wheel --code-wheel-answered --seam select-yellow
 ```
 
 `quiet-select-yellow`, `bar-yn-yellow`, `list-keys-yellow` and
-`menu-down-cursor-yellow` are the first four rows' keys recorded. **Not
+`menu-down-cursor-yellow` are the first four rows' keys recorded, and
+`bar-script-yellow` is the notice's. **Not
 driven:** the two detect-magic confirmations (a combat-only spell cast
 outside combat, and a monster's item), which are read from the disassembly
 and covered by the unit suite.

@@ -616,6 +616,7 @@ and never triggered.
 | `quiet-select-yellow` | contrast | `quiet` (the party list's selected name and the bar's highlighted word are drawn in yellow, from the first time either is) |
 | `bar-yn-yellow` | contrast | `bar-yn` (the camp bar, the party list and the quit prompt in yellow) |
 | `list-keys-yellow` | contrast | `list-keys` (each pick-list's highlighted row in yellow) |
+| `bar-script-yellow` | contrast | `bar-script` (the arena master's press-Enter notice drawn as the program draws it, and his question's highlighted word in yellow) |
 | `menu-letters-cursor` | contrast | `menu-letters` (the cursor is drawn as soon as the menu is, with no key pressed at it) |
 | `menu-down-cursor-yellow` | contrast | `menu-down-cursor` (the cursor row yellow with a white key) |
 | `hero-pick-3` | contrast | `hero-pick` (a 3 at the adventuring bar where the baseline presses a 9; both have the seam on) |
@@ -2301,6 +2302,49 @@ colour before the program draws with it.
   pass `0x0E` as the *prompt* colour (the first of the three colour
   arguments a `confirm_yn` call pushes), and white as `color_hi`. The rule
   is covered by the unit suite and was not seen driven.
+- **A bar with one command letter is not a selection** (#460). A bar with
+  one command letter has one group, so there is nothing for the highlight to
+  move to, and the seam leaves every character of it as the program drew it,
+  except that the swapped pair below is still put right (the program's bright
+  green becomes white and its dim white green). The script runner (overlay 7)
+  hands every one-choice prompt to the menu-bar routine as such a bar: the
+  prompt is `PRESS <ENTER>/<RETURN> TO CONTINUE` in the script, the runner
+  lower-cases every letter and digit of a menu's text but the `~`-marked
+  hotkey, and the bar the routine copies is `Press <enter>/<return> to
+  continue`, one capital and so one group that runs to the end of the bar,
+  drawn in white from end to end (the one-choice prompt passes white for both
+  colours). Read at the draw, at the arena master's notice in slot A (the
+  status row reads 7,1), where the issue's reading of the text as capitals
+  was wrong: the face draws lower case in capital shapes, so the screen shows
+  capitals whatever is stored. Before the rule the word-shaped highlight lit
+  `ress` yellow after a white `P`, as a menu with a selected word.
+  **The rule is the number of command letters, not the case.** The first
+  rule tried, "no lower-case letter in the bar", is wrong twice: it does not
+  touch this notice, which has lower case, and an all-capitals bar can be a
+  real choice (the save and load slot bars, `A B C D E F G H I J` and the
+  load bar's `A B C E J`, a letter to a word; the seam draws those the same
+  either way, for a word that is one key stays white). **The check against
+  every bar** (the decompile's call of each of `command_input`, `confirm_yn`
+  and `menu_run`, and every string it passes): the program's own bars are all
+  one capital to a word and have two command letters or more (the
+  adventuring, camp, Magic, Alter, View, shop, temple, training, combat,
+  Modify, icon editor and portrait bars; `Yes No`; the pick-lists draw
+  through another point); the two post-combat press-Enter prompts are
+  written `press <enter>/<return> to continue` with no capital at all, so the
+  group table has no group, and they were already declined; the main menu's
+  record has no colour and is not drawn. A script's menu is parsed from its
+  `~`-marked letters, every other letter lower-cased, so a script's choice of
+  two or more is mixed case with two command letters or more, and only a
+  one-choice prompt has one. One bar of the program's own with a single
+  command is on screen in the sessions: the ` Exit` under each of character
+  creation's pick-lists (a list's selection is its row, which is yellow). It
+  is left white beside the yellow row, and `list-keys-yellow` was re-recorded
+  for it. A bar built at run time of the parts the program
+  has on hand (the item screens, the combat bars) is one capital to a word,
+  and one with a single word has no choice to move between. `bar-script-yellow`
+  is the notice and the question after it; the unit suite has the notice's
+  shape, a lone word, the swapped notice and an all-capitals bar that keeps
+  its treatment.
 - **A bar handed its colours the wrong way round is drawn the right way
   round** (`color_lo` white and `color_hi` green). Four callers do it, found
   by reading every call of the three routines out of the disassembly (the
@@ -2378,8 +2422,9 @@ the seam rewrites a colour the program has pushed and the program goes on
 to use it. Exercised: `bar-yn-yellow` (73 of 100 identical to `bar-yn`, from
 tick 178,216,368: the camp bar, the roster and the quit prompt),
 `list-keys-yellow` (61 of 84 identical to `list-keys`, from tick
-152,759,728: the pick-lists) and `menu-down-cursor-yellow` (the cursor
-row). Unit: `SeamSelectYellow.*` (the bar's words on made-up bars, one
+152,759,728: the pick-lists), `bar-script-yellow` (74 of 164 identical to
+`bar-script`, from tick 183,307,696: the arena master's notice and the
+question after it) and `menu-down-cursor-yellow` (the cursor row). Unit: `SeamSelectYellow.*` (the bar's words on made-up bars, one
 shaped like the icon editor's, with the junk high halves a real push has);
 stand-ins: `select_yellow_probe_off`, `select_yellow_probe_on`. **Driven**
 (Release, SDL dummy drivers, seam off and on, stills read): the adventuring
