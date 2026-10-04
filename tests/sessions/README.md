@@ -94,6 +94,9 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `bar-camp-keys` | same | + bar-keys | **`contrast bar-camp`** | 83 of 93 identical, divergent from tick 201,127,344: the Right steps the highlight to ALTER and the Return takes it, and its sub-bar is up where the seam-off run shows the camp bar |
 | `bar-yn` | same | code-wheel | | slot C's camp, `SAVE`, a Right at the slot bar, Escape, and Return at the quit prompt that follows: the program drops the Right and the Return. 100 checkpoints |
 | `bar-yn-keys` | same | + bar-keys | **`contrast bar-yn`** | 86 of 100 identical, divergent from tick 206,218,672: the Right steps the slot bar's highlight, and the Return answers the prompt `No` |
+| `quiet-hero-keys` | same | + hero-keys | **`contrast quiet`** | 74 of 90 identical, divergent from tick 182,989,488, the first checkpoint after the party list is first drawn: each name moves two columns right and its number is drawn, which is the enhancement |
+| `hero-pick` | same | + hero-keys | | slot A, and a 9 at the adventuring bar, which is never the seam's: the program steps the selection to the first member, where it already is. 87 checkpoints |
+| `hero-pick-3` | same | + hero-keys | **`contrast hero-pick`** | the same script with a 3 at the same tick: 77 of 87 identical, divergent from tick 190,944,688. The seam puts the third member under the cursor, the program steps onto it, and the party list is redrawn with the third name white |
 
 ## The matrix, by seam
 
@@ -107,6 +110,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
 | `list-arrows` | `list-down-arrows` | `list-keys-arrows` |
 | `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys` | `quiet-bar-keys` |
+| `hero-keys` | `hero-pick-3` | `quiet-hero-keys` (a `contrast`: the party list is seen as soon as it is drawn) |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the

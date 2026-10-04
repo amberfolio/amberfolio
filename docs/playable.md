@@ -1147,6 +1147,63 @@ the seam on wants no Return there.
 
 ---
 
+## Leg 16 — a hero by number (#439)
+
+Slot A's six, and the party list. `docs/seams.md` §10 has the facts; the
+screen text (`--dump`'s `.txt`) is the instrument: the selected member's
+name is the white one, and each row begins with its number.
+
+```
+--seam code-wheel --code-wheel-answered --seam hero-keys
+--press L@7550 --press A@7800            LOAD SAVED GAME, slot A
+--press 3@10300                          the third member is selected
+--press Numlock@10000 --press "Keypad 8"@10600   walks (4,12 S to 4,13 S)
+--press 8@10900                          no eighth member: nothing
+--press 6@11200                          the sixth
+--press 9@11500                          the game's own: the first
+```
+
+`hero-pick` and `hero-pick-3` are this with a 9 and a 3 at the adventuring
+bar. With NumLock on, the keypad's 8 still walks and its 3 is the game's
+PgDn (the selection goes to the first member); the number row's 3 selects.
+
+**The main menu.** Add several members (`A`, then `Return` and `End` for
+each), then `E`; the party list is on the main menu at column one, names at
+column three. `3`, `4`, `6` and `2` select, `9` is the game's and does
+nothing there.
+
+**Camp** (slot C, `E@8800`): `3` at the camp bar, `M` then `5` with four
+members (nobody: nothing), `A` then `2`. **The wilderness** (slot J,
+`2`, `3`, `Up`, `1`). **A shop and a temple**: leg 4's and leg 5's routes,
+`3`, `5`, `6`, `9` at the temple's bar and `4`, `2`, `8` at the armourer's.
+**A script's menu**: the armourer's `CAN I SHOW YOU OUR WARES? YES NO`,
+`3`, `5`, `9`, then `Y`. **After a fight** (the `fight` script over the disk
+`save` wrote, with `--seam cheat-invulnerable --seam cheat-kill-all --pull
+cheat-kill-all@12100`, `N@12700` at `CONTINUE BATTLE`, `Return@13100`): the
+treasure bar `VIEW TAKE POOL SHARE EXIT` with a party of one, `1` selects
+and `2` does nothing.
+
+**What it leaves alone, compared with the seam off.** Combat with `8 4 6 2
+7 9 1 3 5` at the command bar (the 137 stills from the first tactical map
+on are identical; the 29 before it show the party list), and the creation
+lists with `2 8 3 7 1 4 5 6` and Return (202 of 202 stills).
+
+**Long names**, on a copy of slot A with three characters renamed in
+their records to thirteen, fourteen and fifteen characters: all three show
+`ABCDEFGHIJKLM` and the armour class is clear of the name; with the seam
+off the fifteen-character name runs up to it.
+
+**With other seams.** `automap`: `2`, Tab, `3`, Tab, `4` leaves the second
+member selected while the map is up (`3` is the map's), the roster comes
+back with its numbers, and `4` selects the fourth. `journal`: `Notes`, a
+row, Escape twice, `3`: the numbers are back and `3` selects. `font-sans`:
+the numbers are in the face.
+
+**Not driven:** the post-combat Take bar (it needs coins and items), the
+party-order screen (left out), and the journal reader with a real store.
+
+---
+
 ## What the run should not say
 
 The three notices `docs/first-light.md` tabulates

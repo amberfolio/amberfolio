@@ -608,6 +608,8 @@ and never triggered.
 | `bar-enter-keys` | contrast | `bar-enter` (Return at the camp bar takes the highlighted command) |
 | `bar-yn-keys` | contrast | `bar-yn` (a Right at a bar that is not raw, and Return at the Yes/No prompt) |
 | `bar-camp-keys` | contrast | `bar-camp` (a Right at the camp bar, which hands it to the party cursor, and Return) |
+| `quiet-hero-keys` | contrast | `quiet` (each name moves right and its number is drawn, from the first time the party list is) |
+| `hero-pick-3` | contrast | `hero-pick` (a 3 at the adventuring bar where the baseline presses a 9; both have the seam on) |
 
 Both relations are checked on the recordings with no disk
 (`scripts/sweep.py`), so CI checks them on every push. CONTRIBUTING.md
@@ -838,6 +840,7 @@ to carry.
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `list-arrows` | the up and down arrows step the game's pick-lists and its party-member picker, as Home and End do | overlay 25 (the list routine), and the resident image |
 | `bar-keys` | Left and Right step a command bar's highlight at every bar but the few that use them; Enter takes the highlighted command at the Yes/No prompt, the camp bar and its Magic and Alter bars, and the adventuring bar | overlay 25 (the menu-bar routine) |
+| `hero-keys` | the number row's 1 to 8 select a party member where Home and End do, and the party list shows each member's number | overlay 25 (the menu-bar routine), and the resident image |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -1681,6 +1684,151 @@ of 93 checkpoints and diverges at the Right at the camp bar. Unit:
 Yes/No prompt now answers it. Character creation's roll asks whether to
 keep the character; the leg-0 script's Return at that prompt answers `No`
 and the character is rolled again.
+
+### The hero keys (#439)
+
+`seam_hero_keys.cpp`. Not a PLAN.md �5 item: a player's request, built after
+v1's six. A setting; keys and a display change. Nothing to pull.
+
+| point | module | what the handler does |
+|---|---|---|
+| image `0x0572` of overlay 25, the call into the key-read routine inside the menu-bar routine (`bar-keys`' point) | overlay 25, through the manager's word | a number-row `1` to `8` at the head of the BIOS ring, from a caller in the table below: puts the selection on the target's successor (the head for the last member and for a party of one) and rewrites the key to Home. With nobody behind the digit, the key becomes the one the program throws away |
+| image `0x138F`, the instruction after the roster drawer clears a member's row | resident image, `inside_calls` | the name's column goes up two, and the program's glyph routine draws the member's number at the old column in white |
+| image `0x13CB`, where the drawer's two name paths meet, before the armour class | resident image, `inside_calls` | a name that now ends past column `0x1F` has its tail cleared by the program's clear routine; the column goes back |
+
+| fact | value |
+|---|---|
+| the party | a linked list. Head: far pointer at DGROUP `0x5D96`; a record's next member: far pointer at `+0x104`; the selected member: far pointer at `0x5D92` (offset, then segment). At most eight members |
+| the cursor | the resident routine behind `0x108A2`. `G` from the head goes to the tail, from anyone else to the member whose next is the current one; `O` goes forward (the tail stays); any other key goes to the head |
+| how a caller reaches it | the menu-bar routine in raw mode returns `0x47` (Home) as `G`, `0x4F` (End) as `O`, and the characters `1` to `9` through the table at DGROUP `0x288C` (`7` is `G`, `1` is `O`, `8` `H`, ...), with the out-parameter set. The callers below hand `G` and `O` to the cursor and redraw the list from the selection |
+| the number row | scan `0x02` to `0x09` for `1` to `8`, character `'1'` to `'8'`. The keypad's digits with NumLock on are scan `0x47` to `0x51` with the same characters, which is the only way to tell them apart |
+| the data segment | image paragraph `0xC7C` on (DS `0x0CDC` where the image is at `0x60`); checked against DS before the party is read |
+| the roster drawer | image `0x1307` (paragraph `0xBA`, offset `0x0767`; the automap and the journal call it through the same address). Frame: column byte at `BP-5` (`1` on the main menu, `0x11` beside the viewport), row byte at `BP-6` (`4` for the first member), the member's far pointer at `BP-4` and `BP-2`. Names are drawn from the column (white for the selected member, else by status), the armour class at `0x20`+, the hit points at `0x24`+ |
+| the routines it calls | the glyph blitter at paragraph `0x709` offset `0x1DF`, `retf 0Ch`, six words first to last: column, row, colour, `1`, character, `1`; the clear at paragraph `0x3F1` offset `0x137`, `retf 8`, four words: left, top, right, bottom. Both far, called at the paragraph they were linked at (�8.4) |
+
+**The callers that take a digit** (a return offset in the module, and the
+manager's word for it; the same far-return identification as `bar-keys`):
+
+| caller | module (manager's word) | return offset |
+|---|---|---|
+| the adventuring bar, overhead view and 3D / wilderness | overlay 14 (`0x730`) | `0x09D5`, `0x0C45` |
+| the main menu (the title screen's, and every other screen the same loop serves) | overlay 16 (`0x790`) | `0x02FD` |
+| the camp bar, camp's Magic bar, its Alter bar | overlay 15 (`0x760`) | `0x1F24`, `0x1447`, `0x1CA4` |
+| the script prompts' one menu routine | overlay 7 (`0x2C0`) | `0x16EB` |
+| the post-combat treasure bar, and its Take bar | overlay 5 (`0x260`) | `0x1024`, `0x0D91` |
+| the shop's bar | overlay 6 (`0x290`) | `0x061F` |
+| the temple's bar | overlay 4 (`0x230`) | `0x0DAA` |
+
+- **Each by two routes.** The caller's disassembly from its return offset:
+  the key in the out-parameter's branch goes to the party cursor (resident
+  `0x85:0x52`, the thunk of `0x108A2`) and then to the roster drawer
+  (`0xBA:0x0767`); in the adventuring bar any raw key other than the four
+  moves does, in the camp, Magic, Alter bars and the script prompts any
+  raw key does, and in the main menu, the treasure bar, the Take bar, the
+  shop and the temple `G` and `O` do. And a driven run with the seam on:
+  the digit selects (slot A's 3D view and the wilderness at slot J, the main
+  menu with six members added, the camp bar, Magic and Alter, a script's
+  Yes/No at the armourer, the armourer's bar, the temple's bar, the treasure
+  bar after a fight from a party of one). **Not driven: the Take bar**,
+  which needs a fight that leaves both coins and items; its disassembly is
+  the treasure bar's, a `G` or `O` to the cursor and the roster drawn.
+  The manager's words for overlays 4, 6 and 7 are new here, found by
+  searching the resident image for the manager's record of each (file
+  offset and length from the overlay table), one match each, and the word
+  sixteen bytes in; the same search returns `0x260`, `0x360`, `0x690`,
+  `0x730`, `0x760`, `0x790`, `0x8D0` and `0x3C60` for the overlays this file
+  already names.
+- **Left out, and why.** The party-order screen (camp, `0x17DA`): with a
+  member picked up, Home and End *move* that member and do not select, the
+  seam cannot tell which state it is in, and a digit that moved a member
+  three places would be a surprise. The temple's appraise bars (overlay 21,
+  `0x1C47` and `0x1DC1`): `0x47` is a command there, so the Home the seam
+  drives selection with would start an appraisal. Combat's move loop, aim
+  cursor and command bar, the stat editor, the rest-time menu, the game
+  speed screen, the share prompts, every pick-list and the party-member
+  picker: the digits are real there, or Home and End are not the party
+  cursor.
+- **What a digit costs where it was a movement.** The number row is the
+  keypad's layout to the program (`list-arrows`, `bar-keys`), so at the
+  adventuring bar `8`, `4`, `6` and `2` walked and turned and `1` and `7`
+  selected a neighbour; with the seam on they select a member (`1` to `8`
+  from the number row only). The keypad keeps all of it, with NumLock on
+  or off, and so do the arrows. At the post-combat Take bar `6` was `M`,
+  Money (by the same coincidence as Right); with the seam on it selects the
+  sixth member, and `M` still takes the money. `9` and `0` are never the
+  seam's; `9` is the program's PgUp and still moves the selection to the
+  first member.
+- **The landing.** The cursor's `G` is the program's, so the seam's whole
+  job is to put the current pointer where `G` lands on the target: from a
+  successor `G` goes to its predecessor, from the head to the tail. Proved
+  for each party of one to eight members, from every starting selection and
+  to every target, against the rule restated in the test
+  (`LandsOnTheFirstAMiddleAndTheLastMemberOfAnyParty`), and driven on the
+  real list for the first, middle and last of six. Nothing but the
+  selection and the ring's head word is written.
+- **A digit with nobody behind it** is the key the program throws away
+  (`seam_key_read.h`): the routine goes back to waiting. `9` and `0`, the
+  keypad's digits and every other caller are left alone.
+- **With the map or the journal reader up the seam steps aside.** The
+  automap takes the keys that step the party cursor while its panel is on
+  the roster's cells, at the poll and at the read, and a Home from here would
+  be taken there with the selection half moved (found driving it). The
+  reader takes every key. Both are checked at the key point, and the
+  digits are theirs: with the map up `1 3 5 7 9` are taken as they always
+  were and `2 4 6 8` are what the program makes of them. When the map or the
+  reader is put away the roster comes back through a batch of the program's
+  own calls, with every number in it: the two display points are
+  `inside_calls` (�3) for this, and draw by pushing a call frame by hand
+  whose far return is the point itself, which a handler inside a batch may
+  do where it may not start one.
+- **The display.** The name moves two columns right (the number and a blank)
+  and the number is drawn in white in the program's own glyph routine, so
+  `font-sans` and `font-chisel` letter it as they letter the names. The
+  program draws the name in both of its paths (white for the selected
+  member, a status colour otherwise) from the column byte, so the byte is
+  what is moved: up two after the row is cleared, back after the name, with
+  the byte's own value as the only state (`1` and `0x11` are the program's;
+  `3` and `0x13` mean the number is drawn, `2` and `0x12` that the cut is
+  done). **What a name keeps.** Beside the viewport the field is columns
+  `0x13` to `0x1F`, thirteen characters: a fifteen-character name shows its
+  first thirteen, and a fourteen-character one its first thirteen too (its
+  last would land on the first column of the armour class, which a
+  value of -10 or lower fills). The cut is the program's clear over
+  `0x20` to where the name would have ended; nothing in the record is
+  touched. On the main menu the names start at column one and every name
+  fits. **No other column moves**, and the header keeps its place.
+- **Where the list is drawn.** Driven: the 3D view and the wilderness, the
+  camp bar, the main menu, the shop, the temple, the treasure bar, the
+  script prompt at the armourer, and the list given back after the map and
+  after the journal's reader. The View screens, character creation and combat
+  do not show it.
+- **Why a point at the name's call and not the program's draw routines.**
+  The routine that draws a name in a status colour and the string drawer
+  are called from the character sheet, combat and the camp's report as
+  well; the points are inside the roster drawer so nothing else moves.
+- **`max_points` is sixty-four** since this seam. With every seam on the
+  build had thirty-four points, and the last one a player switched on was
+  refused with `too_many_points`
+  (`SeamHeroKeys.EveryBuiltInSeamFitsTheEngineAtOnce`).
+- **Rejected:** writing the selection and redrawing the list ourselves,
+  because the callers redraw after their own step and the program's cursor
+  already lands where the digit says; `call_program()` for the number
+  and the cut, because the automap's and the journal's give-backs draw the
+  roster inside a batch, where no point may start one; drawing a number
+  with a font of our own, because the face seams would not reach it; the
+  party-order screen, for the reason above.
+
+**State**: none: the two display points keep their one value in the drawer's
+own frame and put it back, and the key point decides from the machine.
+**Host services**: none. **Keys**: the number row's `1` to `8` at the callers
+above.
+
+**Fidelity**: the party list is changed from the first time it is drawn with
+a member in it, so a seam that is on and never used is not the seam off
+(�8.5). `quiet-hero-keys` is a `contrast` to `quiet`, and `hero-pick-3` a
+`contrast` to `hero-pick` (both with the seam on, a 9 where the other presses
+a 3). Off, the engine is not consulted (�7). Unit: `SeamHeroKeys.*`;
+stand-ins: `hero_keys_probe_off`, `hero_keys_probe_on`.
 
 ### The debug cheats (#99, #161, #163, #196)
 
