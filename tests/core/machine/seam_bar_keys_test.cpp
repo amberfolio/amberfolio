@@ -35,22 +35,47 @@ constexpr std::string_view seam_id = "bar-keys";
 /// The point: the call into the key-read routine, in overlay 25.
 constexpr std::uint16_t point = 0x0572;
 
-/// The words the program's overlay manager keeps three modules' segments
-/// in: overlay 25, overlay 14 (the adventuring loop), overlay 15 (camp).
+/// The words the program's overlay manager keeps the modules' segments in:
+/// overlay 25, overlay 14 (the adventuring loop), overlay 15 (camp), and
+/// the four more that use the arrows: overlays 5 (post-combat), 8 (combat),
+/// 13 (aim), 16 (the stat editor) and 20 (the rest time).
 constexpr std::uint32_t word_menu = 0x3C60;
 constexpr std::uint32_t word_adventure = 0x730;
 constexpr std::uint32_t word_camp = 0x760;
+constexpr std::uint32_t word_post_combat = 0x260;
+constexpr std::uint32_t word_combat = 0x360;
+constexpr std::uint32_t word_aim = 0x690;
+constexpr std::uint32_t word_editor = 0x790;
+constexpr std::uint32_t word_rest = 0x8D0;
 
 /// Where each module is, in this test.
 constexpr std::uint16_t menu_segment = 0x6000;
 constexpr std::uint16_t adventure_segment = 0x6400;
 constexpr std::uint16_t camp_segment = 0x6800;
+constexpr std::uint16_t post_combat_segment = 0x6C00;
+constexpr std::uint16_t combat_segment = 0x7000;
+constexpr std::uint16_t aim_segment = 0x7400;
+constexpr std::uint16_t editor_segment = 0x7800;
+constexpr std::uint16_t rest_segment = 0x7C00;
 
 /// The callers' return offsets.
 constexpr std::uint16_t ret_yes_no = 0x111E;
 constexpr std::uint16_t ret_area = 0x09D5;
 constexpr std::uint16_t ret_view = 0x0C45;
 constexpr std::uint16_t ret_camp = 0x1F24;
+constexpr std::uint16_t ret_magic = 0x1447;
+constexpr std::uint16_t ret_alter = 0x1CA4;
+constexpr std::uint16_t ret_order = 0x17DA;
+constexpr std::uint16_t ret_move = 0x0AC8;
+constexpr std::uint16_t ret_aim = 0x3178;
+constexpr std::uint16_t ret_editor = 0x216E;
+constexpr std::uint16_t ret_rest = 0x076E;
+constexpr std::uint16_t ret_share = 0x0AF8;
+constexpr std::uint16_t ret_npc_share = 0x14C7;
+/// The post-combat Take bar and the temple's keep prompt, whose letters
+/// are the arrows' scan codes: not excluded, by decision.
+constexpr std::uint16_t ret_take = 0x0D91;
+constexpr std::uint16_t ret_keep = 0x1DC1;
 /// The pick-list's call into the routine, which is in overlay 25.
 constexpr std::uint16_t ret_pick_list = 0x0FE0;
 
@@ -100,6 +125,11 @@ struct rig {
     manager_says(word_menu, menu_segment);
     manager_says(word_adventure, adventure_segment);
     manager_says(word_camp, camp_segment);
+    manager_says(word_post_combat, post_combat_segment);
+    manager_says(word_combat, combat_segment);
+    manager_says(word_aim, aim_segment);
+    manager_says(word_editor, editor_segment);
+    manager_says(word_rest, rest_segment);
   }
 
   /// What the overlay manager writes: where a module begins now.
@@ -292,7 +322,27 @@ TEST(SeamBarKeys, DoesNothingWhileItIsOff) {
 
 // --- Left and Right --------------------------------------------------------
 
-TEST(SeamBarKeys, LeftAndRightBecomeTheBarsOwnTwoStepKeysWhereRawModeIsClear) {
+struct caller_at {
+  std::uint16_t segment;
+  std::uint16_t offset;
+  const char* name;
+};
+
+/// The callers that keep their arrows.
+constexpr std::array<caller_at, 8> excluded{{
+    {.segment = adventure_segment, .offset = ret_area, .name = "overhead bar"},
+    {.segment = adventure_segment, .offset = ret_view, .name = "3D bar"},
+    {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
+    {.segment = aim_segment, .offset = ret_aim, .name = "aim cursor"},
+    {.segment = editor_segment, .offset = ret_editor, .name = "stat editor"},
+    {.segment = rest_segment, .offset = ret_rest, .name = "rest time"},
+    {.segment = post_combat_segment, .offset = ret_share, .name = "share"},
+    {.segment = post_combat_segment,
+     .offset = ret_npc_share,
+     .name = "npc share"},
+}};
+
+TEST(SeamBarKeys, LeftAndRightBecomeTheBarsOwnTwoStepKeysAtANonRawCaller) {
   const rig r;
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
@@ -301,18 +351,85 @@ TEST(SeamBarKeys, LeftAndRightBecomeTheBarsOwnTwoStepKeysWhereRawModeIsClear) {
   EXPECT_EQ(r.press(right, stack_segment, 0x1234, 0), period);
 }
 
-TEST(SeamBarKeys, LeftAndRightAreTheCallersWhereRawModeIsSet) {
+TEST(SeamBarKeys, LeftAndRightStepAtAnUnlistedRawCaller) {
   const rig r;
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
 
-  // The party's arrows in 3D and in the wilderness, the aiming cursor and
-  // the ability-score screen, all of which hand the routine a raw mode. Any
-  // non-zero byte is raw: the routine tests it as a byte.
-  for (const std::uint8_t raw : std::array<std::uint8_t, 4>{1, 2, 0x0D, 0x80}) {
-    EXPECT_EQ(r.press(left, adventure_segment, ret_area, raw), left)
-        << int{raw};
-    EXPECT_EQ(r.press(right, camp_segment, ret_camp, raw), right) << int{raw};
+  // The camp bar, its Magic and Alter bars and the party-order screen hand
+  // an arrow to the party cursor and nothing else; the pick-list ignores
+  // it; the post-combat Take bar and the temple's keep prompt act on it as
+  // the letters `M` and `K`, and are stepped by decision. Any non-zero byte
+  // is raw: the routine tests it as a byte.
+  const std::array<caller_at, 8> callers{{
+      {.segment = camp_segment, .offset = ret_camp, .name = "camp"},
+      {.segment = camp_segment, .offset = ret_magic, .name = "magic"},
+      {.segment = camp_segment, .offset = ret_alter, .name = "alter"},
+      {.segment = camp_segment, .offset = ret_order, .name = "order"},
+      {.segment = menu_segment, .offset = ret_pick_list, .name = "pick-list"},
+      {.segment = post_combat_segment, .offset = ret_take, .name = "take"},
+      {.segment = stack_segment, .offset = ret_keep, .name = "keep"},
+      {.segment = stack_segment, .offset = 0x1234, .name = "unknown"},
+  }};
+  for (const caller_at& c : callers) {
+    for (const std::uint8_t raw :
+         std::array<std::uint8_t, 4>{1, 2, 0x0D, 0x80}) {
+      EXPECT_EQ(r.press(left, c.segment, c.offset, raw), comma)
+          << c.name << " " << int{raw};
+      EXPECT_EQ(r.press(right, c.segment, c.offset, raw), period)
+          << c.name << " " << int{raw};
+    }
+  }
+}
+
+TEST(SeamBarKeys, LeftAndRightAreTheCallersAtEachExcludedCaller) {
+  const rig r;
+  r.arm();
+  r.lay_bar("Ant Bee Cow", 2);
+
+  for (const caller_at& c : excluded) {
+    for (const std::uint8_t raw : std::array<std::uint8_t, 3>{0, 1, 0x80}) {
+      EXPECT_EQ(r.press(left, c.segment, c.offset, raw), left)
+          << c.name << " " << int{raw};
+      EXPECT_EQ(r.press(right, c.segment, c.offset, raw), right)
+          << c.name << " " << int{raw};
+    }
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamBarKeys, TheExclusionIsAsExactAsTheEnterTable) {
+  const rig r;
+  r.arm();
+  r.lay_bar("Ant Bee Cow", 2);
+
+  // A listed offset in the wrong module, a listed module at an offset the
+  // table does not name, and a return segment that is not the module's.
+  EXPECT_EQ(r.press(left, camp_segment, ret_area, 1), comma);
+  EXPECT_EQ(r.press(left, adventure_segment, ret_camp, 1), comma);
+  EXPECT_EQ(r.press(right, combat_segment, ret_aim, 1), period);
+  EXPECT_EQ(r.press(right, aim_segment, ret_move, 1), period);
+  EXPECT_EQ(r.press(right, rest_segment, ret_editor, 0), period);
+  EXPECT_EQ(r.press(right, adventure_segment, 0, 1), period);
+  EXPECT_EQ(r.press(right, 0, ret_area, 1), period);
+  // The module's word says it is out: it is not a caller.
+  r.manager_says(word_adventure, 0);
+  EXPECT_EQ(r.press(left, adventure_segment, ret_area, 1), comma);
+  r.manager_says(word_adventure, adventure_segment);
+  EXPECT_EQ(r.press(left, adventure_segment, ret_area, 1), left);
+}
+
+TEST(SeamBarKeys, TheCursorsKeysAreTheProgramsAtTheCampBarStill) {
+  // Home, End and the keypad's 7 and 1 step the selected member, and the
+  // rewrite is of Left and Right only.
+  const rig r;
+  r.arm();
+  r.lay_bar("Ant Bee Cow", 2);
+
+  for (const std::uint16_t key :
+       {std::uint16_t{0x4700}, std::uint16_t{0x4F00}, std::uint16_t{0x4737},
+        std::uint16_t{0x4F31}, std::uint16_t{0x4800}, std::uint16_t{0x5000}}) {
+    EXPECT_EQ(r.press(key, camp_segment, ret_camp, 1), key) << key;
   }
 }
 
@@ -351,11 +468,13 @@ TEST(SeamBarKeys, EnterTakesTheHighlightedCommandAtEachTabledCaller) {
     std::uint16_t segment;
     std::uint16_t offset;
   };
-  const std::array<caller, 4> callers{
+  const std::array<caller, 6> callers{
       {{.segment = menu_segment, .offset = ret_yes_no},
        {.segment = adventure_segment, .offset = ret_area},
        {.segment = adventure_segment, .offset = ret_view},
-       {.segment = camp_segment, .offset = ret_camp}}};
+       {.segment = camp_segment, .offset = ret_camp},
+       {.segment = camp_segment, .offset = ret_magic},
+       {.segment = camp_segment, .offset = ret_alter}}};
   for (const caller& c : callers) {
     const rig r;
     r.arm();
@@ -396,6 +515,9 @@ TEST(SeamBarKeys, EnterIsLeftAloneAtACallerThatIsNotInTheTable) {
 
   // The pick-list, which is in overlay 25 and confirms its row on Enter.
   EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 0), enter);
+  // The member-order screen, where Enter toggles between picking a member
+  // up and putting it down: its arrows are tabled, its Enter is not.
+  EXPECT_EQ(r.press(enter, camp_segment, ret_order, 1), enter);
   // A tabled offset in the wrong module, a tabled module at the wrong
   // offset, and a stack that names no module at all.
   EXPECT_EQ(r.press(enter, camp_segment, ret_area, 1), enter);

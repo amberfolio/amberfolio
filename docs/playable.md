@@ -1057,9 +1057,9 @@ identical, and the seam's end-of-run line is `armed and never reached`.
 Not driven: the shops, training, coin selection and the encounter lists;
 the picker from Trade (the Items screen's `T` redrew the screen and did
 not open one); the picker from a script.
-## Leg 15 — Enter and the arrows at the bars (#425)
+## Leg 15 — Enter and the arrows at the bars (#425, #432)
 
-Four scripts, one seam. `docs/seams.md` §10 has the facts. The screen text
+Five scripts, one seam. `docs/seams.md` §10 has the facts. The screen text
 (`--dump`'s `.txt`) is the instrument: a bar's highlighted group is the
 one whose ink is bright white. Every pair is told `--wall none`, because
 the program's dice are seeded from the date.
@@ -1079,6 +1079,24 @@ the program's own key, Return:
 With the seam on the screen at 10,400 is the Alter sub-bar, `ALTER: ORDER
 DROP SPEED ICON PICS EXIT`. With it off the camp bar is still up, ALTER
 highlighted, and the Return is gone.
+
+**The camp bar's arrows** (`bar-camp` and `bar-camp-keys`). The same keys
+with a Right where the first script has the `.`:
+
+```
+--press Right@10000                     the highlight to ALTER
+--press Return@10300                    take it
+```
+
+The camp bar hands every arrow to the party cursor, which only puts the
+selected member back on the first, so the seam steps the highlight instead.
+With it off the highlight stays on REST. Magic (`M@10000`) and Alter
+(`A@10000`) are the same: `Right@10300 Return@10600` steps and takes the
+stepped-to command. In the party-order screen (`A@10000 O@10300`) a Right
+steps `SELECT` to `EXIT`, and Return still toggles picking a member up,
+as it always did. At camp, `End`, `End`, `Home` select members the same
+with the seam on or off; a Left then keeps the second member selected,
+where the seam-off run puts the first back.
 
 **The Yes/No prompt and a bar that is not raw** (`bar-yn`, `bar-yn-keys`):
 
@@ -1101,11 +1119,17 @@ VIEW to ENCAMP and Return enters the camp. Slot J (`L@7550 J@7800`), the
 bar without `AREA`: `.@9600 .@9750 Return@9900` steps from LOOK to VIEW and
 Return opens the View sub-bar. Off, neither does anything.
 
-**The arrows at a raw bar** (`quiet-bar-keys` is the city; the wilderness
-is by hand). Slot J, `Up@9700 Left@9850 Up@10000 Right@10150 Right@10300
-Up@10450`: the party goes from 3,32 S to 3,31 N, turns west and goes on,
-and all 242 stills with the seam on are byte for byte the stills without
-it. The party's bar is raw, so the seam reads that and leaves the keys.
+**The arrows where they are used** (`quiet-bar-keys` is the city; the
+wilderness is by hand). Slot J, `Up@9700 Left@9850 Up@10000 Right@10150
+Right@10300 Up@10450`: the party goes from 3,32 S to 3,31 N, turns west and
+goes on, and all 232 stills with the seam on are byte for byte the stills
+without it. The adventuring bar is in the seam's exclusion table, so the
+seam leaves its keys. So are the rest-time menu (`R@10000` at camp, then
+`Left` and `Right`: 126 of 126 stills the same), and, in a fight from slot
+J, the move loop (`M` at the command bar, then `Right`, which steps the
+fighter) and the aim cursor (`A`, then `M` for Manual, then `Right`). A
+temporary print of the return address at the seam's point is the way to
+see which caller a key came from.
 
 **With other seams on.** `journal`: Return on a highlighted `NOTES` opens
 the log, and every still of the run is the same as `N` typed (121 of

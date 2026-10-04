@@ -45,8 +45,8 @@ constexpr std::array wilderness_rows{
 constexpr std::array bar_rows{
     key_row{"its capital letter", "take that command; lower case works"},
     key_row{", and .", "step the highlight left and right, wrapping"},
-    key_row{"Left, Right",
-            "step the highlight, except where they move the party", "bar-keys"},
+    key_row{"Left, Right", "step the highlight, except where they move or edit",
+            "bar-keys"},
     key_row{"Return", "take the highlighted command: Yes/No, camp, exploring",
             "bar-keys"},
     key_row{"Y, N", "answer a Yes/No question"},
