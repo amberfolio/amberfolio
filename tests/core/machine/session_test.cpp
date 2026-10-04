@@ -177,31 +177,15 @@ TEST(SessionLibrary, EveryCommittedRecordingIsAFormatThisBuildStillReads) {
 // tests/sessions/README.md's table names them: a session that stopped
 // being read would otherwise stop being checked at the same moment.
 TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
-  for (const std::string_view name : {"boot.rec",
-                                      "boot-wheel.rec",
-                                      "party.rec",
-                                      "save.rec",
-                                      "load.rec",
-                                      "fight.rec",
-                                      "fight-cheat.rec",
-                                      "temple.rec",
-                                      "camp.rec",
-                                      "camp-fix.rec",
-                                      "walk.rec",
-                                      "walk-map.rec",
-                                      "wild.rec",
-                                      "wild-trail.rec",
-                                      "reader.rec",
-                                      "notes.rec",
-                                      "cite.rec",
-                                      "quiet.rec",
-                                      "quiet-automap.rec",
-                                      "quiet-encamp.rec",
-                                      "quiet-cheats.rec",
-                                      "quiet-explored.rec",
-                                      "quiet-journal.rec",
-                                      "quiet-all.rec",
-                                      "subset-map-reader.rec"}) {
+  for (const std::string_view name :
+       {"boot.rec",           "boot-wheel.rec",    "party.rec",
+        "save.rec",           "load.rec",          "fight.rec",
+        "fight-cheat.rec",    "temple.rec",        "camp.rec",
+        "camp-fix.rec",       "walk.rec",          "walk-map.rec",
+        "wild.rec",           "wild-trail.rec",    "reader.rec",
+        "notes.rec",          "cite.rec",          "quiet.rec",
+        "quiet-automap.rec",  "quiet-encamp.rec",  "quiet-cheats.rec",
+        "quiet-explored.rec", "quiet-journal.rec", "subset-map-reader.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
     EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 3 state=2\n"))
@@ -210,10 +194,11 @@ TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
 }
 
 // And the ones made since format four (#397), which is what the host
-// writes now: the faces' pair.
+// writes now: the faces' pair, and the two all-on recordings (#446).
 TEST(SessionLibrary, TheRecordingsMadeSinceFormatFourAreStillRead) {
   for (const std::string_view name :
-       {"quiet-font-sans.rec", "quiet-font-chisel.rec"}) {
+       {"quiet-font-sans.rec", "quiet-font-chisel.rec", "quiet-all.rec",
+        "quiet-all-hero-keys.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
     EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 4 state=2\n"))

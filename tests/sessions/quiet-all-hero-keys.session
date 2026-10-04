@@ -1,32 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# M5-V1's subset check (#177), and the strongest form the fidelity
-# invariant takes here: every seam this build carries that does not
-# change the screen on sight, all on at once, and none of them triggered.
-# Re-recorded with the controls seams (#446): list-arrows, bar-keys and
-# menu-cursor, which draw nothing and rewrite no key until one they take
-# is pressed, and `quiet` presses none of them.
-# Its `identical` names `quiet-journal` rather than `quiet`, and that is
-# the claim: the reader alone moves an idle machine, because it splices
-# `Notes` onto a bar the game keeps redrawing (quiet-journal.session),
-# and adding the automap, the Encamp Fix, the explored overlay, all
-# three cheats and the three controls seams on top of it changes nothing
-# across all 90 checkpoints. That is what "individually toggleable" has
-# to mean: a subset of seams is no more than the sum of what each one
-# does.
-# Left out, and each with a pair of its own: the faces, which are
-# alternatives and seen from the first text (quiet-font-sans), and
-# hero-keys, which draws the roster's numbers the moment the party list
-# is first drawn (quiet-hero-keys). quiet-all-hero-keys is this run with
-# hero-keys added, which is a contrast against it.
+# quiet-all with hero-keys added (#446): every seam this build carries but
+# the faces, all on at once, and `quiet`'s script, no number key pressed.
+# hero-keys draws the roster's numbers the moment the party list is first
+# drawn with a member in it, so this is a `contrast` and not an
+# `identical`, exactly as quiet-hero-keys is against `quiet`. The two
+# diverge at the same tick, which is the claim: with the other eleven
+# seams on, the party list is the first thing that moves, and what moves
+# it is the one seam that is meant to.
+# What it adds over its two neighbours is the seams together: hero-keys
+# beside list-arrows, bar-keys and menu-cursor, which read the same keys
+# at the same bars, and beside the journal, which redraws the bar the
+# list sits above.
 
-about every seam on at once but the faces and hero-keys, none of them
-about triggered: the same machine as the journal alone, checkpoint for
-about checkpoint
+about every seam on at once but the faces, with hero-keys drawing the
+about roster's numbers from the first time the party list is drawn
 disk external
 code-wheel-answered
 journal-store tests/visual/reader-store.txt
-identical quiet-journal
+contrast quiet-all
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021
