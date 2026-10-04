@@ -128,16 +128,6 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `hero-keys` | `hero-pick-3` | `quiet-hero-keys` (a `contrast`: the party list is seen as soon as it is drawn) |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
-**`bar-script` and `bar-script-keys` were recorded and then re-hashed**
-(`--rehash FILE`, `docs/replay.md` §7). A run that walks long enough to
-leave the Tandy chip more than 1,024 writes has its live checkpoints
-disagree with its own replay in the `audio` section, at the first
-checkpoint past that; the chip's write ring holds 1,024 and a replay has
-nothing draining it. The re-hash takes the replay's hashes from the same
-inputs at the same ticks, and the pair keeps its relation (151 of 164
-identical, divergent at the Return). A new session that walks far wants
-the same.
-
 Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the
 same pixels), `camp-fix` (the Fix with a cheat), `wild-trail` (explored
 without automap; they share a store).

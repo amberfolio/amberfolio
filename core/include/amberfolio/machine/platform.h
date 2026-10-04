@@ -499,6 +499,23 @@ class audio_timeline {
   /// is seconds of it between pulls. A power of two for the same reason.
   static constexpr std::size_t chip_write_capacity = 1024;
 
+  /// How many edges, and how many chip writes, the canonical state
+  /// covers after a restart: the count and the digest fold the first
+  /// `pinned_edges` edges and the first `pinned_chip_writes` writes and
+  /// no more (#444).
+  ///
+  /// The state cannot depend on the rings. They are the consumer's: a
+  /// live host drains them every pull and a headless replay never does,
+  /// so a record of "what was accepted" differs between two runs of the
+  /// same recording once a run is long enough to fill one. These two
+  /// numbers are a fact about the *digest*, fixed here, and they are the
+  /// capacities the rings had when every recording in `tests/sessions/`
+  /// was made, which is why none of those hashes moved. Changing one is
+  /// a state-format change and re-records the library; a ring can be
+  /// resized without touching either.
+  static constexpr std::uint64_t pinned_edges = 2048;
+  static constexpr std::uint64_t pinned_chip_writes = 1024;
+
   /// The sample rates `render()` will accept. The upper bound is well
   /// under `pit_input_hz`, which is what guarantees a sample interval is
   /// at least six ticks long and so never degenerates to zero width. The
@@ -522,12 +539,14 @@ class audio_timeline {
   /// The speaker output became `level` at tick `at`.
   ///
   /// False, and nothing recorded, if `at` is not strictly after the last
-  /// published edge (the consumer walks the list in order and a
-  /// backwards edge would corrupt that walk), or if the ring is full
-  /// because the consumer has not run — in which case `dropped_edges()`
-  /// counts it. Dropping rather than blocking, for the reason the console
-  /// ring drops: machine progress must never depend on the host's
-  /// attention.
+  /// edge (the consumer walks the list in order and a backwards edge
+  /// would corrupt that walk), or if the ring is full because the
+  /// consumer has not run — in which case `dropped_edges()` counts it and
+  /// the edge is not heard. Dropping rather than blocking, for the reason
+  /// the console ring drops: machine progress must never depend on the
+  /// host's attention. A full ring changes what is heard and nothing
+  /// else: the edge is still counted and folded into the state
+  /// (`pinned_edges`).
   bool publish(ticks at, bool level) noexcept;
 
   /// A byte was written to the Tandy sound chip at tick `at` (#404).
@@ -538,7 +557,9 @@ class audio_timeline {
   /// published instead is what the program *did* — the write — and the
   /// consumer runs the chip itself (psg.h) to hear it. Writes at the
   /// same tick keep their order; one before the last is refused, and a
-  /// full ring drops and counts, the same rules as `publish()`.
+  /// full ring drops and counts, the same rules as `publish()`: the write
+  /// is not heard, and is still counted and folded into the state
+  /// (`pinned_chip_writes`).
   bool publish_chip(ticks at, std::uint8_t value) noexcept;
 
   /// Everything up to `now` is settled — the horizon. `machine::run()`
@@ -574,8 +595,10 @@ class audio_timeline {
     return chip_dropped_.load(std::memory_order_relaxed);
   }
 
-  /// How many chip writes were published since the last restart, and a
-  /// running digest of them — `published()` and `edge_digest()`'s twins.
+  /// How many chip writes were made since the last restart, and a
+  /// running digest of the first `pinned_chip_writes` of them —
+  /// `published()` and `edge_digest()`'s twins. The count is every write,
+  /// which is what a host reports; the state carries it capped.
   [[nodiscard]] std::uint64_t chip_published() const noexcept {
     return chip_published_;
   }
@@ -584,8 +607,8 @@ class audio_timeline {
   }
 
   /// How many edges the producer has published since the last restart,
-  /// and a running digest of every one of them (tick and level, in
-  /// order). Producer-side only, so machine-thread state like everything
+  /// and a running digest of the first `pinned_edges` of them (tick and
+  /// level, in order). Producer-side only, so machine-thread state like everything
   /// else in the serialization: the edge list *is* the canonical audio
   /// state (this file's audio section), and a count plus a digest is how
   /// a ring that may already have been consumed can still be pinned.
@@ -752,9 +775,14 @@ class audio_timeline {
   std::atomic<std::uint64_t> resyncs_{};
 
   /// The last tick the producer published, so it can refuse a backwards
-  /// edge. Producer-only; never read by the consumer.
+  /// edge. Producer-only; never read by the consumer. Not state: the
+  /// state's last edge is `pinned_last_`.
   ticks last_published_{};
   bool have_published_{};
+
+  /// The tick of the last edge the digest folded (`pinned_edges`), which
+  /// is what the state names; it stops moving when the digest does.
+  ticks pinned_last_{};
 
   /// Every edge published since the last restart, counted and folded
   /// into a running FNV-1a over (tick, level) — see `published()`.

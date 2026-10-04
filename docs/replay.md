@@ -103,6 +103,7 @@ the framebuffer and its generation, and the stop record.
 | the overlay tracker | an observation, rebuilt by replaying |
 | the trace ring, first-touch notices | diagnostics; a run with `--trace` and one without must hash alike |
 | every float audio sample | output; the edge list is canonical (`platform.h`) |
+| whether a host drains the audio rings | a window pulls them every frame and a headless replay never does, so what a ring *accepted* cannot be state (#444). The edge and chip-write counts and digests stop at the first 2,048 edges and 1,024 writes (`audio_timeline::pinned_edges`, `pinned_chip_writes`), the rings' sizes when the library was recorded; a run past them keeps counting for the host's report and hashes the same |
 | the filesystem's contents | the host's; captured as the manifest |
 
 `state_format_version` is bumped when the bytes change, and a bump
