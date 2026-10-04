@@ -3816,6 +3816,155 @@ struct font_layout {
   return nullptr;
 }
 
+// --- 9a. The select-yellow seam -----------------------------------------------
+//
+// #453. The seam rewrites one colour, in a pushed word or a local, before the
+// program draws with it. This program lays out three frames where the
+// seam's facts say they are, and reaches the build's own handlers at made-up
+// addresses: the bar leaf's glyph call (a made-up bar, the second character
+// of its first word, which is not a command letter), the pick-list leaf's
+// string call, and the hit-point value's colour local (a highlighted draw).
+// Each reads the colour back from where the program would have read it.
+//
+//         mov  bx, 0A00h                      ; the bar routine's frame
+//         <bar's colours, length, text "Ab Cd", two group starts>
+//         mov  bp, 0800h                      ; the leaf's frame
+//         <caller, group 1, index 2, the call's six words at 0600h>
+//         mov  sp, di
+// bar:    nop                                 ; the seam's point
+//         mov  bl, [di+6] ; store
+//         ... the list's string call and context, then
+// list:   nop ; mov bl, [di+4] ; store
+//         ... the hit points' frame, then
+// hp:     nop ; mov bl, [bp-1] ; store
+
+constexpr std::uint16_t yellow_frame = 0x0800;
+constexpr std::uint16_t yellow_caller = 0x0A00;
+constexpr std::uint16_t yellow_context = 0x0C00;
+constexpr std::uint16_t yellow_words = 0x0600;
+
+constexpr std::uint8_t yellow_white = 0x0F;
+constexpr std::uint8_t yellow_magenta = 0x0D;
+constexpr std::uint8_t yellow_yellow = 0x0E;
+
+struct select_yellow_layout {
+  std::vector<std::uint8_t> file;
+  std::uint32_t bar_offset{};
+  std::uint32_t list_offset{};
+  std::uint32_t hp_offset{};
+};
+
+/// `mov byte ss:[bx + disp16], imm8`: the frames are in the stack segment,
+/// and a base of BX or DI would otherwise address the data segment.
+void yellow_caller_byte(assembler& a, std::int16_t displacement,
+                        std::uint8_t value) {
+  a.db({0x36, 0xC6, 0x87});
+  a.dw(static_cast<std::uint16_t>(displacement));
+  a.db({value});
+}
+
+/// `mov word ss:[di + disp8], imm16`
+void yellow_word(assembler& a, std::uint8_t displacement, std::uint16_t value) {
+  a.db({0x36, 0xC7, 0x45, displacement});
+  a.dw(value);
+}
+
+[[nodiscard]] const select_yellow_layout& select_yellow_probe() {
+  static const select_yellow_layout built = [] {
+    assembler a;
+    a.db({0xBB});
+    a.dw(yellow_caller);                        // mov bx, 0A00h
+    yellow_caller_byte(a, 0x0E, yellow_white);  // color_hi
+    yellow_caller_byte(a, 0x10, 0x0A);          // color_lo
+    yellow_caller_byte(a, -0x64, 5);            // the bar's length
+    yellow_caller_byte(a, -0x53, 5);            // and its Pascal length
+    yellow_caller_byte(a, -0x52, 'A');
+    yellow_caller_byte(a, -0x51, 'b');
+    yellow_caller_byte(a, -0x50, ' ');
+    yellow_caller_byte(a, -0x4F, 'C');
+    yellow_caller_byte(a, -0x4E, 'd');
+    yellow_caller_byte(a, -0x8F + 2, 1);  // group 1 starts at 1
+    yellow_caller_byte(a, -0x8F + 4, 4);  // group 2 at the C
+
+    a.db({0xBD});
+    a.dw(yellow_frame);  // mov bp, 0800h
+    a.db({0xC7, 0x46, 0x06});
+    a.dw(yellow_caller);  // mov word [bp+6], 0A00h
+    a.db({0xC7, 0x46, 0x08});
+    a.dw(1);                         // mov word [bp+8], 1: the group
+    a.db({0xC6, 0x46, 0xFF, 0x02});  // mov byte [bp-1], 2: the index
+    a.db({0xBF});
+    a.dw(yellow_words);                         // mov di, 0600h
+    yellow_word(a, 0, 0x0A01);                  // the fold flag, junk above
+    yellow_word(a, 2, 'b');                     // the character
+    yellow_word(a, 4, 0x0A01);                  // the count
+    yellow_word(a, 6, 0x0A00U | yellow_white);  // the colour
+    yellow_word(a, 8, 0x0A18);                  // the row
+    yellow_word(a, 10, 7);                      // the column
+    a.db({0x8B, 0xE7});                         // mov sp, di
+    a.label("bar");
+    a.db({0x90});                    // the seam's point
+    a.db({0x36, 0x8A, 0x5D, 0x06});  // mov bl, ss:[di+6]
+    a.db({0x0E, 0x1F});              // push cs / pop ds
+    a.db({0x30, 0xFF});              // xor bh, bh
+    store(a, 0, reg_bx);
+
+    // The list's leaf: a context with a colour, and a string call.
+    a.db({0xBB});
+    a.dw(yellow_context);                          // mov bx, 0C00h
+    a.db({0x36, 0xC6, 0x47, 0x20, yellow_white});  // mov byte ss:[bx+20h], 0Fh
+    a.db({0xC7, 0x46, 0x06});
+    a.dw(yellow_context);                       // mov word [bp+6], 0C00h
+    yellow_word(a, 0, 0x0700);                  // the string's offset
+    a.db({0x36, 0x8C, 0x55, 0x02});             // mov ss:[di+2], ss
+    yellow_word(a, 4, 0x0A00U | yellow_white);  // the colour
+    yellow_word(a, 6, 9);
+    yellow_word(a, 8, 3);
+    a.label("list");
+    a.db({0x90});
+    a.db({0x36, 0x8A, 0x5D, 0x04});  // mov bl, ss:[di+4]
+    a.db({0x30, 0xFF});
+    store(a, 1, reg_bx);
+
+    // Hit points, highlighted: the first argument set, the colour local
+    // the program chose.
+    a.db({0xC7, 0x46, 0x06});
+    a.dw(1);                                   // mov word [bp+6], 1
+    a.db({0xC6, 0x46, 0xFF, yellow_magenta});  // mov byte [bp-1], 0Dh
+    a.label("hp");
+    a.db({0x90});
+    a.db({0x8A, 0x5E, 0xFF});  // mov bl, [bp-1]
+    a.db({0x30, 0xFF});
+    store(a, 2, reg_bx);
+    exit_with(a, 0x8E);
+
+    select_yellow_layout out;
+    out.bar_offset = static_cast<std::uint32_t>(a.offset_of("bar"));
+    out.list_offset = static_cast<std::uint32_t>(a.offset_of("list"));
+    out.hp_offset = static_cast<std::uint32_t>(a.offset_of("hp"));
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x1600,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
+}
+
+/// One of the `select-yellow` handlers, from the definition this build
+/// ships.
+[[nodiscard]] machine::seam_handler select_yellow_handler(std::size_t which) {
+  for (const machine::seam_definition& seam : machine::all_seams()) {
+    if (seam.id == "select-yellow" && which < seam.points.size()) {
+      return seam.points[which].run;
+    }
+  }
+  return nullptr;
+}
+
 // --- 10a. The list arrows ---------------------------------------------------
 //
 // #423. The seam's two handlers read a key in AL and a flag byte in the
@@ -5044,6 +5193,39 @@ constexpr std::array<machine::seam_point, 1> door_points{
   }
 
   {
+    // The select-yellow seam: off, the program's own colours; on, a
+    // character of the highlighted word that is not a command letter, a
+    // pick-list's row and Modify's hit points are yellow (#453).
+    machine_program p;
+    p.name = "select_yellow_probe_off";
+    p.about = "no seam: the bar's white, the list's white, Modify's magenta";
+    p.setup.exe = select_yellow_probe_file();
+    p.setup.exe_path = "\\YELLOW.EXE";
+    p.setup.step_cap = 2'000;
+    p.results = {{.what = "the bar's colour", .value = yellow_white},
+                 {.what = "the list's colour", .value = yellow_white},
+                 {.what = "the hit points' colour", .value = yellow_magenta}};
+    p.exit_code = 0x8E;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "select_yellow_probe_on";
+    p.about = "the seam: all three are yellow";
+    p.setup.exe = select_yellow_probe_file();
+    p.setup.exe_path = "\\YELLOW.EXE";
+    p.setup.seam_definitions = {&select_yellow_probe_definition()};
+    p.setup.seams = {"select-yellow-probe"};
+    p.setup.step_cap = 2'000;
+    p.results = {{.what = "the bar's colour", .value = yellow_yellow},
+                 {.what = "the list's colour", .value = yellow_yellow},
+                 {.what = "the hit points' colour", .value = yellow_yellow}};
+    p.exit_code = 0x8E;
+    list.push_back(std::move(p));
+  }
+
+  {
     // The list arrows: off, an arrow is the program's own key; on, an
     // arrow read as a raw key is Home or End, and the same code read as a
     // bar command is not touched (#423).
@@ -5834,6 +6016,36 @@ const machine::seam_definition& font_probe_definition() {
 }
 
 const std::vector<std::uint8_t>& font_probe_file() { return font_probe().file; }
+
+const std::vector<std::uint8_t>& select_yellow_probe_file() {
+  return select_yellow_probe().file;
+}
+
+const machine::seam_definition& select_yellow_probe_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(select_yellow_probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 3> points{
+      {{.module = machine::resident_image,
+        .offset = select_yellow_probe().bar_offset,
+        .run = select_yellow_handler(0)},
+       {.module = machine::resident_image,
+        .offset = select_yellow_probe().list_offset,
+        .run = select_yellow_handler(1)},
+       {.module = machine::resident_image,
+        .offset = select_yellow_probe().hp_offset,
+        .run = select_yellow_handler(4)}}};
+  static const machine::seam_definition definition{
+      .id = "select-yellow-probe",
+      .about = "the select-yellow handlers, at made-up addresses",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
 
 const std::vector<std::uint8_t>& list_arrows_probe_file() {
   return list_arrows_probe().file;

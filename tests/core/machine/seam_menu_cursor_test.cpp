@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The menu-cursor seam (seam_menu_cursor.cpp, #434), exercised through its
-// mechanism and not through any program: the test stands the processor on
-// the seam's one point with the menu-bar routine's frame laid out where the
-// facts say it is, the main menu's records laid out in the data segment, a
-// keystroke at the head of the BIOS ring, and reads the ring, the data
-// segment and a log the string drawer's stand-in keeps after the batch the
-// handler queued has run itself out.
+// The menu-cursor seam (seam_menu_cursor.cpp, #434, #453), exercised
+// through its mechanism and not through any program: the test stands the
+// processor on one of the seam's two points, with the menu-bar routine's
+// frame (or the loop's call) laid out where the facts say it is, the main
+// menu's records laid out in the data segment, a keystroke at the head of
+// the BIOS ring, and reads the ring, the data segment and a log the string
+// drawer's stand-in keeps after the batch the handler queued has run itself
+// out.
 //
 // The offsets below are restated rather than read out of the seam, which
 // is the seam suites' rule: a test that took its layout from the code it is
@@ -37,8 +38,10 @@ namespace {
 
 constexpr std::string_view seam_id = "menu-cursor";
 
-/// The point: the call into the key-read routine, in overlay 25.
+/// The key point: the call into the key-read routine, in overlay 25. And
+/// the loop's: its call into the menu-bar routine, in overlay 16.
 constexpr std::uint16_t point = 0x0572;
+constexpr std::uint16_t loop_point = 0x02F8;
 
 /// The words the program's overlay manager keeps the segments in: overlay
 /// 25 (the menu-bar routine) and overlay 16 (the party-setup loop).
@@ -59,7 +62,10 @@ constexpr std::uint16_t frame_ip = 2;
 constexpr std::uint16_t frame_cs = 4;
 constexpr std::uint16_t local_bar = 0x53;
 
-constexpr std::uint16_t data_segment = 0x3000;
+/// The program's data segment is the image's paragraph 0xC7C on; the loop's
+/// point asks for it.
+constexpr std::uint16_t data_segment =
+    static_cast<std::uint16_t>(image_load_segment + 0xC7C);
 constexpr std::uint16_t stack_segment = 0x5000;
 constexpr std::uint16_t frame_base = 0x0600;
 
@@ -89,6 +95,11 @@ constexpr std::uint16_t column_letter = 2;
 constexpr std::uint16_t column_rest = 3;
 constexpr std::uint16_t white = 0x0F;
 constexpr std::uint16_t green = 0x0A;
+constexpr std::uint16_t yellow = 0x0E;
+
+/// The loop's call, from the top of the stack: the out-parameter, the
+/// animation flag, raw mode, both colours, the prompt's, and the bar.
+constexpr std::uint16_t loop_data_bar = 0x05F0;
 
 /// The keys, as the ring holds them.
 constexpr std::uint16_t up = 0x4800;
@@ -314,6 +325,49 @@ struct rig {
     }
   }
 
+  /// The loop's call, as the loop has pushed it: nothing waiting on the
+  /// stack but the call's own words.
+  void lay_loop_call() const {
+    constexpr std::uint16_t sp = 0x0400;
+    put_word(stack_segment, sp + 0, 0x0300);
+    put_word(stack_segment, sp + 2, stack_segment);
+    // Byte arguments, pushed as whole registers: the high half is the
+    // program's leftover, and the routine reads the low byte only.
+    put_word(stack_segment, sp + 4, 0xA000);
+    put_word(stack_segment, sp + 6, 0xA001);
+    put_word(stack_segment, sp + 8, 0xA000);
+    put_word(stack_segment, sp + 10, 0xA000);
+    put_word(stack_segment, sp + 12, 0xA00D);
+    put_word(stack_segment, sp + 14, loop_data_bar);
+    put_word(stack_segment, sp + 16, data_segment);
+  }
+
+  /// Stand on the loop's call and take one step; then let the batch run
+  /// out. The instruction there is a HLT.
+  void arrive_at_loop() const {
+    put_byte(loop_segment, loop_point, 0xF4);
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = loop_segment;
+    r.ip = loop_point;
+    r[cpu::sreg::ds] = data_segment;
+    r[cpu::sreg::ss] = stack_segment;
+    r[cpu::reg16::sp] = 0x0400;
+    r[cpu::reg16::bp] = frame_base;
+    box->step();
+    run_the_calls();
+  }
+
+  /// The menu has just been drawn: the loop asks the routine for a key.
+  void menu_drawn() const {
+    lay_loop_call();
+    arrive_at_loop();
+  }
+
+  void select_yellow() const {
+    ASSERT_EQ(box->seams().enable("select-yellow"), seam_reason::none);
+  }
+
   /// One arrival from the party-setup loop with `keys` waiting, and the
   /// batch it queued run out. Returns the head of the ring afterwards.
   [[nodiscard]] std::uint16_t press(
@@ -336,7 +390,7 @@ struct rig {
 
 // --- The definition --------------------------------------------------------
 
-TEST(SeamMenuCursor, IsOnePointInOverlay25) {
+TEST(SeamMenuCursor, IsAKeyPointInOverlay25AndTheLoopsCallInOverlay16) {
   const rig r;
   const seam_definition& s = r.seam();
 
@@ -345,7 +399,7 @@ TEST(SeamMenuCursor, IsOnePointInOverlay25) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(s.points.size(), 1u);
+  ASSERT_EQ(s.points.size(), 2u);
 
   const seam_point& p = s.points[0];
   EXPECT_EQ(p.offset, point);
@@ -356,6 +410,17 @@ TEST(SeamMenuCursor, IsOnePointInOverlay25) {
   EXPECT_EQ(p.module.load_segment_at, word_menu_bar);
   EXPECT_FALSE(p.at_every_step);
   EXPECT_FALSE(p.inside_calls);
+
+  const seam_point& loop = s.points[1];
+  EXPECT_EQ(loop.offset, loop_point);
+  EXPECT_FALSE(loop.module.is_resident_image());
+  EXPECT_EQ(loop.module.file, "GAME.OVR");
+  EXPECT_EQ(loop.module.file_offset, 104831u);
+  EXPECT_EQ(loop.module.length, 17497u);
+  EXPECT_EQ(loop.module.load_segment_at, word_loop);
+  EXPECT_FALSE(loop.module.digest.empty());
+  EXPECT_FALSE(loop.at_every_step);
+  EXPECT_FALSE(loop.inside_calls);
 }
 
 TEST(SeamMenuCursor, IsOffByDefault) {
@@ -397,7 +462,211 @@ TEST(SeamMenuCursor, DoesNothingWhileItIsOff) {
   EXPECT_EQ(r.byte(data_segment, rig::enable_at(record_drop)), 1);
 }
 
-// --- Hidden until used ------------------------------------------------------
+// --- Visible from the start -------------------------------------------------
+
+TEST(SeamMenuCursor, LightsTheFirstCommandAsSoonAsTheMenuIsDrawn) {
+  const rig r;
+  r.arm();
+  r.show({0, 1, 2, 3});
+
+  r.menu_drawn();
+  EXPECT_EQ(r.calls(),
+            (std::vector<drawn>{{column_letter, row_zero, white, "Cargo"}}))
+      << "the whole word, white: the program's own convention for a selection";
+  EXPECT_EQ(r.cursor_byte(), 2) << "two, and the row it is on";
+}
+
+TEST(SeamMenuCursor, LightsTheFirstCommandOfAMenuWithNoPartyToo) {
+  // Load, not Drop, is on with nobody in the party, and the cursor lives in
+  // whichever is.
+  const rig r;
+  r.arm();
+  r.show({0, 7, 10});
+
+  r.menu_drawn();
+  EXPECT_EQ(r.calls().front().text, "Cargo");
+  EXPECT_EQ(r.byte(data_segment, rig::enable_at(record_load)), 2);
+  EXPECT_EQ(r.byte(data_segment, rig::enable_at(record_drop)), 0);
+}
+
+TEST(SeamMenuCursor, TheCursorRowIsYellowWithAWhiteKeyWhenSelectYellowIsOn) {
+  const rig r;
+  r.arm();
+  r.select_yellow();
+  r.show({0, 1, 2, 3});
+
+  r.menu_drawn();
+  EXPECT_EQ(r.calls(),
+            (std::vector<drawn>{{column_letter, row_zero, white, "C"},
+                                {column_rest, row_zero, yellow, "argo"}}));
+  EXPECT_EQ(r.cursor_byte(), 2);
+}
+
+TEST(SeamMenuCursor, DrawsNoSecondCursorWhileOneIsOnTheScreen) {
+  // The loop reaches the call again after Home and End, which redraw
+  // nothing of the commands, and after the handler's own batch.
+  const rig r;
+  r.arm();
+  r.show({0, 1, 2, 3});
+
+  r.menu_drawn();
+  r.menu_drawn();
+  r.menu_drawn();
+  EXPECT_EQ(r.calls().size(), 1u);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamMenuCursor, PutsTheCursorBackWhenTheLoopHasRedrawnTheMenu) {
+  // A redraw writes every enable byte as it found it to be: the cursor's
+  // byte is one again, and the pixels it stood on are gone.
+  const rig r;
+  r.arm();
+  r.show({0, 1, 2, 3});
+  r.menu_drawn();
+  (void)r.press({down});
+  EXPECT_EQ(r.cursor_byte(), 3);
+
+  r.show({0, 1, 2, 3});
+  r.menu_drawn();
+  EXPECT_EQ(r.cursor_byte(), 2) << "back on the first command";
+  EXPECT_EQ(r.calls().back(), (drawn{column_letter, row_zero, white, "Cargo"}));
+}
+
+TEST(SeamMenuCursor, ReturnTakesTheFirstCommandWithoutAnyOtherKeyPressed) {
+  const rig r;
+  r.arm();
+  r.show({0, 1, 2, 3});
+  r.menu_drawn();
+
+  EXPECT_EQ(r.press({enter}), 0x1C43) << "Cargo's letter, Return's scan code";
+}
+
+TEST(SeamMenuCursor, TheFirstPressMovesTheCursorOffTheFirstCommand) {
+  const rig r;
+  r.arm();
+  r.show({0, 1, 2, 3});
+  r.menu_drawn();
+
+  (void)r.press({down});
+  EXPECT_EQ(r.cursor_byte(), 3) << "the second row";
+  (void)r.press({down});
+  EXPECT_EQ(r.cursor_byte(), 4) << "the third, as before it was visible";
+
+  const std::vector<drawn> seen = r.calls();
+  ASSERT_EQ(seen.size(), 1u + 3u + 3u);
+  EXPECT_EQ(seen[1], (drawn{column_letter, row_zero + 1, white, "Dune"}));
+  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero, white, "C"}))
+      << "the first, put back as the menu draws it";
+  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero, green, "argo"}));
+}
+
+TEST(SeamMenuCursor, TheMovingCursorFollowsSelectYellowToo) {
+  const rig r;
+  r.arm();
+  r.select_yellow();
+  r.show({0, 1, 2, 3});
+  r.menu_drawn();
+  (void)r.press({down});
+
+  const std::vector<drawn> seen = r.calls();
+  ASSERT_EQ(seen.size(), 2u + 4u);
+  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero + 1, white, "D"}));
+  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero + 1, yellow, "une"}));
+  EXPECT_EQ(seen[4], (drawn{column_letter, row_zero, white, "C"}));
+  EXPECT_EQ(seen[5], (drawn{column_rest, row_zero, green, "argo"}));
+}
+
+TEST(SeamMenuCursor, ARowOfOneLetterIsLitWithNoRestWhenSelectYellowIsOn) {
+  const rig r;
+  r.arm();
+  r.select_yellow();
+  r.show({0, 1, 2});
+  r.put_byte(data_segment, records, 1);
+
+  r.menu_drawn();
+  EXPECT_EQ(r.calls(),
+            (std::vector<drawn>{{column_letter, row_zero, white, "C"}}));
+}
+
+TEST(SeamMenuCursor, ChoosesTheColourAtEachDrawAndKeepsNone) {
+  // Switched on after the first row is lit and off again before the next
+  // arrival: nothing the seam remembers, so each draw is what the engine
+  // says now.
+  const rig r;
+  r.arm();
+  r.show({0, 1, 2, 3});
+  r.menu_drawn();
+  EXPECT_EQ(r.calls().size(), 1u);
+
+  r.select_yellow();
+  (void)r.press({down});
+  EXPECT_EQ(r.calls()[1].colour, white) << "the key";
+  EXPECT_EQ(r.calls()[2].colour, yellow) << "the rest of the word";
+}
+
+TEST(SeamMenuCursor, TheLoopsPointDeclinesACallThatIsNotTheMenusBar) {
+  const rig r;
+  r.arm();
+  r.show({0, 1, 2, 3});
+
+  // A colour for the bar: not the menu, which has none.
+  r.lay_loop_call();
+  r.put_word(stack_segment, 0x0400 + 8, 0x0F);
+  r.arrive_at_loop();
+  // Raw mode clear.
+  r.lay_loop_call();
+  r.put_word(stack_segment, 0x0400 + 6, 0);
+  r.arrive_at_loop();
+  // Another bar.
+  r.lay_loop_call();
+  r.put_word(stack_segment, 0x0400 + 14, 0x05F1);
+  r.arrive_at_loop();
+  // The prompt colour another caller passes.
+  r.lay_loop_call();
+  r.put_word(stack_segment, 0x0400 + 12, 0x0A);
+  r.arrive_at_loop();
+
+  EXPECT_TRUE(r.calls().empty());
+  EXPECT_EQ(r.cursor_byte(), 1);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 4u);
+}
+
+TEST(SeamMenuCursor, TheLoopsPointDeclinesAMenuItCannotHoldACursorIn) {
+  const rig r;
+  r.arm();
+  r.show({0, 2, 3});  // neither of the two enable bytes is on
+  r.menu_drawn();
+  r.show({});
+  r.menu_drawn();
+
+  EXPECT_TRUE(r.calls().empty());
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 2u);
+}
+
+TEST(SeamMenuCursor, TheLoopsPointIsInertWhileOverlay16IsNotLoaded) {
+  const rig r;
+  r.arm();
+  r.manager_says(word_loop, 0);
+  EXPECT_EQ(r.box->seams().status(seam_id).reason,
+            seam_reason::module_not_resident);
+}
+
+TEST(SeamMenuCursor, DrawsNoCursorWhileItIsOff) {
+  const rig r;
+  r.manager_says(word_menu_bar, menu_bar_segment);
+  r.manager_says(word_loop, loop_segment);
+  r.show({0, 1, 2, 3});
+
+  r.menu_drawn();
+  EXPECT_TRUE(r.calls().empty());
+  EXPECT_EQ(r.cursor_byte(), 1);
+}
+
+// --- Without a cursor on the screen --------------------------------------------
+//
+// A menu the loop's point has not seen yet (the seam switched on while the
+// menu was up, or its batch declined): the keys behave as they did when the
+// cursor was hidden until used.
 
 TEST(SeamMenuCursor, TouchesNothingForAnyKeyButUpDownAndReturn) {
   const rig r;

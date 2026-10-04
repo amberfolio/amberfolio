@@ -14,9 +14,13 @@
 
 #pragma once
 
+#include <string_view>
+
 #include "amberfolio/machine/seam.h"
 
 namespace amberfolio::machine {
+
+class machine;
 
 /// PLAN.md §5 item 1, in the form M3 needed (seam_code_wheel.cpp).
 [[nodiscard]] const seam_definition& code_wheel_seam() noexcept;
@@ -54,5 +58,15 @@ namespace amberfolio::machine {
 /// The text faces, alternatives in one group (seam_font.cpp, text_face.h).
 [[nodiscard]] const seam_definition& font_sans_seam() noexcept;
 [[nodiscard]] const seam_definition& font_chisel_seam() noexcept;
+
+/// Every selection the player can move in yellow, a command's key letter
+/// white (seam_select_yellow.cpp, #453).
+[[nodiscard]] const seam_definition& select_yellow_seam() noexcept;
+
+/// `select-yellow`'s id, and the one question another seam asks about it:
+/// is it on. A seam that draws a selection of its own (`menu-cursor`, the
+/// journal's listing) takes its colours from the answer.
+inline constexpr std::string_view select_yellow_id = "select-yellow";
+[[nodiscard]] bool select_yellow_on(const machine& box) noexcept;
 
 }  // namespace amberfolio::machine

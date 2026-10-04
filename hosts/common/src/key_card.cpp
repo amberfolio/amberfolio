@@ -66,6 +66,8 @@ constexpr std::array bar_rows{
     key_row{"Esc at Yes/No", "answer No to the question", "bar-keys"},
     key_row{"F", "on the camp bar: Fix, rest as long as the party needs",
             "encamp-fix"},
+    key_row{"the selection", "yellow: a bar's lit word, a list row, a member",
+            "select-yellow"},
 };
 
 constexpr std::array menu_rows{
@@ -73,8 +75,9 @@ constexpr std::array menu_rows{
     key_row{"Home, End", "select the previous or next party member"},
     key_row{"Up, Down", "move a cursor over the commands shown (not 8, 2)",
             "menu-cursor"},
-    key_row{"Return", "take the command under the cursor, once one shows",
-            "menu-cursor"},
+    key_row{"Return", "take the command under the cursor", "menu-cursor"},
+    key_row{"the cursor row", "yellow, with the command's first letter white",
+            "select-yellow"},
 };
 
 constexpr std::array list_rows{

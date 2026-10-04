@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The menu-cursor seam: a cursor on the main menu's commands. Up and Down
-// move it, and Return takes the command it is on (#434).
+// The menu-cursor seam: a cursor on the main menu's commands, drawn from
+// the moment the menu is. Up and Down move it, and Return takes the command
+// it is on (#434, #453).
 //
 //
 // What the program does, stated as facts
@@ -43,31 +44,43 @@
 // What the seam does
 // ------------------
 //
-// **One point**, the same one `bar-keys` reads at, in the menu-bar routine
-// at the call into the key-read routine (overlay 25, `0x0572`, reached only
-// when a key is waiting). The call is the main menu's when the routine's
-// far return address is overlay 16 (the manager's word at `0x0790`) at
-// `0x02FD`. Every other caller of the routine is left alone.
+// **Two points.**
 //
-//   * **Up and Down** (scan `0x48` and `0x50`, character zero) move a
+//   * **The loop's call into the menu-bar routine** (overlay 16, `0x02F8`,
+//     the instruction the facts above call the call). Reached every time
+//     the loop asks for a key, and so as soon as the menu is drawn: with no
+//     cursor on the screen the handler lights the **first** command shown,
+//     which is what makes the cursor visible from the start (#453).
+//   * **The menu-bar routine's key-read call**, the one `bar-keys` reads
+//     at (overlay 25, `0x0572`, reached only when a key is waiting). The
+//     call is the main menu's when the routine's far return address is
+//     overlay 16 (the manager's word at `0x0790`) at `0x02FD`. Every other
+//     caller of the routine is left alone.
+//
+// What it does there:
+//
+//   * **Up and Down** (scan `0x48` and `0x50`, character zero) move the
 //     cursor over the **enabled** commands, in the order the menu draws
 //     them, wrapping at both ends. Disabled commands are not drawn and are
-//     skipped. The cursor is drawn by the program's own string routine: the
-//     whole word of the command it moved to, in white, and the word it left
-//     in the two colours the menu draws it in. The key is then replaced by
-//     a character the routine ignores, which keeps it waiting (the batch
-//     that draws offers the point again, and the key must not be moved on
-//     twice).
+//     skipped. The cursor is drawn by the program's own string routine. With
+//     `select-yellow` off, the whole word of the command it moved to in
+//     white, which is the program's own convention for a selection; with it
+//     on, the first letter in white and the rest of the word in yellow
+//     (docs/seams.md §10). The word it left is put back in the two colours
+//     the menu draws it in. The key is then replaced by a character the
+//     routine ignores, which keeps it waiting (the batch that draws offers
+//     the point again, and the key must not be moved on twice).
 //   * **Return**, with the cursor drawn, becomes the command's letter, in
 //     the BIOS ring before the program reads it. The program takes the
 //     command by the route a typed letter takes. With no cursor drawn
 //     Return is left alone, and the program drops it as it always did.
 //   * **Every other key is the program's**: a typed letter, Home, End.
 //
-// **Hidden until used.** The seam draws nothing and writes nothing until
-// the first Up or Down. The cursor then starts where the menu would put
-// it, on the **first** command, and the press moves it: Down, Down takes
-// the third command shown.
+// **Visible from the start.** The cursor is on the **first** command shown
+// as soon as the menu is drawn, so the first press moves it: Down, Down
+// takes the third command shown. A menu the loop draws again (a command
+// was taken, a screen was left) wipes the cursor, and the loop's next
+// call puts it back on the first.
 //
 // **A second press while the cursor is being drawn.** The program draws a
 // glyph at a time, as it draws everything, and moving the cursor costs
@@ -108,11 +121,11 @@
 // The fidelity claim (docs/seams.md §8.5)
 // ---------------------------------------
 //
-// On, and no Up or Down pressed at the main menu, the run is byte for byte
-// the run with the seam off: the handler reads the ring's head word and
-// writes nothing unless it is Up or Down at that caller, or Return at that
-// caller **with the cursor drawn**. The pair is an `identical` and a
-// `contrast` (tests/sessions/README.md).
+// On, the cursor is seen as soon as the main menu is drawn, so a run that
+// reaches the menu is not the run with the seam off, whatever keys are
+// pressed: the pair is a `contrast`, and so is the one for a cursor that
+// moves (tests/sessions/README.md). It was an `identical` while the cursor
+// was hidden until the first Up or Down (#434).
 //
 //
 // What it is not yet, at the point of definition (docs/seams.md §8.5)
@@ -122,6 +135,11 @@
 // turns them into the movement letters itself, and the party's cursor is
 // the program's there), and nothing here is done for a screen other than
 // the main menu: the pick-lists' Up and Down are `list-arrows`.
+//
+// The row is yellow with a white key when `select-yellow` is on and white
+// when it is off. The cursor's state is the enable byte, as before, and the
+// colour is asked of the engine at every draw (`select_yellow_on()`), never
+// kept.
 
 #include <array>
 #include <cstddef>
@@ -164,6 +182,22 @@ constexpr seam_module menu_module{
 /// handler runs before the call, so nothing has been read yet.
 constexpr std::uint32_t key_read_call = 0x0572;
 
+/// Overlay 16, the party-setup loop's: file offset 104831 (`0x1997F`),
+/// 17497 bytes (`0x4459`), the load-segment word at image `0x0790` (the
+/// manager's record is at `0x0784`, by the search `seam_cheats.cpp`
+/// documents).
+constexpr seam_module loop_module{
+    .file = "GAME.OVR",
+    .file_offset = 104831,
+    .length = 17497,
+    .digest =
+        "232c6aa60fda1a475d7933aabc97b598fba93d8e4af4026e3551bb0ef06045a0",
+    .load_segment_at = 0x790};
+
+/// In the loop: the far call into the menu-bar routine, after the menu is
+/// drawn and the arguments are pushed.
+constexpr std::uint32_t loop_call = 0x02F8;
+
 // --- The routine's frame ---------------------------------------------------
 
 constexpr std::uint16_t frame_return_ip = 2;
@@ -201,6 +235,26 @@ constexpr std::uint8_t record_without_member = 7;
 /// The program's one-byte pushback slot for an extended key's second half.
 constexpr std::uint16_t data_key_pushback = 0x8501;
 
+/// The data segment is the image's paragraph `0xC7C` on: image offset
+/// `0xC7C0`, which is DS `0x0CDC` where the image is at `0x60`.
+constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
+
+/// The loop's call into the menu-bar routine, from the top of the stack:
+/// the offset and the segment of the out-parameter, the animation flag,
+/// the raw-mode flag, both bar colours, the prompt colour, and the bar's
+/// far pointer (offset, then segment). The bar is the one at DGROUP
+/// `0x05F0`.
+constexpr std::uint16_t call_out_segment = 2;
+constexpr std::uint16_t call_anim = 4;
+constexpr std::uint16_t call_raw = 6;
+constexpr std::uint16_t call_colour_hi = 8;
+constexpr std::uint16_t call_colour_lo = 10;
+constexpr std::uint16_t call_prompt_colour = 12;
+constexpr std::uint16_t call_bar_offset = 14;
+constexpr std::uint16_t call_bar_segment = 16;
+constexpr std::uint16_t data_bar = 0x05F0;
+constexpr std::uint16_t prompt_colour = 0x0D;
+
 /// What the cursor's byte holds with the cursor on row `r`: `cursor_base +
 /// r`. The menu's redraw leaves it at one, which is below any row's.
 constexpr std::uint8_t cursor_base = 2;
@@ -214,9 +268,11 @@ constexpr std::uint16_t letter_column = 2;
 constexpr std::uint16_t rest_column = 3;
 
 /// The menu's colours: the first letter and the cursor (white), and the
-/// rest of the word (green).
+/// rest of the word (green); and the yellow `select-yellow` draws the rest
+/// of the cursor's word in.
 constexpr std::uint16_t colour_letter = 0x0F;
 constexpr std::uint16_t colour_rest = 0x0A;
+constexpr std::uint16_t colour_selected = 0x0E;
 
 /// The program's string drawer, as an offset from the image base: draws a
 /// Pascal string at a cell. `retf 0Ah`, arguments pushed column, row,
@@ -386,11 +442,12 @@ struct menu_reading {
   return ctx.call_program(image, image_draw_string, where);
 }
 
-/// Put the word `row` stands for back the way the menu draws it: the first
-/// letter in the letter's colour, the rest in the other.
-[[nodiscard]] bool draw_plain(seam_context& ctx, cpu::processor& cpu,
-                              std::uint16_t image, std::uint16_t ds,
-                              const menu_reading& menu, std::uint8_t row) {
+/// Draw the word `row` stands for the way the menu draws it: the first
+/// letter in the letter's colour, the rest in `rest`.
+[[nodiscard]] bool draw_word(seam_context& ctx, cpu::processor& cpu,
+                             std::uint16_t image, std::uint16_t ds,
+                             const menu_reading& menu, std::uint8_t row,
+                             std::uint16_t rest) {
   const std::uint8_t record = menu.record[row];
   const std::uint8_t length = text_length(cpu, ds, record);
   if (length == 0) {
@@ -423,15 +480,20 @@ struct menu_reading {
             head_offset)) {
     return false;
   }
-  return length == 1 || draw(ctx, image, screen_row, rest_column, colour_rest,
+  return length == 1 || draw(ctx, image, screen_row, rest_column, rest,
                              tail_segment, tail_offset);
 }
 
-/// Light the word `row` stands for: the record itself, whole, in white, drawn
-/// where it stands in the program's memory.
-[[nodiscard]] bool draw_lit(seam_context& ctx, std::uint16_t image,
-                            std::uint16_t ds, const menu_reading& menu,
-                            std::uint8_t row) {
+/// Light the word `row` stands for. With `select-yellow` off, the record
+/// itself, whole, in white, drawn where it stands in the program's memory.
+/// With it on, the key letter white and the rest of the word yellow.
+[[nodiscard]] bool draw_lit(seam_context& ctx, cpu::processor& cpu,
+                            std::uint16_t image, std::uint16_t ds,
+                            const menu_reading& menu, std::uint8_t row,
+                            bool yellow) {
+  if (yellow) {
+    return draw_word(ctx, cpu, image, ds, menu, row, colour_selected);
+  }
   return draw(ctx, image, static_cast<std::uint16_t>(first_row + row),
               letter_column, colour_letter, ds, record_at(menu.record[row]));
 }
@@ -522,8 +584,10 @@ void at_key_read(machine& box, seam_context& ctx) {
   // before the one it leaves is put back.
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
   const bool was_drawn = lit != menu.shown;
-  if (!draw_lit(ctx, image, ds, menu, to) ||
-      (was_drawn && lit != to && !draw_plain(ctx, cpu, image, ds, menu, lit))) {
+  const bool yellow = select_yellow_on(box);
+  if (!draw_lit(ctx, cpu, image, ds, menu, to, yellow) ||
+      (was_drawn && lit != to &&
+       !draw_word(ctx, cpu, image, ds, menu, lit, colour_rest))) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -536,14 +600,68 @@ void at_key_read(machine& box, seam_context& ctx) {
   cpu.write_word(bda::segment, head, key_placeholder);
 }
 
-constexpr std::array<seam_point, 1> menu_cursor_points{
-    {{.module = menu_module, .offset = key_read_call, .run = &at_key_read}}};
+// --- The menu is drawn -------------------------------------------------------
+
+/// The loop is about to ask the menu-bar routine for a key. The menu has
+/// just been drawn, or has been all along; the cursor is on the screen
+/// when the enable byte it lives in says so, and when it is not the first
+/// command is lit.
+void at_menu_drawn(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t sp = regs[cpu::reg16::sp];
+  const std::uint16_t ds = regs[cpu::sreg::ds];
+  const auto top = [&](std::uint16_t distance) {
+    return cpu.read_word(ss, static_cast<std::uint16_t>(sp + distance));
+  };
+  // A byte argument is pushed as a whole register, so its high half is
+  // whatever the register held: the routine reads the low byte only.
+  const auto top_byte = [&](std::uint16_t distance) {
+    return cpu.read_byte(ss, static_cast<std::uint16_t>(sp + distance));
+  };
+  // The call's own words: the loop's bar, with both colours zero and raw
+  // mode set, in the data segment the facts name.
+  const bool is_the_call =
+      ds == static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
+                                       dgroup_paragraphs) &&
+      top(call_out_segment) == ss && top_byte(call_anim) == 0 &&
+      top_byte(call_raw) == 1 && top_byte(call_colour_hi) == 0 &&
+      top_byte(call_colour_lo) == 0 &&
+      top_byte(call_prompt_colour) == prompt_colour &&
+      top(call_bar_offset) == data_bar && top(call_bar_segment) == ds;
+  if (!is_the_call) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+
+  menu_reading menu;
+  if (!read_menu(cpu, ds, menu) || menu.shown == 0) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (cursor_row(menu) != menu.shown) {
+    // The cursor is on the screen: this is the loop coming back, or this
+    // handler's own batch having finished.
+    return;
+  }
+  const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
+  if (!draw_lit(ctx, cpu, image, ds, menu, 0, select_yellow_on(box))) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  cpu.write_byte(ds, menu.cursor_byte, cursor_base);
+}
+
+constexpr std::array<seam_point, 2> menu_cursor_points{
+    {{.module = menu_module, .offset = key_read_call, .run = &at_key_read},
+     {.module = loop_module, .offset = loop_call, .run = &at_menu_drawn}}};
 
 constexpr seam_definition menu_cursor_definition{
     .id = "menu-cursor",
     .about =
-        "Up and Down move a cursor over the main menu's commands, and "
-        "Return takes the one it is on",
+        "a cursor on the main menu: Up and Down move it over the commands, "
+        "and Return takes the one it is on",
     .fingerprints = menu_cursor_binaries,
     .points = menu_cursor_points,
     .schema = seam_schema_version};
