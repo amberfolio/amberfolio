@@ -78,14 +78,16 @@
 //     The name is then drawn two columns to the right by the program's
 //     own routines, in the status colour it would have had;
 //   * after the name and before the armour class, a name that now ends
-//     past column `0x1F` (the last column the name had before) has its
-//     tail cleared, columns `0x20` up to its end, by the program's own
-//     clear routine, called the same way; then the column goes back.
+//     past column `0x20` has its tail cleared, columns `0x21` up to its
+//     end, by the program's own clear routine, called the same way; then
+//     the column goes back.
 //     **The column is left as the program had it** at every other arrival.
 //
 // **What a long name keeps.** Beside the viewport the name field is
-// columns `0x13` to `0x1F` now, thirteen, so a name of fourteen or fifteen
-// characters shows its first thirteen. On the main menu, where the names
+// columns `0x13` to `0x20` now, fourteen, so a name of fifteen characters
+// shows its first fourteen. The armour class is right-aligned in `0x20` to
+// `0x22`, and only a value of -10 or lower reaches `0x20`; the program draws
+// it after the name, so then its sign takes that column, as it should. On the main menu, where the names
 // start at column one, there is room for every name in full.
 //
 // Everything drawn is drawn by the program's own routines, so the faces
@@ -432,10 +434,11 @@ constexpr std::uint8_t first_row = 4;
 /// How far the name moves right: the number and one blank column.
 constexpr std::uint8_t name_shift = 2;
 
-/// The last column the name had room in before the number came.
-constexpr unsigned last_name_column = 0x1F;
-/// The leftmost column of the armour class, and the rightmost of the row.
-constexpr std::uint8_t first_cut_column = 0x20;
+/// The last column a name may reach: the armour class's first column,
+/// which only an armour class of -10 or lower draws in, after the name.
+constexpr unsigned last_name_column = 0x20;
+/// The first column a name is cut from, and the rightmost of the row.
+constexpr std::uint8_t first_cut_column = 0x21;
 constexpr std::uint8_t last_row_column = 0x26;
 
 /// The routines the seam asks the program to run, as the paragraph they

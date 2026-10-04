@@ -534,7 +534,7 @@ struct enter_caller {
 };
 
 /// Every caller in the Enter table, the audit's (#459) included.
-constexpr std::array<enter_caller, 20> tabled{{
+constexpr std::array<enter_caller, 21> tabled{{
     {.segment = menu_segment, .offset = ret_yes_no, .name = "yes/no"},
     {.segment = adventure_segment, .offset = ret_area, .name = "overhead"},
     {.segment = adventure_segment, .offset = ret_view, .name = "3D"},
@@ -546,6 +546,9 @@ constexpr std::array<enter_caller, 20> tabled{{
      .name = "alter's portraits and monsters"},
     {.segment = camp_segment, .offset = ret_camp_speed, .name = "camp speed"},
     {.segment = editor_segment, .offset = ret_portrait, .name = "portrait"},
+    {.segment = editor_segment,
+     .offset = ret_icon_editor,
+     .name = "icon editor"},
     {.segment = shop_segment, .offset = ret_shop, .name = "shop"},
     {.segment = temple_segment, .offset = ret_temple, .name = "temple"},
     {.segment = post_combat_segment, .offset = ret_loot, .name = "loot"},
@@ -645,7 +648,7 @@ TEST(SeamBarKeys, EnterIsLeftAloneAtTheCallersTheAuditReadAndKeptOut) {
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
 
-  const std::array<enter_caller, 19> kept_out{{
+  const std::array<enter_caller, 18> kept_out{{
       {.segment = menu_segment, .offset = ret_pick_list, .name = "pick-list"},
       {.segment = camp_segment, .offset = ret_order, .name = "party order"},
       {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
@@ -663,9 +666,6 @@ TEST(SeamBarKeys, EnterIsLeftAloneAtTheCallersTheAuditReadAndKeptOut) {
       {.segment = post_combat_segment,
        .offset = ret_npc_share,
        .name = "npc share"},
-      {.segment = editor_segment,
-       .offset = ret_icon_editor,
-       .name = "icon editor"},
       {.segment = editor_segment, .offset = ret_editor, .name = "stat editor"},
       {.segment = editor_segment, .offset = ret_main_menu, .name = "main menu"},
       {.segment = slots_segment, .offset = ret_save, .name = "save slot"},

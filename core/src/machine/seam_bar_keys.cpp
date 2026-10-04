@@ -124,6 +124,7 @@
 //   | alter's Portraits and Monsters bar | overlay 15 | `0x1DDF` | compares M and P; loops until {NUL, E} |
 //   | camp's game-speed bar | overlay 15 | `0x1B91` | compares F and S; loops until {NUL, E} |
 //   | the portrait bar | overlay 16 | `0x3449` | compares H, B and K; loops until K |
+//   | the icon editor's bars | overlay 16 | `0x39FE` | states 1, 4, 5 drop it; 2 and 3 take it as a pick of the default, so the highlight is the better pick |
 //   | the shop's bar | overlay 6 | `0x061F` | compares nine letters; repaints and loops |
 //   | the temple's bar | overlay 4 | `0x0DAA` | compares nine letters; repaints and loops |
 //   | the post-combat treasure bar | overlay 5 | `0x1024` | compares V, T, P, S, D, E, G and O; loops |
@@ -283,7 +284,7 @@ using menu_bar::slots_load_segment_at;
 using menu_bar::temple_load_segment_at;
 using menu_bar::view_load_segment_at;
 
-constexpr std::array<caller, 20> enter_callers{{
+constexpr std::array<caller, 21> enter_callers{{
     {.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
@@ -293,6 +294,7 @@ constexpr std::array<caller, 20> enter_callers{{
     {.load_segment_at = camp_load_segment_at, .return_offset = 0x1DDF},
     {.load_segment_at = camp_load_segment_at, .return_offset = 0x1B91},
     {.load_segment_at = roster_load_segment_at, .return_offset = 0x3449},
+    {.load_segment_at = roster_load_segment_at, .return_offset = 0x39FE},
     {.load_segment_at = shop_load_segment_at, .return_offset = 0x061F},
     {.load_segment_at = temple_load_segment_at, .return_offset = 0x0DAA},
     {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x1024},
