@@ -1064,8 +1064,11 @@ class seam_engine {
   /// made the seam suite's rig twenty-five.
   static constexpr std::size_t max_seams = 32;
 
-  /// Points armed at once, across every enabled seam.
-  static constexpr std::size_t max_points = 32;
+  /// Points armed at once, across every enabled seam. Thirty-two was
+  /// what the build's seams needed until the keys' seams: with every seam
+  /// on there are thirty-four points (the journal alone has ten), and the
+  /// last one a player switched on was refused with `too_many_points`.
+  static constexpr std::size_t max_points = 64;
 
   /// What a batch of calls into the program may hold (#188). A report is
   /// a framed box and a handful of lines, so twelve calls of eight words

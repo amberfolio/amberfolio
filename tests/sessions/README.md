@@ -102,6 +102,9 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `menu-letters-cursor` | same | + menu-cursor | `identical menu-letters` | the same keys with the cursor's seam on and no Up, Down or Return pressed at the menu: all 77 checkpoints |
 | `menu-down` | same | code-wheel | | the main menu with no party, then Down, Down and Return, which the program drops: the menu has no cursor. 70 checkpoints |
 | `menu-down-cursor` | same | + menu-cursor | **`contrast menu-down`** | 60 of 70 identical, divergent from tick 151,168,688 (the first Down): the cursor is drawn on Add, moves to Load, and the Return takes it, so the slot prompt is up where the seam-off run shows the plain menu |
+| `quiet-hero-keys` | same | + hero-keys | **`contrast quiet`** | 74 of 90 identical, divergent from tick 182,989,488, the first checkpoint after the party list is first drawn: each name moves two columns right and its number is drawn, which is the enhancement |
+| `hero-pick` | same | + hero-keys | | slot A, and a 9 at the adventuring bar, which is never the seam's: the program steps the selection to the first member, where it already is. 87 checkpoints |
+| `hero-pick-3` | same | + hero-keys | **`contrast hero-pick`** | the same script with a 3 at the same tick: 77 of 87 identical, divergent from tick 190,944,688. The seam puts the third member under the cursor, the program steps onto it, and the party list is redrawn with the third name white |
 
 ## The matrix, by seam
 
@@ -116,6 +119,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `list-arrows` | `list-down-arrows`, `camp-down-arrows` | `list-keys-arrows`, `camp-roster-arrows` |
 | `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys` | `quiet-bar-keys` |
 | `menu-cursor` | `menu-down-cursor` | `menu-letters-cursor` |
+| `hero-keys` | `hero-pick-3` | `quiet-hero-keys` (a `contrast`: the party list is seen as soon as it is drawn) |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the

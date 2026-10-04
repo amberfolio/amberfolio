@@ -297,6 +297,39 @@ screen: the pick-lists are `list-arrows` and the horizontal bars are
 used (the game draws a glyph at a time, so a move takes about a tenth of a
 second of the game's time).
 
+## The hero keys
+
+**What it does.** Pick a party member with one key. **The number row's
+`1` to `8` select that member** on every screen where Home and End do:
+the 3D view and the wilderness, the main menu, the camp bar and its Magic
+and Alter bars, the shops, the temple, the post-combat treasure bar, and a
+script's own menus. The game's own cursor does the selecting, so the
+party list redraws as it does for Home and End. **The party list shows
+each member's number** in white in front of the name, on all of those
+screens: `1 FIGHTER1   -2  33`.
+
+**How you turn it on.** `--seam hero-keys`, or the toggle in the panel.
+
+**What it changes.** The number row's `1` to `8` no longer walk or turn
+the party at the exploring bars, where they did what the keypad does
+(`8` forward, `4` and `6` to turn, `2` to turn round); the arrows and the
+keypad (with Num Lock on or off) keep all of it. `9` and `0` are the
+game's own. A digit with no member behind it does nothing. At the
+post-combat Take bar `6` took the Money; it selects the sixth member
+instead, and `M` still takes it.
+
+**What the list gives up.** Each name moves two columns right to make
+room, so beside the viewport a name has thirteen characters before the
+armour class: a fourteen- or fifteen-character name shows its first
+thirteen, on the screen only. Nothing else moves.
+
+**Where it does not work.** Combat, the pick-lists and the party-member
+picker, character creation, Modify, and the party-order screen (there
+Home and End move a picked-up member, and a digit that moved a member
+three places would be a surprise). With the map open over the party
+list, or the journal reader up, `1` to `8` are theirs, as every key
+is: close it first.
+
 ## The debug cheats
 
 **What they do.** `cheat-invulnerable` (the party takes no damage),

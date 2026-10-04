@@ -2050,17 +2050,20 @@ builds it at every paint.
 context left with no row to show is not shown. Adding a seam's keys is one
 line in `key_card.cpp`, in the context where the key is pressed.
 `tests/key_card_test.cpp` holds every named seam to `all_seams()`, so a
-row for a seam that was renamed or never merged is a red test; the six
+row for a seam that was renamed or never merged is a red test; the seven
 seams that take a key today (automap, journal, Encamp Fix, list-arrows,
-bar-keys, menu-cursor) are pinned there as the floor. Each shell has its own context
-for the keys it takes for itself (the desktop's are in §2's table); the
-page has none, because it takes none.
+bar-keys, menu-cursor, hero-keys) are pinned there as the floor. Each
+shell has its own context for the keys it takes for itself (the desktop's
+are in §2's table); the page has none, because it takes none.
 
 **The keypad is not needed.** In every bar the program reads in raw mode
 (the 3D view, the wilderness, pick-lists, combat's move, Modify) the
 digits `8 2 4 6` act as Up, Down, Left, Right, `7 1` as Home and End and
 `9 3` as PgUp and PgDn, whether typed on the keypad or on the number
-row. The card says so once, under every context.
+row. The card says so once, under every context, and adds that with
+`hero-keys` on the number row's `1` to `8` pick a party member on the
+screens that show the party list (the keypad's digits keep their meaning;
+the seam tells them apart by scan code).
 
 **How each row was checked.** Driven under SDL's dummy drivers with
 `--press`, reading the screen text and the stills beside them

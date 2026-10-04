@@ -33,6 +33,9 @@ constexpr std::array explore_rows{
     key_row{"Left, Right, 4, 6", "turn a quarter turn left or right"},
     key_row{"Down, 2", "turn around"},
     key_row{"Home, End, 7, 1", "select the previous or next party member"},
+    key_row{"1-8 on the number row",
+            "select that party member; keypad 1-8 keep their keys",
+            "hero-keys"},
     key_row{"Tab", "show or hide the map over the party list", "automap"},
 };
 
@@ -40,6 +43,9 @@ constexpr std::array wilderness_rows{
     key_row{"Up, Right, Down, Left",
             "step one square north, east, south, west"},
     key_row{"Home, End, 7, 1", "select the previous or next party member"},
+    key_row{"1-8 on the number row",
+            "select that party member; keypad 1-8 keep their keys",
+            "hero-keys"},
 };
 
 constexpr std::array bar_rows{
@@ -51,6 +57,8 @@ constexpr std::array bar_rows{
             "list-arrows"},
     key_row{"Return", "take the highlighted command: Yes/No, camp, exploring",
             "bar-keys"},
+    key_row{"1-8 on the number row",
+            "camp, menus, shops: select that party member", "hero-keys"},
     key_row{"Y, N", "answer a Yes/No question"},
     key_row{"Esc", "leave camp, a list or a picker; not the exploring bar"},
     key_row{"F", "on the camp bar: Fix, rest as long as the party needs",
@@ -149,7 +157,9 @@ constexpr std::array contexts{
 constexpr std::string_view legend =
     "On the screens that use the arrows, the number row does what the "
     "keypad does: 8 2 4 6 are Up Down Left Right, 7 1 are Home End, 9 3 "
-    "are PgUp PgDn. No keypad is needed.";
+    "are PgUp PgDn. No keypad is needed. Where a row below names a seam, "
+    "that seam changes it: with hero-keys on, the number row's 1 to 8 pick "
+    "a party member on the screens that show the party list.";
 
 [[nodiscard]] std::string_view shell_word(card_shell shell) {
   switch (shell) {
