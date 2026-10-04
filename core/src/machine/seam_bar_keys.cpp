@@ -117,7 +117,6 @@
 //   | the combat move loop | overlay 8 | `0x0AC8` | steps the fighter |
 //   | the combat aim cursor | overlay 13 | `0x3178` | moves the cursor |
 //   | the stat editor | overlay 16 | `0x216E` | lowers and raises a score |
-//   | the rest-time menu | overlay 20 | `0x076E` | picks the field |
 //   | the treasure share's press-Enter prompt | overlay 5 | `0x0AF8` | any extended key ends it |
 //   | the NPC share's press-Enter prompt | overlay 5 | `0x14C7` | the same |
 //
@@ -129,6 +128,11 @@
 // table, by decision: the post-combat Take bar (Right is its `M`, Money)
 // and the temple's keep-or-sell prompt (Left is its `K`, Keep). With the
 // seam on the arrows step the highlight there like everywhere else.
+//
+// The rest-time menu (overlay 20, return `0x076E`) is not in the table
+// either, by decision: the program steps its days/hours/minutes field on
+// Left and Right, and with the seam on they step the bar's highlight
+// instead, as at any other bar. `Y`, `H` and `M` still pick the field.
 //
 // **Why the BIOS ring and not AL.** The program reads the key two
 // routines deep, through INT 16h, so the first place any seam can see it
@@ -226,7 +230,6 @@ using menu_bar::caller;
 using menu_bar::camp_load_segment_at;
 using menu_bar::combat_load_segment_at;
 using menu_bar::post_combat_load_segment_at;
-using menu_bar::rest_load_segment_at;
 using menu_bar::roster_load_segment_at;
 
 constexpr std::array<caller, 6> enter_callers{{
@@ -240,13 +243,12 @@ constexpr std::array<caller, 6> enter_callers{{
 
 // --- The callers that keep Left and Right ---------------------------------
 
-constexpr std::array<caller, 8> arrow_callers{{
+constexpr std::array<caller, 7> arrow_callers{{
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
     {.load_segment_at = combat_load_segment_at, .return_offset = 0x0AC8},
     {.load_segment_at = aim_load_segment_at, .return_offset = 0x3178},
     {.load_segment_at = roster_load_segment_at, .return_offset = 0x216E},
-    {.load_segment_at = rest_load_segment_at, .return_offset = 0x076E},
     {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x0AF8},
     {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x14C7},
 }};
