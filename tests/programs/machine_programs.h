@@ -367,8 +367,14 @@ struct machine_program {
 /// The list arrows' stand-in: both handlers at made-up addresses (#423).
 [[nodiscard]] const std::vector<std::uint8_t>& select_yellow_probe_file();
 [[nodiscard]] const machine::seam_definition& select_yellow_probe_definition();
+[[nodiscard]] const std::vector<std::uint8_t>& select_yellow_probe_file();
+[[nodiscard]] const machine::seam_definition& select_yellow_probe_definition();
 [[nodiscard]] const std::vector<std::uint8_t>& list_arrows_probe_file();
 [[nodiscard]] const machine::seam_definition& list_arrows_probe_definition();
+
+/// The edit keys' stand-in: the handler at three made-up arrivals (#455).
+[[nodiscard]] const std::vector<std::uint8_t>& edit_keys_probe_file();
+[[nodiscard]] const machine::seam_definition& edit_keys_probe_definition();
 
 /// The list arrows' third handler, the command bars', at five made-up
 /// arrivals (#435).

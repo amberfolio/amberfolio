@@ -386,6 +386,27 @@ three places would be a surprise). With the map open over the party
 list, or the journal reader up, `1` to `8` are theirs, as every key
 is: close it first.
 
+## The edit keys
+
+**What it does.** The arrows, Home, End, the page keys, Insert, Delete and
+the function keys stop typing letters where the game asks for text. Without
+it, pressing Right while naming a character types an `M`, Up an `H`, Down a
+`P` and Left a `K`; Home types `G` and End `O`. With it they do nothing.
+Typing, Backspace, Return and Esc are as they were, and so is every other
+screen: the arrows still walk, turn and step the lists.
+
+**How you turn it on.** `--seam edit-keys`, or the toggle in the panel.
+
+**Where it works.** Every place the game reads a line of text: a new
+character's name, a script's free-text question, a script's number prompt
+(where a stray letter made the game ask again) and the code word at the
+copy-protection challenge. They share one routine in the game, so they are
+one setting.
+
+**What it changes.** An Alt chord and the function keys type nothing at those
+prompts either. The View > Drop money amount is the game's own and takes
+digits only, so an arrow was never wrong there.
+
 ## The debug cheats
 
 **What they do.** `cheat-invulnerable` (the party takes no damage),

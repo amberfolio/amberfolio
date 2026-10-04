@@ -82,7 +82,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `quiet-journal` | same | + journal | **`contrast quiet`** | 76 of 90 identical: `Notes` goes on the party's bar the moment the bar is drawn, in `cpu`, `ram`, `devices`, `display`, `audio`. The enhancement, not a leak; `identical` is not loosened to fit |
 | `quiet-font-sans` | same | + font-sans | **`contrast quiet`** | 1 of 90 identical: a face is seen from the credits' first text on, in `devices` and `display` only. The two agree again while the title's art covers every page |
 | `quiet-font-chisel` | same | + font-chisel | **`contrast quiet`** | the same, in the other face |
-| `quiet-all` | same | every seam that draws nothing until used: the journal, the automap, the Encamp Fix, the explored overlay, the three cheats, list-arrows and bar-keys | `identical quiet-journal` | ten seams armed, the code word's among them, none triggered, no more machine than the journal alone: all 90 checkpoints. Left out, each with a pair of its own: the faces, which are alternatives and seen from the first text, and the three that draw on sight, hero-keys, menu-cursor and select-yellow. Re-recorded without menu-cursor (#453) |
+| `quiet-all` | same | every seam that draws nothing until used: the journal, the automap, the Encamp Fix, the explored overlay, the three cheats, list-arrows, bar-keys and edit-keys | `identical quiet-journal` | eleven seams armed, the code word's among them, none triggered, no more machine than the journal alone: all 90 checkpoints. Left out, each with a pair of its own: the faces, which are alternatives and seen from the first text, and the three that draw on sight, hero-keys, menu-cursor and select-yellow. Re-recorded without menu-cursor (#453) |
 | `quiet-all-on-sight` | same | + hero-keys, menu-cursor, select-yellow | **`contrast quiet-all`** | 58 of 90 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in (the cursor is the first thing that moves; the highlights and the roster's numbers follow). What it adds is the seams together: the three that draw beside the two key seams that read the same keys and beside the journal that redraws the bar |
 | `list-keys` | shipped slots | code-wheel | | character creation by Home and End: an elf, a woman, a magic-user, to the rolled sheet. 84 checkpoints |
 | `list-keys-arrows` | same | + list-arrows | `identical list-keys` | the same keys with the arrows' seam on and no arrow pressed |
@@ -116,6 +116,11 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `bar-esc-keys` | same | + bar-keys | **`contrast bar-esc`** | 91 of 99 identical, divergent from tick 216,799,088: the second Escape answers the prompt `No` and the camp bar is back |
 | `bar-script` | same | code-wheel | | slot A walked to the arena master's question (the status row reads 7,1): `.` steps the highlight to `NO`, then Return and Escape, which the program ignores because the script did not allow Enter. 164 checkpoints. |
 | `bar-script-keys` | same | + bar-keys | **`contrast bar-script`** | 151 of 164 identical, divergent from tick 316,239,088: Return answers `No`, and Escape answers `No` to the partner question that follows. The press-Enter notice before the question, which allows Enter, is identical |
+| `name-letters` | shipped slots | code-wheel | | character creation to the name prompt by the first row of every list, and the name BOB typed in letters and taken with Return: leg 0's creation. 84 checkpoints |
+| `name-letters-edit` | same | + edit-keys | `identical name-letters` | the same keys with the editor's seam on and no extended key pressed: all 84 checkpoints |
+| `name-arrows` | same | code-wheel | | the same creation with a Right, an Up, a Down and a Left among the letters of the name: the program's line editor types each arrow's scan code, and the name is BMOHBPK. 88 checkpoints |
+| `name-arrows-edit` | same | + edit-keys | **`contrast name-arrows`** | 77 of 88 identical, divergent from tick 173,642,128 (the first arrow the editor reads): the arrows type nothing and the name is BOB |
+| `quiet-edit-keys` | same | + edit-keys | `identical quiet` | the seam on and `quiet`'s four arrows pressed in the city, which the walk reads and the line editor never does: the seam's point is not reached, and all 90 checkpoints are equal |
 
 ## The matrix, by seam
 
@@ -132,6 +137,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `menu-cursor` | `menu-down-cursor`, `menu-down-cursor-yellow` | `menu-letters-cursor` and `quiet-all-on-sight` (both a `contrast`: the cursor is drawn as soon as the menu is) |
 | `select-yellow` | `bar-yn-yellow`, `list-keys-yellow`, `menu-down-cursor-yellow` | `quiet-select-yellow` and `quiet-all-on-sight` (both a `contrast`: a highlight is drawn at once, so none can exist) |
 | `hero-keys` | `hero-pick-3` | `quiet-hero-keys` and `quiet-all-on-sight` (both a `contrast`: the party list is seen as soon as it is drawn) |
+| `edit-keys` | `name-arrows-edit` | `name-letters-edit`, `quiet-edit-keys`, `quiet-all`, `quiet-all-on-sight` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 Subsets: `quiet-all` (all on but the faces and the three that draw on sight), `quiet-all-on-sight` (that, with hero-keys, menu-cursor and select-yellow), `subset-map-reader` (two seams wanting the

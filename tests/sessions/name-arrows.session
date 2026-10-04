@@ -1,35 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# M5-V1's subset check (#177), and the strongest form the fidelity
-# invariant takes here: every seam this build carries that draws nothing
-# until the player uses it, all on at once, and none of them triggered.
-# Re-recorded with the controls seams (#446): list-arrows and bar-keys,
-# and then edit-keys (#455), which rewrite no key until one they take is
-# pressed, and `quiet` presses none of them; and re-recorded again without menu-cursor (#453), which
-# draws its cursor on the first command as soon as the main menu is.
-# Its `identical` names `quiet-journal` rather than `quiet`, and that is
-# the claim: the reader alone moves an idle machine, because it splices
-# `Notes` onto a bar the game keeps redrawing (quiet-journal.session),
-# and adding the automap, the Encamp Fix, the explored overlay, all
-# three cheats and the three key seams on top of it changes nothing
-# across all 90 checkpoints. That is what "individually toggleable" has
-# to mean: a subset of seams is no more than the sum of what each one
-# does.
-# Left out, and each with a pair of its own: the faces, which are
-# alternatives and seen from the first text (quiet-font-sans), and the
-# three that draw on sight: hero-keys (the roster's numbers, from the
-# first time the party list is drawn), menu-cursor (the cursor, from the
-# first time the main menu is) and select-yellow (every highlight).
-# quiet-all-on-sight is this run with those three added, which is a
-# contrast against it.
+# The baseline of the edit-keys pair that is a `contrast` (#455): the same
+# creation script as `name-letters`, with a Right, an Up, a Down and a Left
+# typed among the letters of the name, and the code-wheel seam alone on. The
+# program's line editor takes each arrow's scan code for a character, so the
+# name is BMOHBPK where the player typed B, O, B. `name-arrows-edit` is the
+# same keys with the seam on.
 
-about every seam on at once that draws nothing until it is used, none of
-about them triggered: the same machine as the journal alone, checkpoint for
-about checkpoint
+about character creation with only the code-wheel seam on, and the name
+about typed B, Right, O, Up, B, Down, Left, Return: the editor takes each
+about arrow's scan code for a letter and the name is BMOHBPK
 disk external
 code-wheel-answered
-journal-store tests/visual/reader-store.txt
-identical quiet-journal
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

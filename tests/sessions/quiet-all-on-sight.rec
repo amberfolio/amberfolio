@@ -11,6 +11,7 @@ seam list-arrows
 seam bar-keys
 seam menu-cursor
 seam hero-keys
+seam edit-keys
 seam cheat-invulnerable
 seam cheat-kill-all
 seam cheat-wound-party

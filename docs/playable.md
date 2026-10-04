@@ -1346,7 +1346,7 @@ the numbers are in the face.
 party-order screen (left out), and the journal reader with a real store.
 
 
-## Leg 18 — a selection in yellow (#453)
+## Leg 19 — a selection in yellow (#453)
 
 `docs/seams.md` §10 has the facts. The instrument is a still: `--dump-every
 N` and a look at the bar, the list or the name. Every pair is told
@@ -1374,6 +1374,50 @@ draws it looked at.
 driven:** the two detect-magic confirmations (a combat-only spell cast
 outside combat, and a monster's item), which are read from the disassembly
 and covered by the unit suite.
+
+---
+
+## Leg 18 — a name with arrows in it (#455)
+
+Leg 0's creation, with the arrows pressed while the name is typed. The
+instrument is the screen text (`--dump`'s `.txt`): the last `text` row is
+the line the editor is typing on.
+
+```
+--seam code-wheel --code-wheel-answered --seam edit-keys
+--press C@7550                                          create a character
+--press Return@7700 --press Return@7850 --press Return@8000
+--press Return@8150 --press Return@8300                 race, gender, class,
+                                                        alignment, the roll
+--press Y@8500                                          keep it
+--press B@8700 --press Right@8730 --press O@8760
+--press Up@8790 --press B@8820 --press Down@8850
+--press Left@8880 --press Return@8950                   name it
+--until 183000000 --dump run --dump-every 50
+```
+
+Seam off, the row reads `CHARACTER NAME:  BMOHBPK` before the Return: each
+arrow typed its scan code's letter. On, it reads `CHARACTER NAME:  BOB`, and
+the handler is reached eight times (`fired=8`). These are
+`name-arrows` and `name-arrows-edit`; `name-letters` and `name-letters-edit`
+type `B`, `O`, `B` and Return only.
+
+**The other extended keys.** `B`, then Home, End, `PageUp`, `PageDown`,
+`Insert`, `Delete`, `F1`, `F2`, then `O` and `B`, thirty frames apart from
+8730 (the last `B` at 9030, Return at 9100): off `BGOIQRS;<OB`, on `BOB` (`fired=12`).
+
+**The copy-protection challenge** types through the same editor. Without
+`--code-wheel-answered`: `A@7600`, `Right@7650`, `B@7700`, `Up@7750`,
+`C@7800`, `--until 160000000`: the row reads `INPUT THE CODE WORD:  AMBHC` off
+and `ABC` on (`fired=5`).
+
+**What it leaves alone, compared with the seam off.** Slot A's walk (`quiet`'s
+four arrows: all 90 checkpoints equal, `reached=0`) and creation's lists with
+Down and Up (`list-down`'s script: all 84, `reached=0`).
+
+**Not driven:** a script's free-text question and its number prompt, which no
+leg reaches. Both are the same editor; the stand-in `edit_keys_probe_*` and
+`SeamEditKeys.*` stand in for them.
 
 ---
 

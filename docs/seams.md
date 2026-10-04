@@ -619,6 +619,9 @@ and never triggered.
 | `menu-letters-cursor` | contrast | `menu-letters` (the cursor is drawn as soon as the menu is, with no key pressed at it) |
 | `menu-down-cursor-yellow` | contrast | `menu-down-cursor` (the cursor row yellow with a white key) |
 | `hero-pick-3` | contrast | `hero-pick` (a 3 at the adventuring bar where the baseline presses a 9; both have the seam on) |
+| `name-letters-edit` | identical | `name-letters` (a name typed in letters only) |
+| `name-arrows-edit` | contrast | `name-arrows` (a Right, an Up, a Down and a Left among the letters of a name: the program types a letter for each) |
+| `quiet-edit-keys` | identical | `quiet` (the walk's own arrows, which the line editor never reads) |
 
 Both relations are checked on the recordings with no disk
 (`scripts/sweep.py`), so CI checks them on every push. CONTRIBUTING.md
@@ -851,6 +854,7 @@ to carry.
 | `bar-keys` | Left and Right step a command bar's highlight at every bar but the few that use them; Enter takes the highlighted command at the Yes/No prompt, the event scripts' questions, the camp bar and its Magic and Alter bars, and the adventuring bar; Esc answers No at a Yes/No question | overlay 25 (the menu-bar routine) |
 | `menu-cursor` | a cursor on the main menu (the party-setup screen and a training hall), on the first command as soon as the menu is drawn: Up and Down move it over the commands shown, Return takes the one it is on | overlay 25 (the menu-bar routine) and overlay 16 (the loop) |
 | `hero-keys` | the number row's 1 to 8 select a party member where Home and End do, and the party list shows each member's number | overlay 25 (the menu-bar routine), and the resident image |
+| `edit-keys` | the arrows, Home, End, the page keys and the function keys no longer type letters at the game's name and text prompts | the resident image |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -2280,8 +2284,9 @@ colour before the program draws with it.
   what it already is, and only the **low byte** of a pushed word is read or
   written.
 - **`max_points` is sixty-four, and with every seam on the build carries
-  forty-seven points** (the faces count once, being alternatives): thirty-nine
-  before this seam, seven here and one more for `menu-cursor`.
+  forty-eight points** (the faces count once, being alternatives): thirty-nine
+  before these two seams, one for `edit-keys`, seven here and one more for
+  `menu-cursor`.
 - **The panel** reads `on inert module_not_resident` until overlay 19 has
   been loaded, because a seam is armed only while every module it names is
   resident; its other points work meanwhile (`fired` says so), as the
@@ -2313,6 +2318,98 @@ stand-ins: `select_yellow_probe_off`, `select_yellow_probe_on`. **Driven**
 bar and party list, the camp bar, the quit question, the pick-lists, Modify
 (a score and the hit points), the portrait bar, the icon editor's bar, the
 temple's pay question, the main menu and the Notes list.
+
+### The edit keys (#455)
+
+`seam_edit_keys.cpp`. A player's report, not a PLAN.md §5 item: typing a
+character's name, the arrows type letters. Right types `M`, Up `H`, Down `P`,
+Left `K`, Home `G`, End `O`, PgUp `I`, PgDn `Q`, Insert `R`, Delete `S`, and
+the function keys `;` to `D`. It is the original program's behaviour on any
+PC. A setting, no key, nothing to pull.
+
+| point | module | what the handler does |
+|---|---|---|
+| image `0x7AC0`, the instruction after the line editor's call into the program's key read (`1709:0A30`) | the resident image | with AL zero, which is the first half of an extended key, and the keyboard read's pushback slot armed, empties the slot |
+
+| fact | value |
+|---|---|
+| the line editor | resident `1709:09E3`, image `0x7A73`. It loops on the program's key read (`1899:0059`, image `0x89E9`) and acts on AL: `0x20` to `0x7A` is appended and drawn, `0x08` is Backspace, `0x0D` and `0x1B` accept, anything else is ignored. The call is the five bytes at `0x7ABB`, the instruction after it stores AL |
+| how an extended key arrives | the key read (`1A40:030F`, image `0xA70F`) takes the BIOS word and, when the character is zero, **keeps the scan code in a one-byte slot of the data segment (`0x8501`) and answers zero**. The next read finds the slot armed, empties it and answers the scan code. The editor ignores the zero and appends the scan code |
+| the data segment | `0xC7C` paragraphs after the image segment, as every seam reads it |
+
+- **The addresses by two routes.** The resident disassembly (post-fixup:
+  `lcall 0x1899:0x59` at `1709:0A2B`, then the store of AL) and the bytes of
+  the unpacked image (`9A 59 00 99 08 88 86` at image `0x7ABB`, the segment
+  still unrelocated), which also hold the editor's prologue at `0x7A73`. The
+  key read's disassembly shows the slot taken and cleared at its head and
+  written from AH when the BIOS read's AL is zero (`1A40:0323`); the slot is
+  the one `seam_menu_bar.h` and the automap already name. A watch cannot
+  show it armed: it is set and taken inside a frame. Driven, the handler's
+  arrivals are the keys the editor reads: B, Right, O, Up, B, Down, Left
+  and Return is eight, and `fired=8`.
+- **Who calls the editor**, by two routes: the program's source, and a scan
+  of the resident image and of every overlay for a far call to the entry
+  (and of the resident segment for a near one). Four, and no other.
+
+| caller | where | what it asks for |
+|---|---|---|
+| the character's name at creation | overlay 16, call at `0x1E5A` | a name, fifteen characters |
+| a script's free-text answer | overlay 3, call at `0x09C8` | a line, forty characters |
+| a script's number prompt | the resident number input, call at image `0x7C23`, itself called from overlay 3 at `0x097B` | up to six characters, parsed as a number; a letter makes the program ask again |
+| the copy-protection challenge | overlay 2, call at `0x02FD` | the code word, six characters |
+
+  The icon editor and a save's name are not line editors. The seam is
+  inside the editor, so all four are covered with one point and no caller
+  is named.
+- **The number input has the flaw too**, through the editor: an arrow's
+  letter is not a number, so the program asks again. It is covered by the
+  same point. **The View > Drop money amount editor does not read through the
+  editor** and accepts digits and Backspace only, so no arrow is wrong there.
+  The one exception is an Alt-letter chord, whose scan codes `0x30` to `0x32`
+  are the digits 0 to 2. That is not covered and not claimed.
+- **The point is after the read, not before it.** The editor has no poll: it
+  goes straight into a blocking read, so a key that arrives while it waits is
+  delivered with no point reached (`seam_key_read.h`). A rewrite of the BIOS
+  ring's head before the read, which `bar-keys` does, would miss it. After
+  the read the handler sees every key the editor is handed, and it takes
+  nothing off the ring, so there is nothing to put back.
+- **Why the slot and not AL.** The second read's AL is the scan code and its
+  slot is already empty, so by then nothing says it is an extended key's
+  second half. The first half is the only place that does, and a zero the
+  editor already ignores.
+- **The scope is the editor's own call.** The point is inside the editor, so
+  the bars, the lists, the walk and combat read the same key read and never
+  reach it. Driven with the seam on and nothing else changed: slot A's four
+  walking arrows (`quiet-edit-keys`, 90 of 90 checkpoints equal to `quiet`),
+  and creation's lists with Down and Up (the `list-down` script, 84 of 84).
+  The point is never reached in either: `reached=0`.
+- **Driven.** At the name prompt, `B`, Right, `O`, Up, `B`, Down, Left,
+  Return (screen text, row 24 while typing): seam off `CHARACTER NAME:
+  BMOHBPK`, on `CHARACTER NAME:  BOB`. `B`, Home, End, PgUp, PgDn, Insert,
+  Delete, F1, F2, `O`, `B`: off `BGOIQRS;<OB`, on `BOB`; `fired=12`. At the
+  copy-protection challenge, `A`, Right, `B`, Up, `C`: off `INPUT THE CODE
+  WORD:  AMBHC`, on `ABC`. Not driven: the script prompts, which no leg
+  reaches; they are the stand-in's and the unit suite's.
+- **What it costs.** A key with no character is dropped at these prompts, so
+  Alt and the function keys type nothing, which is the point. Typing,
+  Backspace, Return and Esc are keys with a character and are never touched.
+- **Rejected:** a rewrite of the ring's head before the read (above); setting
+  AL to a character the editor ignores at the second read, which cannot tell
+  the second half from a key; and a host-side filter, for the reason
+  `list-arrows` gives (the seam is the only mechanism, and a host cannot tell
+  from outside which key read is the editor's).
+
+**State**: none. **Host services**: none. **Keys**: none; the rows on the
+key card say what a player no longer gets.
+
+**Fidelity**: on and no extended key typed at an editor, identical: the
+handler reads AL and reads the slot only when AL is zero, and writes only the
+slot (`name-letters-edit` identical `name-letters`, all 84 checkpoints;
+`quiet-edit-keys` identical `quiet`, all 90). On and an arrow among the
+letters, a contrast (`name-arrows-edit` against `name-arrows`: 77 of 88
+checkpoints equal, divergent from the first arrow the editor reads). Off, the
+engine is not consulted (§7). Unit: `SeamEditKeys.*`; stand-ins:
+`edit_keys_probe_off`, `edit_keys_probe_on`.
 
 ### The debug cheats (#99, #161, #163, #196)
 

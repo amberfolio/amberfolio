@@ -50,6 +50,10 @@ class machine;
 /// each member's number (seam_hero_keys.cpp, #439).
 [[nodiscard]] const seam_definition& hero_keys_seam() noexcept;
 
+/// An extended key never types a letter in the line editor
+/// (seam_edit_keys.cpp, #455).
+[[nodiscard]] const seam_definition& edit_keys_seam() noexcept;
+
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;
 [[nodiscard]] const seam_definition& cheat_kill_all_seam() noexcept;
