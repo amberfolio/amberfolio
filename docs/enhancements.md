@@ -266,6 +266,37 @@ left as the game has them until each is shown to ignore Enter. Make a held
 key repeat (`docs/hosts.md`) or step the pick-lists and the selected member
 with the up and down arrows (`list-arrows`).
 
+## The menu cursor
+
+**What it does.** Gives the main menu a cursor. The main menu is the
+party-setup screen at the start of the game (Create, Add, Load, Exit and,
+once there is a party, Drop, Modify, View, Remove, Save, Begin), and the
+same menu again at a training hall, where Train is on. The game has no
+highlight there: a command is taken only by its first letter. With the seam
+on, **Up and Down** move a highlight over the commands the menu shows,
+skipping none that is shown and wrapping at both ends, and **Return** takes
+the command under it, as if you had typed its letter. The highlight is the
+game's own: the whole word in white, drawn by the game's own string
+routine, as a pick-list lights a row.
+
+**How you turn it on.** `--seam menu-cursor`, or the toggle in the panel.
+
+**Hidden until used.** Nothing changes on the screen until the first Up or
+Down, and a player who types letters sees the menu as the game draws it.
+The cursor starts on the first command, so the first press moves it: Down,
+Down is the third command shown. Taking a command, by its letter or by
+Return, ends in the game redrawing its menu, and the cursor is hidden again
+until the next Up or Down.
+
+**What it will not do.** Move the party member: Home and End still do that
+at this menu. Make Return do anything when no cursor is showing (the game
+drops it). Remember where the cursor was after a command, or follow the
+bar's own highlight, which is not where the menu left it. Work at any other
+screen: the pick-lists are `list-arrows` and the horizontal bars are
+`bar-keys`. A press made while the cursor is still being drawn is kept and
+used (the game draws a glyph at a time, so a move takes about a tenth of a
+second of the game's time).
+
 ## The debug cheats
 
 **What they do.** `cheat-invulnerable` (the party takes no damage),

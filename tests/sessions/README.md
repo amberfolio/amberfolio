@@ -98,6 +98,10 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `bar-camp-keys` | same | + bar-keys | **`contrast bar-camp`** | 83 of 93 identical, divergent from tick 201,127,344: the Right steps the highlight to ALTER and the Return takes it, and its sub-bar is up where the seam-off run shows the camp bar |
 | `bar-yn` | same | code-wheel | | slot C's camp, `SAVE`, a Right at the slot bar, Escape, and Return at the quit prompt that follows: the program drops the Right and the Return. 100 checkpoints |
 | `bar-yn-keys` | same | + bar-keys | **`contrast bar-yn`** | 86 of 100 identical, divergent from tick 206,218,672: the Right steps the slot bar's highlight, and the Return answers the prompt `No` |
+| `menu-letters` | shipped slots | code-wheel | | the main menu by letters only: `A`, `A` adds the first character, `E` back to the menu, `V` the view screen, Escape. 77 checkpoints |
+| `menu-letters-cursor` | same | + menu-cursor | `identical menu-letters` | the same keys with the cursor's seam on and no Up, Down or Return pressed at the menu: all 77 checkpoints |
+| `menu-down` | same | code-wheel | | the main menu with no party, then Down, Down and Return, which the program drops: the menu has no cursor. 70 checkpoints |
+| `menu-down-cursor` | same | + menu-cursor | **`contrast menu-down`** | 60 of 70 identical, divergent from tick 151,168,688 (the first Down): the cursor is drawn on Add, moves to Load, and the Return takes it, so the slot prompt is up where the seam-off run shows the plain menu |
 
 ## The matrix, by seam
 
@@ -111,6 +115,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
 | `list-arrows` | `list-down-arrows`, `camp-down-arrows` | `list-keys-arrows`, `camp-roster-arrows` |
 | `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys` | `quiet-bar-keys` |
+| `menu-cursor` | `menu-down-cursor` | `menu-letters-cursor` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the

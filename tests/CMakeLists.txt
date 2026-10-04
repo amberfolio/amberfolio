@@ -71,6 +71,7 @@ add_executable(amberfolio-core-tests
   core/machine/seam_encamp_test.cpp
   core/machine/seam_journal_test.cpp
   core/machine/seam_list_arrows_test.cpp
+  core/machine/seam_menu_cursor_test.cpp
   core/machine/seam_test.cpp
   core/machine/service_floor_test.cpp
   core/machine/session_test.cpp

@@ -1176,6 +1176,71 @@ is being drawn and is read by the prompt) answers `No` and the character is
 rolled again; the pick-lists before it are the same on both. Leg 0 with
 the seam on wants no Return there.
 
+## Leg 16 — a cursor on the main menu (#434)
+
+`docs/seams.md` §10 has the facts. The screen text (`--dump`'s `.txt`) is
+the instrument: a lit command is the one whose ink is `F` end to end where
+the others are `F` and then `A`. Every pair is told `--wall none`.
+
+**The bare menu** (`menu-down` and `menu-down-cursor` are this script
+recorded). The shipped slots, nothing loaded: four commands, Create, Add,
+Load, Exit.
+
+```
+--seam code-wheel --code-wheel-answered --seam menu-cursor
+--press Down@7600        the cursor appears on the second command, Add
+--press Down@7750        and moves to the third, Load
+--press Return@7900      takes it: LOAD WHICH GAME: A B C E J, the cursor still on Load
+```
+
+With the seam off the three keys are dropped and the plain menu is the
+screen at the end. On, Up from nothing goes to Exit, and Down from Exit
+wraps to Create.
+
+**A party menu.** `A@7600 A@7700 E@7800` adds the first character and
+comes back: nine commands, Create, Drop, Modify, View, Add, Remove, Save,
+Begin, Exit (Train and Load are not shown, so they have no row).
+`Down@8000 Down@8150 Return@8300` lights Drop, then Modify, and takes
+Modify (its screen is up at 8,400 and the menu is back, with nothing lit,
+by 8,500). Home and End still select the party member, and the cursor
+stays where it was.
+
+```
+--press Down@8000 --press Down@8003 --press Down@8006
+```
+
+moves the cursor three rows: a key pressed while the cursor is being drawn
+is not lost (§10, *A second press*). With `bar-keys` and `list-arrows` on
+as well, a Right and a Left between the Downs change nothing on the
+screen, and the stills are the same as with this seam alone.
+
+**Typed letters leave it alone** (`menu-letters` and `menu-letters-cursor`,
+an `identical`). `A@7600 A@7700 E@7800 V@8000 Escape@8500`: the add
+screen, back, the view screen, back. With the seam on and no Up, Down or
+Return pressed the run is the one with it off, all 77 checkpoints. After a
+command the menu is redrawn and a cursor that was lit is gone.
+
+**A training hall.** Slot A in the city, `L@7550 A@7800`, then the route to
+the lobby of the training schools at 6,2 (the program takes a long time
+over each square's text; press 150 frames apart and leave the lobby
+800 frames to finish):
+
+```
+--press Down@9600 --press Up@9750 --press Left@9900 --press Up@10050
+--press Right@10200 --press Up@10350 ... --press Up@11550 (nine Ups)
+--press Right@11700 --press Up@11850 --press Up@12000 --press Up@12150
+--press Left@13300 --press Up@13500 --press Up@13800     the sign at 6,0
+--press Left@15000 --press Up@15300 --press Up@15600     the west door
+--press Y@16500          "We train only clerics here. Do you want to train?"
+```
+
+The party-setup menu is up at 17,000 with ten commands, Train between
+Modify and View, Create and Add on and Load off. `Down@17000 Down@17100`
+lights Drop and Modify, `End@17300 End@17400 Home@17500` step the selected
+member (the white row in the party list) with the cursor staying on
+Modify, and a third Down and a Return take Train. The return address the
+seam tests is the same here as at the start of the program.
+
 ---
 
 ## What the run should not say
@@ -1196,7 +1261,8 @@ swallows it and so does this machine. Anything else, a `stop`, a
 
 ## What this procedure has *not* covered
 
-Not driven by decision: training and the inn (#104, #145), and the
+Not driven by decision: training itself (leg 16 reaches the hall's menu
+and no further) and the inn (#104, #145), and the
 dungeon beyond the gate at `0,4` (#102, #144). Open: nobody has typed a
 correct answer into the real program (#290); the observation blocks in
 legs 2, 6, 7 and 12 are owed a re-measurement on the shorter boot their
