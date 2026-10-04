@@ -171,14 +171,26 @@ press, wrapping and skipping its headings as it does for Home and End.
 The party-member picker (who a spell is cast on, who an item is traded
 to) steps the same way. Keypad 8 and 2 come along, as 7 and 1 always did.
 
+**At camp and the other bars.** Home and End step the selected party
+member at the camp bar, its Magic and Alter bars, the post-combat
+treasure bars, the shops, the temples and the game's yes/no style script
+prompts; any other key put the selection back on the first member. With
+the seam on, **Up and Down step the member too**, as Home and End do. On
+the party-order screen, with a member picked up, they move it up and down
+the order.
+
 **How you turn it on.** `--seam list-arrows`, or the toggle in the panel.
 
-**Where it works.** Only inside a pick-list or the party-member picker.
-In the 3D view, the wilderness and combat the arrows move the party as
-they always did: the seam is never offered a key there.
+**Where it works.** Inside a pick-list or the party-member picker, and at
+the bars named above. Everywhere else the arrows are the game's own: in
+the 3D view, the wilderness and combat they move the party, in the rest
+time menu they raise and lower the time, in the stat editor they pick a
+score, and at the main menu they are left for their own seam. The seam
+names the bars it steps; it does not guess.
 
-**What it will not do.** Change the horizontal command bars, the Yes/No
-prompt or the ability-score screen, or make a held key repeat (the hosts
+**What it will not do.** Change the Yes/No prompt or the ability-score
+screen, step the member from the keypad's 8 and 2 at a bar (they still put
+the selection back on the first), or make a held key repeat (the hosts
 drop OS key repeats, `docs/hosts.md`).
 
 ## The text faces
@@ -248,8 +260,8 @@ bar, and the letters still work.
 **What it will not do.** Make Enter confirm a row in the pick-lists (it
 already does), or take a command at any bar not named above: those are
 left as the game has them until each is shown to ignore Enter. Make a held
-key repeat (`docs/hosts.md`) or step the pick-lists with the up and down
-arrows (`list-arrows`).
+key repeat (`docs/hosts.md`) or step the pick-lists and the selected member
+with the up and down arrows (`list-arrows`).
 
 ## The debug cheats
 
