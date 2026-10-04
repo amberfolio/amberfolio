@@ -5148,6 +5148,39 @@ constexpr std::array<machine::seam_point, 1> door_points{
   }
 
   {
+    // The select-yellow seam: off, the program's own colours; on, a
+    // character of the highlighted word that is not a command letter, a
+    // pick-list's row and Modify's hit points are yellow (#453).
+    machine_program p;
+    p.name = "select_yellow_probe_off";
+    p.about = "no seam: the bar's white, the list's white, Modify's magenta";
+    p.setup.exe = select_yellow_probe_file();
+    p.setup.exe_path = "\\YELLOW.EXE";
+    p.setup.step_cap = 2'000;
+    p.results = {{.what = "the bar's colour", .value = 0x0F},
+                 {.what = "the list's colour", .value = 0x0F},
+                 {.what = "the hit points' colour", .value = 0x0D}};
+    p.exit_code = 0x8E;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "select_yellow_probe_on";
+    p.about = "the seam: all three are yellow";
+    p.setup.exe = select_yellow_probe_file();
+    p.setup.exe_path = "\\YELLOW.EXE";
+    p.setup.seam_definitions = {&select_yellow_probe_definition()};
+    p.setup.seams = {"select-yellow-probe"};
+    p.setup.step_cap = 2'000;
+    p.results = {{.what = "the bar's colour", .value = 0x0E},
+                 {.what = "the list's colour", .value = 0x0E},
+                 {.what = "the hit points' colour", .value = 0x0E}};
+    p.exit_code = 0x8E;
+    list.push_back(std::move(p));
+  }
+
+  {
     // The list arrows: off, an arrow is the program's own key; on, an
     // arrow read as a raw key is Home or End, and the same code read as a
     // bar command is not touched (#423).

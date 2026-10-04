@@ -1,24 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# quiet-all with hero-keys added (#446): every seam this build carries but
-# the faces, all on at once, and `quiet`'s script, no number key pressed.
-# hero-keys draws the roster's numbers the moment the party list is first
-# drawn with a member in it, so this is a `contrast` and not an
-# `identical`, exactly as quiet-hero-keys is against `quiet`. The two
-# diverge at the same tick, which is the claim: with the other eleven
-# seams on, the party list is the first thing that moves, and what moves
-# it is the one seam that is meant to.
-# What it adds over its two neighbours is the seams together: hero-keys
-# beside list-arrows, bar-keys and menu-cursor, which read the same keys
-# at the same bars, and beside the journal, which redraws the bar the
-# list sits above.
+# The menu-cursor seam following select-yellow (#453): `menu-down-cursor`'s
+# keys with select-yellow on as well. The cursor is on the first command as
+# soon as the menu is drawn, yellow with its key letter white where it was
+# white throughout, and it moves and takes a command as before.
+#
+# It agrees with `menu-down-cursor` until the menu is first drawn, 58 of
+# 70 checkpoints, and differs from there to the end.
 
-about every seam on at once but the faces, with hero-keys drawing the
-about roster's numbers from the first time the party list is drawn
+about the main menu's cursor with select-yellow on: Down, Down and Return
+about as in menu-down-cursor, the cursor row yellow with a white key
 disk external
 code-wheel-answered
-journal-store tests/visual/reader-store.txt
-contrast quiet-all
+contrast menu-down-cursor
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

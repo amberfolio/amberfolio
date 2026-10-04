@@ -1051,7 +1051,7 @@ class seam_engine {
  public:
   /// Definitions the registry holds. The v1 seam set is six (PLAN.md §5)
   /// plus the cheats' two and the two text faces, and a test registers a
-  /// dozen-odd of its own beside them; thirty-two leaves room for the
+  /// dozen-odd of its own beside them; forty leaves room for the
   /// fast-follow fixes without making this a data structure.
   ///
   /// It was sixteen, which the seam suite's own set reached exactly when
@@ -1061,8 +1061,9 @@ class seam_engine {
   /// is a seam quietly missing rather than a build that stops. The
   /// headroom is not for the seams this build carries; it is so that
   /// adding one is never that. It was twenty-four until the text faces
-  /// made the seam suite's rig twenty-five.
-  static constexpr std::size_t max_seams = 32;
+  /// made the seam suite's rig twenty-five, and thirty-two until the
+  /// selection colour and the edit keys made it thirty-three.
+  static constexpr std::size_t max_seams = 40;
 
   /// Points armed at once, across every enabled seam. Thirty-two was
   /// what the build's seams needed until the keys' seams: with every seam

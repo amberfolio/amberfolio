@@ -623,6 +623,15 @@ constexpr std::uint16_t list_frame_style = 0;
 constexpr std::uint16_t list_title_colour = 0x0F;
 constexpr std::uint16_t list_row_colour = 0x0A;
 
+/// The row the cursor is on is a selection the player moves, and is
+/// yellow while `select-yellow` is on (#453), the program's bright
+/// otherwise.
+constexpr std::uint16_t list_selected_colour = 0x0E;
+
+[[nodiscard]] std::uint16_t list_cursor_colour(const machine& box) {
+  return select_yellow_on(box) ? list_selected_colour : list_title_colour;
+}
+
 /// Where the rows go. The frame puts its title on the box's first interior
 /// row, so the list starts below it.
 constexpr std::uint16_t list_first_row = 3;
@@ -1925,7 +1934,7 @@ enum class claimable : std::uint8_t {
        ++drawn, ++done) {
     const journal_seen_row& row = rows[top + done];
     const std::uint16_t colour =
-        top + done == cursor ? list_title_colour : list_row_colour;
+        top + done == cursor ? list_cursor_colour(box) : list_row_colour;
     const auto at_row = static_cast<std::uint16_t>(list_first_row + done);
     list_line line = list_row_text(row);
     line.pad_to(list_when_column - list_name_column);

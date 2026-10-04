@@ -1224,7 +1224,10 @@ the seam on wants no Return there.
 
 `docs/seams.md` §10 has the facts. The screen text (`--dump`'s `.txt`) is
 the instrument: a lit command is the one whose ink is `F` end to end where
-the others are `F` and then `A`. Every pair is told `--wall none`.
+the others are `F` and then `A`; with `select-yellow` on it is `F` and then
+`E`. Every pair is told `--wall none`. **The cursor is on the first command
+as soon as the menu is drawn** (#453), so the first frame of the menu
+already has one lit.
 
 **The bare menu** (`menu-down` and `menu-down-cursor` are this script
 recorded). The shipped slots, nothing loaded: four commands, Create, Add,
@@ -1232,21 +1235,21 @@ Load, Exit.
 
 ```
 --seam code-wheel --code-wheel-answered --seam menu-cursor
---press Down@7600        the cursor appears on the second command, Add
---press Down@7750        and moves to the third, Load
+--press Down@7600        the cursor, already on Create, moves to the second, Add
+--press Down@7750        and then to the third, Load
 --press Return@7900      takes it: LOAD WHICH GAME: A B C E J, the cursor still on Load
 ```
 
 With the seam off the three keys are dropped and the plain menu is the
-screen at the end. On, Up from nothing goes to Exit, and Down from Exit
+screen at the end. On, Up from Create goes to Exit, and Down from Exit
 wraps to Create.
 
 **A party menu.** `A@7600 A@7700 E@7800` adds the first character and
 comes back: nine commands, Create, Drop, Modify, View, Add, Remove, Save,
 Begin, Exit (Train and Load are not shown, so they have no row).
 `Down@8000 Down@8150 Return@8300` lights Drop, then Modify, and takes
-Modify (its screen is up at 8,400 and the menu is back, with nothing lit,
-by 8,500). Home and End still select the party member, and the cursor
+Modify (its screen is up at 8,400 and the menu is back, with the cursor on
+Create again, by 8,500). Home and End still select the party member, and the cursor
 stays where it was.
 
 ```
@@ -1341,6 +1344,36 @@ the numbers are in the face.
 
 **Not driven:** the post-combat Take bar (it needs coins and items), the
 party-order screen (left out), and the journal reader with a real store.
+
+
+## Leg 19 — a selection in yellow (#453)
+
+`docs/seams.md` §10 has the facts. The instrument is a still: `--dump-every
+N` and a look at the bar, the list or the name. Every pair is told
+`--wall none`. With `--seam select-yellow` the panel reads `on inert` until
+the game has loaded the sheet overlay Modify uses, and `fired` counts the
+draws it looked at.
+
+| screen | how to reach it | what to see |
+|---|---|---|
+| the adventuring bar and the party list | `L@7551`, `A@7801` (slot A) | `AREA` is `A` white and `REA` yellow; `FIGHTER1` is yellow |
+| the camp bar and a Yes/No | slot C, `C@7800`, `E@8800`, `S@10000`, `Escape@10600` | `QUIT TO DOS`: `Y` white, `es` green, `N` white, `o` yellow |
+| a pick-list | `C@7550`, then `End@7700` | the highlighted row is yellow |
+| Modify | create a character (leg 0), add it, `M`, then `Down` | the selected score and, six Downs on, the hit points are yellow |
+| the portrait bar | creation, after the roll, `HEAD BODY KEEP` | `H` `B` `K` white, the rest of each word green, the lit word's rest yellow; off, the colours are the other way round |
+| the icon editor's bar | `K` at the portrait bar | the lit word is `COLOR-2` and not the half of a word the game lights |
+| the main menu | leg 16 with `--seam menu-cursor` | `Create` yellow with its `C` white |
+| a swapped Yes/No | the temple's `PAY FOR CURE` (leg 5) | `Y` and `N` white, `es` green, `o` yellow |
+
+```
+--seam code-wheel --code-wheel-answered --seam select-yellow
+```
+
+`quiet-select-yellow`, `bar-yn-yellow`, `list-keys-yellow` and
+`menu-down-cursor-yellow` are the first four rows' keys recorded. **Not
+driven:** the two detect-magic confirmations (a combat-only spell cast
+outside combat, and a monster's item), which are read from the disassembly
+and covered by the unit suite.
 
 ---
 

@@ -1,21 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The menu-cursor seam on and exercised (#434, #453): `menu-down`'s keys
-# with the seam on. The cursor is on the first command (Create) as soon as
-# the menu is drawn, the first Down moves it to the second (Add), the second
-# Down to the third (Load), and Return takes it by the route a typed `L`
-# would take: the slot prompt is on the screen at the end, with the cursor
-# still on Load.
+# The select-yellow seam, exercised at a camp bar and a Yes/No prompt
+# (#453): `bar-yn`'s keys with the seam on. Slot C's camp bar draws ENCAMP's
+# highlighted word, the party list its selected member, and the quit prompt
+# its highlighted answer, all in yellow with each command's key letter
+# white.
 #
-# It agrees with `menu-down` until the menu is first drawn, 58 of 70
+# It agrees with `bar-yn` until the camp screen is first drawn, 73 of 100
 # checkpoints, and differs from there to the end.
 
-about the menu-cursor seam on: the cursor is drawn from the start, and
-about Down, Down and Return at the main menu take the third command shown,
-about where the seam-off run is still at the menu
+about the save-slot bar and the quit prompt of slot C's camp with
+about select-yellow on: bar-yn's keys, the selection drawn in yellow
 disk external
 code-wheel-answered
-contrast menu-down
+contrast bar-yn
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

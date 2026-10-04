@@ -1,21 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The menu-cursor seam on and exercised (#434, #453): `menu-down`'s keys
-# with the seam on. The cursor is on the first command (Create) as soon as
-# the menu is drawn, the first Down moves it to the second (Add), the second
-# Down to the third (Load), and Return takes it by the route a typed `L`
-# would take: the slot prompt is on the screen at the end, with the cursor
-# still on Load.
+# The select-yellow seam's fidelity pair (#453): `quiet` with the seam on.
+# A selection is drawn the first time the program draws a highlighted
+# command or a party list, so there is no "on and untriggered" run of it
+# and the pair is a `contrast`, like the faces' and `quiet-hero-keys`'.
 #
-# It agrees with `menu-down` until the menu is first drawn, 58 of 70
-# checkpoints, and differs from there to the end.
+# It agrees with `quiet` until the party list and the adventuring bar are
+# first drawn, 74 of 90 checkpoints, and differs from there to the end,
+# in `cpu`, `ram`, `devices` and `display`: the seam rewrites a colour the
+# program has pushed for a draw, so the stack word and the registers the
+# program draws with differ as well as the pixels. Unlike a face it is not
+# a difference in `devices` and `display` alone.
 
-about the menu-cursor seam on: the cursor is drawn from the start, and
-about Down, Down and Return at the main menu take the third command shown,
-about where the seam-off run is still at the menu
+about slot A loaded and four movement keys pressed with select-yellow on:
+about the same run as `quiet`, the selection drawn in yellow
 disk external
 code-wheel-answered
-contrast menu-down
+contrast quiet
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

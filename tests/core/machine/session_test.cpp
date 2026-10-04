@@ -198,7 +198,7 @@ TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
 TEST(SessionLibrary, TheRecordingsMadeSinceFormatFourAreStillRead) {
   for (const std::string_view name :
        {"quiet-font-sans.rec", "quiet-font-chisel.rec", "quiet-all.rec",
-        "quiet-all-hero-keys.rec"}) {
+        "quiet-all-on-sight.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
     EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 4 state=2\n"))

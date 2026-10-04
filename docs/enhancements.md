@@ -285,29 +285,73 @@ party-setup screen at the start of the game (Create, Add, Load, Exit and,
 once there is a party, Drop, Modify, View, Remove, Save, Begin), and the
 same menu again at a training hall, where Train is on. The game has no
 highlight there: a command is taken only by its first letter. With the seam
-on, **Up and Down** move a highlight over the commands the menu shows,
-skipping none that is shown and wrapping at both ends, and **Return** takes
-the command under it, as if you had typed its letter. The highlight is the
-game's own: the whole word in white, drawn by the game's own string
-routine, as a pick-list lights a row.
+on, a cursor is on the first command as soon as the menu is drawn, **Up and
+Down** move it over the commands the menu shows, skipping none that is shown
+and wrapping at both ends, and **Return** takes the command under it, as if
+you had typed its letter. The cursor is the game's own: the whole word in
+white, drawn by the game's own string routine, as a pick-list lights a row.
+With `select-yellow` on as well it is yellow with the command's first
+letter white.
 
 **How you turn it on.** `--seam menu-cursor`, or the toggle in the panel.
 
-**Hidden until used.** Nothing changes on the screen until the first Up or
-Down, and a player who types letters sees the menu as the game draws it.
-The cursor starts on the first command, so the first press moves it: Down,
-Down is the third command shown. Taking a command, by its letter or by
-Return, ends in the game redrawing its menu, and the cursor is hidden again
-until the next Up or Down.
+**Visible from the start.** The cursor is on the first command whenever the
+menu is drawn, so the first press moves it: Down, Down is the third command
+shown. Taking a command, by its letter or by Return, ends in the game
+redrawing its menu, and the cursor is on the first command again. A player
+who only types letters still sees the cursor, which is the one way this
+seam changes the menu without a key.
 
 **What it will not do.** Move the party member: Home and End still do that
-at this menu. Make Return do anything when no cursor is showing (the game
-drops it). Remember where the cursor was after a command, or follow the
+at this menu. Remember where the cursor was after a command, or follow the
 bar's own highlight, which is not where the menu left it. Work at any other
 screen: the pick-lists are `list-arrows` and the horizontal bars are
 `bar-keys`. A press made while the cursor is still being drawn is kept and
 used (the game draws a glyph at a time, so a move takes about a tenth of a
 second of the game's time).
+
+## The selection colour
+
+**What it does.** Draws every selection you can move in yellow, and keeps
+a command's key letter white. Today the game lights a selection white from
+end to end, so the capital letter that is the key disappears into it. With
+the seam on:
+
+- **A command bar's highlighted word** (the adventuring bar, the camp bar,
+  Magic, Alter, the shops, the temple, a script's menus and every Yes/No
+  question) is yellow with its key letter white. Only the word is lit: on
+  a bar whose keys are not the first letters of its words, like the icon
+  editor's top bar, the game's own highlight runs on into the next word,
+  and the seam lights the word that holds the key.
+- **A pick-list's highlighted row** (race, class, spells, shops, coins, the
+  list of characters to add) is yellow.
+- **The selected party member's name** in the party list is yellow, in the
+  3D view, in camp, in the party-member picker and on the main menu. A
+  number `hero-keys` draws in front of it stays white.
+- **Modify's selected score**, which was light magenta, is yellow, hit
+  points included.
+- **`menu-cursor`'s row** on the main menu is yellow with its first letter
+  white (`menu-cursor` is white throughout when this seam is off), and the
+  Notes list's cursor row is yellow with `journal`.
+- **A bar the game hands its colours the wrong way round** (the portrait
+  screen's HEAD, BODY and KEEP bar, the temple's "pay for cure" and the
+  detect-magic confirmations) is drawn like every other bar: key letters
+  white, the rest of each word green. Without the seam they are white
+  where the others are green, and green where they are white.
+
+**How you turn it on.** `--seam select-yellow`, or the toggle in the panel.
+It is a look and has no key.
+
+**When it shows.** At the next selection the game draws. A selection
+already on the screen when you switch it keeps its colour until the game
+draws it again, which on most screens is the next key you press. With only
+this seam on the panel reads "inert" until the game has loaded the screens
+Modify uses, which is the panel being honest that one of its places is
+not in memory yet: the others work.
+
+**What it will not do.** Colour anything that is not a selection among
+text: the icon editor's cell cursor, the combat grid's cursor and the
+hit-point colour of a hurt character are the game's own.
 
 ## The hero keys
 
