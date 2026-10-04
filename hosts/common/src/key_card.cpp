@@ -33,6 +33,9 @@ constexpr std::array explore_rows{
     key_row{"Left, Right, 4, 6", "turn a quarter turn left or right"},
     key_row{"Down, 2", "turn around"},
     key_row{"Home, End, 7, 1", "select the previous or next party member"},
+    key_row{"1-8 on the number row",
+            "select that party member; keypad 1-8 keep their keys",
+            "hero-keys"},
     key_row{"Tab", "show or hide the map over the party list", "automap"},
 };
 
@@ -40,6 +43,9 @@ constexpr std::array wilderness_rows{
     key_row{"Up, Right, Down, Left",
             "step one square north, east, south, west"},
     key_row{"Home, End, 7, 1", "select the previous or next party member"},
+    key_row{"1-8 on the number row",
+            "select that party member; keypad 1-8 keep their keys",
+            "hero-keys"},
 };
 
 constexpr std::array bar_rows{
@@ -47,14 +53,27 @@ constexpr std::array bar_rows{
     key_row{", and .", "step the highlight left and right, wrapping"},
     key_row{"Left, Right", "step the highlight, except where they move or edit",
             "bar-keys"},
+    key_row{"Up, Down", "previous or next member where Home and End step it",
+            "list-arrows"},
     key_row{"Return",
             "take the highlighted command: questions, camp, exploring",
             "bar-keys"},
+    key_row{"1-8 on the number row",
+            "camp, menus, shops: select that party member", "hero-keys"},
     key_row{"Y, N", "answer a Yes/No question"},
     key_row{"Esc", "leave camp, a list or a picker; not the exploring bar"},
     key_row{"Esc at Yes/No", "answer No to the question", "bar-keys"},
     key_row{"F", "on the camp bar: Fix, rest as long as the party needs",
             "encamp-fix"},
+};
+
+constexpr std::array menu_rows{
+    key_row{"its capital letter", "take that command; lower case works"},
+    key_row{"Home, End", "select the previous or next party member"},
+    key_row{"Up, Down", "move a cursor over the commands shown (not 8, 2)",
+            "menu-cursor"},
+    key_row{"Return", "take the command under the cursor, once one shows",
+            "menu-cursor"},
 };
 
 constexpr std::array list_rows{
@@ -124,6 +143,8 @@ constexpr std::array contexts{
                 explore_rows},
     key_context{"wilderness", "Exploring: the wilderness map", wilderness_rows},
     key_context{"bars", "Command bars (the line along the bottom)", bar_rows},
+    key_context{"menu", "The main menu (party setup, training halls)",
+                menu_rows},
     key_context{"lists", "Pick-lists (race, class, shops, spells, coins)",
                 list_rows},
     key_context{"picker", "Choosing a party member", picker_rows},
@@ -138,7 +159,9 @@ constexpr std::array contexts{
 constexpr std::string_view legend =
     "On the screens that use the arrows, the number row does what the "
     "keypad does: 8 2 4 6 are Up Down Left Right, 7 1 are Home End, 9 3 "
-    "are PgUp PgDn. No keypad is needed.";
+    "are PgUp PgDn. No keypad is needed. Where a row below names a seam, "
+    "that seam changes it: with hero-keys on, the number row's 1 to 8 pick "
+    "a party member on the screens that show the party list.";
 
 [[nodiscard]] std::string_view shell_word(card_shell shell) {
   switch (shell) {

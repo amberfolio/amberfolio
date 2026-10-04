@@ -350,6 +350,15 @@ struct machine_program {
 [[nodiscard]] const std::vector<std::uint8_t>& bar_keys_probe_file();
 [[nodiscard]] const machine::seam_definition& bar_keys_probe_definition();
 
+/// The menu cursor's stand-in: the handler at four made-up arrivals, with
+/// the command records and a string drawer of its own (#434).
+[[nodiscard]] const std::vector<std::uint8_t>& menu_cursor_probe_file();
+[[nodiscard]] const machine::seam_definition& menu_cursor_probe_definition();
+/// The hero keys' stand-in: the key handler at six arrivals and the
+/// roster's two at the drawer's, with the routines they call (#439).
+[[nodiscard]] const std::vector<std::uint8_t>& hero_keys_probe_file();
+[[nodiscard]] const machine::seam_definition& hero_keys_probe_definition();
+
 /// The font stand-in's image, and the sans face's own handler at its two
 /// fetches.
 [[nodiscard]] const std::vector<std::uint8_t>& font_probe_file();
@@ -358,6 +367,11 @@ struct machine_program {
 /// The list arrows' stand-in: both handlers at made-up addresses (#423).
 [[nodiscard]] const std::vector<std::uint8_t>& list_arrows_probe_file();
 [[nodiscard]] const machine::seam_definition& list_arrows_probe_definition();
+
+/// The list arrows' third handler, the command bars', at five made-up
+/// arrivals (#435).
+[[nodiscard]] const std::vector<std::uint8_t>& roster_probe_file();
+[[nodiscard]] const machine::seam_definition& roster_probe_definition();
 
 /// One program by name, or null. The composite is `"composite"` — the
 /// program M2-H2's dev page (#55) embeds, which is why finding one by

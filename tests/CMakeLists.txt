@@ -64,6 +64,7 @@ add_executable(amberfolio-core-tests
   core/machine/screen_text_test.cpp
   core/machine/seam_automap_test.cpp
   core/machine/seam_bar_keys_test.cpp
+  core/machine/seam_hero_keys_test.cpp
   core/machine/seam_explored_test.cpp
   core/machine/seam_font_test.cpp
   core/machine/seam_call_test.cpp
@@ -71,6 +72,7 @@ add_executable(amberfolio-core-tests
   core/machine/seam_encamp_test.cpp
   core/machine/seam_journal_test.cpp
   core/machine/seam_list_arrows_test.cpp
+  core/machine/seam_menu_cursor_test.cpp
   core/machine/seam_test.cpp
   core/machine/service_floor_test.cpp
   core/machine/session_test.cpp

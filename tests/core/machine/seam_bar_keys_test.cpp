@@ -38,7 +38,8 @@ constexpr std::uint16_t point = 0x0572;
 /// The words the program's overlay manager keeps the modules' segments in:
 /// overlay 25, overlay 14 (the adventuring loop), overlay 15 (camp), and
 /// the four more that use the arrows: overlays 5 (post-combat), 8 (combat),
-/// 13 (aim), 16 (the stat editor) and 20 (the rest time).
+/// 13 (aim), 16 (the stat editor) and 20 (the rest time, stepped by
+/// decision).
 constexpr std::uint32_t word_menu = 0x3C60;
 constexpr std::uint32_t word_adventure = 0x730;
 constexpr std::uint32_t word_camp = 0x760;
@@ -349,13 +350,12 @@ struct caller_at {
 };
 
 /// The callers that keep their arrows.
-constexpr std::array<caller_at, 8> excluded{{
+constexpr std::array<caller_at, 7> excluded{{
     {.segment = adventure_segment, .offset = ret_area, .name = "overhead bar"},
     {.segment = adventure_segment, .offset = ret_view, .name = "3D bar"},
     {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
     {.segment = aim_segment, .offset = ret_aim, .name = "aim cursor"},
     {.segment = editor_segment, .offset = ret_editor, .name = "stat editor"},
-    {.segment = rest_segment, .offset = ret_rest, .name = "rest time"},
     {.segment = post_combat_segment, .offset = ret_share, .name = "share"},
     {.segment = post_combat_segment,
      .offset = ret_npc_share,
@@ -379,9 +379,10 @@ TEST(SeamBarKeys, LeftAndRightStepAtAnUnlistedRawCaller) {
   // The camp bar, its Magic and Alter bars and the party-order screen hand
   // an arrow to the party cursor and nothing else; the pick-list ignores
   // it; the post-combat Take bar and the temple's keep prompt act on it as
-  // the letters `M` and `K`, and are stepped by decision. Any non-zero byte
-  // is raw: the routine tests it as a byte.
-  const std::array<caller_at, 8> callers{{
+  // the letters `M` and `K`, and are stepped by decision; so is the
+  // rest-time menu, which picks its field on them. Any non-zero byte is raw:
+  // the routine tests it as a byte.
+  const std::array<caller_at, 9> callers{{
       {.segment = camp_segment, .offset = ret_camp, .name = "camp"},
       {.segment = camp_segment, .offset = ret_magic, .name = "magic"},
       {.segment = camp_segment, .offset = ret_alter, .name = "alter"},
@@ -389,6 +390,7 @@ TEST(SeamBarKeys, LeftAndRightStepAtAnUnlistedRawCaller) {
       {.segment = menu_segment, .offset = ret_pick_list, .name = "pick-list"},
       {.segment = post_combat_segment, .offset = ret_take, .name = "take"},
       {.segment = stack_segment, .offset = ret_keep, .name = "keep"},
+      {.segment = rest_segment, .offset = ret_rest, .name = "rest time"},
       {.segment = stack_segment, .offset = 0x1234, .name = "unknown"},
   }};
   for (const caller_at& c : callers) {

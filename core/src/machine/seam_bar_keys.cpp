@@ -137,7 +137,6 @@
 //   | the combat move loop | overlay 8 | `0x0AC8` | steps the fighter |
 //   | the combat aim cursor | overlay 13 | `0x3178` | moves the cursor |
 //   | the stat editor | overlay 16 | `0x216E` | lowers and raises a score |
-//   | the rest-time menu | overlay 20 | `0x076E` | picks the field |
 //   | the treasure share's press-Enter prompt | overlay 5 | `0x0AF8` | any extended key ends it |
 //   | the NPC share's press-Enter prompt | overlay 5 | `0x14C7` | the same |
 //
@@ -149,6 +148,11 @@
 // table, by decision: the post-combat Take bar (Right is its `M`, Money)
 // and the temple's keep-or-sell prompt (Left is its `K`, Keep). With the
 // seam on the arrows step the highlight there like everywhere else.
+//
+// The rest-time menu (overlay 20, return `0x076E`) is not in the table
+// either, by decision: the program steps its days/hours/minutes field on
+// Left and Right, and with the seam on they step the bar's highlight
+// instead, as at any other bar. `Y`, `H` and `M` still pick the field.
 //
 // **Why the BIOS ring and not AL.** The program reads the key two
 // routines deep, through INT 16h, so the first place any seam can see it
@@ -186,12 +190,13 @@
 // -------------------------------------------------------------------
 //
 // Enter at the other callers of the routine, which are listed with why in
-// docs/seams.md §10. Out of scope, filed apart: the pick-lists' Up and Down
-// (#423) and a held key repeating (#426).
+// docs/seams.md §10. Out of scope: Up and Down, which are `list-arrows`' (#423,
+// #435) at the same point, and a held key repeating (#426).
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -205,6 +210,7 @@
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
+#include "seam_menu_bar.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -213,32 +219,11 @@ namespace {
 constexpr std::array<std::string_view, 1> bar_keys_binaries{
     "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
-// --- The module the menu-bar routine lives in ------------------------------
-
-/// Where the program keeps overlay 25's load segment, and what the module
-/// is: the same module `list-arrows` is in, whose facts and checks are
-/// documented there (docs/seams.md §10).
-constexpr std::uint32_t menu_load_segment_at = 0x3C60;
-
-constexpr seam_module menu_module{
-    .file = "GAME.OVR",
-    .file_offset = 182479,
-    .length = 4682,
-    .digest =
-        "175454bc2f527dd6757c89eaa50a6cdd27a9cf5d3aaa197b33a140f5b09a3901",
-    .load_segment_at = menu_load_segment_at};
-
-/// In the menu-bar routine: the call into the key-read routine, reached
-/// only when the key-pending routine has said a key is waiting. Offset from
-/// the module's start. The handler runs before the call, so nothing has
-/// been read yet.
-constexpr std::uint32_t key_read_call = 0x0572;
+// The module, the read point, the frame's return address and who called the
+// routine are shared with `list-arrows`, which has a point at the same
+// instruction (seam_menu_bar.h).
 
 // --- The routine's frame ---------------------------------------------------
-
-/// Above BP: the caller's return address, offset then segment.
-constexpr std::uint16_t frame_return_ip = 2;
-constexpr std::uint16_t frame_return_cs = 4;
 
 /// Below BP: the routine's parse of the bar. `enter_allowed` is a byte,
 /// then the group count, then, from the same base, a pair of bytes per
@@ -259,36 +244,19 @@ constexpr std::uint8_t max_bar_length = 40;
 /// (docs/seams.md §10, the Encamp Fix, #304).
 constexpr std::uint16_t data_bar_highlight = 0x6B2B;
 
-/// The program's one-byte pushback slot for an extended key's second half.
-constexpr std::uint16_t data_key_pushback = 0x8501;
-
 // --- The callers that ignore Enter -----------------------------------------
 
-/// A caller of the routine, named by the word the program keeps its module's
-/// load segment in and the offset of the instruction after its call.
-struct bar_caller {
-  std::uint32_t load_segment_at;
-  std::uint16_t return_offset;
-};
+using menu_bar::adventure_load_segment_at;
+using menu_bar::aim_load_segment_at;
+using menu_bar::caller;
+using menu_bar::camp_load_segment_at;
+using menu_bar::combat_load_segment_at;
+using menu_bar::post_combat_load_segment_at;
+using menu_bar::roster_load_segment_at;
+using menu_bar::script_load_segment_at;
 
-/// The words the program's overlay manager keeps the modules' load
-/// segments in. The adventuring loop's and the camp screen's are the words
-/// `journal` and `encamp-fix` resolve their own points through; the combat
-/// overlay's is `cheat-kill-all`'s. Each is the manager's record of the
-/// module (its file offset and length, from the overlay table) and the
-/// word sixteen bytes into it, found by searching the resident image: one
-/// match each.
-constexpr std::uint32_t post_combat_load_segment_at = 0x260;  // overlay 5
-constexpr std::uint32_t script_load_segment_at = 0x2C0;       // overlay 7
-constexpr std::uint32_t combat_load_segment_at = 0x360;       // overlay 8
-constexpr std::uint32_t aim_load_segment_at = 0x690;          // overlay 13
-constexpr std::uint32_t adventure_load_segment_at = 0x730;    // overlay 14
-constexpr std::uint32_t camp_load_segment_at = 0x760;         // overlay 15
-constexpr std::uint32_t roster_load_segment_at = 0x790;       // overlay 16
-constexpr std::uint32_t rest_load_segment_at = 0x8D0;         // overlay 20
-
-constexpr std::array<bar_caller, 6> enter_callers{{
-    {.load_segment_at = menu_load_segment_at, .return_offset = 0x111E},
+constexpr std::array<caller, 6> enter_callers{{
+    {.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
     {.load_segment_at = camp_load_segment_at, .return_offset = 0x1F24},
@@ -298,9 +266,9 @@ constexpr std::array<bar_caller, 6> enter_callers{{
 
 /// The Yes/No prompt, and the script runner's call into the routine (the
 /// instruction after it, in overlay 7).
-constexpr std::array<bar_caller, 1> yes_no_caller{
-    {{.load_segment_at = menu_load_segment_at, .return_offset = 0x111E}}};
-constexpr std::array<bar_caller, 1> script_caller{
+constexpr std::array<caller, 1> yes_no_caller{
+    {{.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E}}};
+constexpr std::array<caller, 1> script_caller{
     {{.load_segment_at = script_load_segment_at, .return_offset = 0x16EB}}};
 
 /// Above the script runner's BP: its allow-Enter argument, a word of which
@@ -309,13 +277,12 @@ constexpr std::uint16_t runner_allow_enter = 8;
 
 // --- The callers that keep Left and Right ---------------------------------
 
-constexpr std::array<bar_caller, 8> arrow_callers{{
+constexpr std::array<caller, 7> arrow_callers{{
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
     {.load_segment_at = combat_load_segment_at, .return_offset = 0x0AC8},
     {.load_segment_at = aim_load_segment_at, .return_offset = 0x3178},
     {.load_segment_at = roster_load_segment_at, .return_offset = 0x216E},
-    {.load_segment_at = rest_load_segment_at, .return_offset = 0x076E},
     {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x0AF8},
     {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x14C7},
 }};
@@ -337,39 +304,6 @@ constexpr std::uint16_t scan_enter = 0x1C00;
 /// Whether `c` is a character the routine takes as a command letter.
 [[nodiscard]] constexpr bool is_command_letter(std::uint8_t c) noexcept {
   return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z');
-}
-
-/// The segment the program says `at` is loaded at now; zero while it is
-/// not loaded.
-[[nodiscard]] std::uint16_t loaded_at(cpu::processor& cpu,
-                                      const seam_context& ctx,
-                                      std::uint32_t at) {
-  return cpu.read_word(static_cast<std::uint16_t>(ctx.image_base() >> 4U),
-                       static_cast<std::uint16_t>(at));
-}
-
-/// Whether this call of the routine came from a caller in `table`.
-[[nodiscard]] bool called_from_a_tabled_caller(
-    cpu::processor& cpu, const seam_context& ctx,
-    std::span<const bar_caller> table) {
-  cpu::registers& regs = cpu.regs();
-  const std::uint16_t ss = regs[cpu::sreg::ss];
-  const std::uint16_t bp = regs[cpu::reg16::bp];
-  const std::uint16_t ip =
-      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_ip));
-  const std::uint16_t cs =
-      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
-
-  for (const bar_caller& caller : table) {
-    if (ip != caller.return_offset) {
-      continue;
-    }
-    const std::uint16_t segment = loaded_at(cpu, ctx, caller.load_segment_at);
-    if (segment != 0 && segment == cs) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /// Whether the script runner that called the routine takes Enter itself: its
@@ -494,33 +428,21 @@ constexpr std::uint16_t scan_enter = 0x1C00;
 /// The program is about to read the key at the head of the ring.
 void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
-  cpu::registers& regs = cpu.regs();
 
-  const std::uint16_t head =
-      cpu.read_word(bda::segment, bda::keyboard_buffer_head);
-  if (head == cpu.read_word(bda::segment, bda::keyboard_buffer_tail)) {
-    // Empty: the poll was answered from the pushback slot.
+  const std::array<std::uint16_t, 4> wanted{key_left, key_right, key_enter,
+                                            key_escape};
+  const std::optional<menu_bar::pending_key> pending =
+      menu_bar::key_about_to_be_read(box, wanted);
+  if (!pending) {
     return;
   }
-  const std::uint16_t key = cpu.read_word(bda::segment, head);
-  if (key != key_left && key != key_right && key != key_enter &&
-      key != key_escape) {
-    return;
-  }
-  if (box.journal().reader_open()) {
-    // The reader takes every key at the poll; one that got past it is the
-    // reader's, not the bar's.
-    return;
-  }
-  if (cpu.read_byte(regs[cpu::sreg::ds], data_key_pushback) != 0) {
-    // The head of the ring is not the key about to be read.
-    return;
-  }
+  const std::uint16_t head = pending->at;
+  const std::uint16_t key = pending->key;
 
   if (key == key_escape) {
     // No at a Yes/No question, and nowhere else.
-    if (called_from_a_tabled_caller(cpu, ctx, yes_no_caller) ||
-        (called_from_a_tabled_caller(cpu, ctx, script_caller) &&
+    if (menu_bar::called_from(cpu, ctx, yes_no_caller) ||
+        (menu_bar::called_from(cpu, ctx, script_caller) &&
          bar_is_yes_no(cpu))) {
       cpu.write_word(bda::segment, head,
                      static_cast<std::uint16_t>(scan_enter | 'N'));
@@ -529,10 +451,10 @@ void at_key_read(machine& box, seam_context& ctx) {
   }
 
   if (key == key_enter) {
-    const bool tabled = called_from_a_tabled_caller(cpu, ctx, enter_callers);
+    const bool tabled = menu_bar::called_from(cpu, ctx, enter_callers);
     // A script prompt that does not take Enter itself is handed it as its
     // highlighted answer.
-    if (!tabled && !(called_from_a_tabled_caller(cpu, ctx, script_caller) &&
+    if (!tabled && !(menu_bar::called_from(cpu, ctx, script_caller) &&
                      !runner_takes_enter_itself(cpu))) {
       return;
     }
@@ -543,7 +465,7 @@ void at_key_read(machine& box, seam_context& ctx) {
     return;
   }
 
-  if (called_from_a_tabled_caller(cpu, ctx, arrow_callers)) {
+  if (menu_bar::called_from(cpu, ctx, arrow_callers)) {
     // A caller that uses the arrows keeps them.
     return;
   }
@@ -551,7 +473,9 @@ void at_key_read(machine& box, seam_context& ctx) {
 }
 
 constexpr std::array<seam_point, 1> bar_keys_points{
-    {{.module = menu_module, .offset = key_read_call, .run = &at_key_read}}};
+    {{.module = menu_bar::module,
+      .offset = menu_bar::key_read_call,
+      .run = &at_key_read}}};
 
 constexpr seam_definition bar_keys_definition{
     .id = "bar-keys",

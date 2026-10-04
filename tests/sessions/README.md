@@ -87,6 +87,10 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `list-keys-arrows` | same | + list-arrows | `identical list-keys` | the same keys with the arrows' seam on and no arrow pressed |
 | `list-down` | same | code-wheel | | the same script with Down and Up where `list-keys` presses End and Home: the program drops them and the character is the first row of every list |
 | `list-down-arrows` | same | + list-arrows | **`contrast list-down`** | 62 of 84 identical, divergent from the first Down (tick 153,157,488): the highlight moves and the character is the one `list-keys` makes |
+| `camp-roster` | same | code-wheel | | slot C, `ENCAMP`, then End, End and Home at the camp bar: the party cursor steps the selected member to the second, the third and back to the second. 94 checkpoints |
+| `camp-roster-arrows` | same | + list-arrows | `identical camp-roster` | the same keys with the arrows' seam on and no Up or Down pressed |
+| `camp-down` | same | code-wheel | | slot C, `ENCAMP`, End, then Down, Down and Up at the camp bar: the program hands each arrow to the party cursor, which puts the selection back on the first member. 96 checkpoints |
+| `camp-down-arrows` | same | + list-arrows | **`contrast camp-down`** | 86 of 96 identical, divergent from tick 206,218,672: the first Down is read at the camp bar and written as End, and the selection steps to the third, fourth and third member where the seam-off run holds the first |
 | `quiet-bar-keys` | same | + bar-keys | `identical quiet` | the seam on, and `quiet`'s one Right is at the adventuring bar, which uses its arrows: the program keeps the arrow and the seam leaves it. Six keys read at bars, none rewritten |
 | `bar-enter` | shipped slots | code-wheel | | slot C, `ENCAMP`, `.` to step the highlight to ALTER, and Return at the camp bar, which the program ignores. 93 checkpoints |
 | `bar-enter-keys` | same | + bar-keys | **`contrast bar-enter`** | 86 of 93 identical, divergent from tick 206,218,672: the Return takes ALTER, and its sub-bar is up where the seam-off run shows the camp bar |
@@ -94,6 +98,13 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `bar-camp-keys` | same | + bar-keys | **`contrast bar-camp`** | 83 of 93 identical, divergent from tick 201,127,344: the Right steps the highlight to ALTER and the Return takes it, and its sub-bar is up where the seam-off run shows the camp bar |
 | `bar-yn` | same | code-wheel | | slot C's camp, `SAVE`, a Right at the slot bar, Escape, and Return at the quit prompt that follows: the program drops the Right and the Return. 100 checkpoints |
 | `bar-yn-keys` | same | + bar-keys | **`contrast bar-yn`** | 86 of 100 identical, divergent from tick 206,218,672: the Right steps the slot bar's highlight, and the Return answers the prompt `No` |
+| `menu-letters` | shipped slots | code-wheel | | the main menu by letters only: `A`, `A` adds the first character, `E` back to the menu, `V` the view screen, Escape. 77 checkpoints |
+| `menu-letters-cursor` | same | + menu-cursor | `identical menu-letters` | the same keys with the cursor's seam on and no Up, Down or Return pressed at the menu: all 77 checkpoints |
+| `menu-down` | same | code-wheel | | the main menu with no party, then Down, Down and Return, which the program drops: the menu has no cursor. 70 checkpoints |
+| `menu-down-cursor` | same | + menu-cursor | **`contrast menu-down`** | 60 of 70 identical, divergent from tick 151,168,688 (the first Down): the cursor is drawn on Add, moves to Load, and the Return takes it, so the slot prompt is up where the seam-off run shows the plain menu |
+| `quiet-hero-keys` | same | + hero-keys | **`contrast quiet`** | 74 of 90 identical, divergent from tick 182,989,488, the first checkpoint after the party list is first drawn: each name moves two columns right and its number is drawn, which is the enhancement |
+| `hero-pick` | same | + hero-keys | | slot A, and a 9 at the adventuring bar, which is never the seam's: the program steps the selection to the first member, where it already is. 87 checkpoints |
+| `hero-pick-3` | same | + hero-keys | **`contrast hero-pick`** | the same script with a 3 at the same tick: 77 of 87 identical, divergent from tick 190,944,688. The seam puts the third member under the cursor, the program steps onto it, and the party list is redrawn with the third name white |
 | `bar-esc` | same | code-wheel | | slot C's camp, `SAVE`, Escape out of the slot bar, and Escape at the quit prompt that follows, which the program ignores. 99 checkpoints |
 | `bar-esc-keys` | same | + bar-keys | **`contrast bar-esc`** | 91 of 99 identical, divergent from tick 216,799,088: the second Escape answers the prompt `No` and the camp bar is back |
 | `bar-script` | same | code-wheel | | slot A walked to the arena master's question (the status row reads 7,1): `.` steps the highlight to `NO`, then Return and Escape, which the program ignores because the script did not allow Enter. 164 checkpoints. Its recording was re-hashed (below) |
@@ -109,8 +120,10 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
-| `list-arrows` | `list-down-arrows` | `list-keys-arrows` |
+| `list-arrows` | `list-down-arrows`, `camp-down-arrows` | `list-keys-arrows`, `camp-roster-arrows` |
 | `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys`, `bar-esc-keys`, `bar-script-keys` | `quiet-bar-keys` |
+| `menu-cursor` | `menu-down-cursor` | `menu-letters-cursor` |
+| `hero-keys` | `hero-pick-3` | `quiet-hero-keys` (a `contrast`: the party list is seen as soon as it is drawn) |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 **`bar-script` and `bar-script-keys` were recorded and then re-hashed**
