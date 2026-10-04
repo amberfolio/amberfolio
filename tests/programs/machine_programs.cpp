@@ -3816,6 +3816,110 @@ struct font_layout {
   return nullptr;
 }
 
+// --- 10c. The edit keys -----------------------------------------------------
+//
+// #455. The seam's one handler runs after the line editor's key read has
+// answered AL, and when AL is the zero that starts an extended key and the
+// read has kept the scan code for its next call, it empties the slot. This
+// program stands in for the editor in three arrivals: the first half of a
+// Right (AL zero, the slot holding 4Dh), a letter (AL `B`, the slot empty)
+// and the second half of a Right as an unfixed program would be handed it
+// (AL 4Dh, the slot empty). The data segment is the one the facts name, so
+// the seam's own check passes. Only the slot after the first arrival differs
+// between the two machines.
+//
+//         mov  ax, cs / add ax, 0C7Ch / mov ds, ax   ; the data segment
+//         mov  byte [8501h], 4Dh / xor ax, ax        ; Right's first half
+// first:  mov  bx, ax                                ; the seam's point
+//         mov  cl, [8501h] / xor ch, ch
+//         mov  byte [8501h], 0 / mov ax, 'B'
+// second: mov  dx, ax                                ; the seam's point
+//         mov  al, [8501h] / mov di, ax              ; AX = the slot
+//         mov  ax, 4Dh
+// third:  mov  si, ax                                ; the seam's point
+//         push cs / pop ds
+//         <store bx, cx, dx, di, si> / exit 90h
+
+/// The data segment's paragraph offset and the keyboard read's slot in it, as
+/// `seam_edit_keys.cpp`'s facts have them. Restated: this program stands in
+/// for the real one.
+constexpr std::uint16_t edit_keys_dgroup_paragraphs = 0xC7C;
+constexpr std::uint16_t edit_keys_slot = 0x8501;
+constexpr std::uint8_t edit_keys_right = 0x4D;
+constexpr std::uint8_t edit_keys_letter = 'B';
+constexpr unsigned reg_di = 7;
+
+struct edit_keys_layout {
+  std::vector<std::uint8_t> file;
+  std::uint32_t first_offset{};
+  std::uint32_t second_offset{};
+  std::uint32_t third_offset{};
+};
+
+[[nodiscard]] const edit_keys_layout& edit_keys_probe() {
+  static const edit_keys_layout built = [] {
+    assembler a;
+    a.db({0x8C, 0xC8});  // mov ax, cs
+    a.db({0x05});
+    a.dw(edit_keys_dgroup_paragraphs);  // add ax, 0C7Ch
+    a.db({0x8E, 0xD8});                 // mov ds, ax
+    a.db({0xC6, 0x06});
+    a.dw(edit_keys_slot);
+    a.db({edit_keys_right});  // mov byte [8501h], 4Dh
+    a.db({0x31, 0xC0});       // xor ax, ax
+    a.label("first");
+    a.db({0x89, 0xC3});  // mov bx, ax
+    a.db({0x8A, 0x0E});
+    a.dw(edit_keys_slot);  // mov cl, [8501h]
+    a.db({0x30, 0xED});    // xor ch, ch
+    a.db({0xC6, 0x06});
+    a.dw(edit_keys_slot);
+    a.db({0x00});  // mov byte [8501h], 0
+    a.db({0xB8});
+    a.dw(edit_keys_letter);  // mov ax, 'B'
+    a.label("second");
+    a.db({0x89, 0xC2});  // mov dx, ax
+    a.db({0xA0});
+    a.dw(edit_keys_slot);  // mov al, [8501h]
+    a.db({0x89, 0xC7});    // mov di, ax
+    a.db({0xB8});
+    a.dw(edit_keys_right);  // mov ax, 4Dh
+    a.label("third");
+    a.db({0x89, 0xC6});  // mov si, ax
+    a.db({0x0E, 0x1F});  // push cs / pop ds
+    store(a, 0, reg_bx);
+    store(a, 1, reg_cx);
+    store(a, 2, reg_dx);
+    store(a, 3, reg_di);
+    store(a, 4, reg_si);
+    exit_with(a, 0x90);
+
+    edit_keys_layout out;
+    out.first_offset = static_cast<std::uint32_t>(a.offset_of("first"));
+    out.second_offset = static_cast<std::uint32_t>(a.offset_of("second"));
+    out.third_offset = static_cast<std::uint32_t>(a.offset_of("third"));
+    out.file = build_exe({.initial_cs = 0,
+                          .initial_ip = 0,
+                          .initial_ss = 0,
+                          .initial_sp = 0x0F00,
+                          .min_alloc = 0x1600,
+                          .relocations = {},
+                          .image = a.assemble()});
+    return out;
+  }();
+  return built;
+}
+
+/// The `edit-keys` handler, from the definition this build ships.
+[[nodiscard]] machine::seam_handler edit_keys_handler() {
+  for (const machine::seam_definition& seam : machine::all_seams()) {
+    if (seam.id == "edit-keys" && !seam.points.empty()) {
+      return seam.points.front().run;
+    }
+  }
+  return nullptr;
+}
+
 // --- 10a. The list arrows ---------------------------------------------------
 //
 // #423. The seam's two handlers read a key in AL and a flag byte in the
@@ -5124,6 +5228,44 @@ constexpr std::array<machine::seam_point, 1> door_points{
   }
 
   {
+    // The edit keys: off, the first half of an extended key leaves its scan
+    // code in the keyboard read's slot for the editor's next read; on, the
+    // slot is emptied, and a letter and the zero's other cases are the
+    // program's own (#455).
+    machine_program p;
+    p.name = "edit_keys_probe_off";
+    p.about = "no seam: the scan code of an extended key stays for the editor";
+    p.setup.exe = edit_keys_probe_file();
+    p.setup.exe_path = "\\EDITKEYS.EXE";
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "AL, the first half", .value = 0},
+                 {.what = "the slot after it", .value = edit_keys_right},
+                 {.what = "AL, a letter", .value = edit_keys_letter},
+                 {.what = "the slot after it", .value = 0},
+                 {.what = "AL, the scan code", .value = edit_keys_right}};
+    p.exit_code = 0x90;
+    list.push_back(std::move(p));
+  }
+
+  {
+    machine_program p;
+    p.name = "edit_keys_probe_on";
+    p.about = "the seam: the scan code of an extended key is thrown away";
+    p.setup.exe = edit_keys_probe_file();
+    p.setup.exe_path = "\\EDITKEYS.EXE";
+    p.setup.seam_definitions = {&edit_keys_probe_definition()};
+    p.setup.seams = {"edit-keys-probe"};
+    p.setup.step_cap = 1'000;
+    p.results = {{.what = "AL, the first half", .value = 0},
+                 {.what = "the slot after it", .value = 0},
+                 {.what = "AL, a letter", .value = edit_keys_letter},
+                 {.what = "the slot after it", .value = 0},
+                 {.what = "AL, the scan code", .value = edit_keys_right}};
+    p.exit_code = 0x90;
+    list.push_back(std::move(p));
+  }
+
+  {
     // The trigger, both ways (#161). Pulled: the handler runs once and
     // the program stores the seam's word. On and not pulled: the point
     // is reached, nothing happens, and the result block is the plain
@@ -5892,6 +6034,36 @@ const machine::seam_definition& list_arrows_probe_definition() {
   static const machine::seam_definition definition{
       .id = "list-arrows-probe",
       .about = "the list arrows' own rewrite, at made-up addresses",
+      .fingerprints = fingerprints,
+      .points = points};
+  return definition;
+}
+
+const std::vector<std::uint8_t>& edit_keys_probe_file() {
+  return edit_keys_probe().file;
+}
+
+const machine::seam_definition& edit_keys_probe_definition() {
+  static const std::string fingerprint = [] {
+    const sha256_digest digest = sha256(edit_keys_probe().file);
+    std::array<char, sha256_digest::text_length + 1> hex{};
+    static_cast<void>(format_hex(digest, hex));
+    return std::string(hex.data(), sha256_digest::text_length);
+  }();
+  static const std::array<std::string_view, 1> fingerprints{fingerprint};
+  static const std::array<machine::seam_point, 3> points{
+      {{.module = machine::resident_image,
+        .offset = edit_keys_probe().first_offset,
+        .run = edit_keys_handler()},
+       {.module = machine::resident_image,
+        .offset = edit_keys_probe().second_offset,
+        .run = edit_keys_handler()},
+       {.module = machine::resident_image,
+        .offset = edit_keys_probe().third_offset,
+        .run = edit_keys_handler()}}};
+  static const machine::seam_definition definition{
+      .id = "edit-keys-probe",
+      .about = "the edit keys' own handler, at made-up addresses",
       .fingerprints = fingerprints,
       .points = points};
   return definition;
