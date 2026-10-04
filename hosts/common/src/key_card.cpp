@@ -47,6 +47,8 @@ constexpr std::array bar_rows{
     key_row{", and .", "step the highlight left and right, wrapping"},
     key_row{"Left, Right", "step the highlight, except where they move or edit",
             "bar-keys"},
+    key_row{"Up, Down", "previous or next member where Home and End step it",
+            "list-arrows"},
     key_row{"Return", "take the highlighted command: Yes/No, camp, exploring",
             "bar-keys"},
     key_row{"Y, N", "answer a Yes/No question"},
