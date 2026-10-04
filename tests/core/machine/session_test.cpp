@@ -177,30 +177,15 @@ TEST(SessionLibrary, EveryCommittedRecordingIsAFormatThisBuildStillReads) {
 // tests/sessions/README.md's table names them: a session that stopped
 // being read would otherwise stop being checked at the same moment.
 TEST(SessionLibrary, TheRecordingsMadeSinceFormatThreeAreStillRead) {
-  for (const std::string_view name : {"boot.rec",
-                                      "boot-wheel.rec",
-                                      "party.rec",
-                                      "save.rec",
-                                      "load.rec",
-                                      "fight.rec",
-                                      "fight-cheat.rec",
-                                      "temple.rec",
-                                      "camp.rec",
-                                      "camp-fix.rec",
-                                      "walk.rec",
-                                      "walk-map.rec",
-                                      "wild.rec",
-                                      "wild-trail.rec",
-                                      "reader.rec",
-                                      "notes.rec",
-                                      "cite.rec",
-                                      "quiet.rec",
-                                      "quiet-automap.rec",
-                                      "quiet-encamp.rec",
-                                      "quiet-cheats.rec",
-                                      "quiet-explored.rec",
-                                      "quiet-journal.rec",
-                                      "subset-map-reader.rec"}) {
+  for (const std::string_view name :
+       {"boot.rec",           "boot-wheel.rec",    "party.rec",
+        "save.rec",           "load.rec",          "fight.rec",
+        "fight-cheat.rec",    "temple.rec",        "camp.rec",
+        "camp-fix.rec",       "walk.rec",          "walk-map.rec",
+        "wild.rec",           "wild-trail.rec",    "reader.rec",
+        "notes.rec",          "cite.rec",          "quiet.rec",
+        "quiet-automap.rec",  "quiet-encamp.rec",  "quiet-cheats.rec",
+        "quiet-explored.rec", "quiet-journal.rec", "subset-map-reader.rec"}) {
     const std::string text = read_session_file(name);
     ASSERT_FALSE(text.empty()) << name;
     EXPECT_THAT(text, ::testing::StartsWith("amberfolio-recording 3 state=2\n"))
