@@ -2058,7 +2058,7 @@ builds it at every paint.
 
 **Beside it, the controls page.** `page/controls.html`, linked from the
 box, lists every controls improvement by screen, the enhancement each one
-needs and what each trades (#448). It is the dev page's furniture, served
+needs and what each trades (#448), and the one look, `select-yellow` (#453). It is the dev page's furniture, served
 with it and not released, like `index.html`; the keys per screen stay the
 card's.
 
@@ -2068,7 +2068,8 @@ line in `key_card.cpp`, in the context where the key is pressed.
 `tests/key_card_test.cpp` holds every named seam to `all_seams()`, so a
 row for a seam that was renamed or never merged is a red test; the seven
 seams that take a key today (automap, journal, Encamp Fix, list-arrows,
-bar-keys, menu-cursor, hero-keys) are pinned there as the floor. Each
+bar-keys, menu-cursor, hero-keys) are pinned there as the floor. `select-yellow`
+takes no key and has one row in the bars' context, shown while it is on. Each
 shell has its own context for the keys it takes for itself (the desktop's
 are in §2's table); the page has none, because it takes none.
 
