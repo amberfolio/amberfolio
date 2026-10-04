@@ -26,6 +26,7 @@
   --c-menu: #a3009f;         /* magenta */
   --c-hero: #1d7a1d;         /* green */
   --c-look: #b34700;         /* orange: a look, not a key */
+  --c-edit: #2f4fbf;         /* blue */
   --c-base: #4a4f66;
   --display: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
   --body: system-ui, "Segoe UI", Roboto, sans-serif;
@@ -34,12 +35,12 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0b0c12; --panel: #13141d; --fg: #e8e9f2; --muted: #9a9eb8; --rule: #2a2c3c;
   --frame: #ff5555; --key-bg: #22243a; --key-edge: #3c3f5c;
-  --c-list: #55ffff; --c-bar: #ffff55; --c-menu: #ff55ff; --c-hero: #55ff55; --c-look: #ffaa55; --c-base: #aab0cc;
+  --c-list: #55ffff; --c-bar: #ffff55; --c-menu: #ff55ff; --c-hero: #55ff55; --c-look: #ffaa55; --c-edit: #8f9fff; --c-base: #aab0cc;
   color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #0b0c12; --panel: #13141d; --fg: #e8e9f2; --muted: #9a9eb8; --rule: #2a2c3c;
   --frame: #ff5555; --key-bg: #22243a; --key-edge: #3c3f5c;
-  --c-list: #55ffff; --c-bar: #ffff55; --c-menu: #ff55ff; --c-hero: #55ff55; --c-look: #ffaa55; --c-base: #aab0cc;
+  --c-list: #55ffff; --c-bar: #ffff55; --c-menu: #ff55ff; --c-hero: #55ff55; --c-look: #ffaa55; --c-edit: #8f9fff; --c-base: #aab0cc;
   color-scheme: dark }
 
 body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); }
@@ -54,7 +55,7 @@ h1 { font: 400 clamp(22px, 4vw, 30px)/1.15 var(--display); letter-spacing: .02em
 .chip { display: inline-flex; align-items: center; gap: 6px; font: 500 12px/1 var(--mono); padding: 4px 8px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
 .chip::before { content: ""; width: 7px; height: 7px; background: currentColor; }
 .c-list { color: var(--c-list); } .c-bar { color: var(--c-bar); } .c-menu { color: var(--c-menu); }
-.c-hero { color: var(--c-hero); } .c-base { color: var(--c-base); } .c-look { color: var(--c-look); }
+.c-hero { color: var(--c-hero); } .c-base { color: var(--c-base); } .c-look { color: var(--c-look); } .c-edit { color: var(--c-edit); }
 
 section { display: grid; gap: 10px; }
 h2 { font: 400 15px/1.2 var(--display); letter-spacing: .04em; margin: 0; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
@@ -88,6 +89,7 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
     <span class="chip c-menu">menu-cursor</span>
     <span class="chip c-hero">hero-keys</span>
     <span class="chip c-look">select-yellow</span>
+    <span class="chip c-edit">edit-keys</span>
   </div>
 </header>
 
@@ -155,6 +157,14 @@ kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px sol
     <tr><td class="k"><kbd>1</kbd>–<kbd>8</kbd> <span class="note">number row</span></td><td>Select that hero. The roster shows each hero's number in front of the name. Keypad digits still walk.</td><td class="t"><span class="chip c-hero">hero-keys</span></td></tr>
     <tr><td class="k">arrows, keypad</td><td>Walk and turn, unchanged by every enhancement.</td><td class="t"></td></tr>
     <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>Previous or next hero (the game's own).</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Typing <small>a name, a script's answer, a number, the code word</small></h2>
+  <div class="tbl"><table>
+    <tr><td class="k">arrows, <kbd>Home</kbd><kbd>End</kbd>, <kbd>PgUp</kbd><kbd>PgDn</kbd>, <kbd>Ins</kbd><kbd>Del</kbd>, F-keys</td><td>Do nothing. Without the enhancement each one types a stray letter (Right types M, Up H).</td><td class="t"><span class="chip c-edit">edit-keys</span></td></tr>
+    <tr><td class="k">letters, <kbd>Backspace</kbd>, <kbd>Enter</kbd></td><td>Type, erase, accept (the game's own; <kbd>Esc</kbd> accepts too).</td><td class="t"></td></tr>
   </table></div>
 </section>
 
