@@ -601,8 +601,8 @@ and never triggered.
 | `quiet-journal` | contrast | `quiet` (the `Notes` splice changes the bar the moment it is drawn) |
 | `quiet-font-sans` | contrast | `quiet` (a face is seen from the first text drawn; `devices` and `display` only) |
 | `quiet-font-chisel` | contrast | `quiet` (the same) |
-| `quiet-all` | identical | `quiet-journal` (every seam but the faces and `hero-keys`, which are contrasts of their own) |
-| `quiet-all-hero-keys` | contrast | `quiet-all` (the same with `hero-keys` on: the party list is the first thing to move, at the tick `quiet-hero-keys` moves it) |
+| `quiet-all` | identical | `quiet-journal` (every seam that draws nothing until used: not the faces, `hero-keys`, `menu-cursor` or `select-yellow`, which are contrasts of their own) |
+| `quiet-all-on-sight` | contrast | `quiet-all` (the same with `hero-keys`, `menu-cursor` and `select-yellow` on: the menu's cursor is the first thing to move) |
 | `list-keys-arrows` | identical | `list-keys` (the arrows' seam, on a creation script of Home and End) |
 | `list-down-arrows` | contrast | `list-down` (the same script with Down and Up, which the seam-off program drops) |
 | `camp-roster-arrows` | identical | `camp-roster` (End, End and Home at the camp bar, which the seam never touches) |
@@ -1560,7 +1560,7 @@ in a batch, and the blitter is the blitter whoever called it.
 pair is a contrast: `quiet-font-sans` and `quiet-font-chisel` contrast
 `quiet`, divergent from the credits' first text and only in `devices`
 and `display`, never `cpu` or `ram`. `quiet-all` carries every seam but
-these and `hero-keys`, and says so. Unit: `SeamFont.*`, `TextFace.*`,
+these and the three that draw on sight, and says so. Unit: `SeamFont.*`, `TextFace.*`,
 `SeamFontScreenText.*`; stand-in: `font_probe_off`, `font_probe_sans`.
 Driven: 48 stills from the credits to the character sheet read back
 the same screen text with either face on as with none.
@@ -2169,7 +2169,7 @@ above.
 
 **Fidelity**: the party list is changed from the first time it is drawn with
 a member in it, so a seam that is on and never used is not the seam off
-(§8.5). `quiet-hero-keys` is a `contrast` to `quiet`, `quiet-all-hero-keys` one to
+(§8.5). `quiet-hero-keys` is a `contrast` to `quiet`, `quiet-all-on-sight` one to
 `quiet-all` (every seam but the faces, so the seam is also run beside the
 other controls seams and the journal), and `hero-pick-3` a `contrast` to
 `hero-pick` (both with the seam on, a 9 where the other presses a 3). Off, the engine is not consulted (§7). Unit: `SeamHeroKeys.*`;
