@@ -485,6 +485,7 @@ void seam_engine::clear() noexcept {
   enabled_ = 0;
   points_ = {};
   armed_ = 0;
+  rebuild_filter();
   have_program_ = false;
   edition_ = nullptr;
   // The host-service record goes with them (#169): it is bookkeeping
@@ -628,6 +629,7 @@ seam_error seam_engine::pull(std::string_view id, ticks now) {
   }
   s.waiting = true;
   s.pulled_at = now;
+  rebuild_filter();
   report(id, seam_event_kind::pulled, seam_reason::none);
   return seam_reason::none;
 }
@@ -727,15 +729,73 @@ void seam_engine::arm_all(const overlay_tracker* overlays) {
              s.reason);
     }
   }
+  rebuild_filter();
 }
 
-std::uint16_t seam_engine::word_at(std::uint32_t address) const noexcept {
-  if (address + 1 >= ram_.size()) {
-    return 0;
+void seam_engine::rebuild_filter() noexcept {
+  // What `dispatch` would have to do something about at an address, said
+  // as a test that costs less than the scan. Every clause below is the
+  // negation of one of the `continue`s at the top of that scan's body,
+  // and the argument that nothing is lost is the argument that each
+  // `continue` is covered:
+  //
+  //   * a point with no handler: skipped, as in `dispatch`;
+  //   * an address point at a fixed address: `point.at != at` is the
+  //     `continue`, so the point matters at exactly its own address, and
+  //     that address's bit (folded, which can only add a visit) is set;
+  //   * a point with no address: the `continue` is "its seam's latch is
+  //     down". `latched_` is the or of those latches over the points the
+  //     table holds, and is rebuilt wherever one moves;
+  //   * a point resolved through a load-segment word: the `continue`s are
+  //     "`at` and the offset disagree in their low four bits" and then
+  //     "the word, read now, says elsewhere". The first is a property of
+  //     the table, so it is a mask and a bucket here: the entries are
+  //     kept sorted by that nibble, so a step looks at the ones that can
+  //     be here and none of the rest. The second is a property of RAM,
+  //     which the program rewrites without telling anybody, so it is
+  //     **not** cached: `anchored_hit()` reads the word at the step, as
+  //     `dispatch` does, for the entries in the bucket, and nothing is
+  //     remembered between steps. That is the only place the filter
+  //     looks at the machine, and it looks at the same bytes, at the
+  //     same moment, and applies the same test `dispatch` would.
+  fixed_ = {};
+  anchored_nibbles_ = 0;
+  anchored_from_ = {};
+  latched_ = false;
+  std::array<std::uint8_t, 16> bucket_size{};
+  for (std::size_t i = 0; i < armed_; ++i) {
+    const armed_point& point = points_[i];
+    if (point.run == nullptr) {
+      continue;
+    }
+    if (point.at_every_step) {
+      latched_ = latched_ || slots_[point.owner].waiting;
+    } else if (point.anchor != no_load_segment) {
+      const std::uint32_t nibble = point.offset & 0x0FU;
+      anchored_nibbles_ =
+          static_cast<std::uint16_t>(anchored_nibbles_ | (1U << nibble));
+      ++bucket_size[nibble];
+    } else {
+      const std::uint32_t folded = point.at & fixed_mask;
+      fixed_[folded >> 6U] |= std::uint64_t{1} << (folded & 63U);
+    }
   }
-  return static_cast<std::uint16_t>(
-      static_cast<unsigned>(ram_[address]) |
-      (static_cast<unsigned>(ram_[address + 1]) << 8U));
+  // Counting sort of the anchored points by nibble, stable.
+  for (std::size_t n = 0; n < 16; ++n) {
+    anchored_from_[n + 1U] =
+        static_cast<std::uint8_t>(anchored_from_[n] + bucket_size[n]);
+  }
+  std::array<std::uint8_t, 16> next{};
+  for (std::size_t i = 0; i < armed_; ++i) {
+    const armed_point& point = points_[i];
+    if (point.run == nullptr || point.at_every_step ||
+        point.anchor == no_load_segment) {
+      continue;
+    }
+    const std::uint32_t nibble = point.offset & 0x0FU;
+    anchored_[anchored_from_[nibble] + next[nibble]++] = {
+        .anchor = point.anchor, .offset = point.offset};
+  }
 }
 
 void seam_engine::open_batch(machine& box, std::string_view id) noexcept {
@@ -950,6 +1010,7 @@ void seam_engine::dispatch(machine& box, std::uint32_t at) {
       // Served. A handler that declined did not act, so its pull is
       // still outstanding and waits for a point that is the point.
       owner.waiting = false;
+      rebuild_filter();
       owner.waited = box.time() >= owner.pulled_at
                          ? box.time() - owner.pulled_at
                          : ticks{};

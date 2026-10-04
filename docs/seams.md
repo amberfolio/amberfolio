@@ -404,7 +404,7 @@ point does not match.
 | a module that moved | fires on somebody else's code, or never | follows |
 | a module resident with no read | never arms | arms |
 | a module dropped with no read | still armed | inert, that step |
-| cost | an address compare | an address compare and a word of RAM |
+| cost | a bit test | a nibble test and, one step in about three, a word of RAM |
 
 The read's facts say *which* module (check them against the overlay
 file's own table); the word says *where it is now*. A real seam carries
@@ -582,7 +582,12 @@ its seam on and off on all four targets):
    on a build with no engine.
 2. **A disabled seam's breakpoint is never consulted.** Only enabled seams
    arm points; `disable()` removes them; `dispatch()` is reached only
-   when something is armed.
+   when something is armed and the step filter (`wants()`, seam.h "The
+   cost when it is off") says a point could be at that step. The filter
+   is rebuilt from the armed table wherever the table or a latch changes,
+   may say yes to a step nothing happens at, and never says no to one
+   `dispatch()` would act at; a load-segment point is re-read from RAM at
+   every step it could match, never cached.
 3. **Seam state is not machine state.** `reset()` clears it, the
    serialization omits it, and since #161 that includes a trigger's
    latch.
