@@ -838,6 +838,7 @@ to carry.
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `list-arrows` | the up and down arrows step the game's pick-lists and its party-member picker, as Home and End do | overlay 25 (the list routine), and the resident image |
 | `bar-keys` | Left and Right step a command bar's highlight at every bar but the few that use them; Enter takes the highlighted command at the Yes/No prompt, the camp bar and its Magic and Alter bars, and the adventuring bar | overlay 25 (the menu-bar routine) |
+| `menu-cursor` | a cursor on the main menu (the party-setup screen and a training hall): Up and Down move it over the commands shown, Return takes the one it is on | overlay 25 (the menu-bar routine), for the loop in overlay 16 |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -1546,7 +1547,7 @@ its offset is the instruction after the call.
   | camp's Alter bar (`0x1CA4`) | the same. Its inner Portraits and Monsters bar (`0x1DDA`) is not raw |
   | the party-order screen (`0x17DA`) | with no member picked up, the cursor routine; with one picked up, only `G` and `O` act |
   | camp's game-speed screen (overlay 15) | tests the out-flag; only `P` and `H` (Down and Up) act |
-  | the main menu (overlay 16, `0x02FD`) | the bar is not drawn (its colours are zero); a raw key outside `G` and `O` is dropped. Stepping moves the shared highlight byte unseen |
+  | the main menu (overlay 16, `0x02FD`) | the bar is not drawn (its colours are zero); a raw key outside `G` and `O` is dropped. Stepping moves the shared highlight byte unseen. Up, Down and Return here are `menu-cursor`'s |
   | the combat command bar (overlay 8, `0x0819`) | a raw key outside a short set the bar takes is cleared and the bar asked again |
   | the combat aim bar (overlay 13, `0x2C31`) | not raw |
   | the combat done bar | not raw |
@@ -1681,6 +1682,134 @@ of 93 checkpoints and diverges at the Right at the camp bar. Unit:
 Yes/No prompt now answers it. Character creation's roll asks whether to
 keep the character; the leg-0 script's Return at that prompt answers `No`
 and the character is rolled again.
+
+### The menu cursor (#434)
+
+`seam_menu_cursor.cpp`. Not a PLAN.md §5 item: a player's request, built
+after v1's six, and the main menu's half of what #425 and #423 did for the
+bars and the lists. **It draws something the game never had** (the menu
+has no highlight at all), so it is held to PLAN.md §5's "native in feel":
+the cursor is the game's own pick-list highlight, drawn by the game's own
+string routine. A setting, no key, nothing to pull.
+
+| point | module | what the handler does |
+|---|---|---|
+| image `0x0572` of overlay 25, the call into the key-read routine inside the menu-bar routine (the point `bar-keys` has) | overlay 25, through the manager's word | with the routine's caller the party-setup loop, **Up** or **Down** move the cursor and are answered; **Return**, with the cursor drawn, becomes the letter of the command under it |
+
+| fact | value |
+|---|---|
+| the caller | overlay 16's loop (the manager's word is at image `0x0790`); the call is at `0x02F8` and the instruction after it, the return address the frame holds, at `0x02FD`. The loop passes the bar at DGROUP `0x05F0`, both bar colours **zero** and raw mode **set** |
+| who reaches the loop | the party-setup screen at the start of the program, and the same function again where a script re-enters it: **a training hall**. Driven at the cleric hall in the civilised district (5,0, off the lobby at 6,2), where `Y` to *do you want to train* opens it; the caller test below was passed there as at the start |
+| the commands | eleven records at DGROUP `0x0619`, forty-two bytes each: a Pascal string and, at `+0x29`, an enable byte (`0x0642`, `0x066C`, ... `0x07E6`). In order: Create, Drop, Modify, Train, View, Add, Remove, Load, Save, Begin, Exit. A record whose byte is not zero is drawn |
+| what the loop writes | each time it redraws: Drop, Modify, View, Remove, Save and Begin on and Load off with a party member, the reverse with none, and Train on where the place trains. **Create, Add and Exit it never writes**; they are on from the start. So the menu shows **four** commands with no party (Create, Add, Load, Exit), **nine** with one, **ten** at a hall (Load is off, Create and Add are on) |
+| the drawing | rows from text row `0x0C`, packed, one to a command: the first letter in colour `0x0F` at column 2, the rest of the word in `0x0A` from column 3 (screen text: ink `F`, then `A`) |
+| the keys | the ring's head word: Up `0x4800`, Down `0x5000`, Return `0x1C0D`. Up and Down are raw keys the loop drops; Return is dropped by the routine (the bar has no colour); a letter in the bar takes its command |
+| the redraw | any command taken, a disabled command's letter included, ends in the loop's **full redraw** (frame, party, rows). Home and End (`G`, `O`) go to the party cursor and back to the call **without** one |
+| the string drawer | image `0x076B6` (§3): column, row, colour, then a far pointer to a Pascal string. The cursor is drawn by handing it the **record itself**, where it stands in DGROUP |
+
+- **The loop's addresses by two routes.** The disassembly of the loop (the
+  pushes before the call: the bar at `0x05F0`, `0x0D`, `0`, `0`, `1`, `0`;
+  `lcall 0x3C5:0x2A`, the thunk for overlay 25's `0x03BD`, at `0x02F8`)
+  and the machine: the handler's caller test (the frame's far return
+  address against the manager's word and `0x02FD`) is passed at the first
+  menu of every driven run, after the add screen and the view screen, and
+  at the hall. The records, their stride and their enable bytes are the
+  program's data segment as the loop's source reads it and as a run's
+  screen text lists them (four rows, nine rows, ten rows, in the order
+  above).
+- **Hidden until used.** The seam draws and writes nothing until the first
+  Up or Down. A player who types letters sees the original menu, and a
+  Return with no cursor is the program's own: dropped.
+- **Where the cursor is, and why nothing else is kept.** In the program's
+  own memory, in the place its redraw also writes. The loop rewrites the
+  enable bytes of **Drop and Load** every time it redraws, and exactly one
+  of them is on (Drop with a party member, Load without). The byte that is
+  on holds `1`. While the cursor is drawn the seam holds **`2` plus the
+  row** in it. Every reader of an enable byte tests it against zero (the
+  loop's draw and dispatch; the program's source names no other reader), so
+  the program cannot tell, and the redraw that wipes the cursor's pixels
+  puts the byte back: the cursor lasts exactly as long as it is on the
+  screen. Nothing is remembered by the seam and nothing has to be cleared.
+  Not in `scratch()`, §3's last resort: it was not needed.
+- **Why not the bar's highlight byte `0x6B2B`.** It was the first design
+  and it cannot say whether a cursor is drawn: a typed letter sets it, so
+  the menu would grow a cursor on its return from a command and Return
+  would take a command nobody could see. `,` and `.` (which `bar-keys`
+  gives to Left and Right) step it with nothing drawn. And it is not where
+  the menu left it: the screen a command opens runs a bar of its own on the
+  same byte (measured at the menu: `2` after the add screen, `1` after the
+  view screen). The seam never writes it. Nor are **the pixels** the state:
+  the composed frame lags the planes by up to a frame, and a seam that is
+  only looking must never read the video window (§3, §8.4).
+- **Moving.** The cursor starts on the **first** command shown, so the
+  first press moves it: Down, Down takes the third. Up from nothing goes to
+  the last. It wraps at both ends, over the **rows shown**: a command the
+  menu does not draw has no row and is skipped. After a command is taken
+  the menu is redrawn, the cursor is hidden again, and the next Up or Down
+  starts from the first.
+- **Drawing.** The word it moves to is drawn whole in `0x0F` by the
+  program's own string drawer, handed the record's own address, so the text
+  is never in this repository. The word it leaves is put back the way the
+  loop draws it: its first letter in `0x0F` at column 2 and the rest in
+  `0x0A` at column 3, two Pascal strings the handler places
+  (`place_bytes`, §3), 41 bytes at most. One batch of at most three calls,
+  with the lit word first so that the cursor is on the glass before the old
+  word is put back. Frame by frame (`--dump-every 1`, a press at 7,600
+  and another at 7,615) a move is a left-to-right sweep a glyph at a time:
+  six frames to light a word, five more to put the old one back, and no
+  frame in which a word is blank or half missing; each cell goes straight
+  from one colour to the other, as the program's own text appears.
+  **Making the program redraw its menu** (the loop has a
+  flag for it) was considered and not built: it repaints the frame, the
+  party and every row on each press, and the cursor would then need a
+  second point after the redraw to be painted on it, which needs to know
+  whether to, which is the state this design does not have.
+- **Answered.** The key is replaced by `-` (`seam_key_read.h`), which the
+  routine reads and throws away, so it goes back to waiting. A batch offers
+  its point again when it is done (§3), and the handler then finds the `-`
+  and nothing to move.
+- **A second press while the cursor is drawn.** A move costs the program's
+  own glyph-at-a-time drawing: **26,960 steps (about 90 ms of the machine's
+  time) for a first press and 60,706 (about 200 ms) for one that puts a word
+  back**, measured. A key pressed in that time waits behind the `-`, and
+  the program's read keeps the last key waiting and drops the rest, which
+  ate the third of three quick Downs. So the handler takes its own `-` off
+  the ring when an Up, Down or Return is behind it, and handles that. It is
+  the only thing it ever takes off the ring; three Downs three frames apart
+  now move three rows. The cursor's byte is written when the move is
+  decided, not when its pixels are done, so a Return right behind a Down
+  takes the row the Down chose.
+- **Interplay.** `bar-keys`' Left and Right at this menu step the shared
+  highlight byte with nothing drawn; they do not touch the cursor. Its
+  Enter table does not include this caller. `list-arrows` does not reach the
+  main menu today (#435 extends it to the horizontal bars and leaves this
+  caller to this seam). Driven with all three on: Down, Right, Left, Down,
+  Home, Return gives the same stills as Down, Down, Home, Return with this
+  seam alone.
+- **Rejected:** Up and Down as the party cursor (Home and End) here, the
+  maintainer's choice, which is the other half of #435; a host-side remap,
+  for the reason `list-arrows` gives; keeping the cursor between commands,
+  which needs a place that survives a redraw and is not the program's;
+  starting from the bar's highlight; and the keypad's 8 and 2, which the
+  routine turns into the movement letters itself (they arrive as raw `H`
+  and `P` and the loop drops them).
+- **Not here.** The pick-lists (`list-arrows`), the horizontal bars
+  (`bar-keys`), a held key (the hosts drop OS key repeats, `hosts.md`).
+
+**State**: none of the seam's own; the cursor is held in the enable byte of
+Drop or Load while it is drawn (above). **Host services**: none. **Keys**:
+Up, Down and Return at the main menu.
+
+**Fidelity**: on and no Up or Down pressed at the main menu, identical:
+the handler reads the ring's head word and writes nothing unless it is Up
+or Down at that caller, or Return at that caller with a cursor drawn
+(`menu-letters-cursor` identical `menu-letters`: all 77 checkpoints). On and
+Down, Down and Return pressed, a contrast: `menu-down-cursor` agrees with
+`menu-down` for 60 of 70 checkpoints and diverges at the first Down (tick
+151,168,688), and the slot prompt is up at the end where the seam-off run
+shows the plain menu.
+Unit: `SeamMenuCursor.*`; stand-in: `menu_cursor_probe_off`,
+`menu_cursor_probe_on`.
 
 ### The debug cheats (#99, #161, #163, #196)
 
