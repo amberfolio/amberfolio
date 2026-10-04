@@ -2046,6 +2046,12 @@ Both are drawn by the shell and never into the game's screen. The page
 redraws the card when the set of seams that are on changes; the desktop
 builds it at every paint.
 
+**Beside it, the controls page.** `page/controls.html`, linked from the
+box, lists every controls improvement by screen, the enhancement each one
+needs and what each trades (#448). It is the dev page's furniture, served
+with it and not released, like `index.html`; the keys per screen stay the
+card's.
+
 **A seam's keys show only while it is on.** A row names a seam id, and a
 context left with no row to show is not shown. Adding a seam's keys is one
 line in `key_card.cpp`, in the context where the key is pressed.

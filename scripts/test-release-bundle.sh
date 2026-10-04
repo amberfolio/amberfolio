@@ -117,7 +117,8 @@ mkbuild() { # mkbuild <name> -> prints directory path
   for f in amberfolio.wasm amberfolio.mjs host.mjs app.mjs \
     audio-worklet.mjs picker.mjs journal.mjs persist.mjs toggle-panel.mjs \
     documents.mjs sidecars.mjs \
-    editions.mjs editions.json smoke.mjs drive.mjs boot.mjs index.html; do
+    editions.mjs editions.json smoke.mjs drive.mjs boot.mjs index.html \
+    controls.html; do
     echo "contents of $f" >"$d/$f"
   done
   echo "$d"
@@ -155,7 +156,7 @@ check "SHA256SUMS and manifest.json are written" test \
   -f "$out/SHA256SUMS" -a -f "$out/manifest.json"
 
 # The whole reason the asset list is spelled out rather than globbed.
-for stray in smoke.mjs drive.mjs boot.mjs index.html; do
+for stray in smoke.mjs drive.mjs boot.mjs index.html controls.html; do
   check "$stray is not released" test ! -e "$out/$stray"
 done
 
