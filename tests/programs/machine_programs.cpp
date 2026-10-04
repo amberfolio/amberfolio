@@ -3917,12 +3917,14 @@ struct list_arrows_layout {
 //
 // #435. The seam's third handler reads the keystroke at the head of the BIOS
 // ring and the menu-bar routine's frame, and writes Home or End over an Up
-// or Down when the caller is one whose Home and End step the party cursor.
+// or Down when the caller is one whose Home and End step the party cursor,
+// and (#447) the keypad's 8 or 2 with Num Lock on a keypad 7 or 1, which the
+// routine's own table turns into Home and End.
 // This program stands in for the routine as `bar_keys_probe` does: it is its
 // own overlay manager (it writes its own segment into the words the facts
 // name for the camp's module and the adventuring loop's), lays the caller's
 // return address in a frame, and puts a key at the head of the ring before
-// each of five arrivals, then reads what the ring holds.
+// each of six arrivals, then reads what the ring holds.
 //
 //         push cs / pop ds ; mov bp, 2000h ; mov ax, 40h / mov es, ax
 //         mov word es:[1Ah], 1Eh ; mov word es:[1Ch], 20h   ; one key waits
@@ -3952,12 +3954,15 @@ constexpr std::uint16_t roster_up = 0x4800;
 constexpr std::uint16_t roster_down = 0x5000;
 constexpr std::uint16_t roster_home = 0x4700;
 constexpr std::uint16_t roster_end = 0x4F00;
-/// The keypad's 2: Down's scan code with a character.
+/// The keypad's 2 and 8: Down's and Up's scan codes with a character; and
+/// the keypad's 1 and 7, which the seam writes over them.
 constexpr std::uint16_t roster_pad_2 = 0x5032;
+constexpr std::uint16_t roster_pad_8 = 0x4838;
+constexpr std::uint16_t roster_pad_1 = 0x4F31;
 
 struct roster_layout {
   std::vector<std::uint8_t> file;
-  std::array<std::uint32_t, 5> offsets{};
+  std::array<std::uint32_t, 6> offsets{};
 };
 
 /// One scenario's setup, then the arrival and its answer:
@@ -4009,6 +4014,7 @@ void roster_scenario(assembler& a, std::size_t index,
     roster_scenario(a, 2, roster_adventure_return, roster_up);
     roster_scenario(a, 3, roster_camp_return, roster_pad_2);
     roster_scenario(a, 4, roster_unlisted_return, roster_down);
+    roster_scenario(a, 5, roster_adventure_return, roster_pad_8);
     exit_with(a, 0x8F);
 
     roster_layout out;
@@ -5075,19 +5081,23 @@ constexpr std::array<machine::seam_point, 1> door_points{
   {
     // The list arrows at the command bars: off, every key is the
     // program's own; on, Up and Down at a caller whose Home and End step
-    // the party cursor are Home and End, and at a caller no table names,
-    // or as the keypad's digit, are left (#435).
+    // the party cursor are Home and End, the keypad's 2 there is its 1, and
+    // at a caller no table names, or the adventuring bar, a key is left
+    // (#435, #447).
     machine_program p;
     p.name = "list_arrows_bars_probe_off";
     p.about = "no seam: every key is the program's own";
     p.setup.exe = roster_probe_file();
     p.setup.exe_path = "\\ROSTER.EXE";
     p.setup.step_cap = 1'000;
-    p.results = {{.what = "up at the camp bar", .value = roster_up},
-                 {.what = "down at the camp bar", .value = roster_down},
-                 {.what = "up at the adventuring bar", .value = roster_up},
-                 {.what = "the keypad's 2", .value = roster_pad_2},
-                 {.what = "down at an unlisted caller", .value = roster_down}};
+    p.results = {
+        {.what = "up at the camp bar", .value = roster_up},
+        {.what = "down at the camp bar", .value = roster_down},
+        {.what = "up at the adventuring bar", .value = roster_up},
+        {.what = "the keypad's 2 at the camp bar", .value = roster_pad_2},
+        {.what = "down at an unlisted caller", .value = roster_down},
+        {.what = "the keypad's 8 at the adventuring bar",
+         .value = roster_pad_8}};
     p.exit_code = 0x8F;
     list.push_back(std::move(p));
   }
@@ -5101,11 +5111,14 @@ constexpr std::array<machine::seam_point, 1> door_points{
     p.setup.seam_definitions = {&roster_probe_definition()};
     p.setup.seams = {"list-arrows-bars-probe"};
     p.setup.step_cap = 1'000;
-    p.results = {{.what = "up at the camp bar", .value = roster_home},
-                 {.what = "down at the camp bar", .value = roster_end},
-                 {.what = "up at the adventuring bar", .value = roster_up},
-                 {.what = "the keypad's 2", .value = roster_pad_2},
-                 {.what = "down at an unlisted caller", .value = roster_down}};
+    p.results = {
+        {.what = "up at the camp bar", .value = roster_home},
+        {.what = "down at the camp bar", .value = roster_end},
+        {.what = "up at the adventuring bar", .value = roster_up},
+        {.what = "the keypad's 2 at the camp bar", .value = roster_pad_1},
+        {.what = "down at an unlisted caller", .value = roster_down},
+        {.what = "the keypad's 8 at the adventuring bar",
+         .value = roster_pad_8}};
     p.exit_code = 0x8F;
     list.push_back(std::move(p));
   }
@@ -5838,8 +5851,8 @@ const machine::seam_definition& roster_probe_definition() {
     return std::string(hex.data(), sha256_digest::text_length);
   }();
   static const std::array<std::string_view, 1> fingerprints{fingerprint};
-  static const std::array<machine::seam_point, 5> points = [] {
-    std::array<machine::seam_point, 5> built{};
+  static const std::array<machine::seam_point, 6> points = [] {
+    std::array<machine::seam_point, 6> built{};
     for (std::size_t i = 0; i < built.size(); ++i) {
       built[i] = {.module = machine::resident_image,
                   .offset = roster_probe().offsets[i],

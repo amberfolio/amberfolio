@@ -1,0 +1,173 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-only -->
+<!-- Every controls improvement, by screen (#448). Served beside the dev page
+     and linked from its key card box; not part of the release bundle. The
+     per-screen keys themselves are the key card's (hosts/common); this page
+     says which enhancement each improvement needs and what it trades. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amber Folio Controls</title>
+<style>
+/* Layout: one reading column of context sections, each a key table; the
+   four enhancements carry an EGA-palette chip so a row says which toggle it needs. */
+:root {
+  --bg: #f4f5f8;
+  --panel: #ffffff;
+  --fg: #1b1d2a;
+  --muted: #5a5f78;
+  --rule: #d9dbe6;
+  --frame: #aa0000;          /* the game's border red */
+  --key-bg: #ecedf3;
+  --key-edge: #b9bccb;
+  --c-list: #0a7f7f;         /* cyan */
+  --c-bar: #9a6a00;          /* brown/yellow */
+  --c-menu: #a3009f;         /* magenta */
+  --c-hero: #1d7a1d;         /* green */
+  --c-base: #4a4f66;
+  --display: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  --body: system-ui, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0b0c12; --panel: #13141d; --fg: #e8e9f2; --muted: #9a9eb8; --rule: #2a2c3c;
+  --frame: #ff5555; --key-bg: #22243a; --key-edge: #3c3f5c;
+  --c-list: #55ffff; --c-bar: #ffff55; --c-menu: #ff55ff; --c-hero: #55ff55; --c-base: #aab0cc;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0b0c12; --panel: #13141d; --fg: #e8e9f2; --muted: #9a9eb8; --rule: #2a2c3c;
+  --frame: #ff5555; --key-bg: #22243a; --key-edge: #3c3f5c;
+  --c-list: #55ffff; --c-bar: #ffff55; --c-menu: #ff55ff; --c-hero: #55ff55; --c-base: #aab0cc;
+  color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); }
+.wrap { max-width: 860px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 28px; }
+header { border-top: 4px solid var(--frame); padding-top: 16px; display: grid; gap: 8px; }
+h1 { font: 400 clamp(22px, 4vw, 30px)/1.15 var(--display); letter-spacing: .02em; margin: 0; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 65ch; }
+.how { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; }
+.how b { font-weight: 600; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 500 12px/1 var(--mono); padding: 4px 8px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; }
+.chip::before { content: ""; width: 7px; height: 7px; background: currentColor; }
+.c-list { color: var(--c-list); } .c-bar { color: var(--c-bar); } .c-menu { color: var(--c-menu); }
+.c-hero { color: var(--c-hero); } .c-base { color: var(--c-base); }
+
+section { display: grid; gap: 10px; }
+h2 { font: 400 15px/1.2 var(--display); letter-spacing: .04em; margin: 0; padding-bottom: 6px; border-bottom: 1px solid var(--rule); }
+h2 small { font: 400 13px var(--body); color: var(--muted); letter-spacing: 0; margin-left: 6px; }
+.tbl { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+td { padding: 7px 8px; vertical-align: top; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+td.k { width: 30%; min-width: 140px; }
+td.t { width: 1%; text-align: right; }
+kbd { font: 500 12.5px/1 var(--mono); background: var(--key-bg); border: 1px solid var(--key-edge); border-bottom-width: 2px; border-radius: 3px; padding: 3px 6px; display: inline-block; margin: 1px 2px 1px 0; white-space: nowrap; }
+.note { font-size: 13px; color: var(--muted); margin: 0; max-width: 70ch; }
+.trades { background: var(--panel); border: 1px solid var(--rule); border-left: 4px solid var(--frame); padding: 12px 16px; display: grid; gap: 6px; }
+.trades h2 { border: 0; padding: 0; }
+.trades ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+@media (max-width: 560px) { td.k { min-width: 110px; } td.t .chip { font-size: 11px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Amber Folio Controls</h1>
+  <p class="lede">Every keyboard improvement in the build, by where you are in Pool of Radiance. The game's own keys still work everywhere. Each coloured tag is an enhancement you switch on; untagged rows are the game's own or always on.</p>
+  <div class="how">
+    <span><b>Desktop:</b> right-click for the seam panel, right-click again for the key card.</span>
+    <span><b>Web:</b> the seam list and the key card sit under the game.</span>
+  </div>
+  <div class="legend">
+    <span class="chip c-list">list-arrows</span>
+    <span class="chip c-bar">bar-keys</span>
+    <span class="chip c-menu">menu-cursor</span>
+    <span class="chip c-hero">hero-keys</span>
+  </div>
+</header>
+
+<section>
+  <h2>Main menu <small>title screen and training hall</small></h2>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Move a highlight over the commands shown, skipping hidden ones. Appears on the first press.</td><td class="t"><span class="chip c-menu">menu-cursor</span></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the highlighted command.</td><td class="t"><span class="chip c-menu">menu-cursor</span></td></tr>
+    <tr><td class="k"><kbd>1</kbd>–<kbd>8</kbd> <span class="note">number row</span></td><td>Select that hero in the roster.</td><td class="t"><span class="chip c-hero">hero-keys</span></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>Previous or next hero (the game's own).</td><td class="t"></td></tr>
+    <tr><td class="k">capital letter</td><td>Take that command (the game's own; lower case works).</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Pick-lists <small>race, class, alignment, shops, spells, coins</small></h2>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Highlight the row above or below, like Home and End. Wraps within the page.</td><td class="t"><span class="chip c-list">list-arrows</span></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>The same, the game's own keys.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Choose the highlighted row.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>PgUp</kbd><kbd>PgDn</kbd></td><td>Turn the page when the list is longer than one.</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Choosing a party member <small>Trade, "cast on whom", a script's pick</small></h2>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Previous or next member.</td><td class="t"><span class="chip c-list">list-arrows</span></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>The same, the game's own keys.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Choose this member.</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Command bars <small>the line along the bottom</small></h2>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Step the highlight, like <kbd>,</kbd> and <kbd>.</kbd>. Everywhere except the exploring bar, combat movement and aim, and Modify, where the arrows already do something.</td><td class="t"><span class="chip c-bar">bar-keys</span></td></tr>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Take the highlighted command at the camp bar, Magic, Alter and the exploring bars. Commands other enhancements add, such as Fix and Notes, work too.</td><td class="t"><span class="chip c-bar">bar-keys</span></td></tr>
+    <tr><td class="k"><kbd>Up</kbd><kbd>Down</kbd></td><td>Previous or next hero wherever Home and End step it: camp, Magic, Alter, shops, temples, script prompts and the post-combat bars. On the party-order screen they move a picked-up hero.</td><td class="t"><span class="chip c-list">list-arrows</span></td></tr>
+    <tr><td class="k"><kbd>1</kbd>–<kbd>8</kbd> <span class="note">number row</span></td><td>Select that hero on the same screens.</td><td class="t"><span class="chip c-hero">hero-keys</span></td></tr>
+    <tr><td class="k">capital letter</td><td>Take that command (the game's own; lower case works).</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Yes/No questions <small>the game's prompts and the event scripts'</small></h2>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>Enter</kbd></td><td>Answer with the highlighted choice. The highlight starts on No at the game's own Yes/No.</td><td class="t"><span class="chip c-bar">bar-keys</span></td></tr>
+    <tr><td class="k"><kbd>Esc</kbd></td><td>Answer No.</td><td class="t"><span class="chip c-bar">bar-keys</span></td></tr>
+    <tr><td class="k"><kbd>Left</kbd><kbd>Right</kbd></td><td>Move the highlight between the answers.</td><td class="t"><span class="chip c-bar">bar-keys</span></td></tr>
+    <tr><td class="k"><kbd>Y</kbd><kbd>N</kbd></td><td>Answer directly (the game's own).</td><td class="t"></td></tr>
+  </table></div>
+  <p class="note">"Press Enter to continue" notices keep the game's own Enter.</p>
+</section>
+
+<section>
+  <h2>Exploring <small>towns, dungeons and the wilderness</small></h2>
+  <div class="tbl"><table>
+    <tr><td class="k"><kbd>1</kbd>–<kbd>8</kbd> <span class="note">number row</span></td><td>Select that hero. The roster shows each hero's number in front of the name. Keypad digits still walk.</td><td class="t"><span class="chip c-hero">hero-keys</span></td></tr>
+    <tr><td class="k">arrows, keypad</td><td>Walk and turn, unchanged by every enhancement.</td><td class="t"></td></tr>
+    <tr><td class="k"><kbd>Home</kbd><kbd>End</kbd></td><td>Previous or next hero (the game's own).</td><td class="t"></td></tr>
+  </table></div>
+</section>
+
+<section>
+  <h2>Everywhere, always on</h2>
+  <div class="tbl"><table>
+    <tr><td class="k">held key</td><td>Repeats, on the desktop build as on the web build and the original keyboard. The on-screen keyboard never repeats.</td><td class="t"><span class="chip c-base">desktop</span></td></tr>
+    <tr><td class="k">key card</td><td>Every screen's keys in one place, with an enhancement's rows shown only while it is on.</td><td class="t"><span class="chip c-base">both builds</span></td></tr>
+  </table></div>
+  <p class="note">Combat, Modify and text entry keep the game's own keys.</p>
+</section>
+
+<div class="trades">
+  <h2>What these change</h2>
+  <ul>
+    <li>Right at the post-combat Take bar no longer takes Money, and Left at the temple's keep prompt no longer keeps. Typing <kbd>M</kbd> or <kbd>K</kbd> still does.</li>
+    <li>At camp, Magic and Alter, Left and Right no longer send the selection back to the first hero.</li>
+    <li>In the rest menu, Left and Right step the highlight; <kbd>Y</kbd>, <kbd>H</kbd> and <kbd>M</kbd> still pick days, hours or minutes.</li>
+    <li>With hero-keys on, the number row no longer walks in the 3D view, and a 14- or 15-letter name shows its first 13 letters beside it.</li>
+  </ul>
+</div>
+</div>
+</body>
+</html>

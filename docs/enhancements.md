@@ -177,7 +177,11 @@ treasure bars, the shops, the temples and the game's yes/no style script
 prompts; any other key put the selection back on the first member. With
 the seam on, **Up and Down step the member too**, as Home and End do. On
 the party-order screen, with a member picked up, they move it up and down
-the order.
+the order. **The keypad's 8 and 2 do the same** with Num Lock on, at the
+same bars: 8 steps back and 2 steps forward. The number row's 8 and 2 are
+not touched; they are for `hero-keys`, and with both seams on each keeps
+its own, so the row's 8 picks the eighth member and the keypad's 8 steps
+back one.
 
 **How you turn it on.** `--seam list-arrows`, or the toggle in the panel.
 
@@ -189,9 +193,9 @@ score, and at the main menu they are left for their own seam. The seam
 names the bars it steps; it does not guess.
 
 **What it will not do.** Change the Yes/No prompt or the ability-score
-screen, step the member from the keypad's 8 and 2 at a bar (they still put
-the selection back on the first), or make a held key repeat (the hosts
-drop OS key repeats, `docs/hosts.md`).
+screen, step the member from the keypad's 8 and 2 at the adventuring bars
+(they walk and turn the party there, as the arrows do), or make a held key
+repeat (the hosts drop OS key repeats, `docs/hosts.md`).
 
 ## The text faces
 

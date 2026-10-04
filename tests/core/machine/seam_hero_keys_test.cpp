@@ -586,6 +586,74 @@ TEST(SeamHeroKeys, ANumberRowCharacterUnderAnotherScanCodeIsNotTheNumberRow) {
   EXPECT_EQ(r.selected(8), 3u);
 }
 
+// --- With list-arrows on at the same point ---------------------------------
+
+/// `list-arrows` has a point at the same instruction and takes the keypad's 8
+/// and 2 at the callers whose Home and End step the party cursor (#447); this
+/// seam takes the number row's digits. They are told apart by the scan code,
+/// so they do not fight, whichever of the two the engine runs first.
+class SeamHeroKeysWithListArrows : public testing::TestWithParam<bool> {};
+
+TEST_P(SeamHeroKeysWithListArrows, EachTakesItsOwnDigitsAtTheSharedPoint) {
+  const rig r;
+  const bool arrows_first = GetParam();
+  if (arrows_first) {
+    ASSERT_EQ(r.box->seams().enable("list-arrows"), seam_reason::none);
+  }
+  r.arm();
+  if (!arrows_first) {
+    ASSERT_EQ(r.box->seams().enable("list-arrows"), seam_reason::none);
+  }
+
+  constexpr std::uint16_t pad_8 = 0x4838;
+  constexpr std::uint16_t pad_2 = 0x5032;
+  constexpr std::uint16_t pad_7 = 0x4737;
+  constexpr std::uint16_t pad_1 = 0x4F31;
+
+  // The camp bar is a caller of both.
+  const caller& camp = hero_callers[3];
+
+  // The number row's 8 selects the eighth member through this seam's own
+  // Home, and nothing else touches it.
+  r.lay_party(8, 2);
+  EXPECT_EQ(r.press(number_row(8), camp), home);
+  EXPECT_EQ(cursor_goes_back(8, r.selected(8)), 7U);
+
+  // The keypad's 8 and 2 are `list-arrows`': the selection is not moved
+  // here, and the program's own table turns the 7 and 1 into Home and End.
+  r.lay_party(8, 2);
+  EXPECT_EQ(r.press(pad_8, camp), pad_7);
+  EXPECT_EQ(r.press(pad_2, camp), pad_1);
+  EXPECT_EQ(r.selected(8), 2U);
+
+  // The number row's 2 selects the second member.
+  r.lay_party(8, 5);
+  EXPECT_EQ(r.press(number_row(2), camp), home);
+  EXPECT_EQ(cursor_goes_back(8, r.selected(8)), 1U);
+
+  // Where this seam is a caller and `list-arrows` is not (the adventuring
+  // bars and the main menu), the keypad's 8 and 2 are the program's own.
+  for (const caller* c :
+       {&hero_callers[0], &hero_callers[1], &hero_callers[2]}) {
+    r.lay_party(8, 2);
+    EXPECT_EQ(r.press(pad_8, *c), pad_8) << c->name;
+    EXPECT_EQ(r.press(pad_2, *c), pad_2) << c->name;
+    EXPECT_EQ(r.press(number_row(8), *c), home) << c->name;
+  }
+
+  // And at a caller `list-arrows` has and this seam does not (the
+  // party-order screen), the keypad is rewritten and the row's digits are
+  // the program's.
+  const caller& order = other_callers[0];
+  r.lay_party(8, 2);
+  EXPECT_EQ(r.press(pad_8, order), pad_7);
+  EXPECT_EQ(r.press(number_row(8), order), number_row(8));
+  EXPECT_EQ(r.selected(8), 2U);
+}
+
+INSTANTIATE_TEST_SUITE_P(EitherOrder, SeamHeroKeysWithListArrows,
+                         testing::Bool());
+
 TEST(SeamHeroKeys, LeavesEveryOtherCallerItsDigits) {
   const rig r;
   r.arm();

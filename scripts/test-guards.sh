@@ -197,6 +197,63 @@ git -C "$r" add -A
 expect "a clock read outside core is not the host-time guard's business" 0 \
   bash "$r/scripts/check-host-time.sh"
 
+# The host-test guard (#445): a launch of the desktop host that says
+# neither --no-config nor --config reads the developer's own settings.
+# Direct calls, forwarding wrappers (judged by the function or by every
+# call of it) and a direct add_test are each caught; a comment that
+# mentions the flag is not a launch that carries it.
+r=$(mkrepo hostcfg)
+mkdir -p "$r/hosts/sdl/cmake"
+cat > "$r/hosts/sdl/CMakeLists.txt" <<'CM'
+add_test(NAME a COMMAND amberfolio-sdl --no-config)
+add_test(NAME b COMMAND "${CMAKE_COMMAND}" "-DHOST=$<TARGET_FILE:amberfolio-sdl>" -P run-b.cmake)
+CM
+cat > "$r/hosts/sdl/cmake/run-b.cmake" <<'CM'
+execute_process(COMMAND "${HOST}" "${DISK}" HELLO.EXE --no-config RESULT_VARIABLE c)
+function(run_it)
+  execute_process(COMMAND "${HOST}" "${DISK}" HELLO.EXE ${ARGN} RESULT_VARIABLE c)
+endfunction()
+run_it(--config "${cfg}")
+function(run_hermetic)
+  execute_process(COMMAND "${HOST}" "${DISK}" HELLO.EXE --no-config ${ARGN})
+endfunction()
+run_hermetic(--headless)
+CM
+git -C "$r" add -A
+expect "host launches that name their config pass the host-test guard" 0 \
+  bash "$r/scripts/check-host-tests.sh"
+
+cat >> "$r/hosts/sdl/cmake/run-b.cmake" <<'CM'
+execute_process(COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless)
+CM
+expect "a direct host launch with no config flag fails the host-test guard" 1 \
+  bash "$r/scripts/check-host-tests.sh"
+
+git -C "$r" checkout -q -- hosts/sdl/cmake/run-b.cmake
+cat >> "$r/hosts/sdl/cmake/run-b.cmake" <<'CM'
+run_it(--headless)
+CM
+expect "a wrapper call with no config flag fails the host-test guard" 1 \
+  bash "$r/scripts/check-host-tests.sh"
+
+cat > "$r/hosts/sdl/cmake/run-b.cmake" <<'CM'
+execute_process(COMMAND "${HOST}" x
+  # --no-config would go here
+  RESULT_VARIABLE c)
+CM
+expect "a comment naming the flag is not a launch carrying it" 1 \
+  bash "$r/scripts/check-host-tests.sh"
+
+printf 'message(STATUS hi)\n' > "$r/hosts/sdl/cmake/run-b.cmake"
+printf 'add_test(NAME a COMMAND amberfolio-sdl --headless)\n' \
+  > "$r/hosts/sdl/CMakeLists.txt"
+expect "a direct add_test with no config flag fails the host-test guard" 1 \
+  bash "$r/scripts/check-host-tests.sh"
+
+printf 'message(STATUS hi)\n' > "$r/hosts/sdl/CMakeLists.txt"
+expect "a tree with no host launch at all fails rather than passes" 1 \
+  bash "$r/scripts/check-host-tests.sh"
+
 # The format and shell gates need their tools. Skipping is announced, not
 # silent: a self-test that reports OK for a case it never ran is worse
 # than one that does not run at all.
