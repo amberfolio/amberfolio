@@ -110,6 +110,15 @@ if(WIN32)
     VERBATIM)
 endif()
 
+# **No host test reads the developer's config (#445).** The host reads
+# the config file of whoever runs it, so every `amberfolio-sdl` launch
+# below -- here and in cmake/run-*.cmake -- passes `--no-config`, or
+# `--config` pointing at a file the test wrote. The two are refused
+# together, so a test that needs a config is not also told to ignore one.
+# `scripts/check-host-tests.sh` (a CI guard) fails a launch that says
+# neither; only the config tests themselves (`run-config-file.cmake`,
+# `run-sidecar-consent.cmake`, `run-replay-past-config.cmake`) use a file.
+#
 # The smoke tests. The first three are headless, so they run on a CI box
 # with no display and no audio device; the fourth is not, and that is the
 # point of it (#80).
@@ -474,7 +483,7 @@ add_test(NAME sdl-host-verifies-a-session
   COMMAND amberfolio-sdl
     "${PROJECT_SOURCE_DIR}/tests/sessions/spin"
     SPIN.EXE
-    --headless
+    --headless --no-config
     --replay "${PROJECT_SOURCE_DIR}/tests/sessions/spin.rec")
 set_tests_properties(sdl-host-verifies-a-session PROPERTIES
   LABELS smoke

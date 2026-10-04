@@ -28,6 +28,12 @@ The rest (`sdl-host-vfs-door`, `sdl-host-presents-a-document`,
 `sdl-host-verifies-a-session`) are headless and belong to the doors they
 name.
 
+Host tests never read the developer's config (§2a): every launch passes
+`--no-config`, or `--config` with a file the test wrote (the two are refused
+together), and `scripts/check-host-tests.sh` fails one that says neither.
+`run-config-file.cmake` shows why: a config with every seam and
+`save-sidecars` on reaches a launch that lacks the flag and not one that has it.
+
 The windowed cases run **without** `--headless`, under SDL's `dummy` video
 and audio drivers with `SDL_RENDER_DRIVER=software`: SDL's real window,
 renderer, texture, audio stream and event queue, pointed at no hardware.

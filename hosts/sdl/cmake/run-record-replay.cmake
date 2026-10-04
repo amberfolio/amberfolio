@@ -48,7 +48,7 @@ file(COPY "${DISK}/" DESTINATION "${WORK}/replay")
 # note on `--fast`), which is exactly why a recording made under it
 # replays under it.
 execute_process(
-  COMMAND "${HOST}" "${WORK}/record" "${PROGRAM}" --fast max
+  COMMAND "${HOST}" --no-config "${WORK}/record" "${PROGRAM}" --fast max
           --press "${PRESS}" --record "${recording}"
   RESULT_VARIABLE record_code
   OUTPUT_VARIABLE record_out
@@ -135,7 +135,7 @@ endforeach()
 # Then the run that has to be the same one. No --press: the recording's
 # keys are the run's keys.
 execute_process(
-  COMMAND "${HOST}" "${WORK}/replay" "${PROGRAM}" --fast max
+  COMMAND "${HOST}" --no-config "${WORK}/replay" "${PROGRAM}" --fast max
           --replay "${recording}"
   RESULT_VARIABLE replay_code
   OUTPUT_VARIABLE replay_out
@@ -169,7 +169,7 @@ file(REMOVE_RECURSE "${WORK}/replay")
 file(COPY "${DISK}/" DESTINATION "${WORK}/replay")
 
 execute_process(
-  COMMAND "${HOST}" "${WORK}/replay" "${PROGRAM}" --fast max
+  COMMAND "${HOST}" --no-config "${WORK}/replay" "${PROGRAM}" --fast max
           --replay "${WORK}/tampered.rec"
   RESULT_VARIABLE tampered_code
   ERROR_VARIABLE tampered_err)
@@ -199,7 +199,7 @@ file(REMOVE_RECURSE "${WORK}/record")
 file(COPY "${DISK}/" DESTINATION "${WORK}/record")
 
 execute_process(
-  COMMAND "${HOST}" "${WORK}/record" "${PROGRAM}" --fast max
+  COMMAND "${HOST}" --no-config "${WORK}/record" "${PROGRAM}" --fast max
           --press "${PRESS}" --record "${sparse}"
           --record-every "${RECORD_EVERY}"
   RESULT_VARIABLE sparse_code
@@ -262,7 +262,7 @@ file(REMOVE_RECURSE "${WORK}/replay")
 file(COPY "${DISK}/" DESTINATION "${WORK}/replay")
 
 execute_process(
-  COMMAND "${HOST}" "${WORK}/replay" "${PROGRAM}" --fast max
+  COMMAND "${HOST}" --no-config "${WORK}/replay" "${PROGRAM}" --fast max
           --replay "${sparse}"
   RESULT_VARIABLE sparse_replay_code
   ERROR_VARIABLE sparse_replay_err)
@@ -289,7 +289,7 @@ file(REMOVE_RECURSE "${WORK}/record")
 file(COPY "${DISK}/" DESTINATION "${WORK}/record")
 
 execute_process(
-  COMMAND "${HOST}" "${WORK}/record" "${PROGRAM}" --fast max
+  COMMAND "${HOST}" --no-config "${WORK}/record" "${PROGRAM}" --fast max
           --record "${budgeted}" --record-every "${RECORD_EVERY}"
           --until "${RECORD_UNTIL}"
   RESULT_VARIABLE budgeted_code
@@ -323,7 +323,7 @@ file(REMOVE_RECURSE "${WORK}/replay")
 file(COPY "${DISK}/" DESTINATION "${WORK}/replay")
 
 execute_process(
-  COMMAND "${HOST}" "${WORK}/replay" "${PROGRAM}" --fast max
+  COMMAND "${HOST}" --no-config "${WORK}/replay" "${PROGRAM}" --fast max
           --replay "${budgeted}"
   RESULT_VARIABLE budgeted_replay_code
   ERROR_VARIABLE budgeted_replay_err)
