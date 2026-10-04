@@ -59,6 +59,8 @@
 //     leaf's highlighted arm). A command letter keeps `color_hi`, and
 //     every other character is yellow. Where `color_hi` is already
 //     yellow, a command letter is drawn white, so the key still stands out.
+//     A bar with a single command letter (a script's one-choice notice) has
+//     nothing to select among and is left as the program draws it.
 //   * **The pick-list's row** (point 2, the string call): yellow.
 //   * **The roster's selected member** (point 3, the string call at the
 //     drawer's selected-member arm, `inside_calls`: the automap and the
@@ -284,6 +286,16 @@ struct stack {
 // program's table, its highlight byte and its key matching are not touched
 // and a character of the word the program left outside the group is lit by
 // the point it goes through.
+//
+// **A bar with one command letter is not a selection.** It has one group, so
+// there is nothing for the highlight to move to, and the script runner hands
+// every one-choice prompt (`Press <enter>/<return> to continue`, stored as
+// written here: one capital, the rest lower case, though the face draws
+// lower case as capitals) to the routine as exactly that. Such a bar is left
+// as the program draws it, which is one colour end to end where its bright
+// and dim are the same; only the swapped pair below is put right. The rule is
+// the number of command letters and not the case: the save and load slot bars
+// (`A B C E J`) are all capitals and are real choices, one letter to a group.
 
 /// The pair a few callers hand the bar the wrong way round: white for
 /// `color_lo` and green for `color_hi`. Left alone the bar draws its
@@ -314,6 +326,18 @@ struct stack {
   return in_word && bright == colour_yellow ? colour_white : bright;
 }
 
+/// What a character of a bar with one command letter is drawn in: what the
+/// program chose, except that a swapped pair is put the right way round (its
+/// bright green becomes white and its dim white green, which is what
+/// `bar_colour` does for the characters of a bar that has a selection).
+[[nodiscard]] constexpr std::uint8_t unselected_bar_colour(
+    std::uint8_t drawn, std::uint8_t color_lo, std::uint8_t color_hi) noexcept {
+  if (!is_swapped(color_lo, color_hi)) {
+    return drawn;
+  }
+  return drawn == color_hi ? colour_white : colour_green;
+}
+
 /// What a point reads of the bar: the call's own words and the frames of the
 /// leaf and of the routine that drew it.
 struct bar_call {
@@ -322,6 +346,7 @@ struct bar_call {
   std::uint8_t character{};
   std::uint8_t colour{};
   bool in_word{false};
+  bool one_command{false};
 };
 
 /// The widest bar the routine copies (a Pascal string of at most forty).
@@ -373,6 +398,13 @@ constexpr std::uint8_t max_bar = 0x28;
     ++last;
   }
   out.in_word = index >= first && index <= last;
+  unsigned commands = 0;
+  for (std::uint8_t position = 1; position <= length; ++position) {
+    if (is_command_letter(bar(position))) {
+      ++commands;
+    }
+  }
+  out.one_command = commands == 1;
   return true;
 }
 
@@ -394,7 +426,10 @@ void at_bar(machine& box, seam_context& ctx, bool expect_bright,
     return;
   }
   const std::uint8_t colour =
-      bar_colour(call.character, call.in_word, call.color_lo, call.color_hi);
+      call.one_command
+          ? unselected_bar_colour(call.colour, call.color_lo, call.color_hi)
+          : bar_colour(call.character, call.in_word, call.color_lo,
+                       call.color_hi);
   if (colour != call.colour) {
     s.set_top_byte(glyph_colour, colour);
   }
