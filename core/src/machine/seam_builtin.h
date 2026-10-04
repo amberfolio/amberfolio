@@ -38,6 +38,9 @@ namespace amberfolio::machine {
 /// Left and Right step a command bar's highlight, and Enter takes it
 /// (seam_bar_keys.cpp, #425).
 [[nodiscard]] const seam_definition& bar_keys_seam() noexcept;
+/// Up and Down move a cursor over the main menu, and Return takes it
+/// (seam_menu_cursor.cpp, #434).
+[[nodiscard]] const seam_definition& menu_cursor_seam() noexcept;
 
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;

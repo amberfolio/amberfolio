@@ -350,6 +350,11 @@ struct machine_program {
 [[nodiscard]] const std::vector<std::uint8_t>& bar_keys_probe_file();
 [[nodiscard]] const machine::seam_definition& bar_keys_probe_definition();
 
+/// The menu cursor's stand-in: the handler at four made-up arrivals, with
+/// the command records and a string drawer of its own (#434).
+[[nodiscard]] const std::vector<std::uint8_t>& menu_cursor_probe_file();
+[[nodiscard]] const machine::seam_definition& menu_cursor_probe_definition();
+
 /// The font stand-in's image, and the sans face's own handler at its two
 /// fetches.
 [[nodiscard]] const std::vector<std::uint8_t>& font_probe_file();
