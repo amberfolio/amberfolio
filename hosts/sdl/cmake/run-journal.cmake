@@ -38,7 +38,7 @@ endif()
 
 function(run_host)
   execute_process(
-    COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless ${ARGN}
+    COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless --no-config ${ARGN}
     RESULT_VARIABLE code
     OUTPUT_VARIABLE out
     ERROR_VARIABLE err)
@@ -219,7 +219,7 @@ file(WRITE "${retired}" "left by an earlier build")
 
 function(run_cite_host)
   execute_process(
-    COMMAND "${HOST}" "${cite_disk}" HELLO.EXE --headless ${ARGN}
+    COMMAND "${HOST}" "${cite_disk}" HELLO.EXE --headless --no-config ${ARGN}
     RESULT_VARIABLE code
     OUTPUT_VARIABLE out
     ERROR_VARIABLE err)

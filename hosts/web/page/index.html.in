@@ -393,6 +393,7 @@
       <div id="keycard">
         <span class="note">the keys appear here once a program is loaded</span>
       </div>
+      <p class="note"><a href="controls.html" target="_blank" rel="noopener">every controls improvement, by screen</a></p>
     </fieldset>
 
     <!-- Keeping a playthrough's progress beside its saves (M6, #385).

@@ -15,7 +15,7 @@ if(NOT HOST OR NOT DISK)
 endif()
 
 execute_process(
-  COMMAND "${HOST}" "${DISK}" HELLO.EXE --headless
+  COMMAND "${HOST}" --no-config "${DISK}" HELLO.EXE --headless
   RESULT_VARIABLE code
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err)

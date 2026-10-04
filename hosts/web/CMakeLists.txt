@@ -356,6 +356,9 @@ set(_amberfolio_web_files
   "${CMAKE_CURRENT_SOURCE_DIR}/page/documents.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/sidecars.mjs"
   "${CMAKE_CURRENT_SOURCE_DIR}/page/editions.mjs"
+  # Every controls improvement, by screen (#448): the dev page links it from
+  # its key card box. Not released, like index.html.
+  "${CMAKE_CURRENT_SOURCE_DIR}/page/controls.html"
   # The edition table itself (#207), placed rather than compiled in: a
   # page renders the checklist while the module is still downloading, so
   # it has to be a file the page can fetch. It is the same file
