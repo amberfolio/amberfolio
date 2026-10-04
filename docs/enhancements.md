@@ -216,23 +216,34 @@ again.
 reaches for first. **Left and Right step the highlight** along a bar, as
 `,` and `.` always did, wherever the game would otherwise throw them away.
 **Enter takes the highlighted command**, as if you had typed its letter,
-at the Yes/No prompt, the camp bar and the adventuring bar. The bar, its
+at the Yes/No prompt, the camp bar and its Magic and Alter bars, and the
+adventuring bar. The bar, its
 highlight and its commands stay the game's own; nothing is drawn.
 
 **How you turn it on.** `--seam bar-keys`, or the toggle in the panel.
 
-**Where Enter works.** Three places, because the game hands Enter back to
+**Where Enter works.** A few places, because the game hands Enter back to
 whoever called the bar and only some of them leave it alone. At the Yes/No
 prompt the highlight starts on `No`, so Enter answers No; Left steps it to
-`Yes` first. The camp bar and the adventuring bar (in the city, with its
-`Area` command, and in the wilderness, without it) take the command under
-the highlight. A command the other seams add, the Encamp Fix's
+`Yes` first. The camp bar, camp's Magic and Alter bars, and the adventuring
+bar (in the city, with its `Area` command, and in the wilderness, without
+it) take the command under the highlight. A command the other seams add, the Encamp Fix's
 `Fix` and the journal's `Notes`, is taken the same way.
 
-**Where Left and Right work.** On every bar the game draws that does not
-own the arrows. In 3D, in the wilderness and at camp the arrows move the
-party or the roster cursor, as they always did, and the seam is never
-offered them.
+**Where Left and Right work.** On every bar but the few that use the
+arrows themselves. Those keep them: the adventuring bar, where they turn
+and move the party; combat's move and aim cursors; the stat editor, where
+they lower and raise a score; the rest-time menu; and two press-Enter
+prompts after a fight. At the camp bar and its Magic and Alter bars the
+game used an arrow only to put the selected party member back on the
+first, and nobody presses an arrow for that; with the seam on they step
+the highlight instead, and Home and End still step the member.
+
+**What it changes.** Two bars the game lets an arrow act on by accident,
+because its scan code is also a letter. At the post-combat Take bar Right
+used to take Money (`M`), and at the temple's keep-or-sell prompt Left used
+to keep the gem (`K`). With the seam on both step the highlight like any
+bar, and the letters still work.
 
 **What it will not do.** Make Enter confirm a row in the pick-lists (it
 already does), or take a command at any bar not named above: those are

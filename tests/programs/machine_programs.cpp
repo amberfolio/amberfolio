@@ -3095,6 +3095,10 @@ constexpr std::uint16_t bar_keys_bar = 0x53;
 /// The word the program's overlay manager keeps overlay 25's segment in, the
 /// highlight byte, and the Yes/No prompt's return offset: a tabled caller.
 constexpr std::uint16_t bar_keys_overlay_word = 0x3C60;
+/// The word it keeps overlay 14's segment in, and the adventuring bar's
+/// return offset: a caller that keeps its arrows.
+constexpr std::uint16_t bar_keys_arrow_word = 0x0730;
+constexpr std::uint16_t bar_keys_arrow_return = 0x09D5;
 constexpr std::uint16_t bar_keys_highlight = 0x6B2B;
 constexpr std::uint16_t bar_keys_tabled_return = 0x111E;
 /// A return offset no table names.
@@ -3171,6 +3175,8 @@ void bar_keys_scenario(assembler& a, std::size_t index, std::uint8_t raw,
     a.db({0x8C, 0xC8});  // mov ax, cs
     a.db({0xA3});
     a.dw(bar_keys_overlay_word);  // mov [3C60h], ax
+    a.db({0xA3});
+    a.dw(bar_keys_arrow_word);  // mov [0730h], ax
     a.db({0x89, 0x86});
     a.dw(bar_keys_ret_cs);  // mov [bp+4], ax
 
@@ -3198,7 +3204,7 @@ void bar_keys_scenario(assembler& a, std::size_t index, std::uint8_t raw,
 
     bar_keys_scenario(a, 0, 0, bar_keys_tabled_return, bar_keys_left);
     bar_keys_scenario(a, 1, 0, bar_keys_tabled_return, bar_keys_right);
-    bar_keys_scenario(a, 2, 1, bar_keys_tabled_return, bar_keys_left);
+    bar_keys_scenario(a, 2, 1, bar_keys_arrow_return, bar_keys_left);
     bar_keys_scenario(a, 3, 0, bar_keys_tabled_return, bar_keys_enter);
     bar_keys_scenario(a, 4, 0, bar_keys_untabled_return, bar_keys_enter);
     exit_with(a, 0x8E);
@@ -4257,8 +4263,9 @@ constexpr std::array<machine::seam_point, 1> door_points{
 
   {
     // The bar keys: off, every key is the program's own; on, an arrow
-    // at a bar that is not raw is the bar's own step key, an arrow at a
-    // raw bar is left, Enter at a tabled caller is the highlighted
+    // at a caller that does not use it is the bar's own step key, an
+    // arrow at one that does (the adventuring bar) is left, Enter at a
+    // tabled caller is the highlighted
     // group's letter, and Enter at a caller no table names is left (#425).
     machine_program p;
     p.name = "bar_keys_probe_off";

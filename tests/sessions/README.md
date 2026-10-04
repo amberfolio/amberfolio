@@ -87,9 +87,11 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `list-keys-arrows` | same | + list-arrows | `identical list-keys` | the same keys with the arrows' seam on and no arrow pressed |
 | `list-down` | same | code-wheel | | the same script with Down and Up where `list-keys` presses End and Home: the program drops them and the character is the first row of every list |
 | `list-down-arrows` | same | + list-arrows | **`contrast list-down`** | 62 of 84 identical, divergent from the first Down (tick 153,157,488): the highlight moves and the character is the one `list-keys` makes |
-| `quiet-bar-keys` | same | + bar-keys | `identical quiet` | the seam on, and `quiet`'s one Right is at the party's own bar, which is raw: the program keeps the arrow and the seam leaves it. Six keys read at bars, none rewritten |
+| `quiet-bar-keys` | same | + bar-keys | `identical quiet` | the seam on, and `quiet`'s one Right is at the adventuring bar, which uses its arrows: the program keeps the arrow and the seam leaves it. Six keys read at bars, none rewritten |
 | `bar-enter` | shipped slots | code-wheel | | slot C, `ENCAMP`, `.` to step the highlight to ALTER, and Return at the camp bar, which the program ignores. 93 checkpoints |
 | `bar-enter-keys` | same | + bar-keys | **`contrast bar-enter`** | 86 of 93 identical, divergent from tick 206,218,672: the Return takes ALTER, and its sub-bar is up where the seam-off run shows the camp bar |
+| `bar-camp` | same | code-wheel | | slot C, `ENCAMP`, a Right at the camp bar, which the program hands to the party cursor, and Return, which it ignores. 93 checkpoints |
+| `bar-camp-keys` | same | + bar-keys | **`contrast bar-camp`** | 83 of 93 identical, divergent from tick 201,127,344: the Right steps the highlight to ALTER and the Return takes it, and its sub-bar is up where the seam-off run shows the camp bar |
 | `bar-yn` | same | code-wheel | | slot C's camp, `SAVE`, a Right at the slot bar, Escape, and Return at the quit prompt that follows: the program drops the Right and the Return. 100 checkpoints |
 | `bar-yn-keys` | same | + bar-keys | **`contrast bar-yn`** | 86 of 100 identical, divergent from tick 206,218,672: the Right steps the slot bar's highlight, and the Return answers the prompt `No` |
 
@@ -104,7 +106,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `explored` | `wild-trail` | `quiet-explored` |
 | the cheats | `fight-cheat`; `camp-fix` pulls `cheat-wound-party` | `quiet-cheats` |
 | `list-arrows` | `list-down-arrows` | `list-keys-arrows` |
-| `bar-keys` | `bar-enter-keys`, `bar-yn-keys` | `quiet-bar-keys` |
+| `bar-keys` | `bar-enter-keys`, `bar-yn-keys`, `bar-camp-keys` | `quiet-bar-keys` |
 | `font-sans`, `font-chisel` | `quiet-font-sans`, `quiet-font-chisel` (on is exercised: text is drawn from the first screen) | none can exist; the pair is a `contrast` |
 
 Subsets: `quiet-all` (all on), `subset-map-reader` (two seams wanting the

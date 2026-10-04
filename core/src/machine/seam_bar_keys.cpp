@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The bar-keys seam: Left and Right step a command bar's highlight, and
-// Enter takes the highlighted command (#425).
+// Enter takes the highlighted command (#425, #432).
 //
 //
 // What the program does, stated as facts
@@ -38,6 +38,17 @@
 //     wilderness. **With raw mode clear, the routine reads it and throws it
 //     away.**
 //
+// **What the callers do with an arrow** (#432). Most raw-mode callers do
+// nothing with Left and Right: the camp bar, its Magic and Alter sub-bars
+// and the member-order screen hand every raw key to one resident routine,
+// the party cursor's, which steps the selected member on `G` and `O` and
+// **on any other key moves the selection back to the head of the party**.
+// A few callers use the arrows on purpose, to move the party, a fighter or
+// an aiming cursor, or to change a value. And a raw caller hands back the
+// scan codes `0x4B` and `0x4D`, which are also the letters `K` and `M`, so
+// one that compares letters without testing the out-parameter acts on an
+// arrow as if it were that letter (docs/seams.md §10 has each).
+//
 // The routine parses the bar into locals of its own frame before it starts
 // asking for keys, and everything this seam reads about the bar it reads
 // there, so it sees the bar the routine sees and not a second reading of
@@ -57,8 +68,9 @@
 // and the handler rewrites that word *before the program reads it*:
 //
 //   * **Left or Right** (scan `0x4B` or `0x4D`, character zero) becomes
-//     `,` or `.`, when this call's raw-mode argument is zero. A raw-mode
-//     bar is left alone, because its caller owns the arrows.
+//     `,` or `.`, **at every caller except those in the exclusion table
+//     below**, raw mode or not. A caller that uses the arrows on purpose is
+//     in the table, and gets its arrow.
 //   * **Enter** (scan `0x1C`, character `0x0D`) becomes the command letter
 //     of the highlighted group, when the call's **caller** is one in the
 //     table below and the letter's *last* match in the bar is that same
@@ -73,14 +85,16 @@
 // overlay-qualified: the frame holds the caller's offset and segment, and a
 // caller is in the table when its segment is the one the program's overlay
 // manager says that module is at now and its offset is the instruction
-// after the call. A caller the table does not name is never offered Enter.
+// after the call. A caller the Enter table does not name is never offered
+// Enter, and a caller the exclusion table does not name is offered its
+// arrows as `,` and `.`.
 //
 // **Why a table and not every bar.** The routine hands Enter back, and
-// what a caller does with `0x0D` is the caller's own business: three
-// callers were read and each does nothing with it (it matches none of its
-// comparisons and the loop asks again). A caller that did something with
-// it, a pick-list that confirms its row, would be handed a letter it never
-// asked for. Each caller in the table is shown to ignore Enter by two
+// what a caller does with `0x0D` is the caller's own business: the
+// callers in the table were read and each does nothing with it (it matches
+// none of its comparisons and the loop asks again). A caller that did
+// something with it, a pick-list that confirms its row, would be handed a
+// letter it never asked for. Each caller in the table is shown to ignore Enter by two
 // routes (docs/seams.md §10).
 //
 //   | caller | module | return offset | what it does with `0x0D` |
@@ -89,6 +103,32 @@
 //   | the adventuring bar, overhead view | overlay 14 | `0x09D5` | none of its compares match; asks again |
 //   | the adventuring bar, 3D view | overlay 14 | `0x0C45` | the same |
 //   | the camp bar | overlay 15 | `0x1F24` | none of its compares match; asks again |
+//   | camp's Magic bar | overlay 15 | `0x1447` | none of its compares match; asks again |
+//   | camp's Alter bar | overlay 15 | `0x1CA4` | none of its compares match; asks again |
+//
+// **The callers that keep their arrows** (#432). Every caller of the
+// routine was read (docs/seams.md §10 lists each with its verdict); these
+// use Left and Right on purpose:
+//
+//   | caller | module | return offset | what it does with an arrow |
+//   |---|---|---|---|
+//   | the adventuring bar, overhead view | overlay 14 | `0x09D5` | turns the party, or steps it |
+//   | the adventuring bar, 3D view | overlay 14 | `0x0C45` | the same |
+//   | the combat move loop | overlay 8 | `0x0AC8` | steps the fighter |
+//   | the combat aim cursor | overlay 13 | `0x3178` | moves the cursor |
+//   | the stat editor | overlay 16 | `0x216E` | lowers and raises a score |
+//   | the rest-time menu | overlay 20 | `0x076E` | picks the field |
+//   | the treasure share's press-Enter prompt | overlay 5 | `0x0AF8` | any extended key ends it |
+//   | the NPC share's press-Enter prompt | overlay 5 | `0x14C7` | the same |
+//
+// The last two are not uses of the arrow by purpose, but a prompt that
+// told the player to press Enter and let any arrow end it as well; with
+// `,` and `.` in its place a Left or a Right would do nothing at all.
+//
+// Two callers act on an arrow by letter coincidence and are **not** in the
+// table, by decision: the post-combat Take bar (Right is its `M`, Money)
+// and the temple's keep-or-sell prompt (Left is its `K`, Keep). With the
+// seam on the arrows step the highlight there like everywhere else.
 //
 // **Why the BIOS ring and not AL.** The program reads the key two
 // routines deep, through INT 16h, so the first place any seam can see it
@@ -126,12 +166,13 @@
 // -------------------------------------------------------------------
 //
 // Enter at the other callers of the routine, which are listed with why in
-// docs/seams.md §10. Out of scope, filed apart: the pick-lists' arrows
+// docs/seams.md §10. Out of scope, filed apart: the pick-lists' Up and Down
 // (#423) and a held key repeating (#426).
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 
 #include "amberfolio/cpu/processor.h"
@@ -173,11 +214,9 @@ constexpr std::uint32_t key_read_call = 0x0572;
 
 // --- The routine's frame ---------------------------------------------------
 
-/// Above BP: the caller's return address, offset then segment, and the
-/// caller's raw-mode argument.
+/// Above BP: the caller's return address, offset then segment.
 constexpr std::uint16_t frame_return_ip = 2;
 constexpr std::uint16_t frame_return_cs = 4;
-constexpr std::uint16_t frame_raw_mode = 0x0C;
 
 /// Below BP: the routine's parse of the bar. `enter_allowed` is a byte,
 /// then the group count, then, from the same base, a pair of bytes per
@@ -210,17 +249,41 @@ struct bar_caller {
   std::uint16_t return_offset;
 };
 
-/// The words the program's overlay manager keeps the three modules' load
+/// The words the program's overlay manager keeps the modules' load
 /// segments in. The adventuring loop's and the camp screen's are the words
-/// `journal` and `encamp-fix` resolve their own points through.
-constexpr std::uint32_t adventure_load_segment_at = 0x730;
-constexpr std::uint32_t camp_load_segment_at = 0x760;
+/// `journal` and `encamp-fix` resolve their own points through; the combat
+/// overlay's is `cheat-kill-all`'s. Each is the manager's record of the
+/// module (its file offset and length, from the overlay table) and the
+/// word sixteen bytes into it, found by searching the resident image: one
+/// match each.
+constexpr std::uint32_t post_combat_load_segment_at = 0x260;  // overlay 5
+constexpr std::uint32_t combat_load_segment_at = 0x360;       // overlay 8
+constexpr std::uint32_t aim_load_segment_at = 0x690;          // overlay 13
+constexpr std::uint32_t adventure_load_segment_at = 0x730;    // overlay 14
+constexpr std::uint32_t camp_load_segment_at = 0x760;         // overlay 15
+constexpr std::uint32_t roster_load_segment_at = 0x790;       // overlay 16
+constexpr std::uint32_t rest_load_segment_at = 0x8D0;         // overlay 20
 
-constexpr std::array<bar_caller, 4> enter_callers{{
+constexpr std::array<bar_caller, 6> enter_callers{{
     {.load_segment_at = menu_load_segment_at, .return_offset = 0x111E},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
     {.load_segment_at = camp_load_segment_at, .return_offset = 0x1F24},
+    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1447},
+    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1CA4},
+}};
+
+// --- The callers that keep Left and Right ---------------------------------
+
+constexpr std::array<bar_caller, 8> arrow_callers{{
+    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
+    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
+    {.load_segment_at = combat_load_segment_at, .return_offset = 0x0AC8},
+    {.load_segment_at = aim_load_segment_at, .return_offset = 0x3178},
+    {.load_segment_at = roster_load_segment_at, .return_offset = 0x216E},
+    {.load_segment_at = rest_load_segment_at, .return_offset = 0x076E},
+    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x0AF8},
+    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x14C7},
 }};
 
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
@@ -249,9 +312,10 @@ constexpr std::uint16_t scan_enter = 0x1C00;
                        static_cast<std::uint16_t>(at));
 }
 
-/// Whether this call of the routine came from a caller that ignores Enter.
-[[nodiscard]] bool called_from_a_tabled_caller(cpu::processor& cpu,
-                                               const seam_context& ctx) {
+/// Whether this call of the routine came from a caller in `table`.
+[[nodiscard]] bool called_from_a_tabled_caller(
+    cpu::processor& cpu, const seam_context& ctx,
+    std::span<const bar_caller> table) {
   cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
   const std::uint16_t bp = regs[cpu::reg16::bp];
@@ -260,7 +324,7 @@ constexpr std::uint16_t scan_enter = 0x1C00;
   const std::uint16_t cs =
       cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
 
-  for (const bar_caller& caller : enter_callers) {
+  for (const bar_caller& caller : table) {
     if (ip != caller.return_offset) {
       continue;
     }
@@ -363,7 +427,7 @@ void at_key_read(machine& box, seam_context& ctx) {
   }
 
   if (key == key_enter) {
-    if (!called_from_a_tabled_caller(cpu, ctx)) {
+    if (!called_from_a_tabled_caller(cpu, ctx, enter_callers)) {
       return;
     }
     const std::uint16_t answer = letter_for_enter(cpu, ctx);
@@ -373,11 +437,8 @@ void at_key_read(machine& box, seam_context& ctx) {
     return;
   }
 
-  const std::uint8_t raw = cpu.read_byte(
-      regs[cpu::sreg::ss],
-      static_cast<std::uint16_t>(regs[cpu::reg16::bp] + frame_raw_mode));
-  if (raw != 0) {
-    // A raw-mode bar's caller owns the arrows.
+  if (called_from_a_tabled_caller(cpu, ctx, arrow_callers)) {
+    // A caller that uses the arrows keeps them.
     return;
   }
   cpu.write_word(bda::segment, head, key == key_left ? key_comma : key_period);
