@@ -232,23 +232,32 @@ again.
 reaches for first. **Left and Right step the highlight** along a bar, as
 `,` and `.` always did, wherever the game would otherwise throw them away.
 **Enter takes the highlighted command**, as if you had typed its letter,
-at the Yes/No prompt, the questions the game's event scripts ask, the camp
-bar and its Magic and Alter bars, and the adventuring bar. **Esc answers
+at nearly every bar that would have ignored it, and at the rest-time menu.
+**Esc answers
 No** at a Yes/No question. The bar, its highlight and its commands stay the
 game's own; nothing is drawn.
 
 **How you turn it on.** `--seam bar-keys`, or the toggle in the panel.
 
-**Where Enter works.** A few places, because the game hands Enter back to
-whoever called the bar and only some of them leave it alone. At the Yes/No
+**Where Enter works.** The game hands Enter back to whoever called the
+bar, and each caller does as it likes with it; this seam takes it at the
+callers that ask again, and leaves the ones that use it. At the Yes/No
 prompt the highlight starts on `No`, so Enter answers No; Left steps it to
 `Yes` first. The same goes for a question an event script asks, such as the
 arena master's *do you duel?*: whatever is highlighted is what Enter answers.
 A script's *press Enter to continue* is the game's own: Enter already
-continues it. The camp bar, camp's Magic and Alter bars, and the
-adventuring bar (in the city, with its `Area` command, and in the
-wilderness, without it) take the command under the highlight. A command the other seams add, the Encamp Fix's
-`Fix` and the journal's `Notes`, is taken the same way.
+continues it. These take the command under the highlight: the camp bar
+and its Magic, Alter and game-speed bars and Alter's portraits and monsters
+bar; the adventuring bar (in the city, with its `Area` command, and in the
+wilderness, without it); the portrait bar at character creation (`Head Body
+Keep`); the shops' and temples' bars and the temple's appraisal; combat's
+command, Done and game-speed bars; the View bar; the post-combat treasure
+and Take bars; and the load-game slot bar. A command the other seams add,
+the Encamp Fix's `Fix` and the journal's `Notes`, is taken the same way.
+**The rest-time menu** is the one place the game used Enter for itself (it
+meant Rest) and the seam takes it instead: it follows the highlight, which
+opens on whichever word the camp bar's `Rest` left it on, `Mins`, so Left
+and Right to `Rest` first.
 
 **Where Left and Right work.** On every bar but the few that use the
 arrows themselves. Those keep them: the adventuring bar, where they turn
@@ -273,8 +282,13 @@ the seam on they step the highlight instead, as at any other bar. `Y`, `H`
 and `M` still pick the field.
 
 **What it will not do.** Make Enter confirm a row in the pick-lists (it
-already does), or take a command at any bar not named above: those are
-left as the game has them until each is shown to ignore Enter. Make a held
+already does), or take a command where the game gives Enter a meaning of its
+own: the pick-lists and the party picker, the party-order screen, combat's
+move and aim, the locked-door question (where it is no choice), the
+temple's keep-or-sell (where it sells), the press-Enter notices, the icon
+editor. Two bars drop Enter and are left alone on purpose, because a stray
+Return there would do harm: the save-game slot bar (it would write the lit
+slot) and the stat editor (its `Exit` discards the edit). Make a held
 key repeat (`docs/hosts.md`) or step the pick-lists and the selected member
 with the up and down arrows (`list-arrows`).
 
