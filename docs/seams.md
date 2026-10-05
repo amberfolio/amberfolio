@@ -2115,6 +2115,8 @@ v1's six. A setting; keys and a display change. Nothing to pull.
 | image `0x0572` of overlay 25, the call into the key-read routine inside the menu-bar routine (`bar-keys`' point) | overlay 25, through the manager's word | a number-row `1` to `8` at the head of the BIOS ring, from a caller in the table below: puts the selection on the target's successor (the head for the last member and for a party of one) and rewrites the key to Home. With nobody behind the digit, the key becomes the one the program throws away |
 | image `0x138F`, the instruction after the roster drawer clears a member's row | resident image, `inside_calls` | the name's column goes up two, and the program's glyph routine draws the member's number at the old column in white |
 | image `0x13CB`, where the drawer's two name paths meet, before the armour class | resident image, `inside_calls` | a name that now ends past column `0x20` has its tail cleared by the program's clear routine; the column goes back |
+| image `0x140F`, the push of the armour class's column (AX `0x20` to `0x22`, by the value's width), same frame check | resident image, `inside_calls` | AX goes up one: the value is right-aligned in `0x21` to `0x23` |
+| image `0x135A`, after the drawer has copied the heading `AC  HP` into its frame (`BP-0x0E`, a length-prefixed string) for row two | resident image, `inside_calls` | the copy becomes ` AC  HP`: the heading's `AC` moves one right and `HP` stays; refused unless the copy is the original string |
 
 | fact | value |
 |---|---|
@@ -2123,7 +2125,7 @@ v1's six. A setting; keys and a display change. Nothing to pull.
 | how a caller reaches it | the menu-bar routine in raw mode returns `0x47` (Home) as `G`, `0x4F` (End) as `O`, and the characters `1` to `9` through the table at DGROUP `0x288C` (`7` is `G`, `1` is `O`, `8` `H`, ...), with the out-parameter set. The callers below hand `G` and `O` to the cursor and redraw the list from the selection |
 | the number row | scan `0x02` to `0x09` for `1` to `8`, character `'1'` to `'8'`. The keypad's digits with NumLock on are scan `0x47` to `0x51` with the same characters, which is the only way to tell them apart |
 | the data segment | image paragraph `0xC7C` on (DS `0x0CDC` where the image is at `0x60`); checked against DS before the party is read |
-| the roster drawer | image `0x1307` (paragraph `0xBA`, offset `0x0767`; the automap and the journal call it through the same address). Frame: column byte at `BP-5` (`1` on the main menu, `0x11` beside the viewport), row byte at `BP-6` (`4` for the first member), the member's far pointer at `BP-4` and `BP-2`. Names are drawn from the column (white for the selected member, else by status), the armour class at `0x20`+, the hit points at `0x24`+ |
+| the roster drawer | image `0x1307` (paragraph `0xBA`, offset `0x0767`; the automap and the journal call it through the same address). Frame: column byte at `BP-5` (`1` on the main menu, `0x11` beside the viewport), row byte at `BP-6` (`4` for the first member), the member's far pointer at `BP-4` and `BP-2`. Names are drawn from the column (white for the selected member, else by status), the armour class at `0x20`+ (right-aligned, by the value's width), the hit points at `0x24`+; the heading `AC  HP` is copied into the frame (`BP-0x0E`) and drawn on row two from column `0x21` |
 | the routines it calls | the glyph blitter at paragraph `0x709` offset `0x1DF`, `retf 0Ch`, six words first to last: column, row, colour, `1`, character, `1`; the clear at paragraph `0x3F1` offset `0x137`, `retf 8`, four words: left, top, right, bottom. Both far, called at the paragraph they were linked at (§8.4) |
 
 **The callers that take a digit** (a return offset in the module, and the
@@ -2213,13 +2215,16 @@ manager's word for it; the same far-return identification as `bar-keys`):
   `3` and `0x13` mean the number is drawn, `2` and `0x12` that the cut is
   done). **What a name keeps.** Beside the viewport the field is columns
   `0x13` to `0x20`, fourteen characters: a fifteen-character name shows its
-  first fourteen. The armour class is right-aligned in `0x20` to `0x22`
-  (measured on a still), and only a value of -10 or lower reaches `0x20`;
-  the program draws it after the name, so its sign then takes that column.
+  first fourteen. The program right-aligns the armour class in `0x20` to
+  `0x22` (measured on a still); the seam moves it one right, to `0x21` to
+  `0x23`, so a name that ends at `0x20` has no neighbour (a value of -10 is
+  three characters and takes `0x21`). The hit points keep `0x24` to `0x26`.
+  The heading's `AC` moves with it, from `0x21`-`0x22` to `0x22`-`0x23`;
+  its `HP` stays at `0x25`-`0x26` (read off stills, seam on and off).
   The cut is the program's clear over `0x21` to where the name would have
   ended; nothing in the record is
   touched. On the main menu the names start at column one and every name
-  fits. **No other column moves**, and the header keeps its place.
+  fits. **No other column moves**: the hit points and their heading stay.
 - **Where the list is drawn.** Driven: the 3D view and the wilderness, the
   camp bar, the main menu, the shop, the temple, the treasure bar, the
   script prompt at the armourer, and the list given back after the map and
