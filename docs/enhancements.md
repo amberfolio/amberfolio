@@ -161,7 +161,38 @@ log stays filled until the store's `seen` lines are removed.
 log is what the story has told you to read, and the reader shows the log;
 to read the rest of a journal, `--cite-all-journal`.
 
-## The list arrows
+## Modern controls
+
+**What it does.** One switch for the keys and the colours a later game would
+have. The game was made for a keyboard of its day: it takes a command by its
+first letter, steps a list with Home and End, lights a selection white from
+end to end, and types an arrow's letter into a name. With `modern-controls`
+on:
+
+- the **arrows** step the pick-lists and the selected party member, as Home
+  and End do (the list arrows);
+- **Left and Right step a command bar's highlight, Enter takes the lit
+  command and Esc answers No** (the bar keys);
+- the **main menu has a cursor** (the menu cursor);
+- the number row's **1 to 8 select a party member**, and the party list shows
+  each number (the hero keys);
+- the arrows and the function keys **type nothing at a text prompt** (the
+  edit keys);
+- **every selection is yellow**, and a command's key letter stays white (the
+  selection colour).
+
+**How you turn it on.** `--seam modern-controls`, or the toggle in the panel.
+It is one setting: the game's own keys and colours, or all of this. Each
+part is described below, with where it works and what it leaves alone.
+
+**When it shows.** The menu's cursor from the first frame the menu is drawn,
+the party list's numbers and the yellow at the next thing the game draws, and
+each key where the part that takes it says. The panel reads `on inert` until
+the game has loaded every screen the seam works on (the pick-lists' and
+command bars', the main menu's and Modify's); the parts whose screens are
+loaded work meanwhile.
+
+### The list arrows
 
 **What it does.** The up and down arrows step the highlight in the game's
 pick-lists, as Home and End already do. A list that ignored the arrows (at
@@ -179,9 +210,8 @@ the seam on, **Up and Down step the member too**, as Home and End do. On
 the party-order screen, with a member picked up, they move it up and down
 the order. **The keypad's 8 and 2 do the same** with Num Lock on, at the
 same bars: 8 steps back and 2 steps forward. The number row's 8 and 2 are
-not touched; they are for `hero-keys`, and with both seams on each keeps
-its own, so the row's 8 picks the eighth member and the keypad's 8 steps
-back one.
+not touched; they are for the hero keys (below), and each keeps its own, so
+the row's 8 picks the eighth member and the keypad's 8 steps back one.
 
 **At a door.** The bar at a locked or stuck door, camp's Portraits and
 Monsters bar and the save slot bar throw the arrows away, because the game
@@ -190,50 +220,19 @@ seam on, Up and Down step the selected member there too, by the same rule
 (Up from the first goes to the last, Down from the last stays), and the
 party list is drawn again by the game's own routine.
 
-**How you turn it on.** `--seam list-arrows`, or the toggle in the panel.
-
 **Where it works.** Inside a pick-list or the party-member picker, and at
 the bars named above. Everywhere else the arrows are the game's own: in
 the 3D view, the wilderness and combat they move the party, in the rest
 time menu they raise and lower the time, in the stat editor they pick a
-score, and at the main menu they are left for their own seam. The seam
-names the bars it steps; it does not guess.
+score, and at the main menu they are the menu cursor's. The seam names the bars it
+steps; it does not guess.
 
 **What it will not do.** Change the Yes/No prompt or the ability-score
 screen, step the member from the keypad's 8 and 2 at the adventuring bars
 (they walk and turn the party there, as the arrows do), or make a held key
 repeat (the hosts drop OS key repeats, `docs/hosts.md`).
 
-## The text faces
-
-**What they do.** Redraw the game's lettering in a face of your choice,
-in place of its own, everywhere it puts text on the screen: menus,
-the character sheet, the message panel, the journal reader. Two faces,
-both drawn for this project on the game's own eight-by-eight grid:
-**`font-sans`**, a plain bold sans with two-pixel strokes and a slashed
-zero, and **`font-chisel`**, the same face with every stroke cut at an
-angle as if by a broad pen. Only the letters, the digits and the
-punctuation change. The frame pieces, the blocks and the runes the game
-keeps in the same table stay its own, and the game still draws only
-capitals, because that is all it asks for.
-
-**How you turn one on.** `--seam font-sans` or `--seam font-chisel`; a
-toggle each in the panel. They are alternatives: turning one on turns the
-other off.
-
-**When it shows.** At the next character the game draws. Text already on
-the screen keeps the face it was drawn in until the game draws it again,
-which on most screens is the next key you press.
-
-**What else follows it.** Screen text (`docs/hosts.md` §10) reads the
-screen in whichever face is on, and the automap's zone label is lettered
-in it.
-
-**What it will not do.** Touch the game's own font: the seam changes each
-row of a glyph as the game reads it, so off is the game's own lettering
-again.
-
-## The bar keys
+### The bar keys
 
 **What it does.** Makes the game's command bars answer the keys a player
 reaches for first. **Left and Right step the highlight** along a bar, as
@@ -243,8 +242,6 @@ at nearly every bar that would have ignored it, and at the rest-time menu.
 **Esc answers
 No** at a Yes/No question. The bar, its highlight and its commands stay the
 game's own; nothing is drawn.
-
-**How you turn it on.** `--seam bar-keys`, or the toggle in the panel.
 
 **Where Enter works.** The game hands Enter back to whoever called the
 bar, and each caller does as it likes with it; this seam takes it at the
@@ -298,9 +295,9 @@ editor. Two bars drop Enter and are left alone on purpose, because a stray
 Return there would do harm: the save-game slot bar (it would write the lit
 slot) and the stat editor (its `Exit` discards the edit). Make a held
 key repeat (`docs/hosts.md`) or step the pick-lists and the selected member
-with the up and down arrows (`list-arrows`).
+with the up and down arrows (the list arrows, above).
 
-## The menu cursor
+### The menu cursor
 
 **What it does.** Gives the main menu a cursor. The main menu is the
 party-setup screen at the start of the game (Create, Add, Load, Exit and,
@@ -310,12 +307,9 @@ highlight there: a command is taken only by its first letter. With the seam
 on, a cursor is on the first command as soon as the menu is drawn, **Up and
 Down** move it over the commands the menu shows, skipping none that is shown
 and wrapping at both ends, and **Return** takes the command under it, as if
-you had typed its letter. The cursor is the game's own: the whole word in
-white, drawn by the game's own string routine, as a pick-list lights a row.
-With `select-yellow` on as well it is yellow with the command's first
-letter white.
-
-**How you turn it on.** `--seam menu-cursor`, or the toggle in the panel.
+you had typed its letter. The cursor is the game's own string routine's, as a
+pick-list lights a row: the command's first letter white and the rest of the
+word yellow.
 
 **Visible from the start.** The cursor is on the first command whenever the
 menu is drawn, so the first press moves it: Down, Down is the third command
@@ -327,59 +321,12 @@ seam changes the menu without a key.
 **What it will not do.** Move the party member: Home and End still do that
 at this menu. Remember where the cursor was after a command, or follow the
 bar's own highlight, which is not where the menu left it. Work at any other
-screen: the pick-lists are `list-arrows` and the horizontal bars are
-`bar-keys`. A press made while the cursor is still being drawn is kept and
+screen: the pick-lists are the list arrows' and the horizontal bars are the
+bar keys'. A press made while the cursor is still being drawn is kept and
 used (the game draws a glyph at a time, so a move takes about a tenth of a
 second of the game's time).
 
-## The selection colour
-
-**What it does.** Draws every selection you can move in yellow, and keeps
-a command's key letter white. Today the game lights a selection white from
-end to end, so the capital letter that is the key disappears into it. With
-the seam on:
-
-- **A command bar's highlighted word** (the adventuring bar, the camp bar,
-  Magic, Alter, the shops, the temple, a script's menus and every Yes/No
-  question) is yellow with its key letter white. Only the word is lit: on
-  a bar whose keys are not the first letters of its words, like the icon
-  editor's top bar, the game's own highlight runs on into the next word,
-  and the seam lights the word that holds the key.
-  A prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
-  CONTINUE`, has nothing to select and stays as the game draws it.
-- **A pick-list's highlighted row** (race, class, spells, shops, coins, the
-  list of characters to add) is yellow.
-- **The selected party member's name** in the party list is yellow, in the
-  3D view, in camp, in the party-member picker and on the main menu. A
-  number `hero-keys` draws in front of it stays white.
-- **Modify's selected score**, which was light magenta, is yellow, hit
-  points included.
-- **`menu-cursor`'s row** on the main menu is yellow with its first letter
-  white (`menu-cursor` is white throughout when this seam is off), and the
-  Notes list's cursor row is yellow with `journal`. The lit command on the
-  Notes screen's bar is yellow with its letter white, except on a bar of
-  one word.
-- **A bar the game hands its colours the wrong way round** (the portrait
-  screen's HEAD, BODY and KEEP bar, the temple's "pay for cure" and the
-  detect-magic confirmations) is drawn like every other bar: key letters
-  white, the rest of each word green. Without the seam they are white
-  where the others are green, and green where they are white.
-
-**How you turn it on.** `--seam select-yellow`, or the toggle in the panel.
-It is a look and has no key.
-
-**When it shows.** At the next selection the game draws. A selection
-already on the screen when you switch it keeps its colour until the game
-draws it again, which on most screens is the next key you press. With only
-this seam on the panel reads "inert" until the game has loaded the screens
-Modify uses, which is the panel being honest that one of its places is
-not in memory yet: the others work.
-
-**What it will not do.** Colour anything that is not a selection among
-text: the icon editor's cell cursor, the combat grid's cursor and the
-hit-point colour of a hurt character are the game's own.
-
-## The hero keys
+### The hero keys
 
 **What it does.** Pick a party member with one key. **The number row's
 `1` to `8` select that member** on every screen where Home and End do:
@@ -394,8 +341,6 @@ screens: `1 FIGHTER1   -2  33`.
 camp's Portraits and Monsters bar and the save slot bar, where the game
 would not have taken a Home: the list is drawn again by the game's own
 routine. A digit that is one of a bar's own command letters stays the bar's.
-
-**How you turn it on.** `--seam hero-keys`, or the toggle in the panel.
 
 **What it changes.** The number row's `1` to `8` no longer walk or turn
 the party at the exploring bars, where they did what the keypad does
@@ -418,7 +363,49 @@ three places would be a surprise). With the map open over the party
 list, or the journal reader up, `1` to `8` are theirs, as every key
 is: close it first.
 
-## The edit keys
+### The selection colour
+
+**What it does.** Draws every selection you can move in yellow, and keeps
+a command's key letter white. Today the game lights a selection white from
+end to end, so the capital letter that is the key disappears into it. With
+the seam on:
+
+- **A command bar's highlighted word** (the adventuring bar, the camp bar,
+  Magic, Alter, the shops, the temple, a script's menus and every Yes/No
+  question) is yellow with its key letter white. Only the word is lit: on
+  a bar whose keys are not the first letters of its words, like the icon
+  editor's top bar, the game's own highlight runs on into the next word,
+  and the seam lights the word that holds the key.
+  A prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
+  CONTINUE`, has nothing to select and stays as the game draws it.
+- **A pick-list's highlighted row** (race, class, spells, shops, coins, the
+  list of characters to add) is yellow.
+- **The selected party member's name** in the party list is yellow, in the
+  3D view, in camp, in the party-member picker and on the main menu. A
+  number the hero keys draw in front of it stays white.
+- **Modify's selected score**, which was light magenta, is yellow, hit
+  points included.
+- **The menu cursor's row** on the main menu is yellow with its first letter
+  white, and, with `journal` on, the Notes list's cursor row is yellow. The
+  lit command on the Notes screen's bar is yellow with its letter white,
+  except on a bar of one word.
+- **A bar the game hands its colours the wrong way round** (the portrait
+  screen's HEAD, BODY and KEEP bar, the temple's "pay for cure" and the
+  detect-magic confirmations) is drawn like every other bar: key letters
+  white, the rest of each word green. Without the seam they are white
+  where the others are green, and green where they are white.
+
+It is a look and has no key.
+
+**When it shows.** At the next selection the game draws. A selection
+already on the screen when you switch it keeps its colour until the game
+draws it again, which on most screens is the next key you press.
+
+**What it will not do.** Colour anything that is not a selection among
+text: the icon editor's cell cursor, the combat grid's cursor and the
+hit-point colour of a hurt character are the game's own.
+
+### The edit keys
 
 **What it does.** The arrows, Home, End, the page keys, Insert, Delete and
 the function keys stop typing letters where the game asks for text. Without
@@ -426,8 +413,6 @@ it, pressing Right while naming a character types an `M`, Up an `H`, Down a
 `P` and Left a `K`; Home types `G` and End `O`. With it they do nothing.
 Typing, Backspace, Return and Esc are as they were, and so is every other
 screen: the arrows still walk, turn and step the lists.
-
-**How you turn it on.** `--seam edit-keys`, or the toggle in the panel.
 
 **Where it works.** Every place the game reads a line of text: a new
 character's name, a script's free-text question, a script's number prompt
@@ -438,6 +423,35 @@ one setting.
 **What it changes.** An Alt chord and the function keys type nothing at those
 prompts either. The View > Drop money amount is the game's own and takes
 digits only, so an arrow was never wrong there.
+
+## The text faces
+
+**What they do.** Redraw the game's lettering in a face of your choice,
+in place of its own, everywhere it puts text on the screen: menus,
+the character sheet, the message panel, the journal reader. Two faces,
+both drawn for this project on the game's own eight-by-eight grid:
+**`font-sans`**, a plain bold sans with two-pixel strokes and a slashed
+zero, and **`font-chisel`**, the same face with every stroke cut at an
+angle as if by a broad pen. Only the letters, the digits and the
+punctuation change. The frame pieces, the blocks and the runes the game
+keeps in the same table stay its own, and the game still draws only
+capitals, because that is all it asks for.
+
+**How you turn one on.** `--seam font-sans` or `--seam font-chisel`; a
+toggle each in the panel. They are alternatives: turning one on turns the
+other off.
+
+**When it shows.** At the next character the game draws. Text already on
+the screen keeps the face it was drawn in until the game draws it again,
+which on most screens is the next key you press.
+
+**What else follows it.** Screen text (`docs/hosts.md` §10) reads the
+screen in whichever face is on, and the automap's zone label is lettered
+in it.
+
+**What it will not do.** Touch the game's own font: the seam changes each
+row of a glyph as the game reads it, so off is the game's own lettering
+again.
 
 ## The debug cheats
 

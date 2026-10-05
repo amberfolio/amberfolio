@@ -1,21 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The bar-keys seam on and never triggered (#425): `quiet`'s script with
-# the seam on. The script presses no Left or Right at a bar that is not
-# raw, and no Enter at a bar the seam knows. Its one Right is pressed at
-# the party's own bar in the city, which is raw: the party's arrows are its
-# own, and the seam reads the key's mode and leaves it.
-# The `identical` line is the whole session: the handler is reached at
-# every key the program reads at a bar, two of them here before the party
-# is loaded and four after, and it rewrites nothing, so the machine is
-# indistinguishable from the one with the seam off, checked with no disk.
+# modern-controls on, and `quiet`'s script: slot A loaded and four movement
+# keys, no key pressed that the seam takes. A `contrast` and not an
+# `identical`, as the faces' pair is (docs/seams.md section 7): three of its
+# pieces draw as soon as there is something to draw on, so the run differs
+# from the plain one at the first main menu (the cursor is on its first
+# command), and again where the party list is first drawn with a member in
+# it (each name moves two columns right and its number is drawn in front, the
+# selected name is yellow) and where a bar's highlighted word is. That is the
+# enhancement and not a leak. The invariant that does hold is the one with the
+# seam off.
 
-about the bar-keys seam on, and a Right pressed at the party's own bar, the
-about one that turns the party in the city: the bar is raw, so the program
-about keeps the arrow and the seam leaves it where it is
+about modern-controls on with no key it takes pressed: the menu's cursor, the
+about party list's numbers and the highlights in yellow are drawn from the first
+about time each is on the screen, so not identical to the baseline
 disk external
 code-wheel-answered
-identical quiet
+contrast quiet
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

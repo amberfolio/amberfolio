@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The bar-keys seam on and exercised at a bar that is not raw and at the
-# Yes/No prompt (#425): `bar-yn`'s keys with the seam on. The Right at the
-# slot bar is rewritten to the bar's own step key and the highlight moves;
+# modern-controls on and exercised at a bar that is not raw and at the
+# Yes/No prompt (#425, #473): `bar-yn`'s keys with the seam on. The Right at
+# the slot bar is rewritten to the bar's own step key and the highlight moves;
 # the Return at the prompt is rewritten to the letter of the highlighted
 # answer, `N`, and the prompt takes No and hands the camp bar back, where
 # the seam-off run is still asking.
 #
-# It agrees with `bar-yn` until the Right is read at the slot bar and
-# differs from there to the end.
+# It agrees with `bar-yn` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 100 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
 
-about bar-keys on, a Right at the save-slot bar and a Return at the quit
+about modern-controls on, a Right at the save-slot bar and a Return at the quit
 about prompt: the highlight steps at the first, and the second answers
 about the prompt No, so the camp bar is back where the seam-off run is
 about still asking

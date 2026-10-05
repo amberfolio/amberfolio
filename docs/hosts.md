@@ -2058,19 +2058,20 @@ builds it at every paint.
 
 **Beside it, the controls page.** `page/controls.html`, linked from the
 box, lists every controls improvement by screen, the enhancement each one
-needs and what each trades (#448), and the one look, `select-yellow` (#453). It is the dev page's furniture, served
-with it and not released, like `index.html`; the keys per screen stay the
-card's.
+needs and what each trades (#448), and the one look, the selection in yellow
+(#453); every one is the single `modern-controls` seam (#473), and the page
+says so in its legend. It is the dev page's furniture, served with it and
+not released, like `index.html`; the keys per screen stay the card's.
 
 **A seam's keys show only while it is on.** A row names a seam id, and a
 context left with no row to show is not shown. Adding a seam's keys is one
 line in `key_card.cpp`, in the context where the key is pressed.
 `tests/key_card_test.cpp` holds every named seam to `all_seams()`, so a
-row for a seam that was renamed or never merged is a red test; the eight
-seams that take a key today (automap, journal, Encamp Fix, list-arrows,
-bar-keys, menu-cursor, hero-keys, edit-keys) are pinned there as the floor.
-`select-yellow` takes no key and has one row in the bars' context, shown while
-it is on. Each
+row for a seam that was renamed or never merged is a red test; the four
+seams that take a key today (automap, journal, Encamp Fix and
+`modern-controls`) are pinned there as the floor. `modern-controls` has a
+row in every context where one of its six pieces takes a key or draws a
+selection, shown while it is on. Each
 shell has its own context for the keys it takes for itself (the desktop's
 are in §2's table); the page has none, because it takes none.
 
@@ -2079,7 +2080,7 @@ are in §2's table); the page has none, because it takes none.
 digits `8 2 4 6` act as Up, Down, Left, Right, `7 1` as Home and End and
 `9 3` as PgUp and PgDn, whether typed on the keypad or on the number
 row. The card says so once, under every context, and adds that with
-`hero-keys` on the number row's `1` to `8` pick a party member on the
+`modern-controls` on the number row's `1` to `8` pick a party member on the
 screens that show the party list (the keypad's digits keep their meaning;
 the seam tells them apart by scan code).
 
@@ -2100,7 +2101,7 @@ accepting, Return and lower case shown as capitals; Tab, the camp bar's F
 and the Notes log's N, Up, Down, Return, N, P and Esc with those seams on;
 the main menu's capital letters and Home and End, and, with the seam on,
 Up, Down and Return there (at the party-setup screen and at a training
-hall); and, with `edit-keys` on, a name's arrows, Home, End and
+hall); and, with `modern-controls` on, a name's arrows, Home, End and
 function keys typing nothing (the name prompt at creation and the
 code-word challenge).
 

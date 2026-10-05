@@ -1,15 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The list-arrows seam on and exercised (#423): `list-down`'s keys, with
+# modern-controls on and exercised (#423, #473): `list-down`'s keys, with
 # the seam on. Each Down steps the highlight as End does and Up as Home
 # does, so the character is the one `list-keys` makes -- an elf, a woman,
 # a magic-user -- and not the first row of every list.
 #
-# It agrees with `list-down` until the first Down is read at the race list
-# and differs from there to the end. The 3D view is not in this run; there
-# the arrows move the party and the seam is never reached.
+# It agrees with `list-down` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 84 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
+#
+# The 3D view is not in this run; there the arrows move the party and the
+# seam is never reached.
 
-about list-arrows on, and an arrow pressed in each of character creation's
+about modern-controls on, and an arrow pressed in each of character creation's
 about lists: the highlight moves, and the character is an elf, a woman and
 about a magic-user where the seam-off run makes a dwarf, a man and a fighter
 disk external

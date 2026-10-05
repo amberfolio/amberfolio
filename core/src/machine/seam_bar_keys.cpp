@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The bar-keys seam: Left and Right step a command bar's highlight, Enter
-// takes the highlighted command, and Esc answers No at a Yes/No question
-// (#425, #432, #438).
+// The bar-keys piece of `modern-controls` (seam_modern_controls.cpp): Left and
+// Right step a command bar's highlight, Enter takes the highlighted command,
+// and Esc answers No at a Yes/No question (#425, #432, #438).
 //
 //
 // What the program does, stated as facts
@@ -237,10 +237,6 @@
 
 namespace amberfolio::machine {
 namespace {
-
-/// The baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> bar_keys_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
 // The module, the read point, the frame's return address and who called the
 // routine are shared with `list-arrows`, which has a point at the same
@@ -529,26 +525,16 @@ void at_key_read(machine& box, seam_context& ctx) {
   cpu.write_word(bda::segment, head, key == key_left ? key_comma : key_period);
 }
 
-constexpr std::array<seam_point, 1> bar_keys_points{
+constexpr std::array<seam_point, 1> bar_keys_point_table{
     {{.module = menu_bar::module,
       .offset = menu_bar::key_read_call,
       .run = &at_key_read}}};
-
-constexpr seam_definition bar_keys_definition{
-    .id = "bar-keys",
-    .about =
-        "Left and Right step a command bar's highlight, Enter takes the "
-        "highlighted command, and Esc answers No at a Yes/No question",
-    .fingerprints = bar_keys_binaries,
-    .points = bar_keys_points,
-    .schema = seam_schema_version};
+static_assert(bar_keys_point_table.size() == bar_keys_point_count);
 
 }  // namespace
 
-const seam_definition& bar_keys_seam() noexcept { return bar_keys_definition; }
-
-bool bar_keys_on(const machine& box) noexcept {
-  return box.seams().status(bar_keys_id).state == seam_state::on;
+std::span<const seam_point> bar_keys_points() noexcept {
+  return bar_keys_point_table;
 }
 
 }  // namespace amberfolio::machine

@@ -22,6 +22,7 @@
 #include <initializer_list>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -40,7 +41,18 @@
 namespace amberfolio::machine {
 namespace {
 
-constexpr std::string_view seam_id = "hero-keys";
+constexpr std::string_view seam_id = "modern-controls";
+
+/// Where this piece's points sit in the one seam's table, and how many it
+/// has: the pieces follow one another in the order
+/// seam_modern_controls.cpp lists them.
+constexpr std::size_t piece_first = 6;
+constexpr std::size_t piece_count = 5;
+
+[[nodiscard]] std::span<const seam_point> piece_points(
+    const seam_definition& s) {
+  return s.points.subspan(piece_first, piece_count);
+}
 
 // --- Where the facts put things --------------------------------------------
 
@@ -456,9 +468,9 @@ TEST(SeamHeroKeys, IsAKeyPointInOverlay25AndFourInsideCallsPointsInTheRoster) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(s.points.size(), 5u);
+  ASSERT_EQ(piece_points(s).size(), 5u);
 
-  const seam_point& key = s.points[0];
+  const seam_point& key = piece_points(s)[0];
   EXPECT_EQ(key.offset, key_point);
   EXPECT_FALSE(key.module.is_resident_image());
   EXPECT_EQ(key.module.file, "GAME.OVR");
@@ -470,14 +482,14 @@ TEST(SeamHeroKeys, IsAKeyPointInOverlay25AndFourInsideCallsPointsInTheRoster) {
 
   // The roster is drawn inside the automap's and the journal's batches,
   // which offer a point only if it says so.
-  EXPECT_EQ(s.points[1].offset, row_cleared);
-  EXPECT_EQ(s.points[2].offset, name_drawn);
-  EXPECT_EQ(s.points[3].offset, ac_column_pushed);
-  EXPECT_EQ(s.points[4].offset, heading_copied);
+  EXPECT_EQ(piece_points(s)[1].offset, row_cleared);
+  EXPECT_EQ(piece_points(s)[2].offset, name_drawn);
+  EXPECT_EQ(piece_points(s)[3].offset, ac_column_pushed);
+  EXPECT_EQ(piece_points(s)[4].offset, heading_copied);
   for (std::size_t i = 1; i < 5; ++i) {
-    EXPECT_TRUE(s.points[i].module.is_resident_image());
-    EXPECT_TRUE(s.points[i].inside_calls);
-    EXPECT_FALSE(s.points[i].at_every_step);
+    EXPECT_TRUE(piece_points(s)[i].module.is_resident_image());
+    EXPECT_TRUE(piece_points(s)[i].inside_calls);
+    EXPECT_FALSE(piece_points(s)[i].at_every_step);
   }
 }
 
@@ -607,6 +619,9 @@ TEST(SeamHeroKeys, LeavesNineZeroAndTheKeypadAlone) {
     EXPECT_EQ(r.press(number_row(9), c), number_row(9)) << c.name;
     EXPECT_EQ(r.press(number_row(0), c), number_row(0)) << c.name;
     for (unsigned digit = 0; digit <= 9; ++digit) {
+      if (digit == 2 || digit == 8) {
+        continue;  // the list-arrows piece's, at the callers it has
+      }
       EXPECT_EQ(r.press(keypad(digit), c), keypad(digit))
           << c.name << " keypad " << digit;
     }
@@ -626,24 +641,16 @@ TEST(SeamHeroKeys, ANumberRowCharacterUnderAnotherScanCodeIsNotTheNumberRow) {
   EXPECT_EQ(r.selected(8), 3u);
 }
 
-// --- With list-arrows on at the same point ---------------------------------
+// --- With the list-arrows piece at the same point -------------------------
 
-/// `list-arrows` has a point at the same instruction and takes the keypad's 8
-/// and 2 at the callers whose Home and End step the party cursor (#447); this
-/// seam takes the number row's digits. They are told apart by the scan code,
-/// so they do not fight, whichever of the two the engine runs first.
-class SeamHeroKeysWithListArrows : public testing::TestWithParam<bool> {};
-
-TEST_P(SeamHeroKeysWithListArrows, EachTakesItsOwnDigitsAtTheSharedPoint) {
+/// The list-arrows piece has a point at the same instruction and takes the
+/// keypad's 8 and 2 at the callers whose Home and End step the party cursor
+/// (#447); this piece takes the number row's digits. They are told apart by
+/// the scan code, so they do not fight, and the table offers list-arrows'
+/// point first.
+TEST(SeamHeroKeysWithListArrows, EachTakesItsOwnDigitsAtTheSharedPoint) {
   const rig r;
-  const bool arrows_first = GetParam();
-  if (arrows_first) {
-    ASSERT_EQ(r.box->seams().enable("list-arrows"), seam_reason::none);
-  }
   r.arm();
-  if (!arrows_first) {
-    ASSERT_EQ(r.box->seams().enable("list-arrows"), seam_reason::none);
-  }
 
   constexpr std::uint16_t pad_8 = 0x4838;
   constexpr std::uint16_t pad_2 = 0x5032;
@@ -691,9 +698,6 @@ TEST_P(SeamHeroKeysWithListArrows, EachTakesItsOwnDigitsAtTheSharedPoint) {
   EXPECT_EQ(r.selected(8), 2U);
 }
 
-INSTANTIATE_TEST_SUITE_P(EitherOrder, SeamHeroKeysWithListArrows,
-                         testing::Bool());
-
 TEST(SeamHeroKeys, LeavesEveryOtherCallerItsDigits) {
   const rig r;
   r.arm();
@@ -735,11 +739,12 @@ TEST(SeamHeroKeys, EveryOtherKeyIsLeftWhereItIs) {
   const rig r;
   r.arm();
   r.lay_party(8, 3);
+  // Up, Down, Left and Right are the list-arrows and bar-keys pieces' at the
+  // camp bar, and are not listed.
   for (const std::uint16_t key :
-       {std::uint16_t{0x4800}, std::uint16_t{0x5000}, std::uint16_t{0x4700},
-        std::uint16_t{0x4F00}, std::uint16_t{0x4B00}, std::uint16_t{0x4D00},
-        std::uint16_t{0x1E41}, std::uint16_t{0x011B}, std::uint16_t{0x3920},
-        std::uint16_t{0x1C0D}, std::uint16_t{0x0231 + 0x0100}}) {
+       {std::uint16_t{0x4700}, std::uint16_t{0x4F00}, std::uint16_t{0x1E41},
+        std::uint16_t{0x011B}, std::uint16_t{0x3920}, std::uint16_t{0x1C0D},
+        std::uint16_t{0x0231 + 0x0100}}) {
     EXPECT_EQ(r.press(key, hero_callers[3]), key) << key;
   }
   EXPECT_EQ(r.selected(8), 3u);
@@ -1260,7 +1265,6 @@ class SeamHeroKeysAtABarThatIsNotRaw : public testing::Test {
   void SetUp() override {
     r.arm();
     install_the_drawer(r);
-    ASSERT_EQ(r.box->seams().enable("list-arrows"), seam_reason::none);
     set_bar(r, " Alfa Beta Echo");
     set_raw_mode(r, 0);
   }
@@ -1338,8 +1342,7 @@ TEST_F(SeamHeroKeysAtABarThatIsNotRaw,
 TEST_F(SeamHeroKeysAtABarThatIsNotRaw, LeavesTheKeysItDoesNotTake) {
   r.lay_party(4, 1);
   for (const std::uint16_t key :
-       {number_row(9), number_row(0), keypad(3), keypad(8), keypad(2),
-        std::uint16_t{0x4B00}, std::uint16_t{0x4D00}, home,
+       {number_row(9), number_row(0), keypad(3), keypad(8), keypad(2), home,
         std::uint16_t{0x4F00}, std::uint16_t{0x1C0D}, std::uint16_t{0x011B},
         std::uint16_t{0x1E41}}) {
     EXPECT_EQ(press_bar(r, key, bar_callers[0]), key);
@@ -1385,38 +1388,6 @@ TEST_F(SeamHeroKeysAtABarThatIsNotRaw, StepsAsideWhileTheMapIsOverTheRoster) {
   map.set_panel_on_screen(false);
   EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), ignored);
   EXPECT_EQ(r.selected(4), 2u);
-}
-
-TEST(SeamHeroKeysAtABarThatIsNotRawAlone, EachSeamTakesItsOwnKeys) {
-  // hero-keys alone takes digits and not arrows; list-arrows alone takes
-  // arrows and not digits.
-  {
-    const rig r;
-    r.arm();
-    install_the_drawer(r);
-    set_bar(r, " Alfa Beta Echo");
-    set_raw_mode(r, 0);
-    r.lay_party(4, 1);
-    EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), key_down);
-    EXPECT_EQ(press_bar(r, key_up, bar_callers[0]), key_up);
-    EXPECT_EQ(r.selected(4), 1u);
-    EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), ignored);
-    EXPECT_EQ(r.selected(4), 2u);
-  }
-  {
-    const rig r;
-    ASSERT_EQ(r.box->seams().enable("list-arrows"), seam_reason::none);
-    r.manager_says(word_menu, menu_segment);
-    r.manager_says(word_adventure, adventure_segment);
-    r.manager_says(word_slots, slots_segment);
-    install_the_drawer(r);
-    set_bar(r, " Alfa Beta Echo");
-    set_raw_mode(r, 0);
-    r.lay_party(4, 1);
-    EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), number_row(3));
-    EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), ignored);
-    EXPECT_EQ(r.selected(4), 2u);
-  }
 }
 
 }  // namespace

@@ -35,7 +35,7 @@ constexpr std::array explore_rows{
     key_row{"Home, End, 7, 1", "select the previous or next party member"},
     key_row{"1-8 on the number row",
             "select that party member; keypad 1-8 keep their keys",
-            "hero-keys"},
+            "modern-controls"},
     key_row{"Tab", "show or hide the map over the party list", "automap"},
 };
 
@@ -45,42 +45,42 @@ constexpr std::array wilderness_rows{
     key_row{"Home, End, 7, 1", "select the previous or next party member"},
     key_row{"1-8 on the number row",
             "select that party member; keypad 1-8 keep their keys",
-            "hero-keys"},
+            "modern-controls"},
 };
 
 constexpr std::array bar_rows{
     key_row{"its capital letter", "take that command; lower case works"},
     key_row{", and .", "step the highlight left and right, wrapping"},
     key_row{"Left, Right", "step the highlight, except where they move or edit",
-            "bar-keys"},
+            "modern-controls"},
     key_row{"Up, Down, keypad 8, 2",
             "previous or next member where Home and End step it",
-            "list-arrows"},
+            "modern-controls"},
     key_row{"Up, Down at a door", "and the save bar: step the selected member",
-            "list-arrows"},
+            "modern-controls"},
     key_row{"Return", "take the highlighted command at nearly every bar",
-            "bar-keys"},
+            "modern-controls"},
     key_row{"1-8 on the number row",
-            "camp, menus, shops: select that party member", "hero-keys"},
+            "camp, menus, shops: select that party member", "modern-controls"},
     key_row{"1-8 at a door", "and the save bar: select that party member",
-            "hero-keys"},
+            "modern-controls"},
     key_row{"Y, N", "answer a Yes/No question"},
     key_row{"Esc", "leave camp, a list or a picker; not the exploring bar"},
-    key_row{"Esc at Yes/No", "answer No to the question", "bar-keys"},
+    key_row{"Esc at Yes/No", "answer No to the question", "modern-controls"},
     key_row{"F", "on the camp bar: Fix, rest as long as the party needs",
             "encamp-fix"},
     key_row{"the selection", "yellow: a bar's lit word, a list row, a member",
-            "select-yellow"},
+            "modern-controls"},
 };
 
 constexpr std::array menu_rows{
     key_row{"its capital letter", "take that command; lower case works"},
     key_row{"Home, End", "select the previous or next party member"},
     key_row{"Up, Down", "move a cursor over the commands shown (not 8, 2)",
-            "menu-cursor"},
-    key_row{"Return", "take the command under the cursor", "menu-cursor"},
+            "modern-controls"},
+    key_row{"Return", "take the command under the cursor", "modern-controls"},
     key_row{"the cursor row", "yellow, with the command's first letter white",
-            "select-yellow"},
+            "modern-controls"},
 };
 
 constexpr std::array list_rows{
@@ -88,7 +88,7 @@ constexpr std::array list_rows{
     key_row{"End, 1", "highlight the row below; wraps within the page"},
     key_row{"Up, Down, 8, 2",
             "highlight the row above or below, like Home and End",
-            "list-arrows"},
+            "modern-controls"},
     key_row{"Return", "choose the highlighted row"},
     key_row{"PgUp, PgDn, 9, 3",
             "turn the page, when the list has more than one"},
@@ -98,7 +98,7 @@ constexpr std::array list_rows{
 constexpr std::array picker_rows{
     key_row{"Home, 7", "the previous member"},
     key_row{"End, 1", "the next member"},
-    key_row{"Up, Down, 8, 2", "the previous or next member", "list-arrows"},
+    key_row{"Up, Down, 8, 2", "the previous or next member", "modern-controls"},
     key_row{"S, Return", "choose this member"},
     key_row{"Esc, E", "choose nobody"},
 };
@@ -126,7 +126,7 @@ constexpr std::array text_rows{
     key_row{"Backspace", "erase the last character"},
     key_row{"Return, Esc", "accept what is typed; Esc does not cancel"},
     key_row{"arrows, Home, F-keys",
-            "do nothing here, and no longer type letters", "edit-keys"},
+            "do nothing here, and no longer type letters", "modern-controls"},
 };
 
 constexpr std::array journal_rows{
@@ -134,8 +134,8 @@ constexpr std::array journal_rows{
     key_row{"Up, Down", "in the log: the entry above or below", "journal"},
     key_row{"Return", "open the entry under the cursor", "journal"},
     key_row{"N, P", "in an entry: next and previous page", "journal"},
-    key_row{"Left, Right", "with bar-keys on: step the lit word of the bar",
-            "journal"},
+    key_row{"Left, Right",
+            "with modern-controls on: step the lit word of the bar", "journal"},
     key_row{"Return, bar lit",
             "take the lit command; in the log, after Left or Right", "journal"},
     key_row{"Esc", "close the entry, then the log", "journal"},
@@ -173,8 +173,8 @@ constexpr std::string_view legend =
     "On the screens that use the arrows, the number row does what the "
     "keypad does: 8 2 4 6 are Up Down Left Right, 7 1 are Home End, 9 3 "
     "are PgUp PgDn. No keypad is needed. Where a row below names a seam, "
-    "that seam changes it: with hero-keys on, the number row's 1 to 8 pick "
-    "a party member on the screens that show the party list.";
+    "that seam changes it: with modern-controls on, the number row's 1 to 8 "
+    "pick a party member on the screens that show the party list.";
 
 [[nodiscard]] std::string_view shell_word(card_shell shell) {
   switch (shell) {

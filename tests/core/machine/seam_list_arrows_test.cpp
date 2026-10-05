@@ -16,6 +16,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string_view>
 
 #include "amberfolio/cpu/address.h"
@@ -32,7 +33,18 @@
 namespace amberfolio::machine {
 namespace {
 
-constexpr std::string_view seam_id = "list-arrows";
+constexpr std::string_view seam_id = "modern-controls";
+
+/// Where this piece's points sit in the one seam's table, and how many it
+/// has: the pieces follow one another in the order
+/// seam_modern_controls.cpp lists them.
+constexpr std::size_t piece_first = 0;
+constexpr std::size_t piece_count = 3;
+
+[[nodiscard]] std::span<const seam_point> piece_points(
+    const seam_definition& s) {
+  return s.points.subspan(piece_first, piece_count);
+}
 
 /// Where the two points are: in overlay 25, from the module's start, and
 /// in the resident image, from the image segment.
@@ -89,8 +101,6 @@ constexpr std::uint16_t ring_home = 0x4700;
 constexpr std::uint16_t ring_up = 0x4800;
 constexpr std::uint16_t ring_end = 0x4F00;
 constexpr std::uint16_t ring_down = 0x5000;
-constexpr std::uint16_t ring_left = 0x4B00;
-constexpr std::uint16_t ring_right = 0x4D00;
 constexpr std::uint16_t ring_enter = 0x1C0D;
 /// The keypad's 8 and 2 with NumLock on: the same scan codes as Up and Down,
 /// with a character.
@@ -325,9 +335,9 @@ TEST(SeamListArrows, IsTwoPointsInOverlay25AndOneInTheResidentImage) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(s.points.size(), 3u);
+  ASSERT_EQ(piece_points(s).size(), 3u);
 
-  const seam_point& list = s.points[0];
+  const seam_point& list = piece_points(s)[0];
   EXPECT_EQ(list.offset, list_point);
   EXPECT_FALSE(list.module.is_resident_image());
   EXPECT_EQ(list.module.file, "GAME.OVR");
@@ -338,11 +348,11 @@ TEST(SeamListArrows, IsTwoPointsInOverlay25AndOneInTheResidentImage) {
   EXPECT_EQ(list.module.load_segment_at, overlay_word)
       << "and by the program's own note of where it is now (#131)";
 
-  const seam_point& picker = s.points[1];
+  const seam_point& picker = piece_points(s)[1];
   EXPECT_EQ(picker.offset, picker_point);
   EXPECT_TRUE(picker.module.is_resident_image());
 
-  const seam_point& bars = s.points[2];
+  const seam_point& bars = piece_points(s)[2];
   EXPECT_EQ(bars.offset, read_point);
   EXPECT_FALSE(bars.module.is_resident_image());
   EXPECT_EQ(bars.module.file, list.module.file);
@@ -352,7 +362,7 @@ TEST(SeamListArrows, IsTwoPointsInOverlay25AndOneInTheResidentImage) {
       << "the same module as the pick-list's, the one `bar-keys` also names";
   EXPECT_EQ(bars.module.load_segment_at, overlay_word);
 
-  for (const seam_point& point : s.points) {
+  for (const seam_point& point : piece_points(s)) {
     EXPECT_FALSE(point.at_every_step);
     EXPECT_FALSE(point.inside_calls);
   }
@@ -618,9 +628,11 @@ TEST(SeamListArrows,
 TEST(SeamListArrows, LeavesEveryOtherKeyWhereItIsAtAnAllowedCaller) {
   const rig r;
   r.arm();
-  const std::array<std::uint16_t, 8> others{
-      ring_home,  ring_end,       ring_left,         ring_right,
-      ring_enter, 0x1E41 /* A */, 0x4900 /* PgUp */, 0x5100 /* PgDn */};
+  // Left and Right are the bar-keys piece's at a bar that is not raw, and
+  // are not listed here.
+  const std::array<std::uint16_t, 6> others{
+      ring_home,      ring_end,          ring_enter,
+      0x1E41 /* A */, 0x4900 /* PgUp */, 0x5100 /* PgDn */};
   for (const caller_at& c : allowed_callers) {
     for (const std::uint16_t key : others) {
       EXPECT_EQ(r.press(key, c.segment, c.offset), key) << c.name;

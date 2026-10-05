@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The list-arrows seam on and exercised at the camp bar (#435):
+# modern-controls on and exercised at the camp bar (#435, #473):
 # `camp-down`'s keys with the seam on. The camp bar is one of the callers
 # whose Home and End step the party cursor and whose Up and Down do
 # nothing else, so the seam writes Home over the Up and End over each Down
@@ -8,10 +8,13 @@
 # third, the fourth and the third member where the seam-off run holds the
 # first.
 #
-# It agrees with `camp-down` until the first Down is read at the camp bar
-# and differs from there to the end.
+# It agrees with `camp-down` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 96 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
 
-about list-arrows on, End, Down, Down and Up at the camp bar: Down and Up
+about modern-controls on, End, Down, Down and Up at the camp bar: Down and Up
 about step the selected member like End and Home, where the seam-off run
 about keeps putting the first member back
 disk external

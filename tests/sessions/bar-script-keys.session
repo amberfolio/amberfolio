@@ -1,17 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The bar-keys seam on and exercised at the script prompts (#438):
+# modern-controls on and exercised at the script prompts (#438, #473):
 # `bar-script`'s keys with the seam on. The Return at the press-Enter
-# notice is the program's own, and the run is the seam-off run's until
-# the Return at the question: the highlight is on `No`, so Return answers
-# it, the question that follows (a partner for the adventuring) is asked,
-# and Escape answers that `No` too, and the adventuring bar is back
+# notice is the program's own, and the run is the seam-off run's from there
+# until the Return at the question: the highlight is on `No`, so Return
+# answers it, the question that follows (a partner for the adventuring) is
+# asked, and Escape answers that `No` too, and the adventuring bar is back
 # where the seam-off run is still asking the first question.
 #
-# It agrees with `bar-script` until the Return is read at the question
-# and differs from there to the end.
+# It agrees with `bar-script` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 164 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
 
-about bar-keys on, the arena master's question: Return answers the
+about modern-controls on, the arena master's question: Return answers the
 about highlighted No, and Escape answers No to the partner question that
 about follows, so the adventuring bar is back where the seam-off run is still
 about asking

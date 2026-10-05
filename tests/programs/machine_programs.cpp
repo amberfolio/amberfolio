@@ -3227,11 +3227,16 @@ void bar_keys_scenario(assembler& a, std::size_t index, std::uint8_t raw,
   return built;
 }
 
-/// The `bar-keys` handler, from the definition this build ships.
+/// The `bar-keys` handler, from the `modern-controls` definition this build
+/// ships: the pieces' points follow one another in the order
+/// seam_modern_controls.cpp lists them (list-arrows 3, bar-keys 1,
+/// menu-cursor 2, hero-keys 5, edit-keys 1, select-yellow 7), so each
+/// helper below names where its piece begins.
 [[nodiscard]] machine::seam_handler bar_keys_handler() {
+  constexpr std::size_t first = 3;
   for (const machine::seam_definition& seam : machine::all_seams()) {
-    if (seam.id == "bar-keys" && !seam.points.empty()) {
-      return seam.points.front().run;
+    if (seam.id == "modern-controls" && first < seam.points.size()) {
+      return seam.points[first].run;
     }
   }
   return nullptr;
@@ -3251,8 +3256,8 @@ void bar_keys_scenario(assembler& a, std::size_t index, std::uint8_t raw,
 // string drawer at the offset the facts give, which appends what it was
 // asked to draw to a log. Seven arrivals: Return with no cursor, Down twice,
 // Return again, each followed by what the ring, the log and the cursor's
-// byte then hold. The handler is the build's own `menu-cursor`, at made-up
-// addresses.
+// byte then hold. The handler is the build's own `menu-cursor` piece, at
+// made-up addresses.
 //
 // The program's data segment is its code segment, so a record's offset in
 // the data segment and the drawer's offset in the image are one address
@@ -3427,11 +3432,13 @@ void menu_cursor_arrival(assembler& a, std::size_t index, std::uint16_t key,
   return built;
 }
 
-/// The `menu-cursor` handler, from the definition this build ships.
+/// The `menu-cursor` handler, from the `modern-controls` definition this
+/// build ships (its first point is the table's fifth).
 [[nodiscard]] machine::seam_handler menu_cursor_handler() {
+  constexpr std::size_t first = 4;
   for (const machine::seam_definition& seam : machine::all_seams()) {
-    if (seam.id == "menu-cursor" && !seam.points.empty()) {
-      return seam.points.front().run;
+    if (seam.id == "modern-controls" && first < seam.points.size()) {
+      return seam.points[first].run;
     }
   }
   return nullptr;
@@ -3693,12 +3700,14 @@ void hero_keys_row(assembler& a, std::uint8_t column, std::uint8_t row,
   return built;
 }
 
-/// One of the `hero-keys` handlers, from the definition this build ships:
-/// 0 the key point, 1 the roster's cleared row, 2 its drawn name.
+/// One of the `hero-keys` handlers, from the `modern-controls` definition
+/// this build ships: 0 the key point, 1 the roster's cleared row, 2 its
+/// drawn name (the piece's points begin at the table's seventh).
 [[nodiscard]] machine::seam_handler hero_keys_handler(std::size_t which) {
+  constexpr std::size_t first = 6;
   for (const machine::seam_definition& seam : machine::all_seams()) {
-    if (seam.id == "hero-keys" && which < seam.points.size()) {
-      return seam.points[which].run;
+    if (seam.id == "modern-controls" && first + which < seam.points.size()) {
+      return seam.points[first + which].run;
     }
   }
   return nullptr;
@@ -3911,11 +3920,13 @@ struct edit_keys_layout {
   return built;
 }
 
-/// The `edit-keys` handler, from the definition this build ships.
+/// The `edit-keys` handler, from the `modern-controls` definition this build
+/// ships (the table's twelfth point).
 [[nodiscard]] machine::seam_handler edit_keys_handler() {
+  constexpr std::size_t first = 11;
   for (const machine::seam_definition& seam : machine::all_seams()) {
-    if (seam.id == "edit-keys" && !seam.points.empty()) {
-      return seam.points.front().run;
+    if (seam.id == "modern-controls" && first < seam.points.size()) {
+      return seam.points[first].run;
     }
   }
   return nullptr;
@@ -4007,11 +4018,12 @@ struct list_arrows_layout {
   return built;
 }
 
-/// One of the `list-arrows` handlers, from the definition this build
-/// ships: the list's (point 0) or the picker's (point 1).
+/// One of the `list-arrows` handlers, from the `modern-controls` definition
+/// this build ships: the list's (point 0) or the picker's (point 1), the
+/// piece's points being the table's first.
 [[nodiscard]] machine::seam_handler list_arrows_handler(std::size_t point) {
   for (const machine::seam_definition& seam : machine::all_seams()) {
-    if (seam.id == "list-arrows" && point < seam.points.size()) {
+    if (seam.id == "modern-controls" && point < seam.points.size()) {
       return seam.points[point].run;
     }
   }
@@ -5027,10 +5039,10 @@ constexpr std::array<machine::seam_point, 1> door_points{
     p.results = {{.what = "return, no cursor", .value = menu_cursor_enter},
                  {.what = "down", .value = menu_cursor_placeholder},
                  {.what = "the log after it",
-                  .value = menu_cursor_log + (1 * menu_cursor_log_stride)},
+                  .value = menu_cursor_log + (2 * menu_cursor_log_stride)},
                  {.what = "down again", .value = menu_cursor_placeholder},
                  {.what = "the log after that",
-                  .value = menu_cursor_log + (4 * menu_cursor_log_stride)},
+                  .value = menu_cursor_log + (6 * menu_cursor_log_stride)},
                  {.what = "the cursor's byte", .value = 4},
                  {.what = "return", .value = menu_cursor_enter_as_m}};
     p.exit_code = 0x8F;

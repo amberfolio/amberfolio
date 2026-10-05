@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -34,7 +35,18 @@
 namespace amberfolio::machine {
 namespace {
 
-constexpr std::string_view seam_id = "select-yellow";
+constexpr std::string_view seam_id = "modern-controls";
+
+/// Where this piece's points sit in the one seam's table, and how many it
+/// has: the pieces follow one another in the order
+/// seam_modern_controls.cpp lists them.
+constexpr std::size_t piece_first = 12;
+constexpr std::size_t piece_count = 7;
+
+[[nodiscard]] std::span<const seam_point> piece_points(
+    const seam_definition& s) {
+  return s.points.subspan(piece_first, piece_count);
+}
 
 // The colours, restated.
 constexpr std::uint16_t black = 0x00;
@@ -135,7 +147,7 @@ struct rig {
 
   /// Stand on point `which` and step once. The instruction there is a NOP.
   void arrive(std::size_t which) const {
-    const seam_point& p = seam().points[which];
+    const seam_point& p = piece_points(seam())[which];
     const std::uint16_t segment =
         p.module.is_resident_image()
             ? image_load_segment
@@ -345,14 +357,14 @@ TEST(SeamSelectYellow, IsSevenPointsAndOneOfThemIsInsideCalls) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(s.points.size(), 7u);
+  ASSERT_EQ(piece_points(s).size(), 7u);
 
-  EXPECT_EQ(s.points[bar_group].offset, 0x0273u);
-  EXPECT_EQ(s.points[list_row].offset, 0x09FDu);
-  EXPECT_EQ(s.points[bar_letter].offset, 0x02CAu);
-  EXPECT_EQ(s.points[bar_rest].offset, 0x0305u);
+  EXPECT_EQ(piece_points(s)[bar_group].offset, 0x0273u);
+  EXPECT_EQ(piece_points(s)[list_row].offset, 0x09FDu);
+  EXPECT_EQ(piece_points(s)[bar_letter].offset, 0x02CAu);
+  EXPECT_EQ(piece_points(s)[bar_rest].offset, 0x0305u);
   for (const std::size_t which : {bar_group, list_row, bar_letter, bar_rest}) {
-    const seam_point& p = s.points[which];
+    const seam_point& p = piece_points(s)[which];
     EXPECT_EQ(p.module.file, "GAME.OVR");
     EXPECT_EQ(p.module.file_offset, 182479u);
     EXPECT_EQ(p.module.length, 4682u);
@@ -362,22 +374,22 @@ TEST(SeamSelectYellow, IsSevenPointsAndOneOfThemIsInsideCalls) {
 
   // The roster is given back through a batch by the automap and the
   // journal, and the point has to be there too.
-  EXPECT_TRUE(s.points[roster_name].module.is_resident_image());
-  EXPECT_EQ(s.points[roster_name].offset, 0x13AFu);
-  EXPECT_TRUE(s.points[roster_name].inside_calls);
+  EXPECT_TRUE(piece_points(s)[roster_name].module.is_resident_image());
+  EXPECT_EQ(piece_points(s)[roster_name].offset, 0x13AFu);
+  EXPECT_TRUE(piece_points(s)[roster_name].inside_calls);
 
-  EXPECT_FALSE(s.points[ability_score].module.is_resident_image());
-  EXPECT_EQ(s.points[ability_score].module.file_offset, 135226u);
-  EXPECT_EQ(s.points[ability_score].module.length, 11026u);
-  EXPECT_EQ(s.points[ability_score].module.load_segment_at, word_sheet);
-  EXPECT_EQ(s.points[ability_score].offset, 0x0918u);
-  EXPECT_FALSE(s.points[ability_score].inside_calls);
+  EXPECT_FALSE(piece_points(s)[ability_score].module.is_resident_image());
+  EXPECT_EQ(piece_points(s)[ability_score].module.file_offset, 135226u);
+  EXPECT_EQ(piece_points(s)[ability_score].module.length, 11026u);
+  EXPECT_EQ(piece_points(s)[ability_score].module.load_segment_at, word_sheet);
+  EXPECT_EQ(piece_points(s)[ability_score].offset, 0x0918u);
+  EXPECT_FALSE(piece_points(s)[ability_score].inside_calls);
 
-  EXPECT_TRUE(s.points[hit_points].module.is_resident_image());
-  EXPECT_EQ(s.points[hit_points].offset, 0x153Fu);
-  EXPECT_FALSE(s.points[hit_points].inside_calls);
+  EXPECT_TRUE(piece_points(s)[hit_points].module.is_resident_image());
+  EXPECT_EQ(piece_points(s)[hit_points].offset, 0x153Fu);
+  EXPECT_FALSE(piece_points(s)[hit_points].inside_calls);
 
-  for (const seam_point& p : s.points) {
+  for (const seam_point& p : piece_points(s)) {
     EXPECT_FALSE(p.at_every_step);
     EXPECT_FALSE(p.module.digest.empty() && !p.module.is_resident_image());
   }

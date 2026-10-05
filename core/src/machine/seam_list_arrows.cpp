@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The list-arrows seam: the up and down arrows step the highlight in the
-// program's pick-lists, as Home and End already do (#423), and step the
-// selected party member at the bars where Home and End do (#435).
+// The list-arrows piece of `modern-controls` (seam_modern_controls.cpp): the up
+// and down arrows step the highlight in the program's pick-lists, as Home and
+// End already do (#423), and step the selected party member at the bars where
+// Home and End do (#435).
 //
 //
 // What the program does, stated as facts
@@ -193,10 +194,6 @@
 
 namespace amberfolio::machine {
 namespace {
-
-/// The baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> list_arrows_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
 // --- The module the pick-list lives in -------------------------------------
 
@@ -415,7 +412,7 @@ void step_the_party(machine& box, seam_context& ctx) {
   }
 }
 
-constexpr std::array<seam_point, 3> list_arrows_points{
+constexpr std::array<seam_point, 3> list_arrows_point_table{
     {{.module = list_module, .offset = list_after_input, .run = &step_the_list},
      {.module = resident_image,
       .offset = picker_after_input,
@@ -423,20 +420,12 @@ constexpr std::array<seam_point, 3> list_arrows_points{
      {.module = list_module,
       .offset = menu_bar::key_read_call,
       .run = &step_the_party}}};
-
-constexpr seam_definition list_arrows_definition{
-    .id = "list-arrows",
-    .about =
-        "the up and down arrows step the game's pick-lists and the "
-        "selected party member, as Home and End do",
-    .fingerprints = list_arrows_binaries,
-    .points = list_arrows_points,
-    .schema = seam_schema_version};
+static_assert(list_arrows_point_table.size() == list_arrows_point_count);
 
 }  // namespace
 
-const seam_definition& list_arrows_seam() noexcept {
-  return list_arrows_definition;
+std::span<const seam_point> list_arrows_points() noexcept {
+  return list_arrows_point_table;
 }
 
 }  // namespace amberfolio::machine

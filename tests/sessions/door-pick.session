@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The baseline of the door bar's pair (#469): hero-keys and list-arrows
-# on, slot C loaded, sixteen moves through the cave to a locked door and a
+# The baseline of the door bar's pair (#469): modern-controls on, slot C
+# loaded, sixteen moves through the cave to a locked door and a
 # seventeenth into it, which puts up the door's own bar, and then keys
 # the bar throws away: a 9, a Right and two Lefts. The party list is on
 # the screen, and the first member stays selected. Its sibling presses a
@@ -11,7 +11,7 @@
 # guards are (a fight the script does not want), and every key is pressed
 # 150 frames after the last, as the program wants a move.
 
-about hero-keys and list-arrows on, slot C loaded and the cave walked to
+about modern-controls on, slot C loaded and the cave walked to
 about a locked door, whose bar is not raw: a 9, a Right
 about and two Lefts are thrown away and the first member stays selected.
 about The baseline of door-pick-3

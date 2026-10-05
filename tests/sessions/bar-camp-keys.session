@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The bar-keys seam on and exercised at the camp bar's arrows (#432):
+# modern-controls on and exercised at the camp bar's arrows (#432, #473):
 # `bar-camp`'s keys with the seam on. The camp bar is not one of the
 # callers that use an arrow, so the Right is rewritten to the program's own
-# `.` and the highlight steps from REST to ALTER. The camp bar is a tabled caller for
-# Enter as well, so the Return then takes ALTER: its sub-bar is on the
-# screen at the end where the seam-off run still shows the camp bar.
+# `.` and the highlight steps from REST to ALTER. The camp bar is a tabled
+# caller for Enter as well, so the Return then takes ALTER: its sub-bar is on
+# the screen at the end where the seam-off run still shows the camp bar.
 #
-# It agrees with `bar-camp` until the Right is read at the camp bar and
-# differs from there to the end.
+# It agrees with `bar-camp` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 93 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
 
-about bar-keys on, a Right and Return at the camp bar: the highlight steps
+about modern-controls on, a Right and Return at the camp bar: the highlight steps
 about to ALTER and the program takes it, where the seam-off run keeps the
 about Right for the party cursor and ignores the Return
 disk external

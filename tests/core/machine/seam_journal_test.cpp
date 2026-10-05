@@ -3978,25 +3978,21 @@ TEST(JournalArtScreen, ThePicturesPageCarriesTheSameBar) {
 }
 
 // ---------------------------------------------------------------------------
-// The reader's bars answer the bar keys (#471)
+// The reader's bars answer the bar keys (#471, #473)
 // ---------------------------------------------------------------------------
 //
 // The reader draws bars of its own, so the program's menu-bar routine never
-// sees a key pressed at them and `bar-keys` cannot answer them there. With
-// the seam on the reader steps its own highlight on Left and Right and takes
-// the highlighted command on Return, and with `select-yellow` on as well it
-// draws that command yellow, its key letter white.
+// sees a key pressed at them and the seam's point there cannot answer them.
+// With `modern-controls` on the reader steps its own highlight on Left and
+// Right and takes the highlighted command on Return, and draws that command
+// yellow, its key letter white.
 
 constexpr std::uint16_t key_left = 0x4B00;
 constexpr std::uint16_t key_right = 0x4D00;
 constexpr std::uint8_t colour_yellow = 0x0E;
 
-void with_bar_keys(rig& r) {
-  ASSERT_EQ(r.pc().seams().enable("bar-keys"), seam_reason::none);
-}
-
-void with_select_yellow(rig& r) {
-  ASSERT_EQ(r.pc().seams().enable("select-yellow"), seam_reason::none);
+void with_modern_controls(rig& r) {
+  ASSERT_EQ(r.pc().seams().enable("modern-controls"), seam_reason::none);
 }
 
 /// An entry of `pages` pages, open on its first.
@@ -4042,7 +4038,7 @@ TEST(JournalBarKeys, WithTheSeamOffLeftAndReturnAreTheReadersAndNothingIsLit) {
 TEST(JournalBarKeys, AFirstDrawWithTheSeamOnLightsTheFirstWord) {
   rig r;
   a_screen_with_the_bar_live(r);
-  with_bar_keys(r);
+  with_modern_controls(r);
   r.forget_the_bar();
   a_paged_entry(r, 3);
   EXPECT_EQ(r.reader().bar_word(), 0u);
@@ -4058,17 +4054,19 @@ TEST(JournalBarKeys, AFirstDrawWithTheSeamOnLightsTheFirstWord) {
 TEST(JournalBarKeys, LeftAndRightStepTheHighlightAndWrapAtBothEnds) {
   rig r;
   a_screen_with_the_bar_live(r);
-  with_bar_keys(r);
+  with_modern_controls(r);
   a_paged_entry(r, 3);  // `NEXT EXIT`, on the first of three
   ASSERT_EQ(r.reader().bar_word(), 0u);
 
   press_and_settle(r, key_right);
   EXPECT_EQ(r.reader().bar_word(), 2u) << "`EXIT`";
-  EXPECT_EQ(
-      r.bar_calls(),
-      (calls{{bar_word_colour, 0}, {bar_key_colour, 0}, {bar_key_colour, 5}}))
-      << "the line, `NEXT`'s initial, then `EXIT` in the bright end to end: "
-         "the bar and nothing else was drawn again";
+  EXPECT_EQ(r.bar_calls(), (calls{{bar_word_colour, 0},
+                                  {bar_key_colour, 0},
+                                  {bar_key_colour, 5},
+                                  {colour_yellow, 6}}))
+      << "the line, `NEXT`'s initial, then `EXIT` in the bright end to end "
+         "and its tail yellow over that: the bar and nothing else was drawn "
+         "again";
   press_and_settle(r, key_right);
   EXPECT_EQ(r.reader().bar_word(), 0u) << "wrapped";
   press_and_settle(r, key_left);
@@ -4079,7 +4077,7 @@ TEST(JournalBarKeys, LeftAndRightStepTheHighlightAndWrapAtBothEnds) {
 TEST(JournalBarKeys, ReturnTakesTheHighlightedCommand) {
   rig r;
   a_screen_with_the_bar_live(r);
-  with_bar_keys(r);
+  with_modern_controls(r);
   a_paged_entry(r, 3);
 
   press_and_settle(r, key_return);
@@ -4100,7 +4098,7 @@ TEST(JournalBarKeys, ReturnTakesTheHighlightedCommand) {
 TEST(JournalBarKeys, EscapeStillClosesIt) {
   rig r;
   a_screen_with_the_bar_live(r);
-  with_bar_keys(r);
+  with_modern_controls(r);
   a_paged_entry(r, 2);
   press_and_settle(r, key_escape);
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing)
@@ -4113,7 +4111,7 @@ TEST(JournalBarKeys, TheEmptyPagesLoneExitTakesReturn) {
   // No journal behind the entry: the page says so and its bar is `EXIT`.
   rig r;
   a_screen_with_the_bar_live(r);
-  with_bar_keys(r);
+  with_modern_controls(r);
   r.host.empty = true;
   an_open_page(r, Tale(19));
   until_it_settles(r);
@@ -4132,7 +4130,7 @@ TEST(JournalBarKeys, AnEmptyListingsReturnClosesIt) {
   r.adventuring();
   r.drawing_routines();
   r.put_bar(bar_area, area_words);
-  with_bar_keys(r);
+  with_modern_controls(r);
   r.one_bar_pass(area_before, area_after, 'N');
   ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
   until_it_settles(r);
@@ -4147,7 +4145,7 @@ TEST(JournalBarKeys, AnEmptyListingsReturnClosesIt) {
 TEST(JournalBarKeys, TheListingsReturnIsTheRowsUntilTheBarIsTakenUp) {
   rig r;
   a_listing_of(r, 25);
-  with_bar_keys(r);
+  with_modern_controls(r);
   until_it_settles(r);
   ASSERT_EQ(r.reader().list_cursor(), 0u);
 
@@ -4179,11 +4177,10 @@ TEST(JournalBarKeys, WithTheSeamOffTheListingsReturnIsAlwaysTheRows) {
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
 }
 
-TEST(JournalBarKeys, WithSelectYellowTheHighlightIsYellowAndItsKeyWhite) {
+TEST(JournalBarKeys, TheHighlightIsYellowAndItsKeyWhite) {
   rig r;
   a_screen_with_the_bar_live(r);
-  with_bar_keys(r);
-  with_select_yellow(r);
+  with_modern_controls(r);
   r.forget_the_bar();
   a_paged_entry(r, 3);             // `NEXT EXIT`, `NEXT` lit
   press_and_settle(r, key_left);   // on to `EXIT`
@@ -4200,27 +4197,10 @@ TEST(JournalBarKeys, ABarOfOneCommandGetsNoYellow) {
   // #462: nothing to select among, so the program leaves it as it draws it.
   rig r;
   a_screen_with_the_bar_live(r);
-  with_bar_keys(r);
-  with_select_yellow(r);
+  with_modern_controls(r);
   a_paged_entry(r, 1);  // `EXIT` alone
   press_and_settle(r, key_right);
   EXPECT_EQ(r.bar_calls(), (calls{{bar_word_colour, 0}, {bar_key_colour, 0}}));
-}
-
-TEST(JournalBarKeys, SelectYellowAloneLightsNothing) {
-  // The highlight is the keys' to move and to take; without them there is
-  // none to colour.
-  rig r;
-  a_screen_with_the_bar_live(r);
-  with_select_yellow(r);
-  r.forget_the_bar();
-  a_paged_entry(r, 3);
-  const calls drawn = r.bar_calls();
-  EXPECT_EQ(std::ranges::count_if(drawn,
-                                  [](const rig::bar_call& call) {
-                                    return call.colour == colour_yellow;
-                                  }),
-            0);
 }
 
 }  // namespace

@@ -189,17 +189,16 @@
 // listing goes back to the listing rather than out, so a person reading
 // several entries stays in the journal.
 //
-// **The bar answers the bar keys when `bar-keys` is on** (#471). The
-// program's menu-bar routine never sees a key pressed at this bar, so the
-// seam's point there cannot step it; the reader keeps a highlight of its
-// own in `journal_state` (`bar_word()`, `bar_focus()`) and takes Left and
-// Right to step it and Return to take the lit command, asking the engine
-// whether the seam is on as `menu-cursor` asks about `select-yellow`. A
-// page's bar is lit from its first draw; the listing's is lit by the first
-// Left or Right, because Return there already opens a row. With
-// `select-yellow` on the lit word is yellow with its key letter white, and
-// a bar of one word is not recoloured (#462). With both off none of it
-// exists.
+// **The bar answers the bar keys when `modern-controls` is on** (#471,
+// #473). The program's menu-bar routine never sees a key pressed at this
+// bar, so the seam's point there cannot step it; the reader keeps a
+// highlight of its own in `journal_state` (`bar_word()`, `bar_focus()`) and
+// takes Left and Right to step it and Return to take the lit command,
+// asking the engine whether `modern-controls` is on. A page's bar is lit
+// from its first draw; the listing's is lit by the first Left or Right,
+// because Return there already opens a row. The lit word is yellow with its
+// key letter white, and a bar of one word is not recoloured (#462). With
+// the seam off none of it exists.
 //
 // **The listing is twenty rows and pages rather than scrolls** (M5-E4e,
 // #318 and #319). It filled ten rows of a twenty-row box on a reason that
@@ -636,12 +635,12 @@ constexpr std::uint16_t list_title_colour = 0x0F;
 constexpr std::uint16_t list_row_colour = 0x0A;
 
 /// The row the cursor is on is a selection the player moves, and is
-/// yellow while `select-yellow` is on (#453), the program's bright
+/// yellow while `modern-controls` is on (#453), the program's bright
 /// otherwise.
 constexpr std::uint16_t list_selected_colour = 0x0E;
 
 [[nodiscard]] std::uint16_t list_cursor_colour(const machine& box) {
-  return select_yellow_on(box) ? list_selected_colour : list_title_colour;
+  return modern_controls_on(box) ? list_selected_colour : list_title_colour;
 }
 
 /// Where the rows go. The frame puts its title on the box's first interior
@@ -1552,7 +1551,7 @@ constexpr std::uint8_t key_exit_lower = 'e';
 constexpr std::uint16_t key_escape = 0x011B;
 constexpr std::uint16_t key_backspace = 0x0E08;
 constexpr std::uint16_t key_return = 0x1C0D;
-/// Left and Right, as INT 16h hands them over, and the keys `bar-keys`
+/// Left and Right, as INT 16h hands them over, and the keys `modern-controls`
 /// gives them to (#471).
 constexpr std::uint16_t key_left = 0x4B00;
 constexpr std::uint16_t key_right = 0x4D00;
@@ -1572,11 +1571,11 @@ enum class claimable : std::uint8_t {
   /// screen - the same modal claim the reader's other keys make.
   step_back,
   step_forward,
-  /// Left and Right, and Return on a page, with `bar-keys` on (#471): step
-  /// the highlight of the reader's own bar, and take the highlighted
-  /// command. The bar is the reader's and not the program's, so the
-  /// program's menu-bar routine never sees these keys and its `bar-keys`
-  /// point cannot answer them.
+  /// Left and Right, and Return on a page, with `modern-controls` on
+  /// (#471): step the highlight of the reader's own bar, and take the
+  /// highlighted command. The bar is the reader's and not the program's, so
+  /// the program's menu-bar routine never sees these keys and the seam's
+  /// point there cannot answer them.
   bar_left,
   bar_right,
   bar_take,
@@ -1843,10 +1842,10 @@ enum class claimable : std::uint8_t {
 /// How the bar is drawn this pass (#471): which of its words is the
 /// highlighted command, if any, and whether it is yellow.
 ///
-/// **A highlight is only ever drawn with `bar-keys` on**, because it is
-/// the keys that move it and take it; with the seam off no word is lit and
-/// the bar is the one it always was. `select-yellow` is asked at every
-/// draw, as the listing's cursor row is (`list_cursor_colour()`).
+/// **A highlight is only ever drawn with `modern-controls` on**, because it
+/// is the keys that move it and take it; with the seam off no word is lit
+/// and the bar is the one it always was. The seam is asked at every draw, as
+/// the listing's cursor row is (`list_cursor_colour()`).
 struct bar_look {
   static constexpr std::size_t none = static_cast<std::size_t>(-1);
   std::size_t lit = none;
@@ -1854,7 +1853,7 @@ struct bar_look {
 };
 
 /// The yellow the program draws a selection in, which the highlighted
-/// word is drawn in under `select-yellow`; its key letter is the bright.
+/// word is drawn in under `modern-controls`; its key letter is the bright.
 constexpr std::uint16_t bar_selected_colour = list_selected_colour;
 
 /// Whether the bar's highlight is the thing Return takes right now.
@@ -1882,11 +1881,10 @@ constexpr std::uint16_t bar_selected_colour = list_selected_colour;
 [[nodiscard]] bar_look look_of_the_bar(const machine& box,
                                        const bar_word_set& words) {
   const journal_state& state = box.journal();
-  if (!bar_keys_on(box) || !bar_is_taken_up(state)) {
+  if (!modern_controls_on(box) || !bar_is_taken_up(state)) {
     return {};
   }
-  return {.lit = lit_word(words, state.bar_word()),
-          .yellow = select_yellow_on(box) && words.count > 1};
+  return {.lit = lit_word(words, state.bar_word()), .yellow = words.count > 1};
 }
 
 /// The reader's own bar, onto the screen: **up to four calls and two
@@ -1937,10 +1935,10 @@ constexpr std::uint16_t bar_selected_colour = list_selected_colour;
     column += word.size() + 1U;  // the word, and the space after it
     if (nth == look.lit) {
       // **The highlighted command** (#471), drawn the way the program's
-      // own highlight is: the word in the bright end to end, or, with
-      // `select-yellow` on, its tail over that in yellow so that the key
-      // letter stays white. A bar of one command has nothing to select
-      // among, so it stays the one colour the program gives it (#462).
+      // own highlight is: the word in the bright end to end, and, over
+      // that, its tail in yellow so that the key letter stays white. A bar
+      // of one command has nothing to select among, so it stays the one
+      // colour the program gives it (#462).
       list_line lit;
       lit.add(word);
       if (!draw_line(ctx, image, lit, bar_key_colour, list_exit_row,
@@ -2580,7 +2578,7 @@ void keep_the_bar_word(journal_state& state, const bar_word_set& words,
   }
 }
 
-/// Left and Right with `bar-keys` on (#471): the highlight steps through
+/// Left and Right with `modern-controls` on (#471): the highlight steps through
 /// the words this screenful's bar has, **wrapping at both ends** as the
 /// program's own bar does. The listing's has no highlight until the first
 /// of these, which lights its first word and leaves Return the row's until
@@ -2600,8 +2598,8 @@ void step_the_bar(journal_state& state, int by) {
   keep_the_bar_word(state, words, words.id[to]);
 }
 
-/// Up and Down with `bar-keys` on: the listing's rows are the thing being
-/// moved again, so Return opens one.
+/// Up and Down with `modern-controls` on: the listing's rows are the thing
+/// being moved again, so Return opens one.
 void give_the_rows_the_bar(journal_state& state) {
   if (state.bar_focus()) {
     state.set_bar_focus(false);
@@ -2609,7 +2607,7 @@ void give_the_rows_the_bar(journal_state& state) {
   }
 }
 
-/// Return with `bar-keys` on, on whichever bar is up (#471): take the
+/// Return with `modern-controls` on, on whichever bar is up (#471): take the
 /// highlighted command, by the route its letter takes. True when the
 /// screen is on its way back through a batch.
 [[nodiscard]] bool take_the_bar(machine& box, seam_context& ctx,
@@ -2638,7 +2636,7 @@ void give_the_rows_the_bar(journal_state& state) {
                                std::uint16_t ds, bool& claimed) {
   journal_state& state = box.journal();
   std::uint16_t key = 0;
-  const bool bar_keys = bar_keys_on(box);
+  const bool bar_keys = modern_controls_on(box);
   const claimable which =
       claim_key(box.processor(), ds, state.reader(), bar_keys, key);
   claimed = which != claimable::none;
