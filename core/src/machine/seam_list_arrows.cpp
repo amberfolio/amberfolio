@@ -134,8 +134,18 @@
 // aim cursor (they move the fighter and the cursor), the stat editor
 // (Up and Down are its rows), the rest-time menu (Up and Down are Inc and
 // Dec), the game-speed screen (they are its two commands), the main menu
-// (its own seam, #434), and every caller that is not raw, which throws an
-// arrow away.
+// (its own seam, #434), and every caller that is not raw and does not show
+// the party list, which throws an arrow away.
+//
+// **At a bar that is not raw** (#469). A caller with raw mode off throws
+// Up and Down away, so there is no caller to hand a Home or an End to. At
+// the door bars, camp's Portraits and Monsters bar and the save slot bar,
+// which show the party list, the seam steps the selection itself by the
+// party cursor's rule (Up is `G`: the member before, from the head the
+// tail; Down is `O`: the member after, the tail stays), writes it to the
+// selected-member pointer and calls the program's own roster drawer, and
+// answers the key with the one the program throws away. The step and the
+// table of those callers are shared with `hero-keys` (seam_party_select.h).
 //
 // **Checks the byte is a byte the routine writes.** The menu-bar routine
 // sets it to zero or one and nothing else. Any other value is not the
@@ -179,6 +189,7 @@
 #include "amberfolio/machine/seam.h"
 #include "seam_builtin.h"
 #include "seam_menu_bar.h"
+#include "seam_party_select.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -323,6 +334,61 @@ constexpr std::array<rewrite, 4> rewrites{
      {.from = ring_pad_8, .to = ring_pad_7},
      {.from = ring_pad_2, .to = ring_pad_1}}};
 
+/// Up and Down at a bar that is **not raw** (#469), where the menu-bar
+/// routine throws every extended key away and there is no caller to hand a
+/// Home or an End to. The target is what the party cursor would have
+/// chosen (`step::back` for Up, `step::forward` for Down), and the step is
+/// the one `hero-keys` takes for a digit there (seam_party_select.h):
+/// the selection written, the program's own roster drawer called, the key
+/// answered with the one the program throws away.
+void select_at_a_bar_that_is_not_raw(machine& box, seam_context& ctx,
+                                     const menu_bar::pending_key& pending) {
+  if (pending.key != ring_up && pending.key != ring_down) {
+    return;
+  }
+  cpu::processor& cpu = box.processor();
+  switch (party_select::at_a_party_bar(cpu, ctx, 0)) {
+    case party_select::where::not_here:
+      return;
+    case party_select::where::frame_unknown:
+      ctx.decline(seam_reason::point_not_recognized);
+      return;
+    case party_select::where::here:
+      break;
+  }
+  const std::uint16_t ds = cpu.regs()[cpu::sreg::ds];
+  if (!party_select::is_the_data_segment(ctx, ds)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const party_select::party members = party_select::read_party(cpu, ds);
+  if (!members.readable) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (party_select::map_over_the_roster(box)) {
+    return;
+  }
+
+  const unsigned current = party_select::member_index(
+      members, party_select::read_pointer(cpu, ds, party_select::data_current));
+  const unsigned target = party_select::stepped_index(
+      members, current,
+      pending.key == ring_up ? party_select::step::back
+                             : party_select::step::forward);
+  if (target >= members.size || target == current) {
+    // Nobody to step to (the tail stays, a party of one, a selection that
+    // is no member): the routine goes back to waiting, as it would have
+    // for a key it threw away.
+    party_select::answer_with_the_ignored_key(cpu, pending.at);
+    return;
+  }
+  if (!party_select::select_and_redraw(box, ctx, ds, members.member[target],
+                                       pending.at)) {
+    ctx.decline(seam_reason::point_not_recognized);
+  }
+}
+
 /// The program is about to read the keystroke at the head of the ring. If it
 /// is an extended Up or Down, or the keypad's 8 or 2, and the caller is one
 /// that steps the party cursor on Home and End, make it Home or End (or the
@@ -334,7 +400,11 @@ void step_the_party(machine& box, seam_context& ctx) {
                                             ring_pad_2};
   const std::optional<menu_bar::pending_key> pending =
       menu_bar::key_about_to_be_read(box, wanted);
-  if (!pending || !menu_bar::called_from(cpu, ctx, roster_callers)) {
+  if (!pending) {
+    return;
+  }
+  if (!menu_bar::called_from(cpu, ctx, roster_callers)) {
+    select_at_a_bar_that_is_not_raw(box, ctx, *pending);
     return;
   }
   for (const rewrite& r : rewrites) {
