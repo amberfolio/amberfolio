@@ -10,7 +10,7 @@
 // settings (`desktop_config.h`).
 //
 // A question and its answer, and nothing else: the printing and the
-// reading of a line are `main.cpp`'s, because a unit that owned stdin
+// reading of a line are `launch_config.cpp`'s, because a unit that owned stdin
 // could not be tested without one. What is here is the three decisions —
 // *whether* this launch is a moment to ask anybody anything, *what* the
 // question says, and *what* an answer to it was — and every one of them
@@ -54,7 +54,7 @@
 //
 // **An unanswered question is not a no.** `read_sidecar_answer()` refuses
 // anything but yes and no, including an empty line and a stdin that was
-// closed, and `main.cpp` then writes nothing at all. The sidecars stay
+// closed, and `launch_config.cpp` then writes nothing at all. The sidecars stay
 // off for the run — off is what every seam and every file of this
 // project's own is until somebody asks for it — but nothing is written
 // down, so the question comes back the next time a person is there.
@@ -127,7 +127,7 @@ struct sidecar_run {
 /// The question, as the lines a host prints, without its `amberfolio: `
 /// prefixes and without the trailing prompt.
 ///
-/// Here rather than in `main.cpp` so that a test can hold down the two
+/// Here rather than in `launch_config.cpp` so that a test can hold down the two
 /// things this text has to say, both of which are facts a player acts on:
 /// the **names of the files** that will appear in their directory, and
 /// that the answer is **remembered**. The third fact — that nothing is

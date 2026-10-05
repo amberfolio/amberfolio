@@ -44,7 +44,7 @@ file(COPY "${DISK}/" DESTINATION "${WORK}/replay")
 
 # `--fast max` for the same reason `--headless` never sleeps: there is
 # nobody watching, and the pacing this would otherwise do is wall time
-# spent proving nothing. It changes no tick and no step (see main.cpp's
+# spent proving nothing. It changes no tick and no step (see options.h's
 # note on `--fast`), which is exactly why a recording made under it
 # replays under it.
 execute_process(
