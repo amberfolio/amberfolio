@@ -1,16 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The menu-cursor seam on, the main menu driven by letters only (#434,
-# #453): `menu-letters`' keys with the seam on. The cursor is on the first
+# modern-controls on, the main menu driven by letters only (#434, #453,
+# #473): `menu-letters`' keys with the seam on. The cursor is on the first
 # command as soon as the menu is drawn, so the run is not the one with the
-# seam off even though no Up, Down or Return is pressed: a `contrast`, where
-# it was an `identical` while the cursor was hidden until the first Up or
-# Down.
+# seam off even though no Up, Down or Return is pressed.
 #
-# It agrees with `menu-letters` until the menu is first drawn, 58 of 77
-# checkpoints, and differs from there to the end.
+# It agrees with `menu-letters` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 77 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
 
-about the menu-cursor seam on, and the main menu driven by letters only:
+about modern-controls on, and the main menu driven by letters only:
 about the cursor is drawn from the start, and the run is not the seam-off one
 disk external
 code-wheel-answered

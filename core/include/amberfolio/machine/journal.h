@@ -668,7 +668,7 @@ class journal_state {
   /// Which of the reader's three bar words its highlight is on, and
   /// whether the listing's highlight has been taken up at all (#471).
   ///
-  /// **Only read while `bar-keys` is on.** The reader draws bars of its
+  /// **Only read while `modern-controls` is on.** The reader draws bars of its
   /// own, which the program's menu-bar routine never sees, so there is no
   /// highlight byte to step: this is the reader's own, in the order the
   /// seam's table lists the words (`NEXT`, `PREV`, `EXIT`), and a word

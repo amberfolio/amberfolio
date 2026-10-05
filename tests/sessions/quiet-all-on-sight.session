@@ -1,24 +1,23 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# quiet-all with the three seams that draw on sight added (#446, #453):
-# hero-keys, menu-cursor and select-yellow, so every seam this build
-# carries but the faces, all on at once, and `quiet`'s script, no key
+# quiet-all with modern-controls added (#446, #453, #473): so every seam this
+# build carries but the faces, all on at once, and `quiet`'s script, no key
 # pressed that any of them takes.
-# hero-keys draws the roster's numbers the moment the party list is first
-# drawn, menu-cursor lights the first command the moment the main menu is
-# drawn, and select-yellow recolours every highlight the moment one is, so
-# this is a `contrast` and not an `identical`. It leaves quiet-all at
-# the first checkpoint after the main menu is drawn, which is the
-# cursor's: the other two follow it.
-# What it adds over its neighbours is the seams together: the three that
-# draw beside list-arrows and bar-keys, which read the same keys at the
-# same bars, beside the journal, which redraws the bar the list sits
-# above, and beside each other, since the roster's selected name is
-# drawn by one and recoloured by another.
+# modern-controls draws on sight: the main menu's cursor from the first frame
+# the menu is drawn, the roster's numbers the moment the party list is first
+# drawn, and every highlight in yellow the moment one is, so this is a
+# `contrast` and not an `identical`. It leaves quiet-all at the first
+# checkpoint after the main menu is drawn, which is the cursor's: the rest
+# follow it.
+# What it adds over its neighbours is the seams together: the six pieces of
+# modern-controls, which read the same keys at the same bars and draw beside
+# each other (the roster's selected name is drawn by one and recoloured by
+# another), beside the journal, which redraws the bar the list sits above and
+# asks whether the controls are on to answer its own bars.
 
-about every seam on at once but the faces, with the three that draw on
-about sight added to quiet-all: the roster's numbers, the menu's cursor
-about and the highlights in yellow
+about every seam on at once but the faces, with modern-controls added to
+about quiet-all: the menu's cursor, the roster's numbers and the highlights in
+about yellow
 disk external
 code-wheel-answered
 journal-store tests/visual/reader-store.txt

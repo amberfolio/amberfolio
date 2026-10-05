@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The edit-keys seam: an extended key (an arrow, Home, End, a page key, a
-// function key) never reaches the program's line editor as a letter
-// (#455).
+// The edit-keys piece of `modern-controls` (seam_modern_controls.cpp): an
+// extended key (an arrow, Home, End, a page key, a function key) never reaches
+// the program's line editor as a letter (#455).
 //
 //
 // What the program does, stated as facts
@@ -123,10 +123,6 @@
 namespace amberfolio::machine {
 namespace {
 
-/// The baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> edit_keys_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
-
 // --- The editor ------------------------------------------------------------
 
 /// In the resident image: the instruction after the line editor's call into
@@ -164,24 +160,16 @@ void drop_the_scan_code(machine& box, seam_context& ctx) {
   cpu.write_byte(ds, data_key_pushback, 0);
 }
 
-constexpr std::array<seam_point, 1> edit_keys_points{
+constexpr std::array<seam_point, 1> edit_keys_point_table{
     {{.module = resident_image,
       .offset = editor_after_read,
       .run = &drop_the_scan_code}}};
-
-constexpr seam_definition edit_keys_definition{
-    .id = "edit-keys",
-    .about =
-        "the arrows and other extended keys no longer type letters in the "
-        "game's name and text prompts",
-    .fingerprints = edit_keys_binaries,
-    .points = edit_keys_points,
-    .schema = seam_schema_version};
+static_assert(edit_keys_point_table.size() == edit_keys_point_count);
 
 }  // namespace
 
-const seam_definition& edit_keys_seam() noexcept {
-  return edit_keys_definition;
+std::span<const seam_point> edit_keys_points() noexcept {
+  return edit_keys_point_table;
 }
 
 }  // namespace amberfolio::machine

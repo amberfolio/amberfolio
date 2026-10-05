@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The hero-keys seam: the number row's 1 to 8 select a party member, and
-// the party list shows each member's number (#439).
+// The hero-keys piece of `modern-controls` (seam_modern_controls.cpp): the
+// number row's 1 to 8 select a party member, and the party list shows each
+// member's number (#439).
 //
 //
 // What the program does, stated as facts
@@ -159,10 +160,6 @@
 
 namespace amberfolio::machine {
 namespace {
-
-/// The baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> hero_keys_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
 // --- The module the menu-bar routine lives in ------------------------------
 
@@ -665,7 +662,7 @@ void at_heading_copied(machine& box, seam_context& ctx) {
 
 // --- The definition --------------------------------------------------------
 
-constexpr std::array<seam_point, 5> hero_keys_points{
+constexpr std::array<seam_point, 5> hero_keys_point_table{
     {{.module = menu_module, .offset = key_read_call, .run = &at_key_read},
      {.module = resident_image,
       .offset = row_cleared,
@@ -683,20 +680,12 @@ constexpr std::array<seam_point, 5> hero_keys_points{
       .offset = heading_copied,
       .run = &at_heading_copied,
       .inside_calls = true}}};
-
-constexpr seam_definition hero_keys_definition{
-    .id = "hero-keys",
-    .about =
-        "the number row's 1 to 8 select a party member, and the party list "
-        "shows each member's number",
-    .fingerprints = hero_keys_binaries,
-    .points = hero_keys_points,
-    .schema = seam_schema_version};
+static_assert(hero_keys_point_table.size() == hero_keys_point_count);
 
 }  // namespace
 
-const seam_definition& hero_keys_seam() noexcept {
-  return hero_keys_definition;
+std::span<const seam_point> hero_keys_points() noexcept {
+  return hero_keys_point_table;
 }
 
 }  // namespace amberfolio::machine

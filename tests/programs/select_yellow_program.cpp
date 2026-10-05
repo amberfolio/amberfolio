@@ -179,12 +179,14 @@ void yellow_word(assembler& a, std::uint8_t displacement, std::uint16_t value) {
   return built;
 }
 
-/// One of the `select-yellow` handlers, from the definition this build
-/// ships.
+/// One of the `select-yellow` handlers, from the `modern-controls`
+/// definition this build ships: the piece's seven points are the table's
+/// last (seam_modern_controls.cpp lists the order).
 [[nodiscard]] machine::seam_handler select_yellow_handler(std::size_t which) {
+  constexpr std::size_t first = 12;
   for (const machine::seam_definition& seam : machine::all_seams()) {
-    if (seam.id == "select-yellow" && which < seam.points.size()) {
-      return seam.points[which].run;
+    if (seam.id == "modern-controls" && first + which < seam.points.size()) {
+      return seam.points[first + which].run;
     }
   }
   return nullptr;

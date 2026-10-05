@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The baseline of the keys' pair: hero-keys on, slot A loaded, and the
-# number row's 9 pressed at the adventuring bar, which is never the
+# The baseline of the keys' pair: modern-controls on, slot A loaded, and
+# the number row's 9 pressed at the adventuring bar, which is never the
 # seam's (the program steps the selection to the first member, where it
 # already is). Its sibling presses 3 at the same tick.
 
-about hero-keys on, slot A loaded and the number row's 9 pressed at
+about modern-controls on, slot A loaded and the number row's 9 pressed at
 about the adventuring bar: the seam leaves it, and the first member
 about stays selected. The baseline of hero-pick-3
 disk external

@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string_view>
 
 #include "amberfolio/cpu/address.h"
@@ -30,7 +31,18 @@
 namespace amberfolio::machine {
 namespace {
 
-constexpr std::string_view seam_id = "bar-keys";
+constexpr std::string_view seam_id = "modern-controls";
+
+/// Where this piece's points sit in the one seam's table, and how many it
+/// has: the pieces follow one another in the order
+/// seam_modern_controls.cpp lists them.
+constexpr std::size_t piece_first = 3;
+constexpr std::size_t piece_count = 1;
+
+[[nodiscard]] std::span<const seam_point> piece_points(
+    const seam_definition& s) {
+  return s.points.subspan(piece_first, piece_count);
+}
 
 /// The point: the call into the key-read routine, in overlay 25.
 constexpr std::uint16_t point = 0x0572;
@@ -333,9 +345,9 @@ TEST(SeamBarKeys, IsOnePointInOverlay25) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(s.points.size(), 1u);
+  ASSERT_EQ(piece_points(s).size(), 1u);
 
-  const seam_point& p = s.points[0];
+  const seam_point& p = piece_points(s)[0];
   EXPECT_EQ(p.offset, point);
   EXPECT_FALSE(p.module.is_resident_image());
   EXPECT_EQ(p.module.file, "GAME.OVR");
@@ -485,14 +497,16 @@ TEST(SeamBarKeys, TheExclusionIsAsExactAsTheEnterTable) {
 
 TEST(SeamBarKeys, TheCursorsKeysAreTheProgramsAtTheCampBarStill) {
   // Home, End and the keypad's 7 and 1 step the selected member, and the
-  // rewrite is of Left and Right only.
+  // rewrite is of Left and Right only. (Up and Down are not the program's
+  // here once `modern-controls` is on: its list-arrows piece writes them as
+  // Home and End, which seam_list_arrows_test.cpp pins.)
   const rig r;
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
 
   for (const std::uint16_t key :
        {std::uint16_t{0x4700}, std::uint16_t{0x4F00}, std::uint16_t{0x4737},
-        std::uint16_t{0x4F31}, std::uint16_t{0x4800}, std::uint16_t{0x5000}}) {
+        std::uint16_t{0x4F31}}) {
     EXPECT_EQ(r.press(key, camp_segment, ret_camp, 1), key) << key;
   }
 }
@@ -513,13 +527,13 @@ TEST(SeamBarKeys, EveryOtherKeyIsLeftWhereItIs) {
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
 
-  // Up, Down, Home, End, a ctrl-arrow (a different scan code), the digit
-  // the keypad's 4 makes with Num Lock on (the right scan code, and a
-  // character), a letter, Escape, Space.
+  // Home, End, a ctrl-arrow (a different scan code), the digit the keypad's
+  // 4 makes with Num Lock on (the right scan code, and a character), a
+  // letter, Escape, Space. Up and Down are the list-arrows piece's.
   for (const std::uint16_t key :
-       {std::uint16_t{0x4800}, std::uint16_t{0x5000}, std::uint16_t{0x4700},
-        std::uint16_t{0x4F00}, std::uint16_t{0x7300}, std::uint16_t{0x4B34},
-        std::uint16_t{0x1E41}, std::uint16_t{0x011B}, std::uint16_t{0x3920}}) {
+       {std::uint16_t{0x4700}, std::uint16_t{0x4F00}, std::uint16_t{0x7300},
+        std::uint16_t{0x4B34}, std::uint16_t{0x1E41}, std::uint16_t{0x011B},
+        std::uint16_t{0x3920}}) {
     EXPECT_EQ(r.press(key, camp_segment, ret_camp, 0), key) << key;
     EXPECT_EQ(r.press(key, camp_segment, ret_camp, 1), key) << key;
   }
@@ -678,7 +692,6 @@ TEST(SeamBarKeys, EnterIsLeftAloneAtTheCallersTheAuditReadAndKeptOut) {
       EXPECT_EQ(r.press(enter, c.segment, c.offset, raw), enter) << c.name;
     }
   }
-  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
 
 TEST(SeamBarKeys, EnterAtTheYesNoPromptTakesTheHighlightedAnswer) {

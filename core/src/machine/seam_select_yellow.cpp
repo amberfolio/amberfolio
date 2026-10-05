@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The select-yellow seam: every selection the player can move is drawn in
-// yellow, and a command's key letter stays white inside it (#453).
+// The select-yellow piece of `modern-controls` (seam_modern_controls.cpp):
+// every selection the player can move is drawn in yellow, and a command's key
+// letter stays white inside it (#453).
 //
 //
 // What the program does, stated as facts
@@ -117,10 +118,6 @@
 
 namespace amberfolio::machine {
 namespace {
-
-/// The baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> select_yellow_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
 // --- The program's colours --------------------------------------------------
 
@@ -521,7 +518,7 @@ void at_hit_points(machine& box, seam_context& ctx) {
 
 // --- The definition ---------------------------------------------------------
 
-constexpr std::array<seam_point, 7> select_yellow_points{
+constexpr std::array<seam_point, 7> select_yellow_point_table{
     {{.module = menu_bar::module,
       .offset = bar_group_call,
       .run = &at_bar_group},
@@ -540,24 +537,12 @@ constexpr std::array<seam_point, 7> select_yellow_points{
      {.module = menu_bar::module,
       .offset = bar_rest_call,
       .run = &at_bar_rest}}};
-
-constexpr seam_definition select_yellow_definition{
-    .id = "select-yellow",
-    .about =
-        "a selection you can move is drawn in yellow, and a command's key "
-        "letter stays white",
-    .fingerprints = select_yellow_binaries,
-    .points = select_yellow_points,
-    .schema = seam_schema_version};
+static_assert(select_yellow_point_table.size() == select_yellow_point_count);
 
 }  // namespace
 
-const seam_definition& select_yellow_seam() noexcept {
-  return select_yellow_definition;
-}
-
-bool select_yellow_on(const machine& box) noexcept {
-  return box.seams().status(select_yellow_id).state == seam_state::on;
+std::span<const seam_point> select_yellow_points() noexcept {
+  return select_yellow_point_table;
 }
 
 }  // namespace amberfolio::machine

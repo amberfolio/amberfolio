@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <cstddef>
+#include <span>
 #include <string_view>
 
 #include "amberfolio/machine/seam.h"
@@ -37,30 +39,57 @@ class machine;
 /// PLAN.md §5 item 5, the explored overlay (seam_explored.cpp).
 [[nodiscard]] const seam_definition& explored_seam() noexcept;
 
-/// The up and down arrows in the pick-lists (seam_list_arrows.cpp, #423).
-[[nodiscard]] const seam_definition& list_arrows_seam() noexcept;
+/// The controls, six pieces in one seam (seam_modern_controls.cpp, #473):
+/// the up and down arrows in the pick-lists, Left, Right, Return and Esc at
+/// a command bar, a cursor on the main menu, the number row's heroes, a
+/// selection in yellow, and the line editor's extended keys. Each piece
+/// keeps its logic and its facts in a source of its own and hands the
+/// registration the points it owns.
+[[nodiscard]] const seam_definition& modern_controls_seam() noexcept;
+
+/// `modern-controls`' id, and the one question another seam asks about it:
+/// is it on. The journal's reader draws and answers bars of its own, which
+/// the program's menu-bar routine never sees, and takes the same keys and
+/// colours when this is on (seam_journal.cpp, #471).
+inline constexpr std::string_view modern_controls_id = "modern-controls";
+[[nodiscard]] bool modern_controls_on(const machine& box) noexcept;
+
+/// The pieces' points, in the order the registration offers them at an
+/// address two of them share: the pick-lists' arrows, the bars' keys, the
+/// main menu's cursor, the heroes' numbers, the line editor, and the
+/// selection's colours last (the order the six seams were registered in).
+/// The counts are what the registration sizes its table from; each source
+/// holds a `static_assert` that its own table is that long.
+inline constexpr std::size_t list_arrows_point_count = 3;
+inline constexpr std::size_t bar_keys_point_count = 1;
+inline constexpr std::size_t menu_cursor_point_count = 2;
+inline constexpr std::size_t hero_keys_point_count = 5;
+inline constexpr std::size_t edit_keys_point_count = 1;
+inline constexpr std::size_t select_yellow_point_count = 7;
+
+/// The up and down arrows in the pick-lists, and the selected party member
+/// at the bars where Home and End step it (seam_list_arrows.cpp, #423).
+[[nodiscard]] std::span<const seam_point> list_arrows_points() noexcept;
+
 /// Left and Right step a command bar's highlight, Enter takes it, and Esc
 /// answers No at a Yes/No question (seam_bar_keys.cpp, #425, #438).
-[[nodiscard]] const seam_definition& bar_keys_seam() noexcept;
-
-/// `bar-keys`' id, and the one question another seam asks about it: is it
-/// on. The journal's reader draws and answers bars of its own, which the
-/// program's menu-bar routine never sees, and takes the same keys when
-/// this is on (seam_journal.cpp, #471).
-inline constexpr std::string_view bar_keys_id = "bar-keys";
-[[nodiscard]] bool bar_keys_on(const machine& box) noexcept;
+[[nodiscard]] std::span<const seam_point> bar_keys_points() noexcept;
 
 /// Up and Down move a cursor over the main menu, and Return takes it
 /// (seam_menu_cursor.cpp, #434).
-[[nodiscard]] const seam_definition& menu_cursor_seam() noexcept;
+[[nodiscard]] std::span<const seam_point> menu_cursor_points() noexcept;
 
 /// The number row's 1 to 8 select a party member, and the party list shows
 /// each member's number (seam_hero_keys.cpp, #439).
-[[nodiscard]] const seam_definition& hero_keys_seam() noexcept;
+[[nodiscard]] std::span<const seam_point> hero_keys_points() noexcept;
 
 /// An extended key never types a letter in the line editor
 /// (seam_edit_keys.cpp, #455).
-[[nodiscard]] const seam_definition& edit_keys_seam() noexcept;
+[[nodiscard]] std::span<const seam_point> edit_keys_points() noexcept;
+
+/// Every selection the player can move in yellow, a command's key letter
+/// white (seam_select_yellow.cpp, #453).
+[[nodiscard]] std::span<const seam_point> select_yellow_points() noexcept;
 
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;
@@ -70,15 +99,5 @@ inline constexpr std::string_view bar_keys_id = "bar-keys";
 /// The text faces, alternatives in one group (seam_font.cpp, text_face.h).
 [[nodiscard]] const seam_definition& font_sans_seam() noexcept;
 [[nodiscard]] const seam_definition& font_chisel_seam() noexcept;
-
-/// Every selection the player can move in yellow, a command's key letter
-/// white (seam_select_yellow.cpp, #453).
-[[nodiscard]] const seam_definition& select_yellow_seam() noexcept;
-
-/// `select-yellow`'s id, and the one question another seam asks about it:
-/// is it on. A seam that draws a selection of its own (`menu-cursor`, the
-/// journal's listing) takes its colours from the answer.
-inline constexpr std::string_view select_yellow_id = "select-yellow";
-[[nodiscard]] bool select_yellow_on(const machine& box) noexcept;
 
 }  // namespace amberfolio::machine

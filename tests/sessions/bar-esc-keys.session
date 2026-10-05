@@ -1,15 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The bar-keys seam on and exercised at the Yes/No prompt (#438):
+# modern-controls on and exercised at the Yes/No prompt (#438, #473):
 # `bar-esc`'s keys with the seam on. The first Escape is at the slot bar,
 # which the seam leaves alone; the second is at the quit prompt, where it
 # is rewritten to `N` and the prompt takes No and hands the camp bar back,
 # where the seam-off run is still asking.
 #
-# It agrees with `bar-esc` until the second Escape is read at the prompt
-# and differs from there to the end.
+# It agrees with `bar-esc` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 99 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
 
-about bar-keys on, Escape at the save-slot bar and at the quit prompt: the
+about modern-controls on, Escape at the save-slot bar and at the quit prompt: the
 about first leaves the slot bar as it always did, and the second answers the
 about prompt No, so the camp bar is back where the seam-off run is still
 about asking

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The menu-cursor seam: a cursor on the main menu's commands, drawn from
-// the moment the menu is. Up and Down move it, and Return takes the command
-// it is on (#434, #453).
+// The menu-cursor piece of `modern-controls` (seam_modern_controls.cpp): a
+// cursor on the main menu's commands, drawn from the moment the menu is. Up and
+// Down move it, and Return takes the command it is on (#434, #453).
 //
 //
 // What the program does, stated as facts
@@ -62,10 +62,9 @@
 //   * **Up and Down** (scan `0x48` and `0x50`, character zero) move the
 //     cursor over the **enabled** commands, in the order the menu draws
 //     them, wrapping at both ends. Disabled commands are not drawn and are
-//     skipped. The cursor is drawn by the program's own string routine. With
-//     `select-yellow` off, the whole word of the command it moved to in
-//     white, which is the program's own convention for a selection; with it
-//     on, the first letter in white and the rest of the word in yellow
+//     skipped. The cursor is drawn by the program's own string routine: the
+//     first letter of the command it moved to in white and the rest of the
+//     word in yellow, the look `select-yellow` gives every selection
 //     (docs/seams.md §10). The word it left is put back in the two colours
 //     the menu draws it in. The key is then replaced by a character the
 //     routine ignores, which keeps it waiting (the batch that draws offers
@@ -136,10 +135,8 @@
 // the program's there), and nothing here is done for a screen other than
 // the main menu: the pick-lists' Up and Down are `list-arrows`.
 //
-// The row is yellow with a white key when `select-yellow` is on and white
-// when it is off. The cursor's state is the enable byte, as before, and the
-// colour is asked of the engine at every draw (`select_yellow_on()`), never
-// kept.
+// The row is yellow with a white key. The cursor's state is the enable byte,
+// as before.
 
 #include <array>
 #include <cstddef>
@@ -159,10 +156,6 @@
 
 namespace amberfolio::machine {
 namespace {
-
-/// The baseline edition (edition.h), and only it.
-constexpr std::array<std::string_view, 1> menu_cursor_binaries{
-    "d825df2b174675c9088ba1489488bdeebe66ad2a22943f17d3a198e60b6a07bd"};
 
 // --- The module the menu-bar routine lives in ------------------------------
 
@@ -267,9 +260,8 @@ constexpr std::uint16_t first_row = 0x0C;
 constexpr std::uint16_t letter_column = 2;
 constexpr std::uint16_t rest_column = 3;
 
-/// The menu's colours: the first letter and the cursor (white), and the
-/// rest of the word (green); and the yellow `select-yellow` draws the rest
-/// of the cursor's word in.
+/// The menu's colours: the first letter (white), the rest of the word
+/// (green), and the yellow the rest of the cursor's word is drawn in.
 constexpr std::uint16_t colour_letter = 0x0F;
 constexpr std::uint16_t colour_rest = 0x0A;
 constexpr std::uint16_t colour_selected = 0x0E;
@@ -484,20 +476,6 @@ struct menu_reading {
                              tail_segment, tail_offset);
 }
 
-/// Light the word `row` stands for. With `select-yellow` off, the record
-/// itself, whole, in white, drawn where it stands in the program's memory.
-/// With it on, the key letter white and the rest of the word yellow.
-[[nodiscard]] bool draw_lit(seam_context& ctx, cpu::processor& cpu,
-                            std::uint16_t image, std::uint16_t ds,
-                            const menu_reading& menu, std::uint8_t row,
-                            bool yellow) {
-  if (yellow) {
-    return draw_word(ctx, cpu, image, ds, menu, row, colour_selected);
-  }
-  return draw(ctx, image, static_cast<std::uint16_t>(first_row + row),
-              letter_column, colour_letter, ds, record_at(menu.record[row]));
-}
-
 /// The slot after `slot` in the BIOS ring.
 [[nodiscard]] constexpr std::uint16_t next_slot(std::uint16_t slot) noexcept {
   const auto next = static_cast<std::uint16_t>(slot + 2U);
@@ -584,8 +562,7 @@ void at_key_read(machine& box, seam_context& ctx) {
   // before the one it leaves is put back.
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
   const bool was_drawn = lit != menu.shown;
-  const bool yellow = select_yellow_on(box);
-  if (!draw_lit(ctx, cpu, image, ds, menu, to, yellow) ||
+  if (!draw_word(ctx, cpu, image, ds, menu, to, colour_selected) ||
       (was_drawn && lit != to &&
        !draw_word(ctx, cpu, image, ds, menu, lit, colour_rest))) {
     ctx.decline(seam_reason::point_not_recognized);
@@ -646,30 +623,22 @@ void at_menu_drawn(machine& box, seam_context& ctx) {
     return;
   }
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
-  if (!draw_lit(ctx, cpu, image, ds, menu, 0, select_yellow_on(box))) {
+  if (!draw_word(ctx, cpu, image, ds, menu, 0, colour_selected)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
   cpu.write_byte(ds, menu.cursor_byte, cursor_base);
 }
 
-constexpr std::array<seam_point, 2> menu_cursor_points{
+constexpr std::array<seam_point, 2> menu_cursor_point_table{
     {{.module = menu_module, .offset = key_read_call, .run = &at_key_read},
      {.module = loop_module, .offset = loop_call, .run = &at_menu_drawn}}};
-
-constexpr seam_definition menu_cursor_definition{
-    .id = "menu-cursor",
-    .about =
-        "a cursor on the main menu: Up and Down move it over the commands, "
-        "and Return takes the one it is on",
-    .fingerprints = menu_cursor_binaries,
-    .points = menu_cursor_points,
-    .schema = seam_schema_version};
+static_assert(menu_cursor_point_table.size() == menu_cursor_point_count);
 
 }  // namespace
 
-const seam_definition& menu_cursor_seam() noexcept {
-  return menu_cursor_definition;
+std::span<const seam_point> menu_cursor_points() noexcept {
+  return menu_cursor_point_table;
 }
 
 }  // namespace amberfolio::machine

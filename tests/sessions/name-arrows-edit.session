@@ -1,13 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The edit-keys seam on and exercised (#455): `name-arrows`' keys with the
-# seam on. The editor is handed the zero that starts each arrow and never
-# its scan code, and the name is BOB, the letters that were typed.
+# modern-controls on and exercised at the line editor (#455, #473):
+# `name-arrows`' keys with the seam on. The editor is handed the zero that
+# starts each arrow and never its scan code, and the name is BOB, the letters
+# that were typed.
 #
-# It agrees with `name-arrows` until the first arrow is read by the editor,
-# and differs from there to the end: the name is in the character's record.
+# It agrees with `name-arrows` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 88 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
+#
+# The name is in the character's record: BOB where the seam-off run's is
+# BMOHBPK.
 
-about the edit-keys seam on: the arrows typed among the letters of a
+about modern-controls on: the arrows typed among the letters of a
 about name do not type letters, and the name is BOB where the seam-off
 about run's is BMOHBPK
 disk external

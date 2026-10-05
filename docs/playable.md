@@ -1008,18 +1008,30 @@ is byte-for-byte the `.txt` of the same script with no face on: screen
 text reads the face. `fired` counts every row fetch the handler let
 through, a picture's or a kept glyph's included.
 
+## Legs 14 to 19 — the controls (#423 to #473)
+
+Six legs, one seam: **`modern-controls`**, which switches on the list
+arrows, the bar keys, the menu cursor, the hero keys, the selection colour
+and the edit keys together. Each leg names the piece it drives and the
+script of the session pair that records it. `docs/seams.md` §10 has the
+facts. Two things read differently from a leg run with its piece alone: the
+selection is yellow, so a lit row, word, name or cursor reads `E` in the
+screen text where a leg below says bright white (`F`), with a command's key
+letter white; and the party list carries its numbers. Where a leg says the
+stills of an on and an off run are identical, that was measured with the
+piece alone on, and the stills differ now where the seam draws.
+
 ## Leg 14 — the arrows in a pick-list (#423)
 
-Three scripts, one seam. `docs/seams.md` §10 has the facts; the screen
-text (`--dump`'s `.txt`) is the instrument, because a highlighted row is
-the one whose ink is bright white.
+Three scripts. The screen text (`--dump`'s `.txt`) is the instrument,
+because a highlighted row is the one whose ink is bright white.
 
 **Character creation.** The race, gender and class lists, with the
 arrows where `list-keys` presses End and Home (`list-down` and
 `list-down-arrows` are this script recorded):
 
 ```
---seam code-wheel --code-wheel-answered --seam list-arrows
+--seam code-wheel --code-wheel-answered --seam modern-controls
 --press C@7550                           CREATE NEW CHARACTER
 --press Down@7700                        race: DWARF to ELF
 --press Return@7850
@@ -1050,7 +1062,7 @@ Down, round to the head on the second and back to the tail on the Up.
 `fired=5`: the spell list's Down and its `C`, and the picker's three.
 
 **The 3D view is not touched.** The same slot, `Up@10300 Down@10500
-Left@10700`, with and without `--seam list-arrows`: the party goes from
+Left@10700`, with and without `--seam modern-controls`: the party goes from
 4,12 S to 4,13 S, turns to face N and then W in both, the stills are
 identical, and the seam's end-of-run line is `armed and never reached`.
 
@@ -1058,20 +1070,20 @@ Not driven: the shops, training, coin selection and the encounter lists;
 the picker from Trade (the Items screen's `T` redrew the screen and did
 not open one); the picker from a script.
 
-**The camp bar** (`camp-roster`, `camp-roster-arrows`, `camp-down` and
-`camp-down-arrows` are these scripts recorded; #435). Slot C, `ENCAMP`,
+**The camp bar** (`camp-roster`, `camp-down` and `camp-down-arrows` are
+these scripts recorded; #435). Slot C, `ENCAMP`,
 and the selected member read off the party panel (the name in bright
 white ink):
 
 ```
---seam code-wheel --code-wheel-answered --seam list-arrows
+--seam code-wheel --code-wheel-answered --seam modern-controls
 --press L@7550 --press C@7800 --press E@8800          the camp bar
 --press End@10000 --press End@10300 --press Home@10600
 --until 220000000 --wall none --dump-every 100
 ```
 
-End, End and Home select MULE, THIEF and MULE, with the seam on or off
-(`camp-roster-arrows` is identical to `camp-roster`). Then, with `End@10000
+End, End and Home select MULE, THIEF and MULE, with the seam on or off.
+Then, with `End@10000
 Down@10300 Down@10600 Up@10900`: on, the selection goes to MULE, THIEF,
 PRINCESS FATIMA and THIEF; off, MULE, then HULK, the first member, for
 every Down and Up. Magic (`M`), Alter (`A`) and the party-order screen
@@ -1083,9 +1095,10 @@ the order (seam off, they do nothing).
 recorded; #447). The same slot, with `End@10000 Numlock@10200 "Keypad
 2"@10300 "Keypad 2"@10600 "Keypad 8"@10900`: on, MULE, THIEF, PRINCESS
 FATIMA and THIEF; off, MULE, then HULK for every keypad digit. With
-`--seam hero-keys` as well, `4@10000` selects PRINCESS FATIMA, and with Num
+the seam on, `4@10000` selects PRINCESS FATIMA, and with Num
 Lock on the keypad's 8 steps back to THIEF and its 2 forward again; the
-number row's digits are `hero-keys`' and the keypad's are `list-arrows`'.
+number row's digits are the hero keys' and the keypad's are the list
+arrows'.
 
 **The other bars.** From slot A, at the armourer (leg 4's route) the
 shop's bar and the "show you our wares?" prompt before it step the
@@ -1110,7 +1123,7 @@ recorded). Slot C, `ENCAMP`, the highlight stepped from REST to ALTER by
 the program's own key, Return:
 
 ```
---seam code-wheel --code-wheel-answered --seam bar-keys
+--seam code-wheel --code-wheel-answered --seam modern-controls
 --press L@7550 --press C@7800           LOAD SAVED GAME, slot C
 --press E@8800                          ENCAMP
 --press .@10000                         the highlight to ALTER
@@ -1196,7 +1209,7 @@ VIEW to ENCAMP and Return enters the camp. Slot J (`L@7550 J@7800`), the
 bar without `AREA`: `.@9600 .@9750 Return@9900` steps from LOOK to VIEW and
 Return opens the View sub-bar. Off, neither does anything.
 
-**The arrows where they are used** (`quiet-bar-keys` is the city; the
+**The arrows where they are used** (the city is `quiet`'s script; the
 wilderness is by hand). Slot J, `Up@9700 Left@9850 Up@10000 Right@10150
 Right@10300 Up@10450`: the party goes from 3,32 S to 3,31 N, turns west and
 goes on, and all 232 stills with the seam on are byte for byte the stills
@@ -1238,9 +1251,9 @@ the seam on wants no Return there.
 ## Leg 16 — a cursor on the main menu (#434)
 
 `docs/seams.md` §10 has the facts. The screen text (`--dump`'s `.txt`) is
-the instrument: a lit command is the one whose ink is `F` end to end where
-the others are `F` and then `A`; with `select-yellow` on it is `F` and then
-`E`. Every pair is told `--wall none`. **The cursor is on the first command
+the instrument: a lit command is the one whose ink is `F` and then `E`
+(the key letter white, the rest of the word yellow) where the others are `F`
+and then `A`. Every pair is told `--wall none`. **The cursor is on the first command
 as soon as the menu is drawn** (#453), so the first frame of the menu
 already has one lit.
 
@@ -1249,7 +1262,7 @@ recorded). The shipped slots, nothing loaded: four commands, Create, Add,
 Load, Exit.
 
 ```
---seam code-wheel --code-wheel-answered --seam menu-cursor
+--seam code-wheel --code-wheel-answered --seam modern-controls
 --press Down@7600        the cursor, already on Create, moves to the second, Add
 --press Down@7750        and then to the third, Load
 --press Return@7900      takes it: LOAD WHICH GAME: A B C E J, the cursor still on Load
@@ -1272,15 +1285,15 @@ stays where it was.
 ```
 
 moves the cursor three rows: a key pressed while the cursor is being drawn
-is not lost (§10, *A second press*). With `bar-keys` and `list-arrows` on
-as well, a Right and a Left between the Downs change nothing on the
-screen, and the stills are the same as with this seam alone.
+is not lost (§10, *A second press*). A Right and a Left
+between the Downs change nothing on the screen: the stills are the same as
+for Down, Down, Down.
 
-**Typed letters leave it alone** (`menu-letters` and `menu-letters-cursor`,
-an `identical`). `A@7600 A@7700 E@7800 V@8000 Escape@8500`: the add
-screen, back, the view screen, back. With the seam on and no Up, Down or
-Return pressed the run is the one with it off, all 77 checkpoints. After a
-command the menu is redrawn and a cursor that was lit is gone.
+**Typed letters still work** (`menu-letters` and `menu-letters-cursor`, a
+`contrast`: the cursor is drawn from the first frame of the menu, 58 of 77
+checkpoints). `A@7600 A@7700 E@7800 V@8000 Escape@8500`: the add screen,
+back, the view screen, back. After a command the menu is redrawn and a
+cursor that was lit is gone.
 
 **A training hall.** Slot A in the city, `L@7550 A@7800`, then the route to
 the lobby of the training schools at 6,2 (the program takes a long time
@@ -1312,7 +1325,7 @@ screen text (`--dump`'s `.txt`) is the instrument: the selected member's
 name is the white one, and each row begins with its number.
 
 ```
---seam code-wheel --code-wheel-answered --seam hero-keys
+--seam code-wheel --code-wheel-answered --seam modern-controls
 --press L@7550 --press A@7800            LOAD SAVED GAME, slot A
 --press 3@10300                          the third member is selected
 --press Numlock@10000 --press "Keypad 8"@10600   walks (4,12 S to 4,13 S)
@@ -1365,9 +1378,9 @@ party-order screen (left out), and the journal reader with a real store.
 
 `docs/seams.md` §10 has the facts. The instrument is a still: `--dump-every
 N` and a look at the bar, the list or the name. Every pair is told
-`--wall none`. With `--seam select-yellow` the panel reads `on inert` until
-the game has loaded the sheet overlay Modify uses, and `fired` counts the
-draws it looked at.
+`--wall none`. With `--seam modern-controls` the panel reads `on inert` until
+the game has loaded every overlay the seam names, the sheet overlay Modify
+uses among them, and `fired` counts the draws and keys it looked at.
 
 | screen | how to reach it | what to see |
 |---|---|---|
@@ -1377,17 +1390,17 @@ draws it looked at.
 | Modify | create a character (leg 0), add it, `M`, then `Down` | the selected score and, six Downs on, the hit points are yellow |
 | the portrait bar | creation, after the roll, `HEAD BODY KEEP` | `H` `B` `K` white, the rest of each word green, the lit word's rest yellow; off, the colours are the other way round |
 | the icon editor's bar | `K` at the portrait bar | the lit word is `COLOR-2` and not the half of a word the game lights |
-| the main menu | leg 16 with `--seam menu-cursor` | `Create` yellow with its `C` white |
+| the main menu | leg 16 with `--seam modern-controls` | `Create` yellow with its `C` white |
 | a swapped Yes/No | the temple's `PAY FOR CURE` (leg 5) | `Y` and `N` white, `es` green, `o` yellow |
 | a one-choice notice | slot A to the arena master's square (7,1), `bar-script`'s keys up to the Return | `PRESS <ENTER>/<RETURN> TO CONTINUE` white end to end, as with the seam off; the question after the Return has `Yes` yellow with its `Y` white |
 
 ```
---seam code-wheel --code-wheel-answered --seam select-yellow
+--seam code-wheel --code-wheel-answered --seam modern-controls
 ```
 
-`quiet-select-yellow`, `bar-yn-yellow`, `list-keys-yellow` and
-`menu-down-cursor-yellow` are the first four rows' keys recorded, and
-`bar-script-yellow` is the notice's. **Not
+`quiet-modern-controls`, `bar-yn-keys`, `list-keys-yellow` and
+`menu-down-cursor` are the first four rows' keys recorded, and
+`bar-script-keys` is the notice's. **Not
 driven:** the two detect-magic confirmations (a combat-only spell cast
 outside combat, and a monster's item), which are read from the disassembly
 and covered by the unit suite.
@@ -1401,7 +1414,7 @@ instrument is the screen text (`--dump`'s `.txt`): the last `text` row is
 the line the editor is typing on.
 
 ```
---seam code-wheel --code-wheel-answered --seam edit-keys
+--seam code-wheel --code-wheel-answered --seam modern-controls
 --press C@7550                                          create a character
 --press Return@7700 --press Return@7850 --press Return@8000
 --press Return@8150 --press Return@8300                 race, gender, class,
@@ -1416,8 +1429,8 @@ the line the editor is typing on.
 Seam off, the row reads `CHARACTER NAME:  BMOHBPK` before the Return: each
 arrow typed its scan code's letter. On, it reads `CHARACTER NAME:  BOB`, and
 the handler is reached eight times (`fired=8`). These are
-`name-arrows` and `name-arrows-edit`; `name-letters` and `name-letters-edit`
-type `B`, `O`, `B` and Return only.
+`name-arrows` and `name-arrows-edit`; `name-letters` types `B`, `O`, `B` and
+Return only.
 
 **The other extended keys.** `B`, then Home, End, `PageUp`, `PageDown`,
 `Insert`, `Delete`, `F1`, `F2`, then `O` and `B`, thirty frames apart from

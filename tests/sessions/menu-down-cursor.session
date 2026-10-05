@@ -1,16 +1,19 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The menu-cursor seam on and exercised (#434, #453): `menu-down`'s keys
-# with the seam on. The cursor is on the first command (Create) as soon as
-# the menu is drawn, the first Down moves it to the second (Add), the second
-# Down to the third (Load), and Return takes it by the route a typed `L`
-# would take: the slot prompt is on the screen at the end, with the cursor
-# still on Load.
+# modern-controls on and exercised at the main menu (#434, #453, #473):
+# `menu-down`'s keys with the seam on. The cursor is on the first command
+# (Create) as soon as the menu is drawn, the first Down moves it to the second
+# (Add), the second Down to the third (Load), and Return takes it by the route
+# a typed `L` would take: the slot prompt is on the screen at the end, with the
+# cursor still on Load. The cursor row is yellow with a white key.
 #
-# It agrees with `menu-down` until the menu is first drawn, 58 of 70
-# checkpoints, and differs from there to the end.
+# It agrees with `menu-down` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 70 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
 
-about the menu-cursor seam on: the cursor is drawn from the start, and
+about modern-controls on: the cursor is drawn from the start, and
 about Down, Down and Return at the main menu take the third command shown,
 about where the seam-off run is still at the menu
 disk external

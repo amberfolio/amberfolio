@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The list-arrows seam on and exercised by the keypad (#447): `camp-pad`'s
+# modern-controls on and exercised by the keypad (#447, #473): `camp-pad`'s
 # keys with the seam on. The keypad's digits are the same keys as the
 # arrows, told apart by the character that comes with the scan code. The
 # camp bar is a caller whose Home and End step the party cursor, so the
@@ -9,10 +9,13 @@
 # End: End, 2, 2, 8 select the second, the third, the fourth and the third
 # member where the seam-off run holds the first.
 #
-# It agrees with `camp-pad` until the first keypad 2 is read at the camp
-# bar and differs from there to the end.
+# It agrees with `camp-pad` until the main menu is first drawn (the cursor is
+# on its first command from that frame: 58 of 96 checkpoints) and differs from
+# there to the end. The keys' own effect is in what the run ends in, and the
+# unit suites pin each key; this pair says the seam is on and the run is not
+# the plain one.
 
-about list-arrows on, End, Num Lock, then the keypad's 2, 2 and 8 at the
+about modern-controls on, End, Num Lock, then the keypad's 2, 2 and 8 at the
 about camp bar: 2 and 8 step the selected member like End and Home, where
 about the seam-off run keeps putting the first member back
 disk external

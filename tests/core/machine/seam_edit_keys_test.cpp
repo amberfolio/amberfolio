@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string_view>
 
 #include "amberfolio/cpu/address.h"
@@ -29,7 +30,18 @@
 namespace amberfolio::machine {
 namespace {
 
-constexpr std::string_view seam_id = "edit-keys";
+constexpr std::string_view seam_id = "modern-controls";
+
+/// Where this piece's points sit in the one seam's table, and how many it
+/// has: the pieces follow one another in the order
+/// seam_modern_controls.cpp lists them.
+constexpr std::size_t piece_first = 11;
+constexpr std::size_t piece_count = 1;
+
+[[nodiscard]] std::span<const seam_point> piece_points(
+    const seam_definition& s) {
+  return s.points.subspan(piece_first, piece_count);
+}
 
 /// Where the point is: the resident image, from the image segment. It is the
 /// instruction after the editor's call into the program's key read, which
@@ -138,9 +150,9 @@ TEST(SeamEditKeys, IsOnePointInTheResidentImage) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(s.points.size(), 1u);
+  ASSERT_EQ(piece_points(s).size(), 1u);
 
-  const seam_point& point = s.points[0];
+  const seam_point& point = piece_points(s)[0];
   EXPECT_EQ(point.offset, editor_point);
   EXPECT_TRUE(point.module.is_resident_image());
   EXPECT_FALSE(point.at_every_step);
@@ -163,11 +175,15 @@ TEST(SeamEditKeys, IsUnavailableOnAnyOtherBinary) {
   EXPECT_EQ(box->seams().enable(seam_id), seam_reason::wrong_binary);
 }
 
-TEST(SeamEditKeys, IsArmedAtOnceBecauseTheResidentImageIsNeverOut) {
+TEST(SeamEditKeys, ActsAtOnceBecauseTheResidentImageIsNeverOut) {
+  // The seam as a whole waits for the overlays its other pieces live in
+  // (`armed` is false until all are loaded); this piece's point is in the
+  // resident image, and is offered whichever overlays are out.
   const rig r;
   r.arm();
   EXPECT_EQ(r.box->seams().status(seam_id).state, seam_state::on);
-  EXPECT_TRUE(r.box->seams().status(seam_id).armed);
+  EXPECT_EQ(r.arrive(0, scan_right), 0u);
+  EXPECT_EQ(r.box->seams().status(seam_id).fired, 1u);
 }
 
 // --- The first half of an extended key -------------------------------------
