@@ -665,6 +665,23 @@ class journal_state {
   }
   void forget_bar_highlight() noexcept { bar_highlight_known_ = false; }
 
+  /// Which of the reader's three bar words its highlight is on, and
+  /// whether the listing's highlight has been taken up at all (#471).
+  ///
+  /// **Only read while `bar-keys` is on.** The reader draws bars of its
+  /// own, which the program's menu-bar routine never sees, so there is no
+  /// highlight byte to step: this is the reader's own, in the order the
+  /// seam's table lists the words (`NEXT`, `PREV`, `EXIT`), and a word
+  /// the screenful has dropped from its bar is resolved to the first one
+  /// it has. The listing's Return opens the row the cursor is on, as it
+  /// always did, until Left or Right takes the highlight up (`focus`);
+  /// Up and Down give it back to the rows. Every other screen's bar is
+  /// always lit. Observation, and never machine state.
+  [[nodiscard]] std::uint8_t bar_word() const noexcept { return bar_word_; }
+  void set_bar_word(std::uint8_t word) noexcept { bar_word_ = word; }
+  [[nodiscard]] bool bar_focus() const noexcept { return bar_focus_; }
+  void set_bar_focus(bool focus) noexcept { bar_focus_ = focus; }
+
   /// Whether the reader's pixels are on the planes because this seam put
   /// them there and nothing has painted over them since, and whether
   /// something other than the party roster owns those cells. The same
@@ -713,6 +730,8 @@ class journal_state {
   bool bar_live_{false};
   std::uint8_t bar_highlight_{};
   bool bar_highlight_known_{false};
+  std::uint8_t bar_word_{};
+  bool bar_focus_{false};
 
   std::size_t seen_count_{};
   std::size_t list_cursor_{};

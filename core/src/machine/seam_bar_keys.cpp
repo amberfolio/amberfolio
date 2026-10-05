@@ -547,4 +547,8 @@ constexpr seam_definition bar_keys_definition{
 
 const seam_definition& bar_keys_seam() noexcept { return bar_keys_definition; }
 
+bool bar_keys_on(const machine& box) noexcept {
+  return box.seams().status(bar_keys_id).state == seam_state::on;
+}
+
 }  // namespace amberfolio::machine

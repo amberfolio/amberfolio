@@ -42,6 +42,14 @@ class machine;
 /// Left and Right step a command bar's highlight, Enter takes it, and Esc
 /// answers No at a Yes/No question (seam_bar_keys.cpp, #425, #438).
 [[nodiscard]] const seam_definition& bar_keys_seam() noexcept;
+
+/// `bar-keys`' id, and the one question another seam asks about it: is it
+/// on. The journal's reader draws and answers bars of its own, which the
+/// program's menu-bar routine never sees, and takes the same keys when
+/// this is on (seam_journal.cpp, #471).
+inline constexpr std::string_view bar_keys_id = "bar-keys";
+[[nodiscard]] bool bar_keys_on(const machine& box) noexcept;
+
 /// Up and Down move a cursor over the main menu, and Return takes it
 /// (seam_menu_cursor.cpp, #434).
 [[nodiscard]] const seam_definition& menu_cursor_seam() noexcept;

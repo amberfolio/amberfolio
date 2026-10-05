@@ -23,6 +23,7 @@
 // (CONTRIBUTING.md, `docs/journal.md`): the entries are sentences written
 // to have the shapes the wrapper and the recognizer have to cope with.
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -154,6 +155,13 @@ constexpr std::uint16_t bar_string_segment_seen = 0x703E;
 /// test reads it. Copied here, by the stand-in, at the one moment the
 /// bytes are certainly the row's own.
 constexpr std::uint16_t screen_row_count = 25;
+
+/// **Every call on the bar's own row, in order** (#471): its colour and its
+/// column, four bytes a call. The highlight is a call over the bar's line
+/// and the key letter another over that, so what a pass drew on the row is
+/// a sequence, and the two ends `last_*` keeps cannot say it.
+constexpr std::uint16_t bar_trace_count = 0x7780;
+constexpr std::uint16_t bar_trace_seen = 0x7800;
 constexpr std::uint16_t row_text_stride = 64;
 constexpr std::uint16_t row_text_seen = 0x7100;
 
@@ -770,6 +778,18 @@ struct rig {
     emit_keep(put, 0x08, first_string_segment_seen);
     emit_at(put, {0xFF, 0x06});
     emit_word_at(put, string_calls);
+    // The bar row's trace: colour and column, appended in order.
+    emit_at(put, {0x83, 0x7E, 0x0C, 0x18});  // cmp word [bp+0x0C], 0x18
+    emit_at(put, {0x75, 27});                // jne over the append
+    emit_at(put, {0x8B, 0x1E});              // mov bx, [bar_trace_count]
+    emit_word_at(put, bar_trace_count);
+    emit_at(put, {0xD1, 0xE3, 0xD1, 0xE3});  // shl bx, 1 twice: four a call
+    emit_at(put, {0x81, 0xC3});              // add bx, bar_trace_seen
+    emit_word_at(put, bar_trace_seen);
+    emit_at(put, {0x8B, 0x46, 0x0A, 0x89, 0x07});        // colour
+    emit_at(put, {0x8B, 0x46, 0x0E, 0x89, 0x47, 0x02});  // column
+    emit_at(put, {0xFF, 0x06});                          // inc the count
+    emit_word_at(put, bar_trace_count);
     emit_at(put, {0x5D, 0xCA});
     emit_word_at(put, draw_string_cleans);
   }
@@ -809,6 +829,27 @@ struct rig {
   [[nodiscard]] unsigned word_of(std::uint16_t offset) const {
     return word_at(dgroup(), offset);
   }
+
+  /// What the bar's row was drawn with since the last `forget_the_bar()`:
+  /// each call's colour and column, in the order they went down.
+  struct bar_call {
+    unsigned colour;
+    unsigned column;
+    [[nodiscard]] bool operator==(const bar_call&) const = default;
+  };
+  [[nodiscard]] std::vector<bar_call> bar_calls() const {
+    std::vector<bar_call> calls;
+    const unsigned count = word_of(bar_trace_count);
+    for (unsigned nth = 0; nth < count && nth < 32; ++nth) {
+      calls.push_back(
+          {.colour =
+               word_of(static_cast<std::uint16_t>(bar_trace_seen + (nth * 4U))),
+           .column = word_of(
+               static_cast<std::uint16_t>(bar_trace_seen + (nth * 4U) + 2U))});
+    }
+    return calls;
+  }
+  void forget_the_bar() const { put_word(dgroup(), bar_trace_count, 0); }
 
   /// The EGA, attached so there is something for a plane write to reach.
   void attach_video() {
@@ -3934,6 +3975,252 @@ TEST(JournalArtScreen, ThePicturesPageCarriesTheSameBar) {
          "it (#342)";
   EXPECT_NE(bar.find("2/2"), std::string::npos)
       << "the page counter counts the pictures too";
+}
+
+// ---------------------------------------------------------------------------
+// The reader's bars answer the bar keys (#471)
+// ---------------------------------------------------------------------------
+//
+// The reader draws bars of its own, so the program's menu-bar routine never
+// sees a key pressed at them and `bar-keys` cannot answer them there. With
+// the seam on the reader steps its own highlight on Left and Right and takes
+// the highlighted command on Return, and with `select-yellow` on as well it
+// draws that command yellow, its key letter white.
+
+constexpr std::uint16_t key_left = 0x4B00;
+constexpr std::uint16_t key_right = 0x4D00;
+constexpr std::uint8_t colour_yellow = 0x0E;
+
+void with_bar_keys(rig& r) {
+  ASSERT_EQ(r.pc().seams().enable("bar-keys"), seam_reason::none);
+}
+
+void with_select_yellow(rig& r) {
+  ASSERT_EQ(r.pc().seams().enable("select-yellow"), seam_reason::none);
+}
+
+/// An entry of `pages` pages, open on its first.
+void a_paged_entry(rig& r, unsigned pages) {
+  r.host.holds = Entry(12);
+  std::string text;
+  for (unsigned word = 0; word < 60U * pages; ++word) {
+    text += "aaaaaaaaa ";  // four to a screen row: twenty rows to a screen
+  }
+  r.host.text = text;
+  an_open_page(r, Entry(12));
+  until_it_settles(r);
+  ASSERT_EQ(r.reader().page_count(), pages);
+  ASSERT_EQ(r.reader().page(), 0u);
+}
+
+/// A key at the reader, and what it starts, run out.
+void press_and_settle(rig& r, std::uint16_t key) {
+  r.forget_the_bar();
+  press(r, key);
+  until_it_settles(r);
+}
+
+using calls = std::vector<rig::bar_call>;
+
+TEST(JournalBarKeys, WithTheSeamOffLeftAndReturnAreTheReadersAndNothingIsLit) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  a_paged_entry(r, 3);
+  r.forget_the_bar();
+  r.type(key_left);
+  r.poll();
+  r.run_the_calls();
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+  EXPECT_EQ(r.reader().page(), 0u) << "Return on a page was dropped, as ever";
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_TRUE(r.bar_calls().empty())
+      << "and nothing was drawn, so no highlight was";
+}
+
+TEST(JournalBarKeys, AFirstDrawWithTheSeamOnLightsTheFirstWord) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  with_bar_keys(r);
+  r.forget_the_bar();
+  a_paged_entry(r, 3);
+  EXPECT_EQ(r.reader().bar_word(), 0u);
+  const calls drawn = r.bar_calls();
+  ASSERT_FALSE(drawn.empty());
+  // `NEXT EXIT`: the line, then `NEXT` in the bright end to end, then the
+  // initial of the word that is not lit.
+  EXPECT_EQ(drawn.back(), (rig::bar_call{bar_key_colour, 5U}));
+  EXPECT_NE(std::ranges::find(drawn, rig::bar_call{bar_key_colour, 0U}),
+            drawn.end());
+}
+
+TEST(JournalBarKeys, LeftAndRightStepTheHighlightAndWrapAtBothEnds) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  with_bar_keys(r);
+  a_paged_entry(r, 3);  // `NEXT EXIT`, on the first of three
+  ASSERT_EQ(r.reader().bar_word(), 0u);
+
+  press_and_settle(r, key_right);
+  EXPECT_EQ(r.reader().bar_word(), 2u) << "`EXIT`";
+  EXPECT_EQ(
+      r.bar_calls(),
+      (calls{{bar_word_colour, 0}, {bar_key_colour, 0}, {bar_key_colour, 5}}))
+      << "the line, `NEXT`'s initial, then `EXIT` in the bright end to end: "
+         "the bar and nothing else was drawn again";
+  press_and_settle(r, key_right);
+  EXPECT_EQ(r.reader().bar_word(), 0u) << "wrapped";
+  press_and_settle(r, key_left);
+  EXPECT_EQ(r.reader().bar_word(), 2u) << "and back";
+  EXPECT_EQ(r.reader().page(), 0u) << "stepping takes nothing";
+}
+
+TEST(JournalBarKeys, ReturnTakesTheHighlightedCommand) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  with_bar_keys(r);
+  a_paged_entry(r, 3);
+
+  press_and_settle(r, key_return);
+  EXPECT_EQ(r.reader().page(), 1u) << "`NEXT`";
+  press_and_settle(r, key_return);
+  EXPECT_EQ(r.reader().page(), 2u);
+  EXPECT_EQ(r.reader().bar_word(), 1u)
+      << "the last page has no `NEXT`, so the highlight is on the first word "
+         "it does have, `PREV`";
+  press_and_settle(r, key_return);
+  EXPECT_EQ(r.reader().page(), 1u) << "`PREV`";
+  press_and_settle(r, key_right);
+  press_and_settle(r, key_return);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing)
+      << "`EXIT` goes back to the listing the page was opened from";
+}
+
+TEST(JournalBarKeys, EscapeStillClosesIt) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  with_bar_keys(r);
+  a_paged_entry(r, 2);
+  press_and_settle(r, key_escape);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing)
+      << "a page goes back to the listing it was opened from, as ever";
+  press_and_settle(r, key_escape);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed);
+}
+
+TEST(JournalBarKeys, TheEmptyPagesLoneExitTakesReturn) {
+  // No journal behind the entry: the page says so and its bar is `EXIT`.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  with_bar_keys(r);
+  r.host.empty = true;
+  an_open_page(r, Tale(19));
+  until_it_settles(r);
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::showing);
+  EXPECT_EQ(r.reader().bar_word(), 0u);
+
+  press_and_settle(r, key_return);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
+}
+
+TEST(JournalBarKeys, AnEmptyListingsReturnClosesIt) {
+  rig r;
+  r.attach_video();
+  r.attach_host();
+  r.enable();
+  r.adventuring();
+  r.drawing_routines();
+  r.put_bar(bar_area, area_words);
+  with_bar_keys(r);
+  r.one_bar_pass(area_before, area_after, 'N');
+  ASSERT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  until_it_settles(r);
+
+  r.type(key_return);
+  r.poll();
+  r.run_the_calls();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::closed)
+      << "Notes with no journal read: Return takes the lone `EXIT`";
+}
+
+TEST(JournalBarKeys, TheListingsReturnIsTheRowsUntilTheBarIsTakenUp) {
+  rig r;
+  a_listing_of(r, 25);
+  with_bar_keys(r);
+  until_it_settles(r);
+  ASSERT_EQ(r.reader().list_cursor(), 0u);
+
+  // Right lights the first word, and Return is its now: `NEXT` is the
+  // next screenful, which lands on its first row.
+  press_and_settle(r, key_right);
+  EXPECT_TRUE(r.reader().bar_focus());
+  press_and_settle(r, key_return);
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::listing);
+  EXPECT_EQ(r.reader().list_cursor(), 20u);
+
+  // Down gives Return back to the rows, and it opens the one it is on.
+  press_and_settle(r, key_step_down);
+  EXPECT_FALSE(r.reader().bar_focus());
+  r.type(key_return);
+  r.poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+}
+
+TEST(JournalBarKeys, WithTheSeamOffTheListingsReturnIsAlwaysTheRows) {
+  rig r;
+  a_listing_of(r, 25);
+  until_it_settles(r);
+  r.type(key_right);
+  r.poll();
+  EXPECT_FALSE(r.reader().bar_focus()) << "Right was swallowed, as ever";
+  r.type(key_return);
+  r.poll();
+  EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
+}
+
+TEST(JournalBarKeys, WithSelectYellowTheHighlightIsYellowAndItsKeyWhite) {
+  rig r;
+  a_screen_with_the_bar_live(r);
+  with_bar_keys(r);
+  with_select_yellow(r);
+  r.forget_the_bar();
+  a_paged_entry(r, 3);             // `NEXT EXIT`, `NEXT` lit
+  press_and_settle(r, key_left);   // on to `EXIT`
+  press_and_settle(r, key_right);  // and back
+  EXPECT_EQ(r.bar_calls(), (calls{{bar_word_colour, 0},
+                                  {bar_key_colour, 0},
+                                  {colour_yellow, 1},
+                                  {bar_key_colour, 5}}))
+      << "the line, `NEXT` white and its tail yellow over it so that the key "
+         "stays white, then the initial of the word that is not lit";
+}
+
+TEST(JournalBarKeys, ABarOfOneCommandGetsNoYellow) {
+  // #462: nothing to select among, so the program leaves it as it draws it.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  with_bar_keys(r);
+  with_select_yellow(r);
+  a_paged_entry(r, 1);  // `EXIT` alone
+  press_and_settle(r, key_right);
+  EXPECT_EQ(r.bar_calls(), (calls{{bar_word_colour, 0}, {bar_key_colour, 0}}));
+}
+
+TEST(JournalBarKeys, SelectYellowAloneLightsNothing) {
+  // The highlight is the keys' to move and to take; without them there is
+  // none to colour.
+  rig r;
+  a_screen_with_the_bar_live(r);
+  with_select_yellow(r);
+  r.forget_the_bar();
+  a_paged_entry(r, 3);
+  const calls drawn = r.bar_calls();
+  EXPECT_EQ(std::ranges::count_if(drawn,
+                                  [](const rig::bar_call& call) {
+                                    return call.colour == colour_yellow;
+                                  }),
+            0);
 }
 
 }  // namespace
