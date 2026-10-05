@@ -353,8 +353,10 @@ struct rig {
   }
 
   [[nodiscard]] std::vector<std::uint8_t> heading() const {
+    constexpr std::uint16_t length_and_text = 7;
     std::vector<std::uint8_t> out;
-    for (std::uint16_t i = 0; i < 7; ++i) {
+    out.reserve(length_and_text);
+    for (std::uint16_t i = 0; i < length_and_text; ++i) {
       out.push_back(byte(stack_segment, static_cast<std::uint16_t>(
                                             drawer_bp - local_heading + i)));
     }
