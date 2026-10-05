@@ -47,6 +47,10 @@ constexpr std::string_view seam_id = "hero-keys";
 constexpr std::uint16_t key_point = 0x0572;
 constexpr std::uint16_t row_cleared = 0x138F;
 constexpr std::uint16_t name_drawn = 0x13CB;
+/// The push of the armour class value's column, and the heading drawn
+/// above the list once its string has been copied into the frame.
+constexpr std::uint16_t ac_column_pushed = 0x140F;
+constexpr std::uint16_t heading_copied = 0x135A;
 
 /// The words the overlay manager keeps the modules' segments in.
 constexpr std::uint32_t word_menu = 0x3C60;
@@ -139,6 +143,8 @@ constexpr std::uint16_t ring_first = 0x1E;
 /// The roster drawer's frame.
 constexpr std::uint16_t local_column = 5;
 constexpr std::uint16_t local_row = 6;
+/// The heading's copy in the same frame.
+constexpr std::uint16_t local_heading = 0x0E;
 constexpr std::uint16_t local_member = 4;
 constexpr std::uint16_t drawer_bp = 0x0800;
 constexpr std::uint16_t drawer_sp = 0x0780;
@@ -331,13 +337,37 @@ struct rig {
              party_segment);
   }
 
+  /// The drawer's frame as the heading finds it: on row two, with the copy
+  /// of `AC  HP` it has made.
+  void lay_heading(std::uint8_t column) const {
+    put_byte(stack_segment,
+             static_cast<std::uint16_t>(drawer_bp - local_column), column);
+    put_byte(stack_segment, static_cast<std::uint16_t>(drawer_bp - local_row),
+             2);
+    const std::array<std::uint8_t, 7> text{6, 'A', 'C', ' ', ' ', 'H', 'P'};
+    for (std::size_t i = 0; i < text.size(); ++i) {
+      put_byte(stack_segment,
+               static_cast<std::uint16_t>(drawer_bp - local_heading + i),
+               text[i]);
+    }
+  }
+
+  [[nodiscard]] std::vector<std::uint8_t> heading() const {
+    std::vector<std::uint8_t> out;
+    for (std::uint16_t i = 0; i < 7; ++i) {
+      out.push_back(byte(stack_segment, static_cast<std::uint16_t>(
+                                            drawer_bp - local_heading + i)));
+    }
+    return out;
+  }
+
   [[nodiscard]] std::uint8_t column() const {
     return byte(stack_segment,
                 static_cast<std::uint16_t>(drawer_bp - local_column));
   }
 
   /// Stand on a roster point with the stack where it was, and step.
-  void arrive_at_roster(std::uint16_t point) const {
+  void arrive_at_roster(std::uint16_t point, std::uint16_t ax = 0) const {
     const std::uint32_t at = cpu::physical_address(image_load_segment, point);
     box->memory().ram()[at] = 0x90;  // NOP: the step is the arrival.
     box->processor().reset();
@@ -348,6 +378,7 @@ struct rig {
     r[cpu::sreg::ss] = stack_segment;
     r[cpu::reg16::sp] = drawer_sp;
     r[cpu::reg16::bp] = drawer_bp;
+    r[cpu::reg16::ax] = ax;
     box->step();
   }
 
@@ -409,7 +440,7 @@ void return_from(const rig& r, unsigned argument_words) {
 
 // --- The definition --------------------------------------------------------
 
-TEST(SeamHeroKeys, IsAKeyPointInOverlay25AndTwoInsideCallsPointsInTheRoster) {
+TEST(SeamHeroKeys, IsAKeyPointInOverlay25AndFourInsideCallsPointsInTheRoster) {
   const rig r;
   const seam_definition& s = r.seam();
 
@@ -418,7 +449,7 @@ TEST(SeamHeroKeys, IsAKeyPointInOverlay25AndTwoInsideCallsPointsInTheRoster) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(s.points.size(), 3u);
+  ASSERT_EQ(s.points.size(), 5u);
 
   const seam_point& key = s.points[0];
   EXPECT_EQ(key.offset, key_point);
@@ -434,7 +465,9 @@ TEST(SeamHeroKeys, IsAKeyPointInOverlay25AndTwoInsideCallsPointsInTheRoster) {
   // which offer a point only if it says so.
   EXPECT_EQ(s.points[1].offset, row_cleared);
   EXPECT_EQ(s.points[2].offset, name_drawn);
-  for (std::size_t i = 1; i < 3; ++i) {
+  EXPECT_EQ(s.points[3].offset, ac_column_pushed);
+  EXPECT_EQ(s.points[4].offset, heading_copied);
+  for (std::size_t i = 1; i < 5; ++i) {
     EXPECT_TRUE(s.points[i].module.is_resident_image());
     EXPECT_TRUE(s.points[i].inside_calls);
     EXPECT_FALSE(s.points[i].at_every_step);
@@ -997,6 +1030,104 @@ TEST(SeamHeroKeys, DrawsTheNumbersOneToEightForTheRowsFourToEleven) {
         << int{row};
     EXPECT_EQ(call.args[1], row);
   }
+}
+
+// --- The armour class and its heading, one column right ---------------------
+
+TEST(SeamHeroKeys, TheArmourClassColumnMovesOneRightAtEveryWidth) {
+  const rig r;
+  r.arm();
+  r.lay_party(4);
+  // The drawer computes 0x20 for a three-character value (-10 or lower),
+  // 0x21 for two and 0x22 for one, so the value ends in 0x23 at most and
+  // the hit points' 0x24 is kept.
+  for (const std::uint8_t column : {std::uint8_t{0x11}, std::uint8_t{0x01}}) {
+    for (std::uint16_t ax = 0x20; ax <= 0x22; ++ax) {
+      r.lay_row(column, 5, 1, 6);
+      r.arrive_at_roster(ac_column_pushed, ax);
+      EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], ax + 1U)
+          << int{column} << " " << ax;
+      EXPECT_EQ(r.column(), column) << "the name's column is not touched";
+    }
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamHeroKeys, TheArmourClassColumnIsLeftAloneOffTheFacts) {
+  const rig r;
+  r.arm();
+  r.lay_party(4);
+  // A column the drawer does not compute, a row it is not on, and a name
+  // column the program is not at between rows.
+  r.lay_row(0x11, 5, 1, 6);
+  r.arrive_at_roster(ac_column_pushed, 0x1F);
+  EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x1Fu);
+  r.arrive_at_roster(ac_column_pushed, 0x23);
+  EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x23u);
+  r.lay_row(0x11, 3, 1, 6);
+  r.arrive_at_roster(ac_column_pushed, 0x21);
+  EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x21u);
+  r.lay_row(0x13, 5, 1, 6);
+  r.arrive_at_roster(ac_column_pushed, 0x21);
+  EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x21u);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 4u);
+}
+
+TEST(SeamHeroKeys, DoesNotMoveTheArmourClassWhileItIsOff) {
+  const rig r;
+  r.lay_party(4);
+  r.lay_row(0x11, 5, 1, 6);
+  r.arrive_at_roster(ac_column_pushed, 0x21);
+  EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x21u);
+}
+
+TEST(SeamHeroKeys, TheHeadingsArmourClassMovesAndTheHitPointsStay) {
+  const rig r;
+  r.arm();
+  for (const std::uint8_t column : {std::uint8_t{0x11}, std::uint8_t{0x01}}) {
+    r.lay_heading(column);
+    r.arrive_at_roster(heading_copied);
+    // The same six characters from the same column: the armour class one
+    // column on from where it was drawn, and the hit points where they were.
+    EXPECT_EQ(r.heading(),
+              (std::vector<std::uint8_t>{6, ' ', 'A', 'C', ' ', 'H', 'P'}))
+        << int{column};
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamHeroKeys, TheHeadingIsLeftAloneWhenItIsNotTheOneTheFactsDescribe) {
+  const rig r;
+  r.arm();
+  // A string that is not `AC  HP`, a heading that is already moved, and a
+  // frame whose row is not the heading's.
+  r.lay_heading(0x11);
+  r.put_byte(stack_segment,
+             static_cast<std::uint16_t>(drawer_bp - local_heading + 3), 'X');
+  r.arrive_at_roster(heading_copied);
+  EXPECT_EQ(r.heading(),
+            (std::vector<std::uint8_t>{6, 'A', 'C', 'X', ' ', 'H', 'P'}));
+  r.lay_heading(0x11);
+  r.arrive_at_roster(heading_copied);
+  r.arrive_at_roster(heading_copied);
+  EXPECT_EQ(r.heading(),
+            (std::vector<std::uint8_t>{6, ' ', 'A', 'C', ' ', 'H', 'P'}))
+      << "moved once, and never a second time";
+  r.lay_heading(0x11);
+  r.put_byte(stack_segment, static_cast<std::uint16_t>(drawer_bp - local_row),
+             4);
+  r.arrive_at_roster(heading_copied);
+  EXPECT_EQ(r.heading(),
+            (std::vector<std::uint8_t>{6, 'A', 'C', ' ', ' ', 'H', 'P'}));
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 3u);
+}
+
+TEST(SeamHeroKeys, DoesNotMoveTheHeadingWhileItIsOff) {
+  const rig r;
+  r.lay_heading(0x11);
+  r.arrive_at_roster(heading_copied);
+  EXPECT_EQ(r.heading(),
+            (std::vector<std::uint8_t>{6, 'A', 'C', ' ', ' ', 'H', 'P'}));
 }
 
 }  // namespace

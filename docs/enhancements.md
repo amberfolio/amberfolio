@@ -393,7 +393,8 @@ instead, and `M` still takes it.
 **What the list gives up.** Each name moves two columns right to make
 room, so beside the viewport a name has fourteen characters before the
 armour class: a fifteen-character name shows its first fourteen, on the
-screen only. Nothing else moves.
+screen only. The armour class and its heading move one column right, to
+keep clear of a long name; the hit points stay.
 
 **Where it does not work.** Combat, the pick-lists and the party-member
 picker, character creation, Modify, and the party-order screen (there
