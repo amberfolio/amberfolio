@@ -41,7 +41,11 @@
 // the row from that column to `0x26`, draws the name there, and then draws
 // the armour class and the hit points in columns of their own (from `0x20`
 // and `0x24`, right-aligned). A name is at most fifteen characters, so in
-// the column beside the viewport it fills `0x11` to `0x1F`.
+// the column beside the viewport it fills `0x11` to `0x1F`. Above the list
+// the drawer draws a heading, `Name` at the names' column and `AC  HP` at
+// column `0x21` (one string: the armour class heading is its first two
+// characters and the hit points' its last two), from a copy it makes in its
+// own frame, on row two.
 //
 //
 // What the seam does
@@ -97,10 +101,10 @@
 //
 // **What a long name keeps.** Beside the viewport the name field is
 // columns `0x13` to `0x20` now, fourteen, so a name of fifteen characters
-// shows its first fourteen. The armour class is right-aligned in `0x20` to
-// `0x22`, and only a value of -10 or lower reaches `0x20`; the program draws
-// it after the name, so then its sign takes that column, as it should. On the main menu, where the names
-// start at column one, there is room for every name in full.
+// shows its first fourteen. The armour class is right-aligned in `0x21` to
+// `0x23` now, so a name that ends at `0x20` has no neighbour on its right.
+// On the main menu, where the names start at column one, there is room for
+// every name in full.
 //
 // Everything drawn is drawn by the program's own routines, so the faces
 // (`font-sans`, `font-chisel`) letter the numbers as they letter the names.
@@ -440,7 +444,29 @@ constexpr std::uint32_t row_cleared = 0x138F;
 /// is drawn.
 constexpr std::uint32_t name_drawn = 0x13CB;
 
-/// What the drawer's frame says at one of the two points.
+/// In the roster drawer (image offsets: the drawer's own `0x086F` is `0x140F`
+/// here, its `0x07BA` is `0x135A`), the push of the armour class column, with
+/// the column (`0x20` to `0x22`) in AX.
+constexpr std::uint32_t ac_column_pushed = 0x140F;
+/// In the roster drawer, after the heading's `AC  HP` has been copied into
+/// the drawer's frame and before it is drawn.
+constexpr std::uint32_t heading_copied = 0x135A;
+
+/// The heading's copy in the drawer's frame: below BP, a length-prefixed
+/// string. The heading is drawn on row two.
+constexpr std::uint16_t local_heading = 0x0E;
+constexpr std::uint8_t heading_row = 2;
+/// The heading's shape, checked rather than its text (which stays the
+/// program's): six characters, two of them, a gap of two spaces, two more.
+/// The armour class's heading is the first two, the hit points' the last.
+constexpr std::uint8_t heading_length = 6;
+
+/// The armour class's column as the drawer computes it, and the one it is
+/// given: one to the right.
+constexpr std::uint16_t first_ac_column = 0x20;
+constexpr std::uint16_t last_ac_column = 0x22;
+
+/// What the drawer's frame says at one of the points.
 struct roster_frame {
   std::uint16_t ss{};
   std::uint16_t bp{};
@@ -583,9 +609,63 @@ void at_name_drawn(machine& box, seam_context& ctx) {
   put_column(frame.column - name_shift);
 }
 
+/// The drawer is about to push the armour class value's column.
+void at_ac_column(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  roster_frame frame;
+  if (!read_roster_frame(cpu, frame) || !is_original(frame.column)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t column = regs[cpu::reg16::ax];
+  if (column < first_ac_column || column > last_ac_column) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  regs[cpu::reg16::ax] = static_cast<std::uint16_t>(column + 1U);
+}
+
+/// The drawer has made its copy of the heading and is about to draw it.
+void at_heading_copied(machine& box, seam_context& ctx) {
+  cpu::processor& cpu = box.processor();
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const auto at = [&](std::uint16_t distance) {
+    return static_cast<std::uint16_t>(bp - distance);
+  };
+  if (cpu.read_byte(ss, at(local_row)) != heading_row ||
+      !is_original(cpu.read_byte(ss, at(local_column)))) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  const auto heading_at = [&](std::uint16_t i) {
+    return static_cast<std::uint16_t>(at(local_heading) + i);
+  };
+  const auto read = [&](std::uint16_t i) {
+    return cpu.read_byte(ss, heading_at(i));
+  };
+  // Characters 1-2 and 5-6 printed, 3-4 the gap. A copy already moved has a
+  // space first, and is not this shape.
+  if (read(0) != heading_length || read(1) == ' ' || read(2) == ' ' ||
+      read(3) != ' ' || read(4) != ' ' || read(5) == ' ' || read(6) == ' ') {
+    // Not the heading these facts describe, or already moved.
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  // The armour class's two characters one column right, into the gap's
+  // first space; the hit points' stay where they are.
+  const std::uint8_t first = read(1);
+  const std::uint8_t second = read(2);
+  cpu.write_byte(ss, heading_at(1), ' ');
+  cpu.write_byte(ss, heading_at(2), first);
+  cpu.write_byte(ss, heading_at(3), second);
+}
+
 // --- The definition --------------------------------------------------------
 
-constexpr std::array<seam_point, 3> hero_keys_points{
+constexpr std::array<seam_point, 5> hero_keys_points{
     {{.module = menu_module, .offset = key_read_call, .run = &at_key_read},
      {.module = resident_image,
       .offset = row_cleared,
@@ -594,6 +674,14 @@ constexpr std::array<seam_point, 3> hero_keys_points{
      {.module = resident_image,
       .offset = name_drawn,
       .run = &at_name_drawn,
+      .inside_calls = true},
+     {.module = resident_image,
+      .offset = ac_column_pushed,
+      .run = &at_ac_column,
+      .inside_calls = true},
+     {.module = resident_image,
+      .offset = heading_copied,
+      .run = &at_heading_copied,
       .inside_calls = true}}};
 
 constexpr seam_definition hero_keys_definition{
