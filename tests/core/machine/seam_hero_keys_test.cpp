@@ -337,14 +337,14 @@ struct rig {
              party_segment);
   }
 
-  /// The drawer's frame as the heading finds it: on row two, with the copy
-  /// of `AC  HP` it has made.
+  /// The drawer's frame as the heading finds it: on row two, with a copy
+  /// of the heading's shape (stand-in letters, not the program's text).
   void lay_heading(std::uint8_t column) const {
     put_byte(stack_segment,
              static_cast<std::uint16_t>(drawer_bp - local_column), column);
     put_byte(stack_segment, static_cast<std::uint16_t>(drawer_bp - local_row),
              2);
-    const std::array<std::uint8_t, 7> text{6, 'A', 'C', ' ', ' ', 'H', 'P'};
+    const std::array<std::uint8_t, 7> text{6, 'Q', 'R', ' ', ' ', 'S', 'T'};
     for (std::size_t i = 0; i < text.size(); ++i) {
       put_byte(stack_segment,
                static_cast<std::uint16_t>(drawer_bp - local_heading + i),
@@ -1090,7 +1090,7 @@ TEST(SeamHeroKeys, TheHeadingsArmourClassMovesAndTheHitPointsStay) {
     // The same six characters from the same column: the armour class one
     // column on from where it was drawn, and the hit points where they were.
     EXPECT_EQ(r.heading(),
-              (std::vector<std::uint8_t>{6, ' ', 'A', 'C', ' ', 'H', 'P'}))
+              (std::vector<std::uint8_t>{6, ' ', 'Q', 'R', ' ', 'S', 'T'}))
         << int{column};
   }
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
@@ -1099,26 +1099,26 @@ TEST(SeamHeroKeys, TheHeadingsArmourClassMovesAndTheHitPointsStay) {
 TEST(SeamHeroKeys, TheHeadingIsLeftAloneWhenItIsNotTheOneTheFactsDescribe) {
   const rig r;
   r.arm();
-  // A string that is not `AC  HP`, a heading that is already moved, and a
+  // A string that is not the heading's shape, one already moved, and a
   // frame whose row is not the heading's.
   r.lay_heading(0x11);
   r.put_byte(stack_segment,
              static_cast<std::uint16_t>(drawer_bp - local_heading + 3), 'X');
   r.arrive_at_roster(heading_copied);
   EXPECT_EQ(r.heading(),
-            (std::vector<std::uint8_t>{6, 'A', 'C', 'X', ' ', 'H', 'P'}));
+            (std::vector<std::uint8_t>{6, 'Q', 'R', 'X', ' ', 'S', 'T'}));
   r.lay_heading(0x11);
   r.arrive_at_roster(heading_copied);
   r.arrive_at_roster(heading_copied);
   EXPECT_EQ(r.heading(),
-            (std::vector<std::uint8_t>{6, ' ', 'A', 'C', ' ', 'H', 'P'}))
+            (std::vector<std::uint8_t>{6, ' ', 'Q', 'R', ' ', 'S', 'T'}))
       << "moved once, and never a second time";
   r.lay_heading(0x11);
   r.put_byte(stack_segment, static_cast<std::uint16_t>(drawer_bp - local_row),
              4);
   r.arrive_at_roster(heading_copied);
   EXPECT_EQ(r.heading(),
-            (std::vector<std::uint8_t>{6, 'A', 'C', ' ', ' ', 'H', 'P'}));
+            (std::vector<std::uint8_t>{6, 'Q', 'R', ' ', ' ', 'S', 'T'}));
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 3u);
 }
 
@@ -1127,7 +1127,7 @@ TEST(SeamHeroKeys, DoesNotMoveTheHeadingWhileItIsOff) {
   r.lay_heading(0x11);
   r.arrive_at_roster(heading_copied);
   EXPECT_EQ(r.heading(),
-            (std::vector<std::uint8_t>{6, 'A', 'C', ' ', ' ', 'H', 'P'}));
+            (std::vector<std::uint8_t>{6, 'Q', 'R', ' ', ' ', 'S', 'T'}));
 }
 
 }  // namespace

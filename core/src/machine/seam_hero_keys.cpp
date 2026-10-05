@@ -482,10 +482,10 @@ constexpr std::uint32_t heading_copied = 0x135A;
 /// string. The heading is drawn on row two.
 constexpr std::uint16_t local_heading = 0x0E;
 constexpr std::uint8_t heading_row = 2;
-constexpr std::array<std::uint8_t, 7> heading_as_made{6,   'A', 'C', ' ',
-                                                      ' ', 'H', 'P'};
-constexpr std::array<std::uint8_t, 7> heading_as_moved{6,   ' ', 'A', 'C',
-                                                       ' ', 'H', 'P'};
+/// The heading's shape, checked rather than its text (which stays the
+/// program's): six characters, two of them, a gap of two spaces, two more.
+/// The armour class's heading is the first two, the hit points' the last.
+constexpr std::uint8_t heading_length = 6;
 
 /// The armour class's column as the drawer computes it, and the one it is
 /// given: one to the right.
@@ -666,18 +666,27 @@ void at_heading_copied(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  for (std::size_t i = 0; i < heading_as_made.size(); ++i) {
-    if (cpu.read_byte(ss, static_cast<std::uint16_t>(at(local_heading) + i)) !=
-        heading_as_made[i]) {
-      // Not the heading these facts describe, or already moved.
-      ctx.decline(seam_reason::point_not_recognized);
-      return;
-    }
+  const auto heading_at = [&](std::uint16_t i) {
+    return static_cast<std::uint16_t>(at(local_heading) + i);
+  };
+  const auto read = [&](std::uint16_t i) {
+    return cpu.read_byte(ss, heading_at(i));
+  };
+  // Characters 1-2 and 5-6 printed, 3-4 the gap. A copy already moved has a
+  // space first, and is not this shape.
+  if (read(0) != heading_length || read(1) == ' ' || read(2) == ' ' ||
+      read(3) != ' ' || read(4) != ' ' || read(5) == ' ' || read(6) == ' ') {
+    // Not the heading these facts describe, or already moved.
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
   }
-  for (std::size_t i = 0; i < heading_as_moved.size(); ++i) {
-    cpu.write_byte(ss, static_cast<std::uint16_t>(at(local_heading) + i),
-                   heading_as_moved[i]);
-  }
+  // The armour class's two characters one column right, into the gap's
+  // first space; the hit points' stay where they are.
+  const std::uint8_t first = read(1);
+  const std::uint8_t second = read(2);
+  cpu.write_byte(ss, heading_at(1), ' ');
+  cpu.write_byte(ss, heading_at(2), first);
+  cpu.write_byte(ss, heading_at(3), second);
 }
 
 // --- The definition --------------------------------------------------------
