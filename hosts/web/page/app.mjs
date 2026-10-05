@@ -2034,7 +2034,7 @@ async function keepCodeWheelStore(machine) {
 /// stale for the rest of the session. Picking a journal and waiting out
 /// its ingestion is minutes of it. So the run loop takes a fresh seed at
 /// the tick it is about to start stepping from, which is where the
-/// desktop host has always taken its one (`hosts/sdl/src/main.cpp`,
+/// desktop host has always taken its one (`hosts/sdl/src/recording.cpp`,
 /// before the first instruction).
 ///
 /// Re-seeding is not a second clock and not a jump: `wall_clock::set()`

@@ -542,7 +542,7 @@ double af_machine_steps(const af_machine* box);
 /// One switch for both halves because they are one facility: the live
 /// stream and the ring dumped at the end are asked for together or not at
 /// all, which is what the SDL host's `--trace` does with the same two
-/// things (hosts/sdl/src/main.cpp). A host that wanted only one of them
+/// things (hosts/sdl/src/run_reports.cpp). A host that wanted only one of them
 /// would be asking a question no boot log has ever needed the answer to.
 ///
 /// A setting, not state — it survives `af_machine_reset`, exactly as the
