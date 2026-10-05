@@ -103,7 +103,7 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.txt` (its screen text, §10), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
 | `--dump-every N` | also `PREFIX-NNNNNN.ppm` and `.txt` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
 | `--trace` | keep and print with the report the last 256 instructions, 64 service calls and 32 naming file calls; print each file the program names as it happens. |
-| `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/main.cpp`. |
+| `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/options.h`. |
 | `--seam ID` | turn one seam on (PLAN.md §5, `machine/seam.h`), refused unless the loaded program is the binary its addresses are facts about. Repeatable. |
 | `--seams` | list every seam this build carries, and exit. |
 | `--vfs-list`, `--vfs-get PATH`, `--vfs-remove PATH` | after the run: list the disk; print one file's size and SHA-256, never its bytes; delete one. |
@@ -319,7 +319,7 @@ on the archive release, §6). It is the one M6 surface that changes
 something somebody else owns, so both hosts ask before they do, once, and
 keep the answer with the rest of the settings.
 
-**The desktop asks on stdin, from `settle_config`**, before SDL comes up
+**The desktop asks on stdin, from `settle_config`** (`launch_config.cpp`), before SDL comes up
 — the only surface this host has at that point, and where flag > config >
 default is already settled. **The page asks in a panel**, and the two
 buttons record an answer rather than applying one.
@@ -1357,7 +1357,7 @@ which adds a state hash: the `amberfolio: stop ...` lines should be
 identical field for field. Trap: `frames=` disagreeing and nothing else
 means the machines were not powered on the same way, `reset()` blanking and
 republishing the frame and advancing the generation counter. Both hosts
-pull the line, `wired_machine`'s constructor and `ensureMachine()` in
+pull the line, `wired_machine`'s constructor (`hosts/sdl/src/wiring.cpp`) and `ensureMachine()` in
 `app.mjs`. Procedure: `docs/first-light.md`, then `docs/playable.md`.
 
 ---
@@ -1802,7 +1802,7 @@ enhancement — remembering it would leave the seam on for the next person
 who ran the script. A click or a Return **in a panel** is nobody but a
 player, and it is the only gesture either host has that cannot be
 anything else. So the desktop panel writes `.seams` and nothing else
-about the run (`remember_panel_seams()` in `main.cpp` — only the seams,
+about the run (`remember_panel_seams()` in `launch_config.cpp` — only the seams,
 because `config_of()` would also write down this run's `--speed` and
 `--scale`), and the page writes its `seams` key. `--no-config` says so
 and writes nothing.

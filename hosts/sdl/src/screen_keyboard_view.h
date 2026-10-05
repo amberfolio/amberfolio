@@ -31,7 +31,7 @@
 // Nothing here touches the machine
 // ---------------------------------
 //
-// A commit produces scan codes and `main()` posts them through the same
+// A commit produces scan codes and `overlays.h` posts them through the same
 // `post_key` a window keystroke takes — counted, recorded, and released
 // on a focus loss like any other. This file never sees the machine, and
 // the overlay is drawn after the frame has been presented and verified,
