@@ -3222,6 +3222,7 @@ if (missing.length === 0) {
     Delete: 0x53,
     Escape: 0x01,
     Enter: 0x1c,
+    NumpadEnter: 0x1c,
     F1: 0x3b,
     F10: 0x44,
   };
