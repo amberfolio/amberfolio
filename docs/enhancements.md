@@ -183,6 +183,13 @@ not touched; they are for `hero-keys`, and with both seams on each keeps
 its own, so the row's 8 picks the eighth member and the keypad's 8 steps
 back one.
 
+**At a door.** The bar at a locked or stuck door, camp's Portraits and
+Monsters bar and the save slot bar throw the arrows away, because the game
+reads them with its bar in a mode that has no Home or End either. With the
+seam on, Up and Down step the selected member there too, by the same rule
+(Up from the first goes to the last, Down from the last stays), and the
+party list is drawn again by the game's own routine.
+
 **How you turn it on.** `--seam list-arrows`, or the toggle in the panel.
 
 **Where it works.** Inside a pick-list or the party-member picker, and at
@@ -379,6 +386,11 @@ script's own menus. The game's own cursor does the selecting, so the
 party list redraws as it does for Home and End. **The party list shows
 each member's number** in white in front of the name, on all of those
 screens: `1 FIGHTER1   -2  33`.
+
+**At a door.** The same keys select at a locked or stuck door's bar,
+camp's Portraits and Monsters bar and the save slot bar, where the game
+would not have taken a Home: the list is drawn again by the game's own
+routine. A digit that is one of a bar's own command letters stays the bar's.
 
 **How you turn it on.** `--seam hero-keys`, or the toggle in the panel.
 

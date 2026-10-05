@@ -19,7 +19,9 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -58,6 +60,7 @@ constexpr std::uint32_t word_combat = 0x360;
 constexpr std::uint32_t word_adventure = 0x730;
 constexpr std::uint32_t word_camp = 0x760;
 constexpr std::uint32_t word_main_menu = 0x790;
+constexpr std::uint32_t word_slots = 0x7D0;
 
 constexpr std::uint16_t menu_segment = 0x6000;
 constexpr std::uint16_t temple_segment = 0x6200;
@@ -68,6 +71,7 @@ constexpr std::uint16_t combat_segment = 0x6A00;
 constexpr std::uint16_t adventure_segment = 0x6C00;
 constexpr std::uint16_t camp_segment = 0x6E00;
 constexpr std::uint16_t main_menu_segment = 0x7000;
+constexpr std::uint16_t slots_segment = 0x7200;
 
 struct caller {
   std::uint16_t segment;
@@ -183,6 +187,7 @@ struct rig {
     manager_says(word_adventure, adventure_segment);
     manager_says(word_camp, camp_segment);
     manager_says(word_main_menu, main_menu_segment);
+    manager_says(word_slots, slots_segment);
     // The program's routines the handlers send the processor to: a NOP
     // each, so that the step that follows the redirect is the arrival and
     // nothing else.
@@ -996,6 +1001,288 @@ TEST(SeamHeroKeys, DrawsTheNumbersOneToEightForTheRowsFourToEleven) {
     EXPECT_EQ(call.args[4], static_cast<std::uint16_t>('1' + row - 4))
         << int{row};
     EXPECT_EQ(call.args[1], row);
+  }
+}
+
+// --- At a bar that is not raw (#469) ----------------------------------------
+
+/// Callers of the menu-bar routine with raw mode off whose screen shows the
+/// party list: a locked door's bar, a stuck door's, and camp's Portraits and
+/// Monsters bar. The routine throws Home, End and the arrows away for them,
+/// so there is no caller to hand a Home to: the seams write the selection
+/// and ask the program to draw the list again.
+constexpr std::array<caller, 4> bar_callers{{
+    {.segment = adventure_segment, .offset = 0x0EBF, .name = "a locked door"},
+    {.segment = adventure_segment, .offset = 0x0FFE, .name = "a stuck door"},
+    {.segment = camp_segment,
+     .offset = 0x1DDF,
+     .name = "camp's Portraits and Monsters bar"},
+    {.segment = slots_segment, .offset = 0x1DA1, .name = "the save slot bar"},
+}};
+
+/// Above BP: the raw-mode argument. Below it: the bar as a Pascal string.
+constexpr std::uint16_t frame_raw_mode = 0x0C;
+constexpr std::uint16_t bar_below_bp = 0x53;
+
+/// The roster drawer, as the paragraph it was linked at and the offset in it.
+constexpr std::uint16_t drawer_paragraph = 0x0BA;
+constexpr std::uint16_t drawer_offset = 0x0767;
+
+constexpr std::uint16_t key_up = 0x4800;
+constexpr std::uint16_t key_down = 0x5000;
+
+/// The cursor's step, restated: back from the head wraps to the tail, forward
+/// from the tail stays.
+[[nodiscard]] unsigned cursor_steps(unsigned size, unsigned current,
+                                    bool forward) {
+  if (forward) {
+    return current + 1U == size ? current : current + 1U;
+  }
+  return cursor_goes_back(size, current);
+}
+
+void set_bar(const rig& r, std::string_view bar) {
+  const auto at = static_cast<std::uint16_t>(frame_base - bar_below_bp);
+  r.put_byte(stack_segment, at, static_cast<std::uint8_t>(bar.size()));
+  for (std::size_t i = 0; i < bar.size(); ++i) {
+    r.put_byte(stack_segment, static_cast<std::uint16_t>(at + 1U + i),
+               static_cast<std::uint8_t>(bar[i]));
+  }
+}
+
+void set_raw_mode(const rig& r, std::uint8_t raw) {
+  r.put_byte(stack_segment,
+             static_cast<std::uint16_t>(frame_base + frame_raw_mode), raw);
+}
+
+/// The member the roster drawer was last asked to draw the list for, if the
+/// last press asked it.
+std::optional<unsigned> last_drew;
+
+[[nodiscard]] bool drew_for(unsigned member) {
+  return last_drew.has_value() && *last_drew == member;
+}
+
+/// The program's roster drawer, as a stand-in that keeps what it was handed:
+/// how many times it was called and the far pointer of the last call, in the
+/// data segment, and then returns and cleans its one argument. A far pointer
+/// is pushed segment first, so the offset is the nearer word.
+///
+///     push bp / mov bp, sp
+///     mov ax, [bp+6] / mov [log_offset], ax
+///     mov ax, [bp+8] / mov [log_segment], ax
+///     inc word [log_calls]
+///     pop bp / retf 4
+constexpr std::uint16_t log_offset = 0x7000;
+constexpr std::uint16_t log_segment = 0x7002;
+constexpr std::uint16_t log_calls = 0x7004;
+
+void install_the_drawer(const rig& r) {
+  const auto where =
+      static_cast<std::uint16_t>(image_load_segment + drawer_paragraph);
+  std::uint16_t put = drawer_offset;
+  const auto emit = [&](std::initializer_list<std::uint8_t> bytes) {
+    for (const std::uint8_t b : bytes) {
+      r.put_byte(where, put++, b);
+    }
+  };
+  emit({0x55, 0x89, 0xE5});
+  emit({0x8B, 0x46, 0x06, 0xA3, static_cast<std::uint8_t>(log_offset & 0xFFU),
+        static_cast<std::uint8_t>(log_offset >> 8U)});
+  emit({0x8B, 0x46, 0x08, 0xA3, static_cast<std::uint8_t>(log_segment & 0xFFU),
+        static_cast<std::uint8_t>(log_segment >> 8U)});
+  emit({0xFF, 0x06, static_cast<std::uint8_t>(log_calls & 0xFFU),
+        static_cast<std::uint8_t>(log_calls >> 8U)});
+  emit({0x5D, 0xCA, 0x04, 0x00});
+}
+
+/// One press at a bar, and then the batch the handler may have queued run to
+/// its end: what the roster drawer was asked to draw for is noted in
+/// `last_drew`, and the key at the head of the ring is returned.
+[[nodiscard]] std::uint16_t press_bar(const rig& r, std::uint16_t key,
+                                      const caller& from) {
+  last_drew.reset();
+  r.put_word(rig::dgroup(), log_calls, 0);
+  const std::uint16_t head = r.press(key, from);
+  cpu::processor& cpu = r.box->processor();
+  for (unsigned nth = 0; nth < 256 && !cpu.halted(); ++nth) {
+    r.box->step();
+  }
+  EXPECT_TRUE(cpu.halted()) << "the batch ended where it began";
+  const std::uint16_t calls = r.word(rig::dgroup(), log_calls);
+  EXPECT_LE(calls, 1u) << "the list is drawn once";
+  if (calls == 1) {
+    EXPECT_EQ(r.word(rig::dgroup(), log_segment), party_segment);
+    for (unsigned i = 0; i < 8; ++i) {
+      if (r.word(rig::dgroup(), log_offset) == rig::member_offset(i)) {
+        last_drew = i;
+      }
+    }
+  }
+  return head;
+}
+
+class SeamHeroKeysAtABarThatIsNotRaw : public testing::Test {
+ protected:
+  void SetUp() override {
+    r.arm();
+    install_the_drawer(r);
+    ASSERT_EQ(r.box->seams().enable("list-arrows"), seam_reason::none);
+    set_bar(r, " Alfa Beta Echo");
+    set_raw_mode(r, 0);
+  }
+
+  const rig r;
+};
+
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw,
+       ADigitSelectsTheMemberAndTheListIsDrawn) {
+  for (const caller& c : bar_callers) {
+    for (unsigned count = 1; count <= 8; ++count) {
+      for (unsigned hero = 1; hero <= count; ++hero) {
+        r.lay_party(count, count - 1U);
+        EXPECT_EQ(press_bar(r, number_row(hero), c), ignored) << c.name;
+        EXPECT_EQ(r.selected(count), hero - 1U) << c.name << " " << hero;
+        EXPECT_TRUE(drew_for(hero - 1U)) << c.name << " " << hero;
+      }
+    }
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw,
+       UpAndDownStepTheSelectionByTheCursorsRule) {
+  for (const caller& c : bar_callers) {
+    for (unsigned count = 1; count <= 8; ++count) {
+      for (unsigned from = 0; from < count; ++from) {
+        for (const bool forward : {false, true}) {
+          r.lay_party(count, from);
+          const unsigned to = cursor_steps(count, from, forward);
+          EXPECT_EQ(press_bar(r, forward ? key_down : key_up, c), ignored)
+              << c.name << " " << count << " " << from;
+          EXPECT_EQ(r.selected(count), to)
+              << c.name << " " << count << " " << from
+              << (forward ? " down" : " up");
+          if (to != from) {
+            EXPECT_TRUE(drew_for(to));
+          } else {
+            EXPECT_FALSE(last_drew.has_value())
+                << "a step that goes nowhere draws nothing";
+          }
+        }
+      }
+    }
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw, ADigitWithNobodyBehindItIsOnlyIgnored) {
+  r.lay_party(3, 1);
+  for (unsigned digit = 4; digit <= 8; ++digit) {
+    EXPECT_EQ(press_bar(r, number_row(digit), bar_callers[0]), ignored);
+    EXPECT_EQ(r.selected(3), 1u);
+    EXPECT_FALSE(last_drew.has_value());
+  }
+  r.lay_party(0);
+  EXPECT_EQ(press_bar(r, number_row(1), bar_callers[0]), ignored);
+  EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), ignored);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw,
+       ADigitThatIsOneOfTheBarsCommandsStaysTheBars) {
+  r.lay_party(4, 0);
+  set_bar(r, " 1 Alfa 2 Beta");
+  EXPECT_EQ(press_bar(r, number_row(1), bar_callers[0]), number_row(1));
+  EXPECT_EQ(press_bar(r, number_row(2), bar_callers[0]), number_row(2));
+  EXPECT_EQ(r.selected(4), 0u);
+  EXPECT_FALSE(last_drew.has_value());
+  EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), ignored)
+      << "a digit the bar does not use is still the party's";
+  EXPECT_EQ(r.selected(4), 2u);
+}
+
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw, LeavesTheKeysItDoesNotTake) {
+  r.lay_party(4, 1);
+  for (const std::uint16_t key :
+       {number_row(9), number_row(0), keypad(3), keypad(8), keypad(2),
+        std::uint16_t{0x4B00}, std::uint16_t{0x4D00}, home,
+        std::uint16_t{0x4F00}, std::uint16_t{0x1C0D}, std::uint16_t{0x011B},
+        std::uint16_t{0x1E41}}) {
+    EXPECT_EQ(press_bar(r, key, bar_callers[0]), key);
+    EXPECT_EQ(r.selected(4), 1u);
+    EXPECT_FALSE(last_drew.has_value());
+  }
+}
+
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw, LeavesACallerThatIsNotInTheTable) {
+  r.lay_party(4, 1);
+  for (const caller& c : other_callers) {
+    EXPECT_EQ(press_bar(r, number_row(3), c), number_row(3)) << c.name;
+    if (c.offset != 0x17DA) {  // the party-order screen is list-arrows' own
+      EXPECT_EQ(press_bar(r, key_down, c), key_down) << c.name;
+    }
+  }
+  // The same offset in the wrong module is not the door's.
+  EXPECT_EQ(press_bar(r, number_row(3),
+                      {.segment = camp_segment, .offset = 0x0EBF, .name = ""}),
+            number_row(3));
+  EXPECT_EQ(r.selected(4), 1u);
+}
+
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw, DeclinesAFrameWhoseRawModeIsSet) {
+  // The caller is the table's, and the routine is in raw mode: not the
+  // frame these facts describe.
+  r.lay_party(4, 1);
+  set_raw_mode(r, 1);
+  EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), number_row(3));
+  EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), key_down);
+  EXPECT_EQ(r.selected(4), 1u);
+  EXPECT_GE(r.box->seams().status(seam_id).declined, 1u);
+}
+
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw, StepsAsideWhileTheMapIsOverTheRoster) {
+  r.lay_party(4, 1);
+  automap_state& map = r.box->automap();
+  map.set_panel_open(true);
+  map.set_panel_on_screen(true);
+  EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), number_row(3));
+  EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), key_down);
+  EXPECT_EQ(r.selected(4), 1u);
+  map.set_panel_on_screen(false);
+  EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), ignored);
+  EXPECT_EQ(r.selected(4), 2u);
+}
+
+TEST(SeamHeroKeysAtABarThatIsNotRawAlone, EachSeamTakesItsOwnKeys) {
+  // hero-keys alone takes digits and not arrows; list-arrows alone takes
+  // arrows and not digits.
+  {
+    const rig r;
+    r.arm();
+    install_the_drawer(r);
+    set_bar(r, " Alfa Beta Echo");
+    set_raw_mode(r, 0);
+    r.lay_party(4, 1);
+    EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), key_down);
+    EXPECT_EQ(press_bar(r, key_up, bar_callers[0]), key_up);
+    EXPECT_EQ(r.selected(4), 1u);
+    EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), ignored);
+    EXPECT_EQ(r.selected(4), 2u);
+  }
+  {
+    const rig r;
+    ASSERT_EQ(r.box->seams().enable("list-arrows"), seam_reason::none);
+    r.manager_says(word_menu, menu_segment);
+    r.manager_says(word_adventure, adventure_segment);
+    r.manager_says(word_slots, slots_segment);
+    install_the_drawer(r);
+    set_bar(r, " Alfa Beta Echo");
+    set_raw_mode(r, 0);
+    r.lay_party(4, 1);
+    EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), number_row(3));
+    EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), ignored);
+    EXPECT_EQ(r.selected(4), 2u);
   }
 }
 

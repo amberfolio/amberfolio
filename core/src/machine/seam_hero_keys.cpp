@@ -65,6 +65,18 @@
 // table are left alone. The caller is identified by the routine's far
 // return address, overlay-qualified, as `bar-keys` identifies its own.
 //
+// **At a bar that is not raw** (#469). The door bars, camp's Portraits and
+// Monsters bar and the save slot bar are callers of the same routine with
+// raw mode off, and their screen shows the party list. The routine throws
+// Home away for them, so there is no caller to drive. The seam does what
+// the caller would have done: it puts the target in the selected-member
+// pointer and calls the roster drawer itself, through the engine's call
+// batch, and answers the key with the one the program throws away. That
+// step, the party list it reads the target out of and the table of those
+// callers are shared with `list-arrows` (seam_party_select.h). A digit that
+// is one of the bar's own command letters stays the bar's: the bar string
+// in the routine's frame is read for it.
+//
 // **Display: two points in the roster drawer**, both `inside_calls`, since
 // the automap and the journal give the roster back through a batch of the
 // program's own calls. They share one state, the column byte of the
@@ -116,7 +128,9 @@
 // The party-order screen is not a caller: with a member picked up, Home
 // and End move the member instead of the selection, and the seam cannot
 // tell which state it is in. Left out, too, are the combat screens and the
-// pick-lists, whose digits are real.
+// pick-lists, whose digits are real, the Yes/No prompt (one routine for
+// every screen, with and without a party list) and the load slot bar, the
+// icon editor and the View bar (docs/seams.md §10 has each).
 
 #include <algorithm>
 #include <array>
@@ -136,6 +150,8 @@
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
 #include "seam_key_read.h"
+#include "seam_menu_bar.h"
+#include "seam_party_select.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -166,26 +182,21 @@ constexpr std::uint32_t key_read_call = 0x0572;
 constexpr std::uint16_t frame_return_ip = 2;
 constexpr std::uint16_t frame_return_cs = 4;
 
-// --- The data segment ------------------------------------------------------
+// --- The data segment and the party ----------------------------------------
 
-/// The data segment is the image's paragraph `0xC7C` on: image offset
-/// `0xC7C0`, which is DS `0x0CDC` where the image is at `0x60`.
-constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
-
-/// The selected member: a far pointer, offset then segment.
-constexpr std::uint16_t data_current = 0x5D92;
-/// The party's head: a far pointer, offset then segment.
-constexpr std::uint16_t data_party_head = 0x5D96;
-/// A record's next-member far pointer, offset then segment.
-constexpr std::uint16_t record_next = 0x0104;
-/// How far into a record this seam reads: the next pointer's last byte.
-constexpr std::uint16_t record_reach = 0x0108;
+// The party list, the selected-member pointer and the cursor's rule are
+// shared with `list-arrows`, which selects at the same bars (#469).
+using party_select::data_current;
+using party_select::far_pointer;
+using party_select::is_record;
+using party_select::max_party;
+using party_select::party;
+using party_select::read_party;
+using party_select::read_pointer;
+using party_select::write_pointer;
 
 /// The program's one-byte pushback slot for an extended key's second half.
 constexpr std::uint16_t data_key_pushback = 0x8501;
-
-/// A party is six characters and two non-player ones.
-constexpr unsigned max_party = 8;
 
 // --- The callers that hand Home and End to the party cursor ----------------
 
@@ -251,63 +262,6 @@ constexpr std::uint8_t number_row_scan_of_one = 0x02;
   }
   const unsigned digit = character - '1' + 1U;
   return scan == number_row_scan_of_one + digit - 1U ? digit : 0U;
-}
-
-// --- Reading the party -----------------------------------------------------
-
-struct far_pointer {
-  std::uint16_t offset;
-  std::uint16_t segment;
-};
-
-[[nodiscard]] bool is_record(far_pointer at) noexcept {
-  if ((at.offset | at.segment) == 0) {
-    return false;
-  }
-  // A far pointer that has not been set up yet points anywhere, and a read
-  // above conventional memory is a read of the video window, where it
-  // loads the adapter's latches (docs/seams.md §8.4).
-  return at.offset <= 0x10000U - record_reach &&
-         cpu::physical_address(at.segment, at.offset) + record_reach <=
-             conventional_ram_size;
-}
-
-[[nodiscard]] far_pointer read_pointer(cpu::processor& cpu,
-                                       std::uint16_t segment,
-                                       std::uint16_t offset) {
-  return {.offset = cpu.read_word(segment, offset),
-          .segment =
-              cpu.read_word(segment, static_cast<std::uint16_t>(offset + 2U))};
-}
-
-void write_pointer(cpu::processor& cpu, std::uint16_t segment,
-                   std::uint16_t offset, far_pointer to) {
-  cpu.write_word(segment, offset, to.offset);
-  cpu.write_word(segment, static_cast<std::uint16_t>(offset + 2U), to.segment);
-}
-
-/// The party's members, in the order the program's list holds them.
-struct party {
-  std::array<far_pointer, max_party> member{};
-  unsigned size{0};
-  /// The list went on past eight members, or through a pointer that is not
-  /// a record: not the structure these facts describe.
-  bool readable{true};
-};
-
-[[nodiscard]] party read_party(cpu::processor& cpu, std::uint16_t ds) {
-  party out;
-  far_pointer at = read_pointer(cpu, ds, data_party_head);
-  while ((at.offset | at.segment) != 0) {
-    if (out.size == max_party || !is_record(at)) {
-      out.readable = false;
-      return out;
-    }
-    out.member[out.size++] = at;
-    at = read_pointer(cpu, at.segment,
-                      static_cast<std::uint16_t>(at.offset + record_next));
-  }
-  return out;
 }
 
 // --- The callers -----------------------------------------------------------
@@ -380,11 +334,19 @@ void at_key_read(machine& box, seam_context& ctx) {
     // The head of the ring is not the key about to be read.
     return;
   }
-  if (!called_from_a_hero_caller(cpu, ctx)) {
-    return;
+  const bool raw_caller = called_from_a_hero_caller(cpu, ctx);
+  if (!raw_caller) {
+    const party_select::where spot = party_select::at_a_party_bar(
+        cpu, ctx, static_cast<std::uint8_t>(key & 0xFFU));
+    if (spot == party_select::where::frame_unknown) {
+      ctx.decline(seam_reason::point_not_recognized);
+      return;
+    }
+    if (spot == party_select::where::not_here) {
+      return;
+    }
   }
-  if (ds != static_cast<std::uint16_t>((ctx.image_base() >> 4U) +
-                                       dgroup_paragraphs)) {
+  if (!party_select::is_the_data_segment(ctx, ds)) {
     // Not the data segment the facts put the party in.
     ctx.decline(seam_reason::point_not_recognized);
     return;
@@ -398,9 +360,21 @@ void at_key_read(machine& box, seam_context& ctx) {
   const std::uint16_t ring_slot = head;
   if (hero > members.size) {
     // Nobody is there: the routine goes back to waiting.
-    cpu.write_word(bda::segment, ring_slot,
-                   static_cast<std::uint16_t>((key_ignored_scan << 8U) |
-                                              key_ignored_ascii));
+    party_select::answer_with_the_ignored_key(cpu, ring_slot);
+    return;
+  }
+
+  if (!raw_caller) {
+    // A bar that is not raw throws Home away, so the caller never steps
+    // the cursor: the selection is put on the target and the list drawn
+    // again by the program's own routine (seam_party_select.h).
+    if (party_select::map_over_the_roster(box)) {
+      return;
+    }
+    if (!party_select::select_and_redraw(
+            box, ctx, ds, members.member[hero - 1U], ring_slot)) {
+      ctx.decline(seam_reason::point_not_recognized);
+    }
     return;
   }
 
