@@ -134,6 +134,10 @@ constexpr std::array journal_rows{
     key_row{"Up, Down", "in the log: the entry above or below", "journal"},
     key_row{"Return", "open the entry under the cursor", "journal"},
     key_row{"N, P", "in an entry: next and previous page", "journal"},
+    key_row{"Left, Right", "with bar-keys on: step the lit word of the bar",
+            "journal"},
+    key_row{"Return, bar lit",
+            "take the lit command; in the log, after Left or Right", "journal"},
     key_row{"Esc", "close the entry, then the log", "journal"},
 };
 

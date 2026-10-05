@@ -710,6 +710,21 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   word's initial over its own cell in the bright - up to four, fewer on
   any bar that has dropped a word. There is no other key: since #346 this
   seam claims nothing at all while the reader is down.
+- **The bar answers the bar keys** (#471). The reader's bars are its own,
+  so `bar-keys` cannot reach them at the program's menu-bar routine; with
+  `bar-keys` on the reader takes the keys itself. Left and Right step the
+  bar's highlight over the words it has, wrapping; Return takes the lit
+  command (`NEXT` and `PREV` turn the screenful, `EXIT` is Escape, which
+  closes as before). A page's bar is lit from the first draw. The
+  listing's is lit by its first Left or Right and not before, because
+  Return there opens the row the cursor is on; Up and Down hand Return
+  back to the rows. An empty log has no row, so its lone `EXIT` is lit
+  and Return closes it. The highlight is the word in the bright; with
+  `select-yellow` on it is yellow with its key letter white, and a bar of
+  one word is not recoloured (#462). A press redraws the bar and nothing
+  else. With both seams off none of this exists and the reader is as it
+  was. It is `journal_state::bar_word()` and `bar_focus()`, observation
+  and never machine state.
 - **`Notes` hands the highlight back** (#330): the bar routine's cursor
   group lives in the shared byte of M5-E1g (#304). `--watch 6B2B` reads
   `01` after a load, `07` from the frame `N` is pressed, `07` after the

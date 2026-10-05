@@ -260,7 +260,8 @@ wilderness, without it); the portrait bar at character creation (`Head Body
 Keep`); the shops' and temples' bars and the temple's appraisal; combat's
 command, Done and game-speed bars; the View bar; the post-combat treasure
 and Take bars; and the load-game slot bar. A command the other seams add,
-the Encamp Fix's `Fix` and the journal's `Notes`, is taken the same way.
+the Encamp Fix's `Fix` and the journal's `Notes`, is taken the same way,
+and so are the bars of the Notes screen itself (below).
 **The rest-time menu** is the one place the game used Enter for itself (it
 meant Rest) and the seam takes it instead: it follows the highlight, which
 opens on whichever word the camp bar's `Rest` left it on, `Mins`, so Left
@@ -355,7 +356,9 @@ the seam on:
   points included.
 - **`menu-cursor`'s row** on the main menu is yellow with its first letter
   white (`menu-cursor` is white throughout when this seam is off), and the
-  Notes list's cursor row is yellow with `journal`.
+  Notes list's cursor row is yellow with `journal`. The lit command on the
+  Notes screen's bar is yellow with its letter white, except on a bar of
+  one word.
 - **A bar the game hands its colours the wrong way round** (the portrait
   screen's HEAD, BODY and KEEP bar, the temple's "pay for cure" and the
   detect-magic confirmations) is drawn like every other bar: key letters

@@ -189,6 +189,18 @@
 // listing goes back to the listing rather than out, so a person reading
 // several entries stays in the journal.
 //
+// **The bar answers the bar keys when `bar-keys` is on** (#471). The
+// program's menu-bar routine never sees a key pressed at this bar, so the
+// seam's point there cannot step it; the reader keeps a highlight of its
+// own in `journal_state` (`bar_word()`, `bar_focus()`) and takes Left and
+// Right to step it and Return to take the lit command, asking the engine
+// whether the seam is on as `menu-cursor` asks about `select-yellow`. A
+// page's bar is lit from its first draw; the listing's is lit by the first
+// Left or Right, because Return there already opens a row. With
+// `select-yellow` on the lit word is yellow with its key letter white, and
+// a bar of one word is not recoloured (#462). With both off none of it
+// exists.
+//
 // **The listing is twenty rows and pages rather than scrolls** (M5-E4e,
 // #318 and #319). It filled ten rows of a twenty-row box on a reason that
 // belonged to a version of it that painted in one batch; and it slid its
@@ -698,8 +710,13 @@ constexpr std::array<std::string_view, 3> bar_words{"NEXT", "PREV", "EXIT"};
 /// order the table lists them - a fixed capacity of three because that
 /// is the most a bar here has ever carried, and this program is
 /// freestanding: nothing under `core/` reaches for a heap.
+///
+/// **`id` is each word's place in `bar_words`**, which is what the
+/// highlight is kept as (`journal_state::bar_word()`, #471): a word
+/// dropped from a screenful's bar does not renumber the ones after it.
 struct bar_word_set {
   std::array<std::string_view, bar_words.size()> word{};
+  std::array<std::uint8_t, bar_words.size()> id{};
   std::size_t count = 0;
 };
 
@@ -720,13 +737,17 @@ struct bar_word_set {
 [[nodiscard]] constexpr bar_word_set active_bar_words(unsigned page,
                                                       unsigned pages) noexcept {
   bar_word_set words;
+  const auto add = [&words](std::uint8_t which) noexcept {
+    words.id[words.count] = which;
+    words.word[words.count++] = bar_words[which];
+  };
   if (page + 1U < pages) {
-    words.word[words.count++] = bar_words[0];  // NEXT
+    add(0);  // NEXT
   }
   if (page > 0) {
-    words.word[words.count++] = bar_words[1];  // PREV
+    add(1);  // PREV
   }
-  words.word[words.count++] = bar_words[2];  // EXIT: always a way out
+  add(2);  // EXIT: always a way out
   return words;
 }
 
@@ -1531,6 +1552,10 @@ constexpr std::uint8_t key_exit_lower = 'e';
 constexpr std::uint16_t key_escape = 0x011B;
 constexpr std::uint16_t key_backspace = 0x0E08;
 constexpr std::uint16_t key_return = 0x1C0D;
+/// Left and Right, as INT 16h hands them over, and the keys `bar-keys`
+/// gives them to (#471).
+constexpr std::uint16_t key_left = 0x4B00;
+constexpr std::uint16_t key_right = 0x4D00;
 
 /// What the keystroke at the head of the buffer is, to this seam.
 enum class claimable : std::uint8_t {
@@ -1547,6 +1572,14 @@ enum class claimable : std::uint8_t {
   /// screen - the same modal claim the reader's other keys make.
   step_back,
   step_forward,
+  /// Left and Right, and Return on a page, with `bar-keys` on (#471): step
+  /// the highlight of the reader's own bar, and take the highlighted
+  /// command. The bar is the reader's and not the program's, so the
+  /// program's menu-bar routine never sees these keys and its `bar-keys`
+  /// point cannot answer them.
+  bar_left,
+  bar_right,
+  bar_take,
   /// A screenful forward or back (M5-E4e, #319), on whichever of the two
   /// paged things is up: the log's own listing, or an entry drawn on the
   /// whole screen. `NEXT` and `PREV` on the bar both of them carry, and
@@ -1597,7 +1630,8 @@ enum class claimable : std::uint8_t {
 }
 
 [[nodiscard]] claimable claimable_of(std::uint16_t key,
-                                     journal_reader_mode mode) noexcept {
+                                     journal_reader_mode mode,
+                                     bool bar_keys) noexcept {
   if (mode == journal_reader_mode::closed) {
     // **With the reader down this seam claims nothing at all** (#346).
     // There was a key here, F1, and it was this seam's on every screen
@@ -1613,8 +1647,13 @@ enum class claimable : std::uint8_t {
   if (key == key_backspace) {
     return claimable::back;
   }
+  if (bar_keys && (key == key_left || key == key_right)) {
+    return key == key_left ? claimable::bar_left : claimable::bar_right;
+  }
   if (mode == journal_reader_mode::listing) {
     if (key == key_return) {
+      // The listing's Return is the row's, and `handle_keys()` hands it to
+      // the bar instead when the bar has been taken up (#471).
       return claimable::accept;
     }
     // The keys the game itself moves the party with, on the numpad and on
@@ -1649,6 +1688,9 @@ enum class claimable : std::uint8_t {
     // paint its bar and its status line back over the page to prove it.
     // That is #230, exactly.
     //
+    if (bar_keys && key == key_return) {
+      return claimable::bar_take;
+    }
     if (const claimable paged = paging_key(key); paged != claimable::none) {
       return paged;
     }
@@ -1668,7 +1710,7 @@ enum class claimable : std::uint8_t {
 /// because the two halves of an extended key have to stay adjacent, and
 /// the whole keystroke word rather than the character.
 [[nodiscard]] claimable claim_key(cpu::processor& cpu, std::uint16_t ds,
-                                  journal_reader_mode mode,
+                                  journal_reader_mode mode, bool bar_keys,
                                   std::uint16_t& taken) {
   if (cpu.read_byte(ds, data_key_pushback) != 0) {
     return claimable::none;
@@ -1681,7 +1723,7 @@ enum class claimable : std::uint8_t {
     return claimable::none;
   }
   const std::uint16_t key = cpu.read_word(bda::segment, head);
-  const claimable which = claimable_of(key, mode);
+  const claimable which = claimable_of(key, mode, bar_keys);
   if (which == claimable::none) {
     return claimable::none;
   }
@@ -1798,6 +1840,55 @@ enum class claimable : std::uint8_t {
   return line;
 }
 
+/// How the bar is drawn this pass (#471): which of its words is the
+/// highlighted command, if any, and whether it is yellow.
+///
+/// **A highlight is only ever drawn with `bar-keys` on**, because it is
+/// the keys that move it and take it; with the seam off no word is lit and
+/// the bar is the one it always was. `select-yellow` is asked at every
+/// draw, as the listing's cursor row is (`list_cursor_colour()`).
+struct bar_look {
+  static constexpr std::size_t none = static_cast<std::size_t>(-1);
+  std::size_t lit = none;
+  bool yellow = false;
+};
+
+/// The yellow the program draws a selection in, which the highlighted
+/// word is drawn in under `select-yellow`; its key letter is the bright.
+constexpr std::uint16_t bar_selected_colour = list_selected_colour;
+
+/// Whether the bar's highlight is the thing Return takes right now.
+///
+/// Every screen's bar is lit from the moment it is drawn, except the
+/// listing's when it has rows: Return there opens the row the cursor is
+/// on, as it always did, until Left or Right takes the bar up.
+[[nodiscard]] bool bar_is_taken_up(const journal_state& state) {
+  return state.reader() != journal_reader_mode::listing ||
+         state.seen().empty() || state.bar_focus();
+}
+
+/// Which word of `words` the highlight is on: the one it was left on, or
+/// the first when this screenful's bar has dropped that one.
+[[nodiscard]] std::size_t lit_word(const bar_word_set& words,
+                                   std::uint8_t kept) noexcept {
+  for (std::size_t nth = 0; nth < words.count; ++nth) {
+    if (words.id[nth] == kept) {
+      return nth;
+    }
+  }
+  return 0;
+}
+
+[[nodiscard]] bar_look look_of_the_bar(const machine& box,
+                                       const bar_word_set& words) {
+  const journal_state& state = box.journal();
+  if (!bar_keys_on(box) || !bar_is_taken_up(state)) {
+    return {};
+  }
+  return {.lit = lit_word(words, state.bar_word()),
+          .yellow = select_yellow_on(box) && words.count > 1};
+}
+
 /// The reader's own bar, onto the screen: **up to four calls and two
 /// colours** (#330; #341, #342).
 ///
@@ -1833,7 +1924,8 @@ enum class claimable : std::uint8_t {
 /// extra calls are extra bytes of string each and are budgeted where the
 /// rows are: `list_rows_per_pass` and `page_rows_per_pass`.
 [[nodiscard]] bool draw_the_bar(seam_context& ctx, std::uint16_t image,
-                                list_line& line, const bar_word_set& words) {
+                                list_line& line, const bar_word_set& words,
+                                const bar_look& look) {
   if (!draw_line(ctx, image, line, bar_word_colour, list_exit_row,
                  list_exit_column)) {
     return false;
@@ -1841,13 +1933,36 @@ enum class claimable : std::uint8_t {
   std::size_t column = list_exit_column;
   for (std::size_t nth = 0; nth < words.count; ++nth) {
     const std::string_view word = words.word[nth];
+    const auto at_column = static_cast<std::uint16_t>(column);
+    column += word.size() + 1U;  // the word, and the space after it
+    if (nth == look.lit) {
+      // **The highlighted command** (#471), drawn the way the program's
+      // own highlight is: the word in the bright end to end, or, with
+      // `select-yellow` on, its tail over that in yellow so that the key
+      // letter stays white. A bar of one command has nothing to select
+      // among, so it stays the one colour the program gives it (#462).
+      list_line lit;
+      lit.add(word);
+      if (!draw_line(ctx, image, lit, bar_key_colour, list_exit_row,
+                     at_column)) {
+        return false;
+      }
+      if (look.yellow) {
+        list_line tail;
+        tail.add(word.substr(1));
+        if (!draw_line(ctx, image, tail, bar_selected_colour, list_exit_row,
+                       static_cast<std::uint16_t>(at_column + 1U))) {
+          return false;
+        }
+      }
+      continue;
+    }
     list_line initial;
     initial.add(word.substr(0, 1));
     if (!draw_line(ctx, image, initial, bar_key_colour, list_exit_row,
-                   static_cast<std::uint16_t>(column))) {
+                   at_column)) {
       return false;
     }
-    column += word.size() + 1U;  // the word, and the space after it
   }
   return true;
 }
@@ -1907,7 +2022,7 @@ enum class claimable : std::uint8_t {
                                   list_first_row + 1, list_name_column));
       const bar_word_set words = active_bar_words(0, 1);
       list_line bar = screen_bar(words, 0, 1, false);
-      return draw_the_bar(ctx, image, bar, words);
+      return draw_the_bar(ctx, image, bar, words, look_of_the_bar(box, words));
     }
   }
 
@@ -1952,7 +2067,7 @@ enum class claimable : std::uint8_t {
   const auto list_page_count = static_cast<unsigned>(list_pages(rows.size()));
   const bar_word_set words = active_bar_words(list_page, list_page_count);
   list_line bar = screen_bar(words, list_page, list_page_count, false);
-  return draw_the_bar(ctx, image, bar, words);
+  return draw_the_bar(ctx, image, bar, words, look_of_the_bar(box, words));
 }
 
 /// A page's own numbers, beside the listing's.
@@ -2097,7 +2212,8 @@ struct page_footer_bar {
       // and the arrival after this one paints into it — which is #303's
       // ordering with the program first and the seam after.
       page_footer_bar bar = page_footer(page, total, more, false);
-      if (!draw_the_bar(ctx, image, bar.line, bar.words)) {
+      if (!draw_the_bar(ctx, image, bar.line, bar.words,
+                        look_of_the_bar(box, bar.words))) {
         return false;
       }
       state.set_screen_drawn(1);
@@ -2119,7 +2235,8 @@ struct page_footer_bar {
         ++nth;
       }
       page_footer_bar footer = page_footer(page, total, more, false);
-      return draw_the_bar(ctx, image, footer.line, footer.words);
+      return draw_the_bar(ctx, image, footer.line, footer.words,
+                          look_of_the_bar(box, footer.words));
     }
   }
 
@@ -2166,7 +2283,8 @@ struct page_footer_bar {
   }
 
   page_footer_bar footer = page_footer(page, total, more, state.truncated());
-  return draw_the_bar(ctx, image, footer.line, footer.words);
+  return draw_the_bar(ctx, image, footer.line, footer.words,
+                      look_of_the_bar(box, footer.words));
 }
 
 /// Put the whole screen back, through the routine the program itself
@@ -2424,6 +2542,91 @@ void turn_the_page(journal_state& state, int by) {
   }
 }
 
+/// The bar's words as they stand this instant, for a key to act on: the
+/// listing's by the cursor's own page, an entry's by the page it is on.
+/// Worked out and never kept, for `turn_the_page()`'s reason: the log
+/// grows under a reader that is looking at it.
+[[nodiscard]] bar_word_set bar_words_now(const journal_state& state) {
+  if (state.reader() == journal_reader_mode::listing) {
+    return active_bar_words(
+        static_cast<unsigned>(state.list_cursor() / list_rows_visible),
+        static_cast<unsigned>(list_pages(state.seen().size())));
+  }
+  const unsigned total = count_pages(state).total();
+  const unsigned page = state.page() < total ? state.page() : total - 1U;
+  return active_bar_words(page, total);
+}
+
+/// The bar has changed what it draws, and nothing else on the screen has:
+/// the signature is the whole of it, so the next arrival draws the bar and
+/// the rows it already has stay as they are. A picture is the exception,
+/// because its second pass is the picture and not the bar.
+void redraw_the_bar(journal_state& state) {
+  state.set_drawn_signature(0);
+  if (state.reader() == journal_reader_mode::showing &&
+      state.page() >= count_pages(state).text) {
+    state.set_screen_drawn(0);
+  }
+}
+
+/// Settle the highlight on a word the screenful has, and say so if that
+/// moved it. A word a page turn dropped from the bar is the first one.
+void keep_the_bar_word(journal_state& state, const bar_word_set& words,
+                       std::uint8_t kept) {
+  const std::uint8_t now = words.id[lit_word(words, kept)];
+  if (now != state.bar_word()) {
+    state.set_bar_word(now);
+    redraw_the_bar(state);
+  }
+}
+
+/// Left and Right with `bar-keys` on (#471): the highlight steps through
+/// the words this screenful's bar has, **wrapping at both ends** as the
+/// program's own bar does. The listing's has no highlight until the first
+/// of these, which lights its first word and leaves Return the row's until
+/// then; Up and Down give it back (`give_the_rows_the_bar()`).
+void step_the_bar(journal_state& state, int by) {
+  const bar_word_set words = bar_words_now(state);
+  if (state.reader() == journal_reader_mode::listing &&
+      !bar_is_taken_up(state)) {
+    state.set_bar_focus(true);
+    state.set_bar_word(words.id[0]);
+    redraw_the_bar(state);
+    return;
+  }
+  const std::size_t at = lit_word(words, state.bar_word());
+  const std::size_t to =
+      (at + words.count + (by < 0 ? words.count - 1U : 1U)) % words.count;
+  keep_the_bar_word(state, words, words.id[to]);
+}
+
+/// Up and Down with `bar-keys` on: the listing's rows are the thing being
+/// moved again, so Return opens one.
+void give_the_rows_the_bar(journal_state& state) {
+  if (state.bar_focus()) {
+    state.set_bar_focus(false);
+    redraw_the_bar(state);
+  }
+}
+
+/// Return with `bar-keys` on, on whichever bar is up (#471): take the
+/// highlighted command, by the route its letter takes. True when the
+/// screen is on its way back through a batch.
+[[nodiscard]] bool take_the_bar(machine& box, seam_context& ctx,
+                                std::uint16_t ds) {
+  journal_state& state = box.journal();
+  const bar_word_set before = bar_words_now(state);
+  const std::uint8_t word = before.id[lit_word(before, state.bar_word())];
+  if (word == 2) {  // EXIT
+    return close_reader(box, ctx, ds);
+  }
+  turn_the_page(state, word == 0 ? 1 : -1);
+  // The bar the new screenful has may not have the word that was
+  // highlighted: `NEXT` is gone on the last one.
+  keep_the_bar_word(state, bar_words_now(state), word);
+  return false;
+}
+
 /// Everything one arrival does with the keyboard. True when the screen is
 /// on its way back through a batch, which is the caller's cue that it is
 /// finished for this pass.
@@ -2435,7 +2638,9 @@ void turn_the_page(journal_state& state, int by) {
                                std::uint16_t ds, bool& claimed) {
   journal_state& state = box.journal();
   std::uint16_t key = 0;
-  const claimable which = claim_key(box.processor(), ds, state.reader(), key);
+  const bool bar_keys = bar_keys_on(box);
+  const claimable which =
+      claim_key(box.processor(), ds, state.reader(), bar_keys, key);
   claimed = which != claimable::none;
   switch (which) {
     case claimable::none:
@@ -2457,10 +2662,20 @@ void turn_the_page(journal_state& state, int by) {
       return false;
     case claimable::step_back:
       state.move_list_cursor(-1);
+      give_the_rows_the_bar(state);
       return false;
     case claimable::step_forward:
       state.move_list_cursor(1);
+      give_the_rows_the_bar(state);
       return false;
+    case claimable::bar_left:
+      step_the_bar(state, -1);
+      return false;
+    case claimable::bar_right:
+      step_the_bar(state, 1);
+      return false;
+    case claimable::bar_take:
+      return take_the_bar(box, ctx, ds);
     case claimable::swallow:
       // Taken off the buffer and dropped. Nothing on the screen changes,
       // so nothing is drawn: the signature the next arrival computes is
@@ -2472,6 +2687,12 @@ void turn_the_page(journal_state& state, int by) {
       // screen this seam opens from, so there is no prompt for it to
       // answer either.
       const std::span<const journal_seen_row> rows = state.seen();
+      if (bar_keys && bar_is_taken_up(state)) {
+        // The highlight is up, or there are no rows for Return to open
+        // (#471): it takes the highlighted command, which is the way out
+        // when the log is empty.
+        return take_the_bar(box, ctx, ds);
+      }
       if (rows.empty()) {
         return false;
       }
