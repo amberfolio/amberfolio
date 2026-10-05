@@ -1204,6 +1204,23 @@ shape.
   the set for a screenful and both drawing passes read it, so the words
   on the row and the initials over them cannot disagree about what is on
   it.
+- **The bar's highlight, with `bar-keys` on** (#471). The reader draws and
+  answers bars of its own, so the program's menu-bar routine never sees a
+  key pressed at them and `bar-keys`' point cannot step them. The reader
+  asks the engine whether `bar-keys` is on (`bar_keys_on()`, as `menu-cursor`
+  asks `select_yellow_on()`) and, with it on, keeps a highlight of its own:
+  `journal_state::bar_word()`, which of `NEXT`, `PREV` and `EXIT` it is on,
+  and `bar_focus()`, whether the listing's has been taken up. Both are
+  observation, kept in the state object and reset when the reader's mode
+  changes, never in a handler. A word a screenful's bar has dropped is
+  resolved to the first it has, so a highlight on `NEXT` that turns to the
+  last page lands on `PREV`. The highlight is drawn by the same bar pass as
+  everything else: the word in the bright end to end, or, with
+  `select-yellow` on, in yellow over that with its key letter left white,
+  except on a bar of one word, which stays the one colour (#462). A change
+  of highlight draws the bar alone: the signature is zeroed and the rows
+  already on the glass are not painted again, except on a picture, whose
+  second pass is the picture and not the bar.
 - **Notes** (#221): the two bars are thirty-three and twenty-seven
   characters in `string[40]` slots at the two data-segment offsets the
   automap tests; the menu-bar routine's command class is upper case only
@@ -1237,7 +1254,15 @@ thing to learn. The number prompt it opened (#218) went with it, and
 with the prompt went naming an entry: what the reader can open is what
 the log holds. While the reader *is* up: Escape closes, Backspace goes a screenful back,
 Return opens the row the cursor is on, and `N`/`P`/`E` are the bar's own
-three. The log and a page take **every** key (the bar is live underneath,
+three. **With `bar-keys` on** (#471) Left and Right step the bar's highlight
+(wrapping, over the words the screenful's bar has) and Return takes the lit
+command: `NEXT` and `PREV` turn the screenful, `EXIT` is Escape. A page's
+bar is lit from the moment it is drawn. **The listing's is not**, because
+Return there opens a row and that stays: the first Left or Right lights the
+bar's first word and Return is the bar's from then on, Up and Down give
+Return back to the rows, and an empty log, which has no row to open, is lit
+from the start, so Return on the lone `EXIT` closes the reader. Left and
+Right with the seam off stay swallowed. The log and a page take **every** key (the bar is live underneath,
 and a key let through walked the party unseen, #230). Reads are answered
 with `-`.
 
@@ -1251,7 +1276,11 @@ reader already says when the host has no text.
 the party's bar is first drawn — a citation included, since #346 leaves
 it writing a log line and drawing nothing. `quiet-journal` is therefore
 contrast `quiet`, the one seam that cannot claim `identical` (§7), and
-the splice is the whole of what it is contrasting on. Exercised sessions:
+the splice is the whole of what it is contrasting on. With `bar-keys` and
+`select-yellow` off the reader is as it was, byte for byte (the sessions
+below replay unchanged); `JournalBarKeys.*` covers the keys, the highlight
+and its colours, and a stand-in that logs every call on the bar's row.
+Exercised sessions:
 `reader`, `notes`, `cite` (a real citation, no key pressed),
 `subset-map-reader`. There is no contrast pair, because the store is a
 host file and not in the stream. Legs:
@@ -1870,7 +1899,10 @@ a `0x0D` compare and for the loop's exit test, and no more than that.
   point is reached. One race remains: a key landing between a claim and
   the poll's own look reaches this point, and with the journal reader up
   would be the reader's. The handler does nothing while the reader is
-  open (`LeavesTheKeyAloneWhileTheJournalReaderIsOpen`). Driven with
+  open (`LeavesTheKeyAloneWhileTheJournalReaderIsOpen`), because **the
+  reader's bars are the reader's own** and not the program's: with this
+  seam on the reader steps their highlight on Left and Right and takes the
+  command on Return itself (§10 on the journal, #471). Driven with
   `automap` and `journal` on, Tab, arrows, `Notes` and Return in the
   reader are identical to the seam off.
 - **Posted under Enter's scan code.** A letter made of an Enter carries
@@ -2463,6 +2495,9 @@ colour before the program draws with it.
   `status("select-yellow").state == on`, and draws yellow where it is on.
   The engine already lets a seam ask this (`text_face::drawing()` does for
   the faces); nothing was added to it, and neither seam keeps the answer.
+  The reader's own bars ask it too, for the highlighted command (#471,
+  §10 on the journal): yellow, its key letter white, and no yellow on a
+  bar of one word.
 - **A selection the program draws that is not here, and why.** The pick-list
   is one routine at one call site (`0x0EF6` calls the highlight-on leaf), so
   the character-creation lists, the spell lists, the shops, training, coins
