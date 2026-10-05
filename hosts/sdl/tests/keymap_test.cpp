@@ -190,6 +190,9 @@ TEST(SdlKeymap, TheKeysWhoseLegendIsAWord) {
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_ESCAPE)), '\x1B');
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_TAB)), '\t');
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_RETURN)), '\r');
+  // The keypad's Enter is the same Enter (the 83-key board has one).
+  EXPECT_EQ(xt_scancode(SDL_SCANCODE_KP_ENTER),
+            xt_scancode(SDL_SCANCODE_RETURN));
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_BACKSPACE)), '\b');
   EXPECT_EQ(unshifted_char(xt_scancode(SDL_SCANCODE_SPACE)), ' ');
 
@@ -246,7 +249,6 @@ TEST(SdlKeymap, SaysNothingForKeysTheBoardDoesNotHave) {
   // break that, and this is where it would be caught.
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_F11), 0);
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_F12), 0);
-  EXPECT_EQ(xt_scancode(SDL_SCANCODE_KP_ENTER), 0);
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_KP_DIVIDE), 0);
   EXPECT_EQ(xt_scancode(SDL_SCANCODE_UNKNOWN), 0);
 }

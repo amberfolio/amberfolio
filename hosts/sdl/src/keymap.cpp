@@ -60,7 +60,11 @@ std::uint8_t xt_scancode(SDL_Scancode code) noexcept {
       return 0x1A;
     case SDL_SCANCODE_RIGHTBRACKET:
       return 0x1B;
+    // The numeric keypad's Enter, which an 83-key board does not have, is
+    // folded onto the one Enter it does, the way the keypad and the cursor
+    // pad share their codes: a player who presses it means Enter.
     case SDL_SCANCODE_RETURN:
+    case SDL_SCANCODE_KP_ENTER:
       return 0x1C;
     case SDL_SCANCODE_LCTRL:
       return 0x1D;

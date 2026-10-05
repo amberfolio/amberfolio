@@ -1858,8 +1858,9 @@ export function loadDemoProgram(machine) {
 // left/right distinction exists in hardware for them, unlike Shift, which
 // genuinely has two. Both browser variants of Ctrl and Alt therefore map
 // to the same single scancode; there is nothing else it could mean on
-// this machine. Keys the 83-key board never had (F11/F12, a numpad
-// Enter, a right Ctrl/Alt as distinct keys) are simply absent — the same
+// this machine. The numpad's Enter is folded onto the one Enter the board
+// has, for the same reason. Keys the 83-key board never had (F11/F12, a
+// right Ctrl/Alt as distinct keys) are simply absent — the same
 // "not modelled, not guessed" gap keyboard.h documents.
 //
 // The arrow, Home/End, Page and Insert/Delete rows are the same keys as
@@ -1899,6 +1900,7 @@ export const XT_SCANCODES = Object.freeze({
   BracketLeft: 0x1a,
   BracketRight: 0x1b,
   Enter: 0x1c,
+  NumpadEnter: 0x1c,
   ControlLeft: 0x1d,
   ControlRight: 0x1d,
   KeyA: 0x1e,

@@ -648,8 +648,7 @@ TEST(SeamBarKeys, EnterIsLeftAloneAtTheCallersTheAuditReadAndKeptOut) {
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
 
-  const std::array<enter_caller, 18> kept_out{{
-      {.segment = menu_segment, .offset = ret_pick_list, .name = "pick-list"},
+  const std::array<enter_caller, 17> kept_out{{
       {.segment = camp_segment, .offset = ret_order, .name = "party order"},
       {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
       {.segment = aim_segment, .offset = ret_aim, .name = "aim cursor"},
@@ -703,13 +702,29 @@ TEST(SeamBarKeys, EnterTakesACommandSplicedOntoTheBarAsItTakesAnyOther) {
   EXPECT_EQ(letter_of(r.press(enter, camp_segment, ret_camp, 1)), 'F');
 }
 
+TEST(SeamBarKeys, EnterInAPickListTakesTheBarCommandThePlayerMovedTo) {
+  // The list opens with its bar on the first command; a highlight anywhere
+  // else was moved there, and Enter takes it rather than the row.
+  const rig r;
+  r.arm();
+  r.lay_bar("Memo Exit", 2);
+  EXPECT_EQ(letter_of(r.press(enter, menu_segment, ret_pick_list, 1)), 'E');
+  r.lay_bar("Memo Next Exit", 2);
+  EXPECT_EQ(letter_of(r.press(enter, menu_segment, ret_pick_list, 1)), 'N');
+  r.lay_bar("Memo Exit", 1);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+}
+
 TEST(SeamBarKeys, EnterIsLeftAloneAtACallerThatIsNotInTheTable) {
   const rig r;
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
 
-  // The pick-list, which is in overlay 25 and confirms its row on Enter.
-  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 0), enter);
+  // The pick-list with its bar on the first command, where it opens: Enter
+  // is the list's own and confirms the row.
+  r.lay_bar("Ant Bee Cow", 1);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+  r.lay_bar("Ant Bee Cow", 2);
   // The member-order screen, where Enter toggles between picking a member
   // up and putting it down: its arrows are tabled, its Enter is not.
   EXPECT_EQ(r.press(enter, camp_segment, ret_order, 1), enter);
