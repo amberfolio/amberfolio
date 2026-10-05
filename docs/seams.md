@@ -1859,7 +1859,7 @@ highlight finds it on `Mins` (above), so a Return there no longer rests.
 
 | caller | return offset | what Enter does there |
 |---|---|---|
-| the pick-lists (overlay 25) | `0x0FE0` | confirms the row |
+| the pick-lists (overlay 25) | `0x0FE0` | confirms the row while the bar's highlight is on its first command, where the list opens it; **with the highlight moved, Enter takes that command** (Exit, Next, Prev, or the caller's own) |
 | the party-member picker (resident image `0x38AA`) | | in the set that ends the loop: chooses |
 | the party-order screen (overlay 15) | `0x17DA` | in the toggle class (`0x174E`): picks a member up, puts it down |
 | the combat move loop (overlay 8) | `0x0AC8` | `0x0D` ends it (the bar has no commands: no group to take) |
