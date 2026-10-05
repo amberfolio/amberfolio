@@ -316,6 +316,13 @@ constexpr std::array<caller, 1> yes_no_caller{
 constexpr std::array<caller, 1> script_caller{
     {{.load_segment_at = script_load_segment_at, .return_offset = 0x16EB}}};
 
+/// The pick-list's call into the routine (overlay 25). The list sets the
+/// bar's highlight to its first command each time it opens, so a highlight
+/// anywhere else is one the player moved, and Enter takes that command;
+/// on the first, Enter is the list's own and chooses the row.
+constexpr std::array<caller, 1> pick_list_caller{
+    {{.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x0FE0}}};
+
 /// Above the script runner's BP: its allow-Enter argument, a word of which
 /// the runner reads the low byte.
 constexpr std::uint16_t runner_allow_enter = 8;
@@ -499,8 +506,13 @@ void at_key_read(machine& box, seam_context& ctx) {
     const bool tabled = menu_bar::called_from(cpu, ctx, enter_callers);
     // A script prompt that does not take Enter itself is handed it as its
     // highlighted answer.
-    if (!tabled && !(menu_bar::called_from(cpu, ctx, script_caller) &&
-                     !runner_takes_enter_itself(cpu))) {
+    const bool script = menu_bar::called_from(cpu, ctx, script_caller) &&
+                        !runner_takes_enter_itself(cpu);
+    // A pick-list whose bar highlight the player moved off its first command.
+    const bool moved_in_a_list =
+        menu_bar::called_from(cpu, ctx, pick_list_caller) &&
+        cpu.read_byte(cpu.regs()[cpu::sreg::ds], data_bar_highlight) > 1;
+    if (!tabled && !script && !moved_in_a_list) {
       return;
     }
     const std::uint16_t answer = letter_for_enter(cpu, ctx);

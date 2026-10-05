@@ -3101,8 +3101,9 @@ constexpr std::uint16_t bar_keys_arrow_word = 0x0730;
 constexpr std::uint16_t bar_keys_arrow_return = 0x09D5;
 constexpr std::uint16_t bar_keys_highlight = 0x6B2B;
 constexpr std::uint16_t bar_keys_tabled_return = 0x111E;
-/// A return offset no table names.
-constexpr std::uint16_t bar_keys_untabled_return = 0x0FE0;
+/// A return offset no table names (not the pick-list's 0x0FE0, whose
+/// Enter follows a moved bar highlight).
+constexpr std::uint16_t bar_keys_untabled_return = 0x1234;
 
 constexpr std::uint16_t bar_keys_left = 0x4B00;
 constexpr std::uint16_t bar_keys_right = 0x4D00;
