@@ -213,7 +213,7 @@ Only when the machine it describes legitimately changes:
 - `recording_format_oldest_read` is bumped (a format retired; bumping
   `recording_format_version` alone does not, see `docs/replay.md` §7);
 - the reference device set's **attach order** changes
-  (`hosts/sdl/src/main.cpp`, `core/src/abi.cpp`'s `reference_devices`,
+  (`hosts/sdl/src/wiring.cpp`, `core/src/abi.cpp`'s `reference_devices`,
   `tests/programs/machine_harness.cpp` move together);
 - what `machine::reset()` leaves behind changes;
 - a seam is added after the session was made and the session claims to

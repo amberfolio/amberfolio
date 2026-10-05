@@ -13,33 +13,62 @@ include(AmberfolioSDL3)
 include(AmberfolioTesseract)
 
 add_executable(amberfolio-sdl
+  # The audio callback, the state it shares with the main thread and the
+  # listening level F11 and F12 move. `listening_level` is arithmetic, so
+  # this is in the unit-test target too.
+  src/audio_device.cpp
   src/audio_gain.cpp
   # The settings a player chose once, and where an OCR engine is looked
   # for (#382). Their own units for press_spec.cpp's reason: a file
   # format and a search order are both things a test can read without a
   # window, an audio device or an engine installed.
   src/desktop_config.cpp
+  # The window, its renderer and the audio device, opened once, presented
+  # to once a frame and taken down before the closing reports (#472).
+  src/desktop_window.cpp
   src/directory_vfs.cpp
+  # What this host says about the disk: the edition, the save layer and
+  # the VFS door (#472).
+  src/disk_reports.cpp
   # Any PDF in, what it was recognised as out (#384). Its own unit for
   # seam_panel.cpp's reason: the two sentences a player reads are the
   # deliverable, and a sentence built inside a main() is a sentence no
   # test can read.
   src/document_control.cpp
   src/dump.cpp
+  # `--dump`'s edge list, written as the run makes it (#472).
+  src/edge_dump.cpp
   src/install.cpp
+  # A document the player holds, and the journal read out of one (#472).
+  src/journal_host.cpp
+  # The config file and the one place flag > config > default happens
+  # (#472). In the unit-test target: it is the rule, and it can be read
+  # without a window.
+  src/launch_config.cpp
   src/keymap.cpp
   # The key card's lines (#427), the toggle panel's second view -- its own
-  # unit for seam_panel.cpp's reason, and because main.cpp has no room.
+  # unit for seam_panel.cpp's reason.
   src/key_card_view.cpp
   src/main.cpp
   # `--install` (#397): the directory given, one directory down.
   src/mounted_vfs.cpp
   src/ocr_discovery.cpp
+  # Every flag, and the parser (#472). A command line is a thing a test
+  # can hand over without a window, so the refusals are checked there.
+  src/options.cpp
+  # The on-screen keyboard and the toggle panel, over the window (#472).
+  src/overlays.cpp
+  # Where a run slice ends and how long the host waits after it (#472).
+  src/pacing.cpp
   # `--press`'s grammar (#313) -- its own unit so tests/press_spec_test.cpp
   # can read it, on keymap.cpp's argument.
   src/press_spec.cpp
+  # `--record`, `--replay` and `--wall` (#472).
+  src/recording.cpp
   # `--rehash` (#404): a recording written back with this build's hashes.
   src/rehash.cpp
+  # What a run says as it goes and as it ends (#472).
+  src/run_reports.cpp
   # The on-screen keyboard's pixels (#377) -- its own unit for the reason
   # press_spec is one: the geometry is arithmetic nobody can check by eye,
   # and tests/screen_keyboard_view_test.cpp cannot reach a lambda inside a
@@ -47,6 +76,8 @@ add_executable(amberfolio-sdl
   src/screen_keyboard_view.cpp
   # `--dump`'s text beside its pictures (machine/screen_text.h).
   src/screen_text_dump.cpp
+  # What this host does and says about the seams (#472).
+  src/seam_host.cpp
   # The toggle panel's columns and pixels (#383), on the same argument,
   # and the machine's character generator both overlays draw text with.
   src/seam_panel.cpp
@@ -64,11 +95,17 @@ add_executable(amberfolio-sdl
   # engine installed, which is why it is its own file (M5-E3a, #212).
   src/tesseract_ocr.cpp
   src/tsv_words.cpp
+  # The files this host keeps for the player, and where they are (#472).
+  src/user_files.cpp
   # `--wall`'s date (#320), its own unit on press_spec's argument.
-  src/wall_spec.cpp)
+  src/wall_spec.cpp
+  # The machine this host runs, and the sink it reports to (#472).
+  src/wiring.cpp
+  # `--verify`'s readback, its tally, and the key `--press` pushes.
+  src/window_checks.cpp)
 
 # ...and the linked one beside it when there is one. Both implement
-# `journal_ocr`, `main.cpp` picks between them, and the program-driven one
+# `journal_ocr`, `journal_host.cpp` picks between them, and the program-driven one
 # stays in the build either way: a linked build should still be able to
 # run a player's own newer engine if they ask for it.
 if(AMBERFOLIO_LINK_TESSERACT)
@@ -529,15 +566,18 @@ if(AMBERFOLIO_BUILD_TESTS)
   include(GoogleTest)
 
   add_executable(amberfolio-sdl-tests
+    src/audio_device.cpp
     src/audio_gain.cpp
     src/desktop_config.cpp
     src/document_control.cpp
     src/install.cpp
     src/key_card_view.cpp
     src/keymap.cpp
+    src/launch_config.cpp
     src/mounted_vfs.cpp
     src/ocr_discovery.cpp
     src/glyph_atlas.cpp
+    src/options.cpp
     src/press_spec.cpp
     src/rehash.cpp
     src/screen_keyboard_view.cpp
@@ -545,15 +585,19 @@ if(AMBERFOLIO_BUILD_TESTS)
     src/sidecar_consent.cpp
     src/sound_report.cpp
     src/tsv_words.cpp
+    src/user_files.cpp
     src/wall_spec.cpp
+    tests/audio_device_test.cpp
     tests/audio_gain_test.cpp
     tests/desktop_config_test.cpp
     tests/document_control_test.cpp
     tests/install_test.cpp
     tests/key_card_view_test.cpp
     tests/keymap_test.cpp
+    tests/launch_config_test.cpp
     tests/mounted_vfs_test.cpp
     tests/ocr_discovery_test.cpp
+    tests/options_test.cpp
     tests/press_spec_test.cpp
     tests/rehash_test.cpp
     tests/screen_keyboard_view_test.cpp
