@@ -4,6 +4,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <span>
