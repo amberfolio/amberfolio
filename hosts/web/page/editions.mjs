@@ -148,7 +148,7 @@ export function artifactName(artifact) {
 }
 
 /// The match as lines a host prints, in the same words and the same
-/// order the desktop host uses (`hosts/sdl/src/main.cpp`), so a bug
+/// order the desktop host uses (`hosts/sdl/src/disk_reports.cpp`), so a bug
 /// report from either one reads the same.
 export function describeMatch(match) {
   const lines = [];

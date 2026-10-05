@@ -829,7 +829,7 @@ export async function drive(opts) {
 
   // And the *read log* into the machine, which the dev page does at the
   // same point (app.mjs) and the desktop host does in the same place
-  // (hosts/sdl/src/main.cpp): after the store and the files are in, and
+  // (hosts/sdl/src/journal_host.cpp): after the store and the files are in, and
   // before a seam can be enabled.
   //
   // Outside the branch above and unconditional, in the desktop host's
@@ -914,7 +914,7 @@ export async function drive(opts) {
   // --- The edge list, written as the run makes it (#148) ----------------
   //
   // `--dump`'s third file, and the SDL host's third file byte for byte
-  // (hosts/sdl/src/main.cpp says why it exists): the PPM is the frame,
+  // (hosts/sdl/src/edge_dump.h says why it exists): the PPM is the frame,
   // the WAV is one *rendering* of the sound, and this is the sound in the
   // units the machine works in — "at tick T the output became high".
   //
@@ -1322,7 +1322,7 @@ function reportSeams(machine) {
 }
 
 /// What each enabled seam actually *did*, one line each, in the words the
-/// SDL host ends a run with (hosts/sdl/src/main.cpp) — `seam <id> armed
+/// SDL host ends a run with (hosts/sdl/src/seam_host.cpp) — `seam <id> armed
 /// fired=N`, singular, and distinct from the `seams` listing above.
 ///
 /// The listing says an address was computed out of a fact table; this

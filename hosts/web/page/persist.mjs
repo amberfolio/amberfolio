@@ -122,7 +122,7 @@ export const PROGRAM_SETTING = 'program';
 /// Written by a click in the panel and by nothing else. A seam turned on
 /// from the console or by a driving script is not a player choosing an
 /// enhancement, and the desktop host draws the same line between a panel
-/// and a `--seam` flag (`hosts/sdl/src/main.cpp`).
+/// and a `--seam` flag (`hosts/sdl/src/launch_config.cpp`).
 ///
 /// A player who has turned every seam back off leaves **no record at
 /// all** rather than an empty array, so that what they have is what a

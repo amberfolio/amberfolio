@@ -144,7 +144,7 @@ export function seamsToStore(rows) {
 /// program and has loaded another today gets a row with a reason, not a
 /// page that will not come up. The desktop host makes the same
 /// distinction between a remembered choice and a `--seam` flag
-/// (hosts/sdl/src/main.cpp).
+/// (hosts/sdl/src/launch_config.cpp).
 export function applyStoredSeams(machine, ids) {
   const on = [];
   const refused = [];

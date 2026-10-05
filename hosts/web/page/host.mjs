@@ -145,7 +145,7 @@ export const HOST_SERVICES = [
 ];
 
 /// What one enabled seam did, as the desktop host says it at the end of a
-/// run (hosts/sdl/src/main.cpp): `armed fired=N`, or `inert fired=N`, and
+/// run (hosts/sdl/src/seam_host.cpp): `armed fired=N`, or `inert fired=N`, and
 /// the sentence that names the failure when an armed seam fired nothing.
 ///
 /// Here rather than in either caller because both hosts have to say it
