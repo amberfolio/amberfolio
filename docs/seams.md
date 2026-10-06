@@ -1730,6 +1730,7 @@ a `0x0D` compare and for the loop's exit test, and no more than that.
 | the temple's appraise bar | overlay 21 (`0x900`) | `0x1C47` | compares G and J, then `E` or `0x00` ends it; any other key falls to a recompute of the sheet and the loop | S |
 | the load-game slot bar | overlay 17 (`0x7D0`) | `0x16E2` | loops until the key is in a class at `0x159F`, which holds the letters A to J; `0x0D` is not in it | D: Return loads the lit slot |
 | the rest-time menu, **by decision** | overlay 20 (`0x8D0`) | `0x076E` | **takes it as `R`, Rest** (`0x0D` is mapped before the compares). With the seam on Enter follows the highlight instead | D |
+| the door bars, locked and stuck, **by decision** (#479) | overlay 14 (`0x730`) | `0x0EBF`, `0x0FFE` | one question, no loop: a key that is not B, P or K is no choice, the same as Exit, and the door stays. With the seam on Enter takes the lit command, which the bar opens on its first (Bash) | S |
 
 - **Each by two routes.** The first row group (the Yes/No prompt, the
   adventuring bars, camp) was read in the disassembly and driven with the
@@ -1962,7 +1963,6 @@ highlight finds it on `Mins` (above), so a Return there no longer rests.
 | the combat move loop (overlay 8) | `0x0AC8` | `0x0D` ends it (the bar has no commands: no group to take) |
 | the combat aim cursor (overlay 13) | `0x3178` | confirms, as `T` does |
 | the combat aim bar (overlay 13) | `0x2C31` | the key is returned to the aim loop, whose compares miss and whose redraw then **repeats the last Next or Prev step** (the step is a stale local): it acts, by accident |
-| the door bars, Bash Pick Knock Exit (overlay 14) | `0x0EBF`, `0x0FFE` | one question, no loop: a key that is not B, P or K is no choice, the same as Exit, and the door stays |
 | the temple's keep-or-sell (overlay 21) | `0x1DC1`, `0x2114` | any key but `K` sells: **Enter sells** |
 | the two share prompts, *press Enter* (overlay 5) | `0x0AF8`, `0x14C7` | the prompt asks for it and ends on it |
 | the script runner, allow-Enter set (overlay 7) | `0x16EB` | the first choice |
@@ -2594,7 +2594,8 @@ has two modes:
 - **The party arrives in menu mode with `Move` lit**: after a load, a fight,
   camp, a shop, a script's question, View, any screen with a bar of its
   own. Walking lasts across steps and the events a step runs, and ends at
-  the next bar that is not the party's.
+  the next bar that is not the party's or a door's (a locked or stuck
+  door's bar is part of the walk).
 - **`Area` is gone**, by decision: the automap (Tab) is the overhead view,
   and with the automap off the overhead view is not reachable.
 
@@ -2603,7 +2604,7 @@ has two modes:
 | the city's call into the menu-bar routine, `0x09D0` | overlay 14 (`0x730`) | the bar the call is handed (the program's string, `Notes` on it if the journal is on) is copied into the loop's frame at `BP-0x32`, made this mode's bar, and the call's far pointer (`SS:SP+14`) aimed at the copy. Menu mode: the first group, `Area`, becomes `Move`. Walking: the copy is `Exit`. The highlight is put under `Move` when the party has just arrived or `Move` was last lit; `Exit` is lit. With the overhead view on (`0x6AAC`), first clears it and calls the program's screen composer (`0xBA:0x27D9`) through the batch, and the point is offered again |
 | the instruction after it, `0x09D5` | overlay 14 | `M` off the bar starts walking; `E` off the walking bar stops it and is handed back as `-`, which the program loops on, so the party does not camp. The highlight goes back to the program's numbering, `Move` lit kept in a word of the seam's, and the value it was entered with when `Notes` was chosen |
 | the wilderness's call, `0x0C40`, and the instruction after it, `0x0C45` | overlay 14 | the same, with `Move ` inserted in front of the bar's first group (27 + 5 + the journal's 6 is 38 of the slot's 40), every group after it one up, and the highlight moved for it both ways |
-| image `0x0572` of overlay 25, the key read (`bar-keys`' point), the last of the five pieces there | overlay 25 | at the two adventuring callers only. Menu mode: Left and Right become `,` and `.`, Up and Down Home and End, the digits `4`, `6`, `8`, `2` the same four, and a letter that is not one of the bar's command letters the key the program throws away (`seam_key_read.h`), so a typed `H`, `K` or `P` does not walk. Walking: Esc becomes `E`, every letter but `E` is thrown away; Return is `bar-keys`' (the lit command, `Exit`'s `E`). **Any other caller ends walking** and has `Move` lit at the party's next bar |
+| image `0x0572` of overlay 25, the key read (`bar-keys`' point), the last of the five pieces there | overlay 25 | at the two adventuring callers only. Menu mode: Left and Right become `,` and `.`, Up and Down Home and End, the digits `4`, `6`, `8`, `2` the same four, and a letter that is not one of the bar's command letters the key the program throws away (`seam_key_read.h`), so a typed `H`, `K` or `P` does not walk. Walking: Esc becomes `E`, every letter but `E` is thrown away; Return is `bar-keys`' (the lit command, `Exit`'s `E`). **Any other caller ends walking** and has `Move` lit at the party's next bar, but for the door bars (`0x0EBF`, `0x0FFE`) |
 
 | fact | value |
 |---|---|

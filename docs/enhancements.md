@@ -259,7 +259,8 @@ bar; the adventuring bar (in menu mode, `Move` among its commands, and while
 walking, its one `Exit`); the portrait bar at character creation (`Head Body
 Keep`); the shops' and temples' bars and the temple's appraisal; combat's
 command, Done and game-speed bars; the View bar; the post-combat treasure
-and Take bars; and the load-game slot bar. A command the other seams add,
+and Take bars; the load-game slot bar, and a locked or stuck door's bar (where the game
+would take Return as no choice). A command the other seams add,
 the Encamp Fix's `Fix` and the journal's `Notes`, is taken the same way,
 and so are the bars of the Notes screen itself (below).
 **The rest-time menu** is the one place the game used Enter for itself (it
@@ -292,7 +293,7 @@ and `M` still pick the field.
 **What it will not do.** Make Enter confirm a row in the pick-lists (it
 already does), or take a command where the game gives Enter a meaning of its
 own: the pick-lists and the party picker, the party-order screen, combat's
-move and aim, the locked-door question (where it is no choice), the
+move and aim, the
 temple's keep-or-sell (where it sells), the press-Enter notices, the icon
 editor. Two bars drop Enter and are left alone on purpose, because a stray
 Return there would do harm: the save-game slot bar (it would write the lit
@@ -360,8 +361,8 @@ starts walking**: the bar reads `Exit` alone, and the arrows, the keypad
 and the number row walk and turn as the game has them do. **Enter, Esc or
 `E` stop walking** and light `Move` again. A fight, camp, a shop, a
 script's question, View or any other screen with a bar of its own also
-brings you back to the bar with `Move` lit; the steps you take and what
-happens on a square do not.
+brings you back to the bar with `Move` lit; the steps you take, what
+happens on a square and a locked door's question do not.
 
 **What it changes.** `Area`, the game's overhead view, is gone: the
 automap (Tab) is the overhead view, and with the automap off there is

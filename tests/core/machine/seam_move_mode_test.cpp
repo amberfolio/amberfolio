@@ -523,6 +523,21 @@ TEST(SeamMoveMode, AnyOtherBarEndsTheWalk) {
   EXPECT_EQ(r.handed(), "Move Bravo Cobra");
 }
 
+TEST(SeamMoveMode, ADoorsBarDoesNotEndTheWalk) {
+  // A walk runs into a locked or stuck door, whose bar is its own; answering
+  // it (Bash, Pick, Exit) is part of the walk.
+  const rig r;
+  r.arm();
+  r.start_walking();
+  for (const std::uint16_t door :
+       {std::uint16_t{0x0EBF}, std::uint16_t{0x0FFE}}) {
+    EXPECT_EQ(r.press(letter_b, adventure_segment, door), letter_b);
+    r.before(city_before);
+    EXPECT_EQ(r.handed(), "Exit") << door;
+    r.arrive(city_after, 0x48, 1);
+  }
+}
+
 TEST(SeamMoveMode, TheOverheadViewIsLeftForThe3DViewBeforeTheBar) {
   const rig r;
   r.arm();

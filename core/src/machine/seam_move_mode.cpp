@@ -20,7 +20,7 @@
 //   * **`Move` lit is where the party arrives**: after a load, a fight, camp,
 //     a shop, a script's question, any screen with a bar of its own. Walking
 //     lasts across steps and the events a step runs, and ends at the next
-//     bar that is not the party's.
+//     bar that is not the party's or a door's.
 //
 // `Area`, the overhead view, is gone with the piece on: the automap is the
 // overhead view (by decision, #479).
@@ -121,7 +121,8 @@
 //     Return is `bar-keys`' (the lit command, which is `Exit`'s `E`).
 //
 // **Any other caller of the menu-bar routine ends walking**, and lights
-// `Move` for the party's next bar. That is the whole of "the party arrives in
+// `Move` for the party's next bar, but for the two door bars (overlay 14,
+// returns `0x0EBF` and `0x0FFE`), which a walk runs into and goes on from. That is the whole of "the party arrives in
 // menu mode": a fight, camp, a shop, a script's question, View and the load
 // screen all ask through the same routine.
 //
@@ -189,6 +190,15 @@ constexpr std::array<menu_bar::caller, 2> adventure_callers{{
      .return_offset = city_after},
     {.load_segment_at = menu_bar::adventure_load_segment_at,
      .return_offset = wild_after},
+}};
+
+/// The door bars, locked and stuck, in the same module: a walk meets them,
+/// and answering one does not end it.
+constexpr std::array<menu_bar::caller, 2> door_callers{{
+    {.load_segment_at = menu_bar::adventure_load_segment_at,
+     .return_offset = 0x0EBF},
+    {.load_segment_at = menu_bar::adventure_load_segment_at,
+     .return_offset = 0x0FFE},
 }};
 
 // --- The data segment ------------------------------------------------------
@@ -541,9 +551,11 @@ void at_key_read(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   if (!menu_bar::called_from(cpu, ctx, adventure_callers)) {
     // Another screen's bar: the walk is over, and the party's next bar
-    // lights `Move`.
-    ctx.set_scratch(scratch_walking, 0);
-    ctx.set_scratch(scratch_arrived, 0);
+    // lights `Move`. A door's is part of the walk.
+    if (!menu_bar::called_from(cpu, ctx, door_callers)) {
+      ctx.set_scratch(scratch_walking, 0);
+      ctx.set_scratch(scratch_arrived, 0);
+    }
     return;
   }
   const std::uint16_t head =

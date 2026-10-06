@@ -136,6 +136,7 @@
 //   | the temple's appraise bar | overlay 21 | `0x1C47` | compares G, J and E; loops until E |
 //   | the load-game slot bar | overlay 17 | `0x16E2` | loops until the answer is a slot letter |
 //   | the rest-time menu | overlay 20 | `0x076E` | **takes it as `R`, Rest**; in the table by decision, so Enter follows the highlight |
+//   | the door bars, locked and stuck | overlay 14 | `0x0EBF`, `0x0FFE` | one question, no loop: **anything but B, P or K is no choice**, the same as Exit; in the table by decision (#479), so Enter takes the lit command |
 //
 // **Esc answers No** (#438), at two callers only: the Yes/No prompt (the
 // loop in the table above, which ignores Esc and asks again) and the script
@@ -280,7 +281,7 @@ using menu_bar::slots_load_segment_at;
 using menu_bar::temple_load_segment_at;
 using menu_bar::view_load_segment_at;
 
-constexpr std::array<caller, 21> enter_callers{{
+constexpr std::array<caller, 23> enter_callers{{
     {.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
@@ -303,6 +304,8 @@ constexpr std::array<caller, 21> enter_callers{{
     {.load_segment_at = slots_load_segment_at, .return_offset = 0x16E2},
     {.load_segment_at = menu_bar::rest_load_segment_at,
      .return_offset = 0x076E},
+    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0EBF},
+    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0FFE},
 }};
 
 /// The Yes/No prompt, and the script runner's call into the routine (the
