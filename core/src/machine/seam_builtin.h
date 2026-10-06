@@ -56,8 +56,9 @@ inline constexpr std::string_view modern_controls_id = "modern-controls";
 
 /// The pieces' points, in the order the registration offers them at an
 /// address two of them share: the pick-lists' arrows, the bars' keys, the
-/// main menu's cursor, the heroes' numbers, the line editor, and the
-/// selection's colours last (the order the six seams were registered in).
+/// main menu's cursor, the heroes' numbers, the line editor, the
+/// selection's colours (the order the six seams were registered in), and
+/// the party bar's move mode last.
 /// The counts are what the registration sizes its table from; each source
 /// holds a `static_assert` that its own table is that long.
 inline constexpr std::size_t list_arrows_point_count = 3;
@@ -66,6 +67,7 @@ inline constexpr std::size_t menu_cursor_point_count = 2;
 inline constexpr std::size_t hero_keys_point_count = 5;
 inline constexpr std::size_t edit_keys_point_count = 1;
 inline constexpr std::size_t select_yellow_point_count = 7;
+inline constexpr std::size_t move_mode_point_count = 5;
 
 /// The up and down arrows in the pick-lists, and the selected party member
 /// at the bars where Home and End step it (seam_list_arrows.cpp, #423).
@@ -90,6 +92,15 @@ inline constexpr std::size_t select_yellow_point_count = 7;
 /// Every selection the player can move in yellow, a command's key letter
 /// white (seam_select_yellow.cpp, #453).
 [[nodiscard]] std::span<const seam_point> select_yellow_points() noexcept;
+
+/// On the party's own bar, walking is a mode: `Move` starts it, `Exit` ends
+/// it, and between the two Left and Right step the bar (seam_move_mode.cpp,
+/// #479). Last at the key read, so every other piece has passed first.
+[[nodiscard]] std::span<const seam_point> move_mode_points() noexcept;
+
+/// Whether the party is in walking mode, so its bar is `Exit` alone: the
+/// journal's question, which puts no `Notes` on that bar.
+[[nodiscard]] bool move_mode_walking(const machine& box) noexcept;
 
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;

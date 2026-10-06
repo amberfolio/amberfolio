@@ -3072,6 +3072,13 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar) {
   // matched is this seam's. Read before the splice, because after it the
   // bar is not the program's.
   box.journal().note_bar_highlight(cpu.read_byte(ds, data_bar_highlight));
+  // **Not onto the walking bar** (#479): with `modern-controls` on and the
+  // party walking, its bar is `Exit` alone, and a command beside it would
+  // be one the player cannot reach (the arrows walk) and that the piece
+  // would have to take back off before it put the program's bar back.
+  if (modern_controls_on(box) && move_mode_walking(box)) {
+    return;
+  }
   static_cast<void>(splice_in(cpu, ds, bar));
 }
 

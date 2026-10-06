@@ -146,7 +146,6 @@
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
-#include "amberfolio/machine/automap.h"
 #include "amberfolio/machine/journal.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_map.h"
@@ -209,38 +208,16 @@ struct hero_caller {
   std::uint16_t return_offset;
 };
 
-/// The words the program's overlay manager keeps the modules' load
-/// segments in: overlays 4, 5, 6, 7, 14, 15 and 16, found by searching the
-/// resident image for the manager's record of each (its file offset and
-/// length from the overlay table), one match each, and the word sixteen
-/// bytes into it. The search returns the known words for overlays 5, 14,
-/// 15 and 16 (`bar-keys`' table).
-constexpr std::uint32_t temple_load_segment_at = 0x230;       // overlay 4
-constexpr std::uint32_t post_combat_load_segment_at = 0x260;  // overlay 5
-constexpr std::uint32_t shop_load_segment_at = 0x290;         // overlay 6
-constexpr std::uint32_t script_load_segment_at = 0x2C0;       // overlay 7
-constexpr std::uint32_t adventure_load_segment_at = 0x730;    // overlay 14
-constexpr std::uint32_t camp_load_segment_at = 0x760;         // overlay 15
-constexpr std::uint32_t main_menu_load_segment_at = 0x790;    // overlay 16
+/// The word the program's overlay manager keeps overlay 16's load segment
+/// in (`bar-keys`' table has it too).
+constexpr std::uint32_t main_menu_load_segment_at = 0x790;  // overlay 16
 
-constexpr std::array<hero_caller, 11> hero_callers{{
-    // The adventuring bar, overhead view and 3D view and wilderness.
-    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
-    {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
-    // The main menu, the title screen's and every other.
+/// The one caller: the main menu, the title screen's and every other. At
+/// every other bar with a party list, Up and Down select (`list-arrows`,
+/// and on the party's own bar `move-mode`), so the number row is the
+/// program's keypad layout again there (#479).
+constexpr std::array<hero_caller, 1> hero_callers{{
     {.load_segment_at = main_menu_load_segment_at, .return_offset = 0x02FD},
-    // The camp bar, and its Magic and Alter bars.
-    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1F24},
-    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1447},
-    {.load_segment_at = camp_load_segment_at, .return_offset = 0x1CA4},
-    // The script prompts' one menu routine.
-    {.load_segment_at = script_load_segment_at, .return_offset = 0x16EB},
-    // The post-combat loot bar and its Take bar.
-    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x1024},
-    {.load_segment_at = post_combat_load_segment_at, .return_offset = 0x0D91},
-    // The shop's bar and the temple's.
-    {.load_segment_at = shop_load_segment_at, .return_offset = 0x061F},
-    {.load_segment_at = temple_load_segment_at, .return_offset = 0x0DAA},
 }};
 
 // --- The keys, as the BIOS ring holds them: scan code high, character low --
@@ -320,32 +297,13 @@ void at_key_read(machine& box, seam_context& ctx) {
     // reader's, not the bar's.
     return;
   }
-  const automap_state& map = box.automap();
-  if (map.at_command_bar() && map.panel_open() && !map.panel_covered()) {
-    // The party's own bar is up with the map on the roster's cells, and
-    // the map takes the keys that step the party cursor, at the poll and,
-    // for one that got past it, at the read this very key is about to
-    // reach: a Home from here would be taken there, with the selection
-    // already half moved. A step whose whole visible effect is behind the
-    // map is the map's to decline.
-    return;
-  }
   const std::uint16_t ds = regs[cpu::sreg::ds];
   if (cpu.read_byte(ds, data_key_pushback) != 0) {
     // The head of the ring is not the key about to be read.
     return;
   }
-  const bool raw_caller = called_from_a_hero_caller(cpu, ctx);
-  if (!raw_caller) {
-    const party_select::where spot = party_select::at_a_party_bar(
-        cpu, ctx, static_cast<std::uint8_t>(key & 0xFFU));
-    if (spot == party_select::where::frame_unknown) {
-      ctx.decline(seam_reason::point_not_recognized);
-      return;
-    }
-    if (spot == party_select::where::not_here) {
-      return;
-    }
+  if (!called_from_a_hero_caller(cpu, ctx)) {
+    return;
   }
   if (!party_select::is_the_data_segment(ctx, ds)) {
     // Not the data segment the facts put the party in.
@@ -362,20 +320,6 @@ void at_key_read(machine& box, seam_context& ctx) {
   if (hero > members.size) {
     // Nobody is there: the routine goes back to waiting.
     party_select::answer_with_the_ignored_key(cpu, ring_slot);
-    return;
-  }
-
-  if (!raw_caller) {
-    // A bar that is not raw throws Home away, so the caller never steps
-    // the cursor: the selection is put on the target and the list drawn
-    // again by the program's own routine (seam_party_select.h).
-    if (party_select::map_over_the_roster(box)) {
-      return;
-    }
-    if (!party_select::select_and_redraw(
-            box, ctx, ds, members.member[hero - 1U], ring_slot)) {
-      ctx.decline(seam_reason::point_not_recognized);
-    }
     return;
   }
 
@@ -489,9 +433,10 @@ struct roster_frame {
          is_record(frame.member);
 }
 
-/// Whether `column` is one the drawer starts its names at.
+/// Whether `column` is the one the drawer starts the main menu's names at:
+/// the only list the numbers are drawn on (#479).
 [[nodiscard]] constexpr bool is_original(std::uint8_t column) noexcept {
-  return column == column_beside_viewport || column == column_main_menu;
+  return column == column_main_menu;
 }
 
 void push_word(cpu::processor& cpu, std::uint16_t value) {
@@ -535,6 +480,9 @@ void at_row_cleared(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  if (frame.column == column_beside_viewport) {
+    return;  // the party list beside the viewport is the program's own.
+  }
   if (!is_original(frame.column)) {
     if (is_original(static_cast<std::uint8_t>(frame.column - name_shift))) {
       // Reached again: the number has been drawn, and the program goes on
@@ -574,7 +522,7 @@ void at_name_drawn(machine& box, seam_context& ctx) {
                    static_cast<std::uint8_t>(column));
   };
 
-  if (is_original(frame.column)) {
+  if (frame.column == column_beside_viewport || is_original(frame.column)) {
     // Nothing moved the name: nothing to put back.
     return;
   }
@@ -610,7 +558,14 @@ void at_name_drawn(machine& box, seam_context& ctx) {
 void at_ac_column(machine& box, seam_context& ctx) {
   cpu::processor& cpu = box.processor();
   roster_frame frame;
-  if (!read_roster_frame(cpu, frame) || !is_original(frame.column)) {
+  if (!read_roster_frame(cpu, frame)) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
+  }
+  if (frame.column == column_beside_viewport) {
+    return;
+  }
+  if (!is_original(frame.column)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -632,8 +587,12 @@ void at_heading_copied(machine& box, seam_context& ctx) {
   const auto at = [&](std::uint16_t distance) {
     return static_cast<std::uint16_t>(bp - distance);
   };
-  if (cpu.read_byte(ss, at(local_row)) != heading_row ||
-      !is_original(cpu.read_byte(ss, at(local_column)))) {
+  const std::uint8_t column = cpu.read_byte(ss, at(local_column));
+  if (cpu.read_byte(ss, at(local_row)) == heading_row &&
+      column == column_beside_viewport) {
+    return;
+  }
+  if (cpu.read_byte(ss, at(local_row)) != heading_row || !is_original(column)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }

@@ -1186,6 +1186,7 @@ row's own numbers). Twenty-two moves, 150 frames apart from 9,600, walk to
 
 ```
 --press L@7550 --press A@7800           LOAD SAVED GAME, slot A
+--press Return@9500                     on, takes Move (leg 20); off, ignored
 --press Right@9600 --press Right@9750   and so on, through the moves below
 --press Up@13800                        7,1: THE ROOM IS FILLED WITH DUELING PAIRS
 --press Return@14400                    its press-Enter prompt: the program's own
@@ -1200,24 +1201,18 @@ Left, Up, Right, Up, Up (north to 4,11, west, north to 3,2, east, north to
 question is asked, and Esc answers that `NO`; the adventuring bar is back
 at 16,900. Off, the first question is still up at the end: Return and
 Escape are both asked again. The Return at the press-Enter prompt works
-either way, and the stills of the two runs are the same until the Return
-at 15,900 (319 of 342 at a 50-frame cadence).
+either way. On, the moves are made in walking mode, which the question's
+bar ends.
 
-**The adventuring bar**, in the city and in the wilderness. Slot C, then
-`.@10000 Return@10300` on the bar with `AREA`: the highlight steps from
-VIEW to ENCAMP and Return enters the camp. Slot J (`L@7550 J@7800`), the
-bar without `AREA`: `.@9600 .@9750 Return@9900` steps from LOOK to VIEW and
-Return opens the View sub-bar. Off, neither does anything.
-
-**The arrows where they are used** (the city is `quiet`'s script; the
-wilderness is by hand). Slot J, `Up@9700 Left@9850 Up@10000 Right@10150
-Right@10300 Up@10450`: the party goes from 3,32 S to 3,31 N, turns west and
-goes on, and all 232 stills with the seam on are byte for byte the stills
-without it. The adventuring bar is in the seam's exclusion table, so the
-seam leaves its keys. So are, in a fight from slot J, the move loop (`M` at the command bar, then `Right`, which steps the
-fighter) and the aim cursor (`A`, then `M` for Manual, then `Right`). A
-temporary print of the return address at the seam's point is the way to
-see which caller a key came from.
+**The adventuring bar**, in the city and in the wilderness, is the move
+mode's (leg 20): the seam's exclusion table leaves its arrows, and the move
+mode steps the bar with them in menu mode and walks with them in walking
+mode, where they are the program's own (slot J, Return then two Ups: 3,32 S
+to 3,30 N). The other callers in the exclusion table keep theirs: in a
+fight from slot J, the move loop (`M` at the command bar, then `Right`,
+which steps the fighter) and the aim cursor (`A`, then `M` for Manual, then
+`Right`). A temporary print of the return address at the seam's point is
+the way to see which caller a key came from.
 
 **The bars the Enter audit added** (#459). Each is a Return at the bar,
 the seam off (nothing) and on (the lit command), read from the screen text
@@ -1295,7 +1290,9 @@ checkpoints). `A@7600 A@7700 E@7800 V@8000 Escape@8500`: the add screen,
 back, the view screen, back. After a command the menu is redrawn and a
 cursor that was lit is gone.
 
-**A training hall.** Slot A in the city, `L@7550 A@7800`, then the route to
+**A training hall.** Slot A in the city, `L@7550 A@7800`, `Return@9500` to
+take `Move` (leg 20: with `modern-controls` on the party arrives in menu
+mode, where the arrows walk nobody), then the route to
 the lobby of the training schools at 6,2 (the program takes a long time
 over each square's text; press 150 frames apart and leave the lobby
 800 frames to finish):
@@ -1320,59 +1317,25 @@ seam tests is the same here as at the start of the program.
 
 ## Leg 17 — a hero by number (#439)
 
-Slot A's six, and the party list. `docs/seams.md` §10 has the facts; the
-screen text (`--dump`'s `.txt`) is the instrument: the selected member's
-name is the white one, and each row begins with its number.
-
-```
---seam code-wheel --code-wheel-answered --seam modern-controls
---press L@7550 --press A@7800            LOAD SAVED GAME, slot A
---press 3@10300                          the third member is selected
---press Numlock@10000 --press "Keypad 8"@10600   walks (4,12 S to 4,13 S)
---press 8@10900                          no eighth member: nothing
---press 6@11200                          the sixth
---press 9@11500                          the game's own: the first
-```
-
-`hero-pick` and `hero-pick-3` are this with a 9 and a 3 at the adventuring
-bar. With NumLock on, the keypad's 8 still walks and its 3 is the game's
-PgDn (the selection goes to the first member); the number row's 3 selects.
+The main menu's party list. `docs/seams.md` §10 has the facts; the screen
+text (`--dump`'s `.txt`) is the instrument: the selected member's name is
+the white one, and each row begins with its number.
 
 **The main menu.** Add several members (`A`, then `Return` and `End` for
 each), then `E`; the party list is on the main menu at column one, names at
 column three. `3`, `4`, `6` and `2` select, `9` is the game's and does
 nothing there.
 
-**Camp** (slot C, `E@8800`): `3` at the camp bar, `M` then `5` with four
-members (nobody: nothing), `A` then `2`. **The wilderness** (slot J,
-`2`, `3`, `Up`, `1`). **A shop and a temple**: leg 4's and leg 5's routes,
-`3`, `5`, `6`, `9` at the temple's bar and `4`, `2`, `8` at the armourer's.
-**A script's menu**: the armourer's `CAN I SHOW YOU OUR WARES? YES NO`,
-`3`, `5`, `9`, then `Y`. **After a fight** (the `fight` script over the disk
-`save` wrote, with `--seam cheat-invulnerable --seam cheat-kill-all --pull
-cheat-kill-all@12100`, `N@12700` at `CONTINUE BATTLE`, `Return@13100`): the
-treasure bar `VIEW TAKE POOL SHARE EXIT` with a party of one, `1` selects
-and `2` does nothing.
+**Everywhere else the number row is the game's** (#479): Up and Down select
+the member (leg 20 at the party's bar; `list-arrows` at camp, the shops,
+the temple, the script prompts, the treasure bars and the doors), the party
+list beside the viewport has no numbers, and a digit is what the program
+makes of it, the keypad's layout. In walking mode at the party's bar the
+number row's `8` walks.
 
-**What it leaves alone, compared with the seam off.** Combat with `8 4 6 2
-7 9 1 3 5` at the command bar (the 137 stills from the first tactical map
-on are identical; the 29 before it show the party list), and the creation
-lists with `2 8 3 7 1 4 5 6` and Return (202 of 202 stills).
+**Not driven:** the journal reader with a real store.
 
-**Long names**, on a copy of slot A with three characters renamed in
-their records to thirteen, fourteen and fifteen characters: all three show
-`ABCDEFGHIJKLM` and the armour class is clear of the name; with the seam
-off the fifteen-character name runs up to it.
-
-**With other seams.** `automap`: `2`, Tab, `3`, Tab, `4` leaves the second
-member selected while the map is up (`3` is the map's), the roster comes
-back with its numbers, and `4` selects the fourth. `journal`: `Notes`, a
-row, Escape twice, `3`: the numbers are back and `3` selects. `font-sans`:
-the numbers are in the face.
-
-**Not driven:** the post-combat Take bar (it needs coins and items), the
-party-order screen (left out), and the journal reader with a real store.
-
+---
 
 ## Leg 19 — a selection in yellow (#453)
 
@@ -1384,7 +1347,7 @@ uses among them, and `fired` counts the draws and keys it looked at.
 
 | screen | how to reach it | what to see |
 |---|---|---|
-| the adventuring bar and the party list | `L@7551`, `A@7801` (slot A) | `AREA` is `A` white and `REA` yellow; `FIGHTER1` is yellow |
+| the adventuring bar and the party list | `L@7551`, `A@7801` (slot A) | `MOVE` is `M` white and `OVE` yellow; `FIGHTER1` is yellow |
 | the camp bar and a Yes/No | slot C, `C@7800`, `E@8800`, `S@10000`, `Escape@10600` | `QUIT TO DOS`: `Y` white, `es` green, `N` white, `o` yellow |
 | a pick-list | `C@7550`, then `End@7700` | the highlighted row is yellow |
 | Modify | create a character (leg 0), add it, `M`, then `Down` | the selected score and, six Downs on, the hit points are yellow |
@@ -1448,6 +1411,40 @@ Down and Up (`list-down`'s script: all 84, `reached=0`).
 **Not driven:** a script's free-text question and its number prompt, which no
 leg reaches. Both are the same editor; the stand-in `edit_keys_probe_*` and
 `SeamEditKeys.*` stand in for them.
+
+---
+
+## Leg 20 — walking is a mode (#479)
+
+Slot A in the city and slot J in the wilderness, with the journal and the
+automap on beside it. `docs/seams.md` §10 has the facts; the screen text is
+the instrument: row 24 is the bar (its ink row says which word is lit,
+yellow `E`), and the status row has the position.
+
+```
+--seam code-wheel --code-wheel-answered --seam modern-controls
+--seam journal --seam automap
+--press L@7560 --press A@7810            LOAD SAVED GAME, slot A
+                                         MOVE CAST VIEW ENCAMP SEARCH LOOK NOTES, MOVE lit
+--press Right@9700 --press Right@9820    CAST, then VIEW
+--press Left@9940                        CAST
+--press Down@10060 --press Up@10180      the second member, then the first
+--press Left@10300 --press Return@10420  MOVE, then walking: the bar is EXIT
+--press Up@10540                         4,12 S to 4,13 S
+--press Right@10660                      faces W
+--press C@10780                          nothing
+--press Escape@10900                     the menu, MOVE lit
+--press M@11020 --press Return@11140     walking, then the menu again
+--press E@11380                          ENCAMP; camp's Exit comes back with MOVE lit
+```
+
+Slot J (`L@7560 J@7810`): the wilderness bar has `MOVE` in front of `CAST`
+and no `AREA`; `Return`, `Up`, `Up` walk 3,32 S to 3,30 N; `Escape` and
+`Right` step the menu. The session pair is `move-walk` and
+`move-walk-mode`.
+
+**Not driven:** a party in the overhead view when the seam is switched on
+(the unit suite pins it).
 
 ---
 

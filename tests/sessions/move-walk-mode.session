@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The baseline of the keys' pair: modern-controls on, slot A loaded, and
-# the number row's 9 pressed at the adventuring bar, which is never the
-# seam's (the program steps the selection to the first member, where it
-# already is). Its sibling presses 3 at the same tick.
+# move-walk's keys at the same ticks with modern-controls on (#479): the
+# party arrives at its bar in menu mode with Move lit, Return starts
+# walking and the bar is Exit alone, the Up walks, Escape is Exit and Move
+# is lit again, the two Rights step the highlight to View, and Return takes
+# it. The two agree until the main menu is drawn, and differ to the end.
 
-about modern-controls on, slot A loaded and the number row's 9 pressed at
-about the adventuring bar: the seam leaves it, and the first member
-about stays selected. The baseline of hero-pick-3
+about modern-controls on, slot A loaded: Return on Move, a step to 4,13 on the
+about walking bar, Escape back to the menu, two Rights to View and Return
+about takes it. Contrast move-walk
 disk external
 code-wheel-answered
+contrast move-walk
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

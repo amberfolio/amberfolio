@@ -608,7 +608,7 @@ and never triggered.
 | `quiet-font-chisel` | contrast | `quiet` (the same) |
 | `quiet-all` | identical | `quiet-journal` (every seam that draws nothing until used: not the faces or `modern-controls`, which are contrasts of their own) |
 | `quiet-all-on-sight` | contrast | `quiet-all` (the same with `modern-controls` on: the menu's cursor is the first thing to move) |
-| `quiet-modern-controls` | contrast | `quiet` (the menu's cursor from the first frame the menu is drawn, each roster name moved and numbered and every highlight yellow from the first time each is on the screen) |
+| `quiet-modern-controls` | contrast | `quiet` (the menu's cursor from the first frame the menu is drawn, the party's bar in menu mode and every highlight yellow from the first time each is on the screen) |
 | `list-down-arrows` | contrast | `list-down` (the same script with Down and Up, which the seam-off program drops) |
 | `camp-down-arrows` | contrast | `camp-down` (Down and Up at the camp bar, which the program hands to the party cursor to put the first member back) |
 | `camp-pad-arrows` | contrast | `camp-pad` (the keypad's 2 and 8 with Num Lock on at the camp bar, which the routine translates into letters the cursor puts the first member back on) |
@@ -618,18 +618,18 @@ and never triggered.
 | `list-keys-yellow` | contrast | `list-keys` (each pick-list's highlighted row in yellow) |
 | `menu-letters-cursor` | contrast | `menu-letters` (the cursor is drawn as soon as the menu is, with no key pressed at it) |
 | `menu-down-cursor` | contrast | `menu-down` (Down, Down and Return at the main menu take the third command) |
-| `hero-pick-3` | contrast | `hero-pick` (a 3 at the adventuring bar where the baseline presses a 9; both have the seam on) |
+| `move-walk-mode` | contrast | `move-walk` (Return takes `Move`, a step on the walking bar, Escape back to the menu, two Rights to `View` and Return opens it, where the program walks and turns) |
 | `name-arrows-edit` | contrast | `name-arrows` (a Right, an Up, a Down and a Left among the letters of a name: the program types a letter for each) |
 
-**`modern-controls` has no `identical` pair.** Three of its pieces draw as
+**`modern-controls` has no `identical` pair.** Four of its pieces draw as
 soon as there is something to draw on (the main menu's cursor, the roster's
-numbers, a highlight), so a run with it on differs from the plain run at
+numbers there, a highlight, the party's bar), so a run with it on differs from the plain run at
 the first main menu whatever keys are pressed, as a face does. Every pair
 above with the seam on at one end only is a `contrast` that agrees with its
 baseline up to that frame (58 checkpoints) and differs from there to the
 end; what a key did is in the state the run ends in and in the unit suites.
-The two pairs with the seam on at both ends (`hero-pick-3`, `door-pick-3`)
-differ by their keys alone, and are the sharp ones.
+The pair with the seam on at both ends (`door-pick-3`) differs by its keys
+alone, and is the sharp one.
 
 Both relations are checked on the recordings with no disk
 (`scripts/sweep.py`), so CI checks them on every push. CONTRIBUTING.md
@@ -1145,7 +1145,7 @@ PLAN.md §5 item 2's in-game half; ingestion is #174 and
 | --- | --- | --- |
 | the automap's five: both key routines, both clears, the roster drawer's `retf` | resident image | as the automap's: the screen is drawn and repainted here, and the reader's modal keys are claimed here |
 | the program's word-wrapping **message box**, where a script's every PRINT ends | resident image | the citation watch: reads the Pascal string (offset at SP+4, segment at SP+6) into a rolling window; the box's home-and-clear flag is the message boundary |
-| the adventuring loop's call into the menu-bar routine, one pair per view mode (M5-E4a, #221) | the adventuring loop's module | before: splices `Notes` onto the party's bar, sets `bar_live()`; at the return: splices it out, clears `bar_live()`, reads the letter from `AL` and the routine's out-parameter, puts the highlight byte back where the routine found it (#330) |
+| the adventuring loop's call into the menu-bar routine, one pair per view mode (M5-E4a, #221) | the adventuring loop's module | before: splices `Notes` onto the party's bar (not onto the walking bar of `modern-controls`' move mode, which is `Exit` alone: `move_mode_walking()`), sets `bar_live()`; at the return: splices it out, clears `bar_live()`, reads the letter from `AL` and the routine's out-parameter, puts the highlight byte back where the routine found it (#330) |
 
 Rejected as the watch: `image_draw_string`, the string drawer the Encamp
 Fix calls, because on this program it draws credits, menus and the
@@ -1346,10 +1346,10 @@ the old claim (`ExploredFidelity.TheArrivalIsNoLongerTheScreenItWouldHaveBeen`,
 squares named), `exp-steady.leg` (no flicker across the icon's
 animation).
 
-### Modern controls (#423, #425, #434, #439, #453, #455, #473)
+### Modern controls (#423, #425, #434, #439, #453, #455, #473, #479)
 
 `seam_modern_controls.cpp`. One seam to a player: the keys and the colours a
-later game would have, switched on together. Six sources hold the pieces,
+later game would have, switched on together. Seven sources hold the pieces,
 each with the facts it rests on and the handlers that act on them, and each
 hands the registration the points it owns; the registration holds the id, the
 `about`, the fingerprint and the union of the points. Not a PLAN.md §5 item:
@@ -1361,53 +1361,59 @@ to pull.
 | list arrows | `seam_list_arrows.cpp` | Up and Down step the pick-lists, the party-member picker and the selected member, as Home and End do | 3 |
 | bar keys | `seam_bar_keys.cpp` | Left and Right step a command bar's highlight, Enter takes it, Esc answers No | 1 |
 | menu cursor | `seam_menu_cursor.cpp` | a cursor on the main menu | 2 |
-| hero keys | `seam_hero_keys.cpp` | the number row's 1 to 8 select a member; the party list shows each number | 5 |
+| hero keys | `seam_hero_keys.cpp` | at the main menu, the number row's 1 to 8 select a member and the party list shows each number | 5 |
 | edit keys | `seam_edit_keys.cpp` | an extended key types nothing at a text prompt | 1 |
 | selection colour | `seam_select_yellow.cpp` | every selection yellow, a key letter white | 7 |
+| move mode | `seam_move_mode.cpp` | on the party's own bar walking is a mode: `Move` starts it, `Exit` ends it, and in between Left and Right step the bar; `Area` is gone | 5 |
 
 The sections below keep each piece's facts under the name it was a seam
 under (`list-arrows`, `bar-keys`, `menu-cursor`, `hero-keys`, `edit-keys`,
-`select-yellow`). **None of those is an id**: `--seam bar-keys`, a config
+`select-yellow`), and the move mode's under `move-mode`. **None of those is
+an id**: `--seam bar-keys`, a config
 line or a recording naming one is refused as an unknown seam
 (`unknown_seam`), and "the seam on" or "off" in a piece's section means
 `modern-controls` on or off. The `fired`, `reached` and `declined` counts
 quoted below were taken per piece; the engine reports them for the one seam,
 summed over the pieces.
 
-- **One definition, the union of the points, in one order.** The nineteen
-  points are the pieces' own, in the order list arrows (3), bar keys (1),
-  menu cursor (2), hero keys (5), edit keys (1), selection colour (7). Four
-  pieces have a point at the same instruction, overlay 25's key read at
-  `0x0572` (list arrows, bar keys, menu cursor, hero keys), and the engine
-  offers an address's points in table order, so the order is behaviour.
-  The point count with every seam on is fifty, one face counted
-  (`max_points` is sixty-four).
+- **One definition, the union of the points, in one order.** The
+  twenty-four points are the pieces' own, in the order list arrows (3), bar
+  keys (1), menu cursor (2), hero keys (5), edit keys (1), selection colour
+  (7), move mode (5). Five pieces have a point at the same instruction,
+  overlay 25's key read at `0x0572` (list arrows, bar keys, menu cursor, hero
+  keys, move mode), and the engine offers an address's points in table
+  order, so the order is behaviour: the move mode is last, and rewrites the
+  party bar's keys after every other piece has passed on them. The point
+  count with every seam on is fifty-five, one face counted (`max_points` is
+  sixty-four).
 - **One fingerprint, several modules.** Every piece keys on the baseline
   edition (§5) and only it, so the definition does. The modules are the
-  pieces': overlay 25 for four of them, overlay 16 for the menu cursor's loop
-  call, overlay 19 for Modify's score, the resident image for the rest, and
-  each point names its own.
+  pieces': overlay 25 for five of them, overlay 16 for the menu cursor's loop
+  call, overlay 19 for Modify's score, overlay 14 for the move mode's party
+  bar, the resident image for the rest, and each point names its own.
 - **A piece cannot ask another.** The menu cursor took its colours from the
   selection colour; with the two one seam the answer is always yes and the
   cursor's row is always yellow with a white key. The journal's reader asks
   `modern_controls_on(box)` (`seam_builtin.h`) for its bars' keys and
-  highlight and for its cursor row (§10 on the journal).
-- **Off is the plain machine, on is all six.** There is no setting between,
+  highlight and for its cursor row, and `move_mode_walking(box)` before it
+  splices `Notes` (§10 on the journal).
+- **Off is the plain machine, on is all seven.** There is no setting between,
   so no piece's handlers run with another's off.
 - **A seam is armed while every module its points name is resident** (§4),
-  so the panel reads `on inert module_not_resident` until overlays 25, 16 and
-  19 are all loaded, which is rare; the points of the loaded modules work
+  so the panel reads `on inert module_not_resident` until overlays 25, 16, 19
+  and 14 are all loaded, which is rare; the points of the loaded modules work
   meanwhile (`fired` says so).
 
-**State**: none of the seam's own (the menu cursor is held in an enable byte
-the program owns while it is drawn). **Host services**: none. **Keys**: each
+**State**: the move mode's few words (its section); the menu cursor is held
+in an enable byte the program owns while it is drawn. **Host services**: none. **Keys**: each
 piece's, in its section, and on the key card as rows naming `modern-controls`
 (`hosts/common/src/key_card.cpp`).
 
 **Fidelity**: off, the engine is not consulted (§7). On, the seam is never
 idle: the main menu's cursor is drawn from the first frame the menu is, the
-roster's numbers from the first time the party list is, and a highlight in
-yellow from the first time one is, so a run with it on differs from the
+roster's numbers from the first time its party list is, the party's bar in
+menu mode from the first time it is drawn, and a highlight in yellow from the
+first time one is, so a run with it on differs from the
 plain one at the first main menu whatever keys are pressed, and it has no
 `identical` pair (§8.5, as for the faces). `quiet-modern-controls` is a
 `contrast` to `quiet` (58 of 90 checkpoints identical, divergent from tick
@@ -1577,7 +1583,7 @@ the `bar-keys` audit above, which has its verdict on arrows):
 
 | caller | return offset | why |
 |---|---|---|
-| the adventuring bars, city and wilderness (overlay 14) | `0x09D5`, `0x0C45` | Up and Down move the party; driven, in=0 and identical stills |
+| the adventuring bars, city and wilderness (overlay 14) | `0x09D5`, `0x0C45` | the move mode's: walking, Up and Down move the party; in menu mode it makes them Home and End itself |
 | the main menu (overlay 16) | `0x02FD` | #434's: its Up, Down and Enter are the `menu-cursor` piece's |
 | the combat move loop, the aim cursor, the command bar (overlay 8, 13) | `0x0AC8`, `0x3178`, `0x0819` | no party cursor: the fighter and the cursor are moved |
 | the stat editor (overlay 16) | `0x216E` | Up and Down are its rows |
@@ -1825,7 +1831,7 @@ a `0x0D` compare and for the loop's exit test, and no more than that.
 
   | caller | module (manager's word) | return offset | what it does with an arrow |
   |---|---|---|---|
-  | the adventuring bar, city | overlay 14 (`0x730`) | `0x09D5` | Left and Right turn the party (`K`, `M` with the out-flag set) |
+  | the adventuring bar, city | overlay 14 (`0x730`) | `0x09D5` | Left and Right turn the party (`K`, `M` with the out-flag set); in menu mode the move mode makes them `,` and `.` itself, after this piece has passed |
   | the adventuring bar, wilderness | overlay 14 | `0x0C45` | the party's own facings and steps |
   | the combat move loop | overlay 8 (`0x360`) | `0x0AC8` | the scan code is the direction: Right steps the fighter east, Left west |
   | the combat aim cursor | overlay 13 (`0x690`) | `0x3178` | Left and Right move the cursor |
@@ -2196,8 +2202,8 @@ v1's six. A setting; keys and a display change. Nothing to pull.
 
 | point | module | what the handler does |
 |---|---|---|
-| image `0x0572` of overlay 25, the call into the key-read routine inside the menu-bar routine (`bar-keys`' point) | overlay 25, through the manager's word | a number-row `1` to `8` at the head of the BIOS ring, from a caller in the table below: puts the selection on the target's successor (the head for the last member and for a party of one) and rewrites the key to Home. With nobody behind the digit, the key becomes the one the program throws away. **From a caller with raw mode off** (the table at the end of the list arrows' entry, #469): writes the target to `0x5D92`/`0x5D94`, calls the roster drawer through the call batch and answers the key with the one the program throws away |
-| image `0x138F`, the instruction after the roster drawer clears a member's row | resident image, `inside_calls` | the name's column goes up two, and the program's glyph routine draws the member's number at the old column in white |
+| image `0x0572` of overlay 25, the call into the key-read routine inside the menu-bar routine (`bar-keys`' point) | overlay 25, through the manager's word | a number-row `1` to `8` at the head of the BIOS ring, from the main menu: puts the selection on the target's successor (the head for the last member and for a party of one) and rewrites the key to Home. With nobody behind the digit, the key becomes the one the program throws away |
+| image `0x138F`, the instruction after the roster drawer clears a member's row | resident image, `inside_calls` | on the main menu's list (column one): the name's column goes up two, and the program's glyph routine draws the member's number at the old column in white. Beside the viewport (column `0x11`) this and the three points below do nothing |
 | image `0x13CB`, where the drawer's two name paths meet, before the armour class | resident image, `inside_calls` | a name that now ends past column `0x20` has its tail cleared by the program's clear routine; the column goes back |
 | image `0x140F`, the push of the armour class's column (AX `0x20` to `0x22`, by the value's width), same frame check | resident image, `inside_calls` | AX goes up one: the value is right-aligned in `0x21` to `0x23` |
 | image `0x135A`, after the drawer has copied the heading `AC  HP` into its frame (`BP-0x0E`, a length-prefixed string) for row two | resident image, `inside_calls` | the copy becomes ` AC  HP`: the heading's `AC` moves one right and `HP` stays; refused unless the copy is the original string |
@@ -2212,74 +2218,26 @@ v1's six. A setting; keys and a display change. Nothing to pull.
 | the roster drawer | image `0x1307` (paragraph `0xBA`, offset `0x0767`; the automap and the journal call it through the same address; it takes one far pointer, the selected member, segment pushed first, and cleans it). Frame: column byte at `BP-5` (`1` on the main menu, `0x11` beside the viewport), row byte at `BP-6` (`4` for the first member), the member's far pointer at `BP-4` and `BP-2`. Names are drawn from the column (white for the selected member, else by status), the armour class at `0x20`+ (right-aligned, by the value's width), the hit points at `0x24`+; the heading `AC  HP` is copied into the frame (`BP-0x0E`) and drawn on row two from column `0x21` |
 | the routines it calls | the glyph blitter at paragraph `0x709` offset `0x1DF`, `retf 0Ch`, six words first to last: column, row, colour, `1`, character, `1`; the clear at paragraph `0x3F1` offset `0x137`, `retf 8`, four words: left, top, right, bottom. Both far, called at the paragraph they were linked at (§8.4) |
 
-**The callers that take a digit** (a return offset in the module, and the
-manager's word for it; the same far-return identification as `bar-keys`):
+**The one caller that takes a digit** is the main menu (overlay 16, the
+manager's word `0x790`, return offset `0x02FD`; the same far-return
+identification as `bar-keys`), the title screen's and every other screen the
+same loop serves. Its Up and Down are the menu cursor's.
 
-| caller | module (manager's word) | return offset |
-|---|---|---|
-| the adventuring bar, overhead view and 3D / wilderness | overlay 14 (`0x730`) | `0x09D5`, `0x0C45` |
-| the main menu (the title screen's, and every other screen the same loop serves) | overlay 16 (`0x790`) | `0x02FD` |
-| the camp bar, camp's Magic bar, its Alter bar | overlay 15 (`0x760`) | `0x1F24`, `0x1447`, `0x1CA4` |
-| the script prompts' one menu routine | overlay 7 (`0x2C0`) | `0x16EB` |
-| the post-combat treasure bar, and its Take bar | overlay 5 (`0x260`) | `0x1024`, `0x0D91` |
-| the shop's bar | overlay 6 (`0x290`) | `0x061F` |
-| the temple's bar | overlay 4 (`0x230`) | `0x0DAA` |
-
-- **Each by two routes.** The caller's disassembly from its return offset:
-  the key in the out-parameter's branch goes to the party cursor (resident
-  `0x85:0x52`, the thunk of `0x108A2`) and then to the roster drawer
-  (`0xBA:0x0767`); in the adventuring bar any raw key other than the four
-  moves does, in the camp, Magic, Alter bars and the script prompts any
-  raw key does, and in the main menu, the treasure bar, the Take bar, the
-  shop and the temple `G` and `O` do. And a driven run with the seam on:
-  the digit selects (slot A's 3D view and the wilderness at slot J, the main
-  menu with six members added, the camp bar, Magic and Alter, a script's
-  Yes/No at the armourer, the armourer's bar, the temple's bar, the treasure
-  bar after a fight from a party of one). **Not driven: the Take bar**,
-  which needs a fight that leaves both coins and items; its disassembly is
-  the treasure bar's, a `G` or `O` to the cursor and the roster drawn.
-  The manager's words for overlays 4, 6 and 7 are new here, found by
-  searching the resident image for the manager's record of each (file
-  offset and length from the overlay table), one match each, and the word
-  sixteen bytes in; the same search returns `0x260`, `0x360`, `0x690`,
-  `0x730`, `0x760`, `0x790`, `0x8D0` and `0x3C60` for the overlays this file
-  already names.
-- **Left out, and why.** The party-order screen (camp, `0x17DA`): with a
-  member picked up, Home and End *move* that member and do not select, the
-  seam cannot tell which state it is in, and a digit that moved a member
-  three places would be a surprise. The temple's appraise bars (overlay 21,
-  `0x1C47` and `0x1DC1`): `0x47` is a command there, so the Home the seam
-  drives selection with would start an appraisal. Combat's move loop, aim
-  cursor and command bar, the stat editor, the rest-time menu, the game
-  speed screen, the share prompts, every pick-list and the party-member
-  picker: the digits are real there, or Home and End are not the party
-  cursor.
-- **At a bar that is not raw** (#469). The door bars, camp's Portraits and
-  Monsters bar and the save slot bar are callers with raw mode off and a
-  party list on the screen; the routine throws Home away for them, so the
-  digit selects by the seam's own step (`seam_party_select.h`, shared with
-  the `list-arrows` piece): the target written to `0x5D92`/`0x5D94`, the roster
-  drawer called through the call batch, the key answered first with the one
-  the program throws away. The audit, with every non-raw caller's verdict
-  and how each was confirmed, is the list arrows' entry. A digit that is one
-  of the bar's own command letters stays the bar's (the bar string at
-  `BP-0x53` is read), a digit with nobody behind it is only ignored, and
-  with the map's panel on the roster's cells the seam steps aside. Driven at
-  a locked door in slot C's cave: `3` made the third member the white one
-  and redrew the list with its numbers, `1` the first, `8` nobody, and the
-  bar stayed up. Unit: `SeamHeroKeysAtABarThatIsNotRaw.*`.
-- **What a digit costs where it was a movement.** The number row is the
-  keypad's layout to the program (`list-arrows`, `bar-keys`), so at the
-  adventuring bar `8`, `4`, `6` and `2` walked and turned and `1` and `7`
-  selected a neighbour; with the seam on they select a member (`1` to `8`
-  from the number row only). The keypad keeps all of it, with NumLock on
-  or off, and so do the arrows. The keypad's 8 and 2 at the bars the
-  `list-arrows` piece names step the member back and forward (#447); they are
-  never selections. At the post-combat Take bar `6` was `M`,
-  Money (by the same coincidence as Right); with the seam on it selects the
-  sixth member, and `M` still takes the money. `9` and `0` are never the
-  seam's; `9` is the program's PgUp and still moves the selection to the
-  first member.
+- **Every other bar selects with Up and Down** (#479): the camp, Magic and
+  Alter bars, the script prompts, the treasure and Take bars, the shop, the
+  temple and the bars that are not raw through `list-arrows`, and the
+  party's own bar through the move mode. So the number row is the program's
+  again there, which is the keypad's layout: at the party's bar in walking
+  mode `8`, `4`, `6` and `2` walk and turn and `1` and `7` select a
+  neighbour, and in menu mode the move mode turns `8`, `4`, `6` and `2` into
+  the arrows' steps. Until #479 the digits selected at all of those bars
+  and the party list beside the viewport showed the numbers; git has that
+  table.
+- **Each by two routes.** The main menu's disassembly from its return
+  offset: `G` and `O` in the out-parameter's branch go to the party cursor
+  (resident `0x85:0x52`, the thunk of `0x108A2`) and then to the roster
+  drawer (`0xBA:0x0767`). And a driven run with six members added: the
+  digit selects.
 - **The landing.** The cursor's `G` is the program's, so the seam's whole
   job is to put the current pointer where `G` lands on the target: from a
   successor `G` goes to its predecessor, from the head to the tail. Proved
@@ -2291,13 +2249,8 @@ manager's word for it; the same far-return identification as `bar-keys`):
 - **A digit with nobody behind it** is the key the program throws away
   (`seam_key_read.h`): the routine goes back to waiting. `9` and `0`, the
   keypad's digits and every other caller are left alone.
-- **With the map or the journal reader up the seam steps aside.** The
-  automap takes the keys that step the party cursor while its panel is on
-  the roster's cells, at the poll and at the read, and a Home from here would
-  be taken there with the selection half moved (found driving it). The
-  reader takes every key. Both are checked at the key point, and the
-  digits are theirs: with the map up `1 3 5 7 9` are taken as they always
-  were and `2 4 6 8` are what the program makes of them. When the map or the
+- **With the journal reader up the seam steps aside**: the reader takes
+  every key, and that is checked at the key point. When the map or the
   reader is put away the roster comes back through a batch of the program's
   own calls, with every number in it: the two display points are
   `inside_calls` (§3) for this, and draw by pushing a call frame by hand
@@ -2311,36 +2264,27 @@ manager's word for it; the same far-return identification as `bar-keys`):
   what is moved: up two after the row is cleared, back after the name, with
   the byte's own value as the only state (`1` and `0x11` are the program's;
   `3` and `0x13` mean the number is drawn, `2` and `0x12` that the cut is
-  done). **What a name keeps.** Beside the viewport the field is columns
-  `0x13` to `0x20`, fourteen characters: a fifteen-character name shows its
-  first fourteen. The program right-aligns the armour class in `0x20` to
-  `0x22` (measured on a still); the seam moves it one right, to `0x21` to
-  `0x23`, so a name that ends at `0x20` has no neighbour (a value of -10 is
-  three characters and takes `0x21`). The hit points keep `0x24` to `0x26`.
-  The heading's `AC` moves with it, from `0x21`-`0x22` to `0x22`-`0x23`;
-  its `HP` stays at `0x25`-`0x26` (read off stills, seam on and off).
-  The cut is the program's clear over `0x21` to where the name would have
-  ended; nothing in the record is
-  touched. On the main menu the names start at column one and every name
-  fits. **No other column moves**: the hit points and their heading stay.
-- **Where the list is drawn.** Driven: the 3D view and the wilderness, the
-  camp bar, the main menu, the shop, the temple, the treasure bar, the
-  script prompt at the armourer, and the list given back after the map and
-  after the journal's reader. The View screens, character creation and combat
-  do not show it.
+  done). On the main menu the names start at column one and every name
+  fits; the armour class moves one right, to `0x21` to `0x23`, and the
+  heading's `AC` with it, and the cut (the program's clear over `0x21` to
+  where a name would have ended) is never needed. **No other column
+  moves**: the hit points and their heading stay. **Beside the viewport the
+  list is the program's own** (#479): no number, no name moved or cut, the
+  armour class and the heading where the program draws them.
+- **Where the numbers are drawn**: the main menu's party list, driven with
+  six members added. Every other party list is the program's.
 - **Why a point at the name's call and not the program's draw routines.**
   The routine that draws a name in a status colour and the string drawer
   are called from the character sheet, combat and the camp's report as
   well; the points are inside the roster drawer so nothing else moves.
 - **`max_points` is sixty-four.** With every seam on, one face counted (they
-  are alternatives), the build has fifty points, nineteen of them
+  are alternatives), the build has fifty-five points, twenty-four of them
   `modern-controls`'. At thirty-two the last seam a player switched on was
   refused with `too_many_points`
   (`SeamHeroKeys.EveryBuiltInSeamFitsTheEngineAtOnce`).
-- **Rejected:** writing the selection and redrawing the list ourselves
-  at the raw callers, because they redraw after their own step and the
-  program's cursor already lands where the digit says (it is done, and only
-  there, at the bars that are not raw, where there is no caller to do it); `call_program()` for the number
+- **Rejected:** writing the selection and redrawing the list ourselves,
+  because the main menu redraws after its own step and the program's cursor
+  already lands where the digit says; `call_program()` for the number
   and the cut, because the automap's and the journal's give-backs draw the
   roster inside a batch, where no point may start one; drawing a number
   with a font of our own, because the face seams would not reach it; the
@@ -2348,18 +2292,16 @@ manager's word for it; the same far-return identification as `bar-keys`):
 
 **State**: none: the two display points keep their one value in the drawer's
 own frame and put it back, and the key point decides from the machine.
-**Host services**: none. **Keys**: the number row's `1` to `8` at the callers
-above, and at the four bars that are not raw.
+**Host services**: none. **Keys**: the number row's `1` to `8` at the main
+menu.
 
-**Fidelity**: the party list is changed from the first time it is drawn with
-a member in it, so a run with the seam on is not the run with it off (§8.5).
-`quiet-modern-controls` is a `contrast` to `quiet` and `quiet-all-on-sight`
-one to `quiet-all`. The pairs that say what a digit does have the seam on at
-both ends: `hero-pick-3` is a `contrast` to `hero-pick` (a 3 where the other
-presses a 9: 77 of 87 identical, divergent from tick 190,944,688, where the
-third member is the white one), and `door-pick-3` one to `door-pick` at a
-locked door's bar (a 3 where the other presses a 9). Off, the engine is not
-consulted (§7). Unit: `SeamHeroKeys.*`; stand-ins: `hero_keys_probe_off`,
+**Fidelity**: the main menu's party list is changed from the first time it
+is drawn with a member in it, so a run with the seam on is not the run with
+it off (§8.5). `quiet-modern-controls` is a `contrast` to `quiet` and
+`quiet-all-on-sight` one to `quiet-all`. What a digit does at the main menu
+is pinned by the unit suite; the pair that said it at the party's bar
+(`hero-pick-3`) was retired with #479, when the digits there became the
+program's again. Off, the engine is not consulted (§7). Unit: `SeamHeroKeys.*`; stand-ins: `hero_keys_probe_off`,
 `hero_keys_probe_on`.
 
 #### The selection colour (#453)
@@ -2512,8 +2454,9 @@ colour before the program draws with it.
   what it already is, and only the **low byte** of a pushed word is read or
   written.
 - **`max_points` is sixty-four, and with every seam on the build carries
-  fifty points** (the faces count once, being alternatives), nineteen of them
-  `modern-controls`': three, one, two, five, one and these seven.
+  fifty-five points** (the faces count once, being alternatives), twenty-four
+  of them `modern-controls`': three, one, two, five, one, these seven and
+  the move mode's five.
 - **The panel** reads `on inert module_not_resident` until every module the
   seam's points name has been loaded (overlay 19 among them), because a seam
   is armed only while every module it names is resident; the points of the
@@ -2634,6 +2577,82 @@ seam's entry above), so its pair is a `contrast`: `name-arrows-edit` against
 main-menu frame, and the name in the character's record is BOB where the
 baseline's is BMOHBPK. Off, the engine is not consulted (§7). Unit:
 `SeamEditKeys.*`; stand-ins: `edit_keys_probe_off`, `edit_keys_probe_on`.
+
+#### The move mode (#479)
+
+`seam_move_mode.cpp`. Not a PLAN.md §5 item: the maintainer's request. The
+later games in the series made walking a mode: their adventure bar starts
+with `Move`, the arrows step the bar until it is chosen, and the party walks
+until `Exit`. This program's bar has no such command, so its arrows walk and
+nothing but `,` and `.` steps the bar. With the piece on, the party's own bar
+has two modes:
+
+- **Menu mode.** The first command is `Move`, in `Area`'s place in the city
+  and in front of `Cast` in the wilderness. Left and Right step the
+  highlight, Up and Down select the member before and after, Return takes
+  the lit command, and the letters are the program's. Nothing walks.
+- **Walking mode.** The bar is `Exit` alone. The arrows, the keypad and the
+  number row walk and turn as the program has them do; Return, Esc and `E`
+  go back to menu mode; every other letter does nothing.
+- **The party arrives in menu mode with `Move` lit**: after a load, a fight,
+  camp, a shop, a script's question, View, any screen with a bar of its
+  own. Walking lasts across steps and the events a step runs, and ends at
+  the next bar that is not the party's.
+- **`Area` is gone**, by decision: the automap (Tab) is the overhead view,
+  and with the automap off the overhead view is not reachable.
+
+| point | module | what the handler does |
+|---|---|---|
+| the city's call into the menu-bar routine, `0x09D0` | overlay 14 (`0x730`) | menu mode: the bar's first group, `Area`, becomes `Move`, its four bytes kept. Walking: the bar becomes `Exit`, its length byte and first four kept. The highlight is put under `Move` when the party has just arrived or `Move` was last lit, `Exit` is lit. With the overhead view on (`0x6AAC`), first clears it and calls the program's screen composer (`0xBA:0x27D9`) through the batch, and the point is offered again |
+| the instruction after it, `0x09D5` | overlay 14 | the bar is put back exactly; `M` off the bar starts walking; `E` off the walking bar stops it and is handed back as `-`, which the program loops on, so the party does not camp. The highlight goes back to the program's numbering, `Move` lit kept in a word of the seam's, and the value it was entered with when `Notes` was chosen |
+| the wilderness's call, `0x0C40`, and the instruction after it, `0x0C45` | overlay 14 | the same, with `Move ` inserted in front of the bar's first group (27 + 5 + the journal's 6 is 38 of the slot's 40), every group after it one up, and the highlight moved for it both ways |
+| image `0x0572` of overlay 25, the key read (`bar-keys`' point), the last of the five pieces there | overlay 25 | at the two adventuring callers only. Menu mode: Left and Right become `,` and `.`, Up and Down Home and End, the digits `4`, `6`, `8`, `2` the same four, and a letter that is not one of the bar's command letters the key the program throws away (`seam_key_read.h`), so a typed `H`, `K` or `P` does not walk. Walking: Esc becomes `E`, every letter but `E` is thrown away; Return is `bar-keys`' (the lit command, `Exit`'s `E`). **Any other caller ends walking** and has `Move` lit at the party's next bar |
+
+| fact | value |
+|---|---|
+| the adventuring input routine | overlay 14 `0x0989`; view mode byte `0x49FA` (1 the city, 2 to 4 the wilderness) |
+| the bars | Pascal `string[40]`s in the data segment, `0x04B6` (city) and `0x04DF` (wilderness), raw mode set |
+| what the city does with a letter off the bar (out-parameter `BP-0x04` zero) | `A` toggles `0x6AAC` when the area allows it, `C`, `V`, `E` (ends the routine: camp), `S`, `L`; **nothing else matches**, so `M` and `-` go round the loop. The wilderness: the same without `A` |
+| what it does with a raw key | `H`, `K`, `M`, `P` walk and turn (relative in the city, where only `H` ends the routine; absolute facings in the wilderness, where all four end it); anything else goes to the party cursor. A typed letter not on the bar comes back raw, so a typed `H` walks |
+| the overhead view | `0x6AAC`; the program clears it on a new game, where an area does not allow it and when a script's message comes up; only `A` sets it |
+| the highlight | `0x6B2B`, shared by every bar (#304) |
+
+- **Why the journal asks.** The journal's points at the same two calls run
+  first (registry order). In walking mode it does not splice `Notes`, so the
+  walking bar is `Exit` alone and what the move mode puts back is the
+  program's string; in menu mode it appends `Notes` and takes it out at the
+  return before the move mode puts `Area` back.
+- **Why `Move` lit is a word of the seam's.** In the wilderness `Move` is a
+  group the program does not have, so outside the call there is no value of
+  the shared byte that means it. Every other value is the program's
+  numbering outside the call, so the next bar of any kind finds what the
+  program would have left there, save for that one.
+- **The single-group walking bar is white, not yellow**: the program draws no
+  highlight on a bar of one command (#462), and the piece does not add one.
+- **Driven** (slot A in the city, slot J in the wilderness, journal and
+  automap on): Right, Right, Left step the bar; Down and Up select the next
+  and previous member; Return on `Move` gives `EXIT`; Up walks (4,12 to
+  4,13), Right turns (S to W), `C` does nothing; Esc gives the menu with
+  `Move` lit; `M` and Return go round again; `E` camps, camp's Exit comes
+  back with `Move` lit. In the wilderness two Ups walk 3,32 to 3,30 N and
+  Esc and Right step the menu.
+- **Not driven**: a party in the overhead view when the bar comes up, which
+  the program's own messages already clear and a save does not keep; the
+  unit suite pins the clearing.
+
+**State**: five words of the seam's own (seam.h, "A seam's own few words"):
+walking, arrived, `Move` lit, which rewrite the bar is carrying and the
+highlight it was entered with, and three more for the bytes a rewrite keeps.
+They are configuration: `enable()` starts them at zero, which is menu mode
+with `Move` to be lit. **Host services**: none. **Keys**: as above, and on
+the key card.
+
+**Fidelity**: the party's bar is changed from the first time it is drawn, so
+the pair is a `contrast`: `move-walk-mode` against `move-walk`, 58 of 96
+checkpoints identical, divergent from the first main-menu frame; the
+seam-on half walks once in walking mode, comes back to the menu and opens
+View off the bar, where the seam-off half walks and turns. Off, the engine
+is not consulted (§7). Unit: `SeamMoveMode.*`.
 
 ### The text faces
 

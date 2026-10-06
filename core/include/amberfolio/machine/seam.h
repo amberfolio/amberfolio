@@ -1153,6 +1153,13 @@ class seam_engine {
   /// The definition behind `id`, or null.
   [[nodiscard]] const seam_definition* find(std::string_view id) const noexcept;
 
+  /// One of `id`'s own words (`seam_context::scratch()`), read from outside
+  /// its handlers: how one seam asks another a question whose answer only
+  /// the other keeps (the journal asking `modern-controls` whether the
+  /// party is walking, #479). Zero for an unknown id or slot.
+  [[nodiscard]] std::uint16_t scratch(std::string_view id,
+                                      unsigned slot) const noexcept;
+
   // --- The program ------------------------------------------------------
 
   /// Tell the engine what program is running: the digest of its image and

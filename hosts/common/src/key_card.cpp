@@ -33,8 +33,15 @@ constexpr std::array explore_rows{
     key_row{"Left, Right, 4, 6", "turn a quarter turn left or right"},
     key_row{"Down, 2", "turn around"},
     key_row{"Home, End, 7, 1", "select the previous or next party member"},
-    key_row{"1-8 on the number row",
-            "select that party member; keypad 1-8 keep their keys",
+    key_row{"M, Return on Move",
+            "walk: the bar is Exit alone, and the arrows walk",
+            "modern-controls"},
+    key_row{"Return, Esc, E", "while walking: back to the bar, Move lit",
+            "modern-controls"},
+    key_row{"Left, Right", "at the bar: step the lit word; walking, they turn",
+            "modern-controls"},
+    key_row{"Up, Down",
+            "at the bar: previous or next member; walking, they step",
             "modern-controls"},
     key_row{"Tab", "show or hide the map over the party list", "automap"},
 };
@@ -43,8 +50,10 @@ constexpr std::array wilderness_rows{
     key_row{"Up, Right, Down, Left",
             "step one square north, east, south, west"},
     key_row{"Home, End, 7, 1", "select the previous or next party member"},
-    key_row{"1-8 on the number row",
-            "select that party member; keypad 1-8 keep their keys",
+    key_row{"M, Return on Move",
+            "walk: the bar is Exit alone, and the arrows walk",
+            "modern-controls"},
+    key_row{"Return, Esc, E", "while walking: back to the bar, Move lit",
             "modern-controls"},
 };
 
@@ -59,10 +68,6 @@ constexpr std::array bar_rows{
     key_row{"Up, Down at a door", "and the save bar: step the selected member",
             "modern-controls"},
     key_row{"Return", "take the highlighted command at nearly every bar",
-            "modern-controls"},
-    key_row{"1-8 on the number row",
-            "camp, menus, shops: select that party member", "modern-controls"},
-    key_row{"1-8 at a door", "and the save bar: select that party member",
             "modern-controls"},
     key_row{"Y, N", "answer a Yes/No question"},
     key_row{"Esc", "leave camp, a list or a picker; not the exploring bar"},
@@ -79,6 +84,9 @@ constexpr std::array menu_rows{
     key_row{"Up, Down", "move a cursor over the commands shown (not 8, 2)",
             "modern-controls"},
     key_row{"Return", "take the command under the cursor", "modern-controls"},
+    key_row{"1-8 on the number row",
+            "select that party member; the list shows each number",
+            "modern-controls"},
     key_row{"the cursor row", "yellow, with the command's first letter white",
             "modern-controls"},
 };
@@ -173,8 +181,9 @@ constexpr std::string_view legend =
     "On the screens that use the arrows, the number row does what the "
     "keypad does: 8 2 4 6 are Up Down Left Right, 7 1 are Home End, 9 3 "
     "are PgUp PgDn. No keypad is needed. Where a row below names a seam, "
-    "that seam changes it: with modern-controls on, the number row's 1 to 8 "
-    "pick a party member on the screens that show the party list.";
+    "that seam changes it: with modern-controls on, walking is a mode the "
+    "party's bar starts with Move and ends with Exit, and the number row's 1 "
+    "to 8 pick a party member at the main menu.";
 
 [[nodiscard]] std::string_view shell_word(card_shell shell) {
   switch (shell) {

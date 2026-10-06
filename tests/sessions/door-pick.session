@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # The baseline of the door bar's pair (#469): modern-controls on, slot C
-# loaded, sixteen moves through the cave to a locked door and a
-# seventeenth into it, which puts up the door's own bar, and then keys
+# loaded, a Return that takes the lit `Move` (#479), sixteen moves through
+# the cave in walking mode to a locked door and a seventeenth into it, which puts up the door's own bar, and then keys
 # the bar throws away: a 9, a Right and two Lefts. The party list is on
 # the screen, and the first member stays selected. Its sibling presses a
 # 3, a Down and two Ups at the same ticks.

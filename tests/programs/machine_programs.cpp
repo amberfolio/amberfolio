@@ -3472,16 +3472,16 @@ void menu_cursor_arrival(assembler& a, std::size_t index, std::uint16_t key,
 // The party is three members at 2100h, 2300h and 2500h of the image's own
 // segment; the selected one starts as the first.
 
-/// The words the facts name, restated: the manager's word for camp's
-/// module, the data segment's paragraph offset, the party's pointers, a
+/// The words the facts name, restated: the manager's word for the main
+/// menu's module (the one caller since #479), the data segment's paragraph offset, the party's pointers, a
 /// record's next pointer, and the routines the seam calls.
-constexpr std::uint16_t hero_keys_camp_word = 0x0760;
+constexpr std::uint16_t hero_keys_main_menu_word = 0x0790;
 constexpr std::uint16_t hero_keys_menu_word = 0x3C60;
 constexpr std::uint16_t hero_keys_dgroup_paragraphs = 0x0C7C;
 constexpr std::uint16_t hero_keys_current = 0x5D92;
 constexpr std::uint16_t hero_keys_head = 0x5D96;
 constexpr std::uint16_t hero_keys_next = 0x0104;
-constexpr std::uint16_t hero_keys_camp_return = 0x1F24;
+constexpr std::uint16_t hero_keys_main_menu_return = 0x02FD;
 constexpr std::uint16_t hero_keys_untabled_return = 0x1234;
 constexpr std::uint16_t hero_keys_glyph_at = 0x726F;  // 709h:01DFh
 constexpr std::uint16_t hero_keys_clear_at = 0x4047;  // 3F1h:0137h
@@ -3602,7 +3602,7 @@ void hero_keys_row(assembler& a, std::uint8_t column, std::uint8_t row,
     a.db({0xA3});
     a.dw(hero_keys_menu_word);  // mov [3C60h], ax
     a.db({0xA3});
-    a.dw(hero_keys_camp_word);  // mov [0760h], ax
+    a.dw(hero_keys_main_menu_word);  // mov [0790h], ax
     a.db({0x89, 0x86});
     a.dw(bar_keys_ret_cs);  // mov [bp+4], ax
 
@@ -3619,20 +3619,20 @@ void hero_keys_row(assembler& a, std::uint8_t column, std::uint8_t row,
     hero_keys_segment(a, static_cast<std::uint16_t>(hero_keys_current + 2));
     a.db({0x0E, 0x1F});  // push cs / pop ds
 
-    // The keys, at camp's bar: the number row's 3 (the last member), 2 (the
+    // The keys, at the main menu: the number row's 3 (the last member), 2 (the
     // third of three too), 8 (nobody), the keypad's 3, and the number row's
     // 3 from a caller the table does not name.
-    hero_keys_scenario(a, 0, hero_keys_camp_return, 0x0433, 0, 1);
-    hero_keys_scenario(a, 1, hero_keys_camp_return, 0x0332, 2, 3);
-    hero_keys_scenario(a, 2, hero_keys_camp_return, 0x0938, 4, 5);
-    hero_keys_scenario(a, 3, hero_keys_camp_return, 0x5133, 6, 7);
+    hero_keys_scenario(a, 0, hero_keys_main_menu_return, 0x0433, 0, 1);
+    hero_keys_scenario(a, 1, hero_keys_main_menu_return, 0x0332, 2, 3);
+    hero_keys_scenario(a, 2, hero_keys_main_menu_return, 0x0938, 4, 5);
+    hero_keys_scenario(a, 3, hero_keys_main_menu_return, 0x5133, 6, 7);
     hero_keys_scenario(a, 4, hero_keys_untabled_return, 0x0433, 8, 9);
     // And the number row's 9, which is never the seam's.
-    hero_keys_scenario(a, 5, hero_keys_camp_return, 0x0A39, 10, 11);
+    hero_keys_scenario(a, 5, hero_keys_main_menu_return, 0x0A39, 10, 11);
 
     // The roster drawer, for two rows: a member with a name of fifteen
-    // characters beside the viewport, and one with six on the main menu's
-    // column.
+    // characters beside the viewport, which is the program's own since #479,
+    // and one with six on the main menu's column.
     a.db({0xBD});
     a.dw(hero_keys_drawer_frame);  // mov bp, 3000h
     hero_keys_row(a, 0x11, 5, hero_keys_second);
@@ -5093,7 +5093,7 @@ constexpr std::array<machine::seam_point, 1> door_points{
   {
     machine_program p;
     p.name = "hero_keys_probe_on";
-    p.about = "the seam: Home where a digit selects, the number, the cut";
+    p.about = "the seam: Home where a digit selects, and the main menu's number";
     p.setup.exe = hero_keys_probe_file();
     p.setup.exe_path = "\\HEROKEYS.EXE";
     p.setup.seam_definitions = {&hero_keys_probe_definition()};
@@ -5119,10 +5119,10 @@ constexpr std::array<machine::seam_point, 1> door_points{
         {.what = "row", .value = 6},
         {.what = "colour, white", .value = 0x0F},
         {.what = "its character, the third member's", .value = '3'},
-        {.what = "the cut: left", .value = 0x21},
-        {.what = "right, where a fifteen-character name ends", .value = 0x21},
-        {.what = "two numbers were drawn", .value = 2},
-        {.what = "and one name cut", .value = 1},
+        {.what = "no cut beside the viewport: left", .value = 0},
+        {.what = "right", .value = 0},
+        {.what = "one number was drawn, the main menu's", .value = 1},
+        {.what = "and no name cut", .value = 0},
         {.what = "the name's column is put back", .value = 0x11},
         {.what = "and the main menu's", .value = 0x01},
         {.what = "the stack, as it was", .value = 0x0F00}};

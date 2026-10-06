@@ -95,11 +95,15 @@ struct caller {
   const char* name;
 };
 
-/// The callers that hand Home and End to the party cursor.
-constexpr std::array<caller, 11> hero_callers{{
-    {.segment = adventure_segment, .offset = 0x09D5, .name = "overhead bar"},
-    {.segment = adventure_segment, .offset = 0x0C45, .name = "3D bar"},
+/// The one caller that takes the number row: the main menu (#479).
+constexpr std::array<caller, 1> hero_callers{{
     {.segment = main_menu_segment, .offset = 0x02FD, .name = "main menu"},
+}};
+
+/// The callers that took it until #479, where Up and Down select now and
+/// the number row is the program's keypad layout again. The party's own two
+/// bars are `move-mode`'s (seam_move_mode_test.cpp).
+constexpr std::array<caller, 8> former_callers{{
     {.segment = camp_segment, .offset = 0x1F24, .name = "camp"},
     {.segment = camp_segment, .offset = 0x1447, .name = "magic"},
     {.segment = camp_segment, .offset = 0x1CA4, .name = "alter"},
@@ -524,7 +528,7 @@ TEST(SeamHeroKeys, DoesNothingWhileItIsOff) {
   r.manager_says(word_menu, menu_segment);
   r.manager_says(word_camp, camp_segment);
   r.lay_party(4);
-  EXPECT_EQ(r.press(number_row(3), hero_callers[3]), number_row(3));
+  EXPECT_EQ(r.press(number_row(3), hero_callers[0]), number_row(3));
   EXPECT_EQ(r.selected(4), 0u);
 }
 
@@ -537,7 +541,7 @@ TEST(SeamHeroKeys, LandsOnTheFirstAMiddleAndTheLastMemberOfAnyParty) {
     for (unsigned from = 0; from < count; ++from) {
       for (unsigned hero = 1; hero <= count; ++hero) {
         r.lay_party(count, from);
-        const std::uint16_t answer = r.press(number_row(hero), hero_callers[3]);
+        const std::uint16_t answer = r.press(number_row(hero), hero_callers[0]);
 
         // The caller is handed Home, which it reads as `G` and gives the
         // cursor, which steps back from wherever the seam left the
@@ -569,11 +573,11 @@ TEST(SeamHeroKeys, ADigitWithNoMemberBehindItDoesNothingButBeIgnored) {
   r.arm();
   r.lay_party(4, 2);
   for (unsigned digit = 5; digit <= 8; ++digit) {
-    EXPECT_EQ(r.press(number_row(digit), hero_callers[2]), ignored) << digit;
+    EXPECT_EQ(r.press(number_row(digit), hero_callers[0]), ignored) << digit;
     EXPECT_EQ(r.selected(4), 2u) << "the selection is not moved";
   }
   r.lay_party(0);
-  EXPECT_EQ(r.press(number_row(1), hero_callers[2]), ignored)
+  EXPECT_EQ(r.press(number_row(1), hero_callers[0]), ignored)
       << "an empty party has no member";
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
@@ -582,7 +586,7 @@ TEST(SeamHeroKeys, WritesTheSelectionAndTheHeadWordAndNothingElse) {
   const rig r;
   r.arm();
   r.lay_party(5, 4);
-  r.called_from(hero_callers[3].segment, hero_callers[3].offset);
+  r.called_from(hero_callers[0].segment, hero_callers[0].offset);
   r.ring(number_row(3));
   r.put_word(0x40, ring_first + 2, 0xBEEF);
   r.arrive_at_key();
@@ -657,45 +661,23 @@ TEST(SeamHeroKeysWithListArrows, EachTakesItsOwnDigitsAtTheSharedPoint) {
   constexpr std::uint16_t pad_7 = 0x4737;
   constexpr std::uint16_t pad_1 = 0x4F31;
 
-  // The camp bar is a caller of both.
-  const caller& camp = hero_callers[3];
-
-  // The number row's 8 selects the eighth member through this seam's own
-  // Home, and nothing else touches it.
-  r.lay_party(8, 2);
-  EXPECT_EQ(r.press(number_row(8), camp), home);
-  EXPECT_EQ(cursor_goes_back(8, r.selected(8)), 7U);
-
-  // The keypad's 8 and 2 are `list-arrows`': the selection is not moved
-  // here, and the program's own table turns the 7 and 1 into Home and End.
+  // At the camp bar, a caller of `list-arrows` and no longer of this piece,
+  // the keypad's 8 and 2 are rewritten and the number row is the program's.
+  const caller& camp = former_callers[0];
   r.lay_party(8, 2);
   EXPECT_EQ(r.press(pad_8, camp), pad_7);
   EXPECT_EQ(r.press(pad_2, camp), pad_1);
+  EXPECT_EQ(r.press(number_row(3), camp), number_row(3));
   EXPECT_EQ(r.selected(8), 2U);
 
-  // The number row's 2 selects the second member.
-  r.lay_party(8, 5);
-  EXPECT_EQ(r.press(number_row(2), camp), home);
-  EXPECT_EQ(cursor_goes_back(8, r.selected(8)), 1U);
-
-  // Where this seam is a caller and `list-arrows` is not (the adventuring
-  // bars and the main menu), the keypad's 8 and 2 are the program's own.
-  for (const caller* c :
-       {&hero_callers[0], &hero_callers[1], &hero_callers[2]}) {
-    r.lay_party(8, 2);
-    EXPECT_EQ(r.press(pad_8, *c), pad_8) << c->name;
-    EXPECT_EQ(r.press(pad_2, *c), pad_2) << c->name;
-    EXPECT_EQ(r.press(number_row(8), *c), home) << c->name;
-  }
-
-  // And at a caller `list-arrows` has and this seam does not (the
-  // party-order screen), the keypad is rewritten and the row's digits are
-  // the program's.
-  const caller& order = other_callers[0];
+  // At the main menu, this piece's and not `list-arrows'`, the keypad's 8
+  // and 2 are the program's own and the number row's 8 selects.
+  const caller& menu = hero_callers[0];
   r.lay_party(8, 2);
-  EXPECT_EQ(r.press(pad_8, order), pad_7);
-  EXPECT_EQ(r.press(number_row(8), order), number_row(8));
-  EXPECT_EQ(r.selected(8), 2U);
+  EXPECT_EQ(r.press(pad_8, menu), pad_8);
+  EXPECT_EQ(r.press(pad_2, menu), pad_2);
+  EXPECT_EQ(r.press(number_row(8), menu), home);
+  EXPECT_EQ(cursor_goes_back(8, r.selected(8)), 7U);
 }
 
 TEST(SeamHeroKeys, LeavesEveryOtherCallerItsDigits) {
@@ -705,6 +687,13 @@ TEST(SeamHeroKeys, LeavesEveryOtherCallerItsDigits) {
   for (const caller& c : other_callers) {
     EXPECT_EQ(r.press(number_row(3), c), number_row(3)) << c.name;
     EXPECT_EQ(r.press(number_row(8), c), number_row(8)) << c.name;
+  }
+  // Nor at the bars that took it until #479. (The row's 8 and 2 are the
+  // keypad's to the program, and `list-arrows'` at most of them, so the
+  // digits pressed are 3 and 5.)
+  for (const caller& c : former_callers) {
+    EXPECT_EQ(r.press(number_row(3), c), number_row(3)) << c.name;
+    EXPECT_EQ(r.press(number_row(5), c), number_row(5)) << c.name;
   }
   EXPECT_EQ(r.selected(8), 3u);
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
@@ -717,35 +706,34 @@ TEST(SeamHeroKeys, TheCallerIsAsExactAsItsModuleAndOffset) {
   // A listed offset in the wrong module, a listed module at an offset the
   // table does not name, and a return segment that is not the module's.
   EXPECT_EQ(r.press(number_row(2),
-                    {.segment = camp_segment, .offset = 0x09D5, .name = ""}),
+                    {.segment = camp_segment, .offset = 0x02FD, .name = ""}),
             number_row(2));
   EXPECT_EQ(
       r.press(number_row(2),
-              {.segment = adventure_segment, .offset = 0x1F24, .name = ""}),
+              {.segment = main_menu_segment, .offset = 0x1F24, .name = ""}),
       number_row(2));
   EXPECT_EQ(r.press(number_row(2),
-                    {.segment = stack_segment, .offset = 0x1F24, .name = ""}),
+                    {.segment = stack_segment, .offset = 0x02FD, .name = ""}),
             number_row(2));
   // The module's word says it is out: it is not a caller.
-  r.manager_says(word_camp, 0);
+  r.manager_says(word_main_menu, 0);
   EXPECT_EQ(
-      r.press(number_row(2), {.segment = 0, .offset = 0x1F24, .name = ""}),
+      r.press(number_row(2), {.segment = 0, .offset = 0x02FD, .name = ""}),
       number_row(2));
-  r.manager_says(word_camp, camp_segment);
-  EXPECT_EQ(r.press(number_row(2), hero_callers[3]), home);
+  r.manager_says(word_main_menu, main_menu_segment);
+  EXPECT_EQ(r.press(number_row(2), hero_callers[0]), home);
 }
 
 TEST(SeamHeroKeys, EveryOtherKeyIsLeftWhereItIs) {
   const rig r;
   r.arm();
   r.lay_party(8, 3);
-  // Up, Down, Left and Right are the list-arrows and bar-keys pieces' at the
-  // camp bar, and are not listed.
+  // Up and Down are the menu cursor's at the main menu, and are not listed.
   for (const std::uint16_t key :
        {std::uint16_t{0x4700}, std::uint16_t{0x4F00}, std::uint16_t{0x1E41},
         std::uint16_t{0x011B}, std::uint16_t{0x3920}, std::uint16_t{0x1C0D},
         std::uint16_t{0x0231 + 0x0100}}) {
-    EXPECT_EQ(r.press(key, hero_callers[3]), key) << key;
+    EXPECT_EQ(r.press(key, hero_callers[0]), key) << key;
   }
   EXPECT_EQ(r.selected(8), 3u);
 }
@@ -754,7 +742,7 @@ TEST(SeamHeroKeys, LeavesTheRingAloneWhenItIsEmpty) {
   const rig r;
   r.arm();
   r.lay_party(4, 2);
-  r.called_from(camp_segment, 0x1F24);
+  r.called_from(main_menu_segment, 0x02FD);
   r.put_word(0x40, 0x1A, ring_first);
   r.put_word(0x40, 0x1C, ring_first);
   r.put_word(0x40, ring_first, number_row(3));
@@ -769,7 +757,7 @@ TEST(SeamHeroKeys, LeavesTheKeyAloneWhileThePushbackSlotIsArmed) {
   r.arm();
   r.lay_party(4, 2);
   r.put_byte(rig::dgroup(), data_pushback, 0x4B);
-  EXPECT_EQ(r.press(number_row(3), hero_callers[3]), number_row(3));
+  EXPECT_EQ(r.press(number_row(3), hero_callers[0]), number_row(3));
   EXPECT_EQ(r.selected(4), 2u);
 }
 
@@ -779,37 +767,10 @@ TEST(SeamHeroKeys, LeavesTheKeyAloneWhileTheJournalReaderIsOpen) {
   r.lay_party(4, 2);
 
   r.box->journal().set_reader(journal_reader_mode::listing);
-  EXPECT_EQ(r.press(number_row(3), hero_callers[3]), number_row(3));
-  EXPECT_EQ(r.selected(4), 2u);
-
-  r.box->journal().set_reader(journal_reader_mode::closed);
-  EXPECT_EQ(r.press(number_row(3), hero_callers[3]), home);
-}
-
-TEST(SeamHeroKeys, StepsAsideWhileTheMapHasTheRostersCellsOnThePartysBar) {
-  const rig r;
-  r.arm();
-  r.lay_party(4, 2);
-
-  // The map takes the keys that step the party cursor, and would take the
-  // Home this seam rewrites a digit to, with the selection half moved.
-  automap_state& map = r.box->automap();
-  map.set_panel_open(true);
-  map.set_at_command_bar(true);
   EXPECT_EQ(r.press(number_row(3), hero_callers[0]), number_row(3));
   EXPECT_EQ(r.selected(4), 2u);
 
-  // Something else has the cells, or the bar is not the party's: the map
-  // takes nothing, and a digit selects.
-  map.set_panel_covered(true);
-  EXPECT_EQ(r.press(number_row(3), hero_callers[0]), home);
-  map.set_panel_covered(false);
-  map.set_at_command_bar(false);
-  r.lay_party(4, 2);
-  EXPECT_EQ(r.press(number_row(3), hero_callers[3]), home);
-  map.set_at_command_bar(true);
-  map.set_panel_open(false);
-  r.lay_party(4, 2);
+  r.box->journal().set_reader(journal_reader_mode::closed);
   EXPECT_EQ(r.press(number_row(3), hero_callers[0]), home);
 }
 
@@ -821,7 +782,7 @@ TEST(SeamHeroKeys, IsInertWhileOverlay25IsNotLoaded) {
 
   EXPECT_EQ(r.box->seams().status(seam_id).reason,
             seam_reason::module_not_resident);
-  EXPECT_EQ(r.press(number_row(3), hero_callers[3]), number_row(3));
+  EXPECT_EQ(r.press(number_row(3), hero_callers[0]), number_row(3));
 }
 
 // --- Keys: what it refuses --------------------------------------------------
@@ -830,7 +791,7 @@ TEST(SeamHeroKeys, DeclinesADataSegmentThatIsNotTheOneTheFactsName) {
   const rig r;
   r.arm();
   r.lay_party(4, 2);
-  r.called_from(camp_segment, 0x1F24);
+  r.called_from(main_menu_segment, 0x02FD);
   r.ring(number_row(3));
   r.arrive_at_key(stack_segment);
   EXPECT_EQ(r.head_word(), number_row(3));
@@ -850,7 +811,7 @@ TEST(SeamHeroKeys, DeclinesAPartyItCannotRead) {
       party_segment,
       static_cast<std::uint16_t>(rig::member_offset(7) + record_next + 2),
       party_segment);
-  EXPECT_EQ(r.press(number_row(3), hero_callers[3]), number_row(3));
+  EXPECT_EQ(r.press(number_row(3), hero_callers[0]), number_row(3));
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 1u);
 
   // A link that points above conventional memory.
@@ -859,7 +820,7 @@ TEST(SeamHeroKeys, DeclinesAPartyItCannotRead) {
       party_segment,
       static_cast<std::uint16_t>(rig::member_offset(1) + record_next + 2),
       0xB800);
-  EXPECT_EQ(r.press(number_row(1), hero_callers[3]), number_row(1));
+  EXPECT_EQ(r.press(number_row(1), hero_callers[0]), number_row(1));
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 2u);
   EXPECT_EQ(r.selected(3), 2u) << "nothing was written";
 }
@@ -871,7 +832,7 @@ TEST(SeamHeroKeys, TheNumberIsDrawnBeforeTheNameMovesRight) {
   r.arm();
   r.lay_party(4);
   for (unsigned member = 0; member < 4; ++member) {
-    for (const std::uint8_t column : {std::uint8_t{0x11}, std::uint8_t{0x01}}) {
+    for (const std::uint8_t column : {std::uint8_t{0x01}}) {
       const auto row = static_cast<std::uint8_t>(4 + member);
       r.lay_row(column, row, member, 6);
       r.arrive_at_roster(row_cleared);
@@ -896,14 +857,14 @@ TEST(SeamHeroKeys, ReachedAgainAfterTheNumberTheProgramGoesOn) {
   const rig r;
   r.arm();
   r.lay_party(4);
-  r.lay_row(0x11, 5, 1, 6);
+  r.lay_row(0x01, 5, 1, 6);
   r.arrive_at_roster(row_cleared);
   return_from(r, 6);
   const std::uint16_t sp = r.box->processor().regs()[cpu::reg16::sp];
   EXPECT_EQ(sp, drawer_sp) << "the stack is the program's again";
 
   r.arrive_again(row_cleared);
-  EXPECT_EQ(r.column(), 0x13) << "the name is not moved a second time";
+  EXPECT_EQ(r.column(), 0x03) << "the name is not moved a second time";
   EXPECT_EQ(r.box->processor().regs()[cpu::reg16::sp], drawer_sp);
   EXPECT_EQ(r.box->processor().regs().ip, row_cleared + 1U)
       << "the program's own instruction ran: no second number";
@@ -943,35 +904,31 @@ struct row_run {
   return out;
 }
 
-TEST(SeamHeroKeys, ANameThatFitsIsMovedAndNeverCutAndTheColumnComesBack) {
+TEST(SeamHeroKeys, BesideTheViewportThePartyListIsTheProgramsOwn) {
+  // No number, no name moved or cut, no armour class or heading moved: the
+  // list beside the viewport is drawn as the program draws it (#479).
   const rig r;
   r.arm();
-  // Fourteen characters from column 0x13 end at 0x20, the last column a
-  // name may reach.
-  for (const std::uint8_t length :
-       {std::uint8_t{1}, std::uint8_t{6}, std::uint8_t{13}, std::uint8_t{14}}) {
-    const row_run run = run_a_row(r, 0x11, 6, length);
-    EXPECT_EQ(run.calls.size(), 1u) << int{length};
-    EXPECT_EQ(run.final_column, 0x11) << int{length};
-    EXPECT_EQ(run.final_sp, drawer_sp) << int{length};
+  r.lay_party(8);
+  for (const std::uint8_t length : {std::uint8_t{6}, std::uint8_t{15}}) {
+    r.lay_row(0x11, 6, 2, length);
+    r.arrive_at_roster(row_cleared);
+    EXPECT_EQ(r.column(), 0x11) << int{length};
+    EXPECT_EQ(r.box->processor().regs()[cpu::reg16::sp], drawer_sp);
+    r.arrive_at_roster(name_drawn);
+    EXPECT_EQ(r.column(), 0x11) << int{length};
+    EXPECT_EQ(r.box->processor().regs()[cpu::reg16::sp], drawer_sp);
   }
-}
-
-TEST(SeamHeroKeys, ALongNameKeepsFourteenCharactersBesideTheViewport) {
-  const rig r;
-  r.arm();
-  // Fifteen characters end at 0x21: the tail from 0x21 is cleared, up to
-  // where the name would have ended.
-  const row_run fifteen = run_a_row(r, 0x11, 7, 15);
-  ASSERT_EQ(fifteen.calls.size(), 2u);
-  EXPECT_EQ(fifteen.calls[1].paragraph, clear_paragraph);
-  EXPECT_EQ(fifteen.calls[1].offset, clear_offset);
-  // Left, top, right, bottom, as the drawer pushes them.
-  EXPECT_EQ(fifteen.calls[1].args,
-            (std::vector<std::uint16_t>{0x21, 7, 0x21, 7}));
-  EXPECT_EQ(fifteen.calls[1].ip, name_drawn);
-  EXPECT_EQ(fifteen.final_column, 0x11);
-  EXPECT_EQ(fifteen.final_sp, drawer_sp);
+  for (std::uint16_t ax = 0x20; ax <= 0x22; ++ax) {
+    r.lay_row(0x11, 5, 1, 6);
+    r.arrive_at_roster(ac_column_pushed, ax);
+    EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], ax);
+  }
+  r.lay_heading(0x11);
+  r.arrive_at_roster(heading_copied);
+  EXPECT_EQ(r.heading(),
+            (std::vector<std::uint8_t>{6, 'Q', 'R', ' ', ' ', 'S', 'T'}));
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
 
 TEST(SeamHeroKeys, TheMainMenusNamesAreNeverCut) {
@@ -988,9 +945,9 @@ TEST(SeamHeroKeys, TheMainMenusNamesAreNeverCut) {
 TEST(SeamHeroKeys, ANameOfNoCharactersIsNotCut) {
   const rig r;
   r.arm();
-  const row_run run = run_a_row(r, 0x11, 4, 0);
+  const row_run run = run_a_row(r, 0x01, 4, 0);
   EXPECT_EQ(run.calls.size(), 1u);
-  EXPECT_EQ(run.final_column, 0x11);
+  EXPECT_EQ(run.final_column, 0x01);
 }
 
 TEST(SeamHeroKeys, TheJoinLeavesAColumnItDidNotMoveAlone) {
@@ -999,9 +956,9 @@ TEST(SeamHeroKeys, TheJoinLeavesAColumnItDidNotMoveAlone) {
   const rig r;
   r.arm();
   r.lay_party(4);
-  r.lay_row(0x11, 4, 0, 15);
+  r.lay_row(0x01, 4, 0, 15);
   r.arrive_at_roster(name_drawn);
-  EXPECT_EQ(r.column(), 0x11);
+  EXPECT_EQ(r.column(), 0x01);
   EXPECT_EQ(r.box->processor().regs()[cpu::reg16::sp], drawer_sp);
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
@@ -1013,20 +970,20 @@ TEST(SeamHeroKeys, DeclinesARosterFrameTheFactsDoNotDescribe) {
 
   // A row above the first member's and below the last possible, a column
   // the drawer never uses, and a member pointer above conventional memory.
-  r.lay_row(0x11, 3, 0, 6);
+  r.lay_row(0x01, 3, 0, 6);
   r.arrive_at_roster(row_cleared);
-  EXPECT_EQ(r.column(), 0x11);
-  r.lay_row(0x11, 12, 0, 6);
+  EXPECT_EQ(r.column(), 0x01);
+  r.lay_row(0x01, 12, 0, 6);
   r.arrive_at_roster(row_cleared);
-  EXPECT_EQ(r.column(), 0x11);
+  EXPECT_EQ(r.column(), 0x01);
   r.lay_row(0x05, 5, 0, 6);
   r.arrive_at_roster(row_cleared);
   EXPECT_EQ(r.column(), 0x05);
-  r.lay_row(0x11, 5, 0, 6);
+  r.lay_row(0x01, 5, 0, 6);
   r.put_word(stack_segment,
              static_cast<std::uint16_t>(drawer_bp - local_member + 2), 0xB800);
   r.arrive_at_roster(row_cleared);
-  EXPECT_EQ(r.column(), 0x11);
+  EXPECT_EQ(r.column(), 0x01);
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 4u);
 }
 
@@ -1035,7 +992,7 @@ TEST(SeamHeroKeys, DrawsTheNumbersOneToEightForTheRowsFourToEleven) {
   r.arm();
   r.lay_party(8);
   for (std::uint8_t row = 4; row <= 11; ++row) {
-    r.lay_row(0x11, row, row - 4U, 6);
+    r.lay_row(0x01, row, row - 4U, 6);
     r.arrive_at_roster(row_cleared);
     const pending_call call = read_call(r, 6);
     EXPECT_EQ(call.args[4], static_cast<std::uint16_t>('1' + row - 4))
@@ -1053,7 +1010,7 @@ TEST(SeamHeroKeys, TheArmourClassColumnMovesOneRightAtEveryWidth) {
   // The drawer computes 0x20 for a three-character value (-10 or lower),
   // 0x21 for two and 0x22 for one, so the value ends in 0x23 at most and
   // the hit points' 0x24 is kept.
-  for (const std::uint8_t column : {std::uint8_t{0x11}, std::uint8_t{0x01}}) {
+  for (const std::uint8_t column : {std::uint8_t{0x01}}) {
     for (std::uint16_t ax = 0x20; ax <= 0x22; ++ax) {
       r.lay_row(column, 5, 1, 6);
       r.arrive_at_roster(ac_column_pushed, ax);
@@ -1071,15 +1028,15 @@ TEST(SeamHeroKeys, TheArmourClassColumnIsLeftAloneOffTheFacts) {
   r.lay_party(4);
   // A column the drawer does not compute, a row it is not on, and a name
   // column the program is not at between rows.
-  r.lay_row(0x11, 5, 1, 6);
+  r.lay_row(0x01, 5, 1, 6);
   r.arrive_at_roster(ac_column_pushed, 0x1F);
   EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x1Fu);
   r.arrive_at_roster(ac_column_pushed, 0x23);
   EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x23u);
-  r.lay_row(0x11, 3, 1, 6);
+  r.lay_row(0x01, 3, 1, 6);
   r.arrive_at_roster(ac_column_pushed, 0x21);
   EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x21u);
-  r.lay_row(0x13, 5, 1, 6);
+  r.lay_row(0x03, 5, 1, 6);
   r.arrive_at_roster(ac_column_pushed, 0x21);
   EXPECT_EQ(r.box->processor().regs()[cpu::reg16::ax], 0x21u);
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 4u);
@@ -1096,7 +1053,7 @@ TEST(SeamHeroKeys, DoesNotMoveTheArmourClassWhileItIsOff) {
 TEST(SeamHeroKeys, TheHeadingsArmourClassMovesAndTheHitPointsStay) {
   const rig r;
   r.arm();
-  for (const std::uint8_t column : {std::uint8_t{0x11}, std::uint8_t{0x01}}) {
+  for (const std::uint8_t column : {std::uint8_t{0x01}}) {
     r.lay_heading(column);
     r.arrive_at_roster(heading_copied);
     // The same six characters from the same column: the armour class one
@@ -1113,19 +1070,19 @@ TEST(SeamHeroKeys, TheHeadingIsLeftAloneWhenItIsNotTheOneTheFactsDescribe) {
   r.arm();
   // A string that is not the heading's shape, one already moved, and a
   // frame whose row is not the heading's.
-  r.lay_heading(0x11);
+  r.lay_heading(0x01);
   r.put_byte(stack_segment,
              static_cast<std::uint16_t>(drawer_bp - local_heading + 3), 'X');
   r.arrive_at_roster(heading_copied);
   EXPECT_EQ(r.heading(),
             (std::vector<std::uint8_t>{6, 'Q', 'R', 'X', ' ', 'S', 'T'}));
-  r.lay_heading(0x11);
+  r.lay_heading(0x01);
   r.arrive_at_roster(heading_copied);
   r.arrive_at_roster(heading_copied);
   EXPECT_EQ(r.heading(),
             (std::vector<std::uint8_t>{6, ' ', 'Q', 'R', ' ', 'S', 'T'}))
       << "moved once, and never a second time";
-  r.lay_heading(0x11);
+  r.lay_heading(0x01);
   r.put_byte(stack_segment, static_cast<std::uint16_t>(drawer_bp - local_row),
              4);
   r.arrive_at_roster(heading_copied);
@@ -1145,10 +1102,11 @@ TEST(SeamHeroKeys, DoesNotMoveTheHeadingWhileItIsOff) {
 // --- At a bar that is not raw (#469) ----------------------------------------
 
 /// Callers of the menu-bar routine with raw mode off whose screen shows the
-/// party list: a locked door's bar, a stuck door's, and camp's Portraits and
-/// Monsters bar. The routine throws Home, End and the arrows away for them,
-/// so there is no caller to hand a Home to: the seams write the selection
-/// and ask the program to draw the list again.
+/// party list: a locked door's bar, a stuck door's, camp's Portraits and
+/// Monsters bar and the save slot bar. The routine throws Home, End and the
+/// arrows away for them, so `list-arrows` writes the selection and asks the
+/// program to draw the list again on Up and Down. The number row selected
+/// there too until #479; it is the program's now.
 constexpr std::array<caller, 4> bar_callers{{
     {.segment = adventure_segment, .offset = 0x0EBF, .name = "a locked door"},
     {.segment = adventure_segment, .offset = 0x0FFE, .name = "a stuck door"},
@@ -1272,16 +1230,13 @@ class SeamHeroKeysAtABarThatIsNotRaw : public testing::Test {
   const rig r;
 };
 
-TEST_F(SeamHeroKeysAtABarThatIsNotRaw,
-       ADigitSelectsTheMemberAndTheListIsDrawn) {
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw, ADigitIsTheProgramsAndDrawsNothing) {
   for (const caller& c : bar_callers) {
-    for (unsigned count = 1; count <= 8; ++count) {
-      for (unsigned hero = 1; hero <= count; ++hero) {
-        r.lay_party(count, count - 1U);
-        EXPECT_EQ(press_bar(r, number_row(hero), c), ignored) << c.name;
-        EXPECT_EQ(r.selected(count), hero - 1U) << c.name << " " << hero;
-        EXPECT_TRUE(drew_for(hero - 1U)) << c.name << " " << hero;
-      }
+    for (unsigned hero = 1; hero <= 8; ++hero) {
+      r.lay_party(8, 7);
+      EXPECT_EQ(press_bar(r, number_row(hero), c), number_row(hero)) << c.name;
+      EXPECT_EQ(r.selected(8), 7u) << c.name << " " << hero;
+      EXPECT_FALSE(last_drew.has_value()) << c.name << " " << hero;
     }
   }
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
@@ -1313,30 +1268,11 @@ TEST_F(SeamHeroKeysAtABarThatIsNotRaw,
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
 
-TEST_F(SeamHeroKeysAtABarThatIsNotRaw, ADigitWithNobodyBehindItIsOnlyIgnored) {
-  r.lay_party(3, 1);
-  for (unsigned digit = 4; digit <= 8; ++digit) {
-    EXPECT_EQ(press_bar(r, number_row(digit), bar_callers[0]), ignored);
-    EXPECT_EQ(r.selected(3), 1u);
-    EXPECT_FALSE(last_drew.has_value());
-  }
+TEST_F(SeamHeroKeysAtABarThatIsNotRaw, AStepWithNobodyInThePartyIsIgnored) {
   r.lay_party(0);
-  EXPECT_EQ(press_bar(r, number_row(1), bar_callers[0]), ignored);
   EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), ignored);
-  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
-}
-
-TEST_F(SeamHeroKeysAtABarThatIsNotRaw,
-       ADigitThatIsOneOfTheBarsCommandsStaysTheBars) {
-  r.lay_party(4, 0);
-  set_bar(r, " 1 Alfa 2 Beta");
-  EXPECT_EQ(press_bar(r, number_row(1), bar_callers[0]), number_row(1));
-  EXPECT_EQ(press_bar(r, number_row(2), bar_callers[0]), number_row(2));
-  EXPECT_EQ(r.selected(4), 0u);
   EXPECT_FALSE(last_drew.has_value());
-  EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), ignored)
-      << "a digit the bar does not use is still the party's";
-  EXPECT_EQ(r.selected(4), 2u);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
 
 TEST_F(SeamHeroKeysAtABarThatIsNotRaw, LeavesTheKeysItDoesNotTake) {
@@ -1382,11 +1318,10 @@ TEST_F(SeamHeroKeysAtABarThatIsNotRaw, StepsAsideWhileTheMapIsOverTheRoster) {
   automap_state& map = r.box->automap();
   map.set_panel_open(true);
   map.set_panel_on_screen(true);
-  EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), number_row(3));
   EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), key_down);
   EXPECT_EQ(r.selected(4), 1u);
   map.set_panel_on_screen(false);
-  EXPECT_EQ(press_bar(r, number_row(3), bar_callers[0]), ignored);
+  EXPECT_EQ(press_bar(r, key_down, bar_callers[0]), ignored);
   EXPECT_EQ(r.selected(4), 2u);
 }
 

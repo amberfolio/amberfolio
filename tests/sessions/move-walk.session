@@ -1,16 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# hero-pick's script with a 3 where it presses a 9, at the same tick:
-# the seam puts the third member under the program's own cursor and the
-# program steps onto it and redraws the party list. The two agree until
-# the key, and differ to the end.
+# The baseline for move-walk-mode: slot A loaded and, at the adventuring
+# bar, Return, two Ups, Escape, two Rights, Return and Escape. The program
+# ignores the Returns and the Escapes, walks one square (the second Up is
+# into a wall) and turns twice.
 
-about modern-controls on, slot A loaded and the number row's 3 pressed at the
-about adventuring bar: the third member is selected. Contrast hero-pick,
-about which presses a 9 at the same tick
+about slot A, and Return, Up, Up, Escape, Right, Right, Return, Escape at the
+about adventuring bar: the party walks to 4,13 and turns to face N
 disk external
 code-wheel-answered
-contrast hero-pick
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021

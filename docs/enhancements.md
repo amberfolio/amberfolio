@@ -174,8 +174,11 @@ on:
 - **Left and Right step a command bar's highlight, Enter takes the lit
   command and Esc answers No** (the bar keys);
 - the **main menu has a cursor** (the menu cursor);
-- the number row's **1 to 8 select a party member**, and the party list shows
-  each number (the hero keys);
+- at the main menu, the number row's **1 to 8 select a party member**, and
+  the party list shows each number (the hero keys);
+- **walking is a mode** on the party's own bar: `Move` starts it and `Exit`
+  ends it, and until then Left and Right step the bar; `Area` is gone, the
+  automap being the overhead view (the move mode);
 - the arrows and the function keys **type nothing at a text prompt** (the
   edit keys);
 - **every selection is yellow**, and a command's key letter stays white (the
@@ -186,7 +189,8 @@ It is one setting: the game's own keys and colours, or all of this. Each
 part is described below, with where it works and what it leaves alone.
 
 **When it shows.** The menu's cursor from the first frame the menu is drawn,
-the party list's numbers and the yellow at the next thing the game draws, and
+the main menu's numbers, the party's bar with `Move` and the yellow at the
+next thing the game draws, and
 each key where the part that takes it says. The panel reads `on inert` until
 the game has loaded every screen the seam works on (the pick-lists' and
 command bars', the main menu's and Modify's); the parts whose screens are
@@ -252,8 +256,8 @@ arena master's *do you duel?*: whatever is highlighted is what Enter answers.
 A script's *press Enter to continue* is the game's own: Enter already
 continues it. These take the command under the highlight: the camp bar
 and its Magic, Alter and game-speed bars and Alter's portraits and monsters
-bar; the adventuring bar (in the city, with its `Area` command, and in the
-wilderness, without it); the portrait bar at character creation (`Head Body
+bar; the adventuring bar (in menu mode, `Move` among its commands, and while
+walking, its one `Exit`); the portrait bar at character creation (`Head Body
 Keep`); the shops' and temples' bars and the temple's appraisal; combat's
 command, Done and game-speed bars; the View bar; the post-combat treasure
 and Take bars; and the load-game slot bar. A command the other seams add,
@@ -328,40 +332,43 @@ second of the game's time).
 
 ### The hero keys
 
-**What it does.** Pick a party member with one key. **The number row's
-`1` to `8` select that member** on every screen where Home and End do:
-the 3D view and the wilderness, the main menu, the camp bar and its Magic
-and Alter bars, the shops, the temple, the post-combat treasure bar, and a
-script's own menus. The game's own cursor does the selecting, so the
-party list redraws as it does for Home and End. **The party list shows
-each member's number** in white in front of the name, on all of those
-screens: `1 FIGHTER1   -2  33`.
+**What it does.** Pick a party member with one key at the main menu (the
+title screen's, and a training hall's). **The number row's `1` to `8`
+select that member**, and the party list there shows each member's number
+in white in front of the name: `1 FIGHTER1`. The game's own cursor does
+the selecting, so the list redraws as it does for Home and End.
 
-**At a door.** The same keys select at a locked or stuck door's bar,
-camp's Portraits and Monsters bar and the save slot bar, where the game
-would not have taken a Home: the list is drawn again by the game's own
-routine. A digit that is one of a bar's own command letters stays the bar's.
+**Everywhere else** Up and Down select the member (the list arrows at
+camp, the shops, the temple, a script's menus, the treasure bars and the
+doors; the move mode at the party's own bar), so the number row does what
+the game has it do: what the keypad does. `9` and `0` are always the
+game's. A digit with no member behind it does nothing.
 
-**What it changes.** The number row's `1` to `8` no longer walk or turn
-the party at the exploring bars, where they did what the keypad does
-(`8` forward, `4` and `6` to turn, `2` to turn round); the arrows and the
-keypad (with Num Lock on or off) keep all of it. `9` and `0` are the
-game's own. A digit with no member behind it does nothing. At the
-post-combat Take bar `6` took the Money; it selects the sixth member
-instead, and `M` still takes it.
+**Where it does not work.** Every screen but the main menu, as above. With
+the journal reader up, `1` to `8` are its keys, as every key is.
 
-**What the list gives up.** Each name moves two columns right to make
-room, so beside the viewport a name has fourteen characters before the
-armour class: a fifteen-character name shows its first fourteen, on the
-screen only. The armour class and its heading move one column right, to
-keep clear of a long name; the hit points stay.
+### The move mode
 
-**Where it does not work.** Combat, the pick-lists and the party-member
-picker, character creation, Modify, and the party-order screen (there
-Home and End move a picked-up member, and a digit that moved a member
-three places would be a surprise). With the map open over the party
-list, or the journal reader up, `1` to `8` are theirs, as every key
-is: close it first.
+**What it does.** Makes walking a mode, as the later games in the series
+did, so the exploring bar can be stepped with the arrows that walk. You
+arrive at the party's bar with **`Move` lit**, in the place `Area` had (in
+the wilderness, in front of `Cast`). There, Left and Right step the
+highlight, Up and Down select the member before or after, Enter takes the
+lit command, and the letters are the game's. **`M`, or Enter on `Move`,
+starts walking**: the bar reads `Exit` alone, and the arrows, the keypad
+and the number row walk and turn as the game has them do. **Enter, Esc or
+`E` stop walking** and light `Move` again. A fight, camp, a shop, a
+script's question, View or any other screen with a bar of its own also
+brings you back to the bar with `Move` lit; the steps you take and what
+happens on a square do not.
+
+**What it changes.** `Area`, the game's overhead view, is gone: the
+automap (Tab) is the overhead view, and with the automap off there is
+none. While walking, the letters do nothing, `Notes` among them; the
+walking bar is white end to end, as the game draws any bar of one command.
+
+**Where it does not work.** Only the party's own bar has modes. Combat's
+movement and aim, and Modify, keep their arrows.
 
 ### The selection colour
 

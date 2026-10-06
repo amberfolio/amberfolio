@@ -405,9 +405,10 @@ struct caller_at {
 };
 
 /// The callers that keep their arrows.
-constexpr std::array<caller_at, 7> excluded{{
-    {.segment = adventure_segment, .offset = ret_area, .name = "overhead bar"},
-    {.segment = adventure_segment, .offset = ret_view, .name = "3D bar"},
+/// The party's own two bars are in the piece's exclusion too, and keep
+/// their arrows from it; what they get instead is `move-mode`'s, which
+/// steps them in menu mode (seam_move_mode_test.cpp).
+constexpr std::array<caller_at, 5> excluded{{
     {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
     {.segment = aim_segment, .offset = ret_aim, .name = "aim cursor"},
     {.segment = editor_segment, .offset = ret_editor, .name = "stat editor"},
@@ -489,10 +490,10 @@ TEST(SeamBarKeys, TheExclusionIsAsExactAsTheEnterTable) {
   EXPECT_EQ(r.press(right, adventure_segment, 0, 1), period);
   EXPECT_EQ(r.press(right, 0, ret_area, 1), period);
   // The module's word says it is out: it is not a caller.
-  r.manager_says(word_adventure, 0);
-  EXPECT_EQ(r.press(left, adventure_segment, ret_area, 1), comma);
-  r.manager_says(word_adventure, adventure_segment);
-  EXPECT_EQ(r.press(left, adventure_segment, ret_area, 1), left);
+  r.manager_says(word_combat, 0);
+  EXPECT_EQ(r.press(left, combat_segment, ret_move, 1), comma);
+  r.manager_says(word_combat, combat_segment);
+  EXPECT_EQ(r.press(left, combat_segment, ret_move, 1), left);
 }
 
 TEST(SeamBarKeys, TheCursorsKeysAreTheProgramsAtTheCampBarStill) {
