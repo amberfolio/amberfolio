@@ -128,8 +128,8 @@ panel_row panel_row_of(const machine::seam_status& row,
   out.state = machine::seam_state_name(row.state);
   if (row.state == machine::seam_state::on) {
     // The two claims a seam that is on can make, and they are different
-    // things: `armed` says an address was computed out of the fact
-    // table, `inert` says the module it lives in is not resident yet.
+    // things: `armed` says at least one of its points can act, `inert`
+    // says no module its points live in is resident yet (#477).
     out.state += row.armed ? " armed" : " inert";
   }
   out.fired = row.fired;

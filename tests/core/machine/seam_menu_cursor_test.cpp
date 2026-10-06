@@ -451,8 +451,9 @@ TEST(SeamMenuCursor, IsInertWhileOverlay25IsNotLoaded) {
   r.show({0, 1, 2});
   r.manager_says(word_menu_bar, 0);
 
-  EXPECT_EQ(r.box->seams().status(seam_id).reason,
-            seam_reason::module_not_resident);
+  // The seam stays armed: its points in the modules that are resident
+  // act (#477). This piece's point is the one that does nothing.
+  EXPECT_TRUE(r.box->seams().status(seam_id).armed);
   EXPECT_EQ(r.press({down}), down);
   EXPECT_TRUE(r.calls().empty());
 }
@@ -635,9 +636,14 @@ TEST(SeamMenuCursor, TheLoopsPointDeclinesAMenuItCannotHoldACursorIn) {
 TEST(SeamMenuCursor, TheLoopsPointIsInertWhileOverlay16IsNotLoaded) {
   const rig r;
   r.arm();
+  r.show({0, 1, 2, 3});
   r.manager_says(word_loop, 0);
-  EXPECT_EQ(r.box->seams().status(seam_id).reason,
-            seam_reason::module_not_resident);
+
+  // The seam stays armed: its points in the modules that are resident
+  // act (#477). This piece's point is the one that does nothing.
+  EXPECT_TRUE(r.box->seams().status(seam_id).armed);
+  r.menu_drawn();
+  EXPECT_TRUE(r.calls().empty());
 }
 
 TEST(SeamMenuCursor, DrawsNoCursorWhileItIsOff) {

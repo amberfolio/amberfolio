@@ -1339,9 +1339,9 @@ number row's `8` walks.
 
 `docs/seams.md` §10 has the facts. The instrument is a still: `--dump-every
 N` and a look at the bar, the list or the name. Every pair is told
-`--wall none`. With `--seam modern-controls` the panel reads `on inert` until
-the game has loaded every overlay the seam names, the sheet overlay Modify
-uses among them, and `fired` counts the draws and keys it looked at.
+`--wall none`. With `--seam modern-controls` the panel reads `on armed`; a
+piece whose overlay is out (the sheet overlay Modify uses among them) waits
+for it, and `fired` counts the draws and keys it looked at.
 
 | screen | how to reach it | what to see |
 |---|---|---|
