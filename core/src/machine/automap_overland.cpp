@@ -67,6 +67,17 @@ constexpr std::uint16_t data_menu_3d_view = 0x04DF;
 constexpr std::uint16_t bar_frame_menu_offset = 18;
 constexpr std::uint16_t bar_frame_menu_segment = 20;
 
+/// **The adventuring loop's two calls into that routine**, as the far
+/// return address on top of the stack at the thunk's entry: the offsets of
+/// the instructions after the calls (city, wilderness) in overlay 14, and
+/// the word the program's overlay manager keeps that module's segment in.
+/// `modern-controls`' move mode hands these calls a copy of the bar on the
+/// stack (#479), so the call site says whose bar it is when the pointer no
+/// longer can.
+constexpr std::uint16_t adventure_city_return = 0x09D5;
+constexpr std::uint16_t adventure_wild_return = 0x0C45;
+constexpr std::uint16_t adventure_load_segment_at = 0x730;
+
 [[nodiscard]] std::uint16_t at(std::uint16_t base, std::uint16_t by) noexcept {
   return static_cast<std::uint16_t>(base + by);
 }
@@ -158,7 +169,7 @@ overland_look observe_overland(machine& box, seam_context& ctx,
   return found;
 }
 
-void note_command_bar(machine& box, std::uint16_t ds) {
+void note_command_bar(machine& box, const seam_context& ctx, std::uint16_t ds) {
   cpu::processor& cpu = box.processor();
   const cpu::registers& regs = cpu.regs();
   const std::uint16_t ss = regs[cpu::sreg::ss];
@@ -166,9 +177,19 @@ void note_command_bar(machine& box, std::uint16_t ds) {
   const std::uint16_t segment =
       cpu.read_word(ss, at(sp, bar_frame_menu_segment));
   const std::uint16_t offset = cpu.read_word(ss, at(sp, bar_frame_menu_offset));
-  box.automap().set_at_command_bar(
-      segment == ds &&
-      (offset == data_menu_area_view || offset == data_menu_3d_view));
+  const bool program_bar = segment == ds && (offset == data_menu_area_view ||
+                                             offset == data_menu_3d_view);
+
+  const std::uint16_t return_ip = cpu.read_word(ss, sp);
+  const std::uint16_t return_cs = cpu.read_word(ss, at(sp, 2));
+  const std::uint16_t adventure =
+      cpu.read_word(static_cast<std::uint16_t>(ctx.image_base() >> 4U),
+                    adventure_load_segment_at);
+  const bool party_call = adventure != 0 && return_cs == adventure &&
+                          (return_ip == adventure_city_return ||
+                           return_ip == adventure_wild_return);
+
+  box.automap().set_at_command_bar(program_bar || party_call);
 }
 
 }  // namespace amberfolio::machine

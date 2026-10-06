@@ -726,7 +726,7 @@ void at_command_bar(machine& box, seam_context& ctx) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  note_command_bar(box, ds);
+  note_command_bar(box, ctx, ds);
 }
 
 // ---------------------------------------------------------------------------

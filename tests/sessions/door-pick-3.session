@@ -5,15 +5,17 @@
 # Right and two Lefts, at the same ticks. The door's bar is not raw: the
 # menu-bar routine throws the arrows and Home and End away, so the seam
 # selects the way the program's own cursor would and draws the party list
-# again with the program's own routine.
+# again with the program's own routine. The 3 is the program's (the
+# number row selects at the main menu only), and the door's bar throws
+# it away.
 #
 # It agrees with `door-pick` until the 3 is read at the bar and differs
-# from there to the end: the third member, the fourth, the third and the
-# second are the white ones where the baseline keeps the first.
+# from there to the end: the Down selects the second member, the Up the
+# first and the next Up the last, where the baseline keeps the first.
 
 about modern-controls on and exercised at a locked door's bar:
-about a 3 selects the third member, a Down the fourth, an Up the third and
-about an Up the second, and the party list is drawn again each time. The
+about a 3 that is thrown away, then a Down selects the second member, an
+about Up the first and an Up the last, and the party list is drawn again. The
 about baseline is door-pick
 disk external
 code-wheel-answered

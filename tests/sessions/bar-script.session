@@ -8,12 +8,13 @@
 # permission to take Enter, and on Escape, so the first question is still
 # up at the end. The Return at the press-Enter notice before it is the
 # runner's own, which it takes. `bar-script-keys` is the same keys with the
-# seam on.
+# seam on. A Return at the adventuring bar before the walk is ignored here
+# and is how the seam-on half starts walking (#479).
 
 about the arena master's question in slot A with only the code-wheel seam
 about on: a `.` that steps the highlight, then Return and Escape, which the
 about program ignores. The question is still the screen at the end.
-about 17,196 frames, 29 keystrokes
+about 17,196 frames, 30 keystrokes
 disk external
 code-wheel-answered
 

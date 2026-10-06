@@ -1723,6 +1723,36 @@ TEST(AutomapBar, OnlyThePartysOwnTwoBarsAreThePartys) {
   EXPECT_FALSE(r.map_state().at_command_bar());
 }
 
+TEST(AutomapBar, TheAdventuringLoopsOwnCallIsThePartysWhateverBarItHands) {
+  // `modern-controls`' move mode hands the adventuring loop's two calls a
+  // copy of the bar on the stack (#479). The call site, the far return
+  // address on top of the stack at the thunk, still says whose bar it is:
+  // the instruction after the city's call or the wilderness's, in the
+  // segment the overlay manager's word for overlay 14 names.
+  const rig r;
+  r.enable();
+  constexpr std::uint16_t sp = 0x0400;
+  constexpr std::uint16_t adventure_word = 0x730;
+  constexpr std::uint16_t adventure_segment = 0x6400;
+  r.put_word(image_load_segment, adventure_word, adventure_segment);
+  const auto ask_from = [&](std::uint16_t ip, std::uint16_t cs) {
+    r.put_word(rig::dgroup(), sp, ip);
+    r.put_word(rig::dgroup(), static_cast<std::uint16_t>(sp + 2), cs);
+    r.put_up_the_bar(rig::dgroup(), 0x03F0);
+  };
+  ask_from(0x09D5, adventure_segment);
+  EXPECT_TRUE(r.map_state().at_command_bar()) << "the city's call";
+  ask_from(0x0C45, adventure_segment);
+  EXPECT_TRUE(r.map_state().at_command_bar()) << "the wilderness's";
+  ask_from(0x09D5, 0x1234);
+  EXPECT_FALSE(r.map_state().at_command_bar()) << "not the module's segment";
+  ask_from(0x09D6, adventure_segment);
+  EXPECT_FALSE(r.map_state().at_command_bar()) << "nor its call";
+  r.put_word(image_load_segment, adventure_word, 0);
+  ask_from(0x09D5, 0);
+  EXPECT_FALSE(r.map_state().at_command_bar()) << "nor while it is out";
+}
+
 TEST(AutomapPanel, SomebodyElseAskingTakesThePanelWithIt) {
   // A vendor's question is the case this is for: it leaves the mode at
   // "adventuring", draws in the viewport and on the message row, and

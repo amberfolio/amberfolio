@@ -164,13 +164,10 @@ constexpr std::array<caller_at, 9> allowed_callers{{
 }};
 
 /// The callers that use Up and Down themselves, or are not for this seam.
-constexpr std::array<caller_at, 10> left_out_callers{{
-    {.segment = adventure_segment,
-     .offset = 0x09D5,
-     .name = "the adventuring bar, city"},
-    {.segment = adventure_segment,
-     .offset = 0x0C45,
-     .name = "the adventuring bar, wilderness"},
+/// The party's own two bars are left out of the piece too; their Up and
+/// Down are `move-mode`'s, which walks with them or selects with them by
+/// mode (seam_move_mode_test.cpp).
+constexpr std::array<caller_at, 8> left_out_callers{{
     {.segment = combat_segment,
      .offset = 0x0AC8,
      .name = "the combat move loop"},
@@ -549,8 +546,7 @@ TEST(SeamListArrows,
 TEST(SeamListArrows, LeavesTheKeypadsEightAndTwoWhereTheArrowsAreLeft) {
   const rig r;
   r.arm();
-  // The adventuring bars, where the keypad's 8 and 2 walk, and every other
-  // caller the table does not name.
+  // Every caller the table does not name.
   for (const caller_at& c : left_out_callers) {
     EXPECT_EQ(r.press(ring_pad_8, c.segment, c.offset), ring_pad_8) << c.name;
     EXPECT_EQ(r.press(ring_pad_2, c.segment, c.offset), ring_pad_2) << c.name;

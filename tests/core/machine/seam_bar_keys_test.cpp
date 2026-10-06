@@ -405,9 +405,10 @@ struct caller_at {
 };
 
 /// The callers that keep their arrows.
-constexpr std::array<caller_at, 7> excluded{{
-    {.segment = adventure_segment, .offset = ret_area, .name = "overhead bar"},
-    {.segment = adventure_segment, .offset = ret_view, .name = "3D bar"},
+/// The party's own two bars are in the piece's exclusion too, and keep
+/// their arrows from it; what they get instead is `move-mode`'s, which
+/// steps them in menu mode (seam_move_mode_test.cpp).
+constexpr std::array<caller_at, 5> excluded{{
     {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
     {.segment = aim_segment, .offset = ret_aim, .name = "aim cursor"},
     {.segment = editor_segment, .offset = ret_editor, .name = "stat editor"},
@@ -489,10 +490,10 @@ TEST(SeamBarKeys, TheExclusionIsAsExactAsTheEnterTable) {
   EXPECT_EQ(r.press(right, adventure_segment, 0, 1), period);
   EXPECT_EQ(r.press(right, 0, ret_area, 1), period);
   // The module's word says it is out: it is not a caller.
-  r.manager_says(word_adventure, 0);
-  EXPECT_EQ(r.press(left, adventure_segment, ret_area, 1), comma);
-  r.manager_says(word_adventure, adventure_segment);
-  EXPECT_EQ(r.press(left, adventure_segment, ret_area, 1), left);
+  r.manager_says(word_combat, 0);
+  EXPECT_EQ(r.press(left, combat_segment, ret_move, 1), comma);
+  r.manager_says(word_combat, combat_segment);
+  EXPECT_EQ(r.press(left, combat_segment, ret_move, 1), left);
 }
 
 TEST(SeamBarKeys, TheCursorsKeysAreTheProgramsAtTheCampBarStill) {
@@ -548,7 +549,7 @@ struct enter_caller {
 };
 
 /// Every caller in the Enter table, the audit's (#459) included.
-constexpr std::array<enter_caller, 21> tabled{{
+constexpr std::array<enter_caller, 23> tabled{{
     {.segment = menu_segment, .offset = ret_yes_no, .name = "yes/no"},
     {.segment = adventure_segment, .offset = ret_area, .name = "overhead"},
     {.segment = adventure_segment, .offset = ret_view, .name = "3D"},
@@ -578,6 +579,10 @@ constexpr std::array<enter_caller, 21> tabled{{
     {.segment = appraise_segment, .offset = ret_appraise, .name = "appraise"},
     {.segment = slots_segment, .offset = ret_load, .name = "load"},
     {.segment = rest_segment, .offset = ret_rest, .name = "rest time"},
+    {.segment = adventure_segment, .offset = ret_door_bash, .name = "door"},
+    {.segment = adventure_segment,
+     .offset = ret_door_stuck,
+     .name = "stuck door"},
 }};
 
 TEST(SeamBarKeys, EnterTakesTheHighlightedCommandAtEachTabledCaller) {
@@ -662,15 +667,11 @@ TEST(SeamBarKeys, EnterIsLeftAloneAtTheCallersTheAuditReadAndKeptOut) {
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
 
-  const std::array<enter_caller, 17> kept_out{{
+  const std::array<enter_caller, 15> kept_out{{
       {.segment = camp_segment, .offset = ret_order, .name = "party order"},
       {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
       {.segment = aim_segment, .offset = ret_aim, .name = "aim cursor"},
       {.segment = aim_segment, .offset = ret_aim_bar, .name = "aim bar"},
-      {.segment = adventure_segment, .offset = ret_door_bash, .name = "door"},
-      {.segment = adventure_segment,
-       .offset = ret_door_stuck,
-       .name = "stuck door"},
       {.segment = appraise_segment, .offset = ret_keep, .name = "keep gem"},
       {.segment = appraise_segment,
        .offset = ret_keep_jewel,

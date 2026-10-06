@@ -89,7 +89,12 @@ overland_look observe_overland(machine& box, seam_context& ctx,
 /// alone keeps it current; both together write it twice with the same
 /// answer, which is why this is one reader rather than two.
 ///
+/// Or the call is one of the adventuring loop's own two, by the far return
+/// address on the stack: `modern-controls`' move mode hands those calls a
+/// copy of the bar it makes on the stack (#479), so there the call site is
+/// what still says whose bar it is.
+///
 /// `ds` is the program's data segment, already checked by the caller.
-void note_command_bar(machine& box, std::uint16_t ds);
+void note_command_bar(machine& box, const seam_context& ctx, std::uint16_t ds);
 
 }  // namespace amberfolio::machine
