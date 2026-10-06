@@ -451,15 +451,6 @@ seam_status seam_engine::status(std::string_view id) const noexcept {
   return status(index_of(id));
 }
 
-std::uint16_t seam_engine::scratch(std::string_view id,
-                                   unsigned slot) const noexcept {
-  const std::size_t at = index_of(id);
-  if (at == max_seams || slot >= scratch_words) {
-    return 0;
-  }
-  return slots_[at].scratch[slot];
-}
-
 void seam_engine::loaded(const sha256_digest& digest,
                          std::uint16_t image_segment) {
   clear();

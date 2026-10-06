@@ -5093,7 +5093,8 @@ constexpr std::array<machine::seam_point, 1> door_points{
   {
     machine_program p;
     p.name = "hero_keys_probe_on";
-    p.about = "the seam: Home where a digit selects, and the main menu's number";
+    p.about =
+        "the seam: Home where a digit selects, and the main menu's number";
     p.setup.exe = hero_keys_probe_file();
     p.setup.exe_path = "\\HEROKEYS.EXE";
     p.setup.seam_definitions = {&hero_keys_probe_definition()};

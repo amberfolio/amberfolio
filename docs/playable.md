@@ -1094,11 +1094,9 @@ the order (seam off, they do nothing).
 **The keypad at the camp bar** (`camp-pad` and `camp-pad-arrows` are this
 recorded; #447). The same slot, with `End@10000 Numlock@10200 "Keypad
 2"@10300 "Keypad 2"@10600 "Keypad 8"@10900`: on, MULE, THIEF, PRINCESS
-FATIMA and THIEF; off, MULE, then HULK for every keypad digit. With
-the seam on, `4@10000` selects PRINCESS FATIMA, and with Num
-Lock on the keypad's 8 steps back to THIEF and its 2 forward again; the
-number row's digits are the hero keys' and the keypad's are the list
-arrows'.
+FATIMA and THIEF; off, MULE, then HULK for every keypad digit. With Num
+Lock on the keypad's 8 steps back and its 2 forward; the number row's
+digits are the program's here.
 
 **The other bars.** From slot A, at the armourer (leg 4's route) the
 shop's bar and the "show you our wares?" prompt before it step the

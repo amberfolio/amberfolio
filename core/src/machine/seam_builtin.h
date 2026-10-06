@@ -98,10 +98,6 @@ inline constexpr std::size_t move_mode_point_count = 5;
 /// #479). Last at the key read, so every other piece has passed first.
 [[nodiscard]] std::span<const seam_point> move_mode_points() noexcept;
 
-/// Whether the party is in walking mode, so its bar is `Exit` alone: the
-/// journal's question, which puts no `Notes` on that bar.
-[[nodiscard]] bool move_mode_walking(const machine& box) noexcept;
-
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;
 [[nodiscard]] const seam_definition& cheat_kill_all_seam() noexcept;

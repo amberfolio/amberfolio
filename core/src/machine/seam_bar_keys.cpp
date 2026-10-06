@@ -116,8 +116,8 @@
 //   | caller | module | return offset | what it does with `0x0D` |
 //   |---|---|---|---|
 //   | the Yes/No prompt | overlay 25 | `0x111E` | loops until the answer is in {Y, N} |
-//   | the adventuring bar, overhead view | overlay 14 | `0x09D5` | none of its compares match; asks again |
-//   | the adventuring bar, 3D view | overlay 14 | `0x0C45` | the same |
+//   | the adventuring bar, city | overlay 14 | `0x09D5` | none of its compares match; asks again |
+//   | the adventuring bar, wilderness | overlay 14 | `0x0C45` | the same |
 //   | the camp bar | overlay 15 | `0x1F24` | none of its compares match; asks again |
 //   | camp's Magic bar | overlay 15 | `0x1447` | none of its compares match; asks again |
 //   | camp's Alter bar | overlay 15 | `0x1CA4` | none of its compares match; asks again |
@@ -150,8 +150,8 @@
 //
 //   | caller | module | return offset | what it does with an arrow |
 //   |---|---|---|---|
-//   | the adventuring bar, overhead view | overlay 14 | `0x09D5` | turns the party, or steps it |
-//   | the adventuring bar, 3D view | overlay 14 | `0x0C45` | the same |
+//   | the adventuring bar, city | overlay 14 | `0x09D5` | turns the party, or steps it |
+//   | the adventuring bar, wilderness | overlay 14 | `0x0C45` | the same |
 //   | the combat move loop | overlay 8 | `0x0AC8` | steps the fighter |
 //   | the combat aim cursor | overlay 13 | `0x3178` | moves the cursor |
 //   | the stat editor | overlay 16 | `0x216E` | lowers and raises a score |

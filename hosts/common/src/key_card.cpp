@@ -55,6 +55,11 @@ constexpr std::array wilderness_rows{
             "modern-controls"},
     key_row{"Return, Esc, E", "while walking: back to the bar, Move lit",
             "modern-controls"},
+    key_row{"Left, Right", "at the bar: step the lit word; walking, they step",
+            "modern-controls"},
+    key_row{"Up, Down",
+            "at the bar: previous or next member; walking, they step",
+            "modern-controls"},
 };
 
 constexpr std::array bar_rows{

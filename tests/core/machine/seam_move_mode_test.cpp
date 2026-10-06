@@ -66,8 +66,15 @@ constexpr std::uint16_t frame_ip = 2;
 constexpr std::uint16_t frame_cs = 4;
 constexpr std::uint16_t routine_bar = 0x53;
 
+/// At the call: the bar's far pointer above SP, and the loop's local the
+/// piece makes its bar in, below BP.
+constexpr std::uint16_t stack_bar_offset = 14;
+constexpr std::uint16_t stack_bar_segment = 16;
+constexpr std::uint16_t loop_copy = 0x32;
+
 constexpr std::uint16_t stack_segment = 0x5000;
 constexpr std::uint16_t frame_base = 0x0600;
+constexpr std::uint16_t stack_top = 0x0400;
 constexpr std::uint16_t ring_first = 0x1E;
 
 /// Keys, as the ring holds them.
@@ -202,10 +209,44 @@ struct rig {
     r.ip = point;
     r[cpu::sreg::ds] = dgroup();
     r[cpu::sreg::ss] = stack_segment;
-    r[cpu::reg16::sp] = 0x0400;
+    r[cpu::reg16::sp] = stack_top;
     r[cpu::reg16::bp] = frame_base;
     r.set(cpu::reg8::al, al);
     box->step();
+  }
+
+  /// The call's far pointer to its bar, laid as the loop pushes it.
+  void push_bar(std::uint16_t bar) const {
+    put_word(stack_segment,
+             static_cast<std::uint16_t>(stack_top + stack_bar_offset), bar);
+    put_word(stack_segment,
+             static_cast<std::uint16_t>(stack_top + stack_bar_segment),
+             dgroup());
+  }
+
+  /// Arrive before the city's call, or the wilderness's, as a fresh call.
+  void before(std::uint16_t point) const {
+    push_bar(point == city_before ? city_bar : wild_bar);
+    arrive(point);
+  }
+
+  /// The bar the call will be handed: the string its far pointer names.
+  [[nodiscard]] std::string handed() const {
+    return string_at(
+        word(stack_segment,
+             static_cast<std::uint16_t>(stack_top + stack_bar_segment)),
+        word(stack_segment,
+             static_cast<std::uint16_t>(stack_top + stack_bar_offset)));
+  }
+
+  /// Whether the call's pointer names the loop's own local.
+  [[nodiscard]] bool handed_the_copy() const {
+    return word(stack_segment,
+                static_cast<std::uint16_t>(stack_top + stack_bar_offset)) ==
+               static_cast<std::uint16_t>(frame_base - loop_copy) &&
+           word(stack_segment,
+                static_cast<std::uint16_t>(stack_top + stack_bar_segment)) ==
+               stack_segment;
   }
 
   [[nodiscard]] std::uint8_t al() const {
@@ -217,14 +258,14 @@ struct rig {
   /// bar comes back.
   void city_call(std::uint8_t letter, std::uint8_t sets_lit,
                  std::uint8_t out_flag = 0) const {
-    arrive(city_before);
+    before(city_before);
     light(sets_lit);
     arrive(city_after, letter, out_flag);
   }
 
   void wild_call(std::uint8_t letter, std::uint8_t sets_lit,
                  std::uint8_t out_flag = 0) const {
-    arrive(wild_before);
+    before(wild_before);
     light(sets_lit);
     arrive(wild_after, letter, out_flag);
   }
@@ -253,7 +294,7 @@ struct rig {
     r.ip = key_point;
     r[cpu::sreg::ds] = dgroup();
     r[cpu::sreg::ss] = stack_segment;
-    r[cpu::reg16::sp] = 0x0400;
+    r[cpu::reg16::sp] = stack_top;
     r[cpu::reg16::bp] = frame_base;
     box->step();
     return word(0x40, word(0x40, 0x1A));
@@ -277,61 +318,91 @@ TEST(SeamMoveMode, WithTheSeamOffNothingIsTouched) {
   r.manager_says(word_menu, menu_segment);
   r.lay_bars();
   r.light(3);
-  r.arrive(city_before);
-  EXPECT_EQ(r.city(), a_city_bar);
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), a_city_bar);
+  EXPECT_FALSE(r.handed_the_copy());
   EXPECT_EQ(r.lit(), 3);
-  r.arrive(wild_before);
-  EXPECT_EQ(r.wild(), a_wild_bar);
+  r.before(wild_before);
+  EXPECT_EQ(r.handed(), a_wild_bar);
   EXPECT_EQ(r.at_the_city_bar(left), left);
 }
 
 // --- Menu mode: the bar ----------------------------------------------------
 
-TEST(SeamMoveMode, TheCityBarsFirstGroupIsMoveAndComesBack) {
+TEST(SeamMoveMode, TheCityIsHandedMoveInAreasPlace) {
   const rig r;
   r.arm();
   r.light(3);
-  r.arrive(city_before);
-  EXPECT_EQ(r.city(), "Move Bravo Cobra");
+  // The call's prompt: the empty string the loop loads into its frame just
+  // above where the copy goes. It is the program's, and stays empty.
+  const auto prompt = static_cast<std::uint16_t>(frame_base - loop_copy - 1);
+  r.put_byte(stack_segment, prompt, 0);
+  r.before(city_before);
+  EXPECT_EQ(r.byte(stack_segment, prompt), 0);
+  EXPECT_TRUE(r.handed_the_copy());
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra");
+  EXPECT_EQ(r.city(), a_city_bar) << "the program's string is never written";
   EXPECT_EQ(r.lit(), 1) << "the party has just arrived: Move is lit";
   r.arrive(city_after, 'B');
-  EXPECT_EQ(r.city(), a_city_bar) << "the program's string, byte for byte";
+  EXPECT_EQ(r.city(), a_city_bar);
   EXPECT_EQ(r.declined(), 0u);
 }
 
-TEST(SeamMoveMode, TheWildernessBarGetsMoveInFrontAndComesBack) {
+TEST(SeamMoveMode, TheWildernessIsHandedMoveInFront) {
   const rig r;
   r.arm();
-  r.arrive(wild_before);
-  EXPECT_EQ(r.wild(), "Move Bravo Cobra");
+  r.before(wild_before);
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra");
+  EXPECT_EQ(r.wild(), a_wild_bar);
   r.arrive(wild_after, 'B');
   EXPECT_EQ(r.wild(), a_wild_bar);
   EXPECT_EQ(r.declined(), 0u);
 }
 
-TEST(SeamMoveMode, ASecondArrivalBeforeTheBarComesBackRewritesNothing) {
-  // The point is offered again after a batch: the bar is already the
-  // piece's, and is not given a second `Move`.
+TEST(SeamMoveMode, ASecondArrivalForTheSameCallMakesNothingTwice) {
+  // The point is offered again after a batch: the call already carries the
+  // copy, and is not given a second `Move`.
   const rig r;
   r.arm();
+  r.before(wild_before);
   r.arrive(wild_before);
-  r.arrive(wild_before);
-  EXPECT_EQ(r.wild(), "Move Bravo Cobra");
-  r.arrive(wild_after, 'B');
-  EXPECT_EQ(r.wild(), a_wild_bar);
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra");
+  EXPECT_EQ(r.declined(), 0u);
 }
 
-TEST(SeamMoveMode, ABarThatIsNotTheFactsShapeIsLeftAndDeclined) {
+TEST(SeamMoveMode, ABarThatIsNotTheFactsShapeIsTheProgramsAndDeclined) {
   const rig r;
   r.arm();
   r.put_string(rig::dgroup(), city_bar, "Bravo Cobra");
-  r.arrive(city_before);
-  EXPECT_EQ(r.city(), "Bravo Cobra");
+  r.before(city_before);
+  EXPECT_FALSE(r.handed_the_copy());
+  EXPECT_EQ(r.handed(), "Bravo Cobra");
   EXPECT_EQ(r.declined(), 1u);
   r.put_string(rig::dgroup(), wild_bar, "Bravo Cobra Delta Echo Foxtrot Golfs");
-  r.arrive(wild_before);
-  EXPECT_EQ(r.wild(), "Bravo Cobra Delta Echo Foxtrot Golfs")
+  r.before(wild_before);
+  EXPECT_EQ(r.handed(), "Bravo Cobra Delta Echo Foxtrot Golfs")
       << "no room for five more";
+  // And a call handed some other bar than the program's is not touched.
+  r.push_bar(0x1234);
+  r.arrive(city_before);
+  EXPECT_FALSE(r.handed_the_copy());
+}
+
+TEST(SeamMoveMode, SwitchedOffAndOnWithTheBarUpTheProgramsBarIsIntact) {
+  const rig r;
+  r.arm();
+  r.before(city_before);
+  ASSERT_TRUE(r.handed_the_copy());
+  // The player switches it off and on from the panel while the bar waits.
+  r.box->seams().disable(seam_id);
+  EXPECT_EQ(r.city(), a_city_bar);
+  ASSERT_EQ(r.box->seams().enable(seam_id), seam_reason::none);
+  r.arrive(city_after, 'M');  // nothing remembered: not this piece's call
+  r.city_call('M', 1);        // the next call is, and Move starts walking
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Exit");
+  EXPECT_EQ(r.city(), a_city_bar);
+  EXPECT_EQ(r.declined(), 0u);
 }
 
 // --- Menu mode: the highlight ----------------------------------------------
@@ -341,11 +412,11 @@ TEST(SeamMoveMode, TheCitysHighlightIsTheProgramsNumberingOutsideTheCall) {
   r.arm();
   r.city_call('C', 3);
   EXPECT_EQ(r.lit(), 3) << "Cobra, the third group on both bars";
-  r.arrive(city_before);
+  r.before(city_before);
   EXPECT_EQ(r.lit(), 3) << "the party's place is kept";
   r.light(1);  // the player steps onto Move and takes an Up
   r.arrive(city_after, 0x47, 1);
-  r.arrive(city_before);
+  r.before(city_before);
   EXPECT_EQ(r.lit(), 1) << "and Move stays lit";
 }
 
@@ -353,17 +424,17 @@ TEST(SeamMoveMode, TheWildernesssHighlightIsMovedForTheInsertedGroup) {
   const rig r;
   r.arm();
   r.light(2);
-  r.arrive(wild_before);
+  r.before(wild_before);
   EXPECT_EQ(r.lit(), 1) << "arrived: Move";
   r.light(3);
   r.arrive(wild_after, 'C');
   EXPECT_EQ(r.lit(), 2) << "Cobra is the program's second group";
-  r.arrive(wild_before);
+  r.before(wild_before);
   EXPECT_EQ(r.lit(), 3) << "and the bar's third";
   r.light(1);
   r.arrive(wild_after, 0x47, 1);
-  EXPECT_EQ(r.lit(), 3 - 1) << "Move has no group of the program's";
-  r.arrive(wild_before);
+  EXPECT_EQ(r.lit(), 2) << "Move has no group of the program's";
+  r.before(wild_before);
   EXPECT_EQ(r.lit(), 1);
 }
 
@@ -373,6 +444,10 @@ TEST(SeamMoveMode, NotesChosenPutsTheHighlightBackAsItWasEntered) {
   r.city_call('C', 3);
   r.city_call('N', 4);
   EXPECT_EQ(r.lit(), 3);
+  r.wild_call('C', 3);
+  EXPECT_EQ(r.lit(), 2);
+  r.wild_call('N', 4);
+  EXPECT_EQ(r.lit(), 2);
 }
 
 // --- Walking mode --------------------------------------------------------
@@ -382,15 +457,18 @@ TEST(SeamMoveMode, MoveStartsWalkingAndTheBarIsExitAloneLit) {
   r.arm();
   r.light(5);
   r.start_walking();
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Exit");
   EXPECT_EQ(r.city(), a_city_bar);
-  r.arrive(city_before);
-  EXPECT_EQ(r.city(), "Exit");
   EXPECT_EQ(r.lit(), 1);
   r.arrive(city_after, 0x48, 1);  // a step: still walking
-  EXPECT_EQ(r.city(), a_city_bar);
-  r.arrive(city_before);
-  EXPECT_EQ(r.city(), "Exit");
+  EXPECT_EQ(r.lit(), 5) << "the highlight is put back as it was found";
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Exit");
   r.arrive(city_after, 0x4B, 1);
+  r.before(wild_before);
+  EXPECT_EQ(r.handed(), "Exit") << "the wilderness walks the same way";
+  EXPECT_EQ(r.wild(), a_wild_bar);
   EXPECT_EQ(r.declined(), 0u);
 }
 
@@ -398,46 +476,60 @@ TEST(SeamMoveMode, ExitStopsWalkingAndIsNotTheProgramsCamp) {
   const rig r;
   r.arm();
   r.start_walking();
-  r.arrive(city_before);
+  r.before(city_before);
   r.arrive(city_after, 'E');
   EXPECT_EQ(r.al(), '-') << "the program loops on this, and does not camp";
-  EXPECT_EQ(r.city(), a_city_bar);
-  r.arrive(city_before);
-  EXPECT_EQ(r.city(), "Move Bravo Cobra");
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra");
   EXPECT_EQ(r.lit(), 1) << "back at the menu with Move lit";
 }
 
-TEST(SeamMoveMode, TheWalkingBarHasNoNotesWithTheJournalOn) {
+TEST(SeamMoveMode, WithTheJournalOnItsNotesIsOnTheMenuBarAndNotTheWalkingOne) {
   const rig r;
   r.arm();
   r.arm("journal");
-  r.arrive(city_before);
-  EXPECT_EQ(r.city(), "Move Bravo Cobra Notes") << "menu mode has it";
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra Notes");
   r.arrive(city_after, 'M');
-  EXPECT_EQ(r.city(), a_city_bar);
-  r.arrive(city_before);
-  EXPECT_EQ(r.city(), "Exit");
+  EXPECT_EQ(r.city(), a_city_bar) << "the journal took its own back";
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Exit");
   r.arrive(city_after, 'E');
   EXPECT_EQ(r.city(), a_city_bar) << "nothing left behind";
+  r.before(wild_before);
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra Notes");
+  r.arrive(wild_after, 'B');
+  EXPECT_EQ(r.wild(), a_wild_bar);
 }
 
-TEST(SeamMoveMode, AnyOtherBarEndsTheWalkAndLightsMove) {
+TEST(SeamMoveMode, AnyOtherBarLightsMoveAgain) {
+  const rig r;
+  r.arm();
+  r.city_call('C', 3);
+  r.before(city_before);
+  EXPECT_EQ(r.lit(), 3) << "Cobra stays lit while the party's bar is up";
+  r.arrive(city_after, 0x47, 1);
+  EXPECT_EQ(r.press(letter_b, camp_segment, camp_return), letter_b);
+  r.before(city_before);
+  EXPECT_EQ(r.lit(), 1) << "after another bar, Move";
+}
+
+TEST(SeamMoveMode, AnyOtherBarEndsTheWalk) {
   const rig r;
   r.arm();
   r.start_walking();
   EXPECT_EQ(r.press(letter_b, camp_segment, camp_return), letter_b);
-  r.arrive(city_before);
-  EXPECT_EQ(r.city(), "Move Bravo Cobra");
-  EXPECT_EQ(r.lit(), 1);
+  r.before(city_before);
+  EXPECT_EQ(r.handed(), "Move Bravo Cobra");
 }
 
 TEST(SeamMoveMode, TheOverheadViewIsLeftForThe3DViewBeforeTheBar) {
   const rig r;
   r.arm();
   r.put_byte(rig::dgroup(), data_overhead, 1);
-  r.arrive(city_before);
+  r.before(city_before);
   EXPECT_EQ(r.byte(rig::dgroup(), data_overhead), 0);
-  EXPECT_EQ(r.city(), a_city_bar) << "the bar waits for the redraw";
+  EXPECT_FALSE(r.handed_the_copy()) << "the bar waits for the redraw";
 }
 
 // --- Keys --------------------------------------------------------------------
@@ -465,6 +557,32 @@ TEST(SeamMoveMode, InMenuModeALetterOffTheBarIsThrownAway) {
   EXPECT_EQ(r.at_the_city_bar(row_3), row_3);
 }
 
+TEST(SeamMoveMode, ReturnTakesTheLitMoveAndTheLitExitThroughBarKeys) {
+  // `bar-keys` turns Return into the lit group's letter, at the same point
+  // and before this piece; the letter is the bar's, so it is left alone.
+  const rig r;
+  r.arm();
+  constexpr std::uint16_t enter_allowed = 0x8F;
+  constexpr std::uint16_t group_count = 0x8E;
+  const auto lay = [&](std::uint8_t groups) {
+    r.put_byte(stack_segment,
+               static_cast<std::uint16_t>(frame_base - enter_allowed), 1);
+    r.put_byte(stack_segment,
+               static_cast<std::uint16_t>(frame_base - group_count), groups);
+    // Group one starts at the bar's first character.
+    r.put_byte(stack_segment,
+               static_cast<std::uint16_t>(frame_base - enter_allowed + 2), 1);
+  };
+  lay(2);
+  r.light(1);
+  EXPECT_EQ(r.press(enter, adventure_segment, city_after, "Move Bravo"),
+            0x1C4D);
+  r.start_walking();
+  lay(1);
+  r.light(1);
+  EXPECT_EQ(r.press(enter, adventure_segment, city_after, "Exit"), 0x1C45);
+}
+
 TEST(SeamMoveMode, InWalkingModeTheArrowsWalkAndEscIsExit) {
   const rig r;
   r.arm();
@@ -475,6 +593,9 @@ TEST(SeamMoveMode, InWalkingModeTheArrowsWalkAndEscIsExit) {
   EXPECT_EQ(r.at_the_city_bar(escape), key_e);
   EXPECT_EQ(r.at_the_city_bar(letter_c), ignored);
   EXPECT_EQ(r.at_the_city_bar(0x1265), 0x1265) << "e is Exit's own";
+  for (const std::uint16_t key : {left, up}) {
+    EXPECT_EQ(r.press(key, adventure_segment, wild_after, "Exit"), key);
+  }
 }
 
 TEST(SeamMoveMode, AnotherCallersKeysAreLeftAlone) {

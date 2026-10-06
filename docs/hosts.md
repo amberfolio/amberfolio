@@ -2080,9 +2080,10 @@ are in §2's table); the page has none, because it takes none.
 digits `8 2 4 6` act as Up, Down, Left, Right, `7 1` as Home and End and
 `9 3` as PgUp and PgDn, whether typed on the keypad or on the number
 row. The card says so once, under every context, and adds that with
-`modern-controls` on the number row's `1` to `8` pick a party member on the
-screens that show the party list (the keypad's digits keep their meaning;
-the seam tells them apart by scan code).
+`modern-controls` on walking is a mode the party's bar starts with `Move`
+and ends with `Exit`, and the number row's `1` to `8` pick a party member at
+the main menu (the keypad's digits keep their meaning; the seam tells them
+apart by scan code).
 
 **How each row was checked.** Driven under SDL's dummy drivers with
 `--press`, reading the screen text and the stills beside them

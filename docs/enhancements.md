@@ -214,8 +214,7 @@ the seam on, **Up and Down step the member too**, as Home and End do. On
 the party-order screen, with a member picked up, they move it up and down
 the order. **The keypad's 8 and 2 do the same** with Num Lock on, at the
 same bars: 8 steps back and 2 steps forward. The number row's 8 and 2 are
-not touched; they are for the hero keys (below), and each keeps its own, so
-the row's 8 picks the eighth member and the keypad's 8 steps back one.
+not touched, and are what the game makes of them.
 
 **At a door.** The bar at a locked or stuck door, camp's Portraits and
 Monsters bar and the save slot bar throw the arrows away, because the game
@@ -354,7 +353,9 @@ did, so the exploring bar can be stepped with the arrows that walk. You
 arrive at the party's bar with **`Move` lit**, in the place `Area` had (in
 the wilderness, in front of `Cast`). There, Left and Right step the
 highlight, Up and Down select the member before or after, Enter takes the
-lit command, and the letters are the game's. **`M`, or Enter on `Move`,
+lit command, and the bar's letters are the game's; a letter that is not on
+the bar does nothing. With the map open over the party list, Up and Down
+do nothing. **`M`, or Enter on `Move`,
 starts walking**: the bar reads `Exit` alone, and the arrows, the keypad
 and the number row walk and turn as the game has them do. **Enter, Esc or
 `E` stop walking** and light `Move` again. A fight, camp, a shop, a

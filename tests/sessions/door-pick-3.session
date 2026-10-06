@@ -5,8 +5,8 @@
 # Right and two Lefts, at the same ticks. The door's bar is not raw: the
 # menu-bar routine throws the arrows and Home and End away, so the seam
 # selects the way the program's own cursor would and draws the party list
-# again with the program's own routine. The 3 is the program's since #479
-# (the number row selects at the main menu only), and the door's bar throws
+# again with the program's own routine. The 3 is the program's (the
+# number row selects at the main menu only), and the door's bar throws
 # it away.
 #
 # It agrees with `door-pick` until the 3 is read at the bar and differs

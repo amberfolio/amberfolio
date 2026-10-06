@@ -52,6 +52,17 @@
 //     the party cursor, which steps the selected member on `G` and `O` and
 //     on anything else goes to the head of the party.
 //
+// **The call's arguments**, at the call instruction: the out-parameter's far
+// pointer on top (`SS:SP`), then five words (raw mode and the bar's
+// colours), then **the bar's far pointer, offset at `SS:SP+14` and segment
+// at `SS:SP+16`**, then the prompt's (`SS:SP+18`). The routine cleans them
+// itself. The prompt is a string temporary in the loop's frame at
+// `BP-0x33`, loaded with the empty string before each call, so only its
+// length byte is read. The bytes after it, down to the out-parameter's
+// neighbours (`BP-0x32` to `BP-0x05`), are used by the loop only for
+// buffers it fills afresh after the call returns (the `Not Here` message,
+// View's, the icon names before the loop).
+//
 // **The bar's highlight** is one byte, `0x6B2B`, a one-based group index
 // that every bar in the program shares (#304). The routine sets it to the
 // group of the command it matched, and `,` and `.` step it.
@@ -65,20 +76,26 @@
 // ------------------
 //
 // **Two points per bar, either side of the call**, the journal's pair
-// (seam_journal.cpp), and the journal's points run first at both:
+// (seam_journal.cpp); the journal's run first at both.
 //
-//   * **Before**, menu mode: `Move` goes in. The city's first group is four
-//     letters and is overwritten with `Move`, its four bytes kept to be put
-//     back; the wilderness gets `Move ` in front of its first group, which
-//     moves every group up one (27 + 5, and the journal's six, is 38 of 40).
-//     Walking mode: the bar becomes `Exit`, its length byte and first four
-//     kept, and the journal does not splice `Notes` onto it
-//     (`modern_controls_walking()`).
-//   * **After**, the bar is put back exactly as it was: the program's string
-//     is the program's outside the one call that drew it. Then the letter:
-//     `M` off the bar starts walking (the program loops on it), and `E` off
-//     the walking bar stops it and is handed back as `-`, which the program
-//     loops on, so the party does not camp.
+//   * **Before**: the bar the call is about to be handed, the program's
+//     string with whatever the journal has appended, is copied into the
+//     loop's free frame at `BP-0x32`, the copy is made the bar of this mode,
+//     and the call's far pointer is aimed at the copy. Menu mode: the city's
+//     first group, four letters, becomes `Move`; the wilderness gets `Move `
+//     in front of its first group, which moves every group up one (27 + 5,
+//     and the journal's six, is 38 of 40). Walking mode: the copy is `Exit`.
+//   * **After**: the letter. `M` off the bar starts walking (the program
+//     loops on it), and `E` off the walking bar stops it and is handed back
+//     as `-`, which the program loops on, so the party does not camp.
+//
+// **The program's string is never written.** The copy is in a local nothing
+// reads, and the pointer to it is an argument the routine pops. So a run
+// the seam is switched off in the middle of, with the bar up, goes on with
+// the program's own bar from the next call, and one switched on in the
+// middle simply does not have the piece's after-point for that call. Whether
+// a call already carries the copy (the point offered again after a batch)
+// is read off the pointer, not remembered.
 //
 // **The highlight, so `Move` and `Exit` are lit when they should be.** Outside
 // the call the byte holds the program's numbering; inside it the bar's. The
@@ -114,10 +131,9 @@
 // as the journal gives its screen back, and the point is offered again.
 //
 // **State**: five words of the seam's own (seam.h "A seam's own few
-// words"): walking, arrived, `Move` lit, which rewrite the bar is carrying,
-// and the highlight it was entered with, plus the bytes a rewrite keeps.
-// They are configuration: `enable()` starts them at zero, which is menu
-// mode with `Move` to be lit.
+// words"): walking, arrived, `Move` lit, which bar this call was handed and
+// the highlight it was entered with. They are configuration: `enable()`
+// starts them at zero, which is menu mode with `Move` to be lit.
 
 #include <array>
 #include <cstdint>
@@ -159,6 +175,13 @@ constexpr std::uint32_t wild_after = 0x0C45;
 
 /// The loop's out-parameter, below its BP: zero is a letter off the bar.
 constexpr std::uint16_t frame_out_flag = 0x04;
+/// Where the copy is made, below the loop's BP: right after the empty
+/// prompt's length byte (`BP-0x33`), with room for a whole bar before the
+/// loop's own bytes at `BP-0x04`.
+constexpr std::uint16_t frame_copy = 0x32;
+/// At the call: where the bar's far pointer is, above SP.
+constexpr std::uint16_t stack_bar_offset = 14;
+constexpr std::uint16_t stack_bar_segment = 16;
 
 /// The two callers, by the instruction after their call.
 constexpr std::array<menu_bar::caller, 2> adventure_callers{{
@@ -222,17 +245,14 @@ constexpr unsigned scratch_walking = 0;
 /// lights `Move`.
 constexpr unsigned scratch_arrived = 1;
 constexpr unsigned scratch_move_lit = 2;
-constexpr unsigned scratch_rewrite = 3;
+constexpr unsigned scratch_handed = 3;
 constexpr unsigned scratch_highlight = 4;
-constexpr unsigned scratch_kept_first = 5;   // two bytes: length, char 1
-constexpr unsigned scratch_kept_second = 6;  // chars 2 and 3
-constexpr unsigned scratch_kept_third = 7;   // char 4
 
-/// Which rewrite a bar is carrying between its two points.
-enum class rewrite : std::uint8_t { none, city_move, wild_move, walking };
+/// Which bar this call was handed, between its two points.
+enum class handed : std::uint8_t { program, menu, walking };
 
-[[nodiscard]] std::uint16_t as_word(rewrite r) noexcept {
-  return static_cast<std::uint16_t>(r);
+[[nodiscard]] std::uint16_t as_word(handed h) noexcept {
+  return static_cast<std::uint16_t>(h);
 }
 
 [[nodiscard]] std::uint16_t data_segment(cpu::processor& cpu,
@@ -245,58 +265,19 @@ enum class rewrite : std::uint8_t { none, city_move, wild_move, walking };
   return static_cast<std::uint16_t>(base + by);
 }
 
-[[nodiscard]] bool holds(cpu::processor& cpu, std::uint16_t ds,
-                         std::uint16_t bar, std::span<const std::uint8_t> word,
-                         unsigned from) {
-  for (unsigned i = 0; i < word.size(); ++i) {
-    if (cpu.read_byte(ds, at(bar, from + i)) != word[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-void put(cpu::processor& cpu, std::uint16_t ds, std::uint16_t bar,
-         std::span<const std::uint8_t> word, unsigned from) {
-  for (unsigned i = 0; i < word.size(); ++i) {
-    cpu.write_byte(ds, at(bar, from + i), word[i]);
-  }
+[[nodiscard]] std::uint8_t low_of(std::uint16_t w) noexcept {
+  return static_cast<std::uint8_t>(w & 0xFFU);
 }
 
 [[nodiscard]] std::uint16_t pair(std::uint8_t low, std::uint8_t high) noexcept {
   return static_cast<std::uint16_t>(low | (high << 8U));
 }
 
-[[nodiscard]] std::uint8_t low_of(std::uint16_t w) noexcept {
-  return static_cast<std::uint8_t>(w & 0xFFU);
-}
-
-[[nodiscard]] std::uint8_t high_of(std::uint16_t w) noexcept {
-  return static_cast<std::uint8_t>(w >> 8U);
-}
-
-/// Keep the length byte and the first four characters of `bar`.
-void keep_head(seam_context& ctx, cpu::processor& cpu, std::uint16_t ds,
-               std::uint16_t bar) {
-  ctx.set_scratch(scratch_kept_first,
-                  pair(cpu.read_byte(ds, bar), cpu.read_byte(ds, at(bar, 1))));
-  ctx.set_scratch(scratch_kept_second, pair(cpu.read_byte(ds, at(bar, 2)),
-                                            cpu.read_byte(ds, at(bar, 3))));
-  ctx.set_scratch(scratch_kept_third, cpu.read_byte(ds, at(bar, 4)));
-}
-
-/// Put back what `keep_head()` kept; `with_length` false leaves the length.
-void put_head_back(seam_context& ctx, cpu::processor& cpu, std::uint16_t ds,
-                   std::uint16_t bar, bool with_length) {
-  const std::uint16_t first = ctx.scratch(scratch_kept_first);
-  const std::uint16_t second = ctx.scratch(scratch_kept_second);
-  if (with_length) {
-    cpu.write_byte(ds, bar, low_of(first));
+void put(cpu::processor& cpu, std::uint16_t segment, std::uint16_t bar,
+         std::span<const std::uint8_t> word, unsigned from) {
+  for (unsigned i = 0; i < word.size(); ++i) {
+    cpu.write_byte(segment, at(bar, from + i), word[i]);
   }
-  cpu.write_byte(ds, at(bar, 1), high_of(first));
-  cpu.write_byte(ds, at(bar, 2), low_of(second));
-  cpu.write_byte(ds, at(bar, 3), high_of(second));
-  cpu.write_byte(ds, at(bar, 4), low_of(ctx.scratch(scratch_kept_third)));
 }
 
 // --- Before the bar goes out -----------------------------------------------
@@ -319,26 +300,17 @@ void put_head_back(seam_context& ctx, cpu::processor& cpu, std::uint16_t ds,
       nothing);
 }
 
-/// The walking bar: `Exit`, lit.
-void walking_bar(seam_context& ctx, cpu::processor& cpu, std::uint16_t ds,
-                 std::uint16_t bar) {
-  const std::uint8_t length = cpu.read_byte(ds, bar);
-  if (length < word_length || length > bar_capacity) {
-    ctx.decline(seam_reason::point_not_recognized);
-    return;
+/// The bar of this mode, made in the copy at `SS:copy` from the program's
+/// bar at `DS:bar`. False, and the copy not to be used, if the program's
+/// string is not the shape the facts say.
+[[nodiscard]] bool make_the_bar(cpu::processor& cpu, std::uint16_t ds,
+                                std::uint16_t bar, std::uint16_t ss,
+                                std::uint16_t copy, bool city, bool walking) {
+  if (walking) {
+    cpu.write_byte(ss, copy, static_cast<std::uint8_t>(word_length));
+    put(cpu, ss, copy, exit_word, 1);
+    return true;
   }
-  keep_head(ctx, cpu, ds, bar);
-  cpu.write_byte(ds, bar, static_cast<std::uint8_t>(word_length));
-  put(cpu, ds, bar, exit_word, 1);
-  ctx.set_scratch(scratch_rewrite, as_word(rewrite::walking));
-  ctx.set_scratch(scratch_highlight, cpu.read_byte(ds, data_bar_highlight));
-  cpu.write_byte(ds, data_bar_highlight, 1);
-}
-
-/// The menu bar: `Move` first. False, and the bar untouched, if the string
-/// is not the shape the facts say.
-[[nodiscard]] bool menu_bar(seam_context& ctx, cpu::processor& cpu,
-                            std::uint16_t ds, std::uint16_t bar, bool city) {
   const std::uint8_t length = cpu.read_byte(ds, bar);
   if (city) {
     // The first group is the overhead view's: a capital and three more,
@@ -348,22 +320,22 @@ void walking_bar(seam_context& ctx, cpu::processor& cpu, std::uint16_t ds,
         cpu.read_byte(ds, at(bar, word_length + 1U)) != ' ') {
       return false;
     }
-    keep_head(ctx, cpu, ds, bar);
-    put(cpu, ds, bar, move_word, 1);
-    ctx.set_scratch(scratch_rewrite, as_word(rewrite::city_move));
+    for (unsigned nth = 0; nth <= length; ++nth) {
+      cpu.write_byte(ss, at(copy, nth), cpu.read_byte(ds, at(bar, nth)));
+    }
+    put(cpu, ss, copy, move_word, 1);
     return true;
   }
   if (length == 0 || length + inserted_length > bar_capacity) {
     return false;
   }
-  for (unsigned nth = length; nth >= 1; --nth) {
-    cpu.write_byte(ds, at(bar, nth + inserted_length),
+  cpu.write_byte(ss, copy, static_cast<std::uint8_t>(length + inserted_length));
+  put(cpu, ss, copy, move_word, 1);
+  cpu.write_byte(ss, at(copy, inserted_length), ' ');
+  for (unsigned nth = 1; nth <= length; ++nth) {
+    cpu.write_byte(ss, at(copy, nth + inserted_length),
                    cpu.read_byte(ds, at(bar, nth)));
   }
-  put(cpu, ds, bar, move_word, 1);
-  cpu.write_byte(ds, at(bar, inserted_length), ' ');
-  cpu.write_byte(ds, bar, static_cast<std::uint8_t>(length + inserted_length));
-  ctx.set_scratch(scratch_rewrite, as_word(rewrite::wild_move));
   return true;
 }
 
@@ -374,26 +346,46 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
-  if (ctx.scratch(scratch_rewrite) != as_word(rewrite::none)) {
-    return;  // offered again after a batch: the bar is already this piece's.
+  const cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t sp = regs[cpu::reg16::sp];
+  const auto copy =
+      static_cast<std::uint16_t>(regs[cpu::reg16::bp] - frame_copy);
+  const std::uint16_t handed_offset =
+      cpu.read_word(ss, at(sp, stack_bar_offset));
+  const std::uint16_t handed_segment =
+      cpu.read_word(ss, at(sp, stack_bar_segment));
+  if (handed_offset == copy && handed_segment == ss) {
+    return;  // offered again after a batch: the call carries the copy already.
+  }
+  ctx.set_scratch(scratch_handed, as_word(handed::program));
+  if (handed_offset != bar || handed_segment != ds) {
+    ctx.decline(seam_reason::point_not_recognized);
+    return;
   }
   if (city && leave_the_overhead_view(box, ctx, ds)) {
     return;
   }
-  if (ctx.scratch(scratch_walking) != 0) {
-    walking_bar(ctx, cpu, ds, bar);
+  const bool walking = ctx.scratch(scratch_walking) != 0;
+  if (!make_the_bar(cpu, ds, bar, ss, copy, city, walking)) {
+    ctx.decline(seam_reason::point_not_recognized);
     return;
   }
+  cpu.write_word(ss, at(sp, stack_bar_offset), copy);
+  cpu.write_word(ss, at(sp, stack_bar_segment), ss);
+
+  const std::uint8_t entered = cpu.read_byte(ds, data_bar_highlight);
+  ctx.set_scratch(scratch_highlight, entered);
+  if (walking) {
+    ctx.set_scratch(scratch_handed, as_word(handed::walking));
+    cpu.write_byte(ds, data_bar_highlight, 1);
+    return;
+  }
+  ctx.set_scratch(scratch_handed, as_word(handed::menu));
   if (ctx.scratch(scratch_arrived) == 0) {
     ctx.set_scratch(scratch_arrived, 1);
     ctx.set_scratch(scratch_move_lit, 1);
   }
-  const std::uint8_t entered = cpu.read_byte(ds, data_bar_highlight);
-  if (!menu_bar(ctx, cpu, ds, bar, city)) {
-    ctx.decline(seam_reason::point_not_recognized);
-    return;
-  }
-  ctx.set_scratch(scratch_highlight, entered);
   std::uint8_t lit = entered;
   if (ctx.scratch(scratch_move_lit) != 0) {
     lit = 1;
@@ -405,53 +397,12 @@ void bar_before(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
 
 // --- After it comes back ---------------------------------------------------
 
-/// Put the bar back as it was; false if it was carrying nothing of this
-/// piece's.
-[[nodiscard]] rewrite put_the_bar_back(seam_context& ctx, cpu::processor& cpu,
-                                       std::uint16_t ds, std::uint16_t bar) {
-  const auto carried =
-      static_cast<rewrite>(low_of(ctx.scratch(scratch_rewrite)));
-  ctx.set_scratch(scratch_rewrite, as_word(rewrite::none));
-  switch (carried) {
-    case rewrite::city_move:
-      if (holds(cpu, ds, bar, move_word, 1)) {
-        put_head_back(ctx, cpu, ds, bar, false);
-      }
-      break;
-    case rewrite::wild_move: {
-      const std::uint8_t length = cpu.read_byte(ds, bar);
-      if (length <= inserted_length || length > bar_capacity ||
-          !holds(cpu, ds, bar, move_word, 1)) {
-        break;
-      }
-      for (unsigned nth = inserted_length + 1U; nth <= length; ++nth) {
-        cpu.write_byte(ds, at(bar, nth - inserted_length),
-                       cpu.read_byte(ds, at(bar, nth)));
-      }
-      cpu.write_byte(ds, bar,
-                     static_cast<std::uint8_t>(length - inserted_length));
-      break;
-    }
-    case rewrite::walking:
-      if (cpu.read_byte(ds, bar) == word_length &&
-          holds(cpu, ds, bar, exit_word, 1)) {
-        put_head_back(ctx, cpu, ds, bar, true);
-      }
-      break;
-    case rewrite::none:
-      break;
-  }
-  return carried;
-}
-
-void bar_after(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
+void bar_after(machine& box, seam_context& ctx, bool city) {
   cpu::processor& cpu = box.processor();
+  const auto carried = static_cast<handed>(low_of(ctx.scratch(scratch_handed)));
+  ctx.set_scratch(scratch_handed, as_word(handed::program));
   const std::uint16_t ds = data_segment(cpu, ctx);
-  if (ds == 0) {
-    return;
-  }
-  const rewrite carried = put_the_bar_back(ctx, cpu, ds, bar);
-  if (carried == rewrite::none) {
+  if (ds == 0 || carried == handed::program) {
     return;
   }
 
@@ -464,7 +415,7 @@ void bar_after(machine& box, seam_context& ctx, std::uint16_t bar, bool city) {
   const auto entered =
       static_cast<std::uint8_t>(ctx.scratch(scratch_highlight));
 
-  if (carried == rewrite::walking) {
+  if (carried == handed::walking) {
     cpu.write_byte(ds, data_bar_highlight, entered);
     if (off_the_bar && letter == exit_letter) {
       ctx.set_scratch(scratch_walking, 0);
@@ -500,13 +451,13 @@ void at_city_before(machine& box, seam_context& ctx) {
   bar_before(box, ctx, data_city_bar, true);
 }
 void at_city_after(machine& box, seam_context& ctx) {
-  bar_after(box, ctx, data_city_bar, true);
+  bar_after(box, ctx, true);
 }
 void at_wild_before(machine& box, seam_context& ctx) {
   bar_before(box, ctx, data_wild_bar, false);
 }
 void at_wild_after(machine& box, seam_context& ctx) {
-  bar_after(box, ctx, data_wild_bar, false);
+  bar_after(box, ctx, false);
 }
 
 // --- The keys --------------------------------------------------------------
@@ -632,10 +583,6 @@ static_assert(move_mode_point_table.size() == move_mode_point_count);
 
 std::span<const seam_point> move_mode_points() noexcept {
   return move_mode_point_table;
-}
-
-bool move_mode_walking(const machine& box) noexcept {
-  return box.seams().scratch(modern_controls_id, scratch_walking) != 0;
 }
 
 }  // namespace amberfolio::machine
