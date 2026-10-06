@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The select-yellow piece of `modern-controls` (seam_modern_controls.cpp):
-// every selection the player can move is drawn in yellow, and a command's key
-// letter stays white inside it (#453).
+// every selection the player can move is drawn as a yellow block with its
+// letters cut out of it, and a command's key letter as a white one (#453,
+// #483).
 //
 //
 // What the program does, stated as facts
@@ -47,6 +48,17 @@
 // routine reads the low byte and nothing else. So does this seam: a point
 // compares and rewrites the low byte of such a word and leaves the rest.
 //
+// **Every glyph goes through the blitter** (seam_font.cpp), and the string
+// routine is a loop over it, in the blitter's own paragraph. On the EGA the
+// blitter takes each of the glyph's eight rows into DL and stores it to each
+// page, once for every plane the colour lights; a plane the colour does not
+// light it stores as zero. **So a cell is opaque**: whatever was in it is
+// gone, and a row stored inverted draws the paper in the colour and the
+// letter in black. The blitter and the string routine keep BP frames, with
+// the far return address above the saved BP and the arguments above that,
+// so from a store instruction the frames lead back to the call that drew
+// the glyph.
+//
 //
 // What the seam does
 // ------------------
@@ -77,10 +89,25 @@
 // the colour the caller's frame says it passed. A colour is never
 // rewritten to be what it already is.
 //
-// **Two other seams look at this one.** `menu-cursor` draws a row of its
-// own on the main menu and asks `select_yellow_on()` which colours to use
-// (docs/seams.md §10). The journal's listing draws its cursor row the same
-// way.
+// **Inverts every glyph of a selection** (points 8 and 9, the blitter's two
+// row stores, #483). A colour alone is not a selection: yellow is also a
+// hurt character's hit points and the prompt colour of a few questions,
+// and white is every key letter. So the store follows the frames back to
+// the call that drew its glyph, and inverts DL when that call is one of the
+// draws above with the colour this seam gave it: a bar character in the lit
+// word, the pick-list's row, the roster's selected member, Modify's
+// highlighted score. The colours stay what the points above made them, so
+// the lit word is a yellow block and its key letter a white one. A face's
+// row is in DL by then: the faces' points are the instructions after the
+// fetches, which run before the stores.
+//
+// **Two other seams draw a selection of their own.** `menu-cursor` draws
+// the main menu's cursor row, and the journal its listing's cursor row and
+// the lit word of its bar, through the program's string routine in a batch
+// (seam.h). Those calls return to the batch's own address, and each sets
+// `selection_mark` in the high half of the colour word it pushes: the string
+// routine reads the low byte, so the program never sees it, and the store
+// inverts what a marked call draws (docs/seams.md §10).
 //
 //
 // The fidelity claim (docs/seams.md §8.5)
@@ -108,11 +135,13 @@
 #include <cstdint>
 #include <string_view>
 
+#include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/seam.h"
+#include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
 #include "seam_menu_bar.h"
 
@@ -160,6 +189,29 @@ constexpr std::uint32_t hit_points_chosen = 0x153F;
 
 /// Overlay 19: the instruction after an ability score's colour is chosen.
 constexpr std::uint32_t score_chosen = 0x0918;
+
+/// The resident image: the blitter's two EGA row stores, one per page, each
+/// the instruction that writes DL to the display (seam_font.cpp has the
+/// fetches before them).
+constexpr std::array<std::uint32_t, 2> row_store_offsets{0x74A2, 0x74C8};
+
+// --- The calls a store follows back to --------------------------------------
+
+/// Every call below is a direct far call, five bytes, so the return address
+/// a callee's frame holds is the call's offset and five.
+constexpr std::uint32_t far_call = 5;
+
+/// The string routine's call into the blitter, as the image offset of the
+/// instruction after it: the routine pushes CS and calls near, so the
+/// blitter's frame holds a far return like any other.
+constexpr std::uint32_t string_glyph_return = 0x7724;
+
+/// The string calls of Modify's two score draws: overlay 19's, one for the
+/// score and one for exceptional strength's percentage, and the resident hit
+/// points'.
+constexpr std::uint32_t score_string_call = 0x0976;
+constexpr std::uint32_t percentage_string_call = 0x0A41;
+constexpr std::uint32_t hit_points_string_call = 0x155E;
 
 // --- The frames the points read ---------------------------------------------
 
@@ -217,6 +269,17 @@ constexpr std::uint16_t roster_member = 4;
 constexpr std::uint16_t score_highlighted = 6;
 constexpr std::uint16_t sheet_local_colour = 0x2B;
 constexpr std::uint16_t hit_points_local_colour = 1;
+
+/// A callee's frame, above its BP: the caller's BP, the far return address
+/// (offset, then segment) and the first of the arguments, the last pushed.
+constexpr std::uint16_t frame_saved_bp = 0;
+constexpr std::uint16_t frame_return_ip = 2;
+constexpr std::uint16_t frame_return_cs = 4;
+constexpr std::uint16_t frame_arguments = 6;
+
+/// The string routine's colour, a word in its frame: the third argument
+/// from the top, after the string's offset and segment.
+constexpr std::uint16_t string_frame_colour = frame_arguments + string_colour;
 
 // --- Reading the machine ----------------------------------------------------
 
@@ -516,9 +579,109 @@ void at_hit_points(machine& box, seam_context& ctx) {
   choose_score_colour(box, ctx, hit_points_local_colour, true);
 }
 
+// --- Points 8 and 9: the blitter's stores ------------------------------------
+//
+// A store has nothing to decline: every glyph the program draws passes
+// through it, and one that is not a selection is the ordinary case. It looks
+// at frames and writes DL, and nothing else.
+
+/// The far return address in the frame at SS:`frame`, as an address.
+[[nodiscard]] std::uint32_t return_of(const stack& s, std::uint16_t frame) {
+  const std::uint16_t ip = s.cpu.read_word(
+      s.ss, static_cast<std::uint16_t>(frame + frame_return_ip));
+  const std::uint16_t cs = s.cpu.read_word(
+      s.ss, static_cast<std::uint16_t>(frame + frame_return_cs));
+  return cpu::physical_address(cs, ip);
+}
+
+/// Where the manager says the module whose load segment is kept at `word`
+/// starts now, or zero while it is not loaded. Zero matches no return: no
+/// caller's code is at the bottom of memory.
+[[nodiscard]] std::uint32_t module_start(cpu::processor& cpu,
+                                         const seam_context& ctx,
+                                         std::uint32_t word) {
+  const std::uint16_t segment = menu_bar::loaded_at(cpu, ctx, word);
+  return segment == 0 ? 0 : cpu::physical_address(segment, 0);
+}
+
+/// Whether the call returning to `from` is one in `module` at `offset`.
+[[nodiscard]] constexpr bool returns_to(std::uint32_t from,
+                                        std::uint32_t module,
+                                        std::uint32_t offset) noexcept {
+  return module != 0 && from == module + offset + far_call;
+}
+
+/// Whether the glyph the blitter is storing, whose frame is at SS:BP, is a
+/// character of a selection.
+[[nodiscard]] bool draws_a_selection(const stack& s, const seam_context& ctx) {
+  const std::uint32_t from = return_of(s, s.bp);
+  const std::uint32_t bar = module_start(s.cpu, ctx, menu_bar::load_segment_at);
+
+  // A bar's character, drawn by the bar leaf a glyph at a time. The call's
+  // words are the blitter's arguments and the leaf's frame is the one the
+  // blitter saved, so the point's own reading of the bar answers.
+  if (returns_to(from, bar, bar_group_call) ||
+      returns_to(from, bar, bar_letter_call) ||
+      returns_to(from, bar, bar_rest_call)) {
+    const stack call{.cpu = s.cpu,
+                     .ss = s.ss,
+                     .sp = static_cast<std::uint16_t>(s.bp + frame_arguments),
+                     .bp = s.cpu.read_word(s.ss, static_cast<std::uint16_t>(
+                                                     s.bp + frame_saved_bp))};
+    bar_call read;
+    return read_bar_call(call, read) && read.in_word && !read.one_command &&
+           read.color_hi != 0;
+  }
+
+  // Anything else is a string, drawn by the string routine.
+  if (from != ctx.image_base() + string_glyph_return) {
+    return false;
+  }
+  const std::uint16_t drawer =
+      s.cpu.read_word(s.ss, static_cast<std::uint16_t>(s.bp + frame_saved_bp));
+  const std::uint16_t colour = s.cpu.read_word(
+      s.ss, static_cast<std::uint16_t>(drawer + string_frame_colour));
+  const std::uint32_t caller = return_of(s, drawer);
+
+  // A seam's own selection, drawn in a batch and marked as one.
+  if (caller == cpu::physical_address(service::stub_segment,
+                                      service::call_return_offset)) {
+    return (colour & selection_mark) == selection_mark;
+  }
+  // The program's, in the yellow the points above gave it.
+  if ((colour & 0xFFU) != colour_yellow) {
+    return false;
+  }
+  if (returns_to(caller, bar, list_row_call) ||
+      returns_to(caller, ctx.image_base(), roster_selected_call)) {
+    return true;
+  }
+  const std::uint32_t sheet = module_start(s.cpu, ctx, sheet_load_segment_at);
+  if (returns_to(caller, sheet, score_string_call) ||
+      returns_to(caller, sheet, percentage_string_call) ||
+      returns_to(caller, ctx.image_base(), hit_points_string_call)) {
+    // Yellow is also a hurt character's hit points: the draw says whether
+    // it is the highlighted one.
+    const std::uint16_t score = s.cpu.read_word(
+        s.ss, static_cast<std::uint16_t>(drawer + frame_saved_bp));
+    return s.cpu.read_byte(s.ss, static_cast<std::uint16_t>(
+                                     score + score_highlighted)) != 0;
+  }
+  return false;
+}
+
+void at_row_store(machine& box, seam_context& ctx) {
+  const stack s = stack_of(box);
+  if (!draws_a_selection(s, ctx)) {
+    return;
+  }
+  cpu::registers& regs = box.processor().regs();
+  regs.set(cpu::reg8::dl, static_cast<std::uint8_t>(~regs.get(cpu::reg8::dl)));
+}
+
 // --- The definition ---------------------------------------------------------
 
-constexpr std::array<seam_point, 7> select_yellow_point_table{
+constexpr std::array<seam_point, 9> select_yellow_point_table{
     {{.module = menu_bar::module,
       .offset = bar_group_call,
       .run = &at_bar_group},
@@ -534,9 +697,17 @@ constexpr std::array<seam_point, 7> select_yellow_point_table{
      {.module = menu_bar::module,
       .offset = bar_letter_call,
       .run = &at_bar_letter},
-     {.module = menu_bar::module,
-      .offset = bar_rest_call,
-      .run = &at_bar_rest}}};
+     {.module = menu_bar::module, .offset = bar_rest_call, .run = &at_bar_rest},
+     // The stores run inside batches too: the roster is given back through
+     // one, and the seams' own selections are drawn in one.
+     {.module = resident_image,
+      .offset = row_store_offsets[0],
+      .run = &at_row_store,
+      .inside_calls = true},
+     {.module = resident_image,
+      .offset = row_store_offsets[1],
+      .run = &at_row_store,
+      .inside_calls = true}}};
 static_assert(select_yellow_point_table.size() == select_yellow_point_count);
 
 }  // namespace

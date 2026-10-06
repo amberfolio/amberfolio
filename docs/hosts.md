@@ -2058,8 +2058,8 @@ builds it at every paint.
 
 **Beside it, the controls page.** `page/controls.html`, linked from the
 box, lists every controls improvement by screen, the enhancement each one
-needs and what each trades (#448), and the one look, the selection in yellow
-(#453); every one is the single `modern-controls` seam (#473), and the page
+needs and what each trades (#448), and the one look, the selection as a
+yellow block (#453, #483); every one is the single `modern-controls` seam (#473), and the page
 says so in its legend. It is the dev page's furniture, served with it and
 not released, like `index.html`; the keys per screen stay the card's.
 

@@ -63,9 +63,11 @@
 //     cursor over the **enabled** commands, in the order the menu draws
 //     them, wrapping at both ends. Disabled commands are not drawn and are
 //     skipped. The cursor is drawn by the program's own string routine: the
-//     first letter of the command it moved to in white and the rest of the
-//     word in yellow, the look `select-yellow` gives every selection
-//     (docs/seams.md §10). The word it left is put back in the two colours
+//     first letter of the command it moved to as a white block and the
+//     rest of the row as a yellow one, the look `select-yellow` gives every
+//     selection: the colours are the call's, and `selection_mark` in each
+//     colour word is what has `select-yellow` invert the glyphs (docs/seams.md
+//     §10). The word it left is put back in the two colours
 //     the menu draws it in. The key is then replaced by a character the
 //     routine ignores, which keeps it waiting (the batch that draws offers
 //     the point again, and the key must not be moved on twice).
@@ -135,8 +137,8 @@
 // the program's there), and nothing here is done for a screen other than
 // the main menu: the pick-lists' Up and Down are `list-arrows`.
 //
-// The row is yellow with a white key. The cursor's state is the enable byte,
-// as before.
+// The row is a yellow block with a white key. The cursor's state is the
+// enable byte, as before.
 
 #include <array>
 #include <cstddef>
@@ -435,11 +437,17 @@ struct menu_reading {
 }
 
 /// Draw the word `row` stands for the way the menu draws it: the first
-/// letter in the letter's colour, the rest in `rest`.
+/// letter white and the rest green; or, for the cursor's row, as a
+/// selection (`selection_mark`, #483): the letter a white block and the
+/// rest a yellow one.
 [[nodiscard]] bool draw_word(seam_context& ctx, cpu::processor& cpu,
                              std::uint16_t image, std::uint16_t ds,
                              const menu_reading& menu, std::uint8_t row,
-                             std::uint16_t rest) {
+                             bool selected) {
+  const std::uint16_t mark = selected ? selection_mark : 0;
+  const auto letter = static_cast<std::uint16_t>(colour_letter | mark);
+  const auto rest = static_cast<std::uint16_t>(
+      (selected ? colour_selected : colour_rest) | mark);
   const std::uint8_t record = menu.record[row];
   const std::uint8_t length = text_length(cpu, ds, record);
   if (length == 0) {
@@ -468,7 +476,7 @@ struct menu_reading {
                        tail_segment, tail_offset)) {
     return false;
   }
-  if (!draw(ctx, image, screen_row, letter_column, colour_letter, head_segment,
+  if (!draw(ctx, image, screen_row, letter_column, letter, head_segment,
             head_offset)) {
     return false;
   }
@@ -562,9 +570,9 @@ void at_key_read(machine& box, seam_context& ctx) {
   // before the one it leaves is put back.
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
   const bool was_drawn = lit != menu.shown;
-  if (!draw_word(ctx, cpu, image, ds, menu, to, colour_selected) ||
+  if (!draw_word(ctx, cpu, image, ds, menu, to, true) ||
       (was_drawn && lit != to &&
-       !draw_word(ctx, cpu, image, ds, menu, lit, colour_rest))) {
+       !draw_word(ctx, cpu, image, ds, menu, lit, false))) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }
@@ -623,7 +631,7 @@ void at_menu_drawn(machine& box, seam_context& ctx) {
     return;
   }
   const auto image = static_cast<std::uint16_t>(ctx.image_base() >> 4U);
-  if (!draw_word(ctx, cpu, image, ds, menu, 0, colour_selected)) {
+  if (!draw_word(ctx, cpu, image, ds, menu, 0, true)) {
     ctx.decline(seam_reason::point_not_recognized);
     return;
   }

@@ -67,16 +67,16 @@ TEST(SeamModernControls, IsASettingOnTheBaselineEditionAndNothingElse) {
 TEST(SeamModernControls,
      HasTheSevenPiecesPointsInTheOrderTheyWereRegisteredIn) {
   // list-arrows 3, bar-keys 1, menu-cursor 2, hero-keys 5, edit-keys 1,
-  // select-yellow 7, move-mode 5. Where several pieces have a point at one
+  // select-yellow 9, move-mode 5. Where several pieces have a point at one
   // instruction the engine offers it in table order, so the order is
   // behaviour.
   const seam_definition& s = definition();
-  ASSERT_EQ(s.points.size(), 24u);
+  ASSERT_EQ(s.points.size(), 26u);
 
   // The menu-bar routine's key read, overlay 25 `0x0572`: five pieces
   // listen at it, the arrows' piece first and the party bar's move mode
   // last.
-  constexpr std::array<std::size_t, 5> key_read{2, 3, 4, 6, 23};
+  constexpr std::array<std::size_t, 5> key_read{2, 3, 4, 6, 25};
   for (const std::size_t at : key_read) {
     EXPECT_EQ(s.points[at].offset, 0x0572u) << at;
     EXPECT_FALSE(s.points[at].module.is_resident_image()) << at;
@@ -86,15 +86,18 @@ TEST(SeamModernControls,
   // selection's.
   EXPECT_TRUE(s.points[11].module.is_resident_image());
   EXPECT_EQ(s.points[11].offset, 0x7AC0u);
-  // The selection's colours: the bar leaf's glyph call first.
+  // The selection's colours: the bar leaf's glyph call first, and the
+  // blitter's two row stores last.
   EXPECT_EQ(s.points[12].offset, 0x0273u);
+  EXPECT_EQ(s.points[19].offset, 0x74A2u);
+  EXPECT_EQ(s.points[20].offset, 0x74C8u);
   // And the move mode's two pairs around the party bar's two calls, in the
   // adventuring loop's module.
   constexpr std::array<std::uint32_t, 4> party_bar{0x09D0, 0x09D5, 0x0C40,
                                                    0x0C45};
   for (std::size_t i = 0; i < party_bar.size(); ++i) {
-    EXPECT_EQ(s.points[19 + i].offset, party_bar[i]) << i;
-    EXPECT_EQ(s.points[19 + i].module.load_segment_at, 0x730u) << i;
+    EXPECT_EQ(s.points[21 + i].offset, party_bar[i]) << i;
+    EXPECT_EQ(s.points[21 + i].module.load_segment_at, 0x730u) << i;
   }
 }
 
