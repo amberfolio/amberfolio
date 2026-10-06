@@ -19,7 +19,7 @@
 //   * `edit-keys` (seam_edit_keys.cpp): an extended key never types a letter
 //     in the line editor.
 //   * `select-yellow` (seam_select_yellow.cpp): a selection the player can
-//     move is yellow, and a command's key letter stays white inside it.
+//     move is a yellow block, and a command's key letter a white one.
 //   * `move-mode` (seam_move_mode.cpp): on the party's own bar, walking is
 //     a mode that `Move` starts and `Exit` ends, so Left and Right step the
 //     bar; `Area` is gone, the automap being the overhead view (#479).
@@ -47,7 +47,7 @@
 //
 // The one thing a merged seam cannot be is *idle*: three of the pieces draw
 // as soon as what they draw is on the screen (the menu's cursor, the
-// roster's numbers, a yellow highlight), so a run with the seam on differs
+// roster's numbers, a highlight's block), so a run with the seam on differs
 // from the run with it off at the first main menu. The session library's
 // pair for it is a `contrast`, as the faces' are (tests/sessions/README.md).
 
@@ -101,7 +101,7 @@ const seam_definition& modern_controls_seam() noexcept {
       .about =
           "arrows, Enter and Esc work at the game's lists, bars and menus, "
           "walking is a mode the party's bar starts and ends, the main menu "
-          "has a cursor, and a selection is yellow",
+          "has a cursor, and a selection is a yellow block",
       .fingerprints = modern_controls_binaries,
       .points = points.point,
       .schema = seam_schema_version};

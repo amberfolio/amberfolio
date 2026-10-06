@@ -109,6 +109,13 @@ constexpr std::uint16_t white = 0x0F;
 constexpr std::uint16_t green = 0x0A;
 constexpr std::uint16_t yellow = 0x0E;
 
+/// A selection's colours: the mark in the high half of the word is what
+/// has `select-yellow` draw the row as blocks (#483). The string routine
+/// reads the low byte, so the program sees white and yellow.
+constexpr std::uint16_t mark = 0x8000;
+constexpr std::uint16_t lit_white = white | mark;
+constexpr std::uint16_t lit_yellow = yellow | mark;
+
 /// The loop's call, from the top of the stack: the out-parameter, the
 /// animation flag, raw mode, both colours, the prompt's, and the bar.
 constexpr std::uint16_t loop_data_bar = 0x05F0;
@@ -478,9 +485,9 @@ TEST(SeamMenuCursor, LightsTheFirstCommandAsSoonAsTheMenuIsDrawn) {
 
   r.menu_drawn();
   EXPECT_EQ(r.calls(),
-            (std::vector<drawn>{{column_letter, row_zero, white, "C"},
-                                {column_rest, row_zero, yellow, "argo"}}))
-      << "the key white and the rest of the word yellow";
+            (std::vector<drawn>{{column_letter, row_zero, lit_white, "C"},
+                                {column_rest, row_zero, lit_yellow, "argo"}}))
+      << "the key a white block and the rest of the word a yellow one";
   EXPECT_EQ(r.cursor_byte(), 2) << "two, and the row it is on";
 }
 
@@ -497,15 +504,15 @@ TEST(SeamMenuCursor, LightsTheFirstCommandOfAMenuWithNoPartyToo) {
   EXPECT_EQ(r.byte(data_segment, rig::enable_at(record_drop)), 0);
 }
 
-TEST(SeamMenuCursor, TheCursorRowIsYellowWithAWhiteKey) {
+TEST(SeamMenuCursor, TheCursorRowIsAYellowBlockWithAWhiteKey) {
   const rig r;
   r.arm();
   r.show({0, 1, 2, 3});
 
   r.menu_drawn();
   EXPECT_EQ(r.calls(),
-            (std::vector<drawn>{{column_letter, row_zero, white, "C"},
-                                {column_rest, row_zero, yellow, "argo"}}));
+            (std::vector<drawn>{{column_letter, row_zero, lit_white, "C"},
+                                {column_rest, row_zero, lit_yellow, "argo"}}));
   EXPECT_EQ(r.cursor_byte(), 2);
 }
 
@@ -536,7 +543,8 @@ TEST(SeamMenuCursor, PutsTheCursorBackWhenTheLoopHasRedrawnTheMenu) {
   r.show({0, 1, 2, 3});
   r.menu_drawn();
   EXPECT_EQ(r.cursor_byte(), 2) << "back on the first command";
-  EXPECT_EQ(r.calls().back(), (drawn{column_rest, row_zero, yellow, "argo"}));
+  EXPECT_EQ(r.calls().back(),
+            (drawn{column_rest, row_zero, lit_yellow, "argo"}));
 }
 
 TEST(SeamMenuCursor, ReturnTakesTheFirstCommandWithoutAnyOtherKeyPressed) {
@@ -561,14 +569,14 @@ TEST(SeamMenuCursor, TheFirstPressMovesTheCursorOffTheFirstCommand) {
 
   const std::vector<drawn> seen = r.calls();
   ASSERT_EQ(seen.size(), 2u + 4u + 4u);
-  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero + 1, white, "D"}));
-  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero + 1, yellow, "une"}));
+  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero + 1, lit_white, "D"}));
+  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero + 1, lit_yellow, "une"}));
   EXPECT_EQ(seen[4], (drawn{column_letter, row_zero, white, "C"}))
       << "the first, put back as the menu draws it";
   EXPECT_EQ(seen[5], (drawn{column_rest, row_zero, green, "argo"}));
 }
 
-TEST(SeamMenuCursor, TheMovingCursorIsYellowToo) {
+TEST(SeamMenuCursor, TheMovingCursorIsABlockToo) {
   const rig r;
   r.arm();
   r.show({0, 1, 2, 3});
@@ -577,8 +585,8 @@ TEST(SeamMenuCursor, TheMovingCursorIsYellowToo) {
 
   const std::vector<drawn> seen = r.calls();
   ASSERT_EQ(seen.size(), 2u + 4u);
-  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero + 1, white, "D"}));
-  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero + 1, yellow, "une"}));
+  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero + 1, lit_white, "D"}));
+  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero + 1, lit_yellow, "une"}));
   EXPECT_EQ(seen[4], (drawn{column_letter, row_zero, white, "C"}));
   EXPECT_EQ(seen[5], (drawn{column_rest, row_zero, green, "argo"}));
 }
@@ -591,7 +599,7 @@ TEST(SeamMenuCursor, ARowOfOneLetterIsLitWithNoRest) {
 
   r.menu_drawn();
   EXPECT_EQ(r.calls(),
-            (std::vector<drawn>{{column_letter, row_zero, white, "C"}}));
+            (std::vector<drawn>{{column_letter, row_zero, lit_white, "C"}}));
 }
 
 TEST(SeamMenuCursor, TheLoopsPointDeclinesACallThatIsNotTheMenusBar) {
@@ -712,9 +720,9 @@ TEST(SeamMenuCursor, DownFromNothingMovesToTheSecondCommandShown) {
   r.show({0, 1, 2, 3});
 
   EXPECT_EQ(r.press({down}), placeholder);
-  EXPECT_EQ(r.calls(),
-            (std::vector<drawn>{{column_letter, row_zero + 1, white, "D"},
-                                {column_rest, row_zero + 1, yellow, "une"}}));
+  EXPECT_EQ(r.calls(), (std::vector<drawn>{
+                           {column_letter, row_zero + 1, lit_white, "D"},
+                           {column_rest, row_zero + 1, lit_yellow, "une"}}));
   EXPECT_EQ(r.cursor_byte(), 3) << "two, and the row it is on";
 }
 
@@ -724,9 +732,9 @@ TEST(SeamMenuCursor, UpFromNothingWrapsToTheLastCommandShown) {
   r.show({0, 1, 2, 3});
 
   EXPECT_EQ(r.press({up}), placeholder);
-  EXPECT_EQ(r.calls(),
-            (std::vector<drawn>{{column_letter, row_zero + 3, white, "T"},
-                                {column_rest, row_zero + 3, yellow, "ide"}}));
+  EXPECT_EQ(r.calls(), (std::vector<drawn>{
+                           {column_letter, row_zero + 3, lit_white, "T"},
+                           {column_rest, row_zero + 3, lit_yellow, "ide"}}));
   EXPECT_EQ(r.cursor_byte(), 5);
 }
 
@@ -741,10 +749,10 @@ TEST(SeamMenuCursor, SkipsTheCommandsTheMenuDoesNotShow) {
   (void)r.press({down});
   const std::vector<drawn> seen = r.calls();
   ASSERT_EQ(seen.size(), 6u);
-  EXPECT_EQ(seen[0], (drawn{column_letter, row_zero + 1, white, "M"}));
-  EXPECT_EQ(seen[1], (drawn{column_rest, row_zero + 1, yellow, "ist"}));
-  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero + 2, white, "A"}));
-  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero + 2, yellow, "ster"}));
+  EXPECT_EQ(seen[0], (drawn{column_letter, row_zero + 1, lit_white, "M"}));
+  EXPECT_EQ(seen[1], (drawn{column_rest, row_zero + 1, lit_yellow, "ist"}));
+  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero + 2, lit_white, "A"}));
+  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero + 2, lit_yellow, "ster"}));
 }
 
 TEST(SeamMenuCursor, WrapsAtBothEnds) {
@@ -773,8 +781,8 @@ TEST(SeamMenuCursor, PutsTheWordItLeavesBackInTheMenusTwoColours) {
   // the next.
   const std::vector<drawn> seen = r.calls();
   ASSERT_EQ(seen.size(), 6u);
-  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero + 2, white, "M"}));
-  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero + 2, yellow, "ist"}));
+  EXPECT_EQ(seen[2], (drawn{column_letter, row_zero + 2, lit_white, "M"}));
+  EXPECT_EQ(seen[3], (drawn{column_rest, row_zero + 2, lit_yellow, "ist"}));
   EXPECT_EQ(seen[4], (drawn{column_letter, row_zero + 1, white, "D"}));
   EXPECT_EQ(seen[5], (drawn{column_rest, row_zero + 1, green, "une"}));
 }
@@ -790,7 +798,7 @@ TEST(SeamMenuCursor, LightsTheWordBeforeItPutsTheOldOneBack) {
 
   const std::vector<drawn> seen = r.calls();
   ASSERT_GE(seen.size(), 6u);
-  EXPECT_EQ(seen[3].colour, yellow);
+  EXPECT_EQ(seen[3].colour, lit_yellow);
   EXPECT_EQ(seen[3].text, "ist");
   EXPECT_EQ(seen[4].text, "D") << "and only then the old one";
 }

@@ -41,7 +41,7 @@ constexpr std::string_view seam_id = "modern-controls";
 /// has: the pieces follow one another in the order
 /// seam_modern_controls.cpp lists them.
 constexpr std::size_t piece_first = 12;
-constexpr std::size_t piece_count = 7;
+constexpr std::size_t piece_count = 9;
 
 [[nodiscard]] std::span<const seam_point> piece_points(
     const seam_definition& s) {
@@ -64,6 +64,33 @@ constexpr std::size_t ability_score = 3;
 constexpr std::size_t hit_points = 4;
 constexpr std::size_t bar_letter = 5;
 constexpr std::size_t bar_rest = 6;
+constexpr std::size_t row_store = 7;
+constexpr std::size_t row_store_again = 8;
+
+// Where the store's frames say a glyph's call came from (#483): the far
+// return address each callee's frame holds, as segment and offset. The
+// program's own are the instruction after each call; a batch's is the
+// engine's own address in the BIOS region.
+constexpr std::uint16_t blitter_paragraph = 0x709;
+constexpr std::uint16_t string_glyph_return = 0x0694;
+constexpr std::uint16_t bar_group_return = 0x0278;
+constexpr std::uint16_t bar_letter_return = 0x02CF;
+constexpr std::uint16_t bar_rest_return = 0x030A;
+constexpr std::uint16_t list_row_return = 0x0A02;
+constexpr std::uint16_t roster_paragraph = 0xBA;
+constexpr std::uint16_t roster_selected_return = 0x0814;
+constexpr std::uint16_t hit_points_return = 0x09C3;
+constexpr std::uint16_t score_return = 0x097B;
+constexpr std::uint16_t percentage_return = 0x0A46;
+constexpr std::uint16_t batch_segment = 0xF000;
+constexpr std::uint16_t batch_return = 0x0800;
+
+/// The mark a seam's own selection carries in its colour word.
+constexpr std::uint16_t selection_mark = 0x8000;
+
+/// The row the tests store, and what it is inverted.
+constexpr std::uint8_t a_row = 0x3C;
+constexpr std::uint8_t inverted = 0xC3;
 
 // The overlays' words and where the test says they are now.
 constexpr std::uint32_t word_menu_bar = 0x3C60;
@@ -75,6 +102,11 @@ constexpr std::uint16_t sheet_segment = 0x7000;
 constexpr std::uint16_t stack_segment = 0x5000;
 constexpr std::uint16_t frame_bp = 0x0800;
 constexpr std::uint16_t frame_sp = 0x0600;
+/// A callee's frame whose arguments are the call's words at `frame_sp`: the
+/// saved BP, the return address's two words, then the arguments.
+constexpr std::uint16_t callee_bp = frame_sp - 6;
+/// The blitter's frame under the string routine's.
+constexpr std::uint16_t blitter_bp = 0x0500;
 constexpr std::uint16_t caller_bp = 0x0A00;
 constexpr std::uint16_t list_context = 0x0C00;
 constexpr std::uint16_t record_segment = 0x3000;
@@ -343,12 +375,98 @@ struct rig {
     return out;
   }
 
+  /// A callee's frame at SS:`at`: the BP it saved, and the far address it
+  /// returns to.
+  void lay_frame(std::uint16_t at, std::uint16_t saved_bp, std::uint16_t cs,
+                 std::uint16_t ip) const {
+    put_word(stack_segment, at + 0U, saved_bp);
+    put_word(stack_segment, at + 2U, ip);
+    put_word(stack_segment, at + 4U, cs);
+  }
+
+  /// The string routine's frame over the string call's words, returning to
+  /// `cs:ip`, and the blitter's under it, returning into the routine. The
+  /// string routine's caller's frame is the test's `frame_bp`.
+  void lay_string_glyph(std::uint16_t cs, std::uint16_t ip) const {
+    lay_frame(callee_bp, frame_bp, cs, ip);
+    lay_frame(
+        blitter_bp, callee_bp,
+        static_cast<std::uint16_t>(image_load_segment + blitter_paragraph),
+        string_glyph_return);
+  }
+
+  /// Stand on store `which` with BP on the blitter's frame at `bp` and `row`
+  /// in DL, and step once. What DL holds after.
+  [[nodiscard]] std::uint8_t store(std::size_t which, std::uint16_t bp,
+                                   std::uint8_t row = a_row) const {
+    const seam_point& p = piece_points(seam())[which];
+    put_byte(image_load_segment, static_cast<std::uint16_t>(p.offset), 0x90);
+    box->processor().reset();
+    cpu::registers& r = box->processor().regs();
+    r[cpu::sreg::cs] = image_load_segment;
+    r.ip = static_cast<std::uint16_t>(p.offset);
+    r[cpu::sreg::ss] = stack_segment;
+    r[cpu::reg16::sp] = static_cast<std::uint16_t>(bp - 0x20U);
+    r[cpu::reg16::bp] = bp;
+    r.set(cpu::reg8::dl, row);
+    box->step();
+    return box->processor().regs().get(cpu::reg8::dl);
+  }
+
+  /// A bar's every character through the store, as `I` for one stored
+  /// inverted and `.` for one stored as it was fetched. Each comes back
+  /// through the leaf's call the program would have drawn it with.
+  [[nodiscard]] std::string blocks_of(std::string_view text, unsigned group,
+                                      std::uint16_t lo, std::uint16_t hi,
+                                      std::size_t which = row_store) const {
+    std::string out;
+    for (unsigned index = 1; index <= text.size(); ++index) {
+      // The point first, as the program reaches it: the colour the call
+      // stores with is the one this piece gave it.
+      draw_bar_character(text, group, index, lo, hi);
+      const std::uint16_t back = return_for(text, group, index, hi);
+      lay_frame(callee_bp, frame_bp, menu_bar_segment, back);
+      out.push_back(store(which, callee_bp) == inverted ? 'I' : '.');
+    }
+    return out;
+  }
+
+  /// Which of the leaf's calls draws the character at `index`, as the
+  /// address that call returns to.
+  [[nodiscard]] static std::uint16_t return_for(std::string_view text,
+                                                unsigned group, unsigned index,
+                                                std::uint16_t hi) {
+    const auto is_letter = [](char c) {
+      return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z');
+    };
+    unsigned start = 0;
+    unsigned end = 0;
+    unsigned count = 0;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+      if (is_letter(text[i])) {
+        ++count;
+        if (count == group) {
+          start = static_cast<unsigned>(i + 1U);
+        } else if (count == group + 1U) {
+          end = static_cast<unsigned>(i + 1U - 2U);
+        }
+      }
+    }
+    if (end == 0) {
+      end = static_cast<unsigned>(text.size());
+    }
+    if (index >= start && index <= end && hi != 0) {
+      return bar_group_return;
+    }
+    return is_letter(text[index - 1]) ? bar_letter_return : bar_rest_return;
+  }
+
   std::unique_ptr<machine> box;
 };
 
 // --- The definition --------------------------------------------------------
 
-TEST(SeamSelectYellow, IsSevenPointsAndOneOfThemIsInsideCalls) {
+TEST(SeamSelectYellow, IsNinePointsAndThreeOfThemAreInsideCalls) {
   const rig r;
   const seam_definition& s = r.seam();
 
@@ -357,7 +475,7 @@ TEST(SeamSelectYellow, IsSevenPointsAndOneOfThemIsInsideCalls) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(piece_points(s).size(), 7u);
+  ASSERT_EQ(piece_points(s).size(), 9u);
 
   EXPECT_EQ(piece_points(s)[bar_group].offset, 0x0273u);
   EXPECT_EQ(piece_points(s)[list_row].offset, 0x09FDu);
@@ -388,6 +506,16 @@ TEST(SeamSelectYellow, IsSevenPointsAndOneOfThemIsInsideCalls) {
   EXPECT_TRUE(piece_points(s)[hit_points].module.is_resident_image());
   EXPECT_EQ(piece_points(s)[hit_points].offset, 0x153Fu);
   EXPECT_FALSE(piece_points(s)[hit_points].inside_calls);
+
+  // The blitter's two row stores, one per page. Every glyph goes through
+  // them, a batch's included: the roster given back and the seams' own
+  // selections are drawn in one.
+  EXPECT_EQ(piece_points(s)[row_store].offset, 0x74A2u);
+  EXPECT_EQ(piece_points(s)[row_store_again].offset, 0x74C8u);
+  for (const std::size_t which : {row_store, row_store_again}) {
+    EXPECT_TRUE(piece_points(s)[which].module.is_resident_image());
+    EXPECT_TRUE(piece_points(s)[which].inside_calls);
+  }
 
   for (const seam_point& p : piece_points(s)) {
     EXPECT_FALSE(p.at_every_step);
@@ -826,6 +954,177 @@ TEST(SeamSelectYellow, TheHitPointsDeclineAColourTheyDoNotChoose) {
   r.lay_score(0, 1, static_cast<std::uint8_t>(light_magenta));
   r.arrive(hit_points);
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 2u);
+}
+
+// --- A selection is a block (#483) ---------------------------------------------
+//
+// The blitter stores each row of a glyph it fetched, once per page. The store
+// inverts the row when the call that drew the glyph is a selection, and the
+// colour is what the points above made it: a yellow block, a white one for a
+// key letter.
+
+TEST(SeamSelectYellow, TheLitWordIsStoredInvertedAndNothingElseOfTheBar) {
+  const rig r;
+  r.arm();
+  EXPECT_EQ(r.blocks_of("Alpha Beta Gamma", 1, green, white),
+            "IIIII...........");
+  EXPECT_EQ(r.blocks_of("Alpha Beta Gamma", 2, green, white),
+            "......IIII......");
+  EXPECT_EQ(r.blocks_of("Alpha Beta Gamma", 3, green, white, row_store_again),
+            "...........IIIII")
+      << "the second page's store the same";
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamSelectYellow, TheBlockIsTheWordTheKeyIsInAndNotTheProgramsGroup) {
+  // The program's group runs on into the next word where a digit ends one;
+  // the block is the word, as the colour is.
+  const rig r;
+  r.arm();
+  EXPECT_EQ(r.blocks_of("Alpha bet9 gam8 Quit", 2, green, white),
+            "......IIII..........");
+  EXPECT_EQ(r.blocks_of("Alpha bet9 gam8 Quit", 3, green, white),
+            "...........IIII.....");
+}
+
+TEST(SeamSelectYellow, ABarOfOneLetterWordsShowsWhichIsLit) {
+  // The slot bars: every word one key. The colour cannot show the
+  // selection, a white key among white keys, and the block does.
+  const rig r;
+  r.arm();
+  EXPECT_EQ(r.blocks_of("A B C E J ", 3, green, white), "....I.....");
+}
+
+TEST(SeamSelectYellow, ABarWithNothingToSelectIsNoBlock) {
+  const rig r;
+  r.arm();
+  const std::string notice = "Press <enter>/<return> to continue";
+  EXPECT_EQ(r.blocks_of(notice, 1, white, white),
+            std::string(notice.size(), '.'));
+  EXPECT_EQ(r.blocks_of("Exit", 1, green, white), "....");
+  EXPECT_EQ(r.blocks_of("Alpha Beta", 1, green, 0), "..........")
+      << "nor one with no colour, which is not drawn";
+}
+
+TEST(SeamSelectYellow, AStoreForABarWhileOverlay25IsNotLoadedIsLeftAlone) {
+  const rig r;
+  r.arm();
+  r.lay_bar_call("Alpha Beta", 1, 2, yellow, green, white);
+  r.lay_frame(callee_bp, frame_bp, menu_bar_segment, bar_group_return);
+  r.manager_says(word_menu_bar, 0);
+  EXPECT_EQ(r.store(row_store, callee_bp), a_row);
+}
+
+TEST(SeamSelectYellow, TheListsRowIsStoredInverted) {
+  const rig r;
+  r.arm();
+  r.lay_list_row(yellow, white);
+  r.lay_string_glyph(menu_bar_segment, list_row_return);
+  EXPECT_EQ(r.store(row_store, blitter_bp), inverted);
+  EXPECT_EQ(r.store(row_store_again, blitter_bp), inverted);
+
+  r.lay_list_row(green, green);
+  EXPECT_EQ(r.store(row_store, blitter_bp), a_row)
+      << "a row in any colour but the yellow this piece gives it is not one "
+         "it chose";
+}
+
+TEST(SeamSelectYellow, TheSelectedMembersNameIsStoredInverted) {
+  const rig r;
+  r.arm();
+  r.lay_roster_name(yellow);
+  r.lay_string_glyph(
+      static_cast<std::uint16_t>(image_load_segment + roster_paragraph),
+      roster_selected_return);
+  EXPECT_EQ(r.store(row_store, blitter_bp), inverted);
+
+  r.lay_roster_name(white);
+  EXPECT_EQ(r.store(row_store, blitter_bp), a_row)
+      << "a name the point did not make yellow";
+}
+
+TEST(SeamSelectYellow, ModifysSelectedScoresAreStoredInverted) {
+  const rig r;
+  r.arm();
+  for (const std::uint16_t back : {score_return, percentage_return}) {
+    r.lay_string_call(0x0700, stack_segment, yellow);
+    r.lay_score(1, 0x2B, static_cast<std::uint8_t>(yellow));
+    r.lay_string_glyph(sheet_segment, back);
+    EXPECT_EQ(r.store(row_store, blitter_bp), inverted) << back;
+  }
+  r.lay_string_call(0x0700, stack_segment, yellow);
+  r.lay_score(1, 1, static_cast<std::uint8_t>(yellow));
+  r.lay_string_glyph(
+      static_cast<std::uint16_t>(image_load_segment + roster_paragraph),
+      hit_points_return);
+  EXPECT_EQ(r.store(row_store, blitter_bp), inverted);
+}
+
+TEST(SeamSelectYellow, AHurtCharactersYellowHitPointsAreNoBlock) {
+  const rig r;
+  r.arm();
+  r.lay_string_call(0x0700, stack_segment, yellow);
+  r.lay_score(0, 1, static_cast<std::uint8_t>(yellow));
+  r.lay_string_glyph(
+      static_cast<std::uint16_t>(image_load_segment + roster_paragraph),
+      hit_points_return);
+  EXPECT_EQ(r.store(row_store, blitter_bp), a_row)
+      << "yellow, and not the highlighted draw";
+}
+
+TEST(SeamSelectYellow, ASeamsMarkedStringIsStoredInvertedInAnyColour) {
+  const rig r;
+  r.arm();
+  for (const std::uint16_t colour : {yellow, white}) {
+    r.lay_string_call(0x0700, stack_segment, 0);
+    r.put_word(stack_segment, frame_sp + 4,
+               static_cast<std::uint16_t>(colour | selection_mark));
+    r.lay_string_glyph(batch_segment, batch_return);
+    EXPECT_EQ(r.store(row_store, blitter_bp), inverted) << colour;
+  }
+}
+
+TEST(SeamSelectYellow, ASeamsUnmarkedStringIsNoBlockEvenInYellow) {
+  const rig r;
+  r.arm();
+  r.lay_string_call(0x0700, stack_segment, 0);
+  r.put_word(stack_segment, frame_sp + 4, yellow);
+  r.lay_string_glyph(batch_segment, batch_return);
+  EXPECT_EQ(r.store(row_store, blitter_bp), a_row);
+}
+
+TEST(SeamSelectYellow, TheMarkIsHeededOnlyInACallFromABatch) {
+  // A program's caller pushes its colour as a register, with whatever the
+  // high half held: a mark there is the program's leftover, not a seam's.
+  const rig r;
+  r.arm();
+  r.lay_list_row(green, green);
+  r.put_word(stack_segment, frame_sp + 4,
+             static_cast<std::uint16_t>(green | selection_mark));
+  r.lay_string_glyph(menu_bar_segment, list_row_return);
+  EXPECT_EQ(r.store(row_store, blitter_bp), a_row);
+}
+
+TEST(SeamSelectYellow, AGlyphFromAnyOtherCallIsStoredAsFetched) {
+  const rig r;
+  r.arm();
+  // Called by something else entirely.
+  r.lay_frame(callee_bp, frame_bp, 0x2345, 0x0100);
+  EXPECT_EQ(r.store(row_store, callee_bp), a_row);
+  // A string from a caller this piece does not know.
+  r.lay_string_call(0x0700, stack_segment, yellow);
+  r.lay_string_glyph(0x2345, 0x0100);
+  EXPECT_EQ(r.store(row_store, blitter_bp), a_row);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u)
+      << "the ordinary case, and nothing to decline";
+}
+
+TEST(SeamSelectYellow, TheStoresDoNothingWhileItIsOff) {
+  const rig r;
+  r.manager_says(word_menu_bar, menu_bar_segment);
+  r.lay_list_row(yellow, yellow);
+  r.lay_string_glyph(menu_bar_segment, list_row_return);
+  EXPECT_EQ(r.store(row_store, blitter_bp), a_row);
 }
 
 }  // namespace

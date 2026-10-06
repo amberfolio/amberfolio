@@ -3985,11 +3985,18 @@ TEST(JournalArtScreen, ThePicturesPageCarriesTheSameBar) {
 // sees a key pressed at them and the seam's point there cannot answer them.
 // With `modern-controls` on the reader steps its own highlight on Left and
 // Right and takes the highlighted command on Return, and draws that command
-// yellow, its key letter white.
+// as a yellow block, its key letter a white one.
 
 constexpr std::uint16_t key_left = 0x4B00;
 constexpr std::uint16_t key_right = 0x4D00;
 constexpr std::uint8_t colour_yellow = 0x0E;
+
+/// The lit word is drawn as blocks (#483): the mark in the high half of the
+/// colour word is what has `select-yellow` invert it, and the program's
+/// string routine reads the low byte only.
+constexpr unsigned selection_mark = 0x8000;
+constexpr unsigned lit_key = bar_key_colour | selection_mark;
+constexpr unsigned lit_yellow = colour_yellow | selection_mark;
 
 void with_modern_controls(rig& r) {
   ASSERT_EQ(r.pc().seams().enable("modern-controls"), seam_reason::none);
@@ -4047,8 +4054,7 @@ TEST(JournalBarKeys, AFirstDrawWithTheSeamOnLightsTheFirstWord) {
   // `NEXT EXIT`: the line, then `NEXT` in the bright end to end, then the
   // initial of the word that is not lit.
   EXPECT_EQ(drawn.back(), (rig::bar_call{bar_key_colour, 5U}));
-  EXPECT_NE(std::ranges::find(drawn, rig::bar_call{bar_key_colour, 0U}),
-            drawn.end());
+  EXPECT_NE(std::ranges::find(drawn, rig::bar_call{lit_key, 0U}), drawn.end());
 }
 
 TEST(JournalBarKeys, LeftAndRightStepTheHighlightAndWrapAtBothEnds) {
@@ -4062,8 +4068,8 @@ TEST(JournalBarKeys, LeftAndRightStepTheHighlightAndWrapAtBothEnds) {
   EXPECT_EQ(r.reader().bar_word(), 2u) << "`EXIT`";
   EXPECT_EQ(r.bar_calls(), (calls{{bar_word_colour, 0},
                                   {bar_key_colour, 0},
-                                  {bar_key_colour, 5},
-                                  {colour_yellow, 6}}))
+                                  {lit_key, 5},
+                                  {lit_yellow, 6}}))
       << "the line, `NEXT`'s initial, then `EXIT` in the bright end to end "
          "and its tail yellow over that: the bar and nothing else was drawn "
          "again";
@@ -4177,7 +4183,7 @@ TEST(JournalBarKeys, WithTheSeamOffTheListingsReturnIsAlwaysTheRows) {
   EXPECT_EQ(r.reader().reader(), journal_reader_mode::showing);
 }
 
-TEST(JournalBarKeys, TheHighlightIsYellowAndItsKeyWhite) {
+TEST(JournalBarKeys, TheHighlightIsAYellowBlockAndItsKeyAWhiteOne) {
   rig r;
   a_screen_with_the_bar_live(r);
   with_modern_controls(r);
@@ -4186,11 +4192,12 @@ TEST(JournalBarKeys, TheHighlightIsYellowAndItsKeyWhite) {
   press_and_settle(r, key_left);   // on to `EXIT`
   press_and_settle(r, key_right);  // and back
   EXPECT_EQ(r.bar_calls(), (calls{{bar_word_colour, 0},
-                                  {bar_key_colour, 0},
-                                  {colour_yellow, 1},
+                                  {lit_key, 0},
+                                  {lit_yellow, 1},
                                   {bar_key_colour, 5}}))
-      << "the line, `NEXT` white and its tail yellow over it so that the key "
-         "stays white, then the initial of the word that is not lit";
+      << "the line, `NEXT` a white block and its tail a yellow one over it so "
+         "that the key stays white, then the initial of the word that is not "
+         "lit";
 }
 
 TEST(JournalBarKeys, ABarOfOneCommandGetsNoYellow) {

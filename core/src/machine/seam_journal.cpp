@@ -196,9 +196,9 @@
 // takes Left and Right to step it and Return to take the lit command,
 // asking the engine whether `modern-controls` is on. A page's bar is lit
 // from its first draw; the listing's is lit by the first Left or Right,
-// because Return there already opens a row. The lit word is yellow with its
-// key letter white, and a bar of one word is not recoloured (#462). With
-// the seam off none of it exists.
+// because Return there already opens a row. The lit word is a yellow block
+// with its key letter a white one (#483), and a bar of one word is not
+// recoloured (#462). With the seam off none of it exists.
 //
 // **The listing is twenty rows and pages rather than scrolls** (M5-E4e,
 // #318 and #319). It filled ten rows of a twenty-row box on a reason that
@@ -634,13 +634,15 @@ constexpr std::uint16_t list_frame_style = 0;
 constexpr std::uint16_t list_title_colour = 0x0F;
 constexpr std::uint16_t list_row_colour = 0x0A;
 
-/// The row the cursor is on is a selection the player moves, and is
-/// yellow while `modern-controls` is on (#453), the program's bright
-/// otherwise.
+/// The row the cursor is on is a selection the player moves, and is a
+/// yellow block while `modern-controls` is on (#453, #483: the yellow, and
+/// `selection_mark` for the block), the program's bright otherwise.
 constexpr std::uint16_t list_selected_colour = 0x0E;
 
 [[nodiscard]] std::uint16_t list_cursor_colour(const machine& box) {
-  return modern_controls_on(box) ? list_selected_colour : list_title_colour;
+  return modern_controls_on(box)
+             ? static_cast<std::uint16_t>(list_selected_colour | selection_mark)
+             : list_title_colour;
 }
 
 /// Where the rows go. The frame puts its title on the box's first interior
@@ -1854,7 +1856,11 @@ struct bar_look {
 
 /// The yellow the program draws a selection in, which the highlighted
 /// word is drawn in under `modern-controls`; its key letter is the bright.
-constexpr std::uint16_t bar_selected_colour = list_selected_colour;
+/// Both are drawn as blocks (`selection_mark`, #483).
+constexpr auto bar_selected_colour =
+    static_cast<std::uint16_t>(list_selected_colour | selection_mark);
+constexpr auto bar_selected_key_colour =
+    static_cast<std::uint16_t>(bar_key_colour | selection_mark);
 
 /// Whether the bar's highlight is the thing Return takes right now.
 ///
@@ -1936,13 +1942,14 @@ constexpr std::uint16_t bar_selected_colour = list_selected_colour;
     if (nth == look.lit) {
       // **The highlighted command** (#471), drawn the way the program's
       // own highlight is: the word in the bright end to end, and, over
-      // that, its tail in yellow so that the key letter stays white. A bar
-      // of one command has nothing to select among, so it stays the one
-      // colour the program gives it (#462).
+      // that, its tail in yellow so that the key letter stays white, both
+      // as blocks (#483). A bar of one command has nothing to select
+      // among, so it stays the one colour the program gives it (#462).
       list_line lit;
       lit.add(word);
-      if (!draw_line(ctx, image, lit, bar_key_colour, list_exit_row,
-                     at_column)) {
+      if (!draw_line(ctx, image, lit,
+                     look.yellow ? bar_selected_key_colour : bar_key_colour,
+                     list_exit_row, at_column)) {
         return false;
       }
       if (look.yellow) {

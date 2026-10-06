@@ -1011,13 +1011,14 @@ through, a picture's or a kept glyph's included.
 ## Legs 14 to 19 — the controls (#423 to #473)
 
 Six legs, one seam: **`modern-controls`**, which switches on the list
-arrows, the bar keys, the menu cursor, the hero keys, the selection colour
+arrows, the bar keys, the menu cursor, the hero keys, the selection block
 and the edit keys together. Each leg names the piece it drives and the
 script of the session pair that records it. `docs/seams.md` §10 has the
 facts. Two things read differently from a leg run with its piece alone: the
-selection is yellow, so a lit row, word, name or cursor reads `E` in the
-screen text where a leg below says bright white (`F`), with a command's key
-letter white; and the party list carries its numbers. Where a leg says the
+selection is a yellow block, so a lit row, word, name or cursor reads as
+black ink on paper `E` in the screen text where a leg below says bright
+white ink (`F`), with a command's key letter on paper `F`; and the party
+list carries its numbers. Where a leg says the
 stills of an on and an off run are identical, that was measured with the
 piece alone on, and the stills differ now where the seam draws.
 
@@ -1244,9 +1245,9 @@ the seam on wants no Return there.
 ## Leg 16 — a cursor on the main menu (#434)
 
 `docs/seams.md` §10 has the facts. The screen text (`--dump`'s `.txt`) is
-the instrument: a lit command is the one whose ink is `F` and then `E`
-(the key letter white, the rest of the word yellow) where the others are `F`
-and then `A`. Every pair is told `--wall none`. **The cursor is on the first command
+the instrument: a lit command is the one whose paper is `F` and then `E`
+(the key letter a white block, the rest of the row a yellow one) where the
+others are ink `F` and then `A` on black. Every pair is told `--wall none`. **The cursor is on the first command
 as soon as the menu is drawn** (#453), so the first frame of the menu
 already has one lit.
 
@@ -1335,25 +1336,26 @@ number row's `8` walks.
 
 ---
 
-## Leg 19 — a selection in yellow (#453)
+## Leg 19 — a selection as a block (#453, #483)
 
 `docs/seams.md` §10 has the facts. The instrument is a still: `--dump-every
-N` and a look at the bar, the list or the name. Every pair is told
+N` and a look at the bar, the list or the name; in the screen text a block
+is black ink on its paper. Every pair is told
 `--wall none`. With `--seam modern-controls` the panel reads `on armed`; a
 piece whose overlay is out (the sheet overlay Modify uses among them) waits
 for it, and `fired` counts the draws and keys it looked at.
 
 | screen | how to reach it | what to see |
 |---|---|---|
-| the adventuring bar and the party list | `L@7551`, `A@7801` (slot A) | `MOVE` is `M` white and `OVE` yellow; `FIGHTER1` is yellow |
-| the camp bar and a Yes/No | slot C, `C@7800`, `E@8800`, `S@10000`, `Escape@10600` | `QUIT TO DOS`: `Y` white, `es` green, `N` white, `o` yellow |
-| a pick-list | `C@7550`, then `End@7700` | the highlighted row is yellow |
-| Modify | create a character (leg 0), add it, `M`, then `Down` | the selected score and, six Downs on, the hit points are yellow |
-| the portrait bar | creation, after the roll, `HEAD BODY KEEP` | `H` `B` `K` white, the rest of each word green, the lit word's rest yellow; off, the colours are the other way round |
+| the adventuring bar and the party list | `L@7551`, `A@7801` (slot A) | `MOVE` is `M` a white block and `OVE` a yellow one; `FIGHTER1` is a yellow block |
+| the camp bar and a Yes/No | slot C, `C@7800`, `E@8800`, `S@10000`, `Escape@10600` | `QUIT TO DOS`: `Y` white, `es` green, `N` a white block, `o` a yellow one |
+| a pick-list | `C@7550`, then `End@7700` | the highlighted row is a yellow block |
+| Modify | create a character (leg 0), add it, `M`, then `Down` | the selected score and, six Downs on, the hit points are yellow blocks |
+| the portrait bar | creation, after the roll, `HEAD BODY KEEP` | `H` `B` `K` white, the rest of each word green, the lit word a yellow block with its key a white one; off, the colours are the other way round |
 | the icon editor's bar | `K` at the portrait bar | the lit word is `COLOR-2` and not the half of a word the game lights |
-| the main menu | leg 16 with `--seam modern-controls` | `Create` yellow with its `C` white |
-| a swapped Yes/No | the temple's `PAY FOR CURE` (leg 5) | `Y` and `N` white, `es` green, `o` yellow |
-| a one-choice notice | slot A to the arena master's square (7,1), `bar-script`'s keys up to the Return | `PRESS <ENTER>/<RETURN> TO CONTINUE` white end to end, as with the seam off; the question after the Return has `Yes` yellow with its `Y` white |
+| the main menu | leg 16 with `--seam modern-controls` | `Create` a yellow block with its `C` a white one |
+| a swapped Yes/No | the temple's `PAY FOR CURE` (leg 5) | `Y` white, `es` green, `N` a white block, `o` a yellow one |
+| a one-choice notice | slot A to the arena master's square (7,1), `bar-script`'s keys up to the Return | `PRESS <ENTER>/<RETURN> TO CONTINUE` white end to end, as with the seam off; the question after the Return has `Yes` a yellow block with its `Y` a white one |
 
 ```
 --seam code-wheel --code-wheel-answered --seam modern-controls
@@ -1416,7 +1418,7 @@ leg reaches. Both are the same editor; the stand-in `edit_keys_probe_*` and
 
 Slot A in the city and slot J in the wilderness, with the journal and the
 automap on beside it. `docs/seams.md` §10 has the facts; the screen text is
-the instrument: row 24 is the bar (its ink row says which word is lit,
+the instrument: row 24 is the bar (its paper row says which word is lit,
 yellow `E`), and the status row has the position.
 
 ```

@@ -610,14 +610,14 @@ and never triggered.
 | `quiet-font-chisel` | contrast | `quiet` (the same) |
 | `quiet-all` | identical | `quiet-journal` (every seam that draws nothing until used: not the faces or `modern-controls`, which are contrasts of their own) |
 | `quiet-all-on-sight` | contrast | `quiet-all` (the same with `modern-controls` on: the menu's cursor is the first thing to move) |
-| `quiet-modern-controls` | contrast | `quiet` (the menu's cursor from the first frame the menu is drawn, the party's bar in menu mode and every highlight yellow from the first time each is on the screen) |
+| `quiet-modern-controls` | contrast | `quiet` (the menu's cursor from the first frame the menu is drawn, the party's bar in menu mode and every highlight a yellow block from the first time each is on the screen) |
 | `list-down-arrows` | contrast | `list-down` (the same script with Down and Up, which the seam-off program drops) |
 | `camp-down-arrows` | contrast | `camp-down` (Down and Up at the camp bar, which the program hands to the party cursor to put the first member back) |
 | `camp-pad-arrows` | contrast | `camp-pad` (the keypad's 2 and 8 with Num Lock on at the camp bar, which the routine translates into letters the cursor puts the first member back on) |
 | `bar-enter-keys` | contrast | `bar-enter` (Return at the camp bar takes the highlighted command) |
 | `bar-yn-keys` | contrast | `bar-yn` (a Right at a bar that is not raw, and Return at the Yes/No prompt) |
 | `bar-camp-keys` | contrast | `bar-camp` (a Right at the camp bar, which hands it to the party cursor, and Return) |
-| `list-keys-yellow` | contrast | `list-keys` (each pick-list's highlighted row in yellow) |
+| `list-keys-yellow` | contrast | `list-keys` (each pick-list's highlighted row a yellow block) |
 | `menu-letters-cursor` | contrast | `menu-letters` (the cursor is drawn as soon as the menu is, with no key pressed at it) |
 | `menu-down-cursor` | contrast | `menu-down` (Down, Down and Return at the main menu take the third command) |
 | `move-walk-mode` | contrast | `move-walk` (Return takes `Move`, a step on the walking bar, Escape back to the menu, two Rights to `View` and Return opens it, where the program walks and turns) |
@@ -860,7 +860,7 @@ to carry.
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
-| `modern-controls` | the controls a later game has, seven pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is yellow with a white key letter (§10) | overlay 25 (the menu-bar and list routines), overlays 16 and 19, and the resident image |
+| `modern-controls` | the controls a later game has, seven pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one (§10) | overlay 25 (the menu-bar and list routines), overlays 16 and 19, and the resident image |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -1216,8 +1216,9 @@ shape.
   resolved to the first it has, so a highlight on `NEXT` that turns to the
   last page lands on `PREV`. The highlight is drawn by the same bar pass as
   everything else: the word in the bright end to end and, in yellow over
-  that, its tail, with its key letter left white, except on a bar of one
-  word, which stays the one colour (#462). A change
+  that, its tail, with its key letter left white, both with
+  `selection_mark` in the colour word so that the word is drawn as blocks
+  (#483), except on a bar of one word, which stays the one colour (#462). A change
   of highlight draws the bar alone: the signature is zeroed and the rows
   already on the glass are not painted again, except on a picture, whose
   second pass is the picture and not the bar.
@@ -1365,7 +1366,7 @@ to pull.
 | menu cursor | `seam_menu_cursor.cpp` | a cursor on the main menu | 2 |
 | hero keys | `seam_hero_keys.cpp` | at the main menu, the number row's 1 to 8 select a member and the party list shows each number | 5 |
 | edit keys | `seam_edit_keys.cpp` | an extended key types nothing at a text prompt | 1 |
-| selection colour | `seam_select_yellow.cpp` | every selection yellow, a key letter white | 7 |
+| selection block | `seam_select_yellow.cpp` | every selection a yellow block, a key letter a white one | 9 |
 | move mode | `seam_move_mode.cpp` | on the party's own bar walking is a mode: `Move` starts it, `Exit` ends it, and in between Left and Right step the bar; `Area` is gone | 5 |
 
 The sections below keep each piece's facts under the name it was a seam
@@ -1379,14 +1380,14 @@ quoted below were taken per piece; the engine reports them for the one seam,
 summed over the pieces.
 
 - **One definition, the union of the points, in one order.** The
-  twenty-four points are the pieces' own, in the order list arrows (3), bar
-  keys (1), menu cursor (2), hero keys (5), edit keys (1), selection colour
-  (7), move mode (5). Five pieces have a point at the same instruction,
+  twenty-six points are the pieces' own, in the order list arrows (3), bar
+  keys (1), menu cursor (2), hero keys (5), edit keys (1), selection block
+  (9), move mode (5). Five pieces have a point at the same instruction,
   overlay 25's key read at `0x0572` (list arrows, bar keys, menu cursor, hero
   keys, move mode), and the engine offers an address's points in table
   order, so the order is behaviour: the move mode is last, and rewrites the
   party bar's keys after every other piece has passed on them. The point
-  count with every seam on is fifty-five, one face counted (`max_points` is
+  count with every seam on is fifty-seven, one face counted (`max_points` is
   sixty-four).
 - **One fingerprint, several modules.** Every piece keys on the baseline
   edition (§5) and only it, so the definition does. The modules are the
@@ -1395,7 +1396,7 @@ summed over the pieces.
   bar, the resident image for the rest, and each point names its own.
 - **A piece cannot ask another.** The menu cursor took its colours from the
   selection colour; with the two one seam the answer is always yes and the
-  cursor's row is always yellow with a white key. The journal's reader asks
+  cursor's row is always a yellow block with a white key. The journal's reader asks
   `modern_controls_on(box)` (`seam_builtin.h`) for its bars' keys and
   highlight and for its cursor row (§10 on the journal).
 - **Off is the plain machine, on is all seven.** There is no setting between,
@@ -1414,7 +1415,7 @@ piece's, in its section, and on the key card as rows naming `modern-controls`
 **Fidelity**: off, the engine is not consulted (§7). On, the seam is never
 idle: the main menu's cursor is drawn from the first frame the menu is, the
 roster's numbers from the first time its party list is, the party's bar in
-menu mode from the first time it is drawn, and a highlight in yellow from the
+menu mode from the first time it is drawn, and a highlight as a block from the
 first time one is, so a run with it on differs from the
 plain one at the first main menu whatever keys are pressed, and it has no
 `identical` pair (§8.5, as for the faces). `quiet-modern-controls` is a
@@ -2134,7 +2135,9 @@ string routine. A setting, no key, nothing to pull.
   its rest in yellow (the look the `select-yellow` piece gives every
   selection): its first letter in `0x0F` at column 2 and the rest in `0x0E` at
   column 3, by the program's own string drawer, so the text is never in this
-  repository. The word it leaves is put back the way the loop draws it: its
+  repository. Both colour words carry `selection_mark` (`0x8000`) in their
+  high half, which the drawer does not read and the selection block's stores
+  turn into blocks (#483). The word it leaves is put back the way the loop draws it: its
   first letter in `0x0F` at column 2 and the rest in `0x0A` at column 3, two
   Pascal strings the handler places (`place_bytes`, §3), 41 bytes at most. One batch of at most three calls,
   with the lit word first so that the cursor is on the glass before the old
@@ -2301,12 +2304,14 @@ is pinned by the unit suite and the stand-in programs. Off, the engine is
 not consulted (§7). Unit: `SeamHeroKeys.*`; stand-ins: `hero_keys_probe_off`,
 `hero_keys_probe_on`.
 
-#### The selection colour (#453)
+#### The selection block (#453, #483)
 
 `seam_select_yellow.cpp`. Not a PLAN.md §5 item: a player's request, chosen
-from six mock-ups, and the colour half of #379's selection. A look and a
-setting: no key, nothing to pull. Seven points, all of which rewrite one
-colour before the program draws with it.
+from six mock-ups, and the colour half of #379's selection; then drawn as a
+block so that it is not told by colour alone (#483). A look and a setting:
+no key, nothing to pull. Nine points: seven rewrite one colour before the
+program draws with it, and two, the blitter's row stores, invert the rows of
+what those seven coloured.
 
 | point | module | what the handler does |
 |---|---|---|
@@ -2317,6 +2322,7 @@ colour before the program draws with it.
 | image `0x13AF`, the string call in the roster drawer's selected-member arm | the resident image, `inside_calls` | white becomes yellow |
 | image `0x0918` of overlay 19, after an ability score's colour is chosen | overlay 19 (`0x0860`) | a highlighted draw's light magenta becomes yellow |
 | image `0x153F`, after a hit-point value's colour is chosen | the resident image | the same, for the highlighted hit points |
+| image `0x74A2` and `0x74C8`, the blitter's two EGA row stores, one per page | the resident image, `inside_calls` | inverts DL when the glyph is a selection's (below) |
 
 | fact | value |
 |---|---|
@@ -2325,6 +2331,10 @@ colour before the program draws with it.
 | the caller's frame (the menu-bar routine) | `color_hi` at `+0x0E`, `color_lo` at `+0x10`; the bar as a Pascal string at `-0x53`, its length again at `-0x64`; the group table at `-0x8F`, a first and a last position to a group (`menu_groups` in the facts of `bar-keys`) |
 | the glyph call | six words from the top of the stack: fold flag, character, count, **colour**, row (`0x18`), column. The flags and the colour and the row are bytes pushed as whole registers, so the high half of each is the program's leftover |
 | the string call | five words from the top: string offset, segment, **colour**, row, column |
+| the blitter's EGA path | for each of the glyph's eight rows and each of the four planes: a plane the colour lights gets the row, fetched into DL and stored once to each page (`0x749A` and `0x74C0` are the instructions after the fetches, the faces' points; `0x74A2` and `0x74C8` the stores); a plane it does not light gets zero. The cell is opaque, so a row stored inverted is the paper in the colour and the letter in black |
+| the frames a store follows | the blitter (paragraph `0x709`, `0x01DF`) and the string routine (`0x0626`, same paragraph) keep BP frames: the caller's BP at `BP+0`, the far return address at `BP+2` (offset) and `BP+4` (segment), the arguments from `BP+6`; the string routine's colour is the word at `BP+0x0A`. The string routine pushes CS and calls the blitter near, returning to image `0x7724` |
+| the calls a store recognises | each a five-byte far call, so the return is the call's offset and five: the bar leaf's three glyph calls (overlay 25 `0x0273`, `0x02CA`, `0x0305`, above); the string calls of the pick-list (overlay 25 `0x09FD`) and the roster's selected member (image `0x13AF`); Modify's score (overlay 19 `0x0976`), exceptional strength's percentage (overlay 19 `0x0A41`) and hit points (image `0x155E`), whose routine's first argument at `BP+6` says highlighted; and a batch's own return, `F000:0800` (seam.h) |
+| `selection_mark` | `0x8000` in the colour word a seam pushes for a string it draws as a selection (`seam_builtin.h`); the string routine reads the low byte |
 | the list leaf | its context's near pointer at `BP+6`; the highlight's colour at `+0x20` of it |
 | the roster drawer | image `0x1307`; its frame has the column and row bytes at `BP-5` and `BP-6` and the member's far pointer at `BP-4`; the call's own words repeat all three |
 | Modify's two draws | the first argument at `BP+6` is non-zero for a highlighted draw; the colour is a local, at `BP-0x2B` for a score (overlay 19) and `BP-1` for hit points. Modify is the only caller that passes it |
@@ -2425,6 +2435,22 @@ colour before the program draws with it.
   (overlay 5 `0x0AF3` and `0x14C2`) pass white for both, which is not the
   swapped pair: the unselected words are white as before, and the lit word
   is yellow with its key white.
+- **A selection is a block** (#483). The store follows the frames back to
+  the call that drew the glyph and inverts DL when that call is a selection:
+  a bar character in the lit word (the bar points' own reading of the leaf's
+  frame, through the blitter's saved BP), the pick-list's row and the
+  roster's selected member in yellow, Modify's score with its routine's
+  highlighted argument set, or a batch's string whose colour carries
+  `selection_mark`. **A colour alone is not a selection**: yellow is a hurt
+  character's hit points and the prompt colour of a few questions, and white
+  is every key letter. The colours stay what the seven points made them, so
+  the lit word is a yellow block and its key letter a white one. **The
+  stores and not the fetches**, because the faces swap DL at the fetches and
+  the engine offers an address's points in table order, which puts
+  `modern-controls` before the faces: at the fetch the face's row would
+  overwrite the inverted one. A store has nothing to decline; every glyph
+  goes through it. The screen text reads a block as its glyph, black ink on
+  the colour's paper (`screen_text.h` takes either colour as the ink).
 - **Who else asks.** The `menu-cursor` piece draws a row of its own in this
   yellow, with a white key. The journal's Notes list draws a cursor row of
   its own and its reader's bars a highlight, both in the program's bright
@@ -2433,7 +2459,12 @@ colour before the program draws with it.
   is on. The engine already lets a seam ask this (`text_face::drawing()` does
   for the faces); nothing was added to it, and neither keeps the answer. The
   reader's bars take the highlighted command in yellow, its key letter white,
-  and no yellow on a bar of one word (#471, §10 on the journal).
+  and no yellow on a bar of one word (#471, §10 on the journal). All three
+  draw through the string routine in a batch, which the stores cannot tell
+  from a seam's other text by colour, so each sets `selection_mark` in a
+  selection's colour words; the store heeds the mark only in a call that
+  returns to the batch, because a program's own push has a leftover in that
+  half.
 - **A selection the program draws that is not here, and why.** The pick-list
   is one routine at one call site (`0x0EF6` calls the highlight-on leaf), so
   the character-creation lists, the spell lists, the shops, training, coins
@@ -2451,16 +2482,21 @@ colour before the program draws with it.
   what it already is, and only the **low byte** of a pushed word is read or
   written.
 - **`max_points` is sixty-four, and with every seam on the build carries
-  fifty-five points** (the faces count once, being alternatives), twenty-four
-  of them `modern-controls`': three, one, two, five, one, these seven and
-  the move mode's five.
+  fifty-seven points** (the faces count once, being alternatives),
+  twenty-six of them `modern-controls`': three, one, two, five, one, these
+  nine and the move mode's five.
 - **Rejected:** a face of the same shape (a seam with a parameter: seams have
   none); lighting the program's group as it is (the half of a word on the
   icon editor's bar, the maintainer's screenshot); a table of the callers
   that swap their colours; recolouring the unselected words of every bar
   (the program's own mix of white and green is the game's and stays);
   yellow for the roster's selected number (a number is a key and stays
-  white).
+  white). For the block (#483), from mock-ups of five treatments over all
+  three faces: the key letter white on black inside the yellow block; the
+  letters squeezed to six rows so the block has a margin above and below
+  (it reads better in the faces, and the game's own face loses its `E`'s
+  bar); a change of palette (a colour still); brackets or a pointer
+  (packed bars have no room for one, and it would move every word).
 
 **State**: none. **Host services**: none. **Keys**: none.
 
@@ -2468,17 +2504,21 @@ colour before the program draws with it.
 so a run with the seam on is not the run with it off (§8.5), as with the
 faces. Unlike a face it differs in `cpu` and `ram` as well as `devices` and
 `display`, because the seam rewrites a colour the program has pushed and the
-program goes on to use it. Exercised: `list-keys-yellow` (against `list-keys`,
+program goes on to use it, and a store leaves DL inverted. Exercised: `list-keys-yellow` (against `list-keys`,
 58 of 84 checkpoints identical: the pick-lists' highlighted rows), and every
 bar session, which draws the camp bar, the roster and the quit prompt in
 yellow (`bar-yn-keys`), the arena master's notice and question
 (`bar-script-keys`) and the menu's cursor row (`menu-down-cursor`). Unit: `SeamSelectYellow.*` (the bar's words on made-up bars, one
-shaped like the icon editor's, with the junk high halves a real push has);
-stand-ins: `select_yellow_probe_off`, `select_yellow_probe_on`. **Driven**
-(Release, SDL dummy drivers, seam off and on, stills read): the adventuring
-bar and party list, the camp bar, the quit question, the pick-lists, Modify
-(a score and the hit points), the portrait bar, the icon editor's bar, the
-temple's pay question, the main menu and the Notes list.
+shaped like the icon editor's, with the junk high halves a real push has,
+and each store's frames laid out for every call it recognises and some it
+must not); stand-ins: `select_yellow_probe_off`, `select_yellow_probe_on`.
+**Driven** (Release, SDL dummy drivers, seam off and on, stills read): the
+adventuring bar and party list, the camp bar, the quit question, the
+pick-lists, Modify (a score and the hit points), the portrait bar, the icon
+editor's bar, the temple's pay question, the main menu and the Notes list;
+the blocks (#483) on the adventuring and camp bars, the roster in camp and
+on the party menu, the main menu, a pick-list and Modify, in the game's
+face and with `font-sans`, the screen text reading each block's paper.
 
 #### The edit keys (#455)
 
@@ -2628,7 +2668,7 @@ has two modes:
   the shared byte that means it. Every other value is the program's
   numbering outside the call, so the next bar of any kind finds what the
   program would have left there, save for that one.
-- **The single-group walking bar is white, not yellow**: the program draws no
+- **The single-group walking bar is white, not a block**: the program draws no
   highlight on a bar of one command (#462), and the piece does not add one.
 - **Driven** (slot A in the city, slot J in the wilderness, journal and
   automap on): Right, Right, Left step the bar; Down and Up select the next

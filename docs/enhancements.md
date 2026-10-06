@@ -181,15 +181,15 @@ on:
   automap being the overhead view (the move mode);
 - the arrows and the function keys **type nothing at a text prompt** (the
   edit keys);
-- **every selection is yellow**, and a command's key letter stays white (the
-  selection colour).
+- **every selection is a yellow block**, its letters cut out of it, and a
+  command's key letter a white one (the selection block).
 
 **How you turn it on.** `--seam modern-controls`, or the toggle in the panel.
 It is one setting: the game's own keys and colours, or all of this. Each
 part is described below, with where it works and what it leaves alone.
 
 **When it shows.** The menu's cursor from the first frame the menu is drawn,
-the main menu's numbers, the party's bar with `Move` and the yellow at the
+the main menu's numbers, the party's bar with `Move` and the blocks at the
 next thing the game draws, and
 each key where the part that takes it says. The panel reads `on armed` from
 the start; a part whose screen the game has not loaded yet (the pick-lists'
@@ -312,8 +312,8 @@ on, a cursor is on the first command as soon as the menu is drawn, **Up and
 Down** move it over the commands the menu shows, skipping none that is shown
 and wrapping at both ends, and **Return** takes the command under it, as if
 you had typed its letter. The cursor is the game's own string routine's, as a
-pick-list lights a row: the command's first letter white and the rest of the
-word yellow.
+pick-list lights a row: the command's first letter a white block and the
+rest of the row a yellow one.
 
 **Visible from the start.** The cursor is on the first command whenever the
 menu is drawn, so the first press moves it: Down, Down is the third command
@@ -372,45 +372,49 @@ walking bar is white end to end, as the game draws any bar of one command.
 **Where it does not work.** Only the party's own bar has modes. Combat's
 movement and aim, and Modify, keep their arrows.
 
-### The selection colour
+### The selection block
 
-**What it does.** Draws every selection you can move in yellow, and keeps
-a command's key letter white. Today the game lights a selection white from
-end to end, so the capital letter that is the key disappears into it. With
-the seam on:
+**What it does.** Draws every selection you can move as a block of yellow
+with its letters cut out of it in black, and a command's key letter as a
+white block. Today the game lights a selection white from end to end, so the
+capital letter that is the key disappears into it; and a selection told
+apart by colour alone is lost to a player who cannot tell the colours apart.
+A block is a shape, and reads whatever colours you see. With the seam on:
 
 - **A command bar's highlighted word** (the adventuring bar, the camp bar,
-  Magic, Alter, the shops, the temple, a script's menus and every Yes/No
-  question) is yellow with its key letter white. Only the word is lit: on
-  a bar whose keys are not the first letters of its words, like the icon
-  editor's top bar, the game's own highlight runs on into the next word,
-  and the seam lights the word that holds the key.
+  Magic, Alter, the shops, the temple, a script's menus, the save slots and
+  every Yes/No question) is a yellow block with its key letter a white one.
+  Only the word is lit: on a bar whose keys are not the first letters of its
+  words, like the icon editor's top bar, the game's own highlight runs on
+  into the next word, and the seam lights the word that holds the key.
   A prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
   CONTINUE`, has nothing to select and stays as the game draws it.
 - **A pick-list's highlighted row** (race, class, spells, shops, coins, the
-  list of characters to add) is yellow.
-- **The selected party member's name** in the party list is yellow, in the
-  3D view, in camp, in the party-member picker and on the main menu. A
-  number the hero keys draw in front of it stays white.
-- **Modify's selected score**, which was light magenta, is yellow, hit
-  points included.
-- **The menu cursor's row** on the main menu is yellow with its first letter
-  white, and, with `journal` on, the Notes list's cursor row is yellow. The
-  lit command on the Notes screen's bar is yellow with its letter white,
-  except on a bar of one word.
+  list of characters to add) is a yellow block.
+- **The selected party member's name** in the party list is a yellow block,
+  in the 3D view, in camp, in the party-member picker and on the main menu.
+  A number the hero keys draw in front of it stays white on black.
+- **Modify's selected score**, which was light magenta, is a yellow block,
+  hit points included.
+- **The menu cursor's row** on the main menu is a yellow block with its
+  first letter a white one, and, with `journal` on, the Notes list's cursor
+  row is a yellow block across the row. The lit command on the Notes
+  screen's bar is a yellow block with its letter a white one, except on a
+  bar of one word.
 - **A bar the game hands its colours the wrong way round** (the portrait
   screen's HEAD, BODY and KEEP bar, the temple's "pay for cure" and the
   detect-magic confirmations) is drawn like every other bar: key letters
   white, the rest of each word green. Without the seam they are white
   where the others are green, and green where they are white.
 
-It is a look and has no key.
+The lettering cut out of a block is the game's, or the face's when `font-sans`
+or `font-chisel` is on. It is a look and has no key.
 
 **When it shows.** At the next selection the game draws. A selection
-already on the screen when you switch it keeps its colour until the game
+already on the screen when you switch it keeps its look until the game
 draws it again, which on most screens is the next key you press.
 
-**What it will not do.** Colour anything that is not a selection among
+**What it will not do.** Mark anything that is not a selection among
 text: the icon editor's cell cursor, the combat grid's cursor and the
 hit-point colour of a hurt character are the game's own.
 

@@ -15,6 +15,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string_view>
 
@@ -42,7 +43,7 @@ class machine;
 /// The controls, six pieces in one seam (seam_modern_controls.cpp, #473):
 /// the up and down arrows in the pick-lists, Left, Right, Return and Esc at
 /// a command bar, a cursor on the main menu, the number row's heroes, a
-/// selection in yellow, and the line editor's extended keys. Each piece
+/// selection as a yellow block, and the line editor's extended keys. Each piece
 /// keeps its logic and its facts in a source of its own and hands the
 /// registration the points it owns.
 [[nodiscard]] const seam_definition& modern_controls_seam() noexcept;
@@ -66,7 +67,7 @@ inline constexpr std::size_t bar_keys_point_count = 1;
 inline constexpr std::size_t menu_cursor_point_count = 2;
 inline constexpr std::size_t hero_keys_point_count = 5;
 inline constexpr std::size_t edit_keys_point_count = 1;
-inline constexpr std::size_t select_yellow_point_count = 7;
+inline constexpr std::size_t select_yellow_point_count = 9;
 inline constexpr std::size_t move_mode_point_count = 5;
 
 /// The up and down arrows in the pick-lists, and the selected party member
@@ -89,9 +90,16 @@ inline constexpr std::size_t move_mode_point_count = 5;
 /// (seam_edit_keys.cpp, #455).
 [[nodiscard]] std::span<const seam_point> edit_keys_points() noexcept;
 
-/// Every selection the player can move in yellow, a command's key letter
-/// white (seam_select_yellow.cpp, #453).
+/// Every selection the player can move as a yellow block, a command's key
+/// letter as a white one (seam_select_yellow.cpp, #453, #483).
 [[nodiscard]] std::span<const seam_point> select_yellow_points() noexcept;
+
+/// The mark a seam sets in the high half of the colour word it hands the
+/// program's string routine when what it draws is a selection: the main
+/// menu's cursor row, the journal's listing row and its bar's lit word. The
+/// routine reads the low byte, and `select-yellow` draws a marked string
+/// as a block (#483).
+inline constexpr std::uint16_t selection_mark = 0x8000;
 
 /// On the party's own bar, walking is a mode: `Move` starts it, `Exit` ends
 /// it, and between the two Left and Right step the bar (seam_move_mode.cpp,
