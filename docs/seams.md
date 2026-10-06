@@ -1054,7 +1054,7 @@ rule, settling quarantine and ownership signals are derived in
 | the box-region clear | resident image | if the rect meets the panel, something else has the cells |
 | the full-screen clear | resident image | the same, unconditionally |
 | the party-roster draw's `retf` | resident image | the cells are the panel's again (at the return, because the drawer clears its rows through the box clear above) |
-| the menu-bar routine's thunk | resident image | which bar is going up: the party's bar is a far pointer into the data segment at one of two offsets, every other bar is a stack copy. While it is not the party's bar the panel comes off the screen (if really up), is not drawn, and Tab is not this seam's; it stays open, and is drawn again when the party's bar is back — after an encounter fled, a vendor's question, a script's menu (M5-E2d) |
+| the menu-bar routine's thunk | resident image | which bar is going up: the party's bar is a far pointer into the data segment at one of two offsets, or a call from the adventuring loop's own two call sites (the far return on top: overlay 14 `0x09D5` or `0x0C45`, in the segment the manager's word `0x730` names), which is what says so when `modern-controls`' move mode hands those calls a copy on the stack; every other bar is a stack copy. While it is not the party's bar the panel comes off the screen (if really up), is not drawn, and Tab is not this seam's; it stays open, and is drawn again when the party's bar is back — after an encounter fled, a vendor's question, a script's menu (M5-E2d) |
 
 - **The key is taken out of the BIOS ring at 40:1Eh** before the
   program's routine looks, head only, whole keystroke word matched

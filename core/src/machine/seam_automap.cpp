@@ -2333,7 +2333,7 @@ void at_command_bar(machine& box, seam_context& ctx) {
   // has the same point for the same reason: one reader, so the two seams
   // cannot come to different conclusions about whose screen this is
   // (`automap_overland.h`).
-  note_command_bar(box, ds);
+  note_command_bar(box, ctx, ds);
 }
 
 /// A box region is about to be cleared. If it meets the panel's cells,
