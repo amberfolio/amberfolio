@@ -266,9 +266,10 @@
 // overlaid code the module names the read that loads it — which file,
 // which offset, how many bytes, optionally which digest (overlay.h) — and
 // the engine arms the point only while the tracker says that read is
-// resident, at the address it landed. A module that is not resident
-// leaves the seam enabled but inert, with `seam_reason::module_not_resident`
-// for anyone who asks why.
+// resident, at the address it landed. A point whose module is not
+// resident does nothing; a seam none of whose modules is resident is
+// enabled but inert, with `seam_reason::module_not_resident` for anyone
+// who asks why. One module in memory is enough for `armed` (#477).
 //
 // **Where the program says where a module is, that is what is used.**
 // An overlay manager that shuffles modules around an arena has to keep
@@ -539,7 +540,7 @@ struct seam_definition {
   /// path that arms a gated seam without a satisfied gate, because the
   /// gate is tested where residency is tested and both answers are
   /// computed by the one function `status()` and `arm_all()` share
-  /// (`modules_resident`'s own argument, applied again).
+  /// (`some_module_resident`'s own argument, applied again).
   document_kind gate{document_kind::none};
 
   /// Seams that are **alternatives** share a group, and at most one of
@@ -577,8 +578,9 @@ enum class seam_reason : std::uint8_t {
   wrong_binary,
   /// The definition was written against another schema version.
   schema_mismatch,
-  /// The seam is on, but the module one of its points lives in is not
-  /// resident, so nothing is armed (overlay.h).
+  /// The seam is on, but none of the modules its points live in is
+  /// resident, so no point can act (overlay.h). A seam with one module in
+  /// memory and another out is armed: its points in the first act (#477).
   module_not_resident,
   /// The seam is on, and the document it is gated on has not been
   /// presented (`seam_definition::gate`, document.h, #171). Nothing is
@@ -648,8 +650,9 @@ struct seam_status {
   /// Why it is unavailable, or why an enabled seam is not armed. `none`
   /// for a seam that is off, or on and armed.
   seam_reason reason{seam_reason::none};
-  /// Whether any of its points is armed right now. On-and-unarmed is a
-  /// seam waiting for its module.
+  /// Whether any of its points can act right now: the gate is open and
+  /// at least one module its points name is resident (#477). On and
+  /// unarmed is a seam waiting for a module or a document.
   bool armed{false};
 
   /// How many times one of its handlers has actually **acted** since it
@@ -1554,8 +1557,8 @@ class seam_engine {
   /// Why `seam` is not armable right now, or `none` if it is: the gate
   /// first, then the modules.
   ///
-  /// One function, and one order, for the same reason `modules_resident`
-  /// is one function: `status()` answers a host asking right now and
+  /// One function, and one order, for the same reason
+  /// `some_module_resident` is one function: `status()` answers a host asking right now and
   /// `arm_all()` decides whether a transition is worth a line, and the
   /// two must never be able to disagree about why a seam is inert. The
   /// gate comes first because it is the condition a *person* can do
@@ -1565,15 +1568,23 @@ class seam_engine {
   [[nodiscard]] seam_reason blocking_reason(
       const seam_definition& seam) const noexcept;
 
-  /// Whether every module `seam`'s points live in is in memory *now* —
-  /// asked of the program's own record where there is one, and of the
-  /// tracker otherwise. The resident image always is.
+  /// Whether `module` is in memory *now* — asked of the program's own
+  /// record where there is one, and of the tracker otherwise. The
+  /// resident image always is.
+  [[nodiscard]] bool module_resident(const seam_module& module) const noexcept;
+
+  /// Whether at least one module `seam`'s points live in is resident, so
+  /// that at least one of its points can act (#477). Any and not every,
+  /// because `dispatch()` offers each point on its own: a seam with
+  /// points in three overlays acts in whichever of them is loaded, and
+  /// `armed` is a claim about what a player can rely on. A seam with no
+  /// points needs nothing, so is never missing a module.
   ///
   /// One function for both callers on purpose: `status()` answers a host
   /// asking right now, `arm_all()` decides whether a transition is worth
   /// a line, and the two must never be able to disagree about what
   /// resident means.
-  [[nodiscard]] bool modules_resident(
+  [[nodiscard]] bool some_module_resident(
       const seam_definition& seam) const noexcept;
 
   /// Rebuild the armed table from the enabled slots against `overlays`.

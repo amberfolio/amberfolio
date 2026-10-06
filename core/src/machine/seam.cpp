@@ -301,22 +301,30 @@ bool seam_engine::applies(const seam_definition& seam) const noexcept {
   return false;
 }
 
-bool seam_engine::modules_resident(const seam_definition& seam) const noexcept {
+bool seam_engine::module_resident(const seam_module& module) const noexcept {
+  if (module.is_resident_image()) {
+    return true;
+  }
+  if (module.has_load_segment()) {
+    return word_at(image_base() + module.load_segment_at) != 0;
+  }
+  return overlays_ != nullptr && overlays_->resident(module) != nullptr;
+}
+
+bool seam_engine::some_module_resident(
+    const seam_definition& seam) const noexcept {
+  // Any, not every (#477): `dispatch` offers each point on its own, so a
+  // seam with one module in memory acts there while another is out, and
+  // a status that called it inert would be calling a working seam broken.
+  if (seam.points.empty()) {
+    return true;  // Nothing is needed, so nothing is missing.
+  }
   for (const seam_point& point : seam.points) {
-    if (point.module.is_resident_image()) {
-      continue;
-    }
-    if (point.module.has_load_segment()) {
-      if (word_at(image_base() + point.module.load_segment_at) == 0) {
-        return false;
-      }
-      continue;
-    }
-    if (overlays_ == nullptr || overlays_->resident(point.module) == nullptr) {
-      return false;
+    if (module_resident(point.module)) {
+      return true;
     }
   }
-  return true;
+  return false;
 }
 
 seam_reason seam_engine::blocking_reason(
@@ -326,7 +334,7 @@ seam_reason seam_engine::blocking_reason(
   if (!holds_document(seam.gate)) {
     return seam_reason::document_not_presented;
   }
-  if (!modules_resident(seam)) {
+  if (!some_module_resident(seam)) {
     return seam_reason::module_not_resident;
   }
   return seam_reason::none;

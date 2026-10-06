@@ -191,10 +191,10 @@ part is described below, with where it works and what it leaves alone.
 **When it shows.** The menu's cursor from the first frame the menu is drawn,
 the main menu's numbers, the party's bar with `Move` and the yellow at the
 next thing the game draws, and
-each key where the part that takes it says. The panel reads `on inert` until
-the game has loaded every screen the seam works on (the pick-lists' and
-command bars', the main menu's and Modify's); the parts whose screens are
-loaded work meanwhile.
+each key where the part that takes it says. The panel reads `on armed` from
+the start; a part whose screen the game has not loaded yet (the pick-lists'
+and command bars', the main menu's and Modify's) waits for it, and the rest
+work meanwhile.
 
 ### The list arrows
 

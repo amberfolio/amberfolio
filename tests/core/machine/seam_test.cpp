@@ -273,6 +273,17 @@ constexpr seam_definition moved_seam{.id = "test-moving-overlay",
                                      .fingerprints = claimed_binaries,
                                      .points = moved_points};
 
+/// Points in two modules: the resident image's edit and the moving
+/// module's host call (#477). Each acts on its own, so the seam is armed
+/// while either module is in memory.
+constexpr std::array<seam_point, 2> split_points{
+    {{.module = resident_image, .offset = edit_offset, .run = &edit_ax},
+     {.module = moved_module, .offset = 0x0002, .run = &ask_host}}};
+constexpr seam_definition split_seam{.id = "test-split",
+                                     .about = "lives in two modules",
+                                     .fingerprints = claimed_binaries,
+                                     .points = split_points};
+
 /// One in the resident image, so that the host-service record can be
 /// exercised without an overlay in the way (#169). Same handler, at the
 /// first instruction of whatever program a test places.
@@ -353,6 +364,7 @@ struct rig {
     EXPECT_TRUE(box->seams().add(ovl_seam));
     EXPECT_TRUE(box->seams().add(wrong_seam));
     EXPECT_TRUE(box->seams().add(moved_seam));
+    EXPECT_TRUE(box->seams().add(split_seam));
     EXPECT_TRUE(box->seams().add(host_seam));
     EXPECT_TRUE(box->seams().add(gated_seam));
     EXPECT_TRUE(box->seams().add(journal_gated_seam));
@@ -1725,6 +1737,37 @@ TEST(SeamMovingOverlay, IsInertWhileTheProgramSaysTheModuleIsNotLoaded) {
   r.pc().step();
   EXPECT_EQ(host_calls, 0u);
   EXPECT_EQ(r.pc().seams().status("test-moving-overlay").fired, 0u);
+}
+
+TEST(SeamMovingOverlay, ASeamWithOneModuleOutIsArmedAndActsInTheOther) {
+  // #477: the panel called a seam inert while its points in the module
+  // that was resident were in the table and acting. `armed` is what a
+  // player can rely on, and here that is the resident image's point.
+  const rig r;
+  ASSERT_EQ(r.pc().seams().enable("test-split"), seam_reason::none);
+  counting_host host;
+  r.pc().seams().set_host(&host);
+  r.manager_says_module_at(0);
+
+  const seam_status row = r.pc().seams().status("test-split");
+  EXPECT_TRUE(row.armed);
+  EXPECT_EQ(row.reason, seam_reason::none);
+  EXPECT_EQ(r.events(seam_event_kind::inert), 0u);
+
+  r.program_at(0, {0xB8, 0x11, 0x11, 0x90, 0xF4});
+  r.pc().step();  // MOV
+  r.pc().step();  // the image's point fires, then NOP
+  EXPECT_EQ(edit_hits, 1u);
+  EXPECT_EQ(r.regs()[cpu::reg16::ax], 0x2222);
+
+  // And the point in the module that is out still does nothing.
+  r.pc().memory().ram()[cpu::physical_address(0x3000, 2)] = 0xF4;
+  r.pc().processor().resume();
+  r.regs()[cpu::sreg::cs] = 0x3000;
+  r.regs().ip = 2;
+  r.pc().step();
+  EXPECT_EQ(host_calls, 0u);
+  EXPECT_EQ(r.pc().seams().status("test-split").fired, 1u);
 }
 
 TEST(SeamMovingOverlay, ArmsWithoutAReadWhenTheProgramSaysItIsThere) {

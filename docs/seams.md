@@ -372,7 +372,9 @@ file offset, destination, length and digest per read; a later read into
 overlapping memory replaces what was there. It is observation: not in
 the serialization, reconstructed by a replay. The engine arms an
 overlay-qualified point only while the tracker says its module is
-resident. Otherwise the seam is **on and inert** with
+resident; a point whose module is out does nothing. A seam is **armed**
+while at least one module its points name is resident, because each
+point acts on its own (#477); while none is, it is **on and inert** with
 `seam_reason::module_not_resident` on its status row and a
 `seam_event_kind::inert` event, once per transition. A demanded digest
 the bytes do not have keeps it inert too. `overlay_schema_version` names
@@ -465,7 +467,7 @@ for. A definition naming a `gate` adds one condition on arming; an
 unsatisfied gate is on and inert with `document_not_presented` (its own
 reason, not `module_not_resident`, because a person and not the program
 answers it). A shut gate arms no points at all; the test is in the one
-function `status()` and `arm_all()` share, beside `modules_resident`.
+function `status()` and `arm_all()` share, beside `some_module_resident`.
 
 - Presenting: `--document PATH` or a file dropped on the window on the
   SDL host, the *show a document you hold* input on the page,
@@ -502,7 +504,7 @@ Three states per seam (`seam_engine::status()`):
 | state | meaning |
 |---|---|
 | `off` | available for this program, not enabled; the default |
-| `on` | enabled; `armed` says whether every point is placed, `reason` says why not |
+| `on` | enabled; `armed` says whether any point can act, `reason` says why none can |
 | `unavailable` | not for this program (`wrong_binary`), no program yet (`no_program`), or another schema |
 
 Beside those, `fired`: how many times a handler has **acted** since the
@@ -1398,10 +1400,11 @@ summed over the pieces.
   highlight and for its cursor row (§10 on the journal).
 - **Off is the plain machine, on is all seven.** There is no setting between,
   so no piece's handlers run with another's off.
-- **A seam is armed while every module its points name is resident** (§4),
-  so the panel reads `on inert module_not_resident` until overlays 25, 16, 19
-  and 14 are all loaded, which is rare; the points of the loaded modules work
-  meanwhile (`fired` says so).
+- **A seam is armed while any module its points name is resident** (§4),
+  and this one has points in the resident image, so with the seam on the
+  panel reads `on armed` from the first step. A piece whose overlay (25, 16,
+  19 or 14) is out does nothing until it is loaded; `fired` counts what the
+  others did meanwhile.
 
 **State**: the move mode's few words (its section); the menu cursor is held
 in an enable byte the program owns while it is drawn. **Host services**: none. **Keys**: each
@@ -1493,7 +1496,8 @@ routine are shared with the bar keys (`seam_menu_bar.h`).
   served (§3a). An arrow-free run reads `fired=9` and this piece rewrites
   nothing.
 - **Qualified as overlay 25**, resolved from the manager's word at every
-  step (§4); inert with `module_not_resident` while the overlay is out.
+  step (§4); its points do nothing while the overlay is out, and the seam
+  stays armed by its others.
   The store releases' GAME.OVR differs from the repack's only inside
   overlay 2 (§5), so the digest holds on both. The word's address came
   from the search §8.1 describes (one match; the same search returns
@@ -2020,9 +2024,8 @@ question, both covered above, or a bar whose Esc leaves it (the save-slot bar,
 the sub-bars of camp).
 
 **What no check pins.** The callers' modules are identified by the manager's
-word and the return offset, not by digest: a point in each would make the
-whole seam inert while that overlay is out of memory, which is most of the
-time. `journal` and `encamp-fix` pin the same two modules by digest.
+word and the return offset, not by digest. `journal` and `encamp-fix` pin the
+same two modules by digest.
 
 **State**: none. **Host services**: none. **Keys**: Left and Right at
 every caller but the seven above; Enter at the twenty callers in the Enter
@@ -2451,11 +2454,6 @@ colour before the program draws with it.
   fifty-five points** (the faces count once, being alternatives), twenty-four
   of them `modern-controls`': three, one, two, five, one, these seven and
   the move mode's five.
-- **The panel** reads `on inert module_not_resident` until every module the
-  seam's points name has been loaded (overlay 19 among them), because a seam
-  is armed only while every module it names is resident; the points of the
-  loaded modules work meanwhile (`fired` says so), as the journal's do with
-  the adventuring loop out of memory.
 - **Rejected:** a face of the same shape (a seam with a parameter: seams have
   none); lighting the program's group as it is (the half of a word on the
   icon editor's bar, the maintainer's screenshot); a table of the callers

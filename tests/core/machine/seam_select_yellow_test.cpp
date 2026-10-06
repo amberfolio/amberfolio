@@ -441,8 +441,14 @@ TEST(SeamSelectYellow, IsInertWhileOverlay25IsNotLoaded) {
   const rig r;
   r.arm();
   r.manager_says(word_menu_bar, 0);
-  EXPECT_EQ(r.box->seams().status(seam_id).reason,
-            seam_reason::module_not_resident);
+  r.lay_bar_call("Alpha Beta", 1, 2, white, green, white);
+  const auto before = r.stack_words(6);
+
+  // The seam stays armed: its points in the modules that are resident
+  // act (#477). This piece's point is the one that does nothing.
+  EXPECT_TRUE(r.box->seams().status(seam_id).armed);
+  r.arrive(bar_group);
+  EXPECT_EQ(r.stack_words(6), before);
 }
 
 // --- The bar ------------------------------------------------------------------

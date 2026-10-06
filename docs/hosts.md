@@ -1738,9 +1738,9 @@ hosts. None of them is decoration.
 | waits for | the document the row is gated on, or `-` |
 
 **`state` distinguishes the two claims an enabled seam can make.** The
-difference is `seam_status::armed`: an address was computed out of the
-seam's fact table, or the module it lives in is not resident yet
-(`seams.md` §4). A panel that showed both as "on" would hide the
+difference is `seam_status::armed`: at least one of the seam's points
+can act, or no module its points live in is resident yet (`seams.md`
+§4). A panel that showed both as "on" would hide the
 commonest reason an enhancement does nothing yet.
 
 **`fired` is a number and never a tick** (#131, #163). A seam that armed

@@ -381,8 +381,9 @@ TEST(SeamBarKeys, IsInertWhileOverlay25IsNotLoaded) {
   r.lay_bar("Ant Bee Cow", 1);
   r.manager_says(word_menu, 0);
 
-  EXPECT_EQ(r.box->seams().status(seam_id).reason,
-            seam_reason::module_not_resident);
+  // The seam stays armed: its points in the modules that are resident
+  // act (#477). This piece's point is the one that does nothing.
+  EXPECT_TRUE(r.box->seams().status(seam_id).armed);
   EXPECT_EQ(r.press(left, stack_segment, 0, 0), left);
 }
 

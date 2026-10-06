@@ -71,8 +71,8 @@ export function panelRow(seam) {
   let state = 'off';
   if (seam.state === AF_SEAM_UNAVAILABLE) state = 'unavailable';
   // The two claims an enabled seam can make, and they are different:
-  // `armed` says an address was computed out of the fact table, `inert`
-  // says the module it lives in is not resident yet.
+  // `armed` says at least one of its points can act, `inert` says no
+  // module its points live in is resident yet (#477).
   else if (on) state = seam.armed ? 'on armed' : 'on inert';
   const reason = !seam.reason || seam.reason === 'none' ? '-' : seam.reason;
   const gate = !seam.gate || seam.gate === NO_GATE ? '-' : seam.gate;

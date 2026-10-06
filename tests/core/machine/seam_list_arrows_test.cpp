@@ -386,8 +386,9 @@ TEST(SeamListArrows, IsInertWhileOverlay25IsNotLoaded) {
   r.arm();
   r.manager_says_overlay_at(0);
 
-  EXPECT_EQ(r.box->seams().status(seam_id).reason,
-            seam_reason::module_not_resident);
+  // The seam stays armed: its points in the modules that are resident
+  // act (#477). This piece's point is the one that does nothing.
+  EXPECT_TRUE(r.box->seams().status(seam_id).armed);
   EXPECT_EQ(r.arrive(where::list, down, 1), down)
       << "the manager's word reads zero while the module is out of memory";
 }

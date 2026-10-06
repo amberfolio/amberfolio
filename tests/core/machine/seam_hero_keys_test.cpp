@@ -780,8 +780,9 @@ TEST(SeamHeroKeys, IsInertWhileOverlay25IsNotLoaded) {
   r.manager_says(word_menu, 0);
   r.lay_party(4, 2);
 
-  EXPECT_EQ(r.box->seams().status(seam_id).reason,
-            seam_reason::module_not_resident);
+  // The seam stays armed: its points in the modules that are resident
+  // act (#477). This piece's point is the one that does nothing.
+  EXPECT_TRUE(r.box->seams().status(seam_id).armed);
   EXPECT_EQ(r.press(number_row(3), hero_callers[0]), number_row(3));
 }
 
