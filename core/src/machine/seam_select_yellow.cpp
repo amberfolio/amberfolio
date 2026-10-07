@@ -589,8 +589,8 @@ void at_bar(machine& box, seam_context& ctx, bool expect_bright,
   // A bar of one command is lit where the program lights it, its group,
   // and drawn as any lit word is (#483).
   const bool lit = call.one_command ? one_command_lit(s, ctx, group_arm) &&
-                                         !call.trailing_blank
-                                   : call.in_word;
+                                          !call.trailing_blank
+                                    : call.in_word;
   const std::uint8_t colour =
       call.one_command && !lit
           ? unselected_bar_colour(call.colour, call.color_lo, call.color_hi)
