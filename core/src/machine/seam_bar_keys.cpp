@@ -102,13 +102,31 @@
 // first choice. The read is refused unless the byte is inside conventional
 // RAM.
 //
+// **The pick-lists** (#496). Every vertical list goes through one routine
+// in overlay 25 (`0x0D9A`), which opens with the bar's highlight on its
+// first command and calls the menu-bar routine (return offset `0x0FE0`).
+// It hands Enter back to its own caller with the lit row as the current
+// item, and a letter the same way. With the highlight moved off the first
+// command, Enter takes the lit command at every list. On the first, Enter
+// is the list's own, because what a `0x0D` means is the list's caller's
+// business and fourteen of its fifteen callers pick the row on it. The
+// fifteenth, **the Items screen** (overlay 19, its call into the list
+// returning at `0x1294`), compares the key with its command letters only,
+// so a `0x0D` does nothing and the list opens again; there Enter takes
+// the lit command on the first command too, and Enter on `Ready` readies
+// the lit item. The list's caller is found as the routine's is, one frame
+// up: the menu-bar routine's saved BP is the list's, and the list's frame
+// holds its caller's far return address. The saved BP is refused unless
+// it is above ours and the address is inside conventional RAM.
+//
 // **Why a table and not every bar.** The routine hands Enter back, and
 // what a caller does with `0x0D` is the caller's own business. A caller
 // is in the table when it **asks again** on a `0x0D` it was handed: its
 // compares match nothing, or its loop's exit class does not hold it, and
 // nothing happens. A caller that did something with it, a pick-list that
 // confirms its row, a prompt that Enter dismisses, a loop that Enter ends,
-// would be handed a letter it never asked for, so it is not here. Each
+// would be handed a letter it never asked for, so it is not here (the
+// pick-lists, above, are decided by the list's own caller). Each
 // caller in the table was read in the disassembly from its return offset
 // on, and shown to ignore Enter by a second route (docs/seams.md §10 has
 // both routes for each, and a verdict for every caller that is not here).
@@ -328,6 +346,13 @@ constexpr std::array<caller, 1> script_caller{
 constexpr std::array<caller, 1> pick_list_caller{
     {{.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x0FE0}}};
 
+/// The list routine's callers that drop the `0x0D` the list hands back, each
+/// named by the instruction after its call into the list routine: there
+/// Enter takes the lit command on the first command too. One: the Items
+/// screen (overlay 19), whose compares are its command letters only.
+constexpr std::array<caller, 1> list_callers_dropping_enter{
+    {{.load_segment_at = view_load_segment_at, .return_offset = 0x1294}}};
+
 /// Above the script runner's BP: its allow-Enter argument, a word of which
 /// the runner reads the low byte.
 constexpr std::uint16_t runner_allow_enter = 8;
@@ -384,6 +409,29 @@ constexpr std::uint16_t scan_enter = 0x1C00;
     return true;
   }
   return cpu.read_byte(ss, static_cast<std::uint16_t>(argument_at)) != 0;
+}
+
+/// Whether the pick-list that called the routine was itself called from a
+/// caller in `table`: the routine's saved BP is the list's, and the list's
+/// frame holds its own caller's far return address as the routine's does.
+/// False, and nothing read past the saved BP, when that BP is not above ours
+/// or the return address would not be in conventional RAM: a frame this
+/// seam cannot vouch for keeps the list's own Enter.
+[[nodiscard]] bool list_called_from(cpu::processor& cpu,
+                                    const seam_context& ctx,
+                                    std::span<const caller> table) {
+  cpu::registers& regs = cpu.regs();
+  const std::uint16_t ss = regs[cpu::sreg::ss];
+  const std::uint16_t bp = regs[cpu::reg16::bp];
+  const std::uint16_t list_bp = cpu.read_word(ss, bp);
+  const std::uint32_t return_end =
+      static_cast<std::uint32_t>(list_bp) + menu_bar::frame_return_cs + 1U;
+  if (list_bp <= bp || return_end > 0xFFFFU ||
+      cpu::physical_address(ss, static_cast<std::uint16_t>(return_end)) >=
+          conventional_ram_size) {
+    return false;
+  }
+  return menu_bar::frame_called_from(cpu, ctx, list_bp, table);
 }
 
 /// Whether the bar the routine was handed has exactly `Y` and `N` for its
@@ -513,11 +561,13 @@ void at_key_read(machine& box, seam_context& ctx) {
     // highlighted answer.
     const bool script = menu_bar::called_from(cpu, ctx, script_caller) &&
                         !runner_takes_enter_itself(cpu);
-    // A pick-list whose bar highlight the player moved off its first command.
-    const bool moved_in_a_list =
+    // A pick-list whose bar highlight the player moved off its first
+    // command, or one whose own caller drops the row's Enter.
+    const bool list_takes_command =
         menu_bar::called_from(cpu, ctx, pick_list_caller) &&
-        cpu.read_byte(cpu.regs()[cpu::sreg::ds], data_bar_highlight) > 1;
-    if (!tabled && !script && !moved_in_a_list) {
+        (cpu.read_byte(cpu.regs()[cpu::sreg::ds], data_bar_highlight) > 1 ||
+         list_called_from(cpu, ctx, list_callers_dropping_enter));
+    if (!tabled && !script && !list_takes_command) {
       return;
     }
     const std::uint16_t answer = letter_for_enter(cpu, ctx);

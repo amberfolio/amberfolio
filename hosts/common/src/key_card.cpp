@@ -103,6 +103,8 @@ constexpr std::array list_rows{
             "highlight the row above or below, like Home and End",
             "modern-controls"},
     key_row{"Return", "choose the highlighted row"},
+    key_row{"Return at Items", "take the lit command: Ready, until it is moved",
+            "modern-controls"},
     key_row{"PgUp, PgDn, 9, 3",
             "turn the page, when the list has more than one"},
     key_row{"Esc, E", "leave the list (E is the bar's EXIT)"},
