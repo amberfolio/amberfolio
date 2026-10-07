@@ -166,6 +166,8 @@ void machine::reset() {
   automap_.clear();
   // Nor has anything been cited at it, or read (journal.h).
   journal_.clear();
+  // Nor is a selection block on the screen (selection_margin.h).
+  margins_.clear();
 
   // The video BIOS's bookkeeping goes back to power-on state along with
   // everything else here: a reset machine has no mode set, exactly as a

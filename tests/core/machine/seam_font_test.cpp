@@ -213,9 +213,11 @@ TEST(TextFace, EveryReplacedGlyphIsDrawnAndNoTwoAreAlike) {
 }
 
 TEST(TextFace, AGlyphIsLeftAColumnAndARowToSpaceIt) {
-  // The column right of every letter and the row under it are paper, so
-  // text set solid still has a gap between letters and between lines —
-  // except the punctuation that hangs below the line by design.
+  // The column left of every letter and the row under it are paper, as in
+  // the program's own font, so text set solid still has a gap between
+  // letters and between lines — except the punctuation that hangs below the
+  // line by design. A selection drawn inverted keeps its left margin in the
+  // cell (#483).
   const std::set<char> descenders{',', ';', '_'};
   for (const face which : {face::sans, face::chisel}) {
     for (unsigned index = 0; index < text_face::glyph_count; ++index) {
@@ -224,7 +226,7 @@ TEST(TextFace, AGlyphIsLeftAColumnAndARowToSpaceIt) {
       }
       const char ch = static_cast<char>(index < 32 ? index + 0x40 : index);
       for (unsigned row = 0; row < text_face::glyph_bytes; ++row) {
-        EXPECT_EQ(text_face::row(which, index, row) & 0x01U, 0U)
+        EXPECT_EQ(text_face::row(which, index, row) & 0x80U, 0U)
             << text_face::seam_id(which) << " '" << ch << "'";
       }
       if (!descenders.contains(ch)) {
@@ -268,8 +270,8 @@ TEST(SeamFont, SwapsALetterRowAtBothFetches) {
   const rig r;
   r.enable("font-sans");
   // The sans `A`'s apex, restated: three pixels from column two.
-  EXPECT_EQ(r.fetch(r.point("font-sans", 0), index_of('A'), 0), 0x38);
-  EXPECT_EQ(r.fetch(r.point("font-sans", 1), index_of('A'), 0), 0x38);
+  EXPECT_EQ(r.fetch(r.point("font-sans", 0), index_of('A'), 0), 0x1C);
+  EXPECT_EQ(r.fetch(r.point("font-sans", 1), index_of('A'), 0), 0x1C);
   for (unsigned row = 0; row < 8; ++row) {
     EXPECT_EQ(r.fetch(r.point("font-sans", 0), index_of('7'), row),
               text_face::row(face::sans, index_of('7'), row));

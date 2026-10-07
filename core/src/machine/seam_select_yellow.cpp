@@ -131,16 +131,22 @@
 // the art) and the combat grid's aim cursor are movable and are not a
 // selection among text, and are left as the program draws them.
 
+#include <algorithm>
 #include <array>
+#include <bit>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
+#include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
 #include "amberfolio/machine/seam.h"
+#include "amberfolio/machine/selection_margin.h"
 #include "amberfolio/machine/service_floor.h"
 #include "seam_builtin.h"
 #include "seam_menu_bar.h"
@@ -199,6 +205,12 @@ constexpr std::uint32_t score_chosen = 0x0918;
 /// the instruction that writes DL to the display (seam_font.cpp has the
 /// fetches before them).
 constexpr std::array<std::uint32_t, 2> row_store_offsets{0x74A2, 0x74C8};
+
+/// The resident image: the blitter's step to the next cell, `inc` of its
+/// column argument, which every path reaches once a cell is drawn; and the
+/// rectangle fill's epilogue, `mov sp, bp`, once the rectangle is filled.
+constexpr std::uint32_t cell_drawn_offset = 0x7667;
+constexpr std::uint32_t rectangle_filled_offset = 0x71FB;
 
 // --- The calls a store follows back to --------------------------------------
 
@@ -290,6 +302,27 @@ constexpr std::uint16_t frame_arguments = 6;
 /// The string routine's colour, a word in its frame: the third argument
 /// from the top, after the string's offset and segment.
 constexpr std::uint16_t string_frame_colour = frame_arguments + string_colour;
+
+/// The blitter's cell and colour, in its frame: the glyph call's words.
+constexpr std::uint16_t blitter_colour = frame_arguments + glyph_colour;
+constexpr std::uint16_t blitter_row = frame_arguments + glyph_row;
+constexpr std::uint16_t blitter_column = frame_arguments + glyph_row + 2;
+
+/// The rectangle fill's frame: from BP + 6, the fill, the page, then the
+/// bottom, right, top and left cells.
+constexpr std::uint16_t fill_page = 8;
+constexpr std::uint16_t fill_bottom = 0x0A;
+constexpr std::uint16_t fill_right = 0x0C;
+constexpr std::uint16_t fill_top = 0x0E;
+constexpr std::uint16_t fill_left = 0x10;
+
+/// The program's data segment, as paragraphs from the image, and in it the
+/// two display segments the blitter draws every glyph to. A page is
+/// `0xA000` and the next is `0x200` paragraphs on (the fill's page select).
+constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
+constexpr std::array<std::uint16_t, 2> data_page_segments{0x4A16, 0x4A18};
+constexpr std::uint16_t first_page_segment = 0xA000;
+constexpr std::uint16_t page_paragraphs = 0x200;
 
 // --- Reading the machine ----------------------------------------------------
 
@@ -730,9 +763,292 @@ void at_row_store(machine& box, seam_context& ctx) {
   regs.set(cpu::reg8::dl, static_cast<std::uint8_t>(~regs.get(cpu::reg8::dl)));
 }
 
+// --- Points 10 and 11: the margin outside the block ---------------------------
+//
+// selection_margin.h has the argument. Every face leaves column 0 and row 7
+// of a cell paper, so a block keeps its left and bottom margin in its own
+// cells; its top is row 7 of the cell above, and its right column 0 of the
+// cell after its last. Those are painted, only over black, each time the
+// program draws a cell or fills a rectangle, and taken back, only where they
+// are still this machine's, when the block under them goes.
+
+/// The graphics controller's and the sequencer's registers this paints
+/// with. Every one is read first and written back after (the adapter here
+/// answers a read of each), so the program finds what it left.
+constexpr std::uint8_t gc_set_reset = 0;
+constexpr std::uint8_t gc_enable_set_reset = 1;
+constexpr std::uint8_t gc_color_compare = 2;
+constexpr std::uint8_t gc_data_rotate = 3;
+constexpr std::uint8_t gc_mode = 5;
+constexpr std::uint8_t gc_color_dont_care = 7;
+constexpr std::uint8_t gc_bit_mask = 8;
+constexpr std::uint8_t sequencer_map_mask = 2;
+constexpr std::array<std::uint8_t, 7> gc_saved{
+    gc_set_reset, gc_enable_set_reset, gc_color_compare, gc_data_rotate,
+    gc_mode,      gc_color_dont_care,  gc_bit_mask};
+
+constexpr std::uint8_t read_mode_compare = 0x08;
+constexpr std::uint8_t all_planes = 0x0F;
+constexpr std::uint8_t all_bits = 0xFF;
+constexpr std::uint16_t bytes_per_line = 40;
+
+/// The adapter's registers, read on the way in and written back on the way
+/// out.
+class adapter_kept {
+ public:
+  explicit adapter_kept(machine& box) : box_(box) {
+    gc_index_ = box_.read_port8(ega::graphics_index_port);
+    for (std::size_t i = 0; i < gc_saved.size(); ++i) {
+      box_.write_port8(ega::graphics_index_port, gc_saved[i]);
+      gc_[i] = box_.read_port8(ega::graphics_data_port);
+    }
+    seq_index_ = box_.read_port8(ega::sequencer_index_port);
+    box_.write_port8(ega::sequencer_index_port, sequencer_map_mask);
+    map_mask_ = box_.read_port8(ega::sequencer_data_port);
+    box_.write_port8(ega::sequencer_data_port, all_planes);
+    gc(gc_data_rotate, 0);
+    gc(gc_color_dont_care, all_planes);
+  }
+  adapter_kept(const adapter_kept&) = delete;
+  adapter_kept& operator=(const adapter_kept&) = delete;
+  adapter_kept(adapter_kept&&) = delete;
+  adapter_kept& operator=(adapter_kept&&) = delete;
+  ~adapter_kept() {
+    box_.write_port8(ega::sequencer_index_port, sequencer_map_mask);
+    box_.write_port8(ega::sequencer_data_port, map_mask_);
+    box_.write_port8(ega::sequencer_index_port, seq_index_);
+    for (std::size_t i = 0; i < gc_saved.size(); ++i) {
+      gc(gc_saved[i], gc_[i]);
+    }
+    box_.write_port8(ega::graphics_index_port, gc_index_);
+  }
+
+  void gc(std::uint8_t index, std::uint8_t value) {
+    box_.write_port8(ega::graphics_index_port, index);
+    box_.write_port8(ega::graphics_data_port, value);
+  }
+
+  /// Of `bits` in the byte at `segment:offset`, the pixels in `colour`.
+  [[nodiscard]] std::uint8_t in_colour(std::uint16_t segment,
+                                       std::uint16_t offset,
+                                       std::uint8_t colour, std::uint8_t bits) {
+    gc(gc_mode, read_mode_compare);
+    gc(gc_color_compare, colour);
+    return static_cast<std::uint8_t>(
+        box_.processor().read_byte(segment, offset) & bits);
+  }
+
+  /// `bits` of the byte at `segment:offset` set to `colour`, every other
+  /// pixel kept: a masked write, which reads first to load the latches.
+  void paint(std::uint16_t segment, std::uint16_t offset, std::uint8_t colour,
+             std::uint8_t bits) {
+    gc(gc_mode, 0);
+    gc(gc_set_reset, colour);
+    gc(gc_enable_set_reset, all_planes);
+    gc(gc_bit_mask, bits);
+    static_cast<void>(box_.processor().read_byte(segment, offset));
+    box_.processor().write_byte(segment, offset, all_bits);
+  }
+
+ private:
+  machine& box_;
+  std::uint8_t gc_index_{};
+  std::array<std::uint8_t, gc_saved.size()> gc_{};
+  std::uint8_t seq_index_{};
+  std::uint8_t map_mask_{};
+};
+
+/// The page a display segment is, or `pages` for none of them.
+[[nodiscard]] unsigned page_of(std::uint16_t segment) noexcept {
+  if (segment < first_page_segment) {
+    return selection_margins::pages;
+  }
+  const unsigned page = (segment - first_page_segment) / page_paragraphs;
+  return (segment - first_page_segment) % page_paragraphs == 0
+             ? page
+             : selection_margins::pages;
+}
+
+[[nodiscard]] std::uint16_t offset_of(unsigned row, unsigned column,
+                                      unsigned line) noexcept {
+  return static_cast<std::uint16_t>(
+      (((row * selection_margins::lines) + line) * bytes_per_line) + column);
+}
+
+/// Whether the block at `row`, `column` is still one on the screen: its
+/// column 0 and its row 7, paper in every glyph, are its colour but for a
+/// descender or two. Something the program drew there some other way (the
+/// automap's panel over the roster) is not, and the block is forgotten.
+[[nodiscard]] bool still_a_block(adapter_kept& adapter, std::uint16_t segment,
+                                 unsigned row, unsigned column,
+                                 std::uint8_t colour) {
+  constexpr unsigned enough = 6;
+  const unsigned bottom = std::popcount(adapter.in_colour(
+      segment, offset_of(row, column, selection_margins::lines - 1), colour,
+      all_bits));
+  unsigned left = 0;
+  for (unsigned line = 0; line < selection_margins::lines; ++line) {
+    left += adapter.in_colour(segment, offset_of(row, column, line), colour,
+                              0x80) != 0
+                ? 1U
+                : 0U;
+  }
+  return bottom >= enough && left >= enough;
+}
+
+/// The cells whose margin may have changed, settled on one page: what each
+/// wants is painted and what it no longer wants is taken back.
+template <std::size_t N>
+void settle(machine& box, unsigned page, std::uint16_t segment,
+            const std::array<std::array<int, 2>, N>& cells, std::size_t count) {
+  selection_margins& margins = box.margins();
+  std::optional<adapter_kept> adapter;
+  for (std::size_t i = 0; i < count; ++i) {
+    const int row = cells[i][0];
+    const int column = cells[i][1];
+    if (row < 0 || column < 0) {
+      continue;
+    }
+    const auto r = static_cast<unsigned>(row);
+    const auto c = static_cast<unsigned>(column);
+    selection_margins::change change = margins.needed(page, r, c);
+    if (change.empty()) {
+      continue;
+    }
+    if (!adapter) {
+      adapter.emplace(box);
+    }
+    // A block this paints beside has to be one still.
+    bool forgot = false;
+    for (const std::array<int, 2> from :
+         {std::array<int, 2>{row + 1, column},
+          std::array<int, 2>{row, column - 1},
+          std::array<int, 2>{row + 1, column - 1}}) {
+      if (from[0] < 0 || from[1] < 0) {
+        continue;
+      }
+      const auto fr = static_cast<unsigned>(from[0]);
+      const auto fc = static_cast<unsigned>(from[1]);
+      const std::uint8_t colour = margins.block(page, fr, fc);
+      if (colour != 0 && !still_a_block(*adapter, segment, fr, fc, colour)) {
+        margins.forget_block(page, fr, fc);
+        forgot = true;
+      }
+    }
+    if (forgot) {
+      change = margins.needed(page, r, c);
+    }
+    selection_margins::strip erased;
+    selection_margins::strip painted;
+    for (unsigned line = 0; line < selection_margins::lines; ++line) {
+      if (change.erase.bits[line] == 0 && change.paint.bits[line] == 0) {
+        continue;
+      }
+      const std::uint16_t at = offset_of(r, c, line);
+      // Taken back only where it is still this machine's colour.
+      const std::uint8_t back = adapter->in_colour(
+          segment, at, change.erase.colour[line], change.erase.bits[line]);
+      if (back != 0) {
+        adapter->paint(segment, at, 0, back);
+      }
+      erased.bits[line] = change.erase.bits[line];
+      // Painted only over black.
+      const std::uint8_t onto =
+          adapter->in_colour(segment, at, 0, change.paint.bits[line]);
+      if (onto != 0) {
+        adapter->paint(segment, at, change.paint.colour[line], onto);
+      }
+      painted.bits[line] = onto;
+      painted.colour[line] = change.paint.colour[line];
+    }
+    margins.done(page, r, c, erased, painted);
+  }
+}
+
+/// The display segments the blitter draws to, without a repeat.
+[[nodiscard]] std::array<std::uint16_t, 2> drawn_pages(const stack& s,
+                                                       const seam_context& ctx,
+                                                       std::size_t& count) {
+  const auto dgroup =
+      static_cast<std::uint16_t>((ctx.image_base() / 16U) + dgroup_paragraphs);
+  std::array<std::uint16_t, 2> out{};
+  count = 0;
+  for (const std::uint16_t word : data_page_segments) {
+    const std::uint16_t segment = s.cpu.read_word(dgroup, word);
+    if (page_of(segment) < selection_margins::pages &&
+        (count == 0 || out[0] != segment)) {
+      out[count++] = segment;
+    }
+  }
+  return out;
+}
+
+void at_cell_drawn(machine& box, seam_context& ctx) {
+  const stack s = stack_of(box);
+  const std::uint8_t row = s.byte_above_bp(blitter_row);
+  const std::uint8_t column = s.byte_above_bp(blitter_column);
+  if (row >= selection_margins::rows || column >= selection_margins::columns) {
+    return;
+  }
+  const std::uint8_t colour =
+      draws_a_selection(s, ctx) ? s.byte_above_bp(blitter_colour) : 0;
+  std::size_t count = 0;
+  const std::array<std::uint16_t, 2> segments = drawn_pages(s, ctx, count);
+  for (std::size_t i = 0; i < count; ++i) {
+    const unsigned page = page_of(segments[i]);
+    box.margins().drawn(page, row, column, colour);
+    if (!box.margins().any(page)) {
+      continue;
+    }
+    // The cell, and the three whose margin it can be: above, right, and
+    // above and right.
+    const int r = row;
+    const int c = column;
+    const std::array<std::array<int, 2>, 4> cells{
+        {{r, c}, {r - 1, c}, {r, c + 1}, {r - 1, c + 1}}};
+    settle(box, page, segments[i], cells, cells.size());
+  }
+}
+
+void at_rectangle_filled(machine& box, seam_context& /*ctx*/) {
+  const stack s = stack_of(box);
+  const unsigned page = s.byte_above_bp(fill_page);
+  if (page >= selection_margins::pages || !box.margins().any(page)) {
+    return;
+  }
+  const auto signed_at = [&](std::uint16_t at) {
+    return static_cast<int>(static_cast<std::int8_t>(s.byte_above_bp(at)));
+  };
+  const int top = std::max(signed_at(fill_top), 0);
+  const int left = std::max(signed_at(fill_left), 0);
+  const int bottom = std::min(signed_at(fill_bottom),
+                              static_cast<int>(selection_margins::rows) - 1);
+  const int right = std::min(signed_at(fill_right),
+                             static_cast<int>(selection_margins::columns) - 1);
+  if (top > bottom || left > right) {
+    return;
+  }
+  box.margins().cleared(
+      page, static_cast<unsigned>(top), static_cast<unsigned>(left),
+      static_cast<unsigned>(bottom), static_cast<unsigned>(right));
+  // Every cell of the rectangle and the ring around it.
+  const auto segment =
+      static_cast<std::uint16_t>(first_page_segment + (page * page_paragraphs));
+  constexpr std::size_t most = std::size_t{selection_margins::rows + 2} *
+                               (selection_margins::columns + 2);
+  std::array<std::array<int, 2>, most> cells{};
+  std::size_t count = 0;
+  for (int row = top - 1; row <= bottom + 1; ++row) {
+    for (int column = left - 1; column <= right + 1; ++column) {
+      cells[count++] = {row, column};
+    }
+  }
+  settle(box, page, segment, cells, count);
+}
+
 // --- The definition ---------------------------------------------------------
 
-constexpr std::array<seam_point, 9> select_yellow_point_table{
+constexpr std::array<seam_point, 11> select_yellow_point_table{
     {{.module = menu_bar::module,
       .offset = bar_group_call,
       .run = &at_bar_group},
@@ -758,6 +1074,14 @@ constexpr std::array<seam_point, 9> select_yellow_point_table{
      {.module = resident_image,
       .offset = row_store_offsets[1],
       .run = &at_row_store,
+      .inside_calls = true},
+     {.module = resident_image,
+      .offset = cell_drawn_offset,
+      .run = &at_cell_drawn,
+      .inside_calls = true},
+     {.module = resident_image,
+      .offset = rectangle_filled_offset,
+      .run = &at_rectangle_filled,
       .inside_calls = true}}};
 static_assert(select_yellow_point_table.size() == select_yellow_point_count);
 

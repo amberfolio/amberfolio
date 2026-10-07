@@ -67,7 +67,7 @@ inline constexpr std::size_t bar_keys_point_count = 1;
 inline constexpr std::size_t menu_cursor_point_count = 2;
 inline constexpr std::size_t hero_keys_point_count = 5;
 inline constexpr std::size_t edit_keys_point_count = 1;
-inline constexpr std::size_t select_yellow_point_count = 9;
+inline constexpr std::size_t select_yellow_point_count = 11;
 inline constexpr std::size_t move_mode_point_count = 5;
 
 /// The up and down arrows in the pick-lists, and the selected party member

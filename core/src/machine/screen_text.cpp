@@ -54,10 +54,16 @@ using glyph = std::array<std::uint8_t, text_cell_pixels>;
   return static_cast<std::uint8_t>(index < 32 ? index + 0x40 : index);
 }
 
+/// Every pixel of a cell, and every pixel but its column 0 and its row 7:
+/// where a selection block's margin lies when it is drawn in the cell above
+/// or to the left (selection_margin.h, #483).
+constexpr glyph whole_cell{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+constexpr glyph without_edges{0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x7F, 0x00};
+
 [[nodiscard]] bool same(std::span<const std::uint8_t> table, std::size_t at,
-                        const glyph& bits) noexcept {
+                        const glyph& bits, const glyph& mask) noexcept {
   for (std::size_t row = 0; row < bits.size(); ++row) {
-    if (table[at + row] != bits[row]) {
+    if ((table[at + row] & mask[row]) != (bits[row] & mask[row])) {
       return false;
     }
   }
@@ -80,11 +86,11 @@ struct candidates {
 };
 
 [[nodiscard]] candidates lookup(std::span<const std::uint8_t> font,
-                                const glyph& bits) noexcept {
+                                const glyph& bits, const glyph& mask) noexcept {
   candidates found;
   for (unsigned index = 0; index < program_font_glyphs; ++index) {
     const std::size_t at = std::size_t{index} * text_cell_pixels;
-    if (at + text_cell_pixels <= font.size() && same(font, at, bits)) {
+    if (at + text_cell_pixels <= font.size() && same(font, at, bits, mask)) {
       found.add(program_code(index));
     }
   }
@@ -95,10 +101,10 @@ struct candidates {
 /// ambiguous. `bits` is the cell with its first colour as the ink.
 [[nodiscard]] text_cell match(std::span<const std::uint8_t> font,
                               const glyph& bits, const glyph& inverse,
-                              std::uint8_t first,
+                              const glyph& mask, std::uint8_t first,
                               std::uint8_t second) noexcept {
-  const candidates as_first = lookup(font, bits);
-  const candidates as_second = lookup(font, inverse);
+  const candidates as_first = lookup(font, bits, mask);
+  const candidates as_second = lookup(font, inverse, mask);
   if (as_first.ambiguous || as_second.ambiguous ||
       (as_first.code != cell_not_text && as_second.code != cell_not_text)) {
     return {.code = cell_ambiguous, .ink = first, .paper = second};
@@ -112,20 +118,28 @@ struct candidates {
   return {};
 }
 
-[[nodiscard]] text_cell read_cell(std::span<const std::uint8_t> pixels,
-                                  std::span<const std::uint8_t> program,
-                                  std::span<const std::uint8_t> drawn,
-                                  unsigned column, unsigned row) noexcept {
+/// One cell, reading only the pixels `mask` has: the rest are blanked out of
+/// the cell and of every glyph it is held against.
+[[nodiscard]] text_cell read_masked(std::span<const std::uint8_t> pixels,
+                                    std::span<const std::uint8_t> program,
+                                    std::span<const std::uint8_t> drawn,
+                                    unsigned column, unsigned row,
+                                    const glyph& mask) noexcept {
   const std::size_t x0 = std::size_t{column} * text_cell_pixels;
   const std::size_t y0 = std::size_t{row} * text_cell_pixels;
 
-  // The two colours, and the bitmap of the first.
-  std::uint8_t first = pixels[(y0 * frame_width) + x0];
+  // The two colours, and the bitmap of the first, which is the top left
+  // pixel the mask has.
+  const std::size_t from = (mask[0] & 0x80U) != 0 ? 0 : 1;
+  std::uint8_t first = pixels[(y0 * frame_width) + x0 + from];
   std::uint8_t second = first;
   bool two = false;
   glyph bits{};
   for (std::size_t y = 0; y < text_cell_pixels; ++y) {
     for (std::size_t x = 0; x < text_cell_pixels; ++x) {
+      if ((mask[y] & (0x80U >> x)) == 0) {
+        continue;
+      }
       const std::uint8_t pixel = pixels[((y0 + y) * frame_width) + x0 + x];
       if (pixel == first) {
         bits[y] = static_cast<std::uint8_t>(bits[y] | (0x80U >> x));
@@ -144,18 +158,37 @@ struct candidates {
   // Either colour may be the ink.
   glyph inverse{};
   for (std::size_t y = 0; y < text_cell_pixels; ++y) {
-    inverse[y] = static_cast<std::uint8_t>(~bits[y]);
+    inverse[y] = static_cast<std::uint8_t>(~bits[y] & mask[y]);
   }
   // The face the program is drawing in now, then its own glyphs: text
   // drawn before a face was switched on or off is still on the screen
   // until the program draws over it.
   if (!drawn.empty()) {
-    const text_cell found = match(drawn, bits, inverse, first, second);
+    const text_cell found = match(drawn, bits, inverse, mask, first, second);
     if (found.code != cell_not_text) {
       return found;
     }
   }
-  return match(program, bits, inverse, first, second);
+  return match(program, bits, inverse, mask, first, second);
+}
+
+[[nodiscard]] text_cell read_cell(std::span<const std::uint8_t> pixels,
+                                  std::span<const std::uint8_t> program,
+                                  std::span<const std::uint8_t> drawn,
+                                  unsigned column, unsigned row) noexcept {
+  const text_cell exact =
+      read_masked(pixels, program, drawn, column, row, whole_cell);
+  if (exact.code != cell_not_text) {
+    return exact;
+  }
+  // A cell that does not read may carry a selection block's margin in its
+  // column 0 or its row 7, which are paper in every text glyph but a
+  // descender or two. Read again with those blanked out, and keep the
+  // answer only if it is one character or a blank: an ambiguous reading
+  // without the edges is no better than the cell being not text.
+  const text_cell edged =
+      read_masked(pixels, program, drawn, column, row, without_edges);
+  return edged.code == cell_ambiguous ? exact : edged;
 }
 
 }  // namespace

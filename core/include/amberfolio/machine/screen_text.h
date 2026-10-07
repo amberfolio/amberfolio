@@ -51,6 +51,14 @@
 // Two glyphs can have the same bitmap. When a cell matches more than one
 // character the answer is `cell_ambiguous`, not the first of them: an
 // `O` read as a `0` is exactly the misreading this exists to rule out.
+//
+// **A cell that does not read is read again without its column 0 and its
+// row 7**, blanked out of the cell and of every glyph. A selection block
+// draws its margin there in the cells above it and after it
+// (selection_margin.h, #483), and those pixels are paper in every text glyph
+// but a descender or two. The second reading counts only when it is one
+// character or a blank; a cell that reads the first time reads exactly as
+// before.
 
 #pragma once
 
