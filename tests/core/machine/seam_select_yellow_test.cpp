@@ -730,36 +730,37 @@ TEST(SeamSelectYellow, TheOtherTwoBarPointsDeclineTheSameWay) {
 
 // --- A bar with one command letter is not a selection (#460) -----------------
 
-TEST(SeamSelectYellow, AOneChoiceNoticeIsNotLitLikeAMenu) {
+TEST(SeamSelectYellow, AOneChoiceNoticeIsLitAsItsKeyAndTheRest) {
   // The script runner's `Press <enter>/<return> to continue`: one capital,
-  // so one group, which is the whole bar. The program draws it in the
-  // bright from end to end, and the seam leaves it so.
+  // so one group, which is the whole bar, and the one command Return takes.
+  // The program draws it in the bright from end to end; the seam lights the
+  // group as a word is lit, the key white and the rest yellow (#483).
   const rig r;
   r.arm();
   const std::string notice = "Press <enter>/<return> to continue";
-  EXPECT_EQ(r.colours_of(notice, 1, white, white),
-            std::string(notice.size(), 'W'));
-  EXPECT_EQ(r.colours_of(notice, 1, green, white),
-            std::string(notice.size(), 'W'));
+  const std::string lit = "W" + std::string(notice.size() - 1, 'Y');
+  EXPECT_EQ(r.colours_of(notice, 1, white, white), lit);
+  EXPECT_EQ(r.colours_of(notice, 1, green, white), lit);
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
 
-TEST(SeamSelectYellow, ALoneWordWithOneKeyIsLeftAsTheProgramDrawsIt) {
-  // A leading space is outside the group and is drawn in the dim.
+TEST(SeamSelectYellow, ALoneWordWithOneKeyIsLitWhereTheProgramLightsIt) {
+  // The walking bar's `Exit`. A leading space is outside the group and is
+  // drawn in the dim, as the program draws it.
   const rig r;
   r.arm();
-  EXPECT_EQ(r.colours_of("Exit", 1, green, white), "WWWW");
-  EXPECT_EQ(r.colours_of(" Pay it", 1, green, white), "GWWWWWW");
+  EXPECT_EQ(r.colours_of("Exit", 1, green, white), "WYYY");
+  EXPECT_EQ(r.colours_of(" Pay it", 1, green, white), "GWYYYYY");
 }
 
 TEST(SeamSelectYellow, ANoticeHandedTheColoursTheWrongWayRoundIsPutRight) {
-  // The swapped pair is normalised whether or not there is a selection: the
-  // program draws this one green end to end, and a leading space white.
+  // The swapped pair is normalised: the program draws this one green end to
+  // end, and a leading space white.
   const rig r;
   r.arm();
   EXPECT_EQ(r.colours_of("Press <enter> to go", 1, white, green),
-            std::string(19, 'W'));
-  EXPECT_EQ(r.colours_of(" Pay it", 1, white, green), "GWWWWWW");
+            "W" + std::string(18, 'Y'));
+  EXPECT_EQ(r.colours_of(" Pay it", 1, white, green), "GWYYYYY");
 }
 
 TEST(SeamSelectYellow, ABarOfAllCapitalsWithSeveralKeysIsStillAChoice) {
@@ -995,15 +996,36 @@ TEST(SeamSelectYellow, ABarOfOneLetterWordsShowsWhichIsLit) {
   EXPECT_EQ(r.blocks_of("A B C E J ", 3, green, white), "....I.....");
 }
 
-TEST(SeamSelectYellow, ABarWithNothingToSelectIsNoBlock) {
+TEST(SeamSelectYellow, ABarOfOneCommandIsABlockWhereTheProgramLightsIt) {
+  // A notice, the walking bar's `Exit`: the one command is what Return
+  // takes. What the program lights of it, its group, is the block; a
+  // leading space outside the group is not.
   const rig r;
   r.arm();
   const std::string notice = "Press <enter>/<return> to continue";
   EXPECT_EQ(r.blocks_of(notice, 1, white, white),
-            std::string(notice.size(), '.'));
-  EXPECT_EQ(r.blocks_of("Exit", 1, green, white), "....");
+            std::string(notice.size(), 'I'));
+  EXPECT_EQ(r.blocks_of("Exit", 1, green, white), "IIII");
+  EXPECT_EQ(r.blocks_of(" Pay it", 1, green, white), ".IIIIII");
   EXPECT_EQ(r.blocks_of("Alpha Beta", 1, green, 0), "..........")
-      << "nor one with no colour, which is not drawn";
+      << "but not a bar with no colour, which is not drawn";
+}
+
+TEST(SeamSelectYellow, ThePickListsExitIsLeftAsTheProgramDrawsIt) {
+  // Under a pick-list Return takes the row, which is the selection; the
+  // `Exit` bar the list routine hands the menu-bar routine is not lit.
+  const rig r;
+  r.arm();
+  r.put_word(stack_segment, caller_bp + 2, 0x0FE0);
+  r.put_word(stack_segment, caller_bp + 4, menu_bar_segment);
+  EXPECT_EQ(r.colours_of(" Exit", 1, green, white), "GWWWW");
+  EXPECT_EQ(r.blocks_of(" Exit", 1, green, white), ".....");
+  EXPECT_EQ(r.blocks_of("Alpha Beta", 1, green, white), "IIIII.....")
+      << "a list's bar of two commands lights its word as any bar does";
+
+  r.put_word(stack_segment, caller_bp + 4, menu_bar_segment + 1);
+  EXPECT_EQ(r.colours_of(" Exit", 1, green, white), "GWYYY")
+      << "the same offset in another module is not the list's call";
 }
 
 TEST(SeamSelectYellow, AStoreForABarWhileOverlay25IsNotLoadedIsLeftAlone) {

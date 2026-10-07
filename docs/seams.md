@@ -1218,7 +1218,7 @@ shape.
   everything else: the word in the bright end to end and, in yellow over
   that, its tail, with its key letter left white, both with
   `selection_mark` in the colour word so that the word is drawn as blocks
-  (#483), except on a bar of one word, which stays the one colour (#462). A change
+  (#483), a bar of one word included: it is what Return takes. A change
   of highlight draws the bar alone: the signature is zeroed and the rows
   already on the glass are not painted again, except on a picture, whose
   second pass is the picture and not the bar.
@@ -2365,11 +2365,20 @@ what those seven coloured.
   pass `0x0E` as the *prompt* colour (the first of the three colour
   arguments a `confirm_yn` call pushes), and white as `color_hi`. The rule
   is covered by the unit suite and was not seen driven.
-- **A bar with one command letter is not a selection** (#460). A bar with
-  one command letter has one group, so there is nothing for the highlight to
-  move to, and the seam leaves every character of it as the program drew it,
-  except that the swapped pair below is still put right (the program's bright
-  green becomes white and its dim white green). The script runner (overlay 7)
+- **A bar with one command letter is lit by its group** (#460, #483). A bar
+  with one command letter has one group, so there is nothing for the
+  highlight to move to, but its one command is what Return takes. The seam
+  lights the program's **group**, the characters drawn through the
+  highlighted arm, as a word is lit (the key in the bright and the rest
+  yellow, as blocks), and draws every other character as the program drew it,
+  the swapped pair below put right (the program's bright green becomes white
+  and its dim white green). It left the whole bar as drawn until #483: the
+  maintainer asked for the walking bar's `Exit` and the notice to be lit like
+  everything else. **The pick-list's `Exit` is the exception**, recognised by
+  the menu-bar routine's return into overlay 25 at `0x0FE0` (the pick-list
+  routine's call, which `list-arrows` and `bar-keys` name too): under a list
+  Return takes the row, which is the selection, so that bar is left as
+  drawn. The script runner (overlay 7)
   hands every one-choice prompt to the menu-bar routine as such a bar: the
   prompt is `PRESS <ENTER>/<RETURN> TO CONTINUE` in the script, the runner
   lower-cases every letter and digit of a menu's text but the `~`-marked
@@ -2379,8 +2388,9 @@ what those seven coloured.
   colours). Read at the draw, at the arena master's notice in slot A (the
   status row reads 7,1), where the issue's reading of the text as capitals
   was wrong: the face draws lower case in capital shapes, so the screen shows
-  capitals whatever is stored. Before the rule the word-shaped highlight lit
-  `ress` yellow after a white `P`, as a menu with a selected word.
+  capitals whatever is stored. Before #460 the word-shaped highlight lit
+  `ress` yellow after a white `P`, as a menu with a selected word; the group
+  is the whole notice, so it is lit end to end.
   **The rule is the number of command letters, not the case.** The first
   rule tried, "no lower-case letter in the bar", is wrong twice: it does not
   touch this notice, which has lower case, and an all-capitals bar can be a
@@ -2401,7 +2411,8 @@ what those seven coloured.
   one-choice prompt has one. One bar of the program's own with a single
   command is on screen in the sessions: the ` Exit` under each of character
   creation's pick-lists (a list's selection is its row, which is yellow). It
-  is left white beside the yellow row (`list-keys-yellow`). A bar built at run time of the parts the program
+  is left white beside the yellow row (`list-keys-yellow`), by the exception
+  above. A bar built at run time of the parts the program
   has on hand (the item screens, the combat bars) is one capital to a word,
   and one with a single word has no choice to move between. `bar-script-keys`
   runs the notice and the question after it; the unit suite has the notice's
@@ -2668,8 +2679,9 @@ has two modes:
   the shared byte that means it. Every other value is the program's
   numbering outside the call, so the next bar of any kind finds what the
   program would have left there, save for that one.
-- **The single-group walking bar is white, not a block**: the program draws no
-  highlight on a bar of one command (#462), and the piece does not add one.
+- **The single-group walking bar is lit like any other**: `Exit` is what
+  Return takes, so the selection block lights its group, `E` a white block
+  and `xit` a yellow one (#483).
 - **Driven** (slot A in the city, slot J in the wilderness, journal and
   automap on): Right, Right, Left step the bar; Down and Up select the next
   and previous member; Return on `Move` gives `EXIT`; Up walks (4,12 to

@@ -4200,14 +4200,17 @@ TEST(JournalBarKeys, TheHighlightIsAYellowBlockAndItsKeyAWhiteOne) {
          "lit";
 }
 
-TEST(JournalBarKeys, ABarOfOneCommandGetsNoYellow) {
-  // #462: nothing to select among, so the program leaves it as it draws it.
+TEST(JournalBarKeys, ABarOfOneCommandIsLitLikeAnyOther) {
+  // Nothing to select among, but `EXIT` is what Return takes: its key a
+  // white block and its tail a yellow one, as the program's own bars of one
+  // command are drawn (#483).
   rig r;
   a_screen_with_the_bar_live(r);
   with_modern_controls(r);
   a_paged_entry(r, 1);  // `EXIT` alone
   press_and_settle(r, key_right);
-  EXPECT_EQ(r.bar_calls(), (calls{{bar_word_colour, 0}, {bar_key_colour, 0}}));
+  EXPECT_EQ(r.bar_calls(),
+            (calls{{bar_word_colour, 0}, {lit_key, 0}, {lit_yellow, 1}}));
 }
 
 }  // namespace

@@ -197,8 +197,8 @@
 // asking the engine whether `modern-controls` is on. A page's bar is lit
 // from its first draw; the listing's is lit by the first Left or Right,
 // because Return there already opens a row. The lit word is a yellow block
-// with its key letter a white one (#483), and a bar of one word is not
-// recoloured (#462). With the seam off none of it exists.
+// with its key letter a white one (#483), a bar of one word included: its
+// word is what Return takes. With the seam off none of it exists.
 //
 // **The listing is twenty rows and pages rather than scrolls** (M5-E4e,
 // #318 and #319). It filled ten rows of a twenty-row box on a reason that
@@ -1842,7 +1842,7 @@ enum class claimable : std::uint8_t {
 }
 
 /// How the bar is drawn this pass (#471): which of its words is the
-/// highlighted command, if any, and whether it is yellow.
+/// highlighted command, if any.
 ///
 /// **A highlight is only ever drawn with `modern-controls` on**, because it
 /// is the keys that move it and take it; with the seam off no word is lit
@@ -1851,7 +1851,6 @@ enum class claimable : std::uint8_t {
 struct bar_look {
   static constexpr std::size_t none = static_cast<std::size_t>(-1);
   std::size_t lit = none;
-  bool yellow = false;
 };
 
 /// The yellow the program draws a selection in, which the highlighted
@@ -1890,7 +1889,7 @@ constexpr auto bar_selected_key_colour =
   if (!modern_controls_on(box) || !bar_is_taken_up(state)) {
     return {};
   }
-  return {.lit = lit_word(words, state.bar_word()), .yellow = words.count > 1};
+  return {.lit = lit_word(words, state.bar_word())};
 }
 
 /// The reader's own bar, onto the screen: **up to four calls and two
@@ -1944,21 +1943,19 @@ constexpr auto bar_selected_key_colour =
       // own highlight is: the word in the bright end to end, and, over
       // that, its tail in yellow so that the key letter stays white, both
       // as blocks (#483). A bar of one command has nothing to select
-      // among, so it stays the one colour the program gives it (#462).
+      // among, but its word is what Return takes, so it is lit the same
+      // way, as the program's own bars of one are.
       list_line lit;
       lit.add(word);
-      if (!draw_line(ctx, image, lit,
-                     look.yellow ? bar_selected_key_colour : bar_key_colour,
-                     list_exit_row, at_column)) {
+      if (!draw_line(ctx, image, lit, bar_selected_key_colour, list_exit_row,
+                     at_column)) {
         return false;
       }
-      if (look.yellow) {
-        list_line tail;
-        tail.add(word.substr(1));
-        if (!draw_line(ctx, image, tail, bar_selected_colour, list_exit_row,
-                       static_cast<std::uint16_t>(at_column + 1U))) {
-          return false;
-        }
+      list_line tail;
+      tail.add(word.substr(1));
+      if (!draw_line(ctx, image, tail, bar_selected_colour, list_exit_row,
+                     static_cast<std::uint16_t>(at_column + 1U))) {
+        return false;
       }
       continue;
     }

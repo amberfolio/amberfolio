@@ -178,6 +178,11 @@ constexpr seam_module sheet_module{
 /// and the string drawer's call in the pick-list's highlight-on leaf.
 constexpr std::uint32_t bar_group_call = 0x0273;
 constexpr std::uint32_t list_row_call = 0x09FD;
+
+/// Overlay 25: the instruction after the pick-list routine's call into the
+/// menu-bar routine, which hands it the list's `Exit` bar (`list-arrows`
+/// and `bar-keys` name the same call).
+constexpr std::uint16_t list_bar_return = 0x0FE0;
 constexpr std::uint32_t bar_letter_call = 0x02CA;
 constexpr std::uint32_t bar_rest_call = 0x0305;
 
@@ -221,6 +226,11 @@ constexpr std::uint32_t hit_points_string_call = 0x155E;
 constexpr std::uint16_t leaf_caller_bp = 6;
 constexpr std::uint16_t caller_colour_hi = 0x0E;
 constexpr std::uint16_t caller_colour_lo = 0x10;
+
+/// The menu-bar routine's frame, above its BP: the far return address into
+/// whoever called it.
+constexpr std::uint16_t caller_return_ip = 2;
+constexpr std::uint16_t caller_return_cs = 4;
 
 /// The leaf's own locals and argument: the position of the character it is
 /// drawing (one-based, a byte at BP - 1) and the group the highlight is on
@@ -347,15 +357,20 @@ struct stack {
 // and a character of the word the program left outside the group is lit by
 // the point it goes through.
 //
-// **A bar with one command letter is not a selection.** It has one group, so
-// there is nothing for the highlight to move to, and the script runner hands
-// every one-choice prompt (`Press <enter>/<return> to continue`, stored as
-// written here: one capital, the rest lower case, though the face draws
-// lower case as capitals) to the routine as exactly that. Such a bar is left
-// as the program draws it, which is one colour end to end where its bright
-// and dim are the same; only the swapped pair below is put right. The rule is
-// the number of command letters and not the case: the save and load slot bars
-// (`A B C E J`) are all capitals and are real choices, one letter to a group.
+// **A bar with one command letter has nothing to choose between**, but its
+// one command is what Return takes: the script runner hands every one-choice
+// prompt to the routine as such a bar (`Press <enter>/<return> to continue`,
+// stored as written here, one capital and the rest lower case, though the
+// face draws lower case as capitals), and the walking bar is `Exit` alone.
+// So what the program lights of it, its **group** and not the word, is lit
+// as a word is: the key white and the rest yellow, as blocks (#483); a
+// character outside the group (a leading space) is drawn as the program
+// draws it, the swapped pair below put right. It was left as the program
+// draws it until then (#460). **The pick-list's `Exit` is the exception**:
+// under a list Return takes the row, which is the selection, so that bar is
+// left as drawn. The rule is the number of command letters and not the
+// case: the save and load slot bars (`A B C E J`) are all capitals and are
+// real choices, one letter to a group.
 
 /// The pair a few callers hand the bar the wrong way round: white for
 /// `color_lo` and green for `color_hi`. Left alone the bar draws its
@@ -468,11 +483,35 @@ constexpr std::uint8_t max_bar = 0x28;
   return true;
 }
 
+/// Whether the menu-bar routine drawing this bar was called by the pick-list
+/// routine, for the list's `Exit`: the routine's frame is the leaf's caller
+/// BP, and its return address is the list's call. Return there takes the
+/// list's row, so the bar's one command is not the selection.
+[[nodiscard]] bool pick_lists_bar(const stack& s, const seam_context& ctx) {
+  const std::uint16_t routine = s.above_bp(leaf_caller_bp);
+  const std::uint16_t back = s.cpu.read_word(
+      s.ss, static_cast<std::uint16_t>(routine + caller_return_ip));
+  const std::uint16_t segment = s.cpu.read_word(
+      s.ss, static_cast<std::uint16_t>(routine + caller_return_cs));
+  const std::uint16_t list =
+      menu_bar::loaded_at(s.cpu, ctx, menu_bar::load_segment_at);
+  return back == list_bar_return && list != 0 && segment == list;
+}
+
+/// Whether a bar with one command lights the character this call draws:
+/// the character is in the program's group (the highlighted arm's call),
+/// and the bar is not the pick-list's.
+[[nodiscard]] bool one_command_lit(const stack& s, const seam_context& ctx,
+                                   bool group_arm) {
+  return group_arm && !pick_lists_bar(s, ctx);
+}
+
 /// One of the three bar points. `which` says which colour the program was
 /// about to draw in: the bright for the highlight's arm and the letters', the
 /// dim for the rest.
 void at_bar(machine& box, seam_context& ctx, bool expect_bright,
-            bool needs_colour) {
+            bool group_arm) {
+  const bool needs_colour = group_arm;
   const stack s = stack_of(box);
   bar_call call;
   if (!read_bar_call(s, call) ||
@@ -485,11 +524,14 @@ void at_bar(machine& box, seam_context& ctx, bool expect_bright,
     // A bar with no colour is not drawn: the main menu's.
     return;
   }
+  // A bar of one command is lit where the program lights it, its group,
+  // and drawn as any lit word is (#483).
+  const bool lit =
+      call.one_command ? one_command_lit(s, ctx, group_arm) : call.in_word;
   const std::uint8_t colour =
-      call.one_command
+      call.one_command && !lit
           ? unselected_bar_colour(call.colour, call.color_lo, call.color_hi)
-          : bar_colour(call.character, call.in_word, call.color_lo,
-                       call.color_hi);
+          : bar_colour(call.character, lit, call.color_lo, call.color_hi);
   if (colour != call.colour) {
     s.set_top_byte(glyph_colour, colour);
   }
@@ -629,8 +671,17 @@ void at_hit_points(machine& box, seam_context& ctx) {
                      .bp = s.cpu.read_word(s.ss, static_cast<std::uint16_t>(
                                                      s.bp + frame_saved_bp))};
     bar_call read;
-    return read_bar_call(call, read) && read.in_word && !read.one_command &&
-           read.color_hi != 0;
+    if (!read_bar_call(call, read) || read.color_hi == 0) {
+      return false;
+    }
+    if (!read.one_command) {
+      return read.in_word;
+    }
+    // A bar of one command is the command Return takes: a notice's `Press
+    // <enter>`, the walking bar's `Exit`. What the program lights of it, its
+    // group, is the block. But for the pick-list's `Exit`, where Return takes
+    // the row.
+    return one_command_lit(call, ctx, returns_to(from, bar, bar_group_call));
   }
 
   // Anything else is a string, drawn by the string routine.

@@ -367,7 +367,8 @@ happens on a square and a locked door's question do not.
 **What it changes.** `Area`, the game's overhead view, is gone: the
 automap (Tab) is the overhead view, and with the automap off there is
 none. While walking, the letters do nothing, `Notes` among them; the
-walking bar is white end to end, as the game draws any bar of one command.
+walking bar is `EXIT` alone, lit as any selection is: `E` a white block and
+the rest a yellow one.
 
 **Where it does not work.** Only the party's own bar has modes. Combat's
 movement and aim, and Modify, keep their arrows.
@@ -387,8 +388,11 @@ A block is a shape, and reads whatever colours you see. With the seam on:
   Only the word is lit: on a bar whose keys are not the first letters of its
   words, like the icon editor's top bar, the game's own highlight runs on
   into the next word, and the seam lights the word that holds the key.
-  A prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
-  CONTINUE`, has nothing to select and stays as the game draws it.
+  A bar of one command is what Enter takes, and is lit the same way: a
+  prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
+  CONTINUE` (its `P` a white block and the rest a yellow one), and the
+  walking bar's `EXIT`. The `Exit` under a pick-list is not lit: Enter
+  there takes the list's row.
 - **A pick-list's highlighted row** (race, class, spells, shops, coins, the
   list of characters to add) is a yellow block.
 - **The selected party member's name** in the party list is a yellow block,
@@ -399,8 +403,8 @@ A block is a shape, and reads whatever colours you see. With the seam on:
 - **The menu cursor's row** on the main menu is a yellow block with its
   first letter a white one, and, with `journal` on, the Notes list's cursor
   row is a yellow block across the row. The lit command on the Notes
-  screen's bar is a yellow block with its letter a white one, except on a
-  bar of one word.
+  screen's bar is a yellow block with its letter a white one, a lone
+  `EXIT` included.
 - **A bar the game hands its colours the wrong way round** (the portrait
   screen's HEAD, BODY and KEEP bar, the temple's "pay for cure" and the
   detect-magic confirmations) is drawn like every other bar: key letters
