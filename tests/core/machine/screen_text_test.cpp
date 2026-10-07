@@ -161,7 +161,7 @@ TEST(ScreenText, ACellOfThreeColoursIsNotText) {
   auto pixels = std::make_unique<frame>();
   draw(*pixels, font, 0, 0, "A", 15, 0);
   // A third colour inside the cell, off its column 0 and row 7.
-  (*pixels)[(3 * frame_width) + 3] = 4;
+  (*pixels)[(std::size_t{3} * frame_width) + 3] = 4;
 
   text_grid grid{};
   read_text_cells(*pixels, font, grid);
@@ -178,7 +178,7 @@ TEST(ScreenText, ACellIsReadAgainWithoutTheEdgesASelectionsMarginTakes) {
   draw(*pixels, font, 0, 0, "A", 10, 0);
   draw(*pixels, font, 1, 0, " ", 10, 0);
   for (std::size_t x = 0; x < text_cell_pixels; ++x) {
-    (*pixels)[(7 * frame_width) + x] = 14;  // under `A`
+    (*pixels)[(std::size_t{7} * frame_width) + x] = 14;  // under `A`
   }
   for (std::size_t y = 0; y < text_cell_pixels; ++y) {
     (*pixels)[(y * frame_width) + text_cell_pixels] = 14;  // the blank's left
