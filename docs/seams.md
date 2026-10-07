@@ -2351,8 +2351,11 @@ outside the block's cells.
   covers a word and a half. The icon editor's top bar is the one found: two
   of its keys are digits that end a word, so the first group runs into the
   next word. The seam lights **the run of characters between spaces that
-  holds the group's command letter** (`bar_call` reads the bar, the group
-  table and the character's position out of the two frames), yellow with each
+  holds the group's command letter, and every whole word after it the group
+  holds too** (`bar_call` reads the bar, the group table and the
+  character's position out of the two frames): a script's option is a
+  phrase, `Tell the truth?`, one group with one key, and is lit whole
+  (#483), where the icon editor's half word stays out, yellow with each
   of its command letters in the bar's bright, and every other character is
   drawn as the bar draws the unselected: a command letter in the bright, the
   rest in the dim. The three bar points all make this decision for their own

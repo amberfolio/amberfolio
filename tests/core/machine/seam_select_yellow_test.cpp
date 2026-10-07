@@ -728,6 +728,22 @@ TEST(SeamSelectYellow, AWordIsLitWholeWhereTheKeyIsNotItsFirstLetter) {
             "WGGGGGGGGWGGGGWGWYYY");
 }
 
+TEST(SeamSelectYellow, AScriptsOptionIsLitWholeAsTheGroupItIs) {
+  // A script's menu: every letter lower case but the `~`-marked key, so an
+  // option of several words is one group, and it is lit end to end (#483).
+  const rig r;
+  r.arm();
+  const std::string_view bar = "Tell the truth? Lie? Run away?";
+  EXPECT_EQ(r.colours_of(bar, 1, green, white),
+            "WYYYYYYYYYYYYYYGWGGGGWGGGGGGGG");
+  EXPECT_EQ(r.colours_of(bar, 3, green, white),
+            "WGGGGGGGGGGGGGGGWGGGGWYYYYYYYY");
+  EXPECT_EQ(r.blocks_of(bar, 1, green, white),
+            "IIIIIIIIIIIIIII...............");
+  EXPECT_EQ(r.blocks_of(bar, 2, green, white),
+            "................IIII..........");
+}
+
 TEST(SeamSelectYellow, EveryCommandLetterOfTheLitWordStaysWhite) {
   const rig r;
   r.arm();

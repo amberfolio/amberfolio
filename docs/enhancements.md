@@ -385,9 +385,10 @@ A block is a shape, and reads whatever colours you see. With the seam on:
 - **A command bar's highlighted word** (the adventuring bar, the camp bar,
   Magic, Alter, the shops, the temple, a script's menus, the save slots and
   every Yes/No question) is a yellow block with its key letter a white one.
-  Only the word is lit: on a bar whose keys are not the first letters of its
-  words, like the icon editor's top bar, the game's own highlight runs on
-  into the next word, and the seam lights the word that holds the key.
+  Only the word is lit, or the whole phrase of a script's option (`Tell the
+  truth?`): on a bar whose keys are not the first letters of its words,
+  like the icon editor's top bar, the game's own highlight runs on into
+  part of the next word, and the seam lights the word that holds the key.
   A bar of one command is what Enter takes, and is lit the same way: a
   prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
   CONTINUE` (its `P` a white block and the rest a yellow one), and the

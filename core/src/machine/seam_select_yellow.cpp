@@ -382,7 +382,8 @@ struct stack {
 // command letters are not the first letters of its words (a digit at the end
 // of one) the program's highlight is a word and a half. The seam draws the
 // **word**: the run of characters between spaces that holds the group's
-// command letter. It is yellow, with each command letter in it in the bar's
+// command letter, and every whole word after it that the group holds too,
+// for a script's option is a phrase (`Tell the truth?`, #483). It is yellow, with each command letter in it in the bar's
 // bright; every character outside it is drawn as the bar draws the
 // unselected, a command letter in the bright and the rest in the dim. The
 // three points make the same decision for their own character, so the
@@ -504,6 +505,23 @@ constexpr std::uint8_t max_bar = 0x28;
   std::uint8_t last = letter;
   while (last < length && bar(static_cast<std::uint8_t>(last + 1)) != ' ') {
     ++last;
+  }
+  // And every whole word after it that the program's group holds too: a
+  // script's option is a phrase, `Tell the truth?`, one group and one key
+  // (#483). A word the group only begins, as on the icon editor's bar,
+  // stays out.
+  const std::uint8_t group_last = at(
+      static_cast<std::uint16_t>(caller - caller_groups + (2U * group) + 1U));
+  while (last + 1U < length &&
+         bar(static_cast<std::uint8_t>(last + 1)) == ' ') {
+    auto end = static_cast<std::uint8_t>(last + 2);
+    while (end < length && bar(static_cast<std::uint8_t>(end + 1)) != ' ') {
+      ++end;
+    }
+    if (end > group_last || bar(static_cast<std::uint8_t>(last + 2)) == ' ') {
+      break;
+    }
+    last = end;
   }
   out.in_word = index >= first && index <= last;
   unsigned commands = 0;
