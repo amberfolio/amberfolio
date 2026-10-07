@@ -72,8 +72,9 @@
 //     leaf's highlighted arm). A command letter keeps `color_hi`, and
 //     every other character is yellow. Where `color_hi` is already
 //     yellow, a command letter is drawn white, so the key still stands out.
-//     A bar with a single command letter (a script's one-choice notice) has
-//     nothing to select among and is left as the program draws it.
+//     A bar with a single command letter (a script's one-choice notice, the
+//     walking bar's `Exit`) has its one group lit, the command Return takes,
+//     but for the blanks after its last letter (#498).
 //   * **The pick-list's row** (point 2, the string call): yellow.
 //   * **The roster's selected member** (point 3, the string call at the
 //     drawer's selected-member arm, `inside_calls`: the automap and the
@@ -456,6 +457,9 @@ struct bar_call {
   std::uint8_t colour{};
   bool in_word{false};
   bool one_command{false};
+  /// A blank with nothing but blanks after it: the program's group of a
+  /// one-command bar runs to the bar's end, `A ` at a load bar with one slot.
+  bool trailing_blank{false};
 };
 
 /// The widest bar the routine copies (a Pascal string of at most forty).
@@ -531,6 +535,13 @@ constexpr std::uint8_t max_bar = 0x28;
     }
   }
   out.one_command = commands == 1;
+  out.trailing_blank = true;
+  for (std::uint8_t position = index; position <= length; ++position) {
+    if (bar(position) != ' ') {
+      out.trailing_blank = false;
+      break;
+    }
+  }
   return true;
 }
 
@@ -577,8 +588,9 @@ void at_bar(machine& box, seam_context& ctx, bool expect_bright,
   }
   // A bar of one command is lit where the program lights it, its group,
   // and drawn as any lit word is (#483).
-  const bool lit =
-      call.one_command ? one_command_lit(s, ctx, group_arm) : call.in_word;
+  const bool lit = call.one_command ? one_command_lit(s, ctx, group_arm) &&
+                                          !call.trailing_blank
+                                    : call.in_word;
   const std::uint8_t colour =
       call.one_command && !lit
           ? unselected_bar_colour(call.colour, call.color_lo, call.color_hi)
@@ -732,7 +744,8 @@ void at_hit_points(machine& box, seam_context& ctx) {
     // <enter>`, the walking bar's `Exit`. What the program lights of it, its
     // group, is the block. But for the pick-list's `Exit`, where Return takes
     // the row.
-    return one_command_lit(call, ctx, returns_to(from, bar, bar_group_call));
+    return one_command_lit(call, ctx, returns_to(from, bar, bar_group_call)) &&
+           !read.trailing_blank;
   }
 
   // Anything else is a string, drawn by the string routine.
