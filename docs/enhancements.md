@@ -38,20 +38,28 @@ build gets past the wheel without a person having answered it once.
 ## The Encamp Fix
 
 **What it does.** Puts a **`FIX`** command on the camp screen's own bar.
-Press its letter and the party rests as long as it needs: the cures it
-already carries are cast through the game's own cast driver (one queued
-back for each spent), then the game's own rest is dialled to the days the
-wounded still need. A framed report, drawn by the game in its own font,
-says what happened; a rest the game interrupts reports `Fix:
-Interrupted!` and does not retry.
+Press its letter and the party heals as fast as its cures allow: the cures
+it already carries are cast through the game's own cast driver (one queued
+back for each spent), then the party rests only as long as memorizing
+those cures takes, and the Fix casts them again when the rest is over —
+cast, rest, cast, until nobody is hurt. A party that can bring no cure
+back rests the days the wounded still need instead. A framed report, drawn
+by the game in its own font, says what happened over the whole command; a
+rest the game interrupts reports `Fix: Interrupted!` and does not retry.
 
 **How you turn it on.** `--seam encamp-fix`.
 
-**With nobody holding a cure ready** — the ordinary state of a party
-after a hard fight — the rest is the whole of the healing, and the
-report says so: hit points, the days it took, and no spell. The rest is
-then as long as the worst wound, so in an area the game rolls wandering
-monsters for it is likely to be interrupted before it finishes.
+**With cures to cast**, a party a fight left low is healed in a day or two of
+the game's time, where resting it out took a month: a cleric's five cures
+come back every five hours or so, and each one heals more than a day's
+rest does.
+
+**With nobody holding a cure at all** — or nobody able to cast the ones
+held, or an area that refuses spells — the rest is the whole of the
+healing, and the report says so: hit points, the days it took, and no
+spell. The rest is then as long as the worst wound, so in an area the game
+rolls wandering monsters for it is likely to be interrupted before it
+finishes.
 
 **What it will not do.** Write hit points, mend the wound statuses a
 fight leaves that resting cannot mend, or memorize a cure into a slot
