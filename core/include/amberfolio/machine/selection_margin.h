@@ -23,7 +23,9 @@
 // program draws a cell or clears a rectangle, the seam asks what the cells
 // around it want now and paints or takes back only the difference. A pixel
 // is taken back only if it is this machine's: one the program has drawn over
-// since is not.
+// since is not. The seam checks what it holds on the screen before it
+// settles a cell, because the program draws some things (the frame's border
+// row) through neither the blitter nor the fill.
 //
 //
 // Not machine state
