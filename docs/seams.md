@@ -1991,7 +1991,7 @@ and Right move it.
 
 | caller | return offset | what Enter does there |
 |---|---|---|
-| the pick-lists (overlay 25) | `0x0FE0` | confirms the row while the bar's highlight is on its first command, where the list opens it; **with the highlight moved, Enter takes that command** (Exit, Next, Prev, or the caller's own) |
+| the pick-lists (overlay 25) | `0x0FE0` | confirms the row while the bar's highlight is on its first command, where the list opens it; **with the highlight moved, Enter takes that command** (Exit, Next, Prev, or the caller's own); **at the Items list, Enter takes the lit command on the first command too** (below) |
 | the party-member picker (resident image `0x38AA`) | | in the set that ends the loop: chooses |
 | the party-order screen (overlay 15) | `0x17DA` | in the toggle class (`0x174E`): picks a member up, puts it down |
 | the combat move loop (overlay 8) | `0x0AC8` | `0x0D` ends it (the bar has no commands: no group to take) |
@@ -2001,6 +2001,44 @@ and Right move it.
 | the script runner, allow-Enter set (overlay 7) | `0x16EB` | the first choice |
 | the disk-swap prompt (overlay 17) | `0x236F` | one question: any key but `S` is Insert, a retry |
 | the icon editor's bars (overlay 16) | `0x39FE` | **taken**, by the maintainer's decision: states 1, 4 and 5 drop Enter; states 2 and 3 take it as a pick of the default (a block or colour slot named `0x0D`), and the highlighted entry is the pick a player means |
+
+**The pick-list's callers** (#496). The list routine (overlay 25,
+`0x0D9A`) opens with the bar's highlight on its first command, and hands
+its caller the key that ended it, with the lit row as its current item: a
+`0x0D` on Enter, a command letter on a letter, a zero on Esc or Exit. What
+a `0x0D` means is the caller's. The routine has 15 call sites, every one a
+far call through overlay 25's stub entry; none is in the resident image or
+inside overlay 25. Each caller is named by the instruction after its call
+into the list routine:
+
+| caller | module | return offset | what it does with `0x0D` |
+|---|---|---|---|
+| character creation's four lists | overlay 16 | `0x077A`, `0x0A10`, `0x0B65`, `0x0EA7` | ends the list on it: picks the row |
+| the party's Add list | overlay 16 | `0x3100` | adds, as `A` does |
+| the temple's healing list | overlay 4 | `0x0B75` | heals, as `H` does |
+| the post-combat Take list | overlay 5 | `0x0BE6` | handed up; its loop takes, as `T` does |
+| the shop's list | overlay 6 | `0x01C9` | handed up; its loop buys, as `B` does |
+| a script's encounter list | overlay 7 | `0x180B` | the key is not read; the row is the answer |
+| camp's spell-effects display | overlay 15 | `0x13BB` | the key is not read; the list closes |
+| View's Trade and Drop coin lists | overlay 19 | `0x237B`, `0x267A` | the key is not read; a current row picks the coin |
+| the temple's Take coin list | overlay 21 | `0x0E90` | a current row and a key not zero pick the coin |
+| the spell picker | overlay 22 | `0x01DC` | in the set that ends it: picks the spell |
+| **the Items screen** | overlay 19 | `0x1294` | **compares R, U, T, D, H, J, S and I only; a `0x0D` falls to the loop's tail and the list opens again** |
+
+So at the Items screen alone, Enter takes the lit command on the first
+command as well, `Ready` where the list opens, and readies the lit item as
+`R` does. The seam finds the list's caller one frame up: the menu-bar
+routine's saved BP is the list's (both prologues are the standard one, and
+the list calls the menu-bar routine with CS pushed, a far frame), and the
+list's frame holds its own caller's far return address at `BP+2` and
+`BP+4`, as the menu-bar routine's does. A saved BP that is not above the
+routine's own, or whose return address would not be in conventional RAM,
+is not a list frame, and the list keeps its Enter. Both routes: the
+callers' disassembly from each return offset on (the compares, or their
+absence) and the decompile's reading of each caller; the call sites are a
+byte search of every overlay and the resident image for the stub entry.
+Driven: Enter at the Items list readies the lit item (seam on) and does
+nothing (seam off).
 
 *Enter is dropped, and left out by decision (1 caller):*
 

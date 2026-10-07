@@ -109,6 +109,17 @@ constexpr std::uint16_t ret_keep = 0x1DC1;
 /// The pick-list's call into the routine, which is in overlay 25.
 constexpr std::uint16_t ret_pick_list = 0x0FE0;
 
+/// Callers of the pick-list itself, each the instruction after its call into
+/// the list routine: the Items screen (overlay 19), which drops the row's
+/// Enter, and two that pick the row on it, the shop's list (overlay 6) and
+/// character creation's first list (overlay 16).
+constexpr std::uint16_t ret_items_list = 0x1294;
+constexpr std::uint16_t ret_shop_list = 0x01C9;
+constexpr std::uint16_t ret_creation_list = 0x077A;
+
+/// Where this test puts the pick-list's frame: above the routine's own.
+constexpr std::uint16_t list_bp = 0x0700;
+
 /// The callers the Enter audit (#459) added to the table.
 constexpr std::uint16_t ret_alter_toggles = 0x1DDF;
 constexpr std::uint16_t ret_camp_speed = 0x1B91;
@@ -294,6 +305,16 @@ struct rig {
     put_word(stack, frame, at_bp);
     put_word(stack, static_cast<std::uint16_t>(at_bp + runner_allow),
              allow_enter);
+  }
+
+  /// The routine's caller is the pick-list, whose frame is at `at_bp` and
+  /// which was called from `segment:offset`: the routine's saved BP is the
+  /// list's, and the list's frame holds its caller's far return address.
+  void list_frame(std::uint16_t segment, std::uint16_t offset,
+                  std::uint16_t at_bp = list_bp) const {
+    put_word(stack, frame, at_bp);
+    put_word(stack, static_cast<std::uint16_t>(at_bp + frame_ip), offset);
+    put_word(stack, static_cast<std::uint16_t>(at_bp + frame_cs), segment);
   }
 
   /// A keystroke at the head of the ring, and nothing behind it.
@@ -735,6 +756,68 @@ TEST(SeamBarKeys, EnterInAPickListTakesTheBarCommandThePlayerMovedTo) {
   EXPECT_EQ(letter_of(r.press(enter, menu_segment, ret_pick_list, 1)), 'N');
   r.lay_bar("Memo Exit", 1);
   EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+}
+
+TEST(SeamBarKeys, EnterAtTheItemsListTakesTheLitCommandOnTheFirstCommandToo) {
+  // The Items screen compares the list's key with its command letters only,
+  // so the row's Enter would do nothing: Enter takes the lit command, the
+  // first one where the list opens, and any other the player moved to.
+  const rig r;
+  r.arm();
+  r.list_frame(view_segment, ret_items_list);
+  r.lay_bar("Rig Dot Jab Exit", 1);
+  EXPECT_EQ(letter_of(r.press(enter, menu_segment, ret_pick_list, 1)), 'R');
+  r.lay_bar("Rig Dot Jab Exit", 3);
+  EXPECT_EQ(letter_of(r.press(enter, menu_segment, ret_pick_list, 1)), 'J');
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamBarKeys,
+     EnterIsTheListsOwnOnTheFirstCommandWhereItsCallerPicksTheRow) {
+  const rig r;
+  r.arm();
+  r.lay_bar("Buy Exit", 1);
+
+  // The shop's list and character creation's pick the row on Enter.
+  r.list_frame(shop_segment, ret_shop_list);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+  r.list_frame(editor_segment, ret_creation_list);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+
+  // The Items offset in another module, the Items module at another offset,
+  // and the Items call while the manager says overlay 19 is out.
+  r.list_frame(shop_segment, ret_items_list);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+  r.list_frame(view_segment, ret_shop_list);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+  r.manager_says(word_view, 0);
+  r.list_frame(0, ret_items_list);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+  r.manager_says(word_view, view_segment);
+
+  // The Items call one frame up, but the routine itself not called from the
+  // pick-list: the list's caller is asked about only at the list's call.
+  r.list_frame(view_segment, ret_items_list);
+  EXPECT_EQ(r.press(enter, camp_segment, ret_order, 1), enter);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u)
+      << "a list caller the table does not name is not a refusal";
+}
+
+TEST(SeamBarKeys, EnterIsTheListsOwnWhenTheListsFrameCannotBeVouchedFor) {
+  // A saved BP at or below the routine's own, or one whose return address
+  // would wrap past the segment, is no list frame: nothing is read there.
+  const rig r;
+  r.arm();
+  r.lay_bar("Rig Dot Exit", 1);
+  r.list_frame(view_segment, ret_items_list, frame_base);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+  r.list_frame(view_segment, ret_items_list, 0x0100);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+  r.put_word(r.stack, r.frame, 0xFFFC);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_pick_list, 1), enter);
+  // And the same Items frame where the routine's saved BP is above it.
+  r.list_frame(view_segment, ret_items_list);
+  EXPECT_EQ(letter_of(r.press(enter, menu_segment, ret_pick_list, 1)), 'R');
 }
 
 TEST(SeamBarKeys, EnterIsLeftAloneAtACallerThatIsNotInTheTable) {

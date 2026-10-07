@@ -103,19 +103,18 @@ constexpr std::uint32_t appraise_load_segment_at = 0x900;     // overlay 21
                        static_cast<std::uint16_t>(at));
 }
 
-/// Whether this call of the routine, whose frame is at SS:BP, came from a
-/// caller in `table`: the return offset is the caller's and the return
-/// segment is the one the manager says that caller's module is at now.
-[[nodiscard]] inline bool called_from(cpu::processor& cpu,
-                                      const seam_context& ctx,
-                                      std::span<const caller> table) {
-  cpu::registers& regs = cpu.regs();
-  const std::uint16_t ss = regs[cpu::sreg::ss];
-  const std::uint16_t bp = regs[cpu::reg16::bp];
+/// Whether the far call whose frame is at SS:`frame` came from a caller in
+/// `table`: the return offset is the caller's and the return segment is the
+/// one the manager says that caller's module is at now.
+[[nodiscard]] inline bool frame_called_from(cpu::processor& cpu,
+                                            const seam_context& ctx,
+                                            std::uint16_t frame,
+                                            std::span<const caller> table) {
+  const std::uint16_t ss = cpu.regs()[cpu::sreg::ss];
   const std::uint16_t ip =
-      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_ip));
+      cpu.read_word(ss, static_cast<std::uint16_t>(frame + frame_return_ip));
   const std::uint16_t cs =
-      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
+      cpu.read_word(ss, static_cast<std::uint16_t>(frame + frame_return_cs));
 
   for (const caller& c : table) {
     if (ip != c.return_offset) {
@@ -127,6 +126,14 @@ constexpr std::uint32_t appraise_load_segment_at = 0x900;     // overlay 21
     }
   }
   return false;
+}
+
+/// Whether this call of the routine, whose frame is at SS:BP, came from a
+/// caller in `table`.
+[[nodiscard]] inline bool called_from(cpu::processor& cpu,
+                                      const seam_context& ctx,
+                                      std::span<const caller> table) {
+  return frame_called_from(cpu, ctx, cpu.regs()[cpu::reg16::bp], table);
 }
 
 // --- The keystroke about to be read ----------------------------------------
