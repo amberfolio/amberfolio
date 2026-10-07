@@ -123,9 +123,13 @@ constexpr std::uint16_t ret_view_bar = 0x0C9C;
 constexpr std::uint16_t ret_appraise = 0x1C47;
 constexpr std::uint16_t ret_load = 0x16E2;
 
+/// The combat aim bar, where the program's own Enter repeats the last Next
+/// or Prev by accident: Enter takes the lit command, by the maintainer's
+/// decision (#487).
+constexpr std::uint16_t ret_aim_bar = 0x2C31;
+
 /// The callers the audit read and left out: Enter does something there, or
 /// the bar is one a stray Enter should not act on.
-constexpr std::uint16_t ret_aim_bar = 0x2C31;
 constexpr std::uint16_t ret_door_bash = 0x0EBF;
 constexpr std::uint16_t ret_door_stuck = 0x0FFE;
 constexpr std::uint16_t ret_keep_jewel = 0x2114;
@@ -550,7 +554,7 @@ struct enter_caller {
 };
 
 /// Every caller in the Enter table, the audit's (#459) included.
-constexpr std::array<enter_caller, 23> tabled{{
+constexpr std::array<enter_caller, 24> tabled{{
     {.segment = menu_segment, .offset = ret_yes_no, .name = "yes/no"},
     {.segment = adventure_segment, .offset = ret_area, .name = "overhead"},
     {.segment = adventure_segment, .offset = ret_view, .name = "3D"},
@@ -584,6 +588,7 @@ constexpr std::array<enter_caller, 23> tabled{{
     {.segment = adventure_segment,
      .offset = ret_door_stuck,
      .name = "stuck door"},
+    {.segment = aim_segment, .offset = ret_aim_bar, .name = "aim bar"},
 }};
 
 TEST(SeamBarKeys, EnterTakesTheHighlightedCommandAtEachTabledCaller) {
@@ -668,11 +673,10 @@ TEST(SeamBarKeys, EnterIsLeftAloneAtTheCallersTheAuditReadAndKeptOut) {
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
 
-  const std::array<enter_caller, 15> kept_out{{
+  const std::array<enter_caller, 14> kept_out{{
       {.segment = camp_segment, .offset = ret_order, .name = "party order"},
       {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
       {.segment = aim_segment, .offset = ret_aim, .name = "aim cursor"},
-      {.segment = aim_segment, .offset = ret_aim_bar, .name = "aim bar"},
       {.segment = appraise_segment, .offset = ret_keep, .name = "keep gem"},
       {.segment = appraise_segment,
        .offset = ret_keep_jewel,

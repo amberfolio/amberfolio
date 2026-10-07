@@ -1958,6 +1958,12 @@ bar; the View bar; the temple's appraise bar; the load-game slot bar.
 the rest-time menu (overlay 20, `0x076E`). The player who never moves the
 highlight finds it on `Mins` (above), so a Return there no longer rests.
 
+*Enter acted by accident; taken by decision (#487):* the combat aim bar
+(overlay 13, `0x2C31`). The key is returned to the aim loop, whose compares
+miss and whose redraw then repeats the last Next or Prev step (the step is
+a stale local). Left and Right step this bar's highlight, so a player who
+lights `Manual` or `Target` and presses Return means that command.
+
 *Enter means something already; left alone:*
 
 | caller | return offset | what Enter does there |
@@ -1967,7 +1973,6 @@ highlight finds it on `Mins` (above), so a Return there no longer rests.
 | the party-order screen (overlay 15) | `0x17DA` | in the toggle class (`0x174E`): picks a member up, puts it down |
 | the combat move loop (overlay 8) | `0x0AC8` | `0x0D` ends it (the bar has no commands: no group to take) |
 | the combat aim cursor (overlay 13) | `0x3178` | confirms, as `T` does |
-| the combat aim bar (overlay 13) | `0x2C31` | the key is returned to the aim loop, whose compares miss and whose redraw then **repeats the last Next or Prev step** (the step is a stale local): it acts, by accident |
 | the temple's keep-or-sell (overlay 21) | `0x1DC1`, `0x2114` | any key but `K` sells: **Enter sells** |
 | the two share prompts, *press Enter* (overlay 5) | `0x0AF8`, `0x14C7` | the prompt asks for it and ends on it |
 | the script runner, allow-Enter set (overlay 7) | `0x16EB` | the first choice |
