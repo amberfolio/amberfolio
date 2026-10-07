@@ -2399,9 +2399,10 @@ outside the block's cells.
   highlight to move to, but its one command is what Return takes. The seam
   lights the program's **group**, the characters drawn through the
   highlighted arm, as a word is lit (the key in the bright and the rest
-  yellow, as blocks), and draws every other character as the program drew it,
-  the swapped pair below put right (the program's bright green becomes white
-  and its dim white green). It left the whole bar as drawn until #483: the
+  yellow, as blocks), but for the blanks after its last letter: the group runs
+  to the bar's end, and a load bar with one save is `A ` (#498). Every other
+  character is drawn as the program drew it, the swapped pair below put right
+  (the program's bright green becomes white and its dim white green). It left the whole bar as drawn until #483: the
   maintainer asked for the walking bar's `Exit` and the notice to be lit like
   everything else. **The pick-list's `Exit` is the exception**, recognised by
   the menu-bar routine's return into overlay 25 at `0x0FE0` (the pick-list

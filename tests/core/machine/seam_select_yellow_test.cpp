@@ -1143,6 +1143,18 @@ TEST(SeamSelectYellow, ABarOfOneCommandIsABlockWhereTheProgramLightsIt) {
       << "but not a bar with no colour, which is not drawn";
 }
 
+TEST(SeamSelectYellow, ABarOfOneCommandLightsNoBlankAfterItsLastLetter) {
+  // A slot bar with one save, `A `: the program's group runs to the bar's
+  // end, and the block stops at the letter (#498).
+  const rig r;
+  r.arm();
+  EXPECT_EQ(r.blocks_of("A ", 1, green, white), "I.");
+  EXPECT_EQ(r.blocks_of("A   ", 1, green, white), "I...");
+  EXPECT_EQ(r.blocks_of("Exit ", 1, green, white), "IIII.");
+  EXPECT_EQ(r.colours_of("A ", 1, green, white).substr(1), "W")
+      << "the blank is drawn as the program draws it";
+}
+
 TEST(SeamSelectYellow, ThePickListsExitIsLeftAsTheProgramDrawsIt) {
   // Under a pick-list Return takes the row, which is the selection; the
   // `Exit` bar the list routine hands the menu-bar routine is not lit.
