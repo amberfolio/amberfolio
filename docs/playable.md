@@ -1355,7 +1355,7 @@ for it, and `fired` counts the draws and keys it looked at.
 | the icon editor's bar | `K` at the portrait bar | the lit word is `COLOR-2` and not the half of a word the game lights |
 | the main menu | leg 16 with `--seam modern-controls` | `Create` a yellow block with its `C` a white one |
 | a swapped Yes/No | the temple's `PAY FOR CURE` (leg 5) | `Y` white, `es` green, `N` a white block, `o` a yellow one |
-| a one-choice notice | slot A to the arena master's square (7,1), `bar-script`'s keys up to the Return | `PRESS <ENTER>/<RETURN> TO CONTINUE` white end to end, as with the seam off; the question after the Return has `Yes` a yellow block with its `Y` a white one |
+| a one-choice notice | slot A to the arena master's square (7,1), `bar-script`'s keys up to the Return | `PRESS <ENTER>/<RETURN> TO CONTINUE` with its `P` a white block and the rest a yellow one; the question after the Return has `Yes` a yellow block with its `Y` a white one |
 
 ```
 --seam code-wheel --code-wheel-answered --seam modern-controls

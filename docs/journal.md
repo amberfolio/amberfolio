@@ -720,8 +720,8 @@ The reader is a seam (`docs/seams.md` §10). This section is the join.
   Return there opens the row the cursor is on; Up and Down hand Return
   back to the rows. An empty log has no row, so its lone `EXIT` is lit
   and Return closes it. The highlight is the word as a white block, and over
-  it its tail as a yellow one so that its key letter stays white (#483); a
-  bar of one word is not recoloured (#462). A press redraws the bar and nothing else. With
+  it its tail as a yellow one so that its key letter stays white (#483), a
+  bar of one word included: it is what Return takes. A press redraws the bar and nothing else. With
   `modern-controls` off none of this exists and the reader is as it was. It is `journal_state::bar_word()` and `bar_focus()`, observation
   and never machine state.
 - **`Notes` hands the highlight back** (#330): the bar routine's cursor
