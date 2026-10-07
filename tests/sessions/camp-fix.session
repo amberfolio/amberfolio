@@ -14,10 +14,12 @@ about the same script with the Encamp Fix on, pressing the letter the
 about seam puts on the camp menu instead of the menu's own Rest. The
 about seam splices the command onto the game's own bar, takes it back
 about off the game's own menu-bar routine, spends the five cures the
-about party holds, dials thirty days — the worst deficit plus one — on
-about the program's own rest clock and presses Rest, and says what it
-about did in a box the game draws when the game's own wandering-monster
-about check ends the rest and takes the party out of camp. fired=11.
+about party holds, and presses Rest for a cure cycle (#490): no days
+about dialled, so the rest is the program's own memorization time for the
+about cures it queued back, after which it would cast them. The game's own
+about wandering-monster check ends that rest five minutes in and takes the
+about party out of camp, and the seam says what it did in a box the game
+about draws: interrupted, the cures still being memorized. fired=11.
 about 11,998 frames, 100 checkpoints
 disk external
 code-wheel-answered
