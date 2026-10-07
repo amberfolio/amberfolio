@@ -128,13 +128,16 @@ constexpr std::uint16_t ret_load = 0x16E2;
 /// decision (#487).
 constexpr std::uint16_t ret_aim_bar = 0x2C31;
 
+/// The save-game slot bar, where the program drops Enter: Enter writes the
+/// lit slot, by the maintainer's decision (#494).
+constexpr std::uint16_t ret_save = 0x1DA1;
+
 /// The callers the audit read and left out: Enter does something there, or
 /// the bar is one a stray Enter should not act on.
 constexpr std::uint16_t ret_door_bash = 0x0EBF;
 constexpr std::uint16_t ret_door_stuck = 0x0FFE;
 constexpr std::uint16_t ret_keep_jewel = 0x2114;
 constexpr std::uint16_t ret_icon_editor = 0x39FE;
-constexpr std::uint16_t ret_save = 0x1DA1;
 constexpr std::uint16_t ret_stage = 0x236F;
 constexpr std::uint16_t ret_main_menu = 0x02FD;
 
@@ -554,7 +557,7 @@ struct enter_caller {
 };
 
 /// Every caller in the Enter table, the audit's (#459) included.
-constexpr std::array<enter_caller, 24> tabled{{
+constexpr std::array<enter_caller, 25> tabled{{
     {.segment = menu_segment, .offset = ret_yes_no, .name = "yes/no"},
     {.segment = adventure_segment, .offset = ret_area, .name = "overhead"},
     {.segment = adventure_segment, .offset = ret_view, .name = "3D"},
@@ -589,6 +592,7 @@ constexpr std::array<enter_caller, 24> tabled{{
      .offset = ret_door_stuck,
      .name = "stuck door"},
     {.segment = aim_segment, .offset = ret_aim_bar, .name = "aim bar"},
+    {.segment = slots_segment, .offset = ret_save, .name = "save"},
 }};
 
 TEST(SeamBarKeys, EnterTakesTheHighlightedCommandAtEachTabledCaller) {
@@ -673,7 +677,7 @@ TEST(SeamBarKeys, EnterIsLeftAloneAtTheCallersTheAuditReadAndKeptOut) {
   r.arm();
   r.lay_bar("Ant Bee Cow", 2);
 
-  const std::array<enter_caller, 14> kept_out{{
+  const std::array<enter_caller, 13> kept_out{{
       {.segment = camp_segment, .offset = ret_order, .name = "party order"},
       {.segment = combat_segment, .offset = ret_move, .name = "combat move"},
       {.segment = aim_segment, .offset = ret_aim, .name = "aim cursor"},
@@ -687,7 +691,6 @@ TEST(SeamBarKeys, EnterIsLeftAloneAtTheCallersTheAuditReadAndKeptOut) {
        .name = "npc share"},
       {.segment = editor_segment, .offset = ret_editor, .name = "stat editor"},
       {.segment = editor_segment, .offset = ret_main_menu, .name = "main menu"},
-      {.segment = slots_segment, .offset = ret_save, .name = "save slot"},
       {.segment = slots_segment, .offset = ret_stage, .name = "stage prompt"},
       {.segment = stack_segment, .offset = 0x1234, .name = "unknown"},
       {.segment = script_segment, .offset = ret_load, .name = "load, in 7"},

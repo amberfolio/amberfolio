@@ -137,6 +137,7 @@
 //   | the load-game slot bar | overlay 17 | `0x16E2` | loops until the answer is a slot letter |
 //   | the rest-time menu | overlay 20 | `0x076E` | **takes it as `R`, Rest**; in the table by decision, so Enter follows the highlight |
 //   | the door bars, locked and stuck | overlay 14 | `0x0EBF`, `0x0FFE` | one question, no loop: **anything but B, P or K is no choice**, the same as Exit; in the table by decision (#479), so Enter takes the lit command |
+//   | the save-game slot bar | overlay 17 | `0x1DA1` | loops until the answer is a slot letter; **in the table by decision** (#494), so Enter writes the lit slot, as typing its letter would |
 //
 // **Esc answers No** (#438), at two callers only: the Yes/No prompt (the
 // loop in the table above, which ignores Esc and asks again) and the script
@@ -181,6 +182,13 @@
 // where it repeats the last Next or Prev by accident; Left and Right step
 // that bar's highlight, so Enter takes the command the player lit.
 //
+// The save-game slot bar (overlay 17, return `0x1DA1`) is in the Enter table
+// by decision (#494). The program drops Enter there, and nothing asks before
+// a slot is written; but the selection block shows the lit slot as chosen,
+// and the load bar takes Enter, so Enter writes the slot the block is on.
+// The slot lit on arrival is the last bar's highlight, not one the player
+// picked; Left and Right move it.
+//
 // **Why the BIOS ring and not AL.** The program reads the key two
 // routines deep, through INT 16h, so the first place any seam can see it
 // is the ring, which is also where the automap's and the journal's claims
@@ -217,9 +225,8 @@
 // -------------------------------------------------------------------
 //
 // Enter at the callers that are not in the table, each with its verdict in
-// docs/seams.md §10: most of them do something with it already, and two
-// (the save-game slot bar and the stat editor) drop it and are left out on
-// purpose. Out of scope: Up and Down, which are `list-arrows`' (#423,
+// docs/seams.md §10: most of them do something with it already, and one
+// (the stat editor) drops it and is left out on purpose. Out of scope: Up and Down, which are `list-arrows`' (#423,
 // #435) at the same point, and a held key repeating (#426).
 
 #include <array>
@@ -286,7 +293,7 @@ using menu_bar::slots_load_segment_at;
 using menu_bar::temple_load_segment_at;
 using menu_bar::view_load_segment_at;
 
-constexpr std::array<caller, 24> enter_callers{{
+constexpr std::array<caller, 25> enter_callers{{
     {.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
@@ -312,6 +319,7 @@ constexpr std::array<caller, 24> enter_callers{{
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0EBF},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0FFE},
     {.load_segment_at = aim_load_segment_at, .return_offset = 0x2C31},
+    {.load_segment_at = slots_load_segment_at, .return_offset = 0x1DA1},
 }};
 
 /// The Yes/No prompt, and the script runner's call into the routine (the
