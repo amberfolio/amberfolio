@@ -2493,7 +2493,7 @@ void take_the_answer(machine& box, seam_context& ctx) {
   // leaves the duration the program's own wrapper computes, and the camp
   // menu presses the Fix again when it comes back. A rest that only waits
   // out the wounds heals one point a day; a cure heals more than that.
-  const std::uint16_t cycles =
+  const auto cycles =
       static_cast<std::uint16_t>(ctx.scratch(scratch_cycles) & ~cycle_rest);
   const bool cure_cycle = party.worst_deficit != 0 &&
                           party.castable_pending_cures != 0 &&
