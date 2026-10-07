@@ -1751,6 +1751,7 @@ a `0x0D` compare and for the loop's exit test, and no more than that.
 | the load-game slot bar | overlay 17 (`0x7D0`) | `0x16E2` | loops until the key is in a class at `0x159F`, which holds the letters A to J; `0x0D` is not in it | D: Return loads the lit slot |
 | the rest-time menu, **by decision** | overlay 20 (`0x8D0`) | `0x076E` | **takes it as `R`, Rest** (`0x0D` is mapped before the compares). With the seam on Enter follows the highlight instead | D |
 | the door bars, locked and stuck, **by decision** (#479) | overlay 14 (`0x730`) | `0x0EBF`, `0x0FFE` | one question, no loop: a key that is not B, P or K is no choice, the same as Exit, and the door stays. With the seam on Enter takes the lit command, which the bar opens on its first (Bash) | S |
+| the save-game slot bar, **by decision** (#494) | overlay 17 (`0x7D0`) | `0x1DA1` | loops on Enter; nothing asks before a slot is written. With the seam on Enter writes the lit slot, as typing its letter would; the slot lit on arrival is the last bar's highlight | D: Return saves to the lit slot |
 
 - **Each by two routes.** The first row group (the Yes/No prompt, the
   adventuring bars, camp) was read in the disassembly and driven with the
@@ -1979,6 +1980,13 @@ miss and whose redraw then repeats the last Next or Prev step (the step is
 a stale local). Left and Right step this bar's highlight, so a player who
 lights `Manual` or `Target` and presses Return means that command.
 
+*Enter was dropped where a slot is written; taken by decision (#494):* the
+save-game slot bar (overlay 17, `0x1DA1`). The selection block draws its lit
+slot as chosen and the load bar takes Enter, so Return writes the slot the
+block is on, as typing its letter would, with nothing asking first. The slot
+lit on arrival is the last bar's highlight, not one the player picked; Left
+and Right move it.
+
 *Enter means something already; left alone:*
 
 | caller | return offset | what Enter does there |
@@ -2032,11 +2040,10 @@ byte search of every overlay and the resident image for the stub entry.
 Driven: Enter at the Items list readies the lit item (seam on) and does
 nothing (seam off).
 
-*Enter is dropped, and left out by decision (2 callers):*
+*Enter is dropped, and left out by decision (1 caller):*
 
 | caller | return offset | why not |
 |---|---|---|
-| the save-game slot bar (overlay 17) | `0x1DA1` | loops on Enter, but a Return would write whichever slot is lit, and nothing asks first; the highlight is the last bar's, not a choice |
 | the stat editor, Modify (overlay 16) | `0x216E` | the `0x0D` compare is under the out-flag, which Enter never sets (the keypad's 5 is a space in the table at `0x288C`), so it is dropped; but the bar is `Keep Exit`, the highlight is stale, and `Exit` discards the edit. The arrows are its controls. Not driven |
 
 *Not applicable (1):* the main menu bar (overlay 16, `0x02FD`): its colours
