@@ -929,6 +929,29 @@ void settle(machine& box, unsigned page, std::uint16_t segment,
     }
     const auto r = static_cast<unsigned>(row);
     const auto c = static_cast<unsigned>(column);
+    // What this machine holds here, checked on the screen first. The program
+    // draws some things other than through the blitter or the fill (the
+    // frame's border row over a bar, #483), and a margin pixel it has drawn
+    // over is not this machine's any more: forgotten, so it is painted
+    // again if it is still wanted.
+    const selection_margins::strip held = margins.owned(page, r, c);
+    selection_margins::strip lost;
+    bool any_lost = false;
+    for (unsigned line = 0; line < selection_margins::lines; ++line) {
+      if (held.bits[line] == 0) {
+        continue;
+      }
+      if (!adapter) {
+        adapter.emplace(box);
+      }
+      const std::uint8_t still = adapter->in_colour(
+          segment, offset_of(r, c, line), held.colour[line], held.bits[line]);
+      lost.bits[line] = static_cast<std::uint8_t>(held.bits[line] & ~still);
+      any_lost = any_lost || lost.bits[line] != 0;
+    }
+    if (any_lost) {
+      margins.done(page, r, c, lost, selection_margins::strip{});
+    }
     selection_margins::change change = margins.needed(page, r, c);
     if (change.empty()) {
       continue;

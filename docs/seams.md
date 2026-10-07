@@ -2503,7 +2503,10 @@ outside the block's cells.
   the cells whose margin may have changed are settled: what a cell wants is
   painted, and what it no longer wants is put back to black, **only where it
   is still this machine's** (a cell the program draws or fills is its own
-  again). A block the program covered some other way (the automap's panel
+  again). What it holds is checked on the screen before a cell is settled:
+  the camp screen redraws the frame's border row over its bar with neither
+  the blitter nor the fill, and a margin pixel it drew over is forgotten and
+  painted again. A block the program covered some other way (the automap's panel
   over the roster) is checked on the screen before a margin is painted
   beside it: its column 0 and row 7, paper in every glyph, must be its
   colour but for two pixels, or it is forgotten. The graphics controller's

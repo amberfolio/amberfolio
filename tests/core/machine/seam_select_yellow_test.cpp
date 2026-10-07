@@ -1320,6 +1320,26 @@ TEST(SeamSelectYellow, AMarginIsPaintedOverBlackBesideABlockOnBothPages) {
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
 }
 
+TEST(SeamSelectYellow, AMarginTheProgramDrewOverIsPaintedAgain) {
+  // The program redraws the frame's border row over a bar some other way
+  // than through the blitter, after the bar's margin was painted, and the
+  // bar is drawn again in the same colours (#483): the margin comes back.
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.fill_cell(first_page, 5, 10, white);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  ASSERT_EQ(r.pixel(first_page, 84, 39), white);
+
+  r.put_pixels(first_page, rig::offset_of(4, 10, 7), 0xFF, black);
+  ASSERT_EQ(r.pixel(first_page, 84, 39), black);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  for (unsigned x = 80; x < 88; ++x) {
+    EXPECT_EQ(r.pixel(first_page, x, 39), white) << x;
+  }
+}
+
 TEST(SeamSelectYellow, TheMarginGoesWhenTheCellIsDrawnPlain) {
   rig r;
   r.arm();
