@@ -928,10 +928,25 @@ Facts it relies on:
 - The bar is a Pascal `string[40]` in the data segment; the splice
   refuses a bar without room. An unrecognised letter is harmless: the
   loop is a sequence of comparisons, not a table index.
-- **Days** = the worst survivor's deficit plus one (the heal counter is
-  zeroed on camp entry and not by a rest, so a second rest starts mid
-  day); **zero when there is no deficit**, which leaves the program's
-  own duration. With nothing to rest for the command declines. **An
+- **A cure cycle** (#490): with somebody hurt and somebody who can act
+  holding cures **pending** (the ones the command queued back, or the
+  player's), in an area that allows casting, the rest dials **no days**,
+  so it lasts the program's own memorization time, and the camp menu's
+  next pass posts the Fix's own key (scan `0x21`, `F`) for the bar it is
+  about to draw: the command goes on and casts what the rest memorized.
+  It goes on only while somebody is still hurt and somebody who can act
+  holds a cure ready; otherwise the command is reported as any rest is (a
+  rest the player ended before the memorizing has its cures still
+  pending, and is `Fix: Rest Stopped`). A key the player has typed stops
+  it. Backstops: sixteen casts between two rests, twenty-four cycles a
+  command. Driven on slot A wounded by the cheat: `HEALED 193 HP, 43
+  SPELLS, 1:22:45`, where resting the deficit out took 34 days with 5.
+  Two of the seam's words (§3): casts since the last rest, and the
+  cycle count with the cure-cycle rest in its top bit.
+- **Days**, when no cure can come back: the worst survivor's deficit plus
+  one (the heal counter is zeroed on camp entry and not by a rest, so a
+  second rest starts mid day); **zero when there is no deficit**, which
+  leaves the program's own duration. With nothing to rest for the command declines. **An
   empty spellbook adds to neither half** (#350): nothing is cast, and
   the program's wrapper computes no memorization time, so the rest is
   the deficit plus one over `00:00` — which for a party a fight left
