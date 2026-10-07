@@ -1973,7 +1973,9 @@ font, read out of its memory at call time through the data-segment far
 pointer the automap's zone label follows (`docs/seams.md` §10). A cell
 of exactly two colours is text when one of them, as the ink, draws a
 glyph exactly; a cell of one colour is a blank; anything else is not
-text. Nothing about the font is stored or shipped.
+text. A cell that does not read is read again with its column 0 and row 7
+blanked out, where a selection block's margin lies (`docs/seams.md` §10),
+and that reading counts only when it is one character or a blank. Nothing about the font is stored or shipped.
 
 - **Upper case only.** The font is sixty-four glyphs indexed by the
   character upper-cased, so that is what comes back.

@@ -20,11 +20,13 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/edition.h"
+#include "amberfolio/machine/ega.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/overlay.h"
@@ -41,7 +43,7 @@ constexpr std::string_view seam_id = "modern-controls";
 /// has: the pieces follow one another in the order
 /// seam_modern_controls.cpp lists them.
 constexpr std::size_t piece_first = 12;
-constexpr std::size_t piece_count = 9;
+constexpr std::size_t piece_count = 11;
 
 [[nodiscard]] std::span<const seam_point> piece_points(
     const seam_definition& s) {
@@ -66,6 +68,8 @@ constexpr std::size_t bar_letter = 5;
 constexpr std::size_t bar_rest = 6;
 constexpr std::size_t row_store = 7;
 constexpr std::size_t row_store_again = 8;
+constexpr std::size_t cell_drawn = 9;
+constexpr std::size_t rectangle_filled = 10;
 
 // Where the store's frames say a glyph's call came from (#483): the far
 // return address each callee's frame holds, as segment and offset. The
@@ -87,6 +91,16 @@ constexpr std::uint16_t batch_return = 0x0800;
 
 /// The mark a seam's own selection carries in its colour word.
 constexpr std::uint16_t selection_mark = 0x8000;
+
+/// The margin's facts (#483): the data segment's two words that hold the
+/// display segments the blitter draws to, and the two pages.
+constexpr std::uint16_t dgroup_paragraphs = 0xC7C;
+constexpr std::uint16_t data_first_page = 0x4A16;
+constexpr std::uint16_t data_second_page = 0x4A18;
+constexpr std::uint16_t first_page = 0xA000;
+constexpr std::uint16_t second_page = 0xA200;
+/// The rectangle fill's frame, at a BP of the test's own.
+constexpr std::uint16_t fill_bp = 0x0400;
 
 /// The row the tests store, and what it is inverted.
 constexpr std::uint8_t a_row = 0x3C;
@@ -461,12 +475,109 @@ struct rig {
     return is_letter(text[index - 1]) ? bar_letter_return : bar_rest_return;
   }
 
+  // --- The margin (#483) ----------------------------------------------------
+
+  /// An adapter, and the program's two display segments where the blitter
+  /// finds them.
+  void attach_video() {
+    video = std::make_unique<ega>(*box);
+    box->attach(*video);
+    const auto dgroup =
+        static_cast<std::uint16_t>(image_load_segment + dgroup_paragraphs);
+    put_word(dgroup, data_first_page, first_page);
+    put_word(dgroup, data_second_page, second_page);
+    // Every plane written, as the mode the program sets leaves it.
+    box->write_port8(ega::sequencer_index_port, 2);
+    box->write_port8(ega::sequencer_data_port, 0x0F);
+    gc(7, 0x0F);
+  }
+
+  void gc(std::uint8_t index, std::uint8_t value) const {
+    box->write_port8(ega::graphics_index_port, index);
+    box->write_port8(ega::graphics_data_port, value);
+  }
+
+  /// `bits` of one byte of the display set to `colour`, as a program would:
+  /// set/reset on every plane, the bit mask the pixels.
+  void put_pixels(std::uint16_t segment, std::uint16_t offset,
+                  std::uint8_t bits, std::uint8_t colour) const {
+    gc(0, colour);
+    gc(1, 0x0F);
+    gc(8, bits);
+    static_cast<void>(box->processor().read_byte(segment, offset));
+    box->processor().write_byte(segment, offset, 0xFF);
+    gc(1, 0);
+    gc(0, 0);
+    gc(8, 0xFF);
+  }
+
+  /// A cell of a page in one colour, every pixel.
+  void fill_cell(std::uint16_t segment, unsigned row, unsigned column,
+                 std::uint8_t colour) const {
+    for (unsigned line = 0; line < 8; ++line) {
+      put_pixels(segment, offset_of(row, column, line), 0xFF, colour);
+    }
+  }
+
+  [[nodiscard]] static std::uint16_t offset_of(unsigned row, unsigned column,
+                                               unsigned line) {
+    return static_cast<std::uint16_t>((((row * 8) + line) * 40) + column);
+  }
+
+  /// The colour of the pixel at `x`, `y` of a page.
+  [[nodiscard]] std::uint8_t pixel(std::uint16_t segment, unsigned x,
+                                   unsigned y) const {
+    const auto offset = static_cast<std::uint16_t>(
+        ((segment - first_page) * 16U) + (y * 40U) + (x / 8U));
+    const unsigned shift = 7U - (x % 8U);
+    std::uint8_t colour = 0;
+    for (unsigned plane = 0; plane < ega::plane_count; ++plane) {
+      const std::uint8_t bits = video->plane_byte(plane, offset);
+      colour =
+          static_cast<std::uint8_t>(colour | (((bits >> shift) & 1U) << plane));
+    }
+    return colour;
+  }
+
+  /// The blitter's cell and colour, in its frame at `blitter_bp`.
+  void lay_blitter_cell(unsigned row, unsigned column,
+                        std::uint16_t colour) const {
+    put_word(stack_segment, blitter_bp + 6U + 6U, as_pushed(colour));
+    put_word(stack_segment, blitter_bp + 6U + 8U, as_pushed(row));
+    put_word(stack_segment, blitter_bp + 6U + 10U,
+             static_cast<std::uint16_t>(column));
+  }
+
+  /// A seam's string drawn at a cell in `colour`, marked as a selection or
+  /// not, with the blitter's frame on it.
+  void lay_seams_glyph(unsigned row, unsigned column, std::uint16_t colour,
+                       bool marked) const {
+    lay_string_call(0x0700, stack_segment, 0);
+    put_word(
+        stack_segment, frame_sp + 4,
+        static_cast<std::uint16_t>(colour | (marked ? selection_mark : 0)));
+    lay_string_glyph(batch_segment, batch_return);
+    lay_blitter_cell(row, column, colour);
+  }
+
+  /// The fill's frame: the fill, the page, the bottom, right, top and left.
+  void lay_fill(unsigned page, unsigned top, unsigned left, unsigned bottom,
+                unsigned right) const {
+    put_word(stack_segment, fill_bp + 6U, as_pushed(0));
+    put_word(stack_segment, fill_bp + 8U, as_pushed(page));
+    put_word(stack_segment, fill_bp + 0x0AU, as_pushed(bottom));
+    put_word(stack_segment, fill_bp + 0x0CU, as_pushed(right));
+    put_word(stack_segment, fill_bp + 0x0EU, as_pushed(top));
+    put_word(stack_segment, fill_bp + 0x10U, as_pushed(left));
+  }
+
   std::unique_ptr<machine> box;
+  std::unique_ptr<ega> video;
 };
 
 // --- The definition --------------------------------------------------------
 
-TEST(SeamSelectYellow, IsNinePointsAndThreeOfThemAreInsideCalls) {
+TEST(SeamSelectYellow, IsElevenPointsAndFiveOfThemAreInsideCalls) {
   const rig r;
   const seam_definition& s = r.seam();
 
@@ -475,7 +586,7 @@ TEST(SeamSelectYellow, IsNinePointsAndThreeOfThemAreInsideCalls) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(piece_points(s).size(), 9u);
+  ASSERT_EQ(piece_points(s).size(), 11u);
 
   EXPECT_EQ(piece_points(s)[bar_group].offset, 0x0273u);
   EXPECT_EQ(piece_points(s)[list_row].offset, 0x09FDu);
@@ -512,7 +623,12 @@ TEST(SeamSelectYellow, IsNinePointsAndThreeOfThemAreInsideCalls) {
   // selections are drawn in one.
   EXPECT_EQ(piece_points(s)[row_store].offset, 0x74A2u);
   EXPECT_EQ(piece_points(s)[row_store_again].offset, 0x74C8u);
-  for (const std::size_t which : {row_store, row_store_again}) {
+  // And the margin's: the blitter's step to the next cell, and the
+  // rectangle fill's epilogue.
+  EXPECT_EQ(piece_points(s)[cell_drawn].offset, 0x7667u);
+  EXPECT_EQ(piece_points(s)[rectangle_filled].offset, 0x71FBu);
+  for (const std::size_t which :
+       {row_store, row_store_again, cell_drawn, rectangle_filled}) {
     EXPECT_TRUE(piece_points(s)[which].module.is_resident_image());
     EXPECT_TRUE(piece_points(s)[which].inside_calls);
   }
@@ -610,6 +726,22 @@ TEST(SeamSelectYellow, AWordIsLitWholeWhereTheKeyIsNotItsFirstLetter) {
             "WGGGGGGGGWGYYYWGWGGG");
   EXPECT_EQ(r.colours_of("Alpha bet9 gam8 Quit", 4, green, white),
             "WGGGGGGGGWGGGGWGWYYY");
+}
+
+TEST(SeamSelectYellow, AScriptsOptionIsLitWholeAsTheGroupItIs) {
+  // A script's menu: every letter lower case but the `~`-marked key, so an
+  // option of several words is one group, and it is lit end to end (#483).
+  const rig r;
+  r.arm();
+  const std::string_view bar = "Tell the truth? Lie? Run away?";
+  EXPECT_EQ(r.colours_of(bar, 1, green, white),
+            "WYYYYYYYYYYYYYYGWGGGGWGGGGGGGG");
+  EXPECT_EQ(r.colours_of(bar, 3, green, white),
+            "WGGGGGGGGGGGGGGGWGGGGWYYYYYYYY");
+  EXPECT_EQ(r.blocks_of(bar, 1, green, white),
+            "IIIIIIIIIIIIIII...............");
+  EXPECT_EQ(r.blocks_of(bar, 2, green, white),
+            "................IIII..........");
 }
 
 TEST(SeamSelectYellow, EveryCommandLetterOfTheLitWordStaysWhite) {
@@ -1147,6 +1279,130 @@ TEST(SeamSelectYellow, TheStoresDoNothingWhileItIsOff) {
   r.lay_list_row(yellow, yellow);
   r.lay_string_glyph(menu_bar_segment, list_row_return);
   EXPECT_EQ(r.store(row_store, blitter_bp), a_row);
+}
+
+// --- The margin outside the block (#483) ----------------------------------------
+//
+// The block's letters touch its top and its right, so the margin there is
+// painted in the cells beside it: row 7 of the cell above, column 0 of the
+// cell after and the corner above that, only over black, on both pages; and
+// taken back, only where it is still this machine's, when the block goes.
+
+TEST(SeamSelectYellow, AMarginIsPaintedOverBlackBesideABlockOnBothPages) {
+  rig r;
+  r.arm();
+  r.attach_video();
+  // The cell as the stores leave a white key: its column 0 and row 7, the
+  // paper of every glyph, are its colour.
+  for (const std::uint16_t page : {first_page, second_page}) {
+    r.fill_cell(page, 5, 10, white);
+  }
+  // A pixel the program drew in row 7 of the cell above: a descender.
+  r.put_pixels(first_page, rig::offset_of(4, 10, 7), 0x10, green);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+
+  for (const std::uint16_t page : {first_page, second_page}) {
+    for (unsigned x = 80; x < 88; ++x) {
+      if (page == first_page && x == 83) {
+        EXPECT_EQ(r.pixel(page, x, 39), green) << "only over black";
+        continue;
+      }
+      EXPECT_EQ(r.pixel(page, x, 39), white) << page << " top " << x;
+    }
+    for (unsigned y = 39; y < 48; ++y) {
+      EXPECT_EQ(r.pixel(page, 88, y), white) << page << " right " << y;
+    }
+    EXPECT_EQ(r.pixel(page, 79, 40), black) << "nothing on the left";
+    EXPECT_EQ(r.pixel(page, 80, 48), black) << "nor below";
+    EXPECT_EQ(r.pixel(page, 89, 40), black);
+  }
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamSelectYellow, TheMarginGoesWhenTheCellIsDrawnPlain) {
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.fill_cell(first_page, 5, 10, white);
+  r.put_pixels(first_page, rig::offset_of(4, 10, 7), 0x10, green);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+
+  r.lay_seams_glyph(5, 10, white, false);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  for (unsigned x = 80; x < 88; ++x) {
+    EXPECT_EQ(r.pixel(first_page, x, 39), x == 83 ? green : black) << x;
+  }
+  for (unsigned y = 39; y < 48; ++y) {
+    EXPECT_EQ(r.pixel(first_page, 88, y), black) << y;
+  }
+}
+
+TEST(SeamSelectYellow, AFilledRectangleTakesTheMarginOfItsBlocksWithIt) {
+  rig r;
+  r.arm();
+  r.attach_video();
+  for (const std::uint16_t page : {first_page, second_page}) {
+    r.fill_cell(page, 5, 10, white);
+  }
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+
+  r.lay_fill(0, 5, 10, 5, 10);
+  static_cast<void>(r.store(rectangle_filled, fill_bp));
+  EXPECT_EQ(r.pixel(first_page, 84, 39), black);
+  EXPECT_EQ(r.pixel(first_page, 88, 44), black);
+  EXPECT_EQ(r.pixel(second_page, 84, 39), white)
+      << "the other page was not filled";
+}
+
+TEST(SeamSelectYellow, TheMarginLeavesTheAdaptersRegistersAsItFoundThem) {
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.fill_cell(first_page, 5, 10, white);
+  r.lay_seams_glyph(5, 10, white, true);
+  // What the blitter leaves at the step: the sequencer on the map mask with
+  // every plane on, and the controller as the program keeps it, its index
+  // on the bit mask.
+  r.gc(5, 0);
+  r.gc(7, 0x0F);
+  r.gc(8, 0xFF);
+  r.box->write_port8(ega::sequencer_index_port, 2);
+  r.box->write_port8(ega::sequencer_data_port, 0x0F);
+  r.box->write_port8(ega::graphics_index_port, 8);
+
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  ASSERT_EQ(r.pixel(first_page, 84, 39), white) << "it did paint";
+
+  EXPECT_EQ(r.box->read_port8(ega::graphics_index_port), 8);
+  EXPECT_EQ(r.box->read_port8(ega::sequencer_index_port), 2);
+  EXPECT_EQ(r.box->read_port8(ega::sequencer_data_port), 0x0F);
+  for (const auto& [index, value] :
+       {std::pair<std::uint8_t, std::uint8_t>{0, 0},
+        {1, 0},
+        {2, 0},
+        {3, 0},
+        {5, 0},
+        {7, 0x0F},
+        {8, 0xFF}}) {
+    r.box->write_port8(ega::graphics_index_port, index);
+    EXPECT_EQ(r.box->read_port8(ega::graphics_data_port), value) << +index;
+  }
+}
+
+TEST(SeamSelectYellow, NoMarginBesideABlockThatIsNotOnTheScreen) {
+  // Something drew over the block some other way (the automap's panel over
+  // the roster): the cell is no longer its colour at column 0 and row 7,
+  // and no margin is painted beside it.
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  EXPECT_EQ(r.pixel(first_page, 84, 39), black);
+  EXPECT_EQ(r.pixel(first_page, 88, 44), black);
 }
 
 }  // namespace

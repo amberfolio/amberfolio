@@ -62,6 +62,7 @@
 #include "amberfolio/machine/port_map.h"
 #include "amberfolio/machine/scheduler.h"
 #include "amberfolio/machine/seam.h"
+#include "amberfolio/machine/selection_margin.h"
 #include "amberfolio/machine/service_floor.h"
 #include "amberfolio/machine/state.h"
 #include "amberfolio/machine/trace.h"
@@ -414,6 +415,14 @@ class machine final : public cpu::bus {
     return journal_;
   }
 
+  /// Which cells are selection blocks and which of their margin pixels the
+  /// selection's seam painted (selection_margin.h, #483). Observation on
+  /// the same three terms as `automap()` above.
+  [[nodiscard]] selection_margins& margins() noexcept { return margins_; }
+  [[nodiscard]] const selection_margins& margins() const noexcept {
+    return margins_;
+  }
+
   /// The DOS read handler's way of telling the tracker a read landed
   /// (dos.cpp): `length` bytes of `file` from `file_offset`, at
   /// `segment:offset`, hashing to `digest`. Re-evaluates the seams'
@@ -723,6 +732,7 @@ class machine final : public cpu::bus {
   overlay_tracker overlays_;
   automap_state automap_;
   journal_state journal_;
+  selection_margins margins_;
 
   /// The platform interface (platform.h). Members rather than something
   /// a host supplies, because the buffers have to outlive every pull and

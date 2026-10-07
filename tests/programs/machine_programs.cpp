@@ -3750,8 +3750,8 @@ constexpr std::uint16_t font_letter_index = 1;
 constexpr std::uint16_t font_kept_index = 28;
 constexpr unsigned font_glyphs_carried = 29;
 
-/// The sans `A`'s first row, restated: three pixels from column two.
-constexpr std::uint16_t font_sans_letter_row = 0x38;
+/// The sans `A`'s first row, restated: three pixels from column three.
+constexpr std::uint16_t font_sans_letter_row = 0x1C;
 
 struct font_layout {
   std::vector<std::uint8_t> file;

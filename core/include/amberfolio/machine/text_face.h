@@ -14,6 +14,12 @@
 // here was drawn for this project, on an eight-by-eight grid, from
 // nothing; none is transcribed from the program's font or from any other.
 //
+// **A letter sits in columns 1 to 7 and rows 0 to 6**, as the program's
+// own do: the column on its left and the row under it are paper, the gap
+// between letters and between lines, save for the punctuation that hangs
+// below the line. A selection drawn inverted (seam_select_yellow.cpp)
+// keeps that column and row as its margin inside the cell (#483).
+//
 // **A face replaces the letters, the digits and the punctuation, and
 // nothing else.** Nine of the program's sixty-four text glyphs are not
 // lettering at all — a frame corner where `@` would be, frame pieces and

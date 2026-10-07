@@ -160,12 +160,52 @@ TEST(ScreenText, ACellOfThreeColoursIsNotText) {
   const program_font font = make_font();
   auto pixels = std::make_unique<frame>();
   draw(*pixels, font, 0, 0, "A", 15, 0);
-  (*pixels)[0] = 4;  // A third colour in the cell's top-left pixel.
+  // A third colour inside the cell, off its column 0 and row 7.
+  (*pixels)[(std::size_t{3} * frame_width) + 3] = 4;
 
   text_grid grid{};
   read_text_cells(*pixels, font, grid);
 
   EXPECT_EQ(cell(grid, 0, 0).code, cell_not_text);
+}
+
+TEST(ScreenText, ACellIsReadAgainWithoutTheEdgesASelectionsMarginTakes) {
+  // A selection block draws its top in row 7 of the cell above and its
+  // right in column 0 of the cell after (#483): a third colour there, or a
+  // line on a blank cell, is read past.
+  const program_font font = make_font();
+  auto pixels = std::make_unique<frame>();
+  draw(*pixels, font, 0, 0, "A", 10, 0);
+  draw(*pixels, font, 1, 0, " ", 10, 0);
+  for (std::size_t x = 0; x < text_cell_pixels; ++x) {
+    (*pixels)[(std::size_t{7} * frame_width) + x] = 14;  // under `A`
+  }
+  for (std::size_t y = 0; y < text_cell_pixels; ++y) {
+    (*pixels)[(y * frame_width) + text_cell_pixels] = 14;  // the blank's left
+  }
+
+  text_grid grid{};
+  read_text_cells(*pixels, font, grid);
+
+  EXPECT_EQ(cell(grid, 0, 0).code, 'A');
+  EXPECT_EQ(cell(grid, 0, 0).ink, 10);
+  EXPECT_EQ(cell(grid, 0, 0).paper, 0);
+  EXPECT_EQ(cell(grid, 1, 0).code, ' ');
+  EXPECT_EQ(cell(grid, 1, 0).paper, 0);
+}
+
+TEST(ScreenText, ACellThatReadsTheFirstTimeIsNotReadAgain) {
+  // A glyph with a pixel of its own in row 7 reads exactly, edges and all.
+  program_font font = make_font();
+  const std::size_t at = index_of('Q') * text_cell_pixels;
+  font[at + 7] = 0x04;  // a tail
+  auto pixels = std::make_unique<frame>();
+  draw(*pixels, font, 0, 0, "Q", 15, 0);
+
+  text_grid grid{};
+  read_text_cells(*pixels, font, grid);
+
+  EXPECT_EQ(cell(grid, 0, 0).code, 'Q');
 }
 
 TEST(ScreenText, TwoColoursThatDrawNoGlyphAreNotText) {

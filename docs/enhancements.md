@@ -395,9 +395,10 @@ A block is a shape, and reads whatever colours you see. With the seam on:
 - **A command bar's highlighted word** (the adventuring bar, the camp bar,
   Magic, Alter, the shops, the temple, a script's menus, the save slots and
   every Yes/No question) is a yellow block with its key letter a white one.
-  Only the word is lit: on a bar whose keys are not the first letters of its
-  words, like the icon editor's top bar, the game's own highlight runs on
-  into the next word, and the seam lights the word that holds the key.
+  Only the word is lit, or the whole phrase of a script's option (`Tell the
+  truth?`): on a bar whose keys are not the first letters of its words,
+  like the icon editor's top bar, the game's own highlight runs on into
+  part of the next word, and the seam lights the word that holds the key.
   A bar of one command is what Enter takes, and is lit the same way: a
   prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
   CONTINUE` (its `P` a white block and the rest a yellow one), and the
@@ -421,8 +422,12 @@ A block is a shape, and reads whatever colours you see. With the seam on:
   white, the rest of each word green. Without the seam they are white
   where the others are green, and green where they are white.
 
-The lettering cut out of a block is the game's, or the face's when `font-sans`
-or `font-chisel` is on. It is a look and has no key.
+A block has a margin of one pixel all round, so its letters do not touch
+its edges: the game's and the faces' letters leave a column on their left
+and a row beneath, and the seam paints the top and the right in the cells
+beside the block, only over black, and takes them back when the selection
+moves. The lettering cut out of a block is the game's, or the face's when
+`font-sans` or `font-chisel` is on. It is a look and has no key.
 
 **When it shows.** At the next selection the game draws. A selection
 already on the screen when you switch it keeps its look until the game
@@ -459,7 +464,9 @@ the character sheet, the message panel, the journal reader. Two faces,
 both drawn for this project on the game's own eight-by-eight grid:
 **`font-sans`**, a plain bold sans with two-pixel strokes and a slashed
 zero, and **`font-chisel`**, the same face with every stroke cut at an
-angle as if by a broad pen. Only the letters, the digits and the
+angle as if by a broad pen. Each letter sits in its cell where the game's
+own do, a blank column on its left and a blank row beneath, so a
+selection's block keeps its margin. Only the letters, the digits and the
 punctuation change. The frame pieces, the blocks and the runes the game
 keeps in the same table stay its own, and the game still draws only
 capitals, because that is all it asks for.

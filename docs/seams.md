@@ -1381,7 +1381,7 @@ to pull.
 | menu cursor | `seam_menu_cursor.cpp` | a cursor on the main menu | 2 |
 | hero keys | `seam_hero_keys.cpp` | at the main menu, the number row's 1 to 8 select a member and the party list shows each number | 5 |
 | edit keys | `seam_edit_keys.cpp` | an extended key types nothing at a text prompt | 1 |
-| selection block | `seam_select_yellow.cpp` | every selection a yellow block, a key letter a white one | 9 |
+| selection block | `seam_select_yellow.cpp` | every selection a yellow block, a key letter a white one, with a margin all round | 11 |
 | move mode | `seam_move_mode.cpp` | on the party's own bar walking is a mode: `Move` starts it, `Exit` ends it, and in between Left and Right step the bar; `Area` is gone | 5 |
 
 The sections below keep each piece's facts under the name it was a seam
@@ -1395,14 +1395,14 @@ quoted below were taken per piece; the engine reports them for the one seam,
 summed over the pieces.
 
 - **One definition, the union of the points, in one order.** The
-  twenty-six points are the pieces' own, in the order list arrows (3), bar
+  twenty-eight points are the pieces' own, in the order list arrows (3), bar
   keys (1), menu cursor (2), hero keys (5), edit keys (1), selection block
-  (9), move mode (5). Five pieces have a point at the same instruction,
+  (11), move mode (5). Five pieces have a point at the same instruction,
   overlay 25's key read at `0x0572` (list arrows, bar keys, menu cursor, hero
   keys, move mode), and the engine offers an address's points in table
   order, so the order is behaviour: the move mode is last, and rewrites the
   party bar's keys after every other piece has passed on them. The point
-  count with every seam on is fifty-seven, one face counted (`max_points` is
+  count with every seam on is fifty-nine, one face counted (`max_points` is
   sixty-four).
 - **One fingerprint, several modules.** Every piece keys on the baseline
   edition (§5) and only it, so the definition does. The modules are the
@@ -2329,9 +2329,10 @@ not consulted (§7). Unit: `SeamHeroKeys.*`; stand-ins: `hero_keys_probe_off`,
 `seam_select_yellow.cpp`. Not a PLAN.md §5 item: a player's request, chosen
 from six mock-ups, and the colour half of #379's selection; then drawn as a
 block so that it is not told by colour alone (#483). A look and a setting:
-no key, nothing to pull. Nine points: seven rewrite one colour before the
-program draws with it, and two, the blitter's row stores, invert the rows of
-what those seven coloured.
+no key, nothing to pull. Eleven points: seven rewrite one colour before the
+program draws with it, two, the blitter's row stores, invert the rows of
+what those seven coloured, and two paint the block's margin where it lies
+outside the block's cells.
 
 | point | module | what the handler does |
 |---|---|---|
@@ -2343,6 +2344,8 @@ what those seven coloured.
 | image `0x0918` of overlay 19, after an ability score's colour is chosen | overlay 19 (`0x0860`) | a highlighted draw's light magenta becomes yellow |
 | image `0x153F`, after a hit-point value's colour is chosen | the resident image | the same, for the highlighted hit points |
 | image `0x74A2` and `0x74C8`, the blitter's two EGA row stores, one per page | the resident image, `inside_calls` | inverts DL when the glyph is a selection's (below) |
+| image `0x7667`, the blitter's step to the next cell | the resident image, `inside_calls` | notes the cell a block or not, and settles the margin of it and the three cells its margin can lie in |
+| image `0x71FB`, the rectangle fill's epilogue | the resident image, `inside_calls` | forgets the blocks and margin in the rectangle, and settles it and the ring around it |
 
 | fact | value |
 |---|---|
@@ -2355,6 +2358,9 @@ what those seven coloured.
 | the frames a store follows | the blitter (paragraph `0x709`, `0x01DF`) and the string routine (`0x0626`, same paragraph) keep BP frames: the caller's BP at `BP+0`, the far return address at `BP+2` (offset) and `BP+4` (segment), the arguments from `BP+6`; the string routine's colour is the word at `BP+0x0A`. The string routine pushes CS and calls the blitter near, returning to image `0x7724` |
 | the calls a store recognises | each a five-byte far call, so the return is the call's offset and five: the bar leaf's three glyph calls (overlay 25 `0x0273`, `0x02CA`, `0x0305`, above); the string calls of the pick-list (overlay 25 `0x09FD`) and the roster's selected member (image `0x13AF`); Modify's score (overlay 19 `0x0976`), exceptional strength's percentage (overlay 19 `0x0A41`) and hit points (image `0x155E`), whose routine's first argument at `BP+6` says highlighted; and a batch's own return, `F000:0800` (seam.h) |
 | `selection_mark` | `0x8000` in the colour word a seam pushes for a string it draws as a selection (`seam_builtin.h`); the string routine reads the low byte |
+| the blitter's step to the next cell | paragraph `0x709`, `0x05D7`: `inc` of the column argument, reached by every adapter's path once a cell is drawn, with the blitter's frame (row `BP+0x0E`, column `BP+0x10`, colour `BP+0x0C`) and, on the EGA, the map mask back on every plane |
+| the rectangle fill | paragraph `0x709`, `0x00B7` (both clear routines, `0x3F1:0x0137` and `0x709:0x0DD3`, fill through it), epilogue at `0x016B`; from `BP+6` the fill, the page, then the bottom, right, top and left cells. The page selects segment `0xA000` plus `0x200` paragraphs a page |
+| the display pages | the data segment's words `0x4A16` and `0x4A18`, the two segments the blitter stores every glyph row to |
 | the list leaf | its context's near pointer at `BP+6`; the highlight's colour at `+0x20` of it |
 | the roster drawer | image `0x1307`; its frame has the column and row bytes at `BP-5` and `BP-6` and the member's far pointer at `BP-4`; the call's own words repeat all three |
 | Modify's two draws | the first argument at `BP+6` is non-zero for a highlighted draw; the colour is a local, at `BP-0x2B` for a score (overlay 19) and `BP-1` for hit points. Modify is the only caller that passes it |
@@ -2365,8 +2371,11 @@ what those seven coloured.
   covers a word and a half. The icon editor's top bar is the one found: two
   of its keys are digits that end a word, so the first group runs into the
   next word. The seam lights **the run of characters between spaces that
-  holds the group's command letter** (`bar_call` reads the bar, the group
-  table and the character's position out of the two frames), yellow with each
+  holds the group's command letter, and every whole word after it the group
+  holds too** (`bar_call` reads the bar, the group table and the
+  character's position out of the two frames): a script's option is a
+  phrase, `Tell the truth?`, one group with one key, and is lit whole
+  (#483), where the icon editor's half word stays out, yellow with each
   of its command letters in the bar's bright, and every other character is
   drawn as the bar draws the unselected: a command letter in the bright, the
   rest in the dim. The three bar points all make this decision for their own
@@ -2482,6 +2491,33 @@ what those seven coloured.
   overwrite the inverted one. A store has nothing to decline; every glyph
   goes through it. The screen text reads a block as its glyph, black ink on
   the colour's paper (`screen_text.h` takes either colour as the ink).
+- **The margin outside the block** (#483, `selection_margin.h`). Every face
+  lays a letter in columns 1 to 7 and rows 0 to 6 (text_face.h), so the
+  block keeps its left and bottom margin in its own cells and its letters
+  touch its top and its right. Those two are painted in the neighbouring
+  cells: row 7 of the cell above each block cell, and column 0 of the cell
+  after the block's last with the corner above it, **only over black**, on
+  both pages. `selection_margins`, observation on the machine like the
+  automap's, keeps which cells are blocks and which margin pixels this
+  machine painted; at each cell the blitter finishes, and after each fill,
+  the cells whose margin may have changed are settled: what a cell wants is
+  painted, and what it no longer wants is put back to black, **only where it
+  is still this machine's** (a cell the program draws or fills is its own
+  again). A block the program covered some other way (the automap's panel
+  over the roster) is checked on the screen before a margin is painted
+  beside it: its column 0 and row 7, paper in every glyph, must be its
+  colour but for two pixels, or it is forgotten. The graphics controller's
+  and the sequencer's registers are read first and written back after; the
+  adapter answers a read of each. A face's glyphs were moved one column right
+  for it, to match the program's own font, which already left column 0
+  paper. Measured in the game's face: `G` and `,` hang a pixel or two into
+  row 7, and `M`, `W` and `X` reach column 0; painting only over black leaves
+  them. **The screen text reads past it**: a cell that does not read is read
+  again with its column 0 and row 7 blanked out of it and of every glyph,
+  and the answer kept only if it is one character or a blank
+  (`screen_text.h`). Chosen from mock-ups of the block grown over anything
+  and over black only, which looked the same: the frame's chain under a bar
+  has 16 non-black pixels in its bottom row.
 - **Who else asks.** The `menu-cursor` piece draws a row of its own in this
   yellow, with a white key. The journal's Notes list draws a cursor row of
   its own and its reader's bars a highlight, both in the program's bright
@@ -2513,9 +2549,9 @@ what those seven coloured.
   what it already is, and only the **low byte** of a pushed word is read or
   written.
 - **`max_points` is sixty-four, and with every seam on the build carries
-  fifty-seven points** (the faces count once, being alternatives),
-  twenty-six of them `modern-controls`': three, one, two, five, one, these
-  nine and the move mode's five.
+  fifty-nine points** (the faces count once, being alternatives),
+  twenty-eight of them `modern-controls`': three, one, two, five, one, these
+  eleven and the move mode's five.
 - **Rejected:** a face of the same shape (a seam with a parameter: seams have
   none); lighting the program's group as it is (the half of a word on the
   icon editor's bar, the maintainer's screenshot); a table of the callers
@@ -2529,7 +2565,9 @@ what those seven coloured.
   bar); a change of palette (a colour still); brackets or a pointer
   (packed bars have no room for one, and it would move every word).
 
-**State**: none. **Host services**: none. **Keys**: none.
+**State**: the margin's bookkeeping, `box.margins()` (`selection_margin.h`):
+observation, which `reset()` drops, the serialization never sees and a replay
+rebuilds. **Host services**: none. **Keys**: none.
 
 **Fidelity**: seen the first time a highlight or a selected member is drawn,
 so a run with the seam on is not the run with it off (§8.5), as with the
