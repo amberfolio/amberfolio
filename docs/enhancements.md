@@ -288,12 +288,14 @@ to keep the gem (`K`). With the seam on both step the highlight like any
 bar, and the letters still work. And one by decision: the game's rest-time
 menu picks its days, hours or minutes field on Left and Right, and with
 the seam on they step the highlight instead, as at any other bar. `Y`, `H`
-and `M` still pick the field.
+and `M` still pick the field. At combat's aim bar (`NEXT PREV MANUAL
+TARGET CENTER EXIT`) Enter takes the lit command; the game's own Enter there
+repeated the last Next or Prev, by accident.
 
 **What it will not do.** Make Enter confirm a row in the pick-lists (it
 already does), or take a command where the game gives Enter a meaning of its
 own: the pick-lists and the party picker, the party-order screen, combat's
-move and aim, the
+move and its aim cursor, the
 temple's keep-or-sell (where it sells), the press-Enter notices, the icon
 editor. Two bars drop Enter and are left alone on purpose, because a stray
 Return there would do harm: the save-game slot bar (it would write the lit

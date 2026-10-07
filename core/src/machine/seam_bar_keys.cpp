@@ -176,6 +176,11 @@
 // `R`, Rest, and with the seam on it takes the highlighted command, which
 // is Rest until the highlight is moved.
 //
+// The combat aim bar (overlay 13, return `0x2C31`) is in the Enter table by
+// decision too (#487). The program hands its Enter back to the aim loop,
+// where it repeats the last Next or Prev by accident; Left and Right step
+// that bar's highlight, so Enter takes the command the player lit.
+//
 // **Why the BIOS ring and not AL.** The program reads the key two
 // routines deep, through INT 16h, so the first place any seam can see it
 // is the ring, which is also where the automap's and the journal's claims
@@ -281,7 +286,7 @@ using menu_bar::slots_load_segment_at;
 using menu_bar::temple_load_segment_at;
 using menu_bar::view_load_segment_at;
 
-constexpr std::array<caller, 23> enter_callers{{
+constexpr std::array<caller, 24> enter_callers{{
     {.load_segment_at = menu_bar::load_segment_at, .return_offset = 0x111E},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x09D5},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0C45},
@@ -306,6 +311,7 @@ constexpr std::array<caller, 23> enter_callers{{
      .return_offset = 0x076E},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0EBF},
     {.load_segment_at = adventure_load_segment_at, .return_offset = 0x0FFE},
+    {.load_segment_at = aim_load_segment_at, .return_offset = 0x2C31},
 }};
 
 /// The Yes/No prompt, and the script runner's call into the routine (the
