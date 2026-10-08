@@ -240,7 +240,13 @@ program believes it drew.
   (`docs/seams.md` §8.4's wild-read rule);
 - the bar on the screen is the adventuring screen's own (the automap's
   sixth point, shared);
-- the position has settled, on `automap_state::observe()`'s terms.
+- the view kind, the disk and the area id name one wilderness area
+  (kind 2 is area 25 on disk 6, 3 is 26 on 7, 4 is 27 on 8): crossing a
+  band edge the program sets the new disk and area before the new kind;
+- the position has settled, on `automap_state::observe()`'s terms. On the
+  overland that is the first look, because the keys a player pressed
+  during a new area's load walk the party on before its position could
+  hold still.
 
 The other two points are the automap's, shared: the key-pending entry
 `0xA6FD`, where the recording happens, and the command-bar thunk

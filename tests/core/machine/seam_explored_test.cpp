@@ -190,6 +190,23 @@ struct rig {
     put_up_the_bar(dgroup(), data_menu_area_view);
   }
 
+  /// The same screen on one of the three wilderness areas by view kind:
+  /// its disk and area from the automap's zone table, its column bias
+  /// from `docs/explored-overlay.md` §2 (0, 13, 26).
+  void on_band(std::uint8_t view_kind, std::uint8_t column,
+               std::uint8_t row) const {
+    const std::uint16_t ds = dgroup();
+    const auto band = static_cast<std::uint8_t>(view_kind - view_kind_overland);
+    put_byte(ds, data_view_kind, view_kind);
+    put_byte(ds, data_disk_number,
+             static_cast<std::uint8_t>(overland_disk + band));
+    put_byte(ds, data_area_id, static_cast<std::uint8_t>(overland_area + band));
+    put_byte(ds, static_cast<std::uint16_t>(data_view_column_bias + view_kind),
+             static_cast<std::uint8_t>(band * 13));
+    put_word(record_segment, record_overland_column, column);
+    put_word(record_segment, record_overland_row, row);
+  }
+
   /// Put a command bar up, the way the program does: stand on the bar
   /// point with the menu's far pointer where its caller's frame would
   /// have it, and step. Driven through the point rather than by setting a
@@ -714,6 +731,51 @@ TEST(ExploredOverlay, TheFogComesBackWithThePartysBarAfterAnEncounter) {
   r.put_up_the_bar(rig::dgroup(), data_menu_area_view);
   r.poll(1);
   EXPECT_EQ(pixels_covered(r), covered);
+}
+
+TEST(ExploredOverlay, TheFogIsThereOnTheFirstFrameAcrossABandEdge) {
+  // Walking east off the first wilderness area at column 15 lands the
+  // party at column 3 of the second. The program loads the new area
+  // first, then plays the keys pressed during the load straight away, so
+  // the party is a step further on before it has polled three times at
+  // any one cell. A seam that waited for three looks drew nothing for
+  // those steps.
+  const rig r;
+  r.enable();
+  r.travelling(15, 26);
+  r.poll(4);
+
+  r.on_band(3, 3, 26);
+  r.fill();
+  r.present();
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(2, 2, 2, 2))
+      << "the new area's first frame";
+
+  // The queued step, drawn and presented before any poll.
+  r.put_word(record_segment, record_overland_column, 4);
+  r.fill();
+  r.present();
+  EXPECT_EQ(fogged_cells(r), every_cell & ~block(1, 2, 2, 2))
+      << "and the step after it";
+}
+
+TEST(ExploredOverlay, HalfwayAcrossABandEdgeNothingIsRecordedOrDrawn) {
+  // Crossing, the program names the new area's disk and area a moment
+  // before the new view kind. The position is the old band's then, and
+  // believing it would credit a cell to the new band nobody stood on.
+  const rig r;
+  r.enable();
+  r.travelling(15, 26);
+  r.poll(4);
+
+  r.put_byte(rig::dgroup(), data_disk_number, overland_disk + 1);
+  r.put_byte(rig::dgroup(), data_area_id, overland_area + 1);
+  r.poll(4);
+  r.fill();
+  r.present();
+  EXPECT_EQ(r.map_state().find_overland(overland_disk + 1, overland_area + 1),
+            nullptr);
+  EXPECT_EQ(pixels_covered(r), 0u);
 }
 
 TEST(ExploredOverlay, NothingIsDrawnWhileTheAreaIsShownInTheInteriorView) {

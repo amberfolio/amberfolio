@@ -311,7 +311,9 @@ bool automap_state::observe(automap_map_kind kind, std::uint8_t disk,
     looking_y_ = y;
     looks_ = 1;
   }
-  if (looks_ < settle_looks) {
+  const unsigned needed =
+      kind == automap_map_kind::overland ? settle_looks_overland : settle_looks;
+  if (looks_ < needed) {
     return false;
   }
 
