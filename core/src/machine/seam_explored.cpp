@@ -578,7 +578,12 @@ void paint(machine& box, seam_context& ctx, std::uint16_t ds,
   if (!state.at_command_bar()) {
     // Somebody other than the adventuring screen is asking the player
     // something — a script's menu, an encounter's prompt — and whatever
-    // it has drawn in the viewport is not this seam's to paint over.
+    // it has drawn in the viewport is not this seam's to paint over. Nor
+    // is what this seam drew before still on the screen: the program may
+    // put the window back before its own bar returns, with no present
+    // after it (an encounter the party flees), so the next poll at that
+    // bar has to draw rather than trust the signature.
+    state.set_explored_signature(0);
     return;
   }
 
