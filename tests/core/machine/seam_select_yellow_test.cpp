@@ -862,15 +862,15 @@ TEST(SeamSelectYellow, TheOtherTwoBarPointsDeclineTheSameWay) {
 
 // --- A bar with one command letter is not a selection (#460) -----------------
 
-TEST(SeamSelectYellow, AOneChoiceNoticeIsLitAsItsKeyAndTheRest) {
+TEST(SeamSelectYellow, AOneChoiceNoticeIsLitYellowFromItsFirstLetter) {
   // The script runner's `Press <enter>/<return> to continue`: one capital,
   // so one group, which is the whole bar, and the one command Return takes.
   // The program draws it in the bright from end to end; the seam lights the
-  // group as a word is lit, the key white and the rest yellow (#483).
+  // group yellow, its capital too: that only starts the sentence (#483).
   const rig r;
   r.arm();
   const std::string notice = "Press <enter>/<return> to continue";
-  const std::string lit = "W" + std::string(notice.size() - 1, 'Y');
+  const std::string lit(notice.size(), 'Y');
   EXPECT_EQ(r.colours_of(notice, 1, white, white), lit);
   EXPECT_EQ(r.colours_of(notice, 1, green, white), lit);
   EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
@@ -882,7 +882,10 @@ TEST(SeamSelectYellow, ALoneWordWithOneKeyIsLitWhereTheProgramLightsIt) {
   const rig r;
   r.arm();
   EXPECT_EQ(r.colours_of("Exit", 1, green, white), "WYYY");
-  EXPECT_EQ(r.colours_of(" Pay it", 1, green, white), "GWYYYYY");
+  EXPECT_EQ(r.colours_of(" Exit", 1, green, white), "GWYYY")
+      << "a leading space is outside the group";
+  EXPECT_EQ(r.colours_of(" Pay it", 1, green, white), "GYYYYYY")
+      << "but a sentence's capital is yellow with the rest";
 }
 
 TEST(SeamSelectYellow, ANoticeHandedTheColoursTheWrongWayRoundIsPutRight) {
@@ -891,8 +894,9 @@ TEST(SeamSelectYellow, ANoticeHandedTheColoursTheWrongWayRoundIsPutRight) {
   const rig r;
   r.arm();
   EXPECT_EQ(r.colours_of("Press <enter> to go", 1, white, green),
-            "W" + std::string(18, 'Y'));
-  EXPECT_EQ(r.colours_of(" Pay it", 1, white, green), "GWYYYYY");
+            std::string(19, 'Y'));
+  EXPECT_EQ(r.colours_of(" Pay it", 1, white, green), "GYYYYYY");
+  EXPECT_EQ(r.colours_of(" Exit", 1, white, green), "GWYYY");
 }
 
 TEST(SeamSelectYellow, ABarOfAllCapitalsWithSeveralKeysIsStillAChoice) {

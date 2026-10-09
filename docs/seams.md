@@ -2445,7 +2445,11 @@ outside the block's cells.
   lights the program's **group**, the characters drawn through the
   highlighted arm, as a word is lit (the key in the bright and the rest
   yellow, as blocks), but for the blanks after its last letter: the group runs
-  to the bar's end, and a load bar with one save is `A ` (#498). Every other
+  to the bar's end, and a load bar with one save is `A ` (#498). **A notice is
+  yellow from its first letter**: where a word follows the key's, the bar is a
+  sentence, its capital only starts it, and there is no other key to set it
+  apart from, so the whole group is one yellow block; the walking bar's `Exit`
+  keeps its white `E`. Every other
   character is drawn as the program drew it, the swapped pair below put right
   (the program's bright green becomes white and its dim white green). It left the whole bar as drawn until #483: the
   maintainer asked for the walking bar's `Exit` and the notice to be lit like
