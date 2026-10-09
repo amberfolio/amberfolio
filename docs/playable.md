@@ -1448,6 +1448,31 @@ and no `AREA`; `Return`, `Up`, `Up` walk 3,32 S to 3,30 N; `Escape` and
 
 ---
 
+## Leg 21 — a roster name with no file
+
+`CHARLIST.TXT` naming a character whose `.CHA` is not in the save
+directory, then (A)dd from the main menu. Recorded as
+`tests/sessions/roster-add.rec` (seam off) and `roster-add-fix.rec` (on),
+over the shipped slots with a second, made-up name added to the roster.
+
+```
+--seam code-wheel --code-wheel-answered [--seam roster-fix]
+--press A@7700                          ADD CHARACTER TO PARTY
+--press E@8100                          Exit
+```
+
+Off, the list shows both names; `Return` on the stranded one is
+`file open \SAVE\<STEM>.CHA ... file_not_found` under `--trace` and the
+save-disk prompt from then on. On, the list shows the one name whose file
+is there, the run ends with `seam roster-fix armed fired=2` (the list
+built, the name unlinked, the point offered again and nothing left), and
+`CHARLIST.TXT` names only that character.
+
+Driven the same way on the store release (a copy of the Steam
+installation with a stranded name added to its roster): the name gone
+from the list, a pick of the next name adding that character, and the
+roster written back without the stranded one.
+
 ## What the run should not say
 
 The three notices `docs/first-light.md` tabulates

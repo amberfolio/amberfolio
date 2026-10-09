@@ -1,31 +1,18 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# M5-V1's subset check (#177), and the strongest form the fidelity
-# invariant takes here: every seam this build carries that draws nothing
-# until the player uses it, all on at once, and none of them triggered.
-# Its `identical` names `quiet-journal` rather than `quiet`, and that is
-# the claim: the reader alone moves an idle machine, because it splices
-# `Notes` onto a bar the game keeps redrawing (quiet-journal.session),
-# and adding the automap, the Encamp Fix, the roster fix, the explored
-# overlay and all three cheats on top of it changes nothing across all 90
-# checkpoints.
-# That is what "individually toggleable" has to mean: a subset of seams is
-# no more than the sum of what each one does.
-# Left out, and each with a pair of its own: the faces, which are
-# alternatives and seen from the first text (quiet-font-sans), and
-# modern-controls, which draws on sight: the main menu's cursor from the
-# first frame the menu is drawn, the roster's numbers from the first time the
-# party list is, and every highlight in yellow (quiet-modern-controls).
-# quiet-all-on-sight is this run with modern-controls added, which is a
-# contrast against it.
+# The shipped slots with a roster that names a character whose file is not
+# in the save directory: `CHARLIST.TXT` names the shipped roster's one
+# character, whose file is there, and a second name this snapshot made up,
+# whose file is not. Nothing loaded: (A)dd from the main menu, and Exit.
+# With every seam off the list shows both names, and the program writes
+# both back on the way out. `roster-add-fix` is the same script with the
+# seam on, and a `contrast` of this one.
 
-about every seam on at once that draws nothing until it is used, none of
-about them triggered: the same machine as the journal alone, checkpoint for
-about checkpoint
+about the shipped slots, a roster naming one character whose file is not
+about there; (A)dd and Exit with only the code-wheel seam on. The list
+about shows both names. 8,449 frames, 2 keystrokes, 69 checkpoints
 disk external
 code-wheel-answered
-journal-store tests/visual/reader-store.txt
-identical quiet-journal
 
 dir SAVE
 file 8X8D1.DAX 9711 cce9313f23a600200fec60b5d46cd08aa9535a6143eee5d5d768a1d4e0415021
@@ -128,7 +115,7 @@ file PIC8.DAX 67227 760cf9042110bbf41e60bb4b0cf76635398751ceaf1ce693dc5e39ef92d8
 file POOL.BAT 186 64cbb144146f773dd4e1b2f6a76e95c5a8b94f08c9c630572bb060461fc5d200
 file POOL.CFG 24 a1d1206cdb795d273a728baa482e47c1df7546c805de5b79359765273021efda
 file RANDCOM.DAX 755 9e176f9521f0157c86a2f5891766ae19f0b9c29165138d7588f465d75ff48da2
-file SAVE\CHARLIST.TXT 8 306f1424166cf1f3d4cf768640dfc20187d00b3dc5f2acb1c45f033301b4c9f9
+file SAVE\CHARLIST.TXT 21 8a3c16830ff2ff77031d53013d2e9ef803ac59f11cce3156c19e93c5b32619f1
 file SAVE\CHRDATA1.ITM 504 36980b72ceed0f8594af6c0973ded2126bd6280a209b02280d4b6f4707e768f9
 file SAVE\CHRDATA1.SAV 285 1d89c52bd160bc28aceb4d5e4d489ca5fe93ec863b32eb4c1742d1bcefc5485e
 file SAVE\CHRDATA2.ITM 378 c8fc70f515079c09acf9401827830e717e9b83550bcb4bda9e011335f89374f8

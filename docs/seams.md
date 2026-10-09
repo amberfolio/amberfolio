@@ -603,6 +603,7 @@ and never triggered.
 | --- | --- | --- |
 | `quiet-automap` | identical | `quiet` |
 | `quiet-encamp` | identical | `quiet` |
+| `party-roster` | identical | `party` (the seam reached twice, every name with its file) |
 | `quiet-cheats` | identical | `quiet` |
 | `quiet-explored` | identical | `quiet` |
 | `quiet-journal` | contrast | `quiet` (the `Notes` splice changes the bar the moment it is drawn) |
@@ -611,6 +612,7 @@ and never triggered.
 | `quiet-all` | identical | `quiet-journal` (every seam that draws nothing until used: not the faces or `modern-controls`, which are contrasts of their own) |
 | `quiet-all-on-sight` | contrast | `quiet-all` (the same with `modern-controls` on: the menu's cursor is the first thing to move) |
 | `quiet-modern-controls` | contrast | `quiet` (the menu's cursor from the first frame the menu is drawn, the party's bar in menu mode and every highlight a yellow block from the first time each is on the screen) |
+| `roster-add-fix` | contrast | `roster-add` (a roster naming a character whose file is not there: the name is left off the Add list) |
 | `list-down-arrows` | contrast | `list-down` (the same script with Down and Up, which the seam-off program drops) |
 | `camp-down-arrows` | contrast | `camp-down` (Down and Up at the camp bar, which the program hands to the party cursor to put the first member back) |
 | `camp-pad-arrows` | contrast | `camp-pad` (the keypad's 2 and 8 with Num Lock on at the camp bar, which the routine translates into letters the cursor puts the first member back on) |
@@ -857,6 +859,7 @@ to carry.
 |---|---|---|
 | `code-wheel` | asks the copy-protection challenge once (#291): unanswered it watches; answered by a person, it steps over the boot's call and the challenge is never drawn again | the resident image |
 | `encamp-fix` | a `FIX` command on the camp bar: spends the cures the party holds, rests off the deficit, reports in a box the game draws | the camp screen's overlay |
+| `roster-fix` | a character the roster names and the save directory does not hold is left off the Add list, instead of the program asking for a save disk for ever | overlay 17 (the roster list routine) |
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
@@ -1055,6 +1058,52 @@ the shorter boot; allows the knot at frame 9,650 and the bar mid-draw at
 memory (§8.4); the report is drawn on the interrupted exit because the
 pass of the menu it would otherwise wait for never comes; the batch
 budget (§3).
+
+### The roster fix
+
+Not a PLAN.md §5 item: a fix for a way the program hangs that a player
+on a plain directory cannot get out of.
+
+**What the program does.** `CHARLIST.TXT` in the save directory names the
+characters in no party; each name's record is `<STEM>.CHA` beside it, the
+stem being the name with ten characters taken out, cut to eight and
+upper-cased. Loading a saved game unlinks the `.CHA` of every member it
+restores, and the list is pruned only the next time the program writes it,
+of names that match a party member's in full. So the list can name a
+character whose file is gone, and two names with one stem share a file.
+(A)dd on such a name opens its file through the program's own
+open-or-ask routine, which asks for the save disk for as long as the file
+is not there.
+
+**Point**, in overlay 17 (file offset 122854, 9189 bytes, load-segment
+word `0x07D0`, the one match of the manager's-record search):
+
+| point | what the handler does |
+| --- | --- |
+| `0x0191`, the list routine's one exit (`mov sp, bp`) | walks the list from the caller's head (far pointer at `BP+6`; 46-byte nodes, the name a Pascal string at `+0`, the next at `+0x2A`); asks of each name not marked `*` (in the party) whether `<save directory><stem>.CHA` exists, canonicalized as INT 21h would; unlinks the first that does not and queues the program's FreeMem on its node. The batch re-offers the point, and the next arrival takes the next |
+
+- **Facts read out of the machine**, not written down: the save directory
+  (DGROUP `0x537A`, a Pascal string) and the ten characters a stem loses
+  (DGROUP `0x0D1A`). FreeMem is image paragraph `0x0AF8`, offset `0x0254`:
+  pointer segment, pointer offset, size; `retf 6`.
+- **Both callers** of the list routine go through the point: (A)dd, and
+  the character generator, which appends the new name and writes the list
+  back. Each writes the list without the names the seam left out, so
+  `CHARLIST.TXT` comes to say what the directory holds.
+- **Refuses**: a frame, node or list it cannot follow in conventional
+  memory, a name longer than a node holds, a list longer than any the
+  program could build, a save directory that does not resolve to a
+  directory, no filesystem. The whole list is walked before anything is
+  touched.
+- **Rejected**: refusing the pick with a line on the message row, which
+  leaves the list as it is. The program's line-and-a-key waits for a
+  person, which a batch's step budget cannot hold, and "not there" cannot
+  be a store still filling: a host puts every file on the machine before
+  the first instruction.
+- **Fidelity**: over a roster with every file in place it reads and writes
+  nothing of the program's; `party-roster` is `identical party`, reached
+  twice. `roster-add-fix` is `contrast roster-add`.
+- **Open**: nothing.
 
 ### The automap panel (#173, M5-E2a to M5-E2e)
 

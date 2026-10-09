@@ -106,6 +106,10 @@ inline constexpr std::uint16_t selection_mark = 0x8000;
 /// #479). Last at the key read, so every other piece has passed first.
 [[nodiscard]] std::span<const seam_point> move_mode_points() noexcept;
 
+/// A character the roster names and the save directory does not hold is
+/// left off the Add list (seam_roster_fix.cpp).
+[[nodiscard]] const seam_definition& roster_fix_seam() noexcept;
+
 /// PLAN.md §5 item 6, the debug cheats (seam_cheats.cpp).
 [[nodiscard]] const seam_definition& cheat_invulnerable_seam() noexcept;
 [[nodiscard]] const seam_definition& cheat_kill_all_seam() noexcept;

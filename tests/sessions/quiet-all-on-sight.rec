@@ -4,6 +4,7 @@ tail
 speed 1024
 seam code-wheel
 seam encamp-fix
+seam roster-fix
 seam automap
 seam journal
 seam explored

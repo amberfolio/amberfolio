@@ -65,6 +65,25 @@ finishes.
 fight leaves that resting cannot mend, or memorize a cure into a slot
 that was empty to begin with.
 
+## The roster fix
+
+**What it does.** Leaves a character off the **Add** list when the
+roster names it and its file is not in the save directory. The game lets
+the two drift apart by itself: loading a saved game takes the files of
+the party it restores out of the save directory, and the roster is only
+tidied the next time the game writes it, so a name can outlive its file.
+Without the fix, picking such a name asks for the save disk and waits for
+ever, and the only way out is to close the game. With it, the name is
+simply not on the list, and when you leave Add the game writes the roster
+back without it.
+
+**How you turn it on.** `--seam roster-fix` on the desktop, the toggle on
+the web page.
+
+**What it will not do.** Touch a name that has its file, or one already
+in the party; create, move or delete any character's file. A roster whose
+files are all there is left exactly as the game built it.
+
 ## The automap
 
 **What it does.** A map of the squares your party has walked, drawn over
