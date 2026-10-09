@@ -6,7 +6,9 @@ What this emulator adds to the game, as a player meets it. `docs/seams.md`
 is the mechanism and the house style for writing another.
 
 **Every enhancement is off by default**, and with all of them off the
-machine is a plain machine (`docs/seams.md` §7 is the test). **Nothing is
+machine is a plain machine (`docs/seams.md` §7 is the test). The one
+exception is a **fix** for a way the game breaks that nobody could want
+(the roster fix, below): it is always on and there is nothing to turn. **Nothing is
 injected into the game**: a seam is native C++ that stops the program at
 an address, reads or writes memory, and lets it continue. The program on
 the disk and every file the game owns are never modified.
@@ -64,6 +66,25 @@ finishes.
 **What it will not do.** Write hit points, mend the wound statuses a
 fight leaves that resting cannot mend, or memorize a cure into a slot
 that was empty to begin with.
+
+## The roster fix (always on)
+
+**What it does.** Leaves a character off the **Add** list when the
+roster names it and its file is not in the save directory. The game lets
+the two drift apart by itself: loading a saved game takes the files of
+the party it restores out of the save directory, and the roster is only
+tidied the next time the game writes it, so a name can outlive its file.
+Without the fix, picking such a name asks for the save disk and waits for
+ever, and the only way out is to close the game. With it, the name is
+simply not on the list, and when you leave Add the game writes the roster
+back without it.
+
+**How you turn it on.** You do not: it is built in, on in every run, and
+in no panel, config file or flag.
+
+**What it will not do.** Touch a name that has its file, or one already
+in the party; create, move or delete any character's file. A roster whose
+files are all there is left exactly as the game built it.
 
 ## The automap
 
@@ -401,10 +422,10 @@ A block is a shape, and reads whatever colours you see. With the seam on:
   truth?`): on a bar whose keys are not the first letters of its words,
   like the icon editor's top bar, the game's own highlight runs on into
   part of the next word, and the seam lights the word that holds the key.
-  A bar of one command is what Enter takes, and is lit the same way: a
-  prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
-  CONTINUE` (its `P` a white block and the rest a yellow one), and the
-  walking bar's `EXIT`. The `Exit` under a pick-list is not lit: Enter
+  A bar of one command is what Enter takes, and is lit too: a prompt with
+  only one choice, such as `PRESS <ENTER>/<RETURN> TO CONTINUE`, is one
+  yellow block, its `P` included, and the walking bar's `EXIT` is lit as a
+  word is, its `E` a white block. The `Exit` under a pick-list is not lit: Enter
   there takes the list's row.
 - **A pick-list's highlighted row** (race, class, spells, shops, coins, the
   list of characters to add) is a yellow block.

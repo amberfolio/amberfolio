@@ -84,6 +84,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | `quiet-font-chisel` | same | + font-chisel | **`contrast quiet`** | the same, in the other face |
 | `quiet-all` | same | every seam that draws nothing until used: the journal, the automap, the Encamp Fix, the explored overlay and the three cheats | `identical quiet-journal` | eight seams armed, the code word's among them, none triggered, no more machine than the journal alone: all 90 checkpoints. Left out, each with a pair of its own: the faces, which are alternatives and seen from the first text, and `modern-controls`, which draws on sight (below) |
 | `quiet-all-on-sight` | same | + modern-controls | **`contrast quiet-all`** | 58 of 90 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in (the cursor is the first thing that moves; the highlights and the party's bar, `Move` in `Area`'s place, follow). What it adds is the one seam beside every other: its seven pieces, which read the same keys at the same bars and draw beside each other, beside the journal that redraws the bar and asks whether the controls are on |
+| `roster-add` | external, the shipped slots with a roster naming one character whose file is not there | code-wheel (and the roster fix, which is built in) | | (A)dd from the main menu and Exit: the stranded name is not on the list, and the roster the run ends with names only the character whose file is there. 69 checkpoints |
 | `quiet-modern-controls` | same | + modern-controls | **`contrast quiet`** | 58 of 90 identical, divergent from tick 147,668,400, the first frame the main menu is drawn in: the cursor first, then the party's bar in menu mode, `Move` lit and the selected name a yellow block. `quiet`'s four movement keys move nobody: the two Ups and the last select the member before (from the first, the last), and the Right steps the highlight to `Cast`; the party stays at 4,12 (#479). The enhancement, not a leak: three pieces draw on sight, so the pair is a `contrast` and there is no `identical` for the seam |
 | `list-keys` | shipped slots | code-wheel | | character creation by Home and End: an elf, a woman, a magic-user, to the rolled sheet. 84 checkpoints |
 | `list-down` | same | code-wheel | | the same script with Down and Up where `list-keys` presses End and Home: the program drops them and the character is the first row of every list |
@@ -124,6 +125,7 @@ frame that carries an input is checkpointed whatever the cadence says.
 | --- | --- | --- |
 | `code-wheel` | every game session but the boot pair: the challenge is answered before the run and the seam steps over the boot's call to the check | `boot-wheel`, on and unanswered: it watches 144 times and triggers nothing |
 | `encamp-fix` | `camp-fix` | `quiet-encamp` |
+| `roster-fix` (built in, always on) | `roster-add` | none can exist: there is no off. Every other session verifies with it on, `party` reaching it twice |
 | `automap` | `walk-map` | `quiet-automap` |
 | `journal` | `reader`, `notes`, `cite` | `quiet-journal` (a `contrast`) |
 | `explored` | `wild-trail` | `quiet-explored` |

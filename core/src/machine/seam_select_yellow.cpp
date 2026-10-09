@@ -74,7 +74,8 @@
 //     yellow, a command letter is drawn white, so the key still stands out.
 //     A bar with a single command letter (a script's one-choice notice, the
 //     walking bar's `Exit`) has its one group lit, the command Return takes,
-//     but for the blanks after its last letter (#498).
+//     but for the blanks after its last letter (#498). A notice, a sentence
+//     and not a word, is yellow from its first letter.
 //   * **The pick-list's row** (point 2, the string call): yellow.
 //   * **The roster's selected member** (point 3, the string call at the
 //     drawer's selected-member arm, `inside_calls`: the automap and the
@@ -398,7 +399,8 @@ struct stack {
 // stored as written here, one capital and the rest lower case, though the
 // face draws lower case as capitals), and the walking bar is `Exit` alone.
 // So what the program lights of it, its **group** and not the word, is lit
-// as a word is: the key white and the rest yellow, as blocks (#483); a
+// as a word is: the key white and the rest yellow, as blocks (#483), but for
+// a notice, whose capital only starts a sentence: all yellow; a
 // character outside the group (a leading space) is drawn as the program
 // draws it, the swapped pair below put right. It was left as the program
 // draws it until then (#460). **The pick-list's `Exit` is the exception**:
@@ -460,6 +462,9 @@ struct bar_call {
   /// A blank with nothing but blanks after it: the program's group of a
   /// one-command bar runs to the bar's end, `A ` at a load bar with one slot.
   bool trailing_blank{false};
+  /// A word after the key's, so the bar is a sentence and not a word: the
+  /// script runner's notice, `Press <enter>/<return> to continue`.
+  bool sentence{false};
 };
 
 /// The widest bar the routine copies (a Pascal string of at most forty).
@@ -535,6 +540,14 @@ constexpr std::uint8_t max_bar = 0x28;
     }
   }
   out.one_command = commands == 1;
+  for (auto position = static_cast<std::uint8_t>(letter + 1);
+       position <= length; ++position) {
+    if (bar(position) != ' ' &&
+        bar(static_cast<std::uint8_t>(position - 1)) == ' ') {
+      out.sentence = true;
+      break;
+    }
+  }
   out.trailing_blank = true;
   for (std::uint8_t position = index; position <= length; ++position) {
     if (bar(position) != ' ') {
@@ -591,9 +604,13 @@ void at_bar(machine& box, seam_context& ctx, bool expect_bright,
   const bool lit = call.one_command ? one_command_lit(s, ctx, group_arm) &&
                                           !call.trailing_blank
                                     : call.in_word;
+  // A notice's capital is where its sentence starts, not a key set apart
+  // from other keys, so a lit notice is one yellow block.
   const std::uint8_t colour =
       call.one_command && !lit
           ? unselected_bar_colour(call.colour, call.color_lo, call.color_hi)
+      : call.one_command && call.sentence
+          ? colour_yellow
           : bar_colour(call.character, lit, call.color_lo, call.color_hi);
   if (colour != call.colour) {
     s.set_top_byte(glyph_colour, colour);

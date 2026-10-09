@@ -1448,6 +1448,31 @@ and no `AREA`; `Return`, `Up`, `Up` walk 3,32 S to 3,30 N; `Escape` and
 
 ---
 
+## Leg 21 — a roster name with no file
+
+`CHARLIST.TXT` naming a character whose `.CHA` is not in the save
+directory, then (A)dd from the main menu. Recorded as
+`tests/sessions/roster-add.rec`, over the shipped slots with a second,
+made-up name added to the roster.
+
+```
+--seam code-wheel --code-wheel-answered
+--press A@7700                          ADD CHARACTER TO PARTY
+--press E@8100                          Exit
+```
+
+The roster fix is built in, so nothing turns it on: the list shows the
+one name whose file is there, and `CHARLIST.TXT` names only that
+character at the end. Without the fix (a build before it), the list
+showed both names, and `Return` on the stranded one was
+`file open \SAVE\<STEM>.CHA ... file_not_found` under `--trace` and the
+save-disk prompt from then on; this build cannot reproduce that, by
+design.
+
+Driven the same way on the store release (a copy of the Steam
+installation with a stranded name added to its roster): the name gone
+from the list, a pick of the next name adding that character, and the
+roster written back without the stranded one.
 ## Leg 22 — a line of text, being read (#504)
 
 `docs/hosts.md` §12's signal, read at the end of a desktop run as
