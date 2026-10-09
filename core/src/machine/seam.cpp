@@ -258,6 +258,12 @@ void seam_context::decline(seam_reason why) {
 // --- seam_engine -------------------------------------------------------------
 
 seam_engine::seam_engine(diagnostics* log) noexcept : log_(log) {
+  // The fixes first, so that they are the first slots and a listed index
+  // is a slot index less `fixes_`.
+  for (const seam_definition& seam : built_in_fixes()) {
+    static_cast<void>(add(seam));
+  }
+  fixes_ = registered_;
   for (const seam_definition& seam : all_seams()) {
     // The build's own table cannot overflow the registry or repeat an id
     // — that would be a mistake in this tree, caught by the unit suite
@@ -284,8 +290,13 @@ std::size_t seam_engine::index_of(std::string_view id) const noexcept {
   return max_seams;
 }
 
-const seam_definition* seam_engine::find(std::string_view id) const noexcept {
+std::size_t seam_engine::listed_index_of(std::string_view id) const noexcept {
   const std::size_t index = index_of(id);
+  return is_fix(index) ? max_seams : index;
+}
+
+const seam_definition* seam_engine::find(std::string_view id) const noexcept {
+  const std::size_t index = listed_index_of(id);
   return index == max_seams ? nullptr : slots_[index].seam;
 }
 
@@ -405,6 +416,15 @@ const document_edition* seam_engine::document_at(
 }
 
 seam_status seam_engine::status(std::size_t index) const noexcept {
+  return index >= count() ? seam_status{} : slot_status(index + fixes_);
+}
+
+seam_status seam_engine::fix_status(std::string_view id) const noexcept {
+  const std::size_t index = index_of(id);
+  return is_fix(index) ? slot_status(index) : seam_status{};
+}
+
+seam_status seam_engine::slot_status(std::size_t index) const noexcept {
   if (index >= registered_) {
     return {};
   }
@@ -456,7 +476,8 @@ seam_status seam_engine::status(std::size_t index) const noexcept {
 }
 
 seam_status seam_engine::status(std::string_view id) const noexcept {
-  return status(index_of(id));
+  const std::size_t index = listed_index_of(id);
+  return index == max_seams ? seam_status{} : slot_status(index);
 }
 
 void seam_engine::loaded(const sha256_digest& digest,
@@ -466,6 +487,14 @@ void seam_engine::loaded(const sha256_digest& digest,
   edition_ = find_edition(digest);
   image_segment_ = image_segment;
   have_program_ = true;
+  // The fixes come on with the program they name, and nothing turns them
+  // off but the next program.
+  for (std::size_t i = 0; i < fixes_; ++i) {
+    if (slots_[i].seam->schema == seam_schema_version &&
+        applies(*slots_[i].seam)) {
+      static_cast<void>(enable_slot(i));
+    }
+  }
 }
 
 bool seam_engine::identify(filesystem& fs, const dos_path& path,
@@ -513,10 +542,16 @@ std::uint32_t seam_engine::host_argument(
   return host_arguments_[static_cast<std::size_t>(which)];
 }
 
-std::size_t seam_engine::enabled_count() const noexcept { return enabled_; }
+std::size_t seam_engine::enabled_count() const noexcept {
+  std::size_t listed = 0;
+  for (std::size_t i = fixes_; i < registered_; ++i) {
+    listed += slots_[i].enabled ? 1U : 0U;
+  }
+  return listed;
+}
 
 std::string_view seam_engine::enabled_id(std::size_t nth) const noexcept {
-  for (std::size_t i = 0; i < registered_; ++i) {
+  for (std::size_t i = fixes_; i < registered_; ++i) {
     if (!slots_[i].enabled) {
       continue;
     }
@@ -529,7 +564,7 @@ std::string_view seam_engine::enabled_id(std::size_t nth) const noexcept {
 }
 
 seam_error seam_engine::enable(std::string_view id) {
-  const std::size_t index = index_of(id);
+  const std::size_t index = listed_index_of(id);
   if (index == max_seams) {
     report(id, seam_event_kind::refused, seam_reason::unknown_seam);
     return seam_reason::unknown_seam;
@@ -547,6 +582,12 @@ seam_error seam_engine::enable(std::string_view id) {
     report(id, seam_event_kind::refused, seam_reason::wrong_binary);
     return seam_reason::wrong_binary;
   }
+  return enable_slot(index);
+}
+
+seam_error seam_engine::enable_slot(std::size_t index) {
+  slot& s = slots_[index];
+  const std::string_view id = s.seam->id;
   if (s.enabled) {
     return seam_reason::none;
   }
@@ -592,7 +633,7 @@ seam_error seam_engine::enable(std::string_view id) {
 }
 
 seam_error seam_engine::disable(std::string_view id) {
-  const std::size_t index = index_of(id);
+  const std::size_t index = listed_index_of(id);
   if (index == max_seams) {
     report(id, seam_event_kind::refused, seam_reason::unknown_seam);
     return seam_reason::unknown_seam;
@@ -615,7 +656,7 @@ seam_error seam_engine::disable(std::string_view id) {
 }
 
 seam_error seam_engine::pull(std::string_view id, ticks now) {
-  const std::size_t index = index_of(id);
+  const std::size_t index = listed_index_of(id);
   if (index == max_seams) {
     report(id, seam_event_kind::refused, seam_reason::unknown_seam);
     return seam_reason::unknown_seam;
@@ -643,7 +684,7 @@ seam_error seam_engine::pull(std::string_view id, ticks now) {
 }
 
 bool seam_engine::waiting(std::string_view id) const noexcept {
-  const std::size_t index = index_of(id);
+  const std::size_t index = listed_index_of(id);
   return index != max_seams && slots_[index].waiting;
 }
 
@@ -1045,6 +1086,13 @@ void seam_engine::note_decline(std::string_view id, seam_reason why) noexcept {
 
 void seam_engine::report(std::string_view id, seam_event_kind kind,
                          seam_reason reason) noexcept {
+  // A fix's comings and goings are not a host's to print: it is on with
+  // its program, and saying so at every load and every overlay swap
+  // would be a line about nothing anybody chose. What it declines is a
+  // fact table meeting a machine it does not describe, and is said.
+  if (is_fix(index_of(id)) && reason != seam_reason::point_not_recognized) {
+    return;
+  }
   if (log_ != nullptr) {
     log_->report(seam_event{.id = id, .kind = kind, .reason = reason});
   }

@@ -1546,7 +1546,8 @@ TEST(SeamEncampFix, DoesNothingWhenItIsOff) {
 
   r.one_menu_pass(fix_letter);
 
-  EXPECT_FALSE(r.pc().seams().armed());
+  // Its own row: the built-in fixes are armed with the program.
+  EXPECT_FALSE(r.pc().seams().status("encamp-fix").armed);
   EXPECT_EQ(r.bar(), plain_bar);
   EXPECT_EQ(r.prompt(), plain_prompt);
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u);
