@@ -401,10 +401,10 @@ A block is a shape, and reads whatever colours you see. With the seam on:
   truth?`): on a bar whose keys are not the first letters of its words,
   like the icon editor's top bar, the game's own highlight runs on into
   part of the next word, and the seam lights the word that holds the key.
-  A bar of one command is what Enter takes, and is lit the same way: a
-  prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
-  CONTINUE` (its `P` a white block and the rest a yellow one), and the
-  walking bar's `EXIT`. The `Exit` under a pick-list is not lit: Enter
+  A bar of one command is what Enter takes, and is lit too: a prompt with
+  only one choice, such as `PRESS <ENTER>/<RETURN> TO CONTINUE`, is one
+  yellow block, its `P` included, and the walking bar's `EXIT` is lit as a
+  word is, its `E` a white block. The `Exit` under a pick-list is not lit: Enter
   there takes the list's row.
 - **A pick-list's highlighted row** (race, class, spells, shops, coins, the
   list of characters to add) is a yellow block.
