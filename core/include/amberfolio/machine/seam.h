@@ -1361,7 +1361,7 @@ class seam_engine {
   /// piece of core that reports what a seam noted, `text_entry_now()`
   /// (machine/text_entry.h); a host asks that, never this.
   [[nodiscard]] std::uint16_t scratch(std::string_view id,
-                                      unsigned slot) const noexcept;
+                                      unsigned word) const noexcept;
 
   /// Whether the code-wheel challenge has been answered on this machine
   /// — set by a host from what it remembered, before the run, or by the

@@ -251,12 +251,12 @@ void seam_context::set_scratch(unsigned slot, std::uint16_t value) noexcept {
 }
 
 std::uint16_t seam_engine::scratch(std::string_view id,
-                                   unsigned slot) const noexcept {
+                                   unsigned word) const noexcept {
   const std::size_t at = index_of(id);
-  if (at == max_seams || slot >= scratch_words) {
+  if (at == max_seams || word >= scratch_words) {
     return 0;
   }
-  return slots_[at].scratch[slot];
+  return slots_[at].scratch[word];
 }
 
 void seam_context::decline(seam_reason why) {
