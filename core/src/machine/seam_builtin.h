@@ -69,6 +69,11 @@ inline constexpr std::size_t hero_keys_point_count = 5;
 inline constexpr std::size_t edit_keys_point_count = 1;
 inline constexpr std::size_t select_yellow_point_count = 11;
 inline constexpr std::size_t move_mode_point_count = 5;
+inline constexpr std::size_t text_entry_point_count = 2;
+
+/// The seam's own word `text-entry` notes the line editor in: one while the
+/// program is inside it. `move-mode` holds words 0 to 4.
+inline constexpr unsigned text_entry_scratch = 5;
 
 /// The up and down arrows in the pick-lists, and the selected party member
 /// at the bars where Home and End step it (seam_list_arrows.cpp, #423).
@@ -105,6 +110,11 @@ inline constexpr std::uint16_t selection_mark = 0x8000;
 /// it, and between the two Left and Right step the bar (seam_move_mode.cpp,
 /// #479). Last at the key read, so every other piece has passed first.
 [[nodiscard]] std::span<const seam_point> move_mode_points() noexcept;
+
+/// The line editor's entry and return, noted so a host can tell when the
+/// program is reading a line of text (seam_text_entry.cpp, #504). Last:
+/// its points are at addresses no other piece has.
+[[nodiscard]] std::span<const seam_point> text_entry_points() noexcept;
 
 /// A character the roster names and the save directory does not hold is
 /// left off the Add list (seam_roster_fix.cpp). A built-in fix, not a

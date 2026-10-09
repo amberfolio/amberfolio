@@ -1523,6 +1523,19 @@ export class Machine {
     return this.module._af_machine_code_wheel_answered(this.handle) !== 0;
   }
 
+  /// Whether the program is reading a line of text right now (#504): true
+  /// from the line editor's first instruction until its return, false
+  /// outside it, and **null when nothing is watching** — `modern-controls`
+  /// off or unavailable, or no program loaded. A page that paints its own
+  /// keyboard asks once a frame and puts it up on true; it must not guess
+  /// the same thing from the screen.
+  textEntry() {
+    const answer = this.module._af_machine_text_entry(this.handle);
+    if (answer === 1) return true;
+    if (answer === 0) return false;
+    return null;
+  }
+
   setCodeWheelAnswered(answered) {
     return this.module._af_machine_set_code_wheel_answered(
       this.handle,

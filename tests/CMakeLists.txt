@@ -69,6 +69,7 @@ add_executable(amberfolio-core-tests
   core/machine/seam_select_yellow_test.cpp
   core/machine/selection_margin_test.cpp
   core/machine/seam_edit_keys_test.cpp
+  core/machine/seam_text_entry_test.cpp
   core/machine/seam_explored_test.cpp
   core/machine/seam_font_test.cpp
   core/machine/seam_call_test.cpp

@@ -11,6 +11,7 @@
 #include "amberfolio/machine/document.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/seam.h"
+#include "amberfolio/machine/text_entry.h"
 
 namespace amberfolio::sdl {
 
@@ -167,6 +168,15 @@ void report_seam_outcomes(const machine::machine& box) {
                  row.armed ? "armed" : "inert",
                  static_cast<unsigned long long>(row.fired), extra.c_str(),
                  say);
+  }
+
+  // Whether the run ended inside the program's line editor (#504), when
+  // something is watching: the answer a page polls every frame, once.
+  const machine::text_entry reading = machine::text_entry_now(box);
+  if (reading != machine::text_entry::unknown) {
+    std::fprintf(
+        stderr, "amberfolio: text-entry %s\n",
+        reading == machine::text_entry::reading ? "reading" : "not-reading");
   }
 }
 

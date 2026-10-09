@@ -871,7 +871,7 @@ to carry.
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
-| `modern-controls` | the controls a later game has, seven pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one (§10) | overlay 25 (the menu-bar and list routines), overlays 16 and 19, and the resident image |
+| `modern-controls` | the controls a later game has, eight pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 16 and 19, and the resident image |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -1473,7 +1473,7 @@ summed over the pieces.
   cursor's row is always a yellow block with a white key. The journal's reader asks
   `modern_controls_on(box)` (`seam_builtin.h`) for its bars' keys and
   highlight and for its cursor row (§10 on the journal).
-- **Off is the plain machine, on is all seven.** There is no setting between,
+- **Off is the plain machine, on is all eight.** There is no setting between,
   so no piece's handlers run with another's off.
 - **A seam is armed while any module its points name is resident** (§4),
   and this one has points in the resident image, so with the seam on the
@@ -2876,6 +2876,34 @@ checkpoints identical, divergent from the first main-menu frame; the
 seam-on half walks once in walking mode, comes back to the menu and opens
 View off the bar, where the seam-off half walks and turns. Off, the engine
 is not consulted (§7). Unit: `SeamMoveMode.*`.
+
+#### Text entry (#504)
+
+`seam_text_entry.cpp`. Not a control: it notes when the program is inside
+its line editor, so a host can put a keyboard up (`docs/hosts.md` §12). It
+draws and changes nothing.
+
+| point | module | what the handler does |
+|---|---|---|
+| image `0x7A73`, the line editor's first instruction (`1709:09E3`, `push bp`) | the resident image | sets the seam's word 5 |
+| image `0x7BF3`, the editor's one return (`1709:0B63`, `retf 8`) | the resident image | clears it |
+
+- **The addresses by two routes.** The resident disassembly, where every
+  jump in the routine lands between those two instructions and the `retf`
+  is the only return, and the unpacked image's bytes, `55 89 E5` at
+  `0x7A73` and `CA 08 00` at `0x7BF3`.
+- **All four callers** (the edit keys' table above) go through the
+  entry. Driven on the store release: the code word's prompt reads as
+  reading from the moment `INPUT THE CODE WORD:` is up, and not after the
+  word is entered; the character's name reads as reading from the empty
+  `CHARACTER NAME:` prompt until Return, and not on the portrait bar after
+  it. A script's two prompts have not been driven.
+- **State**: word 5 of the seam's own, observation, dropped by `enable()`
+  and `reset()`. `move-mode` holds words 0 to 4. **Host services**: none.
+  **Keys**: none.
+- **Fidelity**: the handlers read and write nothing of the machine's, so
+  every session with `modern-controls` on verifies as it did. Unit:
+  `SeamTextEntry.*`, `AbiTextEntry.*`.
 
 ### The text faces
 

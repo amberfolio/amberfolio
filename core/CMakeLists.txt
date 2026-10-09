@@ -90,6 +90,7 @@ add_library(amberfolio-core STATIC
   src/machine/seam_modern_controls.cpp
   src/machine/seam_select_yellow.cpp
   src/machine/seam_table.cpp
+  src/machine/seam_text_entry.cpp
   src/machine/selection_margin.cpp
   src/machine/service_floor.cpp
   src/machine/speaker.cpp

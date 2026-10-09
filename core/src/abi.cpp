@@ -46,6 +46,7 @@
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/speaker.h"
 #include "amberfolio/machine/tandy_sound.h"
+#include "amberfolio/machine/text_entry.h"
 #include "amberfolio/machine/vfs.h"
 #include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
@@ -1593,6 +1594,23 @@ uint32_t af_machine_set_code_wheel_answered(af_machine* handle, int answered) {
   }
   box->seams().set_code_wheel_answered(answered != 0);
   return AF_OK;
+}
+
+uint32_t af_machine_text_entry(const af_machine* handle) {
+  const machine* box = box_of(handle);
+  if (box == nullptr) {
+    return AF_TEXT_ENTRY_UNKNOWN;
+  }
+  using amberfolio::machine::text_entry;
+  switch (amberfolio::machine::text_entry_now(*box)) {
+    case text_entry::not_reading:
+      return AF_TEXT_ENTRY_NOT_READING;
+    case text_entry::reading:
+      return AF_TEXT_ENTRY_READING;
+    case text_entry::unknown:
+      break;
+  }
+  return AF_TEXT_ENTRY_UNKNOWN;
 }
 
 uint32_t af_machine_document_count(const af_machine* handle) {

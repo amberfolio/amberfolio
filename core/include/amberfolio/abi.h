@@ -437,8 +437,12 @@ uint32_t af_version(void);
 ///     context as one JSON string, the table the desktop host paints from
 ///     the same source. Minor, and machine-less: a host that never asks is
 ///     unaffected.
+///   * **3.2** — #504, one added entry point and nothing changed:
+///     `af_machine_text_entry`, whether the program is reading a line of
+///     text right now, with its three answers `AF_TEXT_ENTRY_*`. Minor: a
+///     host that never asks is unaffected.
 #define AF_ABI_VERSION_MAJOR 3u
-#define AF_ABI_VERSION_MINOR 1u
+#define AF_ABI_VERSION_MINOR 2u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -1524,6 +1528,31 @@ uint32_t af_machine_code_wheel_answered(const af_machine* box);
 
 /// Say so, or unsay it. `AF_OK`, or `AF_NO_MACHINE` for a null handle.
 uint32_t af_machine_set_code_wheel_answered(af_machine* box, int answered);
+
+// --- A line of text, being read (#504) --------------------------------
+//
+// Whether the program is inside its line editor: a new character's name, a
+// script's free-text answer, a script's number prompt, or the code word at
+// the copy-protection challenge. A host that paints a keyboard of its own
+// polls this once a frame, puts the keyboard up when it reads one and takes
+// it down when it reads zero, and never guesses either from the screen.
+//
+// It is **observation**, noted by `modern-controls` at the editor's entry
+// and its return (`machine/text_entry.h`): not machine state, not in the
+// state hash, rebuilt by a replay. With that seam off nothing watches, and
+// the answer says so rather than guessing "not reading".
+
+/// The program is not inside its line editor.
+#define AF_TEXT_ENTRY_NOT_READING 0u
+/// The program is inside its line editor, until the line is accepted or
+/// abandoned.
+#define AF_TEXT_ENTRY_READING 1u
+/// Nothing is watching: `modern-controls` is off or unavailable, no program
+/// is loaded, or the handle is null.
+#define AF_TEXT_ENTRY_UNKNOWN 2u
+
+/// One of the three above, as of the last step boundary.
+uint32_t af_machine_text_entry(const af_machine* box);
 
 /// What document seam `index` is gated on, as a name a host shows
 /// (`machine::document_kind_name`) — `code wheel`, `journal`, or `no

@@ -1378,6 +1378,13 @@ class seam_engine {
   // remembers by the program's fingerprint (#292), and the seam refuses
   // any binary its own fingerprints do not name.
 
+  /// One of seam `id`'s own words (`seam_context::scratch`), read from
+  /// outside: zero for an unknown id or a slot past the end. For the one
+  /// piece of core that reports what a seam noted, `text_entry_now()`
+  /// (machine/text_entry.h); a host asks that, never this.
+  [[nodiscard]] std::uint16_t scratch(std::string_view id,
+                                      unsigned word) const noexcept;
+
   /// Whether the code-wheel challenge has been answered on this machine
   /// — set by a host from what it remembered, before the run, or by the
   /// seam during one, at the moment a person gets it right.
