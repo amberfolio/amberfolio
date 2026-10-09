@@ -45,7 +45,11 @@ needs no disk.
 - **Fidelity invariant.** Every seam is off by default. Nothing outside
   the seam engine mutates machine state. With all seams off the machine
   is a plain machine, and that is a test, not a sentence. Seam state is
-  configuration, not machine state.
+  configuration, not machine state. The one exception is a **built-in
+  fix** (`built_in_fixes()`, `docs/seams.md` §7): on with its program,
+  listed and toggled nowhere, and only for a failure no player could
+  want. It must leave the machine untouched wherever it finds nothing to
+  fix, which every session verifying with it on is the test of.
 - **Log, don't fake.** An unimplemented service, register or port is a
   loud log line and a clean stop, never a guessed answer. `docs/machine.md`
   §5 has the third option, a notice, and when it applies.

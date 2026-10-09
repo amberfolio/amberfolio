@@ -603,7 +603,6 @@ and never triggered.
 | --- | --- | --- |
 | `quiet-automap` | identical | `quiet` |
 | `quiet-encamp` | identical | `quiet` |
-| `party-roster` | identical | `party` (the seam reached twice, every name with its file) |
 | `quiet-cheats` | identical | `quiet` |
 | `quiet-explored` | identical | `quiet` |
 | `quiet-journal` | contrast | `quiet` (the `Notes` splice changes the bar the moment it is drawn) |
@@ -612,7 +611,6 @@ and never triggered.
 | `quiet-all` | identical | `quiet-journal` (every seam that draws nothing until used: not the faces or `modern-controls`, which are contrasts of their own) |
 | `quiet-all-on-sight` | contrast | `quiet-all` (the same with `modern-controls` on: the menu's cursor is the first thing to move) |
 | `quiet-modern-controls` | contrast | `quiet` (the menu's cursor from the first frame the menu is drawn, the party's bar in menu mode and every highlight a yellow block from the first time each is on the screen) |
-| `roster-add-fix` | contrast | `roster-add` (a roster naming a character whose file is not there: the name is left off the Add list) |
 | `list-down-arrows` | contrast | `list-down` (the same script with Down and Up, which the seam-off program drops) |
 | `camp-down-arrows` | contrast | `camp-down` (Down and Up at the camp bar, which the program hands to the party cursor to put the first member back) |
 | `camp-pad-arrows` | contrast | `camp-pad` (the keypad's 2 and 8 with Num Lock on at the camp bar, which the routine translates into letters the cursor puts the first member back on) |
@@ -624,6 +622,16 @@ and never triggered.
 | `menu-down-cursor` | contrast | `menu-down` (Down, Down and Return at the main menu take the third command) |
 | `move-walk-mode` | contrast | `move-walk` (Return takes `Move`, a step on the walking bar, Escape back to the menu, two Rights to `View` and Return opens it, where the program walks and turns) |
 | `name-arrows-edit` | contrast | `name-arrows` (a Right, an Up, a Down and a Left among the letters of a name: the program types a letter for each) |
+
+**A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
+with its program and listed nowhere: no panel, config file, flag or
+recording names one, and `enable()`, `disable()` and `pull()` answer
+`unknown_seam`. So there is no "off" to record a baseline in, and the
+claim is the stronger one: every session in `tests/sessions/`, all made
+without it, verifies with it on, so it is `identical` to the plain
+machine wherever it finds nothing to fix. Reserved for a failure no
+player could want; a fix that changed a run a player might prefer is a
+seam.
 
 **`modern-controls` has no `identical` pair.** Four of its pieces draw as
 soon as there is something to draw on (the main menu's cursor, the roster's
@@ -859,7 +867,7 @@ to carry.
 |---|---|---|
 | `code-wheel` | asks the copy-protection challenge once (#291): unanswered it watches; answered by a person, it steps over the boot's call and the challenge is never drawn again | the resident image |
 | `encamp-fix` | a `FIX` command on the camp bar: spends the cures the party holds, rests off the deficit, reports in a box the game draws | the camp screen's overlay |
-| `roster-fix` | a character the roster names and the save directory does not hold is left off the Add list, instead of the program asking for a save disk for ever | overlay 17 (the roster list routine) |
+| `roster-fix` | **built in, always on, not listed** (§7): a character the roster names and the save directory does not hold is left off the Add list, instead of the program asking for a save disk for ever | overlay 17 (the roster list routine) |
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
@@ -1062,7 +1070,8 @@ budget (§3).
 ### The roster fix
 
 Not a PLAN.md §5 item: a fix for a way the program hangs that a player
-on a plain directory cannot get out of.
+on a plain directory cannot get out of. **A built-in fix** (§7): on with
+the program, in no listing, and nothing to toggle.
 
 **What the program does.** `CHARLIST.TXT` in the save directory names the
 characters in no party; each name's record is `<STEM>.CHA` beside it, the
@@ -1101,8 +1110,9 @@ word `0x07D0`, the one match of the manager's-record search):
   be a store still filling: a host puts every file on the machine before
   the first instruction.
 - **Fidelity**: over a roster with every file in place it reads and writes
-  nothing of the program's; `party-roster` is `identical party`, reached
-  twice. `roster-add-fix` is `contrast roster-add`.
+  nothing of the program's: every session verifies with it on, `party`
+  among them, which reaches it twice. `roster-add` holds what it does over
+  a stranded name.
 - **Open**: nothing.
 
 ### The automap panel (#173, M5-E2a to M5-E2e)

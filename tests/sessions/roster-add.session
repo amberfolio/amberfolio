@@ -1,16 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
-# The shipped slots with a roster that names a character whose file is not
-# in the save directory: `CHARLIST.TXT` names the shipped roster's one
-# character, whose file is there, and a second name this snapshot made up,
-# whose file is not. Nothing loaded: (A)dd from the main menu, and Exit.
-# With every seam off the list shows both names, and the program writes
-# both back on the way out. `roster-add-fix` is the same script with the
-# seam on, and a `contrast` of this one.
+# The roster fix (docs/seams.md §10), which is built in and on in every
+# run: the shipped slots with a roster that names a character whose file
+# is not in the save directory — the shipped roster's one character, whose
+# file is there, and a second name this snapshot made up. Nothing loaded:
+# (A)dd from the main menu, and Exit. The stranded name is not on the list
+# (A)dd draws, and the program writes the roster back without it.
+#
+# No relation line: a fix has no off to compare against. That it moves
+# nothing over a roster whose files are all there is every other session
+# here, `party` among them, verifying with it on.
 
-about the shipped slots, a roster naming one character whose file is not
-about there; (A)dd and Exit with only the code-wheel seam on. The list
-about shows both names. 8,449 frames, 2 keystrokes, 69 checkpoints
+about the roster fix: a roster naming one character whose file is not
+about there; (A)dd and Exit. The stranded name is left off the list and
+about out of the roster written back. 8,449 frames, 2 keystrokes, 69
+about checkpoints
 disk external
 code-wheel-answered
 

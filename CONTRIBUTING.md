@@ -80,7 +80,10 @@ PLAN.md §4 and §5 state it; in a diff it means:
   idle equals the hash on a build with no engine; a disabled seam's
   breakpoint is never consulted; seam state, an outstanding pull
   included, is configuration and not machine state.
-  `tests/core/machine/seam_test.cpp` asserts all three.
+  `tests/core/machine/seam_test.cpp` asserts all three. The exception is
+  a built-in fix (`docs/seams.md` §7): on with its program and listed
+  nowhere, for a failure no player could want, and untouching wherever
+  it finds nothing to fix.
 - **An observation is not part of the run.** A trace ring, an edge log
   or a diagnostics sink must not move a state hash.
 - **Log, don't fake.** An unimplemented service, register or port is a

@@ -6,9 +6,8 @@
 # Its `identical` names `quiet-journal` rather than `quiet`, and that is
 # the claim: the reader alone moves an idle machine, because it splices
 # `Notes` onto a bar the game keeps redrawing (quiet-journal.session),
-# and adding the automap, the Encamp Fix, the roster fix, the explored
-# overlay and all three cheats on top of it changes nothing across all 90
-# checkpoints.
+# and adding the automap, the Encamp Fix, the explored overlay and all
+# three cheats on top of it changes nothing across all 90 checkpoints.
 # That is what "individually toggleable" has to mean: a subset of seams is
 # no more than the sum of what each one does.
 # Left out, and each with a pair of its own: the faces, which are

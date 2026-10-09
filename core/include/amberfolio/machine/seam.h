@@ -565,6 +565,20 @@ struct seam_definition {
 /// construction; a host or a test may add more (`seam_engine::add`).
 [[nodiscard]] std::span<const seam_definition> all_seams();
 
+/// The fixes this build carries: seams in every respect but two. **They
+/// are on whenever the program they name is loaded**, and **nothing lists
+/// or toggles them**: `count()`, `status(index)`, `enabled_id()` and
+/// `find()` pass over them, and `enable()`, `disable()` and `pull()` answer
+/// `unknown_seam`, so no panel, config file, flag or recording names one.
+///
+/// For a way the program fails that no player could want: there is no
+/// state of a fix worth choosing, so there is no choice to offer.
+/// Everything else a seam owes, a fix owes too, the `identical` claim
+/// above all: a fix that is reached and finds nothing to fix leaves the
+/// machine as it was, which is what keeps every recording in
+/// `tests/sessions/` verifying with it on (docs/seams.md §7).
+[[nodiscard]] std::span<const seam_definition> built_in_fixes();
+
 /// Why `seam_engine::enable()` or `disable()` refused, or why an enabled
 /// seam is not armed.
 enum class seam_reason : std::uint8_t {
@@ -1146,15 +1160,23 @@ class seam_engine {
   /// registry is full or the id is already taken.
   bool add(const seam_definition& seam) noexcept;
 
-  [[nodiscard]] std::size_t count() const noexcept { return registered_; }
+  /// How many seams are listed: every registered one but the fixes.
+  [[nodiscard]] std::size_t count() const noexcept {
+    return registered_ - fixes_;
+  }
 
   /// Where `id` stands — off, on, unavailable, and why. `index` is a
-  /// position in the registry, `count()` of them.
+  /// position in the listing, `count()` of them.
   [[nodiscard]] seam_status status(std::size_t index) const noexcept;
   [[nodiscard]] seam_status status(std::string_view id) const noexcept;
 
-  /// The definition behind `id`, or null.
+  /// The definition behind a listed `id`, or null.
   [[nodiscard]] const seam_definition* find(std::string_view id) const noexcept;
+
+  /// Where a built-in fix stands (`built_in_fixes()`): the row `status()`
+  /// gives a listed seam, for the tests and diagnostics that have to be
+  /// able to ask. Empty for any other id.
+  [[nodiscard]] seam_status fix_status(std::string_view id) const noexcept;
 
   // --- The program ------------------------------------------------------
 
@@ -1549,7 +1571,23 @@ class seam_engine {
         (static_cast<unsigned>(ram_[address + 1]) << 8U));
   }
 
+  /// Any registered seam's slot, fixes included, or `max_seams`.
   [[nodiscard]] std::size_t index_of(std::string_view id) const noexcept;
+
+  /// A listed seam's slot, or `max_seams` for a fix or an unknown id: the
+  /// lookup behind every door a host can reach.
+  [[nodiscard]] std::size_t listed_index_of(std::string_view id) const noexcept;
+
+  /// The fixes take the first `fixes_` slots.
+  [[nodiscard]] bool is_fix(std::size_t index) const noexcept {
+    return index < fixes_;
+  }
+
+  /// `status()`'s row for the seam in slot `index`.
+  [[nodiscard]] seam_status slot_status(std::size_t index) const noexcept;
+
+  /// Turn on the seam in slot `index`, once the checks are made.
+  seam_error enable_slot(std::size_t index);
 
   /// Whether `seam` names the loaded program's digest.
   [[nodiscard]] bool applies(const seam_definition& seam) const noexcept;
@@ -1600,6 +1638,8 @@ class seam_engine {
 
   std::array<slot, max_seams> slots_{};
   std::size_t registered_{};
+  /// How many of the first slots are built-in fixes.
+  std::size_t fixes_{};
   std::size_t enabled_{};
 
   std::array<armed_point, max_points> points_{};

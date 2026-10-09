@@ -518,7 +518,8 @@ TEST(SeamCheatInvulnerable, DoesNothingWhenOff) {
   r.pc().step();
 
   EXPECT_EQ(r.word_at(data_segment, sp + 4), 7u);
-  EXPECT_FALSE(r.pc().seams().armed());
+  // Its own row: the built-in fixes are armed with the program.
+  EXPECT_FALSE(r.pc().seams().status("cheat-invulnerable").armed);
 }
 
 // --- Kill-all-enemies ------------------------------------------------------

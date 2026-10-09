@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The roster fix (seam_roster_fix.cpp), exercised through its mechanism and
-// not through any program: the test stands the processor on the list
+// The roster fix (seam_roster_fix.cpp), a built-in fix: on whenever the
+// program it names is loaded, and listed nowhere. Exercised through its
+// mechanism and not through any program: the test stands the processor on the list
 // routine's exit with a list of nodes laid out on a heap, the caller's head
 // pointer where the frame says it is, a save directory in the data segment
 // and the files the directory holds in a filesystem, and reads the list and
@@ -107,10 +108,21 @@ struct rig {
              stack_segment);
   }
 
+  /// The overlay is in: the program's manager says where. The fix itself
+  /// came on with the program.
   void arm() const {
-    ASSERT_EQ(box->seams().enable(seam_id), seam_reason::none);
     put_word(image_load_segment, static_cast<std::uint16_t>(word_list),
              list_segment);
+  }
+
+  [[nodiscard]] const seam_definition& fix() const {
+    for (const seam_definition& s : built_in_fixes()) {
+      if (s.id == seam_id) {
+        return s;
+      }
+    }
+    ADD_FAILURE() << "no built-in fix named " << seam_id;
+    return built_in_fixes().front();
   }
 
   void put_byte(std::uint16_t segment, std::uint16_t offset,
@@ -273,7 +285,7 @@ struct rig {
   }
 
   [[nodiscard]] seam_status status() const {
-    return box->seams().status(seam_id);
+    return box->seams().fix_status(seam_id);
   }
 
   std::unique_ptr<memory_filesystem> fs;
@@ -284,8 +296,7 @@ struct rig {
 
 TEST(SeamRosterFix, IsOnePointAtTheListRoutinesExitInOverlay17) {
   const rig r;
-  const seam_definition* s = r.box->seams().find(seam_id);
-  ASSERT_NE(s, nullptr);
+  const seam_definition* s = &r.fix();
   EXPECT_FALSE(s->about.empty());
   EXPECT_FALSE(s->trigger) << "a setting: nothing to pull";
   EXPECT_EQ(s->gate, document_kind::none);
@@ -305,9 +316,36 @@ TEST(SeamRosterFix, IsOnePointAtTheListRoutinesExitInOverlay17) {
   EXPECT_FALSE(p.inside_calls);
 }
 
-TEST(SeamRosterFix, IsOffByDefault) {
+TEST(SeamRosterFix, IsOnAsSoonAsTheProgramIsLoaded) {
   const rig r;
-  EXPECT_EQ(r.status().state, seam_state::off);
+  EXPECT_EQ(r.status().state, seam_state::on);
+  EXPECT_EQ(r.box->seams().enabled_count(), 0u)
+      << "a fix is not a seam anybody turned on";
+}
+
+TEST(SeamRosterFix, IsListedNowhereAndCannotBeToggled) {
+  const rig r;
+  for (const seam_definition& s : all_seams()) {
+    EXPECT_NE(s.id, seam_id);
+  }
+  for (std::size_t i = 0; i < r.box->seams().count(); ++i) {
+    EXPECT_NE(r.box->seams().status(i).id, seam_id);
+  }
+  EXPECT_EQ(r.box->seams().find(seam_id), nullptr);
+  EXPECT_TRUE(r.box->seams().status(seam_id).id.empty());
+  EXPECT_EQ(r.box->seams().enable(seam_id), seam_reason::unknown_seam);
+  EXPECT_EQ(r.box->seams().disable(seam_id), seam_reason::unknown_seam);
+  EXPECT_EQ(r.status().state, seam_state::on) << "and is still on";
+}
+
+TEST(SeamRosterFix, IsOffBeforeAProgramAndOnAgainAfterTheNext) {
+  const rig r;
+  r.box->seams().clear();
+  EXPECT_NE(r.status().state, seam_state::on);
+  sha256_digest baseline;
+  ASSERT_TRUE(parse_digest(known_editions().front().fingerprint, baseline));
+  r.box->seams().loaded(baseline, image_load_segment);
+  EXPECT_EQ(r.status().state, seam_state::on);
 }
 
 TEST(SeamRosterFix, IsUnavailableOnAnyOtherBinary) {
@@ -315,20 +353,8 @@ TEST(SeamRosterFix, IsUnavailableOnAnyOtherBinary) {
   sha256_digest other{};
   other.bytes[0] = 1;
   box->seams().loaded(other, image_load_segment);
-  EXPECT_EQ(box->seams().status(seam_id).state, seam_state::unavailable);
-  EXPECT_EQ(box->seams().enable(seam_id), seam_reason::wrong_binary);
-}
-
-TEST(SeamRosterFix, DoesNothingWhileItIsOff) {
-  const rig r;
-  r.put_word(image_load_segment, static_cast<std::uint16_t>(word_list),
-             list_segment);
-  r.list({"WREN", "OSSIAN"});
-  r.holds("\\SAVE\\WREN.CHA");
-
-  r.arrive();
-  EXPECT_EQ(r.names(), (std::vector<std::string>{"WREN", "OSSIAN"}));
-  EXPECT_TRUE(r.frees().empty());
+  EXPECT_EQ(box->seams().fix_status(seam_id).state, seam_state::unavailable);
+  EXPECT_FALSE(box->seams().armed());
 }
 
 TEST(SeamRosterFix, IsInertWhileOverlay17IsNotLoaded) {

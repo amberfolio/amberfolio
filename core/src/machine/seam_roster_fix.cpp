@@ -3,6 +3,11 @@
 // The roster fix: a character the roster names and the save directory
 // does not hold is left off the list (Add) offers.
 //
+// **A built-in fix, not a listed seam** (`built_in_fixes()`, seam.h): on
+// whenever the program is loaded, and in no panel, config file, flag or
+// recording. There is no player for whom a name that hangs the game when
+// picked is worth keeping, so there is no choice to offer.
+//
 //
 // What the program does, stated as facts
 // --------------------------------------
@@ -84,12 +89,13 @@
 // The fidelity claim (docs/seams.md §8.5)
 // ---------------------------------------
 //
-// **On, over a roster with every file in place, it moves nothing**: it
-// reads the frame, the list, the data segment and the filesystem, and
-// writes none of them. So a run that never meets a stranded name is the
-// run with the seam off, and `tests/sessions/` holds that as `identical`.
-// Over a stranded name it changes the list and, when the player leaves
-// Add, the file — the change the seam exists for.
+// **Over a roster with every file in place it moves nothing**: it reads
+// the frame, the list, the data segment and the filesystem, and writes
+// none of them. That is the whole of why a fix may be on without being
+// asked: every recording in `tests/sessions/` was made without it and
+// verifies with it, `party` among them, which reaches it twice. Over a
+// stranded name it changes the list and, when the player leaves Add, the
+// file — the change it exists for, held by `roster-add`.
 //
 //
 // What it is not yet
@@ -387,8 +393,8 @@ constexpr seam_definition roster_fix_definition{
         "instead of asking for a save disk for ever",
     .fingerprints = roster_binaries,
     .points = roster_fix_points,
-    // A setting: it acts where the program builds the list, whenever it
-    // does, and there is nothing to ask for.
+    // Acts where the program builds the list, whenever it does; there is
+    // nothing to ask for.
     .trigger = false,
     .schema = seam_schema_version};
 
