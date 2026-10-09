@@ -250,6 +250,15 @@ void seam_context::set_scratch(unsigned slot, std::uint16_t value) noexcept {
   engine_->slots_[at].scratch[slot] = value;
 }
 
+std::uint16_t seam_engine::scratch(std::string_view id,
+                                   unsigned slot) const noexcept {
+  const std::size_t at = index_of(id);
+  if (at == max_seams || slot >= scratch_words) {
+    return 0;
+  }
+  return slots_[at].scratch[slot];
+}
+
 void seam_context::decline(seam_reason why) {
   declined_ = true;
   engine_->note_decline(id_, why);

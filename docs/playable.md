@@ -1448,6 +1448,24 @@ and no `AREA`; `Return`, `Up`, `Up` walk 3,32 S to 3,30 N; `Escape` and
 
 ---
 
+## Leg 22 — a line of text, being read (#504)
+
+`docs/hosts.md` §12's signal, read at the end of a desktop run as
+`amberfolio: text-entry ...` with `--seam modern-controls` on. Leg 0's
+creation keys, run to four frames:
+
+| `--until` frame | on the screen | the line |
+|---|---|---|
+| 8650 | the rolled sheet, the name not asked yet | `not-reading` |
+| 8695 | `CHARACTER NAME:`, empty | `reading` |
+| 8800 | `CHARACTER NAME:  BOB` | `reading` |
+| 9000 | the portrait bar, the name accepted | `not-reading` |
+
+Without `--code-wheel-answered` the boot stops at the challenge:
+`INPUT THE CODE WORD:` is `reading` from frame 7500, and after
+`W O R D Return` (the store release takes any word) the main menu at 8300 is
+`not-reading`. With the seam off the line is not printed.
+
 ## What the run should not say
 
 The three notices `docs/first-light.md` tabulates

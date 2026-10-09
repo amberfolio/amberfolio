@@ -956,7 +956,7 @@ rename or removal of either moves these numbers — `abi.h` says so at
 compares `major` against what it was written for and refuses before
 fetching the module.
 
-The ABI moved as follows (`abi.h` has the whole list, now at 3.1): 1.1 added the two doors below (#228, #229), 1.2 added
+The ABI moved as follows (`abi.h` has the whole list, now at 3.2): 1.1 added the two doors below (#228, #229), 1.2 added
 `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
 (#291), 1.3 added `af_web_journal_part_begins_paragraph` (#361), which is
 how a fragment boundary that is a paragraph break reaches the page that
@@ -983,7 +983,8 @@ It also adds `af_machine_set_current_directory`, `af_machine_current_directory`,
 (#397, §2c): the directory a program starts in, and where it saves. The
 `af_machine_save_layer_*` calls kept their names and their answers on the
 archive release; on another layout their rows follow the save directory
-the copy names (§6). 3.1 adds `af_web_key_card_json` (#427, §11).
+the copy names (§6). 3.1 adds `af_web_key_card_json` (#427, §11). 3.2
+adds `af_machine_text_entry` (#504, §12).
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -2118,3 +2119,36 @@ and the desktop's own keys (§2's table and
 `keymap.cpp`). A row that a drive contradicted was fixed before it was
 written: Return does not step Modify's rows, though one routine reads as
 if it does.
+
+## 12. A line of text, being read (#504)
+
+Whether the program is reading a line of text right now: a new character's
+name, a script's free-text answer, a script's number prompt, or the code
+word at the copy-protection challenge. All four go through the program's
+one line editor (`docs/seams.md` §10, "The edit keys"). A page that paints
+a keyboard of its own polls this once a frame, puts the keyboard up when it
+turns true and takes it down when it turns false, and never works the same
+thing out from the screen.
+
+| call | answers |
+|---|---|
+| `af_machine_text_entry(box)` | `AF_TEXT_ENTRY_READING` (1), `AF_TEXT_ENTRY_NOT_READING` (0), or `AF_TEXT_ENTRY_UNKNOWN` (2) |
+| `Machine.textEntry()` (`page/host.mjs`) | `true`, `false`, or `null` for unknown |
+
+- **Where it comes from.** The `text-entry` piece of `modern-controls`
+  notes the editor's first instruction and its one return
+  (`core/src/machine/seam_text_entry.cpp`, `machine/text_entry.h`).
+  Reading runs from the entry until the line is accepted with Return or
+  abandoned with Esc. A caller that asks again, after a number that was not
+  one, enters again.
+- **Unknown, and not "no", while nothing watches.** With `modern-controls`
+  off or unavailable, or no program loaded, the answer is unknown: telling
+  a page "not reading" would be a guess.
+- **Observation.** It is kept in one of the seam's own words. It is not
+  machine state, it is in no hash and no serialization, and a replay
+  rebuilds it. It is dropped when the seam is turned on again or the
+  machine is reset, so a page never reads a crossing whose other half
+  nobody saw.
+- **The desktop host** prints the state the run ended in, beside the seam
+  lines: `amberfolio: text-entry reading` or `text-entry not-reading`, and
+  nothing while it is unknown.

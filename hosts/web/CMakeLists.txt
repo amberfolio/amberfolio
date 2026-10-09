@@ -155,6 +155,7 @@ set(_amberfolio_web_export_names
   _af_machine_document_kind_at
   _af_machine_code_wheel_answered
   _af_machine_set_code_wheel_answered
+  _af_machine_text_entry
   _af_machine_save_layer_slots
   _af_machine_save_layer_members
   _af_machine_save_layer_count
