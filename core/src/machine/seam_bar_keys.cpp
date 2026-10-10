@@ -86,9 +86,10 @@
 // overlay-qualified: the frame holds the caller's offset and segment, and a
 // caller is in the table when its segment is the one the program's overlay
 // manager says that module is at now and its offset is the instruction
-// after the call. A caller the Enter table does not name is never offered
-// Enter, and a caller the exclusion table does not name is offered its
-// arrows as `,` and `.`.
+// after the call (the party-member picker, in the resident image, by the
+// address its paragraph and offset make). A caller the Enter table does not
+// name is never offered Enter, and a caller the exclusion table does not
+// name is offered its arrows as `,` and `.`.
 //
 // **The script prompts** (#438). The event scripts ask their questions
 // through one runner in overlay 7 (`0x1684`, reached through a stub), which
@@ -118,6 +119,19 @@
 // up: the menu-bar routine's saved BP is the list's, and the list's frame
 // holds its caller's far return address. The saved BP is refused unless
 // it is above ours and the address is inside conventional RAM.
+//
+// **The party-member picker**, the routine's one caller in the resident
+// image (image offset `0x38AA`, seam_menu_bar.h). Trade's receiver, "Cast
+// Spell on whom" and a script's party pick ask through it, with the bar
+// `Select Exit` (a script's has no `Exit`). Its loop ends on Enter, Esc,
+// `E` or `S`: Enter and `S` leave the selected member chosen, `E` and Esc
+// clear it. It never sets the bar's highlight, so it opens on the shared
+// byte as the last bar left it, and that is `Exit` whenever the command
+// that opened it was a bar's second group: View's `Trade` is, for a member
+// with items and no spells memorized, or spells and no items. The block
+// then sits on `Exit` and Enter chose the member. **Enter takes the lit
+// command there**: `E` on `Exit`, and on `Select` an `S`, which is what
+// Enter already was.
 //
 // **Why a table and not every bar.** The routine hands Enter back, and
 // what a caller does with `0x0D` is the caller's own business. A caller
@@ -576,7 +590,10 @@ void at_key_read(machine& box, seam_context& ctx) {
         menu_bar::called_from(cpu, ctx, pick_list_caller) &&
         (cpu.read_byte(cpu.regs()[cpu::sreg::ds], data_bar_highlight) > 1 ||
          list_called_from(cpu, ctx, list_callers_dropping_enter));
-    if (!tabled && !script && !list_takes_command) {
+    // The party-member picker, whose `Select` is its own Enter and whose
+    // `Exit` is lit as often as not when it opens.
+    const bool picker = menu_bar::called_from_picker(cpu, ctx);
+    if (!tabled && !script && !list_takes_command && !picker) {
       return;
     }
     const std::uint16_t answer = letter_for_enter(cpu, ctx);

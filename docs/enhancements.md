@@ -288,8 +288,9 @@ bar; the adventuring bar (in menu mode, `Move` among its commands, and while
 walking, its one `Exit`); the portrait bar at character creation (`Head Body
 Keep`); the shops' and temples' bars and the temple's appraisal; combat's
 command, Done and game-speed bars; the View bar; the post-combat treasure
-and Take bars; the load-game slot bar, and a locked or stuck door's bar (where the game
-would take Return as no choice). A command the other seams add,
+and Take bars; the load-game and save-game slot bars (Return writes the
+lit slot, as its letter does); and a locked or stuck door's bar (where the
+game would take Return as no choice). A command the other seams add,
 the Encamp Fix's `Fix` and the journal's `Notes`, is taken the same way,
 and so are the bars of the Notes screen itself (below).
 **The rest-time menu** is the one place the game used Enter for itself (it
@@ -321,16 +322,19 @@ and `M` still pick the field. At combat's aim bar (`NEXT PREV MANUAL
 TARGET CENTER EXIT`) Enter takes the lit command; the game's own Enter there
 repeated the last Next or Prev, by accident. At a character's Items list
 (View, Items) Enter takes the lit command for the lit item, `Ready` until
-Left or Right moves it; the game's own Enter there did nothing.
+Left or Right moves it; the game's own Enter there did nothing. At the
+party-member picker (`Trade to?`, `Cast spell on whom`) Enter takes the lit
+command too: on `Exit` it leaves, where the game's own Enter chose the
+member. The picker opens on whatever the last bar left lit, so after
+View's `Trade` it often opens on `Exit`.
 
 **What it will not do.** Make Enter confirm a row in the pick-lists (it
 already does, at every list but Items), or take a command where the game
-gives Enter a meaning of its own: the pick-lists and the party picker, the
-party-order screen, combat's move and its aim cursor, the
-temple's keep-or-sell (where it sells), the press-Enter notices, the icon
-editor. Two bars drop Enter and are left alone on purpose, because a stray
-Return there would do harm: the save-game slot bar (it would write the lit
-slot) and the stat editor (its `Exit` discards the edit). Make a held
+gives Enter a meaning of its own: the pick-lists, the party-order screen,
+combat's move and its aim cursor, the temple's keep-or-sell (where it
+sells), the press-Enter notices, the icon editor. One bar drops Enter and
+is left alone on purpose, because a stray Return there would do harm: the
+stat editor (its `Exit` discards the edit). Make a held
 key repeat (`docs/hosts.md`) or step the pick-lists and the selected member
 with the up and down arrows (the list arrows, above).
 

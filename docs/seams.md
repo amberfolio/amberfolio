@@ -2046,12 +2046,24 @@ block is on, as typing its letter would, with nothing asking first. The slot
 lit on arrival is the last bar's highlight, not one the player picked; Left
 and Right move it.
 
+*Enter chose a member under a lit `Exit`; taken by decision:* the
+party-member picker (resident image `0x38AA`, the routine's one caller
+outside the overlays; named by the address its frame's paragraph `0xBA` and
+offset `0x2D0A` make). Its loop ends on Enter, Esc, `E` or `S`, and Enter
+and `S` both leave the selected member chosen. It never sets the bar's
+highlight, so it opens on the last bar's: View's `Trade` is that bar's
+second group for a member with items and no spells memorized (or the
+reverse), and `Trade to?` then opens with the block on `Exit`, where Return
+traded. Enter takes the lit command: `E` leaves, and `S` is what Enter
+was. Driven: slot A, `V`, `T`, Return goes back to the View bar (seam on)
+and opens the coin list (before); `Left` first, then Return, opens the coin
+list.
+
 *Enter means something already; left alone:*
 
 | caller | return offset | what Enter does there |
 |---|---|---|
 | the pick-lists (overlay 25) | `0x0FE0` | confirms the row while the bar's highlight is on its first command, where the list opens it; **with the highlight moved, Enter takes that command** (Exit, Next, Prev, or the caller's own); **at the Items list, Enter takes the lit command on the first command too** (below) |
-| the party-member picker (resident image `0x38AA`) | | in the set that ends the loop: chooses |
 | the party-order screen (overlay 15) | `0x17DA` | in the toggle class (`0x174E`): picks a member up, puts it down |
 | the combat move loop (overlay 8) | `0x0AC8` | `0x0D` ends it (the bar has no commands: no group to take) |
 | the combat aim cursor (overlay 13) | `0x3178` | confirms, as `T` does |

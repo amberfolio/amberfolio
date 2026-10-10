@@ -1067,9 +1067,15 @@ Left@10700`, with and without `--seam modern-controls`: the party goes from
 4,12 S to 4,13 S, turns to face N and then W in both, the stills are
 identical, and the seam's end-of-run line is `armed and never reached`.
 
+**The picker from View's Trade.** Slot A, `V@10300 T@10600`: FIGHTER1
+has items and no spells, so `Trade` is the View bar's second command and
+`TRADE TO? SELECT EXIT` opens with `EXIT` lit. `Return@11000` goes back to
+`VIEW:ITEMS TRADE DROP EXIT` (seam off, it opens `SELECT TYPE OF COIN`, a
+trade with FIGHTER1 itself); `Left@10900 Return@11000` opens the coin list.
+
 Not driven: the shops, training, coin selection and the encounter lists;
-the picker from Trade (the Items screen's `T` redrew the screen and did
-not open one); the picker from a script.
+the picker from the Items screen's `T` (it redrew the screen and did not
+open one); the picker from a script.
 
 **The camp bar** (`camp-roster`, `camp-down` and `camp-down-arrows` are
 these scripts recorded; #435). Slot C, `ENCAMP`,
