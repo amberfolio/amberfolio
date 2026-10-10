@@ -22,6 +22,7 @@
 #include <optional>
 #include <span>
 
+#include "amberfolio/cpu/address.h"
 #include "amberfolio/cpu/processor.h"
 #include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/journal.h"
@@ -134,6 +135,26 @@ constexpr std::uint32_t appraise_load_segment_at = 0x900;     // overlay 21
                                       const seam_context& ctx,
                                       std::span<const caller> table) {
   return frame_called_from(cpu, ctx, cpu.regs()[cpu::reg16::bp], table);
+}
+
+/// The party-member picker's call into the routine, the one caller in the
+/// resident image: the instruction after it, as an offset from the image's
+/// start. The call is a five-byte far call through overlay 25's stub, made
+/// from the image's paragraph `0xBA`, so the frame holds that paragraph and
+/// `0x2D0A`; a caller here is named by the address the two make.
+constexpr std::uint32_t picker_return = 0x38AA;
+
+/// Whether this call of the routine, whose frame is at SS:BP, came from the
+/// party-member picker.
+[[nodiscard]] inline bool called_from_picker(cpu::processor& cpu,
+                                             const seam_context& ctx) {
+  const std::uint16_t ss = cpu.regs()[cpu::sreg::ss];
+  const std::uint16_t bp = cpu.regs()[cpu::reg16::bp];
+  const std::uint16_t ip =
+      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_ip));
+  const std::uint16_t cs =
+      cpu.read_word(ss, static_cast<std::uint16_t>(bp + frame_return_cs));
+  return cpu::physical_address(cs, ip) == ctx.image_base() + picker_return;
 }
 
 // --- The keystroke about to be read ----------------------------------------
