@@ -133,7 +133,12 @@ void machine::reset() {
   // The DOS handle table is the running program's state, not wiring —
   // unlike the handlers `install_dos_services()` installed, which
   // `services_.reset()` just proved it leaves alone. A warm boot gets the
-  // same five standard handles a cold one does.
+  // same five standard handles a cold one does. Its open files are closed
+  // on the filesystem first, which outlives the reset and would
+  // otherwise keep them open for good (dos.h, `close_files()`).
+  if (vfs_ != nullptr) {
+    dos_.close_files(*vfs_);
+  }
   dos_.reset();
 
   stop_ = {};
