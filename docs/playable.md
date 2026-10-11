@@ -1497,6 +1497,37 @@ Without `--code-wheel-answered` the boot stops at the challenge:
 `W O R D Return` (the store release takes any word) the main menu at 8300 is
 `not-reading`. With the seam off the line is not printed.
 
+## Leg 23 — steps that do not wait for their click
+
+`docs/seams.md` §10, *Quick steps*. Slot A of the disk leg 3 saved, at
+`0,4 W`, at the 386 governor, a still every frame:
+
+```
+--speed 386 --seam code-wheel --code-wheel-answered --seam quick-steps
+--press L@1800 --press A@2000           LOAD SAVED GAME, slot A
+--press Left@2500 --press Left@2650     two turns, to face E
+--press Up@2800 --press Up@2950         two steps
+--dump PREFIX --dump-every 1
+```
+
+The frame each key's new view is first on the screen:
+
+| key | seam off | seam on |
+|---|---|---|
+| `Left@2500` | 2511 | 2506 |
+| `Left@2650` | 2660 | 2654 |
+| `Up@2800` | 2808 | 2808 |
+| `Up@2950` | 2958 | 2958 |
+
+`fired=6`: a click for each turn and two for each step, of which the
+step's first is let wait, so a step's view comes when it always did and
+the next key is taken a tenth of a second sooner. Over the same run the
+chip takes 28,151 writes with it on and 1,264 with it off: the driver's
+timer service runs a click out and keeps writing silence until the next
+sound. Heard in the run's `.wav` (made without `--fast`, so the audio is
+not short of samples), each click is about seventy milliseconds as with
+it off, and a step's two start the same 170 milliseconds apart.
+
 ## What the run should not say
 
 The three notices `docs/first-light.md` tabulates
