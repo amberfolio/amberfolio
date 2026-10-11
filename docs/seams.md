@@ -870,6 +870,7 @@ to carry.
 | `code-wheel` | asks the copy-protection challenge once (#291): unanswered it watches; answered by a person, it steps over the boot's call and the challenge is never drawn again | the resident image |
 | `encamp-fix` | a `FIX` command on the camp bar: spends the cures the party holds, rests off the deficit, reports in a box the game draws | the camp screen's overlay |
 | `roster-fix` | **built in, always on, not listed** (§7): a character the roster names and the save directory does not hold is left off the Add list, instead of the program asking for a save disk for ever | overlay 17 (the roster list routine) |
+| `timer-fix` | **built in, always on, not listed** (§7): the sound driver never hooks the timer over its own hook, which a click quick steps did not wait for leaves it about to do | the resident image |
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
@@ -2952,11 +2953,15 @@ to its `pop bp; retf 2`.
 | `0x8C36`, the busy-word test (`cmp word [0x5374],0`) | when the request in the frame is the word at DGROUP `0x2628` and the far return is a skipped call site, its segment the one the overlay's word holds now, moves IP to `0x8C57`, the epilogue the test's own branch takes when the driver is idle. Any other call or request is left to wait |
 
 - **The click is not lost.** The driver's timer service plays the effect
-  out to silence by itself, and the next request the entry is handed stops
-  whatever is still going (its own busy-word test at the top). Measured on
-  the Tandy chip: the same click, as long as it always was, and a step's
-  two clicks as far apart. A step taken the moment the last one's second
-  click starts cuts it short.
+  out to silence by itself, and the next request loads its own effect over
+  whatever is still going. Measured on the Tandy chip: the same click, as
+  long as it always was, and a step's two clicks as far apart. A step
+  taken the moment the last one's second click starts cuts it short.
+- **The timer stays hooked until the next sound**, because the bracket is
+  also where the driver unhooks it. The entry hooks it again at its top,
+  which over its own hook would lose the BIOS's handler for good; the
+  timer fix (below) is what stops that, built in so that it holds after
+  quick steps is turned off with the hook still in place.
 - **Rejected**: skipping every footstep's wait. A step's two clicks then
   run together, which the maintainer heard as not the game's own sound;
   the step's first wait is what spaces them.
@@ -2978,6 +2983,46 @@ to its `pop bp; retf 2`.
   And of what is left between a key and a turned view, about four frames
   at the 386 governor are the program composing the view in its back
   buffer and copying it out.
+
+### The timer fix
+
+Not a PLAN.md §5 item: what quick steps needs to leave the sound driver
+whole. **A built-in fix** (§7). The plain program never reaches it.
+
+**What the program does.** In its one-shot mode (DGROUP `0x5374` set),
+the driver hooks the timer interrupt (INT 08h) before each sound and
+unhooks it after the sound's wait. Its install routine, image offset
+`0x9E5C` (`push ds`, a far call), asks DOS for the vector, keeps it in two
+words of its own segment, installs its handler (the `mov dx` at `+0x1C`
+loads its offset, `0x13EA`), runs the timer thirteen times fast and
+returns with the `retf` at `+0x34`. The handler chains to the kept vector
+on every thirteenth tick, which keeps the DOS clock. The uninstall puts
+the kept vector back and the timer to its BIOS rate.
+
+**Hooked twice, the kept vector is the driver's own handler.** Every
+uninstall after that puts the handler back at the BIOS rate: each sound
+plays thirteen times slower (a monster's death ran five or six seconds),
+and the chain goes to the handler itself, so the BIOS's never runs. It
+was v0.14.0's: a footstep whose wait quick steps skipped left the hook in
+place, and the next sound's install hooked over it.
+
+**Point**, in the resident image:
+
+| point | what the handler does |
+| --- | --- |
+| `0x9E5C`, the install routine's entry | when the busy word is set and the timer's vector is already the driver's handler (its segment CS, its offset the one the routine's `mov dx` loads), moves IP to the routine's `retf`. The kept vector stays the BIOS's, and the timer is already at the driver's rate |
+
+- **Refuses** a routine whose `+0x1C` is not a `mov dx, imm16` or whose
+  `+0x34` is not a `retf`.
+- **Leaves the driver's resident mode alone**: with the busy word clear,
+  the driver's own start-and-stop gate hooks and unhooks, and the fix does
+  not second-guess it.
+- **Fidelity**: in a plain run the vector is the BIOS's at every install,
+  so it moves nothing, and every session verifies with it on. In
+  `walk-quick` it acts at every sound after a skipped wait, and the
+  vector is the BIOS's again after each sound that waits (18 hooks, 18
+  unhooks).
+- **Open**: nothing.
 
 ### The text faces
 

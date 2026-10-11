@@ -51,11 +51,18 @@
 //
 // **The effect ends by itself.** The driver's timer service plays the
 // click from the voice bank on its own ticks and runs it out to silence
-// with nobody waiting; the next request the dispatch entry is handed stops
-// whatever is still going first (its own `0x5374` test at the top). So a
-// click whose bracket is skipped sounds as long as it always did, unless
-// the next one starts first: a step taken the moment the last one's second
-// click starts cuts that click short.
+// with nobody waiting. So a click whose bracket is skipped sounds as long
+// as it always did, unless the next one starts first: the next request
+// loads its own effect into the bank, and a step taken the moment the last
+// one's second click starts cuts that click short.
+//
+// **The timer stays hooked until the next sound.** The entry hooks the
+// timer interrupt at its top (its own `0x5374` test there) and unhooks it
+// in the bracket, so a skipped bracket leaves it hooked, and the next
+// request would hook it again over its own hook. That the driver never
+// does is the timer fix's (seam_timer_fix.cpp), a built-in fix and not a
+// point of this seam, because it has to hold after this seam is turned
+// off with the hook still in place.
 //
 //
 // What the seam does
@@ -73,8 +80,8 @@
 // that DS is the program's data segment, and that BP is the routine's own
 // frame, and declines otherwise.
 //
-// **What it costs.** The driver is left running between clicks, which is
-// what its own busy word says, until the next request stops it. A run with
+// **What it costs.** The driver is left running between clicks, its timer
+// hooked and fast, until the next request's bracket unhooks it. A run with
 // it on differs from the run with it off from the first click: the timer
 // service writes the sound chip on more ticks, the program reaches its
 // next key sooner, and so everything that reads the clock afterwards reads
