@@ -41,6 +41,15 @@ void dos_services::reset() noexcept {
   exited_ = false;
 }
 
+void dos_services::close_files(filesystem& fs) {
+  for (std::uint16_t i = 0; i < max_handles; ++i) {
+    if (handles_[i].in_use && handles_[i].kind == handle_kind::file) {
+      fs.close(handles_[i].backing);
+      close(i);
+    }
+  }
+}
+
 std::uint16_t dos_services::open_file(file_handle file,
                                       const dos_path& path) noexcept {
   for (std::uint16_t i = 0; i < max_handles; ++i) {
@@ -823,6 +832,10 @@ void get_vector_fn(service_floor& floor) {
 // --- Exit: AH=4Ch, INT 20h -----------------------------------------------
 
 void terminate(service_floor& floor, std::uint8_t code) {
+  // DOS closes what an ending program left open (dos.h, `close_files()`).
+  if (filesystem* fs = floor.box().vfs(); fs != nullptr) {
+    floor.box().dos().close_files(*fs);
+  }
   floor.box().dos().record_exit(code);
   floor.box().exit_program(code);
 }

@@ -504,8 +504,9 @@ uint32_t af_machine_attach_reference_devices(af_machine* box);
 
 /// The RESET line (machine::reset). Clears any stop, puts the virtual
 /// clock back to zero, blanks the frame, restarts the audio timeline, and
-/// throws away queued input and undrained console output. RAM keeps what
-/// it held, exactly as a warm boot does.
+/// throws away queued input and undrained console output. Every file the
+/// program had open is closed; the disk keeps every byte written to it.
+/// RAM keeps what it held, exactly as a warm boot does.
 uint32_t af_machine_reset(af_machine* box);
 
 /// Run until the virtual clock reaches `tick`, or until the machine
