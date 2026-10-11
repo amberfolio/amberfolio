@@ -6,9 +6,10 @@ What this emulator adds to the game, as a player meets it. `docs/seams.md`
 is the mechanism and the house style for writing another.
 
 **Every enhancement is off by default**, and with all of them off the
-machine is a plain machine (`docs/seams.md` §7 is the test). The one
-exception is a **fix** for a way the game breaks that nobody could want
-(the roster fix, below): it is always on and there is nothing to turn. **Nothing is
+machine is a plain machine (`docs/seams.md` §7 is the test). The
+exceptions are **fixes** for ways the game breaks that nobody could want
+(the roster fix and the timer fix, below): they are always on and there
+is nothing to turn. **Nothing is
 injected into the game**: a seam is native C++ that stops the program at
 an address, reads or writes memory, and lets it continue. The program on
 the disk and every file the game owns are never modified.
@@ -85,6 +86,23 @@ in no panel, config file or flag.
 **What it will not do.** Touch a name that has its file, or one already
 in the party; create, move or delete any character's file. A roster whose
 files are all there is left exactly as the game built it.
+
+## The timer fix (always on)
+
+**What it does.** Keeps the game's sound driver from hooking the PC's
+timer a second time over its own hook. Quick steps lets a footstep's
+click play on with the timer still hooked, and without this fix the next
+sound would hook it again: from then on every sound played thirteen
+times slower, a monster's death for five or six seconds, until the game
+was restarted.
+
+**How you turn it on.** You do not: it is built in, on in every run, and
+in no panel, config file or flag. It stays on when quick steps is turned
+off, which is when a hook quick steps left behind still needs it.
+
+**What it will not do.** Anything in a game that quick steps has not
+touched: there, the driver always unhooks the timer before it hooks it
+again, and the fix finds nothing to do.
 
 ## The automap
 

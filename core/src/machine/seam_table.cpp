@@ -32,7 +32,8 @@ std::span<const seam_definition> all_seams() {
 
 std::span<const seam_definition> built_in_fixes() {
   // The same, for the fixes: on with their program, listed nowhere.
-  static const std::array<seam_definition, 1> table{roster_fix_seam()};
+  static const std::array<seam_definition, 2> table{roster_fix_seam(),
+                                                    timer_fix_seam()};
   return table;
 }
 
