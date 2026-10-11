@@ -483,6 +483,23 @@ one setting.
 prompts either. The View > Drop money amount is the game's own and takes
 digits only, so an arrow was never wrong there.
 
+## Quick steps
+
+**What it does.** Turning, and the next step, stop waiting for the
+footstep. The game holds everything still for a tenth of a second while
+each click plays: before the view turns, and both before and after the
+view moves on a step forward. With quick steps on, a turn's click plays
+while the view turns, six frames after the key instead of eleven at the
+386 setting, and a step's second click plays while the game takes your
+next key. A step's first wait stays, because it is what spaces the
+step's two clicks the way the game always had them.
+
+**How you turn it on.** `--seam quick-steps`, or its toggle in the panel.
+
+**What it will not do.** Make anything else faster. Every other sound
+waits as it always did, and the time the game spends drawing the view is
+its own.
+
 ## The text faces
 
 **What they do.** Redraw the game's lettering in a face of your choice,

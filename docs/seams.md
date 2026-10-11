@@ -622,6 +622,8 @@ and never triggered.
 | `menu-down-cursor` | contrast | `menu-down` (Down, Down and Return at the main menu take the third command) |
 | `move-walk-mode` | contrast | `move-walk` (Return takes `Move`, a step on the walking bar, Escape back to the menu, two Rights to `View` and Return opens it, where the program walks and turns) |
 | `name-arrows-edit` | contrast | `name-arrows` (a Right, an Up, a Down and a Left among the letters of a name: the program types a letter for each) |
+| `menu-letters-quick` | identical | `menu-letters` (the party menu clicks no footstep) |
+| `walk-quick` | contrast | `walk` (the first footstep goes on without its wait) |
 
 **A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
 with its program and listed nowhere: no panel, config file, flag or
@@ -872,6 +874,7 @@ to carry.
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
 | `modern-controls` | the controls a later game has, eight pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 16 and 19, and the resident image |
+| `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -2916,6 +2919,65 @@ draws and changes nothing.
 - **Fidelity**: the handlers read and write nothing of the machine's, so
   every session with `modern-controls` on verifies as it did. Unit:
   `SeamTextEntry.*`, `AbiTextEntry.*`.
+
+### Quick steps
+
+Not a PLAN.md §5 item: a player's request, after profiling a step at the
+386 governor. **A turn spent six of its eleven frames between the key
+and the new view in a busy-wait**, and a step forward two of them, one
+before the redraw and one after it. The wait is the sound driver's, and
+it is for the footstep's click.
+
+**What the program does.** Every sound starts at the driver's dispatch
+entry, image offset `0x8BBC` (`push bp; mov bp,sp`, the far return at
+`[BP+2]`, the request word at `[BP+6]`, `retf 2`). Five calls ask it for
+the footstep, the word at DGROUP `0x2628`, by the far returns they leave:
+
+| overlay (load-segment word) | return | the call | its wait |
+| --- | --- | --- | --- |
+| 14 (`0x730`) | `0x0B19`, `0x0B5E` | a turn left, a turn right, before the view is drawn | skipped |
+| 14 | `0x0747` | a step's commit, before the redraw | kept: it spaces the step's two clicks |
+| 3 (`0x200`, the one match of the manager's-record search) | `0x34D8` | the adventuring loop, after the redraw, when the square changed | skipped |
+| 3 | `0x2D91` | an event script's click | kept |
+ After starting a request, the
+entry tests the driver's busy word, DGROUP `0x5374`; set, it spins in the
+driver's calibrated wait for ten hundredths on the DOS clock, then
+silences both voice banks and stops the driver. Clear, it goes straight
+to its `pop bp; retf 2`.
+
+**Point**, in the resident image:
+
+| point | what the handler does |
+| --- | --- |
+| `0x8C36`, the busy-word test (`cmp word [0x5374],0`) | when the request in the frame is the word at DGROUP `0x2628` and the far return is a skipped call site, its segment the one the overlay's word holds now, moves IP to `0x8C57`, the epilogue the test's own branch takes when the driver is idle. Any other call or request is left to wait |
+
+- **The click is not lost.** The driver's timer service plays the effect
+  out to silence by itself, and the next request the entry is handed stops
+  whatever is still going (its own busy-word test at the top). Measured on
+  the Tandy chip: the same click, as long as it always was, and a step's
+  two clicks as far apart. A step taken the moment the last one's second
+  click starts cuts it short.
+- **Rejected**: skipping every footstep's wait. A step's two clicks then
+  run together, which the maintainer heard as not the game's own sound;
+  the step's first wait is what spaces them.
+- **Rejected**: skipping the wait and keeping the silencing. Nothing waits,
+  but the click is stopped in the instant it is started and is never heard
+  (32 chip writes in a run of two turns and two steps that makes 1,264
+  with the seam off).
+- **Refuses** a DS that is not the data segment, an instruction whose
+  operand is not the busy word's address, and a BP that is not the
+  routine's frame (`BP == SP` at the test).
+- **Fidelity**: before the first footstep it moves nothing, and a run with
+  no footstep is the run with it off (`menu-letters-quick`, `identical`).
+  From the first footstep the driver is left running between clicks, as
+  its own busy word says, the program reaches its next key sooner, and
+  everything that reads the clock afterwards reads another time
+  (`walk-quick`, `contrast`, 81 of 190 checkpoints identical). It cannot
+  be in `quiet-all`: `quiet`'s four movement keys click.
+- **Open**: a step's new view still comes after its first click's wait.
+  And of what is left between a key and a turned view, about four frames
+  at the 386 governor are the program composing the view in its back
+  buffer and copying it out.
 
 ### The text faces
 
