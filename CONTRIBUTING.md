@@ -142,7 +142,10 @@ Every milestone from M3 on gets a **0.x pre-release** tag (PLAN.md §7).
   exactly (`af_version` reports it across the ABI and the wasm smoke test
   asserts it).
 - The version bump happens in the closeout pull request, so the tagged
-  commit is the first that reports the new version.
+  commit is the first that reports the new version. For a patch release
+  that pull request is the fix itself: the bump and the status lines ride
+  with it, and the tag goes on its merge, so there is no second CI round
+  for a pull request that only changes a number.
 - The tag's message is one paragraph on what the milestone means and what
   it does not; it becomes the release notes.
 - **Nothing is ever retagged**, and **assets are never republished under
