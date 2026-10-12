@@ -2157,13 +2157,14 @@ thing out from the screen.
   lines: `amberfolio: text-entry reading` or `text-entry not-reading`, and
   nothing while it is unknown.
 
-## 13. Where the party is (#520, #521)
+## 13. Where the party is (#520, #521, #523)
 
 What a sighted player takes from the 3D view, the automap panel, the
 overland window and the combat grid, as data: the party's square and
 facing, what is on each face around it, the squares it can see, the map it
 has explored, the terrain of the travel window, and in a fight who stands
-where. Screen text (§10) carries the menus; this
+where, how far each is from whoever is acting, and where the aim cursor
+is. Screen text (§10) carries the menus; this
 carries the places, which are not text. A screen reader turns it into
 "door ahead, wall on the left"; an assistant walks from it instead of from
 screenshots.
@@ -2196,14 +2197,15 @@ A fight (game mode 5, the tactical grid):
 
 ```json
 {"screen":"combat","disk":6,"area":25,"zone":"WILDERNESS",
- "turn":1,"waiting":true,
+ "turn":0,"waiting":true,"nearest":2,
+ "aim":{"mode":"target","x":25,"y":12,"under":2,"range":2,"target":true},
  "combatants":[
    {"name":"HULK","side":"party","player":true,"standing":true,"status":"okay",
     "x":27,"y":13,"width":1,"height":1,"hp":51,"ac":10},
    {"name":"MULE","side":"party","player":true,"standing":true,"status":"okay",
-    "x":28,"y":13,"width":1,"height":1,"hp":82,"ac":7},
-   {"name":"QUICKLINGS","side":"enemy","player":false,"standing":true,
-    "status":"okay","x":17,"y":3,"width":1,"height":1}],
+    "x":28,"y":13,"width":1,"height":1,"range":1,"hp":82,"ac":7},
+   {"name":"TIGER","side":"enemy","player":false,"standing":true,
+    "status":"okay","x":25,"y":12,"width":1,"height":1,"range":2}],
  "window":{"x":24,"y":10,
            "rows":[[{"terrain":23,"move":"open","cost":1}, ...7], ...7]}}
 ```
@@ -2260,15 +2262,43 @@ A fight (game mode 5, the tactical grid):
 - **`turn`** is an index into `combatants`, `null` between turns, and
   **`waiting`** is true while the program waits for the player's orders,
   which is only ever on a figure the player commands.
+- **`range`** is how far a figure is from the acting one by the aim bar's
+  own measure: the longer of the two distances and half the shorter,
+  rounded down (`scene_range` in `machine/scene.h`), nearest square to
+  nearest square for a large figure. It is the number the bar prints for a
+  figure nothing hides; the bar itself offers only figures in sight. Absent
+  on the acting figure, and on every figure between turns.
+- **`nearest`** is the index of the standing figure nearest the acting one
+  on the other side from it: on a party member's turn the nearest listed
+  enemy, on a monster's the nearest party member. The first listed wins a
+  tie. `null` between turns and when no such figure is listed.
 - **The window's `rows`** are the ground under each square: `terrain` the
   program's own number, `move` `open` with the movement it `cost`s, or
   `blocked` (no figure ever steps there), or `edge` (off the grid: a step
   there is a step out of the fight, and the program asks whether to flee).
   A figure standing on a square is in `combatants`, not in the ground.
-- **The aim cursor is not carried** (#523). Neither aim mode keeps its square
-  anywhere but on the aiming routine's own stack. Aiming target to target,
-  the target is always the figure whose sheet the panel shows, which the
-  screen text (§10) reads, with its `RANGE`.
+- **`aim`** is the aim bar while it waits for a key (Aim on the combat
+  bar, or a spell's target):
+  - `mode` is `target` (Next and Prev step through the figures in sight,
+    nearest first, beginning with the acting figure itself at range 0) or
+    `manual` (a cursor the arrows move square by square);
+  - `x`,`y` is the cursor's square: the target's top-left square, or the
+    manual cursor's own;
+  - `under` is the index of the figure whose sheet the panel shows: the
+    target, or in manual the figure on the cursor's square (a fallen party
+    member's body included) when it is in sight. `null` when the panel
+    shows no one, or someone not listed (a target outside the window);
+  - `range` is the number the bar prints after `RANGE =`, `null` when it
+    prints none (manual with the cursor out of sight, or a spell's aim
+    from target to target);
+  - `target` is whether the bar offers Target.
+
+  **`null` while the bar is not waiting for a key**, which includes the
+  moment between two keys while the cursor moves and the bar is redrawn.
+  **Absent while `modern-controls` is off**: the program keeps all of it on
+  the aiming routine's stack, and only that seam's `aim-watch` piece notes
+  where (`docs/seams.md` §10), so absent is "not known" and `null` is "not
+  aiming". Every site build turns the seam on.
 - **A step ahead of the picture, for a moment.** The program moves a
   figure, or scrolls the window, in its back buffer first and copies that
   to the screen when it has drawn everything; between the two the read
@@ -2306,4 +2336,7 @@ A fight (game mode 5, the tactical grid):
   ground from `+7`, fifty bytes a row. A ground number's cost is the first
   of four bytes from `0x2744`: `0xFF` blocks, and ground 0 is off the
   grid.
+- **The aim bar's facts** are in `docs/seams.md` §10 ("Aim watch") and
+  `core/src/machine/seam_aim_watch.cpp`: overlay 13's two key waits, the
+  frame each keeps the cursor, the panel's record and the range in.
 - **Both hosts' `--dump`** write it beside each still as `.scene.json`.

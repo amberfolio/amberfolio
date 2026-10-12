@@ -1536,14 +1536,16 @@ export class Machine {
     return null;
   }
 
-  /// Where the party is and what is around it (#520), parsed: on the
-  /// interior screen `{ screen: 'explore', x, y, facing, around, view,
-  /// map, ... }`, on the overland `{ screen: 'travel', x, y, facing,
-  /// window, ... }`, and **null while nothing knows** — no program, or a
-  /// screen neither shape covers (a menu, the camp, a fight). `map` is
-  /// null while the automap is off, because then nothing records where
-  /// the party has been. `docs/hosts.md` §13 has every field. A read, so
-  /// a page that never asks pays nothing.
+  /// Where the party is and what is around it (#520, #521, #523), parsed:
+  /// on the interior screen `{ screen: 'explore', x, y, facing, around,
+  /// view, map, ... }`, on the overland `{ screen: 'travel', x, y, facing,
+  /// window, ... }`, in a fight `{ screen: 'combat', turn, waiting,
+  /// nearest, aim, combatants, window, ... }`, and **null while nothing
+  /// knows** — no program, or a screen no shape covers (a menu, the camp).
+  /// `map` is null while the automap is off, because then nothing records
+  /// where the party has been; `aim` is absent while `modern-controls` is
+  /// off, because then nothing watches the aim bar. `docs/hosts.md` §13
+  /// has every field. A read, so a page that never asks pays nothing.
   scene() {
     const needed = this.module._af_machine_scene_json(this.handle, 0, 0);
     const scratch = this.module._malloc(needed + 1);

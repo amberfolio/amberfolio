@@ -40,7 +40,16 @@
 // are; an enemy is listed only while it is in the window, because that is
 // all the screen shows of it. A figure's hit points and armour class are
 // carried where the screen prints them: every party member's, and the
-// acting combatant's while it is the one acting.
+// acting combatant's while it is the one acting. Each figure's range from
+// the acting one is the aim bar's own measure, which a sighted player
+// reads off the grid by eye.
+//
+// **The aim bar**, while it waits for a key: which way it is aiming, the
+// cursor's square, the figure whose sheet the panel shows, the range it
+// prints and whether it offers Target. The program keeps all of it on its
+// stack, so it is there only while `modern-controls` is on, whose
+// `aim-watch` piece notes where (seam_aim_watch.cpp); with it off the
+// answer says the bar is not known rather than not up.
 //
 // **Nothing while nothing knows.** No program, a program this build has no
 // facts for, or a screen none of the shapes covers — a menu, a shop, the
@@ -206,6 +215,69 @@ struct scene_combatant {
   bool health_shown{false};
   std::uint8_t hp{};
   int ac{};
+  /// How far it is from the acting figure by the aim bar's own measure
+  /// (`scene_range`), nearest square to nearest square; -1 while it is no
+  /// one's turn, or either has no square.
+  int range{-1};
+};
+
+/// The aim bar's measure of how far one square is from another: the
+/// longer of the two distances and half the shorter, rounded down, which
+/// is what a straight line costs across the grid, a diagonal step three
+/// halves and a straight one two. It does not ask whether anything stands
+/// in the way, which the aim bar does before it offers a target.
+[[nodiscard]] constexpr int scene_range(int x0, int y0, int x1,
+                                        int y1) noexcept {
+  const int dx = x1 > x0 ? x1 - x0 : x0 - x1;
+  const int dy = y1 > y0 ? y1 - y0 : y0 - y1;
+  return dx > dy ? dx + (dy / 2) : dy + (dx / 2);
+}
+
+/// Which way the aim bar is aiming.
+enum class scene_aim_mode : std::uint8_t {
+  /// The bar is not waiting for a key.
+  none,
+  /// From target to target: Next and Prev step through the figures in
+  /// sight, and the cursor is on one of them.
+  target,
+  /// A cursor the player moves square by square.
+  manual,
+};
+
+[[nodiscard]] const char* scene_aim_mode_name(scene_aim_mode mode) noexcept;
+
+/// Where the aim bar's own routine keeps its frame while it waits for a
+/// key, as the `modern-controls` seam notes it (seam_aim_watch.cpp), and
+/// the two things it decided before the wait that its frame no longer
+/// holds. The cursor's square, the figure under it and the range are read
+/// out of that frame.
+struct scene_aim_frame {
+  scene_aim_mode mode{scene_aim_mode::none};
+  std::uint16_t stack_segment{};
+  std::uint16_t frame{};
+  /// Whether the bar offers Target.
+  bool offered{false};
+  /// Whether the screen prints a range.
+  bool range_shown{false};
+};
+
+/// The aim bar, while it waits for a key.
+struct scene_aim {
+  scene_aim_mode mode{scene_aim_mode::none};
+  /// The cursor's square: the target's top-left square from target to
+  /// target, the cursor's own in manual.
+  std::uint8_t x{};
+  std::uint8_t y{};
+  /// The figure whose sheet the panel shows, an index into `combatants`:
+  /// the target, or in manual whoever the cursor is on and in sight; -1
+  /// when the panel shows no one listed.
+  int under{-1};
+  /// The range the bar prints; -1 when it prints none (manual, with the
+  /// cursor out of sight).
+  int range{-1};
+  /// Whether the bar offers Target: in reach, in sight, and a figure the
+  /// acting one may aim at.
+  bool target{false};
 };
 
 /// How many squares the 3D view can show: at each of three depths the
@@ -286,6 +358,16 @@ struct scene {
   /// origin).
   std::array<scene_cell, std::size_t{scene_combat_side} * scene_combat_side>
       ground{};
+  /// The standing figure nearest the acting one on the other side from
+  /// it, an index into `combatants` (the first listed of those equally
+  /// near): on a party member's turn the nearest enemy, on a monster's the
+  /// nearest party member. -1 while it is no one's turn or none is listed.
+  int nearest{-1};
+  /// Whether anything is watching the aim bar (`modern-controls` is on).
+  /// False means "not known", not "not aiming".
+  bool aim_kept{false};
+  /// The aim bar; `mode` none while it is not waiting for a key.
+  scene_aim aim{};
 };
 
 /// The scene on `box` now. `out` is `scene_screen::none` unless the answer
@@ -293,12 +375,14 @@ struct scene {
 [[nodiscard]] scene_trouble read_scene(const machine& box, scene& out) noexcept;
 
 /// The same, from the parts of a machine it reads: conventional memory,
-/// where the program's data segment begins in it, and the automap's store
-/// when the automap seam is on (null when it is not). No program facts
-/// are checked here: the caller has already matched the fingerprint.
+/// where the program's data segment begins in it, the automap's store
+/// when the automap seam is on (null when it is not), and the aim bar's
+/// frame when `modern-controls` is on (null when it is not). No program
+/// facts are checked here: the caller has already matched the fingerprint.
 [[nodiscard]] scene_trouble read_scene_in(std::span<const std::uint8_t> ram,
                                           std::uint32_t data_base,
                                           const automap_state* kept,
+                                          const scene_aim_frame* aim,
                                           scene& out) noexcept;
 
 /// `scene` as JSON (`docs/hosts.md` §13): `null` when its

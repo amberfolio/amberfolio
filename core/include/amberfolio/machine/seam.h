@@ -1111,9 +1111,10 @@ class seam_engine {
 
   /// Points armed at once, across every enabled seam. Thirty-two was
   /// what the build's seams needed until the keys' seams: with every seam
-  /// on there are thirty-four points (the journal alone has ten), and the
+  /// on there were thirty-four points (the journal alone has ten), and the
   /// last one a player switched on was refused with `too_many_points`.
-  static constexpr std::size_t max_points = 64;
+  /// Sixty-four lasted until the aim bar's watch made it sixty-seven.
+  static constexpr std::size_t max_points = 96;
 
   /// What a batch of calls into the program may hold (#188). A report is
   /// a framed box and a handful of lines, so twelve calls of eight words
@@ -1123,11 +1124,12 @@ class seam_engine {
   static constexpr std::size_t max_call_words = 8;
   static constexpr std::size_t max_call_bytes = 256;
 
-  /// Words of its own a seam may keep between arrivals (#189). Eight is
-  /// what the Encamp Fix's report needs — what it spent, what it
-  /// restored, when it started — and small enough that a seam reaching
-  /// for a ninth is a seam that should be reading the machine instead.
-  static constexpr unsigned scratch_words = 8;
+  /// Words of its own a seam may keep between arrivals (#189). Twelve is
+  /// what `modern-controls`' pieces need between them — the move mode's
+  /// five, the line editor's one and the aim bar's four — and small
+  /// enough that a seam reaching for more is a seam that should be
+  /// reading the machine instead.
+  static constexpr unsigned scratch_words = 12;
 
   /// How many step boundaries a batch may take before the engine decides
   /// the call is not coming back.

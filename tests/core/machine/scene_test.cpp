@@ -772,6 +772,7 @@ TEST(SceneCombat, TheJsonHasNoSquareForTheParty) {
   r.acting(r.figure("HULK", false, 12, 8));
   EXPECT_EQ(r.json().rfind(R"({"screen":"combat","disk":6,"area":25,)"
                            R"("zone":"WILDERNESS","turn":0,"waiting":true,)"
+                           R"("nearest":null,)"
                            R"("combatants":[{"name":"HULK","side":"party",)"
                            R"("player":true,"standing":true,"status":"okay",)"
                            R"("x":12,"y":8,"width":1,"height":1,"hp":20,)"
@@ -779,6 +780,98 @@ TEST(SceneCombat, TheJsonHasNoSquareForTheParty) {
                            0),
             0U)
       << r.json();
+}
+
+TEST(SceneCombat, TheRangeIsTheLongerDistanceAndHalfTheShorter) {
+  EXPECT_EQ(scene_range(10, 10, 10, 10), 0);
+  EXPECT_EQ(scene_range(10, 10, 13, 10), 3);
+  EXPECT_EQ(scene_range(10, 10, 10, 6), 4);
+  EXPECT_EQ(scene_range(10, 10, 13, 13), 4);
+  EXPECT_EQ(scene_range(10, 10, 6, 13), 5);
+  EXPECT_EQ(scene_range(13, 12, 10, 10), 4);
+}
+
+TEST(SceneCombat, EachFigureHasItsRangeFromTheActingOne) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  const unsigned hulk = r.figure("HULK", false, 12, 8);
+  r.figure("MULE", false, 13, 8);
+  r.figure("ORC", true, 14, 5);
+  scene s = r.read();
+  EXPECT_EQ(s.combatants[1].range, -1) << "no one's turn";
+  EXPECT_EQ(s.nearest, -1);
+
+  r.acting(hulk);
+  s = r.read();
+  EXPECT_EQ(s.combatants[0].range, -1) << "the acting figure itself";
+  EXPECT_EQ(s.combatants[1].range, 1);
+  EXPECT_EQ(s.combatants[2].range, 4);
+  EXPECT_NE(r.json().find(R"("x":14,"y":5,"width":1,"height":1,"range":4})"),
+            std::string::npos)
+      << r.json();
+}
+
+TEST(SceneCombat, ALargeFigureIsMeasuredToItsNearestSquare) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  r.acting(r.figure("HULK", false, 12, 8));
+  r.figure("DRAGON", true, 14, 8, 4);  // two by two, from (14, 8)
+  r.figure("OGRE", true, 10, 9, 2);    // one wide, two tall, from (10, 9)
+  const scene s = r.read();
+  EXPECT_EQ(s.combatants[1].range, 2);
+  EXPECT_EQ(s.combatants[2].range, 2);
+}
+
+TEST(SceneCombat, NearestIsTheClosestStandingEnemy) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  r.acting(r.figure("HULK", false, 12, 8));
+  r.figure("MULE", false, 12, 9);
+  r.figure("ORC", true, 16, 8);
+  r.figure("GOBLIN", true, 14, 10);
+  r.figure("KOBOLD", true, 12, 11);
+  const scene s = r.read();
+  // The goblin and the kobold are both three away; the first listed wins.
+  EXPECT_EQ(s.combatants[3].range, 3);
+  EXPECT_EQ(s.combatants[4].range, 3);
+  EXPECT_EQ(s.nearest, 3);
+  EXPECT_NE(r.json().find(R"("waiting":true,"nearest":3,)"), std::string::npos)
+      << r.json();
+}
+
+TEST(SceneCombat, OnAMonstersTurnTheNearestIsAPartyMember) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  r.figure("HULK", false, 12, 8);
+  r.figure("MULE", false, 15, 8);
+  const unsigned orc = r.figure("ORC", true, 16, 7);
+  r.figure("GOBLIN", true, 16, 8);
+  r.acting(orc);
+  const scene s = r.read();
+  EXPECT_EQ(s.combatants[3].range, 1) << "its ally is nearer";
+  EXPECT_EQ(s.nearest, 1);
+}
+
+TEST(SceneCombat, NoEnemyListedIsNoNearest) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  r.acting(r.figure("HULK", false, 12, 8));
+  r.figure("ORC", true, 40, 20);  // outside the window
+  EXPECT_EQ(r.read().nearest, -1);
+}
+
+TEST(SceneCombat, TheAimIsAbsentWhileNothingWatchesIt) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  r.figure("HULK", false, 12, 8);
+  EXPECT_FALSE(r.read().aim_kept);
+  EXPECT_EQ(r.json().find("aim"), std::string::npos) << r.json();
 }
 
 // --- The JSON ---------------------------------------------------------------
