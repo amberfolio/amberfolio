@@ -28,7 +28,8 @@ without waiting for the footstep's click: #510, and a built-in fix
 keeps the sound driver from hooking the timer twice behind it: #512;
 a reset or an exit closes every file the program left open: #514; a
 host can read where the party is and what is around it, in a fight
-as well: #520, #521). The game boots, plays end to end, all six v1 enhancements work and toggle
+as well, the aim cursor and each figure's range included: #520, #521,
+#523). The game boots, plays end to end, all six v1 enhancements work and toggle
 independently on both hosts, and a player reaches all of it from the
 shells: onboarding, a config file, a toggle panel, a document control and
 the on-screen keyboard. The current milestone is **M7** (1.0: release

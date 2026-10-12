@@ -33,8 +33,10 @@ namespace {
 
 constexpr std::string_view seam_id = "modern-controls";
 
-/// The piece's two points come last in the seam's table.
+/// The piece's two points come just before `aim-watch`'s five, which are
+/// last in the seam's table.
 constexpr std::size_t piece_count = 2;
+constexpr std::size_t after_piece = 5;
 
 /// The line editor's first instruction and its one return, in the resident
 /// image, from the image segment.
@@ -73,13 +75,13 @@ struct rig {
   std::unique_ptr<machine> box;
 };
 
-TEST(SeamTextEntry, IsTwoResidentPointsAtTheEndOfTheControlsTable) {
+TEST(SeamTextEntry, IsTwoResidentPointsNearTheEndOfTheControlsTable) {
   const rig r;
   const seam_definition* s = r.box->seams().find(seam_id);
   ASSERT_NE(s, nullptr);
-  ASSERT_GE(s->points.size(), piece_count);
-  const std::span<const seam_point> piece =
-      s->points.subspan(s->points.size() - piece_count);
+  ASSERT_GE(s->points.size(), piece_count + after_piece);
+  const std::span<const seam_point> piece = s->points.subspan(
+      s->points.size() - piece_count - after_piece, piece_count);
   EXPECT_EQ(piece[0].offset, editor_entry);
   EXPECT_EQ(piece[1].offset, editor_return);
   for (const seam_point& p : piece) {

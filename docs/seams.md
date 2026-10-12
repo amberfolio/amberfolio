@@ -874,7 +874,7 @@ to carry.
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
-| `modern-controls` | the controls a later game has, eight pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 16 and 19, and the resident image |
+| `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
 | `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
@@ -1179,8 +1179,8 @@ rule, settling quarantine and ownership signals are derived in
   step.
 - Exploration is never gated on whose bar is up.
 
-**State**: `machine::automap()` (a map's fog is thirty-two bytes;
-`scratch_words` is sixteen), observation beside the overlay tracker:
+**State**: `machine::automap()` (a map's fog is thirty-two bytes, and
+a seam's own words are twelve), observation beside the overlay tracker:
 dropped by `reset()`, absent from the serialization, rebuilt by a replay.
 The colour cache and the door tally live there too. **Host services**:
 `automap_update`, called with the store's serial when a reveal changes
@@ -1449,6 +1449,8 @@ to pull.
 | edit keys | `seam_edit_keys.cpp` | an extended key types nothing at a text prompt | 1 |
 | selection block | `seam_select_yellow.cpp` | every selection a yellow block, a key letter a white one, with a margin all round | 11 |
 | move mode | `seam_move_mode.cpp` | on the party's own bar walking is a mode: `Move` starts it, `Exit` ends it, and in between Left and Right step the bar; `Area` is gone | 5 |
+| text entry | `seam_text_entry.cpp` | nothing on the screen: a host can ask whether the program is reading a line of text | 2 |
+| aim watch | `seam_aim_watch.cpp` | nothing on the screen: a host's scene says where the combat aim cursor is, who is under it and the range | 5 |
 
 The sections below keep each piece's facts under the name it was a seam
 under (`list-arrows`, `bar-keys`, `menu-cursor`, `hero-keys`, `edit-keys`,
@@ -1461,20 +1463,21 @@ quoted below were taken per piece; the engine reports them for the one seam,
 summed over the pieces.
 
 - **One definition, the union of the points, in one order.** The
-  twenty-eight points are the pieces' own, in the order list arrows (3), bar
+  thirty-five points are the pieces' own, in the order list arrows (3), bar
   keys (1), menu cursor (2), hero keys (5), edit keys (1), selection block
-  (11), move mode (5). Five pieces have a point at the same instruction,
+  (11), move mode (5), text entry (2), aim watch (5). Five pieces have a point at the same instruction,
   overlay 25's key read at `0x0572` (list arrows, bar keys, menu cursor, hero
   keys, move mode), and the engine offers an address's points in table
   order, so the order is behaviour: the move mode is last, and rewrites the
   party bar's keys after every other piece has passed on them. The point
-  count with every seam on is fifty-nine, one face counted (`max_points` is
-  sixty-four).
+  count with every seam on is sixty-seven, one face counted (`max_points` is
+  ninety-six).
 - **One fingerprint, several modules.** Every piece keys on the baseline
   edition (§5) and only it, so the definition does. The modules are the
   pieces': overlay 25 for five of them, overlay 16 for the menu cursor's loop
   call, overlay 19 for Modify's score, overlay 14 for the move mode's party
-  bar, the resident image for the rest, and each point names its own.
+  bar, overlay 13 for the aim watch, the resident image for the rest, and
+  each point names its own.
 - **A piece cannot ask another.** The menu cursor took its colours from the
   selection colour; with the two one seam the answer is always yes and the
   cursor's row is always a yellow block with a white key. The journal's reader asks
@@ -2421,10 +2424,10 @@ same loop serves. Its Up and Down are the menu cursor's.
   The routine that draws a name in a status colour and the string drawer
   are called from the character sheet, combat and the camp's report as
   well; the points are inside the roster drawer so nothing else moves.
-- **`max_points` is sixty-four.** With every seam on, one face counted (they
-  are alternatives), the build has fifty-five points, twenty-four of them
-  `modern-controls`'. At thirty-two the last seam a player switched on was
-  refused with `too_many_points`
+- **`max_points` is ninety-six.** With every seam on, one face counted
+  (they are alternatives), the build has sixty-seven points, thirty-five of
+  them `modern-controls`'. At thirty-two the last seam a player switched on
+  was refused with `too_many_points`
   (`SeamHeroKeys.EveryBuiltInSeamFitsTheEngineAtOnce`).
 - **Rejected:** writing the selection and redrawing the list ourselves,
   because the main menu redraws after its own step and the program's cursor
@@ -2679,10 +2682,11 @@ outside the block's cells.
   character's position, a group in the table. A colour is never rewritten to
   what it already is, and only the **low byte** of a pushed word is read or
   written.
-- **`max_points` is sixty-four, and with every seam on the build carries
-  fifty-nine points** (the faces count once, being alternatives),
-  twenty-eight of them `modern-controls`': three, one, two, five, one, these
-  eleven and the move mode's five.
+- **`max_points` is ninety-six, and with every seam on the build carries
+  sixty-seven points** (the faces count once, being alternatives),
+  thirty-five of them `modern-controls`': three, one, two, five, one, these
+  eleven, the move mode's five, the text entry's two and the aim watch's
+  five.
 - **Rejected:** a face of the same shape (a seam with a parameter: seams have
   none); lighting the program's group as it is (the half of a word on the
   icon editor's bar, the maintainer's screenshot); a table of the callers
@@ -2923,6 +2927,57 @@ draws and changes nothing.
 - **Fidelity**: the handlers read and write nothing of the machine's, so
   every session with `modern-controls` on verifies as it did. Unit:
   `SeamTextEntry.*`, `AbiTextEntry.*`.
+
+#### Aim watch (#523)
+
+`seam_aim_watch.cpp`. Not a control: it notes where the combat aim bar's
+routine keeps its frame while the bar waits for a key, so the scene can say
+where the cursor is (`docs/hosts.md` §13). It draws and changes nothing.
+
+The aim command is overlay 13 (file offset 75771, 15474 bytes; the manager
+keeps its segment in the word at image `0x690`). It aims two ways, each a
+routine with a `push bp; mov bp,sp` frame that waits for a key through the
+menu-bar routine:
+
+| way | routine | in its frame, from BP |
+|---|---|---|
+| target to target | `0x2AA0` | the target's record, a far pointer, at `+0x0C`; the acting figure's at `+0x10`; the weapon's reach at `+0x0A`; an attack (not a spell's aim) at `+8`; the range it prints at `-0x30`; its bar string at `-0x2A`, which holds the word Target only where the target may be aimed at, until it is rebuilt as the whole bar |
+| manual | `0x2DFA` | the cursor's column at `-0x33` and row at `-0x34`; the range word at `-0x38`; the byte at `-0x39`, set where the line from the acting figure arrives and then cleared wherever Target is not offered; the record the panel shows (the figure on the square, or a body lying there), a far pointer, at `+0x14`, zero for none; an attack at `+0x10` |
+
+| point (overlay 13) | what the handler does |
+|---|---|
+| `0x2BB6`, where target to target's branches meet, the bar string decided and not yet rebuilt | notes target mode, SS and BP, whether the bar string is empty (Target not offered) and whether this is an attack (a range printed) |
+| `0x2C31`, that routine's return from the menu-bar routine | notes the wait over |
+| `0x2F84`, where manual's line branches meet, before the range is halved | notes whether the line arrived and this is an attack (a range printed) |
+| `0x310A`, where manual's Target branches meet, before the bar is built | notes manual mode, SS and BP, and whether Target is offered |
+| `0x3178`, that routine's return from the menu-bar routine | notes the wait over |
+
+- **The offsets by two routes.** Overlay 13's disassembly (each frame built
+  at its entry; the target pointer handed to the sheet drawer and compared
+  with the acting figure's; the range byte printed and compared with the
+  reach; the cursor's bytes clamped to 49 and 24 and compared with a body's
+  column and row) and the module's bytes at each point. The two returns
+  are also the ones `bar-keys` names these bars' calls by, found through
+  the menu-bar routine's frame.
+- **The frame, not a copy.** While the bar waits, the frame is the
+  program's own record of the cursor, the panel's record and the range,
+  and it stays put until the call returns, so the scene reads them there.
+  The seam keeps what the machine no longer holds where anyone can find
+  it: where the frame is (BP has moved on by the time a host asks) and the
+  two decisions the frame has overwritten by then.
+- **Only while waiting.** Between keys the routine moves the cursor and
+  redraws the bar with the frame being rewritten, and the answer is "not
+  waiting" for that moment. Driven on the baseline edition, slot J's
+  fight (`--wall none`): from target to target the cursor went from the
+  acting figure (range 0, no Target) to each other figure in sight with the
+  bar's `RANGE` and its Target each time; manual followed the arrows across
+  empty ground with the range the bar printed and nobody under the cursor;
+  Exit went back to target to target, and a second Exit ended the aim.
+- **State**: words 6 to 9 of the seam's own, observation, dropped by
+  `enable()` and `reset()`. **Host services**: none. **Keys**: none.
+- **Fidelity**: the handlers read the routine's frame and write nothing of
+  the machine's, so every session with `modern-controls` on verifies as it
+  did. Unit: `SeamAimWatch.*`, `SceneCombat.*`.
 
 ### Quick steps
 

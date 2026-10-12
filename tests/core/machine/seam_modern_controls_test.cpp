@@ -64,14 +64,14 @@ TEST(SeamModernControls, IsASettingOnTheBaselineEditionAndNothingElse) {
       << "every piece's addresses are facts about that one program";
 }
 
-TEST(SeamModernControls,
-     HasTheEightPiecesPointsInTheOrderTheyWereRegisteredIn) {
+TEST(SeamModernControls, HasTheNinePiecesPointsInTheOrderTheyWereRegisteredIn) {
   // list-arrows 3, bar-keys 1, menu-cursor 2, hero-keys 5, edit-keys 1,
-  // select-yellow 11, move-mode 5, text-entry 2. Where several pieces have a
+  // select-yellow 11, move-mode 5, text-entry 2, aim-watch 5. Where several
+  // pieces have a
   // point at one instruction the engine offers it in table order, so the
   // order is behaviour.
   const seam_definition& s = definition();
-  ASSERT_EQ(s.points.size(), 30u);
+  ASSERT_EQ(s.points.size(), 35u);
 
   // The menu-bar routine's key read, overlay 25 `0x0572`: five pieces
   // listen at it, the arrows' piece first and the party bar's move mode
@@ -101,12 +101,19 @@ TEST(SeamModernControls,
     EXPECT_EQ(s.points[23 + i].offset, party_bar[i]) << i;
     EXPECT_EQ(s.points[23 + i].module.load_segment_at, 0x730u) << i;
   }
-  // And the line editor's entry and return, last, at addresses no other
-  // piece has (#504).
+  // The line editor's entry and return, at addresses no other piece has
+  // (#504).
   EXPECT_EQ(s.points[28].offset, 0x7A73u);
   EXPECT_EQ(s.points[29].offset, 0x7BF3u);
   EXPECT_TRUE(s.points[28].module.is_resident_image());
   EXPECT_TRUE(s.points[29].module.is_resident_image());
+  // And the aim bar's five, last, in overlay 13 (#523).
+  constexpr std::array<std::uint32_t, 5> aim_bar{0x2BB6, 0x2C31, 0x2F84, 0x310A,
+                                                 0x3178};
+  for (std::size_t i = 0; i < aim_bar.size(); ++i) {
+    EXPECT_EQ(s.points[30 + i].offset, aim_bar[i]) << i;
+    EXPECT_EQ(s.points[30 + i].module.load_segment_at, 0x690u) << i;
+  }
 }
 
 TEST(SeamModernControls, AskedWithEverySeamOnItStillFitsTheEngine) {

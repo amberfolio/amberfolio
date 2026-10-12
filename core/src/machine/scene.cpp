@@ -18,6 +18,7 @@
 #include "amberfolio/machine/memory_map.h"
 #include "amberfolio/machine/seam.h"
 #include "automap_faces.h"
+#include "seam_builtin.h"
 
 namespace amberfolio::machine {
 namespace {
@@ -212,6 +213,18 @@ constexpr std::uint16_t data_ground_cost = 0x2744;
 constexpr std::uint16_t ground_cost_stride = 4;
 constexpr std::uint8_t cost_blocked = 0xFF;
 constexpr std::uint8_t ground_off_grid = 0;
+
+/// The aim bar's two frames while it waits for a key, from BP
+/// (seam_aim_watch.cpp has both routes). From target to target: the
+/// target's record, a far pointer, and the range it prints. Manual: the
+/// cursor's column and row, the range word, and the record the panel
+/// shows, a far pointer, zero for none.
+constexpr int target_record = 0x0C;
+constexpr int target_range = -0x30;
+constexpr int manual_column = -0x33;
+constexpr int manual_row = -0x34;
+constexpr int manual_range = -0x38;
+constexpr int manual_record = 0x14;
 
 // ---------------------------------------------------------------------------
 // Reading RAM
@@ -491,7 +504,117 @@ void place_body(const memory& ram, std::uint32_t record,
   return cell;
 }
 
-[[nodiscard]] bool read_combat(const memory& ram, scene& out) {
+/// The nearest of `who`'s squares to the nearest of `from`'s, by the aim
+/// bar's measure.
+[[nodiscard]] int range_between(const scene_combatant& from,
+                                const scene_combatant& who) noexcept {
+  int best = -1;
+  for (unsigned i = 0; i < from.width; ++i) {
+    for (unsigned j = 0; j < from.height; ++j) {
+      for (unsigned k = 0; k < who.width; ++k) {
+        for (unsigned l = 0; l < who.height; ++l) {
+          const int r = scene_range(
+              static_cast<int>(from.x + i), static_cast<int>(from.y + j),
+              static_cast<int>(who.x + k), static_cast<int>(who.y + l));
+          best = best < 0 ? r : std::min(best, r);
+        }
+      }
+    }
+  }
+  return best;
+}
+
+/// Each figure's range from the acting one, and the nearest standing
+/// figure on the other side from it.
+void measure_from_actor(scene& out) noexcept {
+  if (out.turn < 0) {
+    return;
+  }
+  const scene_combatant& actor =
+      out.combatants[static_cast<std::size_t>(out.turn)];
+  if (!actor.placed) {
+    return;
+  }
+  const auto turn = static_cast<std::size_t>(out.turn);
+  for (std::size_t i = 0; i < out.combatant_count; ++i) {
+    scene_combatant& who = out.combatants[i];
+    if (i == turn || !who.placed) {
+      continue;
+    }
+    who.range = range_between(actor, who);
+    if (who.side != actor.side && who.standing &&
+        (out.nearest < 0 ||
+         who.range <
+             out.combatants[static_cast<std::size_t>(out.nearest)].range)) {
+      out.nearest = static_cast<int>(i);
+    }
+  }
+}
+
+/// A figure's record and its square on the grid, by slot.
+struct slot_seen {
+  std::uint32_t record;
+  bool on_grid;
+  std::uint8_t x;
+  std::uint8_t y;
+};
+
+/// Where the aim bar is, out of the frame `at` names. Nothing is said
+/// unless the frame holds what its facts describe: a cursor on the grid,
+/// and from target to target, a target that is one of the figures.
+void read_aim(const memory& ram, const scene_aim_frame& at,
+              std::span<const slot_seen> slots,
+              std::span<const std::uint32_t> listed, scene& out) {
+  const std::uint32_t base = std::uint32_t{at.stack_segment} * 16U;
+  const auto in_frame = [&](int offset) {
+    return base + static_cast<std::uint16_t>(at.frame + offset);
+  };
+  const auto listed_as = [&](std::uint32_t record) {
+    for (std::size_t i = 0; i < listed.size(); ++i) {
+      if (record != 0 && listed[i] == record) {
+        return static_cast<int>(i);
+      }
+    }
+    return -1;
+  };
+
+  scene_aim aim{.mode = at.mode, .target = at.offered};
+  if (at.mode == scene_aim_mode::target) {
+    const std::uint32_t target =
+        ram.far_at(in_frame(target_record), record_bytes);
+    const slot_seen* seen = nullptr;
+    for (const slot_seen& slot : slots) {
+      if (target != 0 && slot.record == target && slot.on_grid) {
+        seen = &slot;
+      }
+    }
+    if (seen == nullptr) {
+      return;
+    }
+    aim.x = seen->x;
+    aim.y = seen->y;
+    aim.under = listed_as(target);
+    if (at.range_shown) {
+      aim.range = ram.at(in_frame(target_range));
+    }
+  } else if (at.mode == scene_aim_mode::manual) {
+    aim.x = ram.at(in_frame(manual_column));
+    aim.y = ram.at(in_frame(manual_row));
+    if (aim.x >= scene_combat_columns || aim.y >= scene_combat_rows) {
+      return;
+    }
+    aim.under = listed_as(ram.far_at(in_frame(manual_record), record_bytes));
+    if (at.range_shown) {
+      aim.range = ram.word_at(in_frame(manual_range));
+    }
+  } else {
+    return;
+  }
+  out.aim = aim;
+}
+
+[[nodiscard]] bool read_combat(const memory& ram, const scene_aim_frame* aim,
+                               scene& out) {
   const std::uint32_t block = ram.follow(data_combat_block, block_bytes);
   const std::uint8_t slots = ram.data(data_slot_count);
   if (block == 0 || slots == 0 || slots > scene_combatants_max) {
@@ -513,6 +636,8 @@ void place_body(const memory& ram, std::uint32_t record,
   out.window_y = window_y;
 
   const std::uint32_t actor = ram.follow(data_actor, record_bytes);
+  std::array<slot_seen, scene_combatants_max> seen{};
+  std::array<std::uint32_t, scene_combatants_max> listed{};
   for (unsigned slot = 1; slot <= slots; ++slot) {
     const std::uint32_t record = ram.follow(
         static_cast<std::uint16_t>(data_slot_records + (slot * slot_stride)),
@@ -531,6 +656,8 @@ void place_body(const memory& ram, std::uint32_t record,
       who.y = ram.data(squares + square_row);
       who.width = shapes[shape].width;
       who.height = shapes[shape].height;
+      seen[slot - 1] = {
+          .record = record, .on_grid = true, .x = who.x, .y = who.y};
     } else if (who.side == scene_side::party) {
       place_body(ram, record, who);
     }
@@ -553,6 +680,7 @@ void place_body(const memory& ram, std::uint32_t record,
       out.turn = out.combatant_count;
       out.waiting = who.player && who.standing;
     }
+    listed[out.combatant_count] = record;
     out.combatants[out.combatant_count++] = who;
   }
 
@@ -562,6 +690,12 @@ void place_body(const memory& ram, std::uint32_t record,
           ground_at(ram, block, static_cast<unsigned>(window_x) + j,
                     static_cast<unsigned>(window_y) + i);
     }
+  }
+  measure_from_actor(out);
+  out.aim_kept = aim != nullptr;
+  if (aim != nullptr) {
+    read_aim(ram, *aim, std::span(seen).first(slots),
+             std::span(listed).first(out.combatant_count), out);
   }
   return true;
 }
@@ -771,6 +905,11 @@ void write_combatant(json_out& json, const scene_combatant& who) {
     json.key("height");
     json.number(who.height);
   }
+  if (who.range >= 0) {
+    json.put(',');
+    json.key("range");
+    json.number(who.range);
+  }
   if (who.health_shown) {
     json.put(',');
     json.key("hp");
@@ -782,17 +921,64 @@ void write_combatant(json_out& json, const scene_combatant& who) {
   json.put('}');
 }
 
+/// An index into the combatants, or null for none.
+void write_index(json_out& json, int index) {
+  if (index < 0) {
+    json.put("null");
+  } else {
+    json.number(index);
+  }
+}
+
+/// The aim bar: absent while nothing watches it, null while it is not
+/// waiting for a key.
+void write_aim(json_out& json, const scene& from) {
+  if (!from.aim_kept) {
+    return;
+  }
+  json.put(',');
+  json.key("aim");
+  const scene_aim& aim = from.aim;
+  if (aim.mode == scene_aim_mode::none) {
+    json.put("null");
+    return;
+  }
+  json.put('{');
+  json.key("mode");
+  json.string(scene_aim_mode_name(aim.mode));
+  json.put(',');
+  json.key("x");
+  json.number(aim.x);
+  json.put(',');
+  json.key("y");
+  json.number(aim.y);
+  json.put(',');
+  json.key("under");
+  write_index(json, aim.under);
+  json.put(',');
+  json.key("range");
+  if (aim.range < 0) {
+    json.put("null");
+  } else {
+    json.number(aim.range);
+  }
+  json.put(',');
+  json.key("target");
+  json.put(aim.target ? "true" : "false");
+  json.put('}');
+}
+
 void write_combat(json_out& json, const scene& from) {
   json.put(',');
   json.key("turn");
-  if (from.turn < 0) {
-    json.put("null");
-  } else {
-    json.number(from.turn);
-  }
+  write_index(json, from.turn);
   json.put(',');
   json.key("waiting");
   json.put(from.waiting ? "true" : "false");
+  json.put(',');
+  json.key("nearest");
+  write_index(json, from.nearest);
+  write_aim(json, from);
   json.put(',');
   json.key("combatants");
   json.put('[');
@@ -878,6 +1064,18 @@ const char* scene_move_name(scene_move move) noexcept {
   return "unknown";
 }
 
+const char* scene_aim_mode_name(scene_aim_mode mode) noexcept {
+  switch (mode) {
+    case scene_aim_mode::none:
+      return "none";
+    case scene_aim_mode::target:
+      return "target";
+    case scene_aim_mode::manual:
+      return "manual";
+  }
+  return "unknown";
+}
+
 const char* scene_side_name(scene_side side) noexcept {
   switch (side) {
     case scene_side::party:
@@ -914,7 +1112,7 @@ const char* scene_status_name(scene_status status) noexcept {
 
 scene_trouble read_scene_in(std::span<const std::uint8_t> ram,
                             std::uint32_t data_base, const automap_state* kept,
-                            scene& out) noexcept {
+                            const scene_aim_frame* aim, scene& out) noexcept {
   out = {};
   const memory memory_now(ram, data_base);
   if (memory_now.data(data_in_transition) != 0) {
@@ -929,7 +1127,7 @@ scene_trouble read_scene_in(std::span<const std::uint8_t> ram,
       found = read_travel(memory_now, out);
       break;
     case mode_combat:
-      found = read_combat(memory_now, out);
+      found = read_combat(memory_now, aim, out);
       break;
     default:
       break;
@@ -959,9 +1157,13 @@ scene_trouble read_scene(const machine& box, scene& out) noexcept {
   // The explored map is the automap's, and only while it is on is it
   // being kept: with it off, no cell is "explored" because nothing looked.
   const bool kept = seams.status("automap").state == seam_state::on;
-  return read_scene_in(box.memory().ram(),
-                       seams.image_base() + where->dgroup_offset,
-                       kept ? &box.automap() : nullptr, out);
+  // The aim bar's frame is noted by `modern-controls`, and only while it is
+  // on is anything watching the bar.
+  scene_aim_frame aim{};
+  const bool aim_kept = aim_watch_now(box, aim);
+  return read_scene_in(
+      box.memory().ram(), seams.image_base() + where->dgroup_offset,
+      kept ? &box.automap() : nullptr, aim_kept ? &aim : nullptr, out);
 }
 
 std::size_t scene_json(const scene& from, std::span<char> out) noexcept {
