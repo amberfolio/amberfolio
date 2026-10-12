@@ -47,10 +47,12 @@ constexpr std::array<scene_binary, 1> binaries{{
      .dgroup_offset = 0xC7C0},
 }};
 
-/// The game mode byte: 4 is the interior screen, 3 the travel view.
+/// The game mode byte: 4 is the interior screen, 3 the travel view, 5 a
+/// fight.
 constexpr std::uint16_t data_game_mode = 0x49F3;
 constexpr std::uint8_t mode_travel = 3;
 constexpr std::uint8_t mode_interior = 4;
+constexpr std::uint8_t mode_combat = 5;
 
 /// Which view is up: 1 the interior grid, 2 to 4 the three wilderness
 /// areas.
@@ -131,6 +133,86 @@ constexpr std::array<terrain_range, 2> river_terrain{
   return in(river_terrain, terrain) ? scene_move::river : scene_move::open;
 }
 
+// --- The tactical grid -----------------------------------------------------
+//
+// The setup writes these and the drawing reads them, which is each one's
+// second route; the round loop and the move step are the others named.
+
+/// The figures: a table of far pointers to their records, one-based, at a
+/// stride of four, and beside it a table of their squares at the same
+/// stride: column, row, the slot's own number, and its shape (zero: not on
+/// the grid). Slot 0's shape byte is the number of slots.
+constexpr std::uint16_t data_slot_records = 0x65B9;
+constexpr std::uint16_t data_slot_squares = 0x5F27;
+constexpr std::uint16_t slot_stride = 4;
+constexpr std::uint16_t square_column = 0;
+constexpr std::uint16_t square_row = 1;
+constexpr std::uint16_t square_shape = 3;
+constexpr std::uint16_t data_slot_count = data_slot_squares + square_shape;
+
+/// The four shapes: one square, the square and the one below it, the
+/// square and the one east of it, and two by two.
+struct shape_size {
+  std::uint8_t width;
+  std::uint8_t height;
+};
+constexpr std::array<shape_size, 5> shapes{{{.width = 0, .height = 0},
+                                            {.width = 1, .height = 1},
+                                            {.width = 1, .height = 2},
+                                            {.width = 2, .height = 1},
+                                            {.width = 2, .height = 2}}};
+
+/// Whose turn it is: a far pointer to the acting figure's record, which the
+/// round loop writes and the spell aim reads.
+constexpr std::uint16_t data_actor = 0x5D92;
+
+/// A figure's record: a Pascal name of up to fifteen letters, the status
+/// (the sheet's word), whether it is still in the fight, its side (0 the
+/// party's), whether the computer gives its orders, the armour class as
+/// the program keeps it (sixty less the AC the sheet prints), and the
+/// current hit points.
+constexpr std::uint16_t record_bytes = 0x11D;
+constexpr std::uint16_t record_name = 0x00;
+constexpr std::uint16_t record_status = 0x10C;
+constexpr std::uint16_t record_in_fight = 0x10D;
+constexpr std::uint16_t record_side = 0x10E;
+constexpr std::uint16_t record_computer = 0x10F;
+constexpr std::uint16_t record_ac = 0x111;
+constexpr std::uint16_t record_hp = 0x11B;
+constexpr int ac_base = 0x3C;
+
+/// The fallen: a count, and seven bytes each in the table before it — the
+/// record's far pointer, the column and row the body lies on, and the
+/// ground it covers. The program adds one where a party member falls.
+constexpr std::uint16_t data_body_count = 0x6715;
+constexpr std::uint16_t data_bodies = 0x66D6;
+constexpr std::uint16_t body_stride = 7;
+constexpr std::uint16_t body_column = 4;
+constexpr std::uint16_t body_row = 5;
+constexpr std::uint8_t bodies_max = 8;
+
+/// The fight's block: a far pointer to it; the window's top-left square at
+/// `+2` and `+3`; the ground, a byte a square, fifty to a row, from `+7`.
+/// The scroll keeps the window's top-left where the whole window is on the
+/// grid.
+constexpr std::uint16_t data_combat_block = 0x6716;
+constexpr std::uint16_t block_window_x = 2;
+constexpr std::uint16_t block_window_y = 3;
+constexpr std::uint16_t block_ground = 7;
+constexpr std::uint32_t block_bytes =
+    block_ground + (scene_combat_columns * scene_combat_rows);
+constexpr int window_x_max = scene_combat_columns - scene_combat_side;
+constexpr int window_y_max = scene_combat_rows - scene_combat_side;
+
+/// What a ground number costs to step onto, the first byte of four per
+/// number: the move step refuses a square that costs more than the figure
+/// has left, and 0xFF is more than any figure ever has. Ground 0 is off
+/// the grid, where the move step asks whether to flee instead.
+constexpr std::uint16_t data_ground_cost = 0x2744;
+constexpr std::uint16_t ground_cost_stride = 4;
+constexpr std::uint8_t cost_blocked = 0xFF;
+constexpr std::uint8_t ground_off_grid = 0;
+
 // ---------------------------------------------------------------------------
 // Reading RAM
 // ---------------------------------------------------------------------------
@@ -157,6 +239,23 @@ class memory {
   [[nodiscard]] std::uint16_t data_word(std::uint16_t offset) const noexcept {
     return word_at(data_ + offset);
   }
+  /// Where a data-segment offset is in conventional memory.
+  [[nodiscard]] std::uint32_t linear(std::uint16_t offset) const noexcept {
+    return data_ + offset;
+  }
+
+  /// Where the far pointer stored at `address` points, if `reach` bytes
+  /// from there fit in its segment and in conventional memory; zero if not.
+  [[nodiscard]] std::uint32_t far_at(std::uint32_t address,
+                                     std::uint32_t reach) const noexcept {
+    const std::uint16_t off = word_at(address);
+    const std::uint16_t segment = word_at(address + 2);
+    const std::uint32_t base = (std::uint32_t{segment} * 16U) + off;
+    if (segment == 0 || off + reach > 0x10000U || base + reach > ram_.size()) {
+      return 0;
+    }
+    return base;
+  }
 
   /// Where a far pointer in the data segment points, if `reach` bytes
   /// from there are inside conventional memory and inside its segment;
@@ -164,13 +263,7 @@ class memory {
   /// program has not set up points anywhere.
   [[nodiscard]] std::uint32_t follow(std::uint16_t offset,
                                      std::uint32_t reach) const noexcept {
-    const std::uint16_t off = data_word(offset);
-    const std::uint16_t segment = data_word(offset + 2);
-    const std::uint32_t base = (std::uint32_t{segment} * 16U) + off;
-    if (segment == 0 || off + reach > 0x10000U || base + reach > ram_.size()) {
-      return 0;
-    }
-    return base;
+    return far_at(linear(offset), reach);
   }
 
  private:
@@ -332,6 +425,147 @@ void name_zone(scene& out) noexcept {
   return true;
 }
 
+void read_combatant(const memory& ram, std::uint32_t record,
+                    scene_combatant& out) noexcept {
+  const std::uint8_t length = std::min<std::uint8_t>(
+      ram.at(record + record_name), static_cast<std::uint8_t>(scene_name_max));
+  for (std::uint8_t i = 0; i < length; ++i) {
+    out.name[i] = static_cast<char>(ram.at(record + record_name + 1U + i));
+  }
+  out.name_length = length;
+  out.side =
+      ram.at(record + record_side) == 0 ? scene_side::party : scene_side::enemy;
+  out.player = ram.at(record + record_computer) == 0;
+  out.standing = ram.at(record + record_in_fight) != 0;
+  const std::uint8_t status = ram.at(record + record_status);
+  out.status = status <= static_cast<std::uint8_t>(scene_status::gone)
+                   ? static_cast<scene_status>(status)
+                   : scene_status::okay;
+  out.hp = ram.at(record + record_hp);
+  out.ac = ac_base - static_cast<int>(ram.at(record + record_ac));
+}
+
+/// Where a figure not on the grid lies: a fallen party member's body,
+/// which the screen draws where it fell.
+void place_body(const memory& ram, std::uint32_t record,
+                scene_combatant& out) noexcept {
+  const std::uint8_t bodies = std::min(ram.data(data_body_count), bodies_max);
+  for (std::uint8_t i = 0; i < bodies; ++i) {
+    const auto body =
+        static_cast<std::uint16_t>(data_bodies + (i * body_stride));
+    if (ram.far_at(ram.linear(body), record_bytes) == record) {
+      out.placed = true;
+      out.x = ram.data(body + body_column);
+      out.y = ram.data(body + body_row);
+      out.width = 1;
+      out.height = 1;
+    }
+  }
+}
+
+/// Whether any square of a figure is in the window: a large figure half in
+/// it is drawn half in it.
+[[nodiscard]] bool in_window(const scene& at,
+                             const scene_combatant& who) noexcept {
+  constexpr int side = scene_combat_side;
+  return who.x + who.width > at.window_x && who.x < at.window_x + side &&
+         who.y + who.height > at.window_y && who.y < at.window_y + side;
+}
+
+[[nodiscard]] scene_cell ground_at(const memory& ram, std::uint32_t block,
+                                   unsigned x, unsigned y) noexcept {
+  const std::uint8_t ground =
+      ram.at(block + block_ground + (y * scene_combat_columns) + x);
+  scene_cell cell{.terrain = ground};
+  if (ground == ground_off_grid) {
+    cell.move = scene_move::edge;
+    return cell;
+  }
+  const std::uint8_t cost = ram.data(static_cast<std::uint16_t>(
+      data_ground_cost + (ground * ground_cost_stride)));
+  if (cost == cost_blocked) {
+    cell.move = scene_move::blocked;
+  } else {
+    cell.cost = cost;
+  }
+  return cell;
+}
+
+[[nodiscard]] bool read_combat(const memory& ram, scene& out) {
+  const std::uint32_t block = ram.follow(data_combat_block, block_bytes);
+  const std::uint8_t slots = ram.data(data_slot_count);
+  if (block == 0 || slots == 0 || slots > scene_combatants_max) {
+    return false;
+  }
+  // The program keeps them as signed bytes; a negative one reads as more
+  // than either limit, and is refused with the rest.
+  const int window_x = ram.at(block + block_window_x);
+  const int window_y = ram.at(block + block_window_y);
+  if (window_x > window_x_max || window_y > window_y_max) {
+    return false;
+  }
+
+  out.screen = scene_screen::combat;
+  out.disk = ram.data(data_disk_number);
+  out.area = ram.data(data_area_id);
+  name_zone(out);
+  out.window_x = window_x;
+  out.window_y = window_y;
+
+  const std::uint32_t actor = ram.follow(data_actor, record_bytes);
+  for (unsigned slot = 1; slot <= slots; ++slot) {
+    const std::uint32_t record = ram.follow(
+        static_cast<std::uint16_t>(data_slot_records + (slot * slot_stride)),
+        record_bytes);
+    if (record == 0) {
+      continue;
+    }
+    scene_combatant who{};
+    read_combatant(ram, record, who);
+    const auto squares =
+        static_cast<std::uint16_t>(data_slot_squares + (slot * slot_stride));
+    const std::uint8_t shape = ram.data(squares + square_shape);
+    if (shape != 0 && shape < shapes.size()) {
+      who.placed = true;
+      who.x = ram.data(squares + square_column);
+      who.y = ram.data(squares + square_row);
+      who.width = shapes[shape].width;
+      who.height = shapes[shape].height;
+    } else if (who.side == scene_side::party) {
+      place_body(ram, record, who);
+    }
+    if (who.x >= scene_combat_columns || who.y >= scene_combat_rows) {
+      who.placed = false;
+    }
+    // The party's own wherever they are; an enemy only where the screen
+    // shows one, which a fallen enemy never is.
+    if (who.side == scene_side::enemy &&
+        !(who.placed && who.standing && in_window(out, who))) {
+      continue;
+    }
+    const bool acting = record == actor;
+    who.health_shown = who.side == scene_side::party || acting;
+    if (!who.health_shown) {
+      who.hp = 0;
+      who.ac = 0;
+    }
+    if (acting) {
+      out.turn = out.combatant_count;
+      out.waiting = who.player && who.standing;
+    }
+    out.combatants[out.combatant_count++] = who;
+  }
+
+  for (unsigned i = 0; i < scene_combat_side; ++i) {
+    for (unsigned j = 0; j < scene_combat_side; ++j) {
+      out.ground[(i * scene_combat_side) + j] =
+          ground_at(ram, block, static_cast<unsigned>(window_x) + j,
+                    static_cast<unsigned>(window_y) + i);
+    }
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // JSON
 // ---------------------------------------------------------------------------
@@ -459,6 +693,39 @@ void write_explore(json_out& json, const scene& from) {
   }
 }
 
+/// A window of cells, rows from the top, west to east; `cost` only where a
+/// fight gives one.
+void write_cells(json_out& json, std::span<const scene_cell> cells,
+                 unsigned side) {
+  json.put('[');
+  for (unsigned i = 0; i < side; ++i) {
+    if (i != 0) {
+      json.put(',');
+    }
+    json.put('[');
+    for (unsigned j = 0; j < side; ++j) {
+      if (j != 0) {
+        json.put(',');
+      }
+      const scene_cell& cell = cells[(i * side) + j];
+      json.put('{');
+      json.key("terrain");
+      json.number(cell.terrain);
+      json.put(',');
+      json.key("move");
+      json.string(scene_move_name(cell.move));
+      if (cell.cost != 0) {
+        json.put(',');
+        json.key("cost");
+        json.number(cell.cost);
+      }
+      json.put('}');
+    }
+    json.put(']');
+  }
+  json.put(']');
+}
+
 void write_travel(json_out& json, const scene& from) {
   json.put(',');
   json.key("window");
@@ -470,28 +737,84 @@ void write_travel(json_out& json, const scene& from) {
   json.number(from.window_y);
   json.put(',');
   json.key("rows");
+  write_cells(json, from.window, scene_window_side);
+  json.put('}');
+}
+
+void write_combatant(json_out& json, const scene_combatant& who) {
+  json.put('{');
+  json.key("name");
+  json.string(std::string_view{who.name.data(), who.name_length});
+  json.put(',');
+  json.key("side");
+  json.string(scene_side_name(who.side));
+  json.put(',');
+  json.key("player");
+  json.put(who.player ? "true" : "false");
+  json.put(',');
+  json.key("standing");
+  json.put(who.standing ? "true" : "false");
+  json.put(',');
+  json.key("status");
+  json.string(scene_status_name(who.status));
+  if (who.placed) {
+    json.put(',');
+    json.key("x");
+    json.number(who.x);
+    json.put(',');
+    json.key("y");
+    json.number(who.y);
+    json.put(',');
+    json.key("width");
+    json.number(who.width);
+    json.put(',');
+    json.key("height");
+    json.number(who.height);
+  }
+  if (who.health_shown) {
+    json.put(',');
+    json.key("hp");
+    json.number(who.hp);
+    json.put(',');
+    json.key("ac");
+    json.number(who.ac);
+  }
+  json.put('}');
+}
+
+void write_combat(json_out& json, const scene& from) {
+  json.put(',');
+  json.key("turn");
+  if (from.turn < 0) {
+    json.put("null");
+  } else {
+    json.number(from.turn);
+  }
+  json.put(',');
+  json.key("waiting");
+  json.put(from.waiting ? "true" : "false");
+  json.put(',');
+  json.key("combatants");
   json.put('[');
-  for (unsigned i = 0; i < scene_window_side; ++i) {
+  for (std::size_t i = 0; i < from.combatant_count; ++i) {
     if (i != 0) {
       json.put(',');
     }
-    json.put('[');
-    for (unsigned j = 0; j < scene_window_side; ++j) {
-      if (j != 0) {
-        json.put(',');
-      }
-      const scene_cell& cell = from.window[(i * scene_window_side) + j];
-      json.put('{');
-      json.key("terrain");
-      json.number(cell.terrain);
-      json.put(',');
-      json.key("move");
-      json.string(scene_move_name(cell.move));
-      json.put('}');
-    }
-    json.put(']');
+    write_combatant(json, from.combatants[i]);
   }
-  json.put("]}");
+  json.put(']');
+  json.put(',');
+  json.key("window");
+  json.put('{');
+  json.key("x");
+  json.number(from.window_x);
+  json.put(',');
+  json.key("y");
+  json.number(from.window_y);
+  json.put(',');
+  json.key("rows");
+  write_cells(json, from.ground, scene_combat_side);
+  json.put('}');
 }
 
 }  // namespace
@@ -549,6 +872,42 @@ const char* scene_move_name(scene_move move) noexcept {
       return "blocked";
     case scene_move::river:
       return "river";
+    case scene_move::edge:
+      return "edge";
+  }
+  return "unknown";
+}
+
+const char* scene_side_name(scene_side side) noexcept {
+  switch (side) {
+    case scene_side::party:
+      return "party";
+    case scene_side::enemy:
+      return "enemy";
+  }
+  return "unknown";
+}
+
+const char* scene_status_name(scene_status status) noexcept {
+  switch (status) {
+    case scene_status::okay:
+      return "okay";
+    case scene_status::animated:
+      return "animated";
+    case scene_status::temporarily_gone:
+      return "temporarily_gone";
+    case scene_status::running:
+      return "running";
+    case scene_status::unconscious:
+      return "unconscious";
+    case scene_status::dying:
+      return "dying";
+    case scene_status::dead:
+      return "dead";
+    case scene_status::stoned:
+      return "stoned";
+    case scene_status::gone:
+      return "gone";
   }
   return "unknown";
 }
@@ -568,6 +927,9 @@ scene_trouble read_scene_in(std::span<const std::uint8_t> ram,
       break;
     case mode_travel:
       found = read_travel(memory_now, out);
+      break;
+    case mode_combat:
+      found = read_combat(memory_now, out);
       break;
     default:
       break;
@@ -610,7 +972,9 @@ std::size_t scene_json(const scene& from, std::span<char> out) noexcept {
   }
   json.put('{');
   json.key("screen");
-  json.string(from.screen == scene_screen::explore ? "explore" : "travel");
+  json.string(from.screen == scene_screen::explore  ? "explore"
+              : from.screen == scene_screen::travel ? "travel"
+                                                    : "combat");
   json.put(',');
   json.key("disk");
   json.number(from.disk);
@@ -620,6 +984,12 @@ std::size_t scene_json(const scene& from, std::span<char> out) noexcept {
   json.put(',');
   json.key("zone");
   json.string(std::string_view{from.zone.data(), from.zone_length});
+  if (from.screen == scene_screen::combat) {
+    // A fight has no one square for the party: each figure has its own.
+    write_combat(json, from);
+    json.put('}');
+    return json.finish();
+  }
   json.put(',');
   json.key("x");
   json.number(from.x);

@@ -2157,12 +2157,13 @@ thing out from the screen.
   lines: `amberfolio: text-entry reading` or `text-entry not-reading`, and
   nothing while it is unknown.
 
-## 13. Where the party is (#520)
+## 13. Where the party is (#520, #521)
 
-What a sighted player takes from the 3D view, the automap panel and the
-overland window, as data: the party's square and facing, what is on each
-face around it, the squares it can see, the map it has explored, and the
-terrain of the travel window. Screen text (§10) carries the menus; this
+What a sighted player takes from the 3D view, the automap panel, the
+overland window and the combat grid, as data: the party's square and
+facing, what is on each face around it, the squares it can see, the map it
+has explored, the terrain of the travel window, and in a fight who stands
+where. Screen text (§10) carries the menus; this
 carries the places, which are not text. A screen reader turns it into
 "door ahead, wall on the left"; an assistant walks from it instead of from
 screenshots.
@@ -2189,6 +2190,22 @@ The overland (game mode 3, view kinds 2 to 4):
 {"screen":"travel","disk":6,"area":25,"zone":"WILDERNESS",
  "x":2,"y":29,"facing":"west",
  "window":{"x":0,"y":27,"rows":[[{"terrain":2,"move":"open"}, ...5], ...5]}}
+```
+
+A fight (game mode 5, the tactical grid):
+
+```json
+{"screen":"combat","disk":6,"area":25,"zone":"WILDERNESS",
+ "turn":1,"waiting":true,
+ "combatants":[
+   {"name":"HULK","side":"party","player":true,"standing":true,"status":"okay",
+    "x":27,"y":13,"width":1,"height":1,"hp":51,"ac":10},
+   {"name":"MULE","side":"party","player":true,"standing":true,"status":"okay",
+    "x":28,"y":13,"width":1,"height":1,"hp":82,"ac":7},
+   {"name":"QUICKLINGS","side":"enemy","player":false,"standing":true,
+    "status":"okay","x":17,"y":3,"width":1,"height":1}],
+ "window":{"x":24,"y":10,
+           "rows":[[{"terrain":23,"move":"open","cost":1}, ...7], ...7]}}
 ```
 
 - **Coordinates.** x grows east and y south. A square of the grid is 0 to
@@ -2221,10 +2238,46 @@ The overland (game mode 3, view kinds 2 to 4):
   number are the same terrain. `move` is what that step does with it:
   `open`, `blocked` (never), or `river` (only for a party that can cross
   one).
+- **A fight has no one square for the party**, so it has no top-level
+  `x`, `y` or `facing`: each figure has its own. The grid is 50 columns by
+  25 rows, x east and y south, and the screen shows a 7x7 `window` of it
+  whose top-left is `x`,`y`, scrolled where the program scrolls it.
+- **`combatants`** are the figures in the program's own order, the party's
+  first. **The party's own are listed wherever they are**, because a player
+  knows where their people are; **an enemy only while any square of it is
+  in the window**, because that is all the screen shows of one. `side` is
+  `party` or `enemy` as the program keeps it, so a charmed figure has
+  changed sides. `player` says the player gives its orders: false for a
+  monster, a charmed party member, and one handed to the computer with
+  QUICK. `x`,`y` is a figure's top-left square and `width`/`height` how
+  many it covers: a large figure covers two each way. A fallen party
+  member is `standing: false` with the status the sheet prints
+  (`unconscious`, `dying`, `dead`, ...) and lies where it fell; a fallen
+  enemy leaves the grid and the list. A figure with no square has no `x`.
+- **`hp` and `ac` where the screen prints them**: every party member's,
+  and an enemy's only while it is the one acting, whose sheet the panel
+  shows. `ac` is the number the sheet prints, negative included.
+- **`turn`** is an index into `combatants`, `null` between turns, and
+  **`waiting`** is true while the program waits for the player's orders,
+  which is only ever on a figure the player commands.
+- **The window's `rows`** are the ground under each square: `terrain` the
+  program's own number, `move` `open` with the movement it `cost`s, or
+  `blocked` (no figure ever steps there), or `edge` (off the grid: a step
+  there is a step out of the fight, and the program asks whether to flee).
+  A figure standing on a square is in `combatants`, not in the ground.
+- **The aim cursor is not carried** (#523). Neither aim mode keeps its square
+  anywhere but on the aiming routine's own stack. Aiming target to target,
+  the target is always the figure whose sheet the panel shows, which the
+  screen text (§10) reads, with its `RANGE`.
+- **A step ahead of the picture, for a moment.** The program moves a
+  figure, or scrolls the window, in its back buffer first and copies that
+  to the screen when it has drawn everything; between the two the read
+  already says where the figure went.
 - **Null while nothing knows**: a null handle, no program, a program this
   build has no facts for, a scripted move between areas, and every screen
-  neither shape covers — the menus, a shop, the camp, combat. Combat is
-  not described yet.
+  none of the shapes covers — the menus, a shop, the camp, the banner
+  after a fight. A host meets a `screen` it does not know as it meets
+  `null`.
 - **Where the party stands, not what covers the view.** An encounter's
   picture over the travel window, or a vendor's portrait in the 3D view,
   leaves the mode where it was and the party where it was, and the scene
@@ -2236,4 +2289,21 @@ The overland (game mode 3, view kinds 2 to 4):
   (`docs/explored-overlay.md` §2), restated for this read's own binary in
   `core/src/machine/scene.cpp`, with the move step's terrain classes
   (overlay 14 rel `0x0818`).
+- **The tactical grid's facts**, each read by the fight's setup or round
+  loop and by its drawing. The figures: far pointers to their records at
+  `0x65B9 + 4·slot`, one-based, and their squares at `0x5F27 + 4·slot`
+  (column, row, the slot's number, its shape: 0 off the grid, 1 one
+  square, 2 with the one below, 3 with the one east, 4 two by two); slot
+  0's shape byte, `0x5F2A`, is the number of slots. The acting figure: a
+  far pointer at `0x5D92`. A record: a Pascal name of up to fifteen
+  letters at `+0`, the status at `+0x10C` (the sheet's scale, okay to
+  gone), in the fight at `+0x10D`, the side at `+0x10E` (0 the party's),
+  the computer commanding it at `+0x10F`, sixty less the printed armour
+  class at `+0x111`, the current hit points at `+0x11B`. The fallen: a
+  count at `0x6715` and seven bytes each from `0x66D6` (the record's far
+  pointer, column, row, the ground covered). The fight's block: a far
+  pointer at `0x6716`; the drawn window's top-left at `+2`/`+3`; the
+  ground from `+7`, fifty bytes a row. A ground number's cost is the first
+  of four bytes from `0x2744`: `0xFF` blocks, and ground 0 is off the
+  grid.
 - **Both hosts' `--dump`** write it beside each still as `.scene.json`.
