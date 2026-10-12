@@ -59,6 +59,25 @@ constexpr std::uint16_t record_3d = 0x1CC;
 constexpr std::uint16_t record_segment = 0x5000;
 constexpr std::uint16_t map_segment = 0x5100;
 
+// The tactical grid's (docs/hosts.md §13).
+constexpr std::uint16_t data_slot_records = 0x65B9;
+constexpr std::uint16_t data_slot_squares = 0x5F27;
+constexpr std::uint16_t data_actor = 0x5D92;
+constexpr std::uint16_t data_body_count = 0x6715;
+constexpr std::uint16_t data_bodies = 0x66D6;
+constexpr std::uint16_t data_combat_block = 0x6716;
+constexpr std::uint16_t data_ground_cost = 0x2744;
+constexpr std::uint16_t record_status = 0x10C;
+constexpr std::uint16_t record_in_fight = 0x10D;
+constexpr std::uint16_t record_side = 0x10E;
+constexpr std::uint16_t record_computer = 0x10F;
+constexpr std::uint16_t record_ac = 0x111;
+constexpr std::uint16_t record_hp = 0x11B;
+constexpr std::uint16_t combat_record_bytes = 0x120;
+constexpr std::uint8_t ground_open = 0x17;
+constexpr std::uint16_t combat_block_segment = 0x5200;
+constexpr std::uint16_t combat_records_segment = 0x5400;
+
 constexpr unsigned north = 0;
 constexpr unsigned east = 2;
 constexpr unsigned south = 4;
@@ -152,6 +171,69 @@ struct rig {
       }
     }
   }
+
+  [[nodiscard]] static std::uint32_t record_at(unsigned slot) {
+    return (std::uint32_t{combat_records_segment} * 16U) +
+           (slot * combat_record_bytes);
+  }
+  void combat_record_byte(unsigned slot, std::uint16_t offset,
+                          std::uint8_t value) const {
+    ram()[record_at(slot) + offset] = value;
+  }
+  void far_pointer(std::uint16_t offset, std::uint32_t linear) const {
+    data_word(offset, static_cast<std::uint16_t>(linear & 0x0FU));
+    data_word(static_cast<std::uint16_t>(offset + 2),
+              static_cast<std::uint16_t>(linear >> 4U));
+  }
+
+  /// A fight with no one in it yet: the window's top-left at (x, y), every
+  /// square open ground that costs one, and that ground's cost set.
+  void combat(std::uint8_t x, std::uint8_t y) const {
+    data(data_game_mode, 5);
+    data(data_disk, 6);
+    data(data_area, 25);
+    data_word(data_combat_block, 0);
+    data_word(data_combat_block + 2, combat_block_segment);
+    const std::uint32_t block = std::uint32_t{combat_block_segment} * 16U;
+    ram()[block + 2] = x;
+    ram()[block + 3] = y;
+    for (unsigned i = 0; i < 50U * 25U; ++i) {
+      ram()[block + 7 + i] = ground_open;
+    }
+    data(static_cast<std::uint16_t>(data_ground_cost + (ground_open * 4U)), 1);
+    data(data_slot_squares + 3, 0);
+  }
+
+  /// One figure in the next slot: its name, side, square and shape, in the
+  /// fight and okay, commanded by the player if on the party's side.
+  unsigned figure(std::string_view name, bool enemy, std::uint8_t x,
+                  std::uint8_t y, std::uint8_t shape = 1) const {
+    const unsigned slot =
+        static_cast<unsigned>(ram()[data_base() + data_slot_squares + 3]) + 1U;
+    data(data_slot_squares + 3, static_cast<std::uint8_t>(slot));
+    combat_record_byte(slot, 0, static_cast<std::uint8_t>(name.size()));
+    for (std::size_t i = 0; i < name.size(); ++i) {
+      combat_record_byte(slot, static_cast<std::uint16_t>(1 + i),
+                         static_cast<std::uint8_t>(name[i]));
+    }
+    combat_record_byte(slot, record_in_fight, 1);
+    combat_record_byte(slot, record_side, enemy ? 1 : 0);
+    combat_record_byte(slot, record_computer, enemy ? 1 : 0);
+    combat_record_byte(slot, record_ac, 0x3C - 4);
+    combat_record_byte(slot, record_hp, 20);
+    far_pointer(static_cast<std::uint16_t>(data_slot_records + (slot * 4U)),
+                record_at(slot));
+    const auto squares =
+        static_cast<std::uint16_t>(data_slot_squares + (slot * 4U));
+    data(squares, x);
+    data(static_cast<std::uint16_t>(squares + 1), y);
+    data(static_cast<std::uint16_t>(squares + 2),
+         static_cast<std::uint8_t>(slot));
+    data(static_cast<std::uint16_t>(squares + 3), shape);
+    return slot;
+  }
+
+  void acting(unsigned slot) const { far_pointer(data_actor, record_at(slot)); }
 
   [[nodiscard]] scene read() const {
     scene out{};
@@ -476,6 +558,227 @@ TEST(SceneTravel, APositionPastTheProgramsClampIsNoScene) {
   r.load_baseline();
   r.travel(3, 36);
   EXPECT_EQ(r.read().screen, scene_screen::none);
+}
+
+// --- A fight ----------------------------------------------------------------
+
+TEST(SceneCombat, ListsWhoIsInTheFightAndWhere) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  r.figure("HULK", false, 12, 8);
+  r.figure("ORC", true, 14, 6);
+  const scene s = r.read();
+  ASSERT_EQ(r.last, scene_trouble::none);
+  ASSERT_EQ(s.screen, scene_screen::combat);
+  EXPECT_EQ(s.window_x, 10);
+  EXPECT_EQ(s.window_y, 5);
+  ASSERT_EQ(s.combatant_count, 2U);
+  const scene_combatant& hulk = s.combatants[0];
+  EXPECT_EQ(std::string_view(hulk.name.data(), hulk.name_length), "HULK");
+  EXPECT_EQ(hulk.side, scene_side::party);
+  EXPECT_TRUE(hulk.player);
+  EXPECT_TRUE(hulk.standing);
+  EXPECT_TRUE(hulk.placed);
+  EXPECT_EQ(hulk.x, 12U);
+  EXPECT_EQ(hulk.y, 8U);
+  const scene_combatant& orc = s.combatants[1];
+  EXPECT_EQ(orc.side, scene_side::enemy);
+  EXPECT_FALSE(orc.player);
+  EXPECT_EQ(orc.x, 14U);
+  EXPECT_EQ(orc.y, 6U);
+}
+
+TEST(SceneCombat, AnEnemyOutsideTheWindowIsNotListedAndAPartyMemberIs) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  r.figure("HULK", false, 30, 20);
+  r.figure("ORC", true, 17, 5);
+  r.figure("GOBLIN", true, 16, 11);
+  const scene s = r.read();
+  ASSERT_EQ(s.combatant_count, 2U);
+  EXPECT_EQ(s.combatants[0].x, 30U);
+  EXPECT_EQ(std::string_view(s.combatants[1].name.data(),
+                             s.combatants[1].name_length),
+            "GOBLIN");
+}
+
+TEST(SceneCombat, AFigureHalfInTheWindowIsInIt) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  // Two by two, its top-left one square west of the window.
+  r.figure("DRAGON", true, 9, 6, 4);
+  const scene s = r.read();
+  ASSERT_EQ(s.combatant_count, 1U);
+  EXPECT_EQ(s.combatants[0].width, 2U);
+  EXPECT_EQ(s.combatants[0].height, 2U);
+}
+
+TEST(SceneCombat, TheShapesSayHowManySquaresAFigureCovers) {
+  const rig r;
+  r.load_baseline();
+  r.combat(0, 0);
+  r.figure("TALL", true, 1, 1, 2);
+  r.figure("WIDE", true, 3, 1, 3);
+  const scene s = r.read();
+  ASSERT_EQ(s.combatant_count, 2U);
+  EXPECT_EQ(s.combatants[0].width, 1U);
+  EXPECT_EQ(s.combatants[0].height, 2U);
+  EXPECT_EQ(s.combatants[1].width, 2U);
+  EXPECT_EQ(s.combatants[1].height, 1U);
+}
+
+TEST(SceneCombat, AFallenEnemyHasLeftTheList) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  const unsigned orc = r.figure("ORC", true, 12, 6);
+  r.combat_record_byte(orc, record_in_fight, 0);
+  r.data(static_cast<std::uint16_t>(data_slot_squares + (orc * 4U) + 3U), 0);
+  EXPECT_EQ(r.read().combatant_count, 0U);
+}
+
+TEST(SceneCombat, AFallenPartyMemberLiesWhereItFell) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  const unsigned thief = r.figure("THIEF", false, 12, 6);
+  r.combat_record_byte(thief, record_in_fight, 0);
+  r.combat_record_byte(thief, record_status, 4);
+  r.data(static_cast<std::uint16_t>(data_slot_squares + (thief * 4U) + 3U), 0);
+  r.data(data_body_count, 1);
+  r.far_pointer(data_bodies, rig::record_at(thief));
+  r.data(data_bodies + 4, 13);
+  r.data(data_bodies + 5, 7);
+  const scene s = r.read();
+  ASSERT_EQ(s.combatant_count, 1U);
+  EXPECT_FALSE(s.combatants[0].standing);
+  EXPECT_EQ(s.combatants[0].status, scene_status::unconscious);
+  EXPECT_TRUE(s.combatants[0].placed);
+  EXPECT_EQ(s.combatants[0].x, 13U);
+  EXPECT_EQ(s.combatants[0].y, 7U);
+}
+
+TEST(SceneCombat, SaysWhoseTurnItIsAndWhetherThePlayerIsAsked) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  const unsigned hulk = r.figure("HULK", false, 12, 8);
+  const unsigned orc = r.figure("ORC", true, 14, 6);
+  EXPECT_EQ(r.read().turn, -1);
+
+  r.acting(hulk);
+  scene s = r.read();
+  EXPECT_EQ(s.turn, 0);
+  EXPECT_TRUE(s.waiting);
+
+  // Handed to the computer (QUICK): its turn, and nobody asked.
+  r.combat_record_byte(hulk, record_computer, 1);
+  s = r.read();
+  EXPECT_EQ(s.turn, 0);
+  EXPECT_FALSE(s.waiting);
+
+  r.acting(orc);
+  s = r.read();
+  EXPECT_EQ(s.turn, 1);
+  EXPECT_FALSE(s.waiting);
+}
+
+TEST(SceneCombat, HealthIsCarriedWhereTheScreenPrintsIt) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  r.figure("HULK", false, 12, 8);
+  const unsigned orc = r.figure("ORC", true, 14, 6);
+  r.combat_record_byte(orc, record_ac, 0x3C + 2);
+  scene s = r.read();
+  EXPECT_TRUE(s.combatants[0].health_shown);
+  EXPECT_EQ(s.combatants[0].hp, 20U);
+  EXPECT_EQ(s.combatants[0].ac, 4);
+  // An enemy's only while it is the one acting, whose sheet the screen
+  // shows.
+  EXPECT_FALSE(s.combatants[1].health_shown);
+  EXPECT_EQ(r.json().find(R"("name":"ORC","side":"enemy","player":false,)"
+                          R"("standing":true,"status":"okay","x":14,"y":6,)"
+                          R"("width":1,"height":1})"),
+            r.json().find(R"("name":"ORC")"))
+      << r.json();
+
+  r.acting(orc);
+  s = r.read();
+  EXPECT_TRUE(s.combatants[1].health_shown);
+  EXPECT_EQ(s.combatants[1].ac, -2);
+}
+
+TEST(SceneCombat, TheGroundSaysWhatEachSquareCosts) {
+  const rig r;
+  r.load_baseline();
+  r.combat(0, 0);
+  r.figure("HULK", false, 20, 20);
+  const std::uint32_t block = std::uint32_t{combat_block_segment} * 16U;
+  r.ram()[block + 7 + 1] = 0;      // off the grid
+  r.ram()[block + 7 + 2] = 0x38;   // a bush
+  r.ram()[block + 7 + 50] = 0x30;  // rough ground
+  r.data(static_cast<std::uint16_t>(data_ground_cost + (0x38 * 4U)), 0xFF);
+  r.data(static_cast<std::uint16_t>(data_ground_cost + (0x30 * 4U)), 2);
+  const scene s = r.read();
+  EXPECT_EQ(s.ground[0].move, scene_move::open);
+  EXPECT_EQ(s.ground[0].cost, 1U);
+  EXPECT_EQ(s.ground[1].move, scene_move::edge);
+  EXPECT_EQ(s.ground[2].move, scene_move::blocked);
+  EXPECT_EQ(s.ground[7].terrain, 0x30U);
+  EXPECT_EQ(s.ground[7].cost, 2U);
+  EXPECT_NE(r.json().find(R"("rows":[[{"terrain":23,"move":"open","cost":1},)"
+                          R"({"terrain":0,"move":"edge"},)"
+                          R"({"terrain":56,"move":"blocked"},)"),
+            std::string::npos)
+      << r.json();
+}
+
+TEST(SceneCombat, AWindowOffTheGridIsNoScene) {
+  const rig r;
+  r.load_baseline();
+  r.combat(44, 0);
+  r.figure("HULK", false, 1, 1);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+  r.combat(0, 19);
+  r.figure("HULK", false, 1, 1);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+  r.combat(43, 18);
+  r.figure("HULK", false, 1, 1);
+  EXPECT_EQ(r.read().screen, scene_screen::combat);
+}
+
+TEST(SceneCombat, NoBlockOrNoSlotsIsNoScene) {
+  const rig r;
+  r.load_baseline();
+  r.combat(0, 0);
+  EXPECT_EQ(r.read().screen, scene_screen::none);  // no slots yet
+  r.figure("HULK", false, 1, 1);
+  EXPECT_EQ(r.read().screen, scene_screen::combat);
+  r.data(data_slot_squares + 3, 72);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+  r.data(data_slot_squares + 3, 1);
+  r.data_word(data_combat_block + 2, 0);
+  EXPECT_EQ(r.read().screen, scene_screen::none);
+}
+
+TEST(SceneCombat, TheJsonHasNoSquareForTheParty) {
+  const rig r;
+  r.load_baseline();
+  r.combat(10, 5);
+  r.acting(r.figure("HULK", false, 12, 8));
+  EXPECT_EQ(r.json().rfind(R"({"screen":"combat","disk":6,"area":25,)"
+                           R"("zone":"WILDERNESS","turn":0,"waiting":true,)"
+                           R"("combatants":[{"name":"HULK","side":"party",)"
+                           R"("player":true,"standing":true,"status":"okay",)"
+                           R"("x":12,"y":8,"width":1,"height":1,"hp":20,)"
+                           R"("ac":4}],"window":{"x":10,"y":5,"rows":[[)",
+                           0),
+            0U)
+      << r.json();
 }
 
 // --- The JSON ---------------------------------------------------------------

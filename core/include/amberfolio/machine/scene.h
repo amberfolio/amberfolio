@@ -33,15 +33,24 @@
 // been, and the answer says so (`map_kept` false) rather than calling the
 // whole area unexplored.
 //
+// **In a fight**, the tactical grid's window as the screen draws it: who
+// is in it and on which side, who is standing, whose turn it is, and what
+// each of its squares costs to step onto. The party's own members are
+// listed wherever they are, because a player knows where their own people
+// are; an enemy is listed only while it is in the window, because that is
+// all the screen shows of it. A figure's hit points and armour class are
+// carried where the screen prints them: every party member's, and the
+// acting combatant's while it is the one acting.
+//
 // **Nothing while nothing knows.** No program, a program this build has no
 // facts for, or a screen none of the shapes covers — a menu, a shop, the
-// camp, a fight, a scripted move between areas — and the answer is
-// `scene_screen::none`. Combat is not carried yet.
+// camp, a scripted move between areas — and the answer is
+// `scene_screen::none`.
 //
 // The facts are the automap's and the explored overlay's
-// (`docs/seams.md` §10, `docs/explored-overlay.md` §2) and the travel
-// view's move step (`docs/hosts.md` §13), each restated in `scene.cpp` for
-// its own binary.
+// (`docs/seams.md` §10, `docs/explored-overlay.md` §2), the travel view's
+// move step and the tactical grid's (`docs/hosts.md` §13), each restated in
+// `scene.cpp` for its own binary.
 
 #pragma once
 
@@ -63,6 +72,8 @@ enum class scene_screen : std::uint8_t {
   explore,
   /// The overland travel view: a 5x5 window on a 16-by-36 area.
   travel,
+  /// A fight: a 7x7 window on a 50-by-25 tactical grid.
+  combat,
 };
 
 /// Why there is no scene. The first two are the words the screen text and
@@ -126,6 +137,9 @@ enum class scene_move : std::uint8_t {
   blocked,
   /// A river: only a party that can cross it; any other is turned back.
   river,
+  /// Off the edge of the tactical grid: a step there is a step out of the
+  /// fight, and the program asks whether to flee.
+  edge,
 };
 
 [[nodiscard]] const char* scene_move_name(scene_move move) noexcept;
@@ -136,6 +150,62 @@ struct scene_cell {
   /// step tests. Two cells with the same number are the same terrain.
   std::uint8_t terrain{};
   scene_move move{scene_move::open};
+  /// In a fight, the movement an open square costs; zero elsewhere.
+  std::uint8_t cost{};
+};
+
+/// Which side of a fight a combatant is on, as the program keeps it: a
+/// charmed figure has changed sides.
+enum class scene_side : std::uint8_t {
+  party,
+  enemy,
+};
+
+[[nodiscard]] const char* scene_side_name(scene_side side) noexcept;
+
+/// The program's status scale, the word its character sheet prints.
+enum class scene_status : std::uint8_t {
+  okay,
+  animated,
+  temporarily_gone,
+  running,
+  unconscious,
+  dying,
+  dead,
+  stoned,
+  gone,
+};
+
+[[nodiscard]] const char* scene_status_name(scene_status status) noexcept;
+
+/// The longest name the program gives a figure.
+inline constexpr std::size_t scene_name_max = 15;
+
+/// One figure in a fight.
+struct scene_combatant {
+  std::array<char, scene_name_max> name{};
+  std::uint8_t name_length{};
+  scene_side side{scene_side::party};
+  /// Whether the player gives its orders: false for a monster, a charmed
+  /// party member, and a party member handed to the computer (QUICK).
+  bool player{false};
+  /// Whether it is still in the fight. A party member who is not lies
+  /// where it fell; an enemy who is not has left the grid and the list.
+  bool standing{false};
+  scene_status status{scene_status::okay};
+  /// Where it is: the grid's column 0..49 and row 0..24 of its top-left
+  /// square, and how many squares it covers each way (a large figure
+  /// covers two). `placed` false: the program keeps no square for it.
+  bool placed{false};
+  std::uint8_t x{};
+  std::uint8_t y{};
+  std::uint8_t width{};
+  std::uint8_t height{};
+  /// Hit points and armour class, where the screen prints them (see the
+  /// header comment); `health_shown` false and both zero elsewhere.
+  bool health_shown{false};
+  std::uint8_t hp{};
+  int ac{};
 };
 
 /// How many squares the 3D view can show: at each of three depths the
@@ -147,6 +217,14 @@ inline constexpr std::size_t scene_map_max = 256;
 inline constexpr unsigned scene_window_side = 5;
 /// The longest zone name, and room to spare.
 inline constexpr std::size_t scene_zone_max = 24;
+/// The most figures one fight holds: eight party members and the 63
+/// monsters the program will add.
+inline constexpr std::size_t scene_combatants_max = 71;
+/// The tactical window's side, in squares.
+inline constexpr unsigned scene_combat_side = 7;
+/// The tactical grid's size, in squares.
+inline constexpr unsigned scene_combat_columns = 50;
+inline constexpr unsigned scene_combat_rows = 25;
 
 struct scene {
   scene_screen screen{scene_screen::none};
@@ -186,11 +264,28 @@ struct scene {
   /// The window's top-left cell in the area's own columns and rows, where
   /// the program puts it. Against an edge of the area's band the window
   /// shows the neighbouring band, so a column can be below 0 or above 15.
+  /// In a fight, the tactical window's top-left square on the grid.
   int window_x{};
   int window_y{};
   /// The window, row by row from the top, west to east.
   std::array<scene_cell, std::size_t{scene_window_side} * scene_window_side>
       window{};
+
+  // --- combat ----------------------------------------------------------
+
+  /// The figures, the party's first in the program's own order.
+  std::array<scene_combatant, scene_combatants_max> combatants{};
+  std::uint8_t combatant_count{};
+  /// Whose turn it is, an index into `combatants`; -1 while it is no
+  /// one's. `waiting` says the program is waiting for the player's
+  /// orders, which is true only on a figure the player commands.
+  int turn{-1};
+  bool waiting{false};
+  /// The window's top-left square on the grid, and its squares, row by
+  /// row from the top, west to east (`window_x`/`window_y` hold the
+  /// origin).
+  std::array<scene_cell, std::size_t{scene_combat_side} * scene_combat_side>
+      ground{};
 };
 
 /// The scene on `box` now. `out` is `scene_screen::none` unless the answer
