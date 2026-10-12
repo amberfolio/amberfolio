@@ -142,7 +142,9 @@
 //   * The numeric keypad's navigation function (Home/Up/PgUp/...) reads
 //     AL=0, AH=<its own raw scan code> rather than a separate extended
 //     code — true for the base 83-key keyboard, which has only one scan
-//     code per physical key to report in the first place.
+//     code per physical key to report in the first place. The enhanced
+//     board's dedicated cursor pad reads the same word, and is the one
+//     101-key addition modelled (`cursor_pad_of`, below).
 
 #pragma once
 
@@ -346,6 +348,45 @@ namespace detail {
 
 inline constexpr std::array<key_entry, table_size> xt_table =
     detail::build_xt_table();
+
+// --- The cursor pad (#517) -----------------------------------------------
+//
+// A 101-key board has a second set of arrows, Home/End, Page and
+// Insert/Delete beside the keypad, and Num Lock does not reach them: an
+// enhanced keyboard sends each as `E0` and the keypad code it shares, and
+// the BIOS hands AH=00h the keypad code with AL=0, navigation, whatever
+// Num Lock and Shift say. A host posts one as its keypad code plus 0x20,
+// one event and no prefix, so the wire and a recording's `key` line stay
+// a code and a direction (0x67-0x73 are free in set 1, and below the
+// release bit). The 83-key table above is not widened: those keys are
+// still the board this machine is, and the cursor pad is the one thing
+// the enhanced board adds that a player reaches for.
+
+inline constexpr std::uint8_t cursor_pad_offset = 0x20;
+
+/// The keypad code `code` is the cursor-pad twin of, or 0 when `code` is
+/// not a cursor-pad key. The twins are the ten digit keys that carry a
+/// navigation legend: the centre key (0x4C) has none, and minus and plus
+/// are not Num Lock keys at all.
+[[nodiscard]] constexpr std::uint8_t keypad_of_cursor_pad(
+    std::uint8_t code) noexcept {
+  if (code < cursor_pad_offset) {
+    return 0;
+  }
+  const auto keypad = static_cast<std::uint8_t>(code - cursor_pad_offset);
+  if (keypad < 0x47 || keypad >= table_size || keypad == 0x4C ||
+      xt_table[keypad].kind != key_kind::numpad_digit) {
+    return 0;
+  }
+  return keypad;
+}
+
+/// The cursor-pad code for the keypad key `keypad`, or 0 when it has none.
+[[nodiscard]] constexpr std::uint8_t cursor_pad_of(
+    std::uint8_t keypad) noexcept {
+  const auto code = static_cast<std::uint8_t>(keypad + cursor_pad_offset);
+  return keypad_of_cursor_pad(code) == keypad ? code : 0;
+}
 
 }  // namespace xt_keyboard
 

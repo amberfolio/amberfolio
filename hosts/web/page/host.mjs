@@ -604,8 +604,8 @@ export class Machine {
     return this.module._af_machine_set_entry(this.handle, cs, ip, ss, sp);
   }
 
-  /// Post an XT make/break scancode (0x01-0x53, keyboard.h), stamped at
-  /// the machine's current virtual time.
+  /// Post an XT make/break scancode (0x01-0x53, or a cursor-pad key's
+  /// 0x67-0x73, keyboard.h), stamped at the machine's current virtual time.
   postKey(scancode, down) {
     return this.module._af_machine_post_key(
       this.handle,
@@ -1876,14 +1876,12 @@ export function loadDemoProgram(machine) {
 // right Ctrl/Alt as distinct keys) are simply absent — the same
 // "not modelled, not guessed" gap keyboard.h documents.
 //
-// The arrow, Home/End, Page and Insert/Delete rows are the same keys as
-// the numeric keypad, and that is not an approximation: on an 83-key
-// board there *is* no separate cursor pad, and a program reads 48h for
-// "up" whether the player pressed Numpad8 or the arrow a later keyboard
-// added. Mapping them onto the same scancodes is what a real XT keyboard
-// does; leaving them out, which is what this table did until M3-F2
-// (#84), is what made a keyboard-driven game unplayable in a browser
-// while the desktop host had had them since M2-H1.
+// The arrow, Home/End, Page and Insert/Delete keys are the one thing a
+// 101-key board adds that is mapped: the cursor pad, each key its keypad
+// twin's code plus 0x20 (keyboard.h's `cursor_pad_of`, #517). A program
+// still reads 48h for "up" from either, but Num Lock, which a player
+// turns on to type amounts on the keypad, reaches only the keypad, so the
+// arrows keep moving while it is on.
 export const XT_SCANCODES = Object.freeze({
   Escape: 0x01,
   Digit1: 0x02,
@@ -1972,18 +1970,18 @@ export const XT_SCANCODES = Object.freeze({
   Numpad0: 0x52,
   NumpadDecimal: 0x53,
 
-  // The cursor pad, onto the keypad codes it shares with an 83-key
-  // board — see the note above.
-  Home: 0x47,
-  ArrowUp: 0x48,
-  PageUp: 0x49,
-  ArrowLeft: 0x4b,
-  ArrowRight: 0x4d,
-  End: 0x4f,
-  ArrowDown: 0x50,
-  PageDown: 0x51,
-  Insert: 0x52,
-  Delete: 0x53,
+  // The cursor pad, its keypad twin's code plus 0x20 — see the note
+  // above.
+  Home: 0x67,
+  ArrowUp: 0x68,
+  PageUp: 0x69,
+  ArrowLeft: 0x6b,
+  ArrowRight: 0x6d,
+  End: 0x6f,
+  ArrowDown: 0x70,
+  PageDown: 0x71,
+  Insert: 0x72,
+  Delete: 0x73,
 });
 
 /// `KeyboardEvent.code` -> XT scancode, or `undefined` for a key the

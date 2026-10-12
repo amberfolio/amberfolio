@@ -767,7 +767,10 @@ double af_machine_audio_edges_pending(const af_machine* box);
 /// Inject a key event, stamped at the machine's current virtual time.
 ///
 /// `scancode` is an XT (set 1) make code, 1-0x53, **without** the 0x80
-/// release bit; `down` is AF_KEY_DOWN or AF_KEY_UP. Nothing else crosses:
+/// release bit, or a cursor-pad key (a dedicated arrow, Home/End, Page or
+/// Insert/Delete) as its keypad code plus 0x20, 0x67-0x73, which Num Lock
+/// does not reach (machine/keyboard.h, #517); `down` is AF_KEY_DOWN or
+/// AF_KEY_UP. Nothing else crosses:
 /// no ASCII, no modifier mask. Translation and shift state live in core
 /// with M2-D8 (#53), because programs of the era read the shift byte out
 /// of the BIOS data area directly and it therefore has to be in the

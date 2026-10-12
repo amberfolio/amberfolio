@@ -842,8 +842,9 @@ struct key_event {
   /// why it is reproducible.
   ticks at{};
 
-  /// An XT (scan code set 1) make code, 0x01-0x53, **without** the 0x80
-  /// release bit — `action` carries that. A host sends nothing else: no
+  /// An XT (scan code set 1) make code, 0x01-0x53, or a cursor-pad key's
+  /// 0x67-0x73 (keyboard.h), **without** the 0x80 release bit — `action`
+  /// carries that. A host sends nothing else: no
   /// ASCII, no modifier mask. Translation is M2-D8's fact table and lives
   /// in core.
   std::uint8_t scancode{};

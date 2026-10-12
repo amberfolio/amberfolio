@@ -1047,9 +1047,12 @@ visits is below; onboarding beyond this is M6's (#265).
   own console line, being a hole in the disk about to be booted. Both hosts
   use `describeSkip()` in `host.mjs`.
 - The stop report is the desktop host's text (`machine/report.h`).
-- Cursor keys: on an 83-key board the arrows, Home/End, Page and
-  Insert/Delete are the keypad and map to its scancodes
-  (`hosts/web/tests/smoke.mjs`).
+- Cursor keys: the arrows, Home/End, Page and Insert/Delete are the
+  enhanced board's cursor pad, each its keypad twin's scancode plus `0x20`
+  (`keyboard.h`, #517). The BIOS answers them with the keypad's
+  navigation word whatever Num Lock says, so turning Num Lock on to type
+  digits on the keypad leaves the arrows moving. Both hosts map them this
+  way (`hosts/web/tests/smoke.mjs`, `keymap_test.cpp`).
 - Losing the keyboard releases the keys (#313): on the window's `blur` and
   on the tab going hidden the page posts a break for every key it still
   holds a make for, in ascending scancode order, through `postKey()` like
