@@ -1157,7 +1157,10 @@ rule, settling quarantine and ownership signals are derived in
   per draw:
   `amberfolio: automap doors frame=011000 disk=8 area=0D geo=0D seen=0200 table=0200 drawn shut=0 kind-seen=1 kind-table=0 no-evidence=0`.
   Rejected: runtime learning across maps, because the seam refuses every
-  binary the table was not derived from.
+  binary the table was not derived from. The face, door and sight rules
+  and the zone table are `core/src/machine/automap_faces.h`, which the
+  scene read (`docs/hosts.md` §13, #520) calls too, so a host is told
+  what the panel draws.
 - **Zone label** (M5-E2b): the band eight columns right of the cells, in
   the program's 8x8 font (a far pointer in the data segment, sixty-four
   glyphs indexed by the character upper-cased modulo 64) rasterized into

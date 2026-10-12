@@ -60,6 +60,7 @@ add_executable(amberfolio-core-tests
   core/machine/report_test.cpp
   core/machine/save_layer_test.cpp
   core/machine/scheduler_test.cpp
+  core/machine/scene_test.cpp
   core/machine/screen_keyboard_test.cpp
   core/machine/screen_text_test.cpp
   core/machine/seam_automap_test.cpp

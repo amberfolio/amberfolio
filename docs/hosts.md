@@ -100,8 +100,8 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--press KEY@FRAME[:down\|:up]` | post a real SDL key event at frame `FRAME`. `KEY` is any `SDL_GetScancodeFromName` name: `A`, `Escape`, `Left`, `Keypad 5`. Bare, the make and the break; `:down` the make only, so the key stays held (`Left Alt@7580:down`); `:up` the break only. `hosts/sdl/src/press_spec.h`. Repeatable. |
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161, `docs/seams.md` §3a). Needs `--seam ID`, works headless, refused with `--replay`. Repeatable. |
 | `--steps N`, `--until TICKS` | bound the run, the only way to catch a hang. `--steps N` ends on step N exactly. |
-| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.txt` (its screen text, §10), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
-| `--dump-every N` | also `PREFIX-NNNNNN.ppm` and `.txt` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
+| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.txt` (its screen text, §10), `PREFIX.scene.json` (the scene, §13), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm`, `.txt` and `.scene.json` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
 | `--trace` | keep and print with the report the last 256 instructions, 64 service calls and 32 naming file calls; print each file the program names as it happens. |
 | `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/options.h`. |
 | `--seam ID` | turn one seam on (PLAN.md §5, `machine/seam.h`), refused unless the loaded program is the binary its addresses are facts about. Repeatable. |
@@ -984,7 +984,8 @@ It also adds `af_machine_set_current_directory`, `af_machine_current_directory`,
 `af_machine_save_layer_*` calls kept their names and their answers on the
 archive release; on another layout their rows follow the save directory
 the copy names (§6). 3.1 adds `af_web_key_card_json` (#427, §11). 3.2
-adds `af_machine_text_entry` (#504, §12).
+adds `af_machine_text_entry` (#504, §12). 3.3 adds
+`af_machine_scene_json` (#520, §13).
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -1271,8 +1272,8 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--replay PATH` | be the run a recording describes (`af_machine_verify_recording`), and check it. The recording decides seams and speed, so `--seam` is refused beside it; a document or journal store it needs is still this side's. |
 | `--speed xt\|turbo\|at\|386` | the governor, spelled as on the desktop host. |
 | `--trace` | the trace ring and the service-call and file channels. |
-| `--dump PREFIX` | `PREFIX.ppm`, `PREFIX.wav` and `PREFIX.edges`, in the SDL host's formats, and `PREFIX.json`, `screenText()`'s answer (§10). |
-| `--dump-every N` | also `PREFIX-NNNNNN.ppm` and `.json` every N frames. |
+| `--dump PREFIX` | `PREFIX.ppm`, `PREFIX.wav` and `PREFIX.edges`, in the SDL host's formats, `PREFIX.json`, `screenText()`'s answer (§10), and `PREFIX.scene.json`, `scene()`'s (§13). |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm`, `.json` and `.scene.json` every N frames. |
 | `--vfs-list` | every file on the disk after the run, in the SDL host's spelling. |
 | `--vfs-get PATH` | one file read back after the run, as size and SHA-256, never bytes (#273). Repeatable. |
 | `--save-layer` | which of the disk's files are the player's (#208, §6), in the SDL host's spelling: the table beside the edition line, the files it names after the run. |
@@ -2155,3 +2156,84 @@ thing out from the screen.
 - **The desktop host** prints the state the run ended in, beside the seam
   lines: `amberfolio: text-entry reading` or `text-entry not-reading`, and
   nothing while it is unknown.
+
+## 13. Where the party is (#520)
+
+What a sighted player takes from the 3D view, the automap panel and the
+overland window, as data: the party's square and facing, what is on each
+face around it, the squares it can see, the map it has explored, and the
+terrain of the travel window. Screen text (§10) carries the menus; this
+carries the places, which are not text. A screen reader turns it into
+"door ahead, wall on the left"; an assistant walks from it instead of from
+screenshots.
+
+| call | answers |
+|---|---|
+| `af_machine_scene_json(box, out, cap)` | the scene as JSON, `null` while nothing knows; the length without the NUL, so ask with a null `out` first |
+| `Machine.scene()` (`page/host.mjs`) | the parsed object, or `null` |
+
+The interior screen (game mode 4, the sixteen-by-sixteen grid):
+
+```json
+{"screen":"explore","disk":3,"area":0,"zone":"NEW PHLAN",
+ "x":4,"y":13,"facing":"west",
+ "around":{"ahead":"wall","right":"open","behind":"wall","left":"wall"},
+ "view":[{"x":4,"y":13,"north":"open","east":"wall","south":"wall","west":"wall"},
+         {"x":4,"y":12,"north":"door","east":"wall","south":"open","west":"wall"}],
+ "map":[ ...the same shape, every square the automap has revealed... ]}
+```
+
+The overland (game mode 3, view kinds 2 to 4):
+
+```json
+{"screen":"travel","disk":6,"area":25,"zone":"WILDERNESS",
+ "x":2,"y":29,"facing":"west",
+ "window":{"x":0,"y":27,"rows":[[{"terrain":2,"move":"open"}, ...5], ...5]}}
+```
+
+- **Coordinates.** x grows east and y south. A square of the grid is 0 to
+  15 each way; an overland position is a column 0 to 15 and a row 0 to
+  35 of the area. They are the numbers the program's status line prints.
+- **`zone`** is the name the automap's panel prints (`AREA <n>` where its
+  table has none), without the panel's soft breaks.
+- **A face** is `open` (nothing there), `wall`, `opening` (a way through
+  drawn in the wall that no rule calls a door: an arch), `door`, or
+  `shut` (a shut door: the program asks before the party goes through).
+  Doors are the automap panel's own rule (`docs/seams.md` §10, "Doors"),
+  in one function both of them call (`core/src/machine/automap_faces.h`),
+  so a player who hears "door" and one who sees a yellow leaf are given
+  one answer. A border recorded on one side only is read from the side
+  that has it, as the panel does.
+- **`around`** is the party's own square turned to its facing.
+- **`view`** is what the 3D view draws: the party's square first, then,
+  nearest first, the squares ahead and beside it that sight reaches by the
+  automap's reveal rule. Sight stops at any face, a doorway included.
+- **`map`** is every square the automap has revealed on this map, row by
+  row, which is what its panel draws. **`null` while the automap seam is
+  off**, because then nothing records where the party has been: null is
+  "not recorded", and `[]` is "nothing explored yet".
+- **`window`** is the travel view's 5x5 window, rows from the top, cells
+  west to east. `x` and `y` are its top-left cell where the program puts
+  it, clamped at the map's edges exactly as the program clamps it; against
+  the edge of an area's band the window shows the neighbouring band, so a
+  column can be below 0 or above 15. `terrain` is the program's own number
+  for a cell, the byte its move step tests, and two cells with the same
+  number are the same terrain. `move` is what that step does with it:
+  `open`, `blocked` (never), or `river` (only for a party that can cross
+  one).
+- **Null while nothing knows**: a null handle, no program, a program this
+  build has no facts for, a scripted move between areas, and every screen
+  neither shape covers — the menus, a shop, the camp, combat. Combat is
+  not described yet.
+- **Where the party stands, not what covers the view.** An encounter's
+  picture over the travel window, or a vendor's portrait in the 3D view,
+  leaves the mode where it was and the party where it was, and the scene
+  still answers; screen text says what is being asked.
+- **A read.** Out of RAM, between `af_machine_run_until` slices, like the
+  screen text: nothing the program can see moves, nothing is kept, and it
+  is in no hash and no recording. A page that never asks pays nothing.
+  The facts are the automap's and the explored overlay's
+  (`docs/explored-overlay.md` §2), restated for this read's own binary in
+  `core/src/machine/scene.cpp`, with the move step's terrain classes
+  (overlay 14 rel `0x0818`).
+- **Both hosts' `--dump`** write it beside each still as `.scene.json`.

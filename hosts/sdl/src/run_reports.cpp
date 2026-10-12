@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 #include <filesystem>
 #include <span>
 #include <string>
@@ -31,12 +30,13 @@ namespace amberfolio::sdl {
 void write_still(const std::string& prefix, std::uint64_t frame,
                  const machine::machine& box) {
   std::array<char, 32> suffix{};
-  std::snprintf(suffix.data(), suffix.size(), "-%06llu.ppm",
+  std::snprintf(suffix.data(), suffix.size(), "-%06llu",
                 static_cast<unsigned long long>(frame));
-  (void)sdl::write_ppm(std::filesystem::path(prefix + suffix.data()),
+  const std::string stem = prefix + suffix.data();
+  (void)sdl::write_ppm(std::filesystem::path(stem + ".ppm"),
                        box.display().pixels(), box.display().palette());
-  std::memcpy(suffix.data() + 7, ".txt", 4);
-  sdl::write_screen_text(prefix + suffix.data(), box);
+  sdl::write_screen_text(stem + ".txt", box);
+  sdl::write_scene(stem + ".scene.json", box);
 }
 
 void drain_console(machine::machine& box) {
@@ -168,6 +168,7 @@ void report_dump(const options& opts, const machine::machine& box,
   if (!opts.dump_prefix.empty()) {
     const std::filesystem::path ppm(opts.dump_prefix + ".ppm");
     sdl::write_screen_text(opts.dump_prefix + ".txt", box);
+    sdl::write_scene(opts.dump_prefix + ".scene.json", box);
     if (sdl::write_ppm(ppm, box.display().pixels(), box.display().palette())) {
       std::fprintf(stderr, "amberfolio: dump frame=%s generation=%llu\n",
                    ppm.string().c_str(),

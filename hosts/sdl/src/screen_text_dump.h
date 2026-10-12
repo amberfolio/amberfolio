@@ -31,4 +31,10 @@ namespace amberfolio::sdl {
 void write_screen_text(const std::filesystem::path& where,
                        const machine::machine& box);
 
+/// Where the party is (`machine/scene.h`, #520), as the JSON a page is
+/// handed, into `where`: `null` off the screens it describes. Silent on
+/// failure, like a still.
+void write_scene(const std::filesystem::path& where,
+                 const machine::machine& box);
+
 }  // namespace amberfolio::sdl

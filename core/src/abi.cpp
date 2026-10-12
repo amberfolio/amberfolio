@@ -41,6 +41,7 @@
 #include "amberfolio/machine/replay.h"
 #include "amberfolio/machine/report.h"
 #include "amberfolio/machine/save_layer.h"
+#include "amberfolio/machine/scene.h"
 #include "amberfolio/machine/screen_keyboard.h"
 #include "amberfolio/machine/screen_text.h"
 #include "amberfolio/machine/seam.h"
@@ -1611,6 +1612,17 @@ uint32_t af_machine_text_entry(const af_machine* handle) {
       break;
   }
   return AF_TEXT_ENTRY_UNKNOWN;
+}
+
+uint32_t af_machine_scene_json(const af_machine* handle, char* out,
+                               uint32_t cap) {
+  amberfolio::machine::scene now{};
+  if (const machine* box = box_of(handle); box != nullptr) {
+    (void)amberfolio::machine::read_scene(*box, now);
+  }
+  const std::span<char> into =
+      out == nullptr ? std::span<char>{} : std::span<char>(out, cap);
+  return static_cast<uint32_t>(amberfolio::machine::scene_json(now, into));
 }
 
 uint32_t af_machine_document_count(const af_machine* handle) {

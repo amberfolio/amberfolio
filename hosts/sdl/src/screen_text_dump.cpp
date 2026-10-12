@@ -8,6 +8,7 @@
 #include <string>
 
 #include "amberfolio/machine/machine.h"
+#include "amberfolio/machine/scene.h"
 #include "amberfolio/machine/screen_text.h"
 
 namespace amberfolio::sdl {
@@ -57,6 +58,17 @@ void write_screen_text(const std::filesystem::path& where,
                        const machine::machine& box) {
   std::ofstream file(where, std::ios::binary);
   file << screen_text_dump(box);
+}
+
+void write_scene(const std::filesystem::path& where,
+                 const machine::machine& box) {
+  machine::scene now{};
+  (void)machine::read_scene(box, now);
+  // Room for the NUL the writer puts after the text, then without it.
+  std::string json(machine::scene_json(now, {}) + 1, '\0');
+  json.resize(machine::scene_json(now, json));
+  std::ofstream file(where, std::ios::binary);
+  file << json << '\n';
 }
 
 }  // namespace amberfolio::sdl

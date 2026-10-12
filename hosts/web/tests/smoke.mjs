@@ -275,6 +275,7 @@ const EXPECTED_EXPORTS = [
   '_af_machine_code_wheel_answered',
   '_af_machine_set_code_wheel_answered',
   '_af_machine_text_entry',
+  '_af_machine_scene_json',
   '_af_machine_save_layer_slots',
   '_af_machine_save_layer_members',
   '_af_machine_save_layer_count',
@@ -2635,6 +2636,10 @@ if (missing.length === 0) {
   check(
     machine.textEntry() === null,
     'a machine with no program said whether it was reading a line of text',
+  );
+  check(
+    machine.scene() === null,
+    'a machine with no program said where the party is',
   );
 
   const ptr = module._af_web_probe_program_bytes();

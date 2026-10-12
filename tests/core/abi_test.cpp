@@ -2560,6 +2560,18 @@ TEST(AbiScreenKeyboard, LetsGoOfEverythingTheMaskSaysIsDown) {
 
 // --- A line of text, being read (#504) ------------------------------------
 
+TEST(AbiScene, IsNullWhileNothingKnows) {
+  // A null handle, and a machine nobody has loaded a program into: the
+  // four letters, asked for with no buffer and then filled.
+  EXPECT_EQ(af_machine_scene_json(nullptr, nullptr, 0), 4U);
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+  ASSERT_EQ(af_machine_scene_json(box.get(), nullptr, 0), 4U);
+  std::array<char, 5> out{'#', '#', '#', '#', '#'};
+  EXPECT_EQ(af_machine_scene_json(box.get(), out.data(), 5), 4U);
+  EXPECT_STREQ(out.data(), "null");
+}
+
 TEST(AbiTextEntry, SaysUnknownWhenNothingIsWatching) {
   EXPECT_EQ(af_machine_text_entry(nullptr), AF_TEXT_ENTRY_UNKNOWN);
   const machine_handle box;
