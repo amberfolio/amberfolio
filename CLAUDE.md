@@ -10,7 +10,7 @@ Windows/macOS/Linux (64-bit) and WebAssembly. v1 targets Pool of
 Radiance. **PLAN.md is the plan of record**: scope, architecture,
 milestones and settled decisions live there. Don't re-litigate them.
 
-**Status.** M0–M6 are done and `v0.15.0` is the current tag, an interim
+**Status.** M0–M6 are done and `v0.15.1` is the current tag, an interim
 one inside M7 (the GOG/Steam release boots, saves and reads its journal
 as sold: #396–#398; every copy plays Tandy sound: #404, #407; a host can read the
 screen as text; the sidecars are one pair per save slot and nothing
