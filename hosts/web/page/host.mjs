@@ -1536,6 +1536,36 @@ export class Machine {
     return null;
   }
 
+  /// Where the party is and what is around it (#520), parsed: on the
+  /// interior screen `{ screen: 'explore', x, y, facing, around, view,
+  /// map, ... }`, on the overland `{ screen: 'travel', x, y, facing,
+  /// window, ... }`, and **null while nothing knows** — no program, or a
+  /// screen neither shape covers (a menu, the camp, a fight). `map` is
+  /// null while the automap is off, because then nothing records where
+  /// the party has been. `docs/hosts.md` §13 has every field. A read, so
+  /// a page that never asks pays nothing.
+  scene() {
+    const needed = this.module._af_machine_scene_json(this.handle, 0, 0);
+    const scratch = this.module._malloc(needed + 1);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while reading the scene');
+    }
+    try {
+      this.module._af_machine_scene_json(this.handle, scratch, needed + 1);
+      // Plain printable ASCII: the core writes nothing else. In chunks,
+      // because a whole explored map is past what some engines take in
+      // one spread call (`#report`).
+      const bytes = this.module.HEAPU8.subarray(scratch, scratch + needed);
+      let text = '';
+      for (let i = 0; i < bytes.length; i += 4096) {
+        text += String.fromCharCode(...bytes.subarray(i, i + 4096));
+      }
+      return JSON.parse(text);
+    } finally {
+      this.module._free(scratch);
+    }
+  }
+
   setCodeWheelAnswered(answered) {
     return this.module._af_machine_set_code_wheel_answered(
       this.handle,

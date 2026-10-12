@@ -301,6 +301,7 @@
 #include "amberfolio/machine/seam.h"
 #include "amberfolio/machine/service_floor.h"
 #include "amberfolio/machine/text_face.h"
+#include "automap_faces.h"
 #include "automap_overland.h"
 #include "seam_builtin.h"
 #include "seam_key_read.h"
@@ -471,16 +472,6 @@ constexpr unsigned shape_count = 10;
 constexpr std::uint16_t data_tile_banks = 0x5E3A;
 constexpr std::uint16_t data_bank_first_tile = 0x2722;
 
-/// The **wall-set descriptor**: which WALLDEF block is loaded in each of
-/// the three slots, a word per slot at a stride of four. Slot 1 serves
-/// wall faces 1 to 5, slot 2 serves 6 to 10, slot 3 serves 11 to 15.
-/// `0xFFFF` is what the loader stamps when it filled a slot from a
-/// multi-block load and cannot say which block a row came from.
-constexpr std::uint16_t data_wall_set = 0x6AAE;
-constexpr std::uint16_t wall_set_stride = 4;
-constexpr unsigned wall_faces_per_slot = 5;
-constexpr std::uint16_t wall_set_unknown = 0xFFFF;
-
 /// The area's frame colour and the colour of the ground band in the 3D
 /// view, both EGA palette indices the program computes for itself. The
 /// second is what the panel's floor is drawn in, so the map's ground is
@@ -509,50 +500,17 @@ constexpr std::uint16_t font_glyph_bytes = 8;
 constexpr std::uint16_t font_bytes = font_glyphs * font_glyph_bytes;
 
 // --- The map's format ------------------------------------------------------
+//
+// Shared with the scene read (`automap_faces.h`), so that what the panel
+// draws and what a host is told are one answer.
 
-/// The map is four 256-byte planes.
-constexpr std::uint16_t map_plane_bytes = 0x100;
-constexpr std::uint16_t map_bytes = 4 * map_plane_bytes;
-constexpr std::uint16_t map_faces_ns = 0;
-constexpr std::uint16_t map_faces_sw = map_plane_bytes;
-constexpr std::uint16_t map_face_styles = 3 * map_plane_bytes;
-
-/// The four wall faces of a cell, in the order the format numbers them.
-/// The same numbers the party's facing byte uses, which is what makes
-/// "the face ahead of the party" a lookup rather than a conversion.
-constexpr unsigned lane_north = 0;
-constexpr unsigned lane_east = 2;
-constexpr unsigned lane_south = 4;
-constexpr unsigned lane_west = 6;
-constexpr std::array<unsigned, 4> lanes{lane_north, lane_east, lane_south,
-                                        lane_west};
-
-/// One step in each lane's direction. A property of the format's own
-/// numbering, above, and confirmed against the facing values recorded in
-/// `docs/playable.md`.
-struct step {
-  int dx;
-  int dy;
-};
-[[nodiscard]] constexpr step step_of(unsigned lane) noexcept {
-  switch (lane & 7U) {
-    case lane_north:
-      return {.dx = 0, .dy = -1};
-    case lane_east:
-      return {.dx = 1, .dy = 0};
-    case lane_south:
-      return {.dx = 0, .dy = 1};
-    default:
-      return {.dx = -1, .dy = 0};
-  }
-}
-
-/// What plane 3's two bits say about a face that exists at all: solid, a
-/// way through, or a door that is shut. Which *passable* faces are doors
-/// is not in this grid at all — see `door_nibbles()` below.
-constexpr std::uint8_t face_solid = 0;
-constexpr std::uint8_t face_passable = 1;
-constexpr std::uint8_t face_shut_door = 2;
+using map_format::face_of;
+using map_format::lane_east;
+using map_format::lane_north;
+using map_format::lane_south;
+using map_format::lane_west;
+using map_format::lanes;
+using map_format::map_bytes;
 
 // --- The tile a wall face is drawn with ------------------------------------
 //
@@ -574,10 +532,6 @@ constexpr unsigned tile_planes = 4;
 /// something other than wall tiles, and this refuses it rather than
 /// histogramming the wrong picture.
 constexpr std::array<std::uint16_t, 4> bank_last_tile{0x2D, 0x73, 0xB9, 0xFF};
-
-/// How far ahead the panel reveals: the cell the party is on and two
-/// more, which is what the 3D view in front of them shows.
-constexpr unsigned reveal_depth = 3;
 
 // --- The panel's own colours ----------------------------------------------
 //
@@ -619,111 +573,17 @@ constexpr std::uint8_t colour_white = 15;
 // The map, decoded
 // ---------------------------------------------------------------------------
 
-using map_grid = std::array<std::uint8_t, map_bytes>;
+using map_grid = map_format::grid;
 
-[[nodiscard]] unsigned cell_of(unsigned x, unsigned y) noexcept {
-  return ((y & 0x0FU) * automap_map_side) + (x & 0x0FU);
-}
-
-/// The wall-face nibble of one lane of one cell. Zero is "no face here".
-[[nodiscard]] std::uint8_t face_of(const map_grid& grid, unsigned x, unsigned y,
-                                   unsigned lane) noexcept {
-  const unsigned cell = cell_of(x, y);
-  switch (lane & 7U) {
-    case lane_north:
-      return static_cast<std::uint8_t>(grid[map_faces_ns + cell] >> 4U);
-    case lane_east:
-      return static_cast<std::uint8_t>(grid[map_faces_ns + cell] & 0x0FU);
-    case lane_south:
-      return static_cast<std::uint8_t>(grid[map_faces_sw + cell] >> 4U);
-    default:
-      return static_cast<std::uint8_t>(grid[map_faces_sw + cell] & 0x0FU);
-  }
-}
-
-/// The two style bits of one lane of one cell. Only meaningful where the
-/// face nibble above is non-zero.
-[[nodiscard]] std::uint8_t style_of(const map_grid& grid, unsigned x,
-                                    unsigned y, unsigned lane) noexcept {
-  const std::uint8_t byte = grid[map_face_styles + cell_of(x, y)];
-  return static_cast<std::uint8_t>((byte >> (lane & 6U)) & 0x03U);
-}
-
-/// The lane on the other side of a border.
-[[nodiscard]] constexpr unsigned opposite(unsigned lane) noexcept {
-  return (lane + 4U) & 7U;
-}
-
-/// The grid's side as a signed number, because every coordinate that has
-/// to be bounds-checked is one a step could have taken off the edge.
-constexpr int map_side = static_cast<int>(automap_map_side);
-
-[[nodiscard]] constexpr bool on_map(int x, int y) noexcept {
-  return x >= 0 && x < map_side && y >= 0 && y < map_side;
-}
-
-/// Whether sight crosses a border. Both faces have to be absent.
-///
-/// Absent, not passable: a doorway that is permanently open in the data
-/// is still something the party has to walk through before it can say
-/// what is on the other side, and most of this program's city doorways
-/// are exactly that. Seeing through them revealed the insides of
-/// buildings from the street, which is why the proven design settled on
-/// the stricter rule and why this carries it.
-///
-/// Both faces, not the near one: the data often records a border's wall
-/// on one side only, and checking the near face alone let sight leak
-/// through a wall recorded on the far cell.
-[[nodiscard]] bool sight_crosses(const map_grid& grid, unsigned x, unsigned y,
-                                 unsigned lane, unsigned nx,
-                                 unsigned ny) noexcept {
-  return face_of(grid, x, y, lane) == 0 &&
-         face_of(grid, nx, ny, opposite(lane)) == 0;
-}
-
-/// Reveal what the party can see from where it stands: its own cell, the
-/// cells beside it that nothing blocks, and the same again for as far
-/// ahead as sight carries.
-///
-/// Sight does not wrap. The program's coordinates do — the grid is a
-/// torus — but a reveal that wrapped would paint disconnected cells on
-/// the opposite edge of the panel, which reads as a fault rather than as
-/// a map.
+/// Reveal what the party can see from where it stands
+/// (`map_format::sight_from`).
 void reveal_from(automap_state& state, automap_record& map,
                  const map_grid& grid, unsigned px, unsigned py,
                  unsigned facing) {
-  const unsigned ahead = facing & 7U;
-  const unsigned left = (facing + 6U) & 7U;
-  const unsigned right = (facing + 2U) & 7U;
-
-  auto x = static_cast<int>(px & 0x0FU);
-  auto y = static_cast<int>(py & 0x0FU);
-  for (unsigned depth = 0; depth < reveal_depth; ++depth) {
-    const auto ux = static_cast<unsigned>(x);
-    const auto uy = static_cast<unsigned>(y);
-    state.reveal(map, ux, uy);
-
-    for (const unsigned side : {left, right}) {
-      const step to = step_of(side);
-      const int nx = x + to.dx;
-      const int ny = y + to.dy;
-      if (on_map(nx, ny) &&
-          sight_crosses(grid, ux, uy, side, static_cast<unsigned>(nx),
-                        static_cast<unsigned>(ny))) {
-        state.reveal(map, static_cast<unsigned>(nx), static_cast<unsigned>(ny));
-      }
-    }
-
-    const step forward = step_of(ahead);
-    const int nx = x + forward.dx;
-    const int ny = y + forward.dy;
-    if (!on_map(nx, ny) ||
-        !sight_crosses(grid, ux, uy, ahead, static_cast<unsigned>(nx),
-                       static_cast<unsigned>(ny))) {
-      break;
-    }
-    x = nx;
-    y = ny;
+  std::array<map_format::sight_cell, map_format::sight_cells_max> cells{};
+  const std::size_t count = map_format::sight_from(grid, px, py, facing, cells);
+  for (std::size_t i = 0; i < count; ++i) {
+    state.reveal(map, cells[i].x, cells[i].y);
   }
 }
 
@@ -959,10 +819,11 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
 //
 // There is no boolean anywhere that says "this graphic is a door". What
 // there is, is evidence: a face that is *shut* is unarguably a door, and
-// it names its nibble. Two sources of that evidence are combined:
+// it names its nibble. Two sources of that evidence are combined
+// (`map_format::door_kinds`, shared with the scene read):
 //
 //   * **this map's own shut faces**, scanned when the party arrives;
-//   * **a table of every shut face in the shipped data**, below, because
+//   * **a table of every shut face in the shipped data**, because
 //     the evidence is scattered. Five sub-maps of one castle share a wall
 //     set and the shut instances are on three of them; without the table
 //     the other two draw their doors as archways.
@@ -985,148 +846,22 @@ void histogram_tile(cpu::processor& cpu, std::uint16_t ds, std::uint16_t code,
 // runtime *learning* across maps — a table that remembers a shut face
 // seen on one map and applies it to another. It is there to be robust
 // against other revisions of the data. This seam is unavailable for any
-// binary its fingerprint does not name (`seam.h`), and the table below
-// was derived from that binary's own data, so learning could only ever
+// binary its fingerprint does not name (`seam.h`), and the table was
+// derived from that binary's own data, so learning could only ever
 // matter for data this seam refuses to run against.
 
-/// One WALLDEF block known to hold door graphics, and which of its five
-/// rows they are on.
-///
-/// Facts about the shipped data — a disk number, a block number and a
-/// bitmap of row indices — derived by sweeping every shut face in the
-/// area files and asking which wall set was loaded for it. No byte of
-/// anything is here and neither is any picture: this says *where* the
-/// doors are, and the player's own copy says what they look like.
-struct door_graphics {
-  std::uint8_t disk;
-  std::uint16_t block;
-  std::uint8_t rows;
-};
-
-constexpr std::array<door_graphics, 19> door_table{
-    {{.disk = 1, .block = 1, .rows = 0x10},
-     {.disk = 1, .block = 3, .rows = 0x10},
-     {.disk = 2, .block = 1, .rows = 0x10},
-     {.disk = 2, .block = 2, .rows = 0x10},
-     {.disk = 2, .block = 4, .rows = 0x10},
-     {.disk = 2, .block = 9, .rows = 0x01},
-     {.disk = 2, .block = 19, .rows = 0x11},
-     {.disk = 3, .block = 1, .rows = 0x10},
-     {.disk = 3, .block = 3, .rows = 0x02},
-     {.disk = 4, .block = 1, .rows = 0x10},
-     {.disk = 4, .block = 3, .rows = 0x10},
-     {.disk = 4, .block = 20, .rows = 0x10},
-     {.disk = 4, .block = 22, .rows = 0x10},
-     {.disk = 5, .block = 1, .rows = 0x10},
-     {.disk = 5, .block = 24, .rows = 0x09},
-     {.disk = 6, .block = 2, .rows = 0x10},
-     {.disk = 6, .block = 6, .rows = 0x08},
-     {.disk = 7, .block = 1, .rows = 0x10},
-     {.disk = 8, .block = 18, .rows = 0x08}}};
-
-/// The WALLDEF block serving wall face `nibble`, or `wall_set_unknown`
-/// when the loader filled that slot from a multi-block load and cannot
-/// say which — which is the same value the loader itself stamps, and is
-/// not a block number, so it can be the answer as well as the reason.
-[[nodiscard]] std::uint16_t block_serving(cpu::processor& cpu, std::uint16_t ds,
-                                          std::uint8_t nibble) {
-  if (nibble < 1 || nibble > 15) {
-    return wall_set_unknown;
+/// The three wall-set slots' block numbers, read through the bus: what
+/// the door table is keyed on.
+[[nodiscard]] map_format::wall_set_blocks wall_set_of(cpu::processor& cpu,
+                                                      std::uint16_t ds) {
+  map_format::wall_set_blocks blocks{};
+  for (unsigned slot = 0; slot < map_format::wall_set_slots; ++slot) {
+    blocks[slot] =
+        cpu.read_word(ds, at(map_format::data_wall_set,
+                             static_cast<std::uint16_t>(
+                                 (slot + 1U) * map_format::wall_set_stride)));
   }
-  const unsigned slot = ((nibble - 1U) / wall_faces_per_slot) + 1U;
-  const std::uint16_t block = cpu.read_word(
-      ds,
-      at(data_wall_set, static_cast<std::uint16_t>(slot * wall_set_stride)));
-  return block > 0xFF ? wall_set_unknown : block;
-}
-
-/// The two sources' answers, kept apart (#268).
-///
-/// The renderer wants the union and asks `automap_state` for it. What
-/// wants them apart is a person looking at a still: a leaf drawn because
-/// *this map* had a shut face of that kind and a leaf drawn because the
-/// shipped table said so are the same yellow pixels, and until they were
-/// counted separately no screenshot could tell you which rule had run.
-struct door_evidence {
-  /// Kinds seen shut on this map, scanned on arrival — the rule.
-  std::uint16_t seen{};
-  /// Kinds the shipped table names for the wall sets this map has
-  /// loaded — the fallback.
-  std::uint16_t from_table{};
-};
-
-/// Which wall faces of this map are doors: the map's own shut faces, and
-/// the table's answer for the wall sets this map has loaded.
-[[nodiscard]] door_evidence door_nibbles_of(cpu::processor& cpu,
-                                            std::uint16_t ds,
-                                            const map_grid& grid,
-                                            std::uint8_t disk) {
-  door_evidence evidence;
-  for (unsigned y = 0; y < automap_map_side; ++y) {
-    for (unsigned x = 0; x < automap_map_side; ++x) {
-      for (const unsigned lane : lanes) {
-        const std::uint8_t face = face_of(grid, x, y, lane);
-        if (face != 0 && style_of(grid, x, y, lane) >= face_shut_door) {
-          evidence.seen =
-              static_cast<std::uint16_t>(evidence.seen | (1U << face));
-        }
-      }
-    }
-  }
-  for (std::uint8_t nibble = 1; nibble <= 15; ++nibble) {
-    const std::uint16_t block = block_serving(cpu, ds, nibble);
-    if (block == wall_set_unknown) {
-      continue;
-    }
-    const auto row = static_cast<unsigned>((nibble - 1U) % wall_faces_per_slot);
-    for (const door_graphics& known : door_table) {
-      if (known.disk == disk && known.block == block &&
-          ((known.rows >> row) & 1U) != 0) {
-        evidence.from_table =
-            static_cast<std::uint16_t>(evidence.from_table | (1U << nibble));
-      }
-    }
-  }
-  return evidence;
-}
-
-/// Is this face a door?
-///
-/// A shut one always is. A passable one is a door when its nibble is a
-/// door graphic — and when *nothing at all* is known about this map's
-/// wall sets, every passable face is drawn as a door, which is the
-/// pre-nibble rule and is better than drawing none.
-[[nodiscard]] bool is_door(std::uint8_t face, std::uint8_t style,
-                           std::uint16_t doors) {
-  if (face == 0 || style == face_solid) {
-    return false;
-  }
-  if (style >= face_shut_door) {
-    return true;
-  }
-  if (doors == 0) {
-    return true;
-  }
-  return ((doors >> face) & 1U) != 0;
-}
-
-/// Which of the four rules made this face a door (#268).
-///
-/// Called only where `is_door` has already said yes, so it is a
-/// classification and not a second decision: nothing it answers is read
-/// back by anything that draws. `seen` is the map's own shut kinds, and
-/// a kind in it is the rule's however many other witnesses agree.
-[[nodiscard]] automap_door_evidence door_evidence_for(
-    std::uint8_t face, std::uint8_t style, std::uint16_t doors,
-    std::uint16_t seen) noexcept {
-  if (style >= face_shut_door) {
-    return automap_door_evidence::shut;
-  }
-  if (doors == 0) {
-    return automap_door_evidence::no_evidence;
-  }
-  return ((seen >> face) & 1U) != 0 ? automap_door_evidence::seen_kind
-                                    : automap_door_evidence::table_kind;
+  return blocks;
 }
 
 // ---------------------------------------------------------------------------
@@ -1295,102 +1030,9 @@ void draw_text(panel_pixels& panel, int x, int y, std::string_view text,
   }
 }
 
-/// The marker that says a word may be split here.
-constexpr char soft_break = '|';
-
-/// A friendly name for a map, by the two bytes the program tells one from
-/// another with: the disk its files come from and the area's script id.
-///
-/// **A name is a fact** (CONTRIBUTING.md: "a SHA-256, a name, and the
-/// offsets a fact table needs"). This is a table of short labels for
-/// places, of the same kind as the addresses and the door table beside
-/// it, and not a line of anybody's prose. It has to be a table because
-/// the program holds no such string anywhere for the panel to read: the
-/// names live in its scripts as narration, and each of these was derived
-/// from one. Carried from the proven design, which is what PLAN.md §5
-/// means by re-expressing it as-is.
-///
-/// The id is the *script* id, and a sub-map that a script swaps in under
-/// a fixed area keeps its parent's — so those need no row of their own.
-/// The third byte of the map identity is what tells them apart for the
-/// fog (`automap.h`), and to a player they are the same place.
-///
-/// A `|` is a soft break: a point inside a word where the label may be
-/// split across two lines of the band with a hyphen. It costs no column
-/// and prints nothing where the word fits. Six of these have a word
-/// longer than the band is wide, and each carries one at a syllable.
-struct zone_name {
-  std::uint8_t disk;
-  std::uint8_t area;
-  std::string_view name;
-};
-
-constexpr std::array<zone_name, 29> zone_names{
-    {{.disk = 1, .area = 18, .name = "PODOL PLAZA"},
-     {.disk = 1, .area = 24, .name = "TEMPLE OF BANE"},
-     {.disk = 2, .area = 9, .name = "STOJANOW GATE"},
-     {.disk = 2, .area = 15, .name = "MENDOR'S LIBRARY"},
-     {.disk = 2, .area = 20, .name = "SLUMS"},
-     {.disk = 3, .area = 0, .name = "NEW PHLAN"},
-     {.disk = 3, .area = 8, .name = "CITY HALL"},
-     {.disk = 3, .area = 11, .name = "TRAINING HALL"},
-     {.disk = 3, .area = 14, .name = "KOVEL MANSION"},
-     {.disk = 4, .area = 2, .name = "TEXTILE HOUSE"},
-     {.disk = 4, .area = 10, .name = "VALHIN|GEN GRAVE|YARD"},
-     {.disk = 4, .area = 21, .name = "SOKAL KEEP"},
-     {.disk = 5, .area = 3, .name = "VALJEVO CASTLE"},
-     {.disk = 5, .area = 4, .name = "VALJEVO CASTLE"},
-     {.disk = 5, .area = 5, .name = "VALJEVO CASTLE"},
-     {.disk = 5, .area = 6, .name = "VALJEVO CASTLE"},
-     {.disk = 5, .area = 7, .name = "VALJEVO CASTLE"},
-     {.disk = 6, .area = 1, .name = "BUCCA|NEER BASE"},
-     {.disk = 6, .area = 19, .name = "DRAGON'S CAVE"},
-     {.disk = 6, .area = 25, .name = "WILDER|NESS"},
-     {.disk = 6, .area = 28, .name = "ZHENTIL OUTPOST"},
-     {.disk = 7, .area = 17, .name = "NOMAD CAMP"},
-     {.disk = 7, .area = 22, .name = "SORCER|ER'S ISLAND"},
-     {.disk = 7, .area = 23, .name = "YARASH'S PYRAMID"},
-     {.disk = 7, .area = 26, .name = "WILDER|NESS"},
-     {.disk = 8, .area = 13, .name = "KOBOLD CAVES"},
-     {.disk = 8, .area = 16, .name = "LIZARD|MAN KEEP"},
-     {.disk = 8, .area = 27, .name = "WILDER|NESS"},
-     {.disk = 8, .area = 29, .name = "KUTO'S WELL"}}};
-
-/// How many characters the fallback needs: "AREA " and three digits.
-constexpr std::size_t zone_fallback_bytes = 8;
-using zone_fallback = std::array<char, zone_fallback_bytes>;
-
-/// The label for a map, or `AREA <n>` where the table has no row.
-///
-/// The fallback is written into the caller's buffer rather than a local
-/// one, so the view this returns always names storage that outlives it.
-/// A map with no row is a map nobody has named yet, and saying its number
-/// is a better answer than saying nothing: the panel is still a map of
-/// somewhere, and the number is what a player would put in a bug report.
-[[nodiscard]] std::string_view zone_label(std::uint8_t disk, std::uint8_t area,
-                                          zone_fallback& fallback) noexcept {
-  for (const zone_name& zone : zone_names) {
-    if (zone.disk == disk && zone.area == area) {
-      return zone.name;
-    }
-  }
-
-  std::size_t used = 0;
-  for (const char ch : std::string_view{"AREA "}) {
-    fallback[used++] = ch;
-  }
-  std::array<char, 3> digits{};
-  std::size_t count = 0;
-  auto value = static_cast<unsigned>(area);
-  do {
-    digits[count++] = static_cast<char>('0' + (value % 10U));
-    value /= 10U;
-  } while (value != 0);
-  while (count > 0) {
-    fallback[used++] = digits[--count];
-  }
-  return std::string_view{fallback.data(), used};
-}
+using map_format::soft_break;
+using map_format::zone_fallback;
+using map_format::zone_label;
 
 /// How wide a word prints, up to the next space or the end of the label.
 /// Soft-break markers are not characters and cost no column.
@@ -1551,8 +1193,8 @@ void learn_appearance(machine& box, std::uint16_t ds, const sample& now,
                       const map_grid& grid, std::uint16_t banks) {
   automap_state& state = box.automap();
   state.begin_appearance(now.area, now.geo, banks);
-  const door_evidence doors =
-      door_nibbles_of(box.processor(), ds, grid, now.disk);
+  const map_format::door_evidence doors =
+      map_format::door_kinds(grid, now.disk, wall_set_of(box.processor(), ds));
   state.set_door_nibbles(doors.seen, doors.from_table);
 
   std::uint16_t wanted = 0;
@@ -1617,57 +1259,17 @@ void render(automap_state& state, const automap_record& map,
       }
 
       for (const unsigned lane : lanes) {
-        const std::uint8_t near_face = face_of(grid, cx, cy, lane);
-        const std::uint8_t near_style = style_of(grid, cx, cy, lane);
-
-        // A border's wall is often recorded on one side only, so a cell
-        // with no face of its own borrows the far cell's — which is what
-        // makes a wall show from the side the party is standing on while
-        // the cell beyond it is still unexplored. An off-map neighbour
-        // contributes nothing: reading one with the coordinates wrapped
-        // would paint the opposite edge's walls along the border.
-        const step to = step_of(lane);
-        const int nx = static_cast<int>(cx) + to.dx;
-        const int ny = static_cast<int>(cy) + to.dy;
-        std::uint8_t far_face = 0;
-        std::uint8_t far_style = 0;
-        if (on_map(nx, ny)) {
-          const auto ux = static_cast<unsigned>(nx);
-          const auto uy = static_cast<unsigned>(ny);
-          far_face = face_of(grid, ux, uy, opposite(lane));
-          far_style = style_of(grid, ux, uy, opposite(lane));
-        }
-        if (near_face == 0 && far_face == 0) {
+        // Both sides of the border, by the rule the scene read says in
+        // words (`map_format::border_of`).
+        const map_format::border edge =
+            map_format::border_of(grid, cx, cy, lane, doors, seen_kinds);
+        if (edge.kind == map_format::border_kind::open) {
           continue;
         }
-
-        // The near face decides when there is one, exactly as the
-        // program's own movement and 3D view decide: both gate on the
-        // party cell's own lane. Folding the far face in with an `or`
-        // would paint a door leaf over a plain solid wall the player can
-        // neither walk through nor see a door in.
-        //
-        // A **shut** door is the exception, because being shut is a
-        // property of the border rather than of a side: one recorded only
-        // on the far cell would otherwise draw as a blank wall.
-        const bool far_shut = far_face != 0 && far_style >= face_shut_door;
-        bool door = false;
-        automap_door_evidence why = automap_door_evidence::shut;
-        if (near_face != 0) {
-          if (is_door(near_face, near_style, doors)) {
-            door = true;
-            why = door_evidence_for(near_face, near_style, doors, seen_kinds);
-          } else if (far_shut) {
-            door = true;
-          }
-        } else if (is_door(far_face, far_style, doors)) {
-          door = true;
-          why = door_evidence_for(far_face, far_style, doors, seen_kinds);
-        }
-        const std::uint8_t face_style = near_face != 0 ? near_style : far_style;
+        const bool door = edge.kind == map_format::border_kind::door;
+        const automap_door_evidence why = edge.why;
         const std::uint8_t wall =
-            wall_colour(state, near_face != 0 ? near_face : far_face,
-                        frame_colour, floor_colour);
+            wall_colour(state, edge.face, frame_colour, floor_colour);
 
         if (door) {
           // Which of the four rules put it there (#268). A counter and
@@ -1682,7 +1284,7 @@ void render(automap_state& state, const automap_record& map,
           // them, inset by one at each end and two pixels thick.
           stroke(panel, x0, y0, lane, 1, 0, 0, wall);
           stroke(panel, x0, y0, lane, 2, 1, 0, colour_door);
-        } else if (face_style == face_passable) {
+        } else if (edge.kind == map_format::border_kind::passage) {
           stroke(panel, x0, y0, lane, 1, 0,
                  static_cast<int>(automap_cell_pixels) - 2, wall);
         } else {

@@ -441,8 +441,11 @@ uint32_t af_version(void);
 ///     `af_machine_text_entry`, whether the program is reading a line of
 ///     text right now, with its three answers `AF_TEXT_ENTRY_*`. Minor: a
 ///     host that never asks is unaffected.
+///   * **3.3** — #520, one added entry point and nothing changed:
+///     `af_machine_scene_json`, where the party is and what is around it
+///     as one JSON string. Minor: a host that never asks is unaffected.
 #define AF_ABI_VERSION_MAJOR 3u
-#define AF_ABI_VERSION_MINOR 2u
+#define AF_ABI_VERSION_MINOR 3u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -1557,6 +1560,23 @@ uint32_t af_machine_set_code_wheel_answered(af_machine* box, int answered);
 
 /// One of the three above, as of the last step boundary.
 uint32_t af_machine_text_entry(const af_machine* box);
+
+// --- The scene (#520) -------------------------------------------------
+//
+// Where the party is and what is around it, as data: on the interior
+// screen its square, its facing, the faces of the squares the 3D view
+// draws and of every square the automap has revealed; on the overland its
+// column and row and the 5x5 window's terrain (`machine/scene.h`,
+// `docs/hosts.md` §13 has the shape). A read, like the screen text: taken
+// between `af_machine_run_until` slices, out of RAM, it changes nothing
+// and is in no hash and no recording.
+
+/// The scene as JSON into `out`, NUL-terminated when `cap` is more than
+/// its length; `null` (the four letters) when nothing knows: a null
+/// handle, no program, a program this build has no facts for, or a screen
+/// the scene does not describe. Answers the length without the NUL
+/// whether it fitted or not, so a host asks with a null `out` first.
+uint32_t af_machine_scene_json(const af_machine* box, char* out, uint32_t cap);
 
 /// What document seam `index` is gated on, as a name a host shows
 /// (`machine::document_kind_name`) — `code wheel`, `journal`, or `no
