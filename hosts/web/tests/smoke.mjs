@@ -3289,20 +3289,23 @@ if (missing.length === 0) {
     if (!condition) problems.push(message);
   };
 
-  // On an 83-key board the cursor keys *are* the keypad, so these share
-  // their scancodes — which is what a real XT keyboard does, not an
-  // approximation.
+  // The cursor pad is its keypad twin plus 0x20 (#517), so Num Lock,
+  // which reaches only the keypad, never turns an arrow into a digit.
   const expected = {
-    ArrowUp: 0x48,
-    ArrowDown: 0x50,
-    ArrowLeft: 0x4b,
-    ArrowRight: 0x4d,
-    Home: 0x47,
-    End: 0x4f,
-    PageUp: 0x49,
-    PageDown: 0x51,
-    Insert: 0x52,
-    Delete: 0x53,
+    ArrowUp: 0x68,
+    ArrowDown: 0x70,
+    ArrowLeft: 0x6b,
+    ArrowRight: 0x6d,
+    Home: 0x67,
+    End: 0x6f,
+    PageUp: 0x69,
+    PageDown: 0x71,
+    Insert: 0x72,
+    Delete: 0x73,
+    Numpad8: 0x48,
+    Numpad2: 0x50,
+    Numpad7: 0x47,
+    NumpadDecimal: 0x53,
     Escape: 0x01,
     Enter: 0x1c,
     NumpadEnter: 0x1c,
@@ -4006,8 +4009,8 @@ if (missing.length === 0 && sessions !== null) {
     a: 0x1e,
     Enter: 0x1c,
     Return: 0x1c,
-    ArrowUp: 0x48,
-    Up: 0x48,
+    ArrowUp: 0x68,
+    Up: 0x68,
     Numpad5: 0x4c,
     'Keypad 5': 0x4c,
     Digit7: 0x08,
