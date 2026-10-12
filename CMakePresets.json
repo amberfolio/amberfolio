@@ -211,10 +211,15 @@
     {
       "name": "sanitizer-env",
       "hidden": true,
-      "description": "Runtime options for the sanitizer presets. Deliberately no log_path: the default is stderr, which is what outputOnFailure puts in front of whoever is reading the failure.",
+      "description": "Runtime options for the sanitizer presets. Deliberately no log_path: the default is stderr, which is what outputOnFailure puts in front of whoever is reading the failure. The benchmark is left out: timing instrumented code measures nothing, the unit suite already runs every program it runs, and under a slow runner it was the one case that timed out.",
       "environment": {
         "ASAN_OPTIONS": "halt_on_error=1:detect_leaks=1:detect_stack_use_after_return=1:strict_string_checks=1",
         "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"
+      },
+      "filter": {
+        "exclude": {
+          "label": "bench"
+        }
       }
     },
 
