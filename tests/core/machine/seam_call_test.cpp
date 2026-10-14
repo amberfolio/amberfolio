@@ -460,6 +460,39 @@ TEST(SeamCallProgram, FinishesABatchEvenIfTheSeamIsSwitchedOffDuringIt) {
   EXPECT_FALSE(r.box->seams().armed()) << "and then there is nothing left";
 }
 
+/// A machine that stops inside a batch and is reset boots with no batch:
+/// the snapshot belongs to the run that stopped, and putting it back on
+/// the next boot hands that boot the old run's registers (#527).
+TEST(SeamCallProgram, ResetDropsABatchWithoutPuttingAnythingBack) {
+  const rig r;
+  spin_instead = true;
+  ASSERT_EQ(r.box->seams().enable("test-call"), seam_reason::none);
+  r.stand_on_the_point();
+  r.box->step();
+  ASSERT_TRUE(r.batch_running());
+
+  r.box->reset();
+  EXPECT_FALSE(r.box->seams().armed()) << "nothing is outstanding";
+
+  // The next boot, standing somewhere of its own, runs past the budget
+  // the old batch would have run out of.
+  constexpr std::uint16_t boot_segment = 0x5000;
+  r.put_byte(boot_segment, 0, 0xEB);  // jmp $
+  r.put_byte(boot_segment, 1, 0xFE);
+  r.regs()[cpu::sreg::cs] = boot_segment;
+  r.regs().ip = 0;
+  for (std::uint32_t step = 0; step < seam_engine::max_call_steps + 16;
+       ++step) {
+    r.box->step();
+  }
+
+  EXPECT_EQ(r.regs()[cpu::sreg::cs], boot_segment)
+      << "the stopped run's registers stayed with it";
+  for (const seam_event& event : r.log.seam_events) {
+    EXPECT_NE(event.reason, seam_reason::call_did_not_return);
+  }
+}
+
 // --- Points inside a batch (#419) ------------------------------------------
 
 /// The journal draws through the program's own routines in a batch, and

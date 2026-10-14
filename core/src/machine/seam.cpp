@@ -540,6 +540,11 @@ void seam_engine::clear() noexcept {
   // device does — `set_host()` is a wiring decision and `clear()` is not.
   host_calls_ = {};
   host_arguments_ = {};
+  // And so does a batch, with nothing put back (#527). Its snapshot is
+  // the registers of a run that is over; restoring it onto the next boot
+  // is what made a stopped Encamp Fix draw its box from a fresh DGROUP,
+  // or wander into a loop on the loading screen.
+  call_ = call_batch{};
 }
 
 std::uint64_t seam_engine::host_calls(seam_host_service which) const noexcept {

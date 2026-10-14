@@ -1231,6 +1231,7 @@ class seam_engine {
 
   /// Turn everything off. `machine::reset()` calls this — an enabled seam
   /// is a setting about a program, and a reset machine has no program.
+  /// An outstanding batch goes too, and its snapshot is not restored.
   void clear() noexcept;
 
   /// Pull `id`'s trigger: the next arrival at one of its points runs its
