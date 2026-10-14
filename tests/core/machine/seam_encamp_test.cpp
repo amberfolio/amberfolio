@@ -198,6 +198,18 @@ constexpr std::uint16_t border_right_seen = 0x701E;
 constexpr std::uint16_t border_bottom_seen = 0x7020;
 constexpr std::uint16_t border_style_seen = 0x7022;
 constexpr std::uint16_t frames_before_border_seen = 0x7024;
+
+/// The cast's batch (#526): the slot sort in the module, the clear, and
+/// the cast driver's stub entry, which keeps the CS it was entered with.
+/// The overlay manager's trap reads the stub record at `CS:0`, so that
+/// CS is the fact; the entry's flat address is the same either way.
+constexpr std::uint16_t module_sort_spell_slots = 0x0824;
+constexpr std::uint16_t image_clear_region = 0x4047;
+constexpr std::uint16_t clear_region_cleans = 0x08;
+constexpr std::uint16_t cast_stub_paragraph = 0x0096;
+constexpr std::uint16_t cast_stub_entry = 0x0039;
+constexpr std::uint16_t cast_driver_cleans = 0x0A;
+constexpr std::uint16_t cast_cs_seen = 0x7026;
 /// Where the knot is: the panel frame's top edge row, one above the
 /// panel's first row, and the column the viewport box's right edge is on.
 constexpr std::uint16_t knot_row = 0x10;
@@ -668,6 +680,29 @@ struct rig {
     put_byte(data_segment, changed_byte, interrupted ? 1 : 0);
   }
 
+  /// The cast's routines, each a `retf` that cleans what it is handed,
+  /// the stub entry keeping its CS first: `mov ax, cs / mov [cast_cs_seen],
+  /// ax / retf 0Ah`.
+  void cast_routines() const {
+    put_byte(overlay_segment, module_sort_spell_slots, 0xCB);  // retf
+    put_byte(image_load_segment, image_clear_region, 0xCA);
+    put_word(image_load_segment,
+             static_cast<std::uint16_t>(image_clear_region + 1),
+             clear_region_cleans);
+    const auto stub =
+        static_cast<std::uint16_t>(image_load_segment + cast_stub_paragraph);
+    std::uint16_t put = cast_stub_entry;
+    for (const std::uint8_t byte :
+         {std::uint8_t{0x8C}, std::uint8_t{0xC8}, std::uint8_t{0xA3},
+          static_cast<std::uint8_t>(cast_cs_seen & 0xFFU),
+          static_cast<std::uint8_t>(cast_cs_seen >> 8U), std::uint8_t{0xCA},
+          static_cast<std::uint8_t>(cast_driver_cleans & 0xFFU),
+          static_cast<std::uint8_t>(cast_driver_cleans >> 8U)}) {
+      put_byte(stub, put++, byte);
+    }
+    put_word(data_segment, cast_cs_seen, 0);
+  }
+
   /// Steps until a batch the last arrival queued has run itself out. The
   /// bound is a bound and not a measurement: the routines above are two
   /// instructions each, so a report is a couple of dozen steps and this
@@ -1129,6 +1164,25 @@ TEST(SeamEncampFix, SpendsAReadyCureOnTheWorstWoundedMember) {
       << "one key finishes a pick that is already positioned";
   EXPECT_EQ(r.word_at(data_segment, data_rest_days), 0u)
       << "no rest is asked for while there is still a cure to spend";
+}
+
+/// Called at the image base, the entry ran only while the driver's
+/// overlay was in memory; once evicted, the manager took the image's
+/// first bytes for the stub record and wrote over its own stub table
+/// (#526).
+TEST(SeamEncampFix, CallsTheCastDriverAtItsStubsOwnSegment) {
+  const rig r;
+  r.arm();
+  r.camp();
+  r.drawing_routines();
+  r.cast_routines();
+  r.party(party_with_a_healer(2));
+
+  r.one_menu_pass(fix_letter);
+  r.run_the_calls();
+
+  EXPECT_EQ(r.word_at(data_segment, cast_cs_seen),
+            image_load_segment + cast_stub_paragraph);
 }
 
 TEST(SeamEncampFix, QueuesTheCureBackBeforeItSpendsIt) {

@@ -587,16 +587,29 @@ constexpr std::uint8_t pick_key_ascii = 'S';
 
 // --- The program's own routines this seam calls (#188) ---------------------
 //
-// Offsets from the image base, except the last, which is in the same
-// overlay this seam's points are in. Each was read off the routine itself,
-// and what each cleans up is part of the fact: the program's routines are
-// far and pop their own arguments.
+// Offsets from the image base, except the cast driver's, which is a
+// segment and an offset of its own, and the slot sort's, which is in the
+// same overlay this seam's points are in. Each was read off the routine
+// itself, and what each cleans up is part of the fact: the program's
+// routines are far and pop their own arguments.
 
-/// The generic cast driver, through the resident thunk that loads its
+/// The generic cast driver, through the resident stub that loads its
 /// overlay — never the overlay address, which would be a call into code
 /// that may not be in memory. Takes a far out-flag, an announce flag, a
 /// skip-abort flag and the spell id; cleans ten bytes.
-constexpr std::uint16_t image_cast_driver = 0x0999;
+///
+/// **Called at the stub's own segment, and that is the whole of #526.**
+/// The overlay manager's trap reads the stub record at `CS:0`, so an
+/// entry works only at the paragraph its record begins at: here the
+/// record at image `0x0960` and its sixth entry, `0x39` into it. Called
+/// as image base `:0999` the entry still runs while the overlay is in
+/// memory, because it is then a far jump; once the manager has evicted
+/// the overlay it is a trap again, and the manager took the image's
+/// first bytes for a record, patched "entries" across its own stub table
+/// and the machine returned into what was left. The program's own CAST
+/// leaves the arena so that the frame drawn before the cast evicts it.
+constexpr std::uint16_t cast_driver_stub_paragraph = 0x0096;
+constexpr std::uint16_t cast_driver_entry = 0x0039;
 
 /// The border and the clear the program's own cast screen draws before it
 /// casts, so that what the player sees is what that screen shows. The
@@ -2358,7 +2371,9 @@ void offer_the_fix(machine& box, seam_context& ctx) {
                        nothing) &&
       ctx.call_program(image, image_frame_border, border) &&
       ctx.call_program(image, image_clear_region, clear) &&
-      ctx.call_program(image, image_cast_driver, cast);
+      ctx.call_program(
+          static_cast<std::uint16_t>(image + cast_driver_stub_paragraph),
+          cast_driver_entry, cast);
   if (!queued) {
     return false;
   }
