@@ -796,7 +796,14 @@ than it looks (#165). The order to reach for the primitives:
   `push cs` plus a near call, so it works only at the paragraph it was
   linked at. Called at the image base with the whole offset in IP, every
   CS-relative read lands sixteen kilobytes away and the output looks
-  like a corrupted machine (automap, #173).
+  like a corrupted machine (automap, #173). **An overlay's stub entry is
+  the strictest case**: the manager's trap reads the stub record at
+  `CS:0`. At the image base the entry still runs while its overlay is
+  in memory, because it is then a far jump, and a test or a fresh run
+  passes; once the overlay is evicted the manager reads the image's
+  first bytes as the record, writes jump entries over its own stub
+  table, and the machine stops in garbage a moment later. Call an entry
+  at the paragraph its record begins at (Encamp Fix, #526).
 
 **The engine itself**
 
@@ -971,8 +978,10 @@ Facts it relies on:
   one is queued back **before** each cast by the memorize command's own
   two writes (the slot gets `id | 0x80`, then the program's slot sort),
   so the party is never a cure down. The cast goes through the driver
-  the camp's own Cast command calls: the seam positions its target
-  anchor and answers its one prompt with one key. One act per arrival;
+  the camp's own Cast command calls, through its overlay's stub at the
+  stub's own segment (image `0x0960`, entry `0x39`; §8.4, #526): the
+  seam positions its target anchor and answers its one prompt with one
+  key. One act per arrival;
   the batch re-offers the point (§3) and the next arrival decides
   afresh. Any key the program has not read yet stops the run.
 - **Rejected**: memorizing cures into empty slots, because the seam
