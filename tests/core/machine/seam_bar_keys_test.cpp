@@ -820,6 +820,70 @@ TEST(SeamBarKeys, EnterIsTheListsOwnWhenTheListsFrameCannotBeVouchedFor) {
   EXPECT_EQ(letter_of(r.press(enter, menu_segment, ret_pick_list, 1)), 'R');
 }
 
+// --- The party-member picker -----------------------------------------------
+
+/// The picker's call into the routine, in the resident image: made from the
+/// image's paragraph `0xBA`, returning to the instruction at image offset
+/// `0x38AA`.
+constexpr auto picker_segment =
+    static_cast<std::uint16_t>(image_load_segment + 0xBA);
+constexpr std::uint16_t ret_picker = 0x38AA - 0xBA0;
+constexpr std::uint16_t ret_picker_after = ret_picker + 1;
+constexpr std::uint16_t ret_picker_before = ret_picker - 1;
+
+TEST(SeamBarKeys, EnterAtThePartyPickerTakesTheLitCommand) {
+  // The picker never sets the highlight, so it opens on whatever the last
+  // bar left: Exit, after a View bar whose Trade is its second command.
+  const rig r;
+  r.arm();
+  r.lay_bar("Select Exit", 2);
+  EXPECT_EQ(letter_of(r.press(enter, picker_segment, ret_picker, 1)), 'E');
+  // On Select, the letter its loop ends on as it ends on Enter.
+  r.lay_bar("Select Exit", 1);
+  EXPECT_EQ(letter_of(r.press(enter, picker_segment, ret_picker, 1)), 'S');
+  // A script's party pick has no Exit.
+  r.lay_bar("Select", 1);
+  EXPECT_EQ(letter_of(r.press(enter, picker_segment, ret_picker, 1)), 'S');
+}
+
+TEST(SeamBarKeys, ThePartyPickerIsNamedByItsAddressAndNothingElse) {
+  const rig r;
+  r.arm();
+  r.lay_bar("Select Exit", 2);
+  // The same address, by another segment and offset.
+  EXPECT_EQ(letter_of(r.press(enter, image_load_segment, 0x38AA, 1)), 'E');
+  // A byte either side, the same offset in an overlay, and the offset taken
+  // from the image's own segment.
+  EXPECT_EQ(r.press(enter, picker_segment, ret_picker_after, 1), enter);
+  EXPECT_EQ(r.press(enter, picker_segment, ret_picker_before, 1), enter);
+  EXPECT_EQ(r.press(enter, menu_segment, ret_picker, 1), enter);
+  EXPECT_EQ(r.press(enter, image_load_segment, ret_picker, 1), enter);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+}
+
+TEST(SeamBarKeys, EnterAtThePartyPickerHasTheGuardsEveryBarHas) {
+  const rig r;
+  r.arm();
+  // A bar the routine does not draw, and no group highlighted yet.
+  r.lay_bar("Select Exit", 2, 0);
+  EXPECT_EQ(r.press(enter, picker_segment, ret_picker, 1), enter);
+  r.lay_bar("Select Exit", 0);
+  EXPECT_EQ(r.press(enter, picker_segment, ret_picker, 1), enter);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 0u);
+  // A highlight past the bar's groups is not the frame the facts describe.
+  r.lay_bar("Select Exit", 3);
+  EXPECT_EQ(r.press(enter, picker_segment, ret_picker, 1), enter);
+  EXPECT_EQ(r.box->seams().status(seam_id).declined, 1u);
+}
+
+TEST(SeamBarKeys, LeftAndRightStepThePartyPickersBar) {
+  const rig r;
+  r.arm();
+  r.lay_bar("Select Exit", 1);
+  EXPECT_EQ(r.press(right, picker_segment, ret_picker, 1), period);
+  EXPECT_EQ(r.press(left, picker_segment, ret_picker, 1), comma);
+}
+
 TEST(SeamBarKeys, EnterIsLeftAloneAtACallerThatIsNotInTheTable) {
   const rig r;
   r.arm();

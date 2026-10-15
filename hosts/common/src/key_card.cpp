@@ -115,6 +115,7 @@ constexpr std::array picker_rows{
     key_row{"End, 1", "the next member"},
     key_row{"Up, Down, 8, 2", "the previous or next member", "modern-controls"},
     key_row{"S, Return", "choose this member"},
+    key_row{"Return on EXIT", "choose nobody", "modern-controls"},
     key_row{"Esc, E", "choose nobody"},
 };
 

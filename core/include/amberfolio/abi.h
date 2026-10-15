@@ -437,8 +437,15 @@ uint32_t af_version(void);
 ///     context as one JSON string, the table the desktop host paints from
 ///     the same source. Minor, and machine-less: a host that never asks is
 ///     unaffected.
+///   * **3.2** — #504, one added entry point and nothing changed:
+///     `af_machine_text_entry`, whether the program is reading a line of
+///     text right now, with its three answers `AF_TEXT_ENTRY_*`. Minor: a
+///     host that never asks is unaffected.
+///   * **3.3** — #520, one added entry point and nothing changed:
+///     `af_machine_scene_json`, where the party is and what is around it
+///     as one JSON string. Minor: a host that never asks is unaffected.
 #define AF_ABI_VERSION_MAJOR 3u
-#define AF_ABI_VERSION_MINOR 1u
+#define AF_ABI_VERSION_MINOR 3u
 
 // --- Facts about the machine ------------------------------------------
 //
@@ -500,8 +507,9 @@ uint32_t af_machine_attach_reference_devices(af_machine* box);
 
 /// The RESET line (machine::reset). Clears any stop, puts the virtual
 /// clock back to zero, blanks the frame, restarts the audio timeline, and
-/// throws away queued input and undrained console output. RAM keeps what
-/// it held, exactly as a warm boot does.
+/// throws away queued input and undrained console output. Every file the
+/// program had open is closed; the disk keeps every byte written to it.
+/// RAM keeps what it held, exactly as a warm boot does.
 uint32_t af_machine_reset(af_machine* box);
 
 /// Run until the virtual clock reaches `tick`, or until the machine
@@ -762,7 +770,10 @@ double af_machine_audio_edges_pending(const af_machine* box);
 /// Inject a key event, stamped at the machine's current virtual time.
 ///
 /// `scancode` is an XT (set 1) make code, 1-0x53, **without** the 0x80
-/// release bit; `down` is AF_KEY_DOWN or AF_KEY_UP. Nothing else crosses:
+/// release bit, or a cursor-pad key (a dedicated arrow, Home/End, Page or
+/// Insert/Delete) as its keypad code plus 0x20, 0x67-0x73, which Num Lock
+/// does not reach (machine/keyboard.h, #517); `down` is AF_KEY_DOWN or
+/// AF_KEY_UP. Nothing else crosses:
 /// no ASCII, no modifier mask. Translation and shift state live in core
 /// with M2-D8 (#53), because programs of the era read the shift byte out
 /// of the BIOS data area directly and it therefore has to be in the
@@ -1524,6 +1535,49 @@ uint32_t af_machine_code_wheel_answered(const af_machine* box);
 
 /// Say so, or unsay it. `AF_OK`, or `AF_NO_MACHINE` for a null handle.
 uint32_t af_machine_set_code_wheel_answered(af_machine* box, int answered);
+
+// --- A line of text, being read (#504) --------------------------------
+//
+// Whether the program is inside its line editor: a new character's name, a
+// script's free-text answer, a script's number prompt, or the code word at
+// the copy-protection challenge. A host that paints a keyboard of its own
+// polls this once a frame, puts the keyboard up when it reads one and takes
+// it down when it reads zero, and never guesses either from the screen.
+//
+// It is **observation**, noted by `modern-controls` at the editor's entry
+// and its return (`machine/text_entry.h`): not machine state, not in the
+// state hash, rebuilt by a replay. With that seam off nothing watches, and
+// the answer says so rather than guessing "not reading".
+
+/// The program is not inside its line editor.
+#define AF_TEXT_ENTRY_NOT_READING 0u
+/// The program is inside its line editor, until the line is accepted or
+/// abandoned.
+#define AF_TEXT_ENTRY_READING 1u
+/// Nothing is watching: `modern-controls` is off or unavailable, no program
+/// is loaded, or the handle is null.
+#define AF_TEXT_ENTRY_UNKNOWN 2u
+
+/// One of the three above, as of the last step boundary.
+uint32_t af_machine_text_entry(const af_machine* box);
+
+// --- The scene (#520) -------------------------------------------------
+//
+// Where the party is and what is around it, as data: on the interior
+// screen its square, its facing, the faces of the squares the 3D view
+// draws and of every square the automap has revealed; on the overland its
+// column and row and the 5x5 window's terrain; in a fight the figures, whose
+// turn it is and the tactical window's ground (#521) (`machine/scene.h`,
+// `docs/hosts.md` §13 has the shape). A read, like the screen text: taken
+// between `af_machine_run_until` slices, out of RAM, it changes nothing
+// and is in no hash and no recording.
+
+/// The scene as JSON into `out`, NUL-terminated when `cap` is more than
+/// its length; `null` (the four letters) when nothing knows: a null
+/// handle, no program, a program this build has no facts for, or a screen
+/// the scene does not describe. Answers the length without the NUL
+/// whether it fitted or not, so a host asks with a null `out` first.
+uint32_t af_machine_scene_json(const af_machine* box, char* out, uint32_t cap);
 
 /// What document seam `index` is gated on, as a name a host shows
 /// (`machine::document_kind_name`) — `code wheel`, `journal`, or `no

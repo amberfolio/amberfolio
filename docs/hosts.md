@@ -100,8 +100,8 @@ authority (`docs/machine.md` §5). The SHA-256 is the seam table's key
 | `--press KEY@FRAME[:down\|:up]` | post a real SDL key event at frame `FRAME`. `KEY` is any `SDL_GetScancodeFromName` name: `A`, `Escape`, `Left`, `Keypad 5`. Bare, the make and the break; `:down` the make only, so the key stays held (`Left Alt@7580:down`); `:up` the break only. `hosts/sdl/src/press_spec.h`. Repeatable. |
 | `--pull ID@FRAME` | pull a seam's trigger at the top of frame `FRAME` (#161, `docs/seams.md` §3a). Needs `--seam ID`, works headless, refused with `--replay`. Repeatable. |
 | `--steps N`, `--until TICKS` | bound the run, the only way to catch a hang. `--steps N` ends on step N exactly. |
-| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.txt` (its screen text, §10), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
-| `--dump-every N` | also `PREFIX-NNNNNN.ppm` and `.txt` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
+| `--dump PREFIX` | at the end of the run write `PREFIX.ppm` (composed frame), `PREFIX.txt` (its screen text, §10), `PREFIX.scene.json` (the scene, §13), `PREFIX.wav` (the speaker and the Tandy chip rendered, the first minute) and `PREFIX.edges` (the speaker's edges, §4). |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm`, `.txt` and `.scene.json` every N frames, numbered in the frames `--press` counts. Needs `--dump`. |
 | `--trace` | keep and print with the report the last 256 instructions, 64 service calls and 32 naming file calls; print each file the program names as it happens. |
 | `--watch OFF[:N]` | print a data-segment word when it changes. `OFF` is a hex offset in the data segment, `N` is 1 or 2 bytes, default 1. Repeatable. Reads `memory_map::ram()`, not the bus, so it disturbs no EGA latch. Line format: the comment atop `hosts/sdl/src/options.h`. |
 | `--seam ID` | turn one seam on (PLAN.md §5, `machine/seam.h`), refused unless the loaded program is the binary its addresses are facts about. Repeatable. |
@@ -956,7 +956,7 @@ rename or removal of either moves these numbers — `abi.h` says so at
 compares `major` against what it was written for and refuses before
 fetching the module.
 
-The ABI moved as follows (`abi.h` has the whole list, now at 3.1): 1.1 added the two doors below (#228, #229), 1.2 added
+The ABI moved as follows (`abi.h` has the whole list, now at 3.2): 1.1 added the two doors below (#228, #229), 1.2 added
 `af_machine_code_wheel_answered` and `af_machine_set_code_wheel_answered`
 (#291), 1.3 added `af_web_journal_part_begins_paragraph` (#361), which is
 how a fragment boundary that is a paragraph break reaches the page that
@@ -983,7 +983,9 @@ It also adds `af_machine_set_current_directory`, `af_machine_current_directory`,
 (#397, §2c): the directory a program starts in, and where it saves. The
 `af_machine_save_layer_*` calls kept their names and their answers on the
 archive release; on another layout their rows follow the save directory
-the copy names (§6). 3.1 adds `af_web_key_card_json` (#427, §11).
+the copy names (§6). 3.1 adds `af_web_key_card_json` (#427, §11). 3.2
+adds `af_machine_text_entry` (#504, §12). 3.3 adds
+`af_machine_scene_json` (#520, §13).
 
 **`exportsDigest` does not depend on anyone having bumped the right
 number.** It is the sha256 of the `exports` list, sorted and
@@ -1046,9 +1048,12 @@ visits is below; onboarding beyond this is M6's (#265).
   own console line, being a hole in the disk about to be booted. Both hosts
   use `describeSkip()` in `host.mjs`.
 - The stop report is the desktop host's text (`machine/report.h`).
-- Cursor keys: on an 83-key board the arrows, Home/End, Page and
-  Insert/Delete are the keypad and map to its scancodes
-  (`hosts/web/tests/smoke.mjs`).
+- Cursor keys: the arrows, Home/End, Page and Insert/Delete are the
+  enhanced board's cursor pad, each its keypad twin's scancode plus `0x20`
+  (`keyboard.h`, #517). The BIOS answers them with the keypad's
+  navigation word whatever Num Lock says, so turning Num Lock on to type
+  digits on the keypad leaves the arrows moving. Both hosts map them this
+  way (`hosts/web/tests/smoke.mjs`, `keymap_test.cpp`).
 - Losing the keyboard releases the keys (#313): on the window's `blur` and
   on the tab going hidden the page posts a break for every key it still
   holds a make for, in ascending scancode order, through `postKey()` like
@@ -1267,8 +1272,8 @@ beside the module, so it imports `./host.mjs` with no path.
 | `--replay PATH` | be the run a recording describes (`af_machine_verify_recording`), and check it. The recording decides seams and speed, so `--seam` is refused beside it; a document or journal store it needs is still this side's. |
 | `--speed xt\|turbo\|at\|386` | the governor, spelled as on the desktop host. |
 | `--trace` | the trace ring and the service-call and file channels. |
-| `--dump PREFIX` | `PREFIX.ppm`, `PREFIX.wav` and `PREFIX.edges`, in the SDL host's formats, and `PREFIX.json`, `screenText()`'s answer (§10). |
-| `--dump-every N` | also `PREFIX-NNNNNN.ppm` and `.json` every N frames. |
+| `--dump PREFIX` | `PREFIX.ppm`, `PREFIX.wav` and `PREFIX.edges`, in the SDL host's formats, `PREFIX.json`, `screenText()`'s answer (§10), and `PREFIX.scene.json`, `scene()`'s (§13). |
+| `--dump-every N` | also `PREFIX-NNNNNN.ppm`, `.json` and `.scene.json` every N frames. |
 | `--vfs-list` | every file on the disk after the run, in the SDL host's spelling. |
 | `--vfs-get PATH` | one file read back after the run, as size and SHA-256, never bytes (#273). Repeatable. |
 | `--save-layer` | which of the disk's files are the player's (#208, §6), in the SDL host's spelling: the table beside the edition line, the files it names after the run. |
@@ -2118,3 +2123,220 @@ and the desktop's own keys (§2's table and
 `keymap.cpp`). A row that a drive contradicted was fixed before it was
 written: Return does not step Modify's rows, though one routine reads as
 if it does.
+
+## 12. A line of text, being read (#504)
+
+Whether the program is reading a line of text right now: a new character's
+name, a script's free-text answer, a script's number prompt, or the code
+word at the copy-protection challenge. All four go through the program's
+one line editor (`docs/seams.md` §10, "The edit keys"). A page that paints
+a keyboard of its own polls this once a frame, puts the keyboard up when it
+turns true and takes it down when it turns false, and never works the same
+thing out from the screen.
+
+| call | answers |
+|---|---|
+| `af_machine_text_entry(box)` | `AF_TEXT_ENTRY_READING` (1), `AF_TEXT_ENTRY_NOT_READING` (0), or `AF_TEXT_ENTRY_UNKNOWN` (2) |
+| `Machine.textEntry()` (`page/host.mjs`) | `true`, `false`, or `null` for unknown |
+
+- **Where it comes from.** The `text-entry` piece of `modern-controls`
+  notes the editor's first instruction and its one return
+  (`core/src/machine/seam_text_entry.cpp`, `machine/text_entry.h`).
+  Reading runs from the entry until the line is accepted with Return or
+  abandoned with Esc. A caller that asks again, after a number that was not
+  one, enters again.
+- **Unknown, and not "no", while nothing watches.** With `modern-controls`
+  off or unavailable, or no program loaded, the answer is unknown: telling
+  a page "not reading" would be a guess.
+- **Observation.** It is kept in one of the seam's own words. It is not
+  machine state, it is in no hash and no serialization, and a replay
+  rebuilds it. It is dropped when the seam is turned on again or the
+  machine is reset, so a page never reads a crossing whose other half
+  nobody saw.
+- **The desktop host** prints the state the run ended in, beside the seam
+  lines: `amberfolio: text-entry reading` or `text-entry not-reading`, and
+  nothing while it is unknown.
+
+## 13. Where the party is (#520, #521, #523)
+
+What a sighted player takes from the 3D view, the automap panel, the
+overland window and the combat grid, as data: the party's square and
+facing, what is on each face around it, the squares it can see, the map it
+has explored, the terrain of the travel window, and in a fight who stands
+where, how far each is from whoever is acting, and where the aim cursor
+is. Screen text (§10) carries the menus; this
+carries the places, which are not text. A screen reader turns it into
+"door ahead, wall on the left"; an assistant walks from it instead of from
+screenshots.
+
+| call | answers |
+|---|---|
+| `af_machine_scene_json(box, out, cap)` | the scene as JSON, `null` while nothing knows; the length without the NUL, so ask with a null `out` first |
+| `Machine.scene()` (`page/host.mjs`) | the parsed object, or `null` |
+
+The interior screen (game mode 4, the sixteen-by-sixteen grid):
+
+```json
+{"screen":"explore","disk":3,"area":0,"zone":"NEW PHLAN",
+ "x":4,"y":13,"facing":"west",
+ "around":{"ahead":"wall","right":"open","behind":"wall","left":"wall"},
+ "view":[{"x":4,"y":13,"north":"open","east":"wall","south":"wall","west":"wall"},
+         {"x":4,"y":12,"north":"door","east":"wall","south":"open","west":"wall"}],
+ "map":[ ...the same shape, every square the automap has revealed... ]}
+```
+
+The overland (game mode 3, view kinds 2 to 4):
+
+```json
+{"screen":"travel","disk":6,"area":25,"zone":"WILDERNESS",
+ "x":2,"y":29,"facing":"west",
+ "window":{"x":0,"y":27,"rows":[[{"terrain":2,"move":"open"}, ...5], ...5]}}
+```
+
+A fight (game mode 5, the tactical grid):
+
+```json
+{"screen":"combat","disk":6,"area":25,"zone":"WILDERNESS",
+ "turn":0,"waiting":true,"nearest":2,
+ "aim":{"mode":"target","x":25,"y":12,"under":2,"range":2,"target":true},
+ "combatants":[
+   {"name":"HULK","side":"party","player":true,"standing":true,"status":"okay",
+    "x":27,"y":13,"width":1,"height":1,"hp":51,"ac":10},
+   {"name":"MULE","side":"party","player":true,"standing":true,"status":"okay",
+    "x":28,"y":13,"width":1,"height":1,"range":1,"hp":82,"ac":7},
+   {"name":"TIGER","side":"enemy","player":false,"standing":true,
+    "status":"okay","x":25,"y":12,"width":1,"height":1,"range":2}],
+ "window":{"x":24,"y":10,
+           "rows":[[{"terrain":23,"move":"open","cost":1}, ...7], ...7]}}
+```
+
+- **Coordinates.** x grows east and y south. A square of the grid is 0 to
+  15 each way; an overland position is a column 0 to 15 and a row 0 to
+  35 of the area. They are the numbers the program's status line prints.
+- **`zone`** is the name the automap's panel prints (`AREA <n>` where its
+  table has none), without the panel's soft breaks.
+- **A face** is `open` (nothing there), `wall`, `opening` (a way through
+  drawn in the wall that no rule calls a door: an arch), `door`, or
+  `shut` (a shut door: the program asks before the party goes through).
+  Doors are the automap panel's own rule (`docs/seams.md` §10, "Doors"),
+  in one function both of them call (`core/src/machine/automap_faces.h`),
+  so a player who hears "door" and one who sees a yellow leaf are given
+  one answer. A border recorded on one side only is read from the side
+  that has it, as the panel does.
+- **`around`** is the party's own square turned to its facing.
+- **`view`** is what the 3D view draws: the party's square first, then,
+  nearest first, the squares ahead and beside it that sight reaches by the
+  automap's reveal rule. Sight stops at any face, a doorway included.
+- **`map`** is every square the automap has revealed on this map, row by
+  row, which is what its panel draws. **`null` while the automap seam is
+  off**, because then nothing records where the party has been: null is
+  "not recorded", and `[]` is "nothing explored yet".
+- **`window`** is the travel view's 5x5 window, rows from the top, cells
+  west to east. `x` and `y` are its top-left cell where the program puts
+  it, clamped at the map's edges exactly as the program clamps it; against
+  the edge of an area's band the window shows the neighbouring band, so a
+  column can be below 0 or above 15. `terrain` is the program's own number
+  for a cell, the byte its move step tests, and two cells with the same
+  number are the same terrain. `move` is what that step does with it:
+  `open`, `blocked` (never), or `river` (only for a party that can cross
+  one).
+- **A fight has no one square for the party**, so it has no top-level
+  `x`, `y` or `facing`: each figure has its own. The grid is 50 columns by
+  25 rows, x east and y south, and the screen shows a 7x7 `window` of it
+  whose top-left is `x`,`y`, scrolled where the program scrolls it.
+- **`combatants`** are the figures in the program's own order, the party's
+  first. **The party's own are listed wherever they are**, because a player
+  knows where their people are; **an enemy only while any square of it is
+  in the window**, because that is all the screen shows of one. `side` is
+  `party` or `enemy` as the program keeps it, so a charmed figure has
+  changed sides. `player` says the player gives its orders: false for a
+  monster, a charmed party member, and one handed to the computer with
+  QUICK. `x`,`y` is a figure's top-left square and `width`/`height` how
+  many it covers: a large figure covers two each way. A fallen party
+  member is `standing: false` with the status the sheet prints
+  (`unconscious`, `dying`, `dead`, ...) and lies where it fell; a fallen
+  enemy leaves the grid and the list. A figure with no square has no `x`.
+- **`hp` and `ac` where the screen prints them**: every party member's,
+  and an enemy's only while it is the one acting, whose sheet the panel
+  shows. `ac` is the number the sheet prints, negative included.
+- **`turn`** is an index into `combatants`, `null` between turns, and
+  **`waiting`** is true while the program waits for the player's orders,
+  which is only ever on a figure the player commands.
+- **`range`** is how far a figure is from the acting one by the aim bar's
+  own measure: the longer of the two distances and half the shorter,
+  rounded down (`scene_range` in `machine/scene.h`), nearest square to
+  nearest square for a large figure. It is the number the bar prints for a
+  figure nothing hides; the bar itself offers only figures in sight. Absent
+  on the acting figure, and on every figure between turns.
+- **`nearest`** is the index of the standing figure nearest the acting one
+  on the other side from it: on a party member's turn the nearest listed
+  enemy, on a monster's the nearest party member. The first listed wins a
+  tie. `null` between turns and when no such figure is listed.
+- **The window's `rows`** are the ground under each square: `terrain` the
+  program's own number, `move` `open` with the movement it `cost`s, or
+  `blocked` (no figure ever steps there), or `edge` (off the grid: a step
+  there is a step out of the fight, and the program asks whether to flee).
+  A figure standing on a square is in `combatants`, not in the ground.
+- **`aim`** is the aim bar while it waits for a key (Aim on the combat
+  bar, or a spell's target):
+  - `mode` is `target` (Next and Prev step through the figures in sight,
+    nearest first, beginning with the acting figure itself at range 0) or
+    `manual` (a cursor the arrows move square by square);
+  - `x`,`y` is the cursor's square: the target's top-left square, or the
+    manual cursor's own;
+  - `under` is the index of the figure whose sheet the panel shows: the
+    target, or in manual the figure on the cursor's square (a fallen party
+    member's body included) when it is in sight. `null` when the panel
+    shows no one, or someone not listed (a target outside the window);
+  - `range` is the number the bar prints after `RANGE =`, `null` when it
+    prints none (manual with the cursor out of sight, or a spell's aim
+    from target to target);
+  - `target` is whether the bar offers Target.
+
+  **`null` while the bar is not waiting for a key**, which includes the
+  moment between two keys while the cursor moves and the bar is redrawn.
+  **Absent while `modern-controls` is off**: the program keeps all of it on
+  the aiming routine's stack, and only that seam's `aim-watch` piece notes
+  where (`docs/seams.md` §10), so absent is "not known" and `null` is "not
+  aiming". Every site build turns the seam on.
+- **A step ahead of the picture, for a moment.** The program moves a
+  figure, or scrolls the window, in its back buffer first and copies that
+  to the screen when it has drawn everything; between the two the read
+  already says where the figure went.
+- **Null while nothing knows**: a null handle, no program, a program this
+  build has no facts for, a scripted move between areas, and every screen
+  none of the shapes covers — the menus, a shop, the camp, the banner
+  after a fight. A host meets a `screen` it does not know as it meets
+  `null`.
+- **Where the party stands, not what covers the view.** An encounter's
+  picture over the travel window, or a vendor's portrait in the 3D view,
+  leaves the mode where it was and the party where it was, and the scene
+  still answers; screen text says what is being asked.
+- **A read.** Out of RAM, between `af_machine_run_until` slices, like the
+  screen text: nothing the program can see moves, nothing is kept, and it
+  is in no hash and no recording. A page that never asks pays nothing.
+  The facts are the automap's and the explored overlay's
+  (`docs/explored-overlay.md` §2), restated for this read's own binary in
+  `core/src/machine/scene.cpp`, with the move step's terrain classes
+  (overlay 14 rel `0x0818`).
+- **The tactical grid's facts**, each read by the fight's setup or round
+  loop and by its drawing. The figures: far pointers to their records at
+  `0x65B9 + 4·slot`, one-based, and their squares at `0x5F27 + 4·slot`
+  (column, row, the slot's number, its shape: 0 off the grid, 1 one
+  square, 2 with the one below, 3 with the one east, 4 two by two); slot
+  0's shape byte, `0x5F2A`, is the number of slots. The acting figure: a
+  far pointer at `0x5D92`. A record: a Pascal name of up to fifteen
+  letters at `+0`, the status at `+0x10C` (the sheet's scale, okay to
+  gone), in the fight at `+0x10D`, the side at `+0x10E` (0 the party's),
+  the computer commanding it at `+0x10F`, sixty less the printed armour
+  class at `+0x111`, the current hit points at `+0x11B`. The fallen: a
+  count at `0x6715` and seven bytes each from `0x66D6` (the record's far
+  pointer, column, row, the ground covered). The fight's block: a far
+  pointer at `0x6716`; the drawn window's top-left at `+2`/`+3`; the
+  ground from `+7`, fifty bytes a row. A ground number's cost is the first
+  of four bytes from `0x2744`: `0xFF` blocks, and ground 0 is off the
+  grid.
+- **The aim bar's facts** are in `docs/seams.md` §10 ("Aim watch") and
+  `core/src/machine/seam_aim_watch.cpp`: overlay 13's two key waits, the
+  frame each keeps the cursor, the panel's record and the range in.
+- **Both hosts' `--dump`** write it beside each still as `.scene.json`.

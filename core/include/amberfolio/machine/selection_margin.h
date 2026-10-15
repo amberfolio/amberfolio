@@ -20,12 +20,12 @@
 // A cell the program draws repaints all of its own pixels, and knows nothing
 // of a margin lying in it. So the margin is kept, cell by cell: which cells
 // are blocks, and which margin pixels this machine painted. Each time the
-// program draws a cell or clears a rectangle, the seam asks what the cells
-// around it want now and paints or takes back only the difference. A pixel
-// is taken back only if it is this machine's: one the program has drawn over
-// since is not. The seam checks what it holds on the screen before it
-// settles a cell, because the program draws some things (the frame's border
-// row) through neither the blitter nor the fill.
+// program draws a cell, clears a rectangle or lays a picture, the seam asks
+// what the cells around it want now and paints or takes back only the
+// difference. A pixel is taken back only if it is this machine's: one the
+// program has drawn over since is not. The seam checks what it holds on the
+// screen before it settles a cell, because a picture (the frame's border
+// row, a tile at a time) does not say which page it is drawn on.
 //
 //
 // Not machine state

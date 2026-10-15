@@ -42,6 +42,7 @@ add_library(amberfolio-core STATIC
   src/cpu/interrupts.cpp
   src/cpu/processor.cpp
   src/machine/automap.cpp
+  src/machine/automap_faces.cpp
   src/machine/automap_overland.cpp
   src/machine/device.cpp
   src/machine/dos.cpp
@@ -69,6 +70,7 @@ add_library(amberfolio-core STATIC
   src/machine/replay.cpp
   src/machine/report.cpp
   src/machine/save_layer.cpp
+  src/machine/scene.cpp
   src/machine/scheduler.cpp
   src/machine/screen_keyboard.cpp
   src/machine/screen_text.cpp
@@ -86,9 +88,14 @@ add_library(amberfolio-core STATIC
   src/machine/seam_journal.cpp
   src/machine/seam_list_arrows.cpp
   src/machine/seam_menu_cursor.cpp
+  src/machine/seam_quick_steps.cpp
+  src/machine/seam_roster_fix.cpp
+  src/machine/seam_timer_fix.cpp
   src/machine/seam_modern_controls.cpp
   src/machine/seam_select_yellow.cpp
   src/machine/seam_table.cpp
+  src/machine/seam_text_entry.cpp
+  src/machine/seam_aim_watch.cpp
   src/machine/selection_margin.cpp
   src/machine/service_floor.cpp
   src/machine/speaker.cpp

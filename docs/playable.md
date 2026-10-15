@@ -1067,9 +1067,15 @@ Left@10700`, with and without `--seam modern-controls`: the party goes from
 4,12 S to 4,13 S, turns to face N and then W in both, the stills are
 identical, and the seam's end-of-run line is `armed and never reached`.
 
+**The picker from View's Trade.** Slot A, `V@10300 T@10600`: FIGHTER1
+has items and no spells, so `Trade` is the View bar's second command and
+`TRADE TO? SELECT EXIT` opens with `EXIT` lit. `Return@11000` goes back to
+`VIEW:ITEMS TRADE DROP EXIT` (seam off, it opens `SELECT TYPE OF COIN`, a
+trade with FIGHTER1 itself); `Left@10900 Return@11000` opens the coin list.
+
 Not driven: the shops, training, coin selection and the encounter lists;
-the picker from Trade (the Items screen's `T` redrew the screen and did
-not open one); the picker from a script.
+the picker from the Items screen's `T` (it redrew the screen and did not
+open one); the picker from a script.
 
 **The camp bar** (`camp-roster`, `camp-down` and `camp-down-arrows` are
 these scripts recorded; #435). Slot C, `ENCAMP`,
@@ -1447,6 +1453,80 @@ and no `AREA`; `Return`, `Up`, `Up` walk 3,32 S to 3,30 N; `Escape` and
 (the unit suite pins it).
 
 ---
+
+## Leg 21 — a roster name with no file
+
+`CHARLIST.TXT` naming a character whose `.CHA` is not in the save
+directory, then (A)dd from the main menu. Recorded as
+`tests/sessions/roster-add.rec`, over the shipped slots with a second,
+made-up name added to the roster.
+
+```
+--seam code-wheel --code-wheel-answered
+--press A@7700                          ADD CHARACTER TO PARTY
+--press E@8100                          Exit
+```
+
+The roster fix is built in, so nothing turns it on: the list shows the
+one name whose file is there, and `CHARLIST.TXT` names only that
+character at the end. Without the fix (a build before it), the list
+showed both names, and `Return` on the stranded one was
+`file open \SAVE\<STEM>.CHA ... file_not_found` under `--trace` and the
+save-disk prompt from then on; this build cannot reproduce that, by
+design.
+
+Driven the same way on the store release (a copy of the Steam
+installation with a stranded name added to its roster): the name gone
+from the list, a pick of the next name adding that character, and the
+roster written back without the stranded one.
+## Leg 22 — a line of text, being read (#504)
+
+`docs/hosts.md` §12's signal, read at the end of a desktop run as
+`amberfolio: text-entry ...` with `--seam modern-controls` on. Leg 0's
+creation keys, run to four frames:
+
+| `--until` frame | on the screen | the line |
+|---|---|---|
+| 8650 | the rolled sheet, the name not asked yet | `not-reading` |
+| 8695 | `CHARACTER NAME:`, empty | `reading` |
+| 8800 | `CHARACTER NAME:  BOB` | `reading` |
+| 9000 | the portrait bar, the name accepted | `not-reading` |
+
+Without `--code-wheel-answered` the boot stops at the challenge:
+`INPUT THE CODE WORD:` is `reading` from frame 7500, and after
+`W O R D Return` (the store release takes any word) the main menu at 8300 is
+`not-reading`. With the seam off the line is not printed.
+
+## Leg 23 — steps that do not wait for their click
+
+`docs/seams.md` §10, *Quick steps*. Slot A of the disk leg 3 saved, at
+`0,4 W`, at the 386 governor, a still every frame:
+
+```
+--speed 386 --seam code-wheel --code-wheel-answered --seam quick-steps
+--press L@1800 --press A@2000           LOAD SAVED GAME, slot A
+--press Left@2500 --press Left@2650     two turns, to face E
+--press Up@2800 --press Up@2950         two steps
+--dump PREFIX --dump-every 1
+```
+
+The frame each key's new view is first on the screen:
+
+| key | seam off | seam on |
+|---|---|---|
+| `Left@2500` | 2511 | 2506 |
+| `Left@2650` | 2660 | 2654 |
+| `Up@2800` | 2808 | 2808 |
+| `Up@2950` | 2958 | 2958 |
+
+`fired=6`: a click for each turn and two for each step, of which the
+step's first is let wait, so a step's view comes when it always did and
+the next key is taken a tenth of a second sooner. Over the same run the
+chip takes 28,151 writes with it on and 1,264 with it off: the driver's
+timer service runs a click out and keeps writing silence until the next
+sound. Heard in the run's `.wav` (made without `--fast`, so the audio is
+not short of samples), each click is about seventy milliseconds as with
+it off, and a step's two start the same 170 milliseconds apart.
 
 ## What the run should not say
 

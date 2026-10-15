@@ -220,8 +220,8 @@ constexpr std::uint16_t list_flag_below_bp = 0x57;
 
 /// In the resident image: the instruction after the picker's call into
 /// the menu-bar routine, which stores the key. Offset from the image
-/// segment.
-constexpr std::uint32_t picker_after_input = 0x38AA;
+/// segment; `bar-keys` names the caller by it (seam_menu_bar.h).
+constexpr std::uint32_t picker_after_input = menu_bar::picker_return;
 
 /// The out-parameter's address in the picker's frame, below BP.
 constexpr std::uint16_t picker_flag_below_bp = 0x2B;

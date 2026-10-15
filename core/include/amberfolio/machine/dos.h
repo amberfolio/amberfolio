@@ -275,6 +275,15 @@ class dos_services {
   /// (service_floor.h makes the same distinction for its own handlers).
   void reset() noexcept;
 
+  /// Close every open file on `fs`, the backend that opened it, and free
+  /// its slot here. A program's exit and a machine reset both end with
+  /// nothing open, as on a real machine; without this, every file open at
+  /// either stays open on the backend for the life of the filesystem,
+  /// and `memory_filesystem::max_open_handles` of them leave it unable to
+  /// open anything at all (#514). Nothing is reported: no program asked.
+  /// The standard handles stay as they are.
+  void close_files(filesystem& fs);
+
   /// Claim a slot for an already-open VFS `file`, opened on `path`.
   /// `no_handle` if the table is full — the caller (AH=3Ch/3Dh) must
   /// close `file` on the backend in that case, or a file the program can

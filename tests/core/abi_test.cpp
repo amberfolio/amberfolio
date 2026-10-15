@@ -26,13 +26,17 @@
 #include <vector>
 
 #include "amberfolio/abi_bridge.h"
+#include "amberfolio/cpu/address.h"
+#include "amberfolio/cpu/registers.h"
 #include "amberfolio/machine/clock.h"
 #include "amberfolio/machine/document.h"
+#include "amberfolio/machine/edition.h"
 #include "amberfolio/machine/loader.h"
 #include "amberfolio/machine/machine.h"
 #include "amberfolio/machine/memory_vfs.h"
 #include "amberfolio/machine/platform.h"
 #include "amberfolio/machine/seam.h"
+#include "amberfolio/sha256.h"
 #include "amberfolio/version.h"
 #include "programs/machine_programs.h"
 
@@ -2552,6 +2556,59 @@ TEST(AbiScreenKeyboard, LetsGoOfEverythingTheMaskSaysIsDown) {
             2u);
   EXPECT_EQ(events[0], 0x1Du << 1) << "ctrl first, ascending scan code";
   EXPECT_EQ(events[1], 0x38u << 1);
+}
+
+// --- A line of text, being read (#504) ------------------------------------
+
+TEST(AbiScene, IsNullWhileNothingKnows) {
+  // A null handle, and a machine nobody has loaded a program into: the
+  // four letters, asked for with no buffer and then filled.
+  EXPECT_EQ(af_machine_scene_json(nullptr, nullptr, 0), 4U);
+  const machine_handle box;
+  ASSERT_NE(box.get(), nullptr);
+  ASSERT_EQ(af_machine_scene_json(box.get(), nullptr, 0), 4U);
+  std::array<char, 5> out{'#', '#', '#', '#', '#'};
+  EXPECT_EQ(af_machine_scene_json(box.get(), out.data(), 5), 4U);
+  EXPECT_STREQ(out.data(), "null");
+}
+
+TEST(AbiTextEntry, SaysUnknownWhenNothingIsWatching) {
+  EXPECT_EQ(af_machine_text_entry(nullptr), AF_TEXT_ENTRY_UNKNOWN);
+  const machine_handle box;
+  EXPECT_EQ(af_machine_text_entry(box.get()), AF_TEXT_ENTRY_UNKNOWN)
+      << "no program";
+}
+
+TEST(AbiTextEntry, FollowsTheLineEditorWhileTheControlsAreOn) {
+  const machine_handle box;
+  amberfolio::machine::machine* pc = amberfolio::af_machine_unwrap(box.get());
+  ASSERT_NE(pc, nullptr);
+  amberfolio::sha256_digest baseline;
+  ASSERT_TRUE(amberfolio::machine::parse_digest(
+      amberfolio::machine::known_editions().front().fingerprint, baseline));
+  pc->seams().loaded(baseline, amberfolio::machine::image_load_segment);
+  EXPECT_EQ(af_machine_text_entry(box.get()), AF_TEXT_ENTRY_UNKNOWN)
+      << "modern-controls is off";
+  ASSERT_EQ(pc->seams().enable("modern-controls"),
+            amberfolio::machine::seam_reason::none);
+  EXPECT_EQ(af_machine_text_entry(box.get()), AF_TEXT_ENTRY_NOT_READING);
+
+  // The editor's entry and its return, from the image segment, each a HLT.
+  for (const auto& [at, want] :
+       {std::pair<std::uint16_t, std::uint32_t>{0x7A73, AF_TEXT_ENTRY_READING},
+        std::pair<std::uint16_t, std::uint32_t>{0x7BF3,
+                                                AF_TEXT_ENTRY_NOT_READING}}) {
+    pc->memory().ram()[amberfolio::cpu::physical_address(
+        amberfolio::machine::image_load_segment, at)] = 0xF4;
+    pc->processor().reset();
+    amberfolio::cpu::registers& r = pc->processor().regs();
+    r[amberfolio::cpu::sreg::cs] = amberfolio::machine::image_load_segment;
+    r.ip = at;
+    r[amberfolio::cpu::sreg::ss] = 0x5000;
+    r[amberfolio::cpu::reg16::sp] = 0x0400;
+    pc->step();
+    EXPECT_EQ(af_machine_text_entry(box.get()), want) << at;
+  }
 }
 
 }  // namespace

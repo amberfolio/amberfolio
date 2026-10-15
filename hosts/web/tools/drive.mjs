@@ -1370,6 +1370,12 @@ function writeFrame(machine, path, announce) {
     path.replace(/\.ppm$/, '.json'),
     `${JSON.stringify(machine.screenText())}\n`,
   );
+  // And where the party is (#520): `Machine.scene()`, `null` off the
+  // screens it describes.
+  writeFileSync(
+    path.replace(/\.ppm$/, '.scene.json'),
+    `${JSON.stringify(machine.scene())}\n`,
+  );
   if (announce) {
     say(`amberfolio: dump frame=${path} generation=${machine.frameGeneration()}`);
   }

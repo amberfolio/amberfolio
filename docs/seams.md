@@ -622,6 +622,18 @@ and never triggered.
 | `menu-down-cursor` | contrast | `menu-down` (Down, Down and Return at the main menu take the third command) |
 | `move-walk-mode` | contrast | `move-walk` (Return takes `Move`, a step on the walking bar, Escape back to the menu, two Rights to `View` and Return opens it, where the program walks and turns) |
 | `name-arrows-edit` | contrast | `name-arrows` (a Right, an Up, a Down and a Left among the letters of a name: the program types a letter for each) |
+| `menu-letters-quick` | identical | `menu-letters` (the party menu clicks no footstep) |
+| `walk-quick` | contrast | `walk` (the first footstep goes on without its wait) |
+
+**A built-in fix has no pair** (`built_in_fixes()`, seam.h). It is on
+with its program and listed nowhere: no panel, config file, flag or
+recording names one, and `enable()`, `disable()` and `pull()` answer
+`unknown_seam`. So there is no "off" to record a baseline in, and the
+claim is the stronger one: every session in `tests/sessions/`, all made
+without it, verifies with it on, so it is `identical` to the plain
+machine wherever it finds nothing to fix. Reserved for a failure no
+player could want; a fix that changed a run a player might prefer is a
+seam.
 
 **`modern-controls` has no `identical` pair.** Four of its pieces draw as
 soon as there is something to draw on (the main menu's cursor, the roster's
@@ -784,7 +796,14 @@ than it looks (#165). The order to reach for the primitives:
   `push cs` plus a near call, so it works only at the paragraph it was
   linked at. Called at the image base with the whole offset in IP, every
   CS-relative read lands sixteen kilobytes away and the output looks
-  like a corrupted machine (automap, #173).
+  like a corrupted machine (automap, #173). **An overlay's stub entry is
+  the strictest case**: the manager's trap reads the stub record at
+  `CS:0`. At the image base the entry still runs while its overlay is
+  in memory, because it is then a far jump, and a test or a fresh run
+  passes; once the overlay is evicted the manager reads the image's
+  first bytes as the record, writes jump entries over its own stub
+  table, and the machine stops in garbage a moment later. Call an entry
+  at the paragraph its record begins at (Encamp Fix, #526).
 
 **The engine itself**
 
@@ -857,10 +876,13 @@ to carry.
 |---|---|---|
 | `code-wheel` | asks the copy-protection challenge once (#291): unanswered it watches; answered by a person, it steps over the boot's call and the challenge is never drawn again | the resident image |
 | `encamp-fix` | a `FIX` command on the camp bar: spends the cures the party holds, rests off the deficit, reports in a box the game draws | the camp screen's overlay |
+| `roster-fix` | **built in, always on, not listed** (§7): a character the roster names and the save directory does not hold is left off the Add list, instead of the program asking for a save disk for ever | overlay 17 (the roster list routine) |
+| `timer-fix` | **built in, always on, not listed** (§7): the sound driver never hooks the timer over its own hook, which a click quick steps did not wait for leaves it about to do | the resident image |
 | `automap` | a map of where the party has been, over the roster, on **Tab** | the resident image |
 | `journal` | what the game cites goes on a list; **Notes** on the party's own bar opens it on the game's screen, out of the player's ingested journal | the resident image, and the adventuring loop's module |
 | `explored` | fog of war on the overworld map: a black checker over every square the party has not stood on; a setting, no key | the resident image |
-| `modern-controls` | the controls a later game has, seven pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one (§10) | overlay 25 (the menu-bar and list routines), overlays 16 and 19, and the resident image |
+| `modern-controls` | the controls a later game has, nine pieces in one seam: Up and Down step the pick-lists and the selected party member; Left, Right, Enter and Esc work at the command bars; walking is a mode the party's bar starts with `Move` and ends with `Exit`, `Area` gone; the main menu has a cursor, and its number row's 1 to 8 select a party member with each number shown; the arrows no longer type letters at a text prompt; every selection is a yellow block with its key letter a white one; and it notes when the program is reading a line of text and where the combat aim bar keeps its cursor, for a host to ask (§10) | overlay 25 (the menu-bar and list routines), overlays 13, 14, 16 and 19, and the resident image |
+| `quick-steps` | a turn, and the next step, do not wait for the footstep's click; the click still plays, and a step's two clicks keep their spacing | the resident image, and the call sites in overlays 14 and 3 |
 | `cheat-invulnerable` | the party takes no damage | the resident image |
 | `cheat-kill-all` | every enemy takes 120 damage, **when pulled** (§3a) | the end check's overlay |
 | `cheat-wound-party` | the whole party drops to one hit point, **when pulled at camp** (§3a) | the resident image |
@@ -956,8 +978,10 @@ Facts it relies on:
   one is queued back **before** each cast by the memorize command's own
   two writes (the slot gets `id | 0x80`, then the program's slot sort),
   so the party is never a cure down. The cast goes through the driver
-  the camp's own Cast command calls: the seam positions its target
-  anchor and answers its one prompt with one key. One act per arrival;
+  the camp's own Cast command calls, through its overlay's stub at the
+  stub's own segment (image `0x0960`, entry `0x39`; §8.4, #526): the
+  seam positions its target anchor and answers its one prompt with one
+  key. One act per arrival;
   the batch re-offers the point (§3) and the next arrival decides
   afresh. Any key the program has not read yet stops the run.
 - **Rejected**: memorizing cures into empty slots, because the seam
@@ -1056,6 +1080,54 @@ memory (§8.4); the report is drawn on the interrupted exit because the
 pass of the menu it would otherwise wait for never comes; the batch
 budget (§3).
 
+### The roster fix
+
+Not a PLAN.md §5 item: a fix for a way the program hangs that a player
+on a plain directory cannot get out of. **A built-in fix** (§7): on with
+the program, in no listing, and nothing to toggle.
+
+**What the program does.** `CHARLIST.TXT` in the save directory names the
+characters in no party; each name's record is `<STEM>.CHA` beside it, the
+stem being the name with ten characters taken out, cut to eight and
+upper-cased. Loading a saved game unlinks the `.CHA` of every member it
+restores, and the list is pruned only the next time the program writes it,
+of names that match a party member's in full. So the list can name a
+character whose file is gone, and two names with one stem share a file.
+(A)dd on such a name opens its file through the program's own
+open-or-ask routine, which asks for the save disk for as long as the file
+is not there.
+
+**Point**, in overlay 17 (file offset 122854, 9189 bytes, load-segment
+word `0x07D0`, the one match of the manager's-record search):
+
+| point | what the handler does |
+| --- | --- |
+| `0x0191`, the list routine's one exit (`mov sp, bp`) | walks the list from the caller's head (far pointer at `BP+6`; 46-byte nodes, the name a Pascal string at `+0`, the next at `+0x2A`); asks of each name not marked `*` (in the party) whether `<save directory><stem>.CHA` exists, canonicalized as INT 21h would; unlinks the first that does not and queues the program's FreeMem on its node. The batch re-offers the point, and the next arrival takes the next |
+
+- **Facts read out of the machine**, not written down: the save directory
+  (DGROUP `0x537A`, a Pascal string) and the ten characters a stem loses
+  (DGROUP `0x0D1A`). FreeMem is image paragraph `0x0AF8`, offset `0x0254`:
+  pointer segment, pointer offset, size; `retf 6`.
+- **Both callers** of the list routine go through the point: (A)dd, and
+  the character generator, which appends the new name and writes the list
+  back. Each writes the list without the names the seam left out, so
+  `CHARLIST.TXT` comes to say what the directory holds.
+- **Refuses**: a frame, node or list it cannot follow in conventional
+  memory, a name longer than a node holds, a list longer than any the
+  program could build, a save directory that does not resolve to a
+  directory, no filesystem. The whole list is walked before anything is
+  touched.
+- **Rejected**: refusing the pick with a line on the message row, which
+  leaves the list as it is. The program's line-and-a-key waits for a
+  person, which a batch's step budget cannot hold, and "not there" cannot
+  be a store still filling: a host puts every file on the machine before
+  the first instruction.
+- **Fidelity**: over a roster with every file in place it reads and writes
+  nothing of the program's: every session verifies with it on, `party`
+  among them, which reaches it twice. `roster-add` holds what it does over
+  a stranded name.
+- **Open**: nothing.
+
 ### The automap panel (#173, M5-E2a to M5-E2e)
 
 PLAN.md §5 item 3 (`seam_automap.cpp`), the first seam that draws: a
@@ -1094,7 +1166,10 @@ rule, settling quarantine and ownership signals are derived in
   per draw:
   `amberfolio: automap doors frame=011000 disk=8 area=0D geo=0D seen=0200 table=0200 drawn shut=0 kind-seen=1 kind-table=0 no-evidence=0`.
   Rejected: runtime learning across maps, because the seam refuses every
-  binary the table was not derived from.
+  binary the table was not derived from. The face, door and sight rules
+  and the zone table are `core/src/machine/automap_faces.h`, which the
+  scene read (`docs/hosts.md` §13, #520) calls too, so a host is told
+  what the panel draws.
 - **Zone label** (M5-E2b): the band eight columns right of the cells, in
   the program's 8x8 font (a far pointer in the data segment, sixty-four
   glyphs indexed by the character upper-cased modulo 64) rasterized into
@@ -1113,8 +1188,8 @@ rule, settling quarantine and ownership signals are derived in
   step.
 - Exploration is never gated on whose bar is up.
 
-**State**: `machine::automap()` (a map's fog is thirty-two bytes;
-`scratch_words` is sixteen), observation beside the overlay tracker:
+**State**: `machine::automap()` (a map's fog is thirty-two bytes, and
+a seam's own words are twelve), observation beside the overlay tracker:
 dropped by `reset()`, absent from the serialization, rebuilt by a replay.
 The colour cache and the door tally live there too. **Host services**:
 `automap_update`, called with the store's serial when a reveal changes
@@ -1383,6 +1458,8 @@ to pull.
 | edit keys | `seam_edit_keys.cpp` | an extended key types nothing at a text prompt | 1 |
 | selection block | `seam_select_yellow.cpp` | every selection a yellow block, a key letter a white one, with a margin all round | 11 |
 | move mode | `seam_move_mode.cpp` | on the party's own bar walking is a mode: `Move` starts it, `Exit` ends it, and in between Left and Right step the bar; `Area` is gone | 5 |
+| text entry | `seam_text_entry.cpp` | nothing on the screen: a host can ask whether the program is reading a line of text | 2 |
+| aim watch | `seam_aim_watch.cpp` | nothing on the screen: a host's scene says where the combat aim cursor is, who is under it and the range | 5 |
 
 The sections below keep each piece's facts under the name it was a seam
 under (`list-arrows`, `bar-keys`, `menu-cursor`, `hero-keys`, `edit-keys`,
@@ -1395,26 +1472,27 @@ quoted below were taken per piece; the engine reports them for the one seam,
 summed over the pieces.
 
 - **One definition, the union of the points, in one order.** The
-  twenty-eight points are the pieces' own, in the order list arrows (3), bar
+  thirty-six points are the pieces' own, in the order list arrows (3), bar
   keys (1), menu cursor (2), hero keys (5), edit keys (1), selection block
-  (11), move mode (5). Five pieces have a point at the same instruction,
+  (12), move mode (5), text entry (2), aim watch (5). Five pieces have a point at the same instruction,
   overlay 25's key read at `0x0572` (list arrows, bar keys, menu cursor, hero
   keys, move mode), and the engine offers an address's points in table
   order, so the order is behaviour: the move mode is last, and rewrites the
   party bar's keys after every other piece has passed on them. The point
-  count with every seam on is fifty-nine, one face counted (`max_points` is
-  sixty-four).
+  count with every seam on is sixty-eight, one face counted (`max_points` is
+  ninety-six).
 - **One fingerprint, several modules.** Every piece keys on the baseline
   edition (§5) and only it, so the definition does. The modules are the
   pieces': overlay 25 for five of them, overlay 16 for the menu cursor's loop
   call, overlay 19 for Modify's score, overlay 14 for the move mode's party
-  bar, the resident image for the rest, and each point names its own.
+  bar, overlay 13 for the aim watch, the resident image for the rest, and
+  each point names its own.
 - **A piece cannot ask another.** The menu cursor took its colours from the
   selection colour; with the two one seam the answer is always yes and the
   cursor's row is always a yellow block with a white key. The journal's reader asks
   `modern_controls_on(box)` (`seam_builtin.h`) for its bars' keys and
   highlight and for its cursor row (§10 on the journal).
-- **Off is the plain machine, on is all seven.** There is no setting between,
+- **Off is the plain machine, on is all eight.** There is no setting between,
   so no piece's handlers run with another's off.
 - **A seam is armed while any module its points name is resident** (§4),
   and this one has points in the resident image, so with the seam on the
@@ -1987,12 +2065,24 @@ block is on, as typing its letter would, with nothing asking first. The slot
 lit on arrival is the last bar's highlight, not one the player picked; Left
 and Right move it.
 
+*Enter chose a member under a lit `Exit`; taken by decision:* the
+party-member picker (resident image `0x38AA`, the routine's one caller
+outside the overlays; named by the address its frame's paragraph `0xBA` and
+offset `0x2D0A` make). Its loop ends on Enter, Esc, `E` or `S`, and Enter
+and `S` both leave the selected member chosen. It never sets the bar's
+highlight, so it opens on the last bar's: View's `Trade` is that bar's
+second group for a member with items and no spells memorized (or the
+reverse), and `Trade to?` then opens with the block on `Exit`, where Return
+traded. Enter takes the lit command: `E` leaves, and `S` is what Enter
+was. Driven: slot A, `V`, `T`, Return goes back to the View bar (seam on)
+and opens the coin list (before); `Left` first, then Return, opens the coin
+list.
+
 *Enter means something already; left alone:*
 
 | caller | return offset | what Enter does there |
 |---|---|---|
 | the pick-lists (overlay 25) | `0x0FE0` | confirms the row while the bar's highlight is on its first command, where the list opens it; **with the highlight moved, Enter takes that command** (Exit, Next, Prev, or the caller's own); **at the Items list, Enter takes the lit command on the first command too** (below) |
-| the party-member picker (resident image `0x38AA`) | | in the set that ends the loop: chooses |
 | the party-order screen (overlay 15) | `0x17DA` | in the toggle class (`0x174E`): picks a member up, puts it down |
 | the combat move loop (overlay 8) | `0x0AC8` | `0x0D` ends it (the bar has no commands: no group to take) |
 | the combat aim cursor (overlay 13) | `0x3178` | confirms, as `T` does |
@@ -2343,10 +2433,10 @@ same loop serves. Its Up and Down are the menu cursor's.
   The routine that draws a name in a status colour and the string drawer
   are called from the character sheet, combat and the camp's report as
   well; the points are inside the roster drawer so nothing else moves.
-- **`max_points` is sixty-four.** With every seam on, one face counted (they
-  are alternatives), the build has fifty-five points, twenty-four of them
-  `modern-controls`'. At thirty-two the last seam a player switched on was
-  refused with `too_many_points`
+- **`max_points` is ninety-six.** With every seam on, one face counted
+  (they are alternatives), the build has sixty-eight points, thirty-six of
+  them `modern-controls`'. At thirty-two the last seam a player switched on
+  was refused with `too_many_points`
   (`SeamHeroKeys.EveryBuiltInSeamFitsTheEngineAtOnce`).
 - **Rejected:** writing the selection and redrawing the list ourselves,
   because the main menu redraws after its own step and the program's cursor
@@ -2374,9 +2464,9 @@ not consulted (§7). Unit: `SeamHeroKeys.*`; stand-ins: `hero_keys_probe_off`,
 `seam_select_yellow.cpp`. Not a PLAN.md §5 item: a player's request, chosen
 from six mock-ups, and the colour half of #379's selection; then drawn as a
 block so that it is not told by colour alone (#483). A look and a setting:
-no key, nothing to pull. Eleven points: seven rewrite one colour before the
+no key, nothing to pull. Twelve points: seven rewrite one colour before the
 program draws with it, two, the blitter's row stores, invert the rows of
-what those seven coloured, and two paint the block's margin where it lies
+what those seven coloured, and three paint the block's margin where it lies
 outside the block's cells.
 
 | point | module | what the handler does |
@@ -2391,6 +2481,7 @@ outside the block's cells.
 | image `0x74A2` and `0x74C8`, the blitter's two EGA row stores, one per page | the resident image, `inside_calls` | inverts DL when the glyph is a selection's (below) |
 | image `0x7667`, the blitter's step to the next cell | the resident image, `inside_calls` | notes the cell a block or not, and settles the margin of it and the three cells its margin can lie in |
 | image `0x71FB`, the rectangle fill's epilogue | the resident image, `inside_calls` | forgets the blocks and margin in the rectangle, and settles it and the ring around it |
+| image `0x618C`, the picture drawer's epilogue | the resident image, `inside_calls` | settles every cell the picture covers, on each page that holds a margin |
 
 | fact | value |
 |---|---|
@@ -2405,6 +2496,7 @@ outside the block's cells.
 | `selection_mark` | `0x8000` in the colour word a seam pushes for a string it draws as a selection (`seam_builtin.h`); the string routine reads the low byte |
 | the blitter's step to the next cell | paragraph `0x709`, `0x05D7`: `inc` of the column argument, reached by every adapter's path once a cell is drawn, with the blitter's frame (row `BP+0x0E`, column `BP+0x10`, colour `BP+0x0C`) and, on the EGA, the map mask back on every plane |
 | the rectangle fill | paragraph `0x709`, `0x00B7` (both clear routines, `0x3F1:0x0137` and `0x709:0x0DD3`, fill through it), epilogue at `0x016B`; from `BP+6` the fill, the page, then the bottom, right, top and left cells. The page selects segment `0xA000` plus `0x200` paragraphs a page |
+| the picture drawer | paragraph `0x464`, `0x1951`, epilogue at `0x1B4C`; from `BP+6` the picture's far pointer, then its row and its column, words; a picture starts with its height in lines and its width in bytes. On the EGA it writes `0xA000` through a line table of its own, so its page is not in its call. Overlay 34's tile drawer (`0x015D`) lays an 8x8 tile through it, and the frame border (image `0x3F10`) every cell of a frame through that, the Fix's report's inside its batch |
 | the display pages | the data segment's words `0x4A16` and `0x4A18`, the two segments the blitter stores every glyph row to |
 | the list leaf | its context's near pointer at `BP+6`; the highlight's colour at `+0x20` of it |
 | the roster drawer | image `0x1307`; its frame has the column and row bytes at `BP-5` and `BP-6` and the member's far pointer at `BP-4`; the call's own words repeat all three |
@@ -2445,7 +2537,11 @@ outside the block's cells.
   lights the program's **group**, the characters drawn through the
   highlighted arm, as a word is lit (the key in the bright and the rest
   yellow, as blocks), but for the blanks after its last letter: the group runs
-  to the bar's end, and a load bar with one save is `A ` (#498). Every other
+  to the bar's end, and a load bar with one save is `A ` (#498). **A notice is
+  yellow from its first letter**: where a word follows the key's, the bar is a
+  sentence, its capital only starts it, and there is no other key to set it
+  apart from, so the whole group is one yellow block; the walking bar's `Exit`
+  keeps its white `E`. Every other
   character is drawn as the program drew it, the swapped pair below put right
   (the program's bright green becomes white and its dim white green). It left the whole bar as drawn until #483: the
   maintainer asked for the walking bar's `Exit` and the notice to be lit like
@@ -2545,14 +2641,16 @@ outside the block's cells.
   after the block's last with the corner above it, **only over black**, on
   both pages. `selection_margins`, observation on the machine like the
   automap's, keeps which cells are blocks and which margin pixels this
-  machine painted; at each cell the blitter finishes, and after each fill,
-  the cells whose margin may have changed are settled: what a cell wants is
-  painted, and what it no longer wants is put back to black, **only where it
-  is still this machine's** (a cell the program draws or fills is its own
-  again). What it holds is checked on the screen before a cell is settled:
-  the camp screen redraws the frame's border row over its bar with neither
-  the blitter nor the fill, and a margin pixel it drew over is forgotten and
-  painted again. A block the program covered some other way (the automap's panel
+  machine painted; at each cell the blitter finishes, after each fill, and
+  after each picture the program lays at a cell (the frame's chain over a
+  bar, a tile at a time), the cells whose margin may have changed are
+  settled: what a cell wants is painted, and what it no longer wants is put
+  back to black, **only where it is still this machine's** (a cell the
+  program draws or fills is its own again). What it holds is checked on the
+  screen before a cell is settled: a picture's call does not say which page
+  it is drawn on, so a picture settles every page that holds a margin, and a
+  margin pixel it drew over is forgotten and painted again before the next
+  frame is shown. A block the program covered some other way (the automap's panel
   over the roster) is checked on the screen before a margin is painted
   beside it: its column 0 and row 7, paper in every glyph, must be its
   colour but for two pixels, or it is forgotten. The graphics controller's
@@ -2597,10 +2695,11 @@ outside the block's cells.
   character's position, a group in the table. A colour is never rewritten to
   what it already is, and only the **low byte** of a pushed word is read or
   written.
-- **`max_points` is sixty-four, and with every seam on the build carries
-  fifty-nine points** (the faces count once, being alternatives),
-  twenty-eight of them `modern-controls`': three, one, two, five, one, these
-  eleven and the move mode's five.
+- **`max_points` is ninety-six, and with every seam on the build carries
+  sixty-eight points** (the faces count once, being alternatives),
+  thirty-six of them `modern-controls`': three, one, two, five, one, these
+  twelve, the move mode's five, the text entry's two and the aim watch's
+  five.
 - **Rejected:** a face of the same shape (a seam with a parameter: seams have
   none); lighting the program's group as it is (the half of a word on the
   icon editor's bar, the maintainer's screenshot); a table of the callers
@@ -2813,6 +2912,188 @@ checkpoints identical, divergent from the first main-menu frame; the
 seam-on half walks once in walking mode, comes back to the menu and opens
 View off the bar, where the seam-off half walks and turns. Off, the engine
 is not consulted (§7). Unit: `SeamMoveMode.*`.
+
+#### Text entry (#504)
+
+`seam_text_entry.cpp`. Not a control: it notes when the program is inside
+its line editor, so a host can put a keyboard up (`docs/hosts.md` §12). It
+draws and changes nothing.
+
+| point | module | what the handler does |
+|---|---|---|
+| image `0x7A73`, the line editor's first instruction (`1709:09E3`, `push bp`) | the resident image | sets the seam's word 5 |
+| image `0x7BF3`, the editor's one return (`1709:0B63`, `retf 8`) | the resident image | clears it |
+
+- **The addresses by two routes.** The resident disassembly, where every
+  jump in the routine lands between those two instructions and the `retf`
+  is the only return, and the unpacked image's bytes, `55 89 E5` at
+  `0x7A73` and `CA 08 00` at `0x7BF3`.
+- **All four callers** (the edit keys' table above) go through the
+  entry. Driven on the store release: the code word's prompt reads as
+  reading from the moment `INPUT THE CODE WORD:` is up, and not after the
+  word is entered; the character's name reads as reading from the empty
+  `CHARACTER NAME:` prompt until Return, and not on the portrait bar after
+  it. A script's two prompts have not been driven.
+- **State**: word 5 of the seam's own, observation, dropped by `enable()`
+  and `reset()`. `move-mode` holds words 0 to 4. **Host services**: none.
+  **Keys**: none.
+- **Fidelity**: the handlers read and write nothing of the machine's, so
+  every session with `modern-controls` on verifies as it did. Unit:
+  `SeamTextEntry.*`, `AbiTextEntry.*`.
+
+#### Aim watch (#523)
+
+`seam_aim_watch.cpp`. Not a control: it notes where the combat aim bar's
+routine keeps its frame while the bar waits for a key, so the scene can say
+where the cursor is (`docs/hosts.md` §13). It draws and changes nothing.
+
+The aim command is overlay 13 (file offset 75771, 15474 bytes; the manager
+keeps its segment in the word at image `0x690`). It aims two ways, each a
+routine with a `push bp; mov bp,sp` frame that waits for a key through the
+menu-bar routine:
+
+| way | routine | in its frame, from BP |
+|---|---|---|
+| target to target | `0x2AA0` | the target's record, a far pointer, at `+0x0C`; the acting figure's at `+0x10`; the weapon's reach at `+0x0A`; an attack (not a spell's aim) at `+8`; the range it prints at `-0x30`; its bar string at `-0x2A`, which holds the word Target only where the target may be aimed at, until it is rebuilt as the whole bar |
+| manual | `0x2DFA` | the cursor's column at `-0x33` and row at `-0x34`; the range word at `-0x38`; the byte at `-0x39`, set where the line from the acting figure arrives and then cleared wherever Target is not offered; the record the panel shows (the figure on the square, or a body lying there), a far pointer, at `+0x14`, zero for none; an attack at `+0x10` |
+
+| point (overlay 13) | what the handler does |
+|---|---|
+| `0x2BB6`, where target to target's branches meet, the bar string decided and not yet rebuilt | notes target mode, SS and BP, whether the bar string is empty (Target not offered) and whether this is an attack (a range printed) |
+| `0x2C31`, that routine's return from the menu-bar routine | notes the wait over |
+| `0x2F84`, where manual's line branches meet, before the range is halved | notes whether the line arrived and this is an attack (a range printed) |
+| `0x310A`, where manual's Target branches meet, before the bar is built | notes manual mode, SS and BP, and whether Target is offered |
+| `0x3178`, that routine's return from the menu-bar routine | notes the wait over |
+
+- **The offsets by two routes.** Overlay 13's disassembly (each frame built
+  at its entry; the target pointer handed to the sheet drawer and compared
+  with the acting figure's; the range byte printed and compared with the
+  reach; the cursor's bytes clamped to 49 and 24 and compared with a body's
+  column and row) and the module's bytes at each point. The two returns
+  are also the ones `bar-keys` names these bars' calls by, found through
+  the menu-bar routine's frame.
+- **The frame, not a copy.** While the bar waits, the frame is the
+  program's own record of the cursor, the panel's record and the range,
+  and it stays put until the call returns, so the scene reads them there.
+  The seam keeps what the machine no longer holds where anyone can find
+  it: where the frame is (BP has moved on by the time a host asks) and the
+  two decisions the frame has overwritten by then.
+- **Only while waiting.** Between keys the routine moves the cursor and
+  redraws the bar with the frame being rewritten, and the answer is "not
+  waiting" for that moment. Driven on the baseline edition, slot J's
+  fight (`--wall none`): from target to target the cursor went from the
+  acting figure (range 0, no Target) to each other figure in sight with the
+  bar's `RANGE` and its Target each time; manual followed the arrows across
+  empty ground with the range the bar printed and nobody under the cursor;
+  Exit went back to target to target, and a second Exit ended the aim.
+- **State**: words 6 to 9 of the seam's own, observation, dropped by
+  `enable()` and `reset()`. **Host services**: none. **Keys**: none.
+- **Fidelity**: the handlers read the routine's frame and write nothing of
+  the machine's, so every session with `modern-controls` on verifies as it
+  did. Unit: `SeamAimWatch.*`, `SceneCombat.*`.
+
+### Quick steps
+
+Not a PLAN.md §5 item: a player's request, after profiling a step at the
+386 governor. **A turn spent six of its eleven frames between the key
+and the new view in a busy-wait**, and a step forward two of them, one
+before the redraw and one after it. The wait is the sound driver's, and
+it is for the footstep's click.
+
+**What the program does.** Every sound starts at the driver's dispatch
+entry, image offset `0x8BBC` (`push bp; mov bp,sp`, the far return at
+`[BP+2]`, the request word at `[BP+6]`, `retf 2`). Five calls ask it for
+the footstep, the word at DGROUP `0x2628`, by the far returns they leave:
+
+| overlay (load-segment word) | return | the call | its wait |
+| --- | --- | --- | --- |
+| 14 (`0x730`) | `0x0B19`, `0x0B5E` | a turn left, a turn right, before the view is drawn | skipped |
+| 14 | `0x0747` | a step's commit, before the redraw | kept: it spaces the step's two clicks |
+| 3 (`0x200`, the one match of the manager's-record search) | `0x34D8` | the adventuring loop, after the redraw, when the square changed | skipped |
+| 3 | `0x2D91` | an event script's click | kept |
+ After starting a request, the
+entry tests the driver's busy word, DGROUP `0x5374`; set, it spins in the
+driver's calibrated wait for ten hundredths on the DOS clock, then
+silences both voice banks and stops the driver. Clear, it goes straight
+to its `pop bp; retf 2`.
+
+**Point**, in the resident image:
+
+| point | what the handler does |
+| --- | --- |
+| `0x8C36`, the busy-word test (`cmp word [0x5374],0`) | when the request in the frame is the word at DGROUP `0x2628` and the far return is a skipped call site, its segment the one the overlay's word holds now, moves IP to `0x8C57`, the epilogue the test's own branch takes when the driver is idle. Any other call or request is left to wait |
+
+- **The click is not lost.** The driver's timer service plays the effect
+  out to silence by itself, and the next request loads its own effect over
+  whatever is still going. Measured on the Tandy chip: the same click, as
+  long as it always was, and a step's two clicks as far apart. A step
+  taken the moment the last one's second click starts cuts it short.
+- **The timer stays hooked until the next sound**, because the bracket is
+  also where the driver unhooks it. The entry hooks it again at its top,
+  which over its own hook would lose the BIOS's handler for good; the
+  timer fix (below) is what stops that, built in so that it holds after
+  quick steps is turned off with the hook still in place.
+- **Rejected**: skipping every footstep's wait. A step's two clicks then
+  run together, which the maintainer heard as not the game's own sound;
+  the step's first wait is what spaces them.
+- **Rejected**: skipping the wait and keeping the silencing. Nothing waits,
+  but the click is stopped in the instant it is started and is never heard
+  (32 chip writes in a run of two turns and two steps that makes 1,264
+  with the seam off).
+- **Refuses** a DS that is not the data segment, an instruction whose
+  operand is not the busy word's address, and a BP that is not the
+  routine's frame (`BP == SP` at the test).
+- **Fidelity**: before the first footstep it moves nothing, and a run with
+  no footstep is the run with it off (`menu-letters-quick`, `identical`).
+  From the first footstep the driver is left running between clicks, as
+  its own busy word says, the program reaches its next key sooner, and
+  everything that reads the clock afterwards reads another time
+  (`walk-quick`, `contrast`, 81 of 190 checkpoints identical). It cannot
+  be in `quiet-all`: `quiet`'s four movement keys click.
+- **Open**: a step's new view still comes after its first click's wait.
+  And of what is left between a key and a turned view, about four frames
+  at the 386 governor are the program composing the view in its back
+  buffer and copying it out.
+
+### The timer fix
+
+Not a PLAN.md §5 item: what quick steps needs to leave the sound driver
+whole. **A built-in fix** (§7). The plain program never reaches it.
+
+**What the program does.** In its one-shot mode (DGROUP `0x5374` set),
+the driver hooks the timer interrupt (INT 08h) before each sound and
+unhooks it after the sound's wait. Its install routine, image offset
+`0x9E5C` (`push ds`, a far call), asks DOS for the vector, keeps it in two
+words of its own segment, installs its handler (the `mov dx` at `+0x1C`
+loads its offset, `0x13EA`), runs the timer thirteen times fast and
+returns with the `retf` at `+0x34`. The handler chains to the kept vector
+on every thirteenth tick, which keeps the DOS clock. The uninstall puts
+the kept vector back and the timer to its BIOS rate.
+
+**Hooked twice, the kept vector is the driver's own handler.** Every
+uninstall after that puts the handler back at the BIOS rate: each sound
+plays thirteen times slower (a monster's death ran five or six seconds),
+and the chain goes to the handler itself, so the BIOS's never runs. It
+was v0.14.0's: a footstep whose wait quick steps skipped left the hook in
+place, and the next sound's install hooked over it.
+
+**Point**, in the resident image:
+
+| point | what the handler does |
+| --- | --- |
+| `0x9E5C`, the install routine's entry | when the busy word is set and the timer's vector is already the driver's handler (its segment CS, its offset the one the routine's `mov dx` loads), moves IP to the routine's `retf`. The kept vector stays the BIOS's, and the timer is already at the driver's rate |
+
+- **Refuses** a routine whose `+0x1C` is not a `mov dx, imm16` or whose
+  `+0x34` is not a `retf`.
+- **Leaves the driver's resident mode alone**: with the busy word clear,
+  the driver's own start-and-stop gate hooks and unhooks, and the fix does
+  not second-guess it.
+- **Fidelity**: in a plain run the vector is the BIOS's at every install,
+  so it moves nothing, and every session verifies with it on. In
+  `walk-quick` it acts at every sound after a skipped wait, and the
+  vector is the BIOS's again after each sound that waits (18 hooks, 18
+  unhooks).
+- **Open**: nothing.
 
 ### The text faces
 

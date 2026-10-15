@@ -470,8 +470,11 @@ TEST(SeamRegistry, RefusesMoreThanItHasRoomFor) {
       ++taken;
     }
   }
-  EXPECT_EQ(taken + all_seams().size(), seam_engine::max_seams);
-  EXPECT_EQ(box->seams().count(), seam_engine::max_seams);
+  // The built-in fixes take room too, and are not listed.
+  EXPECT_EQ(taken + all_seams().size() + built_in_fixes().size(),
+            seam_engine::max_seams);
+  EXPECT_EQ(box->seams().count(),
+            seam_engine::max_seams - built_in_fixes().size());
 }
 
 // --- What enable() refuses -------------------------------------------------
@@ -1240,6 +1243,9 @@ TEST(SeamGate, ADefinitionWithAGateNamesTheCurrentSchema) {
   // the group (schema 6), and again for `inside_calls` (schema 7).
   EXPECT_EQ(seam_schema_version, 7);
   for (const seam_definition& seam : all_seams()) {
+    EXPECT_EQ(seam.schema, seam_schema_version) << seam.id;
+  }
+  for (const seam_definition& seam : built_in_fixes()) {
     EXPECT_EQ(seam.schema, seam_schema_version) << seam.id;
   }
 }

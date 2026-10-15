@@ -6,7 +6,10 @@ What this emulator adds to the game, as a player meets it. `docs/seams.md`
 is the mechanism and the house style for writing another.
 
 **Every enhancement is off by default**, and with all of them off the
-machine is a plain machine (`docs/seams.md` §7 is the test). **Nothing is
+machine is a plain machine (`docs/seams.md` §7 is the test). The
+exceptions are **fixes** for ways the game breaks that nobody could want
+(the roster fix and the timer fix, below): they are always on and there
+is nothing to turn. **Nothing is
 injected into the game**: a seam is native C++ that stops the program at
 an address, reads or writes memory, and lets it continue. The program on
 the disk and every file the game owns are never modified.
@@ -64,6 +67,42 @@ finishes.
 **What it will not do.** Write hit points, mend the wound statuses a
 fight leaves that resting cannot mend, or memorize a cure into a slot
 that was empty to begin with.
+
+## The roster fix (always on)
+
+**What it does.** Leaves a character off the **Add** list when the
+roster names it and its file is not in the save directory. The game lets
+the two drift apart by itself: loading a saved game takes the files of
+the party it restores out of the save directory, and the roster is only
+tidied the next time the game writes it, so a name can outlive its file.
+Without the fix, picking such a name asks for the save disk and waits for
+ever, and the only way out is to close the game. With it, the name is
+simply not on the list, and when you leave Add the game writes the roster
+back without it.
+
+**How you turn it on.** You do not: it is built in, on in every run, and
+in no panel, config file or flag.
+
+**What it will not do.** Touch a name that has its file, or one already
+in the party; create, move or delete any character's file. A roster whose
+files are all there is left exactly as the game built it.
+
+## The timer fix (always on)
+
+**What it does.** Keeps the game's sound driver from hooking the PC's
+timer a second time over its own hook. Quick steps lets a footstep's
+click play on with the timer still hooked, and without this fix the next
+sound would hook it again: from then on every sound played thirteen
+times slower, a monster's death for five or six seconds, until the game
+was restarted.
+
+**How you turn it on.** You do not: it is built in, on in every run, and
+in no panel, config file or flag. It stays on when quick steps is turned
+off, which is when a hook quick steps left behind still needs it.
+
+**What it will not do.** Anything in a game that quick steps has not
+touched: there, the driver always unhooks the timer before it hooks it
+again, and the fix finds nothing to do.
 
 ## The automap
 
@@ -267,8 +306,9 @@ bar; the adventuring bar (in menu mode, `Move` among its commands, and while
 walking, its one `Exit`); the portrait bar at character creation (`Head Body
 Keep`); the shops' and temples' bars and the temple's appraisal; combat's
 command, Done and game-speed bars; the View bar; the post-combat treasure
-and Take bars; the load-game slot bar, and a locked or stuck door's bar (where the game
-would take Return as no choice). A command the other seams add,
+and Take bars; the load-game and save-game slot bars (Return writes the
+lit slot, as its letter does); and a locked or stuck door's bar (where the
+game would take Return as no choice). A command the other seams add,
 the Encamp Fix's `Fix` and the journal's `Notes`, is taken the same way,
 and so are the bars of the Notes screen itself (below).
 **The rest-time menu** is the one place the game used Enter for itself (it
@@ -300,16 +340,19 @@ and `M` still pick the field. At combat's aim bar (`NEXT PREV MANUAL
 TARGET CENTER EXIT`) Enter takes the lit command; the game's own Enter there
 repeated the last Next or Prev, by accident. At a character's Items list
 (View, Items) Enter takes the lit command for the lit item, `Ready` until
-Left or Right moves it; the game's own Enter there did nothing.
+Left or Right moves it; the game's own Enter there did nothing. At the
+party-member picker (`Trade to?`, `Cast spell on whom`) Enter takes the lit
+command too: on `Exit` it leaves, where the game's own Enter chose the
+member. The picker opens on whatever the last bar left lit, so after
+View's `Trade` it often opens on `Exit`.
 
 **What it will not do.** Make Enter confirm a row in the pick-lists (it
 already does, at every list but Items), or take a command where the game
-gives Enter a meaning of its own: the pick-lists and the party picker, the
-party-order screen, combat's move and its aim cursor, the
-temple's keep-or-sell (where it sells), the press-Enter notices, the icon
-editor. Two bars drop Enter and are left alone on purpose, because a stray
-Return there would do harm: the save-game slot bar (it would write the lit
-slot) and the stat editor (its `Exit` discards the edit). Make a held
+gives Enter a meaning of its own: the pick-lists, the party-order screen,
+combat's move and its aim cursor, the temple's keep-or-sell (where it
+sells), the press-Enter notices, the icon editor. One bar drops Enter and
+is left alone on purpose, because a stray Return there would do harm: the
+stat editor (its `Exit` discards the edit). Make a held
 key repeat (`docs/hosts.md`) or step the pick-lists and the selected member
 with the up and down arrows (the list arrows, above).
 
@@ -401,10 +444,10 @@ A block is a shape, and reads whatever colours you see. With the seam on:
   truth?`): on a bar whose keys are not the first letters of its words,
   like the icon editor's top bar, the game's own highlight runs on into
   part of the next word, and the seam lights the word that holds the key.
-  A bar of one command is what Enter takes, and is lit the same way: a
-  prompt with only one choice, such as `PRESS <ENTER>/<RETURN> TO
-  CONTINUE` (its `P` a white block and the rest a yellow one), and the
-  walking bar's `EXIT`. The `Exit` under a pick-list is not lit: Enter
+  A bar of one command is what Enter takes, and is lit too: a prompt with
+  only one choice, such as `PRESS <ENTER>/<RETURN> TO CONTINUE`, is one
+  yellow block, its `P` included, and the walking bar's `EXIT` is lit as a
+  word is, its `E` a white block. The `Exit` under a pick-list is not lit: Enter
   there takes the list's row.
 - **A pick-list's highlighted row** (race, class, spells, shops, coins, the
   list of characters to add) is a yellow block.
@@ -457,6 +500,23 @@ one setting.
 **What it changes.** An Alt chord and the function keys type nothing at those
 prompts either. The View > Drop money amount is the game's own and takes
 digits only, so an arrow was never wrong there.
+
+## Quick steps
+
+**What it does.** Turning, and the next step, stop waiting for the
+footstep. The game holds everything still for a tenth of a second while
+each click plays: before the view turns, and both before and after the
+view moves on a step forward. With quick steps on, a turn's click plays
+while the view turns, six frames after the key instead of eleven at the
+386 setting, and a step's second click plays while the game takes your
+next key. A step's first wait stays, because it is what spaces the
+step's two clicks the way the game always had them.
+
+**How you turn it on.** `--seam quick-steps`, or its toggle in the panel.
+
+**What it will not do.** Make anything else faster. Every other sound
+waits as it always did, and the time the game spends drawing the view is
+its own.
 
 ## The text faces
 

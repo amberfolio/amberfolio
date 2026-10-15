@@ -604,8 +604,8 @@ export class Machine {
     return this.module._af_machine_set_entry(this.handle, cs, ip, ss, sp);
   }
 
-  /// Post an XT make/break scancode (0x01-0x53, keyboard.h), stamped at
-  /// the machine's current virtual time.
+  /// Post an XT make/break scancode (0x01-0x53, or a cursor-pad key's
+  /// 0x67-0x73, keyboard.h), stamped at the machine's current virtual time.
   postKey(scancode, down) {
     return this.module._af_machine_post_key(
       this.handle,
@@ -1523,6 +1523,51 @@ export class Machine {
     return this.module._af_machine_code_wheel_answered(this.handle) !== 0;
   }
 
+  /// Whether the program is reading a line of text right now (#504): true
+  /// from the line editor's first instruction until its return, false
+  /// outside it, and **null when nothing is watching** — `modern-controls`
+  /// off or unavailable, or no program loaded. A page that paints its own
+  /// keyboard asks once a frame and puts it up on true; it must not guess
+  /// the same thing from the screen.
+  textEntry() {
+    const answer = this.module._af_machine_text_entry(this.handle);
+    if (answer === 1) return true;
+    if (answer === 0) return false;
+    return null;
+  }
+
+  /// Where the party is and what is around it (#520, #521, #523), parsed:
+  /// on the interior screen `{ screen: 'explore', x, y, facing, around,
+  /// view, map, ... }`, on the overland `{ screen: 'travel', x, y, facing,
+  /// window, ... }`, in a fight `{ screen: 'combat', turn, waiting,
+  /// nearest, aim, combatants, window, ... }`, and **null while nothing
+  /// knows** — no program, or a screen no shape covers (a menu, the camp).
+  /// `map` is null while the automap is off, because then nothing records
+  /// where the party has been; `aim` is absent while `modern-controls` is
+  /// off, because then nothing watches the aim bar. `docs/hosts.md` §13
+  /// has every field. A read, so a page that never asks pays nothing.
+  scene() {
+    const needed = this.module._af_machine_scene_json(this.handle, 0, 0);
+    const scratch = this.module._malloc(needed + 1);
+    if (scratch === 0) {
+      throw new Error('out of wasm heap while reading the scene');
+    }
+    try {
+      this.module._af_machine_scene_json(this.handle, scratch, needed + 1);
+      // Plain printable ASCII: the core writes nothing else. In chunks,
+      // because a whole explored map is past what some engines take in
+      // one spread call (`#report`).
+      const bytes = this.module.HEAPU8.subarray(scratch, scratch + needed);
+      let text = '';
+      for (let i = 0; i < bytes.length; i += 4096) {
+        text += String.fromCharCode(...bytes.subarray(i, i + 4096));
+      }
+      return JSON.parse(text);
+    } finally {
+      this.module._free(scratch);
+    }
+  }
+
   setCodeWheelAnswered(answered) {
     return this.module._af_machine_set_code_wheel_answered(
       this.handle,
@@ -1863,14 +1908,12 @@ export function loadDemoProgram(machine) {
 // right Ctrl/Alt as distinct keys) are simply absent — the same
 // "not modelled, not guessed" gap keyboard.h documents.
 //
-// The arrow, Home/End, Page and Insert/Delete rows are the same keys as
-// the numeric keypad, and that is not an approximation: on an 83-key
-// board there *is* no separate cursor pad, and a program reads 48h for
-// "up" whether the player pressed Numpad8 or the arrow a later keyboard
-// added. Mapping them onto the same scancodes is what a real XT keyboard
-// does; leaving them out, which is what this table did until M3-F2
-// (#84), is what made a keyboard-driven game unplayable in a browser
-// while the desktop host had had them since M2-H1.
+// The arrow, Home/End, Page and Insert/Delete keys are the one thing a
+// 101-key board adds that is mapped: the cursor pad, each key its keypad
+// twin's code plus 0x20 (keyboard.h's `cursor_pad_of`, #517). A program
+// still reads 48h for "up" from either, but Num Lock, which a player
+// turns on to type amounts on the keypad, reaches only the keypad, so the
+// arrows keep moving while it is on.
 export const XT_SCANCODES = Object.freeze({
   Escape: 0x01,
   Digit1: 0x02,
@@ -1959,18 +2002,18 @@ export const XT_SCANCODES = Object.freeze({
   Numpad0: 0x52,
   NumpadDecimal: 0x53,
 
-  // The cursor pad, onto the keypad codes it shares with an 83-key
-  // board — see the note above.
-  Home: 0x47,
-  ArrowUp: 0x48,
-  PageUp: 0x49,
-  ArrowLeft: 0x4b,
-  ArrowRight: 0x4d,
-  End: 0x4f,
-  ArrowDown: 0x50,
-  PageDown: 0x51,
-  Insert: 0x52,
-  Delete: 0x53,
+  // The cursor pad, its keypad twin's code plus 0x20 — see the note
+  // above.
+  Home: 0x67,
+  ArrowUp: 0x68,
+  PageUp: 0x69,
+  ArrowLeft: 0x6b,
+  ArrowRight: 0x6d,
+  End: 0x6f,
+  ArrowDown: 0x70,
+  PageDown: 0x71,
+  Insert: 0x72,
+  Delete: 0x73,
 });
 
 /// `KeyboardEvent.code` -> XT scancode, or `undefined` for a key the

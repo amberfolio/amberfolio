@@ -274,6 +274,8 @@ const EXPECTED_EXPORTS = [
   '_af_machine_document_kind_at',
   '_af_machine_code_wheel_answered',
   '_af_machine_set_code_wheel_answered',
+  '_af_machine_text_entry',
+  '_af_machine_scene_json',
   '_af_machine_save_layer_slots',
   '_af_machine_save_layer_members',
   '_af_machine_save_layer_count',
@@ -1654,6 +1656,84 @@ if (missing.length === 0) {
   machine.destroy();
 }
 
+// --- A reset closes what the program had open (#514) --------------------
+//
+// A player rerolling by resetting and loading again: every reset used to
+// leave the program's open files open on the filesystem, which has
+// sixteen slots, and after fifteen of them nothing could be read off the
+// disk — not by the game, not by the page. A program of our own opens a
+// file and spins; it is reset and loaded again three times as often as
+// there are slots, and the disk must still load, hash and read.
+
+if (missing.length === 0) {
+  const check = (condition, message) => {
+    if (!condition) problems.push(message);
+  };
+
+  const machine = new Machine(module);
+  check(
+    machine.attachReferenceDevices() === AF_OK,
+    'attaching the reference devices failed',
+  );
+  machine.reset();
+
+  // DS=CS; open `A.DAT` read-only; spin, holding it open.
+  const name = 'A.DAT';
+  const nameAt = 12;
+  const code = [
+    0x0e, //                   PUSH CS
+    0x1f, //                   POP  DS
+    0xb8, 0x00, 0x3d, //       MOV  AX, 3D00h  ; open, read-only
+    0xba, nameAt, 0x00, //     MOV  DX, name
+    0xcd, 0x21, //             INT  21h
+    0xeb, 0xfe, //             JMP  $
+  ];
+  check(
+    code.length === nameAt,
+    `the holding program is ${code.length} bytes, not the ${nameAt} its name was placed after`,
+  );
+  const image = new Uint8Array(nameAt + name.length + 1);
+  image.set(code, 0);
+  for (let i = 0; i < name.length; ++i) image[nameAt + i] = name.charCodeAt(i);
+
+  check(machine.vfsPut('HOLDOPEN.EXE', makeMzImage(image)) === AF_OK, 'putting HOLDOPEN.EXE failed');
+  check(machine.vfsPut(name, new Uint8Array([1, 2, 3])) === AF_OK, `putting ${name} failed`);
+  check(
+    machine.vfsPut('SAVE/SAVGAMA.DAT', new Uint8Array([9, 9, 9])) === AF_OK,
+    'putting SAVE/SAVGAMA.DAT failed',
+  );
+
+  const tenth = Math.floor(machine.ticksPerSecond() / 10);
+  const runs = 48;
+  const before = problems.length;
+  for (let run = 0; run < runs; ++run) {
+    if (run > 0) machine.reset();
+    const loaded = machine.loadFromVfs('HOLDOPEN.EXE');
+    if (loaded !== AF_OK) {
+      problems.push(`reset ${run}: the program would not load (error ${machine.loadError()})`);
+      break;
+    }
+    machine.runUntil(machine.time() + tenth);
+    if (machine.vfsFingerprint('SAVE/SAVGAMA.DAT') === null) {
+      problems.push(`reset ${run}: a file on the disk could no longer be hashed`);
+      break;
+    }
+    if (machine.vfsGet('SAVE/SAVGAMA.DAT')?.length !== 3) {
+      problems.push(`reset ${run}: a file on the disk could no longer be read`);
+      break;
+    }
+  }
+
+  if (problems.length === before) {
+    console.log(
+      `smoke: a program holding a file open was reset ${runs} times and the ` +
+        'disk still loaded, hashed and read',
+    );
+  }
+
+  machine.destroy();
+}
+
 // --- A disk of the real shape, and the two ways one is refused (#158) ----
 //
 // A shipped installation is a flat root of about a hundred and twenty
@@ -2553,6 +2633,14 @@ if (missing.length === 0) {
     'a machine claimed the challenge was answered before it was told anything',
   );
   check(!machine.codeWheelApply(), 'a machine with no program was told something');
+  check(
+    machine.textEntry() === null,
+    'a machine with no program said whether it was reading a line of text',
+  );
+  check(
+    machine.scene() === null,
+    'a machine with no program said where the party is',
+  );
 
   const ptr = module._af_web_probe_program_bytes();
   const size = module._af_web_probe_program_size();
@@ -3206,20 +3294,23 @@ if (missing.length === 0) {
     if (!condition) problems.push(message);
   };
 
-  // On an 83-key board the cursor keys *are* the keypad, so these share
-  // their scancodes — which is what a real XT keyboard does, not an
-  // approximation.
+  // The cursor pad is its keypad twin plus 0x20 (#517), so Num Lock,
+  // which reaches only the keypad, never turns an arrow into a digit.
   const expected = {
-    ArrowUp: 0x48,
-    ArrowDown: 0x50,
-    ArrowLeft: 0x4b,
-    ArrowRight: 0x4d,
-    Home: 0x47,
-    End: 0x4f,
-    PageUp: 0x49,
-    PageDown: 0x51,
-    Insert: 0x52,
-    Delete: 0x53,
+    ArrowUp: 0x68,
+    ArrowDown: 0x70,
+    ArrowLeft: 0x6b,
+    ArrowRight: 0x6d,
+    Home: 0x67,
+    End: 0x6f,
+    PageUp: 0x69,
+    PageDown: 0x71,
+    Insert: 0x72,
+    Delete: 0x73,
+    Numpad8: 0x48,
+    Numpad2: 0x50,
+    Numpad7: 0x47,
+    NumpadDecimal: 0x53,
     Escape: 0x01,
     Enter: 0x1c,
     NumpadEnter: 0x1c,
@@ -3923,8 +4014,8 @@ if (missing.length === 0 && sessions !== null) {
     a: 0x1e,
     Enter: 0x1c,
     Return: 0x1c,
-    ArrowUp: 0x48,
-    Up: 0x48,
+    ArrowUp: 0x68,
+    Up: 0x68,
     Numpad5: 0x4c,
     'Keypad 5': 0x4c,
     Digit7: 0x08,

@@ -262,6 +262,17 @@ void keyboard_service::drain(machine& mach) {
 
 void keyboard_service::apply(machine& mach, std::uint8_t scancode, bool down) {
   cpu::processor& cpu = mach.processor();
+
+  // The cursor pad (keyboard.h): its keypad code with no character, the
+  // word an enhanced BIOS's AH=00h answers, Num Lock and Shift unread.
+  if (const std::uint8_t keypad = xt_keyboard::keypad_of_cursor_pad(scancode);
+      keypad != 0) {
+    if (down) {
+      kb_buffer_push(cpu, static_cast<std::uint16_t>(keypad << 8u));
+    }
+    return;
+  }
+
   const xt_keyboard::key_entry entry = scancode < xt_keyboard::xt_table.size()
                                            ? xt_keyboard::xt_table[scancode]
                                            : xt_keyboard::key_entry{};
