@@ -66,17 +66,17 @@ TEST(SeamModernControls, IsASettingOnTheBaselineEditionAndNothingElse) {
 
 TEST(SeamModernControls, HasTheNinePiecesPointsInTheOrderTheyWereRegisteredIn) {
   // list-arrows 3, bar-keys 1, menu-cursor 2, hero-keys 5, edit-keys 1,
-  // select-yellow 11, move-mode 5, text-entry 2, aim-watch 5. Where several
+  // select-yellow 12, move-mode 5, text-entry 2, aim-watch 5. Where several
   // pieces have a
   // point at one instruction the engine offers it in table order, so the
   // order is behaviour.
   const seam_definition& s = definition();
-  ASSERT_EQ(s.points.size(), 35u);
+  ASSERT_EQ(s.points.size(), 36u);
 
   // The menu-bar routine's key read, overlay 25 `0x0572`: five pieces
   // listen at it, the arrows' piece first and the party bar's move mode
   // last.
-  constexpr std::array<std::size_t, 5> key_read{2, 3, 4, 6, 27};
+  constexpr std::array<std::size_t, 5> key_read{2, 3, 4, 6, 28};
   for (const std::size_t at : key_read) {
     EXPECT_EQ(s.points[at].offset, 0x0572u) << at;
     EXPECT_FALSE(s.points[at].module.is_resident_image()) << at;
@@ -87,32 +87,33 @@ TEST(SeamModernControls, HasTheNinePiecesPointsInTheOrderTheyWereRegisteredIn) {
   EXPECT_TRUE(s.points[11].module.is_resident_image());
   EXPECT_EQ(s.points[11].offset, 0x7AC0u);
   // The selection's colours: the bar leaf's glyph call first, then the
-  // blitter's two row stores, then the margin's two points.
+  // blitter's two row stores, then the margin's three points.
   EXPECT_EQ(s.points[12].offset, 0x0273u);
   EXPECT_EQ(s.points[19].offset, 0x74A2u);
   EXPECT_EQ(s.points[20].offset, 0x74C8u);
   EXPECT_EQ(s.points[21].offset, 0x7667u);
   EXPECT_EQ(s.points[22].offset, 0x71FBu);
+  EXPECT_EQ(s.points[23].offset, 0x618Cu);
   // And the move mode's two pairs around the party bar's two calls, in the
   // adventuring loop's module.
   constexpr std::array<std::uint32_t, 4> party_bar{0x09D0, 0x09D5, 0x0C40,
                                                    0x0C45};
   for (std::size_t i = 0; i < party_bar.size(); ++i) {
-    EXPECT_EQ(s.points[23 + i].offset, party_bar[i]) << i;
-    EXPECT_EQ(s.points[23 + i].module.load_segment_at, 0x730u) << i;
+    EXPECT_EQ(s.points[24 + i].offset, party_bar[i]) << i;
+    EXPECT_EQ(s.points[24 + i].module.load_segment_at, 0x730u) << i;
   }
   // The line editor's entry and return, at addresses no other piece has
   // (#504).
-  EXPECT_EQ(s.points[28].offset, 0x7A73u);
-  EXPECT_EQ(s.points[29].offset, 0x7BF3u);
-  EXPECT_TRUE(s.points[28].module.is_resident_image());
+  EXPECT_EQ(s.points[29].offset, 0x7A73u);
+  EXPECT_EQ(s.points[30].offset, 0x7BF3u);
   EXPECT_TRUE(s.points[29].module.is_resident_image());
+  EXPECT_TRUE(s.points[30].module.is_resident_image());
   // And the aim bar's five, last, in overlay 13 (#523).
   constexpr std::array<std::uint32_t, 5> aim_bar{0x2BB6, 0x2C31, 0x2F84, 0x310A,
                                                  0x3178};
   for (std::size_t i = 0; i < aim_bar.size(); ++i) {
-    EXPECT_EQ(s.points[30 + i].offset, aim_bar[i]) << i;
-    EXPECT_EQ(s.points[30 + i].module.load_segment_at, 0x690u) << i;
+    EXPECT_EQ(s.points[31 + i].offset, aim_bar[i]) << i;
+    EXPECT_EQ(s.points[31 + i].module.load_segment_at, 0x690u) << i;
   }
 }
 

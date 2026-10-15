@@ -43,7 +43,7 @@ constexpr std::string_view seam_id = "modern-controls";
 /// has: the pieces follow one another in the order
 /// seam_modern_controls.cpp lists them.
 constexpr std::size_t piece_first = 12;
-constexpr std::size_t piece_count = 11;
+constexpr std::size_t piece_count = 12;
 
 [[nodiscard]] std::span<const seam_point> piece_points(
     const seam_definition& s) {
@@ -52,6 +52,7 @@ constexpr std::size_t piece_count = 11;
 
 // The colours, restated.
 constexpr std::uint16_t black = 0x00;
+constexpr std::uint16_t red = 0x04;
 constexpr std::uint16_t green = 0x0A;
 constexpr std::uint16_t cyan = 0x0B;
 constexpr std::uint16_t light_magenta = 0x0D;
@@ -70,6 +71,7 @@ constexpr std::size_t row_store = 7;
 constexpr std::size_t row_store_again = 8;
 constexpr std::size_t cell_drawn = 9;
 constexpr std::size_t rectangle_filled = 10;
+constexpr std::size_t picture_drawn = 11;
 
 // Where the store's frames say a glyph's call came from (#483): the far
 // return address each callee's frame holds, as segment and offset. The
@@ -101,6 +103,10 @@ constexpr std::uint16_t first_page = 0xA000;
 constexpr std::uint16_t second_page = 0xA200;
 /// The rectangle fill's frame, at a BP of the test's own.
 constexpr std::uint16_t fill_bp = 0x0400;
+/// The picture drawer's frame, and the picture it was handed.
+constexpr std::uint16_t picture_bp = 0x0300;
+constexpr std::uint16_t picture_segment = 0x2000;
+constexpr std::uint16_t picture_offset = 0x0040;
 
 /// The row the tests store, and what it is inverted.
 constexpr std::uint8_t a_row = 0x3C;
@@ -571,13 +577,30 @@ struct rig {
     put_word(stack_segment, fill_bp + 0x10U, as_pushed(left));
   }
 
+  /// The picture drawer's frame, as it is at its epilogue: the picture's
+  /// far pointer, then its cell, and the picture's height in lines and its
+  /// width in bytes at its start.
+  void lay_picture(unsigned row, unsigned column, unsigned lines,
+                   unsigned bytes) const {
+    put_word(stack_segment, picture_bp + 6U, picture_offset);
+    put_word(stack_segment, picture_bp + 8U, picture_segment);
+    put_word(stack_segment, picture_bp + 0x0AU,
+             static_cast<std::uint16_t>(row));
+    put_word(stack_segment, picture_bp + 0x0CU,
+             static_cast<std::uint16_t>(column));
+    put_word(picture_segment, picture_offset,
+             static_cast<std::uint16_t>(lines));
+    put_word(picture_segment, picture_offset + 2U,
+             static_cast<std::uint16_t>(bytes));
+  }
+
   std::unique_ptr<machine> box;
   std::unique_ptr<ega> video;
 };
 
 // --- The definition --------------------------------------------------------
 
-TEST(SeamSelectYellow, IsElevenPointsAndFiveOfThemAreInsideCalls) {
+TEST(SeamSelectYellow, IsTwelvePointsAndSixOfThemAreInsideCalls) {
   const rig r;
   const seam_definition& s = r.seam();
 
@@ -586,7 +609,7 @@ TEST(SeamSelectYellow, IsElevenPointsAndFiveOfThemAreInsideCalls) {
   EXPECT_EQ(s.gate, document_kind::none);
   EXPECT_TRUE(s.group.empty()) << "nothing is its alternative";
   EXPECT_EQ(s.schema, seam_schema_version);
-  ASSERT_EQ(piece_points(s).size(), 11u);
+  ASSERT_EQ(piece_points(s).size(), 12u);
 
   EXPECT_EQ(piece_points(s)[bar_group].offset, 0x0273u);
   EXPECT_EQ(piece_points(s)[list_row].offset, 0x09FDu);
@@ -623,12 +646,14 @@ TEST(SeamSelectYellow, IsElevenPointsAndFiveOfThemAreInsideCalls) {
   // selections are drawn in one.
   EXPECT_EQ(piece_points(s)[row_store].offset, 0x74A2u);
   EXPECT_EQ(piece_points(s)[row_store_again].offset, 0x74C8u);
-  // And the margin's: the blitter's step to the next cell, and the
-  // rectangle fill's epilogue.
+  // And the margin's: the blitter's step to the next cell, the rectangle
+  // fill's epilogue, and the picture drawer's, which the Fix's report
+  // borders itself through inside its batch.
   EXPECT_EQ(piece_points(s)[cell_drawn].offset, 0x7667u);
   EXPECT_EQ(piece_points(s)[rectangle_filled].offset, 0x71FBu);
-  for (const std::size_t which :
-       {row_store, row_store_again, cell_drawn, rectangle_filled}) {
+  EXPECT_EQ(piece_points(s)[picture_drawn].offset, 0x618Cu);
+  for (const std::size_t which : {row_store, row_store_again, cell_drawn,
+                                  rectangle_filled, picture_drawn}) {
     EXPECT_TRUE(piece_points(s)[which].module.is_resident_image());
     EXPECT_TRUE(piece_points(s)[which].inside_calls);
   }
@@ -1354,6 +1379,45 @@ TEST(SeamSelectYellow, AMarginTheProgramDrewOverIsPaintedAgain) {
   for (unsigned x = 80; x < 88; ++x) {
     EXPECT_EQ(r.pixel(first_page, x, 39), white) << x;
   }
+}
+
+TEST(SeamSelectYellow, AMarginAPictureCoveredIsPaintedAgainAtOnce) {
+  // The frame's chain is laid over the bar's top margin a tile at a time,
+  // the Fix's report's inside a batch: the margin is back once the tile is
+  // drawn, not once the bar is next drawn.
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.fill_cell(first_page, 5, 10, white);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+  ASSERT_EQ(r.pixel(first_page, 84, 39), white);
+
+  r.put_pixels(first_page, rig::offset_of(4, 10, 7), 0xFF, black);
+  r.put_pixels(first_page, rig::offset_of(4, 10, 2), 0x18, red);
+  r.lay_picture(4, 10, 8, 1);
+  static_cast<void>(r.store(picture_drawn, picture_bp));
+  for (unsigned x = 80; x < 88; ++x) {
+    EXPECT_EQ(r.pixel(first_page, x, 39), white) << x;
+  }
+  EXPECT_EQ(r.pixel(first_page, 83, 34), red) << "the picture is the program's";
+}
+
+TEST(SeamSelectYellow, APictureAwayFromAnyMarginChangesNothing) {
+  rig r;
+  r.arm();
+  r.attach_video();
+  r.fill_cell(first_page, 5, 10, white);
+  r.lay_seams_glyph(5, 10, white, true);
+  static_cast<void>(r.store(cell_drawn, blitter_bp));
+
+  r.put_pixels(first_page, rig::offset_of(12, 20, 7), 0xFF, black);
+  r.lay_picture(10, 18, 24, 3);
+  static_cast<void>(r.store(picture_drawn, picture_bp));
+  for (unsigned x = 160; x < 168; ++x) {
+    EXPECT_EQ(r.pixel(first_page, x, 103), black) << x;
+  }
+  EXPECT_EQ(r.pixel(first_page, 84, 39), white);
 }
 
 TEST(SeamSelectYellow, TheMarginGoesWhenTheCellIsDrawnPlain) {

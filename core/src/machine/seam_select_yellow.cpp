@@ -214,6 +214,12 @@ constexpr std::array<std::uint32_t, 2> row_store_offsets{0x74A2, 0x74C8};
 constexpr std::uint32_t cell_drawn_offset = 0x7667;
 constexpr std::uint32_t rectangle_filled_offset = 0x71FB;
 
+/// The resident image: the picture drawer's epilogue, `mov sp, bp`, once a
+/// picture is drawn at a cell. The frame border (image `0x3F10`) lays every
+/// cell of a frame through it, one 8x8 tile at a time, by way of overlay
+/// 34's tile drawer.
+constexpr std::uint32_t picture_drawn_offset = 0x618C;
+
 // --- The calls a store follows back to --------------------------------------
 
 /// Every call below is a direct far call, five bytes, so the return address
@@ -317,6 +323,16 @@ constexpr std::uint16_t fill_bottom = 0x0A;
 constexpr std::uint16_t fill_right = 0x0C;
 constexpr std::uint16_t fill_top = 0x0E;
 constexpr std::uint16_t fill_left = 0x10;
+
+/// The picture drawer's frame: from BP + 6, the picture's far pointer
+/// (offset, then segment), then the row and the column of its top-left
+/// cell. A picture starts with its height in lines and its width in bytes,
+/// a byte being one cell's width on the EGA.
+constexpr std::uint16_t picture_pointer = 6;
+constexpr std::uint16_t picture_row = 0x0A;
+constexpr std::uint16_t picture_column = 0x0C;
+constexpr std::uint16_t picture_lines = 0;
+constexpr std::uint16_t picture_bytes = 2;
 
 /// The program's data segment, as paragraphs from the image, and in it the
 /// two display segments the blitter draws every glyph to. A page is
@@ -811,14 +827,14 @@ void at_row_store(machine& box, seam_context& ctx) {
   regs.set(cpu::reg8::dl, static_cast<std::uint8_t>(~regs.get(cpu::reg8::dl)));
 }
 
-// --- Points 10 and 11: the margin outside the block ---------------------------
+// --- Points 10 to 12: the margin outside the block ---------------------------
 //
 // selection_margin.h has the argument. Every face leaves column 0 and row 7
 // of a cell paper, so a block keeps its left and bottom margin in its own
 // cells; its top is row 7 of the cell above, and its right column 0 of the
 // cell after its last. Those are painted, only over black, each time the
-// program draws a cell or fills a rectangle, and taken back, only where they
-// are still this machine's, when the block under them goes.
+// program draws a cell, fills a rectangle or lays a picture, and taken back,
+// only where they are still this machine's, when the block under them goes.
 
 /// The graphics controller's and the sequencer's registers this paints
 /// with. Every one is read first and written back after (the adapter here
@@ -959,11 +975,11 @@ void settle(machine& box, unsigned page, std::uint16_t segment,
     }
     const auto r = static_cast<unsigned>(row);
     const auto c = static_cast<unsigned>(column);
-    // What this machine holds here, checked on the screen first. The program
-    // draws some things other than through the blitter or the fill (the
-    // frame's border row over a bar, #483), and a margin pixel it has drawn
-    // over is not this machine's any more: forgotten, so it is painted
-    // again if it is still wanted.
+    // What this machine holds here, checked on the screen first. A picture
+    // (the frame's border row over a bar, a tile at a time) does not say
+    // which page it is drawn on, and a margin pixel it has drawn over is not
+    // this machine's any more: forgotten, so it is painted again if it is
+    // still wanted.
     const selection_margins::strip held = margins.owned(page, r, c);
     selection_margins::strip lost;
     bool any_lost = false;
@@ -1117,9 +1133,56 @@ void at_rectangle_filled(machine& box, seam_context& /*ctx*/) {
   settle(box, page, segment, cells, count);
 }
 
+// A picture the program lays over a margin (the frame's chain above a bar,
+// each time a report or a screen borders itself) took the margin pixels in
+// its cells with it. Its cells are settled at once, before another frame is
+// shown, and inside a batch too, where the Fix's report borders itself: what
+// each held is checked on the screen, and painted again over black. The
+// drawer finds its page through a line table of its own, not the blitter's
+// words, so every page that holds a margin is settled, and one the picture
+// did not touch has lost nothing.
+void at_picture_drawn(machine& box, seam_context& /*ctx*/) {
+  const stack s = stack_of(box);
+  const std::uint16_t offset = s.above_bp(picture_pointer);
+  const std::uint16_t segment = s.above_bp(picture_pointer + 2);
+  if (offset == 0 && segment == 0) {
+    return;  // The drawer draws nothing for no picture.
+  }
+  constexpr int rows = selection_margins::rows;
+  constexpr int columns = selection_margins::columns;
+  const int lines = s.cpu.read_word(
+      segment, static_cast<std::uint16_t>(offset + picture_lines));
+  const int bytes = s.cpu.read_word(
+      segment, static_cast<std::uint16_t>(offset + picture_bytes));
+  const int row = static_cast<std::int16_t>(s.above_bp(picture_row));
+  const int column = static_cast<std::int16_t>(s.above_bp(picture_column));
+  const int top = std::max(row, 0);
+  const int left = std::max(column, 0);
+  const int bottom = std::min(row + ((lines + 7) / 8) - 1, rows - 1);
+  const int right = std::min(column + bytes - 1, columns - 1);
+  if (top > bottom || left > right) {
+    return;
+  }
+  std::array<std::array<int, 2>, std::size_t{rows} * columns> cells{};
+  std::size_t count = 0;
+  for (int r = top; r <= bottom; ++r) {
+    for (int c = left; c <= right; ++c) {
+      cells[count++] = {r, c};
+    }
+  }
+  for (unsigned page = 0; page < selection_margins::pages; ++page) {
+    if (box.margins().any(page)) {
+      settle(box, page,
+             static_cast<std::uint16_t>(first_page_segment +
+                                        (page * page_paragraphs)),
+             cells, count);
+    }
+  }
+}
+
 // --- The definition ---------------------------------------------------------
 
-constexpr std::array<seam_point, 11> select_yellow_point_table{
+constexpr std::array<seam_point, 12> select_yellow_point_table{
     {{.module = menu_bar::module,
       .offset = bar_group_call,
       .run = &at_bar_group},
@@ -1153,6 +1216,11 @@ constexpr std::array<seam_point, 11> select_yellow_point_table{
      {.module = resident_image,
       .offset = rectangle_filled_offset,
       .run = &at_rectangle_filled,
+      .inside_calls = true},
+     // Inside batches too: the Fix's report borders itself through one.
+     {.module = resident_image,
+      .offset = picture_drawn_offset,
+      .run = &at_picture_drawn,
       .inside_calls = true}}};
 static_assert(select_yellow_point_table.size() == select_yellow_point_count);
 

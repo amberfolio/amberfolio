@@ -1472,14 +1472,14 @@ quoted below were taken per piece; the engine reports them for the one seam,
 summed over the pieces.
 
 - **One definition, the union of the points, in one order.** The
-  thirty-five points are the pieces' own, in the order list arrows (3), bar
+  thirty-six points are the pieces' own, in the order list arrows (3), bar
   keys (1), menu cursor (2), hero keys (5), edit keys (1), selection block
-  (11), move mode (5), text entry (2), aim watch (5). Five pieces have a point at the same instruction,
+  (12), move mode (5), text entry (2), aim watch (5). Five pieces have a point at the same instruction,
   overlay 25's key read at `0x0572` (list arrows, bar keys, menu cursor, hero
   keys, move mode), and the engine offers an address's points in table
   order, so the order is behaviour: the move mode is last, and rewrites the
   party bar's keys after every other piece has passed on them. The point
-  count with every seam on is sixty-seven, one face counted (`max_points` is
+  count with every seam on is sixty-eight, one face counted (`max_points` is
   ninety-six).
 - **One fingerprint, several modules.** Every piece keys on the baseline
   edition (§5) and only it, so the definition does. The modules are the
@@ -2434,7 +2434,7 @@ same loop serves. Its Up and Down are the menu cursor's.
   are called from the character sheet, combat and the camp's report as
   well; the points are inside the roster drawer so nothing else moves.
 - **`max_points` is ninety-six.** With every seam on, one face counted
-  (they are alternatives), the build has sixty-seven points, thirty-five of
+  (they are alternatives), the build has sixty-eight points, thirty-six of
   them `modern-controls`'. At thirty-two the last seam a player switched on
   was refused with `too_many_points`
   (`SeamHeroKeys.EveryBuiltInSeamFitsTheEngineAtOnce`).
@@ -2464,9 +2464,9 @@ not consulted (§7). Unit: `SeamHeroKeys.*`; stand-ins: `hero_keys_probe_off`,
 `seam_select_yellow.cpp`. Not a PLAN.md §5 item: a player's request, chosen
 from six mock-ups, and the colour half of #379's selection; then drawn as a
 block so that it is not told by colour alone (#483). A look and a setting:
-no key, nothing to pull. Eleven points: seven rewrite one colour before the
+no key, nothing to pull. Twelve points: seven rewrite one colour before the
 program draws with it, two, the blitter's row stores, invert the rows of
-what those seven coloured, and two paint the block's margin where it lies
+what those seven coloured, and three paint the block's margin where it lies
 outside the block's cells.
 
 | point | module | what the handler does |
@@ -2481,6 +2481,7 @@ outside the block's cells.
 | image `0x74A2` and `0x74C8`, the blitter's two EGA row stores, one per page | the resident image, `inside_calls` | inverts DL when the glyph is a selection's (below) |
 | image `0x7667`, the blitter's step to the next cell | the resident image, `inside_calls` | notes the cell a block or not, and settles the margin of it and the three cells its margin can lie in |
 | image `0x71FB`, the rectangle fill's epilogue | the resident image, `inside_calls` | forgets the blocks and margin in the rectangle, and settles it and the ring around it |
+| image `0x618C`, the picture drawer's epilogue | the resident image, `inside_calls` | settles every cell the picture covers, on each page that holds a margin |
 
 | fact | value |
 |---|---|
@@ -2495,6 +2496,7 @@ outside the block's cells.
 | `selection_mark` | `0x8000` in the colour word a seam pushes for a string it draws as a selection (`seam_builtin.h`); the string routine reads the low byte |
 | the blitter's step to the next cell | paragraph `0x709`, `0x05D7`: `inc` of the column argument, reached by every adapter's path once a cell is drawn, with the blitter's frame (row `BP+0x0E`, column `BP+0x10`, colour `BP+0x0C`) and, on the EGA, the map mask back on every plane |
 | the rectangle fill | paragraph `0x709`, `0x00B7` (both clear routines, `0x3F1:0x0137` and `0x709:0x0DD3`, fill through it), epilogue at `0x016B`; from `BP+6` the fill, the page, then the bottom, right, top and left cells. The page selects segment `0xA000` plus `0x200` paragraphs a page |
+| the picture drawer | paragraph `0x464`, `0x1951`, epilogue at `0x1B4C`; from `BP+6` the picture's far pointer, then its row and its column, words; a picture starts with its height in lines and its width in bytes. On the EGA it writes `0xA000` through a line table of its own, so its page is not in its call. Overlay 34's tile drawer (`0x015D`) lays an 8x8 tile through it, and the frame border (image `0x3F10`) every cell of a frame through that, the Fix's report's inside its batch |
 | the display pages | the data segment's words `0x4A16` and `0x4A18`, the two segments the blitter stores every glyph row to |
 | the list leaf | its context's near pointer at `BP+6`; the highlight's colour at `+0x20` of it |
 | the roster drawer | image `0x1307`; its frame has the column and row bytes at `BP-5` and `BP-6` and the member's far pointer at `BP-4`; the call's own words repeat all three |
@@ -2639,14 +2641,16 @@ outside the block's cells.
   after the block's last with the corner above it, **only over black**, on
   both pages. `selection_margins`, observation on the machine like the
   automap's, keeps which cells are blocks and which margin pixels this
-  machine painted; at each cell the blitter finishes, and after each fill,
-  the cells whose margin may have changed are settled: what a cell wants is
-  painted, and what it no longer wants is put back to black, **only where it
-  is still this machine's** (a cell the program draws or fills is its own
-  again). What it holds is checked on the screen before a cell is settled:
-  the camp screen redraws the frame's border row over its bar with neither
-  the blitter nor the fill, and a margin pixel it drew over is forgotten and
-  painted again. A block the program covered some other way (the automap's panel
+  machine painted; at each cell the blitter finishes, after each fill, and
+  after each picture the program lays at a cell (the frame's chain over a
+  bar, a tile at a time), the cells whose margin may have changed are
+  settled: what a cell wants is painted, and what it no longer wants is put
+  back to black, **only where it is still this machine's** (a cell the
+  program draws or fills is its own again). What it holds is checked on the
+  screen before a cell is settled: a picture's call does not say which page
+  it is drawn on, so a picture settles every page that holds a margin, and a
+  margin pixel it drew over is forgotten and painted again before the next
+  frame is shown. A block the program covered some other way (the automap's panel
   over the roster) is checked on the screen before a margin is painted
   beside it: its column 0 and row 7, paper in every glyph, must be its
   colour but for two pixels, or it is forgotten. The graphics controller's
@@ -2692,9 +2696,9 @@ outside the block's cells.
   what it already is, and only the **low byte** of a pushed word is read or
   written.
 - **`max_points` is ninety-six, and with every seam on the build carries
-  sixty-seven points** (the faces count once, being alternatives),
-  thirty-five of them `modern-controls`': three, one, two, five, one, these
-  eleven, the move mode's five, the text entry's two and the aim watch's
+  sixty-eight points** (the faces count once, being alternatives),
+  thirty-six of them `modern-controls`': three, one, two, five, one, these
+  twelve, the move mode's five, the text entry's two and the aim watch's
   five.
 - **Rejected:** a face of the same shape (a seam with a parameter: seams have
   none); lighting the program's group as it is (the half of a word on the
