@@ -39,6 +39,15 @@ constexpr std::uint16_t data_in_transition = 0x442F;
 constexpr std::uint16_t data_disk_number = 0x5376;
 constexpr std::uint16_t data_area_id = 0x84DC;
 
+/// **Which disk and area each view kind is**, from the automap's zone
+/// table: kind 2 is area 25 on disk 6, kind 3 area 26 on disk 7, kind 4
+/// area 27 on disk 8. Crossing a band edge, the program sets the new disk
+/// and area a moment before the new kind (driven: disk 7 and area 26 with
+/// the kind still 2), and a look then would credit the old band's cell to
+/// the new band's record.
+constexpr std::uint8_t first_overland_disk = 6;
+constexpr std::uint8_t first_overland_area = 25;
+
 /// The current area record: a far pointer, offset then segment.
 constexpr std::uint16_t data_area_record = 0x49D2;
 
@@ -140,10 +149,21 @@ overland_look observe_overland(machine& box, seam_context& ctx,
     return found;
   }
 
+  const std::uint8_t disk = cpu.read_byte(ds, data_disk_number);
+  const std::uint8_t area = cpu.read_byte(ds, data_area_id);
+  const auto band = static_cast<std::uint8_t>(kind - view_kind_first_overland);
+  if (disk != first_overland_disk + band ||
+      area != first_overland_area + band) {
+    // Halfway across a band edge: the three bytes do not yet name one
+    // wilderness area, so the position belongs to neither. Not a decline;
+    // the program passes through this on every crossing.
+    return found;
+  }
+
   found.on_screen = true;
   found.view_kind = kind;
-  found.disk = cpu.read_byte(ds, data_disk_number);
-  found.area = cpu.read_byte(ds, data_area_id);
+  found.disk = disk;
+  found.area = area;
   found.x = static_cast<std::uint8_t>(column);
   found.y = static_cast<std::uint8_t>(row);
 

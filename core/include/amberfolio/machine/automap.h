@@ -713,6 +713,15 @@ class automap_state {
   /// How many consecutive looks at the same cell it takes to believe it.
   static constexpr unsigned settle_looks = 3;
 
+  /// The same on the overland, where the first look is believed. The
+  /// recorder only looks once the program has drawn the window from that
+  /// very position and the view kind, disk and area agree
+  /// (`automap_overland.cpp`), so there is no stale cell to wait out — and
+  /// waiting cost a step or two of fog after a band edge, because the keys
+  /// pressed during the area's load move the party before three looks
+  /// can agree.
+  static constexpr unsigned settle_looks_overland = 1;
+
   /// One look at the live position, on the map it claims to be on.
   /// Answers whether the seam may now act on it — which is false while
   /// the position is still settling after a map change, and true from the

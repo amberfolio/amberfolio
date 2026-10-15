@@ -607,6 +607,17 @@ TEST(AutomapState, SteppingBetweenTheOverlandAndAnInteriorIsAMapChange) {
   EXPECT_EQ(state.settled_kind(), automap_map_kind::grid);
 }
 
+TEST(AutomapState, TheOverlandBelievesTheFirstLook) {
+  // Its recorder only looks at a window the program drew from that very
+  // position, so there is no stale cell to wait out — and across a band
+  // edge the party is often a step on before a second look comes.
+  automap_state state;
+  EXPECT_TRUE(state.observe_overland(6, 0x19, 15, 26));
+  EXPECT_TRUE(state.observe_overland(7, 0x1A, 3, 26));
+  EXPECT_EQ(state.settled_area(), 0x1A);
+  EXPECT_EQ(state.settled_x(), 3);
+}
+
 TEST(AutomapState, TheOverlandCarriesNoMarks) {
   // Nothing draws them there, and a marker's coordinates are four-bit,
   // which a row of 32 is not. A silent wrap would mark a cell nobody has
